@@ -74,7 +74,8 @@ function stripStable(s) {
 // strip again, then case-fold.
 function normalizeSliceName(s) {
   let cur = stripStable(s);
-  cur = cur.replace(/^\S+(?: \S+)* — /, '');
+  // The separator may be a spaced em-dash, en-dash, or plain hyphen.
+  cur = cur.replace(/^\S+(?: \S+)* [—–-] /, '');
   cur = stripStable(cur);
   return cur.toLowerCase().replace(/\s+/g, ' ');
 }
@@ -325,46 +326,119 @@ function targetSlug(target) {
   return base || null;
 }
 
+// Normalized directory-qualified key for a link target or entry
+// self-link, e.g. "features/foo". Leading ./ and ../ segments are
+// dropped: all live data is relative to the .claude/ directory the
+// indexes share. Returns null for index-file targets.
+function targetPathKey(target) {
+  if (!target) return null;
+  const noAnchor = target.split('#')[0].replace(/\\/g, '/');
+  const parts = noAnchor.split('/').filter((p) => p !== '' && p !== '.' && p !== '..');
+  if (parts.length === 0) return null;
+  const last = parts[parts.length - 1];
+  const base = path.basename(last, path.extname(last));
+  if (!base || INDEX_FILE_STEMS.has(base)) return null;
+  parts[parts.length - 1] = base;
+  return parts.join('/').toLowerCase();
+}
+
 function buildRegistry(indexEntries) {
   // indexEntries: [{ index, entry }]
   const byTitle = new Map();
+  const titleDupes = new Set();
   const bySlug = new Map();
+  const slugDupes = new Set();
+  const byPath = new Map();
   for (const rec of indexEntries) {
-    byTitle.set(normalizeTitle(rec.entry.title), rec);
-    const slug = targetSlug(rec.entry.selfTarget);
-    if (slug && !INDEX_FILE_STEMS.has(slug)) {
-      bySlug.set(slug.toLowerCase(), rec);
+    const titleKey = normalizeTitle(rec.entry.title);
+    if (byTitle.has(titleKey)) titleDupes.add(titleKey);
+    else byTitle.set(titleKey, rec);
+    const pathKey = targetPathKey(rec.entry.selfTarget);
+    if (pathKey) {
+      byPath.set(pathKey, rec);
+      const slug = targetSlug(rec.entry.selfTarget).toLowerCase();
+      if (bySlug.has(slug)) slugDupes.add(slug);
+      else bySlug.set(slug, rec);
     }
   }
-  return { byTitle, bySlug };
+  return { byTitle, titleDupes, bySlug, slugDupes, byPath };
+}
+
+// Look up an entry by link target (directory-qualified path first, then
+// bare basename, then display text). Returns { rec, via } on a unique
+// match, { ambiguous } when several active entries share the matched key,
+// or {} on no match. Path-first ordering makes features/foo.md and
+// bugs/foo.md resolve correctly instead of colliding on the basename.
+function lookupEntry(registry, display, target) {
+  const pathKey = targetPathKey(target);
+  if (pathKey && registry.byPath.has(pathKey)) {
+    return { rec: registry.byPath.get(pathKey), via: 'path' };
+  }
+  const slug = targetSlug(target);
+  const slugKey = slug && !INDEX_FILE_STEMS.has(slug) ? slug.toLowerCase() : null;
+  if (slugKey) {
+    if (registry.slugDupes.has(slugKey)) {
+      return { ambiguous: `several active entries share the file slug "${slugKey}"` };
+    }
+    if (registry.bySlug.has(slugKey)) {
+      return { rec: registry.bySlug.get(slugKey), via: 'slug' };
+    }
+  }
+  if (display) {
+    const titleKey = normalizeTitle(display);
+    if (registry.titleDupes.has(titleKey)) {
+      return { ambiguous: `several active entries share the title "${display}"` };
+    }
+    if (registry.byTitle.has(titleKey)) {
+      return { rec: registry.byTitle.get(titleKey), via: 'title' };
+    }
+  }
+  return {};
 }
 
 // Resolve one Requires link item against the registry. Returns one of:
 //   { kind: 'blocked', label }         in-backlog reference, currently blocking
-//   { kind: 'structural', problem }    stale/broken/typo reference
+//   { kind: 'structural', problem }    stale/broken/typo/ambiguous reference
 function resolveLink(item, registry) {
   const display = item.display;
-  const slug = targetSlug(item.target);
-  const slugKey = slug && !INDEX_FILE_STEMS.has(slug) ? slug.toLowerCase() : null;
+
+  const whole = lookupEntry(registry, display, item.target);
+  if (whole.ambiguous) {
+    return {
+      kind: 'structural',
+      problem: `ambiguous reference "[${display}](${item.target})": ${whole.ambiguous}; qualify the link target with its directory`,
+    };
+  }
 
   let parent = null;
   let sliceName = null;
-
-  const fullTitleHit = registry.byTitle.get(normalizeTitle(display));
-  const slugHit = slugKey ? registry.bySlug.get(slugKey) : null;
 
   const colonIdx = display.indexOf(': ');
   if (colonIdx > 0) {
     const prefix = display.slice(0, colonIdx);
     const suffix = display.slice(colonIdx + 2);
-    const prefixHit = registry.byTitle.get(normalizeTitle(prefix)) || slugHit;
-    if (prefixHit && prefixHit.entry.slices && prefixHit.entry.slices.length > 0) {
-      parent = prefixHit;
+    const pre = lookupEntry(registry, prefix, item.target);
+    if (pre.ambiguous) {
+      return {
+        kind: 'structural',
+        problem: `ambiguous reference "[${display}](${item.target})": ${pre.ambiguous}; qualify the link target with its directory`,
+      };
+    }
+    if (pre.rec && pre.rec.entry.slices && pre.rec.entry.slices.length > 0) {
+      parent = pre.rec;
       sliceName = suffix;
+    } else if (pre.rec && whole.via !== 'title') {
+      // The display carries a slice suffix, the resolved parent has no
+      // Slices block, and the full display doesn't name an entry title of
+      // its own: typo territory, not a whole-entry reference.
+      return {
+        kind: 'structural',
+        problem: `slice-suffixed reference "${display}" points at "${pre.rec.entry.title}", which has no Slices block`,
+      };
     }
   }
   if (!parent) {
-    parent = slugHit || fullTitleHit;
+    parent = whole.rec || null;
   }
   if (!parent) {
     return {
@@ -390,17 +464,6 @@ function resolveLink(item, registry) {
       };
     }
     return { kind: 'blocked', label: `${parent.entry.title}: ${slice.displayName}` };
-  }
-
-  if (colonIdx > 0 && !slices) {
-    // Suffixed display but the resolved parent has no Slices block and no
-    // full-title match succeeded either: treat as structural (typo).
-    if (!fullTitleHit) {
-      return {
-        kind: 'structural',
-        problem: `slice-suffixed reference "${display}" points at "${parent.entry.title}", which has no Slices block`,
-      };
-    }
   }
 
   if (slices && slices.length > 0) {
@@ -541,6 +604,7 @@ function analyze(files) {
   }
 
   // Features and bugs.
+  const breakoutTargets = [];
   for (const name of ['FEATURES', 'BUGS']) {
     if (!parsed[name]) continue;
     for (const entry of parsed[name].entries) {
@@ -591,19 +655,15 @@ function analyze(files) {
       }
 
       // Broken breakout-file links are a notice, not a structural error;
-      // the Requires line still resolves normally. Checked by the CLI
-      // (needs the filesystem); analyze() records the candidates.
+      // the Requires line still resolves normally. The filesystem check
+      // happens in the CLI; analyze() only records the candidates.
       if (entry.selfTarget && !entry.selfTarget.startsWith('http')) {
-        out.notices._breakoutTargets = out.notices._breakoutTargets || [];
-        out.notices._breakoutTargets.push({ index, title: entry.title, target: entry.selfTarget });
+        breakoutTargets.push({ index, title: entry.title, target: entry.selfTarget });
       }
     }
   }
 
-  // Move the private accumulator off the notices array before returning.
-  const breakoutTargets = out.notices._breakoutTargets || [];
-  delete out.notices._breakoutTargets;
-  out._breakoutTargets = breakoutTargets;
+  out.breakoutTargets = breakoutTargets;
   return out;
 }
 
@@ -625,7 +685,7 @@ function runCli(argRoot) {
   const result = analyze(files);
 
   // Filesystem check for breakout-file links (relative to the index dir).
-  for (const rec of result._breakoutTargets) {
+  for (const rec of result.breakoutTargets) {
     const target = rec.target.split('#')[0];
     const resolved = path.resolve(claudeDir, target);
     if (!fs.existsSync(resolved)) {
@@ -634,7 +694,7 @@ function runCli(argRoot) {
       );
     }
   }
-  delete result._breakoutTargets;
+  delete result.breakoutTargets;
 
   process.stdout.write(JSON.stringify(result, null, 2) + '\n');
 }

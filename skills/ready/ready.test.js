@@ -105,7 +105,9 @@ Sliced feature, MVP struck.
 - **Late-join replay.** Pull endpoint.
   **Requires:** [Delta: re-anchor events](features/delta.md).
 - **\`RepertoireSource\`.** Drop-in replacement.
-  **Requires:** [Epsilon](features/epsilon.md).
+  **Requires:** [Epsilon](features/epsilon.md),
+  approval from the platform team.
+- **Freebie.** Independent extension with no gates of its own.
 
 **Requires:** none.
 
@@ -126,6 +128,12 @@ Bare link to sliced parent whose MVP already shipped (stale).
 Broken reference.
 
 **Requires:** [Nonexistent](features/nonexistent.md).
+
+### [Sigma](features/sigma.md)
+
+Purely external gate.
+
+**Requires:** vendor firmware update.
 
 ## Exploring
 
@@ -225,6 +233,12 @@ test('normalizeSliceName strips slice-type prefix and case-folds', () => {
   assert.strictEqual(normalizeSliceName('floating-reference core'), 'floating-reference core');
   assert.strictEqual(normalizeSliceName('Slice 2 — Foo Bar.'), 'foo bar');
   assert.strictEqual(normalizeSliceName('**`RepertoireSource`.**'), 'repertoiresource');
+});
+
+test('normalizeSliceName accepts hyphen and en-dash prefix separators', () => {
+  assert.strictEqual(normalizeSliceName('MVP - base layer'), 'base layer');
+  assert.strictEqual(normalizeSliceName('Slice 2 – foo'), 'foo');
+  assert.strictEqual(normalizeSliceName('floating-reference core'), 'floating-reference core');
 });
 
 test('splitTopLevelCommas ignores commas inside links', () => {
@@ -350,6 +364,93 @@ test('all slices shipped flags the parent as ready to graduate', () => {
   const kappa = findByTitle(gates.structuralErrors, 'Kappa');
   assert.ok(kappa, titles(gates.structuralErrors).join(', '));
   assert.ok(kappa.problem.includes('graduate parent'), kappa.problem);
+});
+
+test('purely external entry classifies as External with its primitives', () => {
+  const sigma = findByTitle(result.external, 'Sigma');
+  assert.ok(sigma, `Sigma not in external: ${titles(result.external)}`);
+  assert.deepStrictEqual(sigma.primitives, ['vendor firmware update']);
+  assert.ok(!titles(result.ready).includes('Sigma'), 'Sigma must not be Ready');
+  assert.ok(!findByTitle(result.blocked, 'Sigma'), 'Sigma must not be Blocked');
+});
+
+test('gateless continuation is ready even while a sibling continuation is unshipped', () => {
+  assert.ok(titles(result.ready).includes('[Delta: Freebie]'), titles(result.ready).join(' | '));
+});
+
+test('wrapped inline slice Requires joins its continuation lines', () => {
+  const repertoire = findByTitle(result.blocked, '[Delta: RepertoireSource]');
+  assert.ok(repertoire, titles(result.blocked).join(' | '));
+  assert.deepStrictEqual(repertoire.blockers, ['Epsilon']);
+  assert.deepStrictEqual(repertoire.externals, ['approval from the platform team']);
+});
+
+// ---------- analyze() on the collision fixture ----------
+
+const COLLISION_FEATURES = `# Features
+
+## Area
+
+### [Shared](features/shared.md)
+
+Feature that shares a file basename with a bug.
+
+**Requires:** none.
+
+### [Twin](features/twin.md)
+
+Directory-qualified reference must resolve to the bug, not the feature.
+
+**Requires:** [shared bug](bugs/shared.md).
+
+### [Ambi](features/ambi.md)
+
+Bare-basename reference cannot pick between the two shared.md files.
+
+**Requires:** [Shared thing](shared.md).
+
+### [Plain](features/plain.md)
+
+No slices block.
+
+**Requires:** none.
+
+### [Suffixer](features/suffixer.md)
+
+Slice-suffixed reference at a parent without slices.
+
+**Requires:** [Plain: some slice](features/plain.md).
+`;
+
+const COLLISION_BUGS = `# Bugs
+
+## Open
+
+### [Shared bug](bugs/shared.md)
+
+Bug that shares a file basename with a feature.
+
+**Requires:** none.
+`;
+
+const collisions = analyze({ FEATURES: COLLISION_FEATURES, BUGS: COLLISION_BUGS });
+
+test('directory-qualified reference resolves across same-basename files', () => {
+  const twin = findByTitle(collisions.blocked, 'Twin');
+  assert.ok(twin, titles(collisions.blocked).join(' | '));
+  assert.deepStrictEqual(twin.blockers, ['Shared bug']);
+});
+
+test('bare-basename reference to colliding files is an ambiguity structural error', () => {
+  const ambi = findByTitle(collisions.structuralErrors, 'Ambi');
+  assert.ok(ambi, titles(collisions.structuralErrors).join(', '));
+  assert.ok(ambi.problem.includes('ambiguous reference'), ambi.problem);
+});
+
+test('slice-suffixed reference to a slice-less parent is a structural error', () => {
+  const suffixer = findByTitle(collisions.structuralErrors, 'Suffixer');
+  assert.ok(suffixer, titles(collisions.structuralErrors).join(', '));
+  assert.ok(suffixer.problem.includes('no Slices block'), suffixer.problem);
 });
 
 // ---------- CLI smoke test ----------
