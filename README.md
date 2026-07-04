@@ -23,15 +23,15 @@ All commands and skills are namespaced: `/flightdeck:takeoff`, `/flightdeck:read
 
 ## Commands and skills
 
-| Name | What it's for |
-|------|---------------|
-| `/flightdeck:init-workflow` | Scaffold or update the four-index backlog structure in a project |
-| `/flightdeck:ready` | Report the unblocked work set by resolving `**Requires:**` lines (skill; bundles the parser script) |
-| `/flightdeck:takeoff` | Autonomous feature lifecycle: spec gate, plan, implement, then land |
-| `/flightdeck:land` | Late-stage workflow: review, verify, docs, bookkeeping, lore, tests, triage |
+|                 Name                  |                                                   What it's for                                                   |
+|---------------------------------------|-------------------------------------------------------------------------------------------------------------------|
+| `/flightdeck:init-workflow`           | Scaffold or update the four-index backlog structure in a project                                                  |
+| `/flightdeck:ready`                   | Report the unblocked work set by resolving `**Requires:**` lines (skill; bundles the parser script)               |
+| `/flightdeck:takeoff`                 | Autonomous feature lifecycle: spec gate, plan, implement, then land                                               |
+| `/flightdeck:land`                    | Late-stage workflow: review, verify, docs, bookkeeping, lore, tests, triage                                       |
 | `/flightdeck:revise code\|plan\|spec` | Iterative fresh-agent review loop (skill); `revise-code` / `revise-plan` / `revise-spec` commands are short forms |
-| `/flightdeck:revise-docs` | Update project documentation to reflect implemented work |
-| `/flightdeck:revise-lore` | Persist session learnings into CLAUDE.md files and the plugin itself |
+| `/flightdeck:revise-docs`             | Update project documentation to reflect implemented work                                                          |
+| `/flightdeck:revise-lore`             | Persist session learnings into CLAUDE.md files and the plugin itself                                              |
 
 The revise skill reviews per-dimension (8 dimensions for code, 7 each for plans and specs), two fresh agents per dimension per iteration, with skeptic agents refuting each finding before it's acted on. A dimension graduates only on an iteration that produced no change for it. When the Workflow tool is available, the fan-out runs as a deterministic workflow script with structured findings; otherwise it falls back to Agent-tool dispatch.
 

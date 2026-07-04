@@ -424,13 +424,17 @@ function resolveLink(item, registry) {
         problem: `ambiguous reference "[${display}](${item.target})": ${pre.ambiguous}; qualify the link target with its directory`,
       };
     }
+    const wholeIsExactTitle = whole.rec && normalizeTitle(display) === normalizeTitle(whole.rec.entry.title);
     if (pre.rec && pre.rec.entry.slices && pre.rec.entry.slices.length > 0) {
       parent = pre.rec;
       sliceName = suffix;
-    } else if (pre.rec && whole.via !== 'title') {
+    } else if (pre.rec && !wholeIsExactTitle) {
       // The display carries a slice suffix, the resolved parent has no
       // Slices block, and the full display doesn't name an entry title of
-      // its own: typo territory, not a whole-entry reference.
+      // its own: typo territory, not a whole-entry reference. Title
+      // equality is checked directly rather than via the resolution route,
+      // because path-first lookup means a colon-containing title referenced
+      // through its file target never resolves via 'title'.
       return {
         kind: 'structural',
         problem: `slice-suffixed reference "${display}" points at "${pre.rec.entry.title}", which has no Slices block`,

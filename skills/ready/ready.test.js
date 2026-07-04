@@ -420,6 +420,18 @@ No slices block.
 Slice-suffixed reference at a parent without slices.
 
 **Requires:** [Plain: some slice](features/plain.md).
+
+### [Foo: Bar](features/foo-bar.md)
+
+Colon-titled entry without slices.
+
+**Requires:** none.
+
+### [Colonref](features/colonref.md)
+
+Reference whose display text is exactly the colon-containing title.
+
+**Requires:** [Foo: Bar](features/foo-bar.md).
 `;
 
 const COLLISION_BUGS = `# Bugs
@@ -445,6 +457,13 @@ test('bare-basename reference to colliding files is an ambiguity structural erro
   const ambi = findByTitle(collisions.structuralErrors, 'Ambi');
   assert.ok(ambi, titles(collisions.structuralErrors).join(', '));
   assert.ok(ambi.problem.includes('ambiguous reference'), ambi.problem);
+});
+
+test('colon-titled whole-entry reference resolved via path is a plain blocker, not a structural error', () => {
+  const colonref = findByTitle(collisions.blocked, 'Colonref');
+  assert.ok(colonref, `Colonref not in blocked: ${titles(collisions.blocked).join(' | ')}`);
+  assert.deepStrictEqual(colonref.blockers, ['Foo: Bar']);
+  assert.ok(!findByTitle(collisions.structuralErrors, 'Colonref'), JSON.stringify(collisions.structuralErrors));
 });
 
 test('slice-suffixed reference to a slice-less parent is a structural error', () => {
