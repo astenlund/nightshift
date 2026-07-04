@@ -1,5 +1,6 @@
 {
   "name": "flightdeck",
+  "description": "Marketplace for the flightdeck feature-lifecycle workflow plugin.",
   "owner": {
     "name": "Andreas Stenlund"
   },
