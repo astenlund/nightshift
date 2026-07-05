@@ -9,7 +9,7 @@ Here, "plan" is an implementation plan: a file describing the steps required to 
 If the scope is empty, determine it automatically. Prefer (in order):
 1. The plan file path shown in the plan-mode system message, if the session is currently in plan mode.
 2. The most recently modified file under `.claude/plans/` (repo-local) or `~/.claude/plans/` (global), whichever the current working directory makes more natural.
-3. Recently touched plan-shaped files in `git status` and `git diff --stat`.
+3. Recently touched plan-shaped files in `git status` and `git diff --stat`; those signals only see tracked files, so for untracked or git-ignored plans (a supported election; the project's `.gitignore` is the source of truth) fall back to file modification time.
 
 Only ask the user if genuinely ambiguous.
 
@@ -39,6 +39,14 @@ Git-diff scope shapes (`staged`, `unstaged`, `main..HEAD`) that the code artifac
 - **Additional prompt rules**: the relevant CLAUDE.md excerpts to inline are the project conventions about commit messages, task-number leakage, doc/code commit separation, and the project's plan-vs-feature taxonomy.
 
 - **Post-fix steps**: none (plans have no build).
+
+- **Post-loop step (hardening stamp)**: when the loop graduates, append a provenance line to the plan under a `## Hardening` section (created at the end of the document if absent):
+
+  ```
+  - revise-plan graduated <date and time> at <sha>, scope: <scope>, content: <fingerprint>
+  ```
+
+  where `<date and time>` is now (minute precision), `<sha>` is the current repo HEAD (short form), `<scope>` is `whole file` (plans are typically hardened whole-file) or `sections <headings or ranges>`, and `<fingerprint>` is the plan's content fingerprint per the canonical recipe in `${CLAUDE_PLUGIN_ROOT}/commands/handover.md` (Provenance stamps section): `awk '/^## Hardening$/{exit} !/^Status:/' <plan> | sha256sum | cut -c1-8`. Stamps accumulate, one line per graduated run. This stamp is what `/nightshift:handover`'s stage detection reads (both for plan hardening and as the baseline for its implementation-completeness evidence); skipping it silently breaks cross-session detection. Do not commit the plan as part of stamping.
 
 ## Dimensions
 

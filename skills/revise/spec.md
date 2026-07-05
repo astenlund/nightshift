@@ -6,7 +6,7 @@ The scope is everything passed after the `spec` artifact token.
 
 Here, "spec" is the generic noun for any design-shaped file in `.claude/`: a feature, pattern, or bug-investigation file. The artifact name predates a taxonomy where specs and features are unified; the artifacts being reviewed are the design content inside feature / pattern / bug files.
 
-If the scope is empty, determine it automatically from the conversation context — what feature, pattern, or bug-investigation file was just written, updated, or discussed in this session. Check `git diff --stat` and `git status` for recently touched files under `.claude/features/`, `.claude/bugs/`, and `.claude/patterns/`. Only ask the user if genuinely ambiguous.
+If the scope is empty, determine it automatically from the conversation context — what feature, pattern, or bug-investigation file was just written, updated, or discussed in this session. Check `git diff --stat` and `git status` for recently touched files under `.claude/features/`, `.claude/bugs/`, and `.claude/patterns/`; those signals only see tracked files, so for untracked or git-ignored artifacts (a supported election; the project's `.gitignore` is the source of truth) fall back to file modification time. Only ask the user if genuinely ambiguous.
 
 If a scope is provided, interpret it based on what it looks like:
 - **File path** (e.g., `.claude/features/foo.md`) — review the whole file
@@ -34,6 +34,14 @@ Git-diff scope shapes (`staged`, `unstaged`, `main..HEAD`) that the code artifac
 - **Additional prompt rules**: the relevant CLAUDE.md excerpts to inline are the project conventions about design-document structure, indexes, the spec-trim feedback rule, and the project's plan-vs-feature taxonomy. Project context should name which neighboring feature / pattern / bug files exist and what the spec under review is for.
 
 - **Post-fix steps**: none (specs have no build).
+
+- **Post-loop step (hardening stamp)**: when the loop graduates, append a provenance line to the artifact under a `## Hardening` section (created at the end of the document if absent):
+
+  ```
+  - revise-spec graduated <date and time> at <sha>, scope: <scope>, content: <fingerprint>
+  ```
+
+  where `<date and time>` is now (minute precision), `<sha>` is the current repo HEAD (short form), `<scope>` is `whole file` or `sections <headings or ranges>` matching this run's scope, and `<fingerprint>` is the artifact's content fingerprint per the canonical recipe in `${CLAUDE_PLUGIN_ROOT}/commands/handover.md` (Provenance stamps section): `awk '/^## Hardening$/{exit} !/^Status:/' <artifact> | sha256sum | cut -c1-8`. Stamps accumulate, one line per graduated run. This stamp is what `/nightshift:handover`'s stage detection reads; skipping it silently breaks cross-session detection. Do not commit the artifact as part of stamping (committing is owned by the session's normal flow, and the artifact may be deliberately untracked).
 
 ## Dimensions
 
