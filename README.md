@@ -28,11 +28,13 @@ All commands and skills are namespaced: `/nightshift:handover`, `/nightshift:rea
 | `/nightshift:init-workflow`           | Scaffold or update the four-index backlog structure in a project                                                  |
 | `/nightshift:ready`                   | Report the unblocked work set by resolving `**Requires:**` lines (skill; bundles the parser script)               |
 | `/nightshift:handover`                | Take over the remaining feature lifecycle from the detected stage, through to shipped                             |
-| `/nightshift:revise code\|plan\|spec` | Iterative fresh-agent review loop (skill); `revise-code` / `revise-plan` / `revise-spec` commands are short forms |
+| `/nightshift:revise-code`             | Iterative fresh-agent review of a code change before it ships                                                     |
+| `/nightshift:revise-plan`             | Iterative fresh-agent review of an implementation plan before execution                                           |
+| `/nightshift:revise-spec`             | Iterative fresh-agent review of a design spec before planning                                                     |
 | `/nightshift:revise-docs`             | Update project documentation to reflect implemented work                                                          |
 | `/nightshift:revise-lore`             | Persist session learnings into CLAUDE.md files and the plugin itself                                              |
 
-The revise skill reviews per-dimension (8 dimensions for code, 7 each for plans and specs), two fresh agents per dimension per iteration, with skeptic agents refuting each finding before it's acted on. A dimension graduates only on an iteration that produced no change for it. When the Workflow tool is available, the fan-out runs as a deterministic workflow script with structured findings; otherwise it falls back to Agent-tool dispatch. At graduation the loop stamps the artifact with a provenance line (date and time, repo HEAD, scope, content fingerprint); handover's stage detection reads those stamps.
+The three `revise-*` review commands share one engine (the `revise` skill), which reviews per-dimension (8 dimensions for code, 7 each for plans and specs), two fresh agents per dimension per iteration, with skeptic agents refuting each finding before it's acted on. A dimension graduates only on an iteration that produced no change for it. When the Workflow tool is available, the fan-out runs as a deterministic workflow script with structured findings; otherwise it falls back to Agent-tool dispatch. At graduation the loop stamps the artifact with a provenance line (date and time, repo HEAD, scope, content fingerprint); handover's stage detection reads those stamps.
 
 ## Roadmap
 

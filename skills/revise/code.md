@@ -41,7 +41,7 @@ If a scope is provided, interpret it based on what it looks like:
   - If a rule in CLAUDE.md conflicts with the code, check the branch diff to see if the rule was just updated — don't flag the code as violating an outdated rule.
   - Don't infer intent from commit messages alone. Commit titles like "DROPME", "debug", "wip" describe the state when committed, not the current state. Judge code by reading the code (is the logging guarded? does it fire sparingly? does it serve a documented purpose?). If unsure, flag with low confidence rather than demanding removal.
 
-- **Post-fix steps**: rebuild (build only, no tests) to confirm nothing is broken. If the user explicitly set the scope to `staged` (i.e., they typed `/nightshift:revise-code staged` or `/nightshift:revise code staged`), stage the fixes so `git diff --cached` includes them in the next iteration. Do not stage otherwise — agents read files directly and don't need staging to see fixes.
+- **Post-fix steps**: rebuild (build only, no tests) to confirm nothing is broken. If the user explicitly set the scope to `staged` (i.e., they typed `/nightshift:revise-code staged`), stage the fixes so `git diff --cached` includes them in the next iteration. Do not stage otherwise — agents read files directly and don't need staging to see fixes.
 
 - **Follow-up routing notes**: in this artifact type the follow-up list is the tech-debt list. Don't drop Dimension 7 (Structural Health) findings — too-large-to-fix-inline is exactly what route (b) exists for.
 

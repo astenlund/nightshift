@@ -4,4 +4,4 @@ description: "Use when a design-shaped file (feature, pattern, or bug-investigat
 
 # revise-spec
 
-Invoke the `nightshift:revise` skill with artifact type `spec` and scope `$ARGUMENTS`. This command exists as a familiar short form; the skill owns the entire procedure.
+Invoke the `nightshift:revise` skill with artifact type `spec` and scope `$ARGUMENTS`. This command is the entry point; the skill is the shared engine that owns the entire procedure.

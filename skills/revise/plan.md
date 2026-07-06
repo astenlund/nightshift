@@ -113,7 +113,7 @@ After the loop graduates, reconcile against each upstream spec (skip with a one-
 
 1. **Sort each iteration's findings.** A finding belongs in the spec iff it would be lost-and-missed once the plan is gone: corrections to the contracts, invocations, assumptions, or design decisions the spec owns. Language gotchas, library quirks, and how-to-code-it detail stay in the code the plan produces; promoting them only bloats the spec.
 2. **Apply the spec-worthy ones with approval.** Surface each as readable text (current wording plus proposed replacement, not buried in a tool call) and edit the spec on approval. This is the sole exception to the "plan file only" edit surface.
-3. **Right-size the change.** A localized correction is an inline edit, not a reason to re-run a spec review; a candidate that would change the design rather than correct its record goes to the Follow-up logging step instead, recommending a dedicated `/nightshift:revise spec` pass.
+3. **Right-size the change.** A localized correction is an inline edit, not a reason to re-run a spec review; a candidate that would change the design rather than correct its record goes to the Follow-up logging step instead, recommending a dedicated `/nightshift:revise-spec` pass.
 
 If nothing reconciles, say so explicitly, so the step is visibly run.
 

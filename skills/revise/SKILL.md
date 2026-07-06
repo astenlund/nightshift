@@ -1,6 +1,6 @@
 ---
 name: revise
-description: Use when a code change, implementation plan, or design spec is ready for deep multi-agent review before it ships or gets executed. First argument selects the artifact type (code, plan, or spec); the rest is the scope.
+description: Shared fresh-agent review engine behind the revise-code, revise-plan, and revise-spec commands (the user entry points). Invoked with a first-argument artifact type (code, plan, or spec) followed by the scope; not called directly by users.
 ---
 
 # revise
