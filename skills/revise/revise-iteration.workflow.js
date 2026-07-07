@@ -1,3 +1,6 @@
+// Keep this file LF-only (enforced by the repo .gitattributes): the Workflow
+// tool's approval validator rejects carriage returns as hidden control characters,
+// so a CRLF checkout makes Workflow(scriptPath=...) unusable.
 export const meta = {
   name: 'revise-iteration',
   description: 'One revise-loop iteration: 2 fresh reviewers per active dimension, then a skeptic per non-LGTM finding',
