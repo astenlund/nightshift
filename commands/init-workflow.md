@@ -70,6 +70,7 @@ For each templated file, these are the load-bearing concepts its template-contro
 3. Points at `QUICK_WINS_HISTORY.md` as the archive for shipped entries.
 4. Notes the negative-knowledge → patterns Cautionary tales promotion path.
 5. Describes the capture shorthand (name + smell + preferred shape).
+6. States the stable-anchor rule for entries (locate by symbol names, entry titles, commit hashes; never by line numbers, plan-phase ordinals, bullet positions, or temporal qualifiers).
 
 **`QUICK_WINS_HISTORY.md`:**
 1. Names this file as archival / archaeological — loaded on demand, not at session start. *(H1)*
@@ -158,7 +159,11 @@ into the relevant `.claude/patterns/<slug>.md` Cautionary tales sections.
 
 Capture shorthand: name the refactor, describe the current smell in a
 sentence or two, sketch the preferred shape. A reader should be able to
-start work from the entry alone.
+start work from the entry alone. Anchor entries on identifiers that
+survive refactors -- symbol names, entry titles, commit hashes, config
+keys -- never on line numbers, plan-phase ordinals, bullet positions,
+or temporal qualifiers ("new", "recent"): a precise locator that rots
+misleads harder than a coarse one that holds.
 
 ## (add sections as work emerges)
 
