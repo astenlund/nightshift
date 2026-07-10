@@ -20,7 +20,7 @@ If the scope is empty, determine it automatically from the conversation context:
 
    Read each discovered file and identify which ones reference the implemented feature (by name, by phase number, by description, or as a planned/future item).
 
-   Also assemble a short list of the key code identifiers the session's work changed, renamed, retired, or relocated (classes, methods, endpoints, pipeline stages, config keys), and grep `.claude/` for them. A spec or index entry making present-tense claims about a touched identifier is an update candidate even if it never names the implemented feature -- "current state" sections rot by referencing the mechanisms work changed, not the work's name.
+   Also assemble a short list of the key code identifiers the session's work changed, renamed, retired, or relocated (classes, methods, endpoints, pipeline stages, config keys), and grep `.claude/` for them. A spec or index entry making present-tense claims about a touched identifier is an update candidate even if it never names the implemented feature -- "current state" sections rot by referencing the mechanisms work changed, not the work's name. Do the same for the titles of backlog entries the session shipped or retired: sibling feature and pattern files cross-reference entries by title (absorbed-lists, "tracked as" notes, fold-in plans), and those cross-references invert from plan to fact when the entry ships.
 
 2. **Identify what needs updating.** For each relevant file, look for:
    - **Planned/future items** that should now be marked as done, following the project's completion convention (see the Completed features guideline below)
