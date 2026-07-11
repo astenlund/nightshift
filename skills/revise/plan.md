@@ -102,7 +102,7 @@ This dimension may be N/A for some plans (single-commit single-file rewrites, do
 
 1. **Commit subject length**: every `git commit -m "..."` example in the plan must be ≤72 chars per the project's Conventional Commits rule (or whichever subject-length convention CLAUDE.md establishes). Plans prescribe subjects literally, so an over-length subject in the plan produces an over-length commit and a post-hoc amend discussion.
 2. **Atomic commits**: does the plan respect the "one logical change per commit" rule, or does it cram multiple concerns into a single commit? Pre-flag candidates for splitting.
-3. **Doc / config commit separation**: project conventions about which classes of file must commit separately from code (e.g., `.claude/*` and `CLAUDE.md` get their own commit with a literal subject in some setups) — flag any plan instruction that would mix them.
+3. **Doc / config commit separation**: project conventions about which classes of file must commit separately from code — flag any plan instruction that would mix them.
 4. **Task-number leakage**: implementation plan task numbers ("Task N", "Step N", "Phase N") reference ephemeral scaffolding deleted on land. The plan must not prescribe embedding them in source comments, docs, commit messages, or tracking files. Flag any plan instruction that would leak a task number into a durable artifact.
 
 ## Spec Reconciliation
