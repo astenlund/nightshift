@@ -2,7 +2,7 @@
   "name": "nightshift",
   "displayName": "Nightshift",
   "description": "A feature-lifecycle workflow for Claude Code: four-index project backlogs, dependency-resolved work selection, multi-agent review loops for specs, plans, and code, and a handover command that takes over the remaining lifecycle from wherever the session stands.",
-  "version": "2.0.8",
+  "version": "2.0.9",
   "author": {
     "name": "Andreas Stenlund"
   },
