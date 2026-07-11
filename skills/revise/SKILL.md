@@ -31,6 +31,8 @@ Also maintain an **acknowledgements & caveats** list that grows across iteration
 
 **Persist the loop state to disk.** Write the dimension statuses, N/A declarations, and the acknowledgements & caveats list to `.tmp/revise-state.md` at every iteration boundary (after the step-4 summary), and re-read the file at each iteration start. Long runs can cross a context-compaction boundary; the scratch file, not conversation memory, is the authoritative copy of the loop state.
 
+**Scratch files are per-run, not archival.** At loop start, a leftover state file describing a different artifact or an already-completed loop is a dead prior run: overwrite it without mining it for state (a live mid-loop state file for the same artifact is the legitimate resume case). When the run ends -- after the post-loop steps, including Follow-up logging and the retrospective -- delete the run's scratch files: `.tmp/revise-state.md`, `.tmp/revise-payload.md`, and any artifact-file scratch (e.g. the code artifact's `.tmp/review-diff*.patch`). A completed run's leftovers otherwise masquerade as live state in a later session.
+
 ### Execution engine for steps 1-2
 
 Two ways to run steps 1 and 2 of each iteration; prefer the workflow engine when the Workflow tool is available in the session.
