@@ -70,6 +70,8 @@ Once all reviewers have returned, collect the non-LGTM findings and launch one f
 
 REFUTED findings are dropped and added to the acknowledgements list with a one-line reason so later iterations don't re-litigate them; a dropped-as-REFUTED finding counts as "skipped" for graduation purposes. CONFIRMED and JUDGMENT_CALL findings proceed to step 3. Uncoordinated reviewer convergence on a finding raises its verification priority, not its truth: converged findings still get verified, and a verified-false convergent finding is dropped like any other. On the manual path (the Workflow script runs skeptics internally), the controller may settle a plan-or-spec finding that a re-read decides outright — a quoted contradiction, a symbol defined or not, a literal checked against the artifact or the design docs — by re-reading rather than dispatching its skeptic; anything needing judgment still gets the fresh skeptic.
 
+When skeptics return conflicting verdicts on findings that share an underlying issue (typically differently-scoped framings of it reported by different dimensions or reviewers), neither verdict wins wholesale: in step 3, scope any fix to the core the CONFIRMED verdict actually evidenced, and record the refuted framing as an acknowledgement so it is not re-litigated.
+
 ### Step 3: evaluate
 
 For each agent's response:
