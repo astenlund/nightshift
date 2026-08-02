@@ -84,6 +84,7 @@ This dimension may be N/A for some plans (single-commit single-file rewrites, do
 2. **Rollback plausibility**: if a task lands halfway and breaks, can the executor revert cleanly, or is intermediate state stranded?
 3. **Concurrency and ordering**: when the plan touches multiple long-running pipelines, schedulers, or external systems, the ordering must be explicit.
 4. **Edge cases at boundaries**: empty inputs, very large inputs, missing config, partial state from prior runs, restart in the middle.
+5. **Recovery proportionate to blast radius**: weigh the plan's gate, retry, and recovery machinery against the size of the change it protects, both visible in the plan itself. When the change is a handful of edits in one file, a plan that checks preconditions and stops on mismatch is the right shape; machinery that routes and repairs every partial state costs more to get right than the change costs to redo by hand, and each layer of it is new untested surface. Flag over-build here as risk the machinery itself introduces; D5.2 owns "added just in case" and D6.1/D6.3 own depth and cross-section weight ratios, so flag under D4 only when the recovery path is the risk. Within D4, naming what happens on failure is item 1's ask and is always cheap, and item 2 asks whether a stranded state is recoverable at all; this item concerns whether the machinery that recovers it is proportionate. "Revert the commit" is a complete answer to item 2 and warrants nothing under this item.
 
 ### Dimension 5: Scope and decomposition *(absorbs the design-punt scan)*
 
@@ -113,7 +114,7 @@ A plan is ephemeral; the upstream spec it came from is durable. A correction the
 After the loop graduates, reconcile against each upstream spec (skip with a one-line note if there is none):
 
 1. **Sort each iteration's findings.** A finding belongs in the spec iff it would be lost-and-missed once the plan is gone: corrections to the contracts, invocations, assumptions, or design decisions the spec owns. Language gotchas, library quirks, and how-to-code-it detail stay in the code the plan produces; promoting them only bloats the spec.
-2. **Apply the spec-worthy ones with approval.** Surface each as readable text (current wording plus proposed replacement, not buried in a tool call) and edit the spec on approval. This is the sole exception to the "plan file only" edit surface.
+2. **Apply the spec-worthy ones with approval.** Surface each as readable text (current wording plus proposed replacement, not buried in a tool call) and edit the spec on approval. This is the sole exception to the "plan file only" edit surface. An applied spec edit changes the spec's fingerprint after its hardening stamp: append a refreshed stamp line to the spec per the Post-stamp edits rule in `${CLAUDE_PLUGIN_ROOT}/commands/handover.md` (Provenance stamps section), reason `spec reconciliation`.
 3. **Right-size the change.** A localized correction is an inline edit, not a reason to re-run a spec review; a candidate that would change the design rather than correct its record goes to the Follow-up logging step instead, recommending a dedicated `/nightshift:revise-spec` pass.
 
 If nothing reconciles, say so explicitly, so the step is visibly run.

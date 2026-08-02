@@ -19,7 +19,7 @@ The parameter file supplies: scope resolution, the review **dimensions**, the **
 
 ## The loop
 
-Repeat until all dimensions have graduated or 10 iterations have been reached (if the cap is reached, report which dimensions did not graduate and any outstanding issues from the last iteration). Each dimension is reviewed by 2 fresh agents per iteration. A dimension graduates the first iteration in which both of its agents return LGTM, **or** in which neither agent's findings led to an artifact change (all issues skipped or routed to follow-up). Once graduated, the dimension is no longer launched in subsequent iterations.
+Repeat until all dimensions have graduated or 10 iterations have been reached (if the cap is reached, report which dimensions did not graduate and any outstanding issues from the last iteration). Each dimension is reviewed by 2 fresh agents per iteration. A dimension graduates the first iteration in which both of its agents return LGTM, **or** in which neither agent's findings led to an artifact change (all issues skipped or routed to follow-up). Once graduated, the dimension is no longer launched in subsequent iterations (two exceptions re-activate a dimension: an N/A justification contradicted later, per step 0, and a machinery removal that undoes its confirmed finding's fix, per step 3).
 
 ### Step 0: track state
 
@@ -29,7 +29,7 @@ At the start of every iteration, write a summary to the conversation listing eve
 
 Also maintain an **acknowledgements & caveats** list that grows across iterations. **Pre-seed it before iteration 1** from the artifact file's pre-seed sources: intentional deviations, deliberate deferrals, and confirmed external facts are the most expensive class of false positive; agents converge on them as "obvious" findings, and each takes 1-2 iterations to suppress reactively. Every time step 3 decides to skip a finding or route it to follow-up, add it with a one-line rationale (e.g. "future-slice plumbing, used by slice 1's registerChannel"; "deliberate per spec"; "the missing failure-mode for case Y is documented in `## Open questions`, not a gap"; "balance is intentional, most reader risk lives in the heavier section"). A short list wastes no review time; a long list is the biggest single accelerator of later iterations.
 
-**Persist the loop state to disk.** Write the dimension statuses, N/A declarations, and the acknowledgements & caveats list to `.tmp/revise-state.md` at every iteration boundary (after the step-4 summary), and re-read the file at each iteration start. Long runs can cross a context-compaction boundary; the scratch file, not conversation memory, is the authoritative copy of the loop state.
+**Persist the loop state to disk.** Write the following to `.tmp/revise-state.md` at every iteration boundary: the dimension statuses, N/A declarations, the acknowledgements & caveats list, and a one-line ledger of each applied artifact change with the dimension and finding that required it. The boundary write happens after the step-4 summary; re-read the file at each iteration start. Long runs can cross a context-compaction boundary; the scratch file, not conversation memory, is the authoritative copy of the loop state.
 
 **Scratch files are per-run, not archival.** At loop start, a leftover state file describing a different artifact or an already-completed loop is a dead prior run: overwrite it without mining it for state (a live mid-loop state file for the same artifact is the legitimate resume case). When the run ends -- after the post-loop steps, including Follow-up logging and the retrospective -- delete the run's scratch files: `.tmp/revise-state.md`, `.tmp/revise-payload.md`, and any artifact-file scratch (e.g. the code artifact's `.tmp/review-diff*.patch`). A completed run's leftovers otherwise masquerade as live state in a later session.
 
@@ -81,6 +81,8 @@ For each agent's response:
   - If valid and actionable (small enough to fix inline): fix it in the artifact.
   - If valid but needing work beyond an inline artifact edit: add it to the follow-up list (routing happens in Follow-up logging below).
   - If incorrect, already addressed, or intentionally accepted: skip it and add a one-line entry to the acknowledgements & caveats list.
+
+When a confirmed finding targets machinery a previous iteration added rather than the artifact's original content, consider whether the right fix is removing that machinery instead of hardening it. A dimension that spends successive iterations narrowing holes in its own prior fixes is a signal the scaffolding outgrew the change. If the removal undoes a change another dimension's confirmed finding required, re-activate that dimension so a fresh pair verifies the removal; this is an explicit exception to the once-graduated-never-relaunched rule, recorded in the state file with its reason.
 
 After processing all responses for a dimension's pair: **the dimension graduates this iteration iff no artifact change was made for it** (either both agents LGTM, or all of their findings were skipped/deferred). If even one agent's feedback led to a fix, the dimension does not graduate; it gets a fresh pair next iteration to verify the fix.
 
