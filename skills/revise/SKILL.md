@@ -126,3 +126,13 @@ After Follow-up logging, briefly reflect on the dimensions themselves:
 5. **Missing context**: did agents lack context that led to bad calls? Should the dimension's prompt include additional project-specific guidance?
 
 Then run any artifact-specific retrospective items the artifact file adds. If changes are warranted, route each one: loop-mechanics improvements belong in this SKILL.md (shared by all artifact types); dimension or artifact-specific improvements belong in the artifact parameter file (`code.md` / `plan.md` / `spec.md`). Edit the files in the nightshift plugin repo clone, not the installed cache. Show the diff, explain why, apply with the user's approval, and commit in the clone; pushing is the user's call.
+
+## Authoring retrospective
+
+After the dimension retrospective, turn the same finding stream on the artifact's author: the dimension retrospective tunes the reviewers; this one tunes whoever writes the next spec, plan, or changeset. For each confirmed finding, ask whether a cheap, always-applicable authoring habit would have prevented its whole class before review ever ran (an edit anchor quoted without checking its uniqueness, a value set specified without walking its consumers, a parallel function written without checking sibling-function precedent).
+
+Promotion bar, applied strictly so this does not become rule bloat: a candidate habit is promoted only when its pattern recurred (within this run or across remembered runs) or the habit costs near-zero to apply universally. Everything else is a one-off owned by the artifact itself; the finding's fix already recorded it where it belongs. State promoted rules as principles, never as enumerations of the finding that spawned them.
+
+Route promoted candidates through the same channels as other session lore (global or project CLAUDE.md, or the pipeline step that authors the artifact), with the same approval flow as dimension-retrospective changes: show the diff, explain why, apply with the user's approval. Under an unattended run they are drafted for the morning report like any workflow-instruction lore.
+
+The loop's own numbers are this retrospective's feedback signal: first-iteration confirmed-finding counts per artifact type, compared across runs, show whether promoted habits actually prevent findings. Report the count in the retrospective outcome so the trend stays visible, and state a null outcome ("no habit worth promoting") explicitly, like any retrospective result.
