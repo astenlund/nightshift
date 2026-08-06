@@ -1,0 +1,89 @@
+# Recovers CI runs on main that failed due to GitHub-side infrastructure trouble:
+# re-runs them immediately (up to attempt 3), then via a periodic sweep once
+# immediate retries are exhausted or when the outage prevented the event-driven
+# job from starting at all. Failures that do not match the infra signature are
+# left alone for a human to look at.
+#
+# The sweep only ever touches the latest CI run on main, so a superseded
+# failure is left alone, and it gives up at 8 attempts.
+name: CI auto-retry
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  schedule:
+    - cron: "17 */3 * * *"
+
+env:
+  # Narrow, infra-only signals; anything unmatched is a presumed-real failure
+  # and is never retried.
+  INFRA_PATTERN: "Service Unavailable|Failed to resolve action download info|The runner has received a shutdown signal|lost communication with the server"
+
+jobs:
+  retry:
+    if: github.event_name == 'workflow_run' && github.event.workflow_run.event == 'push' && github.event.workflow_run.conclusion == 'failure' && github.event.workflow_run.run_attempt < 3
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+    steps:
+      - name: Re-run infra flake
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          st=0
+          logs=$(gh run view ${{ github.event.workflow_run.id }} --repo "$GITHUB_REPOSITORY" --log-failed) || st=$?
+          if [ $st -ne 0 ]; then
+            echo "Could not fetch failed logs (gh exit $st); not retrying."
+            exit 1
+          elif [ -z "$logs" ] || echo "$logs" | grep -qE "$INFRA_PATTERN"; then
+            # Empty failed-logs on a run that concluded failure means no step
+            # concluded failure (e.g. GitHub cancelled the queued job); a human
+            # cancellation concludes 'cancelled' and never reaches this job.
+            gh run rerun ${{ github.event.workflow_run.id }} --repo "$GITHUB_REPOSITORY" --failed
+          else
+            echo "Failure does not match infra signature; leaving it for a human."
+          fi
+
+  sweep:
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+    steps:
+      - name: Re-run stranded infra flake
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          st=0
+          latest=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow CI --branch main --event push --limit 1 --json databaseId,conclusion,attempt --jq '.[0] // empty | select(.conclusion != "") | [.databaseId, .conclusion, .attempt] | @tsv') || st=$?
+          if [ $st -ne 0 ]; then
+            echo "Could not list CI runs (gh exit $st)."
+            exit 1
+          fi
+          if [ -z "$latest" ]; then
+            echo "No completed CI runs on main (none exist, or the latest is still running); nothing to do."
+            exit 0
+          fi
+          IFS=$'\t' read -r run_id conclusion attempt <<< "$latest"
+          if [ "$conclusion" != "failure" ]; then
+            echo "Latest CI run on main concluded '$conclusion'; nothing to do."
+            exit 0
+          fi
+          if [ "$attempt" -ge 8 ]; then
+            echo "Run $run_id already at attempt $attempt; giving up."
+            exit 0
+          fi
+          st=0
+          logs=$(gh run view "$run_id" --repo "$GITHUB_REPOSITORY" --log-failed) || st=$?
+          if [ $st -ne 0 ]; then
+            echo "Could not fetch failed logs for run $run_id (gh exit $st); not retrying."
+            exit 1
+          elif [ -z "$logs" ] || echo "$logs" | grep -qE "$INFRA_PATTERN"; then
+            # Empty failed-logs on a failure-concluded run: see the retry job.
+            echo "Re-running stranded infra flake $run_id (attempt $attempt)."
+            gh run rerun "$run_id" --repo "$GITHUB_REPOSITORY" --failed
+          else
+            echo "Latest failure does not match infra signature; leaving it for a human."
+          fi
