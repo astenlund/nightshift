@@ -142,7 +142,7 @@ function skepticPrompt(d, f) {
     `Evidence claimed: ${f.evidence}`,
     ``,
     `## Verdict rules`,
-    `CONFIRMED: the issue is real; cite the artifact evidence. REFUTED: the finding is wrong; cite the artifact evidence. JUDGMENT_CALL: not factually decidable (taste, balance, or priority). Check the artifact yourself; do not take the claimed evidence at face value.`,
+    `CONFIRMED: the issue is real; cite the artifact evidence. REFUTED: the finding is wrong; cite the artifact evidence. JUDGMENT_CALL: not factually decidable (taste, balance, or priority), or decidable only by a live probe you cannot run. A finding asserting a runtime-owned literal or format (a UI string, a served payload shape, markup the host application renders) may NOT be REFUTED on repo or design-record evidence alone; the strongest repo-evidence verdict for it is JUDGMENT_CALL with a probe recommendation. Check the artifact yourself; do not take the claimed evidence at face value.`,
   ]
   if (payloadFile) {
     return [
