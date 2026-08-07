@@ -87,7 +87,7 @@ Review both new code and pre-existing code in the changed files. Light refactori
 3. **Missing error handling**: unhandled exceptions, ignored return values, missing validation at system boundaries
 4. **Naming and style**: consistency with the rest of the codebase and CLAUDE.md conventions
 5. **Test coverage gaps**: new code paths without corresponding tests, missing edge case tests
-6. **Library-behavior assumptions**: before reporting a HIGH-confidence finding that depends on how a third-party library behaves at runtime — transform/validation ordering, null/undefined handling, lifecycle or event timing, default-value handling — verify it against the installed library source (under `node_modules`) or its typings, not general familiarity. Library internals are a recurring false-positive class; state the verdict only after confirming the actual code path. When verification runs a live probe, the probe must replicate the execution scope and context of the code under review (module vs script scope, imported vs dot-sourced, the framework's real call path), not just the expression: a probe that reproduces the expression in a different scope can prove behavior the real code path never exhibits.
+6. **Library-behavior assumptions**: before reporting a HIGH-confidence finding that depends on how a third-party library behaves at runtime — transform/validation ordering, null/undefined handling, lifecycle or event timing, default-value handling — verify it against the installed library source (under `node_modules`) or its typings, not general familiarity. Library internals are a recurring false-positive class; state the verdict only after confirming the actual code path.
 
 ### Dimension 5: Maintainability
 
