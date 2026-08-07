@@ -86,6 +86,8 @@ For each agent's response:
   - If valid but needing work beyond an inline artifact edit: add it to the follow-up list (routing happens in Follow-up logging below).
   - If incorrect, already addressed, or intentionally accepted: skip it and add a one-line entry to the acknowledgements & caveats list.
 
+**Post-fix enumeration sweep.** Before relaunching, for each applied fix that added, removed, or relocated a member of any set the artifact enumerates as closed (a consumer list, an exception list, a read surface, a count of named items), sweep every enumeration site of that set and update it in the same boundary. Closed lists stale silently, and enumeration drift introduced by the loop's own fixes is a dominant source of late-iteration findings.
+
 When a confirmed finding targets machinery a previous iteration added rather than the artifact's original content, consider whether the right fix is removing that machinery instead of hardening it. A dimension that spends successive iterations narrowing holes in its own prior fixes is a signal the scaffolding outgrew the change. If the removal undoes a change another dimension's confirmed finding required, re-activate that dimension so a fresh pair verifies the removal; this is an explicit exception to the once-graduated-never-relaunched rule, recorded in the state file with its reason.
 
 After processing all responses for a dimension's pair: **the dimension graduates this iteration iff no artifact change was made for it** (either both agents LGTM, or all of their findings were skipped/deferred). If even one agent's feedback led to a fix, the dimension does not graduate; it gets a fresh pair next iteration to verify the fix.
