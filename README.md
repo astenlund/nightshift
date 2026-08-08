@@ -25,7 +25,7 @@ All commands and skills are namespaced: `/nightshift:handover`, `/nightshift:rea
 
 |                 Name                  |                                                   What it's for                                                   |
 |---------------------------------------|-------------------------------------------------------------------------------------------------------------------|
-| `/nightshift:init-backlog`           | Scaffold or update the four-index backlog structure in a project                                                  |
+| `/nightshift:init-backlog`            | Scaffold or update the four-index backlog structure in a project                                                  |
 | `/nightshift:ready`                   | Report the unblocked work set by resolving `**Requires:**` lines (skill; bundles the parser script)               |
 | `/nightshift:handover`                | Take over the remaining feature lifecycle from the detected stage, through to shipped                             |
 | `/nightshift:revise-code`             | Iterative fresh-agent review of a code change before it ships                                                     |
