@@ -2,7 +2,7 @@
 description: Use when a project needs the four-index .claude/ backlog structure scaffolded, or re-run idempotently on an already-scaffolded project to add whatever is missing.
 ---
 
-# /nightshift:init-workflow
+# /nightshift:init-backlog
 
 Scaffold the four-index backlog structure under `.claude/` for the current project, plus the on-demand `plans/` subdirectory, the on-demand `QUICK_WINS_HISTORY.md` / `FEATURES_HISTORY.md` / `BUGS_HISTORY.md` archives, a SessionStart hook that makes Claude read the indexes on every session start, and a `CLAUDE.md` section that documents the layout. The command is idempotent: re-running on an existing project adds only what's missing and proposes merges for paired wiring whose template-controlled portions have drifted from the current template. Paths are relative to the current working directory (typically the repo root). Brainstorming output lives in feature files (or in patterns when cross-cutting / in bugs when diagnostic). Pre-feature exploratory work lands as a draft feature with `status: exploring` frontmatter and an entry in `FEATURES.md`'s `## Exploring` section.
 

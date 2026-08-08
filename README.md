@@ -15,7 +15,7 @@ All commands and skills are namespaced: `/nightshift:handover`, `/nightshift:rea
 
 ## The workflow
 
-1. **Scaffold** a project once with `/nightshift:init-workflow`. This creates the four-index backlog under `.claude/` (`QUICK_WINS.md`, `FEATURES.md`, `BUGS.md`, `PATTERNS.md`), history archives, a `plans/` directory, and a SessionStart hook so Claude reads the indexes at the start of every session. It also asks once whether the backlog files should be git-tracked or ignored. Idempotent; re-run to add anything missing.
+1. **Scaffold** a project once with `/nightshift:init-backlog`. This creates the four-index backlog under `.claude/` (`QUICK_WINS.md`, `FEATURES.md`, `BUGS.md`, `PATTERNS.md`), history archives, a `plans/` directory, and a SessionStart hook so Claude reads the indexes at the start of every session. It also asks once whether the backlog files should be git-tracked or ignored. Idempotent; re-run to add anything missing.
 2. **Capture** feature ideas, bugs, refactors, and cross-cutting patterns in the indexes as they come up. Every feature and bug entry declares its upstream gates on a `**Requires:**` line.
 3. **Pick work** with `/nightshift:ready`, which resolves the declared dependency graph (via a deterministic, fixture-tested parser) and reports what's unblocked, what's blocked and on what, and any structural errors in the backlog.
 4. **Hand over** with `/nightshift:handover` once a brainstorm has produced a signed-off spec. Handover detects where the feature stands (spec hardened? plan written? implementation done?), states its read in one line (asking for confirmation only when the detection is not clean), then drives the rest: spec gate (including live-system probes for spec claims the repo cannot settle), plan, plan review, implementation via parallel subagents, code review to graduation, end-to-end verification, doc updates, backlog bookkeeping, lore capture, full test suite, and a closing morning report that triages everything deferred along the way and persists approved workflow edits. Detection rests on durable provenance stamps (with content fingerprints) that the review loops write into the artifacts at graduation, so a fresh session, a compacted one, or another machine all resume from the same evidence.
@@ -25,7 +25,7 @@ All commands and skills are namespaced: `/nightshift:handover`, `/nightshift:rea
 
 |                 Name                  |                                                   What it's for                                                   |
 |---------------------------------------|-------------------------------------------------------------------------------------------------------------------|
-| `/nightshift:init-workflow`           | Scaffold or update the four-index backlog structure in a project                                                  |
+| `/nightshift:init-backlog`           | Scaffold or update the four-index backlog structure in a project                                                  |
 | `/nightshift:ready`                   | Report the unblocked work set by resolving `**Requires:**` lines (skill; bundles the parser script)               |
 | `/nightshift:handover`                | Take over the remaining feature lifecycle from the detected stage, through to shipped                             |
 | `/nightshift:revise-code`             | Iterative fresh-agent review of a code change before it ships                                                     |

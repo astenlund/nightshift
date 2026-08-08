@@ -676,7 +676,7 @@ function runCli(argRoot) {
   const claudeDir = path.basename(root) === '.claude' ? root : path.join(root, '.claude');
   if (!fs.existsSync(claudeDir)) {
     process.stdout.write(JSON.stringify({
-      error: `no .claude directory found at ${claudeDir}; run /nightshift:init-workflow to scaffold the four-index layout`,
+      error: `no .claude directory found at ${claudeDir}; run /nightshift:init-backlog to scaffold the four-index layout`,
     }, null, 2) + '\n');
     process.exitCode = 1;
     return;

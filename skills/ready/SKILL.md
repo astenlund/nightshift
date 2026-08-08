@@ -19,7 +19,7 @@ The parsing is deterministic and lives in a script bundled with this skill; this
 
    (Pass the repo root as an argument if the working directory is elsewhere.) The script reads `.claude/QUICK_WINS.md`, `.claude/FEATURES.md`, and `.claude/BUGS.md`, and emits JSON with `ready`, `blocked`, `external`, `structuralErrors`, and `notices`. It never reads the history archives: the walk-and-remove convention keeps active `Requires:` lines authoritative. `PATTERNS.md` is a pattern registry, not a work backlog, and is not parsed.
 
-   If the script reports that `.claude/` is missing, suggest `/nightshift:init-workflow` and stop. If the script itself cannot run (node missing, script file absent), report that and stop — suggest reinstalling or updating the nightshift plugin; do NOT hand-approximate the dependency graph from the raw markdown. A failed check is not a clean check.
+   If the script reports that `.claude/` is missing, suggest `/nightshift:init-backlog` and stop. If the script itself cannot run (node missing, script file absent), report that and stop — suggest reinstalling or updating the nightshift plugin; do NOT hand-approximate the dependency graph from the raw markdown. A failed check is not a clean check.
 
 2. **Present the report.** Output up to four sections, omitting any that are empty:
 
