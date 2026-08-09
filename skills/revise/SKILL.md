@@ -5,142 +5,364 @@ description: Shared fresh-agent review engine behind the revise-code, revise-pla
 
 # revise
 
-Iterative fresh-agent review loop shared by three artifact types. This file owns *how* the loop runs; the artifact parameter files beside it own *what* to review.
+Fresh-agent review phases shared by three artifact types. This file owns how the run, phases, rounds, checkpoints, repairs, and post-review tail work. The artifact parameter files beside it own what to review.
 
 ## Invocation
 
-The first argument token selects the artifact type: `code`, `plan`, or `spec`. Everything after it is the scope, interpreted by the artifact file. Read the matching parameter file in this skill's directory before doing anything else:
+The first argument token selects `code`, `plan`, or `spec`. Everything after it is the scope interpreted by the matching parameter file. Read that file before any review action:
 
-- `code` → `code.md`
-- `plan` → `plan.md`
-- `spec` → `spec.md`
+- `code` -> `code.md`
+- `plan` -> `plan.md`
+- `spec` -> `spec.md`
 
-The parameter file supplies: scope resolution, the review **dimensions**, the **model pin** (with rationale), **pre-seed sources**, **delivery rules**, **additional prompt rules**, **post-fix steps**, the **edit surface** (plus named exceptions), and any post-loop extras (e.g. plan's Spec Reconciliation). If the first token is missing or isn't one of the three, ask which artifact type is meant.
+The parameter file supplies scope resolution, dimensions, model pin, pre-seed sources, delivery rules, additional prompt rules, post-fix steps, edit surface, retrospective extras, and artifact-specific post-review work. If the first token is missing or invalid, ask which artifact type is meant.
 
-## The loop
+## Review lifecycle
 
-Repeat until all dimensions have graduated or 10 iterations have been reached (if the cap is reached, report which dimensions did not graduate and any outstanding issues from the last iteration). Each dimension is reviewed by 2 fresh agents per iteration. A dimension graduates the first iteration in which both of its agents return LGTM, **or** in which neither agent's findings led to an artifact change (all issues skipped or routed to follow-up). Once graduated, the dimension is no longer launched in subsequent iterations (three exceptions re-activate a dimension: an N/A justification contradicted later, per step 0; a machinery removal that undoes its confirmed finding's fix, per step 3; and a substantial user-directed change landing after graduation, per step 0's mid-iteration user requests).
+Define and apply these terms consistently:
 
-### Step 0: track state
+- A run is the complete review and post-review process for one logical artifact and resolved scope.
+- A phase begins with every applicable dimension active.
+- A round launches one fresh reviewer for each currently active dimension against the current artifact fingerprint.
+- An explicit clean conclusion with a concrete nonblank verification rationale makes that dimension inactive for the rest of the phase.
+- A finding that causes an accepted artifact edit dirties the phase and keeps its dimension active.
+- Any other controller-coordinated reviewable-content edit also dirties the phase, while preserving each dimension's current active or inactive state until the next phase.
+- A finding that causes no artifact edit keeps its dimension active until a later fresh reviewer returns a clear clean conclusion.
+- A REFUTED finding records a reasoned acknowledgement and no follow-up or applied-change entry. A valid-but-deferred finding records both its actionable follow-up and the acknowledgement or caveat that prevents repeated review noise, with no applied-change entry. Neither disposition dirties the phase or counts as a clean conclusion.
+- Another dimension's later edit never reactivates an inactive dimension inside the same phase.
+- A newly contradicted N/A justification becomes applicable immediately so the current phase cannot complete without reviewing it.
 
-**Dimension N/A pre-triage (once, before iteration 1).** The controller may declare a dimension N/A for this run when an observable scope fact makes it inapplicable (e.g., Security for a docs-only diff, Architecture for a sub-50-line localized fix, intermediate-commit verifiability for a plan with no cross-module signature changes). Each N/A declaration carries a one-line justification tied to the scope fact and is recorded in the iteration state and the final report so it stays auditable. N/A is a scope decision, not a consolidation shortcut: if any reviewer or verification result later contradicts the justification, re-activate the dimension. When in doubt, launch the dimension; graduation after one clean round is cheap.
+Once every applicable dimension is inactive, complete one convergence-boundary checkpoint. That single atomic checkpoint records the current phase as `Last converged phase`, increments `Converged phases` only when the current phase was not already recorded, and either enters `post-review` or invokes `Start phase` for the next phase. A phase abandoned because its fingerprint drifted before every applicable dimension became inactive increments the phase number for auditability but does not change `Converged phases` or `Last converged phase`.
 
-At the start of every iteration, write a summary to the conversation listing every dimension and its current status. This is a hard prerequisite for step 1: never launch agents without updating this state first. After step 3 (evaluation), re-emit the updated state. Forgetting to launch a non-graduated dimension because of mental-model drift between batches is a known failure mode.
+Phase 1 cannot complete the review stage.
+Phase 2 or later completes only after at least two phases have converged and the current phase ended with every applicable dimension inactive and no reviewable-content changes.
 
-Also maintain an **acknowledgements & caveats** list that grows across iterations. **Pre-seed it before iteration 1** from the artifact file's pre-seed sources: intentional deviations, deliberate deferrals, and confirmed external facts are the most expensive class of false positive; agents converge on them as "obvious" findings, and each takes 1-2 iterations to suppress reactively. Every time step 3 decides to skip a finding or route it to follow-up, add it with a one-line rationale (e.g. "future-slice plumbing, used by slice 1's registerChannel"; "deliberate per spec"; "the missing failure-mode for case Y is documented in `## Open questions`, not a gap"; "balance is intentional, most reader risk lives in the heavier section"). A short list wastes no review time; a long list is the biggest single accelerator of later iterations.
+Phase 1 always advances to phase 2. A clean phase enters `post-review` only after the updated `Converged phases` is at least 2. A dirty phase, and a clean phase whose updated count is below 2, advances to a new phase with every applicable dimension active.
 
-**Persist the loop state to disk.** Write the following to `.tmp/revise-state.md` at every iteration boundary: the dimension statuses, N/A declarations, the acknowledgements & caveats list, and a one-line ledger of each applied artifact change with the dimension and finding that required it. The boundary write happens after the step-4 summary; re-read the file at each iteration start. Long runs can cross a context-compaction boundary; the scratch file, not conversation memory, is the authoritative copy of the loop state.
+### Limits and enum values
 
-**Mid-iteration user requests.** A user request to change the artifact that arrives while an iteration's agents are in flight is queued, not applied: record it immediately in the state file under a `## User-requested changes pending` section, then apply it at the next iteration boundary alongside that iteration's fixes and move it to the applied-change ledger (the entry cites the user request in place of a dimension and finding). This preserves step 2's no-edits-mid-iteration invariant without risking the request being lost across a context boundary. Review of the applied change is scoped by the controller, proportionate to its blast radius: a change that still-active dimensions will naturally cover needs no extra machinery; a small localized change landing after the relevant dimensions graduated gets a single fresh reviewer prompted with the change and the most relevant dimension text; a substantial or cross-cutting change re-activates the affected dimensions for full pairs focused on the change. Proportionate scoping applies only to user-directed edits, which carry the user's own authorization for their review depth; findings-driven fixes always follow the no-consolidation rule unchanged.
+The limits are 10 original reviewer launches per stable dimension or shard cell per phase, 10 phases, and 3 execution-repair launches per stable reviewer or skeptic cell. No limit path can manufacture LGTM or refutation.
 
-**Scratch files are per-run, not archival.** At loop start, a leftover state file describing a different artifact or an already-completed loop is a dead prior run: overwrite it without mining it for state (a live mid-loop state file for the same artifact is the legitimate resume case). When the run ends -- after the post-loop steps, including Follow-up logging and the retrospective -- delete the run's scratch files: `.tmp/revise-state.md`, `.tmp/revise-payload.md`, `.tmp/revise-iteration-result.md` if the digest path below wrote it, and any artifact-file scratch (e.g. the code artifact's `.tmp/review-diff*.patch`). A completed run's leftovers otherwise masquerade as live state in a later session.
+An original reviewer launch increments its stable dimension or shard cell's phase attempt counter before dispatch; a cell already at 10 fails the run before any round agents launch.
+A transition that would start phase 11 fails the run while preserving phase 10 diagnostics.
 
-### Execution engine for steps 1-2
+The original reviewer dispatch is not a repair launch. Every later same-session clarification or fresh replacement launch increments the stable reviewer or skeptic cell's repair counter before dispatch. A repair counter already at 3 fails the run before another agent launches. Phase 10 can enter post-review when it satisfies the clean-phase completion rule.
 
-Two ways to run steps 1 and 2 of each iteration; prefer the workflow engine when the Workflow tool is available in the session.
+Use only these values:
 
-**Workflow engine (preferred).** Write the iteration payload to `.tmp/revise-payload.md` in the project root as a markdown file with these sections (any order): `## Project context` (project context, inlined CLAUDE.md excerpts, PATTERNS index), `## Artifact` (description of what is under review), `## Delivery` (the artifact file's delivery rules: patch path, in-scope files, read discipline), `## Acknowledgements` (the acknowledgements & caveats list, bulleted), `## Additional rules` (the artifact file's additional prompt rules), and one `## Dimension: <name>` section per active dimension with its full prompt text. Regenerate the file at each iteration boundary (updated ack list, active dimensions only). Then invoke the Workflow tool once per iteration with `scriptPath: "${CLAUDE_PLUGIN_ROOT}/skills/revise/revise-iteration.workflow.js"`, passing only the tiny args object `{ payloadFile: "<absolute path>", dimensionNames: [...], model: "<the artifact file's pin>" }` — reviewer agents Read the payload file themselves. Do NOT pass the payload inline via args: the inline args channel has been observed to corrupt payloads over ~2 kB in transit (a dropped structural character fails the script's JSON.parse before any agent runs), which is why the file-delivered shape exists. The script fans out 2 fresh reviewers per dimension with structured-output schemas, then one skeptic per non-LGTM finding, and returns per-dimension results with verdicts attached: deterministic control flow that cannot forget a dimension or drop a reviewer at the queue tail, and typed findings instead of prose to re-parse. The controller resumes at step 3 with the returned findings; REFUTED findings arrive pre-verdicted and route straight to the acknowledgements list. When an iteration's returned result is too large to read directly, first write it verbatim to a scratch file (e.g. `.tmp/revise-iteration-result.md`, or reuse the harness's own task-output file when it persists one), then condense it through one fresh digest agent reading that file (per-dimension verdicts with skeptic caveats, deduplicated) and evaluate from the digest; the scratch file stays on disk for anything the digest flags.
+- Run `Status`: `reviewing`, `post-review`, or `failed`.
+- `Round status`: `idle`, `in-flight`, or `evaluated`.
+- Dimension `Status`: `active`, `inactive`, or `N/A`. An N/A row requires a nonblank encoded reason; active and inactive rows require raw `none`.
+- Agent `Status`: `in-flight`, `completed`, or `needs-retry`.
+- Round-result `Status`: `awaiting-results`, `partial`, or `usable`.
+- Follow-up `Status`: `open`, `handed-off`, or `resolved`; `Route`: `none`, `handover`, `address-now`, `track`, or `skip`. Open rows use route and evidence `none`; handed-off rows use `handover` and nonblank encoded transfer evidence; resolved rows use one of the three final routes and nonblank encoded disposition evidence.
+- User-request `Status`: `pending` or `consumed`. Pending rows use evidence `none`; consumed rows require nonblank encoded evidence.
+- Post-review work-item `Status`: `pending` or `completed`.
+- Pending controller mutation `Kind`: `none`, `user-request`, or `post-review`; its `Status`: `none`, `prepared`, or `applied`.
+- `Post-review step`: `not-started`, `follow-up-routing`, `dimension-retrospective`, `authoring-retrospective`, `spec-reconciliation`, `hardening-stamp`, or `done`.
 
-**Agent-tool engine (fallback).** When the Workflow tool or the script file is unavailable, or a workflow invocation fails (e.g. an args-channel error), run steps 1 and 2 manually as written below, using the Agent tool.
+`Autonomous handover` and `Phase changed` use raw `yes` or `no`. A persisted manual verdict is `CONFIRMED`, `REFUTED`, or `JUDGMENT_CALL`; Workflow output remains restricted to the Task 1 `CONFIRMED` and `REFUTED` values.
 
-Steps 0 (state), 3 (evaluation), and 4 (summary) always remain with the controller, whichever engine ran the fan-out.
+Re-evaluate every N/A declaration at each phase boundary. Change a contradicted N/A to active with zero attempts immediately.
 
-### Step 1: launch reviewers
+## Authoritative checkpoint
 
-Launch two fresh agents per non-graduated dimension, all in a single assistant message: one `<function_calls>` block containing every `Agent` invocation. (One Agent call per assistant turn serializes them regardless of intent.) Order by dimension number so that if any are dropped at the queue tail, earlier dimensions retain both reviewers. Each agent gets no prior context and must be a **fresh agent** (no `resume`), never a continuation of a prior agent. Pass the artifact file's model pin and `subagent_type: "Explore"` to each Agent call; drop to `general-purpose` only if a dimension legitimately needs to write files, which is rare in review.
+`.tmp/revise-state.md`, not conversation memory, is authoritative at every round boundary. Use this complete shape, with code path tables replaced by the plan or spec scope field described below when appropriate:
 
-In each prompt:
+```markdown
+# Revise state
 
-- Deliver the artifact per the artifact file's delivery rules.
-- Include that dimension's full section (all text under its heading, including any preamble or guards).
-- Include the full acknowledgements & caveats list, with the instruction "do NOT re-flag these; they are known and deliberate". This is the single biggest cycle-saver in later iterations.
-- Inline the relevant CLAUDE.md excerpts instead of "read CLAUDE.md". A dozen-plus agents each reading a 10K-token CLAUDE.md is pure waste; paste the load-bearing rules once per prompt. Still tell agents to verify against the working-tree CLAUDE.md when something is ambiguous, since in-branch edits are possible.
-- Inline `.claude/PATTERNS.md` (the index) verbatim, if present. Subagents dispatched via the Agent tool start with no SessionStart-hook output and no awareness of the project's pattern library; they will not consult patterns on their own. The index entries are designed to be recognition-sufficient: each one tells a reader whether the pattern applies without reading the linked breakout file. Tell the agent to open the linked `.claude/patterns/<slug>.md` files only for patterns whose index entry signals relevance to its dimension and scope.
-- Give it enough project context (what kind of project this is, what the work under review is, which neighboring files matter), since it has no prior conversation history.
-- Ask it to report HIGH confidence issues only, and to say "LGTM" if the artifact is clean for its dimension. Discourage rubber-stamp LGTMs by asking for a one-sentence note on what was verified (concrete claims about content, not vague verdicts).
-- Apply the artifact file's additional prompt rules.
+Artifact type: code
+Artifact JSON: "logical feature changeset"
+Resolved scope JSON: "code base abc1234; exact path set below"
+Scope decision JSON: "explicit commit range plus controller-coordinated fixes"
+Autonomous handover: yes
+Status: reviewing
+Post-review step: not-started
+Failure: none
+Phase: 2
+Converged phases: 1
+Last converged phase: 1
+Round: 5
+Round status: in-flight
+Artifact fingerprint: sha256:a1b2c3d4e5f6
+Phase changed: yes
 
-### Step 2: verify findings
+## Dimension cells
 
-**Do not edit the artifact until every agent in the current iteration has returned.** Evaluate all findings and apply all fixes strictly between iterations, then refresh the delivery state (regenerate the patch, update line ranges) before the next launch. This ordering makes it structurally impossible for an agent to review a half-fixed artifact and eliminates the stale-quote class of false positives.
+| Cell ID | Dimension UTF-8 hex | Cell kind | Cluster UTF-8 hex | Delivery scope | Predecessor cell IDs | Status | N/A reason UTF-8 hex | Attempts this phase |
+|---|---|---|---|---|---|---|---|---:|
+| correctness/cluster-parser | 436f72726563746e657373 | local | 706172736572 | local-slice | none | active | none | 2 |
+| security/whole-scope | 5365637572697479 | cross-cutting | 77686f6c652d73636f7065 | whole-scope | none | inactive | none | 1 |
 
-Once all reviewers have returned, collect the non-LGTM findings and launch one fresh skeptic agent per finding (see the manual-path exception below), all in a single message (same model pin, `subagent_type: "Explore"`, artifact delivered per the same delivery rules as step 1). Give each skeptic the finding verbatim and the relevant dimension text, and ask it to try to REFUTE the finding against the artifact, returning one verdict:
+## Resolved code paths
 
-- **CONFIRMED**: the issue is real; cite the artifact evidence.
-- **REFUTED**: the finding is wrong; cite the artifact evidence.
-- **JUDGMENT_CALL**: not factually decidable (a taste, balance, or priority question), or decidable only by a live probe the skeptic cannot run.
+| UTF-8 path hex |
+|---|
+| 7372632f612e6a73 |
+| 74657374732f612e746573742e6a73 |
 
-A finding that asserts a runtime-owned literal or format (a UI string, a served payload shape, markup the host application renders) may not be REFUTED on repo or design-record evidence alone: repo records can themselves be stale against the live system, and refuting the finding buries the one signal that would have caught it. The strongest repo-evidence verdict for such a finding is JUDGMENT_CALL with a probe recommendation; only a live probe settles it. (Observed cost of violating this: a plan-review skeptic refuted a suspected UI-string mismatch from repo records; the live probe proved the reviewer right, and the refuted string would have silently dead-ended the feature's only entry point.)
+## Local slice paths
 
-Any live probe run to verify or refute a finding, by a reviewer, a skeptic, or the controller, must replicate the execution scope and context of the code under review (module vs script scope, imported vs dot-sourced, the framework's real call path), not just the expression: a probe that reproduces the expression in a different scope can prove behavior the real code path never exhibits. (Observed cost: a code reviewer's live probe enabled a strict mode in the probe's own scope that the real importing script never had active, "proving" a crash that cannot occur.)
+| Cell ID | UTF-8 path hex |
+|---|---|
+| correctness/cluster-parser | 7372632f612e6a73 |
+| correctness/cluster-parser | 74657374732f612e746573742e6a73 |
 
-REFUTED findings are dropped and added to the acknowledgements list with a one-line reason so later iterations don't re-litigate them; a dropped-as-REFUTED finding counts as "skipped" for graduation purposes. CONFIRMED and JUDGMENT_CALL findings proceed to step 3. Uncoordinated reviewer convergence on a finding raises its verification priority, not its truth: converged findings still get verified, and a verified-false convergent finding is dropped like any other. On the manual path (the Workflow script runs skeptics internally), the controller may settle a plan-or-spec finding that a re-read decides outright — a quoted contradiction, a symbol defined or not, a literal checked against the artifact or the design docs — by re-reading rather than dispatching its skeptic; anything needing judgment still gets the fresh skeptic. The runtime-owned-literal rule above binds this shortcut too: a literal the live system owns cannot be settled by re-reading the artifact or design records, only routed to a probe.
+## Agents
 
-When skeptics return conflicting verdicts on findings that share an underlying issue (typically differently-scoped framings of it reported by different dimensions or reviewers), neither verdict wins wholesale: in step 3, scope any fix to the core the CONFIRMED verdict actually evidenced, and record the refuted framing as an acknowledgement so it is not re-litigated.
+| Role | Cell ID | Session ID UTF-8 hex | Status | Repair attempts |
+|---|---|---|---|---:|
+| reviewer | correctness/cluster-parser | 73657373696f6e2d343132 | in-flight | 0 |
+| skeptic | correctness/cluster-parser/finding-1 | 73657373696f6e2d353837 | in-flight | 0 |
 
-### Step 3: evaluate
+## Acknowledgements and caveats
 
-For each agent's response:
+- None.
 
-- If it said LGTM, mark it.
-- If it reported issues, for each one:
-  - If valid and actionable (small enough to fix inline): fix it in the artifact.
-  - If valid but needing work beyond an inline artifact edit: add it to the follow-up list (routing happens in Follow-up logging below).
-  - If incorrect, already addressed, or intentionally accepted: skip it and add a one-line entry to the acknowledgements & caveats list.
+## User requests
 
-**Post-fix enumeration sweep.** Before relaunching, for each applied fix that added, removed, or relocated a member of any set the artifact enumerates as closed (a consumer list, an exception list, a read surface, a count of named items), sweep every enumeration site of that set and update it in the same boundary. Closed lists stale silently, and enumeration drift introduced by the loop's own fixes is a dominant source of late-iteration findings.
+- None.
 
-When a confirmed finding targets machinery a previous iteration added rather than the artifact's original content, consider whether the right fix is removing that machinery instead of hardening it. A dimension that spends successive iterations narrowing holes in its own prior fixes is a signal the scaffolding outgrew the change. If the removal undoes a change another dimension's confirmed finding required, re-activate that dimension so a fresh pair verifies the removal; this is an explicit exception to the once-graduated-never-relaunched rule, recorded in the state file with its reason.
+## Applied changes
 
-After processing all responses for a dimension's pair: **the dimension graduates this iteration iff no artifact change was made for it** (either both agents LGTM, or all of their findings were skipped/deferred). If even one agent's feedback led to a fix, the dimension does not graduate; it gets a fresh pair next iteration to verify the fix.
+- Text JSON: "Correctness: fixed empty-input validation; scope unchanged."
 
-**No consolidation or efficiency shortcut.** Run the full prescribed round (2 fresh agents per non-graduated dimension) every iteration, including the final verification of a fix. A dimension that took ANY change (even a one-line, comment-only, or mechanical fix, even one already verified green by build or tests) is NOT graduated; it gets a fresh full pair next iteration. Never collapse that verification into a single agent, a self-review, or a "build/tests passed, so it's fine" judgement, and never skip a trailing iteration because the remaining fixes look trivial. The fresh-eyes coverage and the uncoordinated-convergence signal are the whole point, and trivial-looking final fixes are exactly where a consolidated pass has been observed to silently miss real issues that a full round then caught. If agent budget is a concern, surface it to the user rather than shortcutting on your own initiative.
+## Follow-ups
 
-Run the artifact file's post-fix steps if any fixes were applied this iteration.
+| Follow-up ID | Status | Route | Text UTF-8 hex | Evidence UTF-8 hex |
+|---|---|---|---|---|
+| followup/parser-helper | open | none | 45787472616374207061727365722076616c69646174696f6e2068656c7065722e | none |
 
-### Step 4: iteration summary
+## Prior failures
 
-Report a brief summary: what changed, which dimensions graduated, which are still active.
+- None.
 
-## Delivery profiles
+## Post-review work items
 
-**Document artifact (plan, spec).** Tell the agent the file path and the in-scope section heading(s); tell it to read the full file once for context, then focus on the in-scope sections. For files > 400 lines, instruct it to Read the in-scope sections directly via `offset`/`limit` rather than reading the whole file each turn. For partial-section reviews, include the section heading + line range explicitly; surrounding sections are background for consistency checks, and the agent should NOT flag issues outside the in-scope section as findings (they can be mentioned briefly under a "context note" header but are not the review target). **Prior-fix duplicate check**: if a finding seems to duplicate a prior-iteration fix, re-read the live file at the claimed location before acting on it; documents have no build feedback to catch mismatches. (The no-edit-until-batch-complete rule in step 2 prevents agents from ever seeing a half-fixed document, so this is a residual check, not a standing trap.)
+- None.
 
-**Code changeset.** See the delivery rules in `code.md` (diff sizing, patch file, regeneration across iterations); they are artifact-specific enough to live with the artifact file.
+## Pending controller mutation
 
-## Rules
+Mutation ID: none
+Kind: none
+Item ID: none
+Target: none
+Intent: none
+Success check: none
+Status: none
+Evidence: none
+```
 
-- During the loop, edit only the artifact under review. No code (unless the artifact IS code), no docs, no command files, no backlog entries; those are author or execution-time decisions with their own commands and workflows. The artifact file names any exceptions.
-- After the final iteration, report a summary of all changes made across all iterations, and include any cases where reviewer suggestions to cut content were declined; those are load-bearing decisions worth tracing through the final report.
+Never interpolate reviewer, skeptic, controller, user, path, or provider text directly into Markdown structure. Outside tables, persist every arbitrary text scalar as one canonical JSON string literal on the same physical line under a field ending in `JSON`. Use `JSON.stringify`, which escapes CR, LF, quotes, and backslashes, and use `JSON.parse` before semantic validation on resume. Persist arbitrary table values only as lowercase UTF-8 hex, with raw `none` as the absent sentinel. Enum tokens, positive integers, fingerprints, and restricted IDs remain raw. List sections contain either `- None.` or one `- Text JSON: {canonical-json-string}` per item.
 
-## Follow-up logging
+Stable IDs must match `^[a-z0-9][a-z0-9._/-]{0,115}$`. `Predecessor cell IDs` is `none` or an ordinal-sorted, single-space-separated list of stable IDs. Serialize Dimension cells by ordinal Cell ID, Resolved code paths by ordinal encoded path, and Local slice paths by the ordinal tuple `(Cell ID, encoded path)`. Use the same serializer for the delivery-only projection. Reject malformed JSON, malformed hex, duplicate decoded identities, noncanonical row order, and raw multiline scalar content as an invalid checkpoint or incomplete cell. Never parse a line created from agent text. Exact repository paths exist only in reversible hex path tables.
 
-After the final iteration, collect all issues that were **valid but intentionally deferred** across all dimensions (too large to fix inline, needing follow-up beyond an artifact edit, pre-existing patterns, cosmetic refactors). For each item, **propose a route based on size and type** rather than asking open-endedly: a proposed route per item lets the user bulk-approve with one reply ("go with your suggestions") or override individually, while the open-ended form forces them to triage every item themselves. Routes:
+A field with a raw `none` sentinel switches to a corresponding `... JSON` field before carrying arbitrary text. For example, `Failure: none` becomes `Failure JSON: "..."`.
 
-- **(a) address now**: apply the change in the current session (small, scout-rule, low-risk; for document artifacts this includes adding to an Open questions section, documenting an anti-goal, or naming a dependency).
-- **(b) track**: log to the project's tracking files (in projects with the four-index `.claude/` layout: `QUICK_WINS.md` for refactors, `FEATURES.md` for product-level design work, `BUGS.md` for defects; otherwise the equivalent the project uses). Check whether the suggested entry already exists in the target file; if so, refresh or cross-reference it rather than duplicating. This prevents the "valid but skipped" pile from silently growing across sessions.
-- **(c) skip**: drop it (negligible, out of scope, or already covered elsewhere).
+For plan and spec, Dimension cells use `Delivery scope: whole-artifact`, omit the code path tables, and store the one artifact path as lowercase UTF-8 hex under `Resolved scope UTF-8 hex`.
 
-Name the suggested route and a one-line reason per item before the bulk-approval ask. Do NOT auto-log without asking; the user decides what's worth tracking.
+### Atomic replacement and field lifetimes
 
-## Dimension retrospective
+Every state and result replacement is atomic and creates no second authority. Write the complete next contents to `.tmp/revise-state.next.md` or `.tmp/revise-round-result.next.md` in the same directory, validate the schema and phase, round, fingerprint, and map relationships, then atomically rename it over the canonical file. A crash before rename leaves the prior checkpoint authoritative. Never read a leftover `.next.md`; overwrite it on the next staged replacement. A crash after rename exposes a complete checkpoint. Persist result cells before a state transition or agent-row update that depends on them. This rule covers boundary rewrites, partial merges, repair counters, user requests, and pending mutations.
 
-After Follow-up logging, briefly reflect on the dimensions themselves:
+Artifact identity, scope decisions, autonomy mode, acknowledgements, user requests, applied changes, follow-ups, and prior failures persist until successful cleanup or a user-authorized restart rule says otherwise. Phase fields are the phase and convergence counters, dirty flag, full dimension-cell lifecycle and lineage, and exact encoded scope maps. Round fields are round number, round status, fingerprint, Agents rows, and `.tmp/revise-round-result.md`.
 
-1. **Coverage gaps**: did any agent finding fall outside all of the artifact file's dimensions? Would a new dimension have caught it, or does an existing one need broadening?
-2. **Overlap as signal**: did multiple dimensions flag the same issue independently? Two uncoordinated reviewers converging on the same finding is one of the strongest positive signals this process produces; that agreement is a confidence boost, not waste.
-3. **False positive patterns**: did agents repeatedly flag something that turned out to be correct or deliberate (an API they didn't know about, an intentional deferral)? The dimension's prompt may need a clarification or exclusion.
-4. **Signal-to-noise**: did any dimension produce mostly low-value findings that wasted review cycles? Should its criteria be tightened?
-5. **Missing context**: did agents lack context that led to bad calls? Should the dimension's prompt include additional project-specific guidance?
+The state file marks the single active run. Do not add an ownership token or lock. An unfinished `reviewing` or `post-review` state with the same artifact and logical scope is a resume candidate. Surface unfinished state for different work instead of overwriting it. There is no persisted complete status because successful completion deletes the state.
 
-Then run any artifact-specific retrospective items the artifact file adds. If changes are warranted, route each one: loop-mechanics improvements belong in this SKILL.md (shared by all artifact types); dimension or artifact-specific improvements belong in the artifact parameter file (`code.md` / `plan.md` / `spec.md`). Edit the files in the nightshift plugin repo clone, not the installed cache. Show the diff, explain why, apply with the user's approval, and commit in the clone; pushing is the user's call.
+### Boundary templates
 
-## Authoring retrospective
+Map every transition to one of these templates:
 
-After the dimension retrospective, turn the same finding stream on the artifact's author: the dimension retrospective tunes the reviewers; this one tunes whoever writes the next spec, plan, or changeset. For each confirmed finding, ask whether a cheap, always-applicable authoring habit would have prevented its whole class before review ever ran (an edit anchor quoted without checking its uniqueness, a value set specified without walking its consumers, a parallel function written without checking sibling-function precedent).
+- `Start phase`: before changing phase fields, fail with current diagnostics when the requested phase exceeds 10. Otherwise set the requested phase, `Phase changed: no`, round 0, `Round status: idle`, and current fingerprint; clear Agents; delete the prior result scratch; make every applicable dimension or shard cell active with zero attempts and N/A reason `none`; preserve an inapplicable cell as N/A only after re-evaluating and encoding its nonblank reason.
+- `Start round`: preflight every active dimension or shard cell. If any already has 10 attempts, set `Status: failed`, record the exhausted cell and last unresolved issue, and dispatch nothing. Otherwise calculate the next round, launch fingerprint, immutable canonical delivery-map snapshot, incremented phase attempts, and replacement Agents section in memory. The Agents section has exactly one reviewer row for every active cell, session ID `none`, `in-flight`, zero repairs, and no prior-round rows. Atomically replace the result scratch with its matching cell-empty header and snapshot, then atomically rewrite state with the same identities and map bytes, incremented attempts, replacement Agents, and `Round status: in-flight`. Dispatch only after both checkpoints match.
+- `Restart run`: set `Status: reviewing`, `Post-review step: not-started`, `Failure: none`, phase 1, `Converged phases: 0`, and `Last converged phase: 0`; clear post-review work items and pending mutation; preserve artifact and scope identity, acknowledgements, user requests, applied changes, follow-ups, and prior failures; copy the prior failure into Prior failures; then apply `Start phase` for phase 1.
 
-Promotion bar, applied strictly so this does not become rule bloat: a candidate habit is promoted only when its pattern recurred (within this run or across remembered runs) or the habit costs near-zero to apply universally. Everything else is a one-off owned by the artifact itself; the finding's fix already recorded it where it belongs. State promoted rules as principles, never as enumerations of the finding that spawned them.
+New-run creation writes the identity and empty persistent sections, pre-seeds acknowledgements and caveats from the artifact profile before phase 1, initializes the same counters as `Restart run`, and invokes `Start phase` for phase 1. Normal dirty advance, clean convergence below two phases, and drift abandonment use `Start phase`. A reviewable post-review mutation returns to `reviewing`, resets the post-review step and its work items, clears the completed mutation, and uses `Start phase`. Partial results set result status `partial`, keep the round in flight, update Agents and result cells by stable ID, and preserve every completed result. A fully repaired and adjudicated result sets round status `evaluated`, result status `usable`, and all Agents rows `completed`. Failure preserves diagnostic phase and round fields. Successful finalization deletes state, payload, result, patch, and staging scratch files.
 
-Route promoted candidates through the same channels as other session lore, honoring the session's lore split: project-repo rules (the project's CLAUDE.md, backlog pattern notes) may be applied directly, while workflow-instruction rules (the global CLAUDE.md, plugin files, memory files) take the approval flow -- show the diff, explain why, apply with the user's approval, and under an unattended run draft them for the morning report. A habit whose ideal home would be a third-party authoring skill's own instructions still lands as a CLAUDE.md rule: third-party skill files are not this workflow's to edit, and a CLAUDE.md rule binds the session that invokes them.
+At phase convergence, compute the updated convergence counter, `Last converged phase`, and destination in one boundary rewrite. On resume, if a reviewing state has every applicable dimension inactive, compare `Last converged phase` with `Phase`, count the phase only if they differ, and enter post-review or perform the same `Start phase` advance. A stable checkpoint cannot remain reviewing with every applicable dimension inactive.
 
-The loop's own numbers are this retrospective's feedback signal: report the first-iteration confirmed-finding count per artifact type in the retrospective outcome, alongside the habits promoted or a stated null outcome ("no habit worth promoting"). The workflow keeps no cross-run ledger; stating the count every run is what makes the trend checkable by whoever holds the accumulated reports, and a falling count is the evidence that promoted habits actually prevent findings.
+## Round result and delivery snapshot
+
+Initialize `.tmp/revise-round-result.md` with:
+
+```markdown
+# Revise round result
+
+Phase: 2
+Round: 5
+Artifact fingerprint: sha256:a1b2c3d4e5f6
+Status: awaiting-results
+```
+
+Immediately append `## Delivery map snapshot`. For code, its cell table contains only `Cell ID`, `Dimension UTF-8 hex`, `Cell kind`, `Cluster UTF-8 hex`, and `Delivery scope`, in ordinal Cell ID order, followed by byte-for-byte copies of the canonical Resolved code paths and Local slice paths tables. It excludes predecessor IDs, lifecycle status, N/A reason, and attempts. For plan and spec, use the same delivery-only cell projection and encoded `whole-artifact` scope. State and snapshot bytes come from the same serializer. The projection is immutable for that round and precedes all result cells.
+
+Persist each completed or repairable cell in reviewer order with this shape:
+
+```markdown
+## Cell: correctness/cluster-parser
+
+Dimension JSON: "Correctness"
+Cell kind: local
+Cluster JSON: "parser"
+Status: needs-verification
+LGTM: no
+Verified note JSON: "Traced both parser validation branches against the delivered patch."
+Reviewer session ID JSON: "session-412"
+
+### Finding: correctness/cluster-parser/finding-1
+
+Summary JSON: "Empty input bypasses validation."
+Location JSON: "skills/revise/revise-round.workflow.js"
+Evidence JSON: "The early return precedes the input guard."
+Verification status: needs-retry
+Issue JSON: "skeptic execution failed"
+Skeptic session ID JSON: "session-587"
+```
+
+A clean cell has `Status: usable`, `LGTM: yes`, a nonblank decoded verified note, and no findings. A verified finding replaces `Issue JSON` with an allowed `Verdict` and nonblank `Reason JSON`. A `needs-reviewer` cell retains identity fields, status, and nonblank `Issue JSON`, but omits LGTM, note, and findings. A present session uses its `... Session ID JSON`; an unavailable session uses raw `... Session ID: none`. Stable cell and finding IDs bind results to lineage and repair counters. A result whose phase, round, fingerprint, or exact snapshot differs from state is stale and contributes no cells.
+
+Before setting a round in flight, calculate the next identities, snapshot, attempts, and Agents in memory. Replace the cell-empty result first, then state. If a crash leaves the next-round header while state still names the prior evaluated round, the header is an orphan and contributes nothing; the next `Start round` replaces it, and persisted attempts do not advance. If state was rewritten and the matching empty result remains, preserve the incremented phase attempt and recover only missing reviewer cells through bounded repair without changing the round or original attempt. A fresh missing-cell launch is a repair launch.
+
+## Fingerprints, drift, and resume
+
+For plan and spec, fingerprint reviewable content with the handover recipe, retaining 12 hexadecimal characters:
+
+```bash
+awk '/^## Hardening$/{exit} !/^Status:/' <artifact-path> | sha256sum | cut -c1-12
+```
+
+Store `sha256:<digest>`. For code, fingerprint the generated cumulative review patch with `sha256sum` and retain the first 12 hexadecimal characters. The fingerprint is a drift hint within one temporary run, not durable provenance. Check it at round launch, round return, and every reviewing resume.
+
+For idle-state drift, no round conclusion exists to discard. If `Phase changed` and the latest applied-change entry account for the edit, or the user confirms it interactively, record any missing ledger entry, set `Phase changed: yes`, refresh fingerprint and code map atomically, regenerate delivery, and remain in the phase at round 0 with current dispositions and attempts. Interactive rejection or unresolved ambiguity abandons the phase conservatively. Autonomous handover records unexplained idle abandonment and invokes `Start phase` with the next phase and current fingerprint.
+
+If the fingerprint changes while agents are in flight, discard the round, record the abandoned dirty phase in Applied changes, leave convergence counters unchanged, invoke `Start phase` with the next phase and new fingerprint, and regenerate delivery. If evaluated-state drift is clearly accounted for by `Phase changed` and the latest applied-change entry, refresh fingerprint and delivery and continue the same dirty phase without changing dimension statuses. Otherwise ask in interactive mode: confirmation records the missing entry, dirties and refreshes the same phase; rejection or unresolved ambiguity applies scope disposition and conservative phase abandonment. Autonomous handover records unexplained abandonment and advances phase. A crash after an edit but before its ledger entry follows the unexplained path. Do not add per-edit hashes, immutable round directories, or mutation journals.
+
+For an unchanged-fingerprint in-flight resume, render the delivery-only projection from state and compare it byte-for-byte with the result snapshot. If projected bytes changed, discard all current-round results and rows, record delivery-map round abandonment without changing phase or `Phase changed`, and invoke `Start round` for the next round with existing phase attempts preserved before normal increments. Mutable lifecycle changes excluded from the projection do not invalidate results. If identities match, preserve every complete reviewer result and skeptic verdict, then repair only missing cells. Because state becomes in flight only after the matching result header and snapshot exist, no valid `Start round` crash can leave in-flight state with mismatched result identity.
+
+Never resume an agent across fingerprint, projected map, phase, or round changes. A missing, expired, unsupported, or terminal session uses a fresh replacement as the next permitted repair. Session tracking is only an optimization.
+
+`Status: failed` never auto-resumes. A later invocation reports `Failure` and offers explicit retry or abandon. For execution-repair exhaustion, a user-authorized retry whose phase, round, fingerprint, and snapshot still match sets status reviewing, clears Failure, resets only the affected stable cell repair counter, marks it `needs-retry`, and preserves all completed results. Identity mismatch follows drift abandonment. For a dimension-attempt or phase-cap failure, a user-authorized restart records the failure and invokes `Restart run`. Explicit abandon shows the retained failure, then deletes only review scratch. Autonomous handover cannot authorize retry or abandon and stops for user disposition.
+
+## User requests and controller mutations
+
+`## User requests` contains `- None.` or a table with `Request ID`, `Status`, `Text UTF-8 hex`, and `Evidence UTF-8 hex`. If a reviewable request arrives while agents are in flight, mint a stable semantic request ID, atomically append a pending encoded row with evidence `none`, and do not edit the artifact. Consumed rows persist until cleanup.
+
+After the round is fully evaluated and before convergence or another launch, drain pending requests by ordinal Request ID. If the requested outcome is already satisfied, atomically mark it consumed with encoded evidence without dirtying the phase. Otherwise persist one Pending controller mutation with a stable mutation ID, `Kind: user-request`, owning request ID, nonblank `Target JSON`, `Intent JSON`, and `Success check JSON`, `Status: prepared`, and `Evidence: none`. After applying or recovering the edit, one atomic state rewrite marks the request consumed with evidence, appends its Applied changes entry, sets `Phase changed: yes`, and clears the mutation. Reconcile scope, fingerprint, map, delivery projection, payloads, and cumulative patch before any launch.
+
+The Pending controller mutation serializes one user-request or post-review side effect. Recover it before general drift handling. A prepared mutation runs its persisted success check. If satisfied, record it applied without repeating the side effect; otherwise inspect the exact target and perform it once only when still safe. An applied mutation re-verifies evidence before completing its owner. Complete the owner and clear the mutation in one atomic rewrite. Malformed records, owner-kind mismatch, an unobservable success check, or unexpected target content follows the normal interactive or autonomous ambiguity rule.
+
+## Dispatch and repair
+
+Workflow and manual modes deliver the same common context plus only one cell's assigned criteria. Encode the UTF-8 bytes of each stable cell ID as lowercase hex and use the flat path `.tmp/revise-payload-{hex-cell-id}.md`. This mapping is injective on case-sensitive and case-insensitive file systems, and a slash-bearing ID never becomes a directory. For example, `correctness/cluster-parser` maps to `.tmp/revise-payload-636f72726563746e6573732f636c75737465722d706172736572.md`. Begin each payload with phase, round, fingerprint, stable cell ID, canonical dimension name, cell kind, cluster, and exact encoded slice paths, then the complete common context and only that profile dimension's complete criteria.
+
+Before every original or repair dispatch, render the complete expected payload from state, map, context, and profile. If it is missing or differs byte-for-byte, write `.tmp/revise-payload-{hex-cell-id}.next.md`, validate every required section and exact bytes, atomically rename it over the canonical payload, and compare once more. Identity-header agreement alone is insufficient. Ignore leftover staging files, remove payloads no longer named by the map, and remove all payload and staging files on cleanup or abandon.
+
+Common context contains project context, relevant inlined project-instruction excerpts, the PATTERNS index when present, artifact identity and delivery, acknowledgements and caveats, and profile additional rules. Tell reviewers to verify ambiguous instructions against the working tree, consult linked pattern files only when the index signals relevance, report high-confidence issues only, and provide a concrete verification note even for LGTM.
+
+### Workflow path
+
+Prefer the Workflow tool when it and the script are available. Invoke `${CLAUDE_PLUGIN_ROOT}/skills/revise/revise-round.workflow.js` once after `Start round` with only:
+
+```json
+{
+  "phase": 2,
+  "round": 5,
+  "fingerprint": "sha256:a1b2c3d4e5f6",
+  "dimensions": [
+    {
+      "id": "correctness/cluster-parser",
+      "name": "Correctness",
+      "payloadFile": "<absolute encoded payload path>"
+    }
+  ],
+  "model": "<artifact profile pin>"
+}
+```
+
+Do not pass payload content inline. The original stable cell ID is the sole uniqueness and reconciliation key; duplicate display names are valid. Require the Task 1 exact input types, unique restricted IDs, nonblank names and paths, and valid fingerprint. After a Workflow batch returns, compare state with the result scratch's phase, round, fingerprint, and exact delivery-map snapshot before persisting usable cells and repairable gaps. Keep the round in flight while resuming or replacing gaps. The Workflow launches one original reviewer per input cell and one skeptic per finding. A `needs-reviewer` cell or a `needs-retry` finding is repairable, not a conclusion.
+
+### Manual Agent path
+
+If Workflow or its script is unavailable, or Workflow fails, dispatch one fresh `Explore` reviewer per active stable cell in one batch with the profile model pin. Each agent reads its exact payload and has no prior context. After all usable reviewers return, assign each finding `<cell-id>/finding-<one-based-result-index>`, persist it, then dispatch one fresh skeptic per finding in one batch. Ask for `CONFIRMED`, `REFUTED`, or `JUDGMENT_CALL` with concrete evidence and a nonblank reason. The controller accepts semantically equivalent prose and normalizes it, but does not coerce ambiguity or invent evidence.
+
+The manual controller may add direct verification evidence for a plan or spec finding only when a re-read establishes an objective quoted contradiction, symbol presence, or literal. That evidence supplements adjudication and never replaces the fresh skeptic verdict required for every reported finding; even an objectively verified finding still goes to a fresh skeptic. Runtime-owned literals or formats cannot be refuted from repository or design-record evidence; they require a live probe in every relevant execution context, or remain a JUDGMENT_CALL with a probe recommendation. Any probe must reproduce the real module or script scope, framework call path, and execution context. Uncoordinated reviewer convergence raises verification priority, not truth. When verdicts on different framings of one issue conflict, scope the fix to the core a CONFIRMED verdict evidenced and acknowledge the refuted framing.
+
+### Repair rules
+
+Four safety rules are absolute:
+
+1. A dimension cannot become inactive without a clear clean-review conclusion and a concrete nonblank verification rationale against the current fingerprint.
+2. Every reported finding must receive a fresh skeptic verdict before adjudication, including a finding with objective controller evidence.
+3. Objective controller verification may supplement adjudication but never replaces the required fresh skeptic verdict. A finding cannot be treated as refuted without concrete skeptic verification and a nonblank reason from that skeptic.
+4. Results tied to an outdated phase, round, fingerprint, or delivery snapshot cannot affect review state.
+
+Everything else is repairable within the stable cell's three-launch budget. Record incomplete, contradictory, or oddly formatted output. The first repair resumes the same agent for narrow clarification when its session and review identity remain valid. Clarification can supply missing rationale or resolve format ambiguity, but cannot ask a reviewer to retract a disputed finding. Normalize a complete clarification. If still unusable, use fresh replacements for later repairs. If the session is unavailable, the first repair is fresh.
+
+Count every clarification or replacement launch against the stable cell's three-attempt execution-repair budget.
+Use the same agent for the first repair launch when its session is available and the review identity still matches; use fresh replacements for later unresolved repairs.
+When no repair attempt remains, fail the run before launching another agent.
+An unresolved clarification remains retryable while budget remains and cannot manufacture LGTM or refutation.
+
+Increment the repair counter atomically before dispatch. A phase, round, fingerprint, or snapshot mismatch follows abandonment rather than consuming repairs. Retry only the missing reviewer cell or the skeptic cell whose finding is `needs-retry`; preserve every completed reviewer and skeptic result. An uncertain dimension remains active while budget remains. Exhaustion of any limit is terminal until explicit disposition.
+
+For a `needs-verification` cell, repair only findings still marked `needs-retry`. Resume the skeptic first when its session is valid; otherwise launch a fresh manual replacement. Merge its verdict without relaunching the reviewer or completed skeptics. Key reviewer repairs by dimension cell ID and skeptic repairs by finding ID, never by optional session ID or display name.
+
+Do not edit reviewable content until every required cell is usable and each finding has a permitted verified disposition. Keep round status in flight through partial results and repairs. Only after the barrier is complete may the controller set the result usable, adjudicate all findings, and set the round evaluated.
+
+## Adjudication and round boundary
+
+For each verified finding:
+
+- If confirmed and small enough to fix within the edit surface, apply the fix at the round boundary, run the profile post-fix steps, record the applied change immediately, set `Phase changed: yes`, and keep that cell active.
+- If valid but beyond an inline artifact edit, create an authoritative open Follow-ups row with a stable ID, encoded text, route and evidence `none`, and record a narrow acknowledgement or caveat. Keep the cell active.
+- If refuted, record a reasoned acknowledgement only. Keep the cell active.
+- If a judgment call is intentionally accepted, record the acknowledgement and any actionable follow-up required. Keep the cell active.
+- Only an LGTM cell with a nonblank concrete verification note becomes inactive for the rest of the phase.
+
+Another dimension's edit does not reactivate an inactive sibling. If removing review-added machinery undoes another dimension's accepted fix, this is a controller-coordinated reviewable edit: dirty the phase and preserve current cell dispositions. The mandatory next phase reactivates every applicable cell.
+
+After any fix that adds, removes, or relocates a member of a set the artifact presents as closed, sweep every enumeration of that set before the next round. Regenerate delivery and reconcile the live artifact, scope, fingerprint, and ledger before launch. Re-read the live artifact when a finding appears to duplicate a prior-round fix.
+
+After every evaluated round, report what changed and which cells became inactive or remain active, then atomically persist the boundary. Drain user requests. If all applicable cells are inactive, perform the single convergence checkpoint; otherwise `Start round` again.
+
+## Post-review tail
+
+Entering post-review sets `Status: post-review`, `Post-review step: not-started`, and Post-review work items to `- None.`. Every artifact runs `follow-up-routing`, `dimension-retrospective`, and `authoring-retrospective` in that order. A plan then runs `spec-reconciliation` and `hardening-stamp`; a spec runs `hardening-stamp`; code proceeds to `done`. Live-claim probing remains handover behavior and is not part of this tail.
+
+Before each step, enumerate its complete current work set and assign stable semantic item IDs independent of list position. Atomically replace `- None.` with a table containing `Step`, `Item ID`, `Status`, and `Evidence UTF-8 hex`. New rows are pending with evidence `none`. Follow-up routing includes only authoritative open rows and reuses their IDs. Dimension-retrospective rows use stable cell IDs. Singleton actions use fixed semantic IDs. Before completing a step, reconcile its authoritative source set and append newly appeared IDs; never delete completed rows because ordering changed.
+
+Before a mutating item, persist one controller mutation with a stable ID, `Kind: post-review`, matching item ID, nonblank `Target JSON`, `Intent JSON`, and `Success check JSON`, `Status: prepared`, and `Evidence: none`. Apply one item at a time. After mutation, set `Status: applied` and replace the sentinel with nonblank `Evidence JSON`. Then atomically mark the work item completed with the same encoded evidence and clear the mutation. A stamp refresh is a separate item from the artifact or spec edit that required it.
+
+On resume, recover prepared and applied mutations through the common protocol. With no mutation pending, select the first ordinal pending stable ID and never select a completed row. Read-only or safely repeatable checks need no mutation but must persist completed evidence before another item. Text and tracking success checks prove intended content exists exactly once. Commit checks identify commit and paths. Stamp checks match current scope and content fingerprint. When all rows are complete, atomically advance `Post-review step` and reset work items to `- None.`.
+
+Before stamping and before cleanup, recompute the fingerprint. Drift returns to reviewing, resets the post-review step, records the edit, clears work items and the completed mutation, and invokes `Start phase` with the next phase and current fingerprint. Persist step, work item, and mutation checkpoints before side effects. Any post-review action that changes reviewable content follows this same restart. Provenance-only stamp appends do not restart review. Delete scratch only after `Post-review step: done` and the final fingerprint check succeeds.
+
+### Follow-up routing
+
+For each valid deferred finding, the authoritative Follow-ups row remains open until routed. In an interactive standalone run, propose `address-now`, `track`, or `skip` with a reason and ask for bulk approval or per-item overrides. Completing the work item atomically sets the row resolved with its final route and encoded evidence, completes the item, and clears the mutation. Check tracking files for an existing entry before adding one. Resolved rows persist across an address-now edit and the required new review phase.
+
+In autonomous handover, do not prompt or invent a final route. Propose one of the three routes, then prepare a post-review mutation that atomically adds one canonical JSON line to `.tmp/handover-followups.md`. The item contains decoded artifact type and identity as `source`, the follow-up ID as `sourceItemId`, exact decoded follow-up text, and proposed route. Its success check proves exactly one item with the same `(source, sourceItemId)`. After that check, one atomic state rewrite marks the follow-up handed-off, route `handover`, records transfer evidence, completes the work item, and clears the mutation. Recovery checks the composite key before writing, so a crash cannot duplicate it. Resolved and handed-off rows persist across review restarts; later routing steps enumerate only open rows.
+
+### Dimension retrospective
+
+Review coverage gaps, independent convergence on the same issue, repeated false positives, signal-to-noise, and missing context. Run the profile retrospective extras. Route shared mechanics improvements to this file and dimension-specific improvements to the artifact profile. Edit the Nightshift clone, show and explain proposed workflow-instruction changes, apply only with user approval, and leave pushing to the user.
+
+### Authoring retrospective
+
+For each confirmed finding, ask whether a cheap, always-applicable authoring habit would have prevented the whole class. Promote only a recurring pattern or a near-zero-cost universal habit. State promoted rules as principles, not a list tied to the triggering finding. Route project rules to project instructions or patterns; workflow rules follow the approval flow, and third-party skill guidance lands in project instructions instead of editing third-party files.
+
+Report the first-round confirmed-finding count per artifact type with promoted habits or a stated null outcome. The workflow keeps no cross-run ledger; this per-run count lets accumulated reports show whether authoring habits reduce findings.
+
+### Artifact-specific final work
+
+Plan Spec Reconciliation sorts findings by whether a correction to a durable contract, invocation, assumption, or design decision would otherwise disappear with the plan. Present each spec-worthy edit as readable current and proposed text for approval. Apply localized corrections only, refresh the spec stamp as a separate work item, and route design changes to follow-up. State explicitly when no upstream spec exists or nothing reconciles.
+
+Plan and spec hardening preserve the exact profile stamp literals and use the profile's durable 8-character provenance recipe only after all other work has landed. Do not commit an artifact solely for stamping.
+
+## Edit and delivery rules
+
+- During reviewing, edit only the artifact under review and the exceptions named by its profile. Post-review routing and artifact-specific steps use their explicit edit surfaces.
+- Document reviewers read the full file once for context, focus on named headings, use targeted reads above 400 lines, and treat surrounding sections as context rather than findings. Each reviewer reads one cell payload containing common context plus only its assigned criteria.
+- Code delivery follows `code.md`, including scope resolution, cumulative patch regeneration, canonical shard mapping, and slice-union proof.
+- Report the complete applied-change summary and any declined requests to cut load-bearing reasoning after successful cleanup.

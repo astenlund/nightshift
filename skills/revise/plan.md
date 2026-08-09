@@ -4,7 +4,7 @@
 
 The scope is everything passed after the `plan` artifact token.
 
-Here, "plan" is an implementation plan: a file describing the steps required to land a specific piece of work, typically authored ahead of executing the work. Plans are ephemeral — they're written, executed, then deleted when the work lands — but the review discipline still applies, because plans prescribe the commit graph that becomes source-of-truth history: a plan with stale APIs, unverifiable intermediate commits, or task-number leakage produces durable harm to the code or git history it prescribes.
+Here, "plan" is an implementation plan: a file describing the steps required to land a specific piece of work, typically authored ahead of executing the work. Plans are ephemeral: they're written, executed, then deleted when the work lands, but the review discipline still applies, because plans prescribe the commit graph that becomes source-of-truth history: a plan with stale APIs, unverifiable intermediate commits, or task-number leakage produces durable harm to the code or git history it prescribes.
 
 If the scope is empty, determine it automatically. Prefer (in order):
 1. The plan file path shown in the plan-mode system message, if the session is currently in plan mode.
@@ -14,10 +14,10 @@ If the scope is empty, determine it automatically. Prefer (in order):
 Only ask the user if genuinely ambiguous.
 
 If a scope is provided, interpret it based on what it looks like:
-- **File path** (e.g., `.claude/plans/2026-05-15-foo.md` or an absolute path) — review the whole file.
-- **Natural language** (e.g., "the plan we just wrote", "the rewrite plan") — resolve from conversation context and the filesystem; identify the file by recent modification time and content match.
+- **File path** (e.g., `.claude/plans/2026-05-15-foo.md` or an absolute path): review the whole file.
+- **Natural language** (e.g., "the plan we just wrote", "the rewrite plan"): resolve from conversation context and the filesystem; identify the file by recent modification time and content match.
 
-Git-diff scope shapes (`staged`, `unstaged`, `main..HEAD`) that the code artifact accepts are not supported here — a plan is a single document, not a multi-file changeset, so a file path (or natural-language pointer at one) is the only meaningful scope.
+Git-diff scope shapes (`staged`, `unstaged`, `main..HEAD`) that the code artifact accepts are not supported here; a plan is a single document, not a multi-file changeset, so a file path (or natural-language pointer at one) is the only meaningful scope.
 
 ## Setup
 
@@ -26,13 +26,13 @@ Git-diff scope shapes (`staged`, `unstaged`, `main..HEAD`) that the code artifac
 - For a section scope, name the section heading(s) and adjacent sections that the named section depends on or is depended on by. Read the whole file once to understand the document shape, then point agents at the in-scope sections by heading + line range.
 - If the plan file does not exist, report that and stop.
 
-## Loop parameters
+## Review parameters
 
-- **Artifact**: the plan file. Edit surface: the plan file only — no code, no docs, no command files, no backlog entries during the loop. The sole exception is the post-loop Spec Reconciliation step below, which may edit the upstream spec with the user's per-edit approval.
+- **Artifact**: the plan file. Edit surface: the plan file only: no code, no docs, no command files, no backlog entries during the loop. The sole exception is the post-loop Spec Reconciliation step below, which may edit the upstream spec with the user's per-edit approval.
 
-- **Model pin**: pass `model: "opus"` to every reviewer Agent call. Rationale: plan review is judgment-only — there is no build or test cycle to catch a bad fix downstream, so the stronger tier's judgment wins over the cheaper tier's volume (the code artifact makes the opposite trade).
+- **Model pin**: pass `model: "opus"` to every reviewer Agent call. Rationale: plan review is judgment-only; there is no build or test cycle to catch a bad fix downstream, so the stronger tier's judgment wins over the cheaper tier's volume (the code artifact makes the opposite trade).
 
-- **Pre-seed sources** (for the acknowledgements list, before iteration 1): scan the plan for explicitly-deferred items — any "Out of scope", "Trigger: when X lands", or "deferred to" language — and add each as an acknowledgement. Reviewers reliably re-flag intentional deferrals as missing scope; seeding them upfront eliminates 2-3 iterations per plan. Typical acknowledgement shapes: "D3 N/A — this plan has no cross-module signature changes"; "design punt is intentional — listed under Open questions"; "balance is intentional — the Verification section is heavier because the rewrite is structural and most reader risk lives there".
+- **Pre-seed sources** (for the acknowledgements list, before phase 1): scan the plan for explicitly-deferred items, including any "Out of scope", "Trigger: when X lands", or "deferred to" language, and add each as an acknowledgement. Reviewers reliably re-flag intentional deferrals as missing scope; seeding them upfront eliminates 2-3 review rounds per plan. Typical acknowledgement shapes: "D3 N/A: this plan has no cross-module signature changes"; "design punt is intentional and listed under Open questions"; "balance is intentional because the Verification section is heavier for this structural rewrite and carries most reader risk".
 
 - **Delivery rules**: the document-artifact profile in SKILL.md (read-once, offset/limit above 400 lines, partial-section context-note rule, prior-fix duplicate check).
 
@@ -40,7 +40,7 @@ Git-diff scope shapes (`staged`, `unstaged`, `main..HEAD`) that the code artifac
 
 - **Post-fix steps**: none (plans have no build).
 
-- **Post-loop step (hardening stamp)**: once every other post-loop step has landed — so the fingerprint matches the final shipped plan, not an intermediate state — append a provenance line to the plan under a `## Hardening` section (created at the end of the document if absent):
+- **Post-loop step (hardening stamp)**: once every other post-loop step has landed, so the fingerprint matches the final shipped plan, not an intermediate state, append a provenance line to the plan under a `## Hardening` section (created at the end of the document if absent):
 
   ```
   - revise-plan graduated <date and time> at <sha>, scope: <scope>, content: <fingerprint>
@@ -52,7 +52,7 @@ Git-diff scope shapes (`staged`, `unstaged`, `main..HEAD`) that the code artifac
 
 ### Dimension 1: Plan correctness
 
-1. **API claims verified**: method signatures, package versions, framework idioms cited in the plan match real surfaces (NuGet XML docs, package source, framework reference). Plans that prescribe a non-existent API silently waste an executor's iteration cycle.
+1. **API claims verified**: method signatures, package versions, framework idioms cited in the plan match real surfaces (NuGet XML docs, package source, framework reference). Plans that prescribe a non-existent API silently waste an executor's review cycle.
 2. **File paths exist**: every file path the plan tells the executor to touch resolves in the working tree (or is explicitly named "new file"). Stale paths after a rebase are a common failure mode.
 3. **Cross-file claims**: when the plan says "module X exports Y", verify by reading X. Plan-vs-code drift after rebasing onto changed `main` is the second most common gap after API drift.
 4. **Tool / command invocations and embedded literals**: flags, scripts, environment variables, and host-language literals (bash commands, regex patterns, JSON payloads, YAML fragments) quoted literally in the plan are correct. Common traps: variables inside single-quoted bash strings don't expand; regex metacharacters differ between quoted/unquoted forms; JSON requires double quotes; YAML escape rules diverge from JSON's.
@@ -76,7 +76,7 @@ For each task that changes a cross-module signature or public API, the codebase 
 
 Silent couplings across tasks make intermediate commits unverifiable and break bisection / revert workflows. Flag every cross-task signature change without one of (1), (2), or (3) declared.
 
-This dimension may be N/A for some plans (single-commit single-file rewrites, doc edits, etc.). When the plan's task set has no cross-module signature changes, the dimension graduates on a one-sentence "no signature changes in this plan" verification note rather than launching deeper.
+This dimension may be N/A for some plans (single-commit single-file rewrites, doc edits, etc.). When the plan's task set has no cross-module signature changes, set the cell to N/A with the encoded reason "no signature changes in this plan" rather than launching deeper.
 
 ### Dimension 4: Risk and robustness
 
@@ -98,22 +98,22 @@ This dimension may be N/A for some plans (single-commit single-file rewrites, do
 1. **Task depth proportionate**: is each task's depth proportionate to its complexity, and verification commensurate with risk? Some tasks may be bloated with micro-detail while siblings are stub-thin.
 2. **Pre-work context sized right**: not too thin for the work, not too verbose for the executor.
 3. **Cross-section weight**: if one section (e.g., Verification) is heavier than the implementation prose it verifies, the plan is mis-allocating reader attention.
-4. **Healthy balance is also a valid outcome**: if every task is the right depth, say so crisply. Balance is the dimension most prone to drift between iterations; a short pass that confirms balance is healthy is the right outcome when it is.
+4. **Healthy balance is also a valid outcome**: if every task is the right depth, say so crisply. Balance is the dimension most prone to drift between rounds; a short pass that confirms balance is healthy is the right outcome when it is.
 
 ### Dimension 7: Commit and project hygiene *(plan-specific)*
 
 1. **Commit subject length**: every `git commit -m "..."` example in the plan must be ≤72 chars per the project's Conventional Commits rule (or whichever subject-length convention CLAUDE.md establishes). Plans prescribe subjects literally, so an over-length subject in the plan produces an over-length commit and a post-hoc amend discussion.
 2. **Atomic commits**: does the plan respect the "one logical change per commit" rule, or does it cram multiple concerns into a single commit? Pre-flag candidates for splitting.
-3. **Doc / config commit separation**: project conventions about which classes of file must commit separately from code — flag any plan instruction that would mix them.
+3. **Doc / config commit separation**: project conventions about which classes of file must commit separately from code; flag any plan instruction that would mix them.
 4. **Task-number leakage**: implementation plan task numbers ("Task N", "Step N", "Phase N") reference ephemeral scaffolding deleted on land. The plan must not prescribe embedding them in source comments, docs, commit messages, or tracking files. Flag any plan instruction that would leak a task number into a durable artifact.
 
 ## Spec Reconciliation
 
-A plan is ephemeral; the upstream spec it came from is durable. A correction the review surfaces that contradicts the spec (say, a prescribed invocation a live test disproved) is lost when the plan is deleted unless it is folded back. This is also the only step that catches plan-vs-spec drift — the loop's dimensions check the plan against itself and against API reality, never its fidelity to the spec's contracts — so a plan that silently contradicts a spec rule passes every dimension and surfaces only here; never skip it when a spec exists.
+A plan is ephemeral; the upstream spec it came from is durable. A correction the review surfaces that contradicts the spec (say, a prescribed invocation a live test disproved) is lost when the plan is deleted unless it is folded back. This is also the only step that catches plan-vs-spec drift: the review dimensions check the plan against itself and against API reality, never its fidelity to the spec's contracts. A plan that silently contradicts a spec rule passes every dimension and surfaces only here; never skip it when a spec exists.
 
-After the loop graduates, reconcile against each upstream spec (skip with a one-line note if there is none):
+After the review run completes, reconcile against each upstream spec (skip with a one-line note if there is none):
 
-1. **Sort each iteration's findings.** A finding belongs in the spec iff it would be lost-and-missed once the plan is gone: corrections to the contracts, invocations, assumptions, or design decisions the spec owns. Language gotchas, library quirks, and how-to-code-it detail stay in the code the plan produces; promoting them only bloats the spec.
+1. **Sort the review findings.** A finding belongs in the spec iff it would be lost-and-missed once the plan is gone: corrections to the contracts, invocations, assumptions, or design decisions the spec owns. Language gotchas, library quirks, and how-to-code-it detail stay in the code the plan produces; promoting them only bloats the spec.
 2. **Apply the spec-worthy ones with approval.** Surface each as readable text (current wording plus proposed replacement, not buried in a tool call) and edit the spec on approval. This is the sole exception to the "plan file only" edit surface. An applied spec edit changes the spec's fingerprint after its hardening stamp: append a refreshed stamp line to the spec per the Post-stamp edits rule in `${CLAUDE_PLUGIN_ROOT}/commands/handover.md` (Provenance stamps section), reason `spec reconciliation`.
 3. **Right-size the change.** A localized correction is an inline edit, not a reason to re-run a spec review; a candidate that would change the design rather than correct its record goes to the Follow-up logging step instead, recommending a dedicated `/nightshift:revise-spec` pass.
 
@@ -124,4 +124,4 @@ If nothing reconciles, say so explicitly, so the step is visibly run.
 In addition to the retrospective items in SKILL.md:
 
 - **Reasoning-cut pressure**: did any agent recommend cutting paragraphs that document design reasoning in the plan? If yes, the dimension prompts may need to be tightened to discourage this default. Plans don't carry as much design reasoning as specs do (the spec is upstream), but when a plan does explain *why* a non-obvious approach was chosen, that reasoning is the part future-you will most want preserved.
-- **Right-sizing checks**: did D3 (intermediate-commit verifiability) launch deep agents for a plan that had no signature changes? Did D5 graduate immediately on a single-task plan?
+- **Right-sizing checks**: did D3 (intermediate-commit verifiability) launch deep agents for a plan that had no signature changes? Did D5 become inactive immediately in phase 1 on a single-task plan?
