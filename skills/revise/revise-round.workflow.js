@@ -47,7 +47,7 @@ const VERDICT_SCHEMA = {
 }
 
 const FINGERPRINT_PATTERN = /^sha256:[0-9a-f]{12}$/
-const DIMENSION_ID_PATTERN = /^[a-z0-9][a-z0-9._/-]{0,115}$/
+const CELL_ID_PATTERN = /^[a-z0-9][a-z0-9._/-]{0,115}$/
 const VERDICTS = new Set(['CONFIRMED', 'REFUTED', 'JUDGMENT_CALL'])
 const LIVE_PROBE_RECOMMENDATION = 'Run a live probe in every relevant execution context.'
 
@@ -91,7 +91,7 @@ function validateInput(input) {
     const id = dimension.id
     const name = trimmed(dimension.name)
     const payloadFile = trimmed(dimension.payloadFile)
-    if (typeof id !== 'string' || !DIMENSION_ID_PATTERN.test(id) || ids.has(id) || !name || !payloadFile) {
+    if (typeof id !== 'string' || !CELL_ID_PATTERN.test(id) || ids.has(id) || !name || !payloadFile) {
       throw new TypeError('revise-round: dimension id, name, or payloadFile is invalid')
     }
     ids.add(id)

@@ -42,6 +42,7 @@ const CASES = [
   'valid stringified args normalize before launch',
   'malformed stringified args are rejected before launch',
   'stringified non-object args are rejected before launch',
+  'a maximum-length cell id derives an uncapped finding id and distinct skeptic label',
   'multiple findings receive distinct stable skeptic ids',
   'a missing final pipeline cell is returned as needs-reviewer',
 ]
@@ -401,6 +402,18 @@ const TESTS = {
   },
   async 'stringified non-object args are rejected before launch'() {
     await assertInvalid('[]')
+  },
+  async 'a maximum-length cell id derives an uncapped finding id and distinct skeptic label'() {
+    const cellId = 'a'.repeat(116)
+    const expectedFindingId = `${cellId}/finding-1`
+    const { result, agentCalls } = await runWorkflow(argsFor([dimension(cellId)]), { reviewerReplies: [finding()] })
+    const cell = getCell(result, cellId)
+    assert.equal(cellId.length, 116)
+    assert.equal(expectedFindingId.length, 126)
+    assert.equal(cell.findings[0].id, expectedFindingId)
+    assert.equal(agentCalls[0].options.label, `review:${cellId}`)
+    assert.equal(agentCalls[1].options.label, `verify:${expectedFindingId}`)
+    assert.notEqual(agentCalls[0].options.label, agentCalls[1].options.label)
   },
   async 'multiple findings receive distinct stable skeptic ids'() {
     const response = finding('First issue')
