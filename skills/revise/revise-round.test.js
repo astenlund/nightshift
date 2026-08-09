@@ -23,6 +23,10 @@ const CASES = [
   'invalid reviewer field types require reviewer clarification',
   'a judgment call preserves a runtime-owned finding and requests a live probe',
   'repo-only refutation of a runtime-owned claim becomes a judgment call',
+  'a claimed live probe without structured evidence remains unverified',
+  'a performed live probe with blank evidence remains unverified',
+  'an unperformed live probe carrying evidence remains unverified',
+  'a performed live probe preserves the canonical verification shape',
   'an unclear runtime-evidence classification remains unverified',
   'an invalid skeptic verdict remains unverified',
   'a blank skeptic reason cannot certify a verdict',
@@ -73,8 +77,8 @@ function finding(summary = 'The empty-input branch skips validation.') {
   }
 }
 
-function verdict(verdictValue = 'CONFIRMED', reason = 'The early return is reachable for an empty input.', runtimeOwned = false, liveProbePerformed = false) {
-  return { verdict: verdictValue, reason, runtimeOwned, liveProbePerformed }
+function verdict(verdictValue = 'CONFIRMED', reason = 'The early return is reachable for an empty input.', runtimeOwned = false, liveProbePerformed = false, liveProbeEvidence = '') {
+  return { verdict: verdictValue, reason, runtimeOwned, liveProbePerformed, liveProbeEvidence }
 }
 
 async function loadWorkflow() {
@@ -136,10 +140,25 @@ function assertRetrySafety(cell) {
   }
 }
 
+function normalizeManualVerdict(response) {
+  const liveProbeEvidence = response.liveProbeEvidence.trim() || null
+  const needsProbe = response.runtimeOwned && !response.liveProbePerformed && (response.verdict === 'REFUTED' || response.verdict === 'JUDGMENT_CALL')
+
+  return {
+    status: 'verified',
+    verdict: needsProbe ? 'JUDGMENT_CALL' : response.verdict,
+    reason: needsProbe ? `${response.reason.trim()} Run a live probe in every relevant execution context.` : response.reason.trim(),
+    runtimeOwned: response.runtimeOwned,
+    liveProbePerformed: response.liveProbePerformed,
+    liveProbeEvidence,
+  }
+}
+
 async function replacePendingSkeptic(cell, id, manualSkeptic) {
   const pending = cell.findings.find(item => item.id === id && item.verification.status === 'needs-retry')
   assert.ok(pending)
-  const verification = await manualSkeptic(id)
+  const response = await manualSkeptic(id)
+  const verification = normalizeManualVerdict(response)
 
   return {
     ...cell,
@@ -160,7 +179,14 @@ const TESTS = {
     const { result, agentCalls } = await runWorkflow(argsFor(), { reviewerReplies: [finding()] })
     const cell = getCell(result)
     assert.equal(cell.status, 'usable')
-    assert.deepEqual(cell.findings[0].verification, { status: 'verified', verdict: 'CONFIRMED', reason: 'The early return is reachable for an empty input.' })
+    assert.deepEqual(cell.findings[0].verification, {
+      status: 'verified',
+      verdict: 'CONFIRMED',
+      reason: 'The early return is reachable for an empty input.',
+      runtimeOwned: false,
+      liveProbePerformed: false,
+      liveProbeEvidence: null,
+    })
     assert.equal(agentCalls.length, 2)
   },
   async 'lgtm true with findings becomes needs-reviewer'() {
@@ -224,10 +250,10 @@ const TESTS = {
     const repaired = await replacePendingSkeptic(partial, pending[0].id, async id => {
       manualSkepticCalls.push(id)
 
-      return { status: 'verified', ...verdict() }
+      return verdict()
     })
     assert.deepEqual(manualSkepticCalls, [pending[0].id])
-    assert.equal(repaired.findings[0].verification.status, 'verified')
+    assert.deepEqual(repaired.findings.find(item => item.id === pending[0].id).verification, completed.verification)
     assert.deepEqual(repaired.findings.find(item => item.id === completed.id), completed)
     assert.equal(agentCalls.filter(call => call.options.phase === 'Review').length, 1)
     assert.equal(agentCalls.filter(call => call.options.label === `verify:${completed.id}`).length, 1)
@@ -246,9 +272,10 @@ const TESTS = {
     partial.dimensions[0] = await replacePendingSkeptic(partial.dimensions[0], pending.id, async id => {
       manualSkepticCalls.push(id)
 
-      return { status: 'verified', ...verdict() }
+      return verdict()
     })
     assert.deepEqual(manualSkepticCalls, [pending.id])
+    assert.deepEqual(partial.dimensions[0].findings.find(item => item.id === pending.id).verification, completed.verification)
     assert.equal(agentCalls.filter(call => call.options.phase === 'Review').length, 2)
     assert.equal(agentCalls.filter(call => call.options.label === `verify:${completed.id}`).length, 1)
     assert.equal(agentCalls.filter(call => call.options.phase === 'Verify').length, 2)
@@ -293,27 +320,68 @@ const TESTS = {
     const { result, agentCalls } = await runWorkflow(argsFor(), { reviewerReplies: [finding()], skepticReplies: [verdict('JUDGMENT_CALL', reason, true)] })
     const cell = getCell(result)
     assert.equal(cell.status, 'usable')
-    assert.equal(cell.findings[0].verification.status, 'verified')
-    assert.equal(cell.findings[0].verification.verdict, 'JUDGMENT_CALL')
-    assert.match(cell.findings[0].verification.reason, /Repository evidence cannot settle/)
-    assert.match(cell.findings[0].verification.reason, /live probe/)
-    assert.match(cell.findings[0].verification.reason, /every relevant execution context/)
+    assert.deepEqual(cell.findings[0].verification, {
+      status: 'verified',
+      verdict: 'JUDGMENT_CALL',
+      reason: 'Repository evidence cannot settle the live UI label. Run a live probe in every relevant execution context.',
+      runtimeOwned: true,
+      liveProbePerformed: false,
+      liveProbeEvidence: null,
+    })
     const skepticCall = agentCalls.find(call => call.options.phase === 'Verify')
     assert.ok(skepticCall)
     assert.deepEqual(skepticCall.options.schema.properties.verdict.enum, ['CONFIRMED', 'REFUTED', 'JUDGMENT_CALL'])
+    assert.ok(skepticCall.options.schema.required.includes('liveProbeEvidence'))
     assert.match(skepticCall.prompt, /runtime-owned/)
     assert.match(skepticCall.prompt, /live probe/)
     assert.match(skepticCall.prompt, /every relevant execution context/)
+    assert.match(skepticCall.prompt, /liveProbeEvidence/)
   },
   async 'repo-only refutation of a runtime-owned claim becomes a judgment call'() {
     const reason = 'Repository design records show a different UI label.'
     const { result } = await runWorkflow(argsFor(), { reviewerReplies: [finding()], skepticReplies: [verdict('REFUTED', reason, true)] })
     const verification = getCell(result).findings[0].verification
-    assert.equal(verification.status, 'verified')
-    assert.equal(verification.verdict, 'JUDGMENT_CALL')
-    assert.match(verification.reason, /Repository design records/)
-    assert.match(verification.reason, /live probe/)
-    assert.match(verification.reason, /every relevant execution context/)
+    assert.deepEqual(verification, {
+      status: 'verified',
+      verdict: 'JUDGMENT_CALL',
+      reason: 'Repository design records show a different UI label. Run a live probe in every relevant execution context.',
+      runtimeOwned: true,
+      liveProbePerformed: false,
+      liveProbeEvidence: null,
+    })
+  },
+  async 'a claimed live probe without structured evidence remains unverified'() {
+    const response = { verdict: 'REFUTED', reason: 'Repository design records are the only evidence.', runtimeOwned: true, liveProbePerformed: true }
+    const { result } = await runWorkflow(argsFor(), { reviewerReplies: [finding()], skepticReplies: [response] })
+    const cell = getCell(result)
+    assert.equal(cell.status, 'needs-verification')
+    assertRetrySafety(cell)
+  },
+  async 'a performed live probe with blank evidence remains unverified'() {
+    const response = verdict('REFUTED', 'The live label differs.', true, true, ' ')
+    const { result } = await runWorkflow(argsFor(), { reviewerReplies: [finding()], skepticReplies: [response] })
+    const cell = getCell(result)
+    assert.equal(cell.status, 'needs-verification')
+    assertRetrySafety(cell)
+  },
+  async 'an unperformed live probe carrying evidence remains unverified'() {
+    const response = verdict('CONFIRMED', 'The finding is real.', false, false, 'Unexpected probe evidence.')
+    const { result } = await runWorkflow(argsFor(), { reviewerReplies: [finding()], skepticReplies: [response] })
+    const cell = getCell(result)
+    assert.equal(cell.status, 'needs-verification')
+    assertRetrySafety(cell)
+  },
+  async 'a performed live probe preserves the canonical verification shape'() {
+    const response = verdict('REFUTED', 'The live UI uses the expected label.', true, true, '  Observed the expected label on the home and settings pages.  ')
+    const { result } = await runWorkflow(argsFor(), { reviewerReplies: [finding()], skepticReplies: [response] })
+    assert.deepEqual(getCell(result).findings[0].verification, {
+      status: 'verified',
+      verdict: 'REFUTED',
+      reason: 'The live UI uses the expected label.',
+      runtimeOwned: true,
+      liveProbePerformed: true,
+      liveProbeEvidence: 'Observed the expected label on the home and settings pages.',
+    })
   },
   async 'an unclear runtime-evidence classification remains unverified'() {
     const response = { verdict: 'REFUTED', reason: 'The available evidence is inconclusive.', runtimeOwned: true }

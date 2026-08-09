@@ -37,12 +37,13 @@ const FINDINGS_SCHEMA = {
 const VERDICT_SCHEMA = {
   type: 'object',
   additionalProperties: false,
-  required: ['verdict', 'reason', 'runtimeOwned', 'liveProbePerformed'],
+  required: ['verdict', 'reason', 'runtimeOwned', 'liveProbePerformed', 'liveProbeEvidence'],
   properties: {
     verdict: { enum: ['CONFIRMED', 'REFUTED', 'JUDGMENT_CALL'] },
     reason: { type: 'string' },
     runtimeOwned: { type: 'boolean', description: 'True when the disputed claim is owned by a runtime the repository cannot settle' },
     liveProbePerformed: { type: 'boolean', description: 'True only when a live probe covered every relevant execution context' },
+    liveProbeEvidence: { type: 'string', description: 'Concrete evidence from every relevant live execution context, or an empty string when no probe was performed' },
   },
 }
 
@@ -129,6 +130,7 @@ function skepticPrompt(dimension, finding) {
     `Evidence claimed: ${finding.evidence}`,
     '',
     'Classify whether the disputed claim is runtime-owned and whether you performed a live probe in every relevant execution context.',
+    'Set liveProbePerformed true only after that complete probe and put concrete, nonblank evidence from every relevant execution context in liveProbeEvidence. Otherwise set liveProbePerformed false and liveProbeEvidence to an empty string.',
     'Repository or design-record evidence cannot refute a runtime-owned claim. Without a live probe in every relevant execution context, return JUDGMENT_CALL and recommend that probe, not REFUTED.',
     'Any live probe must reproduce the real module or script scope, framework call path, and execution context.',
     'Return CONFIRMED when the issue is real, REFUTED when concrete evidence proves it wrong, or JUDGMENT_CALL when it is not factually decidable from available evidence. Give a concrete, nonblank reason.',
@@ -172,18 +174,25 @@ function retryVerification(issue) {
 }
 
 function normalizeVerdict(response) {
-  if (!isRecord(response) || !VERDICTS.has(response.verdict) || typeof response.runtimeOwned !== 'boolean' || typeof response.liveProbePerformed !== 'boolean') {
+  if (!isRecord(response) || !VERDICTS.has(response.verdict) || typeof response.runtimeOwned !== 'boolean' || typeof response.liveProbePerformed !== 'boolean' || typeof response.liveProbeEvidence !== 'string') {
     return null
   }
   const reason = trimmed(response.reason)
   if (!reason) {
     return null
   }
+  const liveProbeEvidence = trimmed(response.liveProbeEvidence)
+  if (response.liveProbePerformed !== Boolean(liveProbeEvidence)) {
+    return null
+  }
+  let verdict = response.verdict
+  let normalizedReason = reason
   if (response.runtimeOwned && !response.liveProbePerformed && (response.verdict === 'REFUTED' || response.verdict === 'JUDGMENT_CALL')) {
-    return { status: 'verified', verdict: 'JUDGMENT_CALL', reason: `${reason} ${LIVE_PROBE_RECOMMENDATION}` }
+    verdict = 'JUDGMENT_CALL'
+    normalizedReason = `${reason} ${LIVE_PROBE_RECOMMENDATION}`
   }
 
-  return { status: 'verified', verdict: response.verdict, reason }
+  return { status: 'verified', verdict, reason: normalizedReason, runtimeOwned: response.runtimeOwned, liveProbePerformed: response.liveProbePerformed, liveProbeEvidence: liveProbeEvidence || null }
 }
 
 const agentOpts = extra => model ? { ...extra, model } : extra
