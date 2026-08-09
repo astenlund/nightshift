@@ -61,7 +61,7 @@ Use only these values:
 - Pending controller mutation `Kind`: `none`, `user-request`, or `post-review`; its `Status`: `none`, `prepared`, or `applied`.
 - `Post-review step`: `not-started`, `follow-up-routing`, `dimension-retrospective`, `authoring-retrospective`, `spec-reconciliation`, `hardening-stamp`, or `done`.
 
-`Autonomous handover` and `Phase changed` use raw `yes` or `no`. A persisted manual verdict is `CONFIRMED`, `REFUTED`, or `JUDGMENT_CALL`; Workflow output remains restricted to the Task 1 `CONFIRMED` and `REFUTED` values.
+`Autonomous handover` and `Phase changed` use raw `yes` or `no`. A persisted skeptic verdict in either dispatch mode is `CONFIRMED`, `REFUTED`, or `JUDGMENT_CALL`.
 
 Re-evaluate every N/A declaration at each phase boundary. Change a contradicted N/A to active with zero attempts immediately.
 
@@ -260,6 +260,10 @@ Before every original or repair dispatch, render the complete expected payload f
 
 Common context contains project context, relevant inlined project-instruction excerpts, the PATTERNS index when present, artifact identity and delivery, acknowledgements and caveats, and profile additional rules. Tell reviewers to verify ambiguous instructions against the working tree, consult linked pattern files only when the index signals relevance, report high-confidence issues only, and provide a concrete verification note even for LGTM.
 
+### Skeptic evidence contract
+
+Workflow and manual modes dispatch one fresh skeptic for every finding and accept `CONFIRMED`, `REFUTED`, or `JUDGMENT_CALL` with concrete evidence and a nonblank reason. Runtime-owned literals or formats cannot be refuted from repository or design-record evidence because those records can be stale against the live system. Both modes classify whether the claim is runtime-owned and whether a live probe covered every relevant execution context. If a runtime-owned `REFUTED` result clearly relies only on repository or design-record evidence, normalize it to `JUDGMENT_CALL` with a probe recommendation. If claim ownership or probe coverage is unclear, leave the skeptic result retryable. Only a live probe in every relevant execution context can support `REFUTED` for a runtime-owned claim. Any probe must reproduce the real module or script scope, framework call path, and execution context. Uncoordinated reviewer convergence raises verification priority, not truth.
+
 ### Workflow path
 
 Prefer the Workflow tool when it and the script are available. Invoke `${CLAUDE_PLUGIN_ROOT}/skills/revise/revise-round.workflow.js` once after `Start round` with only:
@@ -284,9 +288,9 @@ Do not pass payload content inline. The original stable cell ID is the sole uniq
 
 ### Manual Agent path
 
-If Workflow or its script is unavailable, or Workflow fails, dispatch one fresh `Explore` reviewer per active stable cell in one batch with the profile model pin. Each agent reads its exact payload and has no prior context. After all usable reviewers return, assign each finding `<cell-id>/finding-<one-based-result-index>`, persist it, then dispatch one fresh skeptic per finding in one batch. Ask for `CONFIRMED`, `REFUTED`, or `JUDGMENT_CALL` with concrete evidence and a nonblank reason. The controller accepts semantically equivalent prose and normalizes it, but does not coerce ambiguity or invent evidence.
+If Workflow or its script is unavailable, or Workflow fails, dispatch one fresh `Explore` reviewer per active stable cell in one batch with the profile model pin. Each agent reads its exact payload and has no prior context. After all usable reviewers return, assign each finding `<cell-id>/finding-<one-based-result-index>`, persist it, then dispatch one fresh skeptic per finding in one batch. Apply the shared skeptic evidence contract above. The controller accepts semantically equivalent prose and normalizes it, but does not coerce ambiguity or invent evidence.
 
-The manual controller may add direct verification evidence for a plan or spec finding only when a re-read establishes an objective quoted contradiction, symbol presence, or literal. That evidence supplements adjudication and never replaces the fresh skeptic verdict required for every reported finding; even an objectively verified finding still goes to a fresh skeptic. Runtime-owned literals or formats cannot be refuted from repository or design-record evidence; they require a live probe in every relevant execution context, or remain a JUDGMENT_CALL with a probe recommendation. Any probe must reproduce the real module or script scope, framework call path, and execution context. Uncoordinated reviewer convergence raises verification priority, not truth. When verdicts on different framings of one issue conflict, scope the fix to the core a CONFIRMED verdict evidenced and acknowledge the refuted framing.
+The manual controller may add direct verification evidence for a plan or spec finding only when a re-read establishes an objective quoted contradiction, symbol presence, or literal. That evidence supplements adjudication and never replaces the fresh skeptic verdict required for every reported finding; even an objectively verified finding still goes to a fresh skeptic. When verdicts on different framings of one issue conflict, scope the fix to the core a CONFIRMED verdict evidenced and acknowledge the refuted framing.
 
 ### Repair rules
 

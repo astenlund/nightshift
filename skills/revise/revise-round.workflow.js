@@ -37,16 +37,19 @@ const FINDINGS_SCHEMA = {
 const VERDICT_SCHEMA = {
   type: 'object',
   additionalProperties: false,
-  required: ['verdict', 'reason'],
+  required: ['verdict', 'reason', 'runtimeOwned', 'liveProbePerformed'],
   properties: {
-    verdict: { enum: ['CONFIRMED', 'REFUTED'] },
+    verdict: { enum: ['CONFIRMED', 'REFUTED', 'JUDGMENT_CALL'] },
     reason: { type: 'string' },
+    runtimeOwned: { type: 'boolean', description: 'True when the disputed claim is owned by a runtime the repository cannot settle' },
+    liveProbePerformed: { type: 'boolean', description: 'True only when a live probe covered every relevant execution context' },
   },
 }
 
 const FINGERPRINT_PATTERN = /^sha256:[0-9a-f]{12}$/
 const DIMENSION_ID_PATTERN = /^[a-z0-9][a-z0-9._/-]{0,115}$/
-const VERDICTS = new Set(['CONFIRMED', 'REFUTED'])
+const VERDICTS = new Set(['CONFIRMED', 'REFUTED', 'JUDGMENT_CALL'])
+const LIVE_PROBE_RECOMMENDATION = 'Run a live probe in every relevant execution context.'
 
 function isRecord(value) {
   return value !== null && typeof value === 'object' && !Array.isArray(value)
@@ -125,7 +128,10 @@ function skepticPrompt(dimension, finding) {
     `Location: ${finding.location}`,
     `Evidence claimed: ${finding.evidence}`,
     '',
-    'Return CONFIRMED when the issue is real or REFUTED when it is wrong. Give a concrete, nonblank reason either way.',
+    'Classify whether the disputed claim is runtime-owned and whether you performed a live probe in every relevant execution context.',
+    'Repository or design-record evidence cannot refute a runtime-owned claim. Without a live probe in every relevant execution context, return JUDGMENT_CALL and recommend that probe, not REFUTED.',
+    'Any live probe must reproduce the real module or script scope, framework call path, and execution context.',
+    'Return CONFIRMED when the issue is real, REFUTED when concrete evidence proves it wrong, or JUDGMENT_CALL when it is not factually decidable from available evidence. Give a concrete, nonblank reason.',
   ].join('\n')
 }
 
@@ -166,12 +172,15 @@ function retryVerification(issue) {
 }
 
 function normalizeVerdict(response) {
-  if (!isRecord(response) || !VERDICTS.has(response.verdict)) {
+  if (!isRecord(response) || !VERDICTS.has(response.verdict) || typeof response.runtimeOwned !== 'boolean' || typeof response.liveProbePerformed !== 'boolean') {
     return null
   }
   const reason = trimmed(response.reason)
   if (!reason) {
     return null
+  }
+  if (response.runtimeOwned && !response.liveProbePerformed && (response.verdict === 'REFUTED' || response.verdict === 'JUDGMENT_CALL')) {
+    return { status: 'verified', verdict: 'JUDGMENT_CALL', reason: `${reason} ${LIVE_PROBE_RECOMMENDATION}` }
   }
 
   return { status: 'verified', verdict: response.verdict, reason }
