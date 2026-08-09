@@ -15,3 +15,4 @@ jobs:
         with:
           node-version: 22
       - run: node skills/ready/ready.test.js
+      - run: node skills/revise/revise-round.test.js
