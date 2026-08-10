@@ -194,6 +194,12 @@ Gate the lifecycle with cheap single-pass reads from a different-model-family ag
 
 **Requires:** none.
 
+### [Adversarial repair dialogue](features/adversarial-repair-dialogue.md)
+
+Resolves a skeptic-confirmed finding through an agent-to-agent repair dialogue: the confirming skeptic resumes as repair author and the originating reviewer as its adversarial critic, iterating focused turns until the critic accepts the repair, a narrow disagreement blocks, or a safety limit stops the exchange. Neither agent edits the artifact; the controller applies the repair from a returned resolution package. Reviewer acceptance validates the proposal only and never produces LGTM, and any independent pre-existing problem found during the dialogue enters the normal fresh-skeptic finding pipeline.
+
+**Requires:** none.
+
 ## History
 
 Implemented features are archived in

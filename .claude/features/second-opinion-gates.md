@@ -38,7 +38,7 @@ Full requirements are not captured by a Q&A list alone: they live in whatever th
 
 ## The controller may probe the second opinion
 
-The controller can exchange a few messages with the second-opinion agent to ask for clarifications or motivations behind a change recommendation before disposing of it. Scope the exchange to motivation and evidence the controller cannot derive from the finding text, not open-ended debate. Bound the count ("a few messages"), keep it recorded in the persisted state, and let neither party edit the artifact during the dialogue. Guard against anchoring: the controller is the neutral adjudicator and must not "come around" to agreement by repetition. This is distinct from proposal #23's agent-to-agent adversarial repair dialogue: #23 is skeptic-reviews-repair; this is controller-probes-recommendation.
+The controller can exchange a few messages with the second-opinion agent to ask for clarifications or motivations behind a change recommendation before disposing of it. Scope the exchange to motivation and evidence the controller cannot derive from the finding text, not open-ended debate. Bound the count ("a few messages"), keep it recorded in the persisted state, and let neither party edit the artifact during the dialogue. Guard against anchoring: the controller is the neutral adjudicator and must not "come around" to agreement by repetition. This is distinct from the [adversarial-repair-dialogue](adversarial-repair-dialogue.md)'s agent-to-agent repair dialogue: there the skeptic-repair-author defends a repair against the originating reviewer; here the controller probes a recommendation.
 
 ## Post-fix re-certification, classified by fix bucket
 
@@ -64,7 +64,7 @@ Five design questions surfaced during the first spec review were resolved rather
 
 ## Relationship to neighboring proposals
 
-Subsumes proposal #20's holistic final reviewer, whose same-family high-tier read is weaker than a different-family read for the specific purpose of catching correlated misses. Gives proposal #19's durable scope anchor its concrete carrier. Preserves #12-style payload isolation: regular reviewers still see only their assigned dimension plus common context; the second opinion is the deliberate holistic exception. Complements proposal #23: the controller checks with the same second-opinion agent after applying its fix, mirroring #23's post-fix verification pattern.
+Subsumes proposal #20's holistic final reviewer, whose same-family high-tier read is weaker than a different-family read for the specific purpose of catching correlated misses. Gives proposal #19's durable scope anchor its concrete carrier. Preserves #12-style payload isolation: regular reviewers still see only their assigned dimension plus common context; the second opinion is the deliberate holistic exception. Complements the [adversarial-repair-dialogue](adversarial-repair-dialogue.md): the controller checks with the same second-opinion agent after applying its fix, mirroring that dialogue's reviewer-critic post-repair check.
 
 ## Status
 
