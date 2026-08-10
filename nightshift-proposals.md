@@ -1,6 +1,6 @@
 # Nightshift review-system proposals
 
-This document summarizes the proposals discussed for the Nightshift Claude Code plugin.
+This document summarizes the proposals discussed for the Nightshift Claude Code and Codex plugin.
 
 The main design goal is **high-confidence unattended operation**. Token efficiency matters only insofar as it does not materially reduce output quality or reliability.
 
@@ -528,22 +528,49 @@ Resolve routine implementation mechanics from the approved spec, project knowled
 
 Do not confuse unfamiliarity with the codebase for lack of technical sophistication. Avoid both unexplained implementation detail and condescending simplification. The default communication should let an experienced engineer make the decisions that actually require their judgment without first reconstructing the project's internals.
 
+## 23. Resolve confirmed findings through an adversarial repair dialogue
+
+After a skeptic confirms an in-scope finding, keep the detailed repair reasoning out of the controller context. Resume that skeptic as the repair author and the originating reviewer as its adversarial critic.
+
+The relationship remains adversarial throughout:
+
+- the skeptic proposes and defends an exact repair;
+- the reviewer tries to expose incomplete closure, regressions, ambiguity, and violated adjacent invariants;
+- the skeptic revises the proposal in response;
+- neither agent edits the artifact during the dialogue.
+
+Allow several exchanges when they continue to improve the repair. A few focused turns are cheaper than extra full review iterations caused by a shallow fix. Terminate when the reviewer has no remaining objection to the repair, the agents reach a narrow unresolved disagreement, or a safety limit prevents further exchanges. Keep productive repair dialogue separate from execution-repair budgets for malformed or missing agent output.
+
+Return a compact resolution package to the controller containing:
+
+- the exact proposed change;
+- why it closes the confirmed finding;
+- the adjacent invariants checked;
+- the required validation;
+- the reviewer's acceptance or remaining objection;
+- any independently discovered findings.
+
+The controller remains responsible for disposition, edit-surface enforcement, applying the repair, and running validation. It should not reconstruct the solution unless the agents disagree. Resume the same skeptic and reviewer sessions when available: their retained, role-specific understanding of the artifact area is a repair-quality mechanism, while prompt caching reduces cost. If either session is unavailable, use a fresh replacement with the complete persisted role-specific finding and dialogue state, and record the loss of session continuity. This recovery path preserves progress but is not equivalent to continued same-session deliberation.
+
+Reviewer acceptance validates only the repair proposal. It does not produce LGTM, deactivate the dimension, or replace the next fresh review of the actual artifact. Any independent pre-existing problem discovered during the dialogue enters the normal finding pipeline and receives verification from a fresh skeptic rather than the repair-author skeptic.
+
 # Suggested priority order
 
 1. **Replace parallel reviewer pairs with single-reviewer repeated review phases.**
 2. **Require at least two phases and a mutation-free final phase.**
 3. **Add orchestration tests for the new phase semantics.**
-4. **Fail closed on malformed/missing reviewer execution.**
-5. **Ensure reviewers see only their assigned dimension plus common context.**
-6. **Add `/ready` dependency-cycle detection.**
-7. **Add durable run identity/concurrency protection.**
-8. **Centralize reviewable-content fingerprinting in Node.**
-9. **Preserve the user's requested outcome as a durable scope anchor.**
-10. **Condense a required third phase to one holistic final reviewer.**
-11. **Calibrate first-draft rigor to deployment context.**
-12. **Communicate for technically sophisticated, time-constrained users.**
-13. **Move deterministic `init-backlog` mechanics out of prompts.**
-14. **Add a durable handover execution ledger if interrupted unattended runs remain a practical problem.**
+4. **Resolve confirmed findings through an adversarial skeptic-reviewer repair dialogue.**
+5. **Fail closed on malformed/missing reviewer execution.**
+6. **Ensure reviewers see only their assigned dimension plus common context.**
+7. **Add `/ready` dependency-cycle detection.**
+8. **Add durable run identity/concurrency protection.**
+9. **Centralize reviewable-content fingerprinting in Node.**
+10. **Preserve the user's requested outcome as a durable scope anchor.**
+11. **Condense a required third phase to one holistic final reviewer.**
+12. **Calibrate first-draft rigor to deployment context.**
+13. **Communicate for technically sophisticated, time-constrained users.**
+14. **Move deterministic `init-backlog` mechanics out of prompts.**
+15. **Add a durable handover execution ledger if interrupted unattended runs remain a practical problem.**
 
 # Core design in one sentence
 
