@@ -54,4 +54,4 @@ Draft proposal migrated from `nightshift-proposals.md` (#23) into the backlog; n
 - Per-finding fresh-skeptic verification of reported findings before adjudication (shipped; this feature changes what happens *after* a CONFIRMED verdict, not the verdict itself).
 - Resumable agent sessions carrying the complete persisted role-specific finding and dialogue state (the session identity mechanism already used by the revise engine).
 
-**Requires:** none.
+**Requires:** none (FEATURES.md index entry).
