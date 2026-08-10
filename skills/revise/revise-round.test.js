@@ -6,6 +6,10 @@ const SCRIPT_NAME = basename(__filename, '.js')
 const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor
 const SOURCE_PATH = join(__dirname, 'revise-round.workflow.js')
 const CASES = [
+  'workflow metadata describes completion-driven concurrency',
+  'all reviewer submissions start before any reviewer completion is observed',
+  'one reviewer starts every skeptic while another reviewer remains blocked',
+  'a missing nested skeptic result is returned as needs-retry',
   'one clean reviewer produces one usable LGTM cell',
   'one finding receives one skeptic verdict',
   'lgtm true with findings becomes needs-reviewer',
@@ -48,7 +52,7 @@ const CASES = [
   'stringified non-object args are rejected before launch',
   'a maximum-length cell id derives an uncapped finding id and distinct skeptic label',
   'multiple findings receive distinct stable skeptic ids',
-  'a missing final pipeline cell is returned as needs-reviewer',
+  'a missing final concurrent cell is returned as needs-reviewer',
 ]
 
 function argsFor(dimensions = [dimension('correctness')]) {
@@ -81,6 +85,17 @@ function verdict(verdictValue = 'CONFIRMED', reason = 'The early return is reach
   return { verdict: verdictValue, reason, runtimeOwned, liveProbePerformed, liveProbeEvidence }
 }
 
+function deferred() {
+  let resolve
+  let reject
+  const promise = new Promise((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise
+    reject = rejectPromise
+  })
+
+  return { promise, resolve, reject }
+}
+
 async function loadWorkflow() {
   const source = await readFile(SOURCE_PATH, 'utf8')
   const executable = source.replace('export const meta =', 'const meta =')
@@ -93,28 +108,37 @@ async function runWorkflow(args, options = {}) {
   const agentCalls = []
   const reviewerReplies = [...(options.reviewerReplies || [clean()])]
   const skepticReplies = [...(options.skepticReplies || [verdict()])]
-  const parallel = async (tasks) => Promise.all(tasks.map(task => task()))
-  const pipeline = async (items, ...stages) => {
-    const results = []
-    for (const item of items) {
-      let value = item
-      for (const stage of stages) {
-        value = await stage(value, item)
-      }
-      results.push(value)
+  let parallelCallIndex = 0
+  const parallel = async (tasks) => {
+    const currentCallIndex = parallelCallIndex
+    parallelCallIndex += 1
+    const results = await Promise.all(tasks.map(task => task()))
+
+    if (options.dropFinalCell && currentCallIndex === 0) {
+      return results.slice(0, -1)
+    }
+    if (options.dropFinalFinding && currentCallIndex === 1) {
+      return results.slice(0, -1)
     }
 
-    return options.dropFinalCell ? results.slice(0, -1) : results
+    return results
+  }
+  const pipeline = async () => {
+    throw new Error('pipeline must not launch')
   }
   const agent = async (prompt, optionsForAgent) => {
-    agentCalls.push({ prompt, options: optionsForAgent })
+    const call = { prompt, options: optionsForAgent }
+    agentCalls.push(call)
+    options.onAgentCall?.(call)
     const replies = optionsForAgent.phase === 'Review' ? reviewerReplies : skepticReplies
     const next = replies.shift()
     if (next instanceof Error) {
       throw next
     }
+    const response = await next
+    options.onAgentResult?.(call, response)
 
-    return next
+    return response
   }
 
   const result = await workflow(args, pipeline, parallel, agent)
@@ -167,6 +191,157 @@ async function replacePendingSkeptic(cell, id, manualSkeptic) {
 }
 
 const TESTS = {
+  async 'workflow metadata describes completion-driven concurrency'() {
+    const source = await readFile(SOURCE_PATH, 'utf8')
+    const expectedMetadata = [
+      "  description: 'One revise-loop round: concurrent reviewer-to-skeptic pipelines per active dimension',",
+      '  phases: [',
+      "    { title: 'Review', detail: 'all active-dimension reviewers are submitted concurrently' },",
+      "    { title: 'Verify', detail: 'each finding fan-out is submitted when its reviewer returns, overlapping unfinished reviews' },",
+      '  ],',
+    ].join('\n')
+    assert.equal(source.includes(expectedMetadata), true)
+  },
+  async 'all reviewer submissions start before any reviewer completion is observed'() {
+    const firstReviewer = deferred()
+    const secondReviewer = deferred()
+    const allReviewersSubmitted = deferred()
+    const events = []
+    let reviewerSubmissions = 0
+    const dimensions = [dimension('correctness'), dimension('safety', 'Safety')]
+    const execution = runWorkflow(argsFor(dimensions), {
+      reviewerReplies: [firstReviewer.promise, secondReviewer.promise],
+      onAgentCall(call) {
+        events.push(`submit:${call.options.label}`)
+        if (call.options.phase === 'Review') {
+          reviewerSubmissions += 1
+          if (reviewerSubmissions === 2) {
+            allReviewersSubmitted.resolve()
+          }
+        }
+      },
+      onAgentResult: call => events.push(`observe:${call.options.label}`),
+    })
+    const submissionDeadline = setTimeout(
+      () => allReviewersSubmitted.reject(new Error('timed out waiting for both reviewer submissions')),
+      1000,
+    )
+
+    try {
+      await allReviewersSubmitted.promise
+      firstReviewer.resolve(clean('Correctness checked.'))
+      secondReviewer.resolve(clean('Safety checked.'))
+    } finally {
+      clearTimeout(submissionDeadline)
+      firstReviewer.resolve(clean('Correctness checked.'))
+      secondReviewer.resolve(clean('Safety checked.'))
+    }
+
+    await execution
+    const secondSubmission = events.indexOf('submit:review:safety')
+    const firstObservation = events.findIndex(event => event.startsWith('observe:review:'))
+    assert.notEqual(secondSubmission, -1)
+    assert.notEqual(firstObservation, -1)
+    assert.ok(secondSubmission < firstObservation)
+  },
+  async 'one reviewer starts every skeptic while another reviewer remains blocked'() {
+    const firstReviewer = deferred()
+    const blockedReviewer = deferred()
+    const allReviewersSubmitted = deferred()
+    const firstSkeptic = deferred()
+    const secondSkeptic = deferred()
+    const allSkepticsSubmitted = deferred()
+    const events = []
+    let reviewerSubmissions = 0
+    let skepticSubmissions = 0
+    const twoFindings = finding('First issue')
+    twoFindings.findings.push({ summary: 'Second issue', location: 'src/parser.js parseValue', evidence: 'Concrete evidence for the second issue.' })
+    const dimensions = [dimension('correctness'), dimension('safety', 'Safety')]
+    const execution = runWorkflow(argsFor(dimensions), {
+      reviewerReplies: [firstReviewer.promise, blockedReviewer.promise],
+      skepticReplies: [firstSkeptic.promise, secondSkeptic.promise],
+      onAgentCall(call) {
+        events.push(`submit:${call.options.label}`)
+        if (call.options.phase === 'Review') {
+          reviewerSubmissions += 1
+          if (reviewerSubmissions === 2) {
+            allReviewersSubmitted.resolve()
+          }
+        }
+        if (call.options.phase === 'Verify') {
+          skepticSubmissions += 1
+          if (skepticSubmissions === 2) {
+            allSkepticsSubmitted.resolve()
+          }
+        }
+      },
+      onAgentResult: call => events.push(`observe:${call.options.label}`),
+    })
+    const reviewerSubmissionDeadline = setTimeout(
+      () => allReviewersSubmitted.reject(new Error('timed out waiting for both reviewer submissions')),
+      1000,
+    )
+    const skepticSubmissionDeadline = setTimeout(
+      () => allSkepticsSubmitted.reject(new Error('timed out waiting for both skeptic submissions')),
+      1000,
+    )
+
+    try {
+      await allReviewersSubmitted.promise
+      firstReviewer.resolve(twoFindings)
+      await allSkepticsSubmitted.promise
+      const blockedSubmission = events.indexOf('submit:review:safety')
+      const firstReviewObservation = events.indexOf('observe:review:correctness')
+      assert.notEqual(blockedSubmission, -1)
+      assert.notEqual(firstReviewObservation, -1)
+      assert.ok(blockedSubmission < firstReviewObservation)
+      assert.deepEqual(events.filter(event => event.startsWith('submit:verify:')), [
+        'submit:verify:correctness/finding-1',
+        'submit:verify:correctness/finding-2',
+      ])
+      assert.equal(events.some(event => event.startsWith('observe:verify:')), false)
+      const source = await readFile(SOURCE_PATH, 'utf8')
+      const expectedVerifyFindingLaunch = [
+        'async function verifyFinding(dimension, finding) {',
+        '  try {',
+        '    const response = await agent(skepticPrompt(dimension, finding), agentOpts({',
+      ].join('\n')
+      assert.equal(source.includes(expectedVerifyFindingLaunch), true)
+      const expectedFindingsReconciliation = [
+        '  const completedFindings = await parallel(cell.findings.map(finding => () => verifyFinding(dimension, finding)))',
+        '  const findingById = new Map(completedFindings.map(finding => [finding.id, finding]))',
+        '  const findings = cell.findings.map(finding => findingById.get(finding.id) || {',
+        '    ...finding,',
+        "    verification: retryVerification('skeptic result was missing'),",
+        '  })',
+      ].join('\n')
+      assert.equal(source.includes(expectedFindingsReconciliation), true)
+    } finally {
+      clearTimeout(reviewerSubmissionDeadline)
+      clearTimeout(skepticSubmissionDeadline)
+      firstReviewer.resolve(twoFindings)
+      firstSkeptic.resolve(verdict())
+      secondSkeptic.resolve(verdict())
+      blockedReviewer.resolve(clean('Safety stayed blocked through the first skeptic fan-out.'))
+    }
+
+    const { result } = await execution
+    assert.deepEqual(result.dimensions.map(cell => cell.id), ['correctness', 'safety'])
+  },
+  async 'a missing nested skeptic result is returned as needs-retry'() {
+    const twoFindings = finding('First issue')
+    twoFindings.findings.push({ summary: 'Second issue', location: 'src/parser.js parseValue', evidence: 'Concrete evidence for the second issue.' })
+    const { result } = await runWorkflow(argsFor([dimension('correctness')]), {
+      reviewerReplies: [twoFindings],
+      skepticReplies: [verdict(), verdict()],
+      dropFinalFinding: true,
+    })
+    const cell = result.dimensions[0]
+    assert.equal(cell.status, 'needs-verification')
+    assert.deepEqual(cell.findings.map(item => item.id), ['correctness/finding-1', 'correctness/finding-2'])
+    assert.equal(cell.findings[0].verification.status, 'verified')
+    assert.deepEqual(cell.findings[1].verification, { status: 'needs-retry', issue: 'skeptic result was missing' })
+  },
   async 'one clean reviewer produces one usable LGTM cell'() {
     const { result, agentCalls } = await runWorkflow(argsFor())
     const cell = getCell(result)
@@ -491,7 +666,7 @@ const TESTS = {
     assert.deepEqual(findings.map(item => item.id), ['correctness/finding-1', 'correctness/finding-2'])
     assert.notEqual(agentCalls[1].options.label, agentCalls[2].options.label)
   },
-  async 'a missing final pipeline cell is returned as needs-reviewer'() {
+  async 'a missing final concurrent cell is returned as needs-reviewer'() {
     const { result } = await runWorkflow(argsFor(), { dropFinalCell: true })
     const cell = getCell(result)
     assert.equal(cell.status, 'needs-reviewer')

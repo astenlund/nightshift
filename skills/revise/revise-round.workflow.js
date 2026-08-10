@@ -3,12 +3,12 @@
 // so a CRLF checkout makes Workflow(scriptPath=...) unusable.
 export const meta = {
   name: 'revise-round',
-  description: 'One revise-loop round: 1 fresh reviewer per active dimension, then a skeptic per finding',
-  whenToUse: 'Invoked by the nightshift revise skill; not run standalone.',
+  description: 'One revise-loop round: concurrent reviewer-to-skeptic pipelines per active dimension',
   phases: [
-    { title: 'Review', detail: '1 fresh reviewer per active dimension' },
-    { title: 'Verify', detail: 'one skeptic per finding' },
+    { title: 'Review', detail: 'all active-dimension reviewers are submitted concurrently' },
+    { title: 'Verify', detail: 'each finding fan-out is submitted when its reviewer returns, overlapping unfinished reviews' },
   ],
+  whenToUse: 'Invoked by the nightshift revise skill; not run standalone.',
 }
 
 const FINDINGS_SCHEMA = {
@@ -215,25 +215,32 @@ async function review(dimension) {
   }
 }
 
+async function verifyFinding(dimension, finding) {
+  try {
+    const response = await agent(skepticPrompt(dimension, finding), agentOpts({
+      label: `verify:${finding.id}`,
+      phase: 'Verify',
+      schema: VERDICT_SCHEMA,
+      agentType: 'Explore',
+    }))
+    const verification = normalizeVerdict(response)
+
+    return { ...finding, verification: verification || retryVerification('skeptic output was missing or invalid') }
+  } catch {
+    return { ...finding, verification: retryVerification('skeptic execution failed') }
+  }
+}
+
 async function verify(cell, dimension) {
   if (cell.status !== 'usable' || cell.findings.length === 0) {
     return cell
   }
-  const findings = await parallel(cell.findings.map(finding => async () => {
-    try {
-      const response = await agent(skepticPrompt(dimension, finding), agentOpts({
-        label: `verify:${finding.id}`,
-        phase: 'Verify',
-        schema: VERDICT_SCHEMA,
-        agentType: 'Explore',
-      }))
-      const verification = normalizeVerdict(response)
-
-      return { ...finding, verification: verification || retryVerification('skeptic output was missing or invalid') }
-    } catch {
-      return { ...finding, verification: retryVerification('skeptic execution failed') }
-    }
-  }))
+  const completedFindings = await parallel(cell.findings.map(finding => () => verifyFinding(dimension, finding)))
+  const findingById = new Map(completedFindings.map(finding => [finding.id, finding]))
+  const findings = cell.findings.map(finding => findingById.get(finding.id) || {
+    ...finding,
+    verification: retryVerification('skeptic result was missing'),
+  })
 
   return {
     ...cell,
@@ -242,11 +249,13 @@ async function verify(cell, dimension) {
   }
 }
 
-const completed = await pipeline(
-  dimensions,
-  dimension => review(dimension),
-  (cell, dimension) => verify(cell, dimension),
-)
+async function runDimension(dimension) {
+  const cell = await review(dimension)
+
+  return verify(cell, dimension)
+}
+
+const completed = await parallel(dimensions.map(dimension => () => runDimension(dimension)))
 const resultById = new Map()
 for (const cell of Array.isArray(completed) ? completed : []) {
   if (cell && typeof cell.id === 'string') {
