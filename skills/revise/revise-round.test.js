@@ -9,7 +9,7 @@ const CASES = [
   'workflow metadata describes completion-driven concurrency',
   'all reviewer submissions start before any reviewer completion is observed',
   'one reviewer starts every skeptic while another reviewer remains blocked',
-  'a missing nested skeptic result is returned as needs-retry',
+  'missing or malformed nested skeptic results are returned as needs-retry',
   'one clean reviewer produces one usable LGTM cell',
   'one finding receives one skeptic verdict',
   'lgtm true with findings becomes needs-reviewer',
@@ -117,8 +117,22 @@ async function runWorkflow(args, options = {}) {
     if (options.dropFinalCell && currentCallIndex === 0) {
       return results.slice(0, -1)
     }
-    if (options.dropFinalFinding && currentCallIndex === 1) {
-      return results.slice(0, -1)
+    if (currentCallIndex === 1) {
+      if (options.findingResultShape === 'short') {
+        return results.slice(0, -1)
+      }
+      if (options.findingResultShape === 'sparse') {
+        const sparseResults = [...results]
+        delete sparseResults[sparseResults.length - 1]
+
+        return sparseResults
+      }
+      if (options.findingResultShape === 'non-array') {
+        return null
+      }
+      if (options.findingResultShape === 'reordered') {
+        return [...results].reverse()
+      }
     }
 
     return results
@@ -300,22 +314,6 @@ const TESTS = {
         'submit:verify:correctness/finding-2',
       ])
       assert.equal(events.some(event => event.startsWith('observe:verify:')), false)
-      const source = await readFile(SOURCE_PATH, 'utf8')
-      const expectedVerifyFindingLaunch = [
-        'async function verifyFinding(dimension, finding) {',
-        '  try {',
-        '    const response = await agent(skepticPrompt(dimension, finding), agentOpts({',
-      ].join('\n')
-      assert.equal(source.includes(expectedVerifyFindingLaunch), true)
-      const expectedFindingsReconciliation = [
-        '  const completedFindings = await parallel(cell.findings.map(finding => () => verifyFinding(dimension, finding)))',
-        '  const findingById = new Map(completedFindings.map(finding => [finding.id, finding]))',
-        '  const findings = cell.findings.map(finding => findingById.get(finding.id) || {',
-        '    ...finding,',
-        "    verification: retryVerification('skeptic result was missing'),",
-        '  })',
-      ].join('\n')
-      assert.equal(source.includes(expectedFindingsReconciliation), true)
     } finally {
       clearTimeout(reviewerSubmissionDeadline)
       clearTimeout(skepticSubmissionDeadline)
@@ -328,19 +326,31 @@ const TESTS = {
     const { result } = await execution
     assert.deepEqual(result.dimensions.map(cell => cell.id), ['correctness', 'safety'])
   },
-  async 'a missing nested skeptic result is returned as needs-retry'() {
+  async 'missing or malformed nested skeptic results are returned as needs-retry'() {
     const twoFindings = finding('First issue')
     twoFindings.findings.push({ summary: 'Second issue', location: 'src/parser.js parseValue', evidence: 'Concrete evidence for the second issue.' })
-    const { result } = await runWorkflow(argsFor([dimension('correctness')]), {
-      reviewerReplies: [twoFindings],
-      skepticReplies: [verdict(), verdict()],
-      dropFinalFinding: true,
-    })
-    const cell = result.dimensions[0]
-    assert.equal(cell.status, 'needs-verification')
-    assert.deepEqual(cell.findings.map(item => item.id), ['correctness/finding-1', 'correctness/finding-2'])
-    assert.equal(cell.findings[0].verification.status, 'verified')
-    assert.deepEqual(cell.findings[1].verification, { status: 'needs-retry', issue: 'skeptic result was missing' })
+    const scenarios = [
+      { shape: 'short', expectedCellStatus: 'needs-verification', expectedStatuses: ['verified', 'needs-retry'], expectedReasons: ['First result.', null] },
+      { shape: 'sparse', expectedCellStatus: 'needs-verification', expectedStatuses: ['verified', 'needs-retry'], expectedReasons: ['First result.', null] },
+      { shape: 'non-array', expectedCellStatus: 'needs-verification', expectedStatuses: ['needs-retry', 'needs-retry'], expectedReasons: [null, null] },
+      { shape: 'reordered', expectedCellStatus: 'usable', expectedStatuses: ['verified', 'verified'], expectedReasons: ['First result.', 'Second result.'] },
+    ]
+
+    for (const scenario of scenarios) {
+      const { result } = await runWorkflow(argsFor([dimension('correctness')]), {
+        reviewerReplies: [twoFindings],
+        skepticReplies: [verdict('CONFIRMED', 'First result.'), verdict('REFUTED', 'Second result.')],
+        findingResultShape: scenario.shape,
+      })
+      const cell = result.dimensions[0]
+      assert.equal(cell.status, scenario.expectedCellStatus, scenario.shape)
+      assert.deepEqual(cell.findings.map(item => item.id), ['correctness/finding-1', 'correctness/finding-2'], scenario.shape)
+      assert.deepEqual(cell.findings.map(item => item.verification.status), scenario.expectedStatuses, scenario.shape)
+      assert.deepEqual(cell.findings.map(item => item.verification.reason ?? null), scenario.expectedReasons, scenario.shape)
+      for (const missingFinding of cell.findings.filter(item => item.verification.status === 'needs-retry')) {
+        assert.deepEqual(missingFinding.verification, { status: 'needs-retry', issue: 'skeptic result was missing' }, scenario.shape)
+      }
+    }
   },
   async 'one clean reviewer produces one usable LGTM cell'() {
     const { result, agentCalls } = await runWorkflow(argsFor())

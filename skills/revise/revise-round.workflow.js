@@ -173,6 +173,17 @@ function retryVerification(issue) {
   return { status: 'needs-retry', issue }
 }
 
+function resultsById(results) {
+  const byId = new Map()
+  for (const result of Array.isArray(results) ? results : []) {
+    if (isRecord(result) && typeof result.id === 'string') {
+      byId.set(result.id, result)
+    }
+  }
+
+  return byId
+}
+
 function normalizeVerdict(response) {
   if (!isRecord(response) || !VERDICTS.has(response.verdict) || typeof response.runtimeOwned !== 'boolean' || typeof response.liveProbePerformed !== 'boolean' || typeof response.liveProbeEvidence !== 'string') {
     return null
@@ -236,7 +247,7 @@ async function verify(cell, dimension) {
     return cell
   }
   const completedFindings = await parallel(cell.findings.map(finding => () => verifyFinding(dimension, finding)))
-  const findingById = new Map(completedFindings.map(finding => [finding.id, finding]))
+  const findingById = resultsById(completedFindings)
   const findings = cell.findings.map(finding => findingById.get(finding.id) || {
     ...finding,
     verification: retryVerification('skeptic result was missing'),
@@ -256,12 +267,7 @@ async function runDimension(dimension) {
 }
 
 const completed = await parallel(dimensions.map(dimension => () => runDimension(dimension)))
-const resultById = new Map()
-for (const cell of Array.isArray(completed) ? completed : []) {
-  if (cell && typeof cell.id === 'string') {
-    resultById.set(cell.id, cell)
-  }
-}
+const resultById = resultsById(completed)
 
 return {
   phase,
