@@ -186,9 +186,13 @@ frontmatter on the breakout file.
 
 Nothing being explored yet.
 
-## (add sections as features emerge)
+## Review hardening
 
-Nothing captured yet.
+### [Second-opinion gates](features/second-opinion-gates.md)
+
+Gate the lifecycle with cheap single-pass reads from a different-model-family agent: one at the settled requirements list, one at the freshly written spec, one at the hardened spec. Each read lands before the artifact feeds the next stage, and over the final artifact the hardened gate replaces the holistic third-phase reviewer role. Findings enter the normal skeptic/controller pipeline; the gate is a reader, not an authority.
+
+**Requires:** none.
 
 ## History
 

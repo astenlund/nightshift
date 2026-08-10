@@ -489,6 +489,8 @@ This gives controllers and fresh reviewers a durable reference when completeness
 
 ## 20. Condense a required third phase to one holistic final reviewer
 
+*(Subsumed by the second-opinion gates feature (`.claude/features/second-opinion-gates.md`): the hardened-spec second opinion replaces the holistic final reviewer with a different-family read, which is a stronger independence mechanism than a same-family high-tier read. This section remains as the earlier design record of the role.)*
+
 Keep dimension-specific reviewers for phases 1 and 2. If phase 2 changes the artifact and therefore requires phase 3, replace another full dimension batch with one fresh `sol-high` reviewer responsible for the complete final artifact.
 
 The holistic reviewer should receive:
@@ -554,6 +556,10 @@ The controller remains responsible for disposition, edit-surface enforcement, ap
 
 Reviewer acceptance validates only the repair proposal. It does not produce LGTM, deactivate the dimension, or replace the next fresh review of the actual artifact. Any independent pre-existing problem discovered during the dialogue enters the normal finding pipeline and receives verification from a fresh skeptic rather than the repair-author skeptic.
 
+## 24. Add cheap second-opinion gates at lifecycle checkpoints
+
+*(Moved to the feature file `.claude/features/second-opinion-gates.md`, its authoritative design record.)*
+
 # Suggested priority order
 
 1. **Replace parallel reviewer pairs with single-reviewer repeated review phases.**
@@ -566,7 +572,7 @@ Reviewer acceptance validates only the repair proposal. It does not produce LGTM
 8. **Add durable run identity/concurrency protection.**
 9. **Centralize reviewable-content fingerprinting in Node.**
 10. **Preserve the user's requested outcome as a durable scope anchor.**
-11. **Condense a required third phase to one holistic final reviewer.**
+11. **Add cheap second-opinion gates at lifecycle checkpoints** (feature file `.claude/features/second-opinion-gates.md`; subsumes #20's holistic final reviewer).
 12. **Calibrate first-draft rigor to deployment context.**
 13. **Communicate for technically sophisticated, time-constrained users.**
 14. **Move deterministic `init-backlog` mechanics out of prompts.**
