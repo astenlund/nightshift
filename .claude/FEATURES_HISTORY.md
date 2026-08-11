@@ -25,4 +25,4 @@ what already shipped, not to resolve dependencies.
 
 ## Entries
 
-Nothing yet.
+- [Dependency-cycle detection](features/dependency-cycle-detection.md): /nightshift:ready now surfaces dependency cycles as structural errors (edges from top-level `**Requires:**` lines; SCCs of two or more entries). Shipped 2026-08-11 in the 2.0.27 batch (commits aa667f6..d4b28dd).
