@@ -1,6 +1,6 @@
 # Adversarial repair dialogue
 
-Feature: resolve confirmed findings through an adversarial skeptic-reviewer repair dialogue. This file is the authoritative design record; it absorbs the design formerly drafted as proposal #23 in `nightshift-proposals.md`.
+Feature: resolve confirmed findings through an adversarial skeptic-reviewer repair dialogue. This file is the authoritative design record.
 
 ## What it does
 
@@ -46,7 +46,7 @@ The second-opinion gates feature ([second-opinion-gates](second-opinion-gates.md
 
 ## Status
 
-Draft proposal migrated from `nightshift-proposals.md` (#23) into the backlog; not yet hardened by a revise-spec review. Depends on nothing outstanding: the review-phase machinery and skeptic/controller pipeline it builds on are shipped.
+Draft design in the backlog; not yet hardened by a revise-spec review. Depends on nothing outstanding: the review-phase machinery and skeptic/controller pipeline it builds on are shipped.
 
 ## Requirements
 

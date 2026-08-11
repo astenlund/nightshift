@@ -2,7 +2,7 @@
 
 Status: signed off 2026-08-11 06:05, content: 00bd6d16
 
-Feature: add deterministic dependency-cycle detection to the `/nightshift:ready` backlog parser. This file is the authoritative design record; it absorbs the design formerly drafted as proposal #14 in `nightshift-proposals.md`.
+Feature: add deterministic dependency-cycle detection to the `/nightshift:ready` backlog parser. This file is the authoritative design record.
 
 ## What it does
 
@@ -44,7 +44,7 @@ Add fixture tests to `ready.test.js` covering: a two-entry mutual cycle (both me
 
 ## Status
 
-Migrated from `nightshift-proposals.md` (#14) into the backlog and hardened by a lightened single-reviewer revise-spec review (collapsed swarm, curated dimension set) that converged over two phases on 2026-08-11; see `## Hardening`. Depends on nothing outstanding: `/nightshift:ready` and its deterministic parser are shipped.
+Migrated into the backlog and hardened by a lightened single-reviewer revise-spec review (collapsed swarm, curated dimension set) that converged over two phases on 2026-08-11; see `## Hardening`. Depends on nothing outstanding: `/nightshift:ready` and its deterministic parser are shipped.
 
 ## Requirements
 

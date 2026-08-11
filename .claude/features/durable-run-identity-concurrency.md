@@ -1,6 +1,6 @@
 # Durable run identity and concurrency protection
 
-Feature: give each Nightshift run a durable identity and a scoped scratch home, and protect concurrent same-scope runs from silently overwriting each other. This file is the authoritative design record; it absorbs the design formerly drafted as proposal #13 in `nightshift-proposals.md`.
+Feature: give each Nightshift run a durable identity and a scoped scratch home, and protect concurrent same-scope runs from silently overwriting each other. This file is the authoritative design record.
 
 ## What it does
 
@@ -35,7 +35,7 @@ Every run carries a frozen **identity block** captured at run creation and persi
 - artifact fingerprint;
 - the durable provenance stamp (8-character) where the artifact carries one.
 
-The identity block is captured once and never mutated during the run; it is the ground truth against which a returning run compares. It deliberately excludes *mutable* run fields (current phase, round, applicable dimensions, per-dimension state, convergence counters), which live in the state body and legitimately change. Proposal #13's candidate list mixed the two; splitting them is what makes the check meaningful — identity must be stable to prove "same work," while phase/round/dimension state is exactly what resumes.
+The identity block is captured once and never mutated during the run; it is the ground truth against which a returning run compares. It deliberately excludes *mutable* run fields (current phase, round, applicable dimensions, per-dimension state, convergence counters), which live in the state body and legitimately change. An earlier candidate list mixed the two; splitting them is what makes the check meaningful — identity must be stable to prove "same work," while phase/round/dimension state is exactly what resumes.
 
 ### The scope hash
 

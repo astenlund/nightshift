@@ -1,6 +1,6 @@
 # Second-opinion gates
 
-Feature: cheap second-opinion gates at lifecycle checkpoints. This file is the authoritative design record; it absorbs the design formerly drafted as proposal #24 in `nightshift-proposals.md`.
+Feature: cheap second-opinion gates at lifecycle checkpoints. This file is the authoritative design record.
 
 ## What it does
 
@@ -14,7 +14,7 @@ The gates sit at the three points where an artifact graduates to become the inpu
 
 - **Requirements gate.** Immediately after a completed brainstorm session settles its questions, before the controller turns them into a spec. The reqs list is usually presented to the user for confirmation anyway, so the second opinion rides that confirmation moment.
 - **Initial-spec gate.** Right after the controller writes the spec, before hardening. Catches a bad requirements read or structural mis-sketch before the dimension swarm iterates on it.
-- **Hardened-spec gate.** After the review stage converges. This is the strong-model read on the exact artifact that will be handed off (the final invariant), and it subsumes the holistic third-phase reviewer role of proposal #20.
+- **Hardened-spec gate.** After the review stage converges. This is the strong-model read on the exact artifact that will be handed off (the final invariant), and it subsumes the holistic third-phase reviewer role.
 
 A single final-gate-only alternative was considered and rejected: it concentrates the strong-model budget at one point but forfeits the cheap early catch at the requirements list, where a misread is cheapest to correct. The three-gate allocation spends a small fixed budget where it has the highest leverage rather than the largest single read.
 
@@ -34,7 +34,7 @@ Each gate forwards the artifact plus the minimum context that produced it, never
 - initial-spec gate: the spec plus the reqs list;
 - hardened-spec gate: the spec, the reqs list, the acknowledgements and explicit anti-goals.
 
-Full requirements are not captured by a Q&A list alone: they live in whatever the user actually described. The reqs list is therefore the user requirement description(s) plus the settled Q&A, persisted as a controller-owned, short-lived artifact at the requirements-gate moment, and forwarded unchanged into later gates. It becomes the natural carrier for the durable scope anchor of proposal #19, grounding completeness and soundness checks without re-requesting the conversation.
+Full requirements are not captured by a Q&A list alone: they live in whatever the user actually described. The reqs list is therefore the user requirement description(s) plus the settled Q&A, persisted as a controller-owned, short-lived artifact at the requirements-gate moment, and forwarded unchanged into later gates. It becomes the natural carrier for the durable scope anchor, grounding completeness and soundness checks without re-requesting the conversation.
 
 ## The controller may probe the second opinion
 
@@ -42,7 +42,7 @@ The controller can exchange a few messages with the second-opinion agent to ask 
 
 ## Post-fix re-certification, classified by fix bucket
 
-A second-opinion finding that causes a fix mutates an artifact the earlier machinery already certified. The hard invariant from proposal #5 governs the response: **no certifying read may span an artifact mutation.** Re-certification depends on what kind of fix landed:
+A second-opinion finding that causes a fix mutates an artifact the earlier machinery already certified. The hard invariant governs the response: **no certifying read may span an artifact mutation.** Re-certification depends on what kind of fix landed:
 
 - **Second-opinion-unique fix** (a cross-dimensional gap or integration look no single dimension owns): one fresh second opinion over the fixed artifact, informed of the delta just applied. That fix is the gate's own integration-look catch, so dimension certifications, which were not about what it touched, stand.
 - **Dimension-owned fix** (a gap a named dimension reviewer should have caught): that dimension's LGTM is invalidated because its territory changed under it. Re-enter the owning dimension (or the dimensions whose reviewable content the fix touches) for a fresh review, not the whole ladder.
@@ -50,7 +50,7 @@ A second-opinion finding that causes a fix mutates an artifact the earlier machi
 
 When a dimension-owned fix lands *from a hardened-gate finding*, the hardened gate re-runs after the owning dimension converges. Without this, the gate read happens on the pre-fix artifact while the handed-off artifact receives only a same-family, single-dimension review, silently falsifying the "exact artifact being handed off" guarantee. Re-running the gate preserves the final invariant for every fix bucket, not just structural ones.
 
-The "controller judgment call" is therefore not *whether* to re-review but *which bucket* the fix falls in, using the rigor profile from proposal #21. Whatever path lands, the artifact that closes the gate must be one no certifying read spanned a mutation across.
+The "controller judgment call" is therefore not *whether* to re-review but *which bucket* the fix falls in, using the rigor profile. Whatever path lands, the artifact that closes the gate must be one no certifying read spanned a mutation across.
 
 ## Resolved open questions
 
@@ -62,9 +62,9 @@ Five design questions surfaced during the first spec review were resolved rather
 - **Gate failure and recovery.** A gate read that fails partway (missing or malformed output, unreachable user-chosen model) does not hand off silently. It follows a bounded repair path: a fresh replacement or fallback model within the user's chosen family or tier. A hardened-gate read that cannot complete blocks handoff until it does or the user explicitly defers. No ungated artifact passes.
 - **Degenerate inputs.** The requirements gate certifies the combined requirements context (user requirement description(s) plus settled Q&A). An empty Q&A list is a legitimate settled state when the user's description is complete and specific; a small scope with detailed initial requirements needs no questions, and an empty list is not a halt. The degenerate case is a gate with no requirements content at all (no description and no questions), which the controller treats as not-yet-settled and does not advance. A stub spec at the initial-spec gate is gated as-is: near-empty is accepted for a capture-stage stub, and the hardened-spec gate is what certifies the elaborated result.
 
-## Relationship to neighboring proposals
+## Relationship to neighboring features
 
-Subsumes proposal #20's holistic final reviewer, whose same-family high-tier read is weaker than a different-family read for the specific purpose of catching correlated misses. Gives proposal #19's durable scope anchor its concrete carrier. Preserves #12-style payload isolation: regular reviewers still see only their assigned dimension plus common context; the second opinion is the deliberate holistic exception. Complements the [adversarial-repair-dialogue](adversarial-repair-dialogue.md): the controller checks with the same second-opinion agent after applying its fix, mirroring that dialogue's reviewer-critic post-repair check.
+Subsumes the holistic final reviewer role, whose same-family high-tier read is weaker than a different-family read for the specific purpose of catching correlated misses. Gives the durable scope anchor its concrete carrier. Preserves payload isolation: regular reviewers still see only their assigned dimension plus common context; the second opinion is the deliberate holistic exception. Complements the [adversarial-repair-dialogue](adversarial-repair-dialogue.md): the controller checks with the same second-opinion agent after applying its fix, mirroring that dialogue's reviewer-critic post-repair check.
 
 ## Status
 
