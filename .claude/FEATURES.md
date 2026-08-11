@@ -206,7 +206,7 @@ Resolves a skeptic-confirmed finding through an agent-to-agent repair dialogue: 
 
 ### [Dependency-cycle detection](features/dependency-cycle-detection.md)
 
-Adds deterministic strongly-connected-component detection over the active in-backlog `**Requires:**` dependency graph to `/nightshift:ready`. A genuine cycle (two or more mutually-blocking entries, or a self-loop) is promoted to a structural error with the full cycle path and the closing edge, instead of rendering as a benign `blocked` row; a deadlocked backlog no longer presents identically to a legitimately-waiting one, and cycle members are excluded from the ready/blocked/external surface.
+Adds deterministic strongly-connected-component detection over the active in-backlog `**Requires:**` dependency graph to `/nightshift:ready`. A genuine cycle among two or more entries, built from each entry's top-level `**Requires:**` line only (continuation inline references are not edge sources), is promoted to a structural error with a deterministic member-and-edge listing, instead of rendering as a benign `blocked` row; a deadlocked backlog no longer presents identically to a legitimately-waiting one, and cycle members are excluded from the ready/blocked/external surface.
 
 **Requires:** none.
 
