@@ -819,13 +819,21 @@ function nodeLabel(rec) {
   return `${rec.index}/${rec.entry.title}`;
 }
 
-// Deterministic per-cycle problem text: members in an index-then-title sort,
-// then in-cycle edges sorted by from-then-to.
+// Deterministic per-cycle problem text: members in sorted nodeKey order,
+// then in-cycle edges sorted by from-then-to (duplicates collapsed, since a
+// top-level line may repeat the same Requires link).
 function formatCycle(cycle, edges, nodeToRec) {
   const members = [...cycle.members];
   const inCycle = new Set(members);
+  const seen = new Set();
   const cycleEdges = edges
     .filter((e) => inCycle.has(e.from) && inCycle.has(e.to))
+    .filter((e) => {
+      const key = `${e.from}::${e.to}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
     .sort((a, b) => (a.from + '::' + a.to).localeCompare(b.from + '::' + b.to));
   const memberLabels = members.map((n) => nodeLabel(nodeToRec.get(n)));
   const edgeLabels = cycleEdges.map((e) => `${nodeLabel(nodeToRec.get(e.from))} -> ${nodeLabel(nodeToRec.get(e.to))}`);
