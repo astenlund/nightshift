@@ -315,20 +315,7 @@ Consider a cheap lock file so concurrent Nightshift runs fail loudly rather than
 
 ## 14. Add dependency-cycle detection to `/ready`
 
-The deterministic `/ready` parser should surface dependency cycles explicitly.
-
-Example:
-
-```text
-A requires B
-B requires A
-```
-
-should not merely show both items as blocked.
-
-Run cycle detection over active dependency references, e.g. strongly connected components, and report cycles as structural errors.
-
-Otherwise a deadlocked backlog can look identical to one that is legitimately waiting.
+*(Moved to the feature file `.claude/features/dependency-cycle-detection.md`, its authoritative design record.)*
 
 ## 15. Centralize reviewable-content fingerprints in a bundled helper
 
@@ -546,7 +533,7 @@ Do not confuse unfamiliarity with the codebase for lack of technical sophisticat
 4. **Resolve confirmed findings through an adversarial skeptic-reviewer repair dialogue** (feature file `.claude/features/adversarial-repair-dialogue.md`).
 5. **Fail closed on malformed/missing reviewer execution.**
 6. **Ensure reviewers see only their assigned dimension plus common context.**
-7. **Add `/ready` dependency-cycle detection.**
+7. **Add `/ready` dependency-cycle detection** (feature file `.claude/features/dependency-cycle-detection.md`).
 8. **Add durable run identity/concurrency protection.**
 9. **Centralize reviewable-content fingerprinting in Node.**
 10. **Preserve the user's requested outcome as a durable scope anchor.**
