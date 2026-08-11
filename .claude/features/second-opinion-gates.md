@@ -66,6 +66,10 @@ Five design questions surfaced during the first spec review were resolved rather
 
 Subsumes the holistic final reviewer role, whose same-family high-tier read is weaker than a different-family read for the specific purpose of catching correlated misses. Gives the durable scope anchor its concrete carrier. Preserves payload isolation: regular reviewers still see only their assigned dimension plus common context; the second opinion is the deliberate holistic exception. Complements the [adversarial-repair-dialogue](adversarial-repair-dialogue.md): the controller checks with the same second-opinion agent after applying its fix, mirroring that dialogue's reviewer-critic post-repair check.
 
+## Unclaimed design direction: cap review phases at two
+
+The hardened-spec gate subsumes the holistic third-phase *reviewer* role, but nothing in this design caps the phase *machinery* itself: a structural or scope-affecting fix still "re-enter[s] the review stage properly (new phase, all dimensions reactivated)" per the post-fix re-certification rules above. Whether to go further and make phase 2 terminal, routing any third-phase requirement into the second-opinion step before the stamp, is a distinct design question. It is **not decided here and not claimed by any feature or proposal**: the review engine's phase count remains the shipped limit of 10, [review-orchestration-tests](review-orchestration-tests.md) will encode the phase transitions as they ship today, and if a phase-2 cap is ever adopted the transition table and its fixtures must be amended in the same change that sets the standard. Flagging this now so the seam is visible before either work lands.
+
 ## Status
 
 Draft proposal; not yet designed as a buildable skill or spec. Depends on nothing outstanding: the review-phase machinery it builds on is shipped. The first spec review graduated after three review phases (three converged phases, mutation-free final phase over this exact content), and the five logged open questions are resolved above.

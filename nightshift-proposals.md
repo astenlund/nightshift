@@ -2,6 +2,8 @@
 
 > **Transient migration vehicle.** This file is a holding area for proposals while they are being migrated into the `.claude/` backlog (see [`.claude/features/`](.claude/features/)). It is **not** an authoritative or durable home: every entry moves to a feature file (or into shipped code) and this file is deleted once the last entry migrates. As such, **no repository file should reference this document or its numbered entries** — a backward reference here would dangle once the file is gone. Migrated designs live in the backlog; cite those files instead.
 
+> **Migration workflow.** Migrate proposals one at a time, in the suggested priority order (bottom of this file). For each selected proposal: present the design choices already made, one at a time, and confirm each before moving on; once the design is confirmed, write the feature spec at `.claude/features/<slug>.md` following the house shape (a `Feature:` first line, `## What it does`, a Status, Requirements with a `**Requires:**` line, and a Hardening section), add its index entry under the matching section of `.claude/FEATURES.md`, and remove the original proposal content from this file (renumbering this priority list). Do not implement anything in the migration session; this is backlog-only work. After the migration, dispatch a fresh-eyes review agent at max effort over the outgoing diff versus `origin/main` (including the uncommitted working tree), and commit on a clean verdict; on fixes, apply them and launch another review agent, repeating until clean. Pushing remains user-directed per the repository convention.
+
 This document summarizes the proposals discussed for the Nightshift Claude Code and Codex plugin.
 
 The main design goal is **high-confidence unattended operation**. Token efficiency matters only insofar as it does not materially reduce output quality or reliability.
@@ -57,83 +59,6 @@ Leave Claude responsible for genuinely semantic decisions such as:
 General principle:
 
 > **If there is one objectively correct answer, get it out of promptspace.**
-
-## 17. Add tests for review orchestration
-
-The deterministic backlog parser already has strong behavioral test coverage. The review engine is more important to overall quality and deserves equivalent orchestration tests.
-
-Extract enough review-state/orchestration logic to test with mocked reviewer results.
-
-Important cases:
-
-### Phase progression
-
-```text
-phase 1 clean
-→ phase 2 required
-```
-
-```text
-phase 1 dirty
-→ phase 2
-```
-
-```text
-phase 2 clean
-→ complete
-```
-
-```text
-phase 2 dirty
-→ phase 3 required
-```
-
-### Per-dimension convergence
-
-```text
-D1 LGTM after 1 review
-D2 requires 7 reviews
-→ D1 must not rerun inside that phase
-```
-
-### Cross-dimension mutation
-
-```text
-D1 LGTM
-D2 causes fix
-→ D1 remains inactive in current phase
-→ all dimensions reactivate next phase
-```
-
-### Rejected findings
-
-```text
-reviewer finding
-controller rejects finding
-→ dimension does not automatically LGTM
-→ require fresh clean review
-```
-
-### Execution failure
-
-```text
-reviewer missing/malformed
-→ fail closed
-```
-
-### Completion invariant
-
-```text
-stage can never complete in phase 1
-```
-
-and:
-
-```text
-stage can only complete if final phase made zero artifact mutations
-```
-
-These tests promote important workflow rules from prose into executable invariants.
 
 ## 18. Consider a durable handover execution ledger
 
@@ -192,10 +117,9 @@ Do not confuse unfamiliarity with the codebase for lack of technical sophisticat
 
 # Suggested priority order
 
-1. **Add orchestration tests for the new phase semantics.**
-2. **Centralize reviewable-content fingerprinting in Node.**
-3. **Preserve the user's requested outcome as a durable scope anchor.**
-4. **Calibrate first-draft rigor to deployment context.**
-5. **Communicate for technically sophisticated, time-constrained users.**
-6. **Move deterministic `init-backlog` mechanics out of prompts.**
-7. **Add a durable handover execution ledger if interrupted unattended runs remain a practical problem.**
+1. **Centralize reviewable-content fingerprinting in Node.**
+2. **Preserve the user's requested outcome as a durable scope anchor.**
+3. **Calibrate first-draft rigor to deployment context.**
+4. **Communicate for technically sophisticated, time-constrained users.**
+5. **Move deterministic `init-backlog` mechanics out of prompts.**
+6. **Add a durable handover execution ledger if interrupted unattended runs remain a practical problem.**
