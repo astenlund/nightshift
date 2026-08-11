@@ -214,6 +214,12 @@ Turn the revise review engine's phase, convergence, and completion decisions int
 
 **Requires:** none.
 
+### [Content fingerprint helper](features/content-fingerprint-helper.md)
+
+Centralizes selection, line-ending normalization, and hashing of reviewable document content in one bundled Node helper so no controller or reviewer reimplements the recipe. Reproduces today's `Status:`-and-`## Hardening` exclusion as the `partial` mode (`p-` + 12 hex) alongside a `whole-file` mode (`w-` + 12 hex), replaces the awk/sha256sum recipes in handover and the revise skill (including the code-review patch path), and pins the contract with a fixture suite. Transient-vs-durable stops being a mode and becomes storage context.
+
+**Requires:** none.
+
 ## History
 
 Implemented features are archived in

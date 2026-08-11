@@ -10,34 +10,6 @@ The main design goal is **high-confidence unattended operation**. Token efficien
 
 # Additional hardening proposals
 
-## 15. Centralize reviewable-content fingerprints in a bundled helper
-
-Controllers and review agents currently reproduce the content-selection recipe themselves. This creates two recurring failure modes:
-
-- hashing the whole file instead of the reviewable content;
-- producing different hashes because the active shell or checkout uses different line endings.
-
-Make one bundled Node helper the sole authority for selecting and hashing reviewable document content. Callers should pass the artifact path and the required digest length or named mode, rather than reimplementing filtering.
-
-Potential issue:
-
-- LF checkout on one system;
-- CRLF checkout on another;
-- identical semantic content;
-- different byte-level hash.
-
-Prefer a small bundled Node helper that:
-
-1. reads the artifact;
-2. normalizes line endings;
-3. removes excluded sections such as `Status:` / hardening metadata if required;
-4. computes SHA-256 over normalized content;
-5. emits the existing 12-character transient review fingerprint or 8-character durable provenance fingerprint as requested.
-
-This also avoids shell-specific dependencies such as `awk` and `sha256sum`.
-
-Add fixtures covering LF and CRLF input, a `Status:` header, a `## Hardening` section, and body changes so controllers and reviewers cannot accidentally regress to whole-file hashing.
-
 ## 16. Move deterministic `init-backlog` work out of promptspace
 
 `init-backlog` contains a large amount of authoritative template and mechanical scaffolding behavior.
@@ -117,9 +89,8 @@ Do not confuse unfamiliarity with the codebase for lack of technical sophisticat
 
 # Suggested priority order
 
-1. **Centralize reviewable-content fingerprinting in Node.**
-2. **Preserve the user's requested outcome as a durable scope anchor.**
-3. **Calibrate first-draft rigor to deployment context.**
-4. **Communicate for technically sophisticated, time-constrained users.**
-5. **Move deterministic `init-backlog` mechanics out of prompts.**
-6. **Add a durable handover execution ledger if interrupted unattended runs remain a practical problem.**
+1. **Preserve the user's requested outcome as a durable scope anchor.**
+2. **Calibrate first-draft rigor to deployment context.**
+3. **Communicate for technically sophisticated, time-constrained users.**
+4. **Move deterministic `init-backlog` mechanics out of prompts.**
+5. **Add a durable handover execution ledger if interrupted unattended runs remain a practical problem.**
