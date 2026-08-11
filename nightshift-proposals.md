@@ -48,25 +48,6 @@ Then an interrupted implementation can resume from known durable state instead o
 
 This is lower priority than the review redesign and core deterministic hardening.
 
-## 21. Calibrate first-draft rigor to deployment context
-
-> Migration note (2026-08-11): audience-context profiling ("who is this for") was deliberately deferred to this proposal from the durable-scope-anchor migration. A candidate audience category set (single-dev/personal use, trusted circle, paying customers, organization, public) is recorded in [`.claude/features/durable-scope-anchor.md`](.claude/features/durable-scope-anchor.md); surface it when migrating this proposal.
-
-The first design-spec draft should state an explicit rigor profile derived from the environment in which the feature will operate. Correctness remains the non-negotiable floor; validation, recovery, compatibility, observability, and proof effort above that floor should scale with the consequences and operating context.
-
-Derive the profile from durable project knowledge before asking the user. Relevant inputs include:
-
-- deployment environment and operational criticality;
-- userbase size, trust boundary, and exposure;
-- failure consequence and data or security sensitivity;
-- concurrency and compatibility risk;
-- reversibility and recovery cost;
-- expected feature lifetime.
-
-If repository guidance, architecture documents, or established project conventions already answer these questions, use those answers. Ask the user only when the feature differs materially from the documented defaults or unresolved ambiguity would change a design decision. Record any feature-specific deviation in the spec so fresh reviewers apply the intended standard without repeatedly reopening the question.
-
-The aim is proportionate engineering, not permission to relax correctness or omit known requirements.
-
 ## 22. Communicate for technically sophisticated, time-constrained users
 
 Nightshift should assume the user is an accomplished engineer who owns the requirements but does not have time to absorb the project's code-level details. Communicate technical decisions at the behavioral, architectural, and risk level with full precision, without requiring source familiarity.
@@ -77,7 +58,6 @@ Do not confuse unfamiliarity with the codebase for lack of technical sophisticat
 
 # Suggested priority order
 
-1. **Calibrate first-draft rigor to deployment context.**
-2. **Communicate for technically sophisticated, time-constrained users.**
-3. **Move deterministic `init-backlog` mechanics out of prompts.**
-4. **Add a durable handover execution ledger if interrupted unattended runs remain a practical problem.**
+1. **Communicate for technically sophisticated, time-constrained users.**
+2. **Move deterministic `init-backlog` mechanics out of prompts.**
+3. **Add a durable handover execution ledger if interrupted unattended runs remain a practical problem.**

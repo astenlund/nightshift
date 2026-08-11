@@ -226,6 +226,12 @@ Every design spec carries a short, durable scope anchor near its goal: a paraphr
 
 **Requires:** none.
 
+### [Calibrate first-draft rigor to deployment context](features/calibrate-first-draft-rigor.md)
+
+Every first design-spec draft states an explicit rigor profile: an operating-context section pairing with the durable scope anchor, recording deployment environment, audience, failure consequence, concurrency and compatibility risk, reversibility cost, and expected lifetime, plus the rigor warranted above a non-negotiable correctness floor. Derivation is knowledge-first from repository guidance, consulting the user only when the feature differs materially from documented defaults, with feature-specific deviations recorded. The audience category set deferred from the durable-scope-anchor migration is adopted here as a derived classification.
+
+**Requires:** none.
+
 ## History
 
 Implemented features are archived in
