@@ -557,6 +557,92 @@ test('slice-suffixed reference to a slice-less parent is a structural error', ()
   assert.ok(suffixer.problem.includes('no Slices block'), suffixer.problem);
 });
 
+// ---------- analyze() on the cycle fixtures ----------
+
+const CYCLE_FEATURES = `# Features
+
+## Area
+
+### [Anna](features/anna.md)
+
+A.
+
+**Requires:** [Bob](features/bob.md).
+
+### [Bob](features/bob.md)
+
+B.
+
+**Requires:** [Anna](features/anna.md).
+`;
+
+const CONT_FEATURES = `# Features
+
+## Area
+
+### [X](features/x.md)
+
+**Requires:** [Y](features/y.md).
+
+### [Y](features/y.md)
+
+**Slices:**
+
+- **MVP.** Base.
+- **Cont.** Extra.
+  **Requires:** [X](features/x.md).
+
+**Requires:** none.
+`;
+
+const INTRA_FEATURES = `# Features
+
+## Area
+
+### [R](features/r.md)
+
+**Slices:**
+
+- **MVP.** Base.
+- **Later.** Extra.
+
+**Requires:** [R: Later](features/r.md).
+`;
+
+const cycleRs = analyze({ FEATURES: CYCLE_FEATURES });
+const contRs = analyze({ FEATURES: CONT_FEATURES });
+const intraRs = analyze({ FEATURES: INTRA_FEATURES });
+
+test('two-entry mutual cycle is a structural error; both members excluded', () => {
+  assert.ok(!titles(cycleRs.ready).includes('Anna'));
+  assert.ok(!titles(cycleRs.ready).includes('Bob'));
+  assert.ok(!findByTitle(cycleRs.blocked, 'Anna'));
+  assert.ok(!findByTitle(cycleRs.blocked, 'Bob'));
+  const cyc = findByTitle(cycleRs.structuralErrors, '2-node cycle');
+  assert.ok(cyc, titles(cycleRs.structuralErrors).join(', '));
+  assert.ok(cyc.index === '[cycle]', cyc.index);
+  assert.ok(cyc.problem.includes('Anna') && cyc.problem.includes('Bob'), cyc.problem);
+});
+
+test('continuation inline Requires never forms a false cross-entry cycle', () => {
+  assert.ok(findByTitle(contRs.blocked, 'X'), titles(contRs.blocked).join(' | '));
+  assert.ok(findByTitle(contRs.ready, '[Y: MVP]'), titles(contRs.ready).join(' | '));
+  assert.ok(findByTitle(contRs.blocked, '[Y: Cont]'), titles(contRs.blocked).join(' | '));
+  assert.ok(!titles(contRs.structuralErrors).some((t) => t.includes('cycle')), JSON.stringify(contRs.structuralErrors));
+});
+
+test('intra-feature slice reference produces no self-loop error (anti-goal)', () => {
+  assert.ok(findByTitle(intraRs.blocked, '[R: MVP]'), titles(intraRs.blocked).join(' | '));
+  assert.ok(findByTitle(intraRs.blocked, '[R: Later]'), titles(intraRs.blocked).join(' | '));
+  assert.ok(!titles(intraRs.structuralErrors).some((t) => t.includes('cycle')), JSON.stringify(intraRs.structuralErrors));
+});
+
+test('acyclic existing fixtures produce no cycle structural errors', () => {
+  for (const r of [result, gates, collisions]) {
+    assert.ok(!titles(r.structuralErrors).some((t) => t.includes('cycle')), JSON.stringify(r.structuralErrors));
+  }
+});
+
 // ---------- CLI smoke test ----------
 
 test('CLI reads a .claude dir and emits the same JSON shape', () => {

@@ -499,6 +499,8 @@ function firstExcerpt(bodyLines) {
 function classifyUnit(unit, registry, out) {
   const { index, title, excerpt, requiresContent, missingRequires, extraBlockers } = unit;
 
+  if (unit.excluded) return;
+
   if (missingRequires) {
     out.structuralErrors.push({
       index, title,
@@ -596,6 +598,14 @@ function analyze(files) {
   }
   const registry = buildRegistry(registryRecords);
 
+  const featsBugs = registryRecords.filter((r) => r.index !== 'QUICK_WINS.md');
+  const depEdges = collectEntryEdges(featsBugs, registry);
+  const cycles = findCycles(depEdges);
+  const cycleMembers = new Set();
+  for (const c of cycles) for (const m of c.members) cycleMembers.add(m);
+  const nodeToRec = new Map();
+  for (const rec of registryRecords) nodeToRec.set(nodeKey(rec), rec);
+
   // Quick wins: atomic, no Requires lines, always unblocked.
   if (parsed.QUICK_WINS) {
     for (const entry of parsed.QUICK_WINS.entries) {
@@ -614,6 +624,8 @@ function analyze(files) {
     for (const entry of parsed[name].entries) {
       const index = `${name}.md`;
       const slices = entry.slices;
+      const entryNode = nodeKey({ index, entry });
+      const excluded = cycleMembers.has(entryNode);
 
       if (slices && slices.length > 0) {
         const unshipped = slices.filter((s) => !s.struck);
@@ -646,6 +658,7 @@ function analyze(files) {
             requiresContent: slice === firstUnshipped ? entry.requiresContent : slice.inlineRequires,
             missingRequires: false,
             extraBlockers,
+            excluded,
           }, registry, out);
         }
       } else {
@@ -655,6 +668,7 @@ function analyze(files) {
           excerpt: firstExcerpt(entry.bodyLines),
           requiresContent: entry.requiresContent,
           missingRequires: entry.requiresContent === null,
+          excluded,
         }, registry, out);
       }
 
@@ -665,6 +679,14 @@ function analyze(files) {
         breakoutTargets.push({ index, title: entry.title, target: entry.selfTarget });
       }
     }
+  }
+
+  for (const c of cycles) {
+    out.structuralErrors.push({
+      index: '[cycle]',
+      title: `${c.members.length}-node cycle`,
+      problem: formatCycle(c, depEdges, nodeToRec),
+    });
   }
 
   out.breakoutTargets = breakoutTargets;
@@ -791,6 +813,23 @@ function collectEntryEdges(records, registry) {
     }
   }
   return edges;
+}
+
+function nodeLabel(rec) {
+  return `${rec.index}/${rec.entry.title}`;
+}
+
+// Deterministic per-cycle problem text: members in an index-then-title sort,
+// then in-cycle edges sorted by from-then-to.
+function formatCycle(cycle, edges, nodeToRec) {
+  const members = [...cycle.members];
+  const inCycle = new Set(members);
+  const cycleEdges = edges
+    .filter((e) => inCycle.has(e.from) && inCycle.has(e.to))
+    .sort((a, b) => (a.from + '::' + a.to).localeCompare(b.from + '::' + b.to));
+  const memberLabels = members.map((n) => nodeLabel(nodeToRec.get(n)));
+  const edgeLabels = cycleEdges.map((e) => `${nodeLabel(nodeToRec.get(e.from))} -> ${nodeLabel(nodeToRec.get(e.to))}`);
+  return `members: ${memberLabels.join(', ')}${edgeLabels.length ? `; edges: ${edgeLabels.join(', ')}` : ''}`;
 }
 
 module.exports = {
