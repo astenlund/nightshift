@@ -188,6 +188,10 @@ frontmatter on the breakout file.
 
 Draft exploring a lightened variant of the revise review commands: one fresh reviewer per iteration instead of the full per-dimension swarm, and a curated dimension set that skips the least-relevant dimensions. Prompted by the single-reviewer revise-spec run over `.claude/features/dependency-cycle-detection.md` (2026-08-11).
 
+### [Review report JSON schema](features/review-report-json-schema.md)
+
+Draft exploring a JSON schema that review agents validate their final report against before the session ends, so malformed output is caught by the reviewer itself instead of forcing the controller to salvage-parse an erroneous report or re-run the review after the agent session has been cleared.
+
 ## Review hardening
 
 ### [Second-opinion gates](features/second-opinion-gates.md)
