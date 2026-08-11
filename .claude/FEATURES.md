@@ -184,7 +184,9 @@ gates, move it out of `## Exploring` into the appropriate themed `##`
 section, add the `**Requires:**` line, and drop the `status: exploring`
 frontmatter on the breakout file.
 
-Nothing being explored yet.
+### [Light revise mode](features/light-revise-mode.md)
+
+Draft exploring a lightened variant of the revise review commands: one fresh reviewer per iteration instead of the full per-dimension swarm, and a curated dimension set that skips the least-relevant dimensions. Prompted by the single-reviewer revise-spec run over `.claude/features/dependency-cycle-detection.md` (2026-08-11).
 
 ## Review hardening
 
