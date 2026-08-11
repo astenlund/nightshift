@@ -48,21 +48,9 @@ Then an interrupted implementation can resume from known durable state instead o
 
 This is lower priority than the review redesign and core deterministic hardening.
 
-## 19. Preserve the user's requested outcome as a durable scope anchor
-
-Every design spec should carry a short, durable scope anchor near its goal. The anchor paraphrases what the user actually asked to achieve, including any explicit boundaries that distinguish the requested behavior from adjacent improvements.
-
-The anchor should:
-
-- live in the spec body, not session memory or a raw conversation transcript;
-- state the requested outcome and material exclusions without duplicating the detailed design;
-- remain stable as implementation mechanics are refined;
-- be copied unchanged into every reviewer payload as common context;
-- constrain scope expansion without suppressing findings about how the chosen design is wired.
-
-This gives controllers and fresh reviewers a durable reference when completeness or soundness pressure starts pulling the design into neighboring systems. It is a grounding mechanism, not an instruction to ignore real defects inside the chosen scope.
-
 ## 21. Calibrate first-draft rigor to deployment context
+
+> Migration note (2026-08-11): audience-context profiling ("who is this for") was deliberately deferred to this proposal from the durable-scope-anchor migration. A candidate audience category set (single-dev/personal use, trusted circle, paying customers, organization, public) is recorded in [`.claude/features/durable-scope-anchor.md`](.claude/features/durable-scope-anchor.md); surface it when migrating this proposal.
 
 The first design-spec draft should state an explicit rigor profile derived from the environment in which the feature will operate. Correctness remains the non-negotiable floor; validation, recovery, compatibility, observability, and proof effort above that floor should scale with the consequences and operating context.
 
@@ -89,8 +77,7 @@ Do not confuse unfamiliarity with the codebase for lack of technical sophisticat
 
 # Suggested priority order
 
-1. **Preserve the user's requested outcome as a durable scope anchor.**
-2. **Calibrate first-draft rigor to deployment context.**
-3. **Communicate for technically sophisticated, time-constrained users.**
-4. **Move deterministic `init-backlog` mechanics out of prompts.**
-5. **Add a durable handover execution ledger if interrupted unattended runs remain a practical problem.**
+1. **Calibrate first-draft rigor to deployment context.**
+2. **Communicate for technically sophisticated, time-constrained users.**
+3. **Move deterministic `init-backlog` mechanics out of prompts.**
+4. **Add a durable handover execution ledger if interrupted unattended runs remain a practical problem.**

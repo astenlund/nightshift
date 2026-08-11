@@ -34,7 +34,7 @@ Each gate forwards the artifact plus the minimum context that produced it, never
 - initial-spec gate: the spec plus the reqs list;
 - hardened-spec gate: the spec, the reqs list, the acknowledgements and explicit anti-goals.
 
-Full requirements are not captured by a Q&A list alone: they live in whatever the user actually described. The reqs list is therefore the user requirement description(s) plus the settled Q&A, persisted as a controller-owned, short-lived artifact at the requirements-gate moment, and forwarded unchanged into later gates. It becomes the natural carrier for the durable scope anchor, grounding completeness and soundness checks without re-requesting the conversation.
+Full requirements are not captured by a Q&A list alone: they live in whatever the user actually described. The reqs list is therefore the user requirement description(s) plus the settled Q&A, persisted as a controller-owned, short-lived artifact at the requirements-gate moment, and forwarded unchanged into later gates. It becomes the natural carrier for the [durable scope anchor](durable-scope-anchor.md), grounding completeness and soundness checks without re-requesting the conversation.
 
 ## The controller may probe the second opinion
 
@@ -64,7 +64,7 @@ Five design questions surfaced during the first spec review were resolved rather
 
 ## Relationship to neighboring features
 
-Subsumes the holistic final reviewer role, whose same-family high-tier read is weaker than a different-family read for the specific purpose of catching correlated misses. Gives the durable scope anchor its concrete carrier. Preserves payload isolation: regular reviewers still see only their assigned dimension plus common context; the second opinion is the deliberate holistic exception. Complements the [adversarial-repair-dialogue](adversarial-repair-dialogue.md): the controller checks with the same second-opinion agent after applying its fix, mirroring that dialogue's reviewer-critic post-repair check.
+Subsumes the holistic final reviewer role, whose same-family high-tier read is weaker than a different-family read for the specific purpose of catching correlated misses. Gives the [durable scope anchor](durable-scope-anchor.md) its concrete carrier. Preserves payload isolation: regular reviewers still see only their assigned dimension plus common context; the second opinion is the deliberate holistic exception. Complements the [adversarial-repair-dialogue](adversarial-repair-dialogue.md): the controller checks with the same second-opinion agent after applying its fix, mirroring that dialogue's reviewer-critic post-repair check.
 
 ## Unclaimed design direction: cap review phases at two
 
