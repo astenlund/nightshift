@@ -1,5 +1,7 @@
 # Dependency-cycle detection
 
+Status: signed off 2026-08-11 06:05, content: 217a7720
+
 Feature: add deterministic dependency-cycle detection to the `/nightshift:ready` backlog parser. This file is the authoritative design record; it absorbs the design formerly drafted as proposal #14 in `nightshift-proposals.md`.
 
 ## What it does
