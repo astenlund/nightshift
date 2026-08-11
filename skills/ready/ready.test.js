@@ -609,9 +609,65 @@ const INTRA_FEATURES = `# Features
 **Requires:** [R: Later](features/r.md).
 `;
 
+const RING_FEATURES = `# Features
+
+## Area
+
+### [Anna](features/anna.md)
+
+**Requires:** [Bob](features/bob.md).
+
+### [Bob](features/bob.md)
+
+**Requires:** [Cara](features/cara.md).
+
+### [Cara](features/cara.md)
+
+**Requires:** [Anna](features/anna.md).
+`;
+
+const MIX_FEATURES = `# Features
+
+## Area
+
+### [Anna](features/anna.md)
+
+**Requires:** [Bob](features/bob.md).
+
+### [Bob](features/bob.md)
+
+**Requires:** [Anna](features/anna.md).
+
+### [Charlie](features/charlie.md)
+
+Genuinely blocked on Delta.
+
+**Requires:** [Delta](features/delta.md).
+
+### [Delta](features/delta.md)
+
+**Requires:** none.
+`;
+
+const EXTCYCLE_FEATURES = `# Features
+
+## Area
+
+### [Anna](features/anna.md)
+
+**Requires:** [Bob](features/bob.md).
+
+### [Bob](features/bob.md)
+
+**Requires:** [Anna](features/anna.md), vendor integration SDK.
+`;
+
 const cycleRs = analyze({ FEATURES: CYCLE_FEATURES });
 const contRs = analyze({ FEATURES: CONT_FEATURES });
 const intraRs = analyze({ FEATURES: INTRA_FEATURES });
+const ringRs = analyze({ FEATURES: RING_FEATURES });
+const mixRs = analyze({ FEATURES: MIX_FEATURES });
+const extCycleRs = analyze({ FEATURES: EXTCYCLE_FEATURES });
 
 test('two-entry mutual cycle is a structural error; both members excluded', () => {
   assert.ok(!titles(cycleRs.ready).includes('Anna'));
@@ -635,6 +691,36 @@ test('intra-feature slice reference produces no self-loop error (anti-goal)', ()
   assert.ok(findByTitle(intraRs.blocked, '[R: MVP]'), titles(intraRs.blocked).join(' | '));
   assert.ok(findByTitle(intraRs.blocked, '[R: Later]'), titles(intraRs.blocked).join(' | '));
   assert.ok(!titles(intraRs.structuralErrors).some((t) => t.includes('cycle')), JSON.stringify(intraRs.structuralErrors));
+});
+
+test('three-entry ring is one structural error; all members excluded', () => {
+  const cyc = findByTitle(ringRs.structuralErrors, '3-node cycle');
+  assert.ok(cyc, titles(ringRs.structuralErrors).join(', '));
+  for (const n of ['Anna', 'Bob', 'Cara']) {
+    assert.ok(!titles(ringRs.ready).includes(n), `ring member ${n} must not be ready`);
+    assert.ok(!findByTitle(ringRs.blocked, n), `ring member ${n} must not be blocked`);
+  }
+  assert.ok(cyc.problem.includes('Anna') && cyc.problem.includes('Cara'), cyc.problem);
+});
+
+test('a cycle coexists with a genuinely blocked non-member; non-member stays blocked', () => {
+  const cyc = findByTitle(mixRs.structuralErrors, '2-node cycle');
+  assert.ok(cyc, titles(mixRs.structuralErrors).join(', '));
+  assert.ok(!findByTitle(mixRs.blocked, 'Anna'));
+  assert.ok(!findByTitle(mixRs.blocked, 'Bob'));
+  const charlie = findByTitle(mixRs.blocked, 'Charlie');
+  assert.ok(charlie, titles(mixRs.blocked).join(' | '));
+  assert.ok(charlie.blockers.includes('Delta'), JSON.stringify(charlie.blockers));
+  assert.ok(titles(mixRs.ready).includes('Delta'), titles(mixRs.ready).join(' | '));
+  // Only one per-cycle record for the single cycle.
+  assert.strictEqual(mixRs.structuralErrors.filter((e) => e.index === '[cycle]').length, 1);
+});
+
+test('a cycle member\'s external blocker is subsumed by whole-entry exclusion', () => {
+  const cyc = findByTitle(extCycleRs.structuralErrors, '2-node cycle');
+  assert.ok(cyc, titles(extCycleRs.structuralErrors).join(', '));
+  assert.ok(!findByTitle(extCycleRs.blocked, 'Bob'));
+  assert.ok(!findByTitle(extCycleRs.external, 'Bob'), 'Bob must not appear under External (whole-entry exclusion)');
 });
 
 test('acyclic existing fixtures produce no cycle structural errors', () => {
