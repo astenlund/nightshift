@@ -240,6 +240,14 @@ Gives Nightshift's user-facing surfaces a declared audience model and communicat
 
 **Requires:** none.
 
+## Backlog tooling
+
+### [Move deterministic init-backlog mechanics out of promptspace](features/deterministic-init-backlog.md)
+
+Moves `init-backlog`'s deterministically-answerable behavior (static template bodies, directory and missing-file creation, structural edits, deterministic hook merges) out of the prompt and into bundled plugin code or static files, so one-correct-answer steps are executed rather than re-derived, while the genuinely semantic judgments (concept coverage in customized prose, ambiguous merges, when a user decision is required) remain with Claude. Boundary rule: if there is one objectively correct answer, get it out of promptspace. The per-candidate code-vs-file attribution is left open for the implementing session.
+
+**Requires:** none.
+
 ## History
 
 Implemented features are archived in

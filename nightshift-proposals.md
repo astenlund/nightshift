@@ -10,28 +10,6 @@ The main design goal is **high-confidence unattended operation**. Token efficien
 
 # Additional hardening proposals
 
-## 16. Move deterministic `init-backlog` work out of promptspace
-
-`init-backlog` contains a large amount of authoritative template and mechanical scaffolding behavior.
-
-Where there is one objectively correct result, prefer deterministic code/files over asking the model to reproduce it.
-
-Candidates:
-- static template bodies;
-- directory creation;
-- missing-file creation;
-- unambiguous structural edits;
-- hook merging where it can be done deterministically.
-
-Leave Claude responsible for genuinely semantic decisions such as:
-- whether customized existing prose already expresses a required concept;
-- resolving ambiguous merges;
-- deciding when user input is genuinely required.
-
-General principle:
-
-> **If there is one objectively correct answer, get it out of promptspace.**
-
 ## 18. Consider a durable handover execution ledger
 
 For truly unattended operation, context loss is only one failure mode; process/session death can also interrupt work midway.
@@ -50,5 +28,4 @@ This is lower priority than the review redesign and core deterministic hardening
 
 # Suggested priority order
 
-1. **Move deterministic `init-backlog` mechanics out of prompts.**
-2. **Add a durable handover execution ledger if interrupted unattended runs remain a practical problem.**
+1. **Add a durable handover execution ledger if interrupted unattended runs remain a practical problem.**
