@@ -14,6 +14,8 @@ const {
   stripStable,
   normalizeSliceName,
   splitTopLevelCommas,
+  nodeKey,
+  findCycles,
 } = require('./ready.js');
 
 let passed = 0;
@@ -244,6 +246,27 @@ test('normalizeSliceName accepts hyphen and en-dash prefix separators', () => {
 test('splitTopLevelCommas ignores commas inside links', () => {
   const items = splitTopLevelCommas('a, [b, c](x), d');
   assert.deepStrictEqual(items, ['a', '[b, c](x)', 'd']);
+});
+
+test('nodeKey uses path-qualified self link, else index+title', () => {
+  assert.strictEqual(
+    nodeKey({ index: 'FEATURES.md', entry: { selfTarget: 'features/ann.md', title: 'Ann' } }),
+    'features/ann',
+  );
+  assert.strictEqual(
+    nodeKey({ index: 'BUGS.md', entry: { selfTarget: null, title: 'Torn config write' } }),
+    'BUGS.md::torn config write',
+  );
+});
+
+test('findCycles reports only >=2-node components, deterministically', () => {
+  assert.deepStrictEqual(findCycles([{ from: 'a', to: 'b' }]), []);
+  assert.deepStrictEqual(findCycles([{ from: 'a', to: 'a' }]), []); // self-loop excluded
+  assert.strictEqual(findCycles([{ from: 'a', to: 'b' }, { from: 'b', to: 'a' }]).length, 1);
+  assert.strictEqual(
+    findCycles([{ from: 'a', to: 'b' }, { from: 'b', to: 'c' }, { from: 'c', to: 'a' }])[0].members.join(','),
+    'a,b,c',
+  );
 });
 
 // ---------- analyze() on the main fixture set ----------

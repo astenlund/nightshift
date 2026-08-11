@@ -703,6 +703,65 @@ function runCli(argRoot) {
   process.stdout.write(JSON.stringify(result, null, 2) + '\n');
 }
 
+// Stable identity for a backlog entry as a graph node. Path-qualified self
+// link when present (e.g. "features/foo"), else the index plus normalized
+// title; unique within an index.
+function nodeKey(rec) {
+  const pk = targetPathKey(rec.entry.selfTarget);
+  return pk || `${rec.index}::${normalizeTitle(rec.entry.title)}`;
+}
+
+// Tarjan strongly-connected components over directed edges. Returns only
+// components with >=2 distinct nodes (single-node self-loops are excluded by
+// design). Iteration order is sorted so output is deterministic.
+function findCycles(edges) {
+  const adj = new Map();
+  const nodes = new Set();
+  for (const { from, to } of edges) {
+    nodes.add(from);
+    nodes.add(to);
+    if (!adj.has(from)) adj.set(from, new Set());
+    adj.get(from).add(to);
+  }
+  const sortedNodes = [...nodes].sort();
+  for (const n of sortedNodes) {
+    if (!adj.has(n)) adj.set(n, new Set());
+  }
+  let counter = 0;
+  const index = new Map();
+  const lowlink = new Map();
+  const onStack = new Set();
+  const stack = [];
+  const components = [];
+  const strongconnect = (v) => {
+    index.set(v, counter);
+    lowlink.set(v, counter);
+    counter++;
+    stack.push(v);
+    onStack.add(v);
+    for (const w of [...adj.get(v)].sort()) {
+      if (!index.has(w)) {
+        strongconnect(w);
+        lowlink.set(v, Math.min(lowlink.get(v), lowlink.get(w)));
+      } else if (onStack.has(w)) {
+        lowlink.set(v, Math.min(lowlink.get(v), index.get(w)));
+      }
+    }
+    if (lowlink.get(v) === index.get(v)) {
+      const comp = [];
+      let w;
+      do {
+        w = stack.pop();
+        onStack.delete(w);
+        comp.push(w);
+      } while (w !== v);
+      if (comp.length >= 2) components.push({ members: comp.sort() });
+    }
+  };
+  for (const v of sortedNodes) strongconnect(v);
+  return components.sort((a, b) => a.members[0].localeCompare(b.members[0]));
+}
+
 module.exports = {
   analyze,
   stripStable,
@@ -712,6 +771,8 @@ module.exports = {
   parseRequiresItem,
   parseSlices,
   extractEntries,
+  nodeKey,
+  findCycles,
 };
 
 if (require.main === module) {
