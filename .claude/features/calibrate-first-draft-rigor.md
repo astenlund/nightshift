@@ -63,7 +63,7 @@ A profile derived from a low-consequence context is a statement of the environme
 ## Relationship to neighboring features
 
 - **[durable-scope-anchor](durable-scope-anchor.md)** is this section's paired half. That feature deliberately deferred operating-context profiling here on 2026-08-11; the audience category set proposed there is adopted here as a derived classification, and the two sections combine at the spec level.
-- **[second-opinion-gates](second-opinion-gates.md)** references "the rigor profile" as the basis for classifying post-fix re-certification buckets. That phrase predates this feature and has no link to resolve; this feature gives the concept a declared home, and the gate's wording can be linked here when next edited.
+- **[second-opinion-gates](second-opinion-gates.md)** references "the rigor profile" as the basis for classifying post-fix re-certification buckets. That phrase predates this feature; the gate's wording now links this feature as the concept's declared home.
 
 ## Status
 

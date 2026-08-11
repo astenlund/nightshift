@@ -50,7 +50,7 @@ A second-opinion finding that causes a fix mutates an artifact the earlier machi
 
 When a dimension-owned fix lands *from a hardened-gate finding*, the hardened gate re-runs after the owning dimension converges. Without this, the gate read happens on the pre-fix artifact while the handed-off artifact receives only a same-family, single-dimension review, silently falsifying the "exact artifact being handed off" guarantee. Re-running the gate preserves the final invariant for every fix bucket, not just structural ones.
 
-The "controller judgment call" is therefore not *whether* to re-review but *which bucket* the fix falls in, using the rigor profile. Whatever path lands, the artifact that closes the gate must be one no certifying read spanned a mutation across.
+The "controller judgment call" is therefore not *whether* to re-review but *which bucket* the fix falls in, using the [rigor profile](calibrate-first-draft-rigor.md). Whatever path lands, the artifact that closes the gate must be one no certifying read spanned a mutation across.
 
 ## Resolved open questions
 
