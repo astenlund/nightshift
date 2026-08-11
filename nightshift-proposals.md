@@ -278,40 +278,7 @@ Possible implementations:
 
 ## 13. Add durable run identity and concurrency protection
 
-Fixed scratch paths such as:
-
-```text
-.tmp/revise-state.md
-.tmp/review-diff.patch
-.tmp/handover-followups.md
-```
-
-can be unsafe when:
-- two Claude sessions run in the same working tree;
-- stale state survives from an earlier artifact;
-- a process resumes after context loss.
-
-Prefer something like:
-
-```text
-.tmp/nightshift/<scope-hash>/
-    revise-state.json
-    payload.md
-    review-diff.patch
-    handover-state.json
-    followups.md
-```
-
-Persist enough identity to prove resumed state belongs to the same work:
-- artifact path/type;
-- review scope;
-- base commit/SHA where applicable;
-- artifact fingerprint;
-- current review phase;
-- applicable dimensions;
-- per-dimension state.
-
-Consider a cheap lock file so concurrent Nightshift runs fail loudly rather than silently overwriting each other's state.
+*(Moved to the feature file `.claude/features/durable-run-identity-concurrency.md`, its authoritative design record.)*
 
 ## 14. Add dependency-cycle detection to `/ready`
 
@@ -534,7 +501,7 @@ Do not confuse unfamiliarity with the codebase for lack of technical sophisticat
 5. **Fail closed on malformed/missing reviewer execution.**
 6. **Ensure reviewers see only their assigned dimension plus common context.**
 7. **Add `/ready` dependency-cycle detection** (feature file `.claude/features/dependency-cycle-detection.md`).
-8. **Add durable run identity/concurrency protection.**
+8. **Add durable run identity/concurrency protection** (feature file `.claude/features/durable-run-identity-concurrency.md`).
 9. **Centralize reviewable-content fingerprinting in Node.**
 10. **Preserve the user's requested outcome as a durable scope anchor.**
 11. **Add cheap second-opinion gates at lifecycle checkpoints** (feature file `.claude/features/second-opinion-gates.md`; subsumes #20's holistic final reviewer).

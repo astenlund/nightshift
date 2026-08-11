@@ -202,6 +202,12 @@ Resolves a skeptic-confirmed finding through an agent-to-agent repair dialogue: 
 
 **Requires:** none.
 
+### [Durable run identity and concurrency protection](features/durable-run-identity-concurrency.md)
+
+Gives each Nightshift run a frozen durable identity and a scope-hash-scoped scratch home, and protects concurrent same-scope runs from silently overwriting each other. Reverses SKILL.md's "do not add a lock" invariant: a start-of-session boundary check classifies found state as resume (stale heartbeat), live concurrent run (fresh heartbeat, user picks abort or force-break), or foreign/stale (interactive asks, autonomous fails closed). Path relocation only; preserves the Markdown state schema and atomic staging.
+
+**Requires:** none.
+
 ## History
 
 Implemented features are archived in
