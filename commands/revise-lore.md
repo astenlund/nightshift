@@ -18,13 +18,13 @@ Route learnings to the global file when they aren't specific to this project.
 
 The skill's "Step 1: Reflect" list is technical-skill focused (bash commands, code style, environment quirks, gotchas). It systematically misses two session-evidence classes:
 
-- **Workflow gaps surfaced by earlier revise steps** in the same session. For each repair a sibling command made, ask "could the upstream step have prevented this if a CLAUDE.md rule, command checklist item, or project convention had been in place?" If yes, the repair itself is signal — not just the technical fix it applied. The technical fix is in the code; the process fix belongs here.
+- **Workflow gaps surfaced by earlier revise steps** in the same session. For each repair a sibling command made, ask "could the upstream step have prevented this if a CLAUDE.md rule, command checklist item, or project convention had been in place?" If yes, the repair itself is signal, not just the technical fix it applied. The technical fix is in the code; the process fix belongs here.
 
 - **Rationalization around existing rules.** For each point in the session where the user pushed back, corrected, or redirected my approach, ask: was I drifting from a rule that already exists in CLAUDE.md, a memory file, or a command file? If yes, the abstract rule didn't fire when I needed it. Surface a memory entry that pins the failure mode in closer-to-the-moment language than the abstract rule alone, with a back-reference. Reinforcement, not duplication.
 
 ## Additional scope: the nightshift plugin itself
 
-After updating CLAUDE.md files, also review whether any session learnings apply to the nightshift commands and skills used in this session. Include this command (`revise-lore`) itself — the meta-loop currently running. Was the CLAUDE.md routing decision (project vs global vs local) clear? Did the command sweep catch the right files? Did the structure-drift signals fire correctly? The instructions in this file are no more sacred than the instructions they govern; if anything in this run felt awkward, fix it at the source.
+After updating CLAUDE.md files, also review whether any session learnings apply to the nightshift commands and skills used in this session. Include this command (`revise-lore`) itself, the meta-loop currently running. Was the CLAUDE.md routing decision (project vs global vs local) clear? Did the command sweep catch the right files? Did the structure-drift signals fire correctly? The instructions in this file are no more sacred than the instructions they govern; if anything in this run felt awkward, fix it at the source.
 
 Plugin edits go to the nightshift repo clone (find it via `git -C` on the plugin source path, or ask the user where the clone lives), never to the installed plugin cache. For each command or skill, check:
 - Were any instructions ambiguous or misinterpreted during this session?
@@ -39,10 +39,10 @@ CLAUDE.md files and plugin files are the most durable, highest-leverage artifact
 
 - **Conflicts and overlaps**: does a proposed rule contradict or duplicate an existing rule in the same file or a sibling destination (global vs project CLAUDE.md, command file vs revise SKILL.md)?
 - **Principle shape**: is the rule stated as a principle rather than an enumerated example? (Fresh-eyes complement to the same-context scan below.)
-- **Firing conditions**: will the rule actually fire when needed — does its wording contain the concrete trigger words a future session will encounter in the moment, or only abstract vocabulary that won't be top-of-mind?
+- **Firing conditions**: will the rule actually fire when needed: does its wording contain the concrete trigger words a future session will encounter in the moment, or only abstract vocabulary that won't be top-of-mind?
 
 Fold the agent's findings into the proposals before showing them to the user. This is a single pass, not a dimension loop; its cost is one agent.
 
 ## Principles-over-examples scan
 
-Scan every edit produced during this revise-lore run under the rule "prefer principles over enumerated examples." Flag illustrating cases and propose tightenings — catch the regression in the same loop that produces it.
+Scan every edit produced during this revise-lore run under the rule "prefer principles over enumerated examples." Flag illustrating cases and propose tightenings, catching the regression in the same loop that produces it.

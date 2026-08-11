@@ -37,8 +37,7 @@ the diagnosis.
 **Then walk every other `**Requires:**` line in `FEATURES.md` and
 `BUGS.md`** and remove references to the just-fixed bug: if it was the
 only item on the line, set the line to `Requires: none.`. Mirror of the
-`FEATURES.md` walk-and-remove convention — `/nightshift:ready` never has to
-consult `BUGS_HISTORY.md`.
+`FEATURES.md` walk-and-remove convention; `/nightshift:ready` never has to consult `BUGS_HISTORY.md`.
 
 ## Open
 
@@ -53,4 +52,4 @@ this file, AND walk every other `**Requires:**` line in `FEATURES.md`
 / `BUGS.md`: remove the now-satisfied reference (if it was the only
 one, set the line to `Requires: none.`). The active `Requires:` lines
 describe what is *currently* blocking, so `/nightshift:ready` never has to consult
-the history file — the dependency graph settles as bugs are fixed.
+the history file; the dependency graph settles as bugs are fixed.

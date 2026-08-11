@@ -69,9 +69,9 @@ function stripStable(s) {
 }
 
 // Full slice-name normalization: stable strip, then drop an optional
-// leading "<token>( <token)* — " slice-type prefix (
-// "MVP — ", "Continuation — ", "Slice 2 — "), then stable
-// strip again, then case-fold.
+// leading "<token>( <token)* " slice-type prefix with a spaced
+// em-dash, en-dash, or hyphen separator ("MVP - ", "Continuation - ",
+// "Slice 2 - "), then stable strip again, then case-fold.
 function normalizeSliceName(s) {
   let cur = stripStable(s);
   // The separator may be a spaced em-dash, en-dash, or plain hyphen.
@@ -592,7 +592,7 @@ function analyze(files) {
     }
     for (const section of parsed[name].proseOnlySections) {
       out.notices.push(
-        `${name}.md section "## ${section}" has content but no ### entries; only ### entries are parsed as work items — check that section manually`,
+        `${name}.md section "## ${section}" has content but no ### entries; only ### entries are parsed as work items; check that section manually`,
       );
     }
   }
@@ -633,7 +633,7 @@ function analyze(files) {
           out.structuralErrors.push({
             index,
             title: entry.title,
-            problem: 'all slices shipped — graduate parent to FEATURES_HISTORY.md per the ## Slicing last-slice rule',
+            problem: 'all slices shipped; graduate parent to FEATURES_HISTORY.md per the ## Slicing last-slice rule',
           });
           continue;
         }
@@ -716,7 +716,7 @@ function runCli(argRoot) {
     const resolved = path.resolve(claudeDir, target);
     if (!fs.existsSync(resolved)) {
       result.notices.push(
-        `${rec.index} entry "${rec.title}" links to ${rec.target}, which does not exist — remove the broken link or create the file (its Requires line still resolves normally)`,
+        `${rec.index} entry "${rec.title}" links to ${rec.target}, which does not exist; remove the broken link or create the file (its Requires line still resolves normally)`,
       );
     }
   }

@@ -29,7 +29,7 @@ If the scope is empty, determine it automatically from the conversation context:
    - **Detailed design sections** for the implemented feature that are now redundant; consider collapsing verbose "implemented" sections into concise summary lines
    - **Stale references** to old behavior that the implementation changed
    - **Rot-prone anchors** in any entry the sweep touches: line numbers, plan-phase or task ordinals, bullet positions, and temporal qualifiers ("new", "recent") standing in for an identifier. Replace with the stable anchor they point at (see the Coarse-and-stable anchors guideline below).
-   - **Forward-looking notes in `.claude/patterns/*.md` and `.claude/features/*.md`** — any future-tense instruction whose trigger condition shipped in this session: rewrite the note to describe what was done and state the updated trigger condition. These are the most failure-prone items because future-tense imperatives are easy to overlook as stale instructions rather than stale references.
+   - **Forward-looking notes in `.claude/patterns/*.md` and `.claude/features/*.md`**, any future-tense instruction whose trigger condition shipped in this session: rewrite the note to describe what was done and state the updated trigger condition. These are the most failure-prone items because future-tense imperatives are easy to overlook as stale instructions rather than stale references.
 
 3. **Apply the updates.** Announce briefly which files will be touched and what kind of change each gets, then make the edits. The user can interrupt or toggle off auto-accept if they want to review before edits land. Keep it concise:
    - Prefer summary lines over detailed paragraphs for completed work

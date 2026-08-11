@@ -19,7 +19,7 @@ The parsing is deterministic and lives in a script bundled with this skill; this
 
    (Pass the repo root as an argument if the working directory is elsewhere.) The script reads `.claude/QUICK_WINS.md`, `.claude/FEATURES.md`, and `.claude/BUGS.md`, and emits JSON with `ready`, `blocked`, `external`, `structuralErrors`, and `notices`. It never reads the history archives: the walk-and-remove convention keeps active `Requires:` lines authoritative. `PATTERNS.md` is a pattern registry, not a work backlog, and is not parsed.
 
-   If the script reports that `.claude/` is missing, suggest `/nightshift:init-backlog` and stop. If the script itself cannot run (node missing, script file absent), report that and stop — suggest reinstalling or updating the nightshift plugin; do NOT hand-approximate the dependency graph from the raw markdown. A failed check is not a clean check.
+   If the script reports that `.claude/` is missing, suggest `/nightshift:init-backlog` and stop. If the script itself cannot run (node missing, script file absent), report that and stop: suggest reinstalling or updating the nightshift plugin; do NOT hand-approximate the dependency graph from the raw markdown. A failed check is not a clean check.
 
 2. **Present the report.** Output up to four sections, omitting any that are empty:
 
@@ -40,6 +40,6 @@ The parsing is deterministic and lives in a script bundled with this skill; this
   - **Ready**: `Requires: none.` (quick wins are atomic, carry no Requires line, and are always ready).
   - **Blocked**: at least one in-backlog reference; under the walk-and-remove discipline every in-backlog reference is a current blocker. Mixed link + external classifies as Blocked with the external noted parenthetically, never double-reported.
   - **External**: only bare-text upstream items (SDK features, infrastructure, hardware) that the user confirms case by case.
-  - **Structural error**: a missing Requires line (silence is not `none.` — it means the dependency review hasn't been done), a reference whose target isn't in the active backlog (broken link, or stale reference the walk-and-remove sweep missed), or an all-slices-shipped parent awaiting graduation, or a dependency cycle (two or more entries that block each other's next shipment).
+  - **Structural error**: a missing Requires line (silence is not `none.`: it means the dependency review hasn't been done), a reference whose target isn't in the active backlog (broken link, or stale reference the walk-and-remove sweep missed), or an all-slices-shipped parent awaiting graduation, or a dependency cycle (two or more entries that block each other's next shipment).
   - Sliced features expand into per-slice work units (`[Feature title: slice name]`); a continuation is never ready while its MVP is unshipped.
-- If the script's output looks wrong for a given entry (a shape the grammar doesn't cover yet), fix the grammar in `ready.js` (in the plugin repo clone, not the installed cache) and add a fixture test to `ready.test.js` — don't work around it in the report. Run the tests with `node ready.test.js` from the skill directory.
+- If the script's output looks wrong for a given entry (a shape the grammar doesn't cover yet), fix the grammar in `ready.js` (in the plugin repo clone, not the installed cache) and add a fixture test to `ready.test.js`; don't work around it in the report. Run the tests with `node ready.test.js` from the skill directory.

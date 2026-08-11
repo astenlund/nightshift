@@ -11,7 +11,7 @@ entry here is a short paragraph summary plus a `**Requires:**` line, and
 optionally a `**Slices:**` block (formal MVP plus continuations; see
 `## Slicing` below). For features that are partially done without a
 formal slice breakdown, describe the partial progress in the entry's
-own prose — there is no separate marker convention for "partially
+own prose: there is no separate marker convention for "partially
 shipped". The detailed design lives in the linked file. When a feature
 (or a slice of a sliced feature) ships, append its entry to
 [`FEATURES_HISTORY.md`](FEATURES_HISTORY.md); do not keep an
@@ -87,7 +87,7 @@ blocking and means `/nightshift:ready` never needs to consult the history file.
 **Partially-implemented features** have two routes. If the shipped
 and remaining work is scoped clearly enough to name a named MVP plus
 named continuations, use the formal `**Slices:**` block described in
-`## Slicing` below — `/nightshift:ready` then expands per-slice work units and
+`## Slicing` below; `/nightshift:ready` then expands per-slice work units and
 downstream features can reference specific slices via the
 `[Feature: slice-name]` link suffix. If the shipped work is real but
 not yet sliceable (e.g., one layer landed, remaining layers are a
@@ -124,7 +124,7 @@ annotation for documentation. Example shape post-MVP:
 ````
 **Slices:**
 
-- ~~MVP — floating-reference core.~~ (Shipped — see FEATURES_HISTORY.md.)
+- ~~MVP - floating-reference core.~~ (Shipped; see FEATURES_HISTORY.md.)
 - **Re-anchor events.** Manual UI re-anchor + `AnchorEvent` plumbing.
 - **Late-join replay.** `GetSessionHistory` pull endpoint.
 - **`RepertoireChordSource`.** Drop-in replacement consuming chart repertoire.
@@ -140,7 +140,7 @@ MVP) encode the slice name in the link's display text:
 [feature-title: continuation name](features/slug.md)
 ```
 
-A link without a `: slice-name` suffix resolves to the MVP — the
+A link without a `: slice-name` suffix resolves to the MVP: the
 default unblock point.
 
 As each slice ships, append a line to `FEATURES_HISTORY.md`:
@@ -156,13 +156,13 @@ ships, at which point it graduates with the final history line.
 `**Requires:**` annotations on slice bullets, then reports each
 unshipped slice as a separate work unit (`[Feature title: slice
 name]`). A slice is "unshipped" when its bullet in the `**Slices:**`
-block is *not* struck through — the strikethrough is the live
+block is *not* struck through; the strikethrough is the live
 slice-status indicator that `/nightshift:ready` reads. The **first unshipped
 slice** (top-most non-struck bullet) uses the top-level line as its
 gates; other unshipped slices use their inline annotation if present,
 or have no extra gates if no annotation. All non-MVP slices
 **implicitly depend on MVP being struck through**, regardless of
-top-level or inline gates — a continuation is never reported as Ready
+top-level or inline gates; a continuation is never reported as Ready
 while MVP is unshipped. A slice may declare an inline `**Requires:**`
 pointing at another slice of the same feature via the suffixed-link
 form, useful when one continuation builds directly on another;
@@ -230,5 +230,5 @@ to this file, AND walk every other `**Requires:**` line in
 `FEATURES.md` / `BUGS.md`: remove the now-satisfied reference (if it
 was the only one, set the line to `Requires: none.`). The active
 `Requires:` lines describe what is *currently* blocking, so `/nightshift:ready`
-never has to consult the history file — the dependency graph settles
+never has to consult the history file; the dependency graph settles
 as features ship.

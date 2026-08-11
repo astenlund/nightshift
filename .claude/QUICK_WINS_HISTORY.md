@@ -20,7 +20,7 @@ the pattern doc, leaving a one-line redirect here if cross-referenced.
 other `**Requires:**` line in `FEATURES.md` / `BUGS.md` that referenced
 it is edited at the same time to drop the now-satisfied reference. The
 active `Requires:` lines therefore describe what is *currently*
-blocking. This file is purely archaeological — read it when you want
+blocking. This file is purely archaeological; read it when you want
 to know what already shipped or to mine negative-knowledge findings,
 not to resolve dependencies.
 

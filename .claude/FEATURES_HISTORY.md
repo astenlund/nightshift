@@ -20,7 +20,7 @@ it is edited at the same time to drop the now-satisfied reference (see
 the convention in `FEATURES.md`'s `## Requires lines` and `## Slicing`
 sections). The active `Requires:` lines therefore describe what is
 *currently* blocking and the dependency graph settles as work ships.
-This file is purely archaeological — read it when you want to know
+This file is purely archaeological; read it when you want to know
 what already shipped, not to resolve dependencies.
 
 ## Entries

@@ -35,7 +35,7 @@ Every run carries a frozen **identity block** captured at run creation and persi
 - artifact fingerprint;
 - the durable provenance stamp (8-character) where the artifact carries one.
 
-The identity block is captured once and never mutated during the run; it is the ground truth against which a returning run compares. It deliberately excludes *mutable* run fields (current phase, round, applicable dimensions, per-dimension state, convergence counters), which live in the state body and legitimately change. An earlier candidate list mixed the two; splitting them is what makes the check meaningful — identity must be stable to prove "same work," while phase/round/dimension state is exactly what resumes.
+The identity block is captured once and never mutated during the run; it is the ground truth against which a returning run compares. It deliberately excludes *mutable* run fields (current phase, round, applicable dimensions, per-dimension state, convergence counters), which live in the state body and legitimately change. An earlier candidate list mixed the two; splitting them is what makes the check meaningful: identity must be stable to prove "same work," while phase/round/dimension state is exactly what resumes.
 
 ### The scope hash
 
@@ -54,10 +54,10 @@ At start-up the controller resolves `<scope-hash>`, reads any state present ther
 
 | Found state | Identity matches? | Producer heartbeat | Verdict |
 |---|---|---|---|
-| none | — | — | fresh run; acquire lock; proceed |
+| none | - | - | fresh run; acquire lock; proceed |
 | present | yes | **stale** | **resume**; adopt and reclaim lock |
 | present | yes | **fresh** | **live concurrent run**; refuse (see below) |
-| present | **no** | — | **foreign/stale**; interactive asks, autonomous fails closed |
+| present | **no** | - | **foreign/stale**; interactive asks, autonomous fails closed |
 
 ### Foreign/stale: identity mismatch
 
@@ -65,7 +65,7 @@ If the state at the resolved scope-hash carries a different identity block than 
 
 ### Live concurrent run: heartbeats, not PIDs
 
-A fresh-session **resume** and a genuinely **concurrent second run** present identically at start-up: both find a state file at the resolved scope-hash with a *matching* identity block. The lock file cannot be the discriminator — if it refused whenever a lock was held, it would block resume (the designed context-loss recovery path) every time. The discriminator is **liveness of the producing run**.
+A fresh-session **resume** and a genuinely **concurrent second run** present identically at start-up: both find a state file at the resolved scope-hash with a *matching* identity block. The lock file cannot be the discriminator: if it refused whenever a lock was held, it would block resume (the designed context-loss recovery path) every time. The discriminator is **liveness of the producing run**.
 
 The Nightshift controller is agent-side, not a single OS process: it spawns shells, runs Workflow agents, and resumes across sessions, so there is **no stable PID to probe**. Liveness is instead inferred from a **heartbeat**: every state transition (Start round, round boundary write, checkpoint, post-review step) bumps a `last activity` timestamp in the state file, alongside the existing boundary writes.
 
@@ -82,10 +82,10 @@ The accepted limitation is stated plainly: for an agent-side controller, "livene
 
 Two concerns are kept distinct rather than conflated:
 
-- **Lock** answers "is this scope actively worked?" — it guards *acquisition* at start-up.
-- **Heartbeat** answers "is the state's producer live or dead?" — it decides *resume vs concurrent*.
+- **Lock** answers "is this scope actively worked?"; it guards *acquisition* at start-up.
+- **Heartbeat** answers "is the state's producer live or dead?"; it decides *resume vs concurrent*.
 
-The scope-hash directory already guarantees different runs never collide at the file level; the lock's only real job is detecting two concurrent same-scope runs, which the heartbeat then classifies. Because concurrent same-scope runs share an identity, the identity check cannot disambiguate them — the heartbeat is what does.
+The scope-hash directory already guarantees different runs never collide at the file level; the lock's only real job is detecting two concurrent same-scope runs, which the heartbeat then classifies. Because concurrent same-scope runs share an identity, the identity check cannot disambiguate them: the heartbeat is what does.
 
 ## Integration
 

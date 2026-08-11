@@ -43,10 +43,10 @@ The on-demand locations have different lifecycles:
      - **`## Entries`** in history archives: the heading is templated as a bootstrap landing pad, but once any user content lands beneath it the section becomes user-controlled and is skipped. Treat the heading as fixed; don't inspect the body.
      - **`## History`** pointer in the active indexes: the body is fixed boilerplate templated content, but drift in the pointer text doesn't affect dependency-graph correctness, so treat as intentionally-untracked user-controlled territory. Don't propose patches against it.
 
-     The per-file concept checklists in `## Concept checklists` below specify exactly which sections each checklist item covers and are authoritative — judge each checklist item as present-in-equivalent-prose vs absent on the live template-controlled portion, and only flag stale if at least one is absent. Identical-or-enriched template-controlled content (the live file covers everything on the checklist, possibly with additional project-specific prose) is NOT stale — leave it alone. Drift in wording, paragraph order, or added emphasis is not staleness; missing checklist coverage is. User-controlled sections are never inspected for staleness.
+     The per-file concept checklists in `## Concept checklists` below specify exactly which sections each checklist item covers and are authoritative: judge each checklist item as present-in-equivalent-prose vs absent on the live template-controlled portion, and only flag stale if at least one is absent. Identical-or-enriched template-controlled content (the live file covers everything on the checklist, possibly with additional project-specific prose) is NOT stale and must be left alone. Drift in wording, paragraph order, or added emphasis is not staleness; missing checklist coverage is. User-controlled sections are never inspected for staleness.
    - **`QUICK_WINS_HISTORY.md`**, **`FEATURES_HISTORY.md`**, and **`BUGS_HISTORY.md`** follow the same staleness rule as index files (template-controlled portion = H1 + `## Cross-reference resolution` section; `## Entries` is the user-controlled section). If any history file is missing on a project that still has a populated `## Implemented` / `## Fixed` section inside its parent index, surface the migration opportunity in the plan output but do not auto-move entries; the user decides when to perform the split.
    - The **SessionStart hook** is stale if its `additionalContext` is missing any of: all four indexes, the plans/ location, the `/nightshift:ready` command, the `**Requires:**`-line parsing target it operates on. Coverage check, not literal-string match.
-   - The **CLAUDE.md `Backlogs and indexes` section** is stale if it is missing any of: all four subdirectories (features, bugs, patterns, plans), all three history archives (`QUICK_WINS_HISTORY.md`, `FEATURES_HISTORY.md`, `BUGS_HISTORY.md`), the walk-and-remove convention for satisfied `Requires:` references, the `## Exploring` convention in FEATURES.md, the `/nightshift:ready` command. Coverage check, not literal-string match — project-specific phrasing or added detail is fine.
+   - The **CLAUDE.md `Backlogs and indexes` section** is stale if it is missing any of: all four subdirectories (features, bugs, patterns, plans), all three history archives (`QUICK_WINS_HISTORY.md`, `FEATURES_HISTORY.md`, `BUGS_HISTORY.md`), the walk-and-remove convention for satisfied `Requires:` references, the `## Exploring` convention in FEATURES.md, the `/nightshift:ready` command. Coverage check, not literal-string match; project-specific phrasing or added detail is fine.
 
 2. **Plan.** Present a concise table to the user: target, state, action. Actions are `create` (missing), `skip` (present and up to date, never clobber), `merge` (template-controlled portion is stale; propose replacing only that portion), or `ask` (existing content is project-specific custom enough that we don't want to silently overwrite). On a fresh scaffold (no `.claude/` yet), the plan also includes the **version-control election**: ask once whether the `.claude/` backlog files should be tracked in git or ignored. On `ignore`, the apply step appends the scaffolded paths to `.gitignore` (creating it if absent). On projects already scaffolded, skip the question; the election lives in `.gitignore` itself, and changing it later is a direct `.gitignore` edit (in the tracked-to-ignored direction that also means finishing the untracking with `git rm --cached`). Downstream skills check tracked-ness per file and never assume it.
 
@@ -58,9 +58,9 @@ The on-demand locations have different lifecycles:
 
 ## Concept checklists
 
-For each templated file, these are the load-bearing concepts its template-controlled portion must convey. Use the checklists to make the "missing concepts" judgment in step 1 objective: judge each item as **present-in-equivalent-prose** vs **absent** on the live file's template-controlled portion. Equivalent prose means the live file makes the same claim — subject and predicate match, paraphrase is fine, the live file may carry extra context or different examples. Only mark the file stale if at least one checklist item is absent. If a borderline item could plausibly be read either way, prefer `ask` over silent merge.
+For each templated file, these are the load-bearing concepts its template-controlled portion must convey. Use the checklists to make the "missing concepts" judgment in step 1 objective: judge each item as **present-in-equivalent-prose** vs **absent** on the live file's template-controlled portion. Equivalent prose means the live file makes the same claim: subject and predicate match, paraphrase is fine, the live file may carry extra context or different examples. Only mark the file stale if at least one checklist item is absent. If a borderline item could plausibly be read either way, prefer `ask` over silent merge.
 
-**Scope of each check.** Each checklist item below names the section(s) it inspects in parentheses when the section is not the H1 header. Items without a section annotation are H1-header content (when a whole checklist is H1-only the annotations are omitted as redundant). The convention sections to inspect for staleness are exactly those the checklist items name, **matched on exact `##` heading text** — if a project renames the section (e.g., `## Cross-references` instead of `## Cross-reference resolution`), the checklist won't find it and that counts as a missing concept. Everything else (user-entries sections like `## Open` / `## Entries` / themed sections, the trailing `## History` pointer's fixed boilerplate) is user-controlled and skipped.
+**Scope of each check.** Each checklist item below names the section(s) it inspects in parentheses when the section is not the H1 header. Items without a section annotation are H1-header content (when a whole checklist is H1-only the annotations are omitted as redundant). The convention sections to inspect for staleness are exactly those the checklist items name, **matched on exact `##` heading text**: if a project renames the section (e.g., `## Cross-references` instead of `## Cross-reference resolution`), the checklist won't find it and that counts as a missing concept. Everything else (user-entries sections like `## Open` / `## Entries` / themed sections, the trailing `## History` pointer's fixed boilerplate) is user-controlled and skipped.
 
 **Either-location satisfaction.** When a concept could plausibly live in more than one templated section (e.g., the FEATURES.md "`/nightshift:ready` ignores `## Exploring`" claim is teachable in both the `## Exploring` preamble and the `## Requires lines` carve-outs paragraph), the checklist item is satisfied if covered in EITHER location. Annotation names the primary expected location; secondary locations are acceptable substitutes.
 
@@ -73,7 +73,7 @@ For each templated file, these are the load-bearing concepts its template-contro
 6. States the stable-anchor rule for entries (locate by symbol names, entry titles, commit hashes; never by line numbers, plan-phase ordinals, bullet positions, or temporal qualifiers).
 
 **`QUICK_WINS_HISTORY.md`:**
-1. Names this file as archival / archaeological — loaded on demand, not at session start. *(H1)*
+1. Names this file as archival / archaeological: loaded on demand, not at session start. *(H1)*
 2. States that shipped quick wins are appended here, not to the active file. *(H1)*
 3. Carries forward-looking guidance on entry shape (enough context to recover reasoning, including investigation findings, reverted approaches, benchmarks, the commit or scope it landed in). *(H1)*
 4. Notes the negative-knowledge → patterns promotion path with one-line redirect convention. *(H1)*
@@ -86,10 +86,10 @@ For each templated file, these are the load-bearing concepts its template-contro
 4. Points at `FEATURES_HISTORY.md` for shipped entries; no inline `## Implemented` section. *(H1)*
 5. Explains the comma-separated form (with line-wrap allowed), the three reference shapes, walk-and-remove, and carve-outs for `## Working hypotheses` / `## Staging` / `## Future directions (not yet designed)` / `## Author tooling` / `## Exploring`. *(`## Requires lines` section)*
 6. Explains MVP + named continuations, the strikethrough-as-shipped convention on bullets, slice-suffix link form for downstream references, and the walk-and-remove obligation when a slice ships. *(`## Slicing` section)*
-7. Notes pre-dependency-analysis brainstorms, `/nightshift:ready` ignores the section, `Requires:` lines optional. *(`## Exploring` preamble — the prose before the first `###` entry inside that section; if the section has no `###` entries yet, the entire section body IS the preamble)*
+7. Notes pre-dependency-analysis brainstorms, `/nightshift:ready` ignores the section, `Requires:` lines optional. *(`## Exploring` preamble: the prose before the first `###` entry inside that section; if the section has no `###` entries yet, the entire section body IS the preamble)*
 
 **`FEATURES_HISTORY.md`:**
-1. Names this file as archival / archaeological — loaded on demand, not at session start. *(H1)*
+1. Names this file as archival / archaeological: loaded on demand, not at session start. *(H1)*
 2. States that shipped features and shipped slices are appended here, not to the active file. *(H1)*
 3. Notes that breakout files at `features/<slug>.md` stay in place as design records. *(H1)*
 4. States `/nightshift:ready` does not scan this file (because the walk-and-remove convention keeps active `Requires:` lines authoritative). *(`## Cross-reference resolution` section)*
@@ -101,7 +101,7 @@ For each templated file, these are the load-bearing concepts its template-contro
 4. Explains the comma-separated form (with line-wrap allowed), the three reference shapes, walk-and-remove obligation when a bug is fixed. *(`## Requires lines` section)*
 
 **`BUGS_HISTORY.md`:**
-1. Names this file as archival / archaeological — loaded on demand, not at session start. *(H1)*
+1. Names this file as archival / archaeological: loaded on demand, not at session start. *(H1)*
 2. States that fixed bugs are appended here, not to the active file. *(H1)*
 3. Notes that breakout files at `bugs/<slug>.md` stay in place as diagnosis records. *(H1)*
 4. States `/nightshift:ready` does not scan this file (because the walk-and-remove convention keeps active `Requires:` lines authoritative). *(`## Cross-reference resolution` section)*
@@ -112,18 +112,18 @@ For each templated file, these are the load-bearing concepts its template-contro
 3. States the graduation rule (lift into shared home, link from features rather than duplicating).
 4. Optionally: describes recognition-sufficiency on the index (entry should let readers recognize when a pattern applies without first reading the breakout file).
 
-**SessionStart hook `additionalContext`** (concepts already enumerated inline in step 1's bullet — see line for index list, plans/ location, `/nightshift:ready`, `**Requires:**` parsing target).
+**SessionStart hook `additionalContext`** (concepts already enumerated inline in step 1's bullet: see line for index list, plans/ location, `/nightshift:ready`, `**Requires:**` parsing target).
 
-**Root `CLAUDE.md` `Backlogs and indexes` section** (concepts already enumerated inline in step 1's bullet — see line for four subdirs, three history archives, walk-and-remove convention, `## Exploring` convention, `/nightshift:ready`).
+**Root `CLAUDE.md` `Backlogs and indexes` section** (concepts already enumerated inline in step 1's bullet: see line for four subdirs, three history archives, walk-and-remove convention, `## Exploring` convention, `/nightshift:ready`).
 
 ## Rules
 
-- **Targeted-patch insertion rules** (shared across all rules below that say "propose a targeted patch"): (a) **append** the missing concept as a new paragraph at the end of the relevant template-controlled portion (after its last existing paragraph), unless the missing concept is naturally a sub-clause of an existing paragraph — then propose an **in-place edit** that adds the clause to that paragraph, quoting both before and after in the plan output so the user sees the exact change. (b) **Never re-flow** surrounding prose to "integrate" the addition; mechanical append is the safe default. (c) If multiple checklist items are missing, propose them as separate patches in the plan, not a single rewrite. The user can accept, reject, or hand-edit each patch.
-- **Index files.** Create from template if missing. If present and the template-controlled portion covers every concept on the per-file checklist in `## Concept checklists` (verbatim or in equivalent project-specific prose), skip — including the enriched-superset case where the live content carries extra material the template doesn't. If present and missing checklist items, propose a **targeted patch** per the shared insertion rules above. User-controlled sections (per the template-controlled-portion definition in step 1) are never touched. If the live content is clearly project-specific custom enough that you can't confidently identify which concepts are missing vs. just-worded-differently, prefer `ask` over an automatic merge proposal.
+- **Targeted-patch insertion rules** (shared across all rules below that say "propose a targeted patch"): (a) **append** the missing concept as a new paragraph at the end of the relevant template-controlled portion (after its last existing paragraph), unless the missing concept is naturally a sub-clause of an existing paragraph: then propose an **in-place edit** that adds the clause to that paragraph, quoting both before and after in the plan output so the user sees the exact change. (b) **Never re-flow** surrounding prose to "integrate" the addition; mechanical append is the safe default. (c) If multiple checklist items are missing, propose them as separate patches in the plan, not a single rewrite. The user can accept, reject, or hand-edit each patch.
+- **Index files.** Create from template if missing. If present and the template-controlled portion covers every concept on the per-file checklist in `## Concept checklists` (verbatim or in equivalent project-specific prose), skip: including the enriched-superset case where the live content carries extra material the template doesn't. If present and missing checklist items, propose a **targeted patch** per the shared insertion rules above. User-controlled sections (per the template-controlled-portion definition in step 1) are never touched. If the live content is clearly project-specific custom enough that you can't confidently identify which concepts are missing vs. just-worded-differently, prefer `ask` over an automatic merge proposal.
 - **`QUICK_WINS_HISTORY.md`**, **`FEATURES_HISTORY.md`**, and **`BUGS_HISTORY.md`.** Create from template if missing. If present, follow the index-file rule: skip when concept-coverage is complete, propose a targeted patch (per shared insertion rules above) when concepts are missing, never touch the user-controlled `## Entries` section. If the parent index still has a populated `## Implemented` / `## Fixed` section while its history sibling is missing, surface the situation in the plan output but do not auto-migrate; the user decides whether to move them by hand.
 - **Subdirectories.** Create if missing. Never touch existing contents. Applies to the four subdirs (`features/`, `bugs/`, `patterns/`, `plans/`). Any pre-existing subdirectory outside that set is left alone untouched.
-- **`.claude/settings.json`.** Create from template if missing. If present without a SessionStart hook, offer to merge the hook in. If the additionalContext is missing concepts the SessionStart staleness rule above lists (the four indexes, the `plans/` location, the `/nightshift:ready` command, the `**Requires:**`-line parsing target) and the rest of the hook structure matches the current template, propose a targeted patch (per shared insertion rules above; the additionalContext string is the "template-controlled portion" here). Enriched-superset additionalContext (covers everything the template covers, plus project-specific extras) is NOT stale — skip. If the hook structure itself has been customized (different command shape, additional event handlers, reads fewer or different files than the current template), show the diff and ask rather than auto-propose.
-- **`CLAUDE.md`.** Create minimally from template if missing. If present without a `Backlogs and indexes` section, offer to append it. If present with a section that's missing concepts the CLAUDE.md staleness rule above lists, propose a targeted patch (per shared insertion rules above; the section is the "template-controlled portion" here). Enriched-superset sections (cover everything the template covers, plus project-specific phrasing or extras) are NOT stale — skip. If present with a similar section (any `##` heading containing "backlog" or "index") that's clearly project-specific custom content, show it and ask before editing.
+- **`.claude/settings.json`.** Create from template if missing. If present without a SessionStart hook, offer to merge the hook in. If the additionalContext is missing concepts the SessionStart staleness rule above lists (the four indexes, the `plans/` location, the `/nightshift:ready` command, the `**Requires:**`-line parsing target) and the rest of the hook structure matches the current template, propose a targeted patch (per shared insertion rules above; the additionalContext string is the "template-controlled portion" here). Enriched-superset additionalContext (covers everything the template covers, plus project-specific extras) is NOT stale and is skipped. If the hook structure itself has been customized (different command shape, additional event handlers, reads fewer or different files than the current template), show the diff and ask rather than auto-propose.
+- **`CLAUDE.md`.** Create minimally from template if missing. If present without a `Backlogs and indexes` section, offer to append it. If present with a section that's missing concepts the CLAUDE.md staleness rule above lists, propose a targeted patch (per shared insertion rules above; the section is the "template-controlled portion" here). Enriched-superset sections (cover everything the template covers, plus project-specific phrasing or extras) are NOT stale and are skipped. If present with a similar section (any `##` heading containing "backlog" or "index") that's clearly project-specific custom content, show it and ask before editing.
 - Do not add content to `CLAUDE.md` beyond the Backlogs-and-indexes block. Users have their own conventions for the rest of `CLAUDE.md`.
 
 ### Re-run on existing projects
@@ -203,7 +203,7 @@ the pattern doc, leaving a one-line redirect here if cross-referenced.
 other `**Requires:**` line in `FEATURES.md` / `BUGS.md` that referenced
 it is edited at the same time to drop the now-satisfied reference. The
 active `Requires:` lines therefore describe what is *currently*
-blocking. This file is purely archaeological — read it when you want
+blocking. This file is purely archaeological; read it when you want
 to know what already shipped or to mine negative-knowledge findings,
 not to resolve dependencies.
 
@@ -228,7 +228,7 @@ entry here is a short paragraph summary plus a `**Requires:**` line, and
 optionally a `**Slices:**` block (formal MVP plus continuations; see
 `## Slicing` below). For features that are partially done without a
 formal slice breakdown, describe the partial progress in the entry's
-own prose — there is no separate marker convention for "partially
+own prose: there is no separate marker convention for "partially
 shipped". The detailed design lives in the linked file. When a feature
 (or a slice of a sliced feature) ships, append its entry to
 [`FEATURES_HISTORY.md`](FEATURES_HISTORY.md); do not keep an
@@ -304,7 +304,7 @@ blocking and means `/nightshift:ready` never needs to consult the history file.
 **Partially-implemented features** have two routes. If the shipped
 and remaining work is scoped clearly enough to name a named MVP plus
 named continuations, use the formal `**Slices:**` block described in
-`## Slicing` below — `/nightshift:ready` then expands per-slice work units and
+`## Slicing` below; `/nightshift:ready` then expands per-slice work units and
 downstream features can reference specific slices via the
 `[Feature: slice-name]` link suffix. If the shipped work is real but
 not yet sliceable (e.g., one layer landed, remaining layers are a
@@ -341,7 +341,7 @@ annotation for documentation. Example shape post-MVP:
 ````
 **Slices:**
 
-- ~~MVP — floating-reference core.~~ (Shipped — see FEATURES_HISTORY.md.)
+- ~~MVP - floating-reference core.~~ (Shipped; see FEATURES_HISTORY.md.)
 - **Re-anchor events.** Manual UI re-anchor + `AnchorEvent` plumbing.
 - **Late-join replay.** `GetSessionHistory` pull endpoint.
 - **`RepertoireChordSource`.** Drop-in replacement consuming chart repertoire.
@@ -357,7 +357,7 @@ MVP) encode the slice name in the link's display text:
 [feature-title: continuation name](features/slug.md)
 ```
 
-A link without a `: slice-name` suffix resolves to the MVP — the
+A link without a `: slice-name` suffix resolves to the MVP: the
 default unblock point.
 
 As each slice ships, append a line to `FEATURES_HISTORY.md`:
@@ -373,13 +373,13 @@ ships, at which point it graduates with the final history line.
 `**Requires:**` annotations on slice bullets, then reports each
 unshipped slice as a separate work unit (`[Feature title: slice
 name]`). A slice is "unshipped" when its bullet in the `**Slices:**`
-block is *not* struck through — the strikethrough is the live
+block is *not* struck through; the strikethrough is the live
 slice-status indicator that `/nightshift:ready` reads. The **first unshipped
 slice** (top-most non-struck bullet) uses the top-level line as its
 gates; other unshipped slices use their inline annotation if present,
 or have no extra gates if no annotation. All non-MVP slices
 **implicitly depend on MVP being struck through**, regardless of
-top-level or inline gates — a continuation is never reported as Ready
+top-level or inline gates; a continuation is never reported as Ready
 while MVP is unshipped. A slice may declare an inline `**Requires:**`
 pointing at another slice of the same feature via the suffixed-link
 form, useful when one continuation builds directly on another;
@@ -417,7 +417,7 @@ to this file, AND walk every other `**Requires:**` line in
 `FEATURES.md` / `BUGS.md`: remove the now-satisfied reference (if it
 was the only one, set the line to `Requires: none.`). The active
 `Requires:` lines describe what is *currently* blocking, so `/nightshift:ready`
-never has to consult the history file — the dependency graph settles
+never has to consult the history file; the dependency graph settles
 as features ship.
 ~~~
 
@@ -446,7 +446,7 @@ it is edited at the same time to drop the now-satisfied reference (see
 the convention in `FEATURES.md`'s `## Requires lines` and `## Slicing`
 sections). The active `Requires:` lines therefore describe what is
 *currently* blocking and the dependency graph settles as work ships.
-This file is purely archaeological — read it when you want to know
+This file is purely archaeological; read it when you want to know
 what already shipped, not to resolve dependencies.
 
 ## Entries
@@ -496,7 +496,7 @@ the diagnosis.
 **Then walk every other `**Requires:**` line in `FEATURES.md` and
 `BUGS.md`** and remove references to the just-fixed bug: if it was the
 only item on the line, set the line to `Requires: none.`. Mirror of the
-`FEATURES.md` walk-and-remove convention — `/nightshift:ready` never has to
+`FEATURES.md` walk-and-remove convention; `/nightshift:ready` never has to
 consult `BUGS_HISTORY.md`.
 
 ## Open
@@ -512,7 +512,7 @@ this file, AND walk every other `**Requires:**` line in `FEATURES.md`
 / `BUGS.md`: remove the now-satisfied reference (if it was the only
 one, set the line to `Requires: none.`). The active `Requires:` lines
 describe what is *currently* blocking, so `/nightshift:ready` never has to consult
-the history file — the dependency graph settles as bugs are fixed.
+the history file; the dependency graph settles as bugs are fixed.
 ~~~
 
 ### `.claude/BUGS_HISTORY.md`
@@ -609,7 +609,7 @@ Four locations sit alongside the indexes that are not read at session start; con
 - `.claude/FEATURES_HISTORY.md`: archive of shipped features and shipped slices, split out from `FEATURES.md` so the active backlog stays scannable on session start. Append entries here as soon as a feature or slice lands.
 - `.claude/BUGS_HISTORY.md`: archive of fixed bugs, split out from `BUGS.md`. Append entries here as soon as a bug is fixed.
 
-**Walk-and-remove convention.** When a feature, slice, quick win, or bug-fix ships, the same change set that appends its entry to the relevant history archive ALSO walks every other `**Requires:**` line in `FEATURES.md` / `BUGS.md` and drops references to the just-shipped item; if the dropped reference was the only one on the line, the line becomes `Requires: none.`. Active `Requires:` lines therefore describe what is *currently* blocking, and `/nightshift:ready` never has to consult the history archives to resolve dependencies — the dependency graph settles as work ships.
+**Walk-and-remove convention.** When a feature, slice, quick win, or bug-fix ships, the same change set that appends its entry to the relevant history archive ALSO walks every other `**Requires:**` line in `FEATURES.md` / `BUGS.md` and drops references to the just-shipped item; if the dropped reference was the only one on the line, the line becomes `Requires: none.`. Active `Requires:` lines therefore describe what is *currently* blocking, and `/nightshift:ready` never has to consult the history archives to resolve dependencies; the dependency graph settles as work ships.
 
 Brainstorming output lives in feature files (or in patterns when cross-cutting / in bugs when diagnostic) rather than as separate dated specs. Pre-feature exploratory brainstorms land as draft features with `status: exploring` frontmatter and an entry in `FEATURES.md`'s `## Exploring` section; `/nightshift:ready` skips them. They graduate to a themed `##` section with a `**Requires:**` line once the design firms up.
 
