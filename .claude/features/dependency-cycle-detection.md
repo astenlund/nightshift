@@ -57,3 +57,4 @@ Migrated from `nightshift-proposals.md` (#14) into the backlog and hardened by a
 
 - revise-spec graduated 2026-08-11 06:01 at 25acb7e, scope: whole file, content: 217a7720
 - revise-spec refreshed 2026-08-11 06:07 at 9fce1dc, scope: whole file, content: 00bd6d16 (sign-off marker)
+- handover completed 2026-08-11 11:49 at 1948c82, scope: whole file, content: 00bd6d16
