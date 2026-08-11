@@ -32,6 +32,10 @@ misleads harder than a coarse one that holds.
   state that designed/cutover-gated provisional markers and same-session mid-flight
   resumes are non-flags.
 
+## Backlog-entry parsing verification
+
+- **Make `/init-backlog` scaffold an instruction to run `nightshift:ready` after adding a new entry** to `FEATURES.md`, `BUGS.md`, `QUICK_WINS.md`, or `PATTERNS.md` (or a new per-item breakout file), confirming the new entry parses and its `**Requires:**` line resolves against the real grammar in `skills/ready/ready.js`. Today the four index templates document the `Requires:`-line shape in prose but never require the author to verify a new entry, so a malformed line (typo'd link target, misplaced `none.`, wrapped without the parser's join rule, missing line entirely) sits in the backlog until `/nightshift:ready` surfaces it. Shipping the instruction inside the init-backlog index templates covers both halves: fresh scaffolds carry it at creation, and re-running the idempotent command patches already-scaffolded projects, because `init-backlog`'s staleness rule flags a template-controlled portion missing a concept the current template documents (`commands/init-backlog.md` #Process inventory). At the end of the implementation session, run `/init-backlog` on this project as the acceptance step: it both tests the command's function (A) and patches this repository's own backlog with the new instruction (B), exercising the exact re-run path the change relies on.
+
 ## (add sections as work emerges)
 
 ## History
