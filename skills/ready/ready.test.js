@@ -16,6 +16,12 @@ const {
   splitTopLevelCommas,
   nodeKey,
   findCycles,
+  extractEntries,
+  findRequires,
+  parseSlices,
+  buildRegistry,
+  EXCLUDED_SECTIONS,
+  collectEntryEdges,
 } = require('./ready.js');
 
 let passed = 0;
@@ -222,6 +228,40 @@ All slices shipped, parent not graduated.
 **Requires:** none.
 `;
 
+const EDGE_FEATURES = `# Features
+
+## Area
+
+### [Anna](features/anna.md)
+
+A.
+
+**Requires:** [Bob](features/bob.md).
+
+### [Bob](features/bob.md)
+
+B.
+
+**Requires:** none.
+
+### [Self](features/self.md)
+
+Self-reference.
+
+**Requires:** [Self: later](features/self.md).
+
+**Slices:**
+
+- **First.**
+- **later.**
+
+### [Broken](features/broken.md)
+
+Broken + valid link -> masked.
+
+**Requires:** [Dead](features/dead.md), [Anna](features/anna.md).
+`;
+
 // ---------- unit tests ----------
 
 test('stripStable unwraps nested markers until stable', () => {
@@ -266,6 +306,28 @@ test('findCycles reports only >=2-node components, deterministically', () => {
   assert.strictEqual(
     findCycles([{ from: 'a', to: 'b' }, { from: 'b', to: 'c' }, { from: 'c', to: 'a' }])[0].members.join(','),
     'a,b,c',
+  );
+});
+
+test('collectEntryEdges sources edges only from top-level Requires, drops intra-entry, masks structural', () => {
+  const parsed = Object.fromEntries(
+    ['FEATURES'].map((n) => [n, extractEntries(EDGE_FEATURES, EXCLUDED_SECTIONS[n], { bullets: false, noticeProse: false })]),
+  );
+  const records = [];
+  for (const name of ['FEATURES']) {
+    for (const e of parsed[name].entries) {
+      const req = findRequires(e.bodyLines);
+      e.requiresContent = req ? req.content : null;
+      e.slices = parseSlices(e.bodyLines);
+      records.push({ index: `${name}.md`, entry: e });
+    }
+  }
+  const registry = buildRegistry(records);
+  const edges = collectEntryEdges(records.filter((r) => r.index !== 'QUICK_WINS.md'), registry);
+  // Anna -> Bob is a real edge; Self intra-entry dropped; Broken masked.
+  assert.deepStrictEqual(
+    edges.map((e) => `${e.from}|${e.to}`).sort(),
+    ['features/anna|features/bob'],
   );
 });
 
