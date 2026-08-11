@@ -108,7 +108,7 @@ Sliced feature, MVP struck.
 
 **Slices:**
 
-- ~~MVP — floating-reference core.~~ (Shipped — see FEATURES_HISTORY.md.)
+- ~~MVP \u2014 floating-reference core.~~ (Shipped \u2014 see FEATURES_HISTORY.md.)
 - **Re-anchor events.** Manual UI re-anchor plumbing.
 - **Late-join replay.** Pull endpoint.
   **Requires:** [Delta: re-anchor events](features/delta.md).
@@ -203,7 +203,7 @@ Sliced, MVP unshipped.
 
 **Slices:**
 
-- **MVP — base layer.** The base.
+- **MVP \u2014 base layer.** The base.
 - **Extension.** Extra layer with no explicit gates.
 
 **Requires:** none.
@@ -222,7 +222,7 @@ All slices shipped, parent not graduated.
 
 **Slices:**
 
-- ~~MVP — first.~~ (Shipped.)
+- ~~MVP \u2014 first.~~ (Shipped.)
 - ~~Second bit.~~ (Shipped.)
 
 **Requires:** none.
@@ -266,20 +266,20 @@ Broken + valid link -> masked.
 
 test('stripStable unwraps nested markers until stable', () => {
   assert.strictEqual(stripStable('**`Identifier`.**'), 'Identifier');
-  assert.strictEqual(stripStable('~~MVP — core.~~'), 'MVP — core');
+  assert.strictEqual(stripStable('~~MVP \u2014 core.~~'), 'MVP \u2014 core');
   assert.strictEqual(stripStable('  plain.  '), 'plain');
 });
 
 test('normalizeSliceName strips slice-type prefix and case-folds', () => {
-  assert.strictEqual(normalizeSliceName('~~MVP — floating-reference core.~~'), 'floating-reference core');
+  assert.strictEqual(normalizeSliceName('~~MVP \u2014 floating-reference core.~~'), 'floating-reference core');
   assert.strictEqual(normalizeSliceName('floating-reference core'), 'floating-reference core');
-  assert.strictEqual(normalizeSliceName('Slice 2 — Foo Bar.'), 'foo bar');
+  assert.strictEqual(normalizeSliceName('Slice 2 \u2014 Foo Bar.'), 'foo bar');
   assert.strictEqual(normalizeSliceName('**`RepertoireSource`.**'), 'repertoiresource');
 });
 
 test('normalizeSliceName accepts hyphen and en-dash prefix separators', () => {
   assert.strictEqual(normalizeSliceName('MVP - base layer'), 'base layer');
-  assert.strictEqual(normalizeSliceName('Slice 2 – foo'), 'foo');
+  assert.strictEqual(normalizeSliceName('Slice 2 \u2013 foo'), 'foo');
   assert.strictEqual(normalizeSliceName('floating-reference core'), 'floating-reference core');
 });
 
@@ -429,7 +429,7 @@ test('missing indexes are reported and do not abort', () => {
 
 test('first unshipped slice uses the top-level Requires line', () => {
   assert.ok(
-    titles(gates.ready).includes('[Theta: MVP — base layer]'),
+    titles(gates.ready).includes('[Theta: MVP \u2014 base layer]'),
     titles(gates.ready).join(' | '),
   );
 });

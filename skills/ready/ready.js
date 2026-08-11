@@ -75,7 +75,7 @@ function stripStable(s) {
 function normalizeSliceName(s) {
   let cur = stripStable(s);
   // The separator may be a spaced em-dash, en-dash, or plain hyphen.
-  cur = cur.replace(/^\S+(?: \S+)* [—–-] /, '');
+  cur = cur.replace(/^\S+(?: \S+)* [\u2014\u2013-] /, '');
   cur = stripStable(cur);
   return cur.toLowerCase().replace(/\s+/g, ' ');
 }
