@@ -232,6 +232,14 @@ Every first design-spec draft states an explicit rigor profile: an operating-con
 
 **Requires:** none.
 
+## Communication standards
+
+### [Communicate for technically sophisticated, time-constrained users](features/sophisticated-user-communication.md)
+
+Gives Nightshift's user-facing surfaces a declared audience model and communication contract: the user is an accomplished engineer who owns the requirements but is time-constrained, so decisions are surfaced at the behavioral, architectural, and risk level with full precision, routine mechanics are resolved autonomously, and the user is consulted only when a decision materially affects the work. The delegation boundary is phase-split: spec work involves the user, while autonomous execution decides and flags at session end, including scope changes handled naive-first with a backlog refactoring entry in the follow-up.
+
+**Requires:** none.
+
 ## History
 
 Implemented features are archived in

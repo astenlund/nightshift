@@ -48,16 +48,7 @@ Then an interrupted implementation can resume from known durable state instead o
 
 This is lower priority than the review redesign and core deterministic hardening.
 
-## 22. Communicate for technically sophisticated, time-constrained users
-
-Nightshift should assume the user is an accomplished engineer who owns the requirements but does not have time to absorb the project's code-level details. Communicate technical decisions at the behavioral, architectural, and risk level with full precision, without requiring source familiarity.
-
-Resolve routine implementation mechanics from the approved spec, project knowledge, and code. Ask the user only when a decision materially affects requirements, scope, observable behavior, risk tolerance, cost, or reversibility. Provide code-level evidence when it is necessary to explain a concern or when the user requests it.
-
-Do not confuse unfamiliarity with the codebase for lack of technical sophistication. Avoid both unexplained implementation detail and condescending simplification. The default communication should let an experienced engineer make the decisions that actually require their judgment without first reconstructing the project's internals.
-
 # Suggested priority order
 
-1. **Communicate for technically sophisticated, time-constrained users.**
-2. **Move deterministic `init-backlog` mechanics out of prompts.**
-3. **Add a durable handover execution ledger if interrupted unattended runs remain a practical problem.**
+1. **Move deterministic `init-backlog` mechanics out of prompts.**
+2. **Add a durable handover execution ledger if interrupted unattended runs remain a practical problem.**
