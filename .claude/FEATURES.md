@@ -207,6 +207,10 @@ Draft exploring a durable "signed-off" marker on backlog entries so the agent ca
 
 Draft exploring a durable version marker on each backlog index file (a "backlog index version", distinct from the plugin version), with an instruction and a session-side check that compares it against the plugin's latest and notifies the user to run `init-backlog` when an index predates the current template.
 
+### [Present chosen spec for agreement before work](features/present-spec-for-agreement.md)
+
+Draft exploring an instruction in the index templates (and an `init-backlog` update) so the agent presents any spec it is about to implement to the user for agreement before starting work, rather than only when the user requests review ad hoc (motivated by the calibrate-first-draft-rigor review request on 2026-08-12).
+
 ## Review hardening
 
 ### [Second-opinion gates](features/second-opinion-gates.md)
