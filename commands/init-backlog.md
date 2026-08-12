@@ -71,6 +71,7 @@ For each templated file, these are the load-bearing concepts its template-contro
 4. Notes the negative-knowledge → patterns Cautionary tales promotion path.
 5. Describes the capture shorthand (name + smell + preferred shape).
 6. States the stable-anchor rule for entries (locate by symbol names, entry titles, commit hashes; never by line numbers, plan-phase ordinals, bullet positions, or temporal qualifiers).
+7. Instructs the author to run `/nightshift:ready` after adding a new entry to confirm it parses as a work item against the real grammar in `skills/ready/ready.js`.
 
 **`QUICK_WINS_HISTORY.md`:**
 1. Names this file as archival / archaeological: loaded on demand, not at session start. *(H1)*
@@ -87,6 +88,7 @@ For each templated file, these are the load-bearing concepts its template-contro
 5. Explains the comma-separated form (with line-wrap allowed), the three reference shapes, walk-and-remove, and carve-outs for `## Working hypotheses` / `## Staging` / `## Future directions (not yet designed)` / `## Author tooling` / `## Exploring`. *(`## Requires lines` section)*
 6. Explains MVP + named continuations, the strikethrough-as-shipped convention on bullets, slice-suffix link form for downstream references, and the walk-and-remove obligation when a slice ships. *(`## Slicing` section)*
 7. Notes pre-dependency-analysis brainstorms, `/nightshift:ready` ignores the section, `Requires:` lines optional. *(`## Exploring` preamble: the prose before the first `###` entry inside that section; if the section has no `###` entries yet, the entire section body IS the preamble)*
+8. Instructs the author to run `/nightshift:ready` after adding a new entry (or breakout file) to confirm it parses and its `**Requires:**` line resolves against the real grammar in `skills/ready/ready.js`. *(`## Requires lines` section)*
 
 **`FEATURES_HISTORY.md`:**
 1. Names this file as archival / archaeological: loaded on demand, not at session start. *(H1)*
@@ -99,6 +101,7 @@ For each templated file, these are the load-bearing concepts its template-contro
 2. States the inline-or-breakout convention (short entries inline, longer diagnoses graduate to `bugs/<slug>.md`). *(H1)*
 3. Points at `BUGS_HISTORY.md` for fixed entries; no inline `## Fixed` section. *(H1)*
 4. Explains the comma-separated form (with line-wrap allowed), the three reference shapes, walk-and-remove obligation when a bug is fixed. *(`## Requires lines` section)*
+5. Instructs the author to run `/nightshift:ready` after adding a new entry (or breakout file) to confirm it parses and its `**Requires:**` line resolves against the real grammar in `skills/ready/ready.js`. *(`## Requires lines` section)*
 
 **`BUGS_HISTORY.md`:**
 1. Names this file as archival / archaeological: loaded on demand, not at session start. *(H1)*
@@ -111,6 +114,7 @@ For each templated file, these are the load-bearing concepts its template-contro
 2. Defines a pattern as cross-cutting structure that would otherwise be re-described in two or more feature files.
 3. States the graduation rule (lift into shared home, link from features rather than duplicating).
 4. Optionally: describes recognition-sufficiency on the index (entry should let readers recognize when a pattern applies without first reading the breakout file).
+5. Notes that `/nightshift:ready` does not parse PATTERNS.md (it is a pattern registry, not a work backlog), and directs the author to verify an added entry's breakout-file link target and run `ready` as a whole-session sanity pass.
 
 **SessionStart hook `additionalContext`** (concepts already enumerated inline in step 1's bullet: see line for index list, plans/ location, `/nightshift:ready`, `**Requires:**` parsing target).
 
@@ -164,6 +168,13 @@ survive refactors -- symbol names, entry titles, commit hashes, config
 keys -- never on line numbers, plan-phase ordinals, bullet positions,
 or temporal qualifiers ("new", "recent"): a precise locator that rots
 misleads harder than a coarse one that holds.
+
+**After adding a new entry, run `/nightshift:ready`** from the repo root
+to confirm it parses as a quick-wins work item against the real grammar
+in `skills/ready/ready.js`. Quick wins carry no `**Requires:**` line; the
+failure mode to catch is an entry that doesn't parse as a `- ` bullet or
+`###` heading (ready reports it as a prose-only-section notice) while you
+can still fix it in the same session.
 
 ## (add sections as work emerges)
 
@@ -255,6 +266,13 @@ A missing `Requires:` line is a structural error: every entry must say
 something. Silence is not the same as `none.`; it indicates the
 dependency review hasn't been done. The `/nightshift:ready` command parses these
 lines to compute the unblocked work set.
+
+**After adding a new entry (or a feature breakout file), run `/nightshift:ready`**
+from the repo root to confirm the new entry parses and its `**Requires:**`
+line resolves against the real grammar in `skills/ready/ready.js`. A
+malformed line (wrapped without the parser's join rule, a misplaced
+`none.`, a broken or ambiguous link target, or a missing line entirely)
+otherwise sits in the backlog until the next readiness pass surfaces it.
 
 Downstream relationships (this feature **enables** what) are not
 encoded structurally. They can be derived by walking the upstream graph
@@ -487,6 +505,13 @@ parsing):
 A missing `Requires:` line is a structural error. `/nightshift:ready` parses these
 lines. History entries don't carry `Requires:` lines.
 
+**After adding a new entry (or a bug breakout file), run `/nightshift:ready`**
+from the repo root to confirm the new entry parses and its `**Requires:**`
+line resolves against the real grammar in `skills/ready/ready.js`. A
+malformed line (wrapped without the parser's join rule, a misplaced
+`none.`, a broken or ambiguous link target, or a missing line entirely)
+otherwise sits in the backlog until the next readiness pass surfaces it.
+
 **When a bug is fixed**, move its entry to
 [`BUGS_HISTORY.md`](BUGS_HISTORY.md) with a brief note on the fix and
 the commit it landed in; drop its `Requires:` line in the move. If the
@@ -559,6 +584,13 @@ A pattern graduates here when the same structure would otherwise be
 re-described in two or more feature files. Lifting it into a shared home
 lets features link at the pattern rather than duplicating it, and makes
 design decisions about the pattern uniform across its members.
+
+**Adding a pattern (or its breakout file) is not grammar-checked:**
+`/nightshift:ready` does not parse PATTERNS.md (it is a pattern registry,
+not a work backlog). When you add a pattern, verify its breakout-file
+link targets a real file under `.claude/patterns/` and run
+`/nightshift:ready` afterward as a whole-session sanity pass, so a stray
+malformed entry in the three work indexes is caught before it ships.
 
 ## Current patterns
 

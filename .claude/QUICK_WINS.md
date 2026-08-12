@@ -20,6 +20,13 @@ keys -- never on line numbers, plan-phase ordinals, bullet positions,
 or temporal qualifiers ("new", "recent"): a precise locator that rots
 misleads harder than a coarse one that holds.
 
+**After adding a new entry, run `/nightshift:ready`** from the repo root
+to confirm it parses as a quick-wins work item against the real grammar
+in `skills/ready/ready.js`. Quick wins carry no `**Requires:**` line; the
+failure mode to catch is an entry that doesn't parse as a `- ` bullet or
+`###` heading (ready reports it as a prose-only-section notice) while you
+can still fix it in the same session.
+
 ## Handover shift-start confirmation heuristic
 
 - **Do not raise the shift-start confirm for designed provisional live-claims plus a
@@ -31,10 +38,6 @@ misleads harder than a coarse one that holds.
   "Clean detection" paragraphs in `commands/handover.md` (or the shift-start section) to
   state that designed/cutover-gated provisional markers and same-session mid-flight
   resumes are non-flags.
-
-## Backlog-entry parsing verification
-
-- **Make `/init-backlog` scaffold an instruction to run `nightshift:ready` after adding a new entry** to `FEATURES.md`, `BUGS.md`, `QUICK_WINS.md`, or `PATTERNS.md` (or a new per-item breakout file), confirming the new entry parses and its `**Requires:**` line resolves against the real grammar in `skills/ready/ready.js`. Today the four index templates document the `Requires:`-line shape in prose but never require the author to verify a new entry, so a malformed line (typo'd link target, misplaced `none.`, wrapped without the parser's join rule, missing line entirely) sits in the backlog until `/nightshift:ready` surfaces it. Shipping the instruction inside the init-backlog index templates covers both halves: fresh scaffolds carry it at creation, and re-running the idempotent command patches already-scaffolded projects, because `init-backlog`'s staleness rule flags a template-controlled portion missing a concept the current template documents (`commands/init-backlog.md` #Process inventory). At the end of the implementation session, run `/init-backlog` on this project as the acceptance step: it both tests the command's function (A) and patches this repository's own backlog with the new instruction (B), exercising the exact re-run path the change relies on. Dispatch that acceptance run through a fresh-context subagent rather than running it in the authoring session: the session that wrote the templates unconsciously validates them, while a fresh agent sees only the dispatched command prose plus the checkable artifacts, which is what an end user actually experiences. Make sure that subagent executes the NEW instructions from the repo clone (`C:/Git/nightshift/commands/init-backlog.md`), not the installed plugin cache: until a release is pushed and auto-update syncs it, `/init-backlog` under `${CLAUDE_PLUGIN_ROOT}` still resolves the pre-change templates.
 
 ## (add sections as work emerges)
 

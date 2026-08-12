@@ -12,6 +12,13 @@ re-described in two or more feature files. Lifting it into a shared home
 lets features link at the pattern rather than duplicating it, and makes
 design decisions about the pattern uniform across its members.
 
+**Adding a pattern (or its breakout file) is not grammar-checked:**
+`/nightshift:ready` does not parse PATTERNS.md (it is a pattern registry,
+not a work backlog). When you add a pattern, verify its breakout-file
+link targets a real file under `.claude/patterns/` and run
+`/nightshift:ready` afterward as a whole-session sanity pass, so a stray
+malformed entry in the three work indexes is caught before it ships.
+
 ## Current patterns
 
 Nothing captured yet.

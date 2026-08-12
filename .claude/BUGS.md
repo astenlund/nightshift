@@ -39,6 +39,13 @@ the diagnosis.
 only item on the line, set the line to `Requires: none.`. Mirror of the
 `FEATURES.md` walk-and-remove convention; `/nightshift:ready` never has to consult `BUGS_HISTORY.md`.
 
+**After adding a new entry (or a bug breakout file), run `/nightshift:ready`**
+from the repo root to confirm the new entry parses and its `**Requires:**`
+line resolves against the real grammar in `skills/ready/ready.js`. A
+malformed line (wrapped without the parser's join rule, a misplaced
+`none.`, a broken or ambiguous link target, or a missing line entirely)
+otherwise sits in the backlog until the next readiness pass surfaces it.
+
 ## Open
 
 Nothing currently tracked.

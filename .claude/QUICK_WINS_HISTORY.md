@@ -26,4 +26,4 @@ not to resolve dependencies.
 
 ## Entries
 
-Nothing yet.
+- **Scaffold a run-`/nightshift:ready`-after-adding-an-entry instruction in `/init-backlog`** (`commands/init-backlog.md`): the four index templates now instruct the author to run `/nightshift:ready` after adding a new entry (or per-item breakout file) to confirm it parses and its `**Requires:**` line resolves against the real grammar in `skills/ready/ready.js`. Scoped per index to what the parser actually validates: FEATURES/BUGS resolve `Requires:` links and flag structural errors; QUICK_WINS surfaces prose-only-section notices; PATTERNS.md is not parsed (it is a registry), so its note directs a breakout-file link check plus a whole-session sanity pass. A matching `## Concept checklists` item per index makes the idempotent `init-backlog` re-run detect the missing concept on already-scaffolded projects and propose a targeted patch. Validated by a fresh-context acceptance re-run of `init-backlog` against this repo: exactly the four stale indexes were targeted-patched and every other target skipped. Shipped in this commit.
