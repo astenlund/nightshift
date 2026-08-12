@@ -251,7 +251,7 @@ Every design spec carries a short, durable scope anchor near its goal: a paraphr
 
 ### [Calibrate first-draft rigor to deployment context](features/calibrate-first-draft-rigor.md)
 
-Every first design-spec draft states an explicit rigor profile: an operating-context section pairing with the durable scope anchor, recording deployment environment, audience, failure consequence, concurrency and compatibility risk, reversibility cost, and expected lifetime, plus the rigor warranted above a non-negotiable correctness floor. Derivation is knowledge-first from repository guidance, consulting the user only when the feature differs materially from documented defaults, with feature-specific deviations recorded. The audience category set deferred from the durable-scope-anchor migration is adopted here as a derived classification.
+Every first design-spec draft states an explicit rigor profile: an operating-context section pairing with the durable scope anchor, recording deployment environment, audience, failure consequence, concurrency and compatibility risk, reversibility cost, and expected lifetime, plus the rigor warranted above a non-negotiable correctness floor. A deterministic three-step derivation maps the six inputs to a tier and the tier to per-dimension effort, with judgment boundaries recorded as deviations. Enforcement is a grounding step owned by revise-spec and revise-plan that derives/fills the section at the entry point (shift start, user present) before review; persistence of consulted facts is scoped to durable-knowledge gaps, never feature deviations, and the audience category set from the durable-scope-anchor migration is adopted as a derived classification.
 
 **Requires:** none.
 

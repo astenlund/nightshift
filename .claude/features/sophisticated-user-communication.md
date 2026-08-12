@@ -49,7 +49,7 @@ The default communication lets an experienced engineer make the decisions that a
 - The handover morning report is the surfacing channel the phase-split delegation rule relies on (existing; `commands/handover.md`).
 - The revise triage halt in `commands/handover.md` surfaces the opposite consultation contract on scope changes; this feature reconciles it by phase, keeping the halt for design-phase and genuinely-blocked findings and moving decidable execution-phase scope adjustments to decide-and-flag. Amending the halt's wording is part of this feature's implementation (see Delegation boundary).
 - The naive-first scope-change convention feeds refactoring entries into the four-index backlog (existing; `QUICK_WINS.md` / `FEATURES.md`).
-- The audience here is the single-dev/personal-use context; the rigor profile's operating-context section records the same context for spec-level rigor decisions (see [calibrate-first-draft-rigor](calibrate-first-draft-rigor.md)).
+- The audience here is the personal use context; the rigor profile's operating-context section records the same context for spec-level rigor decisions (see [calibrate-first-draft-rigor](calibrate-first-draft-rigor.md)).
 
 ## Status
 
