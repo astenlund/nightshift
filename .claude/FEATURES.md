@@ -236,6 +236,12 @@ Every first design-spec draft states an explicit rigor profile: an operating-con
 
 **Requires:** none.
 
+### [Simplify the revise lifecycle around rounds](features/revise-lifecycle-rounds.md)
+
+Restates the revise lifecycle's phase progress around its actual moving parts (dimensions, rounds, and shards), with a phase ending when every applicable dimension is inactive or after 10 rounds whichever comes first; removes the clean/dirty phase model and the per-cell launch limit; and relocates the "no applied changes" requirement to a post-review entry condition (the current phase must have converged and applied no reviewable-content changes). File motivated by two observed phase-1 short-circuits on 2026-08-12 where a "dirty" phase was treated as the trigger to start phase 2.
+
+**Requires:** none.
+
 ## Communication standards
 
 ### [Communicate for technically sophisticated, time-constrained users](features/sophisticated-user-communication.md)
