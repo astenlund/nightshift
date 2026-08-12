@@ -199,6 +199,14 @@ Draft exploring a lightened variant of the revise review commands: one fresh rev
 
 Draft exploring a JSON schema that review agents validate their final report against before the session ends, so malformed output is caught by the reviewer itself instead of forcing the controller to salvage-parse an erroneous report or re-run the review after the agent session has been cleared.
 
+### [Signed-off stamp](features/signed-off-stamp.md)
+
+Draft exploring a durable "signed-off" marker on backlog entries so the agent can distinguish a half-cooked idea from a fully-designed one, with an instruction in the index templates (and an `init-backlog` update) so future sessions kick off a brainstorming pass to settle non-stamped entries before implementing them.
+
+### [Backlog index version](features/backlog-index-version.md)
+
+Draft exploring a durable version marker on each backlog index file (a "backlog index version", distinct from the plugin version), with an instruction and a session-side check that compares it against the plugin's latest and notifies the user to run `init-backlog` when an index predates the current template.
+
 ## Review hardening
 
 ### [Second-opinion gates](features/second-opinion-gates.md)
