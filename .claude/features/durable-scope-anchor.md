@@ -57,6 +57,8 @@ Migrated into the backlog on 2026-08-11, with five design decisions confirmed on
 - The common-context-block machinery in `skills/revise/SKILL.md` that assembles reviewer payloads (existing; this feature adds the anchor text to that block's scope ground truth).
 - The spec-review pre-seed acknowledgement scan in `skills/revise/spec.md` (existing; this feature feeds it a declared source).
 
+Landing order: if the wave-convergence lifecycle (wave-lifecycle.md) has not shipped when this is picked up, rebase on its wave-era SKILL.md prose first; it rewrites the lifecycle sections this feature touches.
+
 **Requires:** none (FEATURES.md index entry).
 
 ## Hardening

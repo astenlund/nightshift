@@ -16,7 +16,7 @@ This feature narrows the payload only in the first case: a round 2+ reviewer who
 
 ## Why the completion guarantee is unaffected
 
-Post-review entry requires the current phase to have converged **and** applied no reviewable-content changes. Because a narrowed payload is delivered only after own-dimension fixes were applied, any phase that ran a narrowed round has applied changes and can never enter post-review; its deferred coverage is picked up by the next phase's whole-scope reset. A change-free converged phase delivered full payloads in every round it ran (including rounds that existed only to clear deferred findings), so its convergence rests on whole-scope review of an artifact that did not change during the phase, which is exactly the full-coverage clean pass completion has always rested on.
+Under the wave-convergence lifecycle (`wave-lifecycle.md`), this feature operates under a hard constraint that lifecycle imposes: **a narrowed-payload review never certifies a fingerprint**. A narrowed round reviews at the post-fix fingerprint while seeing only the fixes, so an LGTM there must not mark the cell current; certification requires a full-payload review. Narrowed rounds therefore validate fixes and keep the cell active, and the cell's next full-payload review (typically via the reactivation wave, which restores whole-scope delivery) is what certifies. Completion still requires every applicable cell to certify the final fingerprint plus the verifier stamp, and every certification rests on a full-payload look, so narrowing never weakens what completion attests.
 
 This extends a deferral the design already accepts: today a dimension that goes clean in round 1 stays inactive while sibling dimensions' later fixes mutate the code, with the phase boundary as the backstop. Fix-scoping applies the same philosophy to *what an active dimension re-reads*, not just *which dimensions re-look*.
 
@@ -39,7 +39,7 @@ Captured 2026-08-13 from a user idea, with the design decisions above settled in
 - The code delivery rules in `skills/revise/code.md` (existing; cumulative-patch generation is the whole-scope baseline the narrowed payload replaces in round 2+).
 - Fix attribution by originating dimension in the applied-changes state (new; see open points).
 
-**Requires:** [Simplify the revise lifecycle around rounds](revise-lifecycle-rounds.md).
+**Requires:** [Wave-convergence lifecycle with a holistic gate](wave-lifecycle.md).
 
 ## Hardening
 

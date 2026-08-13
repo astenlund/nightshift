@@ -80,6 +80,8 @@ Draft proposal; not yet designed as a buildable skill or spec. Depends on nothin
 - The user's requirement description(s) plus settled Q&A, produced at brainstorm time (see "Context package per gate").
 - A second-opinion model selection per run, user-chosen (see "Active ingredient").
 
+Landing order: if the wave-convergence lifecycle (wave-lifecycle.md) has not shipped when this is picked up, re-derive the gate placement against the wave model first: the hardened gate maps onto the verifier seat, and the phase-cap open question dissolves into the wave and verifier caps.
+
 **Requires:** none (FEATURES.md index entry).
 
 ## Hardening

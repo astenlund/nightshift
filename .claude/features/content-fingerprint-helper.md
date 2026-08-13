@@ -65,6 +65,8 @@ Migrated into the backlog on 2026-08-11, with six design decisions confirmed one
 - The fingerprint consumers this centralizes are shipped: the provenance stamp recipe in `commands/handover.md`, the transient review fingerprint recipe in `skills/revise/SKILL.md`, and the code-review cumulative-patch hash in `skills/revise/SKILL.md` (existing; this feature relocates the computation they currently embed).
 - The `skills/ready/ready.js` / `ready.test.js` framework-free fixture convention this helper follows (existing).
 
+Landing order: if the wave-convergence lifecycle (wave-lifecycle.md) has not shipped when this is picked up, rebase on its wave-era SKILL.md prose first; it rewrites the lifecycle sections this feature touches.
+
 **Requires:** none (FEATURES.md index entry).
 
 ## Hardening

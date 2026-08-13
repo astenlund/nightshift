@@ -54,4 +54,6 @@ Draft design in the backlog; not yet hardened by a revise-spec review. Depends o
 - Per-finding fresh-skeptic verification of reported findings before adjudication (shipped; this feature changes what happens *after* a CONFIRMED verdict, not the verdict itself).
 - Resumable agent sessions carrying the complete persisted role-specific finding and dialogue state (the session identity mechanism already used by the revise engine).
 
+Landing order: if the wave-convergence lifecycle (wave-lifecycle.md) has not shipped when this is picked up, rebase on its wave-era SKILL.md prose first; it rewrites the lifecycle sections this feature touches.
+
 **Requires:** none (FEATURES.md index entry).

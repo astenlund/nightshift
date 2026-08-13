@@ -103,6 +103,8 @@ Draft proposal; not yet designed as a buildable skill change or spec. Partially 
 - The review engine's phase/round state, atomic checkpointing, and resume machinery (shipped; this feature relocates and guards them, it does not redesign them).
 - The artifact identity, resolved-scope, base-SHA, and fingerprint fields the controller already determines at start-up (shipped).
 
+Landing order: if the wave-convergence lifecycle (wave-lifecycle.md) has not shipped when this is picked up, rebase on its wave-era SKILL.md prose first; it rewrites the lifecycle sections this feature touches.
+
 **Requires:** none (FEATURES.md index entry).
 
 ## Hardening
