@@ -33,7 +33,7 @@ Post-review entry requires the current phase to have ended with every applicable
 
 ## Status
 
-Migrated into the backlog on 2026-08-12 after the design was settled in dialogue: the round-based lifecycle, the all-inactive-or-round-cap phase end, the clean/dirty model removal, and the "no applied changes" rule as a post-review entry condition (not folded into convergence counting). Not yet designed as a buildable change; to be hardened by a revise-spec run before planning.
+Migrated into the backlog on 2026-08-12 after the design was settled in dialogue: the round-based lifecycle, the all-inactive-or-round-cap phase end, the clean/dirty model removal, and the "no applied changes" rule as a post-review entry condition (not folded into convergence counting). Superseded 2026-08-13 without shipping by the wave-convergence lifecycle (`wave-lifecycle.md`), which removes the phase model this file would have restated; the round cap, cap-end asymmetry, change-free rationale, and all-refuted trade note carry forward there. Retained as a historical design record.
 
 ## Requirements
 

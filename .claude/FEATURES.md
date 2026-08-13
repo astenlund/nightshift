@@ -249,9 +249,9 @@ Every design spec carries a short, durable scope anchor near its goal: a paraphr
 
 **Requires:** none.
 
-### [Simplify the revise lifecycle around rounds](features/revise-lifecycle-rounds.md)
+### [Wave-convergence lifecycle with a holistic gate](features/wave-lifecycle.md)
 
-Restates the revise lifecycle's phase progress around its actual moving parts (dimensions, rounds, and shards), with a phase ending when every applicable dimension is inactive or after 10 rounds whichever comes first; removes the clean/dirty phase model and the per-cell launch limit; and relocates the "no applied changes" requirement to a post-review entry condition (the current phase must have converged and applied no reviewable-content changes). File motivated by two observed phase-1 short-circuits on 2026-08-12 where a "dirty" phase was treated as the trigger to start phase 2.
+Removes the revise engine's phase model: rounds and reactivation waves converge until every dimension cell certifies the current fingerprint, then a single fresh holistic verifier (opus, `verifier/whole-artifact`) reviews the whole artifact and completion requires the conjunction of wave convergence and the verifier's stamp over the same fingerprint. Ten-controller simulation showed it cheaper than an enhanced-phase variant at every fix volume while catching a cross-cutting defect class phases structurally miss. Supersedes the retired lifecycle-rounds restatement; absorbs its caps, asymmetry rules, and trade notes.
 
 **Requires:** none.
 
@@ -259,7 +259,7 @@ Restates the revise lifecycle's phase progress around its actual moving parts (d
 
 Narrows the round 2+ payload for a dimension whose own findings produced applied fixes to those fixes plus surrounding context (a dimension active without applied fixes keeps normal delivery), until the next phase's reset restores full coverage; context findings still enter the normal skeptic pipeline. Completion is unaffected because narrowed payloads follow only applied fixes, so a phase that ran one can never be the change-free converged phase that enters post-review. Primary rationale is symmetry: a dimension re-reviewing its own fixes no longer incidentally adjudicates siblings' fixes (only zero-fix active dimensions retain that sight via normal delivery), reducing the accidental privilege still-active dimensions hold today; token and wall-clock savings are a hoped-for secondary benefit, at the cost of catching cross-file fix damage a phase later.
 
-**Requires:** [Simplify the revise lifecycle around rounds](features/revise-lifecycle-rounds.md).
+**Requires:** [Wave-convergence lifecycle with a holistic gate](features/wave-lifecycle.md).
 
 ## Communication standards
 
