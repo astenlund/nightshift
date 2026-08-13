@@ -12,7 +12,7 @@ This feature extracts those orchestration decisions into a deterministic, import
 - **Phase matrix**: encode the full table derived from SKILL.md, where any phase that reaches the all-inactive boundary increments the convergence counter (drift abandonment is the only non-increment), cleanliness gates only the destination, and phase 1 can never complete. The fixture set includes the drift-abandoned clean-under-two path that forces a third phase.
 - **Convergence span**: inactive is phase-scoped; only a phase boundary reactivates.
 - **Cross-dimension mutation**: preserve within phase, reset at next phase, one invariant with both halves tested.
-- **Rejected findings**: the full three-rule set (stays active, no disposition retires a dimension, no dirt/clean side effects).
+- **Rejected findings**: the disposition rule set (a follow-up-yielding disposition keeps the dimension active, an all-refuted or acknowledgement-only round deactivates it on skeptic evidence, no dirt side effects).
 - **Execution failure**: the full run-level fail-closed contract with explicit disposition.
 - **Completion invariant**: one joined predicate over phase floor, converged count, all-inactive, and zero mutations, tested for refusal in every combination.
 
@@ -87,20 +87,24 @@ Fixture cases:
 
 ## Rejected findings
 
-The full three-rule set, with the refuted and valid-but-deferred branches both covered:
+The disposition rule set, with the refuted and valid-but-deferred branches both covered:
 
-1. A disposed or rejected finding keeps its dimension active. The disposition is not a convergence device and never produces LGTM.
-2. No disposition other than a fresh, clean, note-backed review can turn a dimension inactive. The module refuses to mark a dimension LGTM from a rejected finding.
-3. A rejected finding neither dirties the phase nor counts as a clean conclusion.
+1. A valid-but-deferred finding, or an accepted judgment call with an actionable follow-up, keeps its dimension active. The disposition is not a convergence device and never produces LGTM by itself.
+2. A round whose skeptic-verified findings all landed as refuted or as acknowledgement-only accepted judgment calls deactivates the dimension at that round's boundary, judged on that round's own yield alone. The module refuses to deactivate from a controller rejection that lacks a skeptic-verified refutation, and the acceptance branch applies only to findings whose skeptic verdict is JUDGMENT_CALL.
+3. A rejected finding neither dirties the phase nor counts as a per-finding clean conclusion.
 
-Valid-but-deferred additionally records its actionable follow-up and the acknowledgement or caveat, with no applied-change entry; the dimension stays active under the same three rules. A REFUTED finding records a reasoned acknowledgement and no follow-up or applied-change entry.
+Valid-but-deferred additionally records its actionable follow-up and the acknowledgement or caveat, with no applied-change entry. A REFUTED finding records a reasoned acknowledgement and no follow-up or applied-change entry.
 
 Fixture cases:
 
-- reviewer finding F, controller rejects it -> dimension D stays active;
-- attempting to mark D LGTM from that disposition is refused;
-- the phase is not dirtied and no clean conclusion is counted;
-- valid-but-deferred branch: same three consequences plus the follow-up and acknowledgement recorded.
+- reviewer finding F, skeptic REFUTES it, no other findings in the round -> dimension D becomes inactive at the round boundary with the skeptic evidence as rationale;
+- reviewer finding F, controller rejects it without a skeptic-verified refutation -> deactivation is refused and D stays active;
+- mixed round: one refuted finding plus one valid-but-deferred -> D stays active, with the follow-up and acknowledgement recorded;
+- accepted judgment call with an actionable follow-up as the round's sole finding -> D stays active, with the follow-up row recorded;
+- acknowledgement-only accepted judgment call as the round's sole finding -> D becomes inactive at the boundary;
+- deferred in round N, all findings refuted in round N+1 -> D becomes inactive at round N+1's boundary while the round-N follow-up row stays open;
+- attempting the acceptance branch on a CONFIRMED-verdict finding is refused;
+- the phase is not dirtied in any of these and no per-finding clean conclusion is counted.
 
 ## Execution failure
 

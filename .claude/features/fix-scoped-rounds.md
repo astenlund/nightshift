@@ -4,9 +4,9 @@ Feature: within a revise phase, a round 2+ reviewer whose dimension had fixes ap
 
 ## What it does
 
-Today every round of every phase delivers each active dimension's reviewer its full normal payload: the whole-scope cumulative patch and in-scope live file set, or the shard's pathspec-cut slice when the scope is sharded. A dimension stays active into round 2+ for one of two reasons: its previous reviewer's findings produced applied fixes, or a finding was refuted or deferred without an artifact edit and the dimension still owes a clean conclusion.
+Today every round of every phase delivers each active dimension's reviewer its full normal payload: the whole-scope cumulative patch and in-scope live file set, or the shard's pathspec-cut slice when the scope is sharded. A dimension stays active into round 2+ for one of two reasons: its previous reviewer's findings produced applied fixes, or a finding was valid but deferred without an artifact edit and the dimension stays active into the next round, where it is judged on that round's own yield (a round yielding only refuted findings deactivates its dimension at that boundary, so refuted findings alone never carry a dimension forward).
 
-This feature narrows the payload only in the first case: a round 2+ reviewer whose dimension had own-dimension fixes applied at the previous round boundary receives only those fixes plus surrounding context, because its open question is "are the fixes sound, and did they leave the dimension clean?". A dimension active with zero own-dimension applied fixes (refuted or deferred findings only) keeps its normal whole-scope or shard-slice delivery, because its open question is still the artifact's cleanliness, not any fix's soundness. Round 1 of every phase remains whole-scope, unchanged.
+This feature narrows the payload only in the first case: a round 2+ reviewer whose dimension had own-dimension fixes applied at the previous round boundary receives only those fixes plus surrounding context, because its open question is "are the fixes sound, and did they leave the dimension clean?". A dimension active with zero own-dimension applied fixes (deferred findings only) keeps its normal whole-scope or shard-slice delivery, because its open question is still the artifact's cleanliness, not any fix's soundness. Round 1 of every phase remains whole-scope, unchanged.
 
 ## Design decisions (settled with the user, 2026-08-13)
 
@@ -16,7 +16,7 @@ This feature narrows the payload only in the first case: a round 2+ reviewer who
 
 ## Why the completion guarantee is unaffected
 
-Post-review entry requires the current phase to have converged **and** applied no reviewable-content changes. Because a narrowed payload is delivered only after own-dimension fixes were applied, any phase that ran a narrowed round has applied changes and can never enter post-review; its deferred coverage is picked up by the next phase's whole-scope reset. A change-free converged phase delivered full payloads in every round it ran (including rounds that existed only to clear refuted or deferred findings), so its convergence rests on whole-scope review of an artifact that did not change during the phase, which is exactly the full-coverage clean pass completion has always rested on.
+Post-review entry requires the current phase to have converged **and** applied no reviewable-content changes. Because a narrowed payload is delivered only after own-dimension fixes were applied, any phase that ran a narrowed round has applied changes and can never enter post-review; its deferred coverage is picked up by the next phase's whole-scope reset. A change-free converged phase delivered full payloads in every round it ran (including rounds that existed only to clear deferred findings), so its convergence rests on whole-scope review of an artifact that did not change during the phase, which is exactly the full-coverage clean pass completion has always rested on.
 
 This extends a deferral the design already accepts: today a dimension that goes clean in round 1 stays inactive while sibling dimensions' later fixes mutate the code, with the phase boundary as the backstop. Fix-scoping applies the same philosophy to *what an active dimension re-reads*, not just *which dimensions re-look*.
 
@@ -31,7 +31,7 @@ This extends a deferral the design already accepts: today a dimension that goes 
 
 ## Status
 
-Captured 2026-08-13 from a user idea, with the design decisions above settled in the same dialogue. The zero-fix active-dimension branch (refuted or deferred findings keep normal delivery) was defined during the pre-push review of the capture. Not yet designed as a buildable change; to be hardened by a revise-spec run before planning.
+Captured 2026-08-13 from a user idea, with the design decisions above settled in the same dialogue. The zero-fix active-dimension branch (a dimension kept active only by deferred findings keeps normal delivery) was defined during the pre-push review of the capture and narrowed when all-refuted rounds began deactivating their dimension. Not yet designed as a buildable change; to be hardened by a revise-spec run before planning.
 
 ## Requirements
 

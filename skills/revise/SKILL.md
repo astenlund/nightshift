@@ -27,8 +27,9 @@ Define and apply these terms consistently:
 - An explicit clean conclusion with a concrete nonblank verification rationale makes that dimension inactive for the rest of the phase.
 - A finding that causes an accepted artifact edit dirties the phase and keeps its dimension active.
 - Any other controller-coordinated reviewable-content edit also dirties the phase, while preserving each dimension's current active or inactive state until the next phase.
-- A finding that causes no artifact edit keeps its dimension active until a later fresh reviewer returns a clear clean conclusion.
-- A REFUTED finding records a reasoned acknowledgement and no follow-up or applied-change entry. A valid-but-deferred finding records both its actionable follow-up and the acknowledgement or caveat that prevents repeated review noise, with no applied-change entry. Neither disposition dirties the phase or counts as a clean conclusion.
+- A finding that causes no artifact edit but yields an open follow-up keeps its dimension active into the next round; each round's outcome is then judged on that round's own yield by the round-boundary rule below.
+- A REFUTED finding records a reasoned acknowledgement and no follow-up or applied-change entry. A valid-but-deferred finding records both its actionable follow-up and the acknowledgement or caveat that prevents repeated review noise, with no applied-change entry. Neither disposition dirties the phase or counts as a per-finding clean conclusion.
+- A cell whose round yields no applied fix and no open follow-up, because every skeptic-verified finding was refuted or accepted without an actionable follow-up, becomes inactive at the round boundary; the recorded skeptic evidence and acknowledgements are its verification rationale against the current fingerprint.
 - Another dimension's later edit never reactivates an inactive dimension inside the same phase.
 - A newly contradicted N/A justification becomes applicable immediately so the current phase cannot complete without reviewing it.
 
@@ -321,7 +322,7 @@ The manual controller may add direct verification evidence for a plan or spec fi
 
 Four safety rules are absolute:
 
-1. A dimension cannot become inactive without a clear clean-review conclusion and a concrete nonblank verification rationale against the current fingerprint.
+1. A dimension cannot become inactive without either a clear clean-review conclusion with a concrete nonblank verification rationale against the current fingerprint, or a round boundary at which every skeptic-verified finding from the current round was refuted or accepted without an actionable follow-up, with that skeptic evidence recorded as the rationale.
 2. Every reported finding must receive a fresh skeptic verdict before adjudication, including a finding with objective controller evidence.
 3. Objective controller verification may supplement adjudication but never replaces the required fresh skeptic verdict. A finding cannot be treated as refuted without concrete skeptic verification and a nonblank reason from that skeptic.
 4. Results tied to an outdated phase, round, fingerprint, or delivery snapshot cannot affect review state.
@@ -347,9 +348,10 @@ Then adjudicate:
 
 - If confirmed and small enough to fix within the edit surface, apply the fix at the round boundary, run the profile post-fix steps, record the applied change immediately, set `Phase changed: yes`, and keep that cell active.
 - If valid but beyond an inline artifact edit, create an authoritative open Follow-ups row with a stable ID, encoded text, route and evidence `none`, and record a narrow acknowledgement or caveat. Keep the cell active.
-- If refuted, record a reasoned acknowledgement only. Keep the cell active.
-- If a judgment call is intentionally accepted, record the acknowledgement and any actionable follow-up required. Keep the cell active.
-- Only an LGTM cell with a nonblank concrete verification note becomes inactive for the rest of the phase.
+- If refuted, record a reasoned acknowledgement only.
+- If a judgment call is intentionally accepted, record the acknowledgement and, as an authoritative open Follow-ups row, any actionable follow-up required. This acceptance disposition applies only to a finding whose skeptic verdict is JUDGMENT_CALL; a confirmed finding always takes one of the two confirmed routes above.
+- At the round boundary a cell remains active only when the current round yielded at least one applied fix or open follow-up. A cell whose current round's skeptic-verified findings all landed as refuted or as acknowledgement-only accepted judgment calls becomes inactive for the rest of the phase, with the skeptic evidence and acknowledgements recorded as its verification rationale.
+- An LGTM cell with a nonblank concrete verification note likewise becomes inactive for the rest of the phase.
 
 Another dimension's edit does not reactivate an inactive sibling. If removing review-added machinery undoes another dimension's accepted fix, this is a controller-coordinated reviewable edit: dirty the phase and preserve current cell dispositions. The mandatory next phase reactivates every applicable cell.
 

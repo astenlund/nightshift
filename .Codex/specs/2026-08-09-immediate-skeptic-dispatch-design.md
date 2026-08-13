@@ -95,7 +95,7 @@ Immediate dispatch changes scheduling only:
 - No reviewable artifact content changes while reviewers or skeptics are in flight.
 - Results tied to stale phase, round, fingerprint, delivery snapshot, or Session ID cannot affect the round.
 - Reviewer and skeptic repair budgets retain their current limits.
-- A clean dimension becomes inactive only through its reviewer's concrete LGTM conclusion.
+- A dimension becomes inactive only through the lifecycle's deactivation routes, never through dispatch scheduling. (Amended 2026-08-13: originally stated as "only through its reviewer's concrete LGTM conclusion"; SKILL.md now also deactivates a cell at a round boundary whose skeptic-verified findings were all refuted or accepted without an actionable follow-up.)
 
 ## Verification
 
