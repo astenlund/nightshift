@@ -1,6 +1,6 @@
 # Fix-scoped follow-up rounds
 
-Feature: within a revise phase, a round 2+ reviewer whose dimension had fixes applied at the previous round boundary receives a payload containing only those own-dimension fixes plus surrounding context, instead of the whole cumulative review patch; a dimension active without applied fixes keeps its normal delivery. The next phase resets to whole-scope delivery as today, restoring full coverage over the fixed artifact. Primary rationale: this removes a within-phase asymmetry in who gets to weigh in on fixes; reduced token spend and wall-clock time are a hoped-for secondary benefit, and the narrower model is preferred even if the savings do not materialize. This file is the authoritative design record.
+Feature: within a revise phase, a round 2+ reviewer whose dimension had fixes applied at the previous round boundary receives a payload containing only those own-dimension fixes plus surrounding context, instead of the whole cumulative review patch; a dimension active without applied fixes keeps its normal delivery. The next phase resets to whole-scope delivery as today, restoring full coverage over the fixed artifact. Primary rationale: this reduces a within-phase asymmetry in who gets to weigh in on fixes; reduced token spend and wall-clock time are a hoped-for secondary benefit, and the narrower model is preferred even if the savings do not materialize. This file is the authoritative design record.
 
 ## What it does
 
