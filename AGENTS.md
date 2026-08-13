@@ -12,7 +12,8 @@ Nightshift is a Claude Code and Codex plugin: a feature-lifecycle workflow built
 
 - Run the ready parser suite: `node skills/ready/ready.test.js` (fixture-based, no framework, exit code 1 on failure).
 - Run the revise Workflow safety suite: `node skills/revise/revise-round.test.js`.
-- CI runs both suites on Node 22.
+- Run the revise rigor derivation suite: `node skills/revise/rigor.test.js`.
+- CI runs all three suites on Node 22.
 - Run the ready parser manually: `node skills/ready/ready.js [repo-root-or-.claude-dir]` (emits JSON on stdout).
 - There is no build or lint step.
 
