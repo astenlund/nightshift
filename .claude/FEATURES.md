@@ -255,6 +255,12 @@ Restates the revise lifecycle's phase progress around its actual moving parts (d
 
 **Requires:** none.
 
+### [Fix-scoped follow-up rounds](features/fix-scoped-rounds.md)
+
+Narrows round 2+ reviewer payloads within a phase to the previous round's own-dimension fixes plus surrounding context, replacing whole-scope delivery until the next phase's reset restores full coverage; context findings still enter the normal skeptic pipeline. Completion is unaffected because only a change-free converged phase (whose round 1 is whole-scope) can enter post-review. Postulated to cut token spend and wall-clock per run at the cost of catching cross-file fix damage a phase later.
+
+**Requires:** [Simplify the revise lifecycle around rounds](features/revise-lifecycle-rounds.md).
+
 ## Communication standards
 
 ### [Communicate for technically sophisticated, time-constrained users](features/sophisticated-user-communication.md)
