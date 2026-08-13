@@ -1,6 +1,6 @@
 # Fix-scoped follow-up rounds
 
-Feature: within a revise phase, round 2 and later deliver each active dimension's reviewer a payload containing only the fixes applied at the previous round boundary that originated from that dimension's own findings, plus surrounding context, instead of the whole cumulative review patch. The next phase resets to whole-scope delivery as today, restoring full coverage over the fixed artifact. Postulation: this reduces total token spend and wall-clock time per run. This file is the authoritative design record.
+Feature: within a revise phase, round 2 and later deliver each active dimension's reviewer a payload containing only the fixes applied at the previous round boundary that originated from that dimension's own findings, plus surrounding context, instead of the whole cumulative review patch. The next phase resets to whole-scope delivery as today, restoring full coverage over the fixed artifact. Primary rationale: this removes a within-phase asymmetry in who gets to weigh in on fixes; reduced token spend and wall-clock time are a hoped-for secondary benefit, and the narrower model is preferred even if the savings do not materialize. This file is the authoritative design record.
 
 ## What it does
 
@@ -12,6 +12,7 @@ This feature narrows the round 2+ payload to the previous round's own-dimension 
 
 - **Own-dimension fixes only.** Dimension X's round 2+ reviewer sees only the fixes traced to X's own adjudicated findings, not every fix applied at the previous round boundary. This is the narrowest payload; cross-dimension damage from a fix (a Correctness fix opening a Security hole) waits for the next phase's whole-scope pass.
 - **Context findings are flagged normally.** When a narrowed reviewer notices a problem in the surrounding context rather than in a fix itself, the finding enters the normal skeptic/adjudication pipeline. Context is delivered for judgment, and judgment sometimes indicts the context; suppressing that discards free signal.
+- **Symmetry over savings.** Today, which dimensions get an early look at applied fixes is an accident of activity: a still-active dimension incidentally re-reviews every sibling dimension's fixes in its whole-scope round 2+, while an inactive dimension sees nothing until the next phase's reset. Fix-scoping removes the accidental privilege by leveling down: within a phase, no dimension adjudicates another dimension's fixes, and the phase boundary uniformly restores every dimension's full view. This uniformity is the deciding rationale; the token and wall-clock savings are welcome but not load-bearing.
 
 ## Why the completion guarantee is unaffected
 
@@ -21,7 +22,7 @@ This extends a deferral the design already accepts: today a dimension that goes 
 
 ## Costs and open points
 
-- **Discovery latency.** A fix in file A that breaks an invariant in unseen file B is now caught a phase later instead of a round later. In some runs that means an extra phase, partially offsetting the savings. The postulated net win (narrowed rounds are much cheaper than whole-scope rounds, and most runs converge without the extra phase) should be sanity-checked against observed run shapes during hardening.
+- **Discovery latency.** A fix in file A that breaks an invariant in unseen file B is now caught a phase later instead of a round later. In some runs that means an extra phase, partially or wholly offsetting the token and wall-clock savings. The savings postulation should be sanity-checked against observed run shapes during hardening, but the feature stands on the symmetry rationale even if the net savings turn out to be zero.
 - **Surrounding context sizing** is open: hunk-level context, enclosing function, or whole containing file. Whole containing file is the simplest honest boundary for code; smaller windows save more but invite context-starved false positives.
 - **Sharded scopes**: how fix-scoping composes with shard cells (does a narrowed payload replace the shard slice, and what happens to a shard cell none of whose files received own-dimension fixes) is left to the spec.
 - **Plan/spec artifacts**: document reviewers read one whole file and delivery is `whole-artifact`; whether narrowing applies there (e.g., focusing the reviewer on sections edited by the previous round's fixes) or the feature is code-only is left to the spec. Code is the primary target and carries most of the cost.
