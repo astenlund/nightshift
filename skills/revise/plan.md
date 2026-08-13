@@ -26,6 +26,16 @@ Git-diff scope shapes (`staged`, `unstaged`, `main..HEAD`) that the code artifac
 - For a section scope, name the section heading(s) and adjacent sections that the named section depends on or is depended on by. Read the whole file once to understand the document shape, then point agents at the in-scope sections by heading + line range.
 - If the plan file does not exist, report that and stop.
 
+## Grounding step
+
+The plan carries no operating-context section of its own; its calibration source is the upstream spec(s) it references. The controller runs this step at the start of the review run, before any reviewer or skeptic launches.
+
+1. **Enumerate the upstream specs.** A plan may reference one or more upstream specs, or none at all.
+2. **Per-spec check.** For each referenced upstream spec, look for a complete `Operating context` section (absent vs skeletal per the fixed definitions in `spec.md`'s grounding step). Verify the tier stated there follows from the inputs under the derivation rule in `skills/revise/rigor.js`.
+3. **Raise on incomplete.** For any upstream spec whose section is absent or skeletal, raise `structural-precondition-error` with its three fields (artifacts paths: the plan and the failing upstream spec; reason: absent or skeletal with the specific missing input or rule violation; remediation: harden that upstream spec first, then re-run). Do not invent a plan-local copy and do not proceed with an incomplete calibration baseline.
+4. **Skip when none.** When the plan has no upstream spec, skip with a one-line note (matching the Spec Reconciliation step's spec-less skip) and proceed without an operating-context baseline.
+5. **Propagate all sections.** Copy each upstream spec's complete operating-context section unchanged into the common-context block for planners and reviewers, so they calibrate against the actual declared baseline. When two referenced upstream specs declare different rigor tiers, that divergence is itself a finding reviewers surface, directing the upstream specs' owners to reconcile before the plan's rigor is trusted.
+
 ## Review parameters
 
 - **Artifact**: the plan file. Edit surface: the plan file only: no code, no docs, no command files, no backlog entries during the loop. The sole exception is the post-loop Spec Reconciliation step below, which may edit the upstream spec with the user's per-edit approval.
