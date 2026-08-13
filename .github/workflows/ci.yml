@@ -16,3 +16,4 @@ jobs:
           node-version: 22
       - run: node skills/ready/ready.test.js
       - run: node skills/revise/revise-round.test.js
+      - run: node skills/revise/rigor.test.js
