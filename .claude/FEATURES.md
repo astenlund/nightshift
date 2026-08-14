@@ -249,17 +249,11 @@ Every design spec carries a short, durable scope anchor near its goal: a paraphr
 
 **Requires:** none.
 
-### [Wave-convergence lifecycle with a holistic gate](features/wave-lifecycle.md)
-
-Removes the revise engine's phase model: rounds and reactivation waves converge until every dimension cell certifies the current fingerprint, then a single fresh holistic verifier (opus, `verifier/whole-artifact`) reviews the whole artifact and completion requires the conjunction of wave convergence and the verifier's stamp over the same fingerprint. Ten-controller simulation showed it cheaper than an enhanced-phase variant at every fix volume except the heavy 20-fix scenario, where it converts the savings into catching a cross-cutting defect class phases structurally miss. Supersedes the retired lifecycle-rounds restatement; absorbs its caps, asymmetry rules, and trade notes.
-
-**Requires:** none.
-
 ### [Fix-scoped follow-up rounds](features/fix-scoped-rounds.md)
 
 Narrows the round 2+ payload for a dimension whose own findings produced applied fixes to those fixes plus surrounding context (a dimension active without applied fixes keeps normal delivery), until the reactivation wave restores full coverage; context findings still enter the normal skeptic pipeline. Completion is unaffected because a narrowed-payload review never certifies a fingerprint: certification requires a full-payload review, so completion still rests on full-coverage certifications plus the verifier stamp. Primary rationale is symmetry: a dimension re-reviewing its own fixes no longer incidentally adjudicates siblings' fixes (only zero-fix active dimensions retain that sight via normal delivery), reducing the accidental privilege still-active dimensions hold today; token and wall-clock savings are a hoped-for secondary benefit, at the cost of catching cross-file fix damage a wave later.
 
-**Requires:** [Wave-convergence lifecycle with a holistic gate](features/wave-lifecycle.md).
+**Requires:** none.
 
 ## Communication standards
 

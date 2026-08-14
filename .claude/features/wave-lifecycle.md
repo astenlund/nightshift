@@ -80,7 +80,7 @@ Derivation per `skills/revise/rigor.js`: audience `public` gives baseline `high`
 
 ## Status
 
-Designed 2026-08-13 across a working session: economics analysis, ten-controller simulation with matching ground truth, and the settled decisions above. Ready for planning; a revise-spec hardening pass over this file is recommended before or alongside implementation review.
+Designed 2026-08-13 across a working session: economics analysis, ten-controller simulation with matching ground truth, and the settled decisions above. Shipped 2026-08-14 in the 2.2.0 batch; the file remains the historical design record, and its Verification probes stay live until dispositioned.
 
 ## Requirements
 

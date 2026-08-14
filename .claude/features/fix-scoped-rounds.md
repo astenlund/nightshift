@@ -39,7 +39,7 @@ Captured 2026-08-13 from a user idea, with the design decisions above settled in
 - The code delivery rules in `skills/revise/code.md` (existing; cumulative-patch generation is the whole-scope baseline the narrowed payload replaces in round 2+).
 - Fix attribution by originating dimension in the applied-changes state (new; see open points).
 
-**Requires:** [Wave-convergence lifecycle with a holistic gate](wave-lifecycle.md).
+**Requires:** none.
 
 ## Hardening
 
