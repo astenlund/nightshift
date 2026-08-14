@@ -102,6 +102,8 @@ with:
 
 Replace the destructuring (near line 212): `const { phase, round, fingerprint, model } = input` with `const { round, fingerprint, model } = input`. In the returned result object (near line 273), delete the `phase,` line. Do NOT touch `phases:` in the meta block or any `phase: 'Review'` / `phase: 'Verify'` agent option or test filter; those are Workflow display groups, not lifecycle fields.
 
+The prompt generalization is a separate logical change committed in Steps 6 to 8 below; this step and this commit carry only the phase-contract removal.
+
 - [ ] **Step 4: Run the suite to verify it passes**
 
 Run: `node C:/Git/nightshift/skills/revise/revise-round.test.js`
@@ -114,6 +116,22 @@ git -C C:/Git/nightshift add skills/revise/revise-round.workflow.js skills/revis
 git -C C:/Git/nightshift commit -m "feat(revise): drop phase from workflow identity contract"
 ```
 
+- [ ] **Step 6: Generalize the agent prompts to cell framing**
+
+Generalize both agent prompts so a verifier round is not misframed as a dimension review. The payload sentence `It contains the common context and only the criteria assigned to this dimension cell.` occurs exactly twice, byte-identically, in `reviewerPrompt` (near line 110) and `skepticPrompt` (near line 123): replace both occurrences with `It contains the common context and only the criteria assigned to this cell.` (a replace-all on that exact string is correct here). In `reviewerPrompt` only, replace `'You are a fresh code/document reviewer with no prior context, reviewing one dimension cell only.',` with `'You are a fresh code/document reviewer with no prior context, reviewing one review cell only.',` and `Your stable dimension cell ID is '${dimension.id}'.` with `Your stable cell ID is '${dimension.id}'.`. In `skepticPrompt` only, replace `The finding was raised in dimension cell '${dimension.id}' (${dimension.name}).` with `The finding was raised in cell '${dimension.id}' (${dimension.name}).`. Deliberately untouched (display metadata, never agent-facing framing): the `meta` block's `description`/`phases`, the `phase: 'Review'` / `phase: 'Verify'` display groups, and the `dimensions` input field name itself.
+
+- [ ] **Step 7: Run the suite**
+
+Run: `node C:/Git/nightshift/skills/revise/revise-round.test.js`
+Expected: `revise-round.test: all 47 named cases passed`. If a prompt-string assertion fails, update that assertion's expected text to the new wording in this same step and rerun.
+
+- [ ] **Step 8: Commit the prompt generalization**
+
+```bash
+git -C C:/Git/nightshift add skills/revise/revise-round.workflow.js skills/revise/revise-round.test.js
+git -C C:/Git/nightshift commit -m "feat(revise): generalize agent prompts to cell framing"
+```
+
 ---
 
 ### Task 2: Replace the SKILL.md lifecycle and limits sections
@@ -123,6 +141,20 @@ git -C C:/Git/nightshift commit -m "feat(revise): drop phase from workflow ident
 
 **Interfaces:**
 - Produces: the terms "staleness sweep", "wave convergence", "verifier round", `Verifier stamp`, `Artifact edited`, `Certified fingerprint`, caps 30 rounds and 10 verifier launches. Every later task uses these names verbatim.
+
+- [ ] **Step 0: Replace the file's opening summary sentence**
+
+Replace:
+
+```markdown
+Fresh-agent review phases shared by three artifact types. This file owns how the run, phases, rounds, checkpoints, repairs, and post-review tail work. The artifact parameter files beside it own what to review.
+```
+
+with:
+
+```markdown
+Fresh-agent review rounds shared by three artifact types. This file owns how the run, rounds, reactivation waves, the holistic gate, checkpoints, repairs, and post-review tail work. The artifact parameter files beside it own what to review.
+```
 
 - [ ] **Step 1: Replace the lifecycle terms and completion rules**
 
@@ -152,9 +184,9 @@ The run enters `post-review` only on the conjunction of wave convergence and a v
 Replace from the line `The limits are 10 original reviewer launches per stable dimension or shard cell per phase, 10 phases, and 3 execution-repair launches per stable reviewer or skeptic cell. No limit path can manufacture LGTM or refutation.` through the line `The original reviewer dispatch is not a repair launch. Every later same-session clarification or fresh replacement launch increments the stable reviewer or skeptic cell's repair counter before dispatch. A repair counter already at 3 fails the run before another agent launches. Phase 10 can enter post-review when it satisfies the clean-phase completion rule.` (inclusive) with:
 
 ```markdown
-The limits are 30 rounds per run (verifier rounds included), 10 verifier rounds per run, and 3 execution-repair launches per stable reviewer, skeptic, or verifier cell. No limit path can manufacture LGTM, a stamp, or refutation.
+The limits are 30 rounds per run (verifier rounds included), 10 verifier launches per run (a launch is the dispatch of one verifier round), and 3 execution-repair launches per stable reviewer, skeptic, or verifier cell. No limit path can manufacture LGTM, a stamp, or refutation.
 
-`Start round` preflights the round cap: a launch that would exceed round 30 fails the run with current diagnostics before any agent launches. `Launch verifier` preflights both caps the same way at 10 verifier rounds. A cap-forced end is terminal until explicit user disposition; it never produces completion.
+`Start round` preflights the round cap: a launch that would exceed round 30 fails the run with current diagnostics before any agent launches. `Launch verifier` preflights both caps the same way at 10 verifier launches. A cap-forced end is terminal until explicit user disposition; it never produces completion.
 
 The original reviewer or verifier dispatch is not a repair launch. Every later same-session clarification or fresh replacement launch increments the stable cell's repair counter before dispatch. A repair counter already at 3 fails the run before another agent launches.
 ```
@@ -190,7 +222,7 @@ Delete the line `Re-evaluate every N/A declaration at each phase boundary. Chang
 - [ ] **Step 4: Verify no stale terms remain in the two sections**
 
 Run: `grep -n -i "phase" C:/Git/nightshift/skills/revise/SKILL.md | head -40`
-Expected: no hits between the `## Review lifecycle` heading and the `## Authoritative checkpoint` heading (hits later in the file remain until Tasks 3 to 5).
+Expected: between the `## Review lifecycle` heading and the `## Authoritative checkpoint` heading, exactly one hit: the vocabulary sentence `There are no phases` in the run bullet. Hits later in the file remain until Tasks 3 to 5.
 
 - [ ] **Step 5: Commit**
 
@@ -202,6 +234,8 @@ git -C C:/Git/nightshift commit -m "feat(revise): restate lifecycle as waves wit
 ---
 
 ### Task 3: Rewrite the checkpoint schema and boundary templates
+
+Declared coupling: between this task and Task 6, `skills/revise/code.md` still names the deleted `Start phase` template and per-phase attempt counting; that transitional inconsistency is deliberate, harmless to the test suites, and closed by Task 6.
 
 **Files:**
 - Modify: `skills/revise/SKILL.md` (sections `## Authoritative checkpoint`, `### Atomic replacement and field lifetimes`, `### Boundary templates`, and the round-result header in `## Round result and delivery snapshot`)
@@ -282,7 +316,7 @@ A state file written by the phase-model schema (a raw `Phase:` header field or a
 Replace the three-bullet template list (from `- ` + `Start phase`: through the end of the `Restart run` bullet) and the two paragraphs that follow it (beginning `New-run creation writes` and `At phase convergence, compute`) with:
 
 ```markdown
-- `Start round`: fail with current diagnostics when the next round would exceed 30. Otherwise calculate the next round, launch fingerprint, and immutable canonical delivery-map snapshot, and the replacement Agents section in memory. The Agents section has exactly one reviewer row for every active cell (or exactly one verifier row for a verifier round), session ID `none`, `in-flight`, zero repairs, and no prior-round rows. Atomically replace the result scratch with its matching cell-empty header and snapshot, then atomically rewrite state with the same identities and map bytes, replacement Agents, and `Round status: in-flight`. Dispatch only after both checkpoints match.
+- `Start round`: fail with current diagnostics when the next round would exceed 30. Otherwise calculate the next round, launch fingerprint, and immutable canonical delivery-map snapshot, and the replacement Agents section in memory. The Agents section has exactly one reviewer row for every active cell (or exactly one verifier row for a verifier round), session ID `none`, `in-flight`, zero repairs, and no prior-round rows. Atomically replace the result scratch with its matching cell-empty header and snapshot, then atomically rewrite state with the same identities and map bytes, replacement Agents, `Artifact edited: no`, and `Round status: in-flight`. Dispatch only after both checkpoints match. Clearing `Artifact edited` here gives the flag its wave-era meaning: a reviewable edit made after the last reconciled launch (the reconciliation that precedes every launch has just accounted for all prior edits in the ledger), replacing the phase model's per-phase reset so the unexplained-drift branch keeps its discriminating power.
 - `Reactivate stale cells`: applies only at an all-inactive boundary where the staleness sweep changes something. In one atomic state rewrite: set every cell whose `Certified fingerprint` differs from the current fingerprint to `Status: active` with `Certified fingerprint: none`; re-evaluate every N/A declaration in both directions, changing a contradicted N/A to active with no certification, demoting a no-longer-applicable cell to N/A with a newly evaluated nonblank encoded reason and `Certified fingerprint: none`, and preserving an inapplicable cell as N/A only after re-evaluating and encoding its nonblank reason. If the rewrite would leave the applicable set empty, set `Status: failed` with current diagnostics instead. If it activated at least one cell, `Start round`; a demotion-only rewrite proceeds directly to the boundary resolution below.
 - `Launch verifier`: applies only at wave convergence with `Round status: evaluated` or `idle`. Fail with current diagnostics when verifier launches would exceed 10. Otherwise increment `Verifier launches` and apply `Start round` as a verifier round: the single cell is `verifier/whole-artifact`, model pin opus, holistic-gate payload.
 - `Restart run`: set `Status: reviewing`, `Post-review step: not-started`, `Failure: none`, round 0, `Round status: idle`, `Verifier launches: 0`, `Verifier stamp: none`, current fingerprint, and `Artifact edited: no`; clear Agents and post-review work items and pending mutation; delete the prior result scratch; make every applicable cell active with `Certified fingerprint: none` and N/A reason `none`, preserving an inapplicable cell as N/A only after re-evaluating and encoding its nonblank reason; preserve artifact and scope identity, acknowledgements, user requests, applied changes, follow-ups, and prior failures; copy the prior failure into Prior failures.
@@ -311,10 +345,14 @@ with:
 Round: 5
 ```
 
+- [ ] **Step 5b: Update the delivery-snapshot exclusion sentence**
+
+In the paragraph beginning `Immediately append `## Delivery map snapshot``, replace `It excludes predecessor IDs, lifecycle status, N/A reason, and attempts.` with `It excludes predecessor IDs, lifecycle status, N/A reason, and certifications.`
+
 - [ ] **Step 6: Verify**
 
-Run: `grep -n "Start phase\|Converged phases\|Last converged phase\|Phase changed\|Attempts this phase" C:/Git/nightshift/skills/revise/SKILL.md`
-Expected: zero hits for `Converged phases`, `Last converged phase`, and `Attempts this phase`; remaining `Start phase` / `Phase changed` hits only in the drift, user-request, adjudication, and post-review sections that Tasks 4 and 5 rewrite (list them; if any hit falls outside those sections, fix it now).
+Run: `grep -n "Start phase\|Converged phases\|Last converged phase\|Phase changed\|Attempts this phase\|Phase:" C:/Git/nightshift/skills/revise/SKILL.md`
+Expected: zero hits for `Converged phases` and `Last converged phase`; zero raw `Phase:` header lines (both example-block occurrences are removed by Steps 1 and 5); exactly one line hitting both `Attempts this phase` and `Phase:`, the pre-wave fail-closed sentence added by Step 3b (it names the old schema being rejected); remaining `Start phase` / `Phase changed` hits only in the drift, user-request, adjudication, and post-review sections that Tasks 4 and 5 rewrite (list them; if any hit falls outside those sections, fix it now).
 
 - [ ] **Step 7: Commit**
 
@@ -353,6 +391,8 @@ git -C C:/Git/nightshift commit -m "feat(revise): wave-era checkpoint schema and
 | `An uncertain dimension remains active while budget remains.` | `An uncertain cell remains active while budget remains.` |
 | `record delivery-map round abandonment without changing phase or `Phase changed`` | `record delivery-map round abandonment without changing `Artifact edited`` |
 | `and invoke `Start round` for the next round with existing phase attempts preserved before normal increments` | `and invoke `Start round` for the next round` |
+| `calculate the next identities, snapshot, attempts, and Agents in memory` | `calculate the next identities, snapshot, and Agents in memory` |
+| `the next `Start round` replaces it, and persisted attempts do not advance` | `the next `Start round` replaces it` |
 
 - [ ] **Step 2: Remove the workflow example's phase line**
 
@@ -379,7 +419,7 @@ Replace `atomically mark it consumed with encoded evidence without dirtying the 
 - [ ] **Step 5: Verify**
 
 Run: `grep -n "Phase changed\|phase, round\|phase or round\|phase attempts" C:/Git/nightshift/skills/revise/SKILL.md`
-Expected: zero hits.
+Expected: exactly one hit: the adjudication-section bullet containing `set `Phase changed: yes``, which Task 5 Step 2 replaces. Any other hit is an escape to fix before committing.
 
 - [ ] **Step 6: Commit**
 
@@ -492,7 +532,8 @@ Replace `Resolved rows persist across an address-now edit and the required new r
 - [ ] **Step 7: Verify SKILL.md is phase-free**
 
 Run: `grep -n -i "phase" C:/Git/nightshift/skills/revise/SKILL.md`
-Expected: zero hits. Any hit is an escaped reference; fix it against the spec before committing.
+Expected: exactly three hit lines, all naming the retired model rather than using it: the lifecycle vocabulary sentence containing `There are no phases`, the pre-wave fail-closed sentence containing `phase-model schema`, `Phase:`, and `Attempts this phase`, and the `Start round` template's flag-rationale clause containing `the phase model's per-phase reset`. Any other hit is an escaped reference; fix it against the spec before committing. Also run: `grep -n -i "attempt" C:/Git/nightshift/skills/revise/SKILL.md`
+Expected: hits only for the repair budget (`Repair attempts` column, `three-attempt`, `repair attempt` phrasing), the pre-wave sentence's `Attempts this phase`, and the Manual Agent path's ordinary-English verbs (`attempt every remaining original reviewer submission`, `have been attempted`); any per-cell review-attempt counting hit is an escape to fix.
 
 - [ ] **Step 8: Commit**
 
@@ -507,6 +548,15 @@ git -C C:/Git/nightshift commit -m "feat(revise): adjudication boundary and holi
 
 **Files:**
 - Modify: `skills/revise/code.md`, `skills/revise/plan.md`, `skills/revise/spec.md`
+
+- [ ] **Step 0: Scout-rule byte cleanup, committed first**
+
+Two pre-existing non-ASCII characters sit in files this task edits; clean and commit them before any terminology edit so the style change stays its own commit and the Task 9 byte gate can pass. In `plan.md`, replace `must be` + one U+2264 character + `72 chars` (the less-than-or-equal sign in the commit-subject rule) with `must be at most 72 chars`. In `spec.md`, replace the three U+2192 arrow characters in `(input` ... `persistence)` (the data-shape boundary parenthetical) with ASCII `->`, yielding `(input -> algorithm -> output -> persistence)`. Then:
+
+```bash
+git -C C:/Git/nightshift add skills/revise/plan.md skills/revise/spec.md
+git -C C:/Git/nightshift commit -m "style(revise): replace non-ASCII characters in parameter files"
+```
 
 - [ ] **Step 1: code.md replacements (one Edit each)**
 
@@ -531,9 +581,11 @@ In `spec.md`: replace `- **Pre-seed sources** (for the acknowledgements list, be
 - [ ] **Step 3: Verify**
 
 Run: `grep -n -i "phase" C:/Git/nightshift/skills/revise/code.md C:/Git/nightshift/skills/revise/plan.md C:/Git/nightshift/skills/revise/spec.md`
-Expected: remaining hits only where "phase" is not the revise lifecycle: `plan.md`'s task-number-leakage rule (`"Task N", "Step N", "Phase N"`) and `spec.md`'s capture-stage-stub paragraph if its hit is unrelated prose; anything else is an escape to fix.
+Expected: exactly one hit: `plan.md`'s task-number-leakage rule (the literal `"Phase N"` inside its quoted trio); zero hits in `code.md` and `spec.md`. Anything else is an escape to fix before committing.
 
-- [ ] **Step 4: Commit**
+- [ ] **Step 4: Commit the sweep**
+
+Step 0's style commit already landed; this commit carries only the terminology sweep:
 
 ```bash
 git -C C:/Git/nightshift add skills/revise/code.md skills/revise/plan.md skills/revise/spec.md
@@ -559,6 +611,20 @@ with:
 
 ```markdown
 A dimension becomes inactive on a clean conclusion, or when a round's findings all land as skeptic-refuted or accepted without an actionable follow-up, certifying the fingerprint it reviewed; settled dimensions are re-reviewed by a reactivation wave whenever the artifact moves past their certification. Once every dimension certifies the current fingerprint, a single fresh holistic verifier reviews the whole artifact, and the run completes only when its stamp lands on that same fingerprint.
+```
+
+- [ ] **Step 1b: README checkpoint sentence**
+
+In the same paragraph, replace:
+
+```markdown
+Markdown scratch checkpoints preserve controller-owned phase state, while resumable agent IDs provide best-effort recovery when sessions remain available.
+```
+
+with:
+
+```markdown
+Markdown scratch checkpoints preserve controller-owned run state, while resumable agent IDs provide best-effort recovery when sessions remain available.
 ```
 
 - [ ] **Step 2: README line 37 description**
@@ -595,12 +661,15 @@ Replace `` `SKILL.md` owns *how* the review run, phases, rounds, checkpoints, sk
 
 - [ ] **Step 4: handover.md review-phase phrasing**
 
-Replace both occurrences (they appear in the step-1 spec-gate line and the revise-plan step line; use one Edit each with their distinct step-number prefixes as anchors) of `run to completion under the skill's review-phase rules` with `run to completion under the skill's review rules`. Also replace `under the skill's review-phase rules. Valid-but-deferred findings flow into the follow-up items list across all rounds` with `under the skill's review rules. Valid-but-deferred findings flow into the follow-up items list across all rounds`. Leave every "feature phase", "phasing declaration", and "implementation-phase" occurrence untouched: those describe spec slicing, not the review lifecycle.
+Three occurrences of `run to completion under the skill's review-phase rules` exist (the spec-gate step, the revise-plan step, and the revise-code step). Replace the first two with `run to completion under the skill's review rules`, using one Edit each with their distinct step-number prefixes as anchors; the revise-code occurrence is covered by the longer Valid-but-deferred anchor below. Also replace `under the skill's review-phase rules. Valid-but-deferred findings flow into the follow-up items list across all rounds` with `under the skill's review rules. Valid-but-deferred findings flow into the follow-up items list across all rounds`. Also replace `a revise review phase is an internal repeated-review unit and does not alter that target scope.` with `a revise review round or wave is an internal repeated-review unit and does not alter that target scope.` Leave every "feature phase", "phasing declaration", and "implementation-phase" occurrence untouched: those describe spec slicing, not the review lifecycle.
 
 - [ ] **Step 5: Verify**
 
 Run: `grep -n -i "phase" C:/Git/nightshift/README.md C:/Git/nightshift/AGENTS.md`
 Expected: zero hits in README; AGENTS.md hits only if unrelated to the revise lifecycle (currently none expected: list any and justify or fix).
+
+Run: `grep -n "review-phase\|revise review phase" C:/Git/nightshift/commands/handover.md`
+Expected: zero hits (the three review-rules replacements and the round-or-wave clause replacement all landed).
 
 - [ ] **Step 6: Commit**
 
@@ -624,12 +693,19 @@ Replace every phase-model phrase with its wave equivalent, keeping the feature's
 |---|---|
 | `The next phase resets to whole-scope delivery as today, restoring full coverage over the fixed artifact.` | `The reactivation wave restores whole-scope delivery, preserving full coverage over the fixed artifact.` |
 | `Round 1 of every phase remains whole-scope, unchanged.` | `A cell's first review of any fingerprint remains whole-scope, unchanged.` |
-| the whole `## Why the completion guarantee is unaffected` section body | Verify only, no edit: this section was already rewritten during spec hardening to the narrowed-payload-never-certifies constraint (a narrowed review happens at the post-fix fingerprint and must never certify it; certification requires a full-payload review). Confirm the section still opens with `Under the wave-convergence lifecycle` and states that constraint; fix only if drifted. |
+| the `## Why the completion guarantee is unaffected` section's opening paragraph | Verify only, no edit: that paragraph was already rewritten during spec hardening to the narrowed-payload-never-certifies constraint (a narrowed review happens at the post-fix fingerprint and must never certify it; certification requires a full-payload review). Confirm it still opens with `Under the wave-convergence lifecycle` and states that constraint; fix only if drifted. The section's second paragraph is not verify-only: its phase-boundary clause is edited by the `with the phase boundary as the backstop.` row below. |
 | `waits for the next phase's whole-scope pass.` | `waits for the reactivation wave's whole-scope pass.` |
 | `while an inactive dimension sees nothing until the next phase's reset. Fix-scoping reduces the accidental privilege by leveling down: a dimension re-reviewing its own fixes no longer sees sibling fixes, and the phase boundary uniformly restores every dimension's full view.` | `while an inactive dimension sees nothing until the reactivation wave. Fix-scoping reduces the accidental privilege by leveling down: a dimension re-reviewing its own fixes no longer sees sibling fixes, and the wave uniformly restores every dimension's full view.` |
 | `caught a phase later instead of a round later. In some runs that means an extra phase, partially or wholly offsetting` | `caught a wave later instead of a round later. In some runs that means extra rounds, partially or wholly offsetting` |
+| `Feature: within a revise phase, a round 2+ reviewer` | `Feature: within a wave-lifecycle review run, a round 2+ reviewer` |
+| `Primary rationale: this reduces a within-phase asymmetry in who gets to weigh in on fixes;` | `Primary rationale: this reduces a within-run asymmetry in who gets to weigh in on fixes;` |
+| `Today every round of every phase delivers each active dimension's reviewer its full normal payload:` | `Today every round delivers each active dimension's reviewer its full normal payload:` |
+| `with the phase boundary as the backstop.` | `with the staleness sweep and verifier gate as the backstop.` |
+| `(round 1 of every phase, and round 2+ deliveries to zero-fix active dimensions)` | `(a cell's first review of any fingerprint, and round 2+ deliveries to zero-fix active dimensions)` |
+| `- The round and phase lifecycle in `skills/revise/SKILL.md` (existing; the delivery rules this feature narrows).` | `- The wave-convergence lifecycle in `skills/revise/SKILL.md` (existing; the delivery rules this feature narrows).` |
 
-After the table edits, run `grep -n -i "phase" C:/Git/nightshift/.claude/features/fix-scoped-rounds.md` and rewrite any remaining lifecycle-sense hit in the same spirit (the file was written against the phase model; sentence-level judgment is expected here, argued from the spec).
+After the table edits, run: `grep -n -i "phase" C:/Git/nightshift/.claude/features/fix-scoped-rounds.md`
+Expected: zero hits. Any hit is an escape: fix it with the nearest wave-era equivalent from the rows above before committing.
 
 - [ ] **Step 2: review-orchestration-tests.md refocus note**
 
@@ -672,14 +748,16 @@ Expected: 39 passed; all 47 named cases passed; all checks passed.
 - [ ] **Step 3: Repo-wide lifecycle-sense phase sweep**
 
 Run: `grep -rn -i "phase" C:/Git/nightshift/skills C:/Git/nightshift/commands C:/Git/nightshift/README.md C:/Git/nightshift/AGENTS.md`
-Expected: hits only in (a) Workflow display-group usage in `revise-round.workflow.js` / `revise-round.test.js` (`phases:` meta, `phase: 'Review'`, `phase: 'Verify'`), (b) plan/spec-slicing senses in `commands/handover.md` ("feature phase", "phasing declaration", "implementation-phase", "post-stamp"), (c) plan-phase-ordinal prose in `commands/revise-docs.md`, `commands/init-backlog.md`, and `skills/revise/plan.md`'s task-number rule. Any hit describing the revise review lifecycle is an escape: fix it before committing.
+Expected: hits only in (a) Workflow display-group usage in `revise-round.workflow.js` / `revise-round.test.js` (`phases:` meta, `phase: 'Review'`, `phase: 'Verify'`), (b) plan/spec-slicing senses in `commands/handover.md` ("feature phase", "phasing declaration", "implementation-phase", "post-stamp"), (c) plan-phase-ordinal prose in `commands/revise-docs.md`, `commands/init-backlog.md`, and `skills/revise/plan.md`'s task-number rule, (d) the three SKILL.md lines that name the retired model (`There are no phases`, the pre-wave `phase-model schema` fail-closed sentence, and the `Start round` flag-rationale clause naming `the phase model's per-phase reset`). Any hit describing the revise review lifecycle as current behavior is an escape: fix it before committing.
 
 - [ ] **Step 4: Byte hygiene check**
 
-Run: `grep -rnP "[^\x00-\x7F]" C:/Git/nightshift/skills/revise/SKILL.md C:/Git/nightshift/README.md C:/Git/nightshift/AGENTS.md`
-Expected: zero hits.
+Run: `LC_ALL=C.UTF-8 grep -rnP "[^\x00-\x7F]" C:/Git/nightshift/skills/revise/SKILL.md C:/Git/nightshift/skills/revise/code.md C:/Git/nightshift/skills/revise/plan.md C:/Git/nightshift/skills/revise/spec.md C:/Git/nightshift/commands/handover.md C:/Git/nightshift/README.md C:/Git/nightshift/AGENTS.md C:/Git/nightshift/.claude/FEATURES.md C:/Git/nightshift/.claude/features/fix-scoped-rounds.md C:/Git/nightshift/.claude/features/review-orchestration-tests.md; echo "exit: $?"`
+Expected: no match lines and `exit: 1` (zero matches). `exit: 2` means the command itself failed to run: fix the invocation (the `LC_ALL=C.UTF-8` prefix is required because bare `grep -P` errors in this repository's Git Bash); never treat a failed check as a clean check.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 5: Commit any gate-triggered corrections, then the bump**
+
+If any Step 2 to Step 4 gate triggered a corrective edit, commit those corrections first as their own conventional commit describing the fix (for example `fix(revise): close lifecycle sweep escape`); the release commit must stay bump-only.
 
 ```bash
 git -C C:/Git/nightshift add .claude-plugin/plugin.json
@@ -688,6 +766,39 @@ git -C C:/Git/nightshift commit -m "chore(release): bump version to 2.2.0"
 
 ---
 
+### Task 10: Ship the feature
+
+**Files:**
+- Modify: `.claude/features/wave-lifecycle.md`, `.claude/FEATURES.md`, `.claude/FEATURES_HISTORY.md`, `.claude/features/fix-scoped-rounds.md`
+
+- [ ] **Step 1: Flip the feature status**
+
+In `.claude/features/wave-lifecycle.md`, replace `Ready for planning; a revise-spec hardening pass over this file is recommended before or alongside implementation review.` with `Shipped 2026-08-14 in the 2.2.0 batch; the file remains the historical design record, and its Verification probes stay live until dispositioned.`
+
+- [ ] **Step 2: Move the index entry to history**
+
+Append to `.claude/FEATURES_HISTORY.md`: `- [Wave-convergence lifecycle with a holistic gate](features/wave-lifecycle.md): the revise engine's phase model replaced by staleness-driven reactivation waves, per-cell fingerprint certifications, and a holistic opus verifier whose stamp gates completion. Shipped 2026-08-14 in the 2.2.0 batch.` Then delete the entire `### [Wave-convergence lifecycle with a holistic gate](features/wave-lifecycle.md)` entry (heading, paragraph, and `**Requires:** none.` line) from `.claude/FEATURES.md`.
+
+- [ ] **Step 3: Walk-and-remove dependent Requires lines**
+
+In `.claude/FEATURES.md`, replace `**Requires:** [Wave-convergence lifecycle with a holistic gate](features/wave-lifecycle.md).` with `**Requires:** none.` In `.claude/features/fix-scoped-rounds.md`, replace `**Requires:** [Wave-convergence lifecycle with a holistic gate](wave-lifecycle.md).` with `**Requires:** none.`
+
+- [ ] **Step 4: Verify and commit**
+
+Run: `node C:/Git/nightshift/skills/ready/ready.js C:/Git/nightshift`
+Expected: `structuralErrors` empty; the wave entry absent; Fix-scoped follow-up rounds now in the ready set.
+
+```bash
+git -C C:/Git/nightshift add .claude/features/wave-lifecycle.md .claude/FEATURES.md .claude/FEATURES_HISTORY.md .claude/features/fix-scoped-rounds.md
+git -C C:/Git/nightshift commit -m "docs(feature): mark wave-lifecycle shipped"
+```
+
+---
+
 ## Post-plan note
 
 After all tasks land, run `/nightshift:revise-code` over the batch (the plugin is self-hosting; this change rewrites the very lifecycle that review runs under, so the reviewing session executes the OLD shipped rules from its installed cache while reviewing the NEW rules in the clone; that is expected and safe). Pushing remains user-directed and requires the standard fresh-eyes pre-push review. Delete this plan file once the work lands.
+
+## Hardening
+
+- revise-plan graduated 2026-08-14 10:28 at c68331e, scope: whole file, content: 3f3422fd
