@@ -233,7 +233,7 @@ Gives each Nightshift run a frozen durable identity and a scope-hash-scoped scra
 
 ### [Review orchestration tests](features/review-orchestration-tests.md)
 
-Turn the revise review engine's phase, convergence, and completion decisions into executable, fixture-tested invariants. Extracts the orchestration rules currently living only as SKILL.md prose into a deterministic `ready.js`-style transition module driven by mocked reviewer results: the full derived phase table (any converged phase increments the counter regardless of cleanliness; drift abandonment is the only non-increment), phase-scoped per-dimension convergence, preserved-within-phase / reset-at-boundary cross-dimension mutation, the rejected-findings disposition rules, run-level fail-closed execution, and a joined completion predicate refused in every non-completing combination.
+Turn the revise review engine's phase, convergence, and completion decisions into executable, fixture-tested invariants. Extracts the orchestration rules currently living only as SKILL.md prose into a deterministic `ready.js`-style transition module driven by mocked reviewer results: the wave-model invariant set (staleness sweep, certification clearing, cap asymmetry, stamp conjunction; re-derived per the file's supersession note), the rejected-findings disposition rules, run-level fail-closed execution, and a joined completion predicate refused in every non-completing combination.
 
 **Requires:** none.
 

@@ -2,6 +2,8 @@
 
 Feature: turn the revise review engine's phase, convergence, and completion decisions into executable, fixture-tested invariants. This file is the authoritative design record.
 
+**2026-08-13 supersession note:** the phase transition matrix below predates the wave-convergence lifecycle (`wave-lifecycle.md`), which removed phases. When this feature is picked up, re-derive the invariant set from the shipped wave model: staleness sweep, certification clearing on reactivation, the disposition rule set (which carries over), cap asymmetry (a cap-forced end never completes), and the stamp conjunction. The extraction purpose and module shape below remain valid.
+
 ## What it does
 
 The deterministic backlog parser (`skills/ready/ready.js`) has strong behavioral test coverage via `ready.test.js`. The review engine is the more consequential component by overall quality impact, and today it has none at the orchestration level: the phase/convergence/adjudication decisions live only as prose in `skills/revise/SKILL.md`, restated by the controller every cycle. `revise-round.test.js` covers one round's Workflow dispatch (concurrency, reviewer-to-skeptic fan-out, result normalization, fingerprint validation). It does not cover the machinery that decides whether to advance a phase, whether a dimension converges, whether a sibling's mutation reaches an inactive dimension, or whether the stage completes.
