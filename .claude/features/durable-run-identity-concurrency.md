@@ -35,7 +35,7 @@ Every run carries a frozen **identity block** captured at run creation and persi
 - artifact fingerprint;
 - the durable provenance stamp (8-character) where the artifact carries one.
 
-The identity block is captured once and never mutated during the run; it is the ground truth against which a returning run compares. It deliberately excludes *mutable* run fields (current phase, round, applicable dimensions, per-dimension state, convergence counters), which live in the state body and legitimately change. An earlier candidate list mixed the two; splitting them is what makes the check meaningful: identity must be stable to prove "same work," while phase/round/dimension state is exactly what resumes.
+The identity block is captured once and never mutated during the run; it is the ground truth against which a returning run compares. It deliberately excludes *mutable* run fields (current round, applicable cells, per-cell state and certifications, verifier counters and stamp), which live in the state body and legitimately change. An earlier candidate list mixed the two; splitting them is what makes the check meaningful: identity must be stable to prove "same work," while round and cell state is exactly what resumes.
 
 ### The scope hash
 
@@ -69,12 +69,12 @@ A fresh-session **resume** and a genuinely **concurrent second run** present ide
 
 The Nightshift controller is agent-side, not a single OS process: it spawns shells, runs Workflow agents, and resumes across sessions, so there is **no stable PID to probe**. Liveness is instead inferred from a **heartbeat**: every state transition (Start round, round boundary write, checkpoint, post-review step) bumps a `last activity` timestamp in the state file, alongside the existing boundary writes.
 
-At the start-of-session check, a matching-identity state whose heartbeat is *fresher than the grace window* means a live producer is actively advancing this scope → a genuinely concurrent run → the controller **refuses to proceed** and **presents the decision to the user**:
+At the start-of-session check, a matching-identity state whose heartbeat is *fresher than the grace window* means a live producer is actively advancing this scope -> a genuinely concurrent run -> the controller **refuses to proceed** and **presents the decision to the user**:
 
 - **abort** (default): this new run stops without touching the live run's state;
 - **force-break**: the user explicitly claims the scope and takes over, discarding the live run's lock and adopting (or abandoning) its state as they choose.
 
-A matching-identity state whose heartbeat is *older than the grace window* means the producing run died or lost context → **resume**, adopting the state and reclaiming the lock.
+A matching-identity state whose heartbeat is *older than the grace window* means the producing run died or lost context -> **resume**, adopting the state and reclaiming the lock.
 
 The accepted limitation is stated plainly: for an agent-side controller, "liveness" is inferred from state advancement within a grace window, not a true process-alive check. A genuinely long-lived run that sits idle at one boundary for longer than the grace window could have its state re-adopted. The grace window is therefore set generously, well past any single round's expected duration, so this is a rare deliberate edge rather than the common case. The force-break path is how a user resolves the rare genuinely-colliding case.
 
@@ -100,10 +100,10 @@ Draft proposal; not yet designed as a buildable skill change or spec. Partially 
 
 ## Requirements
 
-- The review engine's phase/round state, atomic checkpointing, and resume machinery (shipped; this feature relocates and guards them, it does not redesign them).
+- The review engine's round and convergence state, atomic checkpointing, and resume machinery (shipped; this feature relocates and guards them, it does not redesign them).
 - The artifact identity, resolved-scope, base-SHA, and fingerprint fields the controller already determines at start-up (shipped).
 
-Landing order: if the wave-convergence lifecycle (wave-lifecycle.md) has not shipped when this is picked up, rebase on its wave-era SKILL.md prose first; it rewrites the lifecycle sections this feature touches.
+Landing order: the wave-convergence lifecycle (wave-lifecycle.md) shipped 2026-08-14 in the 2.2.0 batch; SKILL.md's lifecycle sections are wave-era prose. Derive lifecycle-touching edits from that prose.
 
 **Requires:** none (FEATURES.md index entry).
 

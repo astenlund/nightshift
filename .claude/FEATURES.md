@@ -245,7 +245,7 @@ Centralizes selection, line-ending normalization, and hashing of reviewable docu
 
 ### [Durable scope anchor](features/durable-scope-anchor.md)
 
-Every design spec carries a short, durable scope anchor near its goal: a paraphrase of the user's requested outcome plus the material exclusions bounding it, without restating the detailed design. The anchor is frozen unless the user revises the outcome (the revision itself recorded), and copied verbatim into every reviewer payload as common context so fresh reviewers in every dimension and phase calibrate against the same ground truth. It grounds scope expansion without immunizing the chosen design's wiring from findings.
+Every design spec carries a short, durable scope anchor near its goal: a paraphrase of the user's requested outcome plus the material exclusions bounding it, without restating the detailed design. The anchor is frozen unless the user revises the outcome (the revision itself recorded), and copied verbatim into every reviewer payload as common context so fresh reviewers in every cell and round calibrate against the same ground truth. It grounds scope expansion without immunizing the chosen design's wiring from findings.
 
 **Requires:** none.
 

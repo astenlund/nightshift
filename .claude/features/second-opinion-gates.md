@@ -68,6 +68,8 @@ Subsumes the holistic final reviewer role, whose same-family high-tier read is w
 
 ## Unclaimed design direction: cap review phases at two
 
+**2026-08-14 supersession note:** the wave-convergence lifecycle (wave-lifecycle.md) removed phases; the shipped limits are now 30 rounds and 10 verifier launches per run, and this section's question dissolves into those caps plus the verifier seat (see the landing-order note below). The section is retained as a historical design record.
+
 The hardened-spec gate subsumes the holistic third-phase *reviewer* role, but nothing in this design caps the phase *machinery* itself: a structural or scope-affecting fix still "re-enter[s] the review stage properly (new phase, all dimensions reactivated)" per the post-fix re-certification rules above. Whether to go further and make phase 2 terminal, routing any third-phase requirement into the second-opinion step before the stamp, is a distinct design question. It is **not decided here and not claimed by any feature or proposal**: the review engine's phase count remains the shipped limit of 10, [review-orchestration-tests](review-orchestration-tests.md) will encode the phase transitions as they ship today, and if a phase-2 cap is ever adopted the transition table and its fixtures must be amended in the same change that sets the standard. Flagging this now so the seam is visible before either work lands.
 
 ## Status
@@ -80,7 +82,7 @@ Draft proposal; not yet designed as a buildable skill or spec. Depends on nothin
 - The user's requirement description(s) plus settled Q&A, produced at brainstorm time (see "Context package per gate").
 - A second-opinion model selection per run, user-chosen (see "Active ingredient").
 
-Landing order: if the wave-convergence lifecycle (wave-lifecycle.md) has not shipped when this is picked up, re-derive the gate placement against the wave model first: the hardened gate maps onto the verifier seat, and the phase-cap open question dissolves into the wave and verifier caps.
+Landing order: the wave-convergence lifecycle (wave-lifecycle.md) shipped 2026-08-14 in the 2.2.0 batch. When this feature is picked up, re-derive the gate placement against the wave model: the hardened gate maps onto the verifier seat, and the phase-cap open question dissolves into the wave and verifier caps (30 rounds, 10 verifier launches per run).
 
 **Requires:** none (FEATURES.md index entry).
 
