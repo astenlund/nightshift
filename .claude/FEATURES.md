@@ -271,6 +271,12 @@ Moves `init-backlog`'s deterministically-answerable behavior (static template bo
 
 **Requires:** none.
 
+### [Surface exploring entries in ready](features/ready-exploring-visibility.md)
+
+Makes `/nightshift:ready` report `## Exploring` entries in a distinct, clearly-marked output section (informational drafts, never part of the ready set) so exploratory work stays visible instead of relying on the developer to remember to reread `FEATURES.md`. Touches the `ready.js` section filter, its fixtures, the skill's report rendering, and the init-backlog template prose that currently says ready "skips" exploring entries.
+
+**Requires:** none.
+
 ## History
 
 Implemented features are archived in
