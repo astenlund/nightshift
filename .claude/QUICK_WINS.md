@@ -39,6 +39,22 @@ can still fix it in the same session.
   state that designed/cutover-gated provisional markers and same-session mid-flight
   resumes are non-flags.
 
+## Revise engine prose structure
+
+- **Restructure the Manual Agent path session-reconciliation paragraph in
+  `skills/revise/SKILL.md` into a labeled case list.** The paragraph beginning
+  "Controller interruption, drift, and explicit abandon retain the existing
+  best-effort semantics" is a single ~4900-character block bundling roughly eight
+  separately-conditioned recovery branches (reviewer/skeptic session available vs
+  unavailable, in-flight vs needs-retry row mismatches, both-Session-ID-none) in
+  run-on prose, nearly 3x the file's next-largest paragraph and against the file's
+  own bullet-list convention for enumerated branch rules ("Use only these values",
+  "Then adjudicate"). Preferred shape: one labeled case per branch stating its
+  state precondition and its result-then-state replacement action, byte-level
+  semantics preserved. This is load-bearing crash-recovery prose, so the
+  restructure is its own reviewed change (confirmed by the 2026-08-14 wave-batch
+  revise-code run and deliberately deferred there).
+
 ## (add sections as work emerges)
 
 ## History
