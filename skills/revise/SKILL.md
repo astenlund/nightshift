@@ -314,7 +314,7 @@ The manual controller may add direct verification evidence for a plan or spec fi
 
 Four safety rules are absolute:
 
-1. A dimension cannot become inactive without either a clear clean-review conclusion with a concrete nonblank verification rationale against the current fingerprint, or a round boundary at which every skeptic-verified finding from the current round was refuted or accepted without an actionable follow-up, with that skeptic evidence recorded as the rationale.
+1. A cell cannot become inactive without either a clear clean-review conclusion with a concrete nonblank verification rationale against the current fingerprint, or a round boundary at which every skeptic-verified finding from the current round was refuted or accepted without an actionable follow-up, with that skeptic evidence recorded as the rationale. The verifier stamp obeys the same rule over the whole artifact.
 2. Every reported finding must receive a fresh skeptic verdict before adjudication, including a finding with objective controller evidence.
 3. Objective controller verification may supplement adjudication but never replaces the required fresh skeptic verdict. A finding cannot be treated as refuted without concrete skeptic verification and a nonblank reason from that skeptic.
 4. Results tied to an outdated round, fingerprint, or delivery snapshot cannot affect review state.
@@ -338,18 +338,26 @@ For each verified finding, validate the canonical classification and probe-evide
 
 Then adjudicate:
 
-- If confirmed and small enough to fix within the edit surface, apply the fix at the round boundary, run the profile post-fix steps, record the applied change immediately, set `Phase changed: yes`, and keep that cell active.
+- If confirmed and small enough to fix within the edit surface, apply the fix at the round boundary, run the profile post-fix steps, record the applied change immediately, set `Artifact edited: yes`, and keep that cell active.
 - If valid but beyond an inline artifact edit, create an authoritative open Follow-ups row with a stable ID, encoded text, route and evidence `none`, and record a narrow acknowledgement or caveat. Keep the cell active.
 - If refuted, record a reasoned acknowledgement only.
 - If a judgment call is intentionally accepted, record the acknowledgement and, as an authoritative open Follow-ups row, any actionable follow-up required. This acceptance disposition applies only to a finding whose skeptic verdict is JUDGMENT_CALL; a confirmed finding always takes one of the two confirmed routes above.
-- At the round boundary a cell remains active only when the current round yielded at least one applied fix or open follow-up. A cell whose current round's skeptic-verified findings all landed as refuted or as acknowledgement-only accepted judgment calls becomes inactive for the rest of the phase, with the skeptic evidence and acknowledgements recorded as its verification rationale.
-- An LGTM cell with a nonblank concrete verification note likewise becomes inactive for the rest of the phase.
+- At the round boundary a cell remains active only when the current round yielded at least one applied fix or open follow-up. A cell whose current round's skeptic-verified findings all landed as refuted or as acknowledgement-only accepted judgment calls becomes inactive, certifying the reviewed fingerprint, with the skeptic evidence and acknowledgements recorded as its verification rationale.
+- An LGTM cell with a nonblank concrete verification note likewise becomes inactive, certifying the reviewed fingerprint.
 
-Another dimension's edit does not reactivate an inactive sibling. If removing review-added machinery undoes another dimension's accepted fix, this is a controller-coordinated reviewable edit: dirty the phase and preserve current cell dispositions. The mandatory next phase reactivates every applicable cell.
+Another cell's edit does not directly reactivate an inactive sibling; only the staleness sweep reactivates, and only at an all-inactive boundary. If removing review-added machinery undoes another cell's accepted fix, this is a controller-coordinated reviewable edit: record the applied change and preserve current cell dispositions; the moved fingerprint stales the affected certifications and the sweep re-reviews them.
 
 After any fix that adds, removes, or relocates a member of a set the artifact presents as closed, sweep every enumeration of that set before the next round. Regenerate delivery and reconcile the live artifact, scope, fingerprint, and ledger before launch. Re-read the live artifact when a finding appears to duplicate a prior-round fix.
 
-After every evaluated round, report what changed and which cells became inactive or remain active, then atomically persist the boundary. Drain user requests. If all applicable cells are inactive, perform the single convergence checkpoint; otherwise `Start round` again.
+After every evaluated round, report what changed and which cells became inactive or remain active, then atomically persist the boundary. Drain user requests. If all applicable cells are inactive, resolve the transition per the boundary templates: `Reactivate stale cells`, `Launch verifier`, or post-review entry. Otherwise `Start round` again.
+
+## Holistic gate
+
+The verifier is one fresh agent per launch with stable cell ID `verifier/whole-artifact`, model pin opus for every artifact type, dispatched as a verifier round through the same Workflow or manual path as reviewers, with the same skeptic evidence contract, repair budget, and checkpoint shapes. Its result cell uses `Cell kind: verifier` and `Cluster JSON: "whole-artifact"` with the standard cell shapes otherwise. Its payload uses the standard encoded payload path and begins with round, fingerprint, and cell identity, then the complete common context and the holistic charter: review the entire artifact at this fingerprint for cross-dimension coherence, gaps between the profile dimensions' lenses, and completion-worthiness; report high-confidence findings only; a clean conclusion requires a concrete nonblank verification note.
+
+Adjudicate verifier findings with the standard disposition rules. At the verifier boundary: if at least one fix was applied, the fingerprint increments once, spawned consequences and applied changes are recorded exactly as at a reviewer round boundary, `Verifier stamp` stays `none`, and the staleness sweep resumes the run. If the verifier round applied no fix (a clean conclusion, or every skeptic-verified finding refuted, accepted as an acknowledgement-only judgment call, or deferred to an authoritative open Follow-ups row), one atomic rewrite records `Verifier stamp` as the current fingerprint and enters `post-review`, with the note or the skeptic evidence and acknowledgements as the stamp rationale. Deferred verifier findings never block the stamp: relaunching at the same fingerprint would add no information, and the stamp attests review coverage, not zero deferred debt.
+
+The verifier never launches before wave convergence and never stamps a fingerprint other than the one it reviewed. A stamp whose fingerprint no longer matches the current fingerprint is stale and authorizes nothing.
 
 ## Post-review tail
 
@@ -361,11 +369,11 @@ Before a mutating item, persist one controller mutation with a stable ID, `Kind:
 
 On resume, recover prepared and applied mutations through the common protocol. With no mutation pending, select the first ordinal pending stable ID and never select a completed row. Read-only or safely repeatable checks need no mutation but must persist completed evidence before another item. Text and tracking success checks prove intended content exists exactly once. Commit checks identify commit and paths. Stamp checks match current scope and content fingerprint. When all rows are complete, atomically advance `Post-review step` and reset work items to `- None.`.
 
-Before stamping and before cleanup, recompute the fingerprint. Drift returns to reviewing, resets the post-review step, records the edit, clears work items and the completed mutation, and invokes `Start phase` with the next phase and current fingerprint. Persist step, work item, and mutation checkpoints before side effects. Any post-review action that changes reviewable content follows this same restart. Provenance-only stamp appends do not restart review. Delete scratch only after `Post-review step: done` and the final fingerprint check succeeds.
+Before stamping and before cleanup, recompute the fingerprint. Drift returns to reviewing, resets the post-review step, records the edit, clears work items, the completed mutation, and `Verifier stamp`, and lets the staleness sweep reactivate every cell whose certification predates the current fingerprint. Persist step, work item, and mutation checkpoints before side effects. Any post-review action that changes reviewable content follows this same restart. Provenance-only stamp appends do not restart review. Delete scratch only after `Post-review step: done` and the final fingerprint check succeeds.
 
 ### Follow-up routing
 
-For each valid deferred finding, the authoritative Follow-ups row remains open until routed. In an interactive standalone run, propose `address-now`, `track`, or `skip` with a reason and ask for bulk approval or per-item overrides. Completing the work item atomically sets the row resolved with its final route and encoded evidence, completes the item, and clears the mutation. Check tracking files for an existing entry before adding one. Resolved rows persist across an address-now edit and the required new review phase.
+For each valid deferred finding, the authoritative Follow-ups row remains open until routed. In an interactive standalone run, propose `address-now`, `track`, or `skip` with a reason and ask for bulk approval or per-item overrides. Completing the work item atomically sets the row resolved with its final route and encoded evidence, completes the item, and clears the mutation. Check tracking files for an existing entry before adding one. Resolved rows persist across an address-now edit and the required re-review.
 
 In autonomous handover, do not prompt or invent a final route. Propose one of the three routes, then prepare a post-review mutation that atomically adds one canonical JSON line to `.tmp/handover-followups.md`. The item contains decoded artifact type and identity as `source`, the follow-up ID as `sourceItemId`, exact decoded follow-up text, and proposed route. Its success check proves exactly one item with the same `(source, sourceItemId)`. After that check, one atomic state rewrite marks the follow-up handed-off, route `handover`, records transfer evidence, completes the work item, and clears the mutation. Recovery checks the composite key before writing, so a crash cannot duplicate it. Resolved and handed-off rows persist across review restarts; later routing steps enumerate only open rows.
 
