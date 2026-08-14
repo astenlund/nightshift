@@ -105,11 +105,11 @@ function validateInput(input) {
 
 function reviewerPrompt(dimension) {
   return [
-    'You are a fresh code/document reviewer with no prior context, reviewing one dimension cell only.',
+    'You are a fresh code/document reviewer with no prior context, reviewing one review cell only.',
     '',
-    `FIRST ACTION: Read the payload file at ${dimension.payloadFile} in one Read call. It contains the common context and only the criteria assigned to this dimension cell.`,
+    `FIRST ACTION: Read the payload file at ${dimension.payloadFile} in one Read call. It contains the common context and only the criteria assigned to this cell.`,
     '',
-    `Your stable dimension cell ID is '${dimension.id}'. Review only the assigned criteria for '${dimension.name}', following the payload's delivery instructions and acknowledgements.`,
+    `Your stable cell ID is '${dimension.id}'. Review only the assigned criteria for '${dimension.name}', following the payload's delivery instructions and acknowledgements.`,
     '',
     '## Rules',
     'Report high-confidence issues only. If the artifact is clean for this cell, return lgtm: true with an empty findings array. Either way, verifiedNote must state concretely what you checked.',
@@ -120,9 +120,9 @@ function skepticPrompt(dimension, finding) {
   return [
     'You are a skeptical verifier with no prior context. Try to refute the finding against the artifact.',
     '',
-    `FIRST ACTION: Read the payload file at ${dimension.payloadFile} in one Read call. It contains the common context and only the criteria assigned to this dimension cell.`,
+    `FIRST ACTION: Read the payload file at ${dimension.payloadFile} in one Read call. It contains the common context and only the criteria assigned to this cell.`,
     '',
-    `The finding was raised in dimension cell '${dimension.id}' (${dimension.name}).`,
+    `The finding was raised in cell '${dimension.id}' (${dimension.name}).`,
     '',
     '## Finding to verify',
     `Summary: ${finding.summary}`,
