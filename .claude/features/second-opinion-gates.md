@@ -26,18 +26,26 @@ This premise is an empirical claim about external model behavior that this repos
 
 When possible the second opinion should use a model of the same strength as the strongest deployable reviewer: the point is divergence, not a free weaker pass. The user picks the second-opinion model per run, because the landscape shifts on a weekly basis; the skill may ask whether to consult an external model-ranking site and fold 2-3 gated recommendations into the question, but the choice remains under user control.
 
-## Channel: an external consult tool
+## Channel: consult tool or agent-harness CLI
 
-The concrete cross-family channel is a `consult`-style MCP tool: a stateless one-shot request to an external model router (reference implementation: McpConsultant in the user's McpTools repository, fronting OpenRouter; see its README_CONSULTANT.md). The shape fits the gate contract closely: per-call model selection matches the per-run user choice above, file attachments carry the artifact plus the scoped context package without transiting the controller's context, and statelessness structurally enforces the reader-not-authority rule, since the second opinion has no session, no memory, and no edit surface. It also makes the cross-family-diversity live-claim above settleable: the same artifact corpus can be read by a cross-family and a same-lineage model and the findings compared.
+The first of two co-equal cross-family channels is a `consult`-style MCP tool: a stateless one-shot request to an external model router (reference implementation: McpConsultant in the user's McpTools repository, fronting OpenRouter; see its README_CONSULTANT.md). The shape fits the gate contract closely: per-call model selection matches the per-run user choice above, file attachments carry the artifact plus the scoped context package without transiting the controller's context, and statelessness structurally enforces the reader-not-authority rule, since the second opinion has no session, no memory, and no edit surface. It also makes the cross-family-diversity live-claim above settleable: the same artifact corpus can be read by a cross-family and a same-lineage model and the findings compared.
 
 Integration consequences, worked out 2026-08-15:
 
-- **Feature detection with fallback.** Nightshift is a public plugin and cannot require a personal MCP server. The skill detects a consult-capable tool at runtime; when none is registered, the same-family higher-tier or higher-effort read described above is the degraded mode, not a co-equal alternative.
+- **Feature detection with fallback.** Nightshift is a public plugin and cannot require a personal MCP server. The skill detects a consult-capable tool at runtime; when no cross-family channel is available (neither this tool nor the agent-harness CLI below), the same-family higher-tier or higher-effort read described above is the degraded mode, not a co-equal alternative.
 - **Probing maps to transcript replay.** The bounded probe exchange (see "The controller may probe the second opinion") is implemented by re-sending the prior exchange in each probe call's context, since the tool holds no session. Replay multiplies prompt tokens per turn, and it keeps the exchange recorded by construction, which the probe rules already require.
 - **Findings arrive as prose.** The tool returns free text; the controller extracts findings before they enter the skeptic pipeline. This intersects with the [review-report-json-schema](review-report-json-schema.md) draft: a schema requested in the question text is unenforced server-side, so the controller needs a salvage path either way.
 - **Client timeout is a deployment precondition.** A hardened-spec gate read at maximum effort is a long call; the MCP client's tool-execution timeout (for Claude Code, `MCP_TOOL_TIMEOUT`) must cover the server's configured request timeout, per the consultant README's registration-time check.
 
 Server-side integration directions (conversation continuation, a frozen feature-detectable contract, schema-validated structured output) are tracked in the McpTools repository's own backlog, not here.
+
+The second co-equal channel, raised 2026-08-15: a non-interactive cross-family agent-harness CLI installed on the machine (reference implementation: Codex CLI via `codex exec`, fronting OpenAI models). The design contemplates the generic capability, a one-shot non-interactive invocation taking a prompt and returning text, so any qualifying harness (Gemini CLI, opencode) can serve without a design change; Codex is the reference because it is present in the authoring environment. Deltas against the consult-tool contract, to be worked out when the feature is picked up:
+
+- The harness is an agent with tools, not a stateless completion: it can read the artifact and context package from disk itself instead of receiving attachments, but reader-not-authority is not structural here and must be enforced by invoking the harness in a read-only or no-edit mode (Codex: the read-only sandbox), since a default invocation could edit the artifact.
+- Statelessness holds per invocation; probing maps to the harness's own session-resume mechanism where one exists, with the transcript-replay pattern from the consult path as the general fallback.
+- Model choice is constrained to the vendor family behind the harness rather than a router's menu, which still satisfies the different-family requirement whenever the harness vendor differs from the driving session's.
+
+Channel selection: both channels are feature-detected at runtime; when both are available, the per-run user choice (see "Active ingredient") picks the carrier as part of picking the model. The same-family higher-tier or higher-effort read remains the degraded fallback only when neither channel is present.
 
 ## Context package per gate
 
@@ -94,7 +102,7 @@ Draft proposal; not yet designed as a buildable skill or spec. Depends on nothin
 - The review engine's phase/round machinery and skeptic/controller pipeline (shipped, so no upstream backlog dependency).
 - The user's requirement description(s) plus settled Q&A, produced at brainstorm time (see "Context package per gate").
 - A second-opinion model selection per run, user-chosen (see "Active ingredient").
-- A registered consult-capable MCP tool for the cross-family path, feature-detected at runtime; when absent, the same-family fallback applies, so this is a soft precondition rather than a blocking gate (see "Channel").
+- A cross-family channel, feature-detected at runtime: a registered consult-capable MCP tool or a qualifying non-interactive agent-harness CLI; when neither is present, the same-family fallback applies, so this is a soft precondition rather than a blocking gate (see "Channel").
 
 Landing order: the wave-convergence lifecycle (wave-lifecycle.md) shipped 2026-08-14 in the 2.2.0 batch. When this feature is picked up, re-derive the gate placement against the wave model: the hardened gate maps onto the verifier seat, and the phase-cap open question dissolves into the wave and verifier caps (30 rounds, 10 verifier launches per run).
 
