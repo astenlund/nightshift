@@ -82,7 +82,7 @@ The operating-context section must exist and be complete before any reviewer or 
 ### Dimension 4: Internal consistency
 
 1. **Cross-section agreement**: do different sections of the spec describe the same behavior consistently? If section A says "the output is JSON", does section B also treat it as JSON? If section A says "step 3 retries on failure", does section B account for retries?
-2. **Data-shape boundary integrity**: when data crosses an interface (input → algorithm → output → persistence), is the shape consistent at each step? Watch for field renames mid-document.
+2. **Data-shape boundary integrity**: when data crosses an interface (input -> algorithm -> output -> persistence), is the shape consistent at each step? Watch for field renames mid-document.
 3. **Cross-reference validity**: do "see section X" pointers refer to sections that exist and say what's claimed? Stale cross-references rot specs from the inside.
 4. **Constants in lockstep**: numeric values, field names, and file paths that appear in multiple places (e.g., a coordinate pinned in CSS, code, and spec) should agree across all sites. The spec is one of those sites.
 
