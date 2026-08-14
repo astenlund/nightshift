@@ -52,6 +52,10 @@ const CASES = [
   'stringified non-object args are rejected before launch',
   'a maximum-length cell id derives an uncapped finding id and distinct skeptic label',
   'multiple findings receive distinct stable skeptic ids',
+  'a duplicate finding shares its sibling verdict without a second skeptic',
+  'a failed dedup judge falls open to a fresh skeptic',
+  'a malformed or out-of-range dedup judgment falls open to a fresh skeptic',
+  'a shared verdict chains through a second-hop duplicate with a non-zero candidate index',
   'a missing final concurrent cell is returned as needs-reviewer',
 ]
 
@@ -107,6 +111,7 @@ async function runWorkflow(args, options = {}) {
   const agentCalls = []
   const reviewerReplies = [...(options.reviewerReplies || [clean()])]
   const skepticReplies = [...(options.skepticReplies || [verdict()])]
+  const dedupReplies = [...(options.dedupReplies || [])]
   let parallelCallIndex = 0
   const parallel = async (tasks) => {
     const currentCallIndex = parallelCallIndex
@@ -143,8 +148,9 @@ async function runWorkflow(args, options = {}) {
     const call = { prompt, options: optionsForAgent }
     agentCalls.push(call)
     options.onAgentCall?.(call)
-    const replies = optionsForAgent.phase === 'Review' ? reviewerReplies : skepticReplies
-    const next = replies.shift()
+    const isDedup = isDedupCall(call)
+    const replies = optionsForAgent.phase === 'Review' ? reviewerReplies : isDedup ? dedupReplies : skepticReplies
+    const next = replies.length > 0 ? replies.shift() : isDedup ? { duplicateOf: -1 } : undefined
     if (next instanceof Error) {
       throw next
     }
@@ -175,6 +181,22 @@ function assertRetrySafety(cell) {
       assert.match(item.verification.issue, /\S/)
     }
   }
+}
+
+function isSkepticCall(call) {
+  return call.options.label.startsWith('verify:')
+}
+
+function isDedupCall(call) {
+  return call.options.label.startsWith('dedup:')
+}
+
+function verifyCalls(agentCalls) {
+  return agentCalls.filter(isSkepticCall)
+}
+
+function dedupCalls(agentCalls) {
+  return agentCalls.filter(isDedupCall)
 }
 
 function normalizeManualVerdict(response) {
@@ -210,7 +232,7 @@ const TESTS = {
       "  description: 'One revise-loop round: concurrent reviewer-to-skeptic pipelines per active dimension',",
       '  phases: [',
       "    { title: 'Review', detail: 'all active-dimension reviewers are submitted concurrently' },",
-      "    { title: 'Verify', detail: 'each finding fan-out is submitted when its reviewer returns, overlapping unfinished reviews' },",
+      "    { title: 'Verify', detail: 'each finding fan-out is submitted when its reviewer returns, overlapping unfinished reviews; duplicate-shape findings share one skeptic via a dedup judge' },",
       '  ],',
     ].join('\n')
     assert.equal(source.includes(expectedMetadata), true)
@@ -281,7 +303,7 @@ const TESTS = {
             allReviewersSubmitted.resolve()
           }
         }
-        if (call.options.phase === 'Verify') {
+        if (isSkepticCall(call)) {
           skepticSubmissions += 1
           if (skepticSubmissions === 2) {
             allSkepticsSubmitted.resolve()
@@ -441,7 +463,7 @@ const TESTS = {
     assert.deepEqual(repaired.findings.find(item => item.id === completed.id), completed)
     assert.equal(agentCalls.filter(call => call.options.phase === 'Review').length, 1)
     assert.equal(agentCalls.filter(call => call.options.label === `verify:${completed.id}`).length, 1)
-    assert.equal(agentCalls.filter(call => call.options.phase === 'Verify').length, 2)
+    assert.equal(verifyCalls(agentCalls).length, 2)
   },
   async 'two dimensions isolate skeptic repair while preserving a usable sibling'() {
     const a = finding('First issue')
@@ -462,13 +484,13 @@ const TESTS = {
     assert.deepEqual(partial.dimensions[0].findings.find(item => item.id === pending.id).verification, completed.verification)
     assert.equal(agentCalls.filter(call => call.options.phase === 'Review').length, 2)
     assert.equal(agentCalls.filter(call => call.options.label === `verify:${completed.id}`).length, 1)
-    assert.equal(agentCalls.filter(call => call.options.phase === 'Verify').length, 2)
+    assert.equal(verifyCalls(agentCalls).length, 2)
     const reviewerCalls = agentCalls.filter(call => call.options.phase === 'Review')
     assert.match(reviewerCalls[0].prompt, /C:\/repo\/.tmp\/a\.md/)
     assert.doesNotMatch(reviewerCalls[0].prompt, /C:\/repo\/.tmp\/b\.md/)
     assert.match(reviewerCalls[1].prompt, /C:\/repo\/.tmp\/b\.md/)
     assert.doesNotMatch(reviewerCalls[1].prompt, /C:\/repo\/.tmp\/a\.md/)
-    for (const call of agentCalls.filter(call => call.options.phase === 'Verify')) {
+    for (const call of verifyCalls(agentCalls)) {
       assert.match(call.prompt, /C:\/repo\/.tmp\/a\.md/)
       assert.doesNotMatch(call.prompt, /C:\/repo\/.tmp\/b\.md/)
     }
@@ -512,7 +534,7 @@ const TESTS = {
       liveProbePerformed: false,
       liveProbeEvidence: null,
     })
-    const skepticCall = agentCalls.find(call => call.options.phase === 'Verify')
+    const skepticCall = agentCalls.find(isSkepticCall)
     assert.ok(skepticCall)
     assert.deepEqual(skepticCall.options.schema.properties.verdict.enum, ['CONFIRMED', 'REFUTED', 'JUDGMENT_CALL'])
     assert.ok(skepticCall.options.schema.required.includes('liveProbeEvidence'))
@@ -672,7 +694,72 @@ const TESTS = {
     const { result, agentCalls } = await runWorkflow(argsFor(), { reviewerReplies: [response], skepticReplies: [verdict(), verdict('REFUTED', 'The finding does not occur.')] })
     const findings = getCell(result).findings
     assert.deepEqual(findings.map(item => item.id), ['correctness/finding-1', 'correctness/finding-2'])
-    assert.notEqual(agentCalls[1].options.label, agentCalls[2].options.label)
+    const skepticLabels = verifyCalls(agentCalls).map(call => call.options.label)
+    assert.deepEqual(skepticLabels, ['verify:correctness/finding-1', 'verify:correctness/finding-2'])
+  },
+  async 'a duplicate finding shares its sibling verdict without a second skeptic'() {
+    const dimensions = [dimension('correctness'), dimension('safety', 'Safety')]
+    const { result, agentCalls } = await runWorkflow(argsFor(dimensions), {
+      reviewerReplies: [finding('Shared issue'), finding('The same issue, differently framed')],
+      skepticReplies: [verdict()],
+      dedupReplies: [{ duplicateOf: 0 }],
+    })
+    const [correctness, safety] = result.dimensions
+    assert.equal(correctness.status, 'usable')
+    assert.equal(safety.status, 'usable')
+    assert.deepEqual(safety.findings[0].verification, correctness.findings[0].verification)
+    assert.equal(safety.findings[0].sharedVerdictFrom, 'correctness/finding-1')
+    assert.equal(correctness.findings[0].sharedVerdictFrom, undefined)
+    assert.deepEqual(verifyCalls(agentCalls).map(call => call.options.label), ['verify:correctness/finding-1'])
+    assert.deepEqual(dedupCalls(agentCalls).map(call => call.options.label), ['dedup:safety/finding-1'])
+  },
+  async 'a failed dedup judge falls open to a fresh skeptic'() {
+    const dimensions = [dimension('correctness'), dimension('safety', 'Safety')]
+    const { result, agentCalls } = await runWorkflow(argsFor(dimensions), {
+      reviewerReplies: [finding('First issue'), finding('Possibly duplicate issue')],
+      skepticReplies: [verdict(), verdict('REFUTED', 'The second finding does not occur.')],
+      dedupReplies: [new Error('dedup judge failed')],
+    })
+    const [correctness, safety] = result.dimensions
+    assert.equal(correctness.findings[0].verification.verdict, 'CONFIRMED')
+    assert.equal(safety.findings[0].verification.verdict, 'REFUTED')
+    assert.equal(safety.findings[0].sharedVerdictFrom, undefined)
+    assert.equal(verifyCalls(agentCalls).length, 2)
+  },
+  async 'a malformed or out-of-range dedup judgment falls open to a fresh skeptic'() {
+    for (const malformed of [null, {}, { duplicateOf: 'x' }, { duplicateOf: 1.5 }, { duplicateOf: 5 }]) {
+      const dimensions = [dimension('correctness'), dimension('safety', 'Safety')]
+      const { result, agentCalls } = await runWorkflow(argsFor(dimensions), {
+        reviewerReplies: [finding('First issue'), finding('Possibly duplicate issue')],
+        skepticReplies: [verdict(), verdict('REFUTED', 'The second finding does not occur.')],
+        dedupReplies: [malformed],
+      })
+      const [correctness, safety] = result.dimensions
+      const label = JSON.stringify(malformed) ?? 'null'
+      assert.equal(correctness.findings[0].verification.verdict, 'CONFIRMED', label)
+      assert.equal(safety.findings[0].verification.verdict, 'REFUTED', label)
+      assert.equal(safety.findings[0].sharedVerdictFrom, undefined, label)
+      assert.equal(dedupCalls(agentCalls).length, 1, label)
+      assert.equal(verifyCalls(agentCalls).length, 2, label)
+    }
+  },
+  async 'a shared verdict chains through a second-hop duplicate with a non-zero candidate index'() {
+    const dimensions = [dimension('correctness'), dimension('safety', 'Safety'), dimension('style', 'Style')]
+    const { result, agentCalls } = await runWorkflow(argsFor(dimensions), {
+      reviewerReplies: [finding('Shared issue'), finding('The same issue again'), finding('The same issue a third way')],
+      skepticReplies: [verdict()],
+      dedupReplies: [{ duplicateOf: 0 }, { duplicateOf: 1 }],
+    })
+    const [correctness, safety, style] = result.dimensions
+    assert.equal(correctness.status, 'usable')
+    assert.equal(safety.status, 'usable')
+    assert.equal(style.status, 'usable')
+    assert.deepEqual(safety.findings[0].verification, correctness.findings[0].verification)
+    assert.deepEqual(style.findings[0].verification, correctness.findings[0].verification)
+    assert.equal(safety.findings[0].sharedVerdictFrom, 'correctness/finding-1')
+    assert.equal(style.findings[0].sharedVerdictFrom, 'safety/finding-1')
+    assert.deepEqual(verifyCalls(agentCalls).map(call => call.options.label), ['verify:correctness/finding-1'])
+    assert.deepEqual(dedupCalls(agentCalls).map(call => call.options.label), ['dedup:safety/finding-1', 'dedup:style/finding-1'])
   },
   async 'a missing final concurrent cell is returned as needs-reviewer'() {
     const { result } = await runWorkflow(argsFor(), { dropFinalCell: true })

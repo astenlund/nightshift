@@ -6,7 +6,7 @@ export const meta = {
   description: 'One revise-loop round: concurrent reviewer-to-skeptic pipelines per active dimension',
   phases: [
     { title: 'Review', detail: 'all active-dimension reviewers are submitted concurrently' },
-    { title: 'Verify', detail: 'each finding fan-out is submitted when its reviewer returns, overlapping unfinished reviews' },
+    { title: 'Verify', detail: 'each finding fan-out is submitted when its reviewer returns, overlapping unfinished reviews; duplicate-shape findings share one skeptic via a dedup judge' },
   ],
   whenToUse: 'Invoked by the nightshift revise skill; not run standalone.',
 }
@@ -44,6 +44,15 @@ const VERDICT_SCHEMA = {
     runtimeOwned: { type: 'boolean', description: 'True when the disputed claim is owned by a runtime the repository cannot settle' },
     liveProbePerformed: { type: 'boolean', description: 'True only when a live probe covered every relevant execution context' },
     liveProbeEvidence: { type: 'string', description: 'Concrete evidence from every relevant live execution context, or an empty string when no probe was performed' },
+  },
+}
+
+const DEDUP_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['duplicateOf'],
+  properties: {
+    duplicateOf: { type: 'integer', description: 'Zero-based index of the earlier finding making the same claim about the same code, or -1 when none does' },
   },
 }
 
@@ -116,6 +125,14 @@ function reviewerPrompt(dimension) {
   ].join('\n')
 }
 
+function findingLines(finding) {
+  return [
+    `Summary: ${finding.summary}`,
+    `Location: ${finding.location}`,
+    `Evidence claimed: ${finding.evidence}`,
+  ]
+}
+
 function skepticPrompt(dimension, finding) {
   return [
     'You are a skeptical verifier with no prior context. Try to refute the finding against the artifact.',
@@ -125,15 +142,30 @@ function skepticPrompt(dimension, finding) {
     `The finding was raised in cell '${dimension.id}' (${dimension.name}).`,
     '',
     '## Finding to verify',
-    `Summary: ${finding.summary}`,
-    `Location: ${finding.location}`,
-    `Evidence claimed: ${finding.evidence}`,
+    ...findingLines(finding),
     '',
     'Classify whether the disputed claim is runtime-owned and whether you performed a live probe in every relevant execution context.',
     'Set liveProbePerformed true only after that complete probe and put concrete, nonblank evidence from every relevant execution context in liveProbeEvidence. Otherwise set liveProbePerformed false and liveProbeEvidence to an empty string.',
     'Repository or design-record evidence cannot refute a runtime-owned claim. Without a live probe in every relevant execution context, return JUDGMENT_CALL and recommend that probe, not REFUTED.',
     'Any live probe must reproduce the real module or script scope, framework call path, and execution context.',
     'Return CONFIRMED when the issue is real, REFUTED when concrete evidence proves it wrong, or JUDGMENT_CALL when it is not factually decidable from available evidence. Give a concrete, nonblank reason.',
+  ].join('\n')
+}
+
+function dedupPrompt(finding, candidates) {
+  const listed = candidates.map((candidate, index) => `${index}. [${candidate.finding.id}] Summary: ${candidate.finding.summary} | Location: ${candidate.finding.location}`)
+
+  return [
+    'You are a duplicate-detection judge with no tools. Decide from the text below whether the NEW finding makes the same claim about the same code as any EARLIER finding.',
+    '',
+    '## New finding',
+    ...findingLines(finding),
+    '',
+    '## Earlier findings already under verification',
+    ...listed,
+    '',
+    'Two findings are duplicates only when they assert the same defect about the same code region; a different framing of the same underlying issue anchored to the same sites is a duplicate, but a finding about different code or a different defect class is not. When uncertain, answer -1: a wasted extra verification is cheap, a wrongly shared verdict is not.',
+    'Return duplicateOf as the zero-based index of the duplicate earlier finding, or -1 when none matches.',
   ].join('\n')
 }
 
@@ -226,7 +258,7 @@ async function review(dimension) {
   }
 }
 
-async function verifyFinding(dimension, finding) {
+async function dispatchSkeptic(dimension, finding) {
   try {
     const response = await agent(skepticPrompt(dimension, finding), agentOpts({
       label: `verify:${finding.id}`,
@@ -234,12 +266,71 @@ async function verifyFinding(dimension, finding) {
       schema: VERDICT_SCHEMA,
       agentType: 'Explore',
     }))
-    const verification = normalizeVerdict(response)
 
-    return { ...finding, verification: verification || retryVerification('skeptic output was missing or invalid') }
+    return normalizeVerdict(response) || retryVerification('skeptic output was missing or invalid')
   } catch {
-    return { ...finding, verification: retryVerification('skeptic execution failed') }
+    return retryVerification('skeptic execution failed')
   }
+}
+
+// Cross-cell dedup: findings judged to make the same claim about the same code
+// share one fresh skeptic verdict instead of each paying a full verification.
+// Registration is synchronous before any await, and a duplicate may only
+// reference an entry registered strictly earlier, so shared-verdict chains
+// always terminate at a dispatched skeptic and cannot cycle. A failed or
+// unparseable dedup judge falls open to a fresh skeptic, never to a skipped
+// verification.
+const dispatchedFindings = []
+
+function deferred() {
+  let resolve
+  const promise = new Promise((settle) => { resolve = settle })
+
+  return { promise, resolve }
+}
+
+async function findDuplicate(finding, candidates) {
+  if (candidates.length === 0) {
+    return null
+  }
+  try {
+    const response = await agent(dedupPrompt(finding, candidates), agentOpts({
+      label: `dedup:${finding.id}`,
+      phase: 'Verify',
+      schema: DEDUP_SCHEMA,
+      agentType: 'Explore',
+      effort: 'low',
+    }))
+    if (!isRecord(response) || !Number.isInteger(response.duplicateOf) || response.duplicateOf < 0) {
+      return null
+    }
+
+    return candidates[response.duplicateOf] || null
+  } catch {
+    return null
+  }
+}
+
+async function verifyFinding(dimension, finding) {
+  // Candidates render sorted by finding ID so the dedup prompt is a pure
+  // function of its candidate SET; set membership still depends on reviewer
+  // completion timing, an accepted resume variance documented in SKILL.md
+  // (a resumed round may re-derive a different sharing topology, but every
+  // path still ends in a fresh skeptic verdict).
+  const candidates = dispatchedFindings.slice().sort((left, right) => (left.finding.id < right.finding.id ? -1 : left.finding.id > right.finding.id ? 1 : 0))
+  const entry = { finding, settled: deferred() }
+  dispatchedFindings.push(entry)
+  const duplicate = await findDuplicate(finding, candidates)
+  if (duplicate) {
+    const verification = await duplicate.settled.promise
+    entry.settled.resolve(verification)
+
+    return { ...finding, verification, sharedVerdictFrom: duplicate.finding.id }
+  }
+  const verification = await dispatchSkeptic(dimension, finding)
+  entry.settled.resolve(verification)
+
+  return { ...finding, verification }
 }
 
 async function verify(cell, dimension) {
