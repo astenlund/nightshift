@@ -39,8 +39,8 @@ const CASES = [
   'a fingerprint without the sha256 prefix is rejected before launch',
   'an uppercase fingerprint is rejected before launch',
   'a non-hexadecimal fingerprint is rejected before launch',
-  'phase and round identity are echoed unchanged',
-  'a nonpositive or noninteger phase or round is rejected before launch',
+  'round identity is echoed unchanged',
+  'a nonpositive or noninteger round is rejected before launch',
   'an empty dimensions array is rejected before launch',
   'invalid dimension cell ids are rejected before launch',
   'duplicate dimension cell ids are rejected before launch',
@@ -57,7 +57,6 @@ const CASES = [
 
 function argsFor(dimensions = [dimension('correctness')]) {
   return {
-    phase: 2,
     round: 5,
     fingerprint: 'sha256:a1b2c3d4e5f6',
     dimensions,
@@ -604,15 +603,14 @@ const TESTS = {
   async 'a non-hexadecimal fingerprint is rejected before launch'() {
     await assertInvalid({ ...argsFor(), fingerprint: 'sha256:a1b2c3d4e5fg' })
   },
-  async 'phase and round identity are echoed unchanged'() {
-    const input = { ...argsFor(), phase: 3, round: 7 }
+  async 'round identity is echoed unchanged'() {
+    const input = { ...argsFor(), round: 7 }
     const { result } = await runWorkflow(input)
-    assert.equal(result.phase, 3)
     assert.equal(result.round, 7)
     assert.equal(result.fingerprint, input.fingerprint)
   },
-  async 'a nonpositive or noninteger phase or round is rejected before launch'() {
-    for (const invalid of [{ ...argsFor(), phase: 0 }, { ...argsFor(), round: -1 }, { ...argsFor(), phase: 1.5 }, { ...argsFor(), round: '5' }]) {
+  async 'a nonpositive or noninteger round is rejected before launch'() {
+    for (const invalid of [{ ...argsFor(), round: 0 }, { ...argsFor(), round: -1 }, { ...argsFor(), round: 1.5 }, { ...argsFor(), round: '5' }]) {
       await assertInvalid(invalid)
     }
   },

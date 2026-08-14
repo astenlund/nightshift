@@ -77,8 +77,8 @@ function normalizeInput(rawInput) {
 }
 
 function validateInput(input) {
-  if (!Number.isInteger(input.phase) || input.phase <= 0 || !Number.isInteger(input.round) || input.round <= 0 || typeof input.fingerprint !== 'string' || !FINGERPRINT_PATTERN.test(input.fingerprint)) {
-    throw new TypeError('revise-round: phase, round, or fingerprint is invalid')
+  if (!Number.isInteger(input.round) || input.round <= 0 || typeof input.fingerprint !== 'string' || !FINGERPRINT_PATTERN.test(input.fingerprint)) {
+    throw new TypeError('revise-round: round or fingerprint is invalid')
   }
   if (!Array.isArray(input.dimensions) || input.dimensions.length === 0) {
     throw new TypeError('revise-round: dimensions must be a nonempty array')
@@ -209,7 +209,7 @@ function normalizeVerdict(response) {
 const agentOpts = extra => model ? { ...extra, model } : extra
 const input = normalizeInput(args)
 const dimensions = validateInput(input)
-const { phase, round, fingerprint, model } = input
+const { round, fingerprint, model } = input
 
 async function review(dimension) {
   try {
@@ -270,7 +270,6 @@ const completed = await parallel(dimensions.map(dimension => () => runDimension(
 const resultById = resultsById(completed)
 
 return {
-  phase,
   round,
   fingerprint,
   dimensions: dimensions.map(dimension => resultById.get(dimension.id) || needsReviewer(dimension)),
