@@ -215,7 +215,7 @@ Draft exploring an instruction in the index templates (and an `init-backlog` upd
 
 ### [Second-opinion gates](features/second-opinion-gates.md)
 
-Gate the lifecycle with cheap single-pass reads from a different-model-family agent: one at the settled requirements list, one at the freshly written spec, one at the hardened spec. Each read lands before the artifact feeds the next stage, and over the final artifact the hardened gate replaces the holistic third-phase reviewer role. Findings enter the normal skeptic/controller pipeline; the gate is a reader, not an authority.
+Gate the lifecycle with cheap single-pass reads from a different-model-family agent: one at the settled requirements list, one at the freshly written spec, one at the hardened spec. Each read lands before the artifact feeds the next stage, and over the final artifact the hardened gate replaces the holistic third-phase reviewer role. Findings enter the normal skeptic/controller pipeline; the gate is a reader, not an authority. The designated cross-family channel is a `consult`-style MCP tool (reference implementation: McpConsultant), feature-detected at runtime with the same-family higher-tier or higher-effort read as the fallback.
 
 **Requires:** none.
 
