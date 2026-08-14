@@ -75,20 +75,19 @@ Autonomous handover: yes
 Status: reviewing
 Post-review step: not-started
 Failure: none
-Phase: 2
-Converged phases: 1
-Last converged phase: 1
 Round: 5
 Round status: in-flight
+Verifier launches: 0
+Verifier stamp: none
 Artifact fingerprint: sha256:a1b2c3d4e5f6
-Phase changed: yes
+Artifact edited: yes
 
 ## Dimension cells
 
-| Cell ID | Dimension UTF-8 hex | Cell kind | Cluster UTF-8 hex | Delivery scope | Predecessor cell IDs | Status | N/A reason UTF-8 hex | Attempts this phase |
-|---|---|---|---|---|---|---|---|---:|
-| correctness/cluster-parser | 436f72726563746e657373 | local | 706172736572 | local-slice | none | active | none | 2 |
-| security/whole-scope | 5365637572697479 | cross-cutting | 77686f6c652d73636f7065 | whole-scope | none | inactive | none | 1 |
+| Cell ID | Dimension UTF-8 hex | Cell kind | Cluster UTF-8 hex | Delivery scope | Predecessor cell IDs | Status | N/A reason UTF-8 hex | Certified fingerprint |
+|---|---|---|---|---|---|---|---|---|
+| correctness/cluster-parser | 436f72726563746e657373 | local | 706172736572 | local-slice | none | active | none | none |
+| security/whole-scope | 5365637572697479 | cross-cutting | 77686f6c652d73636f7065 | whole-scope | none | inactive | none | sha256:a1b2c3d4e5f6 |
 
 ## Resolved code paths
 
@@ -159,23 +158,24 @@ For plan and spec, Dimension cells use `Delivery scope: whole-artifact`, omit th
 
 ### Atomic replacement and field lifetimes
 
-Every state and result replacement is atomic and creates no second authority. Write the complete next contents to `.tmp/revise-state.next.md` or `.tmp/revise-round-result.next.md` in the same directory, validate the schema and phase, round, fingerprint, and map relationships, then atomically rename it over the canonical file. A crash before rename leaves the prior checkpoint authoritative. Never read a leftover `.next.md`; overwrite it on the next staged replacement. A crash after rename exposes a complete checkpoint. Persist result cells before a state transition or agent-row update that depends on them. This rule covers boundary rewrites, partial merges, repair counters, user requests, and pending mutations.
+Every state and result replacement is atomic and creates no second authority. Write the complete next contents to `.tmp/revise-state.next.md` or `.tmp/revise-round-result.next.md` in the same directory, validate the schema and round, fingerprint, and map relationships, then atomically rename it over the canonical file. A crash before rename leaves the prior checkpoint authoritative. Never read a leftover `.next.md`; overwrite it on the next staged replacement. A crash after rename exposes a complete checkpoint. Persist result cells before a state transition or agent-row update that depends on them. This rule covers boundary rewrites, partial merges, repair counters, user requests, and pending mutations.
 
-Artifact identity, scope decisions, autonomy mode, acknowledgements, user requests, applied changes, follow-ups, and prior failures persist until successful cleanup or a user-authorized restart rule says otherwise. Phase fields are the phase and convergence counters, dirty flag, full dimension-cell lifecycle and lineage, and exact encoded scope maps. Round fields are round number, round status, fingerprint, Agents rows, and `.tmp/revise-round-result.md`.
+Artifact identity, scope decisions, autonomy mode, acknowledgements, user requests, applied changes, follow-ups, and prior failures persist until successful cleanup or a user-authorized restart rule says otherwise. Convergence fields are the verifier counters and stamp, the full cell lifecycle, lineage, certifications, and exact encoded scope maps. Round fields are round number, round status, fingerprint, Agents rows, and `.tmp/revise-round-result.md`.
 
-The state file marks the single active run. Do not add an ownership token or lock. An unfinished `reviewing` or `post-review` state with the same artifact and logical scope is a resume candidate. Surface unfinished state for different work instead of overwriting it. There is no persisted complete status because successful completion deletes the state.
+The state file marks the single active run. Do not add an ownership token or lock. An unfinished `reviewing` or `post-review` state with the same artifact and logical scope is a resume candidate. A state file written by the phase-model schema (a raw `Phase:` header field or an `Attempts this phase` column) is never migrated: set `Status: failed` with `Failure JSON: "pre-wave state file; not migrated"` and offer restart or abandon. Surface unfinished state for different work instead of overwriting it. There is no persisted complete status because successful completion deletes the state.
 
 ### Boundary templates
 
 Map every transition to one of these templates:
 
-- `Start phase`: before changing phase fields, fail with current diagnostics when the requested phase exceeds 10. Otherwise set the requested phase, `Phase changed: no`, round 0, `Round status: idle`, and current fingerprint; clear Agents; delete the prior result scratch; make every applicable dimension or shard cell active with zero attempts and N/A reason `none`; preserve an inapplicable cell as N/A only after re-evaluating and encoding its nonblank reason.
-- `Start round`: preflight every active dimension or shard cell. If any already has 10 attempts, set `Status: failed`, record the exhausted cell and last unresolved issue, and dispatch nothing. Otherwise calculate the next round, launch fingerprint, immutable canonical delivery-map snapshot, incremented phase attempts, and replacement Agents section in memory. The Agents section has exactly one reviewer row for every active cell, session ID `none`, `in-flight`, zero repairs, and no prior-round rows. Atomically replace the result scratch with its matching cell-empty header and snapshot, then atomically rewrite state with the same identities and map bytes, incremented attempts, replacement Agents, and `Round status: in-flight`. Dispatch only after both checkpoints match.
-- `Restart run`: set `Status: reviewing`, `Post-review step: not-started`, `Failure: none`, phase 1, `Converged phases: 0`, and `Last converged phase: 0`; clear post-review work items and pending mutation; preserve artifact and scope identity, acknowledgements, user requests, applied changes, follow-ups, and prior failures; copy the prior failure into Prior failures; then apply `Start phase` for phase 1.
+- `Start round`: fail with current diagnostics when the next round would exceed 30. Otherwise calculate the next round, launch fingerprint, and immutable canonical delivery-map snapshot, and the replacement Agents section in memory. The Agents section has exactly one reviewer row for every active cell (or exactly one verifier row for a verifier round), session ID `none`, `in-flight`, zero repairs, and no prior-round rows. Atomically replace the result scratch with its matching cell-empty header and snapshot, then atomically rewrite state with the same identities and map bytes, replacement Agents, `Artifact edited: no`, and `Round status: in-flight`. Dispatch only after both checkpoints match. Clearing `Artifact edited` here gives the flag its wave-era meaning: a reviewable edit made after the last reconciled launch (the reconciliation that precedes every launch has just accounted for all prior edits in the ledger), replacing the phase model's per-phase reset so the unexplained-drift branch keeps its discriminating power.
+- `Reactivate stale cells`: applies only at an all-inactive boundary where the staleness sweep changes something. In one atomic state rewrite: set every cell whose `Certified fingerprint` differs from the current fingerprint to `Status: active` with `Certified fingerprint: none`; re-evaluate every N/A declaration in both directions, changing a contradicted N/A to active with no certification, demoting a no-longer-applicable cell to N/A with a newly evaluated nonblank encoded reason and `Certified fingerprint: none`, and preserving an inapplicable cell as N/A only after re-evaluating and encoding its nonblank reason. If the rewrite would leave the applicable set empty, set `Status: failed` with current diagnostics instead. If it activated at least one cell, `Start round`; a demotion-only rewrite proceeds directly to the boundary resolution below.
+- `Launch verifier`: applies only at wave convergence with `Round status: evaluated` or `idle`. Fail with current diagnostics when verifier launches would exceed 10. Otherwise increment `Verifier launches` and apply `Start round` as a verifier round: the single cell is `verifier/whole-artifact`, model pin opus, holistic-gate payload.
+- `Restart run`: set `Status: reviewing`, `Post-review step: not-started`, `Failure: none`, round 0, `Round status: idle`, `Verifier launches: 0`, `Verifier stamp: none`, current fingerprint, and `Artifact edited: no`; clear Agents and post-review work items and pending mutation; delete the prior result scratch; make every applicable cell active with `Certified fingerprint: none` and N/A reason `none`, preserving an inapplicable cell as N/A only after re-evaluating and encoding its nonblank reason; preserve artifact and scope identity, acknowledgements, user requests, applied changes, follow-ups, and prior failures; copy the prior failure into Prior failures.
 
-New-run creation writes the identity and empty persistent sections, pre-seeds acknowledgements and caveats from the artifact profile before phase 1, initializes the same counters as `Restart run`, and invokes `Start phase` for phase 1. Normal dirty advance, clean convergence below two phases, and drift abandonment use `Start phase`. A reviewable post-review mutation returns to `reviewing`, resets the post-review step and its work items, clears the completed mutation, and uses `Start phase`. Partial results set result status `partial`, keep the round in flight, update Agents and result cells by stable cell or derived finding ID as appropriate, and preserve every completed result. A fully repaired and adjudicated result sets round status `evaluated`, result status `usable`, and all Agents rows `completed`. Failure preserves diagnostic phase and round fields. Successful finalization deletes state, payload, result, patch, and staging scratch files.
+New-run creation writes the identity and empty persistent sections, pre-seeds acknowledgements and caveats from the artifact profile before the first round, and initializes the same counters and cell states as `Restart run`. A reviewable post-review mutation returns to `reviewing`, resets the post-review step and its work items, clears the completed mutation, clears `Verifier stamp` to `none`, and refreshes the fingerprint so the staleness sweep drives re-review. Partial results set result status `partial`, keep the round in flight, update Agents and result cells by stable cell or derived finding ID as appropriate, and preserve every completed result. A fully repaired and adjudicated result sets round status `evaluated`, result status `usable`, and all Agents rows `completed`. Failure preserves diagnostic round and convergence fields. Successful finalization deletes state, payload, result, patch, and staging scratch files.
 
-At phase convergence, compute the updated convergence counter, `Last converged phase`, and destination in one boundary rewrite. On resume, if a reviewing state has every applicable dimension inactive, compare `Last converged phase` with `Phase`, count the phase only if they differ, and enter post-review or perform the same `Start phase` advance. A stable checkpoint cannot remain reviewing with every applicable dimension inactive.
+At every evaluated boundary with all applicable cells inactive, resolve the next transition in one boundary rewrite, sweep first: `Reactivate stale cells` runs the staleness sweep (reactivation, N/A promotion and demotion, empty-set failure) and starts the next round when it activated cells; wave convergence without a current stamp applies `Launch verifier`; wave convergence with `Verifier stamp` equal to the current fingerprint enters `post-review`. On resume, a reviewing state with every applicable cell inactive resolves the same way after session reconciliation; a stable checkpoint cannot remain reviewing with every applicable cell inactive, current certifications, no verifier row in flight, and no transition taken.
 
 ## Round result and delivery snapshot
 
@@ -184,13 +184,12 @@ Initialize `.tmp/revise-round-result.md` with:
 ```markdown
 # Revise round result
 
-Phase: 2
 Round: 5
 Artifact fingerprint: sha256:a1b2c3d4e5f6
 Status: awaiting-results
 ```
 
-Immediately append `## Delivery map snapshot`. For code, its cell table contains only `Cell ID`, `Dimension UTF-8 hex`, `Cell kind`, `Cluster UTF-8 hex`, and `Delivery scope`, in ordinal Cell ID order, followed by byte-for-byte copies of the canonical Resolved code paths and Local slice paths tables. It excludes predecessor IDs, lifecycle status, N/A reason, and attempts. For plan and spec, use the same delivery-only cell projection and encoded `whole-artifact` scope. State and snapshot bytes come from the same serializer. The projection is immutable for that round and precedes all result cells.
+Immediately append `## Delivery map snapshot`. For code, its cell table contains only `Cell ID`, `Dimension UTF-8 hex`, `Cell kind`, `Cluster UTF-8 hex`, and `Delivery scope`, in ordinal Cell ID order, followed by byte-for-byte copies of the canonical Resolved code paths and Local slice paths tables. It excludes predecessor IDs, lifecycle status, N/A reason, and certifications. For plan and spec, use the same delivery-only cell projection and encoded `whole-artifact` scope. State and snapshot bytes come from the same serializer. The projection is immutable for that round and precedes all result cells.
 
 Persist each completed or repairable cell in reviewer order with this shape:
 
