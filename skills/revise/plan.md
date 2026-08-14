@@ -42,7 +42,7 @@ The plan carries no operating-context section of its own; its calibration source
 
 - **Model pin**: pass `model: "opus"` to every reviewer Agent call. Rationale: plan review is judgment-only; there is no build or test cycle to catch a bad fix downstream, so the stronger tier's judgment wins over the cheaper tier's volume (the code artifact makes the opposite trade).
 
-- **Pre-seed sources** (for the acknowledgements list, before phase 1): scan the plan for explicitly-deferred items, including any "Out of scope", "Trigger: when X lands", or "deferred to" language, and add each as an acknowledgement. Reviewers reliably re-flag intentional deferrals as missing scope; seeding them upfront eliminates 2-3 review rounds per plan. Typical acknowledgement shapes: "D3 N/A: this plan has no cross-module signature changes"; "design punt is intentional and listed under Open questions"; "balance is intentional because the Verification section is heavier for this structural rewrite and carries most reader risk".
+- **Pre-seed sources** (for the acknowledgements list, before the first round): scan the plan for explicitly-deferred items, including any "Out of scope", "Trigger: when X lands", or "deferred to" language, and add each as an acknowledgement. Reviewers reliably re-flag intentional deferrals as missing scope; seeding them upfront eliminates 2-3 review rounds per plan. Typical acknowledgement shapes: "D3 N/A: this plan has no cross-module signature changes"; "design punt is intentional and listed under Open questions"; "balance is intentional because the Verification section is heavier for this structural rewrite and carries most reader risk".
 
 - **Delivery rules**: the document-artifact profile in SKILL.md (read-once, offset/limit above 400 lines, partial-section context-note rule, prior-fix duplicate check).
 
@@ -134,4 +134,4 @@ If nothing reconciles, say so explicitly, so the step is visibly run.
 In addition to the retrospective items in SKILL.md:
 
 - **Reasoning-cut pressure**: did any agent recommend cutting paragraphs that document design reasoning in the plan? If yes, the dimension prompts may need to be tightened to discourage this default. Plans don't carry as much design reasoning as specs do (the spec is upstream), but when a plan does explain *why* a non-obvious approach was chosen, that reasoning is the part future-you will most want preserved.
-- **Right-sizing checks**: did D3 (intermediate-commit verifiability) launch deep agents for a plan that had no signature changes? Did D5 become inactive immediately in phase 1 on a single-task plan?
+- **Right-sizing checks**: did D3 (intermediate-commit verifiability) launch deep agents for a plan that had no signature changes? Did D5 become inactive immediately in the first round on a single-task plan?
