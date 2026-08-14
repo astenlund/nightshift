@@ -5,7 +5,7 @@ description: Shared fresh-agent review engine behind the revise-code, revise-pla
 
 # revise
 
-Fresh-agent review phases shared by three artifact types. This file owns how the run, phases, rounds, checkpoints, repairs, and post-review tail work. The artifact parameter files beside it own what to review.
+Fresh-agent review rounds shared by three artifact types. This file owns how the run, rounds, reactivation waves, the holistic gate, checkpoints, repairs, and post-review tail work. The artifact parameter files beside it own what to review.
 
 ## Invocation
 
@@ -21,39 +21,34 @@ The parameter file supplies scope resolution, dimensions, model pin, pre-seed so
 
 Define and apply these terms consistently:
 
-- A run is the complete review and post-review process for one logical artifact and resolved scope.
-- A phase begins with every applicable dimension active.
-- A round launches one fresh reviewer for each currently active dimension against the current artifact fingerprint.
-- An explicit clean conclusion with a concrete nonblank verification rationale makes that dimension inactive for the rest of the phase.
-- A finding that causes an accepted artifact edit dirties the phase and keeps its dimension active.
-- Any other controller-coordinated reviewable-content edit also dirties the phase, while preserving each dimension's current active or inactive state until the next phase.
-- A finding that causes no artifact edit but yields an open follow-up keeps its dimension active into the next round; each round's outcome is then judged on that round's own yield by the round-boundary rule below.
-- A REFUTED finding records a reasoned acknowledgement and no follow-up or applied-change entry. A valid-but-deferred finding records both its actionable follow-up and the acknowledgement or caveat that prevents repeated review noise, with no applied-change entry. Neither disposition dirties the phase or counts as a per-finding clean conclusion.
-- A cell whose round yields no applied fix and no open follow-up, because every skeptic-verified finding was refuted or accepted without an actionable follow-up, becomes inactive at the round boundary; the recorded skeptic evidence and acknowledgements are its verification rationale against the current fingerprint.
-- Another dimension's later edit never reactivates an inactive dimension inside the same phase.
-- A newly contradicted N/A justification becomes applicable immediately so the current phase cannot complete without reviewing it.
+- A run is the complete review and post-review process for one logical artifact and resolved scope. There are no phases: a run is a single convergence process of rounds, reactivation waves, and verifier rounds.
+- A round launches one fresh reviewer for each currently active cell against the current artifact fingerprint. Round numbers are monotonic for the whole run and never reset.
+- An explicit clean conclusion with a concrete nonblank verification rationale makes that cell inactive, certifying the fingerprint it reviewed.
+- A finding that causes an accepted artifact edit keeps its cell active and records an applied change.
+- Any other controller-coordinated reviewable-content edit records an applied change while preserving each cell's current active or inactive state until the staleness sweep.
+- A finding that causes no artifact edit but yields an open follow-up keeps its cell active into the next round; each round's outcome is then judged on that round's own yield by the round-boundary rule below.
+- A REFUTED finding records a reasoned acknowledgement and no follow-up or applied-change entry. A valid-but-deferred finding records both its actionable follow-up and the acknowledgement or caveat that prevents repeated review noise, with no applied-change entry. Neither disposition counts as a per-finding clean conclusion. Acknowledgements persist for the whole run.
+- A cell whose round yields no applied fix and no open follow-up, because every skeptic-verified finding was refuted or accepted without an actionable follow-up, becomes inactive at the round boundary, certifying the fingerprint it reviewed; the recorded skeptic evidence and acknowledgements are its verification rationale.
+- Staleness sweep: when every applicable cell is inactive, compare each applicable cell's certified fingerprint with the current fingerprint and re-evaluate every N/A declaration in both directions. Reactivate exactly the cells whose certification differs (digests carry no order; inequality is the whole test), clearing each reactivated cell's certification. Promote a newly contradicted N/A to active with no certification. Demote a cell whose justification no longer applies to N/A with a newly evaluated nonblank encoded reason, clearing its certification; demotion happens only at this boundary, and the demoted cell's open follow-ups stay in the run-wide ledger. A demotion-only sweep converges immediately; only cell activation blocks convergence. A sweep that finds the applicable set empty fails the run with current diagnostics: wave convergence is never vacuous, and the verifier can never be the artifact's only fresh look. Staleness is evaluated only at this all-inactive boundary, never mid-round: accumulated changes batch into one wave instead of re-running settled cells per small delta. No cell is ever reactivated directly by another cell's edit or disposition; only the sweep reactivates.
+- Wave convergence: every applicable cell's certification equals the current fingerprint. Only then may a verifier round launch.
+- Verifier round: a round whose single cell is `verifier/whole-artifact`, reviewing the entire artifact at the wave-converged fingerprint under the holistic gate rules below. The verifier cell sits outside the applicable set: the sweep and wave convergence never count it. A verifier round that applies no fix stamps that exact fingerprint: a clean conclusion with a concrete note, or a round in which every skeptic-verified finding landed refuted, was accepted as an acknowledgement-only judgment call, or was deferred to an authoritative open follow-up. Deferred verifier findings never block the stamp: relaunching at the same fingerprint would add no information, and the stamp attests review coverage, not zero deferred debt. Verifier findings follow the normal skeptic and adjudication pipeline; a verifier boundary that applies at least one fix increments the fingerprint once like any round boundary, leaves the stamp unset, and returns the run to the staleness sweep.
+- A newly contradicted N/A justification becomes applicable immediately, active with no certification, so the run cannot complete without reviewing it; the staleness sweep owns both N/A promotion and demotion.
 
-Once every applicable dimension is inactive, complete one convergence-boundary checkpoint. That single atomic checkpoint records the current phase as `Last converged phase`, increments `Converged phases` only when the current phase was not already recorded, and either enters `post-review` or invokes `Start phase` for the next phase. A phase abandoned because its fingerprint drifted before every applicable dimension became inactive increments the phase number for auditability but does not change `Converged phases` or `Last converged phase`.
-
-Phase 1 cannot complete the review stage.
-Phase 2 or later completes only after at least two phases have converged and the current phase ended with every applicable dimension inactive and no reviewable-content changes.
-
-Phase 1 always advances to phase 2. A clean phase enters `post-review` only after the updated `Converged phases` is at least 2. A dirty phase, and a clean phase whose updated count is below 2, advances to a new phase with every applicable dimension active.
+The run enters `post-review` only on the conjunction of wave convergence and a verifier stamp equal to the current fingerprint. The stamp is a conjunction, not an authority: the verifier never launches before wave convergence, so no single agent and no cap path can complete the run alone. Any reviewable-content edit after a stamp moves the fingerprint, and any resolved-scope-map change alters delivered content even when the fingerprint holds; either event invalidates the stamp and clears or stales the affected certifications, and the staleness sweep is the single re-entry path in both cases.
 
 ### Limits and enum values
 
-The limits are 10 original reviewer launches per stable dimension or shard cell per phase, 10 phases, and 3 execution-repair launches per stable reviewer or skeptic cell. No limit path can manufacture LGTM or refutation.
+The limits are 30 rounds per run (verifier rounds included), 10 verifier launches per run (a launch is the dispatch of one verifier round), and 3 execution-repair launches per stable reviewer, skeptic, or verifier cell. No limit path can manufacture LGTM, a stamp, or refutation.
 
-An original reviewer launch increments its stable dimension or shard cell's phase attempt counter before dispatch; a cell already at 10 fails the run before any round agents launch.
-A transition that would start phase 11 fails the run while preserving phase 10 diagnostics.
+`Start round` preflights the round cap: a launch that would exceed round 30 fails the run with current diagnostics before any agent launches. `Launch verifier` preflights both caps the same way at 10 verifier launches. A cap-forced end is terminal until explicit user disposition; it never produces completion.
 
-The original reviewer dispatch is not a repair launch. Every later same-session clarification or fresh replacement launch increments the stable reviewer or skeptic cell's repair counter before dispatch. A repair counter already at 3 fails the run before another agent launches. Phase 10 can enter post-review when it satisfies the clean-phase completion rule.
+The original reviewer or verifier dispatch is not a repair launch. Every later same-session clarification or fresh replacement launch increments the stable cell's repair counter before dispatch. A repair counter already at 3 fails the run before another agent launches.
 
 Use only these values:
 
 - Run `Status`: `reviewing`, `post-review`, or `failed`.
 - `Round status`: `idle`, `in-flight`, or `evaluated`.
-- Dimension `Status`: `active`, `inactive`, or `N/A`. An N/A row requires a nonblank encoded reason; active and inactive rows require raw `none`.
+- Cell `Status`: `active`, `inactive`, or `N/A`. An N/A row requires a nonblank encoded reason; active and inactive rows require raw `none`. `Certified fingerprint` is `sha256:` plus 12 lowercase hexadecimal characters on an inactive row and raw `none` on an active or N/A row: a cell is inactive exactly when it holds a certification.
 - Agent `Status`: `in-flight`, `completed`, or `needs-retry`.
 - Round-result `Status`: `awaiting-results`, `partial`, or `usable`.
 - Follow-up `Status`: `open`, `handed-off`, or `resolved`; `Route`: `none`, `handover`, `address-now`, `track`, or `skip`. Open rows use route and evidence `none`; handed-off rows use `handover` and nonblank encoded transfer evidence; resolved rows use one of the three final routes and nonblank encoded disposition evidence.
@@ -62,9 +57,8 @@ Use only these values:
 - Pending controller mutation `Kind`: `none`, `user-request`, or `post-review`; its `Status`: `none`, `prepared`, or `applied`.
 - `Post-review step`: `not-started`, `follow-up-routing`, `dimension-retrospective`, `authoring-retrospective`, `spec-reconciliation`, `hardening-stamp`, or `done`.
 
-`Autonomous handover` and `Phase changed` use raw `yes` or `no`. A persisted skeptic verdict in either dispatch mode is `CONFIRMED`, `REFUTED`, or `JUDGMENT_CALL`.
+`Autonomous handover` and `Artifact edited` use raw `yes` or `no`. `Verifier stamp` is raw `none` or `sha256:` plus 12 lowercase hexadecimal characters. A persisted skeptic verdict in either dispatch mode is `CONFIRMED`, `REFUTED`, or `JUDGMENT_CALL`.
 
-Re-evaluate every N/A declaration at each phase boundary. Change a contradicted N/A to active with zero attempts immediately.
 
 ## Authoritative checkpoint
 
