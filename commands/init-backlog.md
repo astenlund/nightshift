@@ -62,7 +62,7 @@ For each templated file, these are the load-bearing concepts its template-contro
 
 **Scope of each check.** Each checklist item below names the section(s) it inspects in parentheses when the section is not the H1 header. Items without a section annotation are H1-header content (when a whole checklist is H1-only the annotations are omitted as redundant). The convention sections to inspect for staleness are exactly those the checklist items name, **matched on exact `##` heading text**: if a project renames the section (e.g., `## Cross-references` instead of `## Cross-reference resolution`), the checklist won't find it and that counts as a missing concept. Everything else (user-entries sections like `## Open` / `## Entries` / themed sections, the trailing `## History` pointer's fixed boilerplate) is user-controlled and skipped.
 
-**Either-location satisfaction.** When a concept could plausibly live in more than one templated section (e.g., the FEATURES.md "`/nightshift:ready` ignores `## Exploring`" claim is teachable in both the `## Exploring` preamble and the `## Requires lines` carve-outs paragraph), the checklist item is satisfied if covered in EITHER location. Annotation names the primary expected location; secondary locations are acceptable substitutes.
+**Either-location satisfaction.** When a concept could plausibly live in more than one templated section (e.g., the FEATURES.md "`/nightshift:ready` reports `## Exploring` separately as drafts, never in the ready set" claim is teachable in both the `## Exploring` preamble and the `## Requires lines` carve-outs paragraph), the checklist item is satisfied if covered in EITHER location. Annotation names the primary expected location; secondary locations are acceptable substitutes.
 
 **`QUICK_WINS.md`** (all H1):
 1. Names this file as one of four repo-local indexes loaded at session start.
@@ -87,7 +87,7 @@ For each templated file, these are the load-bearing concepts its template-contro
 4. Points at `FEATURES_HISTORY.md` for shipped entries; no inline `## Implemented` section. *(H1)*
 5. Explains the comma-separated form (with line-wrap allowed), the three reference shapes, walk-and-remove, and carve-outs for `## Working hypotheses` / `## Staging` / `## Future directions (not yet designed)` / `## Author tooling` / `## Exploring`. *(`## Requires lines` section)*
 6. Explains MVP + named continuations, the strikethrough-as-shipped convention on bullets, slice-suffix link form for downstream references, and the walk-and-remove obligation when a slice ships. *(`## Slicing` section)*
-7. Notes pre-dependency-analysis brainstorms, `/nightshift:ready` ignores the section, `Requires:` lines optional. *(`## Exploring` preamble: the prose before the first `###` entry inside that section; if the section has no `###` entries yet, the entire section body IS the preamble)*
+7. Notes pre-dependency-analysis brainstorms, `/nightshift:ready` reports the section separately as titles-only drafts (never in the ready set) with `/nightshift:exploring` as the full view, `Requires:` lines optional. *(`## Exploring` preamble: the prose before the first `###` entry inside that section; if the section has no `###` entries yet, the entire section body IS the preamble)*
 8. Instructs the author to run `/nightshift:ready` after adding a new entry (or breakout file) to confirm it parses and its `**Requires:**` line resolves against the real grammar in `skills/ready/ready.js`. *(`## Requires lines` section)*
 
 **`FEATURES_HISTORY.md`:**
@@ -286,12 +286,14 @@ they aid understanding.
 shipping order, shallow placeholders, workflow notes, exploratory
 brainstorms) rather than ready-to-implement entries. Items in those
 sections do not carry `Requires:` lines (or, in `## Exploring`'s
-case, may carry them as historical artifacts only) and `/nightshift:ready`
-ignores them. Working hypotheses / Staging / Future directions
-(not yet designed) / Author tooling are bulleted rather than `###`
-headings, so the `###`-only candidate filter handles them naturally;
-`## Exploring` holds `###` entries but is excluded by name in the
-`/nightshift:ready` filter.
+case, may carry them as historical artifacts only). `/nightshift:ready`
+ignores the bulleted sections entirely and keeps `## Exploring` out of
+the readiness set, reporting its entries separately as titles-only
+drafts; `/nightshift:exploring` renders them in full. Working
+hypotheses / Staging / Future directions (not yet designed) / Author
+tooling are bulleted rather than `###` headings, so the `###`-only
+candidate filter handles them naturally; `## Exploring` holds `###`
+entries, collected as drafts and never classified.
 
 Concrete entry shape inside the index. The example mixes a feature
 link, a quick-win link, and a bare external primitive to show all
@@ -413,8 +415,10 @@ line in `FEATURES.md` / `BUGS.md` to drop now-satisfied references.
 Pre-dependency-analysis brainstorms live here. An entry is a draft
 feature whose breakout file carries `status: exploring` in its
 frontmatter; the design is being firmed up and a `**Requires:**` line
-isn't expected yet. `/nightshift:ready` excludes this section from the readiness
-set on purpose. When a draft firms up enough to declare its upstream
+isn't expected yet. `/nightshift:ready` lists these drafts titles-only in a
+clearly-marked not-ready section, never in the readiness set, and
+`/nightshift:exploring` renders the full draft list. When a draft firms
+up enough to declare its upstream
 gates, move it out of `## Exploring` into the appropriate themed `##`
 section, add the `**Requires:**` line, and drop the `status: exploring`
 frontmatter on the breakout file.
@@ -643,7 +647,7 @@ Four locations sit alongside the indexes that are not read at session start; con
 
 **Walk-and-remove convention.** When a feature, slice, quick win, or bug-fix ships, the same change set that appends its entry to the relevant history archive ALSO walks every other `**Requires:**` line in `FEATURES.md` / `BUGS.md` and drops references to the just-shipped item; if the dropped reference was the only one on the line, the line becomes `Requires: none.`. Active `Requires:` lines therefore describe what is *currently* blocking, and `/nightshift:ready` never has to consult the history archives to resolve dependencies; the dependency graph settles as work ships.
 
-Brainstorming output lives in feature files (or in patterns when cross-cutting / in bugs when diagnostic) rather than as separate dated specs. Pre-feature exploratory brainstorms land as draft features with `status: exploring` frontmatter and an entry in `FEATURES.md`'s `## Exploring` section; `/nightshift:ready` skips them. They graduate to a themed `##` section with a `**Requires:**` line once the design firms up.
+Brainstorming output lives in feature files (or in patterns when cross-cutting / in bugs when diagnostic) rather than as separate dated specs. Pre-feature exploratory brainstorms land as draft features with `status: exploring` frontmatter and an entry in `FEATURES.md`'s `## Exploring` section; `/nightshift:ready` lists them titles-only as drafts, never in the ready set, and `/nightshift:exploring` shows the full draft list. They graduate to a themed `##` section with a `**Requires:**` line once the design firms up.
 
 The `/nightshift:ready` command parses each entry's `**Requires:**` line in `FEATURES.md` and `BUGS.md` and reports the unblocked work set. Run it when picking what to work on next.
 ~~~
