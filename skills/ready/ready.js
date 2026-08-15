@@ -6,7 +6,7 @@
 // entry's **Requires:** line, expands sliced features into per-slice work
 // units, and emits a JSON report on stdout:
 //
-//   { indexes, ready, blocked, external, structuralErrors, notices }
+//   { indexes, ready, blocked, external, exploring, structuralErrors, notices }
 //
 // History archives are never read: the walk-and-remove convention keeps
 // active Requires lines authoritative. PATTERNS.md is a pattern registry,
@@ -146,16 +146,21 @@ function assembleRequires(lines, start) {
 // QUICK_WINS additionally parses top-level "- " bullets as entries (its
 // template allows loose inline shapes) and emits a notice for sections
 // whose content matches neither shape.
-// opts: { bullets: boolean, noticeProse: boolean }
-// Returns { entries, proseOnlySections }.
+// opts: { bullets: boolean, noticeProse: boolean, collectSections: string[] }
+// Returns { entries, proseOnlySections, collectedEntries } (collectedEntries
+// holds ### entries from excluded-but-collected sections; [] unless
+// collectSections named the section).
 function extractEntries(content, excludedSectionTitles, opts = {}) {
   const lines = content.split(/\r?\n/);
   const excluded = new Set(excludedSectionTitles.map((t) => t.toLowerCase()));
+  const collectSections = new Set((opts.collectSections || []).map((t) => t.toLowerCase()));
   const entries = [];
   const proseOnlySections = [];
+  const collectedEntries = [];
 
   let sectionTitle = null;
   let sectionExcluded = false;
+  let sectionCollected = false;
   let sectionHasEntry = false;
   let sectionHasProse = false;
   let current = null;
@@ -176,6 +181,7 @@ function extractEntries(content, excludedSectionTitles, opts = {}) {
       current = null;
       sectionTitle = h2[1].trim();
       sectionExcluded = excluded.has(sectionTitle.toLowerCase().replace(/\.$/, ''));
+      sectionCollected = collectSections.has(sectionTitle.toLowerCase().replace(/\.$/, ''));
       sectionHasEntry = false;
       sectionHasProse = false;
       continue;
@@ -183,8 +189,7 @@ function extractEntries(content, excludedSectionTitles, opts = {}) {
     const h3 = line.match(/^### (.+)$/);
     if (h3) {
       current = null;
-      if (!sectionExcluded) {
-        sectionHasEntry = true;
+      if (!sectionExcluded || sectionCollected) {
         const heading = h3[1].trim();
         const link = heading.match(/^\[([^\]]*)\]\(([^)]*)\)$/);
         current = {
@@ -194,7 +199,12 @@ function extractEntries(content, excludedSectionTitles, opts = {}) {
           section: sectionTitle,
           bodyLines: [],
         };
-        entries.push(current);
+        if (sectionExcluded) {
+          collectedEntries.push(current);
+        } else {
+          sectionHasEntry = true;
+          entries.push(current);
+        }
       }
       continue;
     }
@@ -232,7 +242,7 @@ function extractEntries(content, excludedSectionTitles, opts = {}) {
     }
   }
   closeSection();
-  return { entries, proseOnlySections };
+  return { entries, proseOnlySections, collectedEntries };
 }
 
 // ---------- Requires + Slices parsing on an entry body ----------
@@ -553,6 +563,7 @@ function analyze(files) {
     ready: [],
     blocked: [],
     external: [],
+    exploring: [],
     structuralErrors: [],
     notices: [],
   };
@@ -567,6 +578,7 @@ function analyze(files) {
     parsed[name] = extractEntries(files[name], EXCLUDED_SECTIONS[name], {
       bullets: name === 'QUICK_WINS',
       noticeProse: name === 'QUICK_WINS',
+      collectSections: name === 'FEATURES' ? ['exploring'] : [],
     });
   }
   if (files.PATTERNS !== undefined && files.PATTERNS !== null) {
@@ -612,6 +624,19 @@ function analyze(files) {
       out.ready.push({
         index: 'QUICK_WINS.md',
         title: entry.title,
+        excerpt: firstExcerpt(entry.bodyLines),
+      });
+    }
+  }
+
+  // Exploring drafts: collected, never classified. FEATURES-only by
+  // design; no other index has an Exploring concept.
+  if (parsed.FEATURES) {
+    for (const entry of parsed.FEATURES.collectedEntries) {
+      out.exploring.push({
+        index: 'FEATURES.md',
+        title: entry.title,
+        link: entry.selfTarget,
         excerpt: firstExcerpt(entry.bodyLines),
       });
     }

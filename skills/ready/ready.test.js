@@ -417,6 +417,15 @@ test('Exploring and legacy Implemented/Fixed sections are excluded everywhere', 
   assert.ok(!all.includes('Old fixed bug'), all);
 });
 
+test('exploring drafts are collected with full item shape', () => {
+  assert.deepStrictEqual(result.exploring, [{
+    index: 'FEATURES.md',
+    title: 'Draft thing',
+    link: 'features/draft.md',
+    excerpt: 'Pre-dependency brainstorm; must be excluded.',
+  }]);
+});
+
 // ---------- analyze() on the gates fixture ----------
 
 const gates = analyze({ FEATURES: FEATURES_GATES });
@@ -425,6 +434,11 @@ test('missing indexes are reported and do not abort', () => {
   assert.ok(gates.indexes.missing.includes('QUICK_WINS.md'));
   assert.ok(gates.indexes.missing.includes('BUGS.md'));
   assert.ok(gates.indexes.found.includes('FEATURES.md'));
+});
+
+test('exploring is always present and empty without an Exploring section', () => {
+  assert.deepStrictEqual(gates.exploring, []);
+  assert.deepStrictEqual(analyze({}).exploring, []);
 });
 
 test('first unshipped slice uses the top-level Requires line', () => {
@@ -727,6 +741,65 @@ test('acyclic existing fixtures produce no cycle structural errors', () => {
   for (const r of [result, gates, collisions]) {
     assert.ok(!titles(r.structuralErrors).some((t) => t.includes('cycle')), JSON.stringify(r.structuralErrors));
   }
+});
+
+// ---------- analyze() on the exploring fixture ----------
+
+const FEATURES_EXPLORING = `# Features
+
+## Progression
+
+### [Consumer](features/consumer.md)
+
+References a draft; must be a structural error.
+
+**Requires:** [Bare draft idea](features/draft-b.md).
+
+## Exploring
+
+### Bare draft idea
+
+Unlinked heading draft.
+
+### [Linked draft](features/draft-b.md)
+
+Draft with a historical Requires line.
+
+**Requires:** [Consumer](features/consumer.md).
+
+### [External idea](https://example.com/idea)
+
+Draft whose heading links off-repo.
+`;
+
+const exploringRs = analyze({ FEATURES: FEATURES_EXPLORING });
+
+test('unlinked exploring heading yields link: null', () => {
+  const bare = exploringRs.exploring.find((e) => e.title === 'Bare draft idea');
+  assert.deepStrictEqual(bare, {
+    index: 'FEATURES.md',
+    title: 'Bare draft idea',
+    link: null,
+    excerpt: 'Unlinked heading draft.',
+  });
+});
+
+test('http exploring heading keeps its link verbatim', () => {
+  const ext = exploringRs.exploring.find((e) => e.title === 'External idea');
+  assert.strictEqual(ext.link, 'https://example.com/idea');
+});
+
+test('a Requires reference at an exploring draft stays a structural error', () => {
+  const err = findByTitle(exploringRs.structuralErrors, 'Consumer');
+  assert.ok(err, JSON.stringify(exploringRs.structuralErrors));
+  assert.ok(err.problem.includes('does not resolve'), err.problem);
+});
+
+test('a historical Requires line on an exploring draft is ignored', () => {
+  assert.ok(!findByTitle(exploringRs.blocked, 'Linked draft'));
+  assert.ok(!titles(exploringRs.ready).includes('Linked draft'));
+  const linked = exploringRs.exploring.find((e) => e.title === 'Linked draft');
+  assert.strictEqual(linked.link, 'features/draft-b.md');
 });
 
 // ---------- CLI smoke test ----------
