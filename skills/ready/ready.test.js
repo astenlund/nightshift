@@ -780,6 +780,10 @@ Draft with a historical Requires line.
 ### [External idea](https://example.com/idea)
 
 Draft whose heading links off-repo.
+
+### [Empty target]()
+
+Draft whose heading link has no target.
 `;
 
 const exploringRs = analyze({ FEATURES: FEATURES_EXPLORING });
@@ -801,6 +805,17 @@ test('http exploring heading keeps its link verbatim', () => {
 
 test('http exploring links produce no breakout target', () => {
   assert.ok(!exploringRs.breakoutTargets.some((t) => t.title === 'External idea'));
+});
+
+test('empty exploring link target normalizes to link: null', () => {
+  const empty = exploringRs.exploring.find((e) => e.title === 'Empty target');
+  assert.deepStrictEqual(empty, {
+    index: 'FEATURES.md',
+    title: 'Empty target',
+    link: null,
+    excerpt: 'Draft whose heading link has no target.',
+  });
+  assert.ok(!exploringRs.breakoutTargets.some((t) => t.title === 'Empty target'));
 });
 
 test('a Requires reference at an exploring draft stays a structural error', () => {

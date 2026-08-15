@@ -22,11 +22,16 @@ const INDEX_FILE_STEMS = new Set([
   'QUICK_WINS_HISTORY', 'FEATURES_HISTORY', 'BUGS_HISTORY',
 ]);
 
+// The one excluded section whose entries are still collected (as drafts,
+// never as work items). Named once so the exclusion and the collection
+// cannot drift apart.
+const EXPLORING_SECTION = 'exploring';
+
 const EXCLUDED_SECTIONS = {
   QUICK_WINS: ['history'],
   // 'requires lines' and 'slicing' are template convention sections; they
   // carry prose and examples, never work entries.
-  FEATURES: ['exploring', 'author tooling', 'history', 'implemented', 'requires lines', 'slicing'],
+  FEATURES: [EXPLORING_SECTION, 'author tooling', 'history', 'implemented', 'requires lines', 'slicing'],
   BUGS: ['history', 'fixed', 'requires lines'],
 };
 
@@ -586,7 +591,7 @@ function analyze(files) {
     parsed[name] = extractEntries(files[name], EXCLUDED_SECTIONS[name], {
       bullets: name === 'QUICK_WINS',
       noticeProse: name === 'QUICK_WINS',
-      collectSections: name === 'FEATURES' ? ['exploring'] : [],
+      collectSections: name === 'FEATURES' ? [EXPLORING_SECTION] : [],
     });
   }
   if (files.PATTERNS !== undefined && files.PATTERNS !== null) {
@@ -637,7 +642,8 @@ function analyze(files) {
     }
   }
 
-  // Features and bugs.
+  // Breakout-link candidates from both the drafts below and the work
+  // entries after them; the filesystem check runs once, in the CLI.
   const breakoutTargets = [];
 
   // Exploring drafts: collected, never classified. FEATURES-only by
@@ -648,7 +654,9 @@ function analyze(files) {
       out.exploring.push({
         index: 'FEATURES.md',
         title: entry.title,
-        link: entry.selfTarget,
+        // An empty link target ("[Title]()") is no target at all; the
+        // renderers' contract has a null branch, not an empty-string one.
+        link: entry.selfTarget || null,
         excerpt: firstExcerpt(entry.bodyLines),
       });
       if (isRepoRelativeTarget(entry.selfTarget)) {
@@ -656,6 +664,7 @@ function analyze(files) {
       }
     }
   }
+  // Features and bugs.
   for (const name of ['FEATURES', 'BUGS']) {
     if (!parsed[name]) continue;
     for (const entry of parsed[name].entries) {
