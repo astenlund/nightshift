@@ -629,8 +629,12 @@ function analyze(files) {
     }
   }
 
+  // Features and bugs.
+  const breakoutTargets = [];
+
   // Exploring drafts: collected, never classified. FEATURES-only by
-  // design; no other index has an Exploring concept.
+  // design; no other index has an Exploring concept. Their breakout
+  // links join the same filesystem notice check as ready entries.
   if (parsed.FEATURES) {
     for (const entry of parsed.FEATURES.collectedEntries) {
       out.exploring.push({
@@ -639,11 +643,11 @@ function analyze(files) {
         link: entry.selfTarget,
         excerpt: firstExcerpt(entry.bodyLines),
       });
+      if (entry.selfTarget && !entry.selfTarget.startsWith('http')) {
+        breakoutTargets.push({ index: 'FEATURES.md', title: entry.title, target: entry.selfTarget, draft: true });
+      }
     }
   }
-
-  // Features and bugs.
-  const breakoutTargets = [];
   for (const name of ['FEATURES', 'BUGS']) {
     if (!parsed[name]) continue;
     for (const entry of parsed[name].entries) {
@@ -740,8 +744,11 @@ function runCli(argRoot) {
     const target = rec.target.split('#')[0];
     const resolved = path.resolve(claudeDir, target);
     if (!fs.existsSync(resolved)) {
+      const tail = rec.draft
+        ? '(exploring draft; Requires lines do not apply)'
+        : '(its Requires line still resolves normally)';
       result.notices.push(
-        `${rec.index} entry "${rec.title}" links to ${rec.target}, which does not exist; remove the broken link or create the file (its Requires line still resolves normally)`,
+        `${rec.index} entry "${rec.title}" links to ${rec.target}, which does not exist; remove the broken link or create the file ${tail}`,
       );
     }
   }

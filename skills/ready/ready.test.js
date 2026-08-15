@@ -426,6 +426,16 @@ test('exploring drafts are collected with full item shape', () => {
   }]);
 });
 
+test('draft breakout targets are recorded with the draft flag', () => {
+  const draft = result.breakoutTargets.find((t) => t.target === 'features/draft.md');
+  assert.deepStrictEqual(draft, {
+    index: 'FEATURES.md',
+    title: 'Draft thing',
+    target: 'features/draft.md',
+    draft: true,
+  });
+});
+
 // ---------- analyze() on the gates fixture ----------
 
 const gates = analyze({ FEATURES: FEATURES_GATES });
@@ -789,6 +799,10 @@ test('http exploring heading keeps its link verbatim', () => {
   assert.strictEqual(ext.link, 'https://example.com/idea');
 });
 
+test('http exploring links produce no breakout target', () => {
+  assert.ok(!exploringRs.breakoutTargets.some((t) => t.title === 'External idea'));
+});
+
 test('a Requires reference at an exploring draft stays a structural error', () => {
   const err = findByTitle(exploringRs.structuralErrors, 'Consumer');
   assert.ok(err, JSON.stringify(exploringRs.structuralErrors));
@@ -819,6 +833,14 @@ test('CLI reads a .claude dir and emits the same JSON shape', () => {
     assert.ok(
       cli.notices.some((n) => n.includes('features/alpha.md')),
       `broken breakout-file links should be noticed: ${JSON.stringify(cli.notices)}`,
+    );
+    assert.ok(
+      cli.notices.some((n) => n.includes('features/draft.md') && n.includes('(exploring draft; Requires lines do not apply)')),
+      `broken exploring links should carry the draft tail: ${JSON.stringify(cli.notices)}`,
+    );
+    assert.ok(
+      !cli.notices.some((n) => n.includes('features/draft.md') && n.includes('Requires line still resolves')),
+      'draft notices must not claim Requires resolution',
     );
   } finally {
     fs.rmSync(tmpRoot, { recursive: true, force: true });
