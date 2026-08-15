@@ -279,12 +279,6 @@ Moves `init-backlog`'s deterministically-answerable behavior (static template bo
 
 **Requires:** none.
 
-### [Surface exploring entries in ready](features/ready-exploring-visibility.md)
-
-Keeps `## Exploring` drafts visible through two views over one parser output: `/nightshift:ready` lists their titles in a clearly-marked not-ready section, and a new thin `/nightshift:exploring` command (`commands/exploring.md`, bundle-less, running the ready skill's parser) renders the full draft list (titles, excerpts, breakout links) while deliberately omitting the ready set and surfacing every parser problem channel. Touches the `ready.js` section filter and link notices, its fixtures, both views' report rendering, README's command table, and the init-backlog template prose that currently says ready "skips" exploring entries.
-
-**Requires:** none.
-
 ## History
 
 Implemented features are archived in
