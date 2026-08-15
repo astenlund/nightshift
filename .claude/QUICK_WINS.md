@@ -86,6 +86,28 @@ can still fix it in the same session.
   `skills/revise/revise-round.test.js` for opts assertions that need the new
   field, and bump the plugin version (shipped behavior).
 
+## Revise engine convergence
+
+- **Require a clean LGTM to certify a fingerprint; a refuted-findings round no
+  longer suffices.** Today `skills/revise/SKILL.md`'s round-boundary rule makes a
+  cell inactive when every skeptic-verified finding landed refuted or
+  acknowledgement-only accepted, certifying the fingerprint with the skeptic
+  evidence as rationale. User ruling 2026-08-15: revert to requiring a proper
+  clean conclusion (LGTM plus concrete verification note) against the
+  fingerprint before a cell certifies; a reviewer locked onto a doomed finding
+  has demonstrably misread part of the artifact and its implicit all-clear is
+  weak, and valid-but-deferred findings (equally content-preserving) already
+  keep the cell active, so this restores symmetric treatment of no-edit
+  outcomes. Touches the lifecycle bullet, the adjudication round-boundary
+  bullet, and repair safety rule 1's refuted-round clause in SKILL.md, plus
+  README's dimension-convergence sentence. Livelock countermeasure is the
+  existing acknowledgements ledger (the refuted finding's acknowledgement rides
+  into the next round's payload) with the 30-round cap as backstop; note that
+  in the edit. Open question to settle at implementation: whether the verifier
+  keeps its current stamp-on-refuted-only behavior (its deferred-findings
+  never-block rationale is separately recorded) or gets the same clean-pass
+  requirement at the cost of extra verifier launches.
+
 ## (add sections as work emerges)
 
 ## History
