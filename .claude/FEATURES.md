@@ -207,6 +207,10 @@ Draft exploring a durable "signed-off" marker on backlog entries so the agent ca
 
 Draft exploring a durable version marker on each backlog index file (a "backlog index version", distinct from the plugin version), with an instruction and a session-side check that compares it against the plugin's latest and notifies the user to run `init-backlog` when an index predates the current template.
 
+### [Revise prompt-prefix caching](features/revise-prompt-prefix-caching.md)
+
+Draft exploring two mechanisms for sharing the revise engine's common context across its N concurrent reviewers at cache-read prices with zero independence loss: a byte-identical prompt prefix (identical system prompt and first message, dimension criteria only in the divergent tail; hinges on unprobed cache-boundary mechanics) and a fork-of-primer variant (a fresh agent ingests only the common payload, then forks per dimension; provably caches today but reroutes attribution, repair, and model pinning through the primer). Fork-of-controller is the recorded anti-goal: it would contaminate fresh-eyes review with the controller's context.
+
 ### [Present chosen spec for agreement before work](features/present-spec-for-agreement.md)
 
 Draft exploring an instruction in the index templates (and an `init-backlog` update) so the agent presents any spec it is about to implement to the user for agreement before starting work, rather than only when the user requests review ad hoc (motivated by the calibrate-first-draft-rigor review request on 2026-08-12).
