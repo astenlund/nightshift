@@ -55,6 +55,37 @@ can still fix it in the same session.
   restructure is its own reviewed change (confirmed by the 2026-08-14 wave-batch
   revise-code run and deliberately deferred there).
 
+## Rigor calibration
+
+- **Recalibrate the audience-category judgment so public visibility alone does not
+  read as `public`.** Today the audience component-to-category judgment (revise-spec
+  grounding step in `skills/revise/spec.md`, feeding `AUDIENCE_BASELINE` in
+  `skills/revise/rigor.js`) maps a repo that is public on GitHub to category `public`
+  and thus baseline `high`, even with no adoption signals; nightshift's own specs
+  (the wave-lifecycle Operating context, the ready-exploring-visibility one) recorded
+  exactly that judgment. User ruling 2026-08-15: a public repo with no forks and no
+  or few stars is a solo project that happens to have its source open; it should not
+  earn a `high` baseline from visibility alone. Preferred shape: sharpen the judgment
+  guidance so `public` requires actual external adoption signals (forks, stars, known
+  downstream installs), with an unadopted open-source repo mapping to `personal use`;
+  decide whether `AUDIENCE_BASELINE` needs a distinct category or only sharper
+  judgment prose, and sweep existing recorded judgments in specs' Operating context
+  sections for recalibration. Uplift predicates stay as-is.
+
+## Revise engine dispatch
+
+- **Pin the revise dedup judge to sonnet instead of inheriting the artifact model
+  pin.** In `skills/revise/revise-round.workflow.js`, `agentOpts` injects the
+  profile model (opus for spec/plan reviews) into every agent call, so
+  `findDuplicate`'s dedup judge runs opus despite being a mechanical
+  same-claim-about-same-code comparison already dispatched at `effort: 'low'`.
+  User ruling 2026-08-15: opus is unnecessary there. Preferred shape: the dedup
+  judge's `agent()` call pins `model: 'sonnet'` explicitly while reviewers,
+  skeptics, and the verifier keep the profile pin; update the dedup-judge
+  descriptions in `skills/revise/SKILL.md` if they gain a model claim, check
+  `skills/revise/revise-round.test.js` for opts assertions that need the new
+  field, and bump the plugin version (shipped behavior).
+
 ## (add sections as work emerges)
 
 ## History
