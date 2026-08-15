@@ -134,6 +134,21 @@ can still fix it in the same session.
   behavior moves. Landing it before the next parser feature is what stops the
   accretion.
 
+## Handover dispatch hygiene
+
+- **Tell implementation subagents where their scratch files go.** `commands/handover.md`'s
+  implementation step says nothing about scratch locations, so dispatched subagents write
+  working files into the project's `.tmp/` root, which is also the revise engine's state
+  home (`revise-state.md`, `revise-round-result.md`, the payload files, the cumulative
+  patch). Observed 2026-08-15 as a near-miss: task subagents left `cmp_a.txt` and
+  `pre_b.txt` there and the controller cleared them before the next review run; nothing was
+  clobbered. Preferred shape: one clause in the implementation step requiring each dispatch
+  prompt to name a task-scoped subdirectory under `.tmp/` (never `.tmp/` itself), keeping
+  scratch inside `.tmp/` so it stays consistent with the global no-`/tmp` rule. Check
+  against [Durable run identity and concurrency protection](FEATURES.md) first: it designs a
+  scope-hashed scratch home for the workflow's own state and may reshape which side of the
+  collision needs fixing.
+
 ## (add sections as work emerges)
 
 ## History

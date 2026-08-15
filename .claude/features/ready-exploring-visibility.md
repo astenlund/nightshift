@@ -5,7 +5,7 @@ Status: signed off 2026-08-15 17:00, content: 75d266f0
 Feature: exploring drafts stay visible through two views over one
 parser output. `/nightshift:ready` lists `## Exploring` entry titles in
 a clearly-marked not-ready section, and a new `/nightshift:exploring`
-command renders the full draft list (titles, excerpts, breakout links)
+skill renders the full draft list (titles, excerpts, breakout links)
 while deliberately omitting the ready set. Motivated 2026-08-15:
 exploring drafts are excluded from the readiness set by design, which
 is correct for "what can I build now" but means nothing ever resurfaces
@@ -40,7 +40,7 @@ them; the developer must remember to reread `FEATURES.md` for the
   prose and code with version-pinned releases, and consumers can pin
   or downgrade. Not fired.
 - **Expected feature lifetime**: long-lived; a permanent shipped
-  command surface and output field, not an experiment. Fired.
+  surface and output field, not an experiment. Fired.
 
 Derivation per `skills/revise/rigor.js`: audience `public` gives
 baseline `high`; fired uplifts recorded as judgments:
@@ -119,11 +119,11 @@ projections of it, so the JSON schema never forks per view.
   job is invoking a bundled script. It renders each exploring
   entry with title, excerpt, and breakout link; deliberately omits
   `ready` / `blocked` / `external`; and always surfaces the parser's
-  problem channels in full, because a user may run only this command
+  problem channels in full, because a user may run only this skill
   and a broken backlog must not read as clean: `structuralErrors`,
   `notices`, and the `indexes.missing` list (an absent index file,
   FEATURES.md included, surfaces as a broken backlog, never as an
-  empty draft list). The command carries the same failure contract as
+  empty draft list). The skill carries the same failure contract as
   the ready skill's step 1: when the script reports `.claude/`
   missing it suggests `/nightshift:init-backlog` and stops, and when
   the script itself cannot run (node missing, script file absent) it
@@ -134,7 +134,7 @@ projections of it, so the JSON schema never forks per view.
   never crawls breakout files or `status: exploring` frontmatter,
   keeping it a second renderer over the same parser output rather than
   a second data pipeline.
-- Why a second command instead of excerpts in the ready report: the
+- Why a second surface instead of excerpts in the ready report: the
   two questions are distinct ("what can I build now" vs "what should I
   graduate next"), and a handful of drafts with paragraph excerpts
   would double the ready report. The middle option, an argument or
@@ -142,14 +142,14 @@ projections of it, so the JSON schema never forks per view.
   exploring`), was considered and rejected: it would fork the ready
   skill's rendering rules inside one prose file, blur its single
   what-can-I-build-now mandate, and hide the draft view from the
-  command list, where a named command is discoverable. The cost is a
+  surface list, where a named surface is discoverable. The cost is a
   permanent cross-file-consistency obligation for one more shipped
   surface, accepted deliberately here; this rationale is recorded so
-  a later review does not flag the command as scope creep.
+  a later review does not flag the surface as scope creep.
 
 ## Consumers of the changed output set
 
-Adding an output array and a command surface changes value sets other
+Adding an output array and a new surface changes value sets other
 things describe or consume; each consumer's handling:
 
 - `skills/ready/ready.js`: the change site (exploring collection plus
@@ -173,9 +173,9 @@ things describe or consume; each consumer's handling:
 - `skills/exploring/SKILL.md`: the new surface, per the design sketch.
 - `.claude/FEATURES.md` entry excerpt for this spec (the paragraph
   under `### [Surface exploring entries in ready]`): syncs to the
-  spec body in the same change, per the excerpt-sync convention. As
-  of this revision it still says "skill" and "both skills' report
-  rendering" and rewords to the command decision when synced.
+  spec body in the same change, per the excerpt-sync convention.
+  Synced 2026-08-15 and re-synced 2026-08-16 when the surface moved
+  back to a skill.
 - `commands/init-backlog.md`: the FEATURES.md index template's
   Exploring prose ("excludes this section from the readiness set on
   purpose") and the CLAUDE.md template's backlog section (home of the
@@ -247,3 +247,4 @@ things describe or consume; each consumer's handling:
 
 - revise-spec graduated 2026-08-15 18:01 at 1a5cc8b, scope: whole file, content: b6e8b045
 - revise-spec refreshed 2026-08-16 00:28 at 71d33ed, scope: whole file, content: ae790906 (surface moved to a skill at morning-report triage; live-claim fold-back)
+- handover completed 2026-08-16 00:52 at fcd89d0, scope: whole file, content: 0d247294
