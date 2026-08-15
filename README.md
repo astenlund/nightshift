@@ -27,7 +27,7 @@ All commands and skills are namespaced: `/nightshift:handover`, `/nightshift:rea
 |---------------------------------------|-------------------------------------------------------------------------------------------------------------------|
 | `/nightshift:init-backlog`            | Scaffold or update the four-index backlog structure in a project                                                  |
 | `/nightshift:ready`                   | Report the unblocked work set by resolving `**Requires:**` lines (skill; bundles the parser script)               |
-| `/nightshift:exploring`               | Render the `## Exploring` draft list in full (titles, excerpts, breakout links); drafts never enter the ready set |
+| `/nightshift:exploring`               | Render the `## Exploring` draft list in full (skill; second view over the ready parser)                           |
 | `/nightshift:handover`                | Take over the remaining feature lifecycle from the detected stage, through to shipped                             |
 | `/nightshift:revise-code`             | Iterative fresh-agent review of a code change before it ships                                                     |
 | `/nightshift:revise-plan`             | Iterative fresh-agent review of an implementation plan before execution                                           |

@@ -103,15 +103,20 @@ projections of it, so the JSON schema never forks per view.
   one-line pointer to `/nightshift:exploring` for the detailed view.
   Titles-only keeps the "what can I build now" report compact while
   still resurfacing the drafts.
-- `/nightshift:exploring` is a new thin command
-  (`commands/exploring.md`, no bundled files) that runs the same
-  parser via `${CLAUDE_PLUGIN_ROOT}/skills/ready/ready.js` and answers
-  the complementary question: what is simmering, and what should be
-  firmed up or graduated next. A command rather than a skill:
-  AGENTS.md's architecture split reserves `skills/` for procedures
-  that need bundled files, and this surface bundles nothing; the
-  thin-entry-point-over-a-skill's-machinery shape matches the
-  revise-* commands. It renders each exploring
+- `/nightshift:exploring` is a new skill
+  (`skills/exploring/SKILL.md`, bundling no files of its own) that runs
+  the same parser via `${CLAUDE_PLUGIN_ROOT}/skills/ready/ready.js` and
+  answers the complementary question: what is simmering, and what
+  should be firmed up or graduated next. A skill rather than a command,
+  decided 2026-08-16 after the first implementation shipped it as a
+  command: `/nightshift:ready`, the sibling view over the same array,
+  is itself a skill with no wrapper, so both views of one JSON contract
+  stay the same artifact kind; skills are the portable surface across
+  hosts, while custom commands are not; and skill prose is the settled
+  home for `${CLAUDE_PLUGIN_ROOT}`, which removes an otherwise
+  unprobeable expansion question. The earlier bundles-nothing argument
+  for a command was weak on its own terms, since the surface's entire
+  job is invoking a bundled script. It renders each exploring
   entry with title, excerpt, and breakout link; deliberately omits
   `ready` / `blocked` / `external`; and always surfaces the parser's
   problem channels in full, because a user may run only this command
@@ -165,7 +170,7 @@ things describe or consume; each consumer's handling:
   as the exploring view, so the two renderers stay in parity on every
   problem channel: an absent index file surfaces as a broken backlog
   in the ready report, never silently.
-- `commands/exploring.md`: the new surface, per the design sketch.
+- `skills/exploring/SKILL.md`: the new surface, per the design sketch.
 - `.claude/FEATURES.md` entry excerpt for this spec (the paragraph
   under `### [Surface exploring entries in ready]`): syncs to the
   spec body in the same change, per the excerpt-sync convention. As
@@ -203,11 +208,13 @@ things describe or consume; each consumer's handling:
   bundled artifacts it creates. The matching note in that feature's
   own entry is tracked as a follow-up of this review, since it is
   outside this spec's edit surface.
-- This repo's `AGENTS.md`: the architecture section's `commands/*.md`
-  sentence gains `exploring.md` among its named commands (a thin entry
-  point over the ready skill's parser); the `skills/` enumeration and
-  the commands-vs-skills split sentence stay true as written, and the
-  file has no other Exploring wording.
+- This repo's `AGENTS.md`: the architecture section's `skills/`
+  enumeration gains a `skills/exploring/` entry stating that it bundles
+  no files of its own, invokes the ready skill's parser, and lives
+  there so both views are the same artifact kind, host-portable, and
+  on the settled plugin-root path. The `commands/*.md` sentence and the
+  commands-vs-skills split sentence stay true as written, and the file
+  has no other Exploring wording.
 - `.claude-plugin/plugin.json`: the shipping batch carries the standing
   one monotonic version bump (shipped surfaces change).
 - Downstream projects' scaffolded index copies rot gently and get
@@ -216,25 +223,18 @@ things describe or consume; each consumer's handling:
 
 ## Verification
 
-- Probe the command-prose plugin-root dependency: from an installed
-  (non-clone) plugin on each host, Claude Code and Codex, run the
-  parser invocation exactly as `commands/exploring.md` writes it and
-  confirm `${CLAUDE_PLUGIN_ROOT}/skills/ready/ready.js` resolves to
-  the installed cache copy and executes. Pass condition: on both
-  hosts the command's step 1 prints the parser JSON including an
-  `exploring` array; fail: the variable reaches the shell unexpanded
-  or the path does not resolve. Every existing in-tree use of
-  `${CLAUDE_PLUGIN_ROOT}` is skill prose, and AGENTS.md scopes the
-  stated convention to skills, so no repository file settles
-  command-prose expansion; the claim is owned by the two host
-  runtimes. (live-claim: provisional)
-- Contingency on a contradicting probe: the surface falls back to
-  `skills/exploring/SKILL.md`, bundle-less but skill-hosted so the
-  plugin-root reference is the settled skill-prose kind, recorded as
-  a deviation from the commands-vs-skills split with a one-line
-  rationale added to AGENTS.md's architecture section. The rest of
-  the design (parser array, both renderings, problem channels,
-  consumer rewording) is placement-independent and unaffected.
+- The plugin-root dependency is settled by placement, not by probe:
+  the surface is skill prose, and `${CLAUDE_PLUGIN_ROOT}` expansion in
+  skill prose was confirmed live on 2026-08-15 (a `/nightshift:ready`
+  invocation resolved it to the installed cache's absolute path). The
+  provisional marker this section previously carried covered
+  command-prose expansion, which no repository file could settle and
+  no in-run probe could reach; moving the surface to a skill retired
+  the question rather than deferring it. (live-claim: probed
+  2026-08-16)
+- Because the design is placement-independent (parser array, both
+  renderings, problem channels, consumer rewording), the move cost one
+  file relocation plus consumer prose; no behavior changed.
 
 ## Requirements
 
@@ -246,3 +246,4 @@ things describe or consume; each consumer's handling:
 ## Hardening
 
 - revise-spec graduated 2026-08-15 18:01 at 1a5cc8b, scope: whole file, content: b6e8b045
+- revise-spec refreshed 2026-08-16 00:28 at 71d33ed, scope: whole file, content: ae790906 (surface moved to a skill at morning-report triage; live-claim fold-back)
