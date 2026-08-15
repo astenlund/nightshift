@@ -835,6 +835,10 @@ test('CLI reads a .claude dir and emits the same JSON shape', () => {
       `broken breakout-file links should be noticed: ${JSON.stringify(cli.notices)}`,
     );
     assert.ok(
+      cli.notices.some((n) => n.includes('features/alpha.md') && n.includes('(its Requires line still resolves normally)')),
+      `non-draft notices must keep the Requires-resolution tail: ${JSON.stringify(cli.notices)}`,
+    );
+    assert.ok(
       cli.notices.some((n) => n.includes('features/draft.md') && n.includes('(exploring draft; Requires lines do not apply)')),
       `broken exploring links should carry the draft tail: ${JSON.stringify(cli.notices)}`,
     );

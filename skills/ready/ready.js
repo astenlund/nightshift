@@ -148,8 +148,10 @@ function assembleRequires(lines, start) {
 // whose content matches neither shape.
 // opts: { bullets: boolean, noticeProse: boolean, collectSections: string[] }
 // Returns { entries, proseOnlySections, collectedEntries } (collectedEntries
-// holds ### entries from excluded-but-collected sections; [] unless
-// collectSections named the section).
+// holds ### entries from excluded-but-collected sections; [] unless the
+// section is both excluded AND named in collectSections. A non-excluded
+// section named in collectSections still pushes to entries as normal and
+// leaves collectedEntries empty).
 function extractEntries(content, excludedSectionTitles, opts = {}) {
   const lines = content.split(/\r?\n/);
   const excluded = new Set(excludedSectionTitles.map((t) => t.toLowerCase()));
@@ -350,6 +352,12 @@ function targetPathKey(target) {
   if (!base || INDEX_FILE_STEMS.has(base)) return null;
   parts[parts.length - 1] = base;
   return parts.join('/').toLowerCase();
+}
+
+// A breakout link is filesystem-checkable only when it is repo-relative;
+// absolute http(s) targets are skipped.
+function isRepoRelativeTarget(target) {
+  return Boolean(target) && !target.startsWith('http');
 }
 
 function buildRegistry(indexEntries) {
@@ -643,7 +651,7 @@ function analyze(files) {
         link: entry.selfTarget,
         excerpt: firstExcerpt(entry.bodyLines),
       });
-      if (entry.selfTarget && !entry.selfTarget.startsWith('http')) {
+      if (isRepoRelativeTarget(entry.selfTarget)) {
         breakoutTargets.push({ index: 'FEATURES.md', title: entry.title, target: entry.selfTarget, draft: true });
       }
     }
@@ -704,7 +712,7 @@ function analyze(files) {
       // Broken breakout-file links are a notice, not a structural error;
       // the Requires line still resolves normally. The filesystem check
       // happens in the CLI; analyze() only records the candidates.
-      if (entry.selfTarget && !entry.selfTarget.startsWith('http')) {
+      if (isRepoRelativeTarget(entry.selfTarget)) {
         breakoutTargets.push({ index, title: entry.title, target: entry.selfTarget });
       }
     }
