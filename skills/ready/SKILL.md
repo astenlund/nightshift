@@ -29,7 +29,6 @@ The parsing is deterministic and lives in a script bundled with this skill; this
    - **Blocked**: items with their blocker(s) named explicitly; mention any external primitives parenthetically. One line per item.
    - **External**: items whose readiness depends on judging an external primitive; name the primitive.
    - **Structural errors**: missing `**Requires:**` lines, stale or broken references, and parents whose slices have all shipped (ready to graduate to the history archive), or a dependency cycle (two or more entries that block each other's next shipment). These need fixing by hand; surface them prominently.
-
    - **Exploring (drafts, not ready)**: after the sections above, the `exploring` entries as a titles-only list, one line total where possible. These are informational drafts, never part of the ready set; end with a one-line pointer to `/nightshift:exploring` for the full draft list (excerpts and breakout links).
 
    Include the script's `notices` (broken breakout-file links, sections the parser could not interpret) as a short trailing list.
