@@ -263,6 +263,28 @@ Narrows the round 2+ payload for a dimension whose own findings produced applied
 
 **Requires:** none.
 
+## Host portability
+
+### [Agent-host-agnostic Nightshift](features/agent-host-agnostic-nightshift.md)
+
+Moves Nightshift's canonical workflow surfaces and internal contracts from Claude-specific commands, tools, model names, instruction files, hooks, and resource paths to provider-neutral skills plus capability adapters. Claude Code and Codex remain the first supported hosts, while any future local coding-agent host can qualify by implementing the same filesystem, shell, interaction, and fresh-agent capabilities. The shared `.claude/` backlog-data namespace stays unchanged.
+
+**Slices:**
+
+- **MVP - Universal skill entry points.** Move every public workflow to a canonical skill and retain Claude command files only as compatibility shims.
+- **Portable resource and fingerprint contract.** Remove host-named plugin-root and shell-specific hashing assumptions from bundled-resource consumers.
+  **Requires:** [Content fingerprint helper](features/content-fingerprint-helper.md).
+- **Host-neutral scaffolding and instruction routing.** Make `init-backlog`, project instructions, global instructions, and optional startup hooks work without assuming one host's filenames or hook runtime.
+  **Requires:** [Move deterministic init-backlog mechanics out of promptspace](features/deterministic-init-backlog.md).
+- **Review host adapters.** Express task queues, questions, fresh-agent dispatch, completion, recovery identities, tool guidance, and model tiers through capability contracts with Claude Code and Codex adapters.
+  **Requires:** [Review orchestration tests](features/review-orchestration-tests.md).
+- **Host-neutral documentation and lore.** Route documentation and durable learning updates to canonical instruction sources while preserving host adapters and optional helper integrations.
+  **Requires:** [Agent-host-agnostic Nightshift: Host-neutral scaffolding and instruction routing](features/agent-host-agnostic-nightshift.md).
+- **Packaging and cross-host validation.** Add provider-neutral metadata, supported manifest forms, installation guidance, and clean-environment behavior checks for every supported host path.
+  **Requires:** [Agent-host-agnostic Nightshift: Portable resource and fingerprint contract](features/agent-host-agnostic-nightshift.md), [Agent-host-agnostic Nightshift: Host-neutral scaffolding and instruction routing](features/agent-host-agnostic-nightshift.md), [Agent-host-agnostic Nightshift: Review host adapters](features/agent-host-agnostic-nightshift.md), [Agent-host-agnostic Nightshift: Host-neutral documentation and lore](features/agent-host-agnostic-nightshift.md).
+
+**Requires:** none.
+
 ## Communication standards
 
 ### [Communicate for technically sophisticated, time-constrained users](features/sophisticated-user-communication.md)

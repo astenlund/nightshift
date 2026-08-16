@@ -6,7 +6,7 @@ This file provides guidance to coding agents working with this repository.
 
 Nightshift is a Claude Code and Codex plugin: a feature-lifecycle workflow built from markdown slash commands and skills, plus one Node.js parser. Most of the "source" is instruction prose that an agent executes, not code. The repo is also its own plugin marketplace (`.claude-plugin/marketplace.json` with `source: "./"`).
 
-<!-- TODO(cross-host-migration): Make Nightshift operationally host-agnostic. Resolve canonical project and global instruction files, Claude and Codex SessionStart hooks, Workflow/Agent/TaskCreate/AskUserQuestion tool adapters, plugin-root path resolution, and revise-lore/revise-docs routing. Keep `.claude/` as the shared backlog-data namespace. -->
+The operational host-neutralization work is tracked by [Agent-host-agnostic Nightshift](.claude/features/agent-host-agnostic-nightshift.md), which preserves `.claude/` as the shared backlog-data namespace on every host.
 
 ## Commands
 
