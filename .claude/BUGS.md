@@ -48,7 +48,11 @@ otherwise sits in the backlog until the next readiness pass surfaces it.
 
 ## Open
 
-Nothing currently tracked.
+### Shared sync-gists skill names the wrong backlog command
+
+The canonical shared `sync-gists` skill describes Nightshift's workflow command suite as including `init-workflow`, but the repository and shipped plugin expose `init-backlog`. The stale cross-reference can send agents looking for a command that does not exist.
+
+**Requires:** none.
 
 ## History
 
