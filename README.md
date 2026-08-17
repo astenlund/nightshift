@@ -15,7 +15,7 @@ All commands and skills are namespaced: `/nightshift:handover`, `/nightshift:rea
 
 ## The workflow
 
-1. **Scaffold** a project once with `/nightshift:init-backlog`. This creates the four-index backlog under `.claude/` (`QUICK_WINS.md`, `FEATURES.md`, `BUGS.md`, `PATTERNS.md`), history archives, a `plans/` directory, and a SessionStart hook so Claude reads the indexes at the start of every session. It also asks once whether the backlog files should be git-tracked or ignored. Idempotent; re-run to add anything missing.
+1. **Scaffold** a project once with `/nightshift:init-backlog`. This creates the four-index backlog under `.claude/` (`QUICK_WINS.md`, `FEATURES.md`, `BUGS.md`, `PATTERNS.md`), history archives, a `plans/` directory, and project guidance for consulting the indexes on demand. It also asks once whether the backlog files should be git-tracked or ignored. Idempotent; re-run to add anything missing.
 2. **Capture** feature ideas, bugs, refactors, and cross-cutting patterns in the indexes as they come up. Every feature and bug entry declares its upstream gates on a `**Requires:**` line.
 3. **Pick work** with `/nightshift:ready`, which resolves the declared dependency graph (via a deterministic, fixture-tested parser) and reports what's unblocked, what's blocked and on what, and any structural errors in the backlog.
 4. **Hand over** with `/nightshift:handover` once a brainstorm has produced a signed-off spec. Handover detects where the feature stands (spec hardened? plan written? implementation done?), states its read in one line (asking for confirmation only when the detection is not clean), then drives the rest: spec gate (including live-system probes for spec claims the repo cannot settle), plan, plan review, implementation via parallel subagents, code review to completion, end-to-end verification, doc updates, backlog bookkeeping, lore capture, full test suite, and a closing morning report that triages everything deferred along the way and persists approved workflow edits. Plan and spec review append content-fingerprinted hardening stamps to their document artifacts, and handover uses those stamps for the corresponding stage gates. Code review does not stamp source files; its completion is consumed within the active revise or handover flow.
@@ -43,7 +43,7 @@ The three `revise-*` review commands share one engine (the `revise` skill), whic
 
 ## Dependencies
 
-- **Node.js** on PATH (the ready parser and the project SessionStart hook use `node`).
+- **Node.js** on PATH (the ready parser uses `node`).
 - **[superpowers](https://github.com/obra/superpowers)** (optional but recommended): handover uses its `brainstorming`, `writing-plans`, and `subagent-driven-development` skills.
 - **claude-md-management** plugin (optional): `revise-lore` builds on its `revise-claude-md` skill.
 

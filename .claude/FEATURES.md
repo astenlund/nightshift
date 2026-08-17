@@ -5,8 +5,8 @@ points at a standalone file under `.claude/features/<slug>.md` with the
 full design sketch. Check this index before proposing new feature
 directions in the same territory.
 
-This file is **one of four repo-local indexes** Claude reads on every
-session start (alongside `QUICK_WINS.md`, `BUGS.md`, `PATTERNS.md`). Each
+This file is **one of four repo-local indexes** agents consult on demand
+when relevant (alongside `QUICK_WINS.md`, `BUGS.md`, `PATTERNS.md`). Each
 entry here is a short paragraph summary plus a `**Requires:**` line, and
 optionally a `**Slices:**` block (formal MVP plus continuations; see
 `## Slicing` below). For features that are partially done without a
@@ -209,7 +209,7 @@ Draft exploring a durable "signed-off" marker on backlog entries so the agent ca
 
 ### [Backlog index version](features/backlog-index-version.md)
 
-Draft exploring a durable version marker on each backlog index file (a "backlog index version", distinct from the plugin version), with an instruction and a session-side check that compares it against the plugin's latest and notifies the user to run `init-backlog` when an index predates the current template.
+Draft exploring a durable version marker on each backlog index file (a "backlog index version", distinct from the plugin version), with an instruction and an on-demand check that compares it against the plugin's latest and notifies the user to run `init-backlog` when an index predates the current template.
 
 ### [Revise prompt-prefix caching](features/revise-prompt-prefix-caching.md)
 
@@ -267,14 +267,14 @@ Narrows the round 2+ payload for a dimension whose own findings produced applied
 
 ### [Agent-host-agnostic Nightshift](features/agent-host-agnostic-nightshift.md)
 
-Moves Nightshift's canonical workflow surfaces and internal contracts from Claude-specific commands, tools, model names, instruction files, hooks, and resource paths to provider-neutral skills plus capability adapters. Claude Code and Codex remain the first supported hosts, while any future local coding-agent host can qualify by implementing the same filesystem, shell, interaction, and fresh-agent capabilities. The shared `.claude/` backlog-data namespace stays unchanged.
+Moves Nightshift's canonical workflow surfaces and internal contracts from Claude-specific commands, tools, model names, instruction files, and resource paths to provider-neutral skills plus capability adapters. Claude Code and Codex remain the first supported hosts, while any future local coding-agent host can qualify by implementing the same filesystem, shell, interaction, and fresh-agent capabilities. The shared `.claude/` backlog-data namespace stays unchanged.
 
 **Slices:**
 
 - **MVP - Universal skill entry points.** Move every public workflow to a canonical skill and retain Claude command files only as compatibility shims.
 - **Portable resource and fingerprint contract.** Remove host-named plugin-root and shell-specific hashing assumptions from bundled-resource consumers.
   **Requires:** [Content fingerprint helper](features/content-fingerprint-helper.md).
-- **Host-neutral scaffolding and instruction routing.** Make `init-backlog`, project instructions, global instructions, and optional startup hooks work without assuming one host's filenames or hook runtime.
+- **Host-neutral scaffolding and instruction routing.** Make `init-backlog`, project instructions, and global instructions work without assuming one host's filenames or instruction runtime.
   **Requires:** [Move deterministic init-backlog mechanics out of promptspace](features/deterministic-init-backlog.md).
 - **Review host adapters.** Express task queues, questions, fresh-agent dispatch, completion, recovery identities, tool guidance, and model tiers through capability contracts with Claude Code and Codex adapters.
   **Requires:** [Review orchestration tests](features/review-orchestration-tests.md).
@@ -297,15 +297,15 @@ Gives Nightshift's user-facing surfaces a declared audience model and communicat
 
 ### [Move deterministic init-backlog mechanics out of promptspace](features/deterministic-init-backlog.md)
 
-Moves `init-backlog`'s deterministically-answerable behavior (static template bodies, directory and missing-file creation, structural edits, deterministic hook merges) out of the prompt and into bundled plugin code or static files, so one-correct-answer steps are executed rather than re-derived, while the genuinely semantic judgments (concept coverage in customized prose, ambiguous merges, when a user decision is required) remain with Claude. Boundary rule: if there is one objectively correct answer, get it out of promptspace. The per-candidate code-vs-file attribution is left open for the implementing session.
+Moves `init-backlog`'s deterministically-answerable behavior (static template bodies, directory and missing-file creation, and structural edits) out of the prompt and into bundled plugin code or static files, so one-correct-answer steps are executed rather than re-derived, while the genuinely semantic judgments (concept coverage in customized prose, ambiguous merges, when a user decision is required) remain with Claude. Boundary rule: if there is one objectively correct answer, get it out of promptspace. The per-candidate code-vs-file attribution is left open for the implementing session.
 
 **Requires:** none.
 
 ## History
 
 Implemented features are archived in
-[`FEATURES_HISTORY.md`](FEATURES_HISTORY.md), loaded on demand only
-(not at session start) so the active backlog above stays scannable.
+[`FEATURES_HISTORY.md`](FEATURES_HISTORY.md), loaded on demand so the
+active backlog above stays scannable.
 When a feature (or slice) ships, append its entry there rather than
 to this file, AND walk every other `**Requires:**` line in
 `FEATURES.md` / `BUGS.md`: remove the now-satisfied reference (if it

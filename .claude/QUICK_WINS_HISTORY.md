@@ -1,9 +1,8 @@
 # Quick wins (history)
 
 Implemented quick wins, archived from `QUICK_WINS.md` so the active
-backlog stays scannable. **Archaeological**: loaded on demand, not at
-session start. When a quick win lands, append its entry here rather
-than to the active file.
+backlog stays scannable. **Archaeological**: loaded on demand. When a
+quick win lands, append its entry here rather than to the active file.
 
 Entries appear in the order they shipped. Write each with enough
 context to recover the reasoning from the entry alone: investigation

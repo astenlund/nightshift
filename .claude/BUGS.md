@@ -4,8 +4,8 @@ Known bugs awaiting attention. Short entries live here; bugs that need
 more than a few lines of description graduate to a dedicated file under
 `.claude/bugs/<slug>.md`.
 
-This file is **one of four repo-local indexes** Claude reads on every
-session start (alongside `QUICK_WINS.md`, `FEATURES.md`, `PATTERNS.md`).
+This file is **one of four repo-local indexes** agents consult on demand
+when relevant (alongside `QUICK_WINS.md`, `FEATURES.md`, `PATTERNS.md`).
 When a bug is fixed, append its entry to
 [`BUGS_HISTORY.md`](BUGS_HISTORY.md); do not keep a `## Fixed` section
 inline.
@@ -57,9 +57,9 @@ The canonical shared `sync-gists` skill describes Nightshift's workflow command 
 ## History
 
 Fixed bugs are archived in [`BUGS_HISTORY.md`](BUGS_HISTORY.md), loaded
-on demand only (not at session start) so the active list above stays
-scannable. When a bug is fixed, append its entry there rather than to
-this file, AND walk every other `**Requires:**` line in `FEATURES.md`
+on demand so the active list above stays scannable. When a bug is fixed,
+append its entry there rather than to this file, AND walk every other
+`**Requires:**` line in `FEATURES.md`
 / `BUGS.md`: remove the now-satisfied reference (if it was the only
 one, set the line to `Requires: none.`). The active `Requires:` lines
 describe what is *currently* blocking, so `/nightshift:ready` never has to consult

@@ -1,9 +1,9 @@
 # Features (history)
 
 Implemented features, archived from `FEATURES.md` so the active backlog
-stays scannable on session start. **Archaeological**: read only when
-consulted, not at session start. When a feature (or a slice of a sliced
-feature) ships, append its entry here rather than to the active file.
+stays scannable. **Archaeological**: read only when consulted. When a
+feature (or a slice of a sliced feature) ships, append its entry here
+rather than to the active file.
 
 The feature breakout file at `features/<slug>.md` stays in place as the
 historical design record; the entry here is a brief one-line note on

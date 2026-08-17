@@ -1,9 +1,8 @@
 # Bugs (history)
 
-Fixed bugs, archived from `BUGS.md` so the active list stays scannable
-on session start. **Archaeological**: read only when consulted, not at
-session start. When a bug is fixed, append its entry here rather than
-to the active file.
+Fixed bugs, archived from `BUGS.md` so the active list stays scannable.
+**Archaeological**: read only when consulted. When a bug is fixed, append
+its entry here rather than to the active file.
 
 The bug breakout file at `bugs/<slug>.md` (when present) stays in place
 as the historical diagnosis record; the entry here is a brief

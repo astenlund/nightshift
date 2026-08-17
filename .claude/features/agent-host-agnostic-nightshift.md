@@ -4,7 +4,7 @@ Feature: make Nightshift's canonical workflow independent of Claude Code or Code
 
 ## Goal and support boundary
 
-A supported host can discover every public Nightshift workflow, scaffold and read the shared backlog, run the revise loops when independent fresh agents are available, complete handover, and persist documentation and workflow learnings without canonical instructions naming that host's commands, tools, models, instruction files, hook locations, or plugin-root variable.
+A supported host can discover every public Nightshift workflow, scaffold and read the shared backlog, run the revise loops when independent fresh agents are available, complete handover, and persist documentation and workflow learnings without canonical instructions naming that host's commands, tools, models, instruction files, or plugin-root variable.
 
 Claude Code and Codex are the first required adapters. A future local coding-agent host qualifies through the same capability contract. A conversational surface without a repository filesystem or shell is outside this feature's support boundary. Missing optional capabilities degrade only their dependent behavior; missing a capability required for correctness fails that workflow closed with a concrete diagnostic. In particular, a host without independent fresh-agent dispatch can still run `ready`, `exploring`, scaffolding, and documentation workflows, but revise and the review-dependent handover stages do not substitute same-context self-review.
 
@@ -17,7 +17,7 @@ The migration closes these observed gaps:
 - Seven public entry points exist only as Claude command files: `init-backlog`, `handover`, `revise-code`, `revise-plan`, `revise-spec`, `revise-docs`, and `revise-lore`. Skill hosts currently surface only `ready`, `exploring`, and the internal `revise` engine.
 - Handover names `TaskCreate` and `AskUserQuestion`. Revise prefers the Claude Workflow runtime and otherwise describes an Agent tool with Claude-shaped session and completion semantics.
 - Review profiles pin `sonnet`, `opus`, and the `Explore` agent type, while payloads name host tools such as Read, Grep, and Glob.
-- `init-backlog` creates only `CLAUDE.md` and `.claude/settings.json`; `revise-spec`, `revise-docs`, and `revise-lore` also hardcode Claude instruction destinations.
+- `init-backlog` creates only `CLAUDE.md`; `revise-spec`, `revise-docs`, and `revise-lore` also hardcode Claude instruction destinations.
 - Bundled-resource references use `${CLAUDE_PLUGIN_ROOT}`, and fingerprint recipes assume Bash utilities even when the active host shell is PowerShell.
 - Plugin descriptions, installation guidance, and the primary manifest layout present Nightshift as Claude-only even though Codex accepts part of the package through compatibility behavior.
 - CI verifies the deterministic Node components but does not exercise discovery, scaffolding, review dispatch, recovery, or handover through both supported host adapters.
@@ -44,7 +44,7 @@ Land the deterministic init-backlog extraction first, then teach it host-neutral
 - If both canonical and host files contain substantive independent instructions, treat consolidation as ambiguous, show the proposed routing, and ask. Do not overwrite either file or silently create a second authority.
 - If no supported instruction file exists, create the canonical file and the adapters required by the detected hosts.
 
-Generate or merge native startup hooks for detected hosts, including Claude's `.claude/settings.json` and Codex's lowercase `.codex/hooks.json`, but do not require a hook for the core workflow. The canonical instruction section carries the first-turn backlog-read rule so a host with no hook support or an untrusted hook still behaves correctly. Hooks are accelerators and reminders, not authorities. Missing, unsupported, denied, or untrusted hooks produce an installation note rather than a broken backlog.
+The canonical instruction section tells agents to consult relevant indexes on demand before related work.
 
 Project and global instruction discovery returns both the host-facing adapter and the durable source it resolves to. Callers edit the durable source. A pointer, include file, or symbolic link is never replaced merely to normalize the layout.
 
@@ -78,13 +78,12 @@ Discover project, local, and global instruction destinations through the active 
 
 ### Packaging and cross-host validation
 
-Make the manifest description and README provider-neutral. Ship the manifest forms required for the supported plugin directories from one synchronized metadata source or with a parity check, while retaining compatibility with Claude's marketplace. Document install, update, invocation, hook-trust, and no-hook behavior for Claude Code and Codex.
+Make the manifest description and README provider-neutral. Ship the manifest forms required for the supported plugin directories from one synchronized metadata source or with a parity check, while retaining compatibility with Claude's marketplace. Document install, update, and invocation for Claude Code and Codex.
 
 Add fixture or smoke coverage for the adapter boundaries and generated files. The completion matrix includes:
 
 - public skill discovery and Claude command-shim delegation;
 - fresh and repeated scaffold runs with no instructions, one substantive instruction source, and conflicting substantive sources;
-- startup with a native hook, an unsupported hook, and a denied or untrusted hook;
 - `ready` and `exploring` from both installed layouts;
 - spec, plan, and code review through Claude Workflow, Claude manual agents, and Codex collaboration agents;
 - interrupted review recovery with available and unavailable agent handles;
