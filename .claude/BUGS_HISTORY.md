@@ -19,4 +19,4 @@ archaeological.
 
 ## Entries
 
-Nothing yet.
+- **Shared sync-gists skill names the wrong backlog command.** Corrected the canonical personal `sync-gists` skill's Nightshift suite note from `init-workflow` to `init-backlog`, so the documented command matches the repository and shipped plugin. Shipped in this commit.
