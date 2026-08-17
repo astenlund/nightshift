@@ -238,7 +238,7 @@ function normalizeVerdict(response) {
   return { status: 'verified', verdict, reason: normalizedReason, runtimeOwned: response.runtimeOwned, liveProbePerformed: response.liveProbePerformed, liveProbeEvidence: liveProbeEvidence || null }
 }
 
-const agentOpts = extra => model ? { ...extra, model } : extra
+const agentOpts = (extra, selectedModel = model) => selectedModel ? { ...extra, model: selectedModel } : extra
 const input = normalizeInput(args)
 const dimensions = validateInput(input)
 const { round, fingerprint, model } = input
@@ -300,7 +300,7 @@ async function findDuplicate(finding, candidates) {
       schema: DEDUP_SCHEMA,
       agentType: 'Explore',
       effort: 'low',
-    }))
+    }, 'sonnet'))
     if (!isRecord(response) || !Number.isInteger(response.duplicateOf) || response.duplicateOf < 0) {
       return null
     }

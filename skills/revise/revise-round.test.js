@@ -52,6 +52,7 @@ const CASES = [
   'stringified non-object args are rejected before launch',
   'a maximum-length cell id derives an uncapped finding id and distinct skeptic label',
   'multiple findings receive distinct stable skeptic ids',
+  'dedup judge uses sonnet while reviewers and skeptics keep the profile model',
   'a duplicate finding shares its sibling verdict without a second skeptic',
   'a failed dedup judge falls open to a fresh skeptic',
   'a malformed or out-of-range dedup judgment falls open to a fresh skeptic',
@@ -696,6 +697,22 @@ const TESTS = {
     assert.deepEqual(findings.map(item => item.id), ['correctness/finding-1', 'correctness/finding-2'])
     const skepticLabels = verifyCalls(agentCalls).map(call => call.options.label)
     assert.deepEqual(skepticLabels, ['verify:correctness/finding-1', 'verify:correctness/finding-2'])
+  },
+  async 'dedup judge uses sonnet while reviewers and skeptics keep the profile model'() {
+    const dimensions = [dimension('correctness'), dimension('safety', 'Safety')]
+    const input = { ...argsFor(dimensions), model: 'opus' }
+    const { agentCalls } = await runWorkflow(input, {
+      reviewerReplies: [finding('First issue'), finding('Possibly duplicate issue')],
+      skepticReplies: [verdict(), verdict('REFUTED', 'The second finding does not occur.')],
+      dedupReplies: [{ duplicateOf: -1 }],
+    })
+
+    const [dedupCall] = dedupCalls(agentCalls)
+    assert.deepEqual(agentCalls.filter(call => call.options.phase === 'Review').map(call => call.options.model), ['opus', 'opus'])
+    assert.deepEqual(verifyCalls(agentCalls).map(call => call.options.model), ['opus', 'opus'])
+    assert.ok(dedupCall)
+    assert.equal(dedupCall.options.model, 'sonnet')
+    assert.equal(dedupCall.options.effort, 'low')
   },
   async 'a duplicate finding shares its sibling verdict without a second skeptic'() {
     const dimensions = [dimension('correctness'), dimension('safety', 'Safety')]

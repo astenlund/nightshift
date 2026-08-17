@@ -72,20 +72,6 @@ can still fix it in the same session.
   judgment prose, and sweep existing recorded judgments in specs' Operating context
   sections for recalibration. Uplift predicates stay as-is.
 
-## Revise engine dispatch
-
-- **Pin the revise dedup judge to sonnet instead of inheriting the artifact model
-  pin.** In `skills/revise/revise-round.workflow.js`, `agentOpts` injects the
-  profile model (opus for spec/plan reviews) into every agent call, so
-  `findDuplicate`'s dedup judge runs opus despite being a mechanical
-  same-claim-about-same-code comparison already dispatched at `effort: 'low'`.
-  User ruling 2026-08-15: opus is unnecessary there. Preferred shape: the dedup
-  judge's `agent()` call pins `model: 'sonnet'` explicitly while reviewers,
-  skeptics, and the verifier keep the profile pin; update the dedup-judge
-  descriptions in `skills/revise/SKILL.md` if they gain a model claim, check
-  `skills/revise/revise-round.test.js` for opts assertions that need the new
-  field, and bump the plugin version (shipped behavior).
-
 ## Revise engine convergence
 
 - **Require a clean LGTM to certify a fingerprint; a refuted-findings round no
