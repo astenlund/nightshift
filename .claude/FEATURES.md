@@ -203,10 +203,6 @@ Draft exploring a lightened variant of the revise review commands: one fresh rev
 
 Draft exploring a JSON schema that review agents validate their final report against before the session ends, so malformed output is caught by the reviewer itself instead of forcing the controller to salvage-parse an erroneous report or re-run the review after the agent session has been cleared.
 
-### [Signed-off stamp](features/signed-off-stamp.md)
-
-Draft exploring a durable "signed-off" marker on backlog entries so the agent can distinguish a half-cooked idea from a fully-designed one, with an instruction in the index templates (and an `init-backlog` update) so future sessions kick off a brainstorming pass to settle non-stamped entries before implementing them.
-
 ### [Backlog index version](features/backlog-index-version.md)
 
 Draft exploring a durable version marker on each backlog index file (a "backlog index version", distinct from the plugin version), with an instruction and an on-demand check that compares it against the plugin's latest and notifies the user to run `init-backlog` when an index predates the current template.
@@ -214,10 +210,6 @@ Draft exploring a durable version marker on each backlog index file (a "backlog 
 ### [Revise prompt-prefix caching](features/revise-prompt-prefix-caching.md)
 
 Draft exploring two mechanisms for sharing the revise engine's common context across its N concurrent reviewers at cache-read prices with zero independence loss: a byte-identical prompt prefix (identical system prompt and first message, dimension criteria only in the divergent tail; hinges on unprobed cache-boundary mechanics) and a fork-of-primer variant (a fresh agent ingests only the common payload, then forks per dimension; provably caches today but reroutes attribution, repair, and model pinning through the primer). Fork-of-controller is the recorded anti-goal: it would contaminate fresh-eyes review with the controller's context.
-
-### [Present chosen spec for agreement before work](features/present-spec-for-agreement.md)
-
-Draft exploring an instruction in the index templates (and an `init-backlog` update) so the agent presents any spec it is about to implement to the user for agreement before starting work, rather than only when the user requests review ad hoc (motivated by the calibrate-first-draft-rigor review request on 2026-08-12).
 
 ## Review hardening
 
@@ -260,6 +252,14 @@ Every design spec carries a short, durable scope anchor near its goal: a paraphr
 ### [Fix-scoped follow-up rounds](features/fix-scoped-rounds.md)
 
 Narrows the round 2+ payload for a dimension whose own findings produced applied fixes to those fixes plus surrounding context (a dimension active without applied fixes keeps normal delivery), until the reactivation wave restores full coverage; context findings still enter the normal skeptic pipeline. Completion is unaffected because a narrowed-payload review never certifies a fingerprint: certification requires a full-payload review, so completion still rests on full-coverage certifications plus the verifier stamp. Primary rationale is symmetry: a dimension re-reviewing its own fixes no longer incidentally adjudicates siblings' fixes (only zero-fix active dimensions retain that sight via normal delivery), reducing the accidental privilege still-active dimensions hold today; token and wall-clock savings are a hoped-for secondary benefit, at the cost of catching cross-file fix damage a wave later.
+
+**Requires:** none.
+
+## Lifecycle gates
+
+### [Present chosen spec for agreement before work](features/present-spec-for-agreement.md)
+
+Requires every governing spec, whether backlog-backed or standalone, to be presented as a decision-complete digest and explicitly approved before validation or lifecycle work begins. Approval is bound to current design content in the active session, re-required after pre-implementation design changes, and never persisted in the backlog; handover strips legacy sign-off markers from selected artifacts, while the index templates reinforce the same rule for direct work selection.
 
 **Requires:** none.
 
