@@ -38,7 +38,7 @@ Land the Content fingerprint helper before this slice, then replace the `awk`, `
 
 ### Host-neutral scaffolding and instruction routing
 
-Land the deterministic init-backlog extraction first, then teach it host-neutral targets. `AGENTS.md` is the canonical project instruction source for a fresh scaffold, and host files such as `CLAUDE.md` are adapters to it. Existing projects are preserved:
+Land the deterministic init-backlog extraction and the spec-agreement gate first, then teach init-backlog host-neutral targets while preserving that gate's project-guidance reinforcement. `AGENTS.md` is the canonical project instruction source for a fresh scaffold, and host files such as `CLAUDE.md` are adapters to it. Existing projects are preserved:
 
 - If only one substantive supported instruction file exists, append or merge the backlog section there and create a missing adapter only when it can point at that durable source without duplicating prose.
 - If both canonical and host files contain substantive independent instructions, treat consolidation as ambiguous, show the proposed routing, and ask. Do not overwrite either file or silently create a second authority.
@@ -95,10 +95,11 @@ Every matrix cell either passes or records a deliberate unsupported-capability d
 ## Related backlog work
 
 - [Content fingerprint helper](content-fingerprint-helper.md) is a prerequisite for the portable resource and fingerprint slice.
-- [Move deterministic init-backlog mechanics out of promptspace](deterministic-init-backlog.md) is a prerequisite for host-neutral scaffolding.
+- [Move deterministic init-backlog mechanics out of promptspace](deterministic-init-backlog.md) and [Present chosen spec for agreement before work](present-spec-for-agreement.md) are prerequisites for host-neutral scaffolding.
 - [Review orchestration tests](review-orchestration-tests.md) is a prerequisite for review host adapters.
 - [Durable run identity and concurrency protection](durable-run-identity-concurrency.md) shares durable state and scratch-path concerns but can land on either side of the adapter slice under the reconciliation rule above.
 - [Second-opinion gates](second-opinion-gates.md) remains responsible for cross-model-family review. Semantic model roles introduced here must not collapse that feature's distinct-family requirement into a same-provider tier choice.
+- [Present chosen spec for agreement before work](present-spec-for-agreement.md) depends on the universal-skill MVP so it can broaden the canonical handover skill's trigger to direct spec-governed lifecycle work in both supported hosts. Later migration slices preserve that gate rather than moving authorization back into a host adapter.
 
 ## Status
 

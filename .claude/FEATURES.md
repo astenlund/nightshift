@@ -215,9 +215,9 @@ Draft exploring two mechanisms for sharing the revise engine's common context ac
 
 ### [Second-opinion gates](features/second-opinion-gates.md)
 
-Gate the lifecycle with cheap single-pass reads from a different-model-family agent: one at the settled requirements list, one at the freshly written spec, one at the hardened spec. Each read lands before the artifact feeds the next stage, and over the final artifact the hardened gate replaces the holistic third-phase reviewer role. Findings enter the normal skeptic/controller pipeline; the gate is a reader, not an authority. Two co-equal cross-family channels are feature-detected at runtime: a `consult`-style MCP tool (reference implementation: McpConsultant) and a non-interactive agent-harness CLI from a different vendor (reference implementation: Codex `codex exec`); the same-family higher-tier or higher-effort read is the fallback only when neither is present.
+Gate the lifecycle with cheap single-pass reads from a different-model-family agent: one at the completed requirements list before a spec exists, one at the freshly written, decision-complete, and currently approved spec, and one at the hardened and currently approved spec. Each read lands before the artifact feeds the next stage, finding-driven design edits return through the agreement gate, and over the final artifact the hardened gate replaces the holistic third-phase reviewer role. Findings enter the normal skeptic/controller pipeline; the gate is a reader, not an authority. Two co-equal cross-family channels are feature-detected at runtime: a `consult`-style MCP tool (reference implementation: McpConsultant) and a non-interactive agent-harness CLI from a different vendor (reference implementation: Codex `codex exec`); the same-family higher-tier or higher-effort read is the fallback only when neither is present.
 
-**Requires:** none.
+**Requires:** [Present chosen spec for agreement before work](features/present-spec-for-agreement.md).
 
 ### [Adversarial repair dialogue](features/adversarial-repair-dialogue.md)
 
@@ -239,9 +239,9 @@ Turn the revise review engine's phase, convergence, and completion decisions int
 
 ### [Content fingerprint helper](features/content-fingerprint-helper.md)
 
-Centralizes selection, line-ending normalization, and hashing of reviewable document content in one bundled Node helper so no controller or reviewer reimplements the recipe. Reproduces today's `Status:`-and-`## Hardening` exclusion as the `partial` mode (`p-` + 12 hex) alongside a `whole-file` mode (`w-` + 12 hex), replaces the awk/sha256sum recipes in handover and the revise skill (including the code-review patch path), and pins the contract with a fixture suite. Transient-vs-durable stops being a mode and becomes storage context.
+Centralizes selector-aware content extraction, canonical byte framing, and hashing in one bundled Node helper so no controller or reviewer reimplements the recipe. Its byte-oriented core returns selected bytes plus the full digest consumed by the shared agreement skill from one captured baseline, while tagged `partial` (`p-` + 12 hex) and `whole-file` (`w-` + 12 hex) path wrappers serve existing consumers; `partial` excludes only `## Hardening`, so a `Status:` line moves both modes. It replaces the awk/sha256sum recipes in handover and revise, including the code-review patch path, and pins cross-generation parity with the agreement-owned golden corpus.
 
-**Requires:** none.
+**Requires:** [Present chosen spec for agreement before work](features/present-spec-for-agreement.md).
 
 ### [Durable scope anchor](features/durable-scope-anchor.md)
 
@@ -259,9 +259,9 @@ Narrows the round 2+ payload for a dimension whose own findings produced applied
 
 ### [Present chosen spec for agreement before work](features/present-spec-for-agreement.md)
 
-Requires every governing spec, whether backlog-backed or standalone, to be presented as a decision-complete digest and explicitly approved before validation or lifecycle work begins. Approval is bound to current design content in the active session, re-required after pre-implementation design changes, and never persisted in the backlog; handover strips legacy sign-off markers from selected artifacts, while the index templates reinforce the same rule for direct work selection.
+Requires every governing spec, whether backlog-backed or standalone, to be presented as a decision-complete digest and explicitly approved before validation or lifecycle work begins. The shared gate also owns final brainstorming presentation so same-session approval retains its pre-response identity without a duplicate prompt. Digest and approval identity come from one checked byte-and-scope baseline; approval is bound to current design content in volatile session state, checked again against disk after the response, re-required inside revise after pre-implementation design or governing-set changes, and never persisted or replaced by a durable design-status label. The gate protects canonical handover and every direct public revise entry, removes known legacy sign-off markers through the release migration, fails closed with exact reviewed-migration deletions when no raw-byte compare-and-replace provider is proved, and is reinforced by the index templates.
 
-**Requires:** none.
+**Requires:** [Agent-host-agnostic Nightshift: MVP - Universal skill entry points](features/agent-host-agnostic-nightshift.md).
 
 ## Host portability
 
@@ -275,7 +275,7 @@ Moves Nightshift's canonical workflow surfaces and internal contracts from Claud
 - **Portable resource and fingerprint contract.** Remove host-named plugin-root and shell-specific hashing assumptions from bundled-resource consumers.
   **Requires:** [Content fingerprint helper](features/content-fingerprint-helper.md).
 - **Host-neutral scaffolding and instruction routing.** Make `init-backlog`, project instructions, and global instructions work without assuming one host's filenames or instruction runtime.
-  **Requires:** [Move deterministic init-backlog mechanics out of promptspace](features/deterministic-init-backlog.md).
+  **Requires:** [Move deterministic init-backlog mechanics out of promptspace](features/deterministic-init-backlog.md), [Present chosen spec for agreement before work](features/present-spec-for-agreement.md).
 - **Review host adapters.** Express task queues, questions, fresh-agent dispatch, completion, recovery identities, tool guidance, and model tiers through capability contracts with Claude Code and Codex adapters.
   **Requires:** [Review orchestration tests](features/review-orchestration-tests.md).
 - **Host-neutral documentation and lore.** Route documentation and durable learning updates to canonical instruction sources while preserving host adapters and optional helper integrations.
