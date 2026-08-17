@@ -102,24 +102,6 @@ can still fix it in the same session.
   AGENTS.md consumer updates). One datapoint, but it is the argument's own
   claim: the extra pass buys coverage rather than repetition.
 
-## Ready parser structure
-
-- **Decompose `extractEntries` and `analyze` in `skills/ready/ready.js` into named
-  helpers.** Both are long single-responsibility-violating functions and every
-  feature that touches the parser adds to them rather than factoring them.
-  `extractEntries` traverses once while doing h2 section tracking, h3 entry
-  parsing, the QUICK_WINS bullet shape, prose-only-section tracking, and
-  exploring-draft collection; `analyze` reads the indexes, builds the registry,
-  detects cycles, classifies quick wins, collects drafts, and classifies
-  features and bugs. Flagged by the structural-health dimension of the
-  2026-08-15 exploring-visibility code review and deliberately routed here
-  rather than fixed inline, since a core-traversal refactor inside a shipping
-  batch is the wrong risk. Preferred shape: extract per-concern helpers with
-  the existing 48-case fixture suite (`skills/ready/ready.test.js`) as the
-  behavior-preservation net; no output-shape change, so no version-visible
-  behavior moves. Landing it before the next parser feature is what stops the
-  accretion.
-
 ## Handover dispatch hygiene
 
 - **Tell implementation subagents where their scratch files go.** `commands/handover.md`'s

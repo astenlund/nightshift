@@ -21,6 +21,7 @@ const INDEX_FILE_STEMS = new Set([
   'QUICK_WINS', 'FEATURES', 'BUGS', 'PATTERNS',
   'QUICK_WINS_HISTORY', 'FEATURES_HISTORY', 'BUGS_HISTORY',
 ]);
+const WORK_INDEX_NAMES = ['QUICK_WINS', 'FEATURES', 'BUGS'];
 
 // The one excluded section whose entries are still collected (as drafts,
 // never as work items). Named once so the exclusion and the collection
@@ -157,6 +158,55 @@ function assembleRequires(lines, start) {
 // section is both excluded AND named in collectSections. A non-excluded
 // section named in collectSections still pushes to entries as normal and
 // leaves collectedEntries empty).
+function createSectionState(title = null, excluded = false, collected = false) {
+  return {
+    title,
+    excluded,
+    collected,
+    hasEntry: false,
+    hasProse: false,
+  };
+}
+
+function openSection(rawTitle, excludedSections, collectSections) {
+  const title = rawTitle.trim();
+  const key = title.toLowerCase().replace(/\.$/, '');
+
+  return createSectionState(title, excludedSections.has(key), collectSections.has(key));
+}
+
+function createHeadingEntry(rawHeading, sectionTitle) {
+  const heading = rawHeading.trim();
+  const link = heading.match(/^\[([^\]]*)\]\(([^)]*)\)$/);
+
+  return {
+    kind: 'h3',
+    title: link ? link[1].trim() : heading,
+    selfTarget: link ? link[2].trim() : null,
+    section: sectionTitle,
+    bodyLines: [],
+  };
+}
+
+function createBulletEntry(line, sectionTitle) {
+  const text = line.replace(/^- /, '').trim();
+  const boldMatch = text.match(/^\*\*(.+?)\*\*/);
+
+  return {
+    kind: 'bullet',
+    title: stripStable(boldMatch ? boldMatch[1] : text.split('.')[0]),
+    selfTarget: null,
+    section: sectionTitle,
+    bodyLines: [text],
+  };
+}
+
+function recordProseOnlySection(section, opts, proseOnlySections) {
+  if (opts.noticeProse && section.title !== null && !section.excluded && !section.hasEntry && section.hasProse) {
+    proseOnlySections.push(section.title);
+  }
+}
+
 function extractEntries(content, excludedSectionTitles, opts = {}) {
   const lines = content.split(/\r?\n/);
   const excluded = new Set(excludedSectionTitles.map((t) => t.toLowerCase()));
@@ -165,51 +215,26 @@ function extractEntries(content, excludedSectionTitles, opts = {}) {
   const proseOnlySections = [];
   const collectedEntries = [];
 
-  let sectionTitle = null;
-  let sectionExcluded = false;
-  let sectionCollected = false;
-  let sectionHasEntry = false;
-  let sectionHasProse = false;
+  let section = createSectionState();
   let current = null;
-
-  const closeSection = () => {
-    if (
-      opts.noticeProse && sectionTitle !== null && !sectionExcluded &&
-      !sectionHasEntry && sectionHasProse
-    ) {
-      proseOnlySections.push(sectionTitle);
-    }
-  };
 
   for (const line of lines) {
     const h2 = line.match(/^## (.+)$/);
     if (h2) {
-      closeSection();
+      recordProseOnlySection(section, opts, proseOnlySections);
       current = null;
-      sectionTitle = h2[1].trim();
-      sectionExcluded = excluded.has(sectionTitle.toLowerCase().replace(/\.$/, ''));
-      sectionCollected = collectSections.has(sectionTitle.toLowerCase().replace(/\.$/, ''));
-      sectionHasEntry = false;
-      sectionHasProse = false;
+      section = openSection(h2[1], excluded, collectSections);
       continue;
     }
     const h3 = line.match(/^### (.+)$/);
     if (h3) {
       current = null;
-      if (!sectionExcluded || sectionCollected) {
-        const heading = h3[1].trim();
-        const link = heading.match(/^\[([^\]]*)\]\(([^)]*)\)$/);
-        current = {
-          kind: 'h3',
-          title: link ? link[1].trim() : heading,
-          selfTarget: link ? link[2].trim() : null,
-          section: sectionTitle,
-          bodyLines: [],
-        };
-        if (sectionExcluded) {
+      if (!section.excluded || section.collected) {
+        current = createHeadingEntry(h3[1], section.title);
+        if (section.excluded) {
           collectedEntries.push(current);
         } else {
-          sectionHasEntry = true;
+          section.hasEntry = true;
           entries.push(current);
         }
       }
@@ -219,18 +244,9 @@ function extractEntries(content, excludedSectionTitles, opts = {}) {
       current.bodyLines.push(line);
       continue;
     }
-    if (opts.bullets && BULLET.test(line) && sectionTitle !== null && !sectionExcluded) {
-      sectionHasEntry = true;
-      const text = line.replace(/^- /, '').trim();
-      const boldMatch = text.match(/^\*\*(.+?)\*\*/);
-      const title = stripStable(boldMatch ? boldMatch[1] : text.split('.')[0]);
-      current = {
-        kind: 'bullet',
-        title,
-        selfTarget: null,
-        section: sectionTitle,
-        bodyLines: [text],
-      };
+    if (opts.bullets && BULLET.test(line) && section.title !== null && !section.excluded) {
+      section.hasEntry = true;
+      current = createBulletEntry(line, section.title);
       entries.push(current);
       continue;
     }
@@ -241,14 +257,14 @@ function extractEntries(content, excludedSectionTitles, opts = {}) {
     if (current && current.kind === 'bullet') {
       current = null; // blank or non-indented line ends a bullet entry
     }
-    if (sectionTitle !== null && !sectionExcluded) {
+    if (section.title !== null && !section.excluded) {
       const t = line.trim();
       if (t !== '' && !PLACEHOLDER_LINES.has(t.toLowerCase())) {
-        sectionHasProse = true;
+        section.hasProse = true;
       }
     }
   }
-  closeSection();
+  recordProseOnlySection(section, opts, proseOnlySections);
   return { entries, proseOnlySections, collectedEntries };
 }
 
@@ -569,9 +585,8 @@ function classifyUnit(unit, registry, out) {
 
 // ---------- top level ----------
 
-function analyze(files) {
-  // files: { QUICK_WINS?, FEATURES?, BUGS? } raw markdown strings.
-  const out = {
+function createAnalysisOutput() {
+  return {
     indexes: { found: [], missing: [] },
     ready: [],
     blocked: [],
@@ -580,9 +595,11 @@ function analyze(files) {
     structuralErrors: [],
     notices: [],
   };
+}
 
+function parseIndexes(files, out) {
   const parsed = {};
-  for (const name of ['QUICK_WINS', 'FEATURES', 'BUGS']) {
+  for (const name of WORK_INDEX_NAMES) {
     if (files[name] === undefined || files[name] === null) {
       out.indexes.missing.push(`${name}.md`);
       continue;
@@ -600,19 +617,28 @@ function analyze(files) {
     out.indexes.missing.push('PATTERNS.md');
   }
 
-  // Attach slices + requires to feature/bug entries, build the registry.
+  return parsed;
+}
+
+function attachEntryMetadata(name, entry) {
+  if (name === 'QUICK_WINS') {
+    entry.requiresContent = null;
+    entry.slices = null;
+
+    return;
+  }
+
+  const requires = findRequires(entry.bodyLines);
+  entry.requiresContent = requires ? requires.content : null;
+  entry.slices = name === 'FEATURES' ? parseSlices(entry.bodyLines) : null;
+}
+
+function prepareRegistryRecords(parsed, out) {
   const registryRecords = [];
-  for (const name of ['QUICK_WINS', 'FEATURES', 'BUGS']) {
+  for (const name of WORK_INDEX_NAMES) {
     if (!parsed[name]) continue;
     for (const entry of parsed[name].entries) {
-      if (name !== 'QUICK_WINS') {
-        const req = findRequires(entry.bodyLines);
-        entry.requiresContent = req ? req.content : null;
-        entry.slices = name === 'FEATURES' ? parseSlices(entry.bodyLines) : null;
-      } else {
-        entry.requiresContent = null;
-        entry.slices = null;
-      }
+      attachEntryMetadata(name, entry);
       registryRecords.push({ index: `${name}.md`, entry });
     }
     for (const section of parsed[name].proseOnlySections) {
@@ -621,17 +647,29 @@ function analyze(files) {
       );
     }
   }
-  const registry = buildRegistry(registryRecords);
 
-  const featsBugs = registryRecords.filter((r) => r.index !== 'QUICK_WINS.md');
-  const depEdges = collectEntryEdges(featsBugs, registry);
+  return registryRecords;
+}
+
+function buildCycleAnalysis(registryRecords, registry) {
+  const featureAndBugRecords = registryRecords.filter((record) => record.index !== 'QUICK_WINS.md');
+  const depEdges = collectEntryEdges(featureAndBugRecords, registry);
   const cycles = findCycles(depEdges);
   const cycleMembers = new Set();
-  for (const c of cycles) for (const m of c.members) cycleMembers.add(m);
+  for (const cycle of cycles) {
+    for (const member of cycle.members) {
+      cycleMembers.add(member);
+    }
+  }
   const nodeToRec = new Map();
-  for (const rec of registryRecords) nodeToRec.set(nodeKey(rec), rec);
+  for (const record of registryRecords) {
+    nodeToRec.set(nodeKey(record), record);
+  }
 
-  // Quick wins: atomic, no Requires lines, always unblocked.
+  return { depEdges, cycles, cycleMembers, nodeToRec };
+}
+
+function addQuickWins(parsed, out) {
   if (parsed.QUICK_WINS) {
     for (const entry of parsed.QUICK_WINS.entries) {
       out.ready.push({
@@ -641,14 +679,21 @@ function analyze(files) {
       });
     }
   }
+}
 
-  // Breakout-link candidates from both the drafts below and the work
-  // entries after them; the filesystem check runs once, in the CLI.
-  const breakoutTargets = [];
+function addBreakoutTarget(breakoutTargets, index, entry, draft = false) {
+  if (!isRepoRelativeTarget(entry.selfTarget)) {
+    return;
+  }
 
-  // Exploring drafts: collected, never classified. FEATURES-only by
-  // design; no other index has an Exploring concept. Their breakout
-  // links join the same filesystem notice check as ready entries.
+  const target = { index, title: entry.title, target: entry.selfTarget };
+  if (draft) {
+    target.draft = true;
+  }
+  breakoutTargets.push(target);
+}
+
+function addExploringDrafts(parsed, out, breakoutTargets) {
   if (parsed.FEATURES) {
     for (const entry of parsed.FEATURES.collectedEntries) {
       out.exploring.push({
@@ -659,81 +704,110 @@ function analyze(files) {
         link: entry.selfTarget || null,
         excerpt: firstExcerpt(entry.bodyLines),
       });
-      if (isRepoRelativeTarget(entry.selfTarget)) {
-        breakoutTargets.push({ index: 'FEATURES.md', title: entry.title, target: entry.selfTarget, draft: true });
-      }
+      addBreakoutTarget(breakoutTargets, 'FEATURES.md', entry, true);
     }
   }
-  // Features and bugs.
+}
+
+function classifySlicedEntry(index, entry, excluded, registry, out) {
+  const unshipped = entry.slices.filter((slice) => !slice.struck);
+  if (unshipped.length === 0) {
+    out.structuralErrors.push({
+      index,
+      title: entry.title,
+      problem: 'all slices shipped; graduate parent to FEATURES_HISTORY.md per the ## Slicing last-slice rule',
+    });
+
+    return false;
+  }
+  if (entry.requiresContent === null) {
+    out.structuralErrors.push({
+      index,
+      title: entry.title,
+      problem: 'missing top-level **Requires:** line (should reflect the next-to-ship slice)',
+    });
+
+    return false;
+  }
+
+  const mvp = entry.slices[0];
+  const firstUnshipped = unshipped[0];
+  for (const slice of unshipped) {
+    const extraBlockers = [];
+    if (!mvp.struck && slice !== mvp) {
+      extraBlockers.push(`${entry.title}: ${mvp.displayName} (implicit MVP gate)`);
+    }
+    classifyUnit({
+      index,
+      title: `[${entry.title}: ${slice.displayName}]`,
+      excerpt: slice.raw.length > 200 ? slice.raw.slice(0, 197) + '...' : slice.raw,
+      requiresContent: slice === firstUnshipped ? entry.requiresContent : slice.inlineRequires,
+      missingRequires: false,
+      extraBlockers,
+      excluded,
+    }, registry, out);
+  }
+
+  return true;
+}
+
+function classifyTrackedEntry(index, entry, excluded, registry, out) {
+  if (entry.slices && entry.slices.length > 0) {
+    return classifySlicedEntry(index, entry, excluded, registry, out);
+  }
+
+  classifyUnit({
+    index,
+    title: entry.title,
+    excerpt: firstExcerpt(entry.bodyLines),
+    requiresContent: entry.requiresContent,
+    missingRequires: entry.requiresContent === null,
+    excluded,
+  }, registry, out);
+
+  return true;
+}
+
+function classifyTrackedEntries(parsed, registry, cycleMembers, out, breakoutTargets) {
   for (const name of ['FEATURES', 'BUGS']) {
     if (!parsed[name]) continue;
     for (const entry of parsed[name].entries) {
       const index = `${name}.md`;
-      const slices = entry.slices;
       const entryNode = nodeKey({ index, entry });
       const excluded = cycleMembers.has(entryNode);
-
-      if (slices && slices.length > 0) {
-        const unshipped = slices.filter((s) => !s.struck);
-        if (unshipped.length === 0) {
-          out.structuralErrors.push({
-            index,
-            title: entry.title,
-            problem: 'all slices shipped; graduate parent to FEATURES_HISTORY.md per the ## Slicing last-slice rule',
-          });
-          continue;
-        }
-        if (entry.requiresContent === null) {
-          out.structuralErrors.push({
-            index, title: entry.title,
-            problem: 'missing top-level **Requires:** line (should reflect the next-to-ship slice)',
-          });
-          continue;
-        }
-        const mvp = slices[0];
-        const firstUnshipped = unshipped[0];
-        for (const slice of unshipped) {
-          const extraBlockers = [];
-          if (!mvp.struck && slice !== mvp) {
-            extraBlockers.push(`${entry.title}: ${mvp.displayName} (implicit MVP gate)`);
-          }
-          classifyUnit({
-            index,
-            title: `[${entry.title}: ${slice.displayName}]`,
-            excerpt: slice.raw.length > 200 ? slice.raw.slice(0, 197) + '...' : slice.raw,
-            requiresContent: slice === firstUnshipped ? entry.requiresContent : slice.inlineRequires,
-            missingRequires: false,
-            extraBlockers,
-            excluded,
-          }, registry, out);
-        }
-      } else {
-        classifyUnit({
-          index,
-          title: entry.title,
-          excerpt: firstExcerpt(entry.bodyLines),
-          requiresContent: entry.requiresContent,
-          missingRequires: entry.requiresContent === null,
-          excluded,
-        }, registry, out);
+      // Preserve the existing output contract: terminal slice structural
+      // errors do not contribute breakout-link candidates.
+      if (!classifyTrackedEntry(index, entry, excluded, registry, out)) {
+        continue;
       }
-
-      // Broken breakout-file links are a notice, not a structural error;
-      // the Requires line still resolves normally. The filesystem check
-      // happens in the CLI; analyze() only records the candidates.
-      if (isRepoRelativeTarget(entry.selfTarget)) {
-        breakoutTargets.push({ index, title: entry.title, target: entry.selfTarget });
-      }
+      addBreakoutTarget(breakoutTargets, index, entry);
     }
   }
+}
 
-  for (const c of cycles) {
+function addCycleErrors(out, cycleAnalysis) {
+  for (const cycle of cycleAnalysis.cycles) {
     out.structuralErrors.push({
       index: '[cycle]',
-      title: `${c.members.length}-node cycle`,
-      problem: formatCycle(c, depEdges, nodeToRec),
+      title: `${cycle.members.length}-node cycle`,
+      problem: formatCycle(cycle, cycleAnalysis.depEdges, cycleAnalysis.nodeToRec),
     });
   }
+}
+
+function analyze(files) {
+  // files: { QUICK_WINS?, FEATURES?, BUGS? } raw markdown strings.
+  const out = createAnalysisOutput();
+  const parsed = parseIndexes(files, out);
+  const registryRecords = prepareRegistryRecords(parsed, out);
+  const registry = buildRegistry(registryRecords);
+  const cycleAnalysis = buildCycleAnalysis(registryRecords, registry);
+  const breakoutTargets = [];
+
+  addQuickWins(parsed, out);
+  addExploringDrafts(parsed, out, breakoutTargets);
+  classifyTrackedEntries(parsed, registry, cycleAnalysis.cycleMembers, out, breakoutTargets);
+  addCycleErrors(out, cycleAnalysis);
 
   out.breakoutTargets = breakoutTargets;
   return out;
@@ -750,7 +824,7 @@ function runCli(argRoot) {
     return;
   }
   const files = {};
-  for (const name of ['QUICK_WINS', 'FEATURES', 'BUGS', 'PATTERNS']) {
+  for (const name of [...WORK_INDEX_NAMES, 'PATTERNS']) {
     const p = path.join(claudeDir, `${name}.md`);
     files[name] = fs.existsSync(p) ? fs.readFileSync(p, 'utf8') : undefined;
   }
