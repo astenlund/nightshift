@@ -188,17 +188,28 @@ function createHeadingEntry(rawHeading, sectionTitle) {
   };
 }
 
+function extractBulletTitle(text) {
+  const boldMatch = text.match(/^\*\*(.+?)\*\*/);
+
+  return stripStable(boldMatch ? boldMatch[1] : text.split('.')[0]);
+}
+
 function createBulletEntry(line, sectionTitle) {
   const text = line.replace(/^- /, '').trim();
-  const boldMatch = text.match(/^\*\*(.+?)\*\*/);
 
   return {
     kind: 'bullet',
-    title: stripStable(boldMatch ? boldMatch[1] : text.split('.')[0]),
+    title: extractBulletTitle(text),
     selfTarget: null,
     section: sectionTitle,
     bodyLines: [text],
   };
+}
+
+function finalizeBulletEntry(entry) {
+  const text = entry.bodyLines.join(' ');
+  entry.title = extractBulletTitle(text);
+  entry.bodyLines = [text];
 }
 
 function recordProseOnlySection(section, opts, proseOnlySections) {
@@ -221,6 +232,9 @@ function extractEntries(content, excludedSectionTitles, opts = {}) {
   for (const line of lines) {
     const h2 = line.match(/^## (.+)$/);
     if (h2) {
+      if (current?.kind === 'bullet') {
+        finalizeBulletEntry(current);
+      }
       recordProseOnlySection(section, opts, proseOnlySections);
       current = null;
       section = openSection(h2[1], excluded, collectSections);
@@ -228,6 +242,9 @@ function extractEntries(content, excludedSectionTitles, opts = {}) {
     }
     const h3 = line.match(/^### (.+)$/);
     if (h3) {
+      if (current?.kind === 'bullet') {
+        finalizeBulletEntry(current);
+      }
       current = null;
       if (!section.excluded || section.collected) {
         current = createHeadingEntry(h3[1], section.title);
@@ -245,6 +262,9 @@ function extractEntries(content, excludedSectionTitles, opts = {}) {
       continue;
     }
     if (opts.bullets && BULLET.test(line) && section.title !== null && !section.excluded) {
+      if (current?.kind === 'bullet') {
+        finalizeBulletEntry(current);
+      }
       section.hasEntry = true;
       current = createBulletEntry(line, section.title);
       entries.push(current);
@@ -255,6 +275,7 @@ function extractEntries(content, excludedSectionTitles, opts = {}) {
       continue;
     }
     if (current && current.kind === 'bullet') {
+      finalizeBulletEntry(current);
       current = null; // blank or non-indented line ends a bullet entry
     }
     if (section.title !== null && !section.excluded) {
@@ -263,6 +284,9 @@ function extractEntries(content, excludedSectionTitles, opts = {}) {
         section.hasProse = true;
       }
     }
+  }
+  if (current?.kind === 'bullet') {
+    finalizeBulletEntry(current);
   }
   recordProseOnlySection(section, opts, proseOnlySections);
   return { entries, proseOnlySections, collectedEntries };

@@ -62,6 +62,11 @@ Dedupe the path-joining helper across the three scripts.
 
 - **Rename the thing.** Quick rename across call sites.
 
+## Wrapped title
+
+- **A title that wraps
+  onto the next line.** Description after title.
+
 ## Loose notes
 
 A paragraph-style item that is neither a bullet nor a heading.
@@ -339,6 +344,30 @@ test('quick wins are always ready, both h3 and bullet shapes', () => {
   const ready = titles(result.ready);
   assert.ok(ready.includes('Shared helper extraction'), `missing h3 QW in ${ready}`);
   assert.ok(ready.includes('Rename the thing'), `missing bullet QW in ${ready}`);
+});
+
+test('wrapped quick-win title and excerpt join continuation lines', () => {
+  const wrapped = findByTitle(result.ready, 'A title that wraps onto the next line');
+  assert.ok(wrapped, `missing wrapped QW in ${titles(result.ready)}`);
+  assert.strictEqual(wrapped.excerpt, '**A title that wraps onto the next line.** Description after title.');
+});
+
+test('wrapped quick-win titles finalize at every entry boundary', () => {
+  const boundaries = [
+    { name: 'h2', tail: '\n## Next section\n' },
+    { name: 'h3', tail: '\n### Next entry\n' },
+    { name: 'next bullet', tail: '\n- **Next title.** Next body.\n' },
+    { name: 'non-indented prose', tail: '\nLoose prose.\n' },
+    { name: 'end of file', tail: '' },
+  ];
+
+  for (const boundary of boundaries) {
+    const content = `# Quick wins\n\n## Section\n\n- **A title that wraps\n  across lines.** Body.${boundary.tail}`;
+    const parsed = extractEntries(content, EXCLUDED_SECTIONS.QUICK_WINS, { bullets: true, noticeProse: true });
+    const entry = parsed.entries[0];
+    assert.strictEqual(entry.title, 'A title that wraps across lines', `${boundary.name} title`);
+    assert.deepStrictEqual(entry.bodyLines, ['**A title that wraps across lines.** Body.'], `${boundary.name} body`);
+  }
 });
 
 test('prose-only quick-win section produces a notice', () => {
