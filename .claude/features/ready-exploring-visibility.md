@@ -42,11 +42,11 @@ them; the developer must remember to reread `FEATURES.md` for the
 - **Expected feature lifetime**: long-lived; a permanent shipped
   surface and output field, not an experiment. Fired.
 
-Derivation per `skills/revise/rigor.js`: audience `public` gives
+Derivation per `internal/revise/rigor.js`: audience `public` gives
 baseline `high`; fired uplifts recorded as judgments:
 concurrency-and-compatibility, expected lifetime (2; deployment
 criticality, failure consequence, and reversibility not fired).
-`node skills/revise/rigor.js public 2` yields tier `high` with
+`node internal/revise/rigor.js public 2` yields tier `high` with
 per-dimension effort validation high, recovery high, compatibility
 high, observability high, proof effort high (the cap applies; the
 tier is `high` from the baseline alone).
@@ -176,7 +176,7 @@ things describe or consume; each consumer's handling:
   spec body in the same change, per the excerpt-sync convention.
   Synced 2026-08-15 and re-synced 2026-08-16 when the surface moved
   back to a skill.
-- `commands/init-backlog.md`: the FEATURES.md index template's
+- `skills/init-backlog/SKILL.md`: the FEATURES.md index template's
   Exploring prose ("excludes this section from the readiness set on
   purpose") and the CLAUDE.md template's backlog section (home of the
   "`/nightshift:ready` skips them" wording) reword to name both views,
@@ -202,7 +202,7 @@ things describe or consume; each consumer's handling:
   the `/nightshift:ready` filter" sentence).
 - Same-file contention: the queued feature "Move deterministic
   init-backlog mechanics out of promptspace" also plans to rewrite
-  `commands/init-backlog.md` template bodies. Cheaper landing order:
+  `skills/init-backlog/SKILL.md` template bodies. Cheaper landing order:
   this feature's wording edits land first (small, prose-only), and
   the promptspace move carries the updated wording into whatever
   bundled artifacts it creates. The matching note in that feature's
@@ -212,9 +212,9 @@ things describe or consume; each consumer's handling:
   enumeration gains a `skills/exploring/` entry stating that it bundles
   no files of its own, invokes the ready skill's parser, and lives
   there so both views are the same artifact kind, host-portable, and
-  on the settled plugin-root path. The `commands/*.md` sentence and the
-  commands-vs-skills split sentence stay true as written, and the file
-  has no other Exploring wording.
+  on the settled plugin-root path. The universal-entry MVP later
+  removed the legacy `commands/*.md` topology; no other Exploring
+  wording needs revision.
 - `.claude-plugin/plugin.json`: the shipping batch carries the standing
   one monotonic version bump (shipped surfaces change).
 - Downstream projects' scaffolded index copies rot gently and get
@@ -248,3 +248,4 @@ things describe or consume; each consumer's handling:
 - revise-spec graduated 2026-08-15 18:01 at 1a5cc8b, scope: whole file, content: b6e8b045
 - revise-spec refreshed 2026-08-16 00:28 at 71d33ed, scope: whole file, content: ae790906 (surface moved to a skill at morning-report triage; live-claim fold-back)
 - handover completed 2026-08-16 00:52 at fcd89d0, scope: whole file, content: 0d247294
+- revise-spec refreshed 2026-08-18 20:17 at 476d8d8, scope: whole file, content: d01aadbf (universal-entry topology references)

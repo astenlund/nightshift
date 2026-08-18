@@ -1,10 +1,10 @@
 # Simplify the revise lifecycle around rounds
 
-Feature: the revise review lifecycle in `skills/revise/SKILL.md` is restated around its actual moving parts (dimensions, rounds, and shards when the artifact is large), with a phase ending when every applicable dimension is inactive or after 10 rounds whichever comes first, the clean/dirty phase model removed, and the "no applied changes" requirement relocated to a post-review entry condition. This file is the authoritative design record.
+Feature: the revise review lifecycle in `internal/revise/SKILL.md` is restated around its actual moving parts (dimensions, rounds, and shards when the artifact is large), with a phase ending when every applicable dimension is inactive or after 10 rounds whichever comes first, the clean/dirty phase model removed, and the "no applied changes" requirement relocated to a post-review entry condition. This file is the authoritative design record.
 
 ## What it does
 
-Today `skills/revise/SKILL.md` expresses phase progress through a "clean"/"dirty" phase and a per-cell launch limit. Both over-complicate the story, and the phrasing lets a controller short-circuit phase 1: observed twice on 2026-08-12, an agent applied accepted round-1 fixes, marked the phase dirty, and treated that as the trigger to start phase 2, skipping the mandatory re-verification rounds inside phase 1. Both times the human had to interrupt and correct the flow.
+Before the universal-entry MVP, `skills/revise/SKILL.md` expressed phase progress through a "clean"/"dirty" phase and a per-cell launch limit. Both over-complicate the story, and the phrasing let a controller short-circuit phase 1: observed twice on 2026-08-12, an agent applied accepted round-1 fixes, marked the phase dirty, and treated that as the trigger to start phase 2, skipping the mandatory re-verification rounds inside phase 1. Both times the human had to interrupt and correct the flow.
 
 The lifecycle's real moving parts are dimensions, rounds, and shards (when the artifact is large). This feature states phase-ending and post-review entry directly in terms of those parts, counts rounds rather than per-cell launches, and expresses the "the final phase made no changes" requirement as a post-review gate rather than a phase-level flag.
 
@@ -37,8 +37,8 @@ Migrated into the backlog on 2026-08-12 after the design was settled in dialogue
 
 ## Requirements
 
-- The revise lifecycle terms and completion rules in `skills/revise/SKILL.md` (existing; the extraction subject).
-- The revise Workflow execution-safety suite in `skills/revise/revise-round.test.js` (existing; the tests that must still pass once the lifecycle prose changes).
+- The revise lifecycle terms and completion rules in `internal/revise/SKILL.md` (existing; the extraction subject).
+- The revise Workflow execution-safety suite in `internal/revise/revise-round.test.js` (existing; the tests that must still pass once the lifecycle prose changes).
 
 **Requires:** none.
 

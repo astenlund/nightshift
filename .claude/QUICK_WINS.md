@@ -36,7 +36,7 @@ can still fix it in the same session.
   confirm-worthy: skip straight to building the queue. Keep the confirm only for real
   ambiguity, artifact-selection doubt, validation findings, or drift. Refine the
   "Clean detection" paragraphs in the active handover entry source (`commands/handover.md`
-  before the universal-entry migration, `skills/handover/SKILL.md` after it) to
+  before the universal-entry MVP, `skills/handover/SKILL.md` after it) to
   state that designed/cutover-gated provisional markers and same-session mid-flight
   resumes are non-flags. Prefer landing the universal-entry MVP first; if this quick
   win lands earlier, apply it to the pre-MVP source and carry its behavior forward
@@ -47,7 +47,7 @@ can still fix it in the same session.
 - **Recalibrate the audience-category judgment so public visibility alone does not
   read as `public`.** Today the audience component-to-category judgment (revise-spec
   grounding step in the active revise engine (`skills/revise/spec.md` and
-  `skills/revise/rigor.js` before the universal-entry migration, `internal/revise/spec.md`
+  `skills/revise/rigor.js` before the universal-entry MVP, `internal/revise/spec.md`
   and `internal/revise/rigor.js` after it) maps a repo that is public on GitHub to category `public`
   and thus baseline `high`, even with no adoption signals; nightshift's own specs
   (the wave-lifecycle Operating context, the ready-exploring-visibility one) recorded
@@ -65,7 +65,7 @@ can still fix it in the same session.
 ## Handover dispatch hygiene
 
 - **Tell implementation subagents where their scratch files go.** The active handover entry
-  source (`commands/handover.md` before the universal-entry migration,
+  source (`commands/handover.md` before the universal-entry MVP,
   `skills/handover/SKILL.md` after it) says nothing about scratch locations, so dispatched
   subagents write working files into the project's `.tmp/` root, which is also the revise
   engine's state home (`revise-state.md`, `revise-round-result.md`, the payload files, the

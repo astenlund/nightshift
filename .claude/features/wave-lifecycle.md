@@ -61,7 +61,7 @@ B saved roughly one full 8-dimension pass at every fix volume except the heavy s
 - **Durable run identity and concurrency** (`durable-run-identity-concurrency.md`): names the engine's phase/round state and resume machinery as its relocation subject. Its relationship section records that lifecycle edits derive from the shipped wave-era prose; the relocation and locking design otherwise remains intact.
 - **Adversarial repair dialogue** (`adversarial-repair-dialogue.md`): builds on the round, skeptic, and controller pipeline, which all survive; its "review-phase machinery" phrasing is refreshed when it is picked up. No structural conflict.
 - **Light revise mode** (`light-revise-mode.md`, exploring): its recorded evidence and open questions are phrased in phase vocabulary, and two settled decisions here bear on it directly: the mandatory opus verifier launch is a per-run cost floor a light run must absorb or explicitly re-dispose, and the empty-applicable-set failure bounds how far its dimension curation can shrink the set (at least one applicable cell must remain). When it graduates, its "two-phase convergence invariant" open question re-derives against waves: single-reviewer iterations map onto rounds and certifications, and completion becomes the wave-convergence-plus-stamp conjunction.
-- **Same-file contention and landing order**: this feature rewrites the largest share of `skills/revise/SKILL.md`'s lifecycle prose while fix-scoped-rounds, durable-run-identity-concurrency, adversarial-repair-dialogue, content-fingerprint-helper, and durable-scope-anchor each plan later edits to the same file. Recorded landing order: this feature first; the others rebase on the wave prose. Each sibling file carries the reciprocal relationship in body prose. Active `Requires:` lines describe only unshipped blockers, so they do not retain a dependency on this shipped feature.
+- **Same-file contention and landing order**: this feature rewrites the largest share of `internal/revise/SKILL.md`'s lifecycle prose while fix-scoped-rounds, durable-run-identity-concurrency, adversarial-repair-dialogue, content-fingerprint-helper, and durable-scope-anchor each plan later edits to the same file. Recorded landing order: this feature first; the others rebase on the wave prose. Each sibling file carries the reciprocal relationship in body prose. Active `Requires:` lines describe only unshipped blockers, so they do not retain a dependency on this shipped feature.
 
 ## Operating context
 
@@ -72,7 +72,7 @@ B saved roughly one full 8-dimension pass at every fix volume except the heavy s
 - **Reversibility and recovery cost**: high reversibility; git-tracked prose with version-pinned releases, and consumers can pin or downgrade.
 - **Expected feature lifetime**: long-lived; this is the engine's core lifecycle, not an experiment.
 
-Derivation per `skills/revise/rigor.js`: audience `public` gives baseline `high`; fired uplifts recorded as judgments: deployment criticality, failure consequence, concurrency and compatibility, expected lifetime (4; reversibility not fired). `node skills/revise/rigor.js public 4` yields tier `high` with per-dimension effort validation high, recovery high, compatibility high, observability high, proof effort high (cap applies; the tier is `high` from the baseline alone).
+Derivation per `internal/revise/rigor.js`: audience `public` gives baseline `high`; fired uplifts recorded as judgments: deployment criticality, failure consequence, concurrency and compatibility, expected lifetime (4; reversibility not fired). `node internal/revise/rigor.js public 4` yields tier `high` with per-dimension effort validation high, recovery high, compatibility high, observability high, proof effort high (cap applies; the tier is `high` from the baseline alone).
 
 ## Verification
 
@@ -85,10 +85,10 @@ Designed 2026-08-13 across a working session: economics analysis, ten-controller
 
 ## Requirements
 
-- The revise lifecycle, state schema, checkpoint templates, drift and resume rules in `skills/revise/SKILL.md` (existing; the replacement subject).
-- The workflow invocation contract in `skills/revise/revise-round.workflow.js` and its suite `skills/revise/revise-round.test.js` (existing; the `phase` input field is removed).
+- The revise lifecycle, state schema, checkpoint templates, drift and resume rules in `internal/revise/SKILL.md` (existing; the replacement subject).
+- The workflow invocation contract in `internal/revise/revise-round.workflow.js` and its suite `internal/revise/revise-round.test.js` (existing; the `phase` input field is removed).
 - The artifact parameter files, README, and repository AGENTS.md lifecycle descriptions (existing; phase references replaced).
-- The review-rule phrasing in `commands/handover.md` that names the revise commands' lifecycle (existing; refreshed alongside README and AGENTS.md).
+- The review-rule phrasing in `skills/handover/SKILL.md` that names the revise skills' lifecycle (existing; refreshed alongside README and AGENTS.md).
 
 **Requires:** none.
 
@@ -97,3 +97,4 @@ Designed 2026-08-13 across a working session: economics analysis, ten-controller
 - revise-spec graduated 2026-08-13 23:39 at 31395b0, scope: whole file, content: 2dba05cd
 - revise-spec refreshed 2026-08-18 00:46 at c0d1909, scope: whole file, content: d5ca1a1e (clean-LGTM lifecycle correction)
 - revise-spec refreshed 2026-08-18 02:39 at c0d1909, scope: whole file, content: 043c5582 (shipped interaction tense reconciled)
+- revise-spec refreshed 2026-08-18 20:17 at 476d8d8, scope: whole file, content: 1c081c72 (universal-entry topology references)
