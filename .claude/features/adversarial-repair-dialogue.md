@@ -4,7 +4,7 @@ Feature: resolve confirmed findings through an adversarial skeptic-reviewer repa
 
 ## What it does
 
-After a skeptic confirms an in-scope finding, keep the detailed repair reasoning out of the controller context. Resume that skeptic as the repair author and the originating reviewer as its adversarial critic.
+After a skeptic confirms a finding and the controller admits it against the frozen contract, keep the detailed repair reasoning out of the controller context. Resume that skeptic as the repair author and the originating reviewer as its adversarial critic. A factually true out-of-contract finding receives its reasoned acknowledgement and never enters repair dialogue.
 
 The relationship remains adversarial throughout:
 
@@ -42,11 +42,11 @@ Reviewer acceptance validates only the repair proposal. It does not produce LGTM
 
 ## Relationship to neighboring features
 
-The second-opinion gates feature ([second-opinion-gates](second-opinion-gates.md)) distinguishes its controller-probes-recommendation from this design: there the controller exchanges a few bounded messages with a second-opinion agent to probe the motivation behind a change recommendation; here the skeptical verifier of a confirmed finding defends an exact repair against the originating reviewer's criticism. The two are complementary. This feature builds on the shipped review-round machinery and skeptic/controller pipeline under `internal/revise/SKILL.md`, and its post-repair reviewer check mirrors the hardened gate's post-fix re-certification pattern.
+The second-opinion gates feature ([second-opinion-gates](second-opinion-gates.md)) distinguishes its controller-probes-recommendation from this design: there the controller exchanges a few bounded messages with a second-opinion agent to probe the motivation behind a change recommendation; here the skeptical verifier of a confirmed and admitted finding defends an exact repair against the originating reviewer's criticism. The two are complementary. [Contract-calibrated revise admission](contract-calibrated-revise-admission.md) is the mandatory boundary between factual confirmation and this repair path. This feature builds on the shipped review-round machinery and skeptic/controller pipeline under `internal/revise/SKILL.md`, and its post-repair reviewer check mirrors the hardened gate's post-fix re-certification pattern.
 
 ## Status
 
-Draft design in the backlog; not yet hardened by a revise-spec review. The review-round machinery and skeptic/controller pipeline it builds on are shipped, but the already in-flight universal-skill MVP must first establish their final engine path.
+Draft design in the backlog; not yet hardened by a revise-spec review. The review-round machinery and skeptic/controller pipeline it builds on are shipped. Contract-calibrated admission must land before this repair path can treat factual truth and change authority as separate decisions.
 
 ## Requirements
 
@@ -56,4 +56,4 @@ Draft design in the backlog; not yet hardened by a revise-spec review. The revie
 
 Landing order: the wave-convergence lifecycle (wave-lifecycle.md) shipped 2026-08-14 in the 2.2.0 batch; SKILL.md's lifecycle sections are wave-era prose. Derive lifecycle-touching edits from that prose.
 
-**Requires:** [Agent-host-agnostic Nightshift: MVP - Universal skill entry points](agent-host-agnostic-nightshift.md) (FEATURES.md index entry).
+**Requires:** [Contract-calibrated revise admission](contract-calibrated-revise-admission.md) (FEATURES.md index entry).

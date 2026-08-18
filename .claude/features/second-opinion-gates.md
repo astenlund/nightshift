@@ -87,7 +87,7 @@ Five design questions surfaced during the first spec review were resolved rather
 
 ## Relationship to neighboring features
 
-Subsumes the holistic final reviewer role, whose same-family high-tier read is weaker than a different-family read for the specific purpose of catching correlated misses. Gives the [durable scope anchor](durable-scope-anchor.md) its concrete carrier. Preserves payload isolation: regular reviewers still see only their assigned dimension plus common context; the second opinion is the deliberate holistic exception. Complements the [adversarial-repair-dialogue](adversarial-repair-dialogue.md): the controller checks with the same second-opinion agent after applying its fix, mirroring that dialogue's reviewer-critic post-repair check.
+Subsumes the holistic final reviewer role, whose same-family high-tier read is weaker than a different-family read for the specific purpose of catching correlated misses. Gives the [durable scope anchor](durable-scope-anchor.md) its concrete carrier. Preserves payload isolation: regular reviewers still see only their assigned dimension plus common context; the second opinion is the deliberate holistic exception. Every second-opinion finding passes through factual verification and [contract-calibrated revise admission](contract-calibrated-revise-admission.md) before repair, so the holistic seat cannot expand the approved contract merely by reporting a true adjacent issue. Complements the [adversarial-repair-dialogue](adversarial-repair-dialogue.md): the controller checks with the same second-opinion agent after applying its admitted fix, mirroring that dialogue's reviewer-critic post-repair check.
 
 ## Unclaimed design direction: cap review phases at two
 
@@ -109,7 +109,7 @@ Draft proposal; not yet designed as a buildable skill or spec. The review-phase 
 
 Landing order: the wave-convergence lifecycle (wave-lifecycle.md) shipped 2026-08-14 in the 2.2.0 batch. The agreement gate lands before this feature. When this feature is picked up, re-derive the gate placement against the wave model: the hardened gate maps onto the verifier seat, and the phase-cap open question dissolves into the wave and verifier caps (30 rounds, 10 verifier launches per run).
 
-**Requires:** [Present chosen spec for agreement before work](present-spec-for-agreement.md).
+**Requires:** [Present chosen spec for agreement before work](present-spec-for-agreement.md), [Contract-calibrated revise admission](contract-calibrated-revise-admission.md).
 
 ## Hardening
 

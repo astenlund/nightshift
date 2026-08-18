@@ -169,6 +169,7 @@ The predicate is tested for refusal in every failing combination independently, 
 ## Relationship to neighboring features
 
 - **second-opinion-gates**: the completion predicate is written against the current shipped semantics (phase ceiling 10, completed-by-convergence). A future phase redesign is deliberately out of scope; see that file's recorded unclaimed direction. Because the transition table is declared configuration, adopting a phase-2 cap later is a table-and-fixture update in that change, not a rewrite of this module.
+- **contract-calibrated-revise-admission**: this transition substrate lands first against current behavior. Admission then updates the module and fixtures atomically for the `contract-clean` certification kind, contract-context invalidation, and every verifier stamp basis rather than leaving those branches as prose-only exceptions.
 - **light-revise-mode** (exploring): if a lightened single-reviewer shape changes the convergence invariant mapping, its own change updates the affected fixtures rather than redefining the transition module here.
 - **revise-round.test.js**: that suite stays the round-dispatch safety net; this suite covers the decisions above the round, so the two do not overlap on the same assertions.
 
@@ -181,7 +182,7 @@ Migrated into the backlog on 2026-08-11, with the seven design decisions above c
 - The review engine's phase/round/checkpoint machinery and its prose rules in `internal/revise/SKILL.md` (shipped by the universal-skill MVP; this feature extracts and tests the decisions they already specify).
 - The existing fixture-test convention demonstrated by `skills/ready/ready.test.js` and `internal/revise/revise-round.test.js` (shipped; no framework, exit code 1 on failure).
 
-**Requires:** [Agent-host-agnostic Nightshift: MVP - Universal skill entry points](agent-host-agnostic-nightshift.md) (FEATURES.md index entry).
+**Requires:** none (FEATURES.md index entry).
 
 ## Hardening
 

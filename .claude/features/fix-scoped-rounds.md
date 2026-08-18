@@ -6,7 +6,7 @@ Feature: within a wave-lifecycle review run, a round 2+ reviewer whose dimension
 
 Today every round delivers each active dimension's reviewer its full normal payload: the whole-scope cumulative patch and in-scope live file set, or the shard's pathspec-cut slice when the scope is sharded. A dimension stays active into round 2+ after every finding-bearing review. Its previous findings may have produced own-dimension fixes, an authoritative deferred follow-up without an artifact edit, or only refuted or acknowledgement-only dispositions. Only a later explicit clean LGTM certifies the dimension.
 
-This feature narrows the payload only when a round 2+ reviewer had own-dimension fixes applied at the previous round boundary: it receives only those fixes plus surrounding context, because its open question is "are the fixes sound, and did they leave the dimension clean?". A dimension active with zero own-dimension applied fixes keeps its normal whole-scope or shard-slice delivery, whether the prior round produced deferred, refuted, or acknowledgement-only findings, because its open question is still the artifact's cleanliness, not any fix's soundness. A cell's first review of any fingerprint remains whole-scope, unchanged.
+This feature narrows the payload only when a round 2+ reviewer had own-dimension fixes applied from admitted findings at the previous round boundary: it receives only those fixes plus surrounding context, because its open question is "are the fixes sound, and did they leave the dimension clean?". A dimension active with zero own-dimension applied fixes keeps its normal whole-scope or shard-slice delivery, whether the prior round produced deferred, refuted, or acknowledgement-only findings, because its open question is still the artifact's cleanliness, not any fix's soundness. A `contract-clean` result is a no-fix certification and never creates a narrowed delivery from an out-of-contract observation. A cell's first review of any fingerprint remains whole-scope, unchanged.
 
 ## Design decisions (settled with the user, 2026-08-13)
 
@@ -29,6 +29,10 @@ This extends a deferral the design already accepts: today a dimension that goes 
 - **Fix attribution**: delivering own-dimension fixes requires the applied-changes ledger to record each fix's originating dimension. The current `.tmp/revise-state.md` applied-changes entries carry dimension text informally; the spec must make the attribution a first-class field.
 - **Delivery-rule interaction**: `code.md`'s "always include prior-round fixes in subsequent-round patches" rule exists to prevent fresh reviewers re-flagging resolved issues from a stale patch. Narrowed rounds satisfy the rule's intent differently: the reviewer cannot see unrelated resolved issues at all, and the fixes it does see are presented in their live fixed form. The rule's prose needs restating, not repealing, since whole-scope deliveries (a cell's first review of any fingerprint, and round 2+ deliveries to zero-fix active dimensions) still rely on it.
 
+## Relationship to contract admission
+
+[Contract-calibrated revise admission](contract-calibrated-revise-admission.md) decides whether a verified finding authorizes change before this feature attributes or narrows around a fix. Only admitted, applied fixes enter the own-dimension fix ledger. Out-of-contract observations remain visible as acknowledgements but cannot generate a fix-scoped payload, and `contract-clean` is a completed no-fix certification rather than a zero-fix active state.
+
 ## Status
 
 Captured 2026-08-13 from a user idea, with the design decisions above settled in the same dialogue. The zero-fix active-dimension branch keeps normal delivery for every active cell without an own-dimension fix, including cells carried forward by deferred, refuted, or acknowledgement-only findings. Reconciled on 2026-08-18 after clean-LGTM certification shipped. Not yet designed as a buildable change; to be hardened by a revise-spec run before planning.
@@ -39,7 +43,7 @@ Captured 2026-08-13 from a user idea, with the design decisions above settled in
 - The code delivery rules in `internal/revise/code.md` (existing; cumulative-patch generation is the whole-scope baseline the narrowed payload replaces in round 2+).
 - Fix attribution by originating dimension in the applied-changes state (new; see open points).
 
-**Requires:** [Agent-host-agnostic Nightshift: MVP - Universal skill entry points](agent-host-agnostic-nightshift.md) (FEATURES.md index entry).
+**Requires:** [Contract-calibrated revise admission](contract-calibrated-revise-admission.md) (FEATURES.md index entry).
 
 ## Hardening
 

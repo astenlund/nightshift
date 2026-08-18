@@ -223,15 +223,15 @@ Draft exploring an explicit compaction boundary after plan hardening and before 
 
 ### [Second-opinion gates](features/second-opinion-gates.md)
 
-Gate the lifecycle with cheap single-pass reads from a different-model-family agent: one at the completed requirements list before a spec exists, one at the freshly written, decision-complete, and currently approved spec, and one at the hardened and currently approved spec. Each read lands before the artifact feeds the next stage, finding-driven design edits return through the agreement gate, and over the final artifact the hardened gate replaces the holistic third-phase reviewer role. Findings enter the normal skeptic/controller pipeline; the gate is a reader, not an authority. Two co-equal cross-family channels are feature-detected at runtime: a `consult`-style MCP tool (reference implementation: McpConsultant) and a non-interactive agent-harness CLI from a different vendor (reference implementation: Codex `codex exec`); the same-family higher-tier or higher-effort read is the fallback only when neither is present.
+Gate the lifecycle with cheap single-pass reads from a different-model-family agent: one at the completed requirements list before a spec exists, one at the freshly written, decision-complete, and currently approved spec, and one at the hardened and currently approved spec. Each read lands before the artifact feeds the next stage, finding-driven design edits return through the agreement gate, and over the final artifact the hardened gate replaces the holistic third-phase reviewer role. Findings enter the normal factual-verification and contract-admission pipeline before repair; the gate is a reader, not an authority. Two co-equal cross-family channels are feature-detected at runtime: a `consult`-style MCP tool (reference implementation: McpConsultant) and a non-interactive agent-harness CLI from a different vendor (reference implementation: Codex `codex exec`); the same-family higher-tier or higher-effort read is the fallback only when neither is present.
 
-**Requires:** [Present chosen spec for agreement before work](features/present-spec-for-agreement.md).
+**Requires:** [Present chosen spec for agreement before work](features/present-spec-for-agreement.md), [Contract-calibrated revise admission](features/contract-calibrated-revise-admission.md).
 
 ### [Adversarial repair dialogue](features/adversarial-repair-dialogue.md)
 
-Resolves a skeptic-confirmed finding through an agent-to-agent repair dialogue: the confirming skeptic resumes as repair author and the originating reviewer as its adversarial critic, iterating focused turns until the critic accepts the repair, a narrow disagreement blocks, or a safety limit stops the exchange. Neither agent edits the artifact; the controller applies the repair from a returned resolution package. Reviewer acceptance validates the proposal only and never produces LGTM, and any independent pre-existing problem found during the dialogue enters the normal fresh-skeptic finding pipeline.
+Resolves a skeptic-confirmed, controller-admitted finding through an agent-to-agent repair dialogue: the confirming skeptic resumes as repair author and the originating reviewer as its adversarial critic, iterating focused turns until the critic accepts the repair, a narrow disagreement blocks, or a safety limit stops the exchange. Neither agent edits the artifact; the controller applies the repair from a returned resolution package. Reviewer acceptance validates the proposal only and never produces LGTM, and any independent pre-existing problem found during the dialogue enters the normal fresh-skeptic and admission pipeline.
 
-**Requires:** none.
+**Requires:** [Contract-calibrated revise admission](features/contract-calibrated-revise-admission.md).
 
 ### [Durable run identity and concurrency protection](features/durable-run-identity-concurrency.md)
 
@@ -245,6 +245,12 @@ Turn the revise review engine's phase, convergence, and completion decisions int
 
 **Requires:** none.
 
+### [Manual review dedup parity](features/manual-review-dedup-parity.md)
+
+Gives Workflow and capable manual dispatch the same conservative same-round finding deduplication. Findings share a verdict only when premise, affected surface, deciding evidence, and frozen contract context when present establish that one fresh skeptic decides both complete claims. Manual registration is completion-driven across earlier in-flight and completed same-round verdicts, failed or uncertain matching launches a fresh skeptic, completed results retain the canonical verdict and source identity, and interruption recovery never relies on a durable pre-verdict dedup decision. Cross-round and cross-run verdict reuse remain explicitly deferred.
+
+**Requires:** none.
+
 ### [Content fingerprint helper](features/content-fingerprint-helper.md)
 
 Centralizes selector-aware content extraction, canonical byte framing, and hashing in one bundled Node helper so no controller or reviewer reimplements the recipe. Its byte-oriented core returns selected bytes plus the full digest consumed by the shared agreement skill from one captured baseline, while tagged `partial` (`p-` + 12 hex) and `whole-file` (`w-` + 12 hex) path wrappers serve existing consumers; `partial` excludes only `## Hardening`, so a `Status:` line moves both modes. It replaces the awk/sha256sum recipes in handover and revise, including the code-review patch path, and pins cross-generation parity with the agreement-owned golden corpus.
@@ -253,15 +259,21 @@ Centralizes selector-aware content extraction, canonical byte framing, and hashi
 
 ### [Durable scope anchor](features/durable-scope-anchor.md)
 
-Every design spec carries a short, durable scope anchor near its goal: a paraphrase of the user's requested outcome plus the material exclusions bounding it, without restating the detailed design. The anchor is frozen unless the user revises the outcome (the revision itself recorded), and copied verbatim into every reviewer payload as common context so fresh reviewers in every cell and round calibrate against the same ground truth. It grounds scope expansion without immunizing the chosen design's wiring from findings.
+Every design spec carries a short, durable `## Scope anchor` near its goal with stable `Requested outcome:` and `Material exclusions:` labels. `Material exclusions: None stated.` is the sole deliberate-empty form and requires agreement; a missing line is incomplete. The anchor is frozen unless the user revises the outcome or exclusions, with the revision recorded, and copied verbatim into reviewer, skeptic, dedup-judge, controller-admission, and verifier context. Interactive legacy specs are backfilled before launch, unattended fresh runs fail closed, and existing checkpoints continue their recorded legacy policy or restart explicitly. It grounds scope expansion without immunizing the chosen design's wiring from findings.
 
 **Requires:** none.
+
+### [Contract-calibrated revise admission](features/contract-calibrated-revise-admission.md)
+
+Separates factual verification from authority to change an artifact. Every confirmed or judgment-call finding receives a controller-owned `admitted`, `out-of-contract`, or `uncertain` actionability record grounded in an exact scope-anchor, run-basis, verified-constraint, or correctness-floor citation; only admitted findings may enter repair or authoritative follow-up. Necessary enablers are admitted through a causal trace rather than a separate class, while adjacent improvements and explicit exclusions remain distinguishable out-of-contract cases. A narrow `contract-clean` certification lets a cell or verifier complete when every true finding is outside the frozen contract, with full fingerprint invalidation, crash-resume behavior, spec-less run-basis handling, legacy checkpoint isolation, and conditional durable provenance for nontrivial hardening-derived machinery.
+
+**Requires:** [Durable scope anchor](features/durable-scope-anchor.md), [Review orchestration tests](features/review-orchestration-tests.md).
 
 ### [Fix-scoped follow-up rounds](features/fix-scoped-rounds.md)
 
-Narrows the round 2+ payload for a dimension whose own findings produced applied fixes to those fixes plus surrounding context; every active dimension without an own-dimension fix keeps normal delivery, including cells carried by deferred, refuted, or acknowledgement-only findings. The reactivation wave restores full coverage, and context findings still enter the normal skeptic pipeline. Completion is unaffected because a narrowed-payload review never certifies a fingerprint: certification requires a full-payload review, so completion still rests on full-coverage certifications plus the verifier stamp. Primary rationale is symmetry: a dimension re-reviewing its own fixes no longer incidentally adjudicates siblings' fixes (only zero-fix active dimensions retain that sight via normal delivery), reducing the accidental privilege still-active dimensions hold today; token and wall-clock savings are a hoped-for secondary benefit, at the cost of catching cross-file fix damage a wave later.
+Narrows the round 2+ payload for a dimension whose own admitted findings produced applied fixes to those fixes plus surrounding context; every active dimension without an own-dimension fix keeps normal delivery. A `contract-clean` result is a no-fix certification and never causes narrowing from an out-of-contract observation. The reactivation wave restores full coverage, and context findings still enter the normal skeptic and admission pipeline. Completion is unaffected because a narrowed-payload review never certifies a fingerprint: certification requires a full-payload review, so completion still rests on full-coverage certifications plus the verifier stamp. Primary rationale is symmetry: a dimension re-reviewing its own fixes no longer incidentally adjudicates siblings' fixes, reducing the accidental privilege still-active dimensions hold today; token and wall-clock savings are a hoped-for secondary benefit, at the cost of catching cross-file fix damage a wave later.
 
-**Requires:** none.
+**Requires:** [Contract-calibrated revise admission](features/contract-calibrated-revise-admission.md).
 
 ## Lifecycle gates
 
