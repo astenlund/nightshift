@@ -48,19 +48,7 @@ function requireAbsent(filePath) {
 }
 
 function removeProcedureEnvelope(text) {
-  const withoutFrontmatter = text.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n/, '')
-  const probe = /^## Entry probe\r?\n/m.exec(withoutFrontmatter)
-  if (probe === null) {
-    return withoutFrontmatter
-  }
-
-  const afterProbe = probe.index + probe[0].length
-  const nextHeading = /^## /m.exec(withoutFrontmatter.slice(afterProbe))
-  if (nextHeading === null) {
-    return withoutFrontmatter.slice(0, probe.index)
-  }
-
-  return withoutFrontmatter.slice(0, probe.index) + withoutFrontmatter.slice(afterProbe + nextHeading.index)
+  return text.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n/, '').replace(/\r?\n/g, '\n')
 }
 
 function normalizeProcedure(entryName, text) {
@@ -71,7 +59,7 @@ function normalizeProcedure(entryName, text) {
     normalized = normalized.split(oldPhrase).join(newPhrase)
   }
 
-  return normalized
+  return normalized.replace(/\r?\n/g, '\n')
 }
 
 function listDirectChildDirectories(directoryPath) {
@@ -122,6 +110,13 @@ test('procedure fidelity retains each substantial workflow except its declared t
   }
 })
 
+test('production procedures contain no smoke-only probe branch', () => {
+  for (const skillName of PUBLIC_SKILLS) {
+    assert.equal(readRequiredFile(join(PUBLIC_SKILLS_ROOT, skillName, 'SKILL.md')).includes('NIGHTSHIFT_ENTRY_PROBE:'), false, `${skillName} must not retain a smoke probe`)
+  }
+  assert.equal(readRequiredFile(join(ENGINE_ROOT, 'SKILL.md')).includes('NIGHTSHIFT_ENTRY_PROBE:'), false, 'revise engine must not retain a smoke probe')
+})
+
 test('current public references reject retired command and revise engine paths', () => {
   const pathsToAudit = [
     join(REPOSITORY_ROOT, 'README.md'),
@@ -165,10 +160,14 @@ test('revise topology gives every wrapper its fixed forwarding contract', () => 
   const bodies = []
   for (const [wrapperName, wrapper] of Object.entries(REVISE_WRAPPERS)) {
     const { body } = parseFrontmatter(join(REPOSITORY_ROOT, 'skills', wrapperName, 'SKILL.md'))
+    const lines = body.split(/\r?\n/)
     const artifactToken = new RegExp('fixed artifact type `' + wrapper.artifactType + '`', 'g')
     assert.equal([...body.matchAll(artifactToken)].length, 1, `${wrapperName} must have one fixed artifact type token`)
     assert.equal(body.includes(ENGINE_PATH), true, `${wrapperName} must name the relative engine path`)
-    assert.equal(body.includes('REVISE_ENGINE_UNAVAILABLE'), true, `${wrapperName} must name the unavailable-engine token`)
+    const unavailableLine = 'REVISE_ENGINE_UNAVAILABLE ../../internal/revise/SKILL.md'
+    const unavailableLineIndexes = lines.flatMap((line, index) => line === unavailableLine ? [index] : [])
+    assert.deepEqual(unavailableLineIndexes.length, 1, `${wrapperName} must contain exactly one unavailable-engine line`)
+    assert.equal(lines[unavailableLineIndexes[0] - 1], 'If the engine is missing or unreadable, report exactly this single line, then stop before starting review work.', `${wrapperName} must stop before review after the unavailable-engine line`)
     assert.equal(body.includes('When the host supplies usable scope text, pass it to the engine without intentional normalization.'), true, `${wrapperName} must forward usable scope`)
     assert.equal(body.includes('When scope is missing, empty, or whitespace-only, omit it so the engine performs its existing inference and clarification behavior.'), true, `${wrapperName} must preserve omitted-scope inference`)
     bodies.push(body)

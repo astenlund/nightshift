@@ -1,0 +1,15 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["skills"],
+  "properties": {
+    "skills": {
+      "type": "array",
+      "minItems": 0,
+      "maxItems": 10,
+      "items": {
+        "enum": ["nightshift:exploring", "nightshift:handover", "nightshift:init-backlog", "nightshift:ready", "nightshift:revise-code", "nightshift:revise-docs", "nightshift:revise-lore", "nightshift:revise-plan", "nightshift:revise-spec", "nightshift:revise"]
+      }
+    }
+  }
+}

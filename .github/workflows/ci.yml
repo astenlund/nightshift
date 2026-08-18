@@ -18,3 +18,4 @@ jobs:
       - run: node internal/revise/revise-round.test.js
       - run: node internal/revise/rigor.test.js
       - run: node --test tests/universal-skill-topology.test.js
+      - run: node tests/host-discovery-smoke.test.js
