@@ -215,6 +215,10 @@ Draft exploring two mechanisms for sharing the revise engine's common context ac
 
 Draft exploring how to bound or scope the revise engine's whole-run acknowledgement context so retry rounds cannot grow every later reviewer and verifier payload without limit. The design must preserve the evidence that suppresses repeated findings while defining compaction, persistence, invalidation, verifier visibility, failure behavior, and parity between Workflow and manual dispatch.
 
+### [Pre-implementation context reset](features/pre-implementation-context-reset.md)
+
+Draft exploring an explicit compaction boundary after plan hardening and before implementation, followed by a mandatory full re-read of the governing spec and hardened plan before implementation dispatch.
+
 ## Review hardening
 
 ### [Second-opinion gates](features/second-opinion-gates.md)
