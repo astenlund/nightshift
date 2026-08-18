@@ -28,7 +28,7 @@ This ledger records why the MVP's nontrivial decisions exist. It calibrates revi
 
 **Existing constraints:** keep every workflow and shared engine single-sourced; preserve current production behavior while discovery moves; retain revise scope inference when a wrapper receives no scope; keep correctness-critical missing capabilities fail-closed; and leave dispatch, instruction routing, lore routing, resource resolution, and packaging to their named later slices.
 
-**Hardening-derived:** user-visible `REVISE_ENGINE_UNAVAILABLE` diagnostics make the wrapper failure boundary observable; wrapper source owns one exact stable fallback line, while installed-host smoke accepts a nonempty provider-rendered diagnostic because Codex may replace source literals at its native error boundary; the topology test proves public and private ownership without freezing private implementation contents; distinct artifact-specific wrapper triggers preserve the discoverability rationale without freezing exact wording; clean and repeat host smoke proves fresh discovery, the legacy transition, and same-candidate replacement; a committed offline `2.4.5` baseline makes that transition reproducible; side-effect-free entry and wrapper checks prove dispatch without starting production workflows; a procedure-fidelity check prevents routing-only smoke from accepting stubbed migrations; installed-engine resolution prevents packaging from silently omitting production resources; candidate-byte binding prevents stale results; and provisional local completion plus an all-host release gate distinguishes honest local progress from release authority.
+**Hardening-derived:** user-visible `REVISE_ENGINE_UNAVAILABLE` diagnostics make the wrapper failure boundary observable, with wrapper source owning one exact stable fallback line; the topology test proves public and private ownership without freezing private implementation contents; distinct artifact-specific wrapper triggers preserve the discoverability rationale without freezing exact wording; clean and repeat host smoke proves fresh discovery, the legacy transition, and same-candidate replacement; a committed offline `2.4.5` baseline makes that transition reproducible; exact host catalogs and installed-byte identity prove the live discovery seam without re-enacting deterministic workflow behavior through nondeterministic model calls; a procedure-fidelity check prevents discovery smoke from accepting stubbed migrations; installed-engine resolution plus deterministic wrapper mapping proves the packaged wrapper-to-engine boundary; candidate-byte binding prevents stale results; and provisional local completion plus an all-host release gate distinguishes honest local progress from release authority.
 
 ## Current host coupling
 
@@ -84,23 +84,26 @@ A deterministic topology test must prove:
 
 Installed-host smoke covers Claude Code and Codex through the plugin mechanisms each host supports. For each host it runs:
 
-- `clean`: install the candidate into an empty isolated profile and verify discovery and invocation;
+- `clean`: install the candidate into an empty isolated profile and verify exact discovery and installed bytes;
 - `repeat`: install the committed `2.4.5` legacy fixture, verify its old topology, replace it with the candidate and verify the new topology, then apply the same candidate once more and verify it again.
 
-The legacy baseline is a committed offline representation of the `2.4.5` public topology so the migration input cannot drift. Baseline checks require discovery of `ready`, `exploring`, and public `revise`; Claude also proves its seven legacy command entries, while Codex proves those command-only entries are not skills. The implementation plan chooses the smallest faithful baseline and invocation fixtures.
+The legacy baseline is a committed offline representation of the `2.4.5` public topology so the migration input cannot drift. Baseline checks require every installed fixture file to match the committed fixture byte-for-byte and require discovery of `ready`, `exploring`, and public `revise`; Claude also proves its seven legacy command entries, while Codex proves those command-only entries are not skills. The implementation plan chooses the smallest faithful baseline and installation fixtures.
 
-Every candidate checkpoint requires all nine public skills, no public `revise`, no legacy command surface, no installed `skills/revise` tree, and a side-effect-free host invocation check for each newly migrated substantial entry: `init-backlog`, `handover`, `revise-docs`, and `revise-lore`. Success means the intended installed entry is reached and identified by an entry-specific observation without starting its production workflow. `ready` and `exploring` require discovery only because they are already public skills before this slice. The three revise wrappers are checked separately for artifact-type selection, forwarding of representative usable scope text, omitted or blank scope inference, and a nonempty schema-valid provider-rendered missing or unreadable engine diagnostic without running a production review loop. Each installed candidate checkpoint also proves that every production wrapper can resolve the installed shared engine, its artifact-specific profile, and its required bundled runtime resources without executing the engine.
+Every candidate checkpoint requires all nine public skills, no public `revise`, no legacy command surface, no installed `skills/revise` tree, exact installed candidate bytes, and resolution of the installed shared engine, all three artifact profiles, and their required bundled runtime resources. The second identical-candidate checkpoint in repeat mode repeats the same discovery, byte, legacy-absence, and engine-closure checks. Installed-host smoke does not invoke workflow procedures.
+
+Deterministic tests are the exhaustive authority for all nine public entries, complete procedure fidelity, all three revise-wrapper mappings, usable-scope forwarding, omitted or blank scope inference, the exact missing-engine fallback line, and bundled-resource references. Live smoke localizes installation and discovery failures while keeping acceptance reliable and bounded.
 
 Acceptance also proves that each migrated substantial entry preserves its complete legacy procedure and trigger contract except for the approved topology and reference changes. The implementation plan chooses the proof technique; entry routing alone is insufficient.
 
-The smoke must bind every result to the candidate bytes it installed, reject stale or mixed evidence, isolate host state from the developer's normal profile, avoid recording credentials, and clean its disposable state. The implementation plan owns the fixtures, safe invocation technique, engine-isolation technique, and the simplest reliable evidence mechanism. This design does not prescribe a process architecture, event grammar, serialization format, lock protocol, or recovery state machine.
+The smoke must bind every result to the candidate bytes it installed, reject stale or mixed evidence, isolate host state from the developer's normal profile, avoid recording credentials, and clean its disposable state. The implementation plan owns the fixtures, safe host-command technique, installed-engine verification technique, and the simplest reliable evidence mechanism. This design does not prescribe a process architecture, event grammar, serialization format, lock protocol, or recovery state machine.
 
 An unavailable required host may be recorded as provisional for local completion, with the missing host and required external run named in the report. A push or release containing this MVP still requires clean and repeat passes on both Claude Code and Codex against the same candidate. Prose inspection or a pass from an older candidate cannot satisfy that gate.
 
 #### Explicit non-goals
 
 - Command shims are not retained.
-- Production revise execution is not part of the wrapper smoke; later review-adapter validation owns it.
+- Workflow invocation is not part of installed-host smoke; later review-adapter validation owns production execution.
+- Live smoke does not duplicate the deterministic matrix for entries, wrappers, scopes, or failure variants.
 - This slice does not redesign host dispatch, instruction files, lore routing, resource resolution, manifests, or installation guidance.
 - The host smoke is acceptance infrastructure, not a new general-purpose plugin conformance framework.
 
@@ -196,3 +199,6 @@ Captured and sliced from the 2026-08-17 cross-host audit, with the backlog shape
 
 - revise-spec graduated 2026-08-18 12:23 at 00477d1, scope: whole file, content: 7bd65df7
 - revise-spec refreshed 2026-08-18 16:51 at a71e414, scope: whole file, content: 93ee0ad0 (host-rendered diagnostic reconciliation)
+- revise-spec refreshed 2026-08-18 19:00 at bb71311, scope: whole file, content: 411c85fc (seam-smoke scope correction)
+- revise-spec refreshed 2026-08-18 19:18 at bb71311, scope: whole file, content: 2dde2718 (wrapper-local sentinel correction)
+- revise-spec refreshed 2026-08-18 19:41 at bb71311, scope: whole file, content: 98d7eeda (discovery-only smoke correction)
