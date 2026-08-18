@@ -275,7 +275,7 @@ Moves Nightshift's canonical workflow surfaces and internal contracts from Claud
 
 **Slices:**
 
-- **MVP - Universal skill entry points.** Move every public workflow to a canonical skill and retain Claude command files only as compatibility shims.
+- **MVP - Universal skill entry points.** Expose nine canonical public skills, remove legacy Claude command files, and keep the shared revise engine internal behind the three discoverable artifact-specific wrappers.
 - **Portable resource and fingerprint contract.** Remove host-named plugin-root and shell-specific hashing assumptions from bundled-resource consumers.
   **Requires:** [Content fingerprint helper](features/content-fingerprint-helper.md).
 - **Host-neutral scaffolding and instruction routing.** Make `init-backlog`, project instructions, and global instructions work without assuming one host's filenames or instruction runtime.

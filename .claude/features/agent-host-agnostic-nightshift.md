@@ -26,15 +26,19 @@ The migration closes these observed gaps:
 
 ### MVP: universal skill entry points
 
-Move each public workflow to `skills/<name>/SKILL.md` as its canonical source. Retain `commands/*.md` only as thin Claude compatibility shims that invoke the matching skill and contain no duplicated procedure. `revise-code`, `revise-plan`, and `revise-spec` remain separate public skills that supply a fixed artifact type to the internal `revise` engine. Natural-language invocation and explicit scope both remain supported; a missing or ambiguous scope follows the existing inference and ask rules.
+Move every public workflow to `skills/<name>/SKILL.md` as its canonical source and remove `commands/` entirely. Current Claude Code exposes plugin skills directly through the same namespaced slash-command surface and treats command files as legacy, so compatibility shims would duplicate discovery without preserving a distinct supported path. The public set is exactly `init-backlog`, `ready`, `exploring`, `handover`, `revise-code`, `revise-plan`, `revise-spec`, `revise-docs`, and `revise-lore`.
 
-Update every cross-reference to name workflows as skills or provider-neutral entry points. This includes handover's nested calls, README tables, failure suggestions emitted by `ready.js`, and repository architecture guidance. The MVP is complete when a clean Claude Code install and a clean Codex install discover the same public workflow set and each compatibility command resolves to exactly one canonical skill.
+Keep `revise-code`, `revise-plan`, and `revise-spec` as separate public skills for discoverability. Each wrapper supplies one fixed artifact type and forwards the user's scope unchanged. Move the shared revise engine and its parameter files, workflow script, and tests to `internal/revise/`, outside every host's public skill-discovery tree. The wrappers load that engine through a relative resource reference; a missing or unreadable engine fails closed with the unresolved resource named. The engine retains the existing scope inference and ask rules when scope is absent or ambiguous.
+
+Move the four substantial command procedures into their same-named public skills without redesigning their runtime behavior. Claude-specific task, dispatch, instruction-routing, lore, and bundled-resource mechanics remain until their dedicated later slices replace them. Natural-language invocation and explicit scope remain supported.
+
+Update every cross-reference to name workflows as skills or provider-neutral entry points. This includes handover's nested calls, README tables, failure suggestions emitted by `ready.js`, and repository architecture guidance. Add a topology test that asserts the exact public set, absence of legacy command files, required skill entry files, wrapper-to-engine references, fixed artifact types, and scope forwarding; run it in CI beside the relocated revise suites and the existing ready suite. The MVP is complete when clean Claude Code and Codex installs discover the same nine public workflows, expose no internal revise engine, and pass their available discovery smoke checks. An unavailable host is recorded as provisional rather than inferred from repository structure.
 
 ### Portable resource and fingerprint contract
 
 Resolve bundled files relative to the active skill or through one provider-neutral plugin-root resolver. Canonical skill prose does not depend on a host-named environment variable. A host adapter may consume native variables, including compatibility aliases, but converts them to the common resource contract before workflow logic uses them. A missing or outside-plugin resource path fails closed and names the unresolved resource.
 
-Land the Content fingerprint helper before this slice, then replace the `awk`, `sha256sum`, and `cut` recipes in handover and revise with that Node helper. Moving handover into a skill also moves the canonical provenance rules out of `commands/handover.md`; revise parameter files reference the new skill resource or helper rather than the compatibility shim.
+Land the Content fingerprint helper before this slice, then replace the `awk`, `sha256sum`, and `cut` recipes in handover and revise with that Node helper. The handover skill owns the canonical provenance rules after the MVP; revise parameter files reference that skill resource or the helper rather than a retired command file.
 
 ### Host-neutral scaffolding and instruction routing
 
@@ -82,7 +86,7 @@ Make the manifest description and README provider-neutral. Ship the manifest for
 
 Add fixture or smoke coverage for the adapter boundaries and generated files. The completion matrix includes:
 
-- public skill discovery and Claude command-shim delegation;
+- public skill discovery, absence of legacy command surfaces, and exclusion of the internal revise engine;
 - fresh and repeated scaffold runs with no instructions, one substantive instruction source, and conflicting substantive sources;
 - `ready` and `exploring` from both installed layouts;
 - spec, plan, and code review through Claude Workflow, Claude manual agents, and Codex collaboration agents;
@@ -103,13 +107,13 @@ Every matrix cell either passes or records a deliberate unsupported-capability d
 
 ## Status
 
-Captured and sliced from the 2026-08-17 cross-host audit, with the backlog shape approved by the user. Each slice still requires its normal brainstorming and revise-spec hardening before implementation.
+Captured and sliced from the 2026-08-17 cross-host audit, with the backlog shape approved by the user. The universal-skill MVP design was approved on 2026-08-18; every later slice still requires its own brainstorming, and every slice requires revise-spec hardening before implementation.
 
 ## Requirements
 
 - Preserve every current review invariant while changing dispatch mechanics.
 - Keep `.claude/` as the shared backlog-data namespace.
-- Keep canonical workflow procedures single-sourced in skills; compatibility surfaces contain delegation only.
+- Keep each public workflow single-sourced in its public skill and each shared engine single-sourced outside the public skill-discovery tree; public wrappers contain delegation only.
 - Treat absent correctness-critical host capabilities as explicit fail-closed states.
 
 **Requires:** none (FEATURES.md index entry; slice-level gates are authoritative).
