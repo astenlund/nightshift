@@ -15,5 +15,6 @@ jobs:
         with:
           node-version: 22
       - run: node skills/ready/ready.test.js
-      - run: node skills/revise/revise-round.test.js
-      - run: node skills/revise/rigor.test.js
+      - run: node internal/revise/revise-round.test.js
+      - run: node internal/revise/rigor.test.js
+      - run: node --test tests/universal-skill-topology.test.js
