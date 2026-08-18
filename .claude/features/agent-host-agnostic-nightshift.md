@@ -184,7 +184,7 @@ Every matrix cell either passes or records a deliberate unsupported-capability d
 
 ## Status
 
-Captured and sliced from the 2026-08-17 cross-host audit, with the backlog shape approved by the user. The universal-skill MVP design was approved on 2026-08-18 and pruned to product behavior plus observable acceptance after its first hardening attempt over-specified the validation harness. Every later slice still requires its own brainstorming, and every slice requires revise-spec hardening before implementation.
+Captured and sliced from the 2026-08-17 cross-host audit, with the backlog shape approved by the user. The universal-skill MVP shipped in 2.5.0 after its design was approved on 2026-08-18 and pruned to product behavior plus observable acceptance after its first hardening attempt over-specified the validation harness. Later slices remain active; every later slice still requires its own brainstorming, and every slice requires revise-spec hardening before implementation.
 
 ## Requirements
 
@@ -202,3 +202,4 @@ Captured and sliced from the 2026-08-17 cross-host audit, with the backlog shape
 - revise-spec refreshed 2026-08-18 19:00 at bb71311, scope: whole file, content: 411c85fc (seam-smoke scope correction)
 - revise-spec refreshed 2026-08-18 19:18 at bb71311, scope: whole file, content: 2dde2718 (wrapper-local sentinel correction)
 - revise-spec refreshed 2026-08-18 19:41 at bb71311, scope: whole file, content: 98d7eeda (discovery-only smoke correction)
+- revise-spec refreshed 2026-08-18 20:27 at 351def0, scope: whole file, content: 593a8b9f (shipped-slice bookkeeping)
