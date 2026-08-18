@@ -211,6 +211,10 @@ Draft exploring a durable version marker on each backlog index file (a "backlog 
 
 Draft exploring two mechanisms for sharing the revise engine's common context across its N concurrent reviewers at cache-read prices with zero independence loss: a byte-identical prompt prefix (identical system prompt and first message, dimension criteria only in the divergent tail; hinges on unprobed cache-boundary mechanics) and a fork-of-primer variant (a fresh agent ingests only the common payload, then forks per dimension; provably caches today but reroutes attribution, repair, and model pinning through the primer). Fork-of-controller is the recorded anti-goal: it would contaminate fresh-eyes review with the controller's context.
 
+### [Bounded revise acknowledgement context](features/bounded-revise-acknowledgement-context.md)
+
+Draft exploring how to bound or scope the revise engine's whole-run acknowledgement context so retry rounds cannot grow every later reviewer and verifier payload without limit. The design must preserve the evidence that suppresses repeated findings while defining compaction, persistence, invalidation, verifier visibility, failure behavior, and parity between Workflow and manual dispatch.
+
 ## Review hardening
 
 ### [Second-opinion gates](features/second-opinion-gates.md)
@@ -233,7 +237,7 @@ Gives each Nightshift run a frozen durable identity and a scope-hash-scoped scra
 
 ### [Review orchestration tests](features/review-orchestration-tests.md)
 
-Turn the revise review engine's phase, convergence, and completion decisions into executable, fixture-tested invariants. Extracts the orchestration rules currently living only as SKILL.md prose into a deterministic `ready.js`-style transition module driven by mocked reviewer results: the wave-model invariant set (staleness sweep, certification clearing, cap asymmetry, stamp conjunction; re-derived per the file's supersession note), the rejected-findings disposition rules, run-level fail-closed execution, and a joined completion predicate refused in every non-completing combination.
+Turn the revise review engine's phase, convergence, and completion decisions into executable, fixture-tested invariants. Extracts the orchestration rules currently living only as SKILL.md prose into a deterministic `ready.js`-style transition module driven by mocked reviewer results: the wave-model invariant set (staleness sweep, certification clearing, and cap asymmetry; re-derived per the file's supersession note), the clean-LGTM disposition rule that keeps every finding-bearing cell active, every verifier-stamping branch including the exact no-fix authoritative-follow-up exception, run-level fail-closed execution, and a joined completion predicate refused in every non-completing combination.
 
 **Requires:** none.
 
@@ -251,7 +255,7 @@ Every design spec carries a short, durable scope anchor near its goal: a paraphr
 
 ### [Fix-scoped follow-up rounds](features/fix-scoped-rounds.md)
 
-Narrows the round 2+ payload for a dimension whose own findings produced applied fixes to those fixes plus surrounding context (a dimension active without applied fixes keeps normal delivery), until the reactivation wave restores full coverage; context findings still enter the normal skeptic pipeline. Completion is unaffected because a narrowed-payload review never certifies a fingerprint: certification requires a full-payload review, so completion still rests on full-coverage certifications plus the verifier stamp. Primary rationale is symmetry: a dimension re-reviewing its own fixes no longer incidentally adjudicates siblings' fixes (only zero-fix active dimensions retain that sight via normal delivery), reducing the accidental privilege still-active dimensions hold today; token and wall-clock savings are a hoped-for secondary benefit, at the cost of catching cross-file fix damage a wave later.
+Narrows the round 2+ payload for a dimension whose own findings produced applied fixes to those fixes plus surrounding context; every active dimension without an own-dimension fix keeps normal delivery, including cells carried by deferred, refuted, or acknowledgement-only findings. The reactivation wave restores full coverage, and context findings still enter the normal skeptic pipeline. Completion is unaffected because a narrowed-payload review never certifies a fingerprint: certification requires a full-payload review, so completion still rests on full-coverage certifications plus the verifier stamp. Primary rationale is symmetry: a dimension re-reviewing its own fixes no longer incidentally adjudicates siblings' fixes (only zero-fix active dimensions retain that sight via normal delivery), reducing the accidental privilege still-active dimensions hold today; token and wall-clock savings are a hoped-for secondary benefit, at the cost of catching cross-file fix damage a wave later.
 
 **Requires:** none.
 

@@ -50,7 +50,7 @@ Two kinds of artifacts, with a deliberate split:
   - `skills/exploring/`: the second view over that same parser output, rendering `## Exploring` drafts in full (titles, excerpts, breakout links) while `/nightshift:ready` lists them titles-only. It bundles no files of its own and invokes `skills/ready/ready.js`; it lives here rather than in `commands/` so both views of one JSON contract are the same artifact kind, reachable on every host that runs skills, and so its plugin-root reference is the settled skill-prose kind.
 
 The holistic verifier never launches before every applicable cell has certified the current fingerprint.
-A run completes only on the conjunction of that wave convergence and a clean verifier stamp over the same fingerprint.
+A run completes only on the conjunction of that wave convergence and a verifier stamp over the same fingerprint. A clean LGTM with a concrete nonblank verification note earns that stamp; only a current verifier round that applies no fix and creates an authoritative deferred follow-up may stamp without one.
 
 Skill prose references bundled files via `${CLAUDE_PLUGIN_ROOT}` so paths resolve in the installed cache.
 

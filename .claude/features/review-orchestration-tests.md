@@ -2,7 +2,7 @@
 
 Feature: turn the revise review engine's phase, convergence, and completion decisions into executable, fixture-tested invariants. This file is the authoritative design record.
 
-**2026-08-13 supersession note:** the phase transition matrix below predates the wave-convergence lifecycle (`wave-lifecycle.md`), which removed phases. When this feature is picked up, re-derive the invariant set from the shipped wave model: staleness sweep, certification clearing on reactivation, the disposition rule set (which carries over), cap asymmetry (a cap-forced end never completes), and the stamp conjunction. The extraction purpose and module shape below remain valid.
+**2026-08-13 supersession note:** the phase transition matrix below predates the wave-convergence lifecycle (`wave-lifecycle.md`), which removed phases. When this feature is picked up, re-derive the invariant set from the shipped wave model: staleness sweep, certification clearing on reactivation, the current clean-LGTM disposition rule set, cap asymmetry (a cap-forced end never completes), and the stamp conjunction. The extraction purpose and module shape below remain valid.
 
 ## What it does
 
@@ -14,7 +14,7 @@ This feature extracts those orchestration decisions into a deterministic, import
 - **Phase matrix**: encode the full table derived from SKILL.md, where any phase that reaches the all-inactive boundary increments the convergence counter (drift abandonment is the only non-increment), cleanliness gates only the destination, and phase 1 can never complete. The fixture set includes the drift-abandoned clean-under-two path that forces a third phase.
 - **Convergence span**: inactive is phase-scoped; only a phase boundary reactivates.
 - **Cross-dimension mutation**: preserve within phase, reset at next phase, one invariant with both halves tested.
-- **Rejected findings**: the disposition rule set (a follow-up-yielding disposition keeps the dimension active, an all-refuted or acknowledgement-only round deactivates it on skeptic evidence, no dirt side effects).
+- **Rejected findings**: the current disposition rule set (every finding-bearing round keeps the dimension active, including an all-refuted or acknowledgement-only round; only a later explicit clean LGTM certifies it; no dirt side effects).
 - **Execution failure**: the full run-level fail-closed contract with explicit disposition.
 - **Completion invariant**: one joined predicate over phase floor, converged count, all-inactive, and zero mutations, tested for refusal in every combination.
 
@@ -92,21 +92,41 @@ Fixture cases:
 The disposition rule set, with the refuted and valid-but-deferred branches both covered:
 
 1. A valid-but-deferred finding, or an accepted judgment call with an actionable follow-up, keeps its dimension active. The disposition is not a convergence device and never produces LGTM by itself.
-2. A round whose skeptic-verified findings all landed as refuted or as acknowledgement-only accepted judgment calls deactivates the dimension at that round's boundary, judged on that round's own yield alone. The module refuses to deactivate from a controller rejection that lacks a skeptic-verified refutation, and the acceptance branch applies only to findings whose skeptic verdict is JUDGMENT_CALL.
+2. A round whose skeptic-verified findings all landed as refuted or as acknowledgement-only accepted judgment calls keeps the dimension active with no certification. The reasoned acknowledgements enter the next payload, and only a later explicit clean LGTM with a concrete nonblank verification rationale deactivates the dimension. The module refuses to record a refutation from a controller rejection that lacks a skeptic-verified verdict, and the acceptance branch applies only to findings whose skeptic verdict is JUDGMENT_CALL.
 3. A rejected finding neither dirties the phase nor counts as a per-finding clean conclusion.
 
 Valid-but-deferred additionally records its actionable follow-up and the acknowledgement or caveat, with no applied-change entry. A REFUTED finding records a reasoned acknowledgement and no follow-up or applied-change entry.
 
 Fixture cases:
 
-- reviewer finding F, skeptic REFUTES it, no other findings in the round -> dimension D becomes inactive at the round boundary with the skeptic evidence as rationale;
-- reviewer finding F, controller rejects it without a skeptic-verified refutation -> deactivation is refused and D stays active;
+- reviewer finding F, skeptic REFUTES it, no other findings in the round -> dimension D stays active with no certification, and the reasoned acknowledgement enters the next payload;
+- reviewer finding F, controller rejects it without a skeptic-verified refutation -> the disposition is refused and D stays active;
 - mixed round: one refuted finding plus one valid-but-deferred -> D stays active, with the follow-up and acknowledgement recorded;
 - accepted judgment call with an actionable follow-up as the round's sole finding -> D stays active, with the follow-up row recorded;
-- acknowledgement-only accepted judgment call as the round's sole finding -> D becomes inactive at the boundary;
-- deferred in round N, all findings refuted in round N+1 -> D becomes inactive at round N+1's boundary while the round-N follow-up row stays open;
+- acknowledgement-only accepted judgment call as the round's sole finding -> D stays active with no certification and receives another fresh review;
+- deferred in round N, all findings refuted in round N+1 -> D stays active while the round-N follow-up row stays open, and only a later clean LGTM can deactivate D;
+- after any finding-bearing round, a later clean LGTM with a concrete nonblank rationale -> D becomes inactive and certifies that clean review's fingerprint;
 - attempting the acceptance branch on a CONFIRMED-verdict finding is refused;
 - the phase is not dirtied in any of these and no per-finding clean conclusion is counted.
+
+## Verifier stamping
+
+The holistic verifier launches only at wave convergence and follows the same finding and skeptic pipeline as dimension cells. Its stamp names only the fingerprint it reviewed. The transition module covers every verifier boundary:
+
+1. A clean LGTM with a concrete nonblank verification note stamps the current fingerprint.
+2. A no-fix verifier round whose findings are all refuted or accepted as acknowledgement-only judgment calls leaves the stamp unset, carries the reasoned acknowledgements forward, and launches another fresh verifier at the same fingerprint.
+3. Only a current no-fix verifier round that creates an authoritative deferred follow-up may stamp without a clean LGTM. The stamp attests review coverage while the authoritative follow-up records the accepted debt.
+4. A verifier round that applies any fix leaves the stamp unset, advances the fingerprint once at the boundary, and returns to the staleness sweep. An authoritative deferred follow-up in the same round does not override the applied-fix branch.
+
+Fixture cases:
+
+- verifier returns clean LGTM with a concrete note -> current fingerprint is stamped;
+- verifier returns LGTM without a concrete nonblank note -> stamp is refused;
+- every verifier finding is skeptic-refuted, no fix or follow-up -> stamp stays unset and another fresh verifier is required at the same fingerprint;
+- every verifier finding is an acknowledgement-only accepted judgment call, no fix or follow-up -> stamp stays unset and another fresh verifier is required at the same fingerprint;
+- verifier creates an authoritative deferred follow-up and applies no fix -> current fingerprint may be stamped without LGTM, with the follow-up retained;
+- verifier creates an authoritative deferred follow-up and applies a fix -> stamp stays unset, the fingerprint advances, and the staleness sweep resumes;
+- verifier applies a fix with no deferred follow-up -> stamp stays unset, the fingerprint advances, and the staleness sweep resumes.
 
 ## Execution failure
 

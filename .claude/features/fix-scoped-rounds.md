@@ -4,9 +4,9 @@ Feature: within a wave-lifecycle review run, a round 2+ reviewer whose dimension
 
 ## What it does
 
-Today every round delivers each active dimension's reviewer its full normal payload: the whole-scope cumulative patch and in-scope live file set, or the shard's pathspec-cut slice when the scope is sharded. A dimension stays active into round 2+ for one of two reasons: its previous reviewer's findings produced applied fixes, or a finding was valid but deferred without an artifact edit and the dimension stays active into the next round, where it is judged on that round's own yield (a round yielding only refuted findings deactivates its dimension at that boundary, so refuted findings alone never carry a dimension forward).
+Today every round delivers each active dimension's reviewer its full normal payload: the whole-scope cumulative patch and in-scope live file set, or the shard's pathspec-cut slice when the scope is sharded. A dimension stays active into round 2+ after every finding-bearing review. Its previous findings may have produced own-dimension fixes, an authoritative deferred follow-up without an artifact edit, or only refuted or acknowledgement-only dispositions. Only a later explicit clean LGTM certifies the dimension.
 
-This feature narrows the payload only in the first case: a round 2+ reviewer whose dimension had own-dimension fixes applied at the previous round boundary receives only those fixes plus surrounding context, because its open question is "are the fixes sound, and did they leave the dimension clean?". A dimension active with zero own-dimension applied fixes (deferred findings only) keeps its normal whole-scope or shard-slice delivery, because its open question is still the artifact's cleanliness, not any fix's soundness. A cell's first review of any fingerprint remains whole-scope, unchanged.
+This feature narrows the payload only when a round 2+ reviewer had own-dimension fixes applied at the previous round boundary: it receives only those fixes plus surrounding context, because its open question is "are the fixes sound, and did they leave the dimension clean?". A dimension active with zero own-dimension applied fixes keeps its normal whole-scope or shard-slice delivery, whether the prior round produced deferred, refuted, or acknowledgement-only findings, because its open question is still the artifact's cleanliness, not any fix's soundness. A cell's first review of any fingerprint remains whole-scope, unchanged.
 
 ## Design decisions (settled with the user, 2026-08-13)
 
@@ -31,7 +31,7 @@ This extends a deferral the design already accepts: today a dimension that goes 
 
 ## Status
 
-Captured 2026-08-13 from a user idea, with the design decisions above settled in the same dialogue. The zero-fix active-dimension branch (a dimension kept active only by deferred findings keeps normal delivery) was defined during the pre-push review of the capture and narrowed when all-refuted rounds began deactivating their dimension. Not yet designed as a buildable change; to be hardened by a revise-spec run before planning.
+Captured 2026-08-13 from a user idea, with the design decisions above settled in the same dialogue. The zero-fix active-dimension branch keeps normal delivery for every active cell without an own-dimension fix, including cells carried forward by deferred, refuted, or acknowledgement-only findings. Reconciled on 2026-08-18 after clean-LGTM certification shipped. Not yet designed as a buildable change; to be hardened by a revise-spec run before planning.
 
 ## Requirements
 
