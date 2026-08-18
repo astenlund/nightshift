@@ -25,15 +25,15 @@ The parsing is deterministic and lives in a script bundled with this skill; this
 
 2. **Present the report.** Output up to five sections, omitting any that are empty:
 
-   - **Ready**: bulleted list, grouped by index (Quick Wins / Features / Bugs). For each item give the title and a short shape hint drawn from the excerpt in the JSON (size, area touched, what's involved). One line per item where possible.
-   - **Blocked**: items with their blocker(s) named explicitly; mention any external primitives parenthetically. One line per item.
+   - **Ready**: exhaustive bulleted list, grouped by index (Quick Wins / Features / Bugs). For each item give the title and a short shape hint drawn from the excerpt in the JSON (size, area touched, what's involved). One line per item where possible.
+   - **Blocked**: partition items by their exact in-backlog blocker set, then render one bullet per blocker set that names the blocker(s) followed by every item title in that partition. Each blocked item appears in exactly one bullet. When an item also names external primitives, keep them parenthetical immediately after that item's title.
    - **External**: items whose readiness depends on judging an external primitive; name the primitive.
    - **Structural errors**: missing `**Requires:**` lines, stale or broken references, and parents whose slices have all shipped (ready to graduate to the history archive), or a dependency cycle (two or more entries that block each other's next shipment). These need fixing by hand; surface them prominently.
    - **Exploring (drafts, not ready)**: after the sections above, the `exploring` entries as a titles-only list, one line total where possible. These are informational drafts, never part of the ready set; end with a one-line pointer to `/nightshift:exploring` for the full draft list (excerpts and breakout links).
 
    Include the script's `notices` (broken breakout-file links, sections the parser could not interpret) as a short trailing list.
 
-   Keep the report compact: this is a "what should I work on next" view, not a full backlog dump. If there are more than ~10 ready items, surface the top 5 or so and note the remaining count.
+   Keep the report centered on choosing work. Compactness comes from concise one-line Ready entries and Blocked grouping. All parsed Ready and Blocked items remain visible by title.
 
 ## Notes
 
