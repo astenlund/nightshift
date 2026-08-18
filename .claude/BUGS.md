@@ -48,6 +48,12 @@ otherwise sits in the backlog until the next readiness pass surfaces it.
 
 ## Open
 
+### [Feature breakout dependency lines drift from the active index](bugs/feature-breakout-dependency-drift.md)
+
+Feature breakout files duplicate live dependency state from `FEATURES.md`, but shipped-item walks and `/nightshift:ready` update or validate only the index. Eight stale universal-MVP copies were found; four remain after cleanup in files touched by the arbitration design. Choose one authority or add synchronization and executable mismatch detection.
+
+**Requires:** none.
+
 ## History
 
 Fixed bugs are archived in [`BUGS_HISTORY.md`](BUGS_HISTORY.md), loaded
