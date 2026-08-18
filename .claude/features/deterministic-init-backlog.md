@@ -4,7 +4,7 @@ Feature: `init-backlog` behavior that has one objectively correct answer, includ
 
 ## What it does
 
-`commands/init-backlog.md` is a large, self-contained scaffolder. It carries the authoritative content for the four index files, the three history archives, and the `CLAUDE.md` backlog section as verbatim bundled templates, and it drives the `missing / present / stale` classification and the `create / skip / merge / ask` apply table from that content. Much of that is deterministic: there is one correct result for what a fresh index file or directory should contain. Yet every scaffold run asks the model to reproduce it from the prompt, re-rendering the template corpus and re-deciding mechanical steps a script could produce exactly.
+`skills/init-backlog/SKILL.md` is a large, self-contained scaffolder. It carries the authoritative content for the four index files, the three history archives, and the `CLAUDE.md` backlog section as verbatim bundled templates, and it drives the `missing / present / stale` classification and the `create / skip / merge / ask` apply table from that content. Much of that is deterministic: there is one correct result for what a fresh index file or directory should contain. Yet every scaffold run asks the model to reproduce it from the prompt, re-rendering the template corpus and re-deciding mechanical steps a script could produce exactly.
 
 This feature moves the deterministically-answerable portion out of the prompt and into bundled plugin code or static files, using the same judgment the repository already applies to the `Requires:`-line grammar in `skills/ready/ready.js`.
 
@@ -33,7 +33,7 @@ Claude keeps the genuinely judgment-dependent steps:
 - resolving ambiguous merges;
 - deciding when user input is genuinely required.
 
-These are the current command's `stale`-classification and `ask`-preference decisions, and they stay in the prompt as purpose-driven judgments under the deterministic rework.
+These are the current skill's `stale`-classification and `ask`-preference decisions, and they stay in the prompt as purpose-driven judgments under the deterministic rework.
 
 ## Re-homing: bundled code or files
 
@@ -47,10 +47,10 @@ Migrated into the backlog on 2026-08-12, with three design decisions confirmed o
 
 ## Requirements
 
-- The `init-backlog` scaffold content and its templates in `commands/init-backlog.md` (existing; the extraction subject). Note as of 2026-08-15: the shipped exploring-visibility work rewrote five passages in this file (the FEATURES.md template's Exploring preamble and Requires-lines carve-outs, the CLAUDE.md template's backlog sentence, the freshness checklist item for Exploring, and the either-location note) to the two-view wording. Extraction carries that wording forward; it is not a conflict, only a reminder to re-read the templates rather than working from an older mental copy.
+- The `init-backlog` scaffold content and its templates in `skills/init-backlog/SKILL.md` (existing after the universal-entry migration; the extraction subject). Note as of 2026-08-15: the shipped exploring-visibility work rewrote five passages in this file (the FEATURES.md template's Exploring preamble and Requires-lines carve-outs, the CLAUDE.md template's backlog sentence, the freshness checklist item for Exploring, and the either-location note) to the two-view wording. Extraction carries that wording forward; it is not a conflict, only a reminder to re-read the templates rather than working from an older mental copy.
 - The bundled-runtime-artifact pattern in `skills/ready/ready.js` and its fixture suite (existing; the precedent this feature extends).
 
-**Requires:** none.
+**Requires:** [Agent-host-agnostic Nightshift: MVP - Universal skill entry points](agent-host-agnostic-nightshift.md) (FEATURES.md index entry).
 
 ## Hardening
 

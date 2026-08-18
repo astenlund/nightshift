@@ -10,7 +10,7 @@ Today the revision engine and handover write to a fixed set of flat scratch path
 - stale state survives from an earlier artifact;
 - a process resumes after context loss.
 
-This feature scopes all scratch state under a per-run directory keyed by a hash of the run's durable identity, persists that identity so a resumed run can *prove* the state it adopts belongs to the same work, and adds a heartbeat-lease lock so a genuinely live concurrent run is surfaced rather than silently clobbered. It reverses the current SKILL.md invariant, "The state file marks the single active run. Do not add an ownership token or lock."
+This feature scopes all scratch state under a per-run directory keyed by a hash of the run's durable identity, persists that identity so a resumed run can *prove* the state it adopts belongs to the same work, and adds a heartbeat-lease lock so a genuinely live concurrent run is surfaced rather than silently clobbered. It reverses the current `internal/revise/SKILL.md` invariant, "The state file marks the single active run. Do not add an ownership token or lock."
 
 A run's complete scratch home is one directory:
 
@@ -92,11 +92,11 @@ The scope-hash directory already guarantees different runs never collide at the 
 - Create the `.tmp/nightshift/` root and a scoped directory per run at first scratch write; derive `<scope-hash>` from the canonical identity block before any state file is written.
 - Relocate every existing flat scratch path (`revise-state.md`, `revise-round-result.md`, `revise-payload-{hex-cell-id}.md`, `review-diff.patch`, `handover-followups.md`) under the scoped directory. This is a path relocation only; it does not change the Markdown state schema, the `*.next` atomic-rename staging convention, or the hex-encoded payload filenames.
 - Persist the identity block with the state (same canonical JSON-scalar discipline as other arbitrary-text scalars) and refresh the heartbeat timestamp on every boundary write.
-- Run the start-of-session classification before treating any existing state as a resume candidate; everything in SKILL.md's resume, drift, and recovery machinery then keys off the classification already made.
+- Run the start-of-session classification before treating any existing state as a resume candidate; everything in `internal/revise/SKILL.md`'s resume, drift, and recovery machinery then keys off the classification already made.
 
 ## Status
 
-Draft proposal; not yet designed as a buildable skill change or spec. Partially designed in the backlog migration (scope-hash layout, identity block split, heartbeat-lease liveness, start-boundary check) on 2026-08-11; the remaining design is to be hardened before planning. Depends on nothing outstanding: the review machinery it protects is shipped.
+Draft proposal; not yet designed as a buildable skill change or spec. Partially designed in the backlog migration (scope-hash layout, identity block split, heartbeat-lease liveness, start-boundary check) on 2026-08-11; the remaining design is to be hardened before planning. The shipped review behavior it protects is present, but the already in-flight universal-skill MVP must first establish its final engine path.
 
 ## Requirements
 
@@ -105,7 +105,7 @@ Draft proposal; not yet designed as a buildable skill change or spec. Partially 
 
 Landing order: the wave-convergence lifecycle (wave-lifecycle.md) shipped 2026-08-14 in the 2.2.0 batch; SKILL.md's lifecycle sections are wave-era prose. Derive lifecycle-touching edits from that prose.
 
-**Requires:** none (FEATURES.md index entry).
+**Requires:** [Agent-host-agnostic Nightshift: MVP - Universal skill entry points](agent-host-agnostic-nightshift.md) (FEATURES.md index entry).
 
 ## Hardening
 

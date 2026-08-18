@@ -197,7 +197,7 @@ frontmatter on the breakout file.
 
 ### [Light revise mode](features/light-revise-mode.md)
 
-Draft exploring a lightened variant of the revise review commands: one fresh reviewer per iteration instead of the full per-dimension swarm, and a curated dimension set that skips the least-relevant dimensions. Prompted by the single-reviewer revise-spec run over `.claude/features/dependency-cycle-detection.md` (2026-08-11).
+Draft exploring a lightened variant of the revise review workflows: one fresh reviewer per iteration instead of the full per-dimension swarm, and a curated dimension set that skips the least-relevant dimensions. Prompted by the single-reviewer revise-spec run over `.claude/features/dependency-cycle-detection.md` (2026-08-11).
 
 ### [Review report JSON schema](features/review-report-json-schema.md)
 
@@ -231,19 +231,19 @@ Gate the lifecycle with cheap single-pass reads from a different-model-family ag
 
 Resolves a skeptic-confirmed finding through an agent-to-agent repair dialogue: the confirming skeptic resumes as repair author and the originating reviewer as its adversarial critic, iterating focused turns until the critic accepts the repair, a narrow disagreement blocks, or a safety limit stops the exchange. Neither agent edits the artifact; the controller applies the repair from a returned resolution package. Reviewer acceptance validates the proposal only and never produces LGTM, and any independent pre-existing problem found during the dialogue enters the normal fresh-skeptic finding pipeline.
 
-**Requires:** none.
+**Requires:** [Agent-host-agnostic Nightshift: MVP - Universal skill entry points](features/agent-host-agnostic-nightshift.md).
 
 ### [Durable run identity and concurrency protection](features/durable-run-identity-concurrency.md)
 
-Gives each Nightshift run a frozen durable identity and a scope-hash-scoped scratch home, and protects concurrent same-scope runs from silently overwriting each other. Reverses SKILL.md's "do not add a lock" invariant: a start-of-session boundary check classifies found state as resume (stale heartbeat), live concurrent run (fresh heartbeat, user picks abort or force-break), or foreign/stale (interactive asks, autonomous fails closed). Path relocation only; preserves the Markdown state schema and atomic staging.
+Gives each Nightshift run a frozen durable identity and a scope-hash-scoped scratch home, and protects concurrent same-scope runs from silently overwriting each other. Reverses `internal/revise/SKILL.md`'s "do not add a lock" invariant: a start-of-session boundary check classifies found state as resume (stale heartbeat), live concurrent run (fresh heartbeat, user picks abort or force-break), or foreign/stale (interactive asks, autonomous fails closed). Path relocation only; preserves the Markdown state schema and atomic staging.
 
-**Requires:** none.
+**Requires:** [Agent-host-agnostic Nightshift: MVP - Universal skill entry points](features/agent-host-agnostic-nightshift.md).
 
 ### [Review orchestration tests](features/review-orchestration-tests.md)
 
-Turn the revise review engine's phase, convergence, and completion decisions into executable, fixture-tested invariants. Extracts the orchestration rules currently living only as SKILL.md prose into a deterministic `ready.js`-style transition module driven by mocked reviewer results: the wave-model invariant set (staleness sweep, certification clearing, and cap asymmetry; re-derived per the file's supersession note), the clean-LGTM disposition rule that keeps every finding-bearing cell active, every verifier-stamping branch including the exact no-fix authoritative-follow-up exception, run-level fail-closed execution, and a joined completion predicate refused in every non-completing combination.
+Turn the revise review engine's phase, convergence, and completion decisions into executable, fixture-tested invariants under `internal/revise/`. Extracts the orchestration rules currently living only as SKILL.md prose into a deterministic `ready.js`-style transition module driven by mocked reviewer results: the wave-model invariant set (staleness sweep, certification clearing, and cap asymmetry; re-derived per the file's supersession note), the clean-LGTM disposition rule that keeps every finding-bearing cell active, every verifier-stamping branch including the exact no-fix authoritative-follow-up exception, run-level fail-closed execution, and a joined completion predicate refused in every non-completing combination. Its topology check requires the new module and test to remain internal without freezing the rest of the private engine as a closed file set.
 
-**Requires:** none.
+**Requires:** [Agent-host-agnostic Nightshift: MVP - Universal skill entry points](features/agent-host-agnostic-nightshift.md).
 
 ### [Content fingerprint helper](features/content-fingerprint-helper.md)
 
@@ -255,13 +255,13 @@ Centralizes selector-aware content extraction, canonical byte framing, and hashi
 
 Every design spec carries a short, durable scope anchor near its goal: a paraphrase of the user's requested outcome plus the material exclusions bounding it, without restating the detailed design. The anchor is frozen unless the user revises the outcome (the revision itself recorded), and copied verbatim into every reviewer payload as common context so fresh reviewers in every cell and round calibrate against the same ground truth. It grounds scope expansion without immunizing the chosen design's wiring from findings.
 
-**Requires:** none.
+**Requires:** [Agent-host-agnostic Nightshift: MVP - Universal skill entry points](features/agent-host-agnostic-nightshift.md).
 
 ### [Fix-scoped follow-up rounds](features/fix-scoped-rounds.md)
 
 Narrows the round 2+ payload for a dimension whose own findings produced applied fixes to those fixes plus surrounding context; every active dimension without an own-dimension fix keeps normal delivery, including cells carried by deferred, refuted, or acknowledgement-only findings. The reactivation wave restores full coverage, and context findings still enter the normal skeptic pipeline. Completion is unaffected because a narrowed-payload review never certifies a fingerprint: certification requires a full-payload review, so completion still rests on full-coverage certifications plus the verifier stamp. Primary rationale is symmetry: a dimension re-reviewing its own fixes no longer incidentally adjudicates siblings' fixes (only zero-fix active dimensions retain that sight via normal delivery), reducing the accidental privilege still-active dimensions hold today; token and wall-clock savings are a hoped-for secondary benefit, at the cost of catching cross-file fix damage a wave later.
 
-**Requires:** none.
+**Requires:** [Agent-host-agnostic Nightshift: MVP - Universal skill entry points](features/agent-host-agnostic-nightshift.md).
 
 ## Lifecycle gates
 
@@ -279,7 +279,7 @@ Moves Nightshift's canonical workflow surfaces and internal contracts from Claud
 
 **Slices:**
 
-- **MVP - Universal skill entry points.** Expose nine canonical public skills, remove legacy Claude command files, and keep the shared revise engine internal behind the three discoverable artifact-specific wrappers.
+- **MVP - Universal skill entry points.** Expose nine canonical public skills, remove legacy Claude command files, and keep the shared revise engine internal behind three discoverable artifact-specific wrappers. Verify the topology, wrapper boundary, clean installation, and repeated legacy-to-candidate replacement on Claude Code and Codex; unavailable-host evidence may support local completion but never release.
 - **Portable resource and fingerprint contract.** Remove host-named plugin-root and shell-specific hashing assumptions from bundled-resource consumers.
   **Requires:** [Content fingerprint helper](features/content-fingerprint-helper.md).
 - **Host-neutral scaffolding and instruction routing.** Make `init-backlog`, project instructions, and global instructions work without assuming one host's filenames or instruction runtime.
@@ -287,7 +287,7 @@ Moves Nightshift's canonical workflow surfaces and internal contracts from Claud
 - **Review host adapters.** Express task queues, questions, fresh-agent dispatch, completion, recovery identities, tool guidance, and model tiers through capability contracts with Claude Code and Codex adapters.
   **Requires:** [Review orchestration tests](features/review-orchestration-tests.md).
 - **Host-neutral documentation and lore.** Route documentation and durable learning updates to canonical instruction sources while preserving host adapters and optional helper integrations.
-  **Requires:** [Agent-host-agnostic Nightshift: Host-neutral scaffolding and instruction routing](features/agent-host-agnostic-nightshift.md).
+  **Requires:** [Agent-host-agnostic Nightshift: Host-neutral scaffolding and instruction routing](features/agent-host-agnostic-nightshift.md), [Agent-host-agnostic Nightshift: Review host adapters](features/agent-host-agnostic-nightshift.md).
 - **Packaging and cross-host validation.** Add provider-neutral metadata, supported manifest forms, installation guidance, and clean-environment behavior checks for every supported host path.
   **Requires:** [Agent-host-agnostic Nightshift: Portable resource and fingerprint contract](features/agent-host-agnostic-nightshift.md), [Agent-host-agnostic Nightshift: Host-neutral scaffolding and instruction routing](features/agent-host-agnostic-nightshift.md), [Agent-host-agnostic Nightshift: Review host adapters](features/agent-host-agnostic-nightshift.md), [Agent-host-agnostic Nightshift: Host-neutral documentation and lore](features/agent-host-agnostic-nightshift.md).
 
@@ -299,7 +299,7 @@ Moves Nightshift's canonical workflow surfaces and internal contracts from Claud
 
 Gives Nightshift's user-facing surfaces a declared audience model and communication contract: the user is an accomplished engineer who owns the requirements but is time-constrained, so decisions are surfaced at the behavioral, architectural, and risk level with full precision, routine mechanics are resolved autonomously, and the user is consulted only when a decision materially affects the work. The delegation boundary is phase-split: spec work involves the user, while autonomous execution decides and flags at session end, including scope changes handled naive-first with a backlog refactoring entry in the follow-up.
 
-**Requires:** none.
+**Requires:** [Agent-host-agnostic Nightshift: MVP - Universal skill entry points](features/agent-host-agnostic-nightshift.md).
 
 ## Backlog tooling
 
@@ -307,7 +307,7 @@ Gives Nightshift's user-facing surfaces a declared audience model and communicat
 
 Moves `init-backlog`'s deterministically-answerable behavior (static template bodies, directory and missing-file creation, and structural edits) out of the prompt and into bundled plugin code or static files, so one-correct-answer steps are executed rather than re-derived, while the genuinely semantic judgments (concept coverage in customized prose, ambiguous merges, when a user decision is required) remain with Claude. Boundary rule: if there is one objectively correct answer, get it out of promptspace. The per-candidate code-vs-file attribution is left open for the implementing session.
 
-**Requires:** none.
+**Requires:** [Agent-host-agnostic Nightshift: MVP - Universal skill entry points](features/agent-host-agnostic-nightshift.md).
 
 ## History
 

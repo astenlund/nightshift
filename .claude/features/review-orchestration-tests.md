@@ -6,7 +6,7 @@ Feature: turn the revise review engine's phase, convergence, and completion deci
 
 ## What it does
 
-The deterministic backlog parser (`skills/ready/ready.js`) has strong behavioral test coverage via `ready.test.js`. The review engine is the more consequential component by overall quality impact, and today it has none at the orchestration level: the phase/convergence/adjudication decisions live only as prose in `skills/revise/SKILL.md`, restated by the controller every cycle. `revise-round.test.js` covers one round's Workflow dispatch (concurrency, reviewer-to-skeptic fan-out, result normalization, fingerprint validation). It does not cover the machinery that decides whether to advance a phase, whether a dimension converges, whether a sibling's mutation reaches an inactive dimension, or whether the stage completes.
+The deterministic backlog parser (`skills/ready/ready.js`) has strong behavioral test coverage via `ready.test.js`. The review engine is the more consequential component by overall quality impact, and today it has none at the orchestration level: the phase/convergence/adjudication decisions live only as prose in `internal/revise/SKILL.md`, restated by the controller every cycle. `revise-round.test.js` covers one round's Workflow dispatch (concurrency, reviewer-to-skeptic fan-out, result normalization, fingerprint validation). It does not cover the machinery that decides whether to advance a phase, whether a dimension converges, whether a sibling's mutation reaches an inactive dimension, or whether the stage completes.
 
 This feature extracts those orchestration decisions into a deterministic, importable Node module with a `ready.test.js`-style fixture suite, driven by mocked reviewer and skeptic results rather than agent dispatch. It promotes the workflow rules from prose into executable invariants: a regression in the controller's phase reasoning becomes a failing fixture instead of silent behavior drift. Design decisions confirmed during backlog migration on 2026-08-11:
 
@@ -32,7 +32,7 @@ The module answers the orchestration questions as pure functions over the review
 
 Limit values and the phase ceiling are data, not literals scattered through logic: the transition table is declared configuration carrying the current shipped values (phase ceiling 10, 10 original reviewer launches per stable dimension or shard cell per phase, 3 execution-repair launches per stable reviewer or skeptic cell, 2-phase completion floor). Declared-up-front makes a future phase redesign a table-and-fixture update in its own change set rather than a module rewrite.
 
-The module lives under `skills/revise/` (e.g. `skills/revise/orchestration.js`) with its fixture suite beside it (e.g. `skills/revise/orchestration.test.js`), runnable the same way as the existing suites. When the feature ships, the repository's Commands guidance that enumerates the test suites gains this suite.
+The module lives under `internal/revise/` (for example, `internal/revise/orchestration.js`) with its fixture suite beside it (for example, `internal/revise/orchestration.test.js`), runnable the same way as the existing suites. When the feature ships, the universal-entry topology fixture requires both new files to remain internal and absent from the public skill catalog without treating the rest of `internal/revise/` as a closed file set, and the repository's Commands guidance that enumerates the test suites gains this suite.
 
 ## Phase progression
 
@@ -178,10 +178,10 @@ Migrated into the backlog on 2026-08-11, with the seven design decisions above c
 
 ## Requirements
 
-- The review engine's phase/round/checkpoint machinery and its prose rules in `skills/revise/SKILL.md` (shipped; this feature extracts and tests the decisions they already specify).
-- The existing fixture-test convention demonstrated by `skills/ready/ready.test.js` and `skills/revise/revise-round.test.js` (shipped; no framework, exit code 1 on failure).
+- The review engine's phase/round/checkpoint machinery and its prose rules in `internal/revise/SKILL.md` (shipped by the universal-skill MVP; this feature extracts and tests the decisions they already specify).
+- The existing fixture-test convention demonstrated by `skills/ready/ready.test.js` and `internal/revise/revise-round.test.js` (shipped; no framework, exit code 1 on failure).
 
-**Requires:** none (FEATURES.md index entry).
+**Requires:** [Agent-host-agnostic Nightshift: MVP - Universal skill entry points](agent-host-agnostic-nightshift.md) (FEATURES.md index entry).
 
 ## Hardening
 

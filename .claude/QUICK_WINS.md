@@ -35,16 +35,20 @@ can still fix it in the same session.
   an in-progress implementation resume. The user ruled 2026-08-11 that neither is
   confirm-worthy: skip straight to building the queue. Keep the confirm only for real
   ambiguity, artifact-selection doubt, validation findings, or drift. Refine the
-  "Clean detection" paragraphs in `commands/handover.md` (or the shift-start section) to
+  "Clean detection" paragraphs in the active handover entry source (`commands/handover.md`
+  before the universal-entry migration, `skills/handover/SKILL.md` after it) to
   state that designed/cutover-gated provisional markers and same-session mid-flight
-  resumes are non-flags.
+  resumes are non-flags. Prefer landing the universal-entry MVP first; if this quick
+  win lands earlier, apply it to the pre-MVP source and carry its behavior forward
+  unchanged during relocation.
 
 ## Rigor calibration
 
 - **Recalibrate the audience-category judgment so public visibility alone does not
   read as `public`.** Today the audience component-to-category judgment (revise-spec
-  grounding step in `skills/revise/spec.md`, feeding `AUDIENCE_BASELINE` in
-  `skills/revise/rigor.js`) maps a repo that is public on GitHub to category `public`
+  grounding step in the active revise engine (`skills/revise/spec.md` and
+  `skills/revise/rigor.js` before the universal-entry migration, `internal/revise/spec.md`
+  and `internal/revise/rigor.js` after it) maps a repo that is public on GitHub to category `public`
   and thus baseline `high`, even with no adoption signals; nightshift's own specs
   (the wave-lifecycle Operating context, the ready-exploring-visibility one) recorded
   exactly that judgment. User ruling 2026-08-15: a public repo with no forks and no
@@ -55,21 +59,26 @@ can still fix it in the same session.
   decide whether `AUDIENCE_BASELINE` needs a distinct category or only sharper
   judgment prose, and sweep existing recorded judgments in specs' Operating context
   sections for recalibration. Uplift predicates stay as-is.
+  Prefer landing the universal-entry MVP first; if this quick win lands earlier, apply
+  it to the pre-MVP sources and carry its behavior forward unchanged during relocation.
 
 ## Handover dispatch hygiene
 
-- **Tell implementation subagents where their scratch files go.** `commands/handover.md`'s
-  implementation step says nothing about scratch locations, so dispatched subagents write
-  working files into the project's `.tmp/` root, which is also the revise engine's state
-  home (`revise-state.md`, `revise-round-result.md`, the payload files, the cumulative
-  patch). Observed 2026-08-15 as a near-miss: task subagents left `cmp_a.txt` and
-  `pre_b.txt` there and the controller cleared them before the next review run; nothing was
-  clobbered. Preferred shape: one clause in the implementation step requiring each dispatch
-  prompt to name a task-scoped subdirectory under `.tmp/` (never `.tmp/` itself), keeping
-  scratch inside `.tmp/` so it stays consistent with the global no-`/tmp` rule. Check
-  against [Durable run identity and concurrency protection](FEATURES.md) first: it designs a
-  scope-hashed scratch home for the workflow's own state and may reshape which side of the
-  collision needs fixing.
+- **Tell implementation subagents where their scratch files go.** The active handover entry
+  source (`commands/handover.md` before the universal-entry migration,
+  `skills/handover/SKILL.md` after it) says nothing about scratch locations, so dispatched
+  subagents write working files into the project's `.tmp/` root, which is also the revise
+  engine's state home (`revise-state.md`, `revise-round-result.md`, the payload files, the
+  cumulative patch). Observed 2026-08-15 as a near-miss: task subagents left `cmp_a.txt`
+  and `pre_b.txt` there and the controller cleared them before the next review run; nothing
+  was clobbered. Preferred shape: one clause in the implementation step requiring each
+  dispatch prompt to name a task-scoped subdirectory under `.tmp/` (never `.tmp/` itself),
+  keeping scratch inside `.tmp/` so it stays consistent with the global no-`/tmp` rule.
+  Check against [Durable run identity and concurrency protection](FEATURES.md) first: it
+  designs a scope-hashed scratch home for the workflow's own state and may reshape which
+  side of the collision needs fixing. Prefer landing the universal-entry MVP first; if
+  this quick win lands earlier, apply it to the pre-MVP source and carry its behavior
+  forward unchanged during relocation.
 
 ## (add sections as work emerges)
 

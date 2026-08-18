@@ -4,7 +4,7 @@ Feature: every Nightshift user-facing surface assumes its user is an accomplishe
 
 ## What it does
 
-Today the commands and skills have no declared audience model or communication contract. Handover's report, revise's findings, and the prompts they produce are written in whatever register the acting model happens to produce: sometimes code-level exposition the user must reconstruct to evaluate, sometimes hand-waving that hides the actual decision. There is no rule for when a session stops to ask versus decides and flags, so the same material decision can block an unattended run in one session and pass unremarked in another.
+Today the workflow entry points have no declared audience model or communication contract. Handover's report, revise's findings, and the prompts they produce are written in whatever register the acting model happens to produce: sometimes code-level exposition the user must reconstruct to evaluate, sometimes hand-waving that hides the actual decision. There is no rule for when a session stops to ask versus decides and flags, so the same material decision can block an unattended run in one session and pass unremarked in another.
 
 This feature fixes the audience assumption and the communication contract Nightshift operates under, so that every surfaced decision is decidable by an accomplished engineer without reconstructing the project's internals, and so that the only questions that reach the user are ones that genuinely require their judgment.
 
@@ -29,12 +29,12 @@ Reversibility is one consideration alongside the other materiality criteria (req
 
 ### Reconciliation with the existing revise triage halt
 
-`commands/handover.md` currently halts the run on any finding that changes implementation scope: block and ask, treating it as genuinely blocked work. Under the phase split, that halt keeps its genuine survivals:
+The active handover entry, `commands/handover.md` before the universal-entry MVP and `skills/handover/SKILL.md` after it, halts the run on any finding that changes implementation scope: block and ask, treating it as genuinely blocked work. Under the phase split, that halt keeps its genuine survivals:
 
 - a scope finding raised while the spec or plan is still being settled is design-phase work, where the split involves the user;
 - an execution-phase scope gap with no decidable path is a real brainstorm block and stays halted rather than being implemented blind.
 
-Decidable execution-phase scope adjustments to an approved design move to the decide-and-flag channel with the naive-first guard. Amending the triage rule's wording in `commands/handover.md` to draw this line is part of this feature's future implementation, not of this migration.
+Decidable execution-phase scope adjustments to an approved design move to the decide-and-flag channel with the naive-first guard. Amending the active handover entry to draw this line is part of this feature's future implementation, not of this migration.
 
 ## Evidence policy
 
@@ -46,8 +46,8 @@ The default communication lets an experienced engineer make the decisions that a
 
 ## Relationships
 
-- The handover morning report is the surfacing channel the phase-split delegation rule relies on (existing; `commands/handover.md`).
-- The revise triage halt in `commands/handover.md` surfaces the opposite consultation contract on scope changes; this feature reconciles it by phase, keeping the halt for design-phase and genuinely-blocked findings and moving decidable execution-phase scope adjustments to decide-and-flag. Amending the halt's wording is part of this feature's implementation (see Delegation boundary).
+- The handover morning report is the existing surfacing channel the phase-split delegation rule relies on. Its active source is `commands/handover.md` before the universal-entry MVP and `skills/handover/SKILL.md` after it.
+- The revise triage halt in that active handover source surfaces the opposite consultation contract on scope changes; this feature reconciles it by phase, keeping the halt for design-phase and genuinely-blocked findings and moving decidable execution-phase scope adjustments to decide-and-flag. Amending the halt's wording is part of this feature's implementation (see Delegation boundary).
 - The naive-first scope-change convention feeds refactoring entries into the four-index backlog (existing; `QUICK_WINS.md` / `FEATURES.md`).
 - The audience here is the personal use context; the rigor profile's operating-context section records the same context for spec-level rigor decisions (see [calibrate-first-draft-rigor](calibrate-first-draft-rigor.md)).
 
@@ -57,11 +57,11 @@ Migrated into the backlog on 2026-08-11. Five design decisions were confirmed on
 
 ## Requirements
 
-- The handover morning report as the session-end flag surface (existing; `commands/handover.md`).
+- The handover morning report as the session-end flag surface (existing in `commands/handover.md` before the universal-entry MVP and relocated to `skills/handover/SKILL.md` by it).
 - The four-index backlog and its refactoring-entry convention, which the naive-first rule's follow-up flag points into (existing).
-- The communication surfaces this contract would steer: handover, the revise commands, and the ready and init-backlog output (existing).
+- The communication surfaces this contract would steer: handover, the revise workflows, and the ready and init-backlog output (existing).
 
-**Requires:** none.
+**Requires:** [Agent-host-agnostic Nightshift: MVP - Universal skill entry points](agent-host-agnostic-nightshift.md) (FEATURES.md index entry).
 
 ## Hardening
 

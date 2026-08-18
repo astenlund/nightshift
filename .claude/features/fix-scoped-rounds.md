@@ -35,11 +35,11 @@ Captured 2026-08-13 from a user idea, with the design decisions above settled in
 
 ## Requirements
 
-- The wave-convergence lifecycle in `skills/revise/SKILL.md` (existing; the delivery rules this feature narrows).
-- The code delivery rules in `skills/revise/code.md` (existing; cumulative-patch generation is the whole-scope baseline the narrowed payload replaces in round 2+).
+- The wave-convergence lifecycle in `internal/revise/SKILL.md` (existing; the delivery rules this feature narrows).
+- The code delivery rules in `internal/revise/code.md` (existing; cumulative-patch generation is the whole-scope baseline the narrowed payload replaces in round 2+).
 - Fix attribution by originating dimension in the applied-changes state (new; see open points).
 
-**Requires:** none.
+**Requires:** [Agent-host-agnostic Nightshift: MVP - Universal skill entry points](agent-host-agnostic-nightshift.md) (FEATURES.md index entry).
 
 ## Hardening
 

@@ -45,7 +45,7 @@ This mirrors the revise-* acknowledgement rule: an acknowledgement scopes to the
 
 - **[second-opinion-gates](second-opinion-gates.md)** already names "the durable scope anchor" as the concrete carrier for its requirements gate: the reqs list persists the user's requirement description(s) plus settled Q&A and forwards them unchanged into every gate. This feature is that concept made concrete. The requirements-gate reqs list is the anchor's capture moment (the user statement the anchor paraphrases), and the anchor is the stable form that travels in gate payloads.
 - **[Calibrate first-draft rigor to deployment context](calibrate-first-draft-rigor.md)** is the natural home for operating-context profiling, including audience ("who is this for"). Per the 2026-08-11 migration decision, this feature deliberately leaves operating context to that feature and confines itself to outcome plus exclusions; the two anchor areas combine at the spec level now that the operating-context section ships next to the anchor. The candidate audience category set (personal use, trusted circle, paying customers, organization, public) proposed here was adopted there as a derived classification.
-- The spec-review pre-seed scan in `skills/revise/spec.md` already harvests anti-goal and "out of scope" language into the acknowledgements list. The anchor gives that scan a declared source to read instead of an inferred one: the anchored exclusions are seeded directly, so the scan's remaining wording-based seeding then only covers what the anchor did not already state.
+- The spec-review pre-seed scan currently in `skills/revise/spec.md`, and relocated by the universal-entry MVP to `internal/revise/spec.md`, harvests anti-goal and "out of scope" language into the acknowledgements list. The anchor gives that scan a declared source to read instead of an inferred one: the anchored exclusions are seeded directly, so the scan's remaining wording-based seeding then only covers what the anchor did not already state.
 
 ## Status
 
@@ -54,12 +54,12 @@ Migrated into the backlog on 2026-08-11, with five design decisions confirmed on
 ## Requirements
 
 - The spec authoring shape this feature extends: the `Feature:` first line and `## What it does` convention in `.claude/features/` house shape (existing).
-- The common-context-block machinery in `skills/revise/SKILL.md` that assembles reviewer payloads (existing; this feature adds the anchor text to that block's scope ground truth).
-- The spec-review pre-seed acknowledgement scan in `skills/revise/spec.md` (existing; this feature feeds it a declared source).
+- The common-context-block machinery that assembles reviewer payloads, currently in `skills/revise/SKILL.md` and relocated by the universal-entry MVP to `internal/revise/SKILL.md` (existing; this feature adds the anchor text to that block's scope ground truth).
+- The spec-review pre-seed acknowledgement scan, currently in `skills/revise/spec.md` and relocated by the universal-entry MVP to `internal/revise/spec.md` (existing; this feature feeds it a declared source).
 
 Landing order: the wave-convergence lifecycle (wave-lifecycle.md) shipped 2026-08-14 in the 2.2.0 batch; SKILL.md's lifecycle sections are wave-era prose. Derive lifecycle-touching edits from that prose.
 
-**Requires:** none (FEATURES.md index entry).
+**Requires:** [Agent-host-agnostic Nightshift: MVP - Universal skill entry points](agent-host-agnostic-nightshift.md) (FEATURES.md index entry).
 
 ## Hardening
 

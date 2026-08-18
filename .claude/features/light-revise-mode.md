@@ -1,6 +1,6 @@
 ---
 name: light-revise-mode
-description: Explore a lightened variant of the revise review commands (one fresh reviewer per iteration, curated dimension set) for interactive use
+description: Explore a lightened variant of the revise review workflows (one fresh reviewer per iteration, curated dimension set) for interactive use
 metadata:
   type: feature
 status: exploring
@@ -8,7 +8,7 @@ status: exploring
 
 # Light revise mode
 
-Codify a lightened shape of the revise review commands for interactive sessions: one fresh reviewer per iteration instead of the full per-dimension swarm, and a curated dimension set that skips the dimensions least relevant to the artifact under review.
+Codify a lightened shape of the revise review workflows for interactive sessions: one fresh reviewer per iteration instead of the full per-dimension swarm, and a curated dimension set that skips the dimensions least relevant to the artifact under review.
 
 Prompted by the 2026-08-11 revise-spec run over `.claude/features/dependency-cycle-detection.md`, where the swarm was deliberately collapsed to a single reviewer carrying five of seven dimensions (D3 scope/decomposition and D6 reasoning-preservation skipped as least relevant for a small, non-sliced parser feature).
 

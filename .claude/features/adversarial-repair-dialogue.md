@@ -42,11 +42,11 @@ Reviewer acceptance validates only the repair proposal. It does not produce LGTM
 
 ## Relationship to neighboring features
 
-The second-opinion gates feature ([second-opinion-gates](second-opinion-gates.md)) distinguishes its controller-probes-recommendation from this design: there the controller exchanges a few bounded messages with a second-opinion agent to probe the motivation behind a change recommendation; here the skeptical verifier of a confirmed finding defends an exact repair against the originating reviewer's criticism. The two are complementary. This feature builds on the shipped review-round machinery and skeptic/controller pipeline, and its post-repair reviewer check mirrors the hardened gate's post-fix re-certification pattern.
+The second-opinion gates feature ([second-opinion-gates](second-opinion-gates.md)) distinguishes its controller-probes-recommendation from this design: there the controller exchanges a few bounded messages with a second-opinion agent to probe the motivation behind a change recommendation; here the skeptical verifier of a confirmed finding defends an exact repair against the originating reviewer's criticism. The two are complementary. This feature builds on the shipped review-round machinery and skeptic/controller pipeline under `internal/revise/SKILL.md`, and its post-repair reviewer check mirrors the hardened gate's post-fix re-certification pattern.
 
 ## Status
 
-Draft design in the backlog; not yet hardened by a revise-spec review. Depends on nothing outstanding: the review-round machinery and skeptic/controller pipeline it builds on are shipped.
+Draft design in the backlog; not yet hardened by a revise-spec review. The review-round machinery and skeptic/controller pipeline it builds on are shipped, but the already in-flight universal-skill MVP must first establish their final engine path.
 
 ## Requirements
 
@@ -56,4 +56,4 @@ Draft design in the backlog; not yet hardened by a revise-spec review. Depends o
 
 Landing order: the wave-convergence lifecycle (wave-lifecycle.md) shipped 2026-08-14 in the 2.2.0 batch; SKILL.md's lifecycle sections are wave-era prose. Derive lifecycle-touching edits from that prose.
 
-**Requires:** none (FEATURES.md index entry).
+**Requires:** [Agent-host-agnostic Nightshift: MVP - Universal skill entry points](agent-host-agnostic-nightshift.md) (FEATURES.md index entry).
