@@ -1,7 +1,5 @@
 # Immediate Skeptic Dispatch Design
 
-Status: signed off 2026-08-09
-
 ## Goal
 
 Reduce review latency by submitting skeptic verification as soon as each reviewer returns findings. Submit all reviewer requests at round start. When one reviewer completes, submit one fresh skeptic for each of that reviewer's findings without waiting for unrelated reviewers to finish.
@@ -125,3 +123,4 @@ No checkpoint schema migration, scheduler admission protocol, filesystem gate, n
 - revise-spec refreshed 2026-08-10 12:42 at 40e823a, scope: whole file, content: aba3b13e (live-claim disposition)
 - handover completed 2026-08-10 13:06 at ff9654f, scope: whole file, content: aba3b13e
 - handover completed 2026-08-10 13:25 at 30e567b, scope: whole file, content: aba3b13e
+- revise-spec refreshed 2026-08-19 09:10 at 2fce9c2, scope: whole file, content: c8174031 (legacy sign-off marker removal)

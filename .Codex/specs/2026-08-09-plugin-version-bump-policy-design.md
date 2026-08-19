@@ -1,7 +1,5 @@
 # Plugin Version Bump Policy Design
 
-Status: signed off 2026-08-09
-
 ## Goal
 
 Prevent shipped Nightshift plugin changes from remaining in an unpushed local batch without a corresponding plugin version increase. The current review-phase workflow batch must move the plugin from `2.0.24` to `2.0.25`.
@@ -38,3 +36,6 @@ No CI guard, helper script, test, hook, marketplace change, or release push is i
 ## Commit structure
 
 Create one atomic documentation commit for the policy and one atomic metadata commit for the version increase. The policy commit does not itself alter shipped plugin behavior, while the metadata commit closes the outstanding version requirement for the already-committed plugin changes.
+## Hardening
+
+- revise-spec graduated 2026-08-19 09:10 at 2fce9c2, scope: whole file, content: d59229f1

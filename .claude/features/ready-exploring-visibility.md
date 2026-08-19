@@ -1,7 +1,5 @@
 # Surface exploring entries in ready
 
-Status: signed off 2026-08-15 17:00, content: 75d266f0
-
 Feature: exploring drafts stay visible through two views over one
 parser output. `/nightshift:ready` lists `## Exploring` entry titles in
 a clearly-marked not-ready section, and a new `/nightshift:exploring`
@@ -249,3 +247,4 @@ things describe or consume; each consumer's handling:
 - revise-spec refreshed 2026-08-16 00:28 at 71d33ed, scope: whole file, content: ae790906 (surface moved to a skill at morning-report triage; live-claim fold-back)
 - handover completed 2026-08-16 00:52 at fcd89d0, scope: whole file, content: 0d247294
 - revise-spec refreshed 2026-08-18 20:17 at 476d8d8, scope: whole file, content: d01aadbf (universal-entry topology references)
+- revise-spec refreshed 2026-08-19 09:10 at 2fce9c2, scope: whole file, content: 51d23fbb (legacy sign-off marker removal)

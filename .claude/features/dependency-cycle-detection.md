@@ -1,7 +1,5 @@
 # Dependency-cycle detection
 
-Status: signed off 2026-08-11 06:05, content: 00bd6d16
-
 Feature: add deterministic dependency-cycle detection to the `/nightshift:ready` backlog parser. This file is the authoritative design record.
 
 ## What it does
@@ -56,5 +54,5 @@ Migrated into the backlog and hardened by a lightened single-reviewer revise-spe
 ## Hardening
 
 - revise-spec graduated 2026-08-11 06:01 at 25acb7e, scope: whole file, content: 217a7720
-- revise-spec refreshed 2026-08-11 06:07 at 9fce1dc, scope: whole file, content: 00bd6d16 (sign-off marker)
 - handover completed 2026-08-11 11:49 at 1948c82, scope: whole file, content: 00bd6d16
+- revise-spec refreshed 2026-08-19 09:10 at 2fce9c2, scope: whole file, content: 2ec769df (legacy sign-off marker removal)
