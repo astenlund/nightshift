@@ -325,21 +325,21 @@ Design graduation already removed `.claude/features/signed-off-stamp.md` and its
 
 Runtime probes cover model-driven skill activation and session agreement state in every host context. An activation probe passes only when the real host, without explicit handover or skill naming, invokes the shared gate before substantive work for every listed applicable request and takes the documented `not-applicable` branch for a spec-less plan or code review. An agreement-state probe passes only when the accepted digest and current candidate are retained for valid same-session continuation, compatible spec clarification continues after a cited `within-contract` judgment, and the state is rejected for a different or concurrent session; a context that cannot guarantee retention takes the safe re-presentation fallback:
 
-- Claude Code natural-language validation, review, planning, and implementation requests each activate the shared gate when a governing candidate is discoverable, while spec-less plan and code review continue through `not-applicable`. (live-claim: provisional)
-- Claude Code final-design presentation activates `final-presentation` mode before the approval response. (live-claim: provisional)
-- Claude Code renders the same complete digest in separate fresh runs through final-presentation and lifecycle entry for a fixture with distinct sentinels for every governing artifact path, direct full-artifact link, requested target scope, selected work unit, goal, material exclusion, non-goal, material design decision, backlog dependency, external prerequisite, unresolved question, provisional live claim, and deferred live claim; every sentinel appears in its named field, every set member appears, and fenced or ordinary-related-link decoys do not. (live-claim: provisional)
-- Codex natural-language validation, review, planning, and implementation requests each activate the shared gate when a governing candidate is discoverable, while spec-less plan and code review continue through `not-applicable`. (live-claim: provisional)
-- Codex final-design presentation activates `final-presentation` mode before the approval response. (live-claim: provisional)
-- Codex renders the same complete digest in separate fresh runs through final-presentation and lifecycle entry for the identical all-field sentinel fixture and passes the same path, link, scope, work-unit, set-completeness, and decoy-exclusion checks. (live-claim: provisional)
+- Claude Code natural-language validation, review, planning, and implementation requests each activate the shared gate when a governing candidate is discoverable, while spec-less plan and code review continue through `not-applicable`. (live-claim: deferred 2026-08-19)
+- Claude Code final-design presentation activates `final-presentation` mode before the approval response. (live-claim: deferred 2026-08-19)
+- Claude Code renders the same complete digest in separate fresh runs through final-presentation and lifecycle entry for a fixture with distinct sentinels for every governing artifact path, direct full-artifact link, requested target scope, selected work unit, goal, material exclusion, non-goal, material design decision, backlog dependency, external prerequisite, unresolved question, provisional live claim, and deferred live claim; every sentinel appears in its named field, every set member appears, and fenced or ordinary-related-link decoys do not. (live-claim: deferred 2026-08-19)
+- Codex natural-language validation, review, planning, and implementation requests each activate the shared gate when a governing candidate is discoverable, while spec-less plan and code review continue through `not-applicable`. (live-claim: deferred 2026-08-19)
+- Codex final-design presentation activates `final-presentation` mode before the approval response. (live-claim: deferred 2026-08-19)
+- Codex renders the same complete digest in separate fresh runs through final-presentation and lifecycle entry for the identical all-field sentinel fixture and passes the same path, link, scope, work-unit, set-completeness, and decoy-exclusion checks. (live-claim: deferred 2026-08-19)
 
-- Claude Code ordinary continuation retains the agreement state, refreshes compatible changed content through contract-fit evaluation, and re-prompts for changed decisions. (live-claim: provisional)
-- Claude Code compaction retains the complete four-authority agreement state or safely loses it and re-presents the digest without reconstructing approval. (live-claim: provisional)
-- Claude Code new-session entry cannot reuse the prior session's agreement state, even when it reconstructs the same candidate identity. (live-claim: provisional)
-- Claude Code concurrent runs cannot observe or reuse each other's agreement state. (live-claim: provisional)
-- Codex ordinary continuation retains the agreement state, refreshes compatible changed content through contract-fit evaluation, and re-prompts for changed decisions. (live-claim: provisional)
-- Codex compaction retains the complete four-authority agreement state or safely loses it and re-presents the digest without reconstructing approval. (live-claim: provisional)
-- Codex new-session entry cannot reuse the prior session's agreement state, even when it reconstructs the same candidate identity. (live-claim: provisional)
-- Codex concurrent runs cannot observe or reuse each other's agreement state. (live-claim: provisional)
+- Claude Code ordinary continuation retains the agreement state, refreshes compatible changed content through contract-fit evaluation, and re-prompts for changed decisions. (live-claim: deferred 2026-08-19)
+- Claude Code compaction retains the complete four-authority agreement state or safely loses it and re-presents the digest without reconstructing approval. (live-claim: deferred 2026-08-19)
+- Claude Code new-session entry cannot reuse the prior session's agreement state, even when it reconstructs the same candidate identity. (live-claim: deferred 2026-08-19)
+- Claude Code concurrent runs cannot observe or reuse each other's agreement state. (live-claim: deferred 2026-08-19)
+- Codex ordinary continuation retains the agreement state, refreshes compatible changed content through contract-fit evaluation, and re-prompts for changed decisions. (live-claim: deferred 2026-08-19)
+- Codex compaction retains the complete four-authority agreement state or safely loses it and re-presents the digest without reconstructing approval. (live-claim: deferred 2026-08-19)
+- Codex new-session entry cannot reuse the prior session's agreement state, even when it reconstructs the same candidate identity. (live-claim: deferred 2026-08-19)
+- Codex concurrent runs cannot observe or reuse each other's agreement state. (live-claim: deferred 2026-08-19)
 
 Static consistency checks prove that active instructions no longer create, trust, refresh, or fingerprint around durable sign-off or replacement status labels, while this file remains the sole historical rejection record. The ready parser fixture suite verifies the grammar, and a separate live `node skills/ready/ready.js .` check verifies the graduated feature, dependency edges, and removed Exploring entry leave the current backlog structurally valid. The revise round and rigor suites verify that the touched internal revise engine remains green. A final sibling sweep covers the shared agreement gate, handover, public revise wrappers and profiles, init-backlog templates, live indexes, repository instructions, README, and all four related designs.
 
@@ -361,3 +361,5 @@ New ready-parser fixtures are required for fenced fake headings, bullets, labels
 - revise-spec refreshed 2026-08-19 09:10 at 2fce9c2, scope: whole file, content: b585dcd2 (legacy sign-off marker removal)
 - revise-spec refreshed 2026-08-19 11:08 at 5e2c306, scope: whole file, content: d17e1363 (fit evidence binding)
 - revise-spec refreshed 2026-08-19 12:00 at 5e2c306, scope: whole file, content: 8594fb1b (review fixes)
+- revise-spec refreshed 2026-08-19 14:10 at ab08948, scope: whole file, content: 5934de06 (live-claim deferral)
+- handover completed 2026-08-19 14:10 at ab08948, scope: whole file, content: 5934de06
