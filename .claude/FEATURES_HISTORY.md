@@ -25,6 +25,8 @@ what already shipped, not to resolve dependencies.
 
 ## Entries
 
+- [Present chosen spec for agreement before work](features/present-spec-for-agreement.md): a shared ten-skill gate now binds lifecycle authority to a current decision-complete digest, preserves autonomous within-contract continuation, revalidates completion evidence, and removes legacy durable sign-off markers. Shipped 2026-08-19 in the 2.5.2 batch.
+
 - [Agent-host-agnostic Nightshift: MVP - Universal skill entry points](features/agent-host-agnostic-nightshift.md): nine public skills now replace legacy commands, with deterministic topology coverage and installed-host discovery evidence. Shipped 2026-08-18 in the 2.5.0 batch.
 
 - [Dependency-cycle detection](features/dependency-cycle-detection.md): /nightshift:ready now surfaces dependency cycles as structural errors (edges from top-level `**Requires:**` lines; SCCs of two or more entries). Shipped 2026-08-11 in the 2.0.27 batch (commits aa667f6..d4b28dd).

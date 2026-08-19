@@ -86,11 +86,11 @@ Migrated into the backlog on 2026-08-11, with five design decisions confirmed on
 - The common-context-block machinery in `internal/revise/SKILL.md` assembles reviewer payloads (existing; this feature adds the anchor text to that block's scope ground truth).
 - The spec-review pre-seed acknowledgement scan in `internal/revise/spec.md` harvests acknowledgements (existing; this feature feeds it a declared source).
 
-Present chosen spec for agreement before work lands before Durable scope anchor because the accepted digest authorizes its deliberate-empty exclusion and legacy backfill.
+Present chosen spec for agreement before work shipped before Durable scope anchor because the accepted digest authorizes its deliberate-empty exclusion and legacy backfill.
 
 Landing order: the wave-convergence lifecycle (wave-lifecycle.md) shipped 2026-08-14 in the 2.2.0 batch; SKILL.md's lifecycle sections are wave-era prose. Derive lifecycle-touching edits from that prose.
 
-**Requires:** [Present chosen spec for agreement before work](present-spec-for-agreement.md) (FEATURES.md index entry).
+**Requires:** none.
 
 ## Hardening
 

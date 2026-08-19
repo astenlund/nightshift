@@ -97,21 +97,21 @@ The hardened-spec gate subsumes the holistic third-phase *reviewer* role, but no
 
 ## Status
 
-Draft proposal; not yet designed as a buildable skill or spec. The review-phase machinery it builds on is shipped, and the pending agreement gate supplies its authorization ordering. The first spec review graduated after three review phases over an earlier fingerprint, and the five logged open questions are resolved above. The agreement-ordering edits are not covered by that historical stamp, so this design requires fresh hardening before implementation.
+Draft proposal; not yet designed as a buildable skill or spec. The review-phase machinery and agreement gate it builds on are shipped. The first spec review graduated after three review phases over an earlier fingerprint, and the five logged open questions are resolved above. The agreement-ordering edits are not covered by that historical stamp, so this design requires fresh hardening before implementation.
 
 ## Requirements
 
 - The review engine's phase/round machinery and skeptic/controller pipeline (shipped, so no upstream backlog dependency).
-- The current-session spec agreement gate (pending; required before either spec-bearing second-opinion read and after every finding-driven design edit).
+- The current-session spec agreement gate (shipped; required before either spec-bearing second-opinion read and after every finding-driven design edit).
 - The user's requirement description(s) plus settled Q&A, produced at brainstorm time (see "Context package per gate").
 - A second-opinion model selection per run, user-chosen (see "Active ingredient").
 - A cross-family channel, feature-detected at runtime: a registered consult-capable MCP tool or a qualifying non-interactive agent-harness CLI; when neither is present, the same-family fallback applies, so this is a soft precondition rather than a blocking gate (see "Channel").
 
-Present chosen spec for agreement before work lands before Second-opinion gates.
+Present chosen spec for agreement before work shipped before Second-opinion gates.
 
-Landing order: the wave-convergence lifecycle (wave-lifecycle.md) shipped 2026-08-14 in the 2.2.0 batch. The agreement gate lands before this feature. When this feature is picked up, re-derive the gate placement against the wave model: the hardened gate maps onto the verifier seat, and the phase-cap open question dissolves into the wave and verifier caps (30 rounds, 10 verifier launches per run).
+Landing order: the wave-convergence lifecycle shipped 2026-08-14 in the 2.2.0 batch, and the agreement gate shipped 2026-08-19 in the 2.5.2 batch. When this feature is picked up, re-derive the gate placement against the wave model: the hardened gate maps onto the verifier seat, and the phase-cap open question dissolves into the wave and verifier caps (30 rounds, 10 verifier launches per run).
 
-**Requires:** [Present chosen spec for agreement before work](present-spec-for-agreement.md), [Contract-calibrated revise admission](contract-calibrated-revise-admission.md).
+**Requires:** [Contract-calibrated revise admission](contract-calibrated-revise-admission.md).
 
 ## Hardening
 

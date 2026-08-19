@@ -15,7 +15,7 @@ The universal-skill MVP shipped and its active dependency references were remove
 - `durable-run-identity-concurrency.md`
 - `adversarial-repair-dialogue.md`
 
-The arbitration design change corrected the copies in the four breakout files it otherwise touched: `review-orchestration-tests.md`, `fix-scoped-rounds.md`, `durable-scope-anchor.md`, and `adversarial-repair-dialogue.md`. The other four remain concrete open instances.
+The arbitration design change corrected the copies in the four breakout files it otherwise touched: `review-orchestration-tests.md`, `fix-scoped-rounds.md`, `durable-scope-anchor.md`, and `adversarial-repair-dialogue.md`. The agreement-gate release later corrected `present-spec-for-agreement.md`. The other three remain concrete open instances.
 
 `skills/ready/ready.js` correctly treats the top-level `**Requires:**` lines in `FEATURES.md` and `BUGS.md` as the active dependency authority. It does not read breakout-file copies, so `/nightshift:ready` reports a healthy graph while a human or agent reading the authoritative design record sees stale ordering. The `(FEATURES.md index entry)` suffix makes those lines look intentionally synchronized even when they are not.
 
@@ -37,7 +37,7 @@ The selected rule must cover features and bugs, distinguish active dependency li
 
 ## Acceptance criteria
 
-- The four remaining stale universal-MVP copies are removed or synchronized.
+- The three remaining stale universal-MVP copies are removed or synchronized.
 - Every active feature and bug has exactly one unambiguous dependency authority.
 - An executable fixture fails on an index-versus-breakout mismatch and passes on legitimate architectural-prerequisite prose, slice-local gates, history, and plans.
 - `AGENTS.md`, `FEATURES.md`, `BUGS.md`, and `init-backlog` templates describe the selected convention consistently.
@@ -45,6 +45,6 @@ The selected rule must cover features and bugs, distinguish active dependency li
 
 ## Status
 
-Confirmed by repository-wide search on 2026-08-18. Four instances were corrected opportunistically in files touched by the arbitration design; four remain open. No parser or topology test currently detects the class.
+Confirmed by repository-wide search on 2026-08-18. Four instances were corrected opportunistically in files touched by the arbitration design, and the agreement-gate release corrected one more; three remain open. No parser or topology test currently detects the class.
 
 **Requires:** none.

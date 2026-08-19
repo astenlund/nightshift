@@ -701,45 +701,55 @@ test('README and AGENTS describe the ten-skill current-session agreement surface
   assert.equal(countExact(agents, withinContractContinuationRule), 1, 'AGENTS must contain one autonomous continuation rule');
 });
 
-test('related feature designs and excerpts preserve agreement dependencies and ordering', () => {
+test('related feature designs and excerpts record shipped agreement ordering and removed dependencies', () => {
   const features = readRepositoryFile('.claude/FEATURES.md');
   const pairs = [
     {
       path: '.claude/features/content-fingerprint-helper.md',
       heading: '### [Content fingerprint helper](features/content-fingerprint-helper.md)',
       dependencySection: '## Requirements',
-      ordering: 'Present chosen spec for agreement before work lands before Content fingerprint helper.',
+      designRequirement: '**Requires:** none.',
+      excerptRequirement: '**Requires:** none.',
+      ordering: 'Present chosen spec for agreement before work shipped before Content fingerprint helper.',
     },
     {
       path: '.claude/features/second-opinion-gates.md',
       heading: '### [Second-opinion gates](features/second-opinion-gates.md)',
       dependencySection: '## Requirements',
-      ordering: 'Present chosen spec for agreement before work lands before Second-opinion gates.',
+      designRequirement: '**Requires:** [Contract-calibrated revise admission](contract-calibrated-revise-admission.md).',
+      excerptRequirement: '**Requires:** [Contract-calibrated revise admission](features/contract-calibrated-revise-admission.md).',
+      ordering: 'Present chosen spec for agreement before work shipped before Second-opinion gates.',
     },
     {
       path: '.claude/features/durable-scope-anchor.md',
       heading: '### [Durable scope anchor](features/durable-scope-anchor.md)',
       dependencySection: '## Requirements',
-      ordering: 'Present chosen spec for agreement before work lands before Durable scope anchor because the accepted digest authorizes its deliberate-empty exclusion and legacy backfill.',
+      designRequirement: '**Requires:** none.',
+      excerptRequirement: '**Requires:** none.',
+      ordering: 'Present chosen spec for agreement before work shipped before Durable scope anchor because the accepted digest authorizes its deliberate-empty exclusion and legacy backfill.',
     },
     {
       path: '.claude/features/agent-host-agnostic-nightshift.md',
       heading: '### [Agent-host-agnostic Nightshift](features/agent-host-agnostic-nightshift.md)',
       dependencySection: '## Related backlog work',
-      ordering: 'The universal-skill MVP shipped before Present chosen spec for agreement before work; every later migration slice preserves the agreement gate.',
+      designRequirement: '- [Move deterministic init-backlog mechanics out of promptspace](deterministic-init-backlog.md) is the remaining prerequisite for host-neutral scaffolding.',
+      excerptRequirement: '  **Requires:** [Move deterministic init-backlog mechanics out of promptspace](features/deterministic-init-backlog.md).',
+      ordering: 'The universal-skill MVP and the agreement gate are shipped; every later migration slice preserves that gate.',
     },
   ];
 
-  for (const { path, heading, dependencySection, ordering } of pairs) {
+  for (const { path, heading, dependencySection, designRequirement, excerptRequirement, ordering } of pairs) {
     const design = readRepositoryFile(path);
     const designDependencies = extractSection(design, dependencySection);
     const excerpt = extractFeatureEntry(features, heading);
 
-    assert.equal(designDependencies.includes('present-spec-for-agreement.md'), true, `${path} must depend on the agreement feature in ${dependencySection}`);
-    assert.equal(excerpt.includes('present-spec-for-agreement.md'), true, `${heading} excerpt must depend on the agreement feature`);
+    assert.equal(countExact(designDependencies, designRequirement), 1, `${path} must carry its current prerequisite once in ${dependencySection}`);
+    assert.equal(countExact(excerpt, excerptRequirement), 1, `${heading} excerpt must carry its current prerequisite once`);
     assert.equal(countExact(design, ordering), 1, `${path} must contain its ordering sentence once`);
     assert.equal(countExact(excerpt, ordering), 1, `${heading} excerpt must contain its ordering sentence once`);
   }
+  const activeRequires = features.match(/^[ \t]*\*\*Requires:\*\*.*$/gm) ?? [];
+  assert.equal(activeRequires.some((line) => line.includes('present-spec-for-agreement.md')), false, 'active dependency lines must not reference the shipped agreement feature');
 });
 
 test('CLI rejects malformed request envelope', () => {
