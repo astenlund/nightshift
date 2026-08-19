@@ -16,6 +16,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const { scanMarkdown } = require('../spec-agreement/spec-agreement.js');
 
 const INDEX_FILE_STEMS = new Set([
   'QUICK_WINS', 'FEATURES', 'BUGS', 'PATTERNS',
@@ -122,16 +123,21 @@ function parseRequiresItem(raw) {
   return { kind: 'external', text: raw.replace(/\.$/, '') };
 }
 
-// Assemble a wrapped **Requires:** line starting at lines[start]. Joins
+// Assemble a wrapped **Requires:** line starting at records[start]. Joins
 // continuation lines until a terminator: blank line, ##/### heading,
 // "- " bullet, or a **Label:** line at line start.
-function assembleRequires(lines, start) {
-  const first = lines[start].trim();
+function assembleRequires(records, start) {
+  const first = records[start].content.trim();
   let content = first.replace(/^\*\*Requires:\*\*/i, '').trim();
   let i = start + 1;
-  while (i < lines.length) {
-    const line = lines[i];
+  while (i < records.length) {
+    const record = records[i];
+    const line = record.content;
     const t = line.trim();
+    if (record.opensFence || !record.outsideFence) {
+      i++;
+      continue;
+    }
     if (
       t === '' || HEADING.test(line) || BULLET.test(t) ||
       LABEL_AT_START.test(t)
@@ -219,7 +225,7 @@ function recordProseOnlySection(section, opts, proseOnlySections) {
 }
 
 function extractEntries(content, excludedSectionTitles, opts = {}) {
-  const lines = content.split(/\r?\n/);
+  const records = scanMarkdown(Buffer.from(content, 'utf8')).lines;
   const excluded = new Set(excludedSectionTitles.map((t) => t.toLowerCase()));
   const collectSections = new Set((opts.collectSections || []).map((t) => t.toLowerCase()));
   const entries = [];
@@ -229,7 +235,27 @@ function extractEntries(content, excludedSectionTitles, opts = {}) {
   let section = createSectionState();
   let current = null;
 
-  for (const line of lines) {
+  for (const record of records) {
+    const line = record.content;
+    if (record.opensFence || !record.outsideFence) {
+      if (current && current.kind === 'h3') {
+        current.bodyLines.push(line);
+      } else if (current && current.kind === 'bullet') {
+        current.bodyLines.push(line.trim());
+      } else if (section.title !== null && !section.excluded && line.trim() !== '') {
+        section.hasProse = true;
+      }
+      continue;
+    }
+    if (record.heading?.level === 1 && /^# /.test(line)) {
+      if (current?.kind === 'bullet') {
+        finalizeBulletEntry(current);
+      }
+      recordProseOnlySection(section, opts, proseOnlySections);
+      current = null;
+      section = createSectionState();
+      continue;
+    }
     const h2 = line.match(/^## (.+)$/);
     if (h2) {
       if (current?.kind === 'bullet') {
@@ -246,7 +272,7 @@ function extractEntries(content, excludedSectionTitles, opts = {}) {
         finalizeBulletEntry(current);
       }
       current = null;
-      if (!section.excluded || section.collected) {
+      if (section.title !== null && (!section.excluded || section.collected)) {
         current = createHeadingEntry(h3[1], section.title);
         if (section.excluded) {
           collectedEntries.push(current);
@@ -295,9 +321,11 @@ function extractEntries(content, excludedSectionTitles, opts = {}) {
 // ---------- Requires + Slices parsing on an entry body ----------
 
 function findRequires(bodyLines) {
-  for (let i = 0; i < bodyLines.length; i++) {
-    if (/^\*\*Requires:\*\*/i.test(bodyLines[i].trim()) && !/^\s+/.test(bodyLines[i])) {
-      return assembleRequires(bodyLines, i);
+  const records = scanMarkdown(Buffer.from(bodyLines.join('\n'), 'utf8')).lines;
+  for (let i = 0; i < records.length; i++) {
+    const line = records[i].content;
+    if (records[i].outsideFence && /^\*\*Requires:\*\*/i.test(line.trim()) && !/^\s+/.test(line)) {
+      return assembleRequires(records, i);
     }
   }
   return null;
@@ -307,9 +335,11 @@ function findRequires(bodyLines) {
 // indent 0; indented continuation lines (inline **Requires:** annotations)
 // attach to the preceding bullet.
 function parseSlices(bodyLines) {
+  const records = scanMarkdown(Buffer.from(bodyLines.join('\n'), 'utf8')).lines;
   let start = -1;
-  for (let i = 0; i < bodyLines.length; i++) {
-    if (/^\*\*Slices:\*\*\s*$/i.test(bodyLines[i].trim()) && !/^\s+/.test(bodyLines[i])) {
+  for (let i = 0; i < records.length; i++) {
+    const line = records[i].content;
+    if (records[i].outsideFence && /^\*\*Slices:\*\*\s*$/i.test(line.trim()) && !/^\s+/.test(line)) {
       start = i;
       break;
     }
@@ -319,16 +349,20 @@ function parseSlices(bodyLines) {
   const slices = [];
   let i = start + 1;
   let sawBullet = false;
-  for (; i < bodyLines.length; i++) {
-    const line = bodyLines[i];
+  for (; i < records.length; i++) {
+    const record = records[i];
+    const line = record.content;
     const t = line.trim();
+    if (record.opensFence || !record.outsideFence) {
+      continue;
+    }
     if (t === '') {
       if (sawBullet) {
         // A blank line followed by a non-bullet, non-indented line ends
         // the block; peek ahead.
-        const next = bodyLines[i + 1];
+        const next = nextFenceEligibleRecord(records, i + 1);
         if (next === undefined) break;
-        if (!BULLET.test(next.trim()) && !/^\s+\S/.test(next)) break;
+        if (!BULLET.test(next.content.trim()) && !/^\s+\S/.test(next.content)) break;
       }
       continue;
     }
@@ -343,6 +377,7 @@ function parseSlices(bodyLines) {
       else nameRaw = text.split('.')[0];
       slices.push({
         raw: text,
+        declaration: line,
         name: normalizeSliceName(nameRaw),
         displayName: stripStable(nameRaw),
         struck: Boolean(struckMatch),
@@ -354,10 +389,14 @@ function parseSlices(bodyLines) {
         // indented non-bullet lines.
         let content = t.replace(/^\*\*Requires:\*\*/i, '').trim();
         let j = i + 1;
-        while (j < bodyLines.length) {
-          const cont = bodyLines[j];
-          const ct = cont.trim();
-          if (ct === '' || BULLET.test(cont) || !/^\s+\S/.test(cont) || LABEL_AT_START.test(ct)) break;
+        while (j < records.length) {
+          const cont = records[j];
+          const ct = cont.content.trim();
+          if (cont.opensFence || !cont.outsideFence) {
+            j++;
+            continue;
+          }
+          if (ct === '' || BULLET.test(cont.content) || !/^\s+\S/.test(cont.content) || LABEL_AT_START.test(ct)) break;
           content += ' ' + ct;
           j++;
         }
@@ -372,6 +411,22 @@ function parseSlices(bodyLines) {
     }
   }
   return slices;
+}
+
+function nextFenceEligibleRecord(records, start) {
+  for (let i = start; i < records.length; i++) {
+    if (!records[i].opensFence && records[i].outsideFence) {
+      return records[i];
+    }
+  }
+
+  return undefined;
+}
+
+function findSlicesByNormalizedName(slices, requestedName) {
+  const normalizedName = normalizeSliceName(requestedName);
+
+  return slices.filter((slice) => slice.name === normalizedName);
 }
 
 // ---------- registry + resolution ----------
@@ -516,14 +571,20 @@ function resolveLink(item, registry) {
 
   const slices = parent.entry.slices;
   if (sliceName !== null) {
-    const norm = normalizeSliceName(sliceName);
-    const slice = slices.find((s) => s.name === norm);
-    if (!slice) {
+    const matches = findSlicesByNormalizedName(slices, sliceName);
+    if (matches.length === 0) {
       return {
         kind: 'structural',
         problem: `slice suffix "${sliceName}" does not match any bullet in "${parent.entry.title}"'s Slices block (typo or wrong slug)`,
       };
     }
+    if (matches.length > 1) {
+      return {
+        kind: 'structural',
+        problem: `slice suffix "${sliceName}" matches multiple bullets in "${parent.entry.title}"'s Slices block; use an unambiguous declaration`,
+      };
+    }
+    const [slice] = matches;
     if (slice.struck) {
       return {
         kind: 'structural',
@@ -995,6 +1056,7 @@ module.exports = {
   splitTopLevelCommas,
   parseRequiresItem,
   parseSlices,
+  findSlicesByNormalizedName,
   extractEntries,
   findRequires,
   buildRegistry,

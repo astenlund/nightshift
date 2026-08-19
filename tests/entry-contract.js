@@ -10,25 +10,10 @@ const PUBLIC_SKILLS = Object.freeze([
   'revise-lore',
   'revise-plan',
   'revise-spec',
-])
-
-const SUBSTANTIAL_ENTRIES = Object.freeze([
-  'handover',
-  'init-backlog',
-  'revise-docs',
-  'revise-lore',
+  'spec-agreement',
 ])
 
 const PROCEDURE_REPLACEMENTS = Object.freeze({
-  handover: Object.freeze([
-    Object.freeze(["this command's", "this skill's"]),
-    Object.freeze(['throughout this command', 'throughout this skill']),
-    Object.freeze(['checkpoint of this command', 'checkpoint of this skill']),
-  ]),
-  'init-backlog': Object.freeze([
-    Object.freeze(['The command is idempotent', 'The skill is idempotent']),
-    Object.freeze(['`/nightshift:ready` command', '`/nightshift:ready` skill']),
-  ]),
   'revise-docs': Object.freeze([]),
   'revise-lore': Object.freeze([
     Object.freeze(['a sibling command made', 'a sibling skill made']),
@@ -57,4 +42,4 @@ const REVISE_ENGINE_RESOURCES = Object.freeze({
   workflow: 'revise-round.workflow.js',
 })
 
-module.exports = { PROCEDURE_REPLACEMENTS, PUBLIC_SKILLS, REVISE_ENGINE_RESOURCES, REVISE_WRAPPERS, SUBSTANTIAL_ENTRIES }
+module.exports = { PROCEDURE_REPLACEMENTS, PUBLIC_SKILLS, REVISE_ENGINE_RESOURCES, REVISE_WRAPPERS }

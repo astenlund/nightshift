@@ -19,6 +19,7 @@ const {
   extractEntries,
   findRequires,
   parseSlices,
+  findSlicesByNormalizedName,
   buildRegistry,
   EXCLUDED_SECTIONS,
   collectEntryEdges,
@@ -45,6 +46,155 @@ function titles(arr) {
 function findByTitle(arr, title) {
   return arr.find((x) => x.title === title);
 }
+
+test('extractEntries ignores a fenced heading lookalike', () => {
+  const parsed = extractEntries(`## Area
+\`\`\`
+### [Fake](features/fake.md)
+\`\`\`
+### [Real](features/real.md)`, []);
+
+  assert.deepStrictEqual(parsed.entries.map((entry) => entry.title), ['Real'], 'fenced heading must not create an entry');
+});
+
+test('extractEntries recognizes only column-zero backlog entry tokens', () => {
+  const features = extractEntries(`  ## Indented section
+  ### [Indented parent](features/indented-parent.md)
+##\tTabbed section
+###\t[Tabbed entry](features/tabbed.md)
+## Area
+  ### [Indented entry](features/indented-entry.md)
+### [Real](features/real.md)`, []);
+  const quickWins = extractEntries(`## Area
+* Star entry
++ Plus entry
+  - Indented entry
+- Real entry`, EXCLUDED_SECTIONS.QUICK_WINS, { bullets: true, noticeProse: true });
+
+  assert.deepStrictEqual(features.entries.map((entry) => entry.title), ['Real']);
+  assert.deepStrictEqual(quickWins.entries.map((entry) => entry.title), ['Real entry']);
+});
+
+test('extractEntries closes an active section at an outside-fence column-zero level-one heading', () => {
+  const features = extractEntries(`## Area
+### [Real](features/real.md)
+# Appendix
+### [Ghost](features/ghost.md)`, []);
+  const fenced = extractEntries(`## Area
+### [Real](features/real.md)
+\`\`\`
+# Fenced appendix
+\`\`\`
+### [Still real](features/still-real.md)`, []);
+  const quickWins = extractEntries(`## Area
+- Real entry
+  continuation
+# Appendix
+- Ghost entry`, EXCLUDED_SECTIONS.QUICK_WINS, { bullets: true, noticeProse: true });
+
+  assert.deepStrictEqual(features.entries.map((entry) => entry.title), ['Real']);
+  assert.deepStrictEqual(fenced.entries.map((entry) => entry.title), ['Real', 'Still real']);
+  assert.deepStrictEqual(quickWins.entries.map((entry) => entry.title), ['Real entry continuation']);
+});
+
+test('analyze keeps unambiguous fixture JSON byte-for-byte stable', () => {
+  const output = JSON.stringify(analyze({ FEATURES: `## Area
+### [Real](features/real.md)
+
+**Requires:** none.
+` }));
+
+  assert.strictEqual(output, '{"indexes":{"found":["FEATURES.md"],"missing":["QUICK_WINS.md","BUGS.md","PATTERNS.md"]},"ready":[{"index":"FEATURES.md","title":"Real","excerpt":""}],"blocked":[],"external":[],"exploring":[],"structuralErrors":[],"notices":[],"breakoutTargets":[{"index":"FEATURES.md","title":"Real","target":"features/real.md"}]}');
+});
+
+test('ready structural parsing ignores fenced lookalikes and unclosed fences', () => {
+  const fenced = `## Area
+### [Parent](features/parent.md)
+
+\`\`\`markdown
+### [Fake](features/fake.md)
+- Fake work unit
+**Requires:** [Fake](features/fake.md)
+**Slices:**
+- **MVP - Fake slice.**
+  **Requires:** [Fake](features/fake.md)
+\`\`\`not-a-closer
+### [Still fake](features/still-fake.md)
+`;
+  const unclosed = `## Area
+### [Real](features/real.md)
+
+**Requires:** none.
+
+\`\`\`
+### [Hidden](features/hidden.md)
+**Requires:** [Real](features/real.md)
+`;
+  const fencedResult = analyze({ FEATURES: fenced });
+  const unclosedResult = analyze({ FEATURES: unclosed });
+
+  assert.deepStrictEqual(fencedResult.ready.map((entry) => entry.title), []);
+  assert.deepStrictEqual(fencedResult.structuralErrors.map((entry) => entry.title), ['Parent']);
+  assert.match(fencedResult.structuralErrors[0].problem, /missing \*\*Requires:\*\* line/);
+  assert.deepStrictEqual(fencedResult.blocked, []);
+  assert.deepStrictEqual(unclosedResult.ready.map((entry) => entry.title), ['Real']);
+  assert.deepStrictEqual(unclosedResult.blocked, []);
+});
+
+test('Requires ignores a following fenced fake declaration and its opener', () => {
+  const result = analyze({ FEATURES: `## Area
+### [Real](features/real.md)
+
+**Requires:** none.
+\`\`\`
+**Requires:** outside system approval
+\`\`\`
+` });
+
+  assert.deepStrictEqual(result.ready.map((entry) => entry.title), ['Real']);
+  assert.deepStrictEqual(result.external, []);
+});
+
+test('Slices skips a fenced fake bullet and resumes at a real outside-fence slice', () => {
+  const slices = parseSlices([
+    '**Slices:**',
+    '\`\`\`',
+    '- **MVP - Fake slice.**',
+    '\`\`\`',
+    '- **MVP - Real slice.**',
+  ]);
+
+  assert.deepStrictEqual(slices.map((slice) => slice.declaration), ['- **MVP - Real slice.**']);
+});
+
+test('parseSlices preserves colliding declarations and finds every normalized match', () => {
+  const slices = parseSlices([
+    '**Slices:**',
+    '- **MVP - Shared work.**',
+    '- **Continuation - Shared work.**',
+  ]);
+
+  assert.deepStrictEqual(slices.map((slice) => slice.declaration), ['- **MVP - Shared work.**', '- **Continuation - Shared work.**']);
+  assert.deepStrictEqual(findSlicesByNormalizedName(slices, 'shared work').map((slice) => slice.declaration), ['- **MVP - Shared work.**', '- **Continuation - Shared work.**']);
+});
+
+test('colliding slice dependency suffix is structural ambiguity', () => {
+  const result = analyze({ FEATURES: `## Area
+### [Parent](features/parent.md)
+
+**Requires:** none.
+
+**Slices:**
+- **MVP - Shared work.**
+- **Continuation - Shared work.**
+
+### [Child](features/child.md)
+
+**Requires:** [Parent: Shared work](features/parent.md).
+` });
+
+  assert.match(findByTitle(result.structuralErrors, 'Child').problem, /matches multiple bullets/);
+});
 
 // ---------- fixtures ----------
 

@@ -30,6 +30,18 @@ const {
 const { REVISE_ENGINE_RESOURCES } = require('./entry-contract')
 
 const TEMP_PREFIX = 'nightshift-host-smoke-test-'
+const TEN_PUBLIC_SKILLS = Object.freeze([
+  'exploring',
+  'handover',
+  'init-backlog',
+  'ready',
+  'revise-code',
+  'revise-docs',
+  'revise-lore',
+  'revise-plan',
+  'revise-spec',
+  'spec-agreement',
+])
 
 function createTemporaryDirectory() {
   return mkdtempSync(join(tmpdir(), TEMP_PREFIX))
@@ -91,6 +103,26 @@ test('Claude details parser requires one counted unique Skills inventory line', 
   assert.throws(() => parseClaudeDetails('Skills: exploring, ready\n'), /inventory/)
   assert.throws(() => parseClaudeDetails('  Skills (1)  ready\n  Skills (1)  revise\n'), /one/)
   assert.throws(() => assertClaudeInventory('  Skills (4)  exploring, ready, revise, extra\n', ['exploring', 'ready', 'revise']), /differs/)
+})
+
+test('installed-host evidence validators require the ten-skill inventory in ordinal order', () => {
+  assert.deepEqual(PUBLIC_SKILLS, TEN_PUBLIC_SKILLS)
+  const claudeDetails = `  Skills (${TEN_PUBLIC_SKILLS.length})  ${TEN_PUBLIC_SKILLS.join(', ')}\n`
+  const evidenceRow = {
+    host: 'codex',
+    mode: 'clean',
+    status: 'pass',
+    candidateVersion: '2.5.1',
+    candidateDigest: 'a'.repeat(64),
+    publicSkills: TEN_PUBLIC_SKILLS.map((name) => `nightshift:${name}`),
+    legacyCommands: [],
+    legacySkillPresent: false,
+    diagnostic: null,
+  }
+
+  assert.deepEqual(assertClaudeInventory(claudeDetails, TEN_PUBLIC_SKILLS), TEN_PUBLIC_SKILLS)
+  assert.doesNotThrow(() => validateEvidenceRow(evidenceRow))
+  assert.throws(() => assertClaudeInventory(claudeDetails, TEN_PUBLIC_SKILLS.slice(0, -1)), /differs/)
 })
 
 test('Claude source selection accepts the default root and rejects relative configuration', () => {
@@ -345,9 +377,13 @@ test('local evidence accepts absent-host provisional rows', () => {
 
     assert.doesNotThrow(() => evaluateEvidence({ checkoutRoot, evidenceRoot, release: false }))
     assert.throws(() => evaluateEvidence({ checkoutRoot, evidenceRoot, release: true }), /status/)
-    const invalid = JSON.parse(require('node:fs').readFileSync(join(evidenceRoot, 'codex-clean.json'), 'utf8'))
-    invalid.status = 'fail'
-    writeFileSync(join(evidenceRoot, 'codex-clean.json'), JSON.stringify(invalid) + '\n')
+  const invalid = JSON.parse(require('node:fs').readFileSync(join(evidenceRoot, 'codex-clean.json'), 'utf8'))
+  invalid.publicSkills = invalid.publicSkills.slice(0, -1)
+  writeFileSync(join(evidenceRoot, 'codex-clean.json'), JSON.stringify(invalid) + '\n')
+  assert.throws(() => evaluateEvidence({ checkoutRoot, evidenceRoot, release: false }), /public skills/)
+  invalid.publicSkills = PUBLIC_SKILLS.map((name) => 'nightshift:' + name)
+  invalid.status = 'fail'
+  writeFileSync(join(evidenceRoot, 'codex-clean.json'), JSON.stringify(invalid) + '\n')
     assert.throws(() => evaluateEvidence({ checkoutRoot, evidenceRoot, release: false }), /status/)
   } finally {
     removeTemporaryDirectory(root)
