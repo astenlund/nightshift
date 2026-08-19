@@ -21,6 +21,12 @@ Git-diff scope shapes (`staged`, `unstaged`, `main..HEAD`) that the code artifac
 - For a section scope, name the section heading(s) and adjacent sections that the named section depends on or is depended on by. Read the whole file once to understand the document shape, then point agents at the in-scope sections by heading + line range.
 - If the spec file does not exist, report that and stop.
 
+## Agreement binding and fingerprint
+
+Load `${CLAUDE_PLUGIN_ROOT}/skills/spec-agreement/spec-agreement.js`. The spec's existing resolved artifact identity and review scope supply the post-mutation request; durable revise state supplies no agreement authority. For every stable read, call `selectArtifact` with selector kind `design-before-hardening` and empty selectors, then pass that exact selection to `hashSelection`. This is the sole eligible-design fingerprint selector and hash pipeline. A `Status:` line remains eligible design content and is never excluded.
+
+Every controller fix or user request that edits the reviewed spec is agreement-relevant. After controller fixes and all pending user requests form the complete revise-spec boundary batch, invoke `${CLAUDE_PLUGIN_ROOT}/skills/spec-agreement/SKILL.md` in `post-mutation` phase before another reviewer, skeptic, verifier, post-review item, or downstream transition. The shared controller reconstructs and classifies the complete candidate once; this profile does not reproduce governing-set mapping, candidate comparison, or fit classification. Exact equality, validated compatibility, renewed agreement, or `not-applicable` clears the engine boundary through its common protocol. Every unresolved or failed outcome remains blocked there.
+
 ## Grounding step
 
 The operating-context section must exist and be complete before any reviewer or skeptic launches. The controller runs this step at the start of the review run, at the entry point where the user is still present (shift start). It never defaults-substitutes and never fails closed silently: a missing or incomplete section is filled by asking the user.
@@ -45,13 +51,13 @@ The operating-context section must exist and be complete before any reviewer or 
 
 - **Post-fix steps**: none (specs have no build).
 
-- **Post-loop step (hardening stamp)**: once every other post-loop step has landed, so the fingerprint matches the final shipped artifact, not an intermediate state, append a provenance line to the artifact under a `## Hardening` section (created at the end of the document if absent):
+- **Post-loop step (hardening stamp)**: once every other post-loop step has landed, so the fingerprint matches the final shipped artifact, not an intermediate state, call `writeProvenanceStamp` from `${CLAUDE_PLUGIN_ROOT}/skills/spec-agreement/spec-agreement.js` with the complete current-file baseline hash and this provenance line:
 
   ```
   - revise-spec graduated <date and time> at <sha>, scope: <scope>, content: <fingerprint>
   ```
 
-  where `<date and time>` is now (minute precision), `<sha>` is the current repo HEAD (short form), `<scope>` is `whole file` or `sections <headings or ranges>` matching this run's scope, and `<fingerprint>` is the artifact's content fingerprint per the canonical recipe in `${CLAUDE_PLUGIN_ROOT}/skills/handover/SKILL.md` (Provenance stamps section): `awk '/^## Hardening$/{exit} !/^Status:/' <artifact> | sha256sum | cut -c1-8`. Stamps accumulate, one line per graduated run. This stamp is what `/nightshift:handover`'s stage detection reads; skipping it silently breaks cross-session detection. Do not commit the artifact as part of stamping (committing is owned by the session's normal flow, and the artifact may be deliberately untracked).
+  where `<date and time>` is now (minute precision), `<sha>` is the current repo HEAD (short form), `<scope>` is `whole file` or `sections <headings or ranges>` matching this run's scope, and `<fingerprint>` is the first 8 hexadecimal characters of the `contentHash` returned by the shared `selectArtifact` and `hashSelection` pipeline above. On first graduation, the helper creates an absent eligible final Hardening section, fills an eligible empty one, or replaces the sole recognized placeholder. All later provenance stamps append after existing valid provenance; never hand-assemble a second selector, section parser, placeholder replacement, or append rule. After the provenance write joins the complete revise-spec boundary batch, run the common post-mutation contract-fit boundary before finalization. This stamp is what `/nightshift:handover` stage detection reads; skipping it silently breaks cross-session detection. Do not commit the artifact as part of stamping (committing is owned by the session's normal flow, and the artifact may be deliberately untracked).
 
 ## Dimensions
 

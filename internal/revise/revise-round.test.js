@@ -4,8 +4,10 @@ const { basename, join } = require('node:path')
 
 const SCRIPT_NAME = basename(__filename, '.js')
 const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor
+const ENGINE_PATH = join(__dirname, 'SKILL.md')
 const SOURCE_PATH = join(__dirname, 'revise-round.workflow.js')
 const CASES = [
+  'agreement boundary blocks dispatch',
   'workflow metadata describes completion-driven concurrency',
   'all reviewer submissions start before any reviewer completion is observed',
   'one reviewer starts every skeptic while another reviewer remains blocked',
@@ -227,6 +229,100 @@ async function replacePendingSkeptic(cell, id, manualSkeptic) {
 }
 
 const TESTS = {
+  async 'agreement boundary blocks dispatch'() {
+    const engine = await readFile(ENGINE_PATH, 'utf8')
+    const checkpointStart = engine.indexOf('# Revise state')
+    const checkpointEnd = engine.indexOf('\n```', checkpointStart + 3)
+    const checkpoint = engine.slice(checkpointStart, checkpointEnd)
+    assert.equal(checkpoint.includes('Agreement boundary:'), true, 'revise checkpoint must declare Agreement boundary')
+    assert.equal(checkpoint.includes('Agreement boundary: none'), true, 'new checkpoints must start with no unresolved agreement boundary')
+    assert.equal((checkpoint.match(/^Agreement boundary:/gm) || []).length, 1, 'revise checkpoint must contain exactly one agreement boundary field')
+
+    const durableAgreementFieldPrefixes = [
+      'Agreement target:',
+      'Governing scopes:',
+      'Candidate:',
+      'Candidate bytes:',
+      'Candidate token:',
+      'Digest:',
+      'Digest bytes:',
+      'Source bytes:',
+      'Response:',
+      'Semantic verdict:',
+      'Semantic evidence:',
+      'Fit verdict:',
+      'Fit evidence:',
+      'Agreement record:',
+      'Agreement verdict:',
+      'Agreement evidence:',
+      'Agreement authority:',
+      'Agreement satisfied:',
+    ]
+    const forbiddenAgreementFields = source => source
+      .split(/\r?\n/)
+      .filter(line => durableAgreementFieldPrefixes.some(prefix => line.startsWith(prefix)))
+    assert.deepEqual(forbiddenAgreementFields(checkpoint), [], 'revise checkpoint must persist no agreement-owned durable fields')
+    assert.equal(checkpoint.includes('\nEvidence: none'), true, 'generic controller-mutation evidence must remain allowed')
+    for (const prefix of durableAgreementFieldPrefixes) {
+      const mutant = `${checkpoint}\n${prefix} forbidden fixture value`
+      assert.deepEqual(forbiddenAgreementFields(mutant), [`${prefix} forbidden fixture value`], `durable-field mutation probe must reject ${prefix}`)
+    }
+
+    const boundaryStart = engine.indexOf('### Governing agreement boundary')
+    const boundaryEnd = engine.indexOf('\n## ', boundaryStart)
+    assert.notEqual(boundaryStart, -1, 'revise engine must define the governing agreement boundary')
+    assert.notEqual(boundaryEnd, -1, 'revise agreement boundary must be a complete subsection')
+    const boundary = engine.slice(boundaryStart, boundaryEnd)
+    const requiredContracts = [
+      'Agreement boundary: none|fit-check|agreement',
+      'controller fixes and pending user requests as one complete mutation batch',
+      'reconstruct exactly once and classify exactly once',
+      'reviewer, skeptic, verifier, post-review, planning, implementation, or downstream dispatch',
+      'post-mutation',
+      'Agreement boundary: fit-check',
+      'Agreement boundary: agreement',
+      'Agreement boundary: none',
+      'exact match, validated compatible refresh, renewed agreement replacement, or `not-applicable`',
+      'reconstruction, classification, and volatile-state storage failures retain the last non-`none` marker',
+      'a request that arrives after the drain remains pending',
+      'normal entry gate and never authorizes dispatch by itself',
+    ]
+    for (const contract of requiredContracts) {
+      assert.equal(boundary.includes(contract), true, `revise agreement boundary must state ${contract}`)
+    }
+
+    const fitCheckWrite = boundary.indexOf('atomically rewrite the checkpoint to `Agreement boundary: fit-check`')
+    const agreementWrite = boundary.indexOf('atomically rewrite the checkpoint to `Agreement boundary: agreement`')
+    const noneWrite = boundary.indexOf('restore `Agreement boundary: none`')
+    assert.notEqual(fitCheckWrite, -1, 'agreement boundary must contain the fit-check transition')
+    assert.notEqual(agreementWrite, -1, 'agreement boundary must contain the agreement transition')
+    assert.notEqual(noneWrite, -1, 'agreement boundary must contain the none transition')
+    assert.equal(fitCheckWrite < agreementWrite && agreementWrite < noneWrite, true, 'agreement boundary writes must preserve fit-check then agreement then none ordering')
+
+    const interruptionPoints = [
+      'before writing `fit-check`',
+      'after writing `fit-check`',
+      'before writing `agreement`',
+      'after writing `agreement`',
+      'before writing `none`',
+      'after writing `none`',
+    ]
+    for (const point of interruptionPoints) {
+      assert.equal(boundary.includes(point), true, `revise agreement boundary must cover interruption ${point}`)
+    }
+
+    const dispatchCondition = 'Only with `Agreement boundary: none`, no pending request or mutation, and a current successful normal entry or post-mutation gate result may the controller resolve the transition'
+    const blockedDispatchClasses = 'While the marker is `fit-check` or `agreement`, prohibit every reviewer, skeptic, verifier, post-review, planning, implementation, or downstream dispatch.'
+    const assertDispatchContract = source => {
+      assert.equal(source.includes(dispatchCondition), true, 'real dispatch transition must require durable none, no pending work, and a current successful gate')
+      assert.equal(source.includes(blockedDispatchClasses), true, 'fit-check and agreement must prohibit every named dispatch class')
+    }
+    assertDispatchContract(engine)
+
+    const dispatchGuardMutant = engine.replace(dispatchCondition, 'Only when the controller is ready may it resolve the transition')
+    assert.notEqual(dispatchGuardMutant, engine, 'dispatch-condition mutation probe must alter the real instruction surface')
+    assert.throws(() => assertDispatchContract(dispatchGuardMutant), /real dispatch transition must require durable none/)
+  },
   async 'workflow metadata describes completion-driven concurrency'() {
     const source = await readFile(SOURCE_PATH, 'utf8')
     const expectedMetadata = [

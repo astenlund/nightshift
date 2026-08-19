@@ -26,14 +26,24 @@ Git-diff scope shapes (`staged`, `unstaged`, `main..HEAD`) that the code artifac
 - For a section scope, name the section heading(s) and adjacent sections that the named section depends on or is depended on by. Read the whole file once to understand the document shape, then point agents at the in-scope sections by heading + line range.
 - If the plan file does not exist, report that and stop.
 
+## Agreement binding and fingerprint
+
+Load `${CLAUDE_PLUGIN_ROOT}/skills/spec-agreement/spec-agreement.js`. Parse the actual plan bytes with `parsePlanContract`; its exact plural `## Governing specs` declarations, in declared order, are the only upstream seeds. Pass those scopes through normal `resolveGoverningSet` resolution so canonical duplicate collapse occurs once in the shared owner while distinct work-unit bindings remain distinct. Do not infer seeds from ordinary links or hand-build a replacement declaration list.
+
+The agreement target is the selected whole-plan or section scope, and the resolved plural scopes bind its governing set. For the plan review's own drift fingerprint, call `selectArtifact` with selector kind `design-before-hardening` and empty selectors, then call `hashSelection` on that exact selection. The shared controller owns eligible design selection and hashing. A `Status:` line is eligible design content and is never excluded.
+
+Every completed plan mutation batch is agreement-boundary relevant because the selected plan is the agreement target. After the complete batch, atomically write `Agreement boundary: fit-check` before any final-plan interpretation. Under `fit-check`, reparse the final plan bytes with `parsePlanContract`, resolve the final declarations through normal `resolveGoverningSet`, perform canonical duplicate collapse in that shared owner, reconstruct the complete candidate, and compare target and declaration changes through the shared controller to detect additions, removals, repoints, reorders, and retargeting.
+
+An unchanged post-resolution candidate, including duplicate-collapsed identity, takes exact continuation without prompting and may clear the common boundary through its success protocol. Removing or reordering only exact redundant declarations therefore avoids a false prompt. A changed declaration or selected target continues through the shared agreement skill in `post-mutation` phase before further dispatch. A parse, resolution, reconstruction, or comparison failure retains `Agreement boundary: fit-check` and dispatches nothing. Any Spec Reconciliation mutation to a governing artifact is agreement-relevant and enters the same one-batch post-mutation boundary. The profile never duplicates target mapping, governing-set classification, candidate comparison, or contract-fit logic.
+
 ## Grounding step
 
-The plan carries no operating-context section of its own; its calibration source is the upstream spec(s) it references. The controller runs this step at the start of the review run, before any reviewer or skeptic launches.
+The plan carries no operating-context section of its own; its calibration source is the upstream specs in the parsed and resolved governing scopes. The controller runs this step at the start of the review run, before any reviewer or skeptic launches.
 
-1. **Enumerate the upstream specs.** A plan may reference one or more upstream specs, or none at all.
-2. **Per-spec check.** For each referenced upstream spec, look for a complete `Operating context` section (absent vs skeletal per the fixed definitions in `spec.md`'s grounding step). Verify the tier stated there follows from the inputs under the derivation rule in `internal/revise/rigor.js`.
+1. **Enumerate the upstream specs.** Use only the ordered scopes returned by `parsePlanContract` and normal governing-set resolution. A plan may declare one or more upstream specs, or the exact spec-less form `- None.`.
+2. **Per-spec check.** For each resolved upstream spec, look for a complete `Operating context` section (absent vs skeletal per the fixed definitions in `spec.md`'s grounding step). Verify the tier stated there follows from the inputs under the derivation rule in `internal/revise/rigor.js`.
 3. **Raise on incomplete.** For any upstream spec whose section is absent or skeletal, raise `structural-precondition-error` with its three fields (artifacts paths: the plan and the failing upstream spec; reason: absent or skeletal with the specific missing input or rule violation; remediation: harden that upstream spec first, then re-run). Do not invent a plan-local copy and do not proceed with an incomplete calibration baseline.
-4. **Skip when none.** When the plan has no upstream spec, skip with a one-line note (matching the Spec Reconciliation step's spec-less skip) and proceed without an operating-context baseline.
+4. **Skip when none.** When the parsed contract is the exact spec-less form, skip with a one-line note (matching the Spec Reconciliation step's spec-less skip) and proceed without an operating-context baseline.
 5. **Propagate all sections.** Copy each upstream spec's complete operating-context section unchanged into the common-context block for planners and reviewers, so they calibrate against the actual declared baseline. When two referenced upstream specs declare different rigor tiers, that divergence is itself a finding reviewers surface, directing the upstream specs' owners to reconcile before the plan's rigor is trusted.
 
 ## Review parameters
@@ -50,13 +60,13 @@ The plan carries no operating-context section of its own; its calibration source
 
 - **Post-fix steps**: none (plans have no build).
 
-- **Post-loop step (hardening stamp)**: once every other post-loop step has landed, so the fingerprint matches the final shipped plan, not an intermediate state, append a provenance line to the plan under a `## Hardening` section (created at the end of the document if absent):
+- **Post-loop step (hardening stamp)**: once every other post-loop step has landed, so the fingerprint matches the final shipped plan, not an intermediate state, call `writeProvenanceStamp` from `${CLAUDE_PLUGIN_ROOT}/skills/spec-agreement/spec-agreement.js` with the complete current-file baseline hash and this provenance line:
 
   ```
   - revise-plan graduated <date and time> at <sha>, scope: <scope>, content: <fingerprint>
   ```
 
-  where `<date and time>` is now (minute precision), `<sha>` is the current repo HEAD (short form), `<scope>` is `whole file` (plans are typically hardened whole-file) or `sections <headings or ranges>`, and `<fingerprint>` is the plan's content fingerprint per the canonical recipe in `${CLAUDE_PLUGIN_ROOT}/skills/handover/SKILL.md` (Provenance stamps section): `awk '/^## Hardening$/{exit} !/^Status:/' <plan> | sha256sum | cut -c1-8`. Stamps accumulate, one line per graduated run. This stamp is what `/nightshift:handover`'s stage detection reads (both for plan hardening and as the baseline for its implementation-completeness evidence); skipping it silently breaks cross-session detection. Do not commit the plan as part of stamping.
+  where `<date and time>` is now (minute precision), `<sha>` is the current repo HEAD (short form), `<scope>` is `whole file` (plans are typically hardened whole-file) or `sections <headings or ranges>`, and `<fingerprint>` is the first 8 hexadecimal characters of the shared `hashSelection` result's `contentHash`. On first graduation, the helper creates an absent eligible final Hardening section, fills an eligible empty one, or replaces the sole recognized placeholder. Later provenance stamps append after existing valid provenance. Never hand-assemble the selector, placeholder replacement, or append behavior. Reparse and resolve the plan contract after this mutation before clearing the common agreement boundary. This stamp is what `/nightshift:handover` stage detection reads, both for plan hardening and as the baseline for its implementation-completeness evidence; skipping it silently breaks cross-session detection. Do not commit the plan as part of stamping.
 
 ## Dimensions
 
@@ -124,7 +134,7 @@ A plan is ephemeral; the upstream spec it came from is durable. A correction the
 After the review run completes, reconcile against each upstream spec (skip with a one-line note if there is none):
 
 1. **Sort the review findings.** A finding belongs in the spec iff it would be lost-and-missed once the plan is gone: corrections to the contracts, invocations, assumptions, or design decisions the spec owns. Language gotchas, library quirks, and how-to-code-it detail stay in the code the plan produces; promoting them only bloats the spec.
-2. **Apply the spec-worthy ones with approval.** Surface each as readable text (current wording plus proposed replacement, not buried in a tool call) and edit the spec on approval. This is the sole exception to the "plan file only" edit surface. An applied spec edit changes the spec's fingerprint after its hardening stamp: append a refreshed stamp line to the spec per the Post-stamp edits rule in `${CLAUDE_PLUGIN_ROOT}/skills/handover/SKILL.md` (Provenance stamps section), reason `spec reconciliation`.
+2. **Apply the spec-worthy ones with approval.** Surface each as readable text (current wording plus proposed replacement, not buried in a tool call) and edit the spec on approval. This is the sole exception to the "plan file only" edit surface. For each applied spec edit, use the shared `selectArtifact` and `hashSelection` pipeline and `writeProvenanceStamp` to append the refreshed provenance with reason `spec reconciliation`. Drain every approved reconciliation edit into the complete boundary batch, then invoke the shared agreement skill in `post-mutation` phase once against the final governing set before another post-review item or downstream transition.
 3. **Right-size the change.** A localized correction is an inline edit, not a reason to re-run a spec review; a candidate that would change the design rather than correct its record goes to the Follow-up logging step instead, recommending a dedicated `/nightshift:revise-spec` pass.
 
 If nothing reconciles, say so explicitly, so the step is visibly run.

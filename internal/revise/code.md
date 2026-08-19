@@ -18,6 +18,16 @@ Resolve the intended logical changeset with this decision procedure:
 
 **Collect the files to review.** Read every included live file, review deleted files from the patch, and verify that each contextual or excluded same-file change is represented according to the recorded scope decision. If the resolved logical changeset is empty, report that there is nothing to review and stop.
 
+## Agreement binding and fingerprint
+
+Load `${CLAUDE_PLUGIN_ROOT}/skills/spec-agreement/spec-agreement.js`. When an active plan exists, obtain every governing seed by running `parsePlanContract` against its actual bytes and bind the agreement target to the selected stable whole-plan or section scope. Without an active plan, bind the target to the explicitly selected governing scope. Feed every explicit seed and parsed declaration through normal `resolveGoverningSet`; do not infer a governing artifact from recency or duplicate plan parsing, scope ordering, or candidate mapping in this profile.
+
+For each resolved governing artifact, call `selectArtifact` with its controller-resolved selector kind and selectors, then call `hashSelection` on that exact selection. Those shared operations own agreement fingerprint selection and hashing. Eligible design content includes `Status:` lines. The code review's generated cumulative patch and its review fingerprint remain separate delivery state; ordinary cumulative-patch movement never changes the stable agreement target or triggers an agreement check.
+
+After a complete controller mutation batch, compare every mutated canonical path with the resolved governing artifact paths and the active plan path. Reconstruct only for relevant overlap: any governing-artifact mutation, or an active-plan mutation that changes the active-plan target or its exact `## Governing specs` governing declarations. Ordinary implementation changes, non-overlapping code fixes, and ordinary task-prose changes in the active plan remain outside the agreement boundary. An overlap-detection, plan-parse, resolution, reconstruction, or comparison failure blocks dispatch at the common resumable boundary.
+
+For relevant overlap, invoke `${CLAUDE_PLUGIN_ROOT}/skills/spec-agreement/SKILL.md` in `post-mutation` phase once after controller fixes and pending user requests have fully drained. Governing-source changes use the shared contract-fit path; an active-plan target or declaration change uses the shared deterministic structural path. This profile supplies only the overlap trigger and never duplicates mapping, comparison, or semantic classification logic.
+
 ## Review parameters
 
 - **Artifact**: the in-scope code changeset. Edit surface: the source files in scope; fixes are applied directly to them.
