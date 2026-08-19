@@ -261,7 +261,7 @@ Centralizes selector-aware content extraction, canonical byte framing, and hashi
 
 Every design spec carries a short, durable `## Scope anchor` near its goal with stable `Requested outcome:` and `Material exclusions:` labels. `Material exclusions: None stated.` is the sole deliberate-empty form and requires agreement; a missing line is incomplete. The anchor is frozen unless the user revises the outcome or exclusions, with the revision recorded, and copied verbatim into reviewer, skeptic, dedup-judge, controller-admission, and verifier context. Interactive legacy specs are backfilled before launch, unattended fresh runs fail closed, and existing checkpoints continue their recorded legacy policy or restart explicitly. It grounds scope expansion without immunizing the chosen design's wiring from findings.
 
-**Requires:** none.
+**Requires:** [Present chosen spec for agreement before work](features/present-spec-for-agreement.md).
 
 ### [Contract-calibrated revise admission](features/contract-calibrated-revise-admission.md)
 
@@ -279,7 +279,7 @@ Narrows the round 2+ payload for a dimension whose own admitted findings produce
 
 ### [Present chosen spec for agreement before work](features/present-spec-for-agreement.md)
 
-Requires every governing spec, whether backlog-backed or standalone, to be presented as a decision-complete digest and explicitly approved before validation or lifecycle work begins. The shared gate also owns final brainstorming presentation so same-session approval retains its pre-response identity without a duplicate prompt. Digest and approval identity come from one checked byte-and-scope baseline; approval is bound to current design content in volatile session state, checked again against disk after the response, re-required inside revise after pre-implementation design or governing-set changes, and never persisted or replaced by a durable design-status label. The gate protects canonical handover and every direct public revise entry, removes known legacy sign-off markers through the release migration, fails closed with exact reviewed-migration deletions when no raw-byte compare-and-replace provider is proved, and is reinforced by the index templates.
+Requires every governing spec, whether backlog-backed or standalone, to be presented as a decision-complete digest and explicitly approved before validation or lifecycle work begins. The shared gate also owns final brainstorming presentation so same-session approval retains its pre-response candidate without a duplicate prompt. Approval is bound to the accepted digest in volatile session state, exact source snapshots detect drift, and a contract-fit check lets compatible spec clarification continue autonomously while decision changes or uncertain judgments require renewed agreement. The gate protects canonical handover and every direct public revise entry, removes known legacy sign-off markers through the release migration, fails closed with exact reviewed-migration deletions on every current host, and is reinforced by the index templates.
 
 **Requires:** none.
 

@@ -88,7 +88,7 @@ Migrated into the backlog on 2026-08-11, with five design decisions confirmed on
 
 Landing order: the wave-convergence lifecycle (wave-lifecycle.md) shipped 2026-08-14 in the 2.2.0 batch; SKILL.md's lifecycle sections are wave-era prose. Derive lifecycle-touching edits from that prose.
 
-**Requires:** none (FEATURES.md index entry).
+**Requires:** [Present chosen spec for agreement before work](present-spec-for-agreement.md) (FEATURES.md index entry).
 
 ## Hardening
 
