@@ -12,6 +12,8 @@ it within this file. Negative-knowledge findings (approaches attempted
 and reverted) are first-class promotion candidates from the history
 into the relevant `.claude/patterns/<slug>.md` Cautionary tales sections.
 
+Readiness and graduation are not approval: before spec-governed work, present the current decision-complete digest and obtain explicit agreement in this session.
+
 Capture shorthand: name the refactor, describe the current smell in a
 sentence or two, sketch the preferred shape. A reader should be able to
 start work from the entry alone. Anchor entries on identifiers that

@@ -59,7 +59,7 @@ The on-demand locations have different lifecycles:
 
      The per-file concept checklists in `## Concept checklists` below specify exactly which sections each checklist item covers and are authoritative: judge each checklist item as present-in-equivalent-prose vs absent on the live template-controlled portion, and only flag stale if at least one is absent. Identical-or-enriched template-controlled content (the live file covers everything on the checklist, possibly with additional project-specific prose) is NOT stale and must be left alone. Drift in wording, paragraph order, or added emphasis is not staleness; missing checklist coverage is. User-controlled sections are never inspected for staleness.
    - **`QUICK_WINS_HISTORY.md`**, **`FEATURES_HISTORY.md`**, and **`BUGS_HISTORY.md`** follow the same staleness rule as index files (template-controlled portion = H1 + `## Cross-reference resolution` section; `## Entries` is the user-controlled section). If any history file is missing on a project that still has a populated `## Implemented` / `## Fixed` section inside its parent index, surface the migration opportunity in the plan output but do not auto-move entries; the user decides when to perform the split.
-   - The **CLAUDE.md `Backlogs and indexes` section** is stale if it is missing any of: the instruction to consult relevant indexes on demand before proposing or starting related work, all four subdirectories (features, bugs, patterns, plans), all three history archives (`QUICK_WINS_HISTORY.md`, `FEATURES_HISTORY.md`, `BUGS_HISTORY.md`), the walk-and-remove convention for satisfied `Requires:` references, the `## Exploring` convention in FEATURES.md, the `/nightshift:ready` skill. When the section contains an earlier automatic-loading claim, replace that claim with the on-demand instruction. Coverage check, not literal-string match; other project-specific phrasing or added detail is fine.
+   - The **CLAUDE.md `Backlogs and indexes` section** is stale if it is missing any concept named by its checklist below, including the current-session agreement boundary and autonomous within-contract continuation. When the section contains an earlier automatic-loading claim, replace that claim with the on-demand instruction. Coverage check, not literal-string match; other project-specific phrasing or added detail is fine.
 
 2. **Plan.** Present a concise table to the user: target, state, action. Actions are `create` (missing), `skip` (present and up to date, never clobber), `merge` (template-controlled portion is stale; propose replacing only that portion), or `ask` (existing content is project-specific custom enough that we don't want to silently overwrite). On a fresh scaffold (no `.claude/` yet), the plan also includes the **version-control election**: ask once whether the `.claude/` backlog files should be tracked in git or ignored. On `ignore`, the apply step appends the scaffolded paths to `.gitignore` (creating it if absent). On projects already scaffolded, skip the question; the election lives in `.gitignore` itself, and changing it later is a direct `.gitignore` edit (in the tracked-to-ignored direction that also means finishing the untracking with `git rm --cached`). Downstream skills check tracked-ness per file and never assume it.
 
@@ -76,6 +76,12 @@ For each templated file, these are the load-bearing concepts its template-contro
 **Scope of each check.** Each checklist item below names the section(s) it inspects in parentheses when the section is not the H1 header. Items without a section annotation are H1-header content (when a whole checklist is H1-only the annotations are omitted as redundant). The convention sections to inspect for staleness are exactly those the checklist items name, **matched on exact `##` heading text**: if a project renames the section (e.g., `## Cross-references` instead of `## Cross-reference resolution`), the checklist won't find it and that counts as a missing concept. Everything else (user-entries sections like `## Open` / `## Entries` / themed sections, the trailing `## History` pointer's fixed boilerplate) is user-controlled and skipped.
 
 **Either-location satisfaction.** When a concept could plausibly live in more than one templated section (e.g., the FEATURES.md "`/nightshift:ready` reports `## Exploring` separately as drafts, never in the ready set, and `/nightshift:exploring` renders them in full" claim is teachable in both the `## Exploring` preamble and the `## Requires lines` carve-outs paragraph), the checklist item is satisfied if covered in EITHER location. Annotation names the primary expected location; secondary locations are acceptable substitutes.
+
+**Agreement reinforcement.** The root-guidance checklist includes these presentation and freshness concepts, while the rerun rule governs how missing concepts are merged:
+
+- When a final governing design is presented, invoke /nightshift:spec-agreement in final-presentation mode before asking for agreement.
+- Existing agreement is fresh only when the complete current candidate matches or passes contract-fit evaluation in the same session.
+- On rerun, add missing agreement guidance with a targeted patch; never rewrite user-controlled sections.
 
 **`QUICK_WINS.md`** (all H1):
 1. Names this file as one of four repo-local indexes consulted on demand when relevant.
@@ -129,12 +135,15 @@ For each templated file, these are the load-bearing concepts its template-contro
 4. Optionally: describes recognition-sufficiency on the index (entry should let readers recognize when a pattern applies without first reading the breakout file).
 5. Notes that `/nightshift:ready` does not parse PATTERNS.md (it is a pattern registry, not a work backlog), and directs the author to verify an added entry's breakout-file link target and run `ready` as a whole-session sanity pass.
 
-**Root `CLAUDE.md` `Backlogs and indexes` section** (concepts already
-enumerated inline in step 1's bullet: see line for on-demand
-consultation, four subdirs, three history archives, walk-and-remove
-convention, `## Exploring` convention, `/nightshift:ready`). An earlier
-automatic-loading claim is replaced by the on-demand instruction rather
-than accepted as an enriched superset.
+**Root `CLAUDE.md` `Backlogs and indexes` section:**
+1. Instructs agents to consult relevant indexes on demand before proposing or starting related work.
+2. Names the four subdirectories and three history archives.
+3. Explains the walk-and-remove convention, `## Exploring`, and `/nightshift:ready`.
+4. States that readiness and graduation do not authorize work without explicit current-session agreement to the current digest.
+5. States that compatible governing-text changes continue autonomously after a cited contract-fit check.
+6. Includes the final-presentation and agreement-freshness concepts under **Agreement reinforcement** above.
+
+An earlier automatic-loading claim is replaced by the on-demand instruction rather than accepted as an enriched superset.
 
 ## Rules
 
@@ -175,6 +184,8 @@ entry to [`QUICK_WINS_HISTORY.md`](QUICK_WINS_HISTORY.md); do not move
 it within this file. Negative-knowledge findings (approaches attempted
 and reverted) are first-class promotion candidates from the history
 into the relevant `.claude/patterns/<slug>.md` Cautionary tales sections.
+
+Readiness and graduation are not approval: before spec-governed work, present the current decision-complete digest and obtain explicit agreement in this session.
 
 Capture shorthand: name the refactor, describe the current smell in a
 sentence or two, sketch the preferred shape. A reader should be able to
@@ -257,6 +268,8 @@ shipped". The detailed design lives in the linked file. When a feature
 (or a slice of a sliced feature) ships, append its entry to
 [`FEATURES_HISTORY.md`](FEATURES_HISTORY.md); do not keep an
 `## Implemented` section inline.
+
+Readiness and graduation are not approval: before spec-governed work, present the current decision-complete digest and obtain explicit agreement in this session.
 
 ## Requires lines
 
@@ -504,6 +517,8 @@ When a bug is fixed, append its entry to
 [`BUGS_HISTORY.md`](BUGS_HISTORY.md); do not keep a `## Fixed` section
 inline.
 
+Readiness and graduation are not approval: before spec-governed work, present the current decision-complete digest and obtain explicit agreement in this session.
+
 ## Requires lines
 
 **Every open bug entry carries a `**Requires:**` line** declaring what
@@ -596,6 +611,8 @@ feature families. Each entry points at a standalone file under
 This file is **one of four repo-local indexes** agents consult on demand
 when relevant (alongside `QUICK_WINS.md`, `FEATURES.md`, `BUGS.md`).
 
+Readiness and graduation are not approval: before spec-governed work, present the current decision-complete digest and obtain explicit agreement in this session.
+
 A pattern graduates here when the same structure would otherwise be
 re-described in two or more feature files. Lifting it into a shared home
 lets features link at the pattern rather than duplicating it, and makes
@@ -624,6 +641,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Four repo-local indexes live under `.claude/`. Consult the relevant indexes before proposing or starting related work because a task may already be queued, designed, diagnosed, or covered by an existing pattern:
 
+Readiness and graduation are not approval: before spec-governed work, present the current decision-complete digest and obtain explicit agreement in this session.
+
+Compatible governing-text changes that remain within the accepted digest continue autonomously after a cited contract-fit check.
+
+When a final governing design is presented, invoke /nightshift:spec-agreement in final-presentation mode before asking for agreement.
+
+Existing agreement is fresh only when the complete current candidate matches or passes contract-fit evaluation in the same session.
+
 - `.claude/QUICK_WINS.md`: refactors ready to land when time allows. Shipped entries are appended to `.claude/QUICK_WINS_HISTORY.md` (described below).
 - `.claude/FEATURES.md`: product-level feature ideas, with one file per feature under `.claude/features/`. Shipped entries are appended to `.claude/FEATURES_HISTORY.md` (described below). When sibling feature files start duplicating shared concerns (machinery, patterns, conventions), promote an umbrella file that hosts the shared content and trim the siblings to deltas; cross-references through an umbrella scale better than pairwise cross-references.
 - `.claude/BUGS.md`: known bugs awaiting fix, with one file per bug under `.claude/bugs/` when more than a few lines of description is needed. Fixed entries are appended to `.claude/BUGS_HISTORY.md` (described below).
@@ -645,4 +670,4 @@ The `/nightshift:ready` skill parses each entry's `**Requires:**` line in `FEATU
 
 ### `CLAUDE.md` section (to append when `CLAUDE.md` exists without it)
 
-Use the `## Backlogs and indexes` heading and its bullet list from the fresh `CLAUDE.md` template above, minus the `# CLAUDE.md` header and intro line. Append with one blank line before the heading.
+Use the complete `## Backlogs and indexes` section from the fresh `CLAUDE.md` template above, minus the `# CLAUDE.md` header and intro line. Append with one blank line before the heading.

@@ -10,6 +10,8 @@ When a bug is fixed, append its entry to
 [`BUGS_HISTORY.md`](BUGS_HISTORY.md); do not keep a `## Fixed` section
 inline.
 
+Readiness and graduation are not approval: before spec-governed work, present the current decision-complete digest and obtain explicit agreement in this session.
+
 ## Requires lines
 
 **Every open bug entry carries a `**Requires:**` line** declaring what

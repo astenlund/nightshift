@@ -173,6 +173,8 @@ Every matrix cell either passes or records a deliberate unsupported-capability d
 
 ## Related backlog work
 
+The universal-skill MVP shipped before Present chosen spec for agreement before work; every later migration slice preserves the agreement gate.
+
 - [Content fingerprint helper](content-fingerprint-helper.md) is a prerequisite for the portable resource and fingerprint slice.
 - [Move deterministic init-backlog mechanics out of promptspace](deterministic-init-backlog.md) and [Present chosen spec for agreement before work](present-spec-for-agreement.md) are prerequisites for host-neutral scaffolding.
 - [Review orchestration tests](review-orchestration-tests.md) is a prerequisite for review host adapters.

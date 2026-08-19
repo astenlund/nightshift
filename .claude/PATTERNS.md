@@ -7,6 +7,8 @@ feature families. Each entry points at a standalone file under
 This file is **one of four repo-local indexes** agents consult on demand
 when relevant (alongside `QUICK_WINS.md`, `FEATURES.md`, `BUGS.md`).
 
+Readiness and graduation are not approval: before spec-governed work, present the current decision-complete digest and obtain explicit agreement in this session.
+
 A pattern graduates here when the same structure would otherwise be
 re-described in two or more feature files. Lifting it into a shared home
 lets features link at the pattern rather than duplicating it, and makes

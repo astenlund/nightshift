@@ -17,6 +17,8 @@ shipped". The detailed design lives in the linked file. When a feature
 [`FEATURES_HISTORY.md`](FEATURES_HISTORY.md); do not keep an
 `## Implemented` section inline.
 
+Readiness and graduation are not approval: before spec-governed work, present the current decision-complete digest and obtain explicit agreement in this session.
+
 ## Requires lines
 
 **Every feature index entry carries a `**Requires:**` line** declaring
@@ -223,7 +225,9 @@ Draft exploring an explicit compaction boundary after plan hardening and before 
 
 ### [Second-opinion gates](features/second-opinion-gates.md)
 
-Gate the lifecycle with cheap single-pass reads from a different-model-family agent: one at the completed requirements list before a spec exists, one at the freshly written, decision-complete, and currently approved spec, and one at the hardened and currently approved spec. Each read lands before the artifact feeds the next stage, finding-driven design edits return through the agreement gate, and over the final artifact the hardened gate replaces the holistic third-phase reviewer role. Findings enter the normal factual-verification and contract-admission pipeline before repair; the gate is a reader, not an authority. Two co-equal cross-family channels are feature-detected at runtime: a `consult`-style MCP tool (reference implementation: McpConsultant) and a non-interactive agent-harness CLI from a different vendor (reference implementation: Codex `codex exec`); the same-family higher-tier or higher-effort read is the fallback only when neither is present.
+Gate the lifecycle with cheap single-pass reads from a different-model-family agent: one at the completed requirements list before a spec exists, one at the freshly written decision-complete spec after current-session agreement, and one at the hardened spec after exact candidate reuse, cited contract-fit continuation, or renewed agreement. Each read lands before the artifact feeds the next stage. Finding-driven design edits return through the agreement gate for classification; compatible changes continue autonomously, while changed or uncertain contracts require fresh presentation. Over the final artifact the hardened gate replaces the holistic third-phase reviewer role. Findings enter the normal factual-verification and contract-admission pipeline before repair; the gate is a reader, not an authority. Two co-equal cross-family channels are feature-detected at runtime: a `consult`-style MCP tool (reference implementation: McpConsultant) and a non-interactive agent-harness CLI from a different vendor (reference implementation: Codex `codex exec`); the same-family higher-tier or higher-effort read is the fallback only when neither is present.
+
+Present chosen spec for agreement before work lands before Second-opinion gates.
 
 **Requires:** [Present chosen spec for agreement before work](features/present-spec-for-agreement.md), [Contract-calibrated revise admission](features/contract-calibrated-revise-admission.md).
 
@@ -255,11 +259,15 @@ Gives Workflow and capable manual dispatch the same conservative same-round find
 
 Centralizes selector-aware content extraction, canonical byte framing, and hashing in one bundled Node helper so no controller or reviewer reimplements the recipe. Its byte-oriented core returns selected bytes plus the full digest consumed by the shared agreement skill from one captured baseline, while tagged `partial` (`p-` + 12 hex) and `whole-file` (`w-` + 12 hex) path wrappers serve existing consumers; `partial` excludes only `## Hardening`, so a `Status:` line moves both modes. It replaces the awk/sha256sum recipes in handover and revise, including the code-review patch path, and pins cross-generation parity with the agreement-owned golden corpus.
 
+Present chosen spec for agreement before work lands before Content fingerprint helper.
+
 **Requires:** [Present chosen spec for agreement before work](features/present-spec-for-agreement.md).
 
 ### [Durable scope anchor](features/durable-scope-anchor.md)
 
 Every design spec carries a short, durable `## Scope anchor` near its goal with stable `Requested outcome:` and `Material exclusions:` labels. `Material exclusions: None stated.` is the sole deliberate-empty form and requires agreement; a missing line is incomplete. The anchor is frozen unless the user revises the outcome or exclusions, with the revision recorded, and copied verbatim into reviewer, skeptic, dedup-judge, controller-admission, and verifier context. Interactive legacy specs are backfilled before launch, unattended fresh runs fail closed, and existing checkpoints continue their recorded legacy policy or restart explicitly. It grounds scope expansion without immunizing the chosen design's wiring from findings.
+
+Present chosen spec for agreement before work lands before Durable scope anchor because the accepted digest authorizes its deliberate-empty exclusion and legacy backfill.
 
 **Requires:** [Present chosen spec for agreement before work](features/present-spec-for-agreement.md).
 
@@ -288,6 +296,8 @@ Requires every governing spec, whether backlog-backed or standalone, to be prese
 ### [Agent-host-agnostic Nightshift](features/agent-host-agnostic-nightshift.md)
 
 Moves Nightshift's canonical workflow surfaces and internal contracts from Claude-specific commands, tools, model names, instruction files, and resource paths to provider-neutral skills plus capability adapters. Claude Code and Codex remain the first supported hosts, while any future local coding-agent host can qualify by implementing the same filesystem, shell, interaction, and fresh-agent capabilities. The shared `.claude/` backlog-data namespace stays unchanged.
+
+The universal-skill MVP shipped before Present chosen spec for agreement before work; every later migration slice preserves the agreement gate.
 
 **Slices:**
 

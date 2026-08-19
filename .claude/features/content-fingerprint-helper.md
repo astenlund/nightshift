@@ -86,6 +86,8 @@ Migrated into the backlog on 2026-08-11, with six design decisions confirmed one
 - The fingerprint consumers this centralizes are shipped before the universal-entry MVP in `commands/handover.md` and `skills/revise/SKILL.md`, then move to `skills/handover/SKILL.md` and `internal/revise/SKILL.md`; this feature relocates the computation from whichever active sources exist when it lands.
 - The `skills/ready/ready.js` / `ready.test.js` framework-free fixture convention this helper follows (existing).
 
+Present chosen spec for agreement before work lands before Content fingerprint helper.
+
 Landing order: the wave-convergence lifecycle (wave-lifecycle.md) shipped 2026-08-14 in the 2.2.0 batch; SKILL.md's lifecycle sections are wave-era prose. Derive lifecycle-touching edits from that prose. The agreement-gate feature lands first and removes the `Status:` exclusion from every inline recipe before this helper centralizes the resulting contract.
 
 **Requires:** [Present chosen spec for agreement before work](present-spec-for-agreement.md).

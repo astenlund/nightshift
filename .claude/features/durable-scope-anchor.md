@@ -49,7 +49,7 @@ If the user's *requested outcome* genuinely changes mid-flight, the anchor is re
 
 ## Lifecycle and legacy behavior
 
-The anchor is created from the user-approved decision digest before a new spec enters validation or lifecycle work. It is refreshed only through a later user-approved outcome or exclusion change. A revision invalidates any approval identity, reviewer certification, actionability decision, or verifier stamp derived from the prior text. The controller records the revision before dispatching against the new anchor.
+The anchor is created from the accepted current-session decision digest before a new spec enters validation or lifecycle work. It is refreshed only through a later agreed outcome or exclusion change. A revision invalidates any agreement candidate identity, reviewer certification, actionability decision, or verifier stamp derived from the prior text. The controller records the revision before dispatching against the new anchor.
 
 At the first interactive review of an existing spec without an anchor, the controller presents and obtains approval for a backfilled anchor before reviewer launch. It may quote durable goal and anti-goal text as evidence, but it may not silently promote implementation detail into the requested outcome. A fresh unattended run without a complete approved anchor fails closed with one durable handover question and produces no review-driven edit or stamp. An already active checkpoint created before anchor enforcement continues under its recorded legacy policy or is explicitly abandoned and restarted; a plugin update never silently reinterprets it.
 
@@ -85,6 +85,8 @@ Migrated into the backlog on 2026-08-11, with five design decisions confirmed on
 - The spec authoring shape this feature extends: the `Feature:` first line and `## What it does` convention in `.claude/features/` house shape (existing).
 - The common-context-block machinery in `internal/revise/SKILL.md` assembles reviewer payloads (existing; this feature adds the anchor text to that block's scope ground truth).
 - The spec-review pre-seed acknowledgement scan in `internal/revise/spec.md` harvests acknowledgements (existing; this feature feeds it a declared source).
+
+Present chosen spec for agreement before work lands before Durable scope anchor because the accepted digest authorizes its deliberate-empty exclusion and legacy backfill.
 
 Landing order: the wave-convergence lifecycle (wave-lifecycle.md) shipped 2026-08-14 in the 2.2.0 batch; SKILL.md's lifecycle sections are wave-era prose. Derive lifecycle-touching edits from that prose.
 
