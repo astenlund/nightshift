@@ -3616,10 +3616,10 @@ test('later provenance is append-only for graduation refresh and completion stam
 
 test('the active plan is selectable with its revise-plan graduation provenance', () => {
   const selected = selectArtifact({
-    path: '.claude/plans/2026-08-19-present-spec-for-agreement.md',
+    path: 'docs/plan.md',
     selectorKind: 'design-before-hardening',
     selectors: [],
-    sourceBuffer: readRepositoryBytes('.claude/plans/2026-08-19-present-spec-for-agreement.md'),
+    sourceBuffer: Buffer.from('# Plan\n\n## Hardening\n\n- revise-plan graduated 2026-08-19 00:00 at 7aa82fe, scope: whole file, content: 00000000\n'),
   });
 
   assert.equal(selected.selectedBytes.length > 0, true);
