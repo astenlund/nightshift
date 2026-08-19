@@ -82,6 +82,26 @@ can still fix it in the same session.
   this quick win lands earlier, apply it to the pre-MVP source and carry its behavior
   forward unchanged during relocation.
 
+## Agreement-gate follow-ups (deferred during present-spec-for-agreement revise-code)
+
+Refactors the agreement-gate revise run reviewed and agreed are valid but deferred, because each either expands the shipped feature's scope or is an optimization beyond the approval gate's required behavior. Land independently.
+
+- **Consolidate the duplicated spec-agreement preflight shared by the three revise wrappers.** `skills/revise-code/SKILL.md`, `skills/revise-plan/SKILL.md`, and `skills/revise-spec/SKILL.md` each repeat the same agreement sequence: resolution of agreement state, diagnostics, scope forwarding, authority gating, engine resolution, and engine diagnostics. Preferred shape: one shared configured helper the three wrappers invoke, preserving each wrapper's caller-specific authority. A README.md table entry mirrors the current three-way surface; keep it in sync.
+
+- **Reuse one resolution-local artifact snapshot across governing-set expansion.** During one governing-set resolution the controller reads the same whole-file artifact more than once, redoing canonicalization and scanning. Preferred shape: snapshot each resolved artifact's canonical bytes and scan result once, then reuse it across expansion. Constraint: resolution-local only, never a persistent cache.
+
+- **Reuse parsed ready-entry metadata for Requires and Slices instead of rescanning entry bodies.** `skills/ready/ready.js` scans the index during extraction, then `findRequires` and `parseSlices` each re-encode and rescan the same entry bodies. Preferred shape: the scan pass emits the parsed Requires and Slices records once per entry for reuse. Preserve the exact Requires-line grammar in `ready.js`.
+
+- **Break the agreement controller and its ready dependency cycle into narrower scanner and controller modules.** `skills/spec-agreement/spec-agreement.js` spans many concerns (scanning, selection, mutation, resolution, state, diffing, CLI) and imports `skills/ready/ready.js` while ready imports back, creating a feature-layer cycle. Preferred shape: extract the scanner/parser to a lower module both consume, and the controller keeps its closed skill CLI contract. Preserve the public skill and CLI/command surface unchanged.
+
+- **Move generic release and conformance assertions out of the agreement controller suite.** The agreement controller test suite also covers generic repository-release state and command/CLI conformance, so version bumps and doc changes unnecessarily edit feature-specific tests. Preferred shape: relocate generic assertions to a generic suite that exercises release and command surface, so browsing the feature tests stays feature-scoped.
+
+- **Replace handover's duplicated agreement sequence with a narrow delegation to the shared agreement skill.** `skills/handover/SKILL.md` repeats the agreement flow rather than delegating. Preferred shape: a narrow delegation to the shared agreement skill while preserving handover-only completion-stamp and migration ordering.
+
+- **Pass the already-validated derived diff through a compatible refresh.** A within-contract refresh recomputes a derived diff the controller has already validated. Preferred shape: reuse the validated derived diff through refresh without weakening the public closed contracts or adding a second trusted path. Requires a deliberate internal contract addition; not a silent internal change.
+
+- **Restate the all-inactive staleness boundary at the round-boundary site only if a misread is observed.** The boundary is already stated at `internal/revise/SKILL.md` (sweep gate "when every applicable cell is inactive"; `Reactivate stale cells` "applies only at an all-inactive boundary"; the evaluated-boundary transition "with all applicable cells inactive"; sibling reactivation "only through the staleness sweep at an all-inactive boundary"). A vetted restatement was deferred because it changes no behavior today. If a wave incident ever shows a controller reading the boundary wrong, promote to a fix with the incident as evidence.
+
 ## (add sections as work emerges)
 
 ## History
