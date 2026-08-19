@@ -361,5 +361,5 @@ New ready-parser fixtures are required for fenced fake headings, bullets, labels
 - revise-spec refreshed 2026-08-19 09:10 at 2fce9c2, scope: whole file, content: b585dcd2 (legacy sign-off marker removal)
 - revise-spec refreshed 2026-08-19 11:08 at 5e2c306, scope: whole file, content: d17e1363 (fit evidence binding)
 - revise-spec refreshed 2026-08-19 12:00 at 5e2c306, scope: whole file, content: 8594fb1b (review fixes)
-- revise-spec refreshed 2026-08-19 14:10 at ab08948, scope: whole file, content: 5934de06 (live-claim deferral)
-- handover completed 2026-08-19 14:10 at ab08948, scope: whole file, content: 5934de06
+- revise-spec refreshed 2026-08-19 14:10 at ab08948, scope: whole file, content: f628ce22 (live-claim deferral)
+- handover completed 2026-08-19 14:10 at ab08948, scope: whole file, content: f628ce22
