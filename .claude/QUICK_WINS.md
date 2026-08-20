@@ -124,15 +124,6 @@ Refactors the agreement-gate revise run reviewed and agreed are valid but deferr
   superpowers plugin; diff them against the current superpowers review skills
   (requesting-code-review and neighbors) and fold in criteria that have since improved,
   keeping nightshift-specific dimensions intact.
-- **Defer review dimensions to other installed skills, with nightshift defaults as fallback.**
-  At review setup, discover whether another installed skill carries rigorous review
-  dimension specs and use those; when none qualifies, fall back to the current
-  nightshift dimension sets. Open questions recorded at capture: the detection contract
-  (what marks a skill's review specs as rigorous enough to adopt), precedence when
-  several qualify, and mid-run stability (the resolved dimension set must freeze at run
-  start so cells stay stable across rounds). May graduate to a feature if the detection
-  contract needs real design.
-
 ## (add sections as work emerges)
 
 ## History
