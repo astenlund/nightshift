@@ -183,6 +183,16 @@ The predicate is tested for refusal in every failing combination independently:
 - **light-revise-mode** (exploring): if a lightened single-reviewer shape changes the convergence invariant mapping, its own change updates the affected fixtures rather than redefining the transition module here.
 - **revise-round.test.js**: that suite stays the round-dispatch safety net; this suite covers the decisions above the round, so the two do not overlap on the same assertions.
 
+## Operating context
+
+- **Deployment environment and operational criticality**: development-time tooling inside the nightshift plugin repository; the module and its suite run in CI and on demand, never in an installed user's runtime path. Criticality: low.
+- **Audience**: trusted circle. Deviation entry: the repository is public and marketplace-distributed, but this module is internal development tooling that installed users never execute; public visibility alone does not read as `public`.
+- **Failure consequence and data or security sensitivity**: a wrong invariant silently blesses controller drift, costing review-workflow quality; recoverable via git, no data or security surface. Uplift `failure_consequence` judged not fired.
+- **Concurrency and compatibility risk**: none; pure functions over review state with no concurrency and no external compatibility surface. Uplifts `concurrency_compatibility` and `deployment_criticality` judged not fired.
+- **Reversibility and recovery cost**: trivially reversible (git revert of a repository-internal module). Uplift `reversibility_recovery` judged not fired.
+- **Expected feature lifetime**: long-lived; the module is the durable single authority for the transition decisions. Uplift `expected_lifetime` judged fired.
+- **Derived rigor**: audience `trusted circle` (baseline low) plus 1 fired uplift yields tier `medium` via `node internal/revise/rigor.js "trusted circle" 1`; per-dimension effort: validation medium, recovery medium, compatibility medium, observability medium, proofEffort medium.
+
 ## Status
 
 Migrated into the backlog on 2026-08-11, with the design decisions above confirmed one at a time during migration; the invariant set was re-derived from the shipped wave-convergence lifecycle on 2026-08-20 after the phase model's removal. Not yet designed as a buildable change; to be hardened by a revise-spec run before planning.
