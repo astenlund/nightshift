@@ -112,7 +112,7 @@ Fixture cases:
 - mid-round edit -> no sweep until the next all-inactive boundary;
 - scope-map change at an unchanged fingerprint -> `clearStamp: true` (a no-op when the stamp is already `none`), affected cells' certifications cleared directly, and every N/A declaration re-evaluated in both directions at the reconciling boundary;
 - a remap with an empty affected list or naming a cell absent from the state -> refused;
-- a resume between map-change detection and the reconciling boundary -> the persisted-vs-current map comparison re-derives the same remap; `null` is never a default;
+- a resume between map-change detection and the reconciling boundary -> recorded as a controller-owned convention, not a module fixture: the persisted-vs-current map comparison re-derives the same remap and `null` is never a default, a derivation the module cannot observe (it receives one state, not the map pair); the module-side half the suite binds is the malformed-remap refusal above, and the convention itself ships as the deferred-refresh engine sentence this feature carries;
 - a verifier preflight exceeding both the round cap and the verifier cap -> the failure record carries `verifier-cap`, matching the shipped `Launch verifier` template, which fails on the verifier cap before its `Start round` application ever pays the round cap;
 - pending user request or controller mutation, non-`none` agreement boundary, or a false gate assertion -> `{transition: 'blocked'}`, no transition and no dispatch.
 
