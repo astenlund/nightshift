@@ -33,9 +33,7 @@ can still fix it in the same session.
 
 - **Recalibrate the audience-category judgment so public visibility alone does not
   read as `public`.** Today the audience component-to-category judgment (revise-spec
-  grounding step in the active revise engine (`skills/revise/spec.md` and
-  `skills/revise/rigor.js` before the universal-entry MVP, `internal/revise/spec.md`
-  and `internal/revise/rigor.js` after it) maps a repo that is public on GitHub to category `public`
+  grounding step in `internal/revise/spec.md` and `internal/revise/rigor.js`) maps a repo that is public on GitHub to category `public`
   and thus baseline `high`, even with no adoption signals; nightshift's own specs
   (the wave-lifecycle Operating context, the ready-exploring-visibility one) recorded
   exactly that judgment. User ruling 2026-08-15: a public repo with no forks and no
@@ -46,14 +44,11 @@ can still fix it in the same session.
   decide whether `AUDIENCE_BASELINE` needs a distinct category or only sharper
   judgment prose, and sweep existing recorded judgments in specs' Operating context
   sections for recalibration. Uplift predicates stay as-is.
-  Prefer landing the universal-entry MVP first; if this quick win lands earlier, apply
-  it to the pre-MVP sources and carry its behavior forward unchanged during relocation.
 
 ## Handover dispatch hygiene
 
-- **Tell implementation subagents where their scratch files go.** The active handover entry
-  source (`commands/handover.md` before the universal-entry MVP,
-  `skills/handover/SKILL.md` after it) says nothing about scratch locations, so dispatched
+- **Tell implementation subagents where their scratch files go.** `skills/handover/SKILL.md`
+  says nothing about scratch locations, so dispatched
   subagents write working files into the project's `.tmp/` root, which is also the revise
   engine's state home (`revise-state.md`, `revise-round-result.md`, the payload files, the
   cumulative patch). Observed 2026-08-15 as a near-miss: task subagents left `cmp_a.txt`
@@ -63,9 +58,7 @@ can still fix it in the same session.
   keeping scratch inside `.tmp/` so it stays consistent with the global no-`/tmp` rule.
   Check against [Durable run identity and concurrency protection](FEATURES.md) first: it
   designs a scope-hashed scratch home for the workflow's own state and may reshape which
-  side of the collision needs fixing. Prefer landing the universal-entry MVP first; if
-  this quick win lands earlier, apply it to the pre-MVP source and carry its behavior
-  forward unchanged during relocation.
+  side of the collision needs fixing.
 
 ## Agreement-gate follow-ups (deferred during present-spec-for-agreement revise-code)
 
