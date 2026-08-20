@@ -127,8 +127,8 @@ test('installed-host evidence validators require the ten-skill inventory in ordi
 
 test('Claude source selection accepts the default root and rejects relative configuration', () => {
   assert.equal(resolveExternalClaudeConfigRoot({}, '/home/test'), join('/home/test', '.claude'))
-  assert.equal(resolveExternalClaudeConfigRoot({ CLAUDE_CONFIG_DIR: 'C:/profile' }, 'C:/Users/test'), 'C:/profile')
-  assert.throws(() => resolveExternalClaudeConfigRoot({ CLAUDE_CONFIG_DIR: 'profile' }, 'C:/Users/test'), /absolute/)
+  assert.equal(resolveExternalClaudeConfigRoot({ CLAUDE_CONFIG_DIR: '/profile' }, '/home/test'), '/profile')
+  assert.throws(() => resolveExternalClaudeConfigRoot({ CLAUDE_CONFIG_DIR: 'profile' }, '/home/test'), /absolute/)
 })
 
 test('installed engine closure accepts the shared resource contract', () => {
