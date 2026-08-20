@@ -24,6 +24,16 @@ Draft exploring how to cut the round count a revise run consumes to converge. Pr
 - Cheaper wave re-entry: a sweep wave over a one-line delta could run a reduced-effort confirmation pass with full-effort review reserved for cells whose dimension the delta plausibly touches; conflicts with the certification-requires-full-review rule, so it needs a real design decision, not a tweak.
 - Round-economy telemetry first: instrument runs (findings per round, hunks per fix batch, wave counts) before choosing a mechanism.
 
+## Catch-earlier levers (evidence from the same run)
+
+Distinct from the lifecycle amplifiers above: these reduce the findings themselves, at authoring time, rather than the rounds per finding.
+
+- **Surface-symmetry checklist**: when a spec defines a function surface, apply the full contract set (typed parameters, typed result, state-domain refusal, guard interaction, off-domain fixture) across every function in one authoring pass; the run derived these one function per round across roughly fifteen rounds.
+- **Sibling sweep per fix batch**: every boundary fix batch sweeps the fixed pattern's sibling sites (decision bullets vs sections, fixture lists vs prose, carrier enumerations) before the batch closes; several rounds existed only to catch a sibling a prior batch missed.
+- **Clause-level authority diff**: before round 1 of a spec that restates an authority document, diff every restated sentence against its source clause; four separate rounds each caught one conformance divergence a single pre-pass would have caught together.
+- **Design search belongs in brainstorming**: the failure-class mechanism iterated through five designs inside the review loop; hardening reviews are an expensive place to do design search, and a mechanism with open design questions should go back to a design pass rather than iterating via findings.
+- **Enumeration-treadmill awareness**: a relationship section that reads as exhaustive converts every unlisted neighbor into a future finding; either mark the enumeration non-exhaustive or accept that each backlog addition creates review work in every spec that enumerates neighbors.
+
 ## Requirements
 
 - The wave lifecycle in `internal/revise/SKILL.md` (shipped); any mechanism here edits lifecycle invariants and pairs with the review-orchestration-tests module and fixtures once that feature ships.
