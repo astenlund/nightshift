@@ -124,6 +124,18 @@ Refactors the agreement-gate revise run reviewed and agreed are valid but deferr
   superpowers plugin; diff them against the current superpowers review skills
   (requesting-code-review and neighbors) and fold in criteria that have since improved,
   keeping nightshift-specific dimensions intact.
+## Wave lifecycle tuning
+
+- **Stop counting verifier rounds toward the 30-round cap.** `internal/revise/SKILL.md` today
+  counts verifier rounds against the per-run round cap ("30 rounds per run (verifier rounds
+  included)"), so a long convergence eats the budget the verifier tail then needs; observed in
+  the 2026-08-20 review-orchestration-tests spec run, which needed two user cap raises with the
+  wave converged and only verifier work left. Preferred shape: the round cap governs reviewer
+  rounds only, with the existing separate 10-launch verifier cap as the verifier tail's own
+  budget. This edits a shipped lifecycle invariant, so it lands as a SKILL.md edit plus the
+  matching update to the review-orchestration-tests spec and module fixtures in the same change
+  set (the limits sentence is in that spec's pinned-sentence set, so CI will force the pairing).
+
 ## (add sections as work emerges)
 
 ## History
