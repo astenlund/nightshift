@@ -117,6 +117,22 @@ Refactors the agreement-gate revise run reviewed and agreed are valid but deferr
 
 - **Restate the all-inactive staleness boundary at the round-boundary site only if a misread is observed.** The boundary is already stated at `internal/revise/SKILL.md` (sweep gate "when every applicable cell is inactive"; `Reactivate stale cells` "applies only at an all-inactive boundary"; the evaluated-boundary transition "with all applicable cells inactive"; sibling reactivation "only through the staleness sweep at an all-inactive boundary"). A vetted restatement was deferred because it changes no behavior today. If a wave incident ever shows a controller reading the boundary wrong, promote to a fix with the incident as evidence.
 
+## Review dimension sourcing
+
+- **Update the review dimensions against the latest superpowers guidance.** The dimension sets
+  in `internal/revise/code.md`, `plan.md`, and `spec.md` were authored against an earlier
+  superpowers plugin; diff them against the current superpowers review skills
+  (requesting-code-review and neighbors) and fold in criteria that have since improved,
+  keeping nightshift-specific dimensions intact.
+- **Defer review dimensions to other installed skills, with nightshift defaults as fallback.**
+  At review setup, discover whether another installed skill carries rigorous review
+  dimension specs and use those; when none qualifies, fall back to the current
+  nightshift dimension sets. Open questions recorded at capture: the detection contract
+  (what marks a skill's review specs as rigorous enough to adopt), precedence when
+  several qualify, and mid-run stability (the resolved dimension set must freeze at run
+  start so cells stay stable across rounds). May graduate to a feature if the detection
+  contract needs real design.
+
 ## (add sections as work emerges)
 
 ## History
