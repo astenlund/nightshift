@@ -60,6 +60,19 @@ can still fix it in the same session.
   designs a scope-hashed scratch home for the workflow's own state and may reshape which
   side of the collision needs fixing.
 
+- **Replace handover's TaskCreate queue with a durable scratch-file queue.** Claude Code no
+  longer exposes a TaskCreate tool, so the flat-queue instruction in `skills/handover/SKILL.md`
+  cannot execute as written and each session must improvise. The revise engine already keeps
+  controller state in `.tmp/revise-state.md`; introduce the analogous handover-owned queue one
+  level higher: a scratch file (shape like `.tmp/handover-queue.md`, beside
+  `.tmp/handover-followups.md`) holding the flat step list with completion marks, carrying the
+  same pull-until-empty stop authority the skill assigns the queue today. This is also more
+  crash-safe than a conversation-held task queue: it survives context compaction and session
+  death, and a resumed session reads its position instead of re-deriving it. Observed working
+  as an improvised stand-in during the 2026-08-20 review-orchestration-tests handover. Specify
+  the file's lifecycle (created after the confirm line, deleted with the step-12 tail alongside
+  the follow-ups file) so leftovers stay attributable, mirroring the follow-ups scratch rules.
+
 ## Handover live-claim surfacing
 
 - **Make the governing spec the durable record that a provisional live-claim is a
