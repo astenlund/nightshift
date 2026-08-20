@@ -12,7 +12,7 @@ This feature extracts those orchestration decisions into a deterministic, import
 
 - **Substrate**: extract pure transition logic; SKILL.md prose stays authoritative for execution, the module is a consultable spec-check that binds the invariants.
 - **Boundary resolution**: encode the full all-inactive evaluated-boundary rule, in order: the staleness sweep runs first (reactivation, N/A promotion and demotion, empty-applicable-set failure); wave convergence without a current stamp launches the verifier; wave convergence with a current stamp enters post-review. A boundary with a pending controller mutation, a pending user request, or a non-`none` agreement boundary resolves to no transition and no dispatch.
-- **Certification span**: a cell is inactive exactly while it holds a certification; only a staleness-sweep reactivation (fingerprint inequality) or a scope-remap boundary clears it.
+- **Certification span**: a cell is inactive exactly while it holds a certification; within a run's normal flow only a staleness-sweep boundary (reactivation on fingerprint inequality, or demotion to N/A) or a scope-remap boundary clears a certification, and the user-authorized `Restart run` clears every certification outside that flow.
 - **Cross-cell mutation**: a sibling's accepted edit preserves every cell's current state until the sweep; the sweep is the global re-review barrier. One invariant with both halves tested.
 - **Rejected findings**: the current disposition rule set (every finding-bearing round keeps the cell active, including an all-refuted or acknowledgement-only round; only a later explicit clean LGTM certifies it; no side effects on other cells).
 - **Execution failure**: the full run-level fail-closed contract with explicit disposition, cap preflights included.
@@ -137,7 +137,7 @@ Fixture cases:
 
 The run-level fail-closed contract, which is distinct from the round-level `needs-reviewer` status that `revise-round.test.js` already covers:
 
-- a missing or malformed reviewer or skeptic output, or limit exhaustion, lands the run in `Status: failed`;
+- a missing or malformed reviewer or skeptic output is repairable within the affected stable cell's execution-repair budget; the run lands in `Status: failed` only when no repair attempt remains or a cap preflight would be exceeded;
 - the failed run is not a convergence data point: no boundary transition, no partial certification, no completion, and no manufactured LGTM, stamp, or refutation from any limit path;
 - a failed run never auto-resumes; it surfaces `Failure` and requires explicit user disposition (retry, restart, or abandon in interactive mode; autonomous handover stops for user disposition).
 
@@ -145,7 +145,8 @@ Limits: 30 rounds per run (verifier rounds included), 10 verifier launches per r
 
 Fixture cases:
 
-- reviewer missing/malformed -> `Status: failed`, round, fingerprint, and cell diagnostics preserved, no transition, no completion;
+- reviewer output missing/malformed with repair budget remaining -> repairable, never a run failure, an LGTM, or a refutation;
+- reviewer output missing/malformed with the cell's repair budget exhausted -> `Status: failed`, round, fingerprint, and cell diagnostics preserved, no transition, no completion;
 - a `Start round` that would exceed round 30 fails the run before any agent launches, preserving round-30 diagnostics;
 - an eleventh verifier launch fails the run at the preflight;
 - a repair counter at 3 fails the run before another agent launches;
