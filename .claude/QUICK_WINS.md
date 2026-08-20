@@ -60,6 +60,30 @@ can still fix it in the same session.
   designs a scope-hashed scratch home for the workflow's own state and may reshape which
   side of the collision needs fixing.
 
+## Handover live-claim surfacing
+
+- **Make the governing spec the durable record that a provisional live-claim is a
+  designed carry-forward.** The clean-detection non-flag for designed `(live-claim:
+  provisional)` markers in `skills/handover/SKILL.md` relies on the probe precondition
+  being recorded per the spec-gate rules, but that record is the morning-report
+  follow-up item in `.tmp/` scratch, which dies with the run. A fresh-session resume
+  after a crash before the morning report has no on-artifact evidence that the marker
+  is designed, so detection fails closed into the confirm the 2026-08-11 ruling meant
+  to skip. Preferred shape: record the precondition on the spec at the marker site
+  (for example `(live-claim: provisional, awaiting <precondition>)`, or the probe
+  bullet naming its precondition inline), let the Validate-before-proceeding step read
+  designed-ness from the artifact, and derive the morning-report item from that record
+  instead of making the report the sole record.
+
+- **Reconcile the Validate-before-proceeding step's general live-claim flag sentence
+  with its carve-outs.** In `skills/handover/SKILL.md`, "they surface in the stated
+  conclusion as a flag with the claim's context" still asserts every surviving
+  `(live-claim: ...)` marker surfaces as a flag, while later sentences carve out
+  `probed`, `deferred`, and designed-`provisional` markers as notes. The
+  later-more-specific-wins pattern works but ships a contradiction each reader must
+  arbitrate. Preferred shape: soften the general sentence to "as a flag or note per
+  the classification below" so the paragraph asserts one thing.
+
 ## Agreement-gate follow-ups (deferred during present-spec-for-agreement revise-code)
 
 Refactors the agreement-gate revise run reviewed and agreed are valid but deferred, because each either expands the shipped feature's scope or is an optimization beyond the approval gate's required behavior. Land independently.
