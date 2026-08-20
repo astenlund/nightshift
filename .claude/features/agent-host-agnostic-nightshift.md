@@ -182,7 +182,7 @@ The universal-skill MVP and the agreement gate are shipped; every later migratio
 - [Second-opinion gates](second-opinion-gates.md) remains responsible for cross-model-family review. Semantic model roles introduced here must not collapse that feature's distinct-family requirement into a same-provider tier choice.
 - [Present chosen spec for agreement before work](present-spec-for-agreement.md) shipped after the universal-skill MVP and broadened the canonical handover skill's trigger to direct spec-governed lifecycle work in both supported hosts. Later migration slices preserve that gate rather than moving authorization back into a host adapter.
 - [Adversarial repair dialogue](adversarial-repair-dialogue.md), [Durable scope anchor](durable-scope-anchor.md), and [Fix-scoped follow-up rounds](fix-scoped-rounds.md) depend on this MVP before adding or changing `internal/revise/` behavior. [Communicate for technically sophisticated, time-constrained users](sophisticated-user-communication.md) depends on the migrated public workflow surfaces. These entries should land after the topology move to avoid editing paths that the MVP immediately relocates.
-- The active quick wins `Handover shift-start confirmation heuristic`, `Rigor calibration`, and `Handover dispatch hygiene` edit handover or revise sources that this MVP relocates. Prefer landing the MVP first; if any of those quick wins lands earlier, carry its behavior forward unchanged during relocation.
+- The active quick wins `Rigor calibration` and `Handover dispatch hygiene` edit handover or revise sources that this MVP relocates. Prefer landing the MVP first; if any of those quick wins lands earlier, carry its behavior forward unchanged during relocation.
 
 ## Status
 

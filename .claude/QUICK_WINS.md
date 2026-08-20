@@ -29,21 +29,6 @@ failure mode to catch is an entry that doesn't parse as a `- ` bullet or
 `###` heading (ready reports it as a prose-only-section notice) while you
 can still fix it in the same session.
 
-## Handover shift-start confirmation heuristic
-
-- **Do not raise the shift-start confirm for designed provisional live-claims plus a
-  mid-flight implementation resume.** Today handover stops at the confirm line when the
-  only flags are `(live-claim: provisional)` markers that are cutover-gated/designed AND
-  an in-progress implementation resume. The user ruled 2026-08-11 that neither is
-  confirm-worthy: skip straight to building the queue. Keep the confirm only for real
-  ambiguity, artifact-selection doubt, validation findings, or drift. Refine the
-  "Clean detection" paragraphs in the active handover entry source (`commands/handover.md`
-  before the universal-entry MVP, `skills/handover/SKILL.md` after it) to
-  state that designed/cutover-gated provisional markers and same-session mid-flight
-  resumes are non-flags. Prefer landing the universal-entry MVP first; if this quick
-  win lands earlier, apply it to the pre-MVP source and carry its behavior forward
-  unchanged during relocation.
-
 ## Rigor calibration
 
 - **Recalibrate the audience-category judgment so public visibility alone does not
