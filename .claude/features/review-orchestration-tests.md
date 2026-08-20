@@ -1,22 +1,22 @@
 # Review orchestration tests
 
-Feature: turn the revise review engine's phase, convergence, and completion decisions into executable, fixture-tested invariants. This file is the authoritative design record.
+Feature: turn the revise review engine's wave, convergence, and completion decisions into executable, fixture-tested invariants. This file is the authoritative design record.
 
-**2026-08-13 supersession note:** the phase transition matrix below predates the wave-convergence lifecycle (`wave-lifecycle.md`), which removed phases. When this feature is picked up, re-derive the invariant set from the shipped wave model: staleness sweep, certification clearing on reactivation, the current clean-LGTM disposition rule set, cap asymmetry (a cap-forced end never completes), and the stamp conjunction. The extraction purpose and module shape below remain valid.
+**2026-08-20 re-derivation note:** the invariant set below was re-derived from the shipped wave-convergence lifecycle in `internal/revise/SKILL.md`, which removed phases, replacing the phase-model transition matrix this file carried from the 2026-08-11 migration. The extraction purpose and module shape are unchanged.
 
 ## What it does
 
-The deterministic backlog parser (`skills/ready/ready.js`) has strong behavioral test coverage via `ready.test.js`. The review engine is the more consequential component by overall quality impact, and today it has none at the orchestration level: the phase/convergence/adjudication decisions live only as prose in `internal/revise/SKILL.md`, restated by the controller every cycle. `revise-round.test.js` covers one round's Workflow dispatch (concurrency, reviewer-to-skeptic fan-out, result normalization, fingerprint validation). It does not cover the machinery that decides whether to advance a phase, whether a dimension converges, whether a sibling's mutation reaches an inactive dimension, or whether the stage completes.
+The deterministic backlog parser (`skills/ready/ready.js`) has strong behavioral test coverage via `ready.test.js`. The review engine is the more consequential component by overall quality impact, and today it has none at the orchestration level: the wave/convergence/adjudication decisions live only as prose in `internal/revise/SKILL.md`, restated by the controller every cycle. `revise-round.test.js` covers one round's Workflow dispatch (concurrency, reviewer-to-skeptic fan-out, result normalization, fingerprint validation). It does not cover the machinery that decides whether a cell certifies or reactivates, how the staleness sweep resolves an all-inactive boundary, when the verifier may launch or stamp, or whether the run completes.
 
-This feature extracts those orchestration decisions into a deterministic, importable Node module with a `ready.test.js`-style fixture suite, driven by mocked reviewer and skeptic results rather than agent dispatch. It promotes the workflow rules from prose into executable invariants: a regression in the controller's phase reasoning becomes a failing fixture instead of silent behavior drift. Design decisions confirmed during backlog migration on 2026-08-11:
+This feature extracts those orchestration decisions into a deterministic, importable Node module with a `ready.test.js`-style fixture suite, driven by mocked reviewer and skeptic results rather than agent dispatch. It promotes the workflow rules from prose into executable invariants: a regression in the controller's boundary reasoning becomes a failing fixture instead of silent behavior drift. Design decisions confirmed during backlog migration on 2026-08-11, restated in wave terms after the 2026-08-20 re-derivation:
 
 - **Substrate**: extract pure transition logic; SKILL.md prose stays authoritative for execution, the module is a consultable spec-check that binds the invariants.
-- **Phase matrix**: encode the full table derived from SKILL.md, where any phase that reaches the all-inactive boundary increments the convergence counter (drift abandonment is the only non-increment), cleanliness gates only the destination, and phase 1 can never complete. The fixture set includes the drift-abandoned clean-under-two path that forces a third phase.
-- **Convergence span**: inactive is phase-scoped; only a phase boundary reactivates.
-- **Cross-dimension mutation**: preserve within phase, reset at next phase, one invariant with both halves tested.
-- **Rejected findings**: the current disposition rule set (every finding-bearing round keeps the dimension active, including an all-refuted or acknowledgement-only round; only a later explicit clean LGTM certifies it; no dirt side effects).
-- **Execution failure**: the full run-level fail-closed contract with explicit disposition.
-- **Completion invariant**: one joined predicate over phase floor, converged count, all-inactive, and zero mutations, tested for refusal in every combination.
+- **Boundary resolution**: encode the full all-inactive evaluated-boundary rule, in order: the staleness sweep runs first (reactivation, N/A promotion and demotion, empty-applicable-set failure); wave convergence without a current stamp launches the verifier; wave convergence with a current stamp enters post-review. A boundary with a pending controller mutation, a pending user request, or a non-`none` agreement boundary resolves to no transition and no dispatch.
+- **Certification span**: a cell is inactive exactly while it holds a certification; only a staleness-sweep reactivation (fingerprint inequality) or a scope-remap boundary clears it.
+- **Cross-cell mutation**: a sibling's accepted edit preserves every cell's current state until the sweep; the sweep is the global re-review barrier. One invariant with both halves tested.
+- **Rejected findings**: the current disposition rule set (every finding-bearing round keeps the cell active, including an all-refuted or acknowledgement-only round; only a later explicit clean LGTM certifies it; no side effects on other cells).
+- **Execution failure**: the full run-level fail-closed contract with explicit disposition, cap preflights included.
+- **Completion invariant**: the stamp conjunction (wave convergence and a verifier stamp over the same current fingerprint), tested for refusal in every non-completing combination, with cap asymmetry (a cap-forced end never completes) absolute.
 
 ## The substrate: a pure transition module
 
@@ -24,94 +24,99 @@ Extract the review-state transition decisions into one bundled Node module, mirr
 
 The module answers the orchestration questions as pure functions over the review state:
 
-- what the next phase boundary is (advance, enter post-review, or fail);
-- how per-dimension convergence and mutation affect active/inactive status within and across phases;
-- how a rejected finding affects a dimension's convergence;
+- how the all-inactive evaluated boundary resolves (sweep reactivation, verifier launch, post-review entry, or failure);
+- how certification, the staleness sweep, and a scope-remap change affect each cell's active, inactive, or N/A status;
+- how a rejected finding affects a cell's convergence;
 - how execution failure and limit exhaustion terminate a run;
-- whether the stage can complete.
+- whether the run can complete.
 
-Limit values and the phase ceiling are data, not literals scattered through logic: the transition table is declared configuration carrying the current shipped values (phase ceiling 10, 10 original reviewer launches per stable dimension or shard cell per phase, 3 execution-repair launches per stable reviewer or skeptic cell, 2-phase completion floor). Declared-up-front makes a future phase redesign a table-and-fixture update in its own change set rather than a module rewrite.
+Limit values are data, not literals scattered through logic: the transition table is declared configuration carrying the current shipped values (30 rounds per run with verifier rounds included, 10 verifier launches per run, 3 execution-repair launches per stable reviewer, skeptic, or verifier cell). Declared-up-front makes a future cap or lifecycle redesign a table-and-fixture update in its own change set rather than a module rewrite.
 
 The module lives under `internal/revise/` (for example, `internal/revise/orchestration.js`) with its fixture suite beside it (for example, `internal/revise/orchestration.test.js`), runnable the same way as the existing suites. When the feature ships, the universal-entry topology fixture requires both new files to remain internal and absent from the public skill catalog without treating the rest of `internal/revise/` as a closed file set, and the repository's Commands guidance that enumerates the test suites gains this suite.
 
-## Phase progression
+## Boundary resolution and the staleness sweep
 
-The full transition table derived from SKILL.md. The convergence-boundary checkpoint fires once every applicable dimension is inactive: it records the current phase as `Last converged phase`, increments `Converged phases` only when the current phase was not already recorded, and either enters `post-review` or invokes `Start phase` for the next phase. A phase that reaches the all-inactive boundary increments the counter whether it was clean or dirty; only a drift-abandoned phase (fingerprint drifted before every applicable dimension became inactive) leaves the counter and `Last converged phase` unchanged while still incrementing the phase number for auditability. Cleanliness is applied at the destination rule, not at the counter. Phase 1 can never complete the review stage.
+At every evaluated boundary where all applicable cells are inactive, the controller resolves the next transition in one rewrite, sweep first:
 
 ```text
-Inputs: every applicable dimension inactive (the boundary condition), and
-C = Converged phases before this checkpoint.
+Inputs: every applicable cell inactive (the boundary condition),
+current fingerprint F, verifier stamp S.
 
-EVERY CONVERGED PHASE
-  records itself, increments C unless already recorded
-  (drift-abandoned phases never reach the boundary and never increment)
+SWEEP (always first)
+  reactivate exactly the cells whose certified fingerprint != F,
+  clearing each reactivated cell's certification; re-evaluate every
+  N/A declaration in both directions (promotion yields active with no
+  certification; demotion clears certification and records a freshly
+  evaluated nonblank reason)
+  applicable set empty after sweep  -> run fails (convergence is
+                                       never vacuous)
+  sweep activated at least one cell -> Start round
+  demotion-only or no-op sweep      -> fall through (converged)
 
-PHASE 1
-  clean            -> advance to phase 2 (C becomes 1)
-  dirty            -> advance to phase 2 (C becomes 1)
-
-PHASE 2+
-  clean, C+1 >= 2  -> post-review (complete)
-  clean, C+1 <  2  -> advance to next phase (e.g. C = 0 after a
-                      drift-abandoned phase 1 -> phase 3, NOT complete)
-  dirty            -> advance to next phase (C still becomes C+1)
+WAVE CONVERGENCE (every certification equals F)
+  S != F (none or stale) -> Launch verifier
+  S == F                 -> post-review (complete)
 ```
+
+Staleness is evaluated only at this boundary, never mid-round: accumulated edits batch into one wave instead of re-running settled cells per small delta. No artifact edit or finding disposition reactivates a cell directly; fingerprint movement reactivates only through the sweep. The one exception is a resolved-scope-map change, which fingerprint inequality cannot detect: the boundary that reconciles it clears every affected cell's certification directly (whole-scope and cross-cutting cells on any map change, local cells on slice-membership change).
 
 Fixture cases:
 
-- phase 1 clean, C = 0 -> phase 2 required, C becomes 1;
-- phase 1 dirty -> phase 2, C becomes 1 (a dirty phase that reaches the all-inactive boundary still converges);
-- phase 2 clean, C = 1 -> complete, C becomes 2;
-- phase 2 dirty, C = 1 -> phase 3 required, C becomes 2 (cleanliness gates the destination, not the counter);
-- phase 1 dirty, then phase 2 clean -> complete (phase 1 took C to 1, phase 2 clean takes it to 2 and is mutation-free; the common dirty-then-clean run needs no phase 3);
-- phase 1 drift-abandoned (C stays 0), then phase 2 clean -> phase 3 required, C becomes 1 (the only path where a clean converged phase must still advance, because the two-phase floor is unsatisfied);
-- phase 3 clean, C = 1 -> complete, C becomes 2.
+- all inactive, one certification stale -> exactly that cell reactivates with cleared certification and a round starts; currently certified cells stay inactive;
+- all certifications current, stamp none -> verifier launch;
+- all certifications current, stamp equal to the current fingerprint -> post-review;
+- demotion-only sweep -> no round; resolution falls through to the convergence branch;
+- sweep leaves the applicable set empty -> run fails with current diagnostics;
+- contradicted N/A -> promoted to active with no certification, so the run cannot complete without reviewing it;
+- mid-round edit -> no sweep until the next all-inactive boundary;
+- scope-map change at an unchanged fingerprint -> affected cells' certifications cleared directly at the reconciling boundary;
+- pending user request or controller mutation, or non-`none` agreement boundary -> no transition and no dispatch.
 
-## Per-dimension convergence
+## Certification span
 
-A dimension that converges cleanly (explicit LGTM with a concrete nonblank verification rationale) becomes inactive for the rest of its phase. The run does not relaunch it for any remaining round of that phase, no matter how long a sibling dimension takes. Inactive is phase-scoped only: a later phase may reactivate it, per the cross-dimension mutation rule.
+A cell that converges cleanly (explicit LGTM with a concrete nonblank verification rationale) becomes inactive, certifying the exact fingerprint it reviewed. The run does not relaunch it in any later round while it stays certified, no matter how long a sibling cell takes; only a staleness-sweep reactivation or a scope-remap clearing returns it to active. Round numbers are monotonic for the whole run and never reset.
 
 Fixture case:
 
-- phase N, D1 LGTM after one note-backed review, D2 requires seven reviews -> D1 is launched zero times across the remaining six rounds of phase N.
+- round N: D1 LGTM after one note-backed review, D2 requires seven reviews at an unchanged fingerprint -> D1 is launched zero times across the remaining six rounds.
 
-## Cross-dimension mutation
+## Cross-cell mutation
 
 One invariant with two halves, both fixture-tested:
 
-- **Preserve within phase.** A sibling dimension's accepted artifact edit dirties the phase and preserves each dimension's current active or inactive state until the next phase. D1 that already converged is not reactivated mid-phase by D2's fix, even though the artifact changed under D1's certification. The mandatory next phase is what provides the global re-review barrier.
-- **Reset at next phase.** The convergence boundary that follows invokes `Start phase`, which makes every applicable dimension or shard cell active with zero attempts. D1's prior LGTM buys it nothing in the new phase.
+- **Preserve until the sweep.** A sibling cell's accepted artifact edit moves the fingerprint and preserves each cell's current active or inactive state until the next all-inactive boundary. D1 that already certified is not reactivated mid-run by D2's fix, even though the artifact changed under D1's certification. The staleness sweep is what provides the global re-review barrier.
+- **Reactivate at the sweep.** At the all-inactive boundary, the sweep reactivates exactly the cells whose certification differs from the current fingerprint, clearing each reactivated certification. D1's prior LGTM buys it nothing against a moved fingerprint.
 
 Fixture cases:
 
-- phase N: D1 LGTM, D2 accepted fix -> phase dirtied, D1 still inactive for the remainder of phase N, D1 launched zero times;
-- after the boundary: start of phase N+1, D1 and D2 both active at zero attempts.
+- round N: D1 certified, D2's accepted fix moves the fingerprint -> D1 still inactive for every remaining round before the boundary, launched zero times;
+- at the boundary: the sweep reactivates D1 with `Certified fingerprint: none`, while a cell certified at the moved fingerprint stays inactive.
 
 ## Rejected findings
 
 The disposition rule set, with the refuted and valid-but-deferred branches both covered:
 
-1. A valid-but-deferred finding, or an accepted judgment call with an actionable follow-up, keeps its dimension active. The disposition is not a convergence device and never produces LGTM by itself.
-2. A round whose skeptic-verified findings all landed as refuted or as acknowledgement-only accepted judgment calls keeps the dimension active with no certification. The reasoned acknowledgements enter the next payload, and only a later explicit clean LGTM with a concrete nonblank verification rationale deactivates the dimension. The module refuses to record a refutation from a controller rejection that lacks a skeptic-verified verdict, and the acceptance branch applies only to findings whose skeptic verdict is JUDGMENT_CALL.
-3. A rejected finding neither dirties the phase nor counts as a per-finding clean conclusion.
+1. A valid-but-deferred finding, or an accepted judgment call with an actionable follow-up, keeps its cell active. The disposition is not a convergence device and never produces LGTM by itself.
+2. A round whose skeptic-verified findings all landed as refuted or as acknowledgement-only accepted judgment calls keeps the cell active with no certification. The reasoned acknowledgements enter the next payload, and only a later explicit clean LGTM with a concrete nonblank verification rationale deactivates the cell. The module refuses to record a refutation from a controller rejection that lacks a skeptic-verified verdict, and the acceptance branch applies only to findings whose skeptic verdict is JUDGMENT_CALL.
+3. A rejected finding neither moves the fingerprint nor counts as a per-finding clean conclusion.
 
 Valid-but-deferred additionally records its actionable follow-up and the acknowledgement or caveat, with no applied-change entry. A REFUTED finding records a reasoned acknowledgement and no follow-up or applied-change entry.
 
 Fixture cases:
 
-- reviewer finding F, skeptic REFUTES it, no other findings in the round -> dimension D stays active with no certification, and the reasoned acknowledgement enters the next payload;
+- reviewer finding F, skeptic REFUTES it, no other findings in the round -> cell D stays active with no certification, and the reasoned acknowledgement enters the next payload;
 - reviewer finding F, controller rejects it without a skeptic-verified refutation -> the disposition is refused and D stays active;
 - mixed round: one refuted finding plus one valid-but-deferred -> D stays active, with the follow-up and acknowledgement recorded;
 - accepted judgment call with an actionable follow-up as the round's sole finding -> D stays active, with the follow-up row recorded;
-- acknowledgement-only accepted judgment call as the round's sole finding -> D stays active with no certification and receives another fresh review;
+- acknowledgement-only accepted judgment call as the round's sole finding -> D stays active with no certification and receives another fresh review at the same fingerprint;
 - deferred in round N, all findings refuted in round N+1 -> D stays active while the round-N follow-up row stays open, and only a later clean LGTM can deactivate D;
 - after any finding-bearing round, a later clean LGTM with a concrete nonblank rationale -> D becomes inactive and certifies that clean review's fingerprint;
 - attempting the acceptance branch on a CONFIRMED-verdict finding is refused;
-- the phase is not dirtied in any of these and no per-finding clean conclusion is counted.
+- the fingerprint does not move in any of these, no sibling cell changes state, and no per-finding clean conclusion is counted.
 
 ## Verifier stamping
 
-The holistic verifier launches only at wave convergence and follows the same finding and skeptic pipeline as dimension cells. Its stamp names only the fingerprint it reviewed. The transition module covers every verifier boundary:
+The holistic verifier launches only at wave convergence and follows the same finding and skeptic pipeline as dimension cells. Its cell (`verifier/whole-artifact`) sits outside the applicable set: the sweep and wave convergence never count it. Its stamp names only the fingerprint it reviewed; a stamp whose fingerprint no longer matches the current fingerprint is stale and authorizes nothing. The transition module covers every verifier boundary:
 
 1. A clean LGTM with a concrete nonblank verification note stamps the current fingerprint.
 2. A no-fix verifier round whose findings are all refuted or accepted as acknowledgement-only judgment calls leaves the stamp unset, carries the reasoned acknowledgements forward, and launches another fresh verifier at the same fingerprint.
@@ -133,53 +138,57 @@ Fixture cases:
 The run-level fail-closed contract, which is distinct from the round-level `needs-reviewer` status that `revise-round.test.js` already covers:
 
 - a missing or malformed reviewer or skeptic output, or limit exhaustion, lands the run in `Status: failed`;
-- the failed run is not a convergence data point: no phase advance, no partial LGTM, no completion, and no manufactured LGTM or refutation from any limit path;
+- the failed run is not a convergence data point: no boundary transition, no partial certification, no completion, and no manufactured LGTM, stamp, or refutation from any limit path;
 - a failed run never auto-resumes; it surfaces `Failure` and requires explicit user disposition (retry, restart, or abandon in interactive mode; autonomous handover stops for user disposition).
 
-Limits: 10 original reviewer launches per stable dimension or shard cell per phase, 10 phases, 3 execution-repair launches per stable reviewer or skeptic cell. Exhaustion of any limit is terminal until explicit disposition.
+Limits: 30 rounds per run (verifier rounds included), 10 verifier launches per run, 3 execution-repair launches per stable reviewer, skeptic, or verifier cell. `Start round` and `Launch verifier` preflight their caps: a launch that would exceed a cap fails the run before any agent launches. Exhaustion of any limit is terminal until explicit disposition, and a cap-forced end never produces completion.
 
 Fixture cases:
 
-- reviewer missing/malformed -> `Status: failed`, phase/round/fingerprint preserved, no phase advance, no completion;
-- a dimension at 10 attempts fails the run before any round agents launch;
-- a transition to phase 11 fails the run while preserving phase-10 diagnostics;
+- reviewer missing/malformed -> `Status: failed`, round, fingerprint, and cell diagnostics preserved, no transition, no completion;
+- a `Start round` that would exceed round 30 fails the run before any agent launches, preserving round-30 diagnostics;
+- an eleventh verifier launch fails the run at the preflight;
 - a repair counter at 3 fails the run before another agent launches;
-- the module refuses to turn any limit-exhausted state into an LGTM or a refutation.
+- the module refuses to turn any limit-exhausted state into an LGTM, a stamp, or a refutation.
 
 ## Completion invariant
 
-The stage completes only when the joined predicate holds:
+The run enters `post-review` only on the conjunction:
 
 ```text
-canComplete(phase, converged, cells, mutations)
-  = phase > 1
-    AND converged >= 2
-    AND every applicable dimension inactive
-    AND mutations == 0
+canComplete(cells, fingerprint, stamp)
+  = applicable set nonempty
+    AND every applicable cell inactive
+    AND every certification == fingerprint
+    AND stamp == fingerprint
 ```
 
-The predicate is tested for refusal in every failing combination independently, and the phase-1 ban is absolute across every input shape:
+The stamp is a conjunction, not an authority: the verifier never launches before wave convergence, so no single agent and no cap path can complete the run alone. Any reviewable edit after a stamp moves the fingerprint, and any scope-map change clears the affected certifications directly; either event invalidates completion, and certification loss is the single re-entry path.
 
-- phase 1, converged, no mutations -> refuses;
-- phase 2, converged = 1, no mutations -> refuses;
-- phase 2, converged >= 2, some dimension active -> refuses;
-- phase 2, converged >= 2, all inactive, mutations > 0 -> refuses;
-- completes only on: phase >= 2, converged >= 2, every applicable dimension inactive, zero mutations.
+The predicate is tested for refusal in every failing combination independently:
+
+- some applicable cell active -> refuses;
+- all inactive, one certification at an older fingerprint -> refuses (sweep territory, not completion);
+- converged, stamp none -> refuses (verifier territory);
+- converged, stamp at an older fingerprint -> refuses;
+- applicable set empty -> the run fails and never completes;
+- converged with stamp none and verifier launches exhausted -> the run fails and never completes (cap asymmetry);
+- completes only on: nonempty applicable set, every applicable cell inactive, every certification current, stamp equal to the current fingerprint.
 
 ## Relationship to neighboring features
 
-- **second-opinion-gates**: the completion predicate is written against the current shipped semantics (phase ceiling 10, completed-by-convergence). A future phase redesign is deliberately out of scope; see that file's recorded unclaimed direction. Because the transition table is declared configuration, adopting a phase-2 cap later is a table-and-fixture update in that change, not a rewrite of this module.
+- **second-opinion-gates**: the completion predicate is written against the current shipped semantics (wave convergence plus the verifier-stamp conjunction, 30-round and 10-verifier-launch caps). A future gate or cap redesign is deliberately out of scope; see that file's recorded unclaimed direction, whose phase-cap question dissolved into these caps. Because the transition table is declared configuration, adopting a different cap later is a table-and-fixture update in that change, not a rewrite of this module.
 - **contract-calibrated-revise-admission**: this transition substrate lands first against current behavior. Admission then updates the module and fixtures atomically for the `contract-clean` certification kind, contract-context invalidation, and every verifier stamp basis rather than leaving those branches as prose-only exceptions.
 - **light-revise-mode** (exploring): if a lightened single-reviewer shape changes the convergence invariant mapping, its own change updates the affected fixtures rather than redefining the transition module here.
 - **revise-round.test.js**: that suite stays the round-dispatch safety net; this suite covers the decisions above the round, so the two do not overlap on the same assertions.
 
 ## Status
 
-Migrated into the backlog on 2026-08-11, with the seven design decisions above confirmed one at a time during migration. Not yet designed as a buildable change; to be hardened by a revise-spec run before planning.
+Migrated into the backlog on 2026-08-11, with the design decisions above confirmed one at a time during migration; the invariant set was re-derived from the shipped wave-convergence lifecycle on 2026-08-20 after the phase model's removal. Not yet designed as a buildable change; to be hardened by a revise-spec run before planning.
 
 ## Requirements
 
-- The review engine's phase/round/checkpoint machinery and its prose rules in `internal/revise/SKILL.md` (shipped by the universal-skill MVP; this feature extracts and tests the decisions they already specify).
+- The review engine's wave/round/checkpoint machinery and its prose rules in `internal/revise/SKILL.md` (shipped by the universal-skill MVP and the wave-lifecycle change; this feature extracts and tests the decisions they already specify).
 - The existing fixture-test convention demonstrated by `skills/ready/ready.test.js` and `internal/revise/revise-round.test.js` (shipped; no framework, exit code 1 on failure).
 
 **Requires:** none (FEATURES.md index entry).
