@@ -117,6 +117,99 @@ const tests = {
     const s = baseState({ cells: [cell({ status: 'inactive', certification: FP })], stamp: FP })
     assert.equal(canComplete(s), true)
   },
+  'a Start round that would exceed round 30 fails before any agent launches' () {
+    const s = baseState({ round: 30, roundStatus: 'evaluated' })
+    const r = preflightLaunch(s, { kind: 'round' }, true)
+    assert.equal(r.ok, false)
+    const rec = parseFailureRecord(r.failure)
+    assert.equal(rec.failingRule, 'round-cap')
+    assert.equal(rec.round, 30)
+    assert.equal(rec.fingerprint, FP)
+  },
+  'an eleventh verifier launch fails the run at the preflight' () {
+    const s = baseState({ verifierLaunches: 10, cells: [cell({ status: 'inactive', certification: FP })] })
+    const r = preflightLaunch(s, { kind: 'verifier' }, true)
+    assert.equal(r.ok, false)
+    assert.equal(parseFailureRecord(r.failure).failingRule, 'verifier-cap')
+  },
+  'double-exceeded verifier preflight carries verifier-cap (verifier cap before round cap)' () {
+    const s = baseState({ verifierLaunches: 10, round: 30, cells: [cell({ status: 'inactive', certification: FP })] })
+    const r = preflightLaunch(s, { kind: 'verifier' }, true)
+    assert.equal(parseFailureRecord(r.failure).failingRule, 'verifier-cap')
+  },
+  'a verifier launch below the verifier cap still pays the round cap' () {
+    const s = baseState({ verifierLaunches: 4, round: 30, cells: [cell({ status: 'inactive', certification: FP })] })
+    const r = preflightLaunch(s, { kind: 'verifier' }, true)
+    assert.equal(r.ok, false)
+    assert.equal(parseFailureRecord(r.failure).failingRule, 'round-cap')
+  },
+  'a repair counter at 3 within its round fails the run before another launch' () {
+    const s = baseState({ roundStatus: 'in-flight', agents: [agentRow({ repairs: 3 })] })
+    const r = preflightLaunch(s, { kind: 'repair', cellId: 'd1/whole' }, true)
+    assert.equal(r.ok, false)
+    const rec = parseFailureRecord(r.failure)
+    assert.equal(rec.failingRule, 'repair-exhaustion')
+    assert.equal(rec.cellId, 'd1/whole')
+  },
+  'any launch kind with a pending mutation, non-null boundary, or false gate -> blocked' () {
+    for (const over of [{ pendingControllerMutation: true }, { agreementBoundary: 'fit-check' }]) {
+      for (const launch of [{ kind: 'round' }, { kind: 'verifier' }, { kind: 'repair', cellId: 'd1/whole' }]) {
+        const s = baseState({ roundStatus: launch.kind === 'repair' ? 'in-flight' : 'evaluated', ...over })
+        assert.deepEqual(preflightLaunch(s, launch, true), { ok: false, blocked: true }, `${launch.kind} ${JSON.stringify(over)}`)
+      }
+    }
+    for (const launch of [{ kind: 'round' }, { kind: 'verifier' }, { kind: 'repair', cellId: 'd1/whole' }]) {
+      const gateFalse = baseState({ roundStatus: launch.kind === 'repair' ? 'in-flight' : 'evaluated' })
+      assert.deepEqual(preflightLaunch(gateFalse, launch, false), { ok: false, blocked: true }, `gate-false ${launch.kind}`)
+    }
+  },
+  'a pending user request blocks round and verifier but not repair (the deadlock exemption)' () {
+    const round = baseState({ pendingUserRequest: true })
+    assert.deepEqual(preflightLaunch(round, { kind: 'round' }, true), { ok: false, blocked: true })
+    const verifier = baseState({ pendingUserRequest: true, cells: [cell({ status: 'inactive', certification: FP })] })
+    assert.deepEqual(preflightLaunch(verifier, { kind: 'verifier' }, true), { ok: false, blocked: true })
+    const repair = baseState({ pendingUserRequest: true, roundStatus: 'in-flight' })
+    assert.deepEqual(preflightLaunch(repair, { kind: 'repair', cellId: 'd1/whole' }, true), { ok: true })
+  },
+  'a round preflight on an in-flight state with no blocking condition -> ok (verifier-only conjunct)' () {
+    const s = baseState({ roundStatus: 'in-flight' })
+    assert.deepEqual(preflightLaunch(s, { kind: 'round' }, true), { ok: true })
+  },
+  'a verifier preflight with Round status in-flight is refused off-domain even when blocked' () {
+    const s = baseState({ roundStatus: 'in-flight', pendingUserRequest: true, cells: [cell({ status: 'inactive', certification: FP })] })
+    assertRefusal(() => preflightLaunch(s, { kind: 'verifier' }, true), 'off-domain', 'verifier-in-flight-blocked')
+  },
+  'a repair preflight with Round status evaluated or idle, or a completed row, is refused off-domain' () {
+    assertRefusal(() => preflightLaunch(baseState({ roundStatus: 'evaluated' }), { kind: 'repair', cellId: 'd1/whole' }, true), 'off-domain', 'repair-evaluated')
+    assertRefusal(() => preflightLaunch(baseState({ roundStatus: 'idle' }), { kind: 'repair', cellId: 'd1/whole' }, true), 'off-domain', 'repair-idle')
+    const completed = baseState({ roundStatus: 'in-flight', agents: [agentRow({ status: 'completed' })] })
+    assertRefusal(() => preflightLaunch(completed, { kind: 'repair', cellId: 'd1/whole' }, true), 'off-domain', 'repair-completed-row')
+  },
+  'a repair preflight naming a cell with no current Agents row is refused' () {
+    const s = baseState({ roundStatus: 'in-flight' })
+    assertRefusal(() => preflightLaunch(s, { kind: 'repair', cellId: 'ghost' }, true), 'invalid-input', 'repair-unknown-row')
+  },
+  'any preflight kind on a failed or post-review state -> off-domain, even when also blocked' () {
+    for (const status of ['failed', 'post-review']) {
+      for (const launch of [{ kind: 'round' }, { kind: 'verifier' }, { kind: 'repair', cellId: 'd1/whole' }]) {
+        const s = baseState({ status, pendingUserRequest: true, failure: status === 'failed' ? buildFailureRecord(baseState(), 'round-cap', {}) : null })
+        assertRefusal(() => preflightLaunch(s, launch, true), 'off-domain', `${launch.kind}-on-${status}`)
+      }
+    }
+  },
+  'a state both blocked and at a cap -> blocked, never a cap failure' () {
+    const s = baseState({ round: 30, pendingControllerMutation: true })
+    assert.deepEqual(preflightLaunch(s, { kind: 'round' }, true), { ok: false, blocked: true })
+  },
+  'failure record round-trips and refuses unparseable or unknown-class text' () {
+    const text = buildFailureRecord(baseState({ round: 30 }), 'round-cap', {})
+    const rec = parseFailureRecord(text)
+    assert.equal(rec.failingRule, 'round-cap')
+    assert.equal(typeof rec.verifierLaunches, 'number')
+    assert.equal(Array.isArray(rec.cells), true)
+    assertRefusal(() => parseFailureRecord('not json'), 'invalid-input', 'unparseable-record')
+    assertRefusal(() => parseFailureRecord(JSON.stringify({ failingRule: 'novel-class' })), 'invalid-input', 'unknown-class')
+  },
 }
 
 let failures = 0

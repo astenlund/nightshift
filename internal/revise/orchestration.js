@@ -102,6 +102,89 @@ function resolveBoundary (state, applicability, gateCurrent, remap) {
   refuse('off-domain', 'resolveBoundary is implemented in a later task')
 }
 
+function buildFailureRecord (state, failingRule, extra) {
+  if (!FAILING_RULES.includes(failingRule)) { refuse('invalid-input', `unknown failing rule: ${failingRule}`) }
+  const cellsSnapshot = (extra.cells || state.cells).map(c => ({
+    id: c.id,
+    status: c.status,
+    certification: c.certification ?? null,
+    repairs: (state.agents.find(a => a.cellId === c.id) || { repairs: 0 }).repairs,
+  }))
+  const record = {
+    failingRule,
+    round: state.round,
+    fingerprint: state.fingerprint,
+    verifierLaunches: state.verifierLaunches,
+    cells: cellsSnapshot,
+  }
+  if (failingRule === 'repair-exhaustion') {
+    if (typeof extra.cellId !== 'string' || extra.cellId === '') { refuse('invalid-input', 'a repair-exhaustion record carries the exhausted cellId') }
+    record.cellId = extra.cellId
+  }
+  return JSON.stringify(record)
+}
+
+function parseFailureRecord (text) {
+  if (typeof text !== 'string') { refuse('invalid-input', 'failure record must be the Failure JSON string content') }
+  let record
+  try { record = JSON.parse(text) } catch { refuse('invalid-input', 'failure record is unparseable environment residue') }
+  if (record === null || typeof record !== 'object' || !FAILING_RULES.includes(record.failingRule)) {
+    refuse('invalid-input', 'failure record carries an unknown failing rule')
+  }
+  if (!isNonNegativeInt(record.round) || !FINGERPRINT_RE.test(record.fingerprint) || !isNonNegativeInt(record.verifierLaunches) || !Array.isArray(record.cells)) {
+    refuse('invalid-input', 'failure record is missing named fields')
+  }
+  if (record.failingRule === 'repair-exhaustion' && (typeof record.cellId !== 'string' || record.cellId === '')) {
+    refuse('invalid-input', 'a repair-exhaustion record names the exhausted cell')
+  }
+  return record
+}
+
+const LAUNCH_KINDS = Object.freeze(['round', 'verifier', 'repair'])
+
+function preflightLaunch (state, launch, gateCurrent) {
+  validateState(state)
+  if (launch === null || typeof launch !== 'object' || !LAUNCH_KINDS.includes(launch.kind)) { refuse('invalid-input', 'launch kind out of domain') }
+  if (typeof gateCurrent !== 'boolean') { refuse('invalid-input', 'gateCurrent must be a boolean assertion') }
+  let row = null
+  if (launch.kind === 'repair') {
+    noNoneString(launch.cellId, 'invalid-input', 'repair cellId')
+    row = state.agents.find(a => a.cellId === launch.cellId)
+    if (typeof launch.cellId !== 'string' || launch.cellId === '' || !row) { refuse('invalid-input', 'a repair cellId names a current Agents row') }
+  }
+  // Domain first.
+  if (state.status !== 'reviewing') { refuse('off-domain', 'every launch kind requires Status: reviewing') }
+  if (launch.kind === 'verifier' && state.roundStatus === 'in-flight') { refuse('off-domain', 'no second launch against an in-flight verifier round') }
+  if (launch.kind === 'repair') {
+    if (state.roundStatus !== 'in-flight') { refuse('off-domain', 'a repair targets unfinished work inside an in-flight round') }
+    if (row.status === 'completed') { refuse('off-domain', 'a completed Agents row is not repairable') }
+  }
+  // Guard second.
+  const blockedAllKinds = state.pendingControllerMutation || state.agreementBoundary !== null || gateCurrent === false
+  const blockedByRequest = state.pendingUserRequest && launch.kind !== 'repair'
+  if (blockedAllKinds || blockedByRequest) { return { ok: false, blocked: true } }
+  // Caps last, from an unblocked in-domain state.
+  if (launch.kind === 'verifier') {
+    if (state.verifierLaunches + 1 > REVISE_LIMITS.verifierLaunchesPerRun) {
+      return { ok: false, failure: buildFailureRecord(state, 'verifier-cap', {}) }
+    }
+    if (state.round + 1 > REVISE_LIMITS.roundsPerRun) {
+      return { ok: false, failure: buildFailureRecord(state, 'round-cap', {}) }
+    }
+    return { ok: true }
+  }
+  if (launch.kind === 'round') {
+    if (state.round + 1 > REVISE_LIMITS.roundsPerRun) {
+      return { ok: false, failure: buildFailureRecord(state, 'round-cap', {}) }
+    }
+    return { ok: true }
+  }
+  if (row.repairs + 1 > REVISE_LIMITS.repairLaunchesPerCellPerRound) {
+    return { ok: false, failure: buildFailureRecord(state, 'repair-exhaustion', { cellId: launch.cellId }) }
+  }
+  return { ok: true }
+}
+
 function canComplete (state) {
   validateState(state)
   const applicable = state.cells.filter(c => c.status !== 'na')
@@ -117,11 +200,11 @@ module.exports = {
   validateState,
   resolveBoundary,
   canComplete,
+  preflightLaunch,
+  buildFailureRecord,
+  parseFailureRecord,
   // filled by later tasks:
   cellAfterRound: undefined,
   verifierBoundary: undefined,
-  preflightLaunch: undefined,
   exitTerminal: undefined,
-  buildFailureRecord: undefined,
-  parseFailureRecord: undefined,
 }
