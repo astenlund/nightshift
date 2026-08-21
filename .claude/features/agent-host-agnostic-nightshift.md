@@ -127,7 +127,7 @@ Project and global instruction discovery returns both the host-facing adapter an
 
 ### Review host adapters
 
-Separate the review invariants from dispatch mechanics. The orchestration transition module and tests land first so adapter work cannot silently change convergence, skeptic verification, repair budgets, stale-result rejection, or the verifier-stamp conjunction.
+Separate the review invariants from dispatch mechanics. The orchestration transition module and tests (shipped, landed before this slice) hold the invariants adapter work cannot silently change: convergence, skeptic verification, repair budgets, the verifier-stamp conjunction, and the module-owned half of stale-result rejection (stale-round replay refusal, fingerprint-bound certification, the verifier-row discriminator). The delivery-snapshot identity comparison stays controller-owned, since it turns on delivery-projection byte comparisons the module cannot see; adapter work that touches result delivery preserves that check itself rather than relying on the module's fixtures to catch a regression.
 
 At run start, select one adapter from observed capabilities and freeze that selection in durable state. The adapter contract covers:
 
