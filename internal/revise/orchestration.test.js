@@ -576,6 +576,26 @@ const tests = {
     const s = failedState('round-cap', { round: 30 })
     assertRefusal(() => exitTerminal(s, { kind: 'reviewable-change', nextFingerprint: FP2 }, null, s.failure), 'off-domain', 'no-implicit-resume')
   },
+  'prose pins: the six lifecycle sentences are pinned verbatim with mutation probes' () {
+    const engine = readFileSync(join(__dirname, 'SKILL.md'), 'utf8')
+    const pins = [
+      ['limits sentence', 'The limits are 30 rounds per run (verifier rounds included), 10 verifier launches per run (a launch is the dispatch of one verifier round), and 3 execution-repair launches per stable reviewer, skeptic, or verifier cell.'],
+      ['Launch verifier precondition', '`Launch verifier`: applies only at wave convergence with `Round status: evaluated` or `idle`.'],
+      ['stamp conjunction', 'The run enters `post-review` only on the conjunction of wave convergence and a verifier stamp equal to the current fingerprint.'],
+      ['repair safety rule 1', 'A cell cannot become inactive without a clean-review LGTM conclusion with a concrete nonblank verification rationale against the current fingerprint.'],
+      ['never auto-resumes', '`Status: failed` never auto-resumes.'],
+      ['cap asymmetry', 'A cap-forced end is terminal until explicit user disposition; it never produces completion.'],
+    ]
+    const assertPin = (source, label, sentence) => {
+      assert.equal(source.includes(sentence), true, `pin must hold: ${label}`)
+    }
+    for (const [label, sentence] of pins) {
+      assertPin(engine, label, sentence)
+      const mutant = engine.replace(sentence, `REWORDED: ${label}`)
+      assert.notEqual(mutant, engine, `mutation probe must alter the surface: ${label}`)
+      assert.throws(() => assertPin(mutant, label, sentence), /pin must hold/, `mutation probe must bite: ${label}`)
+    }
+  },
 }
 
 let failures = 0
