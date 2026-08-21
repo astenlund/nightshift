@@ -185,6 +185,61 @@ function preflightLaunch (state, launch, gateCurrent) {
   return { ok: true }
 }
 
+const VERDICTS = Object.freeze(['CONFIRMED', 'REFUTED', 'JUDGMENT_CALL'])
+const DISPOSITIONS = Object.freeze(['fix-applied', 'deferred-follow-up', 'refuted', 'accepted-judgment-call'])
+
+function validateOutcome (outcome, { requireDerived }) {
+  if (outcome === null || typeof outcome !== 'object') { refuse('impermissible-outcome', 'outcome must be an object') }
+  if (typeof outcome.lgtm !== 'boolean' || typeof outcome.verifiedNote !== 'string' || !Array.isArray(outcome.findings)) {
+    refuse('impermissible-outcome', 'outcome must carry lgtm, verifiedNote, and findings')
+  }
+  if (outcome.verifiedNote.trim() === '') { refuse('impermissible-outcome', 'a blank verification note is repairable reviewer output') }
+  if (outcome.lgtm && outcome.findings.length > 0) { refuse('impermissible-outcome', 'lgtm with a nonempty findings list is contradictory output') }
+  if (!outcome.lgtm && outcome.findings.length === 0) { refuse('impermissible-outcome', 'no-lgtm with an empty findings list is contradictory output') }
+  for (const f of outcome.findings) {
+    if (f === null || typeof f !== 'object' || !VERDICTS.includes(f.verdict) || !DISPOSITIONS.includes(f.disposition) || typeof f.actionableFollowUp !== 'boolean') {
+      refuse('impermissible-outcome', 'finding shape out of domain')
+    }
+    if (f.disposition === 'refuted' && f.verdict !== 'REFUTED') { refuse('impermissible-outcome', 'a refutation requires a skeptic-verified REFUTED verdict') }
+    if (f.disposition === 'accepted-judgment-call' && f.verdict !== 'JUDGMENT_CALL') { refuse('impermissible-outcome', 'the acceptance branch applies only to JUDGMENT_CALL verdicts') }
+    if (f.disposition === 'refuted' && f.actionableFollowUp) { refuse('impermissible-outcome', 'actionableFollowUp is inconsistent on a refuted finding') }
+    if (f.disposition === 'deferred-follow-up' && !f.actionableFollowUp) { refuse('impermissible-outcome', 'a deferred follow-up finding carries an unconditional authoritative row') }
+  }
+  if (requireDerived) {
+    const appliedFix = outcome.findings.some(f => f.disposition === 'fix-applied')
+    const followUp = outcome.findings.some(f => f.actionableFollowUp)
+    if (outcome.appliedFix !== appliedFix || outcome.authoritativeDeferredFollowUp !== followUp) {
+      refuse('impermissible-outcome', 'derived flags contradict the per-finding dispositions')
+    }
+  }
+  return outcome
+}
+
+// Caller precondition, stated rather than silently relied on: roundOutcome is
+// the current round's adjudication-ready result for this cell at the passed
+// fingerprint; the whole-round barrier and the round/fingerprint/delivery-
+// snapshot identity checks that discard outdated results are controller-owned
+// upstream. The module-side defenses are the cell-status refusal and the
+// fingerprint-bound certification.
+function cellAfterRound (cellRecord, roundOutcome, fingerprint) {
+  validateCell(cellRecord)
+  if (!FINGERPRINT_RE.test(fingerprint)) { refuse('invalid-input', 'reviewed fingerprint must be sha256:<12 hex>') }
+  if (cellRecord.status !== 'active') { refuse('off-domain', 'a round outcome for an inactive or N/A cell is a stale or misrouted replay') }
+  validateOutcome(roundOutcome, { requireDerived: false })
+  if (roundOutcome.lgtm) {
+    return { status: 'inactive', certification: fingerprint, ledger: { acknowledgement: false, followUp: false, appliedChange: false } }
+  }
+  return {
+    status: 'active',
+    certification: null,
+    ledger: {
+      acknowledgement: roundOutcome.findings.some(f => f.disposition === 'refuted' || f.disposition === 'accepted-judgment-call'),
+      followUp: roundOutcome.findings.some(f => f.actionableFollowUp),
+      appliedChange: roundOutcome.findings.some(f => f.disposition === 'fix-applied'),
+    },
+  }
+}
+
 function canComplete (state) {
   validateState(state)
   const applicable = state.cells.filter(c => c.status !== 'na')
@@ -203,8 +258,8 @@ module.exports = {
   preflightLaunch,
   buildFailureRecord,
   parseFailureRecord,
+  cellAfterRound,
   // filled by later tasks:
-  cellAfterRound: undefined,
   verifierBoundary: undefined,
   exitTerminal: undefined,
 }

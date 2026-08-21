@@ -39,6 +39,10 @@ function applicabilityFor (state, notApplicable = {}) {
     : { cellId: c.id, applicable: true })
 }
 
+function finding (over) {
+  return { verdict: 'CONFIRMED', disposition: 'fix-applied', actionableFollowUp: false, ...over }
+}
+
 function assertRefusal (fn, code, label) {
   let threw = null
   try { fn() } catch (error) { threw = error }
@@ -209,6 +213,57 @@ const tests = {
     assert.equal(Array.isArray(rec.cells), true)
     assertRefusal(() => parseFailureRecord('not json'), 'invalid-input', 'unparseable-record')
     assertRefusal(() => parseFailureRecord(JSON.stringify({ failingRule: 'novel-class' })), 'invalid-input', 'unknown-class')
+  },
+  'skeptic-refuted sole finding -> cell stays active with acknowledgement only' () {
+    const r = cellAfterRound(cell(), { lgtm: false, verifiedNote: 'checked the claim against SKILL.md', findings: [finding({ verdict: 'REFUTED', disposition: 'refuted' })] }, FP)
+    assert.deepEqual(r, { status: 'active', certification: null, ledger: { acknowledgement: true, followUp: false, appliedChange: false } })
+  },
+  'controller rejection without a skeptic-verified refutation is refused' () {
+    assertRefusal(() => cellAfterRound(cell(), { lgtm: false, verifiedNote: 'n', findings: [finding({ verdict: 'CONFIRMED', disposition: 'refuted' })] }, FP), 'impermissible-outcome', 'unverified-refutation')
+  },
+  'mixed round: one refuted plus one valid-but-deferred -> active with follow-up and acknowledgement' () {
+    const r = cellAfterRound(cell(), { lgtm: false, verifiedNote: 'n', findings: [finding({ verdict: 'REFUTED', disposition: 'refuted' }), finding({ disposition: 'deferred-follow-up', actionableFollowUp: true })] }, FP)
+    assert.deepEqual(r, { status: 'active', certification: null, ledger: { acknowledgement: true, followUp: true, appliedChange: false } })
+  },
+  'accepted judgment call with an actionable follow-up -> active with follow-up row recorded' () {
+    const r = cellAfterRound(cell(), { lgtm: false, verifiedNote: 'n', findings: [finding({ verdict: 'JUDGMENT_CALL', disposition: 'accepted-judgment-call', actionableFollowUp: true })] }, FP)
+    assert.deepEqual(r.ledger, { acknowledgement: true, followUp: true, appliedChange: false })
+    assert.equal(r.status, 'active')
+  },
+  'acknowledgement-only accepted judgment call -> active with no certification' () {
+    const r = cellAfterRound(cell(), { lgtm: false, verifiedNote: 'n', findings: [finding({ verdict: 'JUDGMENT_CALL', disposition: 'accepted-judgment-call' })] }, FP)
+    assert.deepEqual(r, { status: 'active', certification: null, ledger: { acknowledgement: true, followUp: false, appliedChange: false } })
+  },
+  'fix-applied, self-contained -> active, applied-change only' () {
+    const r = cellAfterRound(cell(), { lgtm: false, verifiedNote: 'n', findings: [finding()] }, FP)
+    assert.deepEqual(r, { status: 'active', certification: null, ledger: { acknowledgement: false, followUp: false, appliedChange: true } })
+  },
+  'fix-applied with a queued out-of-surface remainder -> applied-change and follow-up flags both set' () {
+    const r = cellAfterRound(cell(), { lgtm: false, verifiedNote: 'n', findings: [finding({ actionableFollowUp: true })] }, FP)
+    assert.deepEqual(r.ledger, { acknowledgement: false, followUp: true, appliedChange: true })
+  },
+  'a later clean LGTM with a concrete rationale certifies that review fingerprint' () {
+    const r = cellAfterRound(cell(), { lgtm: true, verifiedNote: 'traced every invariant against SKILL.md', findings: [] }, FP2)
+    assert.deepEqual(r, { status: 'inactive', certification: FP2, ledger: { acknowledgement: false, followUp: false, appliedChange: false } })
+  },
+  'acceptance branch on a CONFIRMED-verdict finding is refused' () {
+    assertRefusal(() => cellAfterRound(cell(), { lgtm: false, verifiedNote: 'n', findings: [finding({ verdict: 'CONFIRMED', disposition: 'accepted-judgment-call' })] }, FP), 'impermissible-outcome', 'acceptance-on-confirmed')
+  },
+  'an LGTM with a blank note is refused as repairable reviewer output' () {
+    assertRefusal(() => cellAfterRound(cell(), { lgtm: true, verifiedNote: '   ', findings: [] }, FP), 'impermissible-outcome', 'blank-note-lgtm')
+    assertRefusal(() => cellAfterRound(cell(), { lgtm: false, verifiedNote: '', findings: [finding()] }, FP), 'impermissible-outcome', 'blank-note-findings')
+  },
+  'a round outcome for an inactive or N/A cell is refused as a stale or misrouted replay' () {
+    assertRefusal(() => cellAfterRound(cell({ status: 'inactive', certification: FP }), { lgtm: true, verifiedNote: 'n', findings: [] }, FP), 'off-domain', 'replay-inactive')
+    assertRefusal(() => cellAfterRound(cell({ status: 'na', naReason: 'out of scope' }), { lgtm: true, verifiedNote: 'n', findings: [] }, FP), 'off-domain', 'replay-na')
+  },
+  'contradictory-output class is refused at cellAfterRound' () {
+    assertRefusal(() => cellAfterRound(cell(), { lgtm: true, verifiedNote: 'n', findings: [finding()] }, FP), 'impermissible-outcome', 'lgtm-with-findings')
+    assertRefusal(() => cellAfterRound(cell(), { lgtm: false, verifiedNote: 'n', findings: [] }, FP), 'impermissible-outcome', 'no-lgtm-empty')
+  },
+  'actionableFollowUp inconsistency is refused at cellAfterRound' () {
+    assertRefusal(() => cellAfterRound(cell(), { lgtm: false, verifiedNote: 'n', findings: [finding({ verdict: 'REFUTED', disposition: 'refuted', actionableFollowUp: true })] }, FP), 'impermissible-outcome', 'followup-on-refuted')
+    assertRefusal(() => cellAfterRound(cell(), { lgtm: false, verifiedNote: 'n', findings: [finding({ disposition: 'deferred-follow-up', actionableFollowUp: false })] }, FP), 'impermissible-outcome', 'deferred-without-row')
   },
 }
 
