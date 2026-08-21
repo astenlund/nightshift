@@ -32,6 +32,13 @@ function noNoneString (value, code, label) {
 
 function isNonNegativeInt (value) { return Number.isInteger(value) && value >= 0 }
 
+// The drain-and-agreement core conjunction shared by every blocking guard;
+// each call site adds its own pendingUserRequest term (the repair kind is
+// exempt) and return shape.
+function drainBlocked (state, gateCurrent) {
+  return state.pendingControllerMutation || state.agreementBoundary !== null || gateCurrent === false
+}
+
 function validateCell (cell) {
   if (cell === null || typeof cell !== 'object') { refuse('invalid-state', 'cell record must be an object') }
   if (typeof cell.id !== 'string' || cell.id === '') { refuse('invalid-state', 'cell id must be a nonempty string') }
@@ -120,7 +127,7 @@ function resolveBoundary (state, applicability, gateCurrent, remap) {
   if (state.roundStatus === 'in-flight') { refuse('off-domain', 'a round is still in flight; the boundary is not resolved') }
   if (state.cells.some(c => c.status === 'active')) { refuse('off-domain', 'an applicable cell is still active') }
   // GUARD before any transition.
-  if (state.pendingUserRequest || state.pendingControllerMutation || state.agreementBoundary !== null || gateCurrent === false) {
+  if (drainBlocked(state, gateCurrent) || state.pendingUserRequest) {
     return { transition: 'blocked' }
   }
   const clearStamp = remap !== null
@@ -226,7 +233,7 @@ function preflightLaunch (state, launch, gateCurrent) {
     if (row.status === 'completed') { refuse('off-domain', 'a completed Agents row is not repairable') }
   }
   // Guard second.
-  const blockedAllKinds = state.pendingControllerMutation || state.agreementBoundary !== null || gateCurrent === false
+  const blockedAllKinds = drainBlocked(state, gateCurrent)
   const blockedByRequest = state.pendingUserRequest && launch.kind !== 'repair'
   if (blockedAllKinds || blockedByRequest) { return { ok: false, blocked: true } }
   // Caps last, from an unblocked in-domain state.
@@ -421,7 +428,7 @@ function exitTerminal (state, disposition, applicability, failure) {
     return { exit: 'terminated', effects: {} } // abandon: deletion is controller-owned.
   }
   // Post-review dispositions: checkpoint-readable drain-and-agreement conjuncts.
-  if (state.pendingUserRequest || state.pendingControllerMutation || state.agreementBoundary !== null) {
+  if (drainBlocked(state, true) || state.pendingUserRequest) {
     refuse('off-domain', 'the drain and agreement resolution precede any post-review boundary')
   }
   if (kind === 'reviewable-change') {
