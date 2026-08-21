@@ -1410,7 +1410,7 @@ function exitTerminal (state, disposition, applicability, failure) {
 }
 ```
 
-Export `exitTerminal`.
+Export `exitTerminal`. This replaces the last `: undefined` placeholder, so also delete the now-obsolete `// filled by later tasks:` comment line from the `module.exports` block; no plan-scaffolding comment ships in the final module (task references in durable source are forbidden by the project's positional-identifier rule).
 
 - [ ] **Step 4: Run to verify pass**
 
