@@ -1541,7 +1541,7 @@ grep -oF "write the module failure record's compact canonical JSON" C:/Git/night
 grep -oF "rewritten only in the reconciling boundary's rewrite" C:/Git/nightshift/internal/revise/SKILL.md | wc -l
 ```
 
-Expected: `1` for each (`wc -l` prints 0 on zero matches, so no exit-status capture is needed here). A `0` means that append did not land: re-run the step. A `2` or more means a resumed run duplicated an append: remove the duplicate sentence before committing.
+Expected: `1` for each (`wc -l` prints 0 on zero matches, so no exit-status capture is needed here). A `0` means that append did not land: check whether the step's anchor paragraph still matches before re-running; if the anchor moved or was reworded (a competing SKILL.md edit landed first), stop and relocate it (Step 1's anchor is the cap-preflight paragraph, findable by its pinned sentence `A cap-forced end is terminal until explicit user disposition; it never produces completion.`; Step 2's is the idle-state-drift paragraph, findable by grepping for `idle-state drift`), then append there; never loop the re-run against an unmatched anchor. A `2` or more means a resumed run duplicated an append: remove the duplicate sentence before committing.
 
 Run: `node C:/Git/nightshift/internal/revise/orchestration.test.js`
 Expected: all cases pass (neither sentence edits a pinned sentence).
