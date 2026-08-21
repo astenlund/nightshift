@@ -77,6 +77,7 @@ The plan carries no operating-context section of its own; its calibration source
 3. **Cross-file claims**: when the plan says "module X exports Y", verify by reading X. Plan-vs-code drift after rebasing onto changed `main` is the second most common gap after API drift.
 4. **Tool / command invocations and embedded literals**: flags, scripts, environment variables, and host-language literals (bash commands, regex patterns, JSON payloads, YAML fragments) quoted literally in the plan are correct. Common traps: variables inside single-quoted bash strings don't expand; regex metacharacters differ between quoted/unquoted forms; JSON requires double quotes; YAML escape rules diverge from JSON's.
 5. **Embedded test code executes correctly, not just compiles**: for test code the plan embeds verbatim, trace the test's runtime flow against the plan's own production code, including fixture side effects (shared recording sinks, disposal hooks, ambient state mutations). Verifying that the code quotes real APIs does not establish that the assertions pass.
+6. **Spec-derived mappings re-derived from the source**: when an embedded block implements a mapping or classification derived from a spec enumeration (a disposition table, an enum, a rule list), re-derive the mapping from the spec source element-by-element and diff it against the block; validating it only against the plan's own fixtures proves internal consistency, not fidelity to the source, because the fixture list inherits the transcription's blind spots.
 
 ### Dimension 2: Requirements clarity
 
