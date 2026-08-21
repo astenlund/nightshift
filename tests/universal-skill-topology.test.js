@@ -151,6 +151,33 @@ test('procedure fidelity retains each substantial workflow except its declared t
   }
 })
 
+test('handover pins the durable queue lifecycle contract', () => {
+  const body = parseFrontmatter(join(PUBLIC_SKILLS_ROOT, 'handover', 'SKILL.md')).body
+  const scopeStart = body.indexOf('## Scope')
+  const agreementStart = body.indexOf('## Agreement and stage entry')
+  assert.notEqual(scopeStart, -1, 'handover must define its scope')
+  assert.equal(scopeStart < agreementStart, true, 'handover scope must precede agreement and stage entry')
+  const scopeSection = body.slice(scopeStart, agreementStart)
+
+  for (const [contractTerm, expectation] of [
+    ['`.tmp/handover-queue.md` in the project root', 'name the durable queue path'],
+    ['`- [ ] <step number>. <step name>`', 'pin the queued step line form'],
+    ['`- [x]` is the sole completion mark', 'pin a single completion mark a resuming session can recognize'],
+    ['an absent file is the ordinary fresh-run case', 'state the absent-file branch'],
+    ['idempotent write', 'state that re-marking a completed step is idempotent'],
+    ['its unmarked steps are the remaining work', 'derive remaining work from unmarked steps on resume'],
+  ]) {
+    assert.equal(countExact(scopeSection, contractTerm), 1, `handover scope must ${expectation} exactly once`)
+  }
+
+  const resumeTiebreak = 'the earlier of the two wins'
+  const rebuildGuard = 'keep that queue and continue from its first unmarked step'
+  assert.equal(countExact(body, rebuildGuard), 1, 'handover must keep a live queue instead of rebuilding it on resume')
+  assert.equal(countExact(body, resumeTiebreak), 1, 'handover must break a ladder-versus-queue disagreement toward the earlier step')
+  assert.equal(body.indexOf(rebuildGuard) > agreementStart, true, 'the resume branch must live in the agreement and stage entry procedure')
+  assert.equal(body.includes('sub-step resume is deliberately not tracked'), false, 'handover must not deny the cross-session step resume the queue now provides')
+})
+
 test('init-backlog preserves scaffolding behavior and reinforces current-session agreement', () => {
   const initBacklogPath = join(PUBLIC_SKILLS_ROOT, 'init-backlog', 'SKILL.md')
   const body = parseFrontmatter(initBacklogPath).body.replace(/\r?\n/g, '\n')
