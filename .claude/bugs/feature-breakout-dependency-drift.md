@@ -26,6 +26,14 @@ The arbitration design change corrected the copies in the four breakout files it
 - Search results expose contradictory dependency state without identifying which copy is authoritative.
 - The walk-and-remove convention appears complete while leaving durable design records inconsistent.
 
+## Operating context
+
+Nightshift is a locally installed, personal-use coding-agent plugin; `ready.js` runs as a read-only parser on demand, never as a service. The audience is one expert developer: the repository is public on GitHub but has no adoption signals, so the category is `personal use` per the 2026-08-15 calibration ruling.
+
+A defect here misreports the work set or raises a spurious structural error in a backlog index; no data, credentials, or outward state are touched, and the wrong report is visible on the next `/nightshift:ready` run. The change is host-neutral Node with no concurrent use. Recovery is a git revert plus a plugin release, so reversibility is cheap. The index grammar is long-lived: every backlog consumer (`ready`, `exploring`, `spec-agreement`, `init-backlog` templates) reads it and the two-line convention is expected to outlast this fix.
+
+Rigor derivation: `personal use` gives a low baseline. The expected-lifetime predicate fires because the grammar is foundation for every backlog consumer; criticality, failure-consequence, compatibility, and reversibility predicates do not. One uplift yields a `medium` tier: validation, recovery, compatibility, observability, and proof effort are all medium.
+
 ## Expected behavior
 
 The index is the sole authority for queue state. Breakout files carry no active dependency line; their `## Requirements` sections hold only standing architectural prerequisites, never queue status.
