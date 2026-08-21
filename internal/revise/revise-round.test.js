@@ -285,6 +285,7 @@ const TESTS = {
       'exact match, validated compatible refresh, renewed agreement replacement, or `not-applicable`',
       'reconstruction, classification, and volatile-state storage failures retain the last non-`none` marker',
       'a request that arrives after the drain remains pending',
+      'a repair launch and the round-internal skeptic fan-out proceed under a pending user request',
       'normal entry gate and never authorizes dispatch by itself',
     ]
     for (const contract of requiredContracts) {
