@@ -313,4 +313,4 @@ Migrated into the backlog on 2026-08-11, with the design decisions above confirm
 
 ## Hardening
 
-- (None yet; this file has not been through a revise-spec run.)
+- revise-spec graduated 2026-08-21 02:57 at c721e87, scope: whole file, content: 948a9f41
