@@ -755,6 +755,12 @@ function validateOutcome (outcome, { requireDerived }) {
   return outcome
 }
 
+// Caller precondition, stated rather than silently relied on: roundOutcome is
+// the current round's adjudication-ready result for this cell at the passed
+// fingerprint; the whole-round barrier and the round/fingerprint/delivery-
+// snapshot identity checks that discard outdated results are controller-owned
+// upstream. The module-side defenses are the cell-status refusal and the
+// fingerprint-bound certification.
 function cellAfterRound (cellRecord, roundOutcome, fingerprint) {
   validateCell(cellRecord)
   if (!FINGERPRINT_RE.test(fingerprint)) { refuse('invalid-input', 'reviewed fingerprint must be sha256:<12 hex>') }
@@ -872,6 +878,11 @@ Expected: FAIL - `verifierBoundary is not a function`.
 - [ ] **Step 3: Implement**
 
 ```js
+// Caller precondition, stated rather than silently relied on: verifierOutcome
+// is the current verifier round's adjudication-ready result at the state's
+// current fingerprint (a fingerprint move mid-round discards the round
+// upstream), so the stamp value is under that precondition exactly the
+// reviewed fingerprint.
 function verifierBoundary (state, verifierOutcome) {
   validateState(state)
   if (state.status !== 'reviewing') { refuse('off-domain', 'verifierBoundary requires Status: reviewing') }
@@ -1026,6 +1037,12 @@ Expected: FAIL - the Task 1 stub throws `off-domain` on the first boundary case 
 - [ ] **Step 3: Implement (replace the stub)**
 
 ```js
+// Caller precondition, stated rather than silently relied on: the controller
+// applies an evaluated round's dispositions, verifierBoundary included, before
+// resolving the boundary; a resume that finds an undispositioned round result
+// on disk re-enters adjudication first. The crashed state is byte-identical to
+// the legitimate post-relaunch-disposition state, so this is an ordering
+// precondition the checkpoint cannot carry as a domain check.
 function resolveBoundary (state, applicability, gateCurrent, remap) {
   validateState(state)
   validateApplicability(state, applicability)
@@ -1574,6 +1591,8 @@ node --test C:/Git/nightshift/tests/universal-skill-topology.test.js
 node C:/Git/nightshift/skills/spec-agreement/spec-agreement.test.js
 ```
 
+If the Step 5 mobility rule fired (the count pin and version literals were edited at a relocated home instead of `skills/spec-agreement/spec-agreement.test.js`), also run that relocated suite here and substitute the relocated path everywhere this task names the agreement suite file, Step 8's staging list included; the edits must be exercised and committed at the file that actually holds them.
+
 Expected: all pass, exit code 0 each. Then the ASCII check on the prose files touched:
 
 ```bash
@@ -1590,7 +1609,7 @@ git -C C:/Git/nightshift add tests/universal-skill-topology.test.js AGENTS.md RE
 git -C C:/Git/nightshift commit -m "chore(suite): enumerate the orchestration suite repo-wide"
 ```
 
-(If Step 6 required a version bump, `git add .claude-plugin/plugin.json` joins this commit and the subject becomes `chore(release): bump version and enumerate orchestration suite`.)
+(If Step 6 required a version bump, `git add .claude-plugin/plugin.json` joins this commit and the subject becomes `chore(release): bump version and enumerate orchestration suite`. If the Step 5 mobility rule fired, replace `skills/spec-agreement/spec-agreement.test.js` in the staging list with the relocated file that received the pin and version-literal edits.)
 
 ---
 
