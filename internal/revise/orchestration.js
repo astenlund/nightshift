@@ -299,7 +299,7 @@ function cellAfterRound (cellRecord, roundOutcome, fingerprint) {
     status: 'active',
     certification: null,
     ledger: {
-      acknowledgement: roundOutcome.findings.some(f => f.disposition === 'refuted' || f.disposition === 'accepted-judgment-call'),
+      acknowledgement: roundOutcome.findings.some(f => f.disposition === 'refuted' || f.disposition === 'accepted-judgment-call' || f.disposition === 'deferred-follow-up'),
       followUp: roundOutcome.findings.some(f => f.actionableFollowUp),
       appliedChange: roundOutcome.findings.some(f => f.disposition === 'fix-applied'),
     },

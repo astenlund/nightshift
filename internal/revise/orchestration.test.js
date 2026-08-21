@@ -240,6 +240,10 @@ const tests = {
   'controller rejection without a skeptic-verified refutation is refused' () {
     assertRefusal(() => cellAfterRound(cell(), { lgtm: false, verifiedNote: 'n', findings: [finding({ verdict: 'CONFIRMED', disposition: 'refuted' })] }, FP), 'impermissible-outcome', 'unverified-refutation')
   },
+  'a sole valid-but-deferred finding records its follow-up and its acknowledgement' () {
+    const r = cellAfterRound(cell(), { lgtm: false, verifiedNote: 'n', findings: [finding({ disposition: 'deferred-follow-up', actionableFollowUp: true })] }, FP)
+    assert.deepEqual(r, { status: 'active', certification: null, ledger: { acknowledgement: true, followUp: true, appliedChange: false } })
+  },
   'mixed round: one refuted plus one valid-but-deferred -> active with follow-up and acknowledgement' () {
     const r = cellAfterRound(cell(), { lgtm: false, verifiedNote: 'n', findings: [finding({ verdict: 'REFUTED', disposition: 'refuted' }), finding({ disposition: 'deferred-follow-up', actionableFollowUp: true })] }, FP)
     assert.deepEqual(r, { status: 'active', certification: null, ledger: { acknowledgement: true, followUp: true, appliedChange: false } })
