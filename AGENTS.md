@@ -36,9 +36,10 @@ The `/nightshift:ready` command parses each entry's `**Requires:**` line in `FEA
 - Run the ready parser suite: `node skills/ready/ready.test.js` (fixture-based, no framework, exit code 1 on failure).
 - Run the revise Workflow safety suite: `node internal/revise/revise-round.test.js`.
 - Run the revise rigor derivation suite: `node internal/revise/rigor.test.js`.
+- Run the revise orchestration suite: `node internal/revise/orchestration.test.js`.
 - Run the universal-skill topology suite: `node --test tests/universal-skill-topology.test.js`.
 - Run the host-discovery smoke suite: `node tests/host-discovery-smoke.test.js`.
-- CI runs all six suites on Node 22.
+- CI runs all seven suites on Node 22.
 - Run the ready parser manually: `node skills/ready/ready.js [repo-root-or-.claude-dir]` (emits JSON on stdout).
 - There is no build or lint step.
 

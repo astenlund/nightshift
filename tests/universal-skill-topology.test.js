@@ -357,7 +357,7 @@ test('current manifest descriptions agree and identify handover as a skill', () 
 })
 
 test('revise topology requires all relocated engine files as regular files', () => {
-  for (const fileName of ['SKILL.md', 'code.md', 'plan.md', 'spec.md', 'rigor.js', 'rigor.test.js', 'revise-round.workflow.js', 'revise-round.test.js']) {
+  for (const fileName of ['SKILL.md', 'code.md', 'plan.md', 'spec.md', 'rigor.js', 'rigor.test.js', 'revise-round.workflow.js', 'revise-round.test.js', 'orchestration.js', 'orchestration.test.js']) {
     requireRegularFile(join(ENGINE_ROOT, fileName))
   }
 })

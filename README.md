@@ -58,7 +58,7 @@ git clone https://github.com/astenlund/nightshift
 /plugin install nightshift@astenlund
 ```
 
-Edits to a locally added marketplace apply on plugin reload; no reinstall loop. Run the agreement controller suite with `node skills/spec-agreement/spec-agreement.test.js`, the parser suite with `node skills/ready/ready.test.js`, the Workflow safety suite with `node internal/revise/revise-round.test.js`, the rigor derivation suite with `node internal/revise/rigor.test.js`, the universal-skill topology suite with `node --test tests/universal-skill-topology.test.js`, and the host-discovery smoke suite with `node tests/host-discovery-smoke.test.js`. The plugin is self-hosting: its own revise loops are used to review changes to it, and `revise-lore` routes workflow learnings back into these files.
+Edits to a locally added marketplace apply on plugin reload; no reinstall loop. Run the agreement controller suite with `node skills/spec-agreement/spec-agreement.test.js`, the parser suite with `node skills/ready/ready.test.js`, the Workflow safety suite with `node internal/revise/revise-round.test.js`, the rigor derivation suite with `node internal/revise/rigor.test.js`, the orchestration suite with `node internal/revise/orchestration.test.js`, the universal-skill topology suite with `node --test tests/universal-skill-topology.test.js`, and the host-discovery smoke suite with `node tests/host-discovery-smoke.test.js`. The plugin is self-hosting: its own revise loops are used to review changes to it, and `revise-lore` routes workflow learnings back into these files.
 
 ## License
 
