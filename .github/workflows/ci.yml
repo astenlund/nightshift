@@ -21,3 +21,4 @@ jobs:
       - run: node internal/revise/orchestration.test.js
       - run: node --test tests/universal-skill-topology.test.js
       - run: node tests/host-discovery-smoke.test.js
+      - run: node tests/release-surface.test.js

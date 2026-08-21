@@ -43,10 +43,6 @@ const withinContractContinuationRule = 'Compatible governing-text changes that r
 const finalPresentationRule = 'When a final governing design is presented, invoke /nightshift:spec-agreement in final-presentation mode before asking for agreement.';
 const freshAgreementRule = 'Existing agreement is fresh only when the complete current candidate matches or passes contract-fit evaluation in the same session.';
 const targetedAgreementPatchRule = 'On rerun, add missing agreement guidance with a targeted patch; never rewrite user-controlled sections.';
-const documentedRepositoryTestCommands = [
-  'node tests/host-discovery-smoke.test.js',
-  'node skills/spec-agreement/spec-agreement.test.js',
-];
 const legacyMigrationManifest = [
   '.claude/features/present-spec-for-agreement.md',
   '.claude/features/dependency-cycle-detection.md',
@@ -151,14 +147,6 @@ function terminalProvenance(path, sourceBuffer) {
 
 function countExact(source, value) {
   return source.split(value).length - 1;
-}
-
-function assertRepositoryCommandList(source, path, heading) {
-  const section = extractSection(source, heading);
-  for (const command of documentedRepositoryTestCommands) {
-    assert.equal(countExact(section, command), 1, `${path} ${heading} must name ${command} exactly once`);
-    assert.equal(countExact(source, command), 1, `${path} must name ${command} exactly once`);
-  }
 }
 
 function beforeFirstLevelTwoHeading(source) {
@@ -687,16 +675,12 @@ test('fresh and existing-root guidance composition carries agreement and autonom
   }
 });
 
-test('README and AGENTS describe the ten-skill current-session agreement surface', () => {
+test('README and AGENTS describe the current-session agreement contract', () => {
   const readme = readRepositoryFile('README.md');
   const agents = readRepositoryFile('AGENTS.md');
-  const publicSkillRows = readme.match(/^\| `\/nightshift:[^`]+`/gm) ?? [];
 
-  assert.equal(publicSkillRows.length, 10, 'README must list ten public skills');
-  assert.equal(publicSkillRows.some((row) => row.includes('/nightshift:spec-agreement')), true, 'README must list spec-agreement');
   assert.match(readme, /same-session agreement/);
   assert.match(readme, /within-contract[^.]*continue autonomously/);
-  assert.match(agents, /public surface is ten skills/);
   assert.equal(countExact(agents, currentSessionAgreementRule), 1, 'AGENTS must contain one current-session agreement rule');
   assert.equal(countExact(agents, withinContractContinuationRule), 1, 'AGENTS must contain one autonomous continuation rule');
 });
@@ -3896,59 +3880,6 @@ test('release-wide legacy marker migration gate', () => {
     const provenance = terminalProvenance(path, readRepositoryBytes(path));
     assert.equal(provenance.actualFingerprint, provenance.expectedFingerprint, `${path} terminal provenance must match current design bytes`);
   }
-});
-
-test('CI runs the agreement suite', () => {
-  const ci = readRepositoryFile('.github/workflows/ci.yml');
-  const commandCount = ci.split(/\r?\n/).filter((line) => line === '      - run: node skills/spec-agreement/spec-agreement.test.js').length;
-
-  assert.equal(commandCount, 1, 'CI must run the agreement suite');
-});
-
-test('repository command-list contract rejects commands outside named development sections', () => {
-  const invalidDocuments = [
-    {
-      path: 'AGENTS.md',
-      heading: '## Development commands',
-      source: `# Instructions\n\n${documentedRepositoryTestCommands.join('\n')}\n\n## Development commands\n\n- Run another check.\n\n## Architecture\n`,
-    },
-    {
-      path: 'README.md',
-      heading: '## Development',
-      source: `# Nightshift\n\n${documentedRepositoryTestCommands.join('\n')}\n\n## Development\n\nRun another check.\n\n## License\n`,
-    },
-  ];
-
-  for (const { path, heading, source } of invalidDocuments) {
-    assert.throws(
-      () => assertRepositoryCommandList(source, path, heading),
-      (error) => error?.code === 'ERR_ASSERTION' && error.message.includes(`${path} ${heading}`),
-      `${path} commands outside ${heading} must not satisfy the command-list contract`,
-    );
-  }
-});
-
-test('repository command lists name the host smoke and agreement suites exactly once', () => {
-  const commandLists = [
-    { path: 'AGENTS.md', heading: '## Development commands' },
-    { path: 'README.md', heading: '## Development' },
-  ];
-
-  for (const { path, heading } of commandLists) {
-    assertRepositoryCommandList(readRepositoryFile(path), path, heading);
-  }
-});
-
-test('AGENTS describes the literal seven-suite CI contract', () => {
-  const agents = readRepositoryFile('AGENTS.md');
-
-  assert.equal(countExact(agents, 'CI runs all seven suites on Node 22.'), 1, 'AGENTS must describe the seven-suite CI contract');
-});
-
-test('plugin release version is 2.5.6', () => {
-  const manifest = JSON.parse(readRepositoryFile('.claude-plugin/plugin.json'));
-
-  assert.equal(manifest.version, '2.5.6');
 });
 
 test('gate applies the shared request invariant before terminal dispatch', () => {
