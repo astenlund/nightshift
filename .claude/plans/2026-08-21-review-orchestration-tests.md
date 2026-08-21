@@ -175,6 +175,10 @@ const tests = {
     const extra = [{ cellId: 'd1/whole', applicable: true }, { cellId: 'ghost', applicable: true }]
     assertRefusal(() => resolveBoundary(s, extra, true, null), 'invalid-input', 'applicability-unknown')
   },
+  'a literal none string as a parameter or carried value is refused as invalid-input' () {
+    const s = baseState({ cells: [cell({ status: 'inactive', certification: FP })] })
+    assertRefusal(() => resolveBoundary(s, [{ cellId: 'd1/whole', applicable: false, reason: 'none' }], true, null), 'invalid-input', 'none-string-parameter')
+  },
 }
 
 let failures = 0
@@ -335,7 +339,7 @@ and export it (`resolveBoundary,` in `module.exports` instead of `resolveBoundar
 - [ ] **Step 4: Run the suite to verify it passes**
 
 Run: `node C:/Git/nightshift/internal/revise/orchestration.test.js`
-Expected: `orchestration.test: all 8 named cases passed`, exit code 0.
+Expected: `orchestration.test: all 9 named cases passed`, exit code 0.
 
 - [ ] **Step 5: Commit**
 
