@@ -1442,7 +1442,7 @@ git -C C:/Git/nightshift commit -m "feat(revise): add exitTerminal disposition r
 
 **Interfaces:**
 - Consumes: `internal/revise/SKILL.md` (read at test time, relative to the test file: `join(__dirname, 'SKILL.md')`).
-- Produces: six pin-plus-mutation-probe cases, one per sentence in the spec's closed pinned set. Technique mirrors `revise-round.test.js` (`dispatchCondition` / `dispatchGuardMutant`).
+- Produces: one named case iterating the closed six-sentence pin set through a shared `assertPin` helper. For each sentence the case asserts the pin against the live file, then proves the assertion bites by asserting that `assertPin` throws on a mutant with the sentence reworded, the exact `assertDispatchContract`/`dispatchGuardMutant` technique `revise-round.test.js` ships.
 
 - [ ] **Step 1: Add the failing pin cases**
 
@@ -1459,11 +1459,14 @@ Append to `tests`:
       ['never auto-resumes', '`Status: failed` never auto-resumes.'],
       ['cap asymmetry', 'A cap-forced end is terminal until explicit user disposition; it never produces completion.'],
     ]
+    const assertPin = (source, label, sentence) => {
+      assert.equal(source.includes(sentence), true, `pin must hold: ${label}`)
+    }
     for (const [label, sentence] of pins) {
-      assert.equal(engine.includes(sentence), true, `pin must hold: ${label}`)
+      assertPin(engine, label, sentence)
       const mutant = engine.replace(sentence, `REWORDED: ${label}`)
       assert.notEqual(mutant, engine, `mutation probe must alter the surface: ${label}`)
-      assert.equal(mutant.includes(sentence), false, `mutation probe must bite: ${label}`)
+      assert.throws(() => assertPin(mutant, label, sentence), /pin must hold/, `mutation probe must bite: ${label}`)
     }
   },
 ```
@@ -1471,7 +1474,7 @@ Append to `tests`:
 - [ ] **Step 2: Run to verify the case passes against the live file (and the probe bites)**
 
 Run: `node C:/Git/nightshift/internal/revise/orchestration.test.js`
-Expected: PASS. This case is red only if a pin sentence is absent; the mutation probe inside it proves each assertion bites. If any pin fails, compare the sentence against the live `internal/revise/SKILL.md` (the pins above were copied from it at plan time; SKILL.md is the authority) and fix the pin string in the test, never the engine sentence.
+Expected: PASS. This case is red only if a pin sentence is absent; the `assert.throws` probe proves the pin assertion itself fails on a reworded engine, so the pin genuinely bites rather than passing vacuously. If any pin fails, compare the sentence against the live `internal/revise/SKILL.md` (the pins above were copied from it at plan time; SKILL.md is the authority) and fix the pin string in the test, never the engine sentence.
 
 - [ ] **Step 3: Commit**
 
@@ -1506,7 +1509,16 @@ In `internal/revise/SKILL.md`, locate the paragraph beginning `For idle-state dr
 The persisted scope map itself is rewritten only in the reconciling boundary's rewrite, never at detection, so a resume between detection and the reconciling boundary re-derives the same map change by comparing the persisted map against the freshly resolved current one.
 ```
 
-- [ ] **Step 3: Verify the pins still hold and bytes stay ASCII**
+- [ ] **Step 3: Verify the appends landed exactly once, pins still hold, bytes stay ASCII**
+
+Verify each appended sentence appears exactly once (status-preserving capture per the grep exit-status convention):
+
+```bash
+st=0; n=$(grep -cF "write the module failure record's compact canonical JSON" C:/Git/nightshift/internal/revise/SKILL.md) || st=$?; echo "$n"
+st=0; n=$(grep -cF "rewritten only in the reconciling boundary's rewrite" C:/Git/nightshift/internal/revise/SKILL.md) || st=$?; echo "$n"
+```
+
+Expected: `1` for each. A `0` means that append did not land: re-run the step. A `2` or more means a resumed run duplicated an append: remove the duplicate sentence before committing.
 
 Run: `node C:/Git/nightshift/internal/revise/orchestration.test.js`
 Expected: all cases pass (neither sentence edits a pinned sentence).
