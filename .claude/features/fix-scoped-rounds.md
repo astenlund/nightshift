@@ -42,6 +42,7 @@ Captured 2026-08-13 from a user idea, with the design decisions above settled in
 - The wave-convergence lifecycle in `internal/revise/SKILL.md` (existing; the delivery rules this feature narrows).
 - The code delivery rules in `internal/revise/code.md` (existing; cumulative-patch generation is the whole-scope baseline the narrowed payload replaces in round 2+).
 - Fix attribution by originating dimension in the applied-changes state (new; see open points).
+- The orchestration transition module and fixtures (`internal/revise/orchestration.js`, `internal/revise/orchestration.test.js`; shipped, landed before this feature): certification is modeled executably there, so this feature's change extends the module's round-outcome and certification handling for narrowed-payload rounds (a narrowed review never certifies) and updates the fixtures atomically in the same change set.
 
 **Requires:** [Contract-calibrated revise admission](contract-calibrated-revise-admission.md) (FEATURES.md index entry).
 
