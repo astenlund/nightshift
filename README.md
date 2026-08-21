@@ -31,7 +31,7 @@ Ready
     - Replace handover's TaskCreate queue with a durable scratch file
       (the current instruction references a tool that no longer exists)
   Features
-    - Durable scope anchor            root of a four-deep chain
+    - Durable scope anchor            root of a chain of four
     - Content fingerprint helper      root of the host-adapter tree
 
 Blocked
@@ -41,7 +41,7 @@ Blocked
     Second-opinion gates, Adversarial repair dialogue,
     Fix-scoped follow-up rounds
   On `Content fingerprint helper`:
-    Portable resource and fingerprint contract
+    [Agent-host-agnostic Nightshift: Portable resource and fingerprint contract]
 
 Recommended
   1. Durable scope anchor. Four entries are waiting behind it,
@@ -60,7 +60,7 @@ The classification is not the model's opinion. A bundled parser reads each entry
 
 3. **Pick work** with `/nightshift:ready`. It reports what is unblocked, what is blocked and on what, any structural errors in the backlog, and a few argued candidates. The report nominates work; it does not authorize it, so picking an entry runs `/nightshift:spec-agreement` first. A backlog entry counts as a spec, and readiness is not agreement.
 
-4. **Hand over** with `/nightshift:handover` once a brainstorm has produced a spec you agree with. Spec and plan review each leave a dated stamp in the file they reviewed, which is how handover works out what has already been hardened. It says where the feature stands in one line, then drives the rest: spec review, plan, plan review, implementation via parallel subagents, code review, end-to-end verification, doc updates, backlog bookkeeping, and the full test suite. It asks for confirmation only when its read of the situation is genuinely unclear.
+4. **Hand over** with `/nightshift:handover` once a brainstorm has produced a spec you agree with. Spec and plan review each leave a dated stamp in the file they reviewed, which is how handover works out what has already been hardened. Handover says where the feature stands in one line, then drives the rest: spec review, plan, plan review, implementation via parallel subagents, code review, end-to-end verification, doc updates, backlog bookkeeping, and the full test suite. It asks for confirmation only when its read of the situation is genuinely unclear.
 
 5. **Return in the morning** to a report: what shipped, what was learned, and every decision deferred along the way presented one at a time with a recommended route. Questions that came up overnight waited for you instead of stopping the run.
 
@@ -97,8 +97,8 @@ A few decisions that are load-bearing, and the reasoning behind them:
 
 - **Reviewers get no conversation history.** Handing a reviewer the session transcript to "give it more context" would reintroduce exactly the blind spot the review exists to catch.
 - **The dependency graph is code, not a prompt.** Work selection is a deterministic parser with fixture tests, because a model asked to eyeball a backlog will produce a plausible answer that is wrong in ways nobody notices.
-- **Agreement is explicit and same-session.** Before spec-governed work starts, the current decisions are restated and you agree to them. Readiness, a previous session's approval, and "it was in the backlog" are all explicitly not agreement. Cited within-contract edits to the governing text continue autonomously; a changed decision returns to the agreement boundary.
-- **Reviewing does not mean asking.** During an unattended run, checkpoints become items in the morning report rather than prompts that stall the run until you wake up. Deferral, not waiver.
+- **Agreement is explicit and same-session.** Before spec-governed work starts, the current decisions are restated and you agree to them. Readiness, a previous session's approval, and "it was in the backlog" are all explicitly not agreement. Cited within-contract edits to the governing text continue autonomously; a changed or unclear decision returns to the agreement boundary.
+- **Reviewing does not mean asking.** During an unattended run, approval pauses become items in the morning report rather than prompts that stall the run until you wake up. Deferral, not waiver.
 - **Ephemeral plans, durable specs.** Plans are scaffolding and get deleted once work lands. Code, tests, commits, and the spec are the record.
 
 ## Dependencies
@@ -107,7 +107,7 @@ A few decisions that are load-bearing, and the reasoning behind them:
 - **[superpowers](https://github.com/obra/superpowers)** (optional, recommended): handover uses its `writing-plans` and `subagent-driven-development` skills.
 - **claude-md-management** (optional): `revise-lore` builds on its `revise-claude-md` skill.
 
-Without superpowers the corresponding steps degrade gracefully: substitute your own planning approach and drive the review loops directly. `revise-lore` is the exception, since it is written as additions to `revise-claude-md`'s procedure rather than as a standalone one.
+Without superpowers the corresponding steps degrade gracefully: substitute your own planning and implementation approach and drive the review loops directly. `revise-lore` is the exception, since it is written as additions to `revise-claude-md`'s procedure rather than as a standalone one.
 
 ## Development
 
