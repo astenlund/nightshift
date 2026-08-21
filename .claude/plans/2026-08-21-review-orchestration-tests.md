@@ -1589,7 +1589,7 @@ If the quoted before-text is not found (the array moved or gained an entry since
 
 All Task 9 and Task 10 inserts are guarded for resumed runs: before each insert or append, check whether the exact text is already present, skip the edit if it appears once, and de-duplicate first if it appears more than once (Task 10 commits only at its final step, so an interrupted run resumes over uncommitted edits).
 
-In `AGENTS.md` under `## Development commands`, after the line `- Run the revise rigor derivation suite: `node internal/revise/rigor.test.js`.` insert (skip if already present once):
+In `AGENTS.md` under `## Development commands`, after the line `- Run the revise rigor derivation suite: `node internal/revise/rigor.test.js`.` insert (skip if already present once; if the anchor bullet is not found because it was reworded, stop and locate the `## Development commands` suite bullet list by its heading and insert there; landing check: `grep -c "node internal/revise/orchestration.test.js" C:/Git/nightshift/AGENTS.md` reads 1):
 
 ```markdown
 - Run the revise orchestration suite: `node internal/revise/orchestration.test.js`.
@@ -1607,7 +1607,7 @@ In `README.md`, in the sentence listing the suites (`Run the agreement controlle
 
 - [ ] **Step 4: Add the CI step**
 
-In `.github/workflows/ci.yml`, after the line `      - run: node internal/revise/rigor.test.js` insert (skip if already present once; de-duplicate if present twice):
+In `.github/workflows/ci.yml`, after the line `      - run: node internal/revise/rigor.test.js` insert (skip if already present once; de-duplicate if present twice; if the anchor line is not found because the suite block changed, stop and locate the contiguous `      - run:` step block and insert the new step at its end):
 
 ```yaml
       - run: node internal/revise/orchestration.test.js
@@ -1621,7 +1621,7 @@ In `skills/spec-agreement/spec-agreement.test.js`, the test `AGENTS describes th
 2. **Recount** (the spec's landing-time rule): run `grep -c "      - run:" C:/Git/nightshift/.github/workflows/ci.yml` NOW, after Step 4 added this plan's own step, and use that number as-is (it already includes the new suite; do not add one).
 3. **Reading 7**: the count word is `seven`.
 4. **Reading 8 or more**: another suite landed first; the count word derived from the recount replaces `seven` in this step AND retroactively in the Step 2 AGENTS.md sentence and anywhere Step 3 worded a count.
-5. **Reading 6 or fewer**: the Step 4 insertion did not land; stop, re-run Step 4, and recount before proceeding. Never write a count word from a reading below 7.
+5. **Reading 6 or fewer**: first re-check branch 1's evidence. If the orchestration run line is absent, the Step 4 insertion did not land: re-check Step 4's anchor (relocating per its drift branch), re-run it once, and recount. If the orchestration run line is present exactly once, the low reading has another cause (a competing change removed or consolidated a run step): stop and surface to the user rather than looping Step 4. Never write a count word from a reading below 7.
 6. **Apply**: update the test name to `AGENTS describes the literal <count>-suite CI contract`, the asserted string to `'CI runs all <count> suites on Node 22.'` (spelled-out word, matching the AGENTS.md sentence exactly), and the assertion message to `'AGENTS must describe the <count>-suite CI contract'`.
 7. **Pin-home mobility**: if the pin is not found in `skills/spec-agreement/spec-agreement.test.js`, the queued generic-assertions relocation quick win landed first; locate the pin's then-current home by grepping the repository for `CI runs all` and apply the same edits there, per the spec's whichever-lands-first rebase rule. The Step 6 version literals follow the same rule.
 
