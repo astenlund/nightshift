@@ -53,6 +53,7 @@ Draft design in the backlog; not yet hardened by a revise-spec review. The revie
 - The review engine's round machinery and skeptic/controller pipeline (shipped, so no upstream backlog dependency).
 - Per-finding fresh-skeptic verification of reported findings before adjudication (shipped; this feature changes what happens *after* a CONFIRMED verdict, not the verdict itself).
 - Resumable agent sessions carrying the complete persisted role-specific finding and dialogue state (the session identity mechanism already used by the revise engine).
+- The orchestration transition module and fixtures (`internal/revise/orchestration.js`, `internal/revise/orchestration.test.js`; shipped, landed before this feature): `preflightLaunch`'s launch-kind enumeration is closed (`round`, `verifier`, `repair`), and the repair preflight refuses a dispatch naming an Agents row already `completed`. Dialogue dispatch resumes exactly such completed skeptic and reviewer rows, so this feature's change extends the launch-kind enumeration (or the repair kind's row-status domain; a spec-run decision) and updates the fixtures atomically in the same change set.
 
 Landing order: the wave-convergence lifecycle (wave-lifecycle.md) shipped 2026-08-14 in the 2.2.0 batch; SKILL.md's lifecycle sections are wave-era prose. Derive lifecycle-touching edits from that prose.
 
