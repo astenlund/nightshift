@@ -302,7 +302,7 @@ The predicate is tested to return false in every failing combination independent
 
 ## Status
 
-Migrated into the backlog on 2026-08-11, with the design decisions above confirmed one at a time during migration; the invariant set was re-derived from the shipped wave-convergence lifecycle on 2026-08-20 after the phase model's removal. Not yet designed as a buildable change; to be hardened by a revise-spec run before planning.
+Migrated into the backlog on 2026-08-11, with the design decisions above confirmed one at a time during migration; the invariant set was re-derived from the shipped wave-convergence lifecycle on 2026-08-20 after the phase model's removal, then designed out to the buildable module-and-fixture change this file now records and hardened by the 2026-08-20 revise-spec run (its graduation stamp lands under Hardening when the run completes). Ready for planning once that stamp is present.
 
 ## Requirements
 
