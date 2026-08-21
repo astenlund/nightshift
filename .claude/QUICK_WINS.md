@@ -173,6 +173,25 @@ Refactors the agreement-gate revise run reviewed and agreed are valid but deferr
   any of them changed. Needs git access from the check, which is why it was deferred rather
   than folded into the relocation that surfaced it.
 
+## Agreement digest economy
+
+- **Shorten the decision-complete digest and cut what it costs to produce.** The digest
+  contract in `skills/spec-agreement/SKILL.md` mandates all eleven fields rendered every
+  time "without omitting a material decision for brevity", over a baseline built by
+  reading the full governing set, selecting and hashing each artifact, then rerunning
+  complete resolution and byte capture to prove stability. For a small single-bug scope
+  the render runs longer than the governing spec it summarizes, and the presentation
+  baseline costs two full resolution passes before a single word is shown. Preferred
+  shape: keep decision-completeness as the invariant and attack the rest, for example a
+  density pass on the mandated field prose, collapsing source-empty fields into one line
+  rather than eleven labelled stanzas, and reusing the first pass's artifact bytes for
+  the stability re-check instead of a second cold read. Constraint: no field may become
+  optional and no material decision may be dropped; the two `none explicitly stated` and
+  `none found after full governing-set review` tokens stay distinguishable, since they
+  encode different evidence. Check against
+  [Reuse one resolution-local artifact snapshot across governing-set expansion](#agreement-gate-follow-ups-deferred-during-present-spec-for-agreement-revise-code)
+  first: it already proposes a resolution-local snapshot and may cover the re-read half.
+
 ## (add sections as work emerges)
 
 ## History
