@@ -25,6 +25,11 @@ const PROCEDURE_REPLACEMENTS = Object.freeze({
     Object.freeze(['each command or skill', 'each public or internal skill']),
     Object.freeze(['behavior that the command', 'behavior that the skill']),
     Object.freeze(['command file vs revise SKILL.md', 'public skill file vs internal revise SKILL.md']),
+    Object.freeze([
+      'This is a single pass, not a dimension loop; its cost is one agent.\n',
+      'This is a single pass, not a dimension loop; its cost is one agent per pass, and the handover-deferral flow below runs two.\n\n' +
+        'Under a handover deferral (the unattended rule routes proposals to follow-up items instead of applying them), run this pass as the run\'s last unattended step, over the complete drafted proposal set, and fold its findings into the follow-up items so the morning report presents vetted proposals without making the user wait. After the morning-report triage applies the approved items, run one final fresh-eyes pass over the landed edits, even when triage changed nothing: it verifies clean landing against the live files and re-checks any proposal the user amended during triage. Drafting under the unattended rule still produces the concrete edit plus its motivating evidence; no deferred proposal remains unverified after landing.\n',
+    ]),
   ]),
 })
 

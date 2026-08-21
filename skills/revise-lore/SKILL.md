@@ -42,7 +42,9 @@ CLAUDE.md files and plugin files are the most durable, highest-leverage artifact
 - **Principle shape**: is the rule stated as a principle rather than an enumerated example? (Fresh-eyes complement to the same-context scan below.)
 - **Firing conditions**: will the rule actually fire when needed: does its wording contain the concrete trigger words a future session will encounter in the moment, or only abstract vocabulary that won't be top-of-mind?
 
-Fold the agent's findings into the proposals before showing them to the user. This is a single pass, not a dimension loop; its cost is one agent.
+Fold the agent's findings into the proposals before showing them to the user. This is a single pass, not a dimension loop; its cost is one agent per pass, and the handover-deferral flow below runs two.
+
+Under a handover deferral (the unattended rule routes proposals to follow-up items instead of applying them), run this pass as the run's last unattended step, over the complete drafted proposal set, and fold its findings into the follow-up items so the morning report presents vetted proposals without making the user wait. After the morning-report triage applies the approved items, run one final fresh-eyes pass over the landed edits, even when triage changed nothing: it verifies clean landing against the live files and re-checks any proposal the user amended during triage. Drafting under the unattended rule still produces the concrete edit plus its motivating evidence; no deferred proposal remains unverified after landing.
 
 ## Principles-over-examples scan
 
