@@ -2,7 +2,7 @@
 
 const assert = require('node:assert/strict')
 const { readFileSync, readdirSync } = require('node:fs')
-const { join, relative } = require('node:path')
+const { join } = require('node:path')
 const test = require('node:test')
 
 const { PUBLIC_SKILLS } = require('./entry-contract')
@@ -89,6 +89,10 @@ test('CI runs every suite exactly once and runs no undeclared suite', () => {
 test('AGENTS states the literal suite count CI actually runs', () => {
   const agents = readRepositoryFile('AGENTS.md')
 
+  // Guard the lookup before the sentence that consumes it, so outgrowing
+  // NUMBER_WORDS reports the short table rather than blaming AGENTS.md for an
+  // "undefined" count. The skill-count guard lives with its own sentence below.
+  assert.ok(NUMBER_WORDS[CI_SUITE_COMMANDS.length], `NUMBER_WORDS must spell ${CI_SUITE_COMMANDS.length}`)
   assert.equal(countExact(agents, SUITE_COUNT_SENTENCE), 1, `AGENTS must state: ${SUITE_COUNT_SENTENCE}`)
 })
 
@@ -143,6 +147,7 @@ test('README lists exactly the public skills, one row each', () => {
   // the total still matches.
   assert.deepEqual([...rowNames].sort(), [...PUBLIC_SKILLS].sort(), 'README rows must name exactly the public skills')
   assert.equal(new Set(rowNames).size, rowNames.length, 'README must not list a public skill twice')
+  assert.ok(NUMBER_WORDS[PUBLIC_SKILLS.length], `NUMBER_WORDS must spell ${PUBLIC_SKILLS.length}`)
   assert.equal(countExact(agents, PUBLIC_SURFACE_PHRASE), 1, `AGENTS must state: ${PUBLIC_SURFACE_PHRASE}`)
 })
 
@@ -152,7 +157,14 @@ test('every checked-in suite is declared to CI', () => {
     for (const entry of readdirSync(join(repositoryRoot, directory), { withFileTypes: true })) {
       const entryPath = `${directory}/${entry.name}`
       if (entry.isDirectory()) {
-        if (!['node_modules', '.git', '.tmp', 'fixtures'].includes(entry.name)) {
+        // Skip every dot-directory rather than naming them: `.worktrees` (agents
+        // create full checkouts there), `.git`, `.tmp`, `.idea`, `.superpowers`.
+        // A worktree holds a copy of every suite, so descending into one turns
+        // this test red locally while CI, which checks out clean, stays green.
+        // No tracked suite lives under a dot-directory, so nothing is lost today.
+        // If one ever needs to (a tested `.github/` helper, say), add it to
+        // CI_SUITE_COMMANDS by hand: this walk will not find it.
+        if (!entry.name.startsWith('.') && !['node_modules', 'fixtures'].includes(entry.name)) {
           walk(entryPath)
         }
       } else if (entry.name.endsWith('.test.js')) {
@@ -168,5 +180,4 @@ test('every checked-in suite is declared to CI', () => {
     [...declaredPaths].sort(),
     'every *.test.js file must be declared in CI_SUITE_COMMANDS, and every declared command must name a real suite',
   )
-  assert.equal(relative(repositoryRoot, join(repositoryRoot, declaredPaths[0])).startsWith('..'), false, 'declared suites must live inside the repository')
 })

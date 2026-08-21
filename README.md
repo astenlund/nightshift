@@ -125,8 +125,8 @@ node skills/ready/ready.test.js
 node internal/revise/revise-round.test.js
 node internal/revise/rigor.test.js
 node internal/revise/orchestration.test.js
-node tests/host-discovery-smoke.test.js
 node --test tests/universal-skill-topology.test.js
+node tests/host-discovery-smoke.test.js
 node tests/release-surface.test.js
 ```
 

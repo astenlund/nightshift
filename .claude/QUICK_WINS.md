@@ -158,6 +158,21 @@ Refactors the agreement-gate revise run reviewed and agreed are valid but deferr
   an option: it breaks the topology suite in CI and silently breaks the live smoke
   run's repeat mode, which fabricates its own replica only in the deterministic tests.
 
+## Release integrity
+
+- **Detect shipped behavior changes that carry no version increase.** Nothing in the
+  repository enforces the convention it most cares about. `tests/release-surface.test.js`
+  checks the version's shape and manifest/marketplace parity, but no check correlates a
+  change set's file list against a version increase, so shipping a `SKILL.md` edit with a
+  stale `version` passes every suite. The retired literal pin (`assert.equal(manifest.version,
+  '2.5.6')`) never covered this either: it fired only when someone bumped the version, the
+  correct action, and stayed silent on the violation. Preferred shape: a check that reads the
+  unpushed range's changed paths, classifies them against the convention's shipped-behavior
+  list (public and internal `SKILL.md`, bundled non-test skill resources, `hooks/**`, and every
+  `plugin.json` field other than `version`), and requires exactly one monotonic increase when
+  any of them changed. Needs git access from the check, which is why it was deferred rather
+  than folded into the relocation that surfaced it.
+
 ## (add sections as work emerges)
 
 ## History
