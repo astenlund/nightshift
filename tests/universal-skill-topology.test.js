@@ -156,6 +156,7 @@ test('handover pins the durable queue lifecycle contract', () => {
   const scopeStart = body.indexOf('## Scope')
   const agreementStart = body.indexOf('## Agreement and stage entry')
   assert.notEqual(scopeStart, -1, 'handover must define its scope')
+  assert.notEqual(agreementStart, -1, 'handover must define agreement and stage entry')
   assert.equal(scopeStart < agreementStart, true, 'handover scope must precede agreement and stage entry')
   const scopeSection = body.slice(scopeStart, agreementStart)
 
@@ -170,10 +171,11 @@ test('handover pins the durable queue lifecycle contract', () => {
     assert.equal(countExact(scopeSection, contractTerm), 1, `handover scope must ${expectation} exactly once`)
   }
 
-  const resumeTiebreak = 'the earlier of the two wins'
+  const resumeTiebreak = 'the queue wins: its marks record what a prior session finished, while the ladder only infers it'
   const rebuildGuard = 'keep that queue and continue from its first unmarked step'
   assert.equal(countExact(body, rebuildGuard), 1, 'handover must keep a live queue instead of rebuilding it on resume')
-  assert.equal(countExact(body, resumeTiebreak), 1, 'handover must break a ladder-versus-queue disagreement toward the earlier step')
+  assert.equal(countExact(body, resumeTiebreak), 1, 'handover must resolve a ladder-versus-queue disagreement in the queue\'s favor')
+  assert.equal(countExact(body, 'Mark step 12 completed only once its whole tail'), 1, 'handover must defer the step-12 mark until its tail completes, so a mid-tail crash does not read as dead state')
   assert.equal(body.indexOf(rebuildGuard) > agreementStart, true, 'the resume branch must live in the agreement and stage entry procedure')
   assert.equal(body.includes('sub-step resume is deliberately not tracked'), false, 'handover must not deny the cross-session step resume the queue now provides')
 })
