@@ -155,6 +155,24 @@ Refactors the agreement-gate revise run reviewed and agreed are valid but deferr
   assertions must treat a dedup-judge call as part of the fan-out rather than as an
   unrelated wait between sibling submissions.
 
+## Migration pin retirement
+
+- **Retire the 2.4.5 legacy baseline together with its fidelity pin.** The
+  `tests/fixtures/legacy-plugin-2.4.5` fixture serves two consumers: the procedure
+  fidelity test in `tests/universal-skill-topology.test.js` byte-compares
+  `skills/revise-docs/SKILL.md` and `skills/revise-lore/SKILL.md` against the fixture's
+  legacy command files modulo the `PROCEDURE_REPLACEMENTS` whitelist in
+  `tests/entry-contract.js`, and `loadLegacyBaseline` in
+  `tests/host-discovery-smoke-lib.js` installs the fixture as the upgrade baseline in
+  the host-discovery smoke harness's repeat mode. The pin's maintenance cost grows with
+  every substantive edit to either skill (each edit needs a whitelisted phrase pair, and
+  revise-docs is pinned with an empty list, so its body must stay byte-identical to the
+  2.4.5 command), while its value decays as the skill migration ages. Preferred shape:
+  once the migration is considered proven, remove the fidelity test, the fixture, and
+  the smoke repeat-mode baseline in one change set. Removing the fixture alone is not
+  an option: it breaks the topology suite in CI and silently breaks the live smoke
+  run's repeat mode, which fabricates its own replica only in the deterministic tests.
+
 ## (add sections as work emerges)
 
 ## History
