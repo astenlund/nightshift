@@ -86,6 +86,37 @@ const tests = {
     const s = baseState({ cells: [cell({ status: 'inactive', certification: FP })] })
     assertRefusal(() => resolveBoundary(s, [{ cellId: 'd1/whole', applicable: false, reason: 'none' }], true, null), 'invalid-input', 'none-string-parameter')
   },
+  'completion: some applicable cell active -> false' () {
+    const s = baseState({ cells: [cell(), cell({ id: 'd2/whole', status: 'inactive', certification: FP })], stamp: FP })
+    assert.equal(canComplete(s), false)
+  },
+  'completion: one certification at an older fingerprint -> false' () {
+    const s = baseState({ cells: [cell({ status: 'inactive', certification: FP2 })], stamp: FP })
+    assert.equal(canComplete(s), false)
+  },
+  'completion: converged, stamp null -> false' () {
+    const s = baseState({ cells: [cell({ status: 'inactive', certification: FP })], stamp: null })
+    assert.equal(canComplete(s), false)
+  },
+  'completion: converged, stamp at an older fingerprint -> false' () {
+    const s = baseState({ cells: [cell({ status: 'inactive', certification: FP })], stamp: FP2 })
+    assert.equal(canComplete(s), false)
+  },
+  'completion: applicable set empty -> false, never completes' () {
+    const s = baseState({ cells: [cell({ status: 'na', naReason: 'out of scope', certification: null })], stamp: FP })
+    assert.equal(canComplete(s), false)
+  },
+  'completion: converged with an N/A cell present -> true (quantifier over applicable cells only)' () {
+    const s = baseState({
+      cells: [cell({ status: 'inactive', certification: FP }), cell({ id: 'd2/whole', status: 'na', naReason: 'out of scope', certification: null })],
+      stamp: FP,
+    })
+    assert.equal(canComplete(s), true)
+  },
+  'completion: completes only on the full conjunction' () {
+    const s = baseState({ cells: [cell({ status: 'inactive', certification: FP })], stamp: FP })
+    assert.equal(canComplete(s), true)
+  },
 }
 
 let failures = 0

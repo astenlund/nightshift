@@ -102,17 +102,26 @@ function resolveBoundary (state, applicability, gateCurrent, remap) {
   refuse('off-domain', 'resolveBoundary is implemented in a later task')
 }
 
+function canComplete (state) {
+  validateState(state)
+  const applicable = state.cells.filter(c => c.status !== 'na')
+  if (applicable.length === 0) { return false }
+  if (!applicable.every(c => c.status === 'inactive')) { return false }
+  if (!applicable.every(c => c.certification === state.fingerprint)) { return false }
+  return state.stamp === state.fingerprint
+}
+
 module.exports = {
   OrchestrationError,
   REVISE_LIMITS,
   validateState,
   resolveBoundary,
+  canComplete,
   // filled by later tasks:
   cellAfterRound: undefined,
   verifierBoundary: undefined,
   preflightLaunch: undefined,
   exitTerminal: undefined,
-  canComplete: undefined,
   buildFailureRecord: undefined,
   parseFailureRecord: undefined,
 }
