@@ -326,6 +326,114 @@ const tests = {
     const o = verifierOutcome({ lgtm: false, findings: [finding({ verdict: 'REFUTED', disposition: 'refuted', actionableFollowUp: true })], authoritativeDeferredFollowUp: true })
     assertRefusal(() => verifierBoundary(verifierState(), o), 'impermissible-outcome', 'verifier-followup-on-refuted')
   },
+  'boundary: one stale certification -> exactly that cell reactivates' () {
+    const s = baseState({
+      cells: [cell({ status: 'inactive', certification: FP2 }), cell({ id: 'd2/whole', status: 'inactive', certification: FP })],
+    })
+    const r = resolveBoundary(s, applicabilityFor(s), true, null)
+    assert.equal(r.transition, 'reactivate')
+    assert.deepEqual(r.activated, ['d1/whole'])
+    assert.deepEqual(r.promotions, [])
+    assert.deepEqual(r.demotions, [])
+    assert.equal(r.clearStamp, false)
+  },
+  'boundary: all certifications current, stamp null -> verifier launch' () {
+    const s = baseState({ cells: [cell({ status: 'inactive', certification: FP })], stamp: null })
+    assert.equal(resolveBoundary(s, applicabilityFor(s), true, null).transition, 'launch-verifier')
+  },
+  'boundary: all certifications current, stamp current -> post-review' () {
+    const s = baseState({ cells: [cell({ status: 'inactive', certification: FP })], stamp: FP })
+    assert.equal(resolveBoundary(s, applicabilityFor(s), true, null).transition, 'post-review')
+  },
+  'boundary: demotion-only sweep falls through with demotions carried' () {
+    const s = baseState({
+      cells: [cell({ status: 'inactive', certification: FP }), cell({ id: 'd2/whole', status: 'inactive', certification: FP })],
+      stamp: FP,
+    })
+    const r = resolveBoundary(s, applicabilityFor(s, { 'd2/whole': 'slice no longer delivered' }), true, null)
+    assert.equal(r.transition, 'post-review')
+    assert.deepEqual(r.demotions, [{ cellId: 'd2/whole', reason: 'slice no longer delivered' }])
+  },
+  'boundary: a stale-certified cell demoted by its verdict never counts as activated' () {
+    const s = baseState({ cells: [cell({ status: 'inactive', certification: FP2 }), cell({ id: 'd2/whole', status: 'inactive', certification: FP })], stamp: FP })
+    const r = resolveBoundary(s, applicabilityFor(s, { 'd1/whole': 'now out of scope' }), true, null)
+    assert.equal(r.transition, 'post-review')
+    assert.deepEqual(r.activated, [])
+    assert.deepEqual(r.demotions, [{ cellId: 'd1/whole', reason: 'now out of scope' }])
+  },
+  'boundary: preserved N/A cell re-encodes its fresh reason' () {
+    const s = baseState({ cells: [cell({ status: 'inactive', certification: FP }), cell({ id: 'd2/whole', status: 'na', naReason: 'old reason' })], stamp: FP })
+    const r = resolveBoundary(s, applicabilityFor(s, { 'd2/whole': 'fresh reason text' }), true, null)
+    assert.equal(r.transition, 'post-review')
+    assert.deepEqual(r.preserved, [{ cellId: 'd2/whole', reason: 'fresh reason text' }])
+  },
+  'boundary: sweep leaving the applicable set empty fails the run' () {
+    const s = baseState({ cells: [cell({ status: 'inactive', certification: FP })] })
+    const r = resolveBoundary(s, applicabilityFor(s, { 'd1/whole': 'nothing left in scope' }), true, null)
+    assert.equal(r.transition, 'failed')
+    const rec = parseFailureRecord(r.failure)
+    assert.equal(rec.failingRule, 'empty-applicable-set')
+    assert.equal(rec.cells.every(c => c.status === 'na'), true, 'record snapshot must show the sweep-derived applicable set as empty')
+  },
+  'boundary: contradicted N/A promotes to active with no certification' () {
+    const s = baseState({ cells: [cell({ status: 'inactive', certification: FP }), cell({ id: 'd2/whole', status: 'na', naReason: 'was out of scope' })], stamp: FP })
+    const r = resolveBoundary(s, applicabilityFor(s), true, null)
+    assert.equal(r.transition, 'reactivate')
+    assert.deepEqual(r.promotions, ['d2/whole'])
+  },
+  'boundary: scope-map change clears affected certifications and clearStamp is true' () {
+    const s = baseState({ cells: [cell({ status: 'inactive', certification: FP }), cell({ id: 'd2/whole', status: 'inactive', certification: FP })], stamp: FP })
+    const r = resolveBoundary(s, applicabilityFor(s), true, { affected: ['d1/whole'] })
+    assert.equal(r.clearStamp, true)
+    assert.equal(r.transition, 'reactivate')
+    assert.deepEqual(r.activated, ['d1/whole'])
+  },
+  'boundary: a remap that activates nothing still clears the stamp before convergence' () {
+    const s = baseState({
+      cells: [cell({ status: 'inactive', certification: FP }), cell({ id: 'd2/whole', status: 'inactive', certification: FP })],
+      stamp: FP,
+    })
+    const r = resolveBoundary(s, applicabilityFor(s, { 'd2/whole': 'slice no longer delivered' }), true, { affected: ['d2/whole'] })
+    assert.equal(r.clearStamp, true)
+    assert.equal(r.transition, 'launch-verifier', 'a reconciled remap invalidates the stamp even when every affected cell is demoted, so convergence relaunches the verifier instead of completing')
+  },
+  'boundary: malformed remap is refused' () {
+    const s = baseState({ cells: [cell({ status: 'inactive', certification: FP })] })
+    assertRefusal(() => resolveBoundary(s, applicabilityFor(s), true, { affected: [] }), 'invalid-input', 'remap-empty')
+    assertRefusal(() => resolveBoundary(s, applicabilityFor(s), true, { affected: ['ghost'] }), 'invalid-input', 'remap-unknown')
+  },
+  'boundary: blocked guard preempts every transition' () {
+    for (const over of [{ pendingUserRequest: true }, { pendingControllerMutation: true }, { agreementBoundary: 'agreement' }]) {
+      const s = baseState({ cells: [cell({ status: 'inactive', certification: FP })], ...over })
+      assert.deepEqual(resolveBoundary(s, applicabilityFor(s), true, null), { transition: 'blocked' }, JSON.stringify(over))
+    }
+    const s = baseState({ cells: [cell({ status: 'inactive', certification: FP })] })
+    assert.deepEqual(resolveBoundary(s, applicabilityFor(s), false, null), { transition: 'blocked' })
+  },
+  'certification span: a certified cell is never activated at an unchanged fingerprint' () {
+    const s = baseState({ cells: [cell({ status: 'inactive', certification: FP }), cell({ id: 'd2/whole', status: 'inactive', certification: FP })], stamp: null })
+    const first = resolveBoundary(s, applicabilityFor(s), true, null)
+    const second = resolveBoundary(s, applicabilityFor(s), true, null)
+    assert.equal(first.transition, 'launch-verifier')
+    assert.deepEqual(second, first, 'repeated boundary resolution is pure: the certified cell joins no activated set at an unchanged fingerprint, and the controller launches only active cells, so it is launched zero times')
+  },
+  'cross-cell: a sibling fix moves the fingerprint mid-round; the certified cell is preserved until the sweep' () {
+    const midRound = baseState({ fingerprint: FP2, cells: [cell({ status: 'inactive', certification: FP }), cell({ id: 'd2/whole' })] })
+    assertRefusal(() => resolveBoundary(midRound, applicabilityFor(midRound), true, null), 'off-domain', 'no-sweep-mid-round')
+    const atBoundary = baseState({ fingerprint: FP2, cells: [cell({ status: 'inactive', certification: FP }), cell({ id: 'd2/whole', status: 'inactive', certification: FP2 })] })
+    const r = resolveBoundary(atBoundary, applicabilityFor(atBoundary), true, null)
+    assert.deepEqual(r.activated, ['d1/whole'], 'the sweep is the global re-review barrier: the stale certification reactivates only at the all-inactive boundary')
+  },
+  'boundary: off-domain states are refused' () {
+    const active = baseState()
+    assertRefusal(() => resolveBoundary(active, applicabilityFor(active), true, null), 'off-domain', 'boundary-active-cell')
+    const failed = baseState({ status: 'failed', failure: buildFailureRecord(baseState(), 'round-cap', {}), cells: [cell({ status: 'inactive', certification: FP })] })
+    assertRefusal(() => resolveBoundary(failed, applicabilityFor(failed), true, null), 'off-domain', 'boundary-failed')
+    const inFlight = baseState({ roundStatus: 'in-flight', cells: [cell({ status: 'inactive', certification: FP })] })
+    assertRefusal(() => resolveBoundary(inFlight, applicabilityFor(inFlight), true, null), 'off-domain', 'boundary-in-flight')
+    const postReview = baseState({ status: 'post-review', stamp: FP, cells: [cell({ status: 'inactive', certification: FP })] })
+    assertRefusal(() => resolveBoundary(postReview, applicabilityFor(postReview), true, null), 'off-domain', 'boundary-post-review')
+  },
 }
 
 let failures = 0

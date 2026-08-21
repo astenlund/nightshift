@@ -96,10 +96,76 @@ function validateApplicability (state, applicability) {
   return applicability
 }
 
+// Caller precondition, stated rather than silently relied on: the controller
+// applies an evaluated round's dispositions, verifierBoundary included, before
+// resolving the boundary; a resume that finds an undispositioned round result
+// on disk re-enters adjudication first. The crashed state is byte-identical to
+// the legitimate post-relaunch-disposition state, so this is an ordering
+// precondition the checkpoint cannot carry as a domain check.
 function resolveBoundary (state, applicability, gateCurrent, remap) {
   validateState(state)
   validateApplicability(state, applicability)
-  refuse('off-domain', 'resolveBoundary is implemented in a later task')
+  if (typeof gateCurrent !== 'boolean') { refuse('invalid-input', 'gateCurrent must be a boolean assertion') }
+  if (remap !== null) {
+    if (remap === undefined || typeof remap !== 'object' || !Array.isArray(remap.affected) || remap.affected.length === 0) {
+      refuse('invalid-input', 'remap must be null or {affected} with a nonempty list')
+    }
+    const ids = new Set(state.cells.map(c => c.id))
+    for (const id of remap.affected) {
+      if (!ids.has(id)) { refuse('invalid-input', `remap names a cell absent from the state: ${id}`) }
+    }
+  }
+  // Domain: the all-inactive evaluated boundary of a reviewing run.
+  if (state.status !== 'reviewing') { refuse('off-domain', 'resolveBoundary requires Status: reviewing') }
+  if (state.roundStatus === 'in-flight') { refuse('off-domain', 'a round is still in flight; the boundary is not resolved') }
+  if (state.cells.some(c => c.status === 'active')) { refuse('off-domain', 'an applicable cell is still active') }
+  // GUARD before any transition.
+  if (state.pendingUserRequest || state.pendingControllerMutation || state.agreementBoundary !== null || gateCurrent === false) {
+    return { transition: 'blocked' }
+  }
+  const clearStamp = remap !== null
+  const affected = new Set(remap === null ? [] : remap.affected)
+  const verdictFor = new Map(applicability.map(v => [v.cellId, v]))
+  const activated = []
+  const promotions = []
+  const demotions = []
+  const preserved = []
+  const nextCells = state.cells.map(c => {
+    const v = verdictFor.get(c.id)
+    if (!v.applicable) {
+      if (c.status === 'na') {
+        preserved.push({ cellId: c.id, reason: v.reason })
+        return { ...c, naReason: v.reason }
+      }
+      demotions.push({ cellId: c.id, reason: v.reason })
+      return { ...c, status: 'na', naReason: v.reason, certification: null }
+    }
+    if (c.status === 'na') {
+      promotions.push(c.id)
+      return { ...c, status: 'active', naReason: null, certification: null }
+    }
+    // applicable and inactive: remap clearing first, then staleness.
+    if (affected.has(c.id) || c.certification !== state.fingerprint) {
+      activated.push(c.id)
+      return { ...c, status: 'active', certification: null }
+    }
+    return c
+  })
+  const carriers = { promotions, demotions, preserved, clearStamp }
+  const applicable = nextCells.filter(c => c.status !== 'na')
+  if (applicable.length === 0) {
+    return { transition: 'failed', failure: buildFailureRecord(state, 'empty-applicable-set', { cells: nextCells }), ...carriers }
+  }
+  if (activated.length > 0 || promotions.length > 0) {
+    return { transition: 'reactivate', activated, ...carriers }
+  }
+  // A reconciling remap invalidates the stamp even when no cell reactivates,
+  // so convergence compares the post-clear stamp, never the raw persisted one.
+  const effectiveStamp = clearStamp ? null : state.stamp
+  if (effectiveStamp !== state.fingerprint) {
+    return { transition: 'launch-verifier', activated: [], ...carriers }
+  }
+  return { transition: 'post-review', activated: [], ...carriers }
 }
 
 function buildFailureRecord (state, failingRule, extra) {
