@@ -1681,3 +1681,6 @@ git -C C:/Git/nightshift commit -m "chore(suite): enumerate the orchestration su
 - The spec's resume-remap fixture entry is a controller-owned convention, not a module fixture (spec line: "recorded as a controller-owned convention"); the module-side half is the malformed-remap refusal (Task 6).
 - The spec's cross-round deferred-then-refuted fixture (deferred in round N, all findings refuted in round N+1) is encoded module-side by its two halves in Task 4 (the mixed-round deferred case for round N; the refuted-sole-finding case for round N+1, both leaving the cell active with no certification); the round-N follow-up row's persistence across rounds is controller-owned ledger bookkeeping the module never reads, so no single module fixture can bind it.
 - Type consistency: `ledger` flags are `{acknowledgement, followUp, appliedChange}` in Tasks 4-5; state member spelling is fixed in the projection block above and used identically in every task; `failure` values are JSON text strings produced by `buildFailureRecord` and consumed by `parseFailureRecord` in Tasks 3, 6, 7.
+## Hardening
+
+- revise-plan graduated 2026-08-21 07:16 at 9447982, scope: whole file, content: 2600dc97
