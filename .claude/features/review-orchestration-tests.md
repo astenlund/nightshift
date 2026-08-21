@@ -314,3 +314,4 @@ Shipped 2026-08-21. Migrated into the backlog on 2026-08-11 with the design deci
 ## Hardening
 
 - revise-spec graduated 2026-08-21 02:57 at c721e87, scope: whole file, content: 948a9f41
+- handover completed 2026-08-21 08:08 at 84d5021, scope: whole file, content: 6462b620
