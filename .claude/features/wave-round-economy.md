@@ -37,4 +37,4 @@ Distinct from the lifecycle amplifiers above: these reduce the findings themselv
 
 ## Requirements
 
-- The wave lifecycle in `internal/revise/SKILL.md` (shipped); any mechanism here edits lifecycle invariants and pairs with the review-orchestration-tests module and fixtures once that feature ships.
+- The wave lifecycle in `internal/revise/SKILL.md` (shipped); any mechanism here edits lifecycle invariants and pairs with the shipped orchestration module and fixtures (`internal/revise/orchestration.js`, `internal/revise/orchestration.test.js`) in the same change set.

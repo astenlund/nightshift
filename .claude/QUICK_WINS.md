@@ -134,8 +134,9 @@ Refactors the agreement-gate revise run reviewed and agreed are valid but deferr
   work left. Preferred shape: the round cap governs reviewer rounds only, with the existing
   separate verifier-launch cap as the verifier tail's own budget. This edits a shipped
   lifecycle invariant, so it lands as a SKILL.md edit plus the matching update to the
-  review-orchestration-tests spec and module fixtures in the same change set (the limits
-  sentence is in that spec's pinned-sentence set, so CI will force the pairing).
+  review-orchestration-tests spec and the shipped orchestration module fixtures in the same
+  change set (the limits sentence is pinned verbatim by `internal/revise/orchestration.test.js`,
+  so CI forces the pairing).
 
 ## (add sections as work emerges)
 
