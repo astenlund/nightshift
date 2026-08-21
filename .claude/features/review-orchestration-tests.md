@@ -205,6 +205,7 @@ Fixture cases:
 - a repair counter at 3 within its round fails the run before another agent launches (counters are round-scoped and re-created at zero by `Start round`);
 - any launch kind attempted with a pending controller mutation, a non-`none` agreement boundary, or a false gate assertion -> `{ok: false, blocked: true}`, and no agent launches;
 - a round or verifier launch attempted with a pending user request -> `{ok: false, blocked: true}`, while a repair launch under the same pending request proceeds (the deadlock exemption);
+- a round preflight with `Round status: in-flight` and no blocking condition -> `{ok: true}`; only the `verifier` kind carries the in-flight conjunct, so the delivery-map abandonment relaunch stays viable;
 - a state both blocked and at a cap -> `{ok: false, blocked: true}`, never a cap failure; the run fails on a cap only when the launch is otherwise permissible;
 - the module refuses to turn any limit-exhausted state into an LGTM, a stamp, or a refutation.
 
@@ -221,6 +222,7 @@ Fixture cases:
 Fixture cases:
 
 - authorized retry with matching identity -> reviewing, `Failure` cleared, only the affected cell's repair counter reset, every completed result preserved;
+- an authorized retry, restart, or abandon on a state with `Autonomous handover: yes` -> permitted exactly as with `no`; authorization is controller-owned and the flag never refuses an exit;
 - authorized retry with mismatched identity (`identityMatched` false) -> refused as a retry, no counter reset; the drift-abandonment route that follows is controller-owned, outside the module;
 - a repair preflight or retry naming a cell with no current Agents row -> refused;
 - a repair preflight with `Round status` `evaluated` or `idle`, or naming a completed Agents row -> refused off-domain;
