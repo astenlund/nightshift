@@ -40,6 +40,7 @@ Governing-spec hardening record: `revise-spec graduated 2026-08-21 02:57 at c721
 - Modify: `README.md` - suite run-list sentence.
 - Modify: `.github/workflows/ci.yml` - one per-file step.
 - Modify: `skills/spec-agreement/spec-agreement.test.js` - the literal suite-count pin.
+- Modify (conditional): `.claude-plugin/plugin.json` - the patch-version bump when Task 10's version check finds the unpushed range carries none.
 
 ## State projection shape (used by every task)
 
@@ -462,6 +463,12 @@ Append to `tests`:
     const r = preflightLaunch(s, { kind: 'verifier' }, true)
     assert.equal(parseFailureRecord(r.failure).failingRule, 'verifier-cap')
   },
+  'a verifier launch below the verifier cap still pays the round cap' () {
+    const s = baseState({ verifierLaunches: 4, round: 30, cells: [cell({ status: 'inactive', certification: FP })] })
+    const r = preflightLaunch(s, { kind: 'verifier' }, true)
+    assert.equal(r.ok, false)
+    assert.equal(parseFailureRecord(r.failure).failingRule, 'round-cap')
+  },
   'a repair counter at 3 within its round fails the run before another launch' () {
     const s = baseState({ roundStatus: 'in-flight', agents: [agentRow({ repairs: 3 })] })
     const r = preflightLaunch(s, { kind: 'repair', cellId: 'd1/whole' }, true)
@@ -477,8 +484,10 @@ Append to `tests`:
         assert.deepEqual(preflightLaunch(s, launch, true), { ok: false, blocked: true }, `${launch.kind} ${JSON.stringify(over)}`)
       }
     }
-    const gateFalse = baseState()
-    assert.deepEqual(preflightLaunch(gateFalse, { kind: 'round' }, false), { ok: false, blocked: true })
+    for (const launch of [{ kind: 'round' }, { kind: 'verifier' }, { kind: 'repair', cellId: 'd1/whole' }]) {
+      const gateFalse = baseState({ roundStatus: launch.kind === 'repair' ? 'in-flight' : 'evaluated' })
+      assert.deepEqual(preflightLaunch(gateFalse, launch, false), { ok: false, blocked: true }, `gate-false ${launch.kind}`)
+    }
   },
   'a pending user request blocks round and verifier but not repair (the deadlock exemption)' () {
     const round = baseState({ pendingUserRequest: true })
@@ -1523,6 +1532,7 @@ git -C C:/Git/nightshift commit -m "docs(revise): add failure-record and map-ref
 - Modify: `README.md`
 - Modify: `.github/workflows/ci.yml`
 - Modify: `skills/spec-agreement/spec-agreement.test.js`
+- Modify (conditional): `.claude-plugin/plugin.json` (Step 6's version bump when the unpushed range carries none)
 
 - [ ] **Step 1: Add both files to the topology relocated-engine-files list**
 
@@ -1568,7 +1578,15 @@ In `.github/workflows/ci.yml`, after the line `      - run: node internal/revise
 
 - [ ] **Step 5: Update the literal count pin**
 
-In `skills/spec-agreement/spec-agreement.test.js`, the test `AGENTS describes the literal six-suite CI contract` asserts `countExact(agents, 'CI runs all six suites on Node 22.')`. First assert this task's own inserts are single: `grep -c "node internal/revise/orchestration.test.js" C:/Git/nightshift/.github/workflows/ci.yml` must read exactly 1, and the AGENTS.md orchestration bullet must appear exactly once; a reading of 2 or more means a resumed run duplicated an insert, so de-duplicate before recounting (never attribute a duplicate to a competing suite). Then re-derive the count per the spec's landing-time rule: run `grep -c "      - run:" C:/Git/nightshift/.github/workflows/ci.yml` NOW, after Step 4 added this plan's own step, and use that number as-is (it already includes the new suite; do not add one). With no competing suite landed first it reads 7 and the word is `seven`; if it reads 8 or more, another suite landed first, and the count word derived from the recount replaces `seven` in this step AND retroactively in the Step 2 AGENTS.md sentence and anywhere Step 3 worded a count; if it reads 6 or fewer, the Step 4 insertion did not land: stop, re-run Step 4, and recount before proceeding (never write a count word from a reading below 7). Then update the test name to `AGENTS describes the literal <count>-suite CI contract`, the asserted string to `'CI runs all <count> suites on Node 22.'` (spelled-out word, matching the AGENTS.md sentence exactly), and the assertion message to `'AGENTS must describe the <count>-suite CI contract'`. If the pin is not found in `skills/spec-agreement/spec-agreement.test.js`, the queued generic-assertions relocation quick win landed first: locate the pin's then-current home by grepping the repository for `CI runs all` and apply the same edits there, per the spec's whichever-lands-first rebase rule; the Step 6 version literals follow the same rule.
+In `skills/spec-agreement/spec-agreement.test.js`, the test `AGENTS describes the literal six-suite CI contract` asserts `countExact(agents, 'CI runs all six suites on Node 22.')`. Work through these branches in order:
+
+1. **Duplicate guard**: `grep -c "node internal/revise/orchestration.test.js" C:/Git/nightshift/.github/workflows/ci.yml` must read exactly 1, and the AGENTS.md orchestration bullet must appear exactly once. A reading of 2 or more means a resumed run duplicated an insert: de-duplicate before recounting, and never attribute a duplicate to a competing suite.
+2. **Recount** (the spec's landing-time rule): run `grep -c "      - run:" C:/Git/nightshift/.github/workflows/ci.yml` NOW, after Step 4 added this plan's own step, and use that number as-is (it already includes the new suite; do not add one).
+3. **Reading 7**: the count word is `seven`.
+4. **Reading 8 or more**: another suite landed first; the count word derived from the recount replaces `seven` in this step AND retroactively in the Step 2 AGENTS.md sentence and anywhere Step 3 worded a count.
+5. **Reading 6 or fewer**: the Step 4 insertion did not land; stop, re-run Step 4, and recount before proceeding. Never write a count word from a reading below 7.
+6. **Apply**: update the test name to `AGENTS describes the literal <count>-suite CI contract`, the asserted string to `'CI runs all <count> suites on Node 22.'` (spelled-out word, matching the AGENTS.md sentence exactly), and the assertion message to `'AGENTS must describe the <count>-suite CI contract'`.
+7. **Pin-home mobility**: if the pin is not found in `skills/spec-agreement/spec-agreement.test.js`, the queued generic-assertions relocation quick win landed first; locate the pin's then-current home by grepping the repository for `CI runs all` and apply the same edits there, per the spec's whichever-lands-first rebase rule. The Step 6 version literals follow the same rule.
 
 - [ ] **Step 6: Version-increase check**
 
@@ -1579,7 +1597,14 @@ MSYS_NO_PATHCONV=1 git -C C:/Git/nightshift show origin/main:.claude-plugin/plug
 node -e "console.log(require('C:/Git/nightshift/.claude-plugin/plugin.json').version)"
 ```
 
-(The `MSYS_NO_PATHCONV=1` prefix is load-bearing: without it, Git Bash's MSYS runtime rewrites the `origin/main:.claude-plugin/plugin.json` rev-spec into a Windows path list and git aborts.) If the first command errors or prints nothing, stop and surface the failed read to the user; never treat a failed read as bump-already-exists. Otherwise compare the two printed versions. If the working-tree version is greater (numeric per-component semver comparison), the unpushed range already carries its bump: make none. If they are equal, bump the patch component once and update both version-literal sites in the release test block of `skills/spec-agreement/spec-agreement.test.js` to match in the same commit: the test name (`test('plugin release version is X', ...)`) and the asserted literal (`assert.equal(manifest.version, 'X')`); editing only one leaves either a red suite or a permanently stale test name. If the working-tree version is smaller, stop and surface the anomaly to the user (the local `origin/main` ref is ahead of the tree; the range read is unreliable). This check reads the local `origin/main` ref without fetching (git networking stays user-directed); a stale ref makes the comparison conservative, never silently bump-skipping, because equality still forces a bump.
+(The `MSYS_NO_PATHCONV=1` prefix is load-bearing: without it, Git Bash's MSYS runtime rewrites the `origin/main:.claude-plugin/plugin.json` rev-spec into a Windows path list and git aborts.) Then take exactly one branch:
+
+- **Failed read**: the first command errors or prints nothing. Stop and surface the failed read to the user; never treat a failed read as bump-already-exists.
+- **Working-tree version greater** (numeric per-component semver comparison): the unpushed range already carries its bump; make none. Resume safety: still verify that both version-literal sites in the release test block equal the working-tree version (a prior interrupted run may have bumped the manifest without updating them); repair any stale literal now, staged with this task's commit.
+- **Versions equal**: bump the patch component once and update both version-literal sites in the release test block of `skills/spec-agreement/spec-agreement.test.js` to match in the same commit: the test name (`test('plugin release version is X', ...)`) and the asserted literal (`assert.equal(manifest.version, 'X')`). Editing only one leaves either a red suite or a permanently stale test name.
+- **Working-tree version smaller**: stop and surface the anomaly to the user; the local `origin/main` ref is ahead of the tree and the range read is unreliable.
+
+This check reads the local `origin/main` ref without fetching (git networking stays user-directed); a stale ref makes the comparison conservative, never silently bump-skipping, because equality still forces a bump.
 
 - [ ] **Step 7: Run the affected suites**
 
