@@ -373,7 +373,7 @@ Append to the `tests` object in `orchestration.test.js` (before the runner):
     const s = baseState({ cells: [cell({ status: 'inactive', certification: FP2 })], stamp: FP })
     assert.equal(canComplete(s), false)
   },
-  'completion: converged, stamp none -> false' () {
+  'completion: converged, stamp null -> false' () {
     const s = baseState({ cells: [cell({ status: 'inactive', certification: FP })], stamp: null })
     assert.equal(canComplete(s), false)
   },
@@ -481,7 +481,7 @@ Append to `tests`:
     assert.equal(rec.failingRule, 'repair-exhaustion')
     assert.equal(rec.cellId, 'd1/whole')
   },
-  'any launch kind with a pending mutation, non-none boundary, or false gate -> blocked' () {
+  'any launch kind with a pending mutation, non-null boundary, or false gate -> blocked' () {
     for (const over of [{ pendingControllerMutation: true }, { agreementBoundary: 'fit-check' }]) {
       for (const launch of [{ kind: 'round' }, { kind: 'verifier' }, { kind: 'repair', cellId: 'd1/whole' }]) {
         const s = baseState({ roundStatus: launch.kind === 'repair' ? 'in-flight' : 'evaluated', ...over })
@@ -958,7 +958,7 @@ Append to `tests`:
     assert.deepEqual(r.demotions, [])
     assert.equal(r.clearStamp, false)
   },
-  'boundary: all certifications current, stamp none -> verifier launch' () {
+  'boundary: all certifications current, stamp null -> verifier launch' () {
     const s = baseState({ cells: [cell({ status: 'inactive', certification: FP })], stamp: null })
     assert.equal(resolveBoundary(s, applicabilityFor(s), true, null).transition, 'launch-verifier')
   },
@@ -1265,7 +1265,7 @@ function failedState (failingRule, over = {}, extra = {}) {
     const s = baseState({ status: 'post-review', stamp: FP, postReviewStep: 'done', cells: [cell({ status: 'inactive', certification: FP })] })
     assertRefusal(() => exitTerminal(s, { kind: 'finalize', recheckMatched: false }, null, null), 'invalid-input', 'finalize-recheck')
   },
-  'finalize or reviewable-change with pending work or a non-none boundary is refused' () {
+  'finalize or reviewable-change with pending work or a non-null boundary is refused' () {
     for (const over of [{ pendingUserRequest: true }, { pendingControllerMutation: true }, { agreementBoundary: 'agreement' }]) {
       const s = baseState({ status: 'post-review', stamp: FP, postReviewStep: 'done', cells: [cell({ status: 'inactive', certification: FP })], ...over })
       assertRefusal(() => exitTerminal(s, { kind: 'finalize', recheckMatched: true }, null, null), 'off-domain', `finalize-${JSON.stringify(over)}`)
