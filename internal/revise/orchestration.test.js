@@ -56,6 +56,12 @@ function verifierOutcome (over) {
   return { lgtm: true, verifiedNote: 'read the whole artifact and cross-checked every dimension seam', findings: [], appliedFix: false, authoritativeDeferredFollowUp: false, ...over }
 }
 
+function failedState (failingRule, over = {}, extra = {}) {
+  const base = baseState({ roundStatus: 'evaluated', agents: [agentRow({ status: 'needs-retry', repairs: 3 })], ...over })
+  const record = buildFailureRecord(base, failingRule, failingRule === 'repair-exhaustion' ? { cellId: 'd1/whole', ...extra } : extra)
+  return { ...base, status: 'failed', failure: record }
+}
+
 function assertRefusal (fn, code, label) {
   let threw = null
   try { fn() } catch (error) { threw = error }
@@ -433,6 +439,142 @@ const tests = {
     assertRefusal(() => resolveBoundary(inFlight, applicabilityFor(inFlight), true, null), 'off-domain', 'boundary-in-flight')
     const postReview = baseState({ status: 'post-review', stamp: FP, cells: [cell({ status: 'inactive', certification: FP })] })
     assertRefusal(() => resolveBoundary(postReview, applicabilityFor(postReview), true, null), 'off-domain', 'boundary-post-review')
+  },
+  'authorized retry with matching identity -> reviewing, counter reset, results preserved' () {
+    const s = failedState('repair-exhaustion', { roundStatus: 'in-flight' })
+    const r = exitTerminal(s, { kind: 'retry', cellId: 'd1/whole', identityMatched: true }, null, s.failure)
+    assert.equal(r.exit, 'reviewing')
+    assert.deepEqual(r.effects.status, 'reviewing')
+    assert.equal(r.effects.failure, null)
+    assert.deepEqual(r.effects.agentRow, { cellId: 'd1/whole', status: 'needs-retry', repairs: 0 })
+    assert.deepEqual(r.effects.resultWork, { reviewerOrVerifierCell: 'needs-reviewer', skepticFinding: 'needs-retry' })
+  },
+  'retry, restart, and abandon are permitted under Autonomous handover: yes exactly as with no' () {
+    const s = failedState('repair-exhaustion', { roundStatus: 'in-flight', autonomousHandover: true })
+    assert.equal(exitTerminal(s, { kind: 'retry', cellId: 'd1/whole', identityMatched: true }, null, s.failure).exit, 'reviewing')
+    const cap = failedState('round-cap', { round: 30, autonomousHandover: true })
+    assert.equal(exitTerminal(cap, { kind: 'restart', currentFingerprint: FP2 }, applicabilityFor(cap), cap.failure).exit, 'restarted')
+    assert.equal(exitTerminal(cap, { kind: 'abandon' }, null, cap.failure).exit, 'terminated')
+  },
+  'retry with mismatched identity is refused with no counter reset' () {
+    const s = failedState('repair-exhaustion', { roundStatus: 'in-flight' })
+    assertRefusal(() => exitTerminal(s, { kind: 'retry', cellId: 'd1/whole', identityMatched: false }, null, s.failure), 'invalid-input', 'retry-identity')
+  },
+  'a retry naming a cell with no current Agents row is refused' () {
+    const s = failedState('repair-exhaustion', { roundStatus: 'in-flight' })
+    const record = JSON.parse(s.failure); record.cellId = 'ghost'
+    assertRefusal(() => exitTerminal(s, { kind: 'retry', cellId: 'ghost', identityMatched: true }, null, JSON.stringify(record)), 'invalid-input', 'retry-unknown-row')
+  },
+  'a retry whose cellId is not the recorded exhausted cell is refused even at its own cap' () {
+    const s = failedState('repair-exhaustion', {
+      roundStatus: 'in-flight',
+      cells: [cell(), cell({ id: 'd2/whole' })],
+      agents: [agentRow({ status: 'needs-retry', repairs: 3 }), agentRow({ cellId: 'd2/whole', status: 'in-flight', repairs: 3 })],
+    })
+    assertRefusal(() => exitTerminal(s, { kind: 'retry', cellId: 'd2/whole', identityMatched: true }, null, s.failure), 'invalid-input', 'retry-sibling-at-cap')
+  },
+  'restart after a cap failure applies the complete Restart run template' () {
+    const s = failedState('round-cap', { round: 30, verifierLaunches: 4, stamp: FP, agreementBoundary: 'fit-check', cells: [cell({ status: 'inactive', certification: FP2 })], agents: [agentRow({ status: 'completed', repairs: 2 })] })
+    const r = exitTerminal(s, { kind: 'restart', currentFingerprint: FP }, applicabilityFor(s), s.failure)
+    assert.equal(r.exit, 'restarted')
+    assert.deepEqual(r.effects, {
+      status: 'reviewing',
+      postReviewStep: 'not-started',
+      failure: null,
+      priorFailureCopied: true,
+      round: 0,
+      roundStatus: 'idle',
+      verifierLaunches: 0,
+      stamp: null,
+      fingerprint: FP,
+      artifactEdited: false,
+      agents: [],
+      postReviewWorkItemsCleared: true,
+      pendingControllerMutationCleared: true,
+      cells: [{ id: 'd1/whole', kind: 'cross-cutting', status: 'active', naReason: null, certification: null }],
+      agreementBoundaryPreserved: true,
+    })
+  },
+  'restart after an empty-applicable-set failure with applicability unchanged fails again deterministically' () {
+    const s = failedState('empty-applicable-set', { cells: [cell({ status: 'na', naReason: 'nothing in scope' })], agents: [] })
+    const r = exitTerminal(s, { kind: 'restart', currentFingerprint: FP }, applicabilityFor(s, { 'd1/whole': 'nothing in scope' }), s.failure)
+    assert.equal(r.exit, 'restarted')
+    assert.equal(r.effects.cells.every(c => c.status === 'na'), true, 'restart with unchanged applicability re-derives the empty set; the next boundary fails again')
+  },
+  'the retained cell table showing applicable cells does not refuse an empty-set restart or abandon' () {
+    const failing = baseState({ cells: [cell({ status: 'na', naReason: 'gone' })], agents: [] })
+    const record = buildFailureRecord(failing, 'empty-applicable-set', {})
+    const retained = { ...baseState({ cells: [cell({ status: 'inactive', certification: FP })], agents: [] }), status: 'failed', failure: record }
+    assert.equal(exitTerminal(retained, { kind: 'restart', currentFingerprint: FP }, applicabilityFor(retained), record).exit, 'restarted')
+    assert.equal(exitTerminal(retained, { kind: 'abandon' }, null, record).exit, 'terminated')
+  },
+  'explicit abandon is terminal with no derived transition' () {
+    const s = failedState('round-cap', { round: 30 })
+    assert.deepEqual(exitTerminal(s, { kind: 'abandon' }, null, s.failure), { exit: 'terminated', effects: {} })
+  },
+  'reviewable post-review mutation or drift returns the run to reviewing' () {
+    const s = baseState({ status: 'post-review', stamp: FP, postReviewStep: 'dimension-retrospective', cells: [cell({ status: 'inactive', certification: FP })] })
+    const r = exitTerminal(s, { kind: 'reviewable-change', nextFingerprint: FP2 }, null, null)
+    assert.equal(r.exit, 'reviewing')
+    assert.deepEqual(r.effects, { status: 'reviewing', postReviewStep: 'not-started', postReviewWorkItemsCleared: true, completedMutationCleared: true, stamp: null, fingerprint: FP2 })
+  },
+  'finalization with step done and a matching recheck -> finalized (deletion controller-owned)' () {
+    const s = baseState({ status: 'post-review', stamp: FP, postReviewStep: 'done', cells: [cell({ status: 'inactive', certification: FP })] })
+    assert.deepEqual(exitTerminal(s, { kind: 'finalize', recheckMatched: true }, null, null), { exit: 'finalized', effects: {} })
+  },
+  'finalize with the post-review step not done is refused' () {
+    const s = baseState({ status: 'post-review', stamp: FP, postReviewStep: 'hardening-stamp', cells: [cell({ status: 'inactive', certification: FP })] })
+    assertRefusal(() => exitTerminal(s, { kind: 'finalize', recheckMatched: true }, null, null), 'off-domain', 'finalize-step')
+  },
+  'finalize with a failed fingerprint recheck is refused; the route is reviewable-change' () {
+    const s = baseState({ status: 'post-review', stamp: FP, postReviewStep: 'done', cells: [cell({ status: 'inactive', certification: FP })] })
+    assertRefusal(() => exitTerminal(s, { kind: 'finalize', recheckMatched: false }, null, null), 'invalid-input', 'finalize-recheck')
+  },
+  'finalize or reviewable-change with pending work or a non-null boundary is refused' () {
+    for (const over of [{ pendingUserRequest: true }, { pendingControllerMutation: true }, { agreementBoundary: 'agreement' }]) {
+      const s = baseState({ status: 'post-review', stamp: FP, postReviewStep: 'done', cells: [cell({ status: 'inactive', certification: FP })], ...over })
+      assertRefusal(() => exitTerminal(s, { kind: 'finalize', recheckMatched: true }, null, null), 'off-domain', `finalize-${JSON.stringify(over)}`)
+      assertRefusal(() => exitTerminal(s, { kind: 'reviewable-change', nextFingerprint: FP2 }, null, null), 'off-domain', `reviewable-${JSON.stringify(over)}`)
+    }
+  },
+  'off-route dispositions are refused with no partial effects' () {
+    const cap = failedState('round-cap', { round: 30, roundStatus: 'in-flight' })
+    assertRefusal(() => exitTerminal(cap, { kind: 'retry', cellId: 'd1/whole', identityMatched: true }, null, cap.failure), 'off-route', 'retry-on-cap')
+    const empty = failedState('empty-applicable-set', { cells: [cell({ status: 'na', naReason: 'gone' })], agents: [] })
+    assertRefusal(() => exitTerminal(empty, { kind: 'retry', cellId: 'd1/whole', identityMatched: true }, null, empty.failure), 'off-route', 'retry-on-empty')
+    const repair = failedState('repair-exhaustion', { roundStatus: 'in-flight' })
+    assertRefusal(() => exitTerminal(repair, { kind: 'restart', currentFingerprint: FP }, applicabilityFor(repair), repair.failure), 'off-route', 'restart-on-repair')
+  },
+  'a missing, unparseable, or unknown-class failure record refuses every failed-state exit' () {
+    const s = failedState('round-cap', { round: 30 })
+    assertRefusal(() => exitTerminal({ ...s, failure: null }, { kind: 'abandon' }, null, null), 'invalid-input', 'record-missing')
+    assertRefusal(() => exitTerminal(s, { kind: 'abandon' }, null, 'not json'), 'invalid-input', 'record-unparseable')
+    assertRefusal(() => exitTerminal(s, { kind: 'abandon' }, null, JSON.stringify({ failingRule: 'novel-class' })), 'invalid-input', 'record-unknown-class')
+    assertRefusal(() => exitTerminal(s, { kind: 'retry', cellId: 'd1/whole', identityMatched: true }, null, 'not json'), 'invalid-input', 'record-unparseable-retry')
+    assertRefusal(() => exitTerminal(s, { kind: 'restart', currentFingerprint: FP }, applicabilityFor(s), null), 'invalid-input', 'record-missing-restart')
+  },
+  'a failure record contradicting the state where derivable is refused' () {
+    const belowRound = failedState('round-cap', { round: 12 })
+    assertRefusal(() => exitTerminal(belowRound, { kind: 'restart', currentFingerprint: FP }, applicabilityFor(belowRound), belowRound.failure), 'invalid-input', 'round-cap-below')
+    const belowLaunches = failedState('verifier-cap', { verifierLaunches: 2 })
+    assertRefusal(() => exitTerminal(belowLaunches, { kind: 'restart', currentFingerprint: FP }, applicabilityFor(belowLaunches), belowLaunches.failure), 'invalid-input', 'verifier-cap-below')
+    const belowRepairs = failedState('repair-exhaustion', { roundStatus: 'in-flight', agents: [agentRow({ status: 'needs-retry', repairs: 1 })] })
+    assertRefusal(() => exitTerminal(belowRepairs, { kind: 'retry', cellId: 'd1/whole', identityMatched: true }, null, belowRepairs.failure), 'invalid-input', 'repair-below-cap')
+  },
+  'a post-review disposition carrying a failure record, or any disposition on reviewing, is refused' () {
+    const pr = baseState({ status: 'post-review', stamp: FP, postReviewStep: 'done', cells: [cell({ status: 'inactive', certification: FP })] })
+    assertRefusal(() => exitTerminal(pr, { kind: 'finalize', recheckMatched: true }, null, buildFailureRecord(baseState(), 'round-cap', {})), 'invalid-input', 'post-review-with-record')
+    const reviewing = baseState()
+    assertRefusal(() => exitTerminal(reviewing, { kind: 'abandon' }, null, null), 'off-domain', 'exit-on-reviewing')
+  },
+  'applicability rides only the restart disposition' () {
+    const cap = failedState('round-cap', { round: 30 })
+    assertRefusal(() => exitTerminal(cap, { kind: 'abandon' }, applicabilityFor(cap), cap.failure), 'invalid-input', 'applicability-on-abandon')
+    assertRefusal(() => exitTerminal(cap, { kind: 'restart', currentFingerprint: FP }, null, cap.failure), 'invalid-input', 'restart-without-applicability')
+  },
+  'no implicit or automatic resume exists from Status: failed' () {
+    const s = failedState('round-cap', { round: 30 })
+    assertRefusal(() => exitTerminal(s, { kind: 'reviewable-change', nextFingerprint: FP2 }, null, s.failure), 'off-domain', 'no-implicit-resume')
   },
 }
 

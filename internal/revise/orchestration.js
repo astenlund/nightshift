@@ -326,6 +326,126 @@ function verifierBoundary (state, verifierOutcome) {
   return { stamp: null, next: 'relaunch-verifier' }
 }
 
+const FAILED_KINDS = Object.freeze(['retry', 'restart', 'abandon'])
+const POST_REVIEW_KINDS = Object.freeze(['reviewable-change', 'finalize'])
+const ROUTE_TABLE = Object.freeze({
+  retry: ['repair-exhaustion'],
+  restart: ['round-cap', 'verifier-cap', 'empty-applicable-set'],
+  abandon: FAILING_RULES,
+})
+
+function exitTerminal (state, disposition, applicability, failure) {
+  validateState(state)
+  if (disposition === null || typeof disposition !== 'object' || typeof disposition.kind !== 'string') { refuse('invalid-input', 'disposition must carry a kind') }
+  const kind = disposition.kind
+  const failedKind = FAILED_KINDS.includes(kind)
+  const postReviewKind = POST_REVIEW_KINDS.includes(kind)
+  if (!failedKind && !postReviewKind) { refuse('invalid-input', `disposition kind out of domain: ${kind}`) }
+  // Status domain check.
+  if (state.status === 'reviewing') { refuse('off-domain', 'a reviewing state is refused for every disposition') }
+  if (failedKind && state.status !== 'failed') { refuse('off-domain', `${kind} requires Status: failed`) }
+  if (postReviewKind && state.status !== 'post-review') { refuse('off-domain', `${kind} requires Status: post-review`) }
+  // failure record scoping.
+  if (postReviewKind) {
+    if (failure !== null && failure !== undefined) { refuse('invalid-input', 'a post-review disposition never carries a failure record') }
+  }
+  // applicability scoping.
+  if (kind === 'restart') {
+    if (applicability === null || applicability === undefined) { refuse('invalid-input', 'restart requires the controller-evaluated applicability verdicts') }
+    validateApplicability(state, applicability)
+  } else if (applicability !== null && applicability !== undefined) {
+    refuse('invalid-input', 'applicability rides only the restart disposition')
+  }
+  if (failedKind) {
+    if (failure === null || failure === undefined) { refuse('invalid-input', 'a failed-state disposition requires the round-tripped failure record') }
+    const record = parseFailureRecord(failure)
+    // Derivable contradiction checks against the state.
+    if (record.failingRule === 'round-cap' && state.round < REVISE_LIMITS.roundsPerRun) { refuse('invalid-input', 'a round-cap record contradicts a below-cap round') }
+    if (record.failingRule === 'verifier-cap' && state.verifierLaunches < REVISE_LIMITS.verifierLaunchesPerRun) { refuse('invalid-input', 'a verifier-cap record contradicts below-cap launches') }
+    if (record.failingRule === 'repair-exhaustion') {
+      const row = state.agents.find(a => a.cellId === record.cellId)
+      if (!row) { refuse('invalid-input', 'the recorded exhausted cell has no current Agents row') }
+      if (row.repairs < REVISE_LIMITS.repairLaunchesPerCellPerRound) { refuse('invalid-input', 'a repair-exhaustion record contradicts a below-cap counter') }
+    }
+    if (record.failingRule === 'empty-applicable-set' && !record.cells.every(c => c.status === 'na')) {
+      refuse('invalid-input', 'an empty-applicable-set record must show the sweep-derived applicable set as empty')
+    }
+    // Route table.
+    if (!ROUTE_TABLE[kind].includes(record.failingRule)) { refuse('off-route', `${kind} is not a permitted disposition for ${record.failingRule}`) }
+    if (kind === 'retry') {
+      if (typeof disposition.identityMatched !== 'boolean') { refuse('invalid-input', 'retry carries the caller-asserted identityMatched check') }
+      if (disposition.identityMatched === false) { refuse('invalid-input', 'an identity mismatch follows drift abandonment, not retry') }
+      if (typeof disposition.cellId !== 'string' || disposition.cellId === '') { refuse('invalid-input', 'retry names the exhausted cell') }
+      if (!state.agents.some(a => a.cellId === disposition.cellId)) { refuse('invalid-input', 'a retry cellId names a current Agents row') }
+      if (disposition.cellId !== record.cellId) { refuse('invalid-input', 'retry resets the recorded exhausted cell, never a sibling') }
+      return {
+        exit: 'reviewing',
+        effects: {
+          status: 'reviewing',
+          failure: null,
+          agentRow: { cellId: disposition.cellId, status: 'needs-retry', repairs: 0 },
+          resultWork: { reviewerOrVerifierCell: 'needs-reviewer', skepticFinding: 'needs-retry' },
+        },
+      }
+    }
+    if (kind === 'restart') {
+      noNoneString(disposition.currentFingerprint, 'invalid-input', 'restart currentFingerprint')
+      if (!FINGERPRINT_RE.test(disposition.currentFingerprint)) { refuse('invalid-input', 'restart carries the controller-computed current fingerprint') }
+      const verdictFor = new Map(applicability.map(v => [v.cellId, v]))
+      return {
+        exit: 'restarted',
+        effects: {
+          status: 'reviewing',
+          postReviewStep: 'not-started',
+          failure: null,
+          priorFailureCopied: true,
+          round: 0,
+          roundStatus: 'idle',
+          verifierLaunches: 0,
+          stamp: null,
+          fingerprint: disposition.currentFingerprint,
+          artifactEdited: false,
+          agents: [],
+          postReviewWorkItemsCleared: true,
+          pendingControllerMutationCleared: true,
+          cells: state.cells.map(c => {
+            const v = verdictFor.get(c.id)
+            return v.applicable
+              ? { id: c.id, kind: c.kind, status: 'active', naReason: null, certification: null }
+              : { id: c.id, kind: c.kind, status: 'na', naReason: v.reason, certification: null }
+          }),
+          agreementBoundaryPreserved: true,
+        },
+      }
+    }
+    return { exit: 'terminated', effects: {} } // abandon: deletion is controller-owned.
+  }
+  // Post-review dispositions: checkpoint-readable drain-and-agreement conjuncts.
+  if (state.pendingUserRequest || state.pendingControllerMutation || state.agreementBoundary !== null) {
+    refuse('off-domain', 'the drain and agreement resolution precede any post-review boundary')
+  }
+  if (kind === 'reviewable-change') {
+    noNoneString(disposition.nextFingerprint, 'invalid-input', 'reviewable-change nextFingerprint')
+    if (!FINGERPRINT_RE.test(disposition.nextFingerprint)) { refuse('invalid-input', 'reviewable-change carries the controller-computed refreshed fingerprint') }
+    return {
+      exit: 'reviewing',
+      effects: {
+        status: 'reviewing',
+        postReviewStep: 'not-started',
+        postReviewWorkItemsCleared: true,
+        completedMutationCleared: true,
+        stamp: null,
+        fingerprint: disposition.nextFingerprint,
+      },
+    }
+  }
+  // finalize
+  if (state.postReviewStep !== 'done') { refuse('off-domain', 'finalization requires Post-review step: done') }
+  if (typeof disposition.recheckMatched !== 'boolean') { refuse('invalid-input', 'finalize carries the caller-asserted final fingerprint recheck') }
+  if (disposition.recheckMatched === false) { refuse('invalid-input', 'a failed recheck routes to the reviewable-change disposition') }
+  return { exit: 'finalized', effects: {} } // deletion is controller-owned.
+}
+
 function canComplete (state) {
   validateState(state)
   const applicable = state.cells.filter(c => c.status !== 'na')
@@ -346,6 +466,5 @@ module.exports = {
   parseFailureRecord,
   cellAfterRound,
   verifierBoundary,
-  // filled by later tasks:
-  exitTerminal: undefined,
+  exitTerminal,
 }
