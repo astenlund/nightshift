@@ -1511,14 +1511,14 @@ The persisted scope map itself is rewritten only in the reconciling boundary's r
 
 - [ ] **Step 3: Verify the appends landed exactly once, pins still hold, bytes stay ASCII**
 
-Verify each appended sentence appears exactly once (status-preserving capture per the grep exit-status convention):
+Verify each appended sentence appears exactly once. Both appends land inside single-line paragraphs, and `grep -c` counts matching lines (a duplicate inside one line still reads 1), so count occurrences, not lines:
 
 ```bash
-st=0; n=$(grep -cF "write the module failure record's compact canonical JSON" C:/Git/nightshift/internal/revise/SKILL.md) || st=$?; echo "$n"
-st=0; n=$(grep -cF "rewritten only in the reconciling boundary's rewrite" C:/Git/nightshift/internal/revise/SKILL.md) || st=$?; echo "$n"
+grep -oF "write the module failure record's compact canonical JSON" C:/Git/nightshift/internal/revise/SKILL.md | wc -l
+grep -oF "rewritten only in the reconciling boundary's rewrite" C:/Git/nightshift/internal/revise/SKILL.md | wc -l
 ```
 
-Expected: `1` for each. A `0` means that append did not land: re-run the step. A `2` or more means a resumed run duplicated an append: remove the duplicate sentence before committing.
+Expected: `1` for each (`wc -l` prints 0 on zero matches, so no exit-status capture is needed here). A `0` means that append did not land: re-run the step. A `2` or more means a resumed run duplicated an append: remove the duplicate sentence before committing.
 
 Run: `node C:/Git/nightshift/internal/revise/orchestration.test.js`
 Expected: all cases pass (neither sentence edits a pinned sentence).
