@@ -3945,10 +3945,10 @@ test('AGENTS describes the literal seven-suite CI contract', () => {
   assert.equal(countExact(agents, 'CI runs all seven suites on Node 22.'), 1, 'AGENTS must describe the seven-suite CI contract');
 });
 
-test('plugin release version is 2.5.4', () => {
+test('plugin release version is 2.5.5', () => {
   const manifest = JSON.parse(readRepositoryFile('.claude-plugin/plugin.json'));
 
-  assert.equal(manifest.version, '2.5.4');
+  assert.equal(manifest.version, '2.5.5');
 });
 
 test('gate applies the shared request invariant before terminal dispatch', () => {

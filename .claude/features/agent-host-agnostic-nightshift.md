@@ -34,8 +34,8 @@ This ledger records why the MVP's nontrivial decisions exist. It calibrates revi
 
 The migration closes these observed gaps:
 
-- Seven public entry points exist only as Claude command files: `init-backlog`, `handover`, `revise-code`, `revise-plan`, `revise-spec`, `revise-docs`, and `revise-lore`. Skill hosts currently surface only `ready`, `exploring`, and the internal `revise` engine.
-- Handover names `TaskCreate` and `AskUserQuestion`. Revise prefers the Claude Workflow runtime and otherwise describes an Agent tool with Claude-shaped session and completion semantics.
+- ~~Seven public entry points exist only as Claude command files: `init-backlog`, `handover`, `revise-code`, `revise-plan`, `revise-spec`, `revise-docs`, and `revise-lore`. Skill hosts currently surface only `ready`, `exploring`, and the internal `revise` engine.~~ Closed by the shipped universal-skill MVP: the public surface is now ten skills, and the topology test asserts the legacy `commands/` tree is absent.
+- Handover names `AskUserQuestion`; its step queue is a host-neutral scratch file that a host task tool may mirror but does not own. Revise prefers the Claude Workflow runtime and otherwise describes an Agent tool with Claude-shaped session and completion semantics.
 - Review profiles pin `sonnet`, `opus`, and the `Explore` agent type, while payloads name host tools such as Read, Grep, and Glob.
 - `init-backlog` creates only `CLAUDE.md`; `revise-spec`, `revise-docs`, and `revise-lore` also hardcode Claude instruction destinations.
 - Bundled-resource references use `${CLAUDE_PLUGIN_ROOT}`, and fingerprint recipes assume Bash utilities even when the active host shell is PowerShell.
@@ -131,7 +131,7 @@ Separate the review invariants from dispatch mechanics. The orchestration transi
 
 At run start, select one adapter from observed capabilities and freeze that selection in durable state. The adapter contract covers:
 
-- task queue creation and updates;
+- optional mirroring of the durable handover queue into a native task list;
 - structured user questions with a plain-text fallback;
 - fresh reviewer, skeptic, verifier, and dedup-judge submission;
 - attributable completion observation;

@@ -229,7 +229,7 @@ test('handover preserves lifecycle behavior behind the agreement gate', () => {
     'stable presentation baseline',
     '`callerResult.agreement`',
     '**Validate before proceeding.**',
-    'build a single flat TaskCreate queue',
+    'build the single flat step queue in `.tmp/handover-queue.md`',
   ]
   assert.notEqual(agreementSectionStart, -1, 'handover must define agreement and stage entry')
   let previousIndex = agreementSectionStart

@@ -4,7 +4,7 @@ Feature: give each Nightshift run a durable identity and a scoped scratch home, 
 
 ## What it does
 
-Today the revision engine and handover write to a fixed set of flat scratch paths (`.tmp/revise-state.md`, `.tmp/revise-round-result.md`, `.tmp/revise-payload-{hex-cell-id}.md`, `.tmp/review-diff.patch`, `.tmp/handover-followups.md`). These are unsafe in three situations:
+Today the revision engine and handover write to a fixed set of flat scratch paths (`.tmp/revise-state.md`, `.tmp/revise-round-result.md`, `.tmp/revise-payload-{hex-cell-id}.md`, `.tmp/review-diff.patch`, `.tmp/handover-followups.md`, `.tmp/handover-queue.md`). These are unsafe in three situations:
 
 - two Claude sessions run in the same working tree;
 - stale state survives from an earlier artifact;
@@ -21,9 +21,10 @@ A run's complete scratch home is one directory:
     revise-payload-{hex-cell-id}.md
     review-diff.patch
     handover-followups.md
+    handover-queue.md
 ```
 
-The set is exactly the current flat scratch files, relocated unchanged. No new scratch file is introduced and none is renamed: `handover-followups.md` stays `handover-followups.md` under the scoped directory (the proposal's aspirational `handover-state.json` / `followups.md` names described a redesigned handover state that does not exist today, so they are not part of a relocation-only change).
+The set is exactly the current flat scratch files, relocated unchanged. No new scratch file is introduced and none is renamed: `handover-followups.md` and `handover-queue.md` keep their names under the scoped directory (the proposal's aspirational `handover-state.json` / `followups.md` names described a redesigned handover state that does not exist today, so they are not part of a relocation-only change).
 
 ## The durable run identity
 
@@ -90,7 +91,7 @@ The scope-hash directory already guarantees different runs never collide at the 
 ## Integration
 
 - Create the `.tmp/nightshift/` root and a scoped directory per run at first scratch write; derive `<scope-hash>` from the canonical identity block before any state file is written.
-- Relocate every existing flat scratch path (`revise-state.md`, `revise-round-result.md`, `revise-payload-{hex-cell-id}.md`, `review-diff.patch`, `handover-followups.md`) under the scoped directory. This is a path relocation only; it does not change the Markdown state schema, the `*.next` atomic-rename staging convention, or the hex-encoded payload filenames.
+- Relocate every existing flat scratch path (`revise-state.md`, `revise-round-result.md`, `revise-payload-{hex-cell-id}.md`, `review-diff.patch`, `handover-followups.md`, `handover-queue.md`) under the scoped directory. This is a path relocation only; it does not change the Markdown state schema, the `*.next` atomic-rename staging convention, or the hex-encoded payload filenames.
 - Persist the identity block with the state (same canonical JSON-scalar discipline as other arbitrary-text scalars) and refresh the heartbeat timestamp on every boundary write.
 - Run the start-of-session classification before treating any existing state as a resume candidate; everything in `internal/revise/SKILL.md`'s resume, drift, and recovery machinery then keys off the classification already made.
 

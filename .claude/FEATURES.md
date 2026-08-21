@@ -304,7 +304,7 @@ The universal-skill MVP and the agreement gate are shipped; every later migratio
   **Requires:** [Content fingerprint helper](features/content-fingerprint-helper.md).
 - **Host-neutral scaffolding and instruction routing.** Make `init-backlog`, project instructions, and global instructions work without assuming one host's filenames or instruction runtime.
   **Requires:** [Move deterministic init-backlog mechanics out of promptspace](features/deterministic-init-backlog.md).
-- **Review host adapters.** Express task queues, questions, fresh-agent dispatch, completion, recovery identities, tool guidance, and model tiers through capability contracts with Claude Code and Codex adapters.
+- **Review host adapters.** Express questions, fresh-agent dispatch, completion, recovery identities, tool guidance, model tiers, and optional handover-queue mirroring through capability contracts with Claude Code and Codex adapters.
   **Requires:** none.
 - **Host-neutral documentation and lore.** Route documentation and durable learning updates to canonical instruction sources while preserving host adapters and optional helper integrations.
   **Requires:** [Agent-host-agnostic Nightshift: Host-neutral scaffolding and instruction routing](features/agent-host-agnostic-nightshift.md), [Agent-host-agnostic Nightshift: Review host adapters](features/agent-host-agnostic-nightshift.md).
