@@ -51,7 +51,7 @@ const legacyMigrationManifest = [
   '.claude/features/present-spec-for-agreement.md',
   '.claude/features/dependency-cycle-detection.md',
   '.claude/features/ready-exploring-visibility.md',
-  '.Codex/specs/2026-08-09-immediate-skeptic-dispatch-design.md',
+  '.claude/features/immediate-skeptic-dispatch.md',
   '.Codex/specs/2026-08-09-plugin-version-bump-policy-design.md',
 ];
 const readyParser = {

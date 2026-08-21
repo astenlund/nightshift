@@ -138,6 +138,23 @@ Refactors the agreement-gate revise run reviewed and agreed are valid but deferr
   change set (the limits sentence is pinned verbatim by `internal/revise/orchestration.test.js`,
   so CI forces the pairing).
 
+## Revise engine verification
+
+- **Run the deferred Workflow-runtime ordering probe.** The immediate-skeptic-dispatch
+  design record ([features/immediate-skeptic-dispatch.md](features/immediate-skeptic-dispatch.md))
+  validates its dispatch ordering only through the deterministic test double; its
+  Verification section defers the live probe through the real Workflow runtime
+  (`(live-claim: deferred 2026-08-10)`) and it was never run. Preferred shape: run the
+  spec's blocked-sibling scenario through the real Workflow runtime, capturing reviewer
+  and skeptic submission-call initiation plus controller-observed completion events, and
+  pass only under the ordering assertions the spec states; also inspect the shipped
+  fan-out loop for the construction-and-submission-only body. Account for drift since
+  the spec was written: the engine lives in `internal/revise/`, and the Workflow path
+  now runs a low-effort dedup judge before each skeptic dispatch (a recorded dedup
+  judgment replaces a skeptic submission for duplicate-shape findings), so the probe's
+  assertions must treat a dedup-judge call as part of the fan-out rather than as an
+  unrelated wait between sibling submissions.
+
 ## (add sections as work emerges)
 
 ## History
