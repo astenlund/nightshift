@@ -52,7 +52,7 @@ otherwise sits in the backlog until the next readiness pass surfaces it.
 
 ### [Feature breakout dependency lines drift from the active index](bugs/feature-breakout-dependency-drift.md)
 
-Feature breakout files duplicate live dependency state from `FEATURES.md`, but shipped-item walks and `/nightshift:ready` update or validate only the index. Eight stale universal-MVP copies were found; three remain after cleanup in the arbitration design and agreement-gate release. Choose one authority or add synchronization and executable mismatch detection.
+Feature breakout files duplicate live dependency state from `FEATURES.md`, but shipped-item walks and `/nightshift:ready` update or validate only the index. Eight stale universal-MVP copies were found; three remain after cleanup in the arbitration design and agreement-gate release. Fix: the index is the sole queue authority, breakouts carry no dependency line, and `**Requires:**` is split so it holds only in-backlog links while a new optional `**External:**` line holds external primitives; `ready.js` reports a structural error naming both paths when a breakout carries either line.
 
 **Requires:** none.
 

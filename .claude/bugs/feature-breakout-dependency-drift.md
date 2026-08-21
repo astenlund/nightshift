@@ -28,23 +28,26 @@ The arbitration design change corrected the copies in the four breakout files it
 
 ## Expected behavior
 
-Declare and enforce one durable representation:
+The index is the sole authority for queue state. Breakout files carry no active dependency line; their `## Requirements` sections hold only standing architectural prerequisites, never queue status.
 
-1. Prefer removing active top-level `**Requires:**` copies from breakout files when the index already owns dependency state, leaving stable prerequisite prose under `## Requirements` only when it describes architectural capabilities rather than queue status; or
-2. If copies remain a deliberate convention, extend the shipped-item walk and an executable validation to keep every copy synchronized with the index.
+The root cause of the undecidable "architectural capability versus queue status" boundary is that one `**Requires:**` field holds two things with opposite lifecycles: in-backlog links, which the walk-and-remove convention deletes the moment their upstream ships, and external primitives, which are standing properties of the design and are never walked. The fix splits the field:
 
-The selected rule must cover features and bugs, distinguish active dependency lines from historical prose and slice-local future gates, and exclude plans and history archives. A mismatch must fail a repository test or `/nightshift:ready` sanity check with both conflicting paths named.
+1. `**Requires:**` holds only in-backlog markdown links or the literal `none.`. Bare text in it becomes a structural error.
+2. A new `**External:**` line on index entries holds bare-text external primitives (SDK features, infrastructure, hardware). It is optional; absence means no external prerequisite. `/nightshift:ready` feeds its External classification from this line only.
+3. Breakout files under `.claude/features/` and `.claude/bugs/` carry neither line. The three stale universal-MVP copies are removed along with every other breakout `**Requires:**` line, including `none.` forms.
+
+The rule covers features and bugs, and excludes plans and history archives. Enforcement lives in `skills/ready/ready.js`: it scans each linked breakout file for either line and reports a structural error naming both the index entry and the breakout path, so `/nightshift:ready` surfaces the drift and a fixture in `skills/ready/ready.test.js` pins it.
 
 ## Acceptance criteria
 
-- The three remaining stale universal-MVP copies are removed or synchronized.
-- Every active feature and bug has exactly one unambiguous dependency authority.
-- An executable fixture fails on an index-versus-breakout mismatch and passes on legitimate architectural-prerequisite prose, slice-local gates, history, and plans.
-- `AGENTS.md`, `FEATURES.md`, `BUGS.md`, and `init-backlog` templates describe the selected convention consistently.
-- The normal shipped-item walk cannot leave an undetected stale breakout dependency behind.
+- No breakout file under `.claude/features/` or `.claude/bugs/` carries a `**Requires:**` or `**External:**` line; the three stale universal-MVP copies are gone with the rest.
+- `ready.js` rejects bare text in `**Requires:**` as a structural error, classifies External from `**External:**` only, and reports a structural error naming both paths when a linked breakout carries either line.
+- Fixtures in `ready.test.js` cover each new structural error and confirm `## Requirements` prose, slice-local gates, history archives, and plans do not trigger one.
+- `AGENTS.md`, the `FEATURES.md` and `BUGS.md` headers, the `ready` and `exploring` skill prose, and the `init-backlog` templates describe the two-line convention consistently.
+- The shipped-item walk cannot leave an undetected stale breakout dependency behind, because a breakout has no line to go stale.
 
 ## Status
 
-Confirmed by repository-wide search on 2026-08-18. Four instances were corrected opportunistically in files touched by the arbitration design, and the agreement-gate release corrected one more; three remain open. No parser or topology test currently detects the class.
+Confirmed by repository-wide search on 2026-08-18; the three open instances re-verified on 2026-08-22 (`sophisticated-user-communication.md`, `deterministic-init-backlog.md`, `durable-run-identity-concurrency.md`). Design settled 2026-08-22: index-only authority with the Requires/External field split. The bare-text branch of `**Requires:**` has no live users, so the split needs no data migration.
 
 **Requires:** none.
