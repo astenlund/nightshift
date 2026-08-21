@@ -47,6 +47,8 @@ The operating-context section must exist and be complete before any reviewer or 
 
 - **Delivery rules**: the document-artifact profile in SKILL.md (read-once, offset/limit above 400 lines, partial-section context-note rule, prior-fix duplicate check).
 
+- **Reviewer calibration** (inline in every reviewer prompt): before reporting a divergence, pin, or location claim, quote the exact sentence the artifact names and build the claim from that quotation, never from a paraphrase or a neighboring sentence. Assert a failure scenario only after tracing its reachability through the shipped producers upstream of the flagged consumer. Before reporting a divergence-from-authority finding, check whether an adjacent status, history-archive, or provenance record is the authoritative owner of the described transition. Treat a recorded acknowledgement's reasoning, not just its literal wording, as settled ground; adjacent mechanics outside that reasoning remain reviewable.
+
 - **Additional prompt rules**: the relevant CLAUDE.md excerpts to inline are the project conventions about design-document structure, indexes, the spec-trim feedback rule, and the project's plan-vs-feature taxonomy. Project context should name which neighboring feature / pattern / bug files exist and what the spec under review is for.
 
 - **Post-fix steps**: none (specs have no build).
@@ -100,6 +102,7 @@ The operating-context section must exist and be complete before any reviewer or 
 4. **Idempotency**: is re-running an operation safe? What happens on duplicate input?
 5. **Edge cases**: empty inputs, single-element inputs, very large inputs, malformed inputs, missing files, missing config.
 6. **Lifecycle gaps**: start, steady-state, shutdown, restart, upgrade. Specs frequently cover steady-state behavior cleanly but skip the transitions.
+7. **Unpinned deliberate rules**: when the spec commits to a deliberate exception or positive permission ("X proceeds under Y"), check that the verification surface the spec prescribes (fixtures, pins, checks) pins that rule; an unpinned deliberate rule regresses silently to the conservative default.
 
 **Anti-goal triage before flagging.** Before reporting a missing error-path, recovery flow, concurrency guard, or lifecycle handler as a *gap*, decide whether the omission is a deliberate scope cut or a genuine oversight. If the spec's MVP framing or surrounding context implies the case is intentionally out of scope, flag it as "this omission should be made explicit as an anti-goal" rather than "this must be handled." A missing handler for a real in-scope operation is a completeness defect; a missing handler for an out-of-scope concern is a documentation gap in the anti-goals list, not a behavior gap. Report omissions of either kind, but label which it is, so the fix routes to the right place (handler vs. one-line anti-goal) instead of pressuring the spec to over-build. D5's lens is *behavioral*: a real operation lacks a handler. Whether the resulting anti-goal is *worded* well is D3.3's call and whether it's a sound deferral is D7.3's; so don't audit the anti-goals section yourself; just flag the behavioral omission.
 
