@@ -32,7 +32,7 @@ Governing-spec hardening record: `revise-spec graduated 2026-08-21 02:57 at c721
 
 ## File Structure
 
-- Create: `internal/revise/orchestration.js` - the pure transition module: `REVISE_LIMITS`, `OrchestrationError`, `resolveBoundary`, `cellAfterRound`, `verifierBoundary`, `preflightLaunch`, `exitTerminal`, `canComplete`, plus exported-for-tests helpers `validateState`, `buildFailureRecord`, `parseFailureRecord`.
+- Create: `internal/revise/orchestration.js` - the pure transition module: `REVISE_LIMITS`, `OrchestrationError`, `resolveBoundary`, `cellAfterRound`, `verifierBoundary`, `preflightLaunch`, `exitTerminal`, `canComplete`, plus the exported-for-tests helpers `validateState`, `validateCell`, `validateApplicability`, `buildFailureRecord`, `parseFailureRecord`, and the shape constant `FINGERPRINT_RE` (fourteen exported names total; Task 1's `module.exports` block is the authoritative list, and this line matches it).
 - Create: `internal/revise/orchestration.test.js` - the fixture suite: shared state builders, data-driven fixture cases grouped by spec section, six prose pins with mutation probes. Runs with `node internal/revise/orchestration.test.js`, exit code 1 on failure.
 - Modify: `internal/revise/SKILL.md` - two one-sentence conventions (failure-record persistence; deferred scope-map refresh).
 - Modify: `tests/universal-skill-topology.test.js` - add both new files to the relocated-engine-files list.
@@ -995,6 +995,20 @@ Append to `tests`:
     const s = baseState({ cells: [cell({ status: 'inactive', certification: FP })] })
     assert.deepEqual(resolveBoundary(s, applicabilityFor(s), false, null), { transition: 'blocked' })
   },
+  'certification span: a certified cell is never activated at an unchanged fingerprint' () {
+    const s = baseState({ cells: [cell({ status: 'inactive', certification: FP }), cell({ id: 'd2/whole', status: 'inactive', certification: FP })], stamp: null })
+    const first = resolveBoundary(s, applicabilityFor(s), true, null)
+    const second = resolveBoundary(s, applicabilityFor(s), true, null)
+    assert.equal(first.transition, 'launch-verifier')
+    assert.deepEqual(second, first, 'repeated boundary resolution is pure: the certified cell joins no activated set at an unchanged fingerprint, and the controller launches only active cells, so it is launched zero times')
+  },
+  'cross-cell: a sibling fix moves the fingerprint mid-round; the certified cell is preserved until the sweep' () {
+    const midRound = baseState({ fingerprint: FP2, cells: [cell({ status: 'inactive', certification: FP }), cell({ id: 'd2/whole' })] })
+    assertRefusal(() => resolveBoundary(midRound, applicabilityFor(midRound), true, null), 'off-domain', 'no-sweep-mid-round')
+    const atBoundary = baseState({ fingerprint: FP2, cells: [cell({ status: 'inactive', certification: FP }), cell({ id: 'd2/whole', status: 'inactive', certification: FP2 })] })
+    const r = resolveBoundary(atBoundary, applicabilityFor(atBoundary), true, null)
+    assert.deepEqual(r.activated, ['d1/whole'], 'the sweep is the global re-review barrier: the stale certification reactivates only at the all-inactive boundary')
+  },
   'boundary: off-domain states are refused' () {
     const active = baseState()
     assertRefusal(() => resolveBoundary(active, applicabilityFor(active), true, null), 'off-domain', 'boundary-active-cell')
@@ -1179,6 +1193,7 @@ function failedState (failingRule, over = {}, extra = {}) {
     const failing = baseState({ cells: [cell({ status: 'na', naReason: 'gone' })], agents: [] })
     const record = buildFailureRecord(failing, 'empty-applicable-set', {})
     const retained = { ...baseState({ cells: [cell({ status: 'inactive', certification: FP })], agents: [] }), status: 'failed', failure: record }
+    assert.equal(exitTerminal(retained, { kind: 'restart', currentFingerprint: FP }, applicabilityFor(retained), record).exit, 'restarted')
     assert.equal(exitTerminal(retained, { kind: 'abandon' }, null, record).exit, 'terminated')
   },
   'explicit abandon is terminal with no derived transition' () {
@@ -1222,6 +1237,9 @@ function failedState (failingRule, over = {}, extra = {}) {
     const s = failedState('round-cap', { round: 30 })
     assertRefusal(() => exitTerminal({ ...s, failure: null }, { kind: 'abandon' }, null, null), 'invalid-input', 'record-missing')
     assertRefusal(() => exitTerminal(s, { kind: 'abandon' }, null, 'not json'), 'invalid-input', 'record-unparseable')
+    assertRefusal(() => exitTerminal(s, { kind: 'abandon' }, null, JSON.stringify({ failingRule: 'novel-class' })), 'invalid-input', 'record-unknown-class')
+    assertRefusal(() => exitTerminal(s, { kind: 'retry', cellId: 'd1/whole', identityMatched: true }, null, 'not json'), 'invalid-input', 'record-unparseable-retry')
+    assertRefusal(() => exitTerminal(s, { kind: 'restart', currentFingerprint: FP }, applicabilityFor(s), null), 'invalid-input', 'record-missing-restart')
   },
   'a failure record contradicting the state where derivable is refused' () {
     const belowRound = failedState('round-cap', { round: 12 })
@@ -1532,12 +1550,18 @@ In `.github/workflows/ci.yml`, after the line `      - run: node internal/revise
 
 - [ ] **Step 5: Update the literal count pin**
 
-In `skills/spec-agreement/spec-agreement.test.js`, the test `AGENTS describes the literal six-suite CI contract` asserts `countExact(agents, 'CI runs all six suites on Node 22.')`. Update the test name to `AGENTS describes the literal seven-suite CI contract`, the asserted string to `'CI runs all seven suites on Node 22.'`, and the assertion message to `'AGENTS must describe the seven-suite CI contract'`. Before editing, count the suites actually enumerated in `.github/workflows/ci.yml` at that moment (`grep -c "      - run:" C:/Git/nightshift/.github/workflows/ci.yml`); if another feature landed a suite first, use that recount plus one, per the spec's re-derive-at-landing-time rule, and word the AGENTS.md sentence to match.
+In `skills/spec-agreement/spec-agreement.test.js`, the test `AGENTS describes the literal six-suite CI contract` asserts `countExact(agents, 'CI runs all six suites on Node 22.')`. First re-derive the count per the spec's landing-time rule: run `grep -c "      - run:" C:/Git/nightshift/.github/workflows/ci.yml` NOW, after Step 4 added this plan's own step, and use that number as-is (it already includes the new suite; do not add one). With no competing suite landed first it reads 7 and the word is `seven`; if it reads 8 or more, another suite landed first, and the count word derived from the recount replaces `seven` in this step AND retroactively in the Step 2 AGENTS.md sentence and anywhere Step 3 worded a count. Then update the test name to `AGENTS describes the literal <count>-suite CI contract`, the asserted string to `'CI runs all <count> suites on Node 22.'` (spelled-out word, matching the AGENTS.md sentence exactly), and the assertion message to `'AGENTS must describe the <count>-suite CI contract'`.
 
 - [ ] **Step 6: Version-increase check**
 
-Run: `git -C C:/Git/nightshift log origin/main..HEAD --oneline -- .claude-plugin/plugin.json`
-This change set edits shipped plugin behavior (`internal/revise/` non-test resources and SKILL.md), so the unpushed range must contain exactly one monotonic `version` increase in `.claude-plugin/plugin.json`. If the command lists at least one commit, the bump already exists: make no further bump. If it lists none, bump the patch version once (read the current value from `.claude-plugin/plugin.json`, increment the patch component) and update the `plugin release version is X` assertion in `skills/spec-agreement/spec-agreement.test.js` to match in the same commit.
+This change set edits shipped plugin behavior (`internal/revise/` non-test resources and SKILL.md), so the unpushed range must contain exactly one monotonic `version` increase in `.claude-plugin/plugin.json`. Check the version value itself, not commit presence (a commit that touched only `description` is not a bump). Run both:
+
+```bash
+git -C C:/Git/nightshift show origin/main:.claude-plugin/plugin.json | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>console.log(JSON.parse(s).version))"
+node -e "console.log(require('C:/Git/nightshift/.claude-plugin/plugin.json').version)"
+```
+
+Compare the two printed versions. If the working-tree version is greater (numeric per-component semver comparison), the unpushed range already carries its bump: make none. If they are equal, bump the patch component once and update the `plugin release version is X` assertion in `skills/spec-agreement/spec-agreement.test.js` to match in the same commit. If the working-tree version is smaller, stop and surface the anomaly to the user (the local `origin/main` ref is ahead of the tree; the range read is unreliable). This check reads the local `origin/main` ref without fetching (git networking stays user-directed); a stale ref makes the comparison conservative, never silently bump-skipping, because equality still forces a bump.
 
 - [ ] **Step 7: Run the affected suites**
 
@@ -1571,6 +1595,6 @@ git -C C:/Git/nightshift commit -m "chore(suite): enumerate the orchestration su
 
 ## Self-Review Notes
 
-- Spec coverage: Tasks 1-7 implement the six-function surface, input contract, refusal codes, and every fixture list (input contract in Task 1; completion in Task 2; execution failure and preflight in Task 3; rejected findings in Task 4; verifier stamping in Task 5; boundary/sweep in Task 6; terminal exits in Task 7). Task 8 covers the closed six-sentence pin set. Task 9 ships the two engine conventions. Task 10 covers the topology list, all four enumeration sites, the count pin with the re-derive-at-landing-time rule, and the version-increase convention. Not covered by design (spec anti-goals): environment failure routes, post-review tail internals, new-run creation, mid-round skeptic fan-out, controller rewiring.
+- Spec coverage: Tasks 1-7 implement the six-function surface, input contract, refusal codes, and every fixture list (input contract in Task 1; completion in Task 2; execution failure and preflight in Task 3; rejected findings in Task 4; verifier stamping in Task 5; boundary/sweep in Task 6; terminal exits in Task 7). The spec's run-level sequencing fixtures (Certification span's launched-zero-times case, Cross-cell mutation's preserve-until-the-sweep half, the mid-round-edit case) are encoded module-side in Task 6: repeat-boundary purity carries launched-zero-times (the controller launches only active cells, the stated convention), and the off-domain refusal on a mid-round state carries preserve-until-the-sweep and no-sweep-mid-round. Task 8 covers the closed six-sentence pin set. Task 9 ships the two engine conventions. Task 10 covers the topology list, all four enumeration sites, the count pin with the re-derive-at-landing-time rule, and the version-increase convention. Not covered by design (spec anti-goals): environment failure routes, post-review tail internals, new-run creation, mid-round skeptic fan-out, controller rewiring.
 - The spec's resume-remap fixture entry is a controller-owned convention, not a module fixture (spec line: "recorded as a controller-owned convention"); the module-side half is the malformed-remap refusal (Task 6).
 - Type consistency: `ledger` flags are `{acknowledgement, followUp, appliedChange}` in Tasks 4-5; state member spelling is fixed in the projection block above and used identically in every task; `failure` values are JSON text strings produced by `buildFailureRecord` and consumed by `parseFailureRecord` in Tasks 3, 6, 7.
