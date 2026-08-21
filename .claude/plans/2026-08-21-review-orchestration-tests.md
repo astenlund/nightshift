@@ -32,7 +32,7 @@ Governing-spec hardening record: `revise-spec graduated 2026-08-21 02:57 at c721
 
 ## File Structure
 
-- Create: `internal/revise/orchestration.js` - the pure transition module: `REVISE_LIMITS`, `OrchestrationError`, `resolveBoundary`, `cellAfterRound`, `verifierBoundary`, `preflightLaunch`, `exitTerminal`, `canComplete`, plus the exported-for-tests helpers `validateState`, `validateCell`, `validateApplicability`, `buildFailureRecord`, `parseFailureRecord`, and the shape constant `FINGERPRINT_RE` (fourteen exported names total; Task 1's `module.exports` block is the authoritative list, and this line matches it).
+- Create: `internal/revise/orchestration.js` - the pure transition module: `REVISE_LIMITS`, `OrchestrationError`, `resolveBoundary`, `cellAfterRound`, `verifierBoundary`, `preflightLaunch`, `exitTerminal`, `canComplete`, plus the exported-for-tests helpers `validateState`, `buildFailureRecord`, `parseFailureRecord` (eleven exported names total, exactly the names the suite destructures; Task 1's `module.exports` block is the authoritative list and matches this line; `validateCell`, `validateApplicability`, `refuse`, and `FINGERPRINT_RE` stay module-internal).
 - Create: `internal/revise/orchestration.test.js` - the fixture suite: shared state builders, data-driven fixture cases grouped by spec section, six prose pins with mutation probes. Runs with `node internal/revise/orchestration.test.js`, exit code 1 on failure.
 - Modify: `internal/revise/SKILL.md` - two one-sentence conventions (failure-record persistence; deferred scope-map refresh).
 - Modify: `tests/universal-skill-topology.test.js` - add both new files to the relocated-engine-files list.
@@ -83,7 +83,7 @@ The fixture suite binds this exact member spelling (the spec leaves spelling to 
 - Create: `internal/revise/orchestration.test.js`
 
 **Interfaces:**
-- Produces: `OrchestrationError` (has `.code`), `REVISE_LIMITS = { roundsPerRun: 30, verifierLaunchesPerRun: 10, repairLaunchesPerCellPerRound: 3 }`, `validateState(state)`, `validateCell(cell)`, `validateApplicability(state, applicability)`, `refuse(code, message)` (internal), `FINGERPRINT_RE`. Later tasks call these before their own logic.
+- Produces: exported: `OrchestrationError` (has `.code`), `REVISE_LIMITS = { roundsPerRun: 30, verifierLaunchesPerRun: 10, repairLaunchesPerCellPerRound: 3 }`, `validateState(state)`; module-internal helpers later tasks call before their own logic: `validateCell(cell)`, `validateApplicability(state, applicability)`, `refuse(code, message)`, `FINGERPRINT_RE`.
 
 - [ ] **Step 1: Write the failing test harness and input-contract fixtures**
 
@@ -306,10 +306,7 @@ function validateApplicability (state, applicability) {
 module.exports = {
   OrchestrationError,
   REVISE_LIMITS,
-  FINGERPRINT_RE,
   validateState,
-  validateCell,
-  validateApplicability,
   // filled by later tasks:
   resolveBoundary: undefined,
   cellAfterRound: undefined,
@@ -1550,18 +1547,18 @@ In `.github/workflows/ci.yml`, after the line `      - run: node internal/revise
 
 - [ ] **Step 5: Update the literal count pin**
 
-In `skills/spec-agreement/spec-agreement.test.js`, the test `AGENTS describes the literal six-suite CI contract` asserts `countExact(agents, 'CI runs all six suites on Node 22.')`. First re-derive the count per the spec's landing-time rule: run `grep -c "      - run:" C:/Git/nightshift/.github/workflows/ci.yml` NOW, after Step 4 added this plan's own step, and use that number as-is (it already includes the new suite; do not add one). With no competing suite landed first it reads 7 and the word is `seven`; if it reads 8 or more, another suite landed first, and the count word derived from the recount replaces `seven` in this step AND retroactively in the Step 2 AGENTS.md sentence and anywhere Step 3 worded a count. Then update the test name to `AGENTS describes the literal <count>-suite CI contract`, the asserted string to `'CI runs all <count> suites on Node 22.'` (spelled-out word, matching the AGENTS.md sentence exactly), and the assertion message to `'AGENTS must describe the <count>-suite CI contract'`.
+In `skills/spec-agreement/spec-agreement.test.js`, the test `AGENTS describes the literal six-suite CI contract` asserts `countExact(agents, 'CI runs all six suites on Node 22.')`. First re-derive the count per the spec's landing-time rule: run `grep -c "      - run:" C:/Git/nightshift/.github/workflows/ci.yml` NOW, after Step 4 added this plan's own step, and use that number as-is (it already includes the new suite; do not add one). With no competing suite landed first it reads 7 and the word is `seven`; if it reads 8 or more, another suite landed first, and the count word derived from the recount replaces `seven` in this step AND retroactively in the Step 2 AGENTS.md sentence and anywhere Step 3 worded a count; if it reads 6 or fewer, the Step 4 insertion did not land: stop, re-run Step 4, and recount before proceeding (never write a count word from a reading below 7). Then update the test name to `AGENTS describes the literal <count>-suite CI contract`, the asserted string to `'CI runs all <count> suites on Node 22.'` (spelled-out word, matching the AGENTS.md sentence exactly), and the assertion message to `'AGENTS must describe the <count>-suite CI contract'`.
 
 - [ ] **Step 6: Version-increase check**
 
 This change set edits shipped plugin behavior (`internal/revise/` non-test resources and SKILL.md), so the unpushed range must contain exactly one monotonic `version` increase in `.claude-plugin/plugin.json`. Check the version value itself, not commit presence (a commit that touched only `description` is not a bump). Run both:
 
 ```bash
-git -C C:/Git/nightshift show origin/main:.claude-plugin/plugin.json | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>console.log(JSON.parse(s).version))"
+MSYS_NO_PATHCONV=1 git -C C:/Git/nightshift show origin/main:.claude-plugin/plugin.json | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>console.log(JSON.parse(s).version))"
 node -e "console.log(require('C:/Git/nightshift/.claude-plugin/plugin.json').version)"
 ```
 
-Compare the two printed versions. If the working-tree version is greater (numeric per-component semver comparison), the unpushed range already carries its bump: make none. If they are equal, bump the patch component once and update the `plugin release version is X` assertion in `skills/spec-agreement/spec-agreement.test.js` to match in the same commit. If the working-tree version is smaller, stop and surface the anomaly to the user (the local `origin/main` ref is ahead of the tree; the range read is unreliable). This check reads the local `origin/main` ref without fetching (git networking stays user-directed); a stale ref makes the comparison conservative, never silently bump-skipping, because equality still forces a bump.
+(The `MSYS_NO_PATHCONV=1` prefix is load-bearing: without it, Git Bash's MSYS runtime rewrites the `origin/main:.claude-plugin/plugin.json` rev-spec into a Windows path list and git aborts.) If the first command errors or prints nothing, stop and surface the failed read to the user; never treat a failed read as bump-already-exists. Otherwise compare the two printed versions. If the working-tree version is greater (numeric per-component semver comparison), the unpushed range already carries its bump: make none. If they are equal, bump the patch component once and update the `plugin release version is X` assertion in `skills/spec-agreement/spec-agreement.test.js` to match in the same commit. If the working-tree version is smaller, stop and surface the anomaly to the user (the local `origin/main` ref is ahead of the tree; the range read is unreliable). This check reads the local `origin/main` ref without fetching (git networking stays user-directed); a stale ref makes the comparison conservative, never silently bump-skipping, because equality still forces a bump.
 
 - [ ] **Step 7: Run the affected suites**
 
