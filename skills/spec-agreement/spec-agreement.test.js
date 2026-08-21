@@ -1,7 +1,7 @@
 const assert = require('node:assert/strict');
 const { spawnSync } = require('node:child_process');
 const { createHash } = require('node:crypto');
-const { chmodSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } = require('node:fs');
+const { chmodSync, existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } = require('node:fs');
 const { tmpdir } = require('node:os');
 const { join } = require('node:path');
 const test = require('node:test');
@@ -52,7 +52,6 @@ const legacyMigrationManifest = [
   '.claude/features/dependency-cycle-detection.md',
   '.claude/features/ready-exploring-visibility.md',
   '.claude/features/immediate-skeptic-dispatch.md',
-  '.Codex/specs/2026-08-09-plugin-version-bump-policy-design.md',
 ];
 const readyParser = {
   normalizeSliceName: (...args) => readyImplementation.normalizeSliceName(...args),
@@ -96,6 +95,7 @@ function repositoryMarkdownPaths(relativeRoot) {
 
 function activeRepositoryDesignPaths() {
   return ['.claude', '.Codex']
+    .filter((relativeRoot) => existsSync(join(repositoryRoot, relativeRoot)))
     .flatMap((relativeRoot) => repositoryMarkdownPaths(relativeRoot))
     .filter((path) => !path.startsWith('.claude/plans/') && !path.startsWith('.Codex/plans/') && !path.endsWith('_HISTORY.md'))
     .sort();
@@ -3753,23 +3753,30 @@ test('provenance normalizes every atomic replacement failure at its adapter boun
 });
 
 test('legacy migration resumes a mixed five-file worktree without rewriting completed artifacts', () => {
-  const completedPath = legacyMigrationManifest[1];
+  const worktreePaths = [
+    '.claude/features/deletion-applied.md',
+    '.claude/features/already-complete.md',
+    '.claude/features/untouched-one.md',
+    '.claude/features/untouched-two.md',
+    '.claude/features/untouched-three.md',
+  ];
+  const completedPath = worktreePaths[1];
   const completedDesign = Buffer.from('# Already complete\n');
   const completedFingerprint = hashSelection(selectArtifact({ path: completedPath, selectorKind: 'design-before-hardening', selectors: [], sourceBuffer: completedDesign })).contentHash.slice(0, 8);
   const files = {
-    [legacyMigrationManifest[0]]: '# Deletion already applied\n\n## Hardening\n\n- revise-spec graduated 2026-08-19 01:00 at 7aa82fe, scope: whole file, content: 00000000\n',
+    [worktreePaths[0]]: '# Deletion already applied\n\n## Hardening\n\n- revise-spec graduated 2026-08-19 01:00 at 7aa82fe, scope: whole file, content: 00000000\n',
     [completedPath]: `${completedDesign.toString()}\n## Hardening\n\n- revise-spec refreshed 2026-08-19 04:00 at 2fce9c2, scope: whole file, content: ${completedFingerprint} (legacy marker removal)\n`,
-    [legacyMigrationManifest[2]]: 'Status: signed off 2026-08-15\n\n# Untouched one\n\n## Hardening\n\n- revise-spec graduated 2026-08-15 18:01 at 1a5cc8b, scope: whole file, content: b6e8b045\n',
-    [legacyMigrationManifest[3]]: 'Status: signed off 2026-08-09\n\n# Untouched two\n',
-    [legacyMigrationManifest[4]]: 'Status: signed off 2026-08-09\n\n# Untouched three\n',
+    [worktreePaths[2]]: 'Status: signed off 2026-08-15\n\n# Untouched one\n\n## Hardening\n\n- revise-spec graduated 2026-08-15 18:01 at 1a5cc8b, scope: whole file, content: b6e8b045\n',
+    [worktreePaths[3]]: 'Status: signed off 2026-08-09\n\n# Untouched two\n',
+    [worktreePaths[4]]: 'Status: signed off 2026-08-09\n\n# Untouched three\n',
   };
   const repository = mutableRepository(files);
   const completedBefore = repository.bytes(completedPath);
-  const initialKinds = legacyMigrationManifest.map((path) => classifyMigrationArtifact(path, repository.bytes(path)).kind);
+  const initialKinds = worktreePaths.map((path) => classifyMigrationArtifact(path, repository.bytes(path)).kind);
 
   assert.deepEqual(initialKinds, ['provenance-stale', 'complete', 'marker-present', 'marker-present', 'marker-present']);
 
-  for (const path of legacyMigrationManifest) {
+  for (const path of worktreePaths) {
     let bytes = repository.bytes(path);
     const initial = classifyMigrationArtifact(path, bytes);
     if (initial.kind === 'marker-present') {
@@ -3788,11 +3795,11 @@ test('legacy migration resumes a mixed five-file worktree without rewriting comp
     writeProvenanceStamp({ projectRoot, path, stamp, baselineHash: fullHash(bytes) }, { fsAdapter: repository.adapter });
   }
 
-  assert.deepEqual(legacyMigrationManifest.map((path) => classifyMigrationArtifact(path, repository.bytes(path)).kind), ['complete', 'complete', 'complete', 'complete', 'complete']);
+  assert.deepEqual(worktreePaths.map((path) => classifyMigrationArtifact(path, repository.bytes(path)).kind), ['complete', 'complete', 'complete', 'complete', 'complete']);
   assert.deepEqual(repository.bytes(completedPath), completedBefore);
   assert.equal(repository.replacements().some((replacement) => replacement.path === `${projectRoot}/${completedPath}`), false);
   const remainingMatches = detectLegacyMarkers({
-    artifacts: legacyMigrationManifest.map((path) => ({ path, selectorKind: 'design-before-hardening', selectors: [], sourceBuffer: repository.bytes(path) })),
+    artifacts: worktreePaths.map((path) => ({ path, selectorKind: 'design-before-hardening', selectors: [], sourceBuffer: repository.bytes(path) })),
   }).matches;
   assert.deepEqual(remainingMatches, []);
 });
