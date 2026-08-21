@@ -25,6 +25,8 @@ what already shipped, not to resolve dependencies.
 
 ## Entries
 
+- [Review orchestration tests](features/review-orchestration-tests.md): the revise engine's wave, convergence, and completion decisions now live as a pure transition module (`internal/revise/orchestration.js`) with a 91-case fixture suite (`internal/revise/orchestration.test.js`) that pins six SKILL.md lifecycle sentences verbatim with biting mutation probes; two engine convention sentences (failure-record persistence, deferred scope-map refresh) landed in `internal/revise/SKILL.md`, and every suite-enumeration site (AGENTS.md bullets and count sentence, README run-list, ci.yml, the spec-agreement count pin, the topology relocated-engine-files list) lists the seventh suite. Shipped 2026-08-21 in the 2.5.4 batch (commits 62d740d..cf83b72).
+
 - [Present chosen spec for agreement before work](features/present-spec-for-agreement.md): a shared ten-skill gate now binds lifecycle authority to a current decision-complete digest, preserves autonomous within-contract continuation, revalidates completion evidence, and removes legacy durable sign-off markers. Shipped 2026-08-19 in the 2.5.2 batch.
 
 - [Agent-host-agnostic Nightshift: MVP - Universal skill entry points](features/agent-host-agnostic-nightshift.md): nine public skills now replace legacy commands, with deterministic topology coverage and installed-host discovery evidence. Shipped 2026-08-18 in the 2.5.0 batch.

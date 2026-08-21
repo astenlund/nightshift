@@ -251,12 +251,6 @@ Gives each Nightshift run a frozen durable identity and a scope-hash-scoped scra
 
 **Requires:** none.
 
-### [Review orchestration tests](features/review-orchestration-tests.md)
-
-Turn the revise review engine's wave, convergence, and completion decisions into executable, fixture-tested invariants under `internal/revise/`. Extracts the orchestration rules currently living only as SKILL.md prose into a deterministic `ready.js`-style transition module driven by mocked reviewer results: the wave-model invariant set (staleness sweep, certification clearing, and cap asymmetry), the clean-LGTM disposition rule that keeps every finding-bearing cell active, every verifier-stamping branch including the exact no-fix authoritative-follow-up exception, run-level fail-closed execution, and a joined completion predicate refused in every non-completing combination. Its topology check requires the new module and test to remain internal without freezing the rest of the private engine as a closed file set.
-
-**Requires:** none.
-
 ### [Manual review dedup parity](features/manual-review-dedup-parity.md)
 
 Gives Workflow and capable manual dispatch the same conservative same-round finding deduplication. Findings share a verdict only when premise, affected surface, deciding evidence, and frozen contract context when present establish that one fresh skeptic decides both complete claims. Manual registration is completion-driven across earlier in-flight and completed same-round verdicts, failed or uncertain matching launches a fresh skeptic, completed results retain the canonical verdict and source identity, and interruption recovery never relies on a durable pre-verdict dedup decision. Cross-round and cross-run verdict reuse remain explicitly deferred.
@@ -283,7 +277,7 @@ Present chosen spec for agreement before work shipped before Durable scope ancho
 
 Separates factual verification from authority to change an artifact. Every confirmed or judgment-call finding receives a controller-owned `admitted`, `out-of-contract`, or `uncertain` actionability record grounded in an exact scope-anchor, run-basis, verified-constraint, or correctness-floor citation; only admitted findings may enter repair or authoritative follow-up. Necessary enablers are admitted through a causal trace rather than a separate class, while adjacent improvements and explicit exclusions remain distinguishable out-of-contract cases. A narrow `contract-clean` certification lets a cell or verifier complete when every true finding is outside the frozen contract, with full fingerprint invalidation, crash-resume behavior, spec-less run-basis handling, legacy checkpoint isolation, and conditional durable provenance for nontrivial hardening-derived machinery.
 
-**Requires:** [Durable scope anchor](features/durable-scope-anchor.md), [Review orchestration tests](features/review-orchestration-tests.md).
+**Requires:** [Durable scope anchor](features/durable-scope-anchor.md).
 
 ### [Fix-scoped follow-up rounds](features/fix-scoped-rounds.md)
 
@@ -307,7 +301,7 @@ The universal-skill MVP and the agreement gate are shipped; every later migratio
 - **Host-neutral scaffolding and instruction routing.** Make `init-backlog`, project instructions, and global instructions work without assuming one host's filenames or instruction runtime.
   **Requires:** [Move deterministic init-backlog mechanics out of promptspace](features/deterministic-init-backlog.md).
 - **Review host adapters.** Express task queues, questions, fresh-agent dispatch, completion, recovery identities, tool guidance, and model tiers through capability contracts with Claude Code and Codex adapters.
-  **Requires:** [Review orchestration tests](features/review-orchestration-tests.md).
+  **Requires:** none.
 - **Host-neutral documentation and lore.** Route documentation and durable learning updates to canonical instruction sources while preserving host adapters and optional helper integrations.
   **Requires:** [Agent-host-agnostic Nightshift: Host-neutral scaffolding and instruction routing](features/agent-host-agnostic-nightshift.md), [Agent-host-agnostic Nightshift: Review host adapters](features/agent-host-agnostic-nightshift.md).
 - **Packaging and cross-host validation.** Add provider-neutral metadata, supported manifest forms, installation guidance, and clean-environment behavior checks for every supported host path.
