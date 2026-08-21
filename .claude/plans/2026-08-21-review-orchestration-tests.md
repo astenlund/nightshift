@@ -881,6 +881,10 @@ function verifierOutcome (over) {
   'contradictory-output class is refused at verifierBoundary too' () {
     assertRefusal(() => verifierBoundary(verifierState(), verifierOutcome({ lgtm: true, findings: [finding()], appliedFix: true })), 'impermissible-outcome', 'verifier-lgtm-with-findings')
   },
+  'actionableFollowUp inconsistency is refused at verifierBoundary too' () {
+    const o = verifierOutcome({ lgtm: false, findings: [finding({ verdict: 'REFUTED', disposition: 'refuted', actionableFollowUp: true })], authoritativeDeferredFollowUp: true })
+    assertRefusal(() => verifierBoundary(verifierState(), o), 'impermissible-outcome', 'verifier-followup-on-refuted')
+  },
 ```
 
 - [ ] **Step 2: Run to verify failure**
@@ -1005,6 +1009,15 @@ Append to `tests`:
     assert.equal(r.transition, 'reactivate')
     assert.deepEqual(r.activated, ['d1/whole'])
   },
+  'boundary: a remap that activates nothing still clears the stamp before convergence' () {
+    const s = baseState({
+      cells: [cell({ status: 'inactive', certification: FP }), cell({ id: 'd2/whole', status: 'inactive', certification: FP })],
+      stamp: FP,
+    })
+    const r = resolveBoundary(s, applicabilityFor(s, { 'd2/whole': 'slice no longer delivered' }), true, { affected: ['d2/whole'] })
+    assert.equal(r.clearStamp, true)
+    assert.equal(r.transition, 'launch-verifier', 'a reconciled remap invalidates the stamp even when every affected cell is demoted, so convergence relaunches the verifier instead of completing')
+  },
   'boundary: malformed remap is refused' () {
     const s = baseState({ cells: [cell({ status: 'inactive', certification: FP })] })
     assertRefusal(() => resolveBoundary(s, applicabilityFor(s), true, { affected: [] }), 'invalid-input', 'remap-empty')
@@ -1039,6 +1052,8 @@ Append to `tests`:
     assertRefusal(() => resolveBoundary(failed, applicabilityFor(failed), true, null), 'off-domain', 'boundary-failed')
     const inFlight = baseState({ roundStatus: 'in-flight', cells: [cell({ status: 'inactive', certification: FP })] })
     assertRefusal(() => resolveBoundary(inFlight, applicabilityFor(inFlight), true, null), 'off-domain', 'boundary-in-flight')
+    const postReview = baseState({ status: 'post-review', stamp: FP, cells: [cell({ status: 'inactive', certification: FP })] })
+    assertRefusal(() => resolveBoundary(postReview, applicabilityFor(postReview), true, null), 'off-domain', 'boundary-post-review')
   },
 ```
 
@@ -1113,7 +1128,10 @@ function resolveBoundary (state, applicability, gateCurrent, remap) {
   if (activated.length > 0 || promotions.length > 0) {
     return { transition: 'reactivate', activated, ...carriers }
   }
-  if (state.stamp !== state.fingerprint) {
+  // A reconciling remap invalidates the stamp even when no cell reactivates,
+  // so convergence compares the post-clear stamp, never the raw persisted one.
+  const effectiveStamp = clearStamp ? null : state.stamp
+  if (effectiveStamp !== state.fingerprint) {
     return { transition: 'launch-verifier', activated: [], ...carriers }
   }
   return { transition: 'post-review', activated: [], ...carriers }
@@ -1233,7 +1251,7 @@ function failedState (failingRule, over = {}, extra = {}) {
     const s = baseState({ status: 'post-review', stamp: FP, postReviewStep: 'dimension-retrospective', cells: [cell({ status: 'inactive', certification: FP })] })
     const r = exitTerminal(s, { kind: 'reviewable-change', nextFingerprint: FP2 }, null, null)
     assert.equal(r.exit, 'reviewing')
-    assert.deepEqual(r.effects, { postReviewStep: 'not-started', postReviewWorkItemsCleared: true, completedMutationCleared: true, stamp: null, fingerprint: FP2 })
+    assert.deepEqual(r.effects, { status: 'reviewing', postReviewStep: 'not-started', postReviewWorkItemsCleared: true, completedMutationCleared: true, stamp: null, fingerprint: FP2 })
   },
   'finalization with step done and a matching recheck -> finalized (deletion controller-owned)' () {
     const s = baseState({ status: 'post-review', stamp: FP, postReviewStep: 'done', cells: [cell({ status: 'inactive', certification: FP })] })
@@ -1407,6 +1425,7 @@ function exitTerminal (state, disposition, applicability, failure) {
     return {
       exit: 'reviewing',
       effects: {
+        status: 'reviewing',
         postReviewStep: 'not-started',
         postReviewWorkItemsCleared: true,
         completedMutationCleared: true,
@@ -1564,6 +1583,8 @@ to:
   for (const fileName of ['SKILL.md', 'code.md', 'plan.md', 'spec.md', 'rigor.js', 'rigor.test.js', 'revise-round.workflow.js', 'revise-round.test.js', 'orchestration.js', 'orchestration.test.js']) {
 ```
 
+If the quoted before-text is not found (the array moved or gained an entry since plan time), stop and locate the test by its name string `revise topology requires all relocated engine files as regular files`, then add the two new names to whatever array it now iterates. Landing check: `grep -oF "'orchestration.js', 'orchestration.test.js'" C:/Git/nightshift/tests/universal-skill-topology.test.js | wc -l` reads 1 (0 means the edit did not land, 2 or more means a duplicate).
+
 - [ ] **Step 2: Update AGENTS.md (bullet plus count sentence)**
 
 All Task 9 and Task 10 inserts are guarded for resumed runs: before each insert or append, check whether the exact text is already present, skip the edit if it appears once, and de-duplicate first if it appears more than once (Task 10 commits only at its final step, so an interrupted run resumes over uncommitted edits).
@@ -1582,7 +1603,7 @@ and change the count sentence `- CI runs all six suites on Node 22.` to:
 
 - [ ] **Step 3: Update README.md run-list**
 
-In `README.md`, in the sentence listing the suites (`Run the agreement controller suite with ...`), after `the rigor derivation suite with `node internal/revise/rigor.test.js`,` insert `the orchestration suite with `node internal/revise/orchestration.test.js`,` so the sentence enumerates all seven.
+In `README.md`, in the sentence listing the suites (`Run the agreement controller suite with ...`), after `the rigor derivation suite with `node internal/revise/rigor.test.js`,` insert `the orchestration suite with `node internal/revise/orchestration.test.js`,` so the sentence enumerates all seven. If the quoted anchor is not found (the sentence was reworded), stop and locate the suite run-list sentence by grepping README.md for `Run the agreement controller suite`, then insert the orchestration clause there. Landing check: `grep -oF "the orchestration suite with" C:/Git/nightshift/README.md | wc -l` reads 1 (0 means the edit did not land, 2 or more means a duplicate).
 
 - [ ] **Step 4: Add the CI step**
 
