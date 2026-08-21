@@ -380,7 +380,8 @@ test('current public references reject retired command and revise engine paths',
 test('current manifest descriptions agree and identify handover as a skill', () => {
   const pluginManifest = JSON.parse(readRequiredFile(join(REPOSITORY_ROOT, '.claude-plugin', 'plugin.json')))
   const marketplaceManifest = JSON.parse(readRequiredFile(join(REPOSITORY_ROOT, '.claude-plugin', 'marketplace.json')))
-  assert.equal(pluginManifest.description, marketplaceManifest.plugins[0].description)
+  // Description parity between the two manifests is release metadata and is
+  // asserted in tests/release-surface.test.js, not duplicated here.
   assert.equal(pluginManifest.description.includes('handover command'), false)
   assert.equal(marketplaceManifest.plugins[0].description.includes('handover command'), false)
 })

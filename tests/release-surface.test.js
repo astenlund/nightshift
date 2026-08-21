@@ -1,15 +1,25 @@
 'use strict'
 
 const assert = require('node:assert/strict')
-const { readFileSync } = require('node:fs')
-const { join } = require('node:path')
+const { readFileSync, readdirSync } = require('node:fs')
+const { join, relative } = require('node:path')
 const test = require('node:test')
+
+const { PUBLIC_SKILLS } = require('./entry-contract')
 
 const repositoryRoot = join(__dirname, '..')
 
-// Every suite CI runs. This is the single home for the count, so adding a suite
-// touches this list, the CI workflow, and the two documented command lists, and
-// never a feature-scoped test file.
+// Spelled counts, so no assertion below restates a number that a list already
+// knows. Adding a suite or a skill updates one list and every derived sentence
+// follows, which is the duplication this suite exists to prevent.
+const NUMBER_WORDS = Object.freeze([
+  'zero', 'one', 'two', 'three', 'four', 'five', 'six',
+  'seven', 'eight', 'nine', 'ten', 'eleven', 'twelve',
+])
+
+// Every suite CI runs, and the authority for the suite count. Adding a suite
+// means adding it here and to the CI workflow; the count sentences in AGENTS.md
+// and this file derive from the list rather than restating it.
 const CI_SUITE_COMMANDS = Object.freeze([
   'node skills/spec-agreement/spec-agreement.test.js',
   'node skills/ready/ready.test.js',
@@ -35,8 +45,8 @@ const COMMAND_LISTS = Object.freeze([
   { path: 'README.md', heading: '## Development' },
 ])
 
-const SUITE_COUNT_SENTENCE = 'CI runs all eight suites on Node 22.'
-const PUBLIC_SKILL_COUNT = 10
+const SUITE_COUNT_SENTENCE = `CI runs all ${NUMBER_WORDS[CI_SUITE_COMMANDS.length]} suites on Node 22.`
+const PUBLIC_SURFACE_PHRASE = `public surface is ${NUMBER_WORDS[PUBLIC_SKILLS.length]} skills`
 
 // Line endings are normalized on read: this repository is edited on Windows, so
 // checked-in files can carry CRLF while every assertion here is written with LF.
@@ -111,6 +121,8 @@ test('repository command-list contract rejects commands outside named developmen
   }
 })
 
+// The manifest/marketplace description pair is asserted here rather than in the
+// topology suite: it is release metadata, not skill topology.
 test('the plugin manifest and its marketplace copy agree on the released surface', () => {
   const manifest = JSON.parse(readRepositoryFile('.claude-plugin/plugin.json'))
   const marketplace = JSON.parse(readRepositoryFile('.claude-plugin/marketplace.json'))
@@ -121,13 +133,40 @@ test('the plugin manifest and its marketplace copy agree on the released surface
   assert.equal(marketplaceEntry.description, manifest.description, 'marketplace description must match the manifest description')
 })
 
-test('README lists every public skill exactly once', () => {
+test('README lists exactly the public skills, one row each', () => {
   const readme = readRepositoryFile('README.md')
   const agents = readRepositoryFile('AGENTS.md')
-  const publicSkillRows = readme.match(/^\| `\/nightshift:[^`]+`/gm) ?? []
+  const rowNames = (readme.match(/^\| `\/nightshift:[^`]+`/gm) ?? [])
+    .map((row) => row.replace(/^\| `\/nightshift:/, '').replace(/`$/, ''))
 
-  assert.equal(publicSkillRows.length, PUBLIC_SKILL_COUNT, `README must list ${PUBLIC_SKILL_COUNT} public skills`)
-  assert.equal(new Set(publicSkillRows).size, PUBLIC_SKILL_COUNT, 'README must not list a public skill twice')
-  assert.equal(publicSkillRows.some((row) => row.includes('/nightshift:spec-agreement')), true, 'README must list spec-agreement')
-  assert.match(agents, /public surface is ten skills/)
+  // Set equality, not a count: a renamed or invented row must fail even when
+  // the total still matches.
+  assert.deepEqual([...rowNames].sort(), [...PUBLIC_SKILLS].sort(), 'README rows must name exactly the public skills')
+  assert.equal(new Set(rowNames).size, rowNames.length, 'README must not list a public skill twice')
+  assert.equal(countExact(agents, PUBLIC_SURFACE_PHRASE), 1, `AGENTS must state: ${PUBLIC_SURFACE_PHRASE}`)
+})
+
+test('every checked-in suite is declared to CI', () => {
+  const suitePaths = []
+  const walk = (directory) => {
+    for (const entry of readdirSync(join(repositoryRoot, directory), { withFileTypes: true })) {
+      const entryPath = `${directory}/${entry.name}`
+      if (entry.isDirectory()) {
+        if (!['node_modules', '.git', '.tmp', 'fixtures'].includes(entry.name)) {
+          walk(entryPath)
+        }
+      } else if (entry.name.endsWith('.test.js')) {
+        suitePaths.push(entryPath.replace(/^\.\//, ''))
+      }
+    }
+  }
+  walk('.')
+
+  const declaredPaths = CI_SUITE_COMMANDS.map((command) => command.replace(/^node (--test )?/, ''))
+  assert.deepEqual(
+    [...suitePaths].sort(),
+    [...declaredPaths].sort(),
+    'every *.test.js file must be declared in CI_SUITE_COMMANDS, and every declared command must name a real suite',
+  )
+  assert.equal(relative(repositoryRoot, join(repositoryRoot, declaredPaths[0])).startsWith('..'), false, 'declared suites must live inside the repository')
 })
