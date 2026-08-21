@@ -201,6 +201,10 @@ frontmatter on the breakout file.
 
 Draft exploring a lightened variant of the revise review workflows: one fresh reviewer per iteration instead of the full per-dimension swarm, and a curated dimension set that skips the least-relevant dimensions. Prompted by the single-reviewer revise-spec run over `.claude/features/dependency-cycle-detection.md` (2026-08-11).
 
+### [Dimension-derived authoring fallback](features/dimension-derived-authoring-fallback.md)
+
+Draft exploring a nightshift-native plan and spec authoring fallback derived from the revise dimension files, prompted by the 2026-08-21 discussion of the superpowers dependency: forking superpowers' authoring skills is a maintenance race, but a host without them degrades plan authoring silently and pays the shortfall at review-round prices. Candidate shape: a thin bundled preamble inverting `internal/revise/plan.md` / `spec.md` ("write to satisfy these dimensions"), deferring to superpowers when installed and standing in when absent; none committed.
+
 ### [Wave round economy](features/wave-round-economy.md)
 
 Draft exploring how to cut the round count a revise run consumes to converge, prompted by the 2026-08-20 spec run needing three user cap raises. Observed amplifiers: whole-artifact fingerprint granularity, single-finding tail rounds, fix-authored surface, and verifier rounds inside the round cap (the last already a queued quick win). Candidate directions include delta-scoped re-review, convergence-aware batching, and round-economy telemetry first; none committed.
