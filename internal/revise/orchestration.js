@@ -240,6 +240,26 @@ function cellAfterRound (cellRecord, roundOutcome, fingerprint) {
   }
 }
 
+// Caller precondition, stated rather than silently relied on: verifierOutcome
+// is the current verifier round's adjudication-ready result at the state's
+// current fingerprint (a fingerprint move mid-round discards the round
+// upstream), so the stamp value is under that precondition exactly the
+// reviewed fingerprint.
+function verifierBoundary (state, verifierOutcome) {
+  validateState(state)
+  if (state.status !== 'reviewing') { refuse('off-domain', 'verifierBoundary requires Status: reviewing') }
+  if (state.roundStatus !== 'evaluated') { refuse('off-domain', 'verifierBoundary requires an evaluated round') }
+  if (!state.agents.some(a => a.role === 'verifier')) { refuse('off-domain', 'no verifier Role row: a reviewer round can never stamp') }
+  if (verifierOutcome === null || typeof verifierOutcome !== 'object' || typeof verifierOutcome.appliedFix !== 'boolean' || typeof verifierOutcome.authoritativeDeferredFollowUp !== 'boolean') {
+    refuse('impermissible-outcome', 'verifierOutcome must carry the derived appliedFix and authoritativeDeferredFollowUp flags')
+  }
+  validateOutcome(verifierOutcome, { requireDerived: true })
+  if (verifierOutcome.lgtm) { return { stamp: state.fingerprint, next: 'post-review' } }
+  if (verifierOutcome.appliedFix) { return { stamp: null, next: 'sweep' } }
+  if (verifierOutcome.authoritativeDeferredFollowUp) { return { stamp: state.fingerprint, next: 'post-review' } }
+  return { stamp: null, next: 'relaunch-verifier' }
+}
+
 function canComplete (state) {
   validateState(state)
   const applicable = state.cells.filter(c => c.status !== 'na')
@@ -259,7 +279,7 @@ module.exports = {
   buildFailureRecord,
   parseFailureRecord,
   cellAfterRound,
+  verifierBoundary,
   // filled by later tasks:
-  verifierBoundary: undefined,
   exitTerminal: undefined,
 }

@@ -43,6 +43,19 @@ function finding (over) {
   return { verdict: 'CONFIRMED', disposition: 'fix-applied', actionableFollowUp: false, ...over }
 }
 
+function verifierState (over) {
+  return baseState({
+    roundStatus: 'evaluated',
+    cells: [cell({ status: 'inactive', certification: FP })],
+    agents: [{ role: 'verifier', cellId: 'verifier/whole-artifact', status: 'completed', repairs: 0 }],
+    ...over,
+  })
+}
+
+function verifierOutcome (over) {
+  return { lgtm: true, verifiedNote: 'read the whole artifact and cross-checked every dimension seam', findings: [], appliedFix: false, authoritativeDeferredFollowUp: false, ...over }
+}
+
 function assertRefusal (fn, code, label) {
   let threw = null
   try { fn() } catch (error) { threw = error }
@@ -264,6 +277,54 @@ const tests = {
   'actionableFollowUp inconsistency is refused at cellAfterRound' () {
     assertRefusal(() => cellAfterRound(cell(), { lgtm: false, verifiedNote: 'n', findings: [finding({ verdict: 'REFUTED', disposition: 'refuted', actionableFollowUp: true })] }, FP), 'impermissible-outcome', 'followup-on-refuted')
     assertRefusal(() => cellAfterRound(cell(), { lgtm: false, verifiedNote: 'n', findings: [finding({ disposition: 'deferred-follow-up', actionableFollowUp: false })] }, FP), 'impermissible-outcome', 'deferred-without-row')
+  },
+  'verifier clean LGTM with a concrete note -> current fingerprint stamped' () {
+    assert.deepEqual(verifierBoundary(verifierState(), verifierOutcome()), { stamp: FP, next: 'post-review' })
+  },
+  'verifierBoundary on reviewer-only Agents rows is refused' () {
+    const s = verifierState({ agents: [agentRow({ status: 'completed' })] })
+    assertRefusal(() => verifierBoundary(s, verifierOutcome()), 'off-domain', 'reviewer-rows-only')
+  },
+  'verifier LGTM without a concrete note -> refused, no stamp and no transition' () {
+    assertRefusal(() => verifierBoundary(verifierState(), verifierOutcome({ verifiedNote: ' ' })), 'impermissible-outcome', 'verifier-blank-note')
+  },
+  'all verifier findings refuted -> stamp unset, relaunch at the same fingerprint' () {
+    const o = verifierOutcome({ lgtm: false, findings: [finding({ verdict: 'REFUTED', disposition: 'refuted' })] })
+    assert.deepEqual(verifierBoundary(verifierState(), o), { stamp: null, next: 'relaunch-verifier' })
+  },
+  'all verifier findings acknowledgement-only judgment calls -> stamp unset, relaunch' () {
+    const o = verifierOutcome({ lgtm: false, findings: [finding({ verdict: 'JUDGMENT_CALL', disposition: 'accepted-judgment-call' })] })
+    assert.deepEqual(verifierBoundary(verifierState(), o), { stamp: null, next: 'relaunch-verifier' })
+  },
+  'authoritative deferred follow-up with no fix -> may stamp without LGTM' () {
+    const o = verifierOutcome({ lgtm: false, findings: [finding({ disposition: 'deferred-follow-up', actionableFollowUp: true })], authoritativeDeferredFollowUp: true })
+    assert.deepEqual(verifierBoundary(verifierState(), o), { stamp: FP, next: 'post-review' })
+  },
+  'deferred follow-up plus an applied fix -> stamp unset, fingerprint advance owned upstream, sweep resumes' () {
+    const o = verifierOutcome({
+      lgtm: false,
+      findings: [finding({ disposition: 'deferred-follow-up', actionableFollowUp: true }), finding()],
+      appliedFix: true,
+      authoritativeDeferredFollowUp: true,
+    })
+    assert.deepEqual(verifierBoundary(verifierState(), o), { stamp: null, next: 'sweep' })
+  },
+  'applied fix with no deferred follow-up -> stamp unset, sweep resumes' () {
+    const o = verifierOutcome({ lgtm: false, findings: [finding()], appliedFix: true })
+    assert.deepEqual(verifierBoundary(verifierState(), o), { stamp: null, next: 'sweep' })
+  },
+  'verifierBoundary domain and derived-flag contradictions are refused' () {
+    assertRefusal(() => verifierBoundary(verifierState({ status: 'post-review' }), verifierOutcome()), 'off-domain', 'verifier-status')
+    assertRefusal(() => verifierBoundary(verifierState({ roundStatus: 'idle' }), verifierOutcome()), 'off-domain', 'verifier-roundstatus')
+    const contradicted = verifierOutcome({ lgtm: false, findings: [finding()], appliedFix: false })
+    assertRefusal(() => verifierBoundary(verifierState(), contradicted), 'impermissible-outcome', 'derived-flag-mismatch')
+  },
+  'contradictory-output class is refused at verifierBoundary too' () {
+    assertRefusal(() => verifierBoundary(verifierState(), verifierOutcome({ lgtm: true, findings: [finding()], appliedFix: true })), 'impermissible-outcome', 'verifier-lgtm-with-findings')
+  },
+  'actionableFollowUp inconsistency is refused at verifierBoundary too' () {
+    const o = verifierOutcome({ lgtm: false, findings: [finding({ verdict: 'REFUTED', disposition: 'refuted', actionableFollowUp: true })], authoritativeDeferredFollowUp: true })
+    assertRefusal(() => verifierBoundary(verifierState(), o), 'impermissible-outcome', 'verifier-followup-on-refuted')
   },
 }
 
