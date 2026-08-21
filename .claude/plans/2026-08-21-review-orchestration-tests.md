@@ -625,6 +625,8 @@ function preflightLaunch (state, launch, gateCurrent) {
 
 Note on the round-cap boundary value: `round` holds the current round number; a `Start round` computing round `round + 1 > 30` fails. `validateState` accepts `round` up to 30 (a state at the cap is valid input).
 
+Note on the pending-user-request exemption: the `launch.kind !== 'repair'` carve-out knowingly diverges from the literal all-dispatch reading of SKILL.md's `Also block those dispatches...` sentence. The governing spec records this as a deliberate kind-scoped reconciliation and defers the engine-prose true-up to a queued follow-up outside this change set; do not "fix" the module to match that sentence, and do not edit it here.
+
 - [ ] **Step 4: Run to verify pass**
 
 Run: `node C:/Git/nightshift/internal/revise/orchestration.test.js`
@@ -1558,7 +1560,7 @@ MSYS_NO_PATHCONV=1 git -C C:/Git/nightshift show origin/main:.claude-plugin/plug
 node -e "console.log(require('C:/Git/nightshift/.claude-plugin/plugin.json').version)"
 ```
 
-(The `MSYS_NO_PATHCONV=1` prefix is load-bearing: without it, Git Bash's MSYS runtime rewrites the `origin/main:.claude-plugin/plugin.json` rev-spec into a Windows path list and git aborts.) If the first command errors or prints nothing, stop and surface the failed read to the user; never treat a failed read as bump-already-exists. Otherwise compare the two printed versions. If the working-tree version is greater (numeric per-component semver comparison), the unpushed range already carries its bump: make none. If they are equal, bump the patch component once and update the `plugin release version is X` assertion in `skills/spec-agreement/spec-agreement.test.js` to match in the same commit. If the working-tree version is smaller, stop and surface the anomaly to the user (the local `origin/main` ref is ahead of the tree; the range read is unreliable). This check reads the local `origin/main` ref without fetching (git networking stays user-directed); a stale ref makes the comparison conservative, never silently bump-skipping, because equality still forces a bump.
+(The `MSYS_NO_PATHCONV=1` prefix is load-bearing: without it, Git Bash's MSYS runtime rewrites the `origin/main:.claude-plugin/plugin.json` rev-spec into a Windows path list and git aborts.) If the first command errors or prints nothing, stop and surface the failed read to the user; never treat a failed read as bump-already-exists. Otherwise compare the two printed versions. If the working-tree version is greater (numeric per-component semver comparison), the unpushed range already carries its bump: make none. If they are equal, bump the patch component once and update both version-literal sites in the release test block of `skills/spec-agreement/spec-agreement.test.js` to match in the same commit: the test name (`test('plugin release version is X', ...)`) and the asserted literal (`assert.equal(manifest.version, 'X')`); editing only one leaves either a red suite or a permanently stale test name. If the working-tree version is smaller, stop and surface the anomaly to the user (the local `origin/main` ref is ahead of the tree; the range read is unreliable). This check reads the local `origin/main` ref without fetching (git networking stays user-directed); a stale ref makes the comparison conservative, never silently bump-skipping, because equality still forces a bump.
 
 - [ ] **Step 7: Run the affected suites**
 
