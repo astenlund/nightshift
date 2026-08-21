@@ -1466,7 +1466,7 @@ git -C C:/Git/nightshift commit -m "test(revise): pin six lifecycle sentences wi
 
 - [ ] **Step 1: Add the failure-record persistence sentence**
 
-In `internal/revise/SKILL.md`, locate the paragraph beginning `` `Start round` preflights the round cap `` (the cap-preflight paragraph, line 43 area). Append this sentence to the end of that paragraph, after `it never produces completion.`:
+In `internal/revise/SKILL.md`, locate the paragraph beginning `` `Start round` preflights the round cap `` (the cap-preflight paragraph, line 43 area). Append this sentence to the end of that paragraph, after `it never produces completion.` (skip if the sentence is already present from a resumed run):
 
 ```text
 Whenever a failed transition or a not-ok cap preflight lands the run in `Status: failed`, write the module failure record's compact canonical JSON as the `Failure JSON` field's string content, so a later disposition parses the record back rather than inferring the class from state values.
@@ -1474,7 +1474,7 @@ Whenever a failed transition or a not-ok cap preflight lands the run in `Status:
 
 - [ ] **Step 2: Add the deferred scope-map refresh sentence**
 
-In `internal/revise/SKILL.md`, locate the paragraph beginning `For idle-state drift, no round conclusion exists to discard.` (the drift section). Append this sentence to the end of that paragraph:
+In `internal/revise/SKILL.md`, locate the paragraph beginning `For idle-state drift, no round conclusion exists to discard.` (the drift section). Append this sentence to the end of that paragraph (skip if the sentence is already present from a resumed run):
 
 ```text
 The persisted scope map itself is rewritten only in the reconciling boundary's rewrite, never at detection, so a resume between detection and the reconciling boundary re-derives the same map change by comparing the persisted map against the freshly resolved current one.
@@ -1523,7 +1523,9 @@ to:
 
 - [ ] **Step 2: Update AGENTS.md (bullet plus count sentence)**
 
-In `AGENTS.md` under `## Development commands`, after the line `- Run the revise rigor derivation suite: `node internal/revise/rigor.test.js`.` insert:
+All Task 9 and Task 10 inserts are guarded for resumed runs: before each insert or append, check whether the exact text is already present, skip the edit if it appears once, and de-duplicate first if it appears more than once (Task 10 commits only at its final step, so an interrupted run resumes over uncommitted edits).
+
+In `AGENTS.md` under `## Development commands`, after the line `- Run the revise rigor derivation suite: `node internal/revise/rigor.test.js`.` insert (skip if already present once):
 
 ```markdown
 - Run the revise orchestration suite: `node internal/revise/orchestration.test.js`.
@@ -1541,7 +1543,7 @@ In `README.md`, in the sentence listing the suites (`Run the agreement controlle
 
 - [ ] **Step 4: Add the CI step**
 
-In `.github/workflows/ci.yml`, after the line `      - run: node internal/revise/rigor.test.js` insert:
+In `.github/workflows/ci.yml`, after the line `      - run: node internal/revise/rigor.test.js` insert (skip if already present once; de-duplicate if present twice):
 
 ```yaml
       - run: node internal/revise/orchestration.test.js
@@ -1549,7 +1551,7 @@ In `.github/workflows/ci.yml`, after the line `      - run: node internal/revise
 
 - [ ] **Step 5: Update the literal count pin**
 
-In `skills/spec-agreement/spec-agreement.test.js`, the test `AGENTS describes the literal six-suite CI contract` asserts `countExact(agents, 'CI runs all six suites on Node 22.')`. First re-derive the count per the spec's landing-time rule: run `grep -c "      - run:" C:/Git/nightshift/.github/workflows/ci.yml` NOW, after Step 4 added this plan's own step, and use that number as-is (it already includes the new suite; do not add one). With no competing suite landed first it reads 7 and the word is `seven`; if it reads 8 or more, another suite landed first, and the count word derived from the recount replaces `seven` in this step AND retroactively in the Step 2 AGENTS.md sentence and anywhere Step 3 worded a count; if it reads 6 or fewer, the Step 4 insertion did not land: stop, re-run Step 4, and recount before proceeding (never write a count word from a reading below 7). Then update the test name to `AGENTS describes the literal <count>-suite CI contract`, the asserted string to `'CI runs all <count> suites on Node 22.'` (spelled-out word, matching the AGENTS.md sentence exactly), and the assertion message to `'AGENTS must describe the <count>-suite CI contract'`.
+In `skills/spec-agreement/spec-agreement.test.js`, the test `AGENTS describes the literal six-suite CI contract` asserts `countExact(agents, 'CI runs all six suites on Node 22.')`. First assert this task's own inserts are single: `grep -c "node internal/revise/orchestration.test.js" C:/Git/nightshift/.github/workflows/ci.yml` must read exactly 1, and the AGENTS.md orchestration bullet must appear exactly once; a reading of 2 or more means a resumed run duplicated an insert, so de-duplicate before recounting (never attribute a duplicate to a competing suite). Then re-derive the count per the spec's landing-time rule: run `grep -c "      - run:" C:/Git/nightshift/.github/workflows/ci.yml` NOW, after Step 4 added this plan's own step, and use that number as-is (it already includes the new suite; do not add one). With no competing suite landed first it reads 7 and the word is `seven`; if it reads 8 or more, another suite landed first, and the count word derived from the recount replaces `seven` in this step AND retroactively in the Step 2 AGENTS.md sentence and anywhere Step 3 worded a count; if it reads 6 or fewer, the Step 4 insertion did not land: stop, re-run Step 4, and recount before proceeding (never write a count word from a reading below 7). Then update the test name to `AGENTS describes the literal <count>-suite CI contract`, the asserted string to `'CI runs all <count> suites on Node 22.'` (spelled-out word, matching the AGENTS.md sentence exactly), and the assertion message to `'AGENTS must describe the <count>-suite CI contract'`. If the pin is not found in `skills/spec-agreement/spec-agreement.test.js`, the queued generic-assertions relocation quick win landed first: locate the pin's then-current home by grepping the repository for `CI runs all` and apply the same edits there, per the spec's whichever-lands-first rebase rule; the Step 6 version literals follow the same rule.
 
 - [ ] **Step 6: Version-increase check**
 
