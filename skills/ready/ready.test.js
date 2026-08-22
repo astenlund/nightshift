@@ -24,6 +24,7 @@ const {
   EXCLUDED_SECTIONS,
   collectEntryEdges,
   scanBreakoutLines,
+  scanBreakoutTargets,
 } = require('./ready.js');
 
 let passed = 0;
@@ -1209,6 +1210,36 @@ test('scanBreakoutLines finds Requires and External labels at any indentation, o
 
 test('scanBreakoutLines returns an empty array for a clean breakout', () => {
   assert.deepStrictEqual(scanBreakoutLines('# Title\n\n## Requirements\n\n- Needs a parser.\n'), []);
+});
+
+test('scanBreakoutTargets classifies a missing file, a directory, and a dependency line without a pre-read existence probe', () => {
+  const tmpRoot = path.join(__dirname, '..', '..', '.tmp', `ready-scan-${process.pid}`);
+  const claudeDir = path.join(tmpRoot, '.claude');
+  fs.mkdirSync(path.join(claudeDir, 'features', 'as-dir.md'), { recursive: true });
+  fs.writeFileSync(path.join(claudeDir, 'features', 'dirty.md'), '# Dirty\n\n**Requires:** none.\n');
+  fs.writeFileSync(path.join(claudeDir, 'features', 'clean.md'), '# Clean\n\nProse only.\n');
+  try {
+    const targets = [
+      { index: 'FEATURES.md', title: 'Missing', target: 'features/missing.md', draft: false },
+      { index: 'FEATURES.md', title: 'Missing draft', target: 'features/missing-draft.md', draft: true },
+      { index: 'FEATURES.md', title: 'As dir', target: 'features/as-dir.md', draft: false },
+      { index: 'BUGS.md', title: 'Dirty', target: 'features/dirty.md#anchor', draft: false },
+      { index: 'FEATURES.md', title: 'Clean', target: 'features/clean.md', draft: false },
+    ];
+    const scanned = scanBreakoutTargets(targets, claudeDir);
+    assert.deepStrictEqual(scanned.notices, [
+      'FEATURES.md entry "Missing" links to features/missing.md, which does not exist; remove the broken link or create the file (its Requires line still resolves normally)',
+      'FEATURES.md entry "Missing draft" links to features/missing-draft.md, which does not exist; remove the broken link or create the file (exploring draft; Requires lines do not apply)',
+      'FEATURES.md entry "As dir" links to features/as-dir.md, which exists but cannot be read as a file (EISDIR); fix the link',
+    ]);
+    assert.deepStrictEqual(scanned.structuralErrors, [{
+      index: 'BUGS.md',
+      title: 'Dirty',
+      problem: 'breakout file features/dirty.md#anchor carries a **Requires:** line (line 3); delete the breakout line, the index entry is the sole dependency authority (hygiene error: the entry\'s classification stands)',
+    }]);
+  } finally {
+    fs.rmSync(tmpRoot, { recursive: true, force: true });
+  }
 });
 
 test('breakoutTargets include entries whose classification terminated in a structural error', () => {

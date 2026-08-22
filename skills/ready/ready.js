@@ -118,7 +118,9 @@ function splitTopLevelCommas(s) {
   return items.map((i) => i.trim()).filter((i) => i.length > 0);
 }
 
-function parseRequiresItem(raw) {
+// One item of a Requires or External line: a link, the word none, or bare
+// text. Which kinds a label accepts is the caller's rule, not the parser's.
+function parseDependencyItem(raw) {
   const linkMatch = raw.match(/^\[([^\]]*)\]\(([^)]*)\)\.?$/);
   if (linkMatch) {
     return { kind: 'link', display: linkMatch[1].trim(), target: linkMatch[2].trim() };
@@ -126,7 +128,7 @@ function parseRequiresItem(raw) {
   if (/^none\.?$/i.test(raw)) {
     return { kind: 'none' };
   }
-  return { kind: 'external', text: raw.replace(/\.$/, '') };
+  return { kind: 'text', text: raw.replace(/\.$/, '') };
 }
 
 // Assemble a wrapped label line starting at records[start]. Joins
@@ -677,9 +679,9 @@ function classifyUnit(unit, registry, out) {
       structural.push(EMPTY_REQUIRES_PROBLEM);
     }
     for (const raw of splitTopLevelCommas(requiresContent)) {
-      const item = parseRequiresItem(raw);
+      const item = parseDependencyItem(raw);
       if (item.kind === 'none') continue;
-      if (item.kind === 'external') {
+      if (item.kind === 'text') {
         structural.push(bareTextProblem(item.text));
         continue;
       }
@@ -694,7 +696,7 @@ function classifyUnit(unit, registry, out) {
       structural.push(EMPTY_EXTERNAL_PROBLEM);
     }
     for (const raw of splitTopLevelCommas(externalContent)) {
-      const item = parseRequiresItem(raw);
+      const item = parseDependencyItem(raw);
       if (item.kind === 'none') {
         structural.push(NONE_IN_EXTERNAL_PROBLEM);
         continue;
@@ -974,6 +976,54 @@ function scanBreakoutLines(contents) {
   return hits;
 }
 
+// Filesystem checks for breakout-file links (relative to the index dir):
+// a missing file is a notice, an unreadable target is a notice, and a
+// dependency line inside the file is a hygiene structural error that
+// leaves the entry's classification standing. The read is attempted
+// directly and its error code classified, so there is no check-then-read
+// window between an existence probe and the read.
+function scanBreakoutTargets(breakoutTargets, claudeDir) {
+  const notices = [];
+  const structuralErrors = [];
+  for (const rec of breakoutTargets) {
+    const target = rec.target.split('#')[0];
+    const resolved = path.resolve(claudeDir, target);
+    let contents;
+    try {
+      contents = fs.readFileSync(resolved, 'utf8');
+    } catch (error) {
+      notices.push(breakoutReadNotice(rec, error?.code ?? 'unknown'));
+      continue;
+    }
+    for (const hit of scanBreakoutLines(contents)) {
+      structuralErrors.push({
+        index: rec.index,
+        title: rec.title,
+        problem: `breakout file ${rec.target} carries a **${hit.label}:** line (line ${hit.line}); delete the breakout line, the index entry is the sole dependency authority (hygiene error: the entry's classification stands)`,
+      });
+    }
+  }
+
+  return { notices, structuralErrors };
+}
+
+// ENOENT is a broken link; a directory or an anchor-only link (EISDIR) is a
+// link defect; any other code (EBUSY, EACCES) is a transient read failure,
+// and the notice names the code so the two read apart.
+function breakoutReadNotice(rec, code) {
+  const link = `${rec.index} entry "${rec.title}" links to ${rec.target}`;
+  if (code === 'ENOENT') {
+    const tail = rec.draft
+      ? '(exploring draft; Requires lines do not apply)'
+      : '(its Requires line still resolves normally)';
+
+    return `${link}, which does not exist; remove the broken link or create the file ${tail}`;
+  }
+  const remedy = code === 'EISDIR' ? 'fix the link' : 'retry; the file was not scanned this run';
+
+  return `${link}, which exists but cannot be read as a file (${code}); ${remedy}`;
+}
+
 function runCli(argRoot) {
   const root = path.resolve(argRoot || process.cwd());
   const claudeDir = path.basename(root) === '.claude' ? root : path.join(root, '.claude');
@@ -991,43 +1041,9 @@ function runCli(argRoot) {
   }
   const result = analyze(files);
 
-  // Filesystem checks for breakout-file links (relative to the index dir):
-  // a missing file is a notice, an unreadable target is a notice, and a
-  // dependency line inside the file is a hygiene structural error that
-  // leaves the entry's classification standing.
-  for (const rec of result.breakoutTargets) {
-    const target = rec.target.split('#')[0];
-    const resolved = path.resolve(claudeDir, target);
-    if (!fs.existsSync(resolved)) {
-      const tail = rec.draft
-        ? '(exploring draft; Requires lines do not apply)'
-        : '(its Requires line still resolves normally)';
-      result.notices.push(
-        `${rec.index} entry "${rec.title}" links to ${rec.target}, which does not exist; remove the broken link or create the file ${tail}`,
-      );
-      continue;
-    }
-    let contents;
-    try {
-      contents = fs.readFileSync(resolved, 'utf8');
-    } catch (error) {
-      // A directory or an anchor-only link (EISDIR) is a link defect; any other code (EBUSY, EACCES, a
-      // TOCTOU ENOENT) is a transient read failure, and the notice names the code so the two read apart.
-      const code = error?.code ?? 'unknown';
-      const remedy = code === 'EISDIR' ? 'fix the link' : 'retry; the file was not scanned this run';
-      result.notices.push(
-        `${rec.index} entry "${rec.title}" links to ${rec.target}, which exists but cannot be read as a file (${code}); ${remedy}`,
-      );
-      continue;
-    }
-    for (const hit of scanBreakoutLines(contents)) {
-      result.structuralErrors.push({
-        index: rec.index,
-        title: rec.title,
-        problem: `breakout file ${rec.target} carries a **${hit.label}:** line (line ${hit.line}); delete the breakout line, the index entry is the sole dependency authority (hygiene error: the entry's classification stands)`,
-      });
-    }
-  }
+  const scanned = scanBreakoutTargets(result.breakoutTargets, claudeDir);
+  result.notices.push(...scanned.notices);
+  result.structuralErrors.push(...scanned.structuralErrors);
   delete result.breakoutTargets;
 
   process.stdout.write(JSON.stringify(result, null, 2) + '\n');
@@ -1110,9 +1126,9 @@ function collectEntryEdges(records, registry) {
     let structural = false;
     if (content === '') continue;
     for (const raw of splitTopLevelCommas(content)) {
-      const item = parseRequiresItem(raw);
+      const item = parseDependencyItem(raw);
       if (item.kind === 'none') continue;
-      if (item.kind === 'external') {
+      if (item.kind === 'text') {
         structural = true;
         break;
       }
@@ -1159,7 +1175,8 @@ module.exports = {
   normalizeSliceName,
   normalizeTitle,
   splitTopLevelCommas,
-  parseRequiresItem,
+  parseDependencyItem,
+  scanBreakoutTargets,
   parseSlices,
   findSlicesByNormalizedName,
   extractEntries,
