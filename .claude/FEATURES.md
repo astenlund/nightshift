@@ -208,10 +208,6 @@ gates, move it out of `## Exploring` into the appropriate themed `##`
 section, add the `**Requires:**` line, and drop the `status: exploring`
 frontmatter on the breakout file.
 
-### [Rigor-steered lifecycle](features/rigor-steered-lifecycle.md)
-
-Draft exploring how the spec's rigor tier becomes an executable budget every lifecycle step reads: a five-tier scale (minimal, low, medium, high, max) where max is today's full machinery and each lower tier is defined by what it subtracts (count gates and verbatim blocks from the plan, wording dimensions from the spec loop, the plan loop, per-task reviews, the code loop), a severity floor so only behavior-changing findings reopen certified cells, and derivation that starts at minimal and climbs one step per uplift, with an existing safety net and change size as new inputs. Prompted by the 2026-08-22 breakout-dependency-drift handover, a 12-hour run for a 150-line parser fix. Sits above Light revise mode, Wave round economy, and Authoring guidance overlay as their selector.
-
 ### [Light revise mode](features/light-revise-mode.md)
 
 Draft exploring a lightened variant of the revise review workflows: one fresh reviewer per iteration instead of the full per-dimension swarm, and a curated dimension set that skips the least-relevant dimensions. Prompted by the single-reviewer revise-spec run over `.claude/features/dependency-cycle-detection.md` (2026-08-11).
@@ -249,6 +245,18 @@ Draft exploring how to bound or scope the revise engine's whole-run acknowledgem
 Draft exploring an explicit compaction boundary after plan hardening and before implementation, followed by a mandatory full re-read of the governing spec and hardened plan before implementation dispatch.
 
 ## Review hardening
+
+### [Rigor-steered lifecycle](features/rigor-steered-lifecycle.md)
+
+The spec's rigor tier becomes an executable budget every lifecycle step reads: a five-tier scale (minimal, low, medium, high, max) where max is today's full machinery and each lower tier is defined by what it subtracts (count gates and verbatim blocks from the plan, wording dimensions from the spec loop, the plan loop, per-task reviews, the code loop), a severity floor so only behavior-changing findings reopen certified cells, and derivation that starts at minimal and climbs one step per uplift, with an existing safety net and change size as new inputs. Prompted by the 2026-08-22 breakout-dependency-drift handover, a 12-hour run for a 150-line parser fix. Sits above Light revise mode, Wave round economy, and Authoring guidance overlay as their selector.
+
+**Requires:** none.
+
+### [Audience-category recalibration](features/audience-category-recalibration.md)
+
+Sharpen the audience component-to-category judgment so a repository that is merely public on GitHub does not read as category `public` and earn the top baseline tier: `public` requires actual external adoption signals (forks, stars, known downstream installs), and an unadopted open-source repo maps to `personal use`. Decide whether `AUDIENCE_BASELINE` needs a distinct category or only sharper judgment prose, and sweep the recorded judgments in existing Operating context sections. Uplift predicates stay as-is. Promoted from a quick win on 2026-08-22 because the baseline table it edits is rebased by Rigor-steered lifecycle.
+
+**Requires:** [Rigor-steered lifecycle](features/rigor-steered-lifecycle.md).
 
 ### [Second-opinion gates](features/second-opinion-gates.md)
 

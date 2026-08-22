@@ -1,14 +1,13 @@
 ---
 name: rigor-steered-lifecycle
-description: Explore making the spec's rigor tier an executable budget that steers plan shape, review-loop churn, and spec hardening depth, on a five-tier scale (minimal, low, medium, high, max)
+description: Make the spec's rigor tier an executable budget that steers plan shape, review-loop churn, and spec hardening depth, on a five-tier scale (minimal, low, medium, high, max)
 metadata:
   type: feature
-status: exploring
 ---
 
 # Rigor-steered lifecycle
 
-Draft exploring how the rigor tier declared in a spec's `Operating context` section steers the whole lifecycle instead of only calibrating reviewers. Prompted by the 2026-08-22 breakout-dependency-drift handover: a medium-tier bug fix whose landed change was about 150 lines of parser plus 19 one-line deletions and a prose sweep, delivered through a 12-hour run (25 spec rounds with 57 findings, 26 plan rounds with 60 findings, a 1370-line plan, 8 implementation tasks with per-task reviews, a 6-round code loop). The tier was confirmed at shift start and then consumed by nothing as a budget; superpowers' writing-plans shape and the engine's reopen-everything convergence rule set the effort regardless.
+Feature: the rigor tier declared in a spec's `Operating context` section steers the whole lifecycle instead of only calibrating reviewers. This file is the authoritative design record; the tier table and mechanism below are the firming design, the open questions are what brainstorming still owes. Prompted by the 2026-08-22 breakout-dependency-drift handover: a medium-tier bug fix whose landed change was about 150 lines of parser plus 19 one-line deletions and a prose sweep, delivered through a 12-hour run (25 spec rounds with 57 findings, 26 plan rounds with 60 findings, a 1370-line plan, 8 implementation tasks with per-task reviews, a 6-round code loop). The tier was confirmed at shift start and then consumed by nothing as a budget; superpowers' writing-plans shape and the engine's reopen-everything convergence rule set the effort regardless.
 
 ## Observed
 

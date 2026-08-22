@@ -29,22 +29,6 @@ failure mode to catch is an entry that doesn't parse as a `- ` bullet or
 `###` heading (ready reports it as a prose-only-section notice) while you
 can still fix it in the same session.
 
-## Rigor calibration
-
-- **Recalibrate the audience-category judgment so public visibility alone does not
-  read as `public`.** Today the audience component-to-category judgment (revise-spec
-  grounding step in `internal/revise/spec.md` and `internal/revise/rigor.js`) maps a repo that is public on GitHub to category `public`
-  and thus baseline `high`, even with no adoption signals; nightshift's own specs
-  (the wave-lifecycle Operating context, the ready-exploring-visibility one) recorded
-  exactly that judgment. User ruling 2026-08-15: a public repo with no forks and no
-  or few stars is a solo project that happens to have its source open; it should not
-  earn a `high` baseline from visibility alone. Preferred shape: sharpen the judgment
-  guidance so `public` requires actual external adoption signals (forks, stars, known
-  downstream installs), with an unadopted open-source repo mapping to `personal use`;
-  decide whether `AUDIENCE_BASELINE` needs a distinct category or only sharper
-  judgment prose, and sweep existing recorded judgments in specs' Operating context
-  sections for recalibration. Uplift predicates stay as-is.
-
 ## Handover dispatch hygiene
 
 - **Tell implementation subagents where their scratch files go.** `skills/handover/SKILL.md`
