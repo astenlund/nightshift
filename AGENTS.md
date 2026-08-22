@@ -39,7 +39,7 @@ The `/nightshift:ready` command parses each entry's `**Requires:**` line (in-bac
 - Run the revise orchestration suite: `node internal/revise/orchestration.test.js`.
 - Run the universal-skill topology suite: `node --test tests/universal-skill-topology.test.js`.
 - Run the host-discovery smoke suite: `node tests/host-discovery-smoke.test.js`.
-- Run the release surface suite: `node tests/release-surface.test.js` (release state, CI conformance, and documented command lists; generic, so version bumps and doc edits never touch a feature suite).
+- Run the release surface suite: `node tests/release-surface.test.js` (release state, CI conformance, documented command lists, and the version-increase gate over the unpushed range; generic, so version bumps and doc edits never touch a feature suite). The gate reads committed state only and skips with a diagnostic when no upstream or `origin/main` resolves.
 - CI runs all eight suites on Node 22.
 - Run the ready parser manually: `node skills/ready/ready.js [repo-root-or-.claude-dir]` (emits JSON on stdout).
 - There is no build or lint step.
