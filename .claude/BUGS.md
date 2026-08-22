@@ -55,7 +55,11 @@ otherwise sits in the backlog until the next readiness pass surfaces it.
 
 ## Open
 
-Nothing tracked yet.
+### Plan refreshed stamps are rejected by the provenance grammar
+
+`REFRESHED_PROVENANCE` in `skills/spec-agreement/spec-agreement.js` accepts only `revise-spec refreshed` lines while `GRADUATED_PROVENANCE` accepts `revise-(spec|plan) graduated`, so a plan edited after its graduated stamp (an execution-time ruling narrowing a count gate, observed 2026-08-22) cannot carry a `revise-plan refreshed` stamp even though handover's post-stamp-edits prose says the prefix names the artifact loop. Fix: widen the regex to `revise-(?:spec|plan) refreshed` and add a spec-agreement test that writes and re-reads a plan refreshed stamp.
+
+**Requires:** none.
 
 
 ## History
