@@ -85,6 +85,16 @@ function assertRepositoryCommandList(source, path, heading) {
   }
 }
 
+function git(args) {
+  return execFileSync('git', args, { cwd: repositoryRoot, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
+}
+
+// No fallback: the manifest exists at every revision in range, and a failed
+// `git show` must surface as a red test rather than a default that passes.
+function manifestAt(revision) {
+  return JSON.parse(git(['show', `${revision}:${MANIFEST_PATH}`]))
+}
+
 test('CI runs every suite exactly once and runs no undeclared suite', () => {
   const ci = readRepositoryFile('.github/workflows/ci.yml')
   const runLines = ci.split(/\r?\n/).filter((line) => line.startsWith('      - run: node '))
@@ -137,7 +147,7 @@ test('repository command-list contract rejects commands outside named developmen
 // The manifest/marketplace description pair is asserted here rather than in the
 // topology suite: it is release metadata, not skill topology.
 test('the plugin manifest and its marketplace copy agree on the released surface', () => {
-  const manifest = JSON.parse(readRepositoryFile('.claude-plugin/plugin.json'))
+  const manifest = JSON.parse(readRepositoryFile(MANIFEST_PATH))
   const marketplace = JSON.parse(readRepositoryFile('.claude-plugin/marketplace.json'))
   const marketplaceEntry = marketplace.plugins.find((entry) => entry.name === manifest.name)
 
@@ -189,6 +199,7 @@ test('the version-sequence assessor requires a strict increase with no intermedi
   assert.deepEqual(assessVersionSequence(['2.6.2', '2.7.0', '2.6.5', '2.8.0']), { increased: true, decreasedAt: 2 }, 'an intermediate decrease is reported by index')
   assert.deepEqual(assessVersionSequence(['2.6.9', '2.6.10']), { increased: true, decreasedAt: null }, 'semver compares numerically, not lexically')
   assert.deepEqual(assessVersionSequence(['2.6.2', '2.6.1']), { increased: false, decreasedAt: 1 })
+  assert.throws(() => assessVersionSequence(['2.6.2', 'garbage']), /malformed semver: garbage/)
 })
 
 // The live gate reads committed state through git. These samples pin the range
@@ -242,16 +253,6 @@ test('AGENTS states the shipped-behavior convention the classifier resolves', ()
   assert.equal(countExact(agents, SHIPPED_BEHAVIOR_SENTENCE), 1, `AGENTS must state: ${SHIPPED_BEHAVIOR_SENTENCE}`)
 })
 
-function git(args) {
-  return execFileSync('git', args, { cwd: repositoryRoot, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] })
-}
-
-// No fallback: the manifest exists at every revision in range, and a failed
-// `git show` must surface as a red test rather than a default that passes.
-function manifestAt(revision) {
-  return JSON.parse(git(['show', `${revision}:${MANIFEST_PATH}`]))
-}
-
 // Only committed state is read: the convention scopes itself to unpushed
 // batches, and the suite runs after commits and before the user-directed push.
 test('the unpushed range carries a monotonic version increase when shipped behavior changed', (t) => {
@@ -260,10 +261,11 @@ test('the unpushed range carries a monotonic version increase when shipped behav
     t.diagnostic(notice)
     return
   }
-  const changedPaths = git(['diff', '--name-only', `${base}..HEAD`]).split(/\r?\n/).filter((line) => line !== '')
-  const commits = git(['rev-list', '--reverse', `${base}..HEAD`]).split(/\r?\n/).filter((line) => line !== '')
-  const versions = [base, ...commits].map((revision) => manifestAt(revision).version)
-  const verdict = evaluateReleaseGate({ changedPaths, baseManifest: manifestAt(base), headManifest: manifestAt('HEAD'), versions })
+  const changedPaths = git(['diff', '--no-renames', '--name-only', `${base}..HEAD`]).split(/\r?\n/).filter((line) => line !== '')
+  const commits = git(['rev-list', '--topo-order', '--reverse', `${base}..HEAD`]).split(/\r?\n/).filter((line) => line !== '')
+  const manifests = [base, ...commits].map(manifestAt)
+  const versions = manifests.map((manifest) => manifest.version)
+  const verdict = evaluateReleaseGate({ changedPaths, baseManifest: manifests[0], headManifest: manifests[manifests.length - 1], versions })
 
   assert.ok(verdict.ok, verdict.reason ?? 'release gate failed')
 })

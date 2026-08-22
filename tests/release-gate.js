@@ -1,5 +1,7 @@
 'use strict'
 
+const { isDeepStrictEqual } = require('node:util')
+
 // Pure decisions behind the version-increase gate in release-surface.test.js.
 // Nothing here touches git or the filesystem; the live test injects a runner.
 
@@ -17,22 +19,11 @@ function isShippedResourcePath(path) {
   if (segments[0] !== 'skills' && segments[0] !== 'internal') {
     return false
   }
-  if (path.endsWith('.test.js') || segments.includes('fixtures')) {
+  if (path.endsWith('.test.js') || segments.slice(0, -1).includes('fixtures')) {
     return false
   }
 
   return segments.length > 1
-}
-
-function stableStringify(value) {
-  if (Array.isArray(value)) {
-    return `[${value.map(stableStringify).join(',')}]`
-  }
-  if (value !== null && typeof value === 'object') {
-    return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${stableStringify(value[key])}`).join(',')}}`
-  }
-
-  return JSON.stringify(value)
 }
 
 function manifestWithoutVersion(manifest) {
@@ -45,7 +36,7 @@ function manifestWithoutVersion(manifest) {
 function classifyShippedBehavior(changedPaths, baseManifest, headManifest) {
   const shipped = changedPaths.filter(isShippedResourcePath)
   const manifestChanged = changedPaths.includes(MANIFEST_PATH)
-    && stableStringify(manifestWithoutVersion(baseManifest)) !== stableStringify(manifestWithoutVersion(headManifest))
+    && !isDeepStrictEqual(manifestWithoutVersion(baseManifest), manifestWithoutVersion(headManifest))
   if (manifestChanged) {
     shipped.push(MANIFEST_PATH)
   }
@@ -53,9 +44,17 @@ function classifyShippedBehavior(changedPaths, baseManifest, headManifest) {
   return shipped
 }
 
+function parseSemver(version) {
+  if (!/^\d+\.\d+\.\d+$/.test(version)) {
+    throw new TypeError(`malformed semver: ${version}`)
+  }
+
+  return version.split('.').map(Number)
+}
+
 function compareSemver(left, right) {
-  const a = left.split('.').map(Number)
-  const b = right.split('.').map(Number)
+  const a = parseSemver(left)
+  const b = parseSemver(right)
   for (let index = 0; index < 3; index += 1) {
     if (a[index] !== b[index]) {
       return a[index] < b[index] ? -1 : 1
