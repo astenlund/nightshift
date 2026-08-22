@@ -1375,14 +1375,19 @@ test('breakoutTargets omit the outcome field for a resolved entry', () => {
   assert.ok(!('outcome' in iota), JSON.stringify(iota));
 });
 
-test('a real structural outcome reaches the missing-breakout notice end to end', () => {
+test('real structural and cycle outcomes reach the missing-breakout notice end to end', () => {
   const tmpRoot = path.join(__dirname, '..', '..', '.tmp', `ready-outcome-${process.pid}`);
   const claudeDir = path.join(tmpRoot, '.claude');
   fs.mkdirSync(claudeDir, { recursive: true });
   try {
-    const scanned = scanBreakoutTargets(mixedSliceRs.breakoutTargets, claudeDir);
-    assert.deepStrictEqual(scanned.notices, [
+    const structural = scanBreakoutTargets(mixedSliceRs.breakoutTargets, claudeDir);
+    assert.deepStrictEqual(structural.notices, [
       'FEATURES.md entry "Mu" links to features/mu.md, which does not exist; remove the broken link or create the file (its own classification already reports a structural error)',
+    ]);
+    const cycle = scanBreakoutTargets(extCycleRs.breakoutTargets, claudeDir);
+    assert.deepStrictEqual(cycle.notices, [
+      'FEATURES.md entry "Anna" links to features/anna.md, which does not exist; remove the broken link or create the file (it is a dependency-cycle member; see the cycle error)',
+      'FEATURES.md entry "Bob" links to features/bob.md, which does not exist; remove the broken link or create the file (it is a dependency-cycle member; see the cycle error)',
     ]);
   } finally {
     fs.rmSync(tmpRoot, { recursive: true, force: true });
