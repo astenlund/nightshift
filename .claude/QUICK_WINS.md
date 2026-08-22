@@ -188,6 +188,13 @@ Refactors the agreement-gate revise run reviewed and agreed are valid but deferr
   the notice builder and word the tail from it, with one fixture covering the
   structural-error case. Surfaced by the breakout-dependency-drift spec review on
   2026-08-22; pre-existing imprecision outside that fix's scope.
+- **Validate the External line of a dependency-cycle member.** `classifyUnit` in
+  `skills/ready/ready.js` returns on `unit.excluded` before External validation, so a
+  malformed `**External:**` line on a cycle member is reported only after the cycle is
+  fixed (one extra round trip, self-healing). Preferred shape: run the External checks
+  before the exclusion return, with a fixture pairing a two-entry cycle and a link in
+  External on one member. Surfaced by the breakout-dependency-drift final review on
+  2026-08-22.
 
 ## (add sections as work emerges)
 
