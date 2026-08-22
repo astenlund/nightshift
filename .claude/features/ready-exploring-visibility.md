@@ -94,7 +94,10 @@ projections of it, so the JSON schema never forks per view.
   trailing "(its Requires line still resolves normally)" clause is
   false for drafts (no Requires parsing or resolution applies to
   them), so the exploring variant replaces that parenthetical with
-  "(exploring draft; Requires lines do not apply)".
+  "(exploring draft; Requires lines do not apply)". Since the ready
+  parser precision quick wins shipped (2026-08-22), the non-draft
+  clause is one of three outcome-keyed tails; the draft tail is
+  unchanged.
 - `/nightshift:ready` renders titles only, under an unmistakable
   heading (for example "Exploring (drafts, not ready)"), placed after
   the existing sections and omitted when empty like them, with a
