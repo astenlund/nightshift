@@ -50,13 +50,13 @@ Recommended
      Self-contained, and it fixes an instruction that cannot run.
 ```
 
-The classification is not the model's opinion. A bundled parser reads each entry's declared `**Requires:**` line and resolves the graph deterministically, with fixture tests covering the grammar. If the report looks wrong, that is a parser bug with a reproducible test case, not a prompt to reword.
+The classification is not the model's opinion. A bundled parser reads each entry's declared `**Requires:**` and `**External:**` lines and resolves the graph deterministically, with fixture tests covering the grammar. If the report looks wrong, that is a parser bug with a reproducible test case, not a prompt to reword.
 
 ## The workflow
 
 1. **Scaffold** once with `/nightshift:init-backlog`. Creates a four-index backlog under `.claude/` (`QUICK_WINS.md`, `FEATURES.md`, `BUGS.md`, `PATTERNS.md`), history archives, and a `plans/` directory, plus a section in the project's `CLAUDE.md` describing the layout. Asks once whether to track or ignore the backlog in git. Idempotent, so re-run it to add whatever is missing.
 
-2. **Capture** ideas, bugs, refactors, and cross-cutting patterns as they come up. Each feature and bug declares its upstream gates on a `**Requires:**` line, which is what makes step 3 mechanical. Half-formed ideas land as drafts under `## Exploring` and are never offered as ready work until they graduate.
+2. **Capture** ideas, bugs, refactors, and cross-cutting patterns as they come up. Each feature and bug declares its in-backlog gates on a `**Requires:**` line and any external primitives on an `**External:**` line, which is what makes step 3 mechanical. Half-formed ideas land as drafts under `## Exploring` and are never offered as ready work until they graduate.
 
 3. **Pick work** with `/nightshift:ready`. It reports what is unblocked, what is blocked and on what, any structural errors in the backlog, and a few argued candidates. The report nominates work; it does not authorize it, so picking an entry runs `/nightshift:spec-agreement` first. A backlog entry counts as a spec, and readiness is not agreement.
 
@@ -69,7 +69,7 @@ The classification is not the model's opinion. A bundled parser reads each entry
 | Name | What it's for |
 |---|---|
 | `/nightshift:init-backlog` | Scaffold or update the four-index backlog in a project |
-| `/nightshift:ready` | Report the unblocked work set by resolving `**Requires:**` lines |
+| `/nightshift:ready` | Report the unblocked work set by resolving `**Requires:**` and `**External:**` lines |
 | `/nightshift:exploring` | Show the half-formed ideas that are not ready to be worked yet |
 | `/nightshift:handover` | Take over the remaining lifecycle, through to shipped |
 | `/nightshift:revise-code` | Fresh-agent review of a code change before it ships |

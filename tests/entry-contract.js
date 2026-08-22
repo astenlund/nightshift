@@ -14,7 +14,10 @@ const PUBLIC_SKILLS = Object.freeze([
 ])
 
 const PROCEDURE_REPLACEMENTS = Object.freeze({
-  'revise-docs': Object.freeze([]),
+  'revise-docs': Object.freeze([
+    Object.freeze(['(dropping its `Requires:` line in the move)', '(dropping its `Requires:` and `External:` lines in the move)']),
+    Object.freeze(['advance the parent\'s top-level `**Requires:**` line to the next-to-ship slice\'s gates', 'advance the parent\'s top-level `**Requires:**` and `**External:**` lines to the next-to-ship slice\'s gates']),
+  ]),
   'revise-lore': Object.freeze([
     Object.freeze(['a sibling command made', 'a sibling skill made']),
     Object.freeze(['command checklist item', 'skill checklist item']),

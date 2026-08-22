@@ -26,5 +26,5 @@ Report what is simmering in `FEATURES.md`'s `## Exploring` section: the pre-feat
 ## Notes
 
 - This is a read-only skill. Do not modify any files.
-- Render index excerpts only; never crawl the breakout files or their `status: exploring` frontmatter. The index excerpt is the authoritative summary surface, exactly as in the ready skill.
+- Render index excerpts only; never derive content from the breakout files or their `status: exploring` frontmatter. The index excerpt is the authoritative summary surface, exactly as in the ready skill (whose script reads a linked breakout only to report a stray dependency line).
 - Deliberately omitted: `ready`, `blocked`, and `external`. Picking buildable work is `/nightshift:ready`'s mandate.

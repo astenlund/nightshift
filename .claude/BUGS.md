@@ -23,16 +23,21 @@ parsing):
   current blocker; under the walk-and-remove convention below, a
   satisfied dependency is edited out of the line at the moment it
   ships or is fixed.
-- Bare text. An external primitive (driver release, vendor support,
-  user decision) the user confirms case by case.
-- The literal word `none.` if the fix is unblocked.
+- The literal word `none.` if the fix is unblocked. An empty label is
+  a structural error; `none.` is the only empty form.
+
+Bare text in `**Requires:**` is a structural error. An external
+primitive (driver release, vendor support, user decision) goes on a
+separate, optional `**External:**` line directly below it, same
+grammar; `none.`, an empty label, or a link in it is a structural
+error. Every structural error names its remedy.
 
 A missing `Requires:` line is a structural error. `/nightshift:ready` parses these
-lines. History entries don't carry `Requires:` lines.
+lines. History entries carry neither line.
 
 **When a bug is fixed**, move its entry to
 [`BUGS_HISTORY.md`](BUGS_HISTORY.md) with a brief note on the fix and
-the commit it landed in; drop its `Requires:` line in the move. If the
+the commit it landed in; drop its `Requires:` and `External:` lines in the move. If the
 bug had its own file, keep the file in place as a historical record of
 the diagnosis.
 

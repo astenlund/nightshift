@@ -28,7 +28,7 @@ Four locations sit alongside the indexes and are consulted only on demand when r
 
 Brainstorming output lives in feature files (or in patterns when cross-cutting / in bugs when diagnostic) rather than as separate dated specs. Pre-feature exploratory brainstorms land as draft features with `status: exploring` frontmatter and an entry in `FEATURES.md`'s `## Exploring` section; `/nightshift:ready` lists them titles-only as drafts, never in the ready set, and `/nightshift:exploring` shows the full draft list. They graduate to a themed `##` section with a `**Requires:**` line once the design firms up.
 
-The `/nightshift:ready` command parses each entry's `**Requires:**` line in `FEATURES.md` and `BUGS.md` and reports the unblocked work set. Run it when picking what to work on next.
+The `/nightshift:ready` command parses each entry's `**Requires:**` line (in-backlog links only) and optional `**External:**` line (external primitives only) in `FEATURES.md` and `BUGS.md` and reports the unblocked work set. Breakout files carry neither line; the index is the sole dependency authority and the parser reports a breakout that carries one. Run it when picking what to work on next.
 
 ## Development commands
 
