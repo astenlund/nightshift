@@ -210,7 +210,7 @@ frontmatter on the breakout file.
 
 ### [Rigor-steered lifecycle](features/rigor-steered-lifecycle.md)
 
-Draft exploring how the spec's rigor tier becomes an executable budget every lifecycle step reads: a five-tier scale (minimal, low, medium, high, max) mapping to plan shape (no verbatim blocks or count gates below high), a severity floor so only behavior-changing findings reopen certified cells, per-tier dimension sets and round caps, and derivation inputs for an existing safety net and change size. Prompted by the 2026-08-22 breakout-dependency-drift handover, a 12-hour run for a 150-line parser fix. Sits above Light revise mode, Wave round economy, and Authoring guidance overlay as their selector.
+Draft exploring how the spec's rigor tier becomes an executable budget every lifecycle step reads: a five-tier scale (minimal, low, medium, high, max) where max is today's full machinery and each lower tier is defined by what it subtracts (count gates and verbatim blocks from the plan, wording dimensions from the spec loop, the plan loop, per-task reviews, the code loop), a severity floor so only behavior-changing findings reopen certified cells, and derivation that starts at minimal and climbs one step per uplift, with an existing safety net and change size as new inputs. Prompted by the 2026-08-22 breakout-dependency-drift handover, a 12-hour run for a 150-line parser fix. Sits above Light revise mode, Wave round economy, and Authoring guidance overlay as their selector.
 
 ### [Light revise mode](features/light-revise-mode.md)
 

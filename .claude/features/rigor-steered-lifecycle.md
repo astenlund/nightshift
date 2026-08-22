@@ -18,27 +18,27 @@ Draft exploring how the rigor tier declared in a spec's `Operating context` sect
 - **Six review surfaces, no stopping rule between them.** Spec loop, plan loop, per-task review, final branch review, code loop, lore fresh-eyes. The layers that found real defects (the plan loop's fingerprint-invalidation chain, the final branch review's two Important items) would have found them with far less preceding work.
 - **Tier derivation ignores the safety net and the size.** A fixture suite covering the changed code is what made this fix low-risk; `code.md` already uses exactly that reasoning to justify its cheaper model pin, but the derivation does not weigh it, and nothing estimates the change's size.
 
-## Five tiers
+## Five tiers, defined by subtraction from max
 
-Extend the scale from `low | medium | high` to `minimal | low | medium | high | max`, keeping `rigor.js` as the single derivation authority and `TIER_CAP` as the ceiling uplifts can reach (proposed: uplifts still cap at `high`; `max` is reachable only by explicit user election in the spec, since it spends without limit). Sketch of what each tier buys, to be firmed up:
+Extend the scale from `low | medium | high` to `minimal | low | medium | high | max`. `max` is today's full machinery, so nothing that exists today is lost; every lower tier is defined by what it subtracts from the tier above it, which keeps the definitions checkable (a tier is a list of removed mechanisms, never a restated process) and gives the derivation room to climb one step at a time. `rigor.js` stays the single derivation authority: the audience baseline starts at `minimal` for personal use and `TIER_CAP` rises to `max`, so each fired uplift buys one step of machinery instead of today's two-step jump from `low` to `high`.
 
-| Tier | Spec hardening | Plan shape | Review loops | Implementation review |
-|---|---|---|---|---|
-| minimal | digest-complete only: goal, decisions, acceptance criteria decidable; no loop | a task list naming files, intent, and the proving command; no plan loop | none; one verifier pass over the final diff | none beyond the suite |
-| low | one round of design-soundness and acceptance-decidability; no wording dimensions | same as minimal, plus red/green test steps named, not transcribed | cap 3 rounds; severity floor: only behavior-changing findings reopen siblings | final branch review only |
-| medium | two-wave cap on the reduced dimension set | superpowers shape without verbatim blocks; suites are the gates, grep gates only where no suite covers the text | cap 6 rounds; floor as low | per-task review on judgment tasks, final branch review |
-| high | today's full loop | today's full superpowers shape | today's rules, round cap as today | today's SDD loop |
-| max | full loop plus a second independent verifier and refute passes on every Important finding | full shape plus dry-run of every embedded script | no round cap; no severity floor | full SDD plus a refute pass over the final review |
+| Tier | Subtracts from the tier above |
+|---|---|
+| max | nothing: today's spec loop, superpowers plan shape, plan loop, full SDD with per-task reviews and the final branch review, code loop, round caps as today |
+| high | the second verifier pass and refute passes on Important findings (neither exists today, so `high` equals `max` until they are added); otherwise identical |
+| medium | verbatim before/after blocks and per-file count gates from the plan (suites are the gates; a grep gate only where no suite covers the text); the wording, balance, and structure dimensions from the spec loop; per-task reviews on transcription tasks (judgment tasks keep theirs); round cap halves |
+| low | the plan loop; per-task reviews entirely (final branch review stays); the severity floor rises so only behavior-changing findings reopen certified cells; spec loop capped at one wave |
+| minimal | the spec loop (the spec must still yield a decision-complete digest); the plan becomes a task list naming files, intent, and the proving command; the code loop, leaving one verifier pass over the final diff plus the suite |
 
-The table is a starting point, not a decision; the firm parts are the five names, the ordinal order, and that each tier is a budget every step reads.
+Floors that no tier subtracts: agreement on a decision-complete digest before work, the full test suite, the final verifier pass, and the morning report. The table is a starting point; the firm parts are the five names, the ordinal order, that `max` is today's behavior, that every tier is stated as a subtraction, and that each tier is a budget every step reads.
 
 ## Mechanism
 
 1. **Plan shape (handover step 2).** Handover hands writing-plans a tier-derived authoring brief (the authoring-guidance-overlay draft is the natural carrier): granularity, whether verbatim edit blocks are allowed, what counts as a verification gate. Minimal through medium forbid per-file count gates where a suite covers the text.
 2. **Severity floor in the engine.** A confirmed finding below the tier's floor is applied, but only the fixing cell re-certifies; siblings keep their certification. Above the floor the current reopen-everything rule stands. The floor gates fix churn, never dimension coverage: every applicable dimension still gets its first pass, so the plan loop's best catch (a deep read of an embedded script against a real library) is not what a lower tier skips. Reuse candidate: the agreement controller's `buildDerivedDiff` already separates representation-only hunks from canonical ones; certification staleness could adopt the same split instead of raw fingerprint inequality.
 3. **Dimension and round profile per tier.** One table in `internal/revise/SKILL.md` mapping tier to round cap, active dimension set (tier-inactive dimensions become N/A with the tier as the recorded reason), and floor. The spec loop reads the tier its own grounding step derived, since derivation runs before the rounds.
-4. **Derivation inputs.** Add two inputs to `rigor.js`: whether an executable safety net covers the change (a fixture suite, a type checker, a build), which pulls the baseline down one tier; and a change-size estimate (files and lines the spec's acceptance criteria imply), which caps plan length and selects the plan shape independently of tier.
-5. **User election.** The tier stays user-confirmed at shift start (the Operating context consult already exists); the user may set it above or below the derived value, and `max` is election-only.
+4. **Derivation inputs.** Rebase `rigor.js` on the five-tier scale: audience baselines start one step lower than today (`personal use` and `trusted circle` at `minimal`, `paying customers` at `low`, `organization` and `public` at `medium`), `TIER_CAP` becomes `max`, and two inputs join the five uplifts: an executable safety net covering the change (a fixture suite, a type checker, a build) subtracts one step, and a change-size estimate (files and lines the spec's acceptance criteria imply) adds one step above a threshold and caps plan length independently of tier. Existing specs that declare `low`, `medium`, or `high` keep their meaning as ordinals on the new scale; the derivation note in each is what changes on the next refresh.
+5. **User election.** The tier stays user-confirmed at shift start (the Operating context consult already exists); the user may set it above or below the derived value.
 
 ## Relation to sibling drafts
 
@@ -53,3 +53,4 @@ The table is a starting point, not a decision; the firm parts are the five names
 - Can a tier be raised mid-run when a finding above the floor reveals the change is larger than estimated, and what does that do to certifications already held?
 - Where does the size estimate come from before a plan exists: the spec's acceptance criteria, or a scout pass over the tree?
 - Whether `minimal` should exist as a spec tier at all, or only as a plan and review tier under a low spec.
+- Whether `high` should subtract something real from `max` today (a candidate: the lore fresh-eyes pass and the code loop's cross-cutting dimensions), or stay equal to it until the refute and second-verifier machinery exists.
