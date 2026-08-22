@@ -1086,6 +1086,7 @@ Sliced with inline annotations.
   **Requires:** [Anchor](features/anchor.md), vendor SDK.
 
 **Requires:** none.
+**External:** vendor toolchain.
 `;
 
 const grammarRs = analyze({ FEATURES: GRAMMAR_FEATURES });
@@ -1152,6 +1153,15 @@ test('a continuation slice with an External line and an unshipped MVP is Blocked
   assert.deepStrictEqual(unit.blockers, ['Sliced: MVP \u2014 base (implicit MVP gate)']);
   assert.deepStrictEqual(unit.externals, ['Node 24 test runner']);
   assert.ok(!findByTitle(grammarRs.external, '[Sliced: Ext only]'), 'must not double-report');
+});
+
+test('the top-level External line governs the first unshipped slice, not later continuations', () => {
+  const mvp = findByTitle(grammarRs.external, '[Sliced: MVP \u2014 base]');
+  assert.ok(mvp, titles(grammarRs.external).join(' | '));
+  assert.deepStrictEqual(mvp.primitives, ['vendor toolchain']);
+  const extOnly = findByTitle(grammarRs.blocked, '[Sliced: Ext only]');
+  assert.ok(extOnly, titles(grammarRs.blocked).join(' | '));
+  assert.deepStrictEqual(extOnly.externals, ['Node 24 test runner']);
 });
 
 // ---------- CLI smoke test ----------
