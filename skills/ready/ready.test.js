@@ -1223,14 +1223,17 @@ test('CLI reads a .claude dir and emits the same JSON shape', () => {
   fs.mkdirSync(claudeDir, { recursive: true });
   try {
     fs.writeFileSync(path.join(claudeDir, 'QUICK_WINS.md'), QUICK_WINS);
-    fs.writeFileSync(path.join(claudeDir, 'FEATURES.md'), FEATURES.replace('### [Draft thing](features/draft.md)', '### [Linked draft](features/draft-linked.md)\n\nSecond draft, whose breakout exists on disk.\n\n### [Draft thing](features/draft.md)'));
+    fs.writeFileSync(path.join(claudeDir, 'FEATURES.md'), FEATURES
+      .replace('### [Draft thing](features/draft.md)', '### [Linked draft](features/draft-linked.md)\n\nSecond draft, whose breakout exists on disk.\n\n### [Draft thing](features/draft.md)')
+      .replace('Core engine for the thing.', 'Core engine for the thing. See [stale plan](plans/stale-plan.md) for historical context (body prose, not a breakout target).'));
     fs.writeFileSync(path.join(claudeDir, 'BUGS.md'), BUGS);
     fs.mkdirSync(path.join(claudeDir, 'features'), { recursive: true });
     fs.writeFileSync(path.join(claudeDir, 'features', 'beta.md'), '# Beta\n\n**Requires:** [Alpha](alpha.md).\n');
     fs.writeFileSync(path.join(claudeDir, 'features', 'draft-linked.md'), '# Draft\n\n  **External:** something.\n');
     fs.writeFileSync(path.join(claudeDir, 'features', 'gamma.md'), '# Gamma\n\nSee `**Requires:**` in the index.\n\n```\n**Requires:** example\n```\n');
     fs.mkdirSync(path.join(claudeDir, 'features', 'sigma.md'));
-    fs.writeFileSync(path.join(claudeDir, 'FEATURES_HISTORY.md'), '# Features history\n\n## Entries\n\n### [Old](features/old.md)\n\n**Requires:** [Alpha](features/alpha.md).\n');
+    const HISTORY_ONLY_TITLE = 'Retired baseline';
+    fs.writeFileSync(path.join(claudeDir, 'FEATURES_HISTORY.md'), `# Features history\n\n## Entries\n\n### [${HISTORY_ONLY_TITLE}](features/retired-baseline.md)\n\n**Requires:** [Alpha](features/alpha.md).\n`);
     fs.mkdirSync(path.join(claudeDir, 'plans'), { recursive: true });
     fs.writeFileSync(path.join(claudeDir, 'plans', 'stale-plan.md'), '# Plan\n\n**Requires:** [Alpha](features/alpha.md).\n');
     const stdout = execFileSync(process.execPath, [path.join(__dirname, 'ready.js'), tmpRoot], { encoding: 'utf8' });
@@ -1266,7 +1269,29 @@ test('CLI reads a .claude dir and emits the same JSON shape', () => {
       `directory target must be a notice: ${JSON.stringify(cli.notices)}`,
     );
     assert.ok(Array.isArray(cli.ready) && cli.ready.length > 0, 'report still emitted');
-    assert.ok(!cli.structuralErrors.some((e) => e.problem.includes('FEATURES_HISTORY.md') || e.problem.includes('plans/')), 'history archives and plans are never scanned');
+    assert.ok(
+      !cli.structuralErrors.some((e) => e.index.includes('HISTORY')),
+      `no structural error is attributed to a history archive index: ${JSON.stringify(cli.structuralErrors)}`,
+    );
+    assert.ok(
+      !cli.notices.some((n) => n.includes('HISTORY')),
+      `no notice references a history archive: ${JSON.stringify(cli.notices)}`,
+    );
+    assert.ok(
+      !cli.structuralErrors.some((e) => e.title === HISTORY_ONLY_TITLE) &&
+        !cli.ready.some((r) => r.title === HISTORY_ONLY_TITLE) &&
+        !cli.blocked.some((b) => b.title === HISTORY_ONLY_TITLE) &&
+        !cli.external.some((x) => x.title === HISTORY_ONLY_TITLE),
+      'the entry that lives only in FEATURES_HISTORY.md must never surface in any classification',
+    );
+    assert.ok(
+      !cli.structuralErrors.some((e) => e.problem.includes('plans/stale-plan.md')),
+      `a body-prose link into plans/ is never treated as a breakout target: ${JSON.stringify(cli.structuralErrors)}`,
+    );
+    assert.ok(
+      !cli.notices.some((n) => n.includes('plans/stale-plan.md')),
+      `a body-prose link into plans/ never produces a breakout notice: ${JSON.stringify(cli.notices)}`,
+    );
   } finally {
     fs.rmSync(tmpRoot, { recursive: true, force: true });
   }
