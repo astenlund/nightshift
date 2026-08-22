@@ -356,10 +356,6 @@ function findRequires(bodyLines) {
   return findLabel(bodyLines, REQUIRES_LABEL);
 }
 
-function findExternal(bodyLines) {
-  return findLabel(bodyLines, EXTERNAL_LABEL);
-}
-
 // Parse the **Slices:** block. Slice-declaring bullets are "- " bullets at
 // indent 0; indented continuation lines (inline **Requires:** and
 // **External:** annotations) attach to the preceding bullet.
@@ -668,6 +664,15 @@ function linkInExternalProblem(display) {
   return `link "${display}" in **External:**; move it to **Requires:**`;
 }
 
+// Items of one dependency line, or none when the line is absent. An empty
+// label is reported through the label's own problem text.
+function dependencyLineItems(content, emptyProblem, structural) {
+  if (content === null || content === undefined) return [];
+  if (content === '') structural.push(emptyProblem);
+
+  return splitTopLevelCommas(content).map(parseDependencyItem);
+}
+
 function classifyUnit(unit, registry, out) {
   const { index, title, excerpt, requiresContent, externalContent, missingRequires, extraBlockers } = unit;
 
@@ -685,39 +690,27 @@ function classifyUnit(unit, registry, out) {
   const externals = [];
   const structural = [];
 
-  if (requiresContent !== null && requiresContent !== undefined) {
-    if (requiresContent === '') {
-      structural.push(EMPTY_REQUIRES_PROBLEM);
+  for (const item of dependencyLineItems(requiresContent, EMPTY_REQUIRES_PROBLEM, structural)) {
+    if (item.kind === 'none') continue;
+    if (item.kind === 'text') {
+      structural.push(bareTextProblem(item.text));
+      continue;
     }
-    for (const raw of splitTopLevelCommas(requiresContent)) {
-      const item = parseDependencyItem(raw);
-      if (item.kind === 'none') continue;
-      if (item.kind === 'text') {
-        structural.push(bareTextProblem(item.text));
-        continue;
-      }
-      const res = resolveLink(item, registry);
-      if (res.kind === 'blocked') blockers.push(res.label);
-      else structural.push(res.problem);
-    }
+    const res = resolveLink(item, registry);
+    if (res.kind === 'blocked') blockers.push(res.label);
+    else structural.push(res.problem);
   }
 
-  if (externalContent !== null && externalContent !== undefined) {
-    if (externalContent === '') {
-      structural.push(EMPTY_EXTERNAL_PROBLEM);
+  for (const item of dependencyLineItems(externalContent, EMPTY_EXTERNAL_PROBLEM, structural)) {
+    if (item.kind === 'none') {
+      structural.push(NONE_IN_EXTERNAL_PROBLEM);
+      continue;
     }
-    for (const raw of splitTopLevelCommas(externalContent)) {
-      const item = parseDependencyItem(raw);
-      if (item.kind === 'none') {
-        structural.push(NONE_IN_EXTERNAL_PROBLEM);
-        continue;
-      }
-      if (item.kind === 'link') {
-        structural.push(linkInExternalProblem(item.display));
-        continue;
-      }
-      externals.push(item.text);
+    if (item.kind === 'link') {
+      structural.push(linkInExternalProblem(item.display));
+      continue;
     }
+    externals.push(item.text);
   }
 
   if (structural.length > 0) {
