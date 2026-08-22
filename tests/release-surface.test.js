@@ -190,6 +190,49 @@ test('the version-sequence assessor requires a strict increase with no intermedi
   assert.deepEqual(assessVersionSequence(['2.6.2', '2.6.1']), { increased: false, decreasedAt: 1 })
 })
 
+// The live gate reads committed state through git. These samples pin the range
+// resolver and the verdict without a repository, including the skip branch,
+// so a skip that always fires is reported rather than swallowed.
+test('the unpushed-range resolver prefers the upstream, falls back to origin/main, and reports a skip', () => {
+  const upstreamRunner = (args) => {
+    if (args.join(' ') === 'merge-base HEAD @{upstream}') { return 'aaaa\n' }
+    throw new Error(`unexpected git ${args.join(' ')}`)
+  }
+  assert.deepEqual(resolveUnpushedRange(upstreamRunner), { base: 'aaaa', notice: null })
+
+  const originOnlyRunner = (args) => {
+    if (args.join(' ') === 'merge-base HEAD @{upstream}') { throw new Error('no upstream') }
+    if (args.join(' ') === 'merge-base HEAD origin/main') { return 'bbbb\n' }
+    throw new Error(`unexpected git ${args.join(' ')}`)
+  }
+  assert.deepEqual(resolveUnpushedRange(originOnlyRunner), { base: 'bbbb', notice: null })
+
+  const detachedRunner = () => { throw new Error('fatal: no upstream and no origin/main') }
+  const skipped = resolveUnpushedRange(detachedRunner)
+  assert.equal(skipped.base, null)
+  assert.match(skipped.notice, /version-increase check skipped/, 'the skip branch must report a notice')
+
+  const base = { name: 'nightshift', description: 'old', version: '2.6.2' }
+  const bumped = { ...base, version: '2.6.3' }
+  assert.deepEqual(
+    evaluateReleaseGate({ changedPaths: ['skills/ready/SKILL.md'], baseManifest: base, headManifest: bumped, versions: ['2.6.2', '2.6.3'] }),
+    { shipped: ['skills/ready/SKILL.md'], ok: true, reason: null },
+  )
+  assert.deepEqual(
+    evaluateReleaseGate({ changedPaths: ['skills/ready/SKILL.md'], baseManifest: base, headManifest: base, versions: ['2.6.2', '2.6.2'] }),
+    { shipped: ['skills/ready/SKILL.md'], ok: false, reason: 'shipped behavior changed (skills/ready/SKILL.md) without a version increase: 2.6.2 at the range base, 2.6.2 at HEAD' },
+  )
+  assert.deepEqual(
+    evaluateReleaseGate({ changedPaths: ['README.md'], baseManifest: base, headManifest: base, versions: ['2.6.2', '2.6.2'] }),
+    { shipped: [], ok: true, reason: null },
+    'a batch with no shipped change needs no bump',
+  )
+  assert.deepEqual(
+    evaluateReleaseGate({ changedPaths: ['skills/ready/SKILL.md'], baseManifest: base, headManifest: { ...base, version: '2.8.0' }, versions: ['2.6.2', '2.7.0', '2.6.5', '2.8.0'] }),
+    { shipped: ['skills/ready/SKILL.md'], ok: false, reason: 'the version decreased within the unpushed range at commit 2 of 3 (2.7.0 to 2.6.5)' },
+  )
+})
+
 test('README lists exactly the public skills, one row each', () => {
   const readme = readRepositoryFile('README.md')
   const agents = readRepositoryFile('AGENTS.md')

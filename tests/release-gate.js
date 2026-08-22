@@ -78,9 +78,47 @@ function assessVersionSequence(versions) {
   return { increased, decreasedAt }
 }
 
+const SKIP_NOTICE = 'version-increase check skipped: no upstream and no origin/main to resolve the unpushed range'
+
+// The base is the merge-base with the upstream when one exists (the unpushed
+// commits are exactly base..HEAD), otherwise with origin/main; when neither
+// resolves the caller skips and reports the notice.
+function resolveUnpushedRange(run) {
+  for (const ref of ['@{upstream}', 'origin/main']) {
+    try {
+      const base = run(['merge-base', 'HEAD', ref]).trim()
+      if (base !== '') {
+        return { base, notice: null }
+      }
+    } catch {
+      // The ref does not exist here; try the next one.
+    }
+  }
+
+  return { base: null, notice: SKIP_NOTICE }
+}
+
+function evaluateReleaseGate({ changedPaths, baseManifest, headManifest, versions }) {
+  const shipped = classifyShippedBehavior(changedPaths, baseManifest, headManifest)
+  if (shipped.length === 0) {
+    return { shipped, ok: true, reason: null }
+  }
+  const { increased, decreasedAt } = assessVersionSequence(versions)
+  if (decreasedAt !== null) {
+    return { shipped, ok: false, reason: `the version decreased within the unpushed range at commit ${decreasedAt} of ${versions.length - 1} (${versions[decreasedAt - 1]} to ${versions[decreasedAt]})` }
+  }
+  if (!increased) {
+    return { shipped, ok: false, reason: `shipped behavior changed (${shipped.join(', ')}) without a version increase: ${versions[0]} at the range base, ${versions[versions.length - 1]} at HEAD` }
+  }
+
+  return { shipped, ok: true, reason: null }
+}
+
 module.exports = {
   SHIPPED_BEHAVIOR_SENTENCE,
   MANIFEST_PATH,
   classifyShippedBehavior,
   assessVersionSequence,
+  resolveUnpushedRange,
+  evaluateReleaseGate,
 }
