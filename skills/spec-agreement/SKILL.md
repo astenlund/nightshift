@@ -9,6 +9,8 @@ This skill owns the interaction boundary between a governing design and substant
 
 Use this skill even when the user does not name Nightshift. Standalone planning always activates this skill, including when no governing spec is selected or discoverable. Its zero-scope path returns `{ agreement: "not-applicable", governingScopes: [] }` and still uses the `planning-result` and `serializePlanContract` contract. Natural-language requests to validate, review, implement, or hand over work activate it whenever a governing spec is selected or discoverable. A final governing design presentation also activates it before the approval response. Work nomination, backlog readiness, graduation, a prior-session response, and a diagnostic candidate token are never agreement.
 
+The controller is callable two ways. Its exports take closed ordered shapes validated by `exactOrderedKeys`, including the filesystem adapter (`readFile`, `readDirectory`, `realpath`, `replaceFileAtomically`, in that order) and the ready-parser adapter (`normalizeSliceName`, `parseSlices`, `findSlicesByNormalizedName`); a hand-assembled record with a missing or reordered key fails as a structural error. The bundled CLI wraps those shapes: run `node spec-agreement.js` with one JSON envelope `{"operation": ..., "input": ...}` on stdin, operations `plan-parse`, `plan-serialize`, `resolve`, `candidate`, `compare`, `diff`, `fit`, `state-create`, `state-refresh`, `state-invalidate`, `gate`, `legacy-detect`, `legacy-preview`, and `provenance-write`, and read one `{ok, value | error}` envelope on stdout.
+
 ## Invocation modes
 
 Choose one phase and map it to one controller request mode before calling `resolveGoverningSet`:
