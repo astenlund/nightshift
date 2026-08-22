@@ -244,6 +244,10 @@ Draft exploring how to bound or scope the revise engine's whole-run acknowledgem
 
 Draft exploring an explicit compaction boundary after plan hardening and before implementation, followed by a mandatory full re-read of the governing spec and hardened plan before implementation dispatch.
 
+### [Lifecycle shape proposal](features/lifecycle-shape-proposal.md)
+
+Draft exploring a lifecycle-shape proposal presented right after the user accepts the decision-complete digest: the controller proposes which lifecycle steps the work warrants (the full ladder of harden spec, write plan, harden plan, implement, review code, verify, docs, lore for a complex feature; a direct jump to implement then revise-code for a trivial bug or quick win), and the user accepts or tweaks that shape before any work begins. Captured 2026-08-23 while a quick-win handover was running the full ladder over a twelve-line backlog bullet.
+
 ## Review hardening
 
 ### [Bundled revise controller](features/bundled-revise-controller.md)
