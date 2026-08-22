@@ -870,12 +870,26 @@ const EXTCYCLE_FEATURES = `# Features
 **External:** vendor integration SDK.
 `;
 
+const BARECYCLE_FEATURES = `# Features
+
+## Area
+
+### [Carl](features/carl.md)
+
+**Requires:** [Dana](features/dana.md), vendor SDK.
+
+### [Dana](features/dana.md)
+
+**Requires:** [Carl](features/carl.md).
+`;
+
 const cycleRs = analyze({ FEATURES: CYCLE_FEATURES });
 const contRs = analyze({ FEATURES: CONT_FEATURES });
 const intraRs = analyze({ FEATURES: INTRA_FEATURES });
 const ringRs = analyze({ FEATURES: RING_FEATURES });
 const mixRs = analyze({ FEATURES: MIX_FEATURES });
 const extCycleRs = analyze({ FEATURES: EXTCYCLE_FEATURES });
+const bareCycleRs = analyze({ FEATURES: BARECYCLE_FEATURES });
 
 test('two-entry mutual cycle is a structural error; both members excluded', () => {
   assert.ok(!titles(cycleRs.ready).includes('Anna'));
@@ -929,6 +943,12 @@ test('a cycle member\'s external blocker is subsumed by whole-entry exclusion', 
   assert.ok(cyc, titles(extCycleRs.structuralErrors).join(', '));
   assert.ok(!findByTitle(extCycleRs.blocked, 'Bob'));
   assert.ok(!findByTitle(extCycleRs.external, 'Bob'), 'Bob must not appear under External (whole-entry exclusion)');
+});
+
+test('bare text on a top-level Requires line masks the entry edge set, so no cycle is reported', () => {
+  assert.ok(findByTitle(bareCycleRs.structuralErrors, 'Carl'), 'Carl must carry the bare-text error');
+  assert.ok(!bareCycleRs.structuralErrors.some((e) => e.index === '[cycle]'), JSON.stringify(bareCycleRs.structuralErrors));
+  assert.ok(findByTitle(bareCycleRs.blocked, 'Dana'), 'Dana still resolves its link to Carl and is Blocked');
 });
 
 test('acyclic existing fixtures produce no cycle structural errors', () => {

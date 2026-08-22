@@ -1054,10 +1054,10 @@ function findCycles(edges) {
 // Resolve each entry's top-level **Requires:** line to directed blocked
 // edges for cycle detection. Only the entry's top-level line sources edges;
 // continuation inline Requires do not participate. A structural problem on
-// the top-level line (missing line, or any link resolving structural)
-// masks the entry's whole edge set. Intra-entry edges (a link resolving
-// back to the same entry: a slice-suffixed same-feature reference or a
-// whole self-reference) are dropped.
+// the top-level line (missing or empty line, bare text, or any link
+// resolving structural) masks the entry's whole edge set. Intra-entry edges
+// (a link resolving back to the same entry: a slice-suffixed same-feature
+// reference or a whole self-reference) are dropped.
 function collectEntryEdges(records, registry) {
   const edges = [];
   for (const rec of records) {
@@ -1067,9 +1067,14 @@ function collectEntryEdges(records, registry) {
     const from = nodeKey(rec);
     const pending = [];
     let structural = false;
+    if (content === '') continue;
     for (const raw of splitTopLevelCommas(content)) {
       const item = parseRequiresItem(raw);
-      if (item.kind === 'none' || item.kind === 'external') continue;
+      if (item.kind === 'none') continue;
+      if (item.kind === 'external') {
+        structural = true;
+        break;
+      }
       const res = resolveLink(item, registry);
       if (res.kind === 'blocked') pending.push(res.node);
       else structural = true;
