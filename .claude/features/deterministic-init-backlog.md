@@ -49,6 +49,7 @@ Migrated into the backlog on 2026-08-12, with three design decisions confirmed o
 
 - The `init-backlog` scaffold content and its templates in `skills/init-backlog/SKILL.md` (existing after the universal-entry migration; the extraction subject). Note as of 2026-08-15: the shipped exploring-visibility work rewrote five passages in this file (the FEATURES.md template's Exploring preamble and Requires-lines carve-outs, the CLAUDE.md template's backlog sentence, the freshness checklist item for Exploring, and the either-location note) to the two-view wording. Extraction carries that wording forward; it is not a conflict, only a reminder to re-read the templates rather than working from an older mental copy.
 - The bundled-runtime-artifact pattern in `skills/ready/ready.js` and its fixture suite (existing; the precedent this feature extends).
+- Lands after the breakout-dependency-drift bug fix, which rewrites the `init-backlog` `## Requires lines` templates to the two-line convention and adds a legacy-section replace rule; this feature relocates the rewritten templates.
 
 ## Hardening
 

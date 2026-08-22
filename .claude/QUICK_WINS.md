@@ -24,7 +24,7 @@ misleads harder than a coarse one that holds.
 
 **After adding a new entry, run `/nightshift:ready`** from the repo root
 to confirm it parses as a quick-wins work item against the real grammar
-in `skills/ready/ready.js`. Quick wins carry no `**Requires:**` line; the
+in `skills/ready/ready.js`. Quick wins carry neither a `**Requires:**` nor an `**External:**` line; the
 failure mode to catch is an entry that doesn't parse as a `- ` bullet or
 `###` heading (ready reports it as a prose-only-section notice) while you
 can still fix it in the same session.
@@ -92,9 +92,9 @@ Refactors the agreement-gate revise run reviewed and agreed are valid but deferr
 
 - **Reuse one resolution-local artifact snapshot across governing-set expansion.** During one governing-set resolution the controller reads the same whole-file artifact more than once, redoing canonicalization and scanning. Preferred shape: snapshot each resolved artifact's canonical bytes and scan result once, then reuse it across expansion. Constraint: resolution-local only, never a persistent cache.
 
-- **Reuse parsed ready-entry metadata for Requires and Slices instead of rescanning entry bodies.** `skills/ready/ready.js` scans the index during extraction, then `findRequires` and `parseSlices` each re-encode and rescan the same entry bodies. Preferred shape: the scan pass emits the parsed Requires and Slices records once per entry for reuse. Preserve the exact Requires-line grammar in `ready.js`.
+- **Reuse parsed ready-entry metadata for Requires and Slices instead of rescanning entry bodies.** `skills/ready/ready.js` scans the index during extraction, then `findRequires` and `parseSlices` each re-encode and rescan the same entry bodies. Preferred shape: the scan pass emits the parsed Requires and Slices records once per entry for reuse. Preserve the post-split Requires and External grammar in `ready.js` (the breakout-dependency-drift fix lands first and owns that grammar).
 
-- **Break the agreement controller and its ready dependency cycle into narrower scanner and controller modules.** `skills/spec-agreement/spec-agreement.js` spans many concerns (scanning, selection, mutation, resolution, state, diffing, CLI) and imports `skills/ready/ready.js` while ready imports back, creating a feature-layer cycle. Preferred shape: extract the scanner/parser to a lower module both consume, and the controller keeps its closed skill CLI contract. Preserve the public skill and CLI/command surface unchanged.
+- **Break the agreement controller and its ready dependency cycle into narrower scanner and controller modules.** `skills/spec-agreement/spec-agreement.js` spans many concerns (scanning, selection, mutation, resolution, state, diffing, CLI) and imports `skills/ready/ready.js` while ready imports back, creating a feature-layer cycle. Preferred shape: extract the scanner/parser to a lower module both consume, and the controller keeps its closed skill CLI contract. Preserve the public skill and CLI/command surface unchanged. Lands after the breakout-dependency-drift fix, which extends `ready.js` with the External grammar and the breakout scan this extraction then moves.
 
 - **Replace handover's duplicated agreement sequence with a narrow delegation to the shared agreement skill.** `skills/handover/SKILL.md` repeats the agreement flow rather than delegating. Preferred shape: a narrow delegation to the shared agreement skill while preserving handover-only completion-stamp and migration ordering.
 
@@ -151,12 +151,13 @@ Refactors the agreement-gate revise run reviewed and agreed are valid but deferr
   `tests/host-discovery-smoke-lib.js` installs the fixture as the upgrade baseline in
   the host-discovery smoke harness's repeat mode. The pin's maintenance cost grows with
   every substantive edit to either skill (each edit needs a whitelisted phrase pair, and
-  revise-docs is pinned with an empty list, so its body must stay byte-identical to the
-  2.4.5 command), while its value decays as the skill migration ages. Preferred shape:
+  revise-docs carries only the two pairs the breakout-dependency-drift fix added, so its
+  body must stay byte-identical to the 2.4.5 command modulo those), while its value decays as the skill migration ages. Preferred shape:
   once the migration is considered proven, remove the fidelity test, the fixture, and
   the smoke repeat-mode baseline in one change set. Removing the fixture alone is not
   an option: it breaks the topology suite in CI and silently breaks the live smoke
   run's repeat mode, which fabricates its own replica only in the deterministic tests.
+  The breakout-dependency-drift fix adds two `revise-docs` phrase pairs to `PROCEDURE_REPLACEMENTS`; retiring the pin removes them with it.
 
 ## Release integrity
 
