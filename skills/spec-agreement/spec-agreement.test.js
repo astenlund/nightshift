@@ -3598,6 +3598,21 @@ test('later provenance is append-only for graduation refresh and completion stam
   }
 });
 
+test('plan refreshed stamps are accepted and appended after a plan graduation', () => {
+  const graduated = '- revise-plan graduated 2026-08-22 09:00 at 4f2d6e2, scope: whole file, content: 74092a52';
+  const refreshed = '- revise-plan refreshed 2026-08-22 09:30 at 4f2d6e2, scope: whole file, content: 84092a52 (count gate narrowed at execution)';
+  const initial = Buffer.from(`# Plan\n\n## Hardening\n\n${graduated}\n`);
+  const expected = Buffer.from(`${initial.toString()}${refreshed}\n`);
+  const artifact = mutableArtifact(initial);
+
+  const result = writeProvenanceStamp({ projectRoot, path: 'docs/spec.md', stamp: refreshed, baselineHash: fullHash(initial) }, { fsAdapter: artifact.adapter });
+
+  assert.deepEqual(result, { bytes: expected, alreadyApplied: false });
+  assert.deepEqual(artifact.bytes(), expected);
+  const retry = writeProvenanceStamp({ projectRoot, path: 'docs/spec.md', stamp: refreshed, baselineHash: fullHash(initial) }, { fsAdapter: artifact.adapter });
+  assert.deepEqual(retry, { bytes: expected, alreadyApplied: true });
+});
+
 test('the active plan is selectable with its revise-plan graduation provenance', () => {
   const selected = selectArtifact({
     path: 'docs/plan.md',

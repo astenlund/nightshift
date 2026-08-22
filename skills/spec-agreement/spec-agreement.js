@@ -222,7 +222,7 @@ const HARDENING_PLACEHOLDERS = new Set([
   '- (None entered yet; this file has not been through a revise-spec review.)',
 ]);
 const GRADUATED_PROVENANCE = /^- revise-(?:spec|plan) graduated \d{4}-\d{2}-\d{2} \d{2}:\d{2} at [0-9a-f]{7,40}, scope: \S(?:.*\S)?, content: (?:[0-9a-f]{8}|p-[0-9a-f]{12})$/;
-const REFRESHED_PROVENANCE = /^- revise-spec refreshed \d{4}-\d{2}-\d{2} \d{2}:\d{2} at [0-9a-f]{7,40}, scope: \S(?:.*\S)?, content: (?:[0-9a-f]{8}|p-[0-9a-f]{12}) \(\S(?:.*\S)?\)$/;
+const REFRESHED_PROVENANCE = /^- revise-(?:spec|plan) refreshed \d{4}-\d{2}-\d{2} \d{2}:\d{2} at [0-9a-f]{7,40}, scope: \S(?:.*\S)?, content: (?:[0-9a-f]{8}|p-[0-9a-f]{12}) \(\S(?:.*\S)?\)$/;
 const COMPLETED_PROVENANCE = /^- handover completed \d{4}-\d{2}-\d{2} \d{2}:\d{2} at [0-9a-f]{7,40}, scope: \S(?:.*\S)?, content: (?:[0-9a-f]{8}|p-[0-9a-f]{12})$/;
 const LEGACY_STATUS_MARKER = /^Status:[ \t]+signed off(?:[ \t].*)?$/;
 const LEGACY_REFRESH_MARKER = /^- [A-Za-z0-9-]+ refreshed .+ \(sign-off marker\)[ \t]*$/;
