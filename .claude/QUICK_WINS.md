@@ -151,8 +151,9 @@ Refactors the agreement-gate revise run reviewed and agreed are valid but deferr
   `tests/host-discovery-smoke-lib.js` installs the fixture as the upgrade baseline in
   the host-discovery smoke harness's repeat mode. The pin's maintenance cost grows with
   every substantive edit to either skill (each edit needs a whitelisted phrase pair, and
-  revise-docs carries only the two pairs the breakout-dependency-drift fix added, so its
-  body must stay byte-identical to the 2.4.5 command modulo those), while its value decays as the skill migration ages. Preferred shape:
+  revise-docs carries only the pairs noted at the end of this bullet, so its body must
+  stay byte-identical to the 2.4.5 command modulo those), while its value decays as the
+  skill migration ages. Preferred shape:
   once the migration is considered proven, remove the fidelity test, the fixture, and
   the smoke repeat-mode baseline in one change set. Removing the fixture alone is not
   an option: it breaks the topology suite in CI and silently breaks the live smoke

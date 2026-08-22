@@ -138,7 +138,7 @@ For each templated file, these are the load-bearing concepts its template-contro
 **Root `CLAUDE.md` `Backlogs and indexes` section:**
 1. Instructs agents to consult relevant indexes on demand before proposing or starting related work.
 2. Names the four subdirectories and three history archives.
-3. Explains the walk-and-remove convention, `## Exploring`, and `/nightshift:ready`.
+3. Explains the walk-and-remove convention, `## Exploring`, and `/nightshift:ready`, including that `**Requires:**` carries in-backlog links only, that external primitives go on the optional `**External:**` line, and that breakout files carry neither line.
 4. States that readiness and graduation do not authorize work without explicit current-session agreement to the current digest.
 5. States that compatible governing-text changes continue autonomously after a cited contract-fit check.
 6. Includes the final-presentation and agreement-freshness concepts under **Agreement reinforcement** above.
