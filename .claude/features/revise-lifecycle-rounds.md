@@ -40,8 +40,6 @@ Migrated into the backlog on 2026-08-12 after the design was settled in dialogue
 - The revise lifecycle terms and completion rules in `internal/revise/SKILL.md` (existing; the extraction subject).
 - The revise Workflow execution-safety suite in `internal/revise/revise-round.test.js` (existing; the tests that must still pass once the lifecycle prose changes).
 
-**Requires:** none.
-
 ## Hardening
 
 - (None entered yet; this file has not been through a revise-spec review.)

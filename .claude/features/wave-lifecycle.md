@@ -90,11 +90,10 @@ Designed 2026-08-13 across a working session: economics analysis, ten-controller
 - The artifact parameter files, README, and repository AGENTS.md lifecycle descriptions (existing; phase references replaced).
 - The review-rule phrasing in `skills/handover/SKILL.md` that names the revise skills' lifecycle (existing; refreshed alongside README and AGENTS.md).
 
-**Requires:** none.
-
 ## Hardening
 
 - revise-spec graduated 2026-08-13 23:39 at 31395b0, scope: whole file, content: 2dba05cd
 - revise-spec refreshed 2026-08-18 00:46 at c0d1909, scope: whole file, content: d5ca1a1e (clean-LGTM lifecycle correction)
 - revise-spec refreshed 2026-08-18 02:39 at c0d1909, scope: whole file, content: 043c5582 (shipped interaction tense reconciled)
 - revise-spec refreshed 2026-08-18 20:17 at 476d8d8, scope: whole file, content: 1c081c72 (universal-entry topology references)
+- revise-spec refreshed 2026-08-22 10:18 at 6022378, scope: whole file, content: a5fd414d (breakout line removal)

@@ -309,9 +309,8 @@ Shipped 2026-08-21. Migrated into the backlog on 2026-08-11 with the design deci
 - The review engine's wave/round/checkpoint machinery and its prose rules in `internal/revise/SKILL.md` (shipped by the universal-skill MVP and the wave-lifecycle change; this feature extracts and tests the decisions they already specify).
 - The existing fixture-test convention demonstrated by `skills/ready/ready.test.js` and `internal/revise/revise-round.test.js` (shipped; no framework, exit code 1 on failure).
 
-**Requires:** none (FEATURES.md index entry).
-
 ## Hardening
 
 - revise-spec graduated 2026-08-21 02:57 at c721e87, scope: whole file, content: 948a9f41
 - handover completed 2026-08-21 08:08 at 84d5021, scope: whole file, content: 6462b620
+- revise-spec refreshed 2026-08-22 10:18 at 6022378, scope: whole file, content: 5393ce72 (breakout line removal)

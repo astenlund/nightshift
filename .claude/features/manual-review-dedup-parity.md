@@ -164,8 +164,6 @@ Designed through cross-project arbitration on 2026-08-18 after the manual Codex 
 - Manual completion-driven fan-out, result-first checkpointing, and bounded recovery.
 - A capable host path that can launch a narrow independent judge; absence uses the fail-open fallback.
 
-**Requires:** none.
-
 ## Hardening
 
 - (None yet; this file has not been through a revise-spec run.)

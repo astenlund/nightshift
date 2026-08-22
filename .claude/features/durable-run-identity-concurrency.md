@@ -106,8 +106,6 @@ Draft proposal; not yet designed as a buildable skill change or spec. Partially 
 
 Landing order: the wave-convergence lifecycle (wave-lifecycle.md) shipped 2026-08-14 in the 2.2.0 batch; SKILL.md's lifecycle sections are wave-era prose. Derive lifecycle-touching edits from that prose.
 
-**Requires:** [Agent-host-agnostic Nightshift: MVP - Universal skill entry points](agent-host-agnostic-nightshift.md) (FEATURES.md index entry).
-
 ## Hardening
 
 - (None yet; this file has not been through a revise-spec run.)

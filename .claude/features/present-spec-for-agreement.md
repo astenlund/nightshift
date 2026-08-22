@@ -353,8 +353,6 @@ New ready-parser fixtures are required for fenced fake headings, bullets, labels
 - The Exploring-to-graduated feature convention (existing; retained as the only durable draft distinction).
 - The canonical fingerprint recipes in handover and revise (existing; Status exclusion removed).
 
-**Requires:** none.
-
 ## Hardening
 
 - revise-spec graduated 2026-08-19 01:23 at 7aa82fe, scope: whole file, content: 0094652e
@@ -363,3 +361,4 @@ New ready-parser fixtures are required for fenced fake headings, bullets, labels
 - revise-spec refreshed 2026-08-19 12:00 at 5e2c306, scope: whole file, content: 8594fb1b (review fixes)
 - revise-spec refreshed 2026-08-19 14:10 at ab08948, scope: whole file, content: f628ce22 (live-claim deferral)
 - handover completed 2026-08-19 14:10 at ab08948, scope: whole file, content: f628ce22
+- revise-spec refreshed 2026-08-22 10:18 at 6022378, scope: whole file, content: d88c86b4 (breakout line removal)

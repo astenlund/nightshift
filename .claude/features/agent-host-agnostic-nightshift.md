@@ -195,8 +195,6 @@ Captured and sliced from the 2026-08-17 cross-host audit, with the backlog shape
 - Keep each public workflow single-sourced in its public skill and each shared engine single-sourced outside the public skill-discovery tree; public wrappers contain only delegation and the specified engine-availability failure boundary.
 - Treat absent correctness-critical host capabilities as explicit fail-closed states.
 
-**Requires:** none (FEATURES.md index entry; slice-level gates are authoritative).
-
 ## Hardening
 
 - revise-spec graduated 2026-08-18 12:23 at 00477d1, scope: whole file, content: 7bd65df7
@@ -205,3 +203,4 @@ Captured and sliced from the 2026-08-17 cross-host audit, with the backlog shape
 - revise-spec refreshed 2026-08-18 19:18 at bb71311, scope: whole file, content: 2dde2718 (wrapper-local sentinel correction)
 - revise-spec refreshed 2026-08-18 19:41 at bb71311, scope: whole file, content: 98d7eeda (discovery-only smoke correction)
 - revise-spec refreshed 2026-08-18 20:27 at 351def0, scope: whole file, content: 593a8b9f (shipped-slice bookkeeping)
+- revise-spec refreshed 2026-08-22 10:18 at 6022378, scope: whole file, content: 230e5df6 (breakout line removal)

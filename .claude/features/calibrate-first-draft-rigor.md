@@ -123,8 +123,6 @@ Migrated into the backlog on 2026-08-11, with five design decisions confirmed on
 - a `revise-spec` review of a spec whose design body contradicts its declared rigor tier, in either direction — a `high`-tier profile over a minimal-mechanism design (under-engineering) or a `low`-tier profile over heavy machinery (over-investment) — surfaces that mismatch as a reparable finding, so the profile's design-shaping role is enforced through review rather than declared but untested `(live-claim: provisional)`;
 - a user consult during derivation persists the gathered operating-context facts to project-local instruction prose (creating the file when neither exists), so a later derivation re-uses them.
 
-**Requires:** none.
-
 ## Hardening
 
 - revise-spec graduated 2026-08-12 18:44 at e2ab431, scope: whole file, content: 45881119
@@ -132,3 +130,4 @@ Migrated into the backlog on 2026-08-11, with five design decisions confirmed on
 - revise-spec refreshed 2026-08-13 00:27 at e2ab431, scope: whole file, content: 7b3bba02 (audience label reconciled to personal use)
 - revise-spec refreshed 2026-08-18 02:39 at c0d1909, scope: whole file, content: a3f13267 (live dependency authority restored)
 - revise-spec refreshed 2026-08-18 20:17 at 476d8d8, scope: whole file, content: 3a233a54 (universal-entry topology references)
+- revise-spec refreshed 2026-08-22 10:18 at 6022378, scope: whole file, content: 9c67994c (breakout line removal)

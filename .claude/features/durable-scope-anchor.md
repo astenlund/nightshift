@@ -91,8 +91,6 @@ Present chosen spec for agreement before work shipped before Durable scope ancho
 
 Landing order: the wave-convergence lifecycle (wave-lifecycle.md) shipped 2026-08-14 in the 2.2.0 batch; SKILL.md's lifecycle sections are wave-era prose. Derive lifecycle-touching edits from that prose.
 
-**Requires:** none.
-
 ## Hardening
 
 - (None yet; this file has not been through a revise-spec run.)

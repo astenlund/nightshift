@@ -692,7 +692,6 @@ test('related feature designs and excerpts record shipped agreement ordering and
       path: '.claude/features/content-fingerprint-helper.md',
       heading: '### [Content fingerprint helper](features/content-fingerprint-helper.md)',
       dependencySection: '## Requirements',
-      designRequirement: '**Requires:** none.',
       excerptRequirement: '**Requires:** none.',
       ordering: 'Present chosen spec for agreement before work shipped before Content fingerprint helper.',
     },
@@ -700,7 +699,6 @@ test('related feature designs and excerpts record shipped agreement ordering and
       path: '.claude/features/second-opinion-gates.md',
       heading: '### [Second-opinion gates](features/second-opinion-gates.md)',
       dependencySection: '## Requirements',
-      designRequirement: '**Requires:** [Contract-calibrated revise admission](contract-calibrated-revise-admission.md).',
       excerptRequirement: '**Requires:** [Contract-calibrated revise admission](features/contract-calibrated-revise-admission.md).',
       ordering: 'Present chosen spec for agreement before work shipped before Second-opinion gates.',
     },
@@ -708,7 +706,6 @@ test('related feature designs and excerpts record shipped agreement ordering and
       path: '.claude/features/durable-scope-anchor.md',
       heading: '### [Durable scope anchor](features/durable-scope-anchor.md)',
       dependencySection: '## Requirements',
-      designRequirement: '**Requires:** none.',
       excerptRequirement: '**Requires:** none.',
       ordering: 'Present chosen spec for agreement before work shipped before Durable scope anchor because the accepted digest authorizes its deliberate-empty exclusion and legacy backfill.',
     },
@@ -727,7 +724,10 @@ test('related feature designs and excerpts record shipped agreement ordering and
     const designDependencies = extractSection(design, dependencySection);
     const excerpt = extractFeatureEntry(features, heading);
 
-    assert.equal(countExact(designDependencies, designRequirement), 1, `${path} must carry its current prerequisite once in ${dependencySection}`);
+    assert.equal(/^[ \t]*\*\*(Requires|External):\*\*/m.test(designDependencies), false, `${path} must carry no dependency line in ${dependencySection}; the index entry is the sole authority`);
+    if (designRequirement !== undefined) {
+      assert.equal(countExact(designDependencies, designRequirement), 1, `${path} must carry its current prerequisite once in ${dependencySection}`);
+    }
     assert.equal(countExact(excerpt, excerptRequirement), 1, `${heading} excerpt must carry its current prerequisite once`);
     assert.equal(countExact(design, ordering), 1, `${path} must contain its ordering sentence once`);
     assert.equal(countExact(excerpt, ordering), 1, `${heading} excerpt must contain its ordering sentence once`);

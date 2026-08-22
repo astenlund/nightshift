@@ -61,8 +61,6 @@ Migrated into the backlog on 2026-08-11. Five design decisions were confirmed on
 - The four-index backlog and its refactoring-entry convention, which the naive-first rule's follow-up flag points into (existing).
 - The communication surfaces this contract would steer: handover, the revise workflows, and the ready and init-backlog output (existing).
 
-**Requires:** [Agent-host-agnostic Nightshift: MVP - Universal skill entry points](agent-host-agnostic-nightshift.md) (FEATURES.md index entry).
-
 ## Hardening
 
 - (None yet; this file has not been through a revise-spec run.)

@@ -233,8 +233,6 @@ Designed through cross-project arbitration on 2026-08-18 using retained Nightshi
 - Executable review orchestration transitions so contract-clean changes are fixture-bound before runtime prose changes.
 - Existing skeptic evidence, checkpoint, fingerprint, wave, and verifier machinery in `internal/revise/`.
 
-**Requires:** [Durable scope anchor](durable-scope-anchor.md), [Review orchestration tests](review-orchestration-tests.md).
-
 ## Hardening
 
 - (None yet; this file has not been through a revise-spec run.)

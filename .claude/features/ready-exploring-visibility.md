@@ -239,8 +239,6 @@ things describe or consume; each consumer's handling:
 - None outstanding; the Exploring carve-out and the `###`-entry shape
   it parses are already shipped grammar.
 
-**Requires:** none (FEATURES.md index entry).
-
 ## Hardening
 
 - revise-spec graduated 2026-08-15 18:01 at 1a5cc8b, scope: whole file, content: b6e8b045
@@ -248,3 +246,4 @@ things describe or consume; each consumer's handling:
 - handover completed 2026-08-16 00:52 at fcd89d0, scope: whole file, content: 0d247294
 - revise-spec refreshed 2026-08-18 20:17 at 476d8d8, scope: whole file, content: d01aadbf (universal-entry topology references)
 - revise-spec refreshed 2026-08-19 09:10 at 2fce9c2, scope: whole file, content: 51d23fbb (legacy sign-off marker removal)
+- revise-spec refreshed 2026-08-22 10:18 at 6022378, scope: whole file, content: 564cce77 (breakout line removal)

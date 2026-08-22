@@ -49,10 +49,9 @@ Migrated into the backlog and hardened by a lightened single-reviewer revise-spe
 - The `/nightshift:ready` parser (`ready.js`) and its fixture test suite (shipped, so no upstream backlog dependency).
 - The `Requires:`-line grammar, slice resolution, and implicit-MVP-gate logic already in `ready.js` (shipped; cycle detection builds its graph from their resolved blocked outcomes, refactored to expose node identity).
 
-**Requires:** none (FEATURES.md index entry).
-
 ## Hardening
 
 - revise-spec graduated 2026-08-11 06:01 at 25acb7e, scope: whole file, content: 217a7720
 - handover completed 2026-08-11 11:49 at 1948c82, scope: whole file, content: 00bd6d16
 - revise-spec refreshed 2026-08-19 09:10 at 2fce9c2, scope: whole file, content: 2ec769df (legacy sign-off marker removal)
+- revise-spec refreshed 2026-08-22 10:18 at 6022378, scope: whole file, content: 4c2769ab (breakout line removal)

@@ -64,8 +64,8 @@ Landing order: this fix lands before the two `ready.js` quick wins in `QUICK_WIN
 
 Confirmed by repository-wide search on 2026-08-18; the three open instances re-verified on 2026-08-22 (`sophisticated-user-communication.md`, `deterministic-init-backlog.md`, `durable-run-identity-concurrency.md`). Design settled 2026-08-22: index-only authority with the Requires/External field split. The bare-text branch of `**Requires:**` has no live users in `FEATURES.md` or `BUGS.md`, so the split needs no data migration; only test fixtures exercise it.
 
-**Requires:** none.
 ## Hardening
 
 - revise-spec graduated 2026-08-22 04:25 at dc2008e, scope: whole file, content: 93441ade
 - revise-spec refreshed 2026-08-22 09:49 at 2a66013, scope: whole file, content: 19d0bfe6 (spec reconciliation)
+- revise-spec refreshed 2026-08-22 10:18 at 6022378, scope: whole file, content: f8d7e8f3 (breakout line removal)

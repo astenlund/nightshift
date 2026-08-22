@@ -111,8 +111,7 @@ Present chosen spec for agreement before work shipped before Second-opinion gate
 
 Landing order: the wave-convergence lifecycle shipped 2026-08-14 in the 2.2.0 batch, and the agreement gate shipped 2026-08-19 in the 2.5.2 batch. When this feature is picked up, re-derive the gate placement against the wave model: the hardened gate maps onto the verifier seat, and the phase-cap open question dissolves into the wave and verifier caps (30 rounds, 10 verifier launches per run).
 
-**Requires:** [Contract-calibrated revise admission](contract-calibrated-revise-admission.md).
-
 ## Hardening
 
 - revise-spec graduated 2026-08-10 22:57 at 0cbfb1c, scope: whole file, content: d552b097
+- revise-spec refreshed 2026-08-22 10:18 at 6022378, scope: whole file, content: 21d8307b (breakout line removal)
