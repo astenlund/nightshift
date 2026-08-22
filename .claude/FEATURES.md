@@ -208,6 +208,10 @@ gates, move it out of `## Exploring` into the appropriate themed `##`
 section, add the `**Requires:**` line, and drop the `status: exploring`
 frontmatter on the breakout file.
 
+### [Rigor-steered lifecycle](features/rigor-steered-lifecycle.md)
+
+Draft exploring how the spec's rigor tier becomes an executable budget every lifecycle step reads: a five-tier scale (minimal, low, medium, high, max) mapping to plan shape (no verbatim blocks or count gates below high), a severity floor so only behavior-changing findings reopen certified cells, per-tier dimension sets and round caps, and derivation inputs for an existing safety net and change size. Prompted by the 2026-08-22 breakout-dependency-drift handover, a 12-hour run for a 150-line parser fix. Sits above Light revise mode, Wave round economy, and Authoring guidance overlay as their selector.
+
 ### [Light revise mode](features/light-revise-mode.md)
 
 Draft exploring a lightened variant of the revise review workflows: one fresh reviewer per iteration instead of the full per-dimension swarm, and a curated dimension set that skips the least-relevant dimensions. Prompted by the single-reviewer revise-spec run over `.claude/features/dependency-cycle-detection.md` (2026-08-11).
