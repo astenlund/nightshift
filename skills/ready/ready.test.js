@@ -885,6 +885,51 @@ const BARECYCLE_FEATURES = `# Features
 **Requires:** [Carl](features/carl.md).
 `;
 
+const EXTLINK_CYCLE_FEATURES = `# Features
+
+## Area
+
+### [Anna](features/anna.md)
+
+**Requires:** [Bob](features/bob.md).
+
+### [Bob](features/bob.md)
+
+**Requires:** [Anna](features/anna.md).
+**External:** [Anna](features/anna.md).
+`;
+
+const SLICED_CYCLE_FEATURES = `# Features
+
+## Area
+
+### [Anna](features/anna.md)
+
+**Requires:** [Bob](features/bob.md).
+
+### [Bob](features/bob.md)
+
+**Slices:**
+
+- **MVP.** Base.
+- **Cont.** Extra.
+  **Requires:** [Anna](features/anna.md), vendor SDK.
+  **External:** [Anna](features/anna.md).
+
+**Requires:** [Anna](features/anna.md).
+`;
+
+const MISSING_REQ_EXT_FEATURES = `# Features
+
+## Area
+
+### [Gamma](features/gamma.md)
+
+No Requires line at all.
+
+**External:** none.
+`;
+
 const cycleRs = analyze({ FEATURES: CYCLE_FEATURES });
 const contRs = analyze({ FEATURES: CONT_FEATURES });
 const intraRs = analyze({ FEATURES: INTRA_FEATURES });
@@ -892,6 +937,9 @@ const ringRs = analyze({ FEATURES: RING_FEATURES });
 const mixRs = analyze({ FEATURES: MIX_FEATURES });
 const extCycleRs = analyze({ FEATURES: EXTCYCLE_FEATURES });
 const bareCycleRs = analyze({ FEATURES: BARECYCLE_FEATURES });
+const extLinkCycleRs = analyze({ FEATURES: EXTLINK_CYCLE_FEATURES });
+const slicedCycleRs = analyze({ FEATURES: SLICED_CYCLE_FEATURES });
+const missingReqExtRs = analyze({ FEATURES: MISSING_REQ_EXT_FEATURES });
 
 test('two-entry mutual cycle is a structural error; both members excluded', () => {
   assert.ok(!titles(cycleRs.ready).includes('Anna'));
@@ -945,6 +993,36 @@ test('a cycle member\'s external blocker is subsumed by whole-entry exclusion', 
   assert.ok(cyc, titles(extCycleRs.structuralErrors).join(', '));
   assert.ok(!findByTitle(extCycleRs.blocked, 'Bob'));
   assert.ok(!findByTitle(extCycleRs.external, 'Bob'), 'Bob must not appear under External (whole-entry exclusion)');
+});
+
+test('a link in External on a cycle member is reported alongside the cycle error', () => {
+  assert.ok(findByTitle(extLinkCycleRs.structuralErrors, '2-node cycle'), titles(extLinkCycleRs.structuralErrors).join(', '));
+  const bob = findByTitle(extLinkCycleRs.structuralErrors, 'Bob');
+  assert.ok(bob, `Bob must file its own External grammar error: ${titles(extLinkCycleRs.structuralErrors).join(', ')}`);
+  assert.ok(bob.problem.includes('link "Anna" in **External:**'), bob.problem);
+  assert.ok(!findByTitle(extLinkCycleRs.blocked, 'Bob'), 'an excluded member is never Blocked');
+  assert.ok(!findByTitle(extLinkCycleRs.external, 'Bob'), 'an excluded member is never External');
+  assert.ok(!findByTitle(extLinkCycleRs.structuralErrors, 'Anna'), 'a well-formed member files nothing of its own');
+});
+
+test('a sliced cycle member reports its continuation slice grammar problems in one joined error', () => {
+  assert.ok(findByTitle(slicedCycleRs.structuralErrors, '2-node cycle'), titles(slicedCycleRs.structuralErrors).join(', '));
+  const cont = findByTitle(slicedCycleRs.structuralErrors, '[Bob: Cont]');
+  assert.ok(cont, `the continuation slice must file its own error: ${titles(slicedCycleRs.structuralErrors).join(', ')}`);
+  const requiresAt = cont.problem.indexOf('bare text "vendor SDK" in **Requires:**');
+  const externalAt = cont.problem.indexOf('link "Anna" in **External:**');
+  assert.ok(requiresAt >= 0 && externalAt > requiresAt, `Requires problem first, then External, in one error: ${cont.problem}`);
+  assert.strictEqual(slicedCycleRs.structuralErrors.filter((e) => e.title === '[Bob: Cont]').length, 1);
+  assert.ok(!findByTitle(slicedCycleRs.structuralErrors, '[Bob: MVP]'), 'a well-formed first slice files nothing');
+  assert.ok(!slicedCycleRs.blocked.some((e) => e.title.startsWith('[Bob:')), 'excluded slices are never Blocked');
+  assert.ok(!slicedCycleRs.external.some((e) => e.title.startsWith('[Bob:')), 'excluded slices are never External');
+});
+
+test('an entry with no Requires line and External none. reports only the missing-line error', () => {
+  const gamma = missingReqExtRs.structuralErrors.filter((e) => e.title === 'Gamma');
+  assert.strictEqual(gamma.length, 1, titles(missingReqExtRs.structuralErrors).join(', '));
+  assert.ok(gamma[0].problem.startsWith('missing **Requires:** line'), gamma[0].problem);
+  assert.ok(!gamma[0].problem.includes('**External:**'), `External must not be validated past the missing-Requires return: ${gamma[0].problem}`);
 });
 
 test('bare text on a top-level Requires line masks the entry edge set, so no cycle is reported', () => {

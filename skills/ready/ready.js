@@ -676,8 +676,6 @@ function dependencyLineItems(content, emptyProblem, structural) {
 function classifyUnit(unit, registry, out) {
   const { index, title, excerpt, requiresContent, externalContent, missingRequires, extraBlockers } = unit;
 
-  if (unit.excluded) return;
-
   if (missingRequires) {
     out.structuralErrors.push({
       index, title,
@@ -717,6 +715,10 @@ function classifyUnit(unit, registry, out) {
     out.structuralErrors.push({ index, title, problem: structural.join('; ') });
     return;
   }
+  // Whole-entry exclusion suppresses classification, not grammar
+  // validation: a cycle member's grammar problems are filed above under its
+  // own title, while its links and primitives belong to the cycle error.
+  if (unit.excluded) return;
   if (blockers.length > 0) {
     // A link blocker plus an External line: classify Blocked, externals
     // mentioned parenthetically. Never double-report under both categories.
