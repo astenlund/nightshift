@@ -51,6 +51,12 @@ const LABEL_AT_START = /^\*\*[^*]+?:\*\*/;
 // holds bare-text external primitives only. Both share one grammar.
 const REQUIRES_LABEL = /^\*\*Requires:\*\*/i;
 const EXTERNAL_LABEL = /^\*\*External:\*\*/i;
+const BREAKOUT_LINE_LABELS = [['Requires', REQUIRES_LABEL], ['External', EXTERNAL_LABEL]];
+// Every grammar error names its remedy: these messages are the upgrade
+// path for backlogs written under the old single-field grammar.
+const EMPTY_REQUIRES_PROBLEM = 'empty **Requires:** label; write none. when there are no upstream gates';
+const EMPTY_EXTERNAL_PROBLEM = 'empty **External:** label; delete the line (absence is the only empty form)';
+const NONE_IN_EXTERNAL_PROBLEM = 'none. in **External:**; delete the line (absence is the only empty form)';
 const HEADING = /^#{2,3} /;
 const BULLET = /^- /;
 
@@ -328,8 +334,15 @@ function extractEntries(content, excludedSectionTitles, opts = {}) {
 
 // ---------- Requires + Slices parsing on an entry body ----------
 
+function scanBodyLines(bodyLines) {
+  return scanMarkdown(Buffer.from(bodyLines.join('\n'), 'utf8')).lines;
+}
+
 function findLabel(bodyLines, labelRe) {
-  const records = scanMarkdown(Buffer.from(bodyLines.join('\n'), 'utf8')).lines;
+  return findLabelInRecords(scanBodyLines(bodyLines), labelRe);
+}
+
+function findLabelInRecords(records, labelRe) {
   for (let i = 0; i < records.length; i++) {
     const line = records[i].content;
     if (records[i].outsideFence && labelRe.test(line.trim()) && !/^\s+/.test(line)) {
@@ -351,7 +364,10 @@ function findExternal(bodyLines) {
 // indent 0; indented continuation lines (inline **Requires:** and
 // **External:** annotations) attach to the preceding bullet.
 function parseSlices(bodyLines) {
-  const records = scanMarkdown(Buffer.from(bodyLines.join('\n'), 'utf8')).lines;
+  return parseSlicesInRecords(scanBodyLines(bodyLines));
+}
+
+function parseSlicesInRecords(records) {
   let start = -1;
   for (let i = 0; i < records.length; i++) {
     const line = records[i].content;
@@ -643,11 +659,6 @@ function firstExcerpt(bodyLines) {
   return '';
 }
 
-// Every grammar error names its remedy: these messages are the upgrade
-// path for backlogs written under the old single-field grammar.
-const EMPTY_REQUIRES_PROBLEM = 'empty **Requires:** label; write none. when there are no upstream gates';
-const EMPTY_EXTERNAL_PROBLEM = 'empty **External:** label; delete the line (absence is the only empty form)';
-const NONE_IN_EXTERNAL_PROBLEM = 'none. in **External:**; delete the line (absence is the only empty form)';
 
 function bareTextProblem(text) {
   return `bare text "${text}" in **Requires:**; move it to **External:** (write none. if no link remains)`;
@@ -772,11 +783,12 @@ function attachEntryMetadata(name, entry) {
     return;
   }
 
-  const requires = findRequires(entry.bodyLines);
-  const external = findExternal(entry.bodyLines);
+  const records = scanBodyLines(entry.bodyLines);
+  const requires = findLabelInRecords(records, REQUIRES_LABEL);
+  const external = findLabelInRecords(records, EXTERNAL_LABEL);
   entry.requiresContent = requires ? requires.content : null;
   entry.externalContent = external ? external.content : null;
-  entry.slices = name === 'FEATURES' ? parseSlices(entry.bodyLines) : null;
+  entry.slices = name === 'FEATURES' ? parseSlicesInRecords(records) : null;
 }
 
 function prepareRegistryRecords(parsed, out) {
@@ -957,8 +969,6 @@ function analyze(files) {
   return out;
 }
 
-const BREAKOUT_LINE_LABELS = [['Requires', REQUIRES_LABEL], ['External', EXTERNAL_LABEL]];
-
 // Lines in a breakout file that carry a dependency label: outside any
 // fence, at any indentation, trimmed content starting with the label. The
 // index entry is the sole dependency authority, so a breakout copy is drift.
@@ -1124,13 +1134,12 @@ function collectEntryEdges(records, registry) {
     const from = nodeKey(rec);
     const pending = [];
     let structural = false;
-    if (content === '') continue;
     for (const raw of splitTopLevelCommas(content)) {
       const item = parseDependencyItem(raw);
       if (item.kind === 'none') continue;
       if (item.kind === 'text') {
         structural = true;
-        break;
+        continue;
       }
       const res = resolveLink(item, registry);
       if (res.kind === 'blocked') pending.push(res.node);
