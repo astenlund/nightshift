@@ -250,8 +250,10 @@ Core engine for the thing.
 
 Depends on alpha, an external, and a quick win.
 
-**Requires:** [Alpha](features/alpha.md), vendor SDK
-support for streaming, [shared helper extraction](../QUICK_WINS.md#shared-helper-extraction).
+**Requires:** [Alpha](features/alpha.md),
+[shared helper extraction](../QUICK_WINS.md#shared-helper-extraction).
+**External:** vendor SDK
+support for streaming.
 
 ### [Gamma](features/gamma.md)
 
@@ -268,8 +270,9 @@ Sliced feature, MVP struck.
 - **Late-join replay.** Pull endpoint.
   **Requires:** [Delta: re-anchor events](features/delta.md).
 - **\`RepertoireSource\`.** Drop-in replacement.
-  **Requires:** [Epsilon](features/epsilon.md),
-  approval from the platform team.
+  **Requires:** [Epsilon](features/epsilon.md).
+  **External:** approval from
+  the platform team.
 - **Freebie.** Independent extension with no gates of its own.
 
 **Requires:** none.
@@ -296,7 +299,8 @@ Broken reference.
 
 Purely external gate.
 
-**Requires:** vendor firmware update.
+**Requires:** none.
+**External:** vendor firmware update.
 
 ## Exploring
 
@@ -537,7 +541,7 @@ test('Requires: none. classifies as ready', () => {
   assert.ok(titles(result.ready).includes('Torn config write'));
 });
 
-test('wrapped Requires line joins across physical lines; mixed link+external is Blocked', () => {
+test('wrapped Requires and External lines join across physical lines; a link plus an External line is Blocked', () => {
   const beta = findByTitle(result.blocked, 'Beta');
   assert.ok(beta, `Beta not in blocked: ${titles(result.blocked)}`);
   assert.ok(beta.blockers.includes('Alpha'), JSON.stringify(beta.blockers));
@@ -666,7 +670,7 @@ test('gateless continuation is ready even while a sibling continuation is unship
   assert.ok(titles(result.ready).includes('[Delta: Freebie]'), titles(result.ready).join(' | '));
 });
 
-test('wrapped inline slice Requires joins its continuation lines', () => {
+test('wrapped inline slice annotations join their continuation lines', () => {
   const repertoire = findByTitle(result.blocked, '[Delta: RepertoireSource]');
   assert.ok(repertoire, titles(result.blocked).join(' | '));
   assert.deepStrictEqual(repertoire.blockers, ['Epsilon']);
@@ -862,7 +866,8 @@ const EXTCYCLE_FEATURES = `# Features
 
 ### [Bob](features/bob.md)
 
-**Requires:** [Anna](features/anna.md), vendor integration SDK.
+**Requires:** [Anna](features/anna.md).
+**External:** vendor integration SDK.
 `;
 
 const cycleRs = analyze({ FEATURES: CYCLE_FEATURES });
@@ -1008,6 +1013,145 @@ test('a historical Requires line on an exploring draft is ignored', () => {
   assert.ok(!titles(exploringRs.ready).includes('Linked draft'));
   const linked = exploringRs.exploring.find((e) => e.title === 'Linked draft');
   assert.strictEqual(linked.link, 'features/draft-b.md');
+});
+
+// ---------- Requires/External grammar ----------
+
+const GRAMMAR_FEATURES = `# Features
+
+## Area
+
+### [BareTop](features/bare-top.md)
+
+Bare text on the top-level line.
+
+**Requires:** [Anchor](features/anchor.md), vendor SDK.
+
+### [EmptyReq](features/empty-req.md)
+
+Empty Requires label.
+
+**Requires:**
+
+### [Anchor](features/anchor.md)
+
+**Requires:** none.
+
+### [LinkExt](features/link-ext.md)
+
+A link parked in External.
+
+**Requires:** none.
+**External:** [Anchor](features/anchor.md).
+
+### [NoneExt](features/none-ext.md)
+
+none. in External.
+
+**Requires:** none.
+**External:** none.
+
+### [EmptyExt](features/empty-ext.md)
+
+Empty External label.
+
+**Requires:** none.
+**External:**
+
+### [ProseLink](features/prose-link.md)
+
+External prose that merely contains a link.
+
+**Requires:** none.
+**External:** vendor support tracked in [RFC 9110](https://example.invalid).
+
+### [Wrapped](features/wrapped.md)
+
+Wrapped External line.
+
+**Requires:** none.
+**External:** first primitive,
+second primitive.
+
+### [Sliced](features/sliced.md)
+
+Sliced with inline annotations.
+
+**Slices:**
+
+- **MVP \u2014 base.** The base.
+- **Ext only.** Later slice gated only on a primitive.
+  **External:** Node 24 test runner.
+- **Bare inline.** Later slice with bare text in its inline Requires.
+  **Requires:** [Anchor](features/anchor.md), vendor SDK.
+
+**Requires:** none.
+`;
+
+const grammarRs = analyze({ FEATURES: GRAMMAR_FEATURES });
+
+function problemFor(rs, title) {
+  const rec = findByTitle(rs.structuralErrors, title);
+  assert.ok(rec, `${title} not in structuralErrors: ${titles(rs.structuralErrors)}`);
+  return rec.problem;
+}
+
+test('bare text in a top-level Requires line is a structural error with a move-to-External remedy', () => {
+  const problem = problemFor(grammarRs, 'BareTop');
+  assert.ok(problem.includes('bare text "vendor SDK" in **Requires:**'), problem);
+  assert.ok(problem.includes('move it to **External:**'), problem);
+  assert.ok(!findByTitle(grammarRs.blocked, 'BareTop') && !findByTitle(grammarRs.external, 'BareTop'), 'entry-level error replaces classification');
+});
+
+test('an empty Requires label is a structural error telling the author to write none.', () => {
+  const problem = problemFor(grammarRs, 'EmptyReq');
+  assert.ok(problem.includes('empty **Requires:** label'), problem);
+  assert.ok(problem.includes('write none.'), problem);
+});
+
+test('a link in External is a structural error with a move-to-Requires remedy', () => {
+  const problem = problemFor(grammarRs, 'LinkExt');
+  assert.ok(problem.includes('link "Anchor" in **External:**'), problem);
+  assert.ok(problem.includes('move it to **Requires:**'), problem);
+});
+
+test('none. in External is a structural error telling the author to delete the line', () => {
+  const problem = problemFor(grammarRs, 'NoneExt');
+  assert.ok(problem.includes('none. in **External:**'), problem);
+  assert.ok(problem.includes('delete the line'), problem);
+});
+
+test('an empty External label is a structural error telling the author to delete the line', () => {
+  const problem = problemFor(grammarRs, 'EmptyExt');
+  assert.ok(problem.includes('empty **External:** label'), problem);
+  assert.ok(problem.includes('delete the line'), problem);
+});
+
+test('External prose that merely contains a link is bare text, classified External with no error', () => {
+  const entry = findByTitle(grammarRs.external, 'ProseLink');
+  assert.ok(entry, titles(grammarRs.external).join(' | '));
+  assert.deepStrictEqual(entry.primitives, ['vendor support tracked in [RFC 9110](https://example.invalid)']);
+  assert.ok(!findByTitle(grammarRs.structuralErrors, 'ProseLink'));
+});
+
+test('a wrapped External line joins across physical lines', () => {
+  const entry = findByTitle(grammarRs.external, 'Wrapped');
+  assert.ok(entry, titles(grammarRs.external).join(' | '));
+  assert.deepStrictEqual(entry.primitives, ['first primitive', 'second primitive']);
+});
+
+test('bare text in an inline per-slice Requires annotation is a structural error with its remedy', () => {
+  const problem = problemFor(grammarRs, '[Sliced: Bare inline]');
+  assert.ok(problem.includes('bare text "vendor SDK" in **Requires:**'), problem);
+  assert.ok(problem.includes('move it to **External:**'), problem);
+});
+
+test('a continuation slice with an External line and an unshipped MVP is Blocked, externals parenthetical', () => {
+  const unit = findByTitle(grammarRs.blocked, '[Sliced: Ext only]');
+  assert.ok(unit, titles(grammarRs.blocked).join(' | '));
+  assert.deepStrictEqual(unit.blockers, ['Sliced: MVP \u2014 base (implicit MVP gate)']);
+  assert.deepStrictEqual(unit.externals, ['Node 24 test runner']);
+  assert.ok(!findByTitle(grammarRs.external, '[Sliced: Ext only]'), 'must not double-report');
 });
 
 // ---------- CLI smoke test ----------

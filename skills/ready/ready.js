@@ -43,8 +43,12 @@ const PLACEHOLDER_LINES = new Set([
 ]);
 
 // A bold label at line start (e.g. **Slices:**, **Shipped:**) terminates a
-// wrapped Requires line; inline **bold** mid-line does not.
+// wrapped Requires or External line; inline **bold** mid-line does not.
 const LABEL_AT_START = /^\*\*[^*]+?:\*\*/;
+// The two dependency labels. Requires holds in-backlog links only; External
+// holds bare-text external primitives only. Both share one grammar.
+const REQUIRES_LABEL = /^\*\*Requires:\*\*/i;
+const EXTERNAL_LABEL = /^\*\*External:\*\*/i;
 const HEADING = /^#{2,3} /;
 const BULLET = /^- /;
 
@@ -123,12 +127,12 @@ function parseRequiresItem(raw) {
   return { kind: 'external', text: raw.replace(/\.$/, '') };
 }
 
-// Assemble a wrapped **Requires:** line starting at records[start]. Joins
+// Assemble a wrapped label line starting at records[start]. Joins
 // continuation lines until a terminator: blank line, ##/### heading,
 // "- " bullet, or a **Label:** line at line start.
-function assembleRequires(records, start) {
+function assembleLabel(records, start, labelRe) {
   const first = records[start].content.trim();
-  let content = first.replace(/^\*\*Requires:\*\*/i, '').trim();
+  let content = first.replace(labelRe, '').trim();
   let i = start + 1;
   while (i < records.length) {
     const record = records[i];
@@ -320,20 +324,28 @@ function extractEntries(content, excludedSectionTitles, opts = {}) {
 
 // ---------- Requires + Slices parsing on an entry body ----------
 
-function findRequires(bodyLines) {
+function findLabel(bodyLines, labelRe) {
   const records = scanMarkdown(Buffer.from(bodyLines.join('\n'), 'utf8')).lines;
   for (let i = 0; i < records.length; i++) {
     const line = records[i].content;
-    if (records[i].outsideFence && /^\*\*Requires:\*\*/i.test(line.trim()) && !/^\s+/.test(line)) {
-      return assembleRequires(records, i);
+    if (records[i].outsideFence && labelRe.test(line.trim()) && !/^\s+/.test(line)) {
+      return assembleLabel(records, i, labelRe);
     }
   }
   return null;
 }
 
+function findRequires(bodyLines) {
+  return findLabel(bodyLines, REQUIRES_LABEL);
+}
+
+function findExternal(bodyLines) {
+  return findLabel(bodyLines, EXTERNAL_LABEL);
+}
+
 // Parse the **Slices:** block. Slice-declaring bullets are "- " bullets at
-// indent 0; indented continuation lines (inline **Requires:** annotations)
-// attach to the preceding bullet.
+// indent 0; indented continuation lines (inline **Requires:** and
+// **External:** annotations) attach to the preceding bullet.
 function parseSlices(bodyLines) {
   const records = scanMarkdown(Buffer.from(bodyLines.join('\n'), 'utf8')).lines;
   let start = -1;
@@ -382,12 +394,14 @@ function parseSlices(bodyLines) {
         displayName: stripStable(nameRaw),
         struck: Boolean(struckMatch),
         inlineRequires: null,
+        inlineExternal: null,
       });
     } else if (/^\s+\S/.test(line) && slices.length > 0) {
-      if (/^\*\*Requires:\*\*/i.test(t)) {
+      const labelRe = REQUIRES_LABEL.test(t) ? REQUIRES_LABEL : EXTERNAL_LABEL.test(t) ? EXTERNAL_LABEL : null;
+      if (labelRe !== null) {
         // Assemble the indented inline annotation, joining further
         // indented non-bullet lines.
-        let content = t.replace(/^\*\*Requires:\*\*/i, '').trim();
+        let content = t.replace(labelRe, '').trim();
         let j = i + 1;
         while (j < records.length) {
           const cont = records[j];
@@ -400,7 +414,12 @@ function parseSlices(bodyLines) {
           content += ' ' + ct;
           j++;
         }
-        slices[slices.length - 1].inlineRequires = content;
+        const slice = slices[slices.length - 1];
+        if (labelRe === REQUIRES_LABEL) {
+          slice.inlineRequires = content;
+        } else {
+          slice.inlineExternal = content;
+        }
         i = j - 1;
       }
       // Other indented continuation prose belongs to the bullet; skip.
@@ -620,8 +639,22 @@ function firstExcerpt(bodyLines) {
   return '';
 }
 
+// Every grammar error names its remedy: these messages are the upgrade
+// path for backlogs written under the old single-field grammar.
+const EMPTY_REQUIRES_PROBLEM = 'empty **Requires:** label; write none. when there are no upstream gates';
+const EMPTY_EXTERNAL_PROBLEM = 'empty **External:** label; delete the line (absence is the only empty form)';
+const NONE_IN_EXTERNAL_PROBLEM = 'none. in **External:**; delete the line (absence is the only empty form)';
+
+function bareTextProblem(text) {
+  return `bare text "${text}" in **Requires:**; move it to **External:** (write none. if no link remains)`;
+}
+
+function linkInExternalProblem(display) {
+  return `link "${display}" in **External:**; move it to **Requires:**`;
+}
+
 function classifyUnit(unit, registry, out) {
-  const { index, title, excerpt, requiresContent, missingRequires, extraBlockers } = unit;
+  const { index, title, excerpt, requiresContent, externalContent, missingRequires, extraBlockers } = unit;
 
   if (unit.excluded) return;
 
@@ -638,11 +671,14 @@ function classifyUnit(unit, registry, out) {
   const structural = [];
 
   if (requiresContent !== null && requiresContent !== undefined) {
+    if (requiresContent === '') {
+      structural.push(EMPTY_REQUIRES_PROBLEM);
+    }
     for (const raw of splitTopLevelCommas(requiresContent)) {
       const item = parseRequiresItem(raw);
       if (item.kind === 'none') continue;
       if (item.kind === 'external') {
-        externals.push(item.text);
+        structural.push(bareTextProblem(item.text));
         continue;
       }
       const res = resolveLink(item, registry);
@@ -651,13 +687,31 @@ function classifyUnit(unit, registry, out) {
     }
   }
 
+  if (externalContent !== null && externalContent !== undefined) {
+    if (externalContent === '') {
+      structural.push(EMPTY_EXTERNAL_PROBLEM);
+    }
+    for (const raw of splitTopLevelCommas(externalContent)) {
+      const item = parseRequiresItem(raw);
+      if (item.kind === 'none') {
+        structural.push(NONE_IN_EXTERNAL_PROBLEM);
+        continue;
+      }
+      if (item.kind === 'link') {
+        structural.push(linkInExternalProblem(item.display));
+        continue;
+      }
+      externals.push(item.text);
+    }
+  }
+
   if (structural.length > 0) {
     out.structuralErrors.push({ index, title, problem: structural.join('; ') });
     return;
   }
   if (blockers.length > 0) {
-    // Mixed link + external: classify Blocked, externals mentioned
-    // parenthetically. Never double-report under both categories.
+    // A link blocker plus an External line: classify Blocked, externals
+    // mentioned parenthetically. Never double-report under both categories.
     out.blocked.push({ index, title, blockers, externals });
     return;
   }
@@ -708,13 +762,16 @@ function parseIndexes(files, out) {
 function attachEntryMetadata(name, entry) {
   if (name === 'QUICK_WINS') {
     entry.requiresContent = null;
+    entry.externalContent = null;
     entry.slices = null;
 
     return;
   }
 
   const requires = findRequires(entry.bodyLines);
+  const external = findExternal(entry.bodyLines);
   entry.requiresContent = requires ? requires.content : null;
+  entry.externalContent = external ? external.content : null;
   entry.slices = name === 'FEATURES' ? parseSlices(entry.bodyLines) : null;
 }
 
@@ -827,6 +884,7 @@ function classifySlicedEntry(index, entry, excluded, registry, out) {
       title: `[${entry.title}: ${slice.displayName}]`,
       excerpt: slice.raw.length > 200 ? slice.raw.slice(0, 197) + '...' : slice.raw,
       requiresContent: slice === firstUnshipped ? entry.requiresContent : slice.inlineRequires,
+      externalContent: slice === firstUnshipped ? entry.externalContent : slice.inlineExternal,
       missingRequires: false,
       extraBlockers,
       excluded,
@@ -846,6 +904,7 @@ function classifyTrackedEntry(index, entry, excluded, registry, out) {
     title: entry.title,
     excerpt: firstExcerpt(entry.bodyLines),
     requiresContent: entry.requiresContent,
+    externalContent: entry.externalContent,
     missingRequires: entry.requiresContent === null,
     excluded,
   }, registry, out);
