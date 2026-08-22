@@ -85,7 +85,7 @@ Migrated into the backlog on 2026-08-11, with six design decisions confirmed one
 
 - The fingerprint consumers this centralizes are shipped before the universal-entry MVP in `commands/handover.md` and `skills/revise/SKILL.md`, then move to `skills/handover/SKILL.md` and `internal/revise/SKILL.md`; this feature relocates the computation from whichever active sources exist when it lands.
 - The `skills/ready/ready.js` / `ready.test.js` framework-free fixture convention this helper follows (existing).
-- Lands after the breakout-dependency-drift bug fix, which extends `skills/ready/ready.js` with the External grammar and a breakout scan; the shared raw-entry locator this feature extracts must preserve both.
+- Follows the breakout-dependency-drift bug fix (shipped 2026-08-22), which extended `skills/ready/ready.js` with the External grammar and a breakout scan; the shared raw-entry locator this feature extracts must preserve both.
 
 Present chosen spec for agreement before work shipped before Content fingerprint helper.
 

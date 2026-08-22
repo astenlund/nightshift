@@ -278,7 +278,7 @@ Centralizes selector-aware content extraction, canonical byte framing, and hashi
 
 Present chosen spec for agreement before work shipped before Content fingerprint helper.
 
-Lands after the breakout-dependency-drift bug fix.
+Follows the breakout-dependency-drift bug fix (shipped 2026-08-22).
 
 **Requires:** none.
 
@@ -340,7 +340,7 @@ Gives Nightshift's user-facing surfaces a declared audience model and communicat
 
 Moves `init-backlog`'s deterministically-answerable behavior (static template bodies, directory and missing-file creation, and structural edits) out of the prompt and into bundled plugin code or static files, so one-correct-answer steps are executed rather than re-derived, while the genuinely semantic judgments (concept coverage in customized prose, ambiguous merges, when a user decision is required) remain with Claude. Boundary rule: if there is one objectively correct answer, get it out of promptspace. The per-candidate code-vs-file attribution is left open for the implementing session.
 
-Lands after the breakout-dependency-drift bug fix.
+Follows the breakout-dependency-drift bug fix (shipped 2026-08-22).
 
 **Requires:** none.
 
