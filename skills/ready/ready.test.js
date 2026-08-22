@@ -23,6 +23,7 @@ const {
   buildRegistry,
   EXCLUDED_SECTIONS,
   collectEntryEdges,
+  scanBreakoutLines,
 } = require('./ready.js');
 
 let passed = 0;
@@ -1184,6 +1185,36 @@ test('the top-level External line governs the first unshipped slice, not later c
   assert.deepStrictEqual(extOnly.externals, ['Node 24 test runner']);
 });
 
+// ---------- breakout scan ----------
+
+test('scanBreakoutLines finds Requires and External labels at any indentation, outside fences, never in inline backticks', () => {
+  const contents = [
+    '# Title',
+    '',
+    'Prose mentioning `**Requires:**` inline never matches.',
+    '```',
+    '**Requires:** fenced example never matches',
+    '```',
+    '  **External:** indented primitive.',
+    '',
+    '**Requires:** none.',
+    '',
+  ].join('\n');
+
+  assert.deepStrictEqual(scanBreakoutLines(contents), [
+    { label: 'External', line: 7 },
+    { label: 'Requires', line: 9 },
+  ]);
+});
+
+test('scanBreakoutLines returns an empty array for a clean breakout', () => {
+  assert.deepStrictEqual(scanBreakoutLines('# Title\n\n## Requirements\n\n- Needs a parser.\n'), []);
+});
+
+test('breakoutTargets include entries whose classification terminated in a structural error', () => {
+  assert.ok(gates.breakoutTargets.some((t) => t.target === 'features/kappa.md'), JSON.stringify(gates.breakoutTargets));
+});
+
 // ---------- CLI smoke test ----------
 
 test('CLI reads a .claude dir and emits the same JSON shape', () => {
@@ -1192,8 +1223,16 @@ test('CLI reads a .claude dir and emits the same JSON shape', () => {
   fs.mkdirSync(claudeDir, { recursive: true });
   try {
     fs.writeFileSync(path.join(claudeDir, 'QUICK_WINS.md'), QUICK_WINS);
-    fs.writeFileSync(path.join(claudeDir, 'FEATURES.md'), FEATURES);
+    fs.writeFileSync(path.join(claudeDir, 'FEATURES.md'), FEATURES.replace('### [Draft thing](features/draft.md)', '### [Linked draft](features/draft-linked.md)\n\nSecond draft, whose breakout exists on disk.\n\n### [Draft thing](features/draft.md)'));
     fs.writeFileSync(path.join(claudeDir, 'BUGS.md'), BUGS);
+    fs.mkdirSync(path.join(claudeDir, 'features'), { recursive: true });
+    fs.writeFileSync(path.join(claudeDir, 'features', 'beta.md'), '# Beta\n\n**Requires:** [Alpha](alpha.md).\n');
+    fs.writeFileSync(path.join(claudeDir, 'features', 'draft-linked.md'), '# Draft\n\n  **External:** something.\n');
+    fs.writeFileSync(path.join(claudeDir, 'features', 'gamma.md'), '# Gamma\n\nSee `**Requires:**` in the index.\n\n```\n**Requires:** example\n```\n');
+    fs.mkdirSync(path.join(claudeDir, 'features', 'sigma.md'));
+    fs.writeFileSync(path.join(claudeDir, 'FEATURES_HISTORY.md'), '# Features history\n\n## Entries\n\n### [Old](features/old.md)\n\n**Requires:** [Alpha](features/alpha.md).\n');
+    fs.mkdirSync(path.join(claudeDir, 'plans'), { recursive: true });
+    fs.writeFileSync(path.join(claudeDir, 'plans', 'stale-plan.md'), '# Plan\n\n**Requires:** [Alpha](features/alpha.md).\n');
     const stdout = execFileSync(process.execPath, [path.join(__dirname, 'ready.js'), tmpRoot], { encoding: 'utf8' });
     const cli = JSON.parse(stdout);
     assert.ok(Array.isArray(cli.ready) && cli.ready.length > 0);
@@ -1214,6 +1253,20 @@ test('CLI reads a .claude dir and emits the same JSON shape', () => {
       !cli.notices.some((n) => n.includes('features/draft.md') && n.includes('Requires line still resolves')),
       'draft notices must not claim Requires resolution',
     );
+    const betaError = cli.structuralErrors.find((e) => e.title === 'Beta');
+    assert.ok(betaError, JSON.stringify(cli.structuralErrors));
+    assert.ok(betaError.problem.includes('breakout file features/beta.md carries a **Requires:** line'), betaError.problem);
+    assert.ok(betaError.problem.includes('delete the breakout line'), betaError.problem);
+    assert.ok(cli.blocked.some((b) => b.title === 'Beta'), 'hygiene error coexists with the entry classification');
+    const draftError = cli.structuralErrors.find((e) => e.title === 'Linked draft');
+    assert.ok(draftError && draftError.problem.includes('**External:**'), JSON.stringify(cli.structuralErrors));
+    assert.ok(!cli.structuralErrors.some((e) => e.title === 'Gamma' && e.problem.includes('breakout file')), 'backticked and fenced mentions never match');
+    assert.ok(
+      cli.notices.some((n) => n.includes('features/sigma.md') && n.includes('cannot be read as a file')),
+      `directory target must be a notice: ${JSON.stringify(cli.notices)}`,
+    );
+    assert.ok(Array.isArray(cli.ready) && cli.ready.length > 0, 'report still emitted');
+    assert.ok(!cli.structuralErrors.some((e) => e.problem.includes('FEATURES_HISTORY.md') || e.problem.includes('plans/')), 'history archives and plans are never scanned');
   } finally {
     fs.rmSync(tmpRoot, { recursive: true, force: true });
   }

@@ -3,8 +3,10 @@
 
 // Deterministic parser behind the nightshift:ready skill. Reads the active
 // .claude/ indexes (QUICK_WINS.md, FEATURES.md, BUGS.md), resolves each
-// entry's **Requires:** line, expands sliced features into per-slice work
-// units, and emits a JSON report on stdout:
+// entry's **Requires:** line (in-backlog links) and optional **External:**
+// line (external primitives), expands sliced features into per-slice work
+// units, scans each linked breakout file for a stray dependency line, and
+// emits a JSON report on stdout:
 //
 //   { indexes, ready, blocked, external, exploring, structuralErrors, notices }
 //
@@ -860,7 +862,7 @@ function classifySlicedEntry(index, entry, excluded, registry, out) {
       problem: 'all slices shipped; graduate parent to FEATURES_HISTORY.md per the ## Slicing last-slice rule',
     });
 
-    return false;
+    return;
   }
   if (entry.requiresContent === null) {
     out.structuralErrors.push({
@@ -869,7 +871,7 @@ function classifySlicedEntry(index, entry, excluded, registry, out) {
       problem: 'missing top-level **Requires:** line (should reflect the next-to-ship slice)',
     });
 
-    return false;
+    return;
   }
 
   const mvp = entry.slices[0];
@@ -890,13 +892,13 @@ function classifySlicedEntry(index, entry, excluded, registry, out) {
       excluded,
     }, registry, out);
   }
-
-  return true;
 }
 
 function classifyTrackedEntry(index, entry, excluded, registry, out) {
   if (entry.slices && entry.slices.length > 0) {
-    return classifySlicedEntry(index, entry, excluded, registry, out);
+    classifySlicedEntry(index, entry, excluded, registry, out);
+
+    return;
   }
 
   classifyUnit({
@@ -908,8 +910,6 @@ function classifyTrackedEntry(index, entry, excluded, registry, out) {
     missingRequires: entry.requiresContent === null,
     excluded,
   }, registry, out);
-
-  return true;
 }
 
 function classifyTrackedEntries(parsed, registry, cycleMembers, out, breakoutTargets) {
@@ -919,11 +919,9 @@ function classifyTrackedEntries(parsed, registry, cycleMembers, out, breakoutTar
       const index = `${name}.md`;
       const entryNode = nodeKey({ index, entry });
       const excluded = cycleMembers.has(entryNode);
-      // Preserve the existing output contract: terminal slice structural
-      // errors do not contribute breakout-link candidates.
-      if (!classifyTrackedEntry(index, entry, excluded, registry, out)) {
-        continue;
-      }
+      // Every linked breakout is a scan candidate, including one whose entry
+      // terminated in a structural error: the breakout can still drift.
+      classifyTrackedEntry(index, entry, excluded, registry, out);
       addBreakoutTarget(breakoutTargets, index, entry);
     }
   }
@@ -957,6 +955,25 @@ function analyze(files) {
   return out;
 }
 
+const BREAKOUT_LINE_LABELS = [['Requires', REQUIRES_LABEL], ['External', EXTERNAL_LABEL]];
+
+// Lines in a breakout file that carry a dependency label: outside any
+// fence, at any indentation, trimmed content starting with the label. The
+// index entry is the sole dependency authority, so a breakout copy is drift.
+// Inline backticked mentions in prose start with a backtick and never match.
+function scanBreakoutLines(contents) {
+  const records = scanMarkdown(Buffer.from(contents, 'utf8')).lines;
+  const hits = [];
+  records.forEach((record, i) => {
+    if (record.opensFence || !record.outsideFence) return;
+    const t = record.content.trim();
+    for (const [label, labelRe] of BREAKOUT_LINE_LABELS) {
+      if (labelRe.test(t)) hits.push({ label, line: i + 1 });
+    }
+  });
+  return hits;
+}
+
 function runCli(argRoot) {
   const root = path.resolve(argRoot || process.cwd());
   const claudeDir = path.basename(root) === '.claude' ? root : path.join(root, '.claude');
@@ -974,7 +991,10 @@ function runCli(argRoot) {
   }
   const result = analyze(files);
 
-  // Filesystem check for breakout-file links (relative to the index dir).
+  // Filesystem checks for breakout-file links (relative to the index dir):
+  // a missing file is a notice, an unreadable target is a notice, and a
+  // dependency line inside the file is a hygiene structural error that
+  // leaves the entry's classification standing.
   for (const rec of result.breakoutTargets) {
     const target = rec.target.split('#')[0];
     const resolved = path.resolve(claudeDir, target);
@@ -985,6 +1005,27 @@ function runCli(argRoot) {
       result.notices.push(
         `${rec.index} entry "${rec.title}" links to ${rec.target}, which does not exist; remove the broken link or create the file ${tail}`,
       );
+      continue;
+    }
+    let contents;
+    try {
+      contents = fs.readFileSync(resolved, 'utf8');
+    } catch (error) {
+      // A directory or an anchor-only link (EISDIR) is a link defect; any other code (EBUSY, EACCES, a
+      // TOCTOU ENOENT) is a transient read failure, and the notice names the code so the two read apart.
+      const code = error?.code ?? 'unknown';
+      const remedy = code === 'EISDIR' ? 'fix the link' : 'retry; the file was not scanned this run';
+      result.notices.push(
+        `${rec.index} entry "${rec.title}" links to ${rec.target}, which exists but cannot be read as a file (${code}); ${remedy}`,
+      );
+      continue;
+    }
+    for (const hit of scanBreakoutLines(contents)) {
+      result.structuralErrors.push({
+        index: rec.index,
+        title: rec.title,
+        problem: `breakout file ${rec.target} carries a **${hit.label}:** line (line ${hit.line}); delete the breakout line, the index entry is the sole dependency authority (hygiene error: the entry's classification stands)`,
+      });
     }
   }
   delete result.breakoutTargets;
@@ -1123,6 +1164,7 @@ module.exports = {
   findSlicesByNormalizedName,
   extractEntries,
   findRequires,
+  scanBreakoutLines,
   buildRegistry,
   EXCLUDED_SECTIONS,
   collectEntryEdges,
