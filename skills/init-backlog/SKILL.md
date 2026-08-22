@@ -57,7 +57,7 @@ The on-demand locations have different lifecycles:
      - **`## Entries`** in history archives: the heading is templated as a bootstrap landing pad, but once any user content lands beneath it the section becomes user-controlled and is skipped. Treat the heading as fixed; don't inspect the body.
      - **`## History`** pointer in the active indexes: the body is fixed boilerplate templated content, but drift in the pointer text doesn't affect dependency-graph correctness, so treat as intentionally-untracked user-controlled territory. Don't propose patches against it.
 
-     The per-file concept checklists in `## Concept checklists` below specify exactly which sections each checklist item covers and are authoritative: judge each checklist item as present-in-equivalent-prose vs absent on the live template-controlled portion, and only flag stale if at least one is absent. Identical-or-enriched template-controlled content (the live file covers everything on the checklist, possibly with additional project-specific prose) is NOT stale and must be left alone. Drift in wording, paragraph order, or added emphasis is not staleness; missing checklist coverage is. User-controlled sections are never inspected for staleness.
+     The per-file concept checklists in `## Concept checklists` below specify exactly which sections each checklist item covers and are authoritative: judge each checklist item as present-in-equivalent-prose vs absent on the live template-controlled portion, and only flag stale if at least one is absent. Identical-or-enriched template-controlled content (the live file covers everything on the checklist, possibly with additional project-specific prose) is NOT stale and must be left alone. Drift in wording, paragraph order, or added emphasis is not staleness; missing checklist coverage is. User-controlled sections are never inspected for staleness. A `## Requires lines` section that describes bare text as a legal `**Requires:**` form is stale regardless of concept coverage.
    - **`QUICK_WINS_HISTORY.md`**, **`FEATURES_HISTORY.md`**, and **`BUGS_HISTORY.md`** follow the same staleness rule as index files (template-controlled portion = H1 + `## Cross-reference resolution` section; `## Entries` is the user-controlled section). If any history file is missing on a project that still has a populated `## Implemented` / `## Fixed` section inside its parent index, surface the migration opportunity in the plan output but do not auto-move entries; the user decides when to perform the split.
    - The **CLAUDE.md `Backlogs and indexes` section** is stale if it is missing any concept named by its checklist below, including the current-session agreement boundary and autonomous within-contract continuation. When the section contains an earlier automatic-loading claim, replace that claim with the on-demand instruction. Coverage check, not literal-string match; other project-specific phrasing or added detail is fine.
 
@@ -101,10 +101,10 @@ For each templated file, these are the load-bearing concepts its template-contro
 
 **`FEATURES.md`:**
 1. Names this file as one of four repo-local indexes consulted on demand when relevant. *(H1)*
-2. States that each entry is a short paragraph + a `**Requires:**` line, optionally with a `**Slices:**` block for formal MVP + continuations. *(H1)*
+2. States that each entry is a short paragraph + a `**Requires:**` line, an optional `**External:**` line, and optionally a `**Slices:**` block for formal MVP + continuations. *(H1)*
 3. Notes informal prose as the fallback for partially-done features that aren't formally sliceable. *(H1)*
 4. Points at `FEATURES_HISTORY.md` for shipped entries; no inline `## Implemented` section. *(H1)*
-5. Explains the comma-separated form (with line-wrap allowed), the three reference shapes, walk-and-remove, and carve-outs for `## Working hypotheses` / `## Staging` / `## Future directions (not yet designed)` / `## Author tooling` / `## Exploring`. *(`## Requires lines` section)*
+5. Explains the comma-separated form (with line-wrap allowed), the two `**Requires:**` item shapes, the separate optional `**External:**` line for external primitives, walk-and-remove, and carve-outs for `## Working hypotheses` / `## Staging` / `## Future directions (not yet designed)` / `## Author tooling` / `## Exploring`. *(`## Requires lines` section)*
 6. Explains MVP + named continuations, the strikethrough-as-shipped convention on bullets, slice-suffix link form for downstream references, and the walk-and-remove obligation when a slice ships. *(`## Slicing` section)*
 7. Notes pre-dependency-analysis brainstorms, `/nightshift:ready` reports the section separately as titles-only drafts (never in the ready set) with `/nightshift:exploring` as the full view, `Requires:` lines optional. *(`## Exploring` preamble: the prose before the first `###` entry inside that section; if the section has no `###` entries yet, the entire section body IS the preamble)*
 8. Instructs the author to run `/nightshift:ready` after adding a new entry (or breakout file) to confirm it parses and its `**Requires:**` line resolves against the real grammar in `skills/ready/ready.js`. *(`## Requires lines` section)*
@@ -119,7 +119,7 @@ For each templated file, these are the load-bearing concepts its template-contro
 1. Names this file as one of four repo-local indexes consulted on demand when relevant. *(H1)*
 2. States the inline-or-breakout convention (short entries inline, longer diagnoses graduate to `bugs/<slug>.md`). *(H1)*
 3. Points at `BUGS_HISTORY.md` for fixed entries; no inline `## Fixed` section. *(H1)*
-4. Explains the comma-separated form (with line-wrap allowed), the three reference shapes, walk-and-remove obligation when a bug is fixed. *(`## Requires lines` section)*
+4. Explains the comma-separated form (with line-wrap allowed), the two `**Requires:**` item shapes, the separate optional `**External:**` line for external primitives, walk-and-remove obligation when a bug is fixed. *(`## Requires lines` section)*
 5. Instructs the author to run `/nightshift:ready` after adding a new entry (or breakout file) to confirm it parses and its `**Requires:**` line resolves against the real grammar in `skills/ready/ready.js`. *(`## Requires lines` section)*
 
 **`BUGS_HISTORY.md`:**
@@ -148,7 +148,7 @@ An earlier automatic-loading claim is replaced by the on-demand instruction rath
 ## Rules
 
 - **Targeted-patch insertion rules** (shared across all rules below that say "propose a targeted patch"): (a) **append** the missing concept as a new paragraph at the end of the relevant template-controlled portion (after its last existing paragraph), unless the missing concept is naturally a sub-clause of an existing paragraph: then propose an **in-place edit** that adds the clause to that paragraph, quoting both before and after in the plan output so the user sees the exact change. (b) **Never re-flow** surrounding prose to "integrate" the addition; mechanical append is the safe default. (c) If multiple checklist items are missing, propose them as separate patches in the plan, not a single rewrite. The user can accept, reject, or hand-edit each patch.
-- **Index files.** Create from template if missing. If present and the template-controlled portion covers every concept on the per-file checklist in `## Concept checklists` (verbatim or in equivalent project-specific prose), skip: including the enriched-superset case where the live content carries extra material the template doesn't. If present and missing checklist items, propose a **targeted patch** per the shared insertion rules above. User-controlled sections (per the template-controlled-portion definition in step 1) are never touched. If the live content is clearly project-specific custom enough that you can't confidently identify which concepts are missing vs. just-worded-differently, prefer `ask` over an automatic merge proposal.
+- **Index files.** Create from template if missing. If present and the template-controlled portion covers every concept on the per-file checklist in `## Concept checklists` (verbatim or in equivalent project-specific prose), skip: including the enriched-superset case where the live content carries extra material the template doesn't. If present and missing checklist items, propose a **targeted patch** per the shared insertion rules above. User-controlled sections (per the template-controlled-portion definition in step 1) are never touched. If the live content is clearly project-specific custom enough that you can't confidently identify which concepts are missing vs. just-worded-differently, prefer `ask` over an automatic merge proposal. One replace rule sits beside the automatic-loading one: an index header whose `## Requires lines` section still describes bare text as a legal `**Requires:**` form (the pre-External grammar) has that whole template-controlled section replaced by the current template's section through the user-confirmed section-level merge, since the legacy section states the form in its bullet list and, in `FEATURES.md`, also in its form count and fenced example.
 - **`QUICK_WINS_HISTORY.md`**, **`FEATURES_HISTORY.md`**, and **`BUGS_HISTORY.md`.** Create from template if missing. If present, follow the index-file rule: skip when concept-coverage is complete, propose a targeted patch (per shared insertion rules above) when concepts are missing, never touch the user-controlled `## Entries` section. If the parent index still has a populated `## Implemented` / `## Fixed` section while its history sibling is missing, surface the situation in the plan output but do not auto-migrate; the user decides whether to move them by hand.
 - **Subdirectories.** Create if missing. Never touch existing contents. Applies to the four subdirs (`features/`, `bugs/`, `patterns/`, `plans/`). Any pre-existing subdirectory outside that set is left alone untouched.
 - **`CLAUDE.md`.** Create minimally from template if missing. If present without a `Backlogs and indexes` section, offer to append it. If present with a section that's missing concepts the CLAUDE.md staleness rule above lists, propose a targeted patch (per shared insertion rules above; the section is the "template-controlled portion" here). Replace an earlier automatic-loading claim with the on-demand consultation rule in the same targeted patch. Enriched-superset sections (cover everything the template covers, plus non-contradictory project-specific phrasing or extras) are NOT stale and are skipped. If present with a similar section (any `##` heading containing "backlog" or "index") that's clearly project-specific custom content, show it and ask before editing.
@@ -197,7 +197,7 @@ misleads harder than a coarse one that holds.
 
 **After adding a new entry, run `/nightshift:ready`** from the repo root
 to confirm it parses as a quick-wins work item against the real grammar
-in `skills/ready/ready.js`. Quick wins carry no `**Requires:**` line; the
+in `skills/ready/ready.js`. Quick wins carry neither a `**Requires:**` nor an `**External:**` line; the
 failure mode to catch is an entry that doesn't parse as a `- ` bullet or
 `###` heading (ready reports it as a prose-only-section notice) while you
 can still fix it in the same session.
@@ -259,8 +259,8 @@ directions in the same territory.
 
 This file is **one of four repo-local indexes** agents consult on demand
 when relevant (alongside `QUICK_WINS.md`, `BUGS.md`, `PATTERNS.md`). Each
-entry here is a short paragraph summary plus a `**Requires:**` line, and
-optionally a `**Slices:**` block (formal MVP plus continuations; see
+entry here is a short paragraph summary plus a `**Requires:**` line, an
+optional `**External:**` line, and optionally a `**Slices:**` block (formal MVP plus continuations; see
 `## Slicing` below). For features that are partially done without a
 formal slice breakdown, describe the partial progress in the entry's
 own prose: there is no separate marker convention for "partially
@@ -276,17 +276,29 @@ Readiness and graduation are not approval: before spec-governed work, present th
 **Every feature index entry carries a `**Requires:**` line** declaring
 the upstream gates that block the feature. The line is comma-separated;
 long lines may wrap across multiple physical lines and `/nightshift:ready` joins
-them before parsing. Each item is one of three forms:
+them before parsing. Each item is one of two forms:
 
 - A markdown link to a feature, quick win, or bug entry tracked in one
   of the four indexes. The reference is a current blocker; under the
   walk-and-remove convention below, a satisfied dependency is edited
   out of the line at the moment it ships, so `/nightshift:ready` treats every
   in-backlog reference as actively blocking.
-- Bare text. Names an external primitive (SDK feature, infrastructure
-  capability, project-level invariant, library, hardware) that the user
-  confirms case by case. `/nightshift:ready` flags these as `external`.
-- The literal word `none.` if there are no upstream gates.
+- The literal word `none.` if there are no upstream gates. An empty
+  label is a structural error; `none.` is the only empty form.
+
+Bare text in `**Requires:**` is a structural error. External
+primitives (an SDK feature, infrastructure capability, library,
+hardware, a user decision) go on a separate, optional
+`**External:**` line directly below it, with the same comma-separated
+and wrap-join grammar: `**External:** vendor SDK 3.0, hardware
+enclosure.` Absence is its only empty form, so `none.`, an empty
+label, or a markdown link in it is a structural error (a link parked
+there would be invisible to the walk-and-remove convention). A link
+means an item that is entirely a markdown link; prose that merely
+contains a link is bare text. `/nightshift:ready` classifies a work unit
+with at least one in-backlog blocker as Blocked with its externals
+noted parenthetically, and a work unit with externals and no blocker
+as External. Every structural error names its remedy.
 
 A missing `Requires:` line is a structural error: every entry must say
 something. Silence is not the same as `none.`; it indicates the
@@ -321,10 +333,9 @@ tooling are bulleted rather than `###` headings, so the `###`-only
 candidate filter handles them naturally; `## Exploring` holds `###`
 entries, collected as drafts and never classified.
 
-Concrete entry shape inside the index. The example mixes a feature
-link, a quick-win link, and a bare external primitive to show all
-three forms; a real entry only includes whatever it actually depends
-on:
+Concrete entry shape inside the index. The example shows a feature
+link, a quick-win link, and an External line to show both lines; a
+real entry only includes whatever it actually depends on:
 
 ```markdown
 ### [<Feature name>](features/slug.md)
@@ -332,12 +343,12 @@ on:
 <Short paragraph summary.>
 
 **Requires:** [other-feature](features/other-feature.md), [shared
-helper extraction](../QUICK_WINS.md#shared-helper-extraction), some
-external primitive.
+helper extraction](../QUICK_WINS.md#shared-helper-extraction).
+**External:** some external primitive.
 ```
 
 **When a feature is implemented**, move its index entry to
-[`FEATURES_HISTORY.md`](FEATURES_HISTORY.md); drop its `Requires:` line
+[`FEATURES_HISTORY.md`](FEATURES_HISTORY.md); drop its `Requires:` and `External:` lines
 in the move (history entries don't need them). The feature file stays
 in place as a historical design record.
 
@@ -376,13 +387,13 @@ After MVP ships, the MVP entry moves to
 [`FEATURES_HISTORY.md`](FEATURES_HISTORY.md); the MVP bullet in the
 parent's `**Slices:**` block is struck through with a pointer to the
 history file; the parent entry stays in its themed section; the
-top-level `**Requires:**` line advances to the next-to-ship slice's
+top-level `**Requires:**` and `**External:**` lines advance to the next-to-ship slice's
 gates; and every other `**Requires:**` line in `FEATURES.md` / `BUGS.md`
 that referenced the just-shipped slice (bare-link defaults to MVP) is
 edited to drop the now-satisfied reference. When later continuations
 have independent gates (they can ship in any order rather than
-sequentially), each slice bullet may carry an inline `**Requires:**`
-annotation for documentation. Example shape post-MVP:
+sequentially), each slice bullet may carry inline `**Requires:**` and `**External:**`
+annotations for documentation. Example shape post-MVP:
 
 ````
 **Slices:**
@@ -415,14 +426,14 @@ As each slice ships, append a line to `FEATURES_HISTORY.md`:
 The parent entry stays in its themed section until the **last** slice
 ships, at which point it graduates with the final history line.
 
-`/nightshift:ready` reads the top-level `**Requires:**` line and any inline
-`**Requires:**` annotations on slice bullets, then reports each
+`/nightshift:ready` reads the top-level `**Requires:**` and `**External:**` lines and any inline
+`**Requires:**` and `**External:**` annotations on slice bullets, then reports each
 unshipped slice as a separate work unit (`[Feature title: slice
 name]`). A slice is "unshipped" when its bullet in the `**Slices:**`
 block is *not* struck through; the strikethrough is the live
 slice-status indicator that `/nightshift:ready` reads. The **first unshipped
-slice** (top-most non-struck bullet) uses the top-level line as its
-gates; other unshipped slices use their inline annotation if present,
+slice** (top-most non-struck bullet) uses the top-level lines as its
+gates; other unshipped slices use their inline annotations if present,
 or have no extra gates if no annotation. All non-MVP slices
 **implicitly depend on MVP being struck through**, regardless of
 top-level or inline gates; a continuation is never reported as Ready
@@ -432,8 +443,8 @@ form, useful when one continuation builds directly on another;
 resolve the reference by checking whether the target slice's bullet
 is struck through. As each slice ships, append its entry to
 `FEATURES_HISTORY.md`, strike through its bullet in the parent's
-`**Slices:**` block, advance the top-level `**Requires:**` to the
-new next-to-ship slice's gates, and walk every other `**Requires:**`
+`**Slices:**` block, advance the top-level `**Requires:**` and `**External:**` lines to the
+new next-to-ship slice's gates (dropping `**External:**` when that slice declares none), and walk every other `**Requires:**`
 line in `FEATURES.md` / `BUGS.md` to drop now-satisfied references.
 
 ## Exploring
@@ -530,12 +541,17 @@ parsing):
   current blocker; under the walk-and-remove convention below, a
   satisfied dependency is edited out of the line at the moment it
   ships or is fixed.
-- Bare text. An external primitive (driver release, vendor support,
-  user decision) the user confirms case by case.
-- The literal word `none.` if the fix is unblocked.
+- The literal word `none.` if the fix is unblocked. An empty label is
+  a structural error; `none.` is the only empty form.
+
+Bare text in `**Requires:**` is a structural error. An external
+primitive (driver release, vendor support, user decision) goes on a
+separate, optional `**External:**` line directly below it, same
+grammar; `none.`, an empty label, or a link in it is a structural
+error. Every structural error names its remedy.
 
 A missing `Requires:` line is a structural error. `/nightshift:ready` parses these
-lines. History entries don't carry `Requires:` lines.
+lines. History entries carry neither line.
 
 **After adding a new entry (or a bug breakout file), run `/nightshift:ready`**
 from the repo root to confirm the new entry parses and its `**Requires:**`
@@ -546,7 +562,7 @@ otherwise sits in the backlog until the next readiness pass surfaces it.
 
 **When a bug is fixed**, move its entry to
 [`BUGS_HISTORY.md`](BUGS_HISTORY.md) with a brief note on the fix and
-the commit it landed in; drop its `Requires:` line in the move. If the
+the commit it landed in; drop its `Requires:` and `External:` lines in the move. If the
 bug had its own file, keep the file in place as a historical record of
 the diagnosis.
 
@@ -665,7 +681,7 @@ Four locations sit alongside the indexes and are consulted only on demand when r
 
 Brainstorming output lives in feature files (or in patterns when cross-cutting / in bugs when diagnostic) rather than as separate dated specs. Pre-feature exploratory brainstorms land as draft features with `status: exploring` frontmatter and an entry in `FEATURES.md`'s `## Exploring` section; `/nightshift:ready` lists them titles-only as drafts, never in the ready set, and `/nightshift:exploring` shows the full draft list. They graduate to a themed `##` section with a `**Requires:**` line once the design firms up.
 
-The `/nightshift:ready` skill parses each entry's `**Requires:**` line in `FEATURES.md` and `BUGS.md` and reports the unblocked work set. Run it when picking what to work on next.
+The `/nightshift:ready` skill parses each entry's `**Requires:**` line (in-backlog links only) and optional `**External:**` line (external primitives only) in `FEATURES.md` and `BUGS.md` and reports the unblocked work set. Breakout files carry neither line; the index is the sole dependency authority and the parser reports a breakout that carries one. Run it when picking what to work on next.
 ~~~
 
 ### `CLAUDE.md` section (to append when `CLAUDE.md` exists without it)
