@@ -250,3 +250,4 @@ things describe or consume; each consumer's handling:
 - revise-spec refreshed 2026-08-18 20:17 at 476d8d8, scope: whole file, content: d01aadbf (universal-entry topology references)
 - revise-spec refreshed 2026-08-19 09:10 at 2fce9c2, scope: whole file, content: 51d23fbb (legacy sign-off marker removal)
 - revise-spec refreshed 2026-08-22 10:18 at 6022378, scope: whole file, content: 564cce77 (breakout line removal)
+- revise-spec refreshed 2026-08-22 19:25 at b018c5f, scope: whole file, content: 07308383 (outcome-keyed notice tails currency note)
