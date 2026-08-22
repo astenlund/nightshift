@@ -834,10 +834,10 @@ function addQuickWins(parsed, out) {
   }
 }
 
-// `outcome` is the entry's own classification outcome (`structural` or
-// `cycle`), omitted when the entry resolved, mirroring how `draft` is
-// carried by presence.
-function addBreakoutTarget(breakoutTargets, index, entry, draft = false, outcome = null) {
+// `draft` marks an exploring draft; `outcome` is a tracked entry's own
+// classification outcome (`structural` or `cycle`), omitted when the entry
+// resolved. Both ride on the record by presence only.
+function addBreakoutTarget(breakoutTargets, index, entry, { draft = false, outcome = null } = {}) {
   if (!isRepoRelativeTarget(entry.selfTarget)) {
     return;
   }
@@ -863,7 +863,7 @@ function addExploringDrafts(parsed, out, breakoutTargets) {
         link: entry.selfTarget || null,
         excerpt: firstExcerpt(entry.bodyLines),
       });
-      addBreakoutTarget(breakoutTargets, 'FEATURES.md', entry, true);
+      addBreakoutTarget(breakoutTargets, 'FEATURES.md', entry, { draft: true });
     }
   }
 }
@@ -941,7 +941,7 @@ function classifyTrackedEntries(parsed, registry, cycleMembers, out, breakoutTar
       const errorsBefore = out.structuralErrors.length;
       classifyTrackedEntry(index, entry, excluded, registry, out);
       const outcome = out.structuralErrors.length > errorsBefore ? 'structural' : excluded ? 'cycle' : null;
-      addBreakoutTarget(breakoutTargets, index, entry, false, outcome);
+      addBreakoutTarget(breakoutTargets, index, entry, { outcome });
     }
   }
 }
