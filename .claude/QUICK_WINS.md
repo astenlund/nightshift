@@ -178,6 +178,17 @@ Refactors the agreement-gate revise run reviewed and agreed are valid but deferr
   [Reuse one resolution-local artifact snapshot across governing-set expansion](#agreement-gate-follow-ups-deferred-during-present-spec-for-agreement-revise-code)
   first: it already proposes a resolution-local snapshot and may cover the re-read half.
 
+## Ready parser precision
+
+- **Condition the missing-breakout notice tail on the entry's own classification.**
+  `breakoutReadNotice` in `skills/ready/ready.js` appends "(its Requires line still
+  resolves normally)" to every non-draft missing-file notice, including an entry whose
+  own classification ended in a structural error (reachable today for a non-sliced entry
+  with no Requires line). Preferred shape: pass the entry's classification outcome into
+  the notice builder and word the tail from it, with one fixture covering the
+  structural-error case. Surfaced by the breakout-dependency-drift spec review on
+  2026-08-22; pre-existing imprecision outside that fix's scope.
+
 ## (add sections as work emerges)
 
 ## History
