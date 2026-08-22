@@ -3,6 +3,7 @@
 const assert = require('node:assert/strict')
 const { readFileSync, readdirSync } = require('node:fs')
 const { join } = require('node:path')
+const { execFileSync } = require('node:child_process')
 const test = require('node:test')
 
 const { PUBLIC_SKILLS } = require('./entry-contract')
@@ -231,6 +232,40 @@ test('the unpushed-range resolver prefers the upstream, falls back to origin/mai
     evaluateReleaseGate({ changedPaths: ['skills/ready/SKILL.md'], baseManifest: base, headManifest: { ...base, version: '2.8.0' }, versions: ['2.6.2', '2.7.0', '2.6.5', '2.8.0'] }),
     { shipped: ['skills/ready/SKILL.md'], ok: false, reason: 'the version decreased within the unpushed range at commit 2 of 3 (2.7.0 to 2.6.5)' },
   )
+})
+
+// The classifier copies the AGENTS.md enumeration; pinning the sentence means a
+// widened convention fails here instead of silently outrunning the predicate.
+test('AGENTS states the shipped-behavior convention the classifier resolves', () => {
+  const agents = readRepositoryFile('AGENTS.md')
+
+  assert.equal(countExact(agents, SHIPPED_BEHAVIOR_SENTENCE), 1, `AGENTS must state: ${SHIPPED_BEHAVIOR_SENTENCE}`)
+})
+
+function git(args) {
+  return execFileSync('git', args, { cwd: repositoryRoot, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] })
+}
+
+// No fallback: the manifest exists at every revision in range, and a failed
+// `git show` must surface as a red test rather than a default that passes.
+function manifestAt(revision) {
+  return JSON.parse(git(['show', `${revision}:${MANIFEST_PATH}`]))
+}
+
+// Only committed state is read: the convention scopes itself to unpushed
+// batches, and the suite runs after commits and before the user-directed push.
+test('the unpushed range carries a monotonic version increase when shipped behavior changed', (t) => {
+  const { base, notice } = resolveUnpushedRange(git)
+  if (base === null) {
+    t.diagnostic(notice)
+    return
+  }
+  const changedPaths = git(['diff', '--name-only', `${base}..HEAD`]).split(/\r?\n/).filter((line) => line !== '')
+  const commits = git(['rev-list', '--reverse', `${base}..HEAD`]).split(/\r?\n/).filter((line) => line !== '')
+  const versions = [base, ...commits].map((revision) => manifestAt(revision).version)
+  const verdict = evaluateReleaseGate({ changedPaths, baseManifest: manifestAt(base), headManifest: manifestAt('HEAD'), versions })
+
+  assert.ok(verdict.ok, verdict.reason ?? 'release gate failed')
 })
 
 test('README lists exactly the public skills, one row each', () => {
