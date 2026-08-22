@@ -44,7 +44,7 @@ Floors that no tier subtracts: agreement on a decision-complete digest before wo
 - **Light revise mode** is one row of the profile table (a reduced dimension set and a single reviewer); this draft supplies the selector it lacked.
 - **Wave round economy** attacks the same tail churn from the lifecycle side (delta-scoped re-review, batching); the severity floor here is the rigor-side complement and can land first.
 - **Authoring guidance overlay** is where the plan-shape brief would live.
-- The bundled-controller proposal from the same handover (a deterministic revise-state controller that enforces the sweep boundary) is a prerequisite for enforcing round caps and floors mechanically rather than by controller prose.
+- **Bundled revise controller** (a deterministic revise-state controller that enforces the sweep boundary) is the formal upstream gate: round caps and severity floors are enforced by that controller, not by controller prose, so it lands first.
 
 ## Open questions
 

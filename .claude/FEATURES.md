@@ -246,11 +246,17 @@ Draft exploring an explicit compaction boundary after plan hardening and before 
 
 ## Review hardening
 
+### [Bundled revise controller](features/bundled-revise-controller.md)
+
+Ship a deterministic revise-state controller under `internal/revise/` (fingerprint, init with pre-seeded acknowledgements, start-round, persist-result with the drift guard, boundary adjudication, and a staleness sweep that refuses to run unless every applicable cell is inactive) so a session stops hand-rolling one per artifact type. The engine prose is already exact; the gap is that the state machine has no executable guard. Prompted by the 2026-08-22 handover, which hand-rolled three near-identical controllers and ran two premature sweeps the prose forbids.
+
+**Requires:** none.
+
 ### [Rigor-steered lifecycle](features/rigor-steered-lifecycle.md)
 
 The spec's rigor tier becomes an executable budget every lifecycle step reads: a five-tier scale (minimal, low, medium, high, max) where max is today's full machinery and each lower tier is defined by what it subtracts (count gates and verbatim blocks from the plan, wording dimensions from the spec loop, the plan loop, per-task reviews, the code loop), a severity floor so only behavior-changing findings reopen certified cells, and derivation that starts at minimal and climbs one step per uplift, with an existing safety net and change size as new inputs. Prompted by the 2026-08-22 breakout-dependency-drift handover, a 12-hour run for a 150-line parser fix. Sits above Light revise mode, Wave round economy, and Authoring guidance overlay as their selector.
 
-**Requires:** none.
+**Requires:** [Bundled revise controller](features/bundled-revise-controller.md).
 
 ### [Audience-category recalibration](features/audience-category-recalibration.md)
 
