@@ -155,9 +155,26 @@ Refactors the agreement-gate revise run reviewed and agreed are valid but deferr
   correct action, and stayed silent on the violation. Preferred shape: a check that reads the
   unpushed range's changed paths, classifies them against the convention's shipped-behavior
   list (public and internal `SKILL.md`, bundled non-test skill resources, `hooks/**`, and every
-  `plugin.json` field other than `version`), and requires exactly one monotonic increase when
-  any of them changed. Needs git access from the check, which is why it was deferred rather
-  than folded into the relocation that surfaced it.
+  `.claude-plugin/plugin.json` field other than `version`), and requires exactly one monotonic
+  increase when any of them changed. The list resolves to paths as: every file under `skills/**`
+  and `internal/**` except `*.test.js` files and anything under a `fixtures/` directory (that
+  covers both `SKILL.md` kinds and the bundled non-test resources, mirroring the walk in
+  `tests/release-surface.test.js`); `hooks/**`; and `.claude-plugin/plugin.json` only when its
+  parsed manifest at the range base and at HEAD differ in some field other than `version`, since
+  a changed-path list cannot see fields and a bump-only commit must not self-classify as shipped
+  behavior. Expose the classifier as a pure function over the changed paths plus both manifests
+  and pin it in the same suite with fixed positive and negative samples, plus one case asserting
+  the no-range branch reports its skip, so a prefix that matches nothing or a skip that always
+  fires cannot stay silently green. Pin the AGENTS.md shipped-behavior sentence verbatim in the
+  same suite (its existing `countExact` idiom), so a widened convention fails the suite instead
+  of silently outrunning the predicate. Needs git access from the check, which is why it was
+  deferred rather than folded into the relocation that surfaced it.
+  Operating context: a test in the repository suite, run by the sole maintainer locally and in
+  CI; audience category `personal use` (public repository with no adoption signals, per the
+  2026-08-15 ruling). A missed detection means one release ships without a version bump and the
+  installed copy lags until the next bump, recoverable with one follow-up release; no data or
+  security sensitivity, no concurrency, reversible by reverting the test, expected lifetime tied
+  to the version convention. No uplift predicate fires: tier low, every dimension effort low.
 
 ## Agreement digest economy
 
