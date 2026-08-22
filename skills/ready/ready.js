@@ -834,7 +834,10 @@ function addQuickWins(parsed, out) {
   }
 }
 
-function addBreakoutTarget(breakoutTargets, index, entry, draft = false) {
+// `outcome` is the entry's own classification outcome (`structural` or
+// `cycle`), omitted when the entry resolved, mirroring how `draft` is
+// carried by presence.
+function addBreakoutTarget(breakoutTargets, index, entry, draft = false, outcome = null) {
   if (!isRepoRelativeTarget(entry.selfTarget)) {
     return;
   }
@@ -842,6 +845,9 @@ function addBreakoutTarget(breakoutTargets, index, entry, draft = false) {
   const target = { index, title: entry.title, target: entry.selfTarget };
   if (draft) {
     target.draft = true;
+  }
+  if (outcome !== null) {
+    target.outcome = outcome;
   }
   breakoutTargets.push(target);
 }
@@ -929,9 +935,13 @@ function classifyTrackedEntries(parsed, registry, cycleMembers, out, breakoutTar
       const entryNode = nodeKey({ index, entry });
       const excluded = cycleMembers.has(entryNode);
       // Every linked breakout is a scan candidate, including one whose entry
-      // terminated in a structural error: the breakout can still drift.
+      // terminated in a structural error: the breakout can still drift. The
+      // outcome is measured across this entry's own classify call, never by
+      // scanning the finished errors by title (two indexes can share one).
+      const errorsBefore = out.structuralErrors.length;
       classifyTrackedEntry(index, entry, excluded, registry, out);
-      addBreakoutTarget(breakoutTargets, index, entry);
+      const outcome = out.structuralErrors.length > errorsBefore ? 'structural' : excluded ? 'cycle' : null;
+      addBreakoutTarget(breakoutTargets, index, entry, false, outcome);
     }
   }
 }
@@ -1012,6 +1022,12 @@ function scanBreakoutTargets(breakoutTargets, claudeDir) {
   return { notices, structuralErrors };
 }
 
+const MISSING_BREAKOUT_TAILS = {
+  resolved: '(its Requires line still resolves normally)',
+  structural: '(its own classification already reports a structural error)',
+  cycle: '(it is a dependency-cycle member; see the cycle error)',
+};
+
 // ENOENT is a broken link; a directory or an anchor-only link (EISDIR) is a
 // link defect; any other code (EBUSY, EACCES) is a transient read failure,
 // and the notice names the code so the two read apart.
@@ -1020,7 +1036,7 @@ function breakoutReadNotice(rec, code) {
   if (code === 'ENOENT') {
     const tail = rec.draft
       ? '(exploring draft; Requires lines do not apply)'
-      : '(its Requires line still resolves normally)';
+      : MISSING_BREAKOUT_TAILS[rec.outcome ?? 'resolved'];
 
     return `${link}, which does not exist; remove the broken link or create the file ${tail}`;
   }

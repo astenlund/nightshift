@@ -1300,6 +1300,8 @@ test('scanBreakoutTargets classifies a missing file, a directory, and a dependen
     const targets = [
       { index: 'FEATURES.md', title: 'Missing', target: 'features/missing.md', draft: false },
       { index: 'FEATURES.md', title: 'Missing draft', target: 'features/missing-draft.md', draft: true },
+      { index: 'FEATURES.md', title: 'Missing structural', target: 'features/missing-structural.md', outcome: 'structural' },
+      { index: 'FEATURES.md', title: 'Missing cycle', target: 'features/missing-cycle.md', outcome: 'cycle' },
       { index: 'FEATURES.md', title: 'As dir', target: 'features/as-dir.md', draft: false },
       { index: 'BUGS.md', title: 'Dirty', target: 'features/dirty.md#anchor', draft: false },
       { index: 'FEATURES.md', title: 'Clean', target: 'features/clean.md', draft: false },
@@ -1308,6 +1310,8 @@ test('scanBreakoutTargets classifies a missing file, a directory, and a dependen
     assert.deepStrictEqual(scanned.notices, [
       'FEATURES.md entry "Missing" links to features/missing.md, which does not exist; remove the broken link or create the file (its Requires line still resolves normally)',
       'FEATURES.md entry "Missing draft" links to features/missing-draft.md, which does not exist; remove the broken link or create the file (exploring draft; Requires lines do not apply)',
+      'FEATURES.md entry "Missing structural" links to features/missing-structural.md, which does not exist; remove the broken link or create the file (its own classification already reports a structural error)',
+      'FEATURES.md entry "Missing cycle" links to features/missing-cycle.md, which does not exist; remove the broken link or create the file (it is a dependency-cycle member; see the cycle error)',
       'FEATURES.md entry "As dir" links to features/as-dir.md, which exists but cannot be read as a file (EISDIR); fix the link',
     ]);
     assert.deepStrictEqual(scanned.structuralErrors, [{
@@ -1322,6 +1326,67 @@ test('scanBreakoutTargets classifies a missing file, a directory, and a dependen
 
 test('breakoutTargets include entries whose classification terminated in a structural error', () => {
   assert.ok(gates.breakoutTargets.some((t) => t.target === 'features/kappa.md'), JSON.stringify(gates.breakoutTargets));
+});
+
+const MIXED_SLICE_FEATURES = `# Features
+
+## Area
+
+### [Mu](features/mu.md)
+
+**Slices:**
+
+- **MVP.** Base.
+- **Cont.** Extra.
+  **Requires:** vendor SDK.
+
+**Requires:** none.
+`;
+
+const mixedSliceRs = analyze({ FEATURES: MIXED_SLICE_FEATURES });
+
+function breakoutOutcome(rs, target) {
+  const rec = rs.breakoutTargets.find((t) => t.target === target);
+  assert.ok(rec, `${target} not in breakoutTargets: ${JSON.stringify(rs.breakoutTargets)}`);
+  return rec.outcome;
+}
+
+test('breakoutTargets carry a structural outcome for a non-sliced entry whose classification failed', () => {
+  assert.strictEqual(breakoutOutcome(gates, 'features/kappa.md'), 'structural');
+  assert.strictEqual(breakoutOutcome(missingReqExtRs, 'features/gamma.md'), 'structural');
+});
+
+test('breakoutTargets carry a cycle outcome for a well-formed cycle member and structural for a malformed one', () => {
+  assert.strictEqual(breakoutOutcome(extCycleRs, 'features/anna.md'), 'cycle');
+  assert.strictEqual(breakoutOutcome(extCycleRs, 'features/bob.md'), 'cycle');
+  assert.strictEqual(breakoutOutcome(extLinkCycleRs, 'features/anna.md'), 'cycle');
+  assert.strictEqual(breakoutOutcome(extLinkCycleRs, 'features/bob.md'), 'structural', 'structural wins over cycle');
+});
+
+test('breakoutTargets carry a structural outcome for a sliced entry mixing a ready slice with a structural slice', () => {
+  assert.ok(findByTitle(mixedSliceRs.ready, '[Mu: MVP]'), titles(mixedSliceRs.ready).join(', '));
+  assert.ok(findByTitle(mixedSliceRs.structuralErrors, '[Mu: Cont]'), titles(mixedSliceRs.structuralErrors).join(', '));
+  assert.strictEqual(breakoutOutcome(mixedSliceRs, 'features/mu.md'), 'structural');
+});
+
+test('breakoutTargets omit the outcome field for a resolved entry', () => {
+  const iota = gates.breakoutTargets.find((t) => t.target === 'features/iota.md');
+  assert.ok(iota, JSON.stringify(gates.breakoutTargets));
+  assert.ok(!('outcome' in iota), JSON.stringify(iota));
+});
+
+test('a real structural outcome reaches the missing-breakout notice end to end', () => {
+  const tmpRoot = path.join(__dirname, '..', '..', '.tmp', `ready-outcome-${process.pid}`);
+  const claudeDir = path.join(tmpRoot, '.claude');
+  fs.mkdirSync(claudeDir, { recursive: true });
+  try {
+    const scanned = scanBreakoutTargets(mixedSliceRs.breakoutTargets, claudeDir);
+    assert.deepStrictEqual(scanned.notices, [
+      'FEATURES.md entry "Mu" links to features/mu.md, which does not exist; remove the broken link or create the file (its own classification already reports a structural error)',
+    ]);
+  } finally {
+    fs.rmSync(tmpRoot, { recursive: true, force: true });
+  }
 });
 
 // ---------- CLI smoke test ----------
