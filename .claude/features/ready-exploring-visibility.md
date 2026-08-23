@@ -60,3 +60,4 @@ Adding an output array and a new surface changes value sets other things describ
 - revise-spec refreshed 2026-08-19 09:10 at 2fce9c2, scope: whole file, content: 51d23fbb (legacy sign-off marker removal)
 - revise-spec refreshed 2026-08-22 10:18 at 6022378, scope: whole file, content: 564cce77 (breakout line removal)
 - revise-spec refreshed 2026-08-22 19:25 at b018c5f, scope: whole file, content: 07308383 (outcome-keyed notice tails currency note)
+- revise-spec refreshed 2026-08-23 14:05 at 64df858, scope: whole file, content: e80f8f87 (prose unwrapped to one paragraph per line)
