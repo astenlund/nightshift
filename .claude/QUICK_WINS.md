@@ -163,6 +163,18 @@ Refactors the agreement-gate revise run reviewed and agreed are valid but deferr
   [Reuse one resolution-local artifact snapshot across governing-set expansion](#agreement-gate-follow-ups-deferred-during-present-spec-for-agreement-revise-code)
   first: it already proposes a resolution-local snapshot and may cover the re-read half.
 
+## Release gate follow-ups
+
+- **Let the version-increase gate fire on pull requests in CI.** `.github/workflows/ci.yml` checks out at the `actions/checkout` default depth 1, so `tests/release-surface.test.js`'s gate sees an empty range on a push to `main` and takes the skip branch on a pull-request checkout (no `origin/main` ref); enforcement today is the local pre-push suite run only. Preferred shape: `fetch-depth: 0` on the checkout step plus a base ref the gate can resolve on a pull request (the PR base branch, passed through the environment or fetched as `origin/main`), keeping the local behavior unchanged.
+
+- **Read non-ASCII changed paths verbatim in the version-increase gate.** `git diff --name-only` quotes and octal-escapes a non-ASCII path under the default `core.quotepath=true`, and `classifyShippedBehavior` then rejects the quoted string as not shipped. The tree is ASCII-only today. Preferred shape: pass `-c core.quotepath=false` on the diff call in the live test, or `-z` with a NUL split.
+
+- **Name the git failure in the version-increase gate's skip notice.** `resolveUnpushedRange` in `tests/release-gate.js` catches every error from both `merge-base` probes and returns the no-upstream skip notice, so a missing git binary or a corrupt object store reads as a skip (a `t.diagnostic`, never a failure). Skip-with-notice is the accepted behavior; preferred shape: append the last caught error message to the notice so a broken git is distinguishable from a missing ref.
+
+## Spec authoring habits
+
+- **State how a copied convention list resolves mechanically.** Candidate habit held for recurrence: all five distinct confirmed findings of the 2026-08-23 revise-spec run over the version-increase-gate entry were one class, an enumeration copied from an authoritative convention (the AGENTS.md shipped-behavior list) as prose without its mechanical resolution (path predicate, field-versus-path granularity) or a pin tying the copy to its source. Preferred shape, if the class recurs: one sentence in this file's capture-shorthand paragraph or the AGENTS.md design-spec rules: when an entry copies a list from an authoritative convention, state how the list resolves mechanically and how the copy is pinned to the source.
+
 ## (add sections as work emerges)
 
 ## History
