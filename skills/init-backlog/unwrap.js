@@ -207,17 +207,19 @@ function unwrapText(text) {
   return bom + output.map((line) => line.text + line.ending).join('');
 }
 
-// The directories under .claude/ that hold backlog prose. Anything else in a
-// .claude/ tree (plans, host commands, agents, skills, rules) is out of scope.
+// The files and directories under .claude/ that hold backlog prose. Anything
+// else in a .claude/ tree (plans, host instruction files, commands, agents,
+// skills, rules) is out of scope.
+const BACKLOG_FILES = ['QUICK_WINS.md', 'FEATURES.md', 'BUGS.md', 'PATTERNS.md', 'QUICK_WINS_HISTORY.md', 'FEATURES_HISTORY.md', 'BUGS_HISTORY.md'];
 const BACKLOG_DIRECTORIES = ['features', 'bugs', 'patterns'];
 
 function sortedEntries(directory) {
   return fs.readdirSync(directory, { withFileTypes: true }).sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
 }
 
-// A directory target is read as a backlog root: its top-level markdown files
-// plus everything under the backlog directories, following links and skipping
-// dangling ones. A file target is taken when it is markdown.
+// A directory target is read as a backlog root: the seven backlog files at its
+// top level plus everything under the backlog directories, following links and
+// skipping dangling ones. A file target is taken when it is markdown.
 function collectMarkdownFiles(targets) {
   const files = [];
   const isMarkdown = (name) => path.extname(name).toLowerCase() === '.md';
@@ -240,7 +242,7 @@ function collectMarkdownFiles(targets) {
       if (stat === undefined) continue;
       if (stat.isDirectory() && BACKLOG_DIRECTORIES.includes(entry.name)) {
         visitAll(child);
-      } else if (stat.isFile() && isMarkdown(entry.name)) {
+      } else if (stat.isFile() && BACKLOG_FILES.includes(entry.name)) {
         files.push(child);
       }
     }

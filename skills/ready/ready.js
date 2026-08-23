@@ -652,7 +652,7 @@ function resolveLink(item, registry) {
 function firstExcerpt(bodyLines) {
   for (const line of bodyLines) {
     const t = line.trim();
-    if (t === '' || /^\*\*[^*]+?:\*\*/.test(t) || HEADING.test(line)) continue;
+    if (t === '' || LABEL_AT_START.test(t) || HEADING.test(line)) continue;
     return t.length > 200 ? t.slice(0, 197) + '...' : t;
   }
   return '';
