@@ -122,6 +122,7 @@ Edits to a locally added marketplace apply on plugin reload, with no reinstall l
 ```
 node skills/spec-agreement/spec-agreement.test.js
 node skills/ready/ready.test.js
+node skills/init-backlog/unwrap.test.js
 node internal/revise/revise-round.test.js
 node internal/revise/rigor.test.js
 node internal/revise/orchestration.test.js

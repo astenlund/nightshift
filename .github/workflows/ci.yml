@@ -16,6 +16,7 @@ jobs:
           node-version: 22
       - run: node skills/spec-agreement/spec-agreement.test.js
       - run: node skills/ready/ready.test.js
+      - run: node skills/init-backlog/unwrap.test.js
       - run: node internal/revise/revise-round.test.js
       - run: node internal/revise/rigor.test.js
       - run: node internal/revise/orchestration.test.js
