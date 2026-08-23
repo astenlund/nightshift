@@ -6,7 +6,7 @@
 
 **Architecture:** `resolveUnpushedRange(run)` in `tests/release-gate.js` keeps its two-probe loop and its skip-with-notice contract; the bare `catch` gains a binding that retains the last caught error, and the exhaustion return appends that error's message (whitespace-collapsed to one line) to the unchanged `SKIP_NOTICE` prefix. The live-gate consumer in `tests/release-surface.test.js` is untouched: it still reports the notice through `t.diagnostic` and never fails. One unit test pins the appended cause and the no-error fallback.
 
-**Tech Stack:** Node.js 22, `node:test` + `node:assert/strict`, no build step. Shell for every command in this plan: Git Bash (POSIX sh); use forward slashes and full paths, never `cd`.
+**Tech Stack:** Node.js 22, `node:test` + `node:assert/strict`, no build step. Shell for every command in this plan: Git Bash (POSIX sh), run from inside the checkout being edited; use forward slashes, never `cd`. Every command resolves the checkout root itself with `ROOT=$(git rev-parse --show-toplevel)` so a worktree run edits, verifies, and commits the same checkout; never substitute the canonical clone path.
 
 **Spec:** [.claude/QUICK_WINS.md](.claude/QUICK_WINS.md)
 
@@ -64,7 +64,7 @@ with:
 
 - [ ] **Step 2: Run the test to verify it fails**
 
-Run: `node --test --test-name-pattern "unpushed-range resolver" C:/Git/nightshift/tests/release-surface.test.js`
+Run: `ROOT=$(git rev-parse --show-toplevel); node --test --test-name-pattern "unpushed-range resolver" "$ROOT/tests/release-surface.test.js"`
 
 Expected: FAIL. The first new assertion fires: `AssertionError ... the skip notice must name the last git error` (the current notice is the bare `SKIP_NOTICE`, which does not end in `(last git error: ...)`).
 
@@ -115,7 +115,7 @@ function resolveUnpushedRange(run) {
   if (lastError === null) {
     return { base: null, notice: SKIP_NOTICE }
   }
-  const message = String(lastError instanceof Error ? lastError.message : lastError).replace(/\s+/g, ' ').trim()
+  const message = lastError.message.replace(/\s+/g, ' ').trim()
 
   return { base: null, notice: `${SKIP_NOTICE} (last git error: ${message})` }
 }
@@ -123,31 +123,31 @@ function resolveUnpushedRange(run) {
 
 - [ ] **Step 4: Run the test to verify it passes**
 
-Run: `node --test --test-name-pattern "unpushed-range resolver" C:/Git/nightshift/tests/release-surface.test.js`
+Run: `ROOT=$(git rev-parse --show-toplevel); node --test --test-name-pattern "unpushed-range resolver" "$ROOT/tests/release-surface.test.js"`
 
 Expected: PASS (`# pass 1`, `# fail 0`).
 
 - [ ] **Step 5: Run the whole release-surface suite**
 
-Run: `node C:/Git/nightshift/tests/release-surface.test.js`
+Run: `ROOT=$(git rev-parse --show-toplevel); node "$ROOT/tests/release-surface.test.js"`
 
 Expected: every test passes (`# fail 0`). The live gate test either passes or prints a `version-increase check skipped` diagnostic; on this checkout with `origin/main` present it resolves a base and passes.
 
 - [ ] **Step 6: Verify the byte sweep and file ending**
 
-Run: `rg -n "[^ -~]" C:/Git/nightshift/tests/release-gate.js C:/Git/nightshift/tests/release-surface.test.js; echo "rg exit $?"`
+Run: `ROOT=$(git rev-parse --show-toplevel); rg -n --crlf "[^ -~]" "$ROOT/tests/release-gate.js" "$ROOT/tests/release-surface.test.js"; echo "rg exit $?"`
 
-Expected: no matching lines printed and `rg exit 1` (exit 1 is ripgrep's zero-matches status; exit 2 means the check did not run and must be investigated).
+Expected: no matching lines printed and `rg exit 1` (exit 1 is ripgrep's zero-matches status; exit 0 with printed lines means a non-ASCII byte landed and must be removed; exit 2 means the check did not run and must be investigated). `--crlf` is required: the working-tree files are CRLF on a Windows checkout (`core.autocrlf=true`, and `.gitattributes` forces LF only for `*.workflow.js`), and without it the carriage return on every line matches the negated printable class.
 
-Run: `tail -c 1 C:/Git/nightshift/tests/release-gate.js | od -An -c`
+Run: `ROOT=$(git rev-parse --show-toplevel); tail -c 1 "$ROOT/tests/release-gate.js" | od -An -c`
 
 Expected: ` \n`
 
 - [ ] **Step 7: Commit**
 
 ```bash
-git -C C:/Git/nightshift add tests/release-gate.js tests/release-surface.test.js
-git -C C:/Git/nightshift commit -m "test(release): name the last git error in the skip notice"
+git add tests/release-gate.js tests/release-surface.test.js
+git commit -m "test(release): name the last git error in the skip notice"
 ```
 
 ### Task 2: Archive the quick win
@@ -157,14 +157,14 @@ git -C C:/Git/nightshift commit -m "test(release): name the last git error in th
 - Modify: `.claude/QUICK_WINS_HISTORY.md` (append the shipped entry)
 
 **Interfaces:**
-- Consumes: the commit SHA produced by Task 1 Step 7 (read it with `git -C C:/Git/nightshift log --oneline -1 -- tests/release-gate.js`).
+- Consumes: the commit SHA produced by Task 1 Step 7 (read it with `git log --oneline -1 -- tests/release-gate.js`).
 - Produces: nothing downstream.
 
 - [ ] **Step 1: Remove the entry from the active index**
 
 In `.claude/QUICK_WINS.md`, delete the bullet that starts with `- **Name the git failure in the version-increase gate's skip notice.**` together with its six indented `Operating context` continuation lines (the continuation ends with `tier low, every dimension effort low.`) and the blank line that follows them. The two sibling bullets in `## Release gate follow-ups` stay. Use a script (Python, `newline=''` to preserve CRLF if present) or the Edit tool; verify afterwards with:
 
-Run: `grep -c "Name the git failure in the version-increase gate's skip notice" C:/Git/nightshift/.claude/QUICK_WINS.md; echo "exit $?"`
+Run: `ROOT=$(git rev-parse --show-toplevel); grep -c "Name the git failure in the version-increase gate's skip notice" "$ROOT/.claude/QUICK_WINS.md"; echo "exit $?"`
 
 Expected: `0` and `exit 1` (grep -c exits 1 on zero matches; that is the pass signal here).
 
@@ -176,19 +176,30 @@ The file is a flat list of `- **Title** (files): body. Shipped <date>.` bullets.
 - **Name the git failure in the version-increase gate's skip notice** (`tests/release-gate.js`, `tests/release-surface.test.js`): `resolveUnpushedRange` now retains the last error caught across its two `merge-base` probes and appends its message (whitespace-collapsed) to the skip notice as `(last git error: ...)`, so a missing git binary or a corrupt object store reads differently from a missing ref; a probe that throws nothing leaves the bare notice. Skip-with-notice stays the behavior and the `version-increase check skipped` prefix is unchanged. Shipped 2026-08-23 in <sha from Task 1>.
 ```
 
-Replace `<sha from Task 1>` with the short SHA from Task 1 Step 7.
+Replace `<sha from Task 1>` with the short SHA from Task 1 Step 7. Append with a script that preserves the file's line endings (Python, `newline=''`, matching the file's existing terminator) or the Edit tool; then verify:
+
+Run: `ROOT=$(git rev-parse --show-toplevel); grep -c "Name the git failure in the version-increase gate's skip notice" "$ROOT/.claude/QUICK_WINS_HISTORY.md"; echo "exit $?"`
+
+Expected: `1` and `exit 0` (exactly one history bullet carries the title).
+
+Run: `ROOT=$(git rev-parse --show-toplevel); grep -c "<sha from Task 1>" "$ROOT/.claude/QUICK_WINS_HISTORY.md"; echo "exit $?"`
+
+Expected: `0` and `exit 1` (the placeholder was substituted; `grep -c` exits 1 on zero matches, which is the pass signal here).
 
 - [ ] **Step 3: Confirm the backlog still parses**
 
-Run: `node C:/Git/nightshift/skills/ready/ready.js C:/Git/nightshift | node -e "const r=JSON.parse(require('fs').readFileSync(0,'utf8'));console.log(JSON.stringify({errors:r.structuralErrors.length,notices:r.notices.length,skipNotice:r.ready.some(e=>e.title.includes('skip notice'))}))"`
+Run: `ROOT=$(git rev-parse --show-toplevel); node "$ROOT/skills/ready/ready.js" "$ROOT" | node -e "const r=JSON.parse(require('fs').readFileSync(0,'utf8'));console.log(JSON.stringify({errors:r.structuralErrors.length,notices:r.notices.length,skipNotice:r.ready.some(e=>e.title.includes('skip notice'))}))"`
 
 Expected: `{"errors":0,"notices":0,"skipNotice":false}`
 
 - [ ] **Step 4: Commit**
 
 ```bash
-git -C C:/Git/nightshift add .claude/QUICK_WINS.md .claude/QUICK_WINS_HISTORY.md
-git -C C:/Git/nightshift commit -m "docs(quick-wins): archive the skip-notice git cause"
+git add .claude/QUICK_WINS.md .claude/QUICK_WINS_HISTORY.md
+git commit -m "docs(quick-wins): archive the skip-notice git cause"
 ```
 
-No walk-and-remove sweep is needed: quick wins carry no `**Requires:**` line and no `FEATURES.md` or `BUGS.md` entry references this one (verify with `grep -rn "skip notice" C:/Git/nightshift/.claude/FEATURES.md C:/Git/nightshift/.claude/BUGS.md`; expected: no output).
+No walk-and-remove sweep is needed: quick wins carry no `**Requires:**` line and no `FEATURES.md` or `BUGS.md` entry references this one (verify with `ROOT=$(git rev-parse --show-toplevel); grep -rn "skip notice" "$ROOT/.claude/FEATURES.md" "$ROOT/.claude/BUGS.md"`; expected: no output).
+## Hardening
+
+- revise-plan graduated 2026-08-23 04:13 at e614b05, scope: whole file, content: 569f8e4c
