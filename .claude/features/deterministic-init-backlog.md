@@ -4,7 +4,7 @@ Feature: `init-backlog` behavior that has one objectively correct answer, includ
 
 ## What it does
 
-`skills/init-backlog/SKILL.md` is a large, self-contained scaffolder. It carries the authoritative content for the four index files, the three history archives, and the `CLAUDE.md` backlog section as verbatim bundled templates, and it drives the `missing / present / stale` classification and the `create / skip / merge / ask` apply table from that content. Much of that is deterministic: there is one correct result for what a fresh index file or directory should contain. Yet every scaffold run asks the model to reproduce it from the prompt, re-rendering the template corpus and re-deciding mechanical steps a script could produce exactly.
+`skills/init-backlog/SKILL.md` is a large, self-contained scaffolder. It carries the authoritative content for the four index files, the three history archives, and the `CLAUDE.md` backlog section as verbatim bundled templates, and it drives the `missing / present / stale / wrapped` classification and the `create / skip / merge / unwrap / ask` apply table from that content. Much of that is deterministic: there is one correct result for what a fresh index file or directory should contain. Yet every scaffold run asks the model to reproduce it from the prompt, re-rendering the template corpus and re-deciding mechanical steps a script could produce exactly.
 
 This feature moves the deterministically-answerable portion out of the prompt and into bundled plugin code or static files, using the same judgment the repository already applies to the `Requires:`-line grammar in `skills/ready/ready.js`.
 

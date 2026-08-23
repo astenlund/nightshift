@@ -45,7 +45,7 @@ The on-demand locations have different lifecycles:
 
 - **Plans are ephemeral.** A plan exists while the implementation is in flight and is deleted once the work lands. Plans are purely mechanical step-by-step instructions for the agent doing the work; the code, tests, and commits are the durable record of what was built. There is no "implemented plans" archive.
 - **Feature breakout files are durable.** A feature file under `.claude/features/<slug>.md` captures the design reasoning that led to what's implemented and evolves with the feature over its lifetime. Brainstorming output lands directly in feature files (or in patterns when cross-cutting / bugs when diagnostic) rather than as separate dated specs. The `## Exploring` section in `FEATURES.md` plus a `status: exploring` frontmatter on the breakout file handles pre-dependency-analysis brainstorms; these graduate into themed `##` sections with `**Requires:**` lines once the design firms up.
-- **History archives are archaeological.** `QUICK_WINS_HISTORY.md`, `FEATURES_HISTORY.md`, and `BUGS_HISTORY.md` are appended to as soon as a quick win, feature (or slice), or bug-fix lands; the files themselves are consulted only when something pulls them in (an archaeological lookup, a pattern-doc cross-reference, a negative-knowledge sweep). Splitting shipped entries out keeps the active backlogs scannable. Negative-knowledge entries in `QUICK_WINS_HISTORY.md` (approaches attempted and reverted, with reasons) are first-class promotion candidates into the relevant `.claude/patterns/<slug>.md` Cautionary tales sections. **`/nightshift:ready` never reads these archives**: when an item ships or is fixed, every active `**Requires:**` line referencing it is edited at the same time to drop the now-satisfied reference, so the active `Requires:` lines describe what is *currently* blocking.
+- **History archives are archaeological.** `QUICK_WINS_HISTORY.md`, `FEATURES_HISTORY.md`, and `BUGS_HISTORY.md` are appended to as soon as a quick win, feature (or slice), or bug-fix lands; the files themselves are consulted only when something pulls them in (an archaeological lookup, a pattern-doc cross-reference, a negative-knowledge sweep). Splitting shipped entries out keeps the active backlogs scannable. Negative-knowledge entries in `QUICK_WINS_HISTORY.md` (approaches attempted and reverted, with reasons) are first-class promotion candidates into the relevant `.claude/patterns/<slug>.md` Cautionary tales sections. **`/nightshift:ready` never parses these archives for work** (the line-discipline check still reads them): when an item ships or is fixed, every active `**Requires:**` line referencing it is edited at the same time to drop the now-satisfied reference, so the active `Requires:` lines describe what is *currently* blocking.
 
 **Project guidance:**
 
@@ -101,7 +101,7 @@ For each templated file, these are the load-bearing concepts its template-contro
 2. States that shipped quick wins are appended here, not to the active file. *(H1)*
 3. Carries forward-looking guidance on entry shape (enough context to recover reasoning, including investigation findings, reverted approaches, benchmarks, the commit or scope it landed in). *(H1)*
 4. Notes the negative-knowledge → patterns promotion path with one-line redirect convention. *(H1)*
-5. States `/nightshift:ready` does not scan this file (because the walk-and-remove convention keeps active `Requires:` lines authoritative). *(`## Cross-reference resolution` section)*
+5. States `/nightshift:ready` does not parse this file for work (because the walk-and-remove convention keeps active `Requires:` lines authoritative) and that the line-discipline check still reads it. *(`## Cross-reference resolution` section)*
 
 **`FEATURES.md`:**
 1. Names this file as one of four repo-local indexes consulted on demand when relevant. *(H1)*
@@ -118,7 +118,7 @@ For each templated file, these are the load-bearing concepts its template-contro
 1. Names this file as archival / archaeological and loaded on demand. *(H1)*
 2. States that shipped features and shipped slices are appended here, not to the active file. *(H1)*
 3. Notes that breakout files at `features/<slug>.md` stay in place as design records. *(H1)*
-4. States `/nightshift:ready` does not scan this file (because the walk-and-remove convention keeps active `Requires:` lines authoritative). *(`## Cross-reference resolution` section)*
+4. States `/nightshift:ready` does not parse this file for work (because the walk-and-remove convention keeps active `Requires:` lines authoritative) and that the line-discipline check still reads it. *(`## Cross-reference resolution` section)*
 
 **`BUGS.md`:**
 1. Names this file as one of four repo-local indexes consulted on demand when relevant. *(H1)*
@@ -132,7 +132,7 @@ For each templated file, these are the load-bearing concepts its template-contro
 1. Names this file as archival / archaeological and loaded on demand. *(H1)*
 2. States that fixed bugs are appended here, not to the active file. *(H1)*
 3. Notes that breakout files at `bugs/<slug>.md` stay in place as diagnosis records. *(H1)*
-4. States `/nightshift:ready` does not scan this file (because the walk-and-remove convention keeps active `Requires:` lines authoritative). *(`## Cross-reference resolution` section)*
+4. States `/nightshift:ready` does not parse this file for work (because the walk-and-remove convention keeps active `Requires:` lines authoritative) and that the line-discipline check still reads it. *(`## Cross-reference resolution` section)*
 
 **`PATTERNS.md`** (all H1):
 1. Names this file as one of four repo-local indexes consulted on demand when relevant.
@@ -214,7 +214,7 @@ Entries appear in the order they shipped. Write each with enough context to reco
 
 ## Cross-reference resolution
 
-`/nightshift:ready` does **not** scan this file. When a quick win lands, every other `**Requires:**` line in `FEATURES.md` / `BUGS.md` that referenced it is edited at the same time to drop the now-satisfied reference. The active `Requires:` lines therefore describe what is *currently* blocking. This file is purely archaeological; read it when you want to know what already shipped or to mine negative-knowledge findings, not to resolve dependencies.
+`/nightshift:ready` does **not** parse this file for work; only the line-discipline check reads it. When a quick win lands, every other `**Requires:**` line in `FEATURES.md` / `BUGS.md` that referenced it is edited at the same time to drop the now-satisfied reference. The active `Requires:` lines therefore describe what is *currently* blocking. This file is purely archaeological; read it when you want to know what already shipped or to mine negative-knowledge findings, not to resolve dependencies.
 
 ## Entries
 
@@ -333,7 +333,7 @@ The feature breakout file at `features/<slug>.md` stays in place as the historic
 
 ## Cross-reference resolution
 
-`/nightshift:ready` does **not** scan this file. When a feature ships, every other `**Requires:**` line in `FEATURES.md` / `BUGS.md` that referenced it is edited at the same time to drop the now-satisfied reference (see the convention in `FEATURES.md`'s `## Requires lines` and `## Slicing` sections). The active `Requires:` lines therefore describe what is *currently* blocking and the dependency graph settles as work ships. This file is purely archaeological; read it when you want to know what already shipped, not to resolve dependencies.
+`/nightshift:ready` does **not** parse this file for work; only the line-discipline check reads it. When a feature ships, every other `**Requires:**` line in `FEATURES.md` / `BUGS.md` that referenced it is edited at the same time to drop the now-satisfied reference (see the convention in `FEATURES.md`'s `## Requires lines` and `## Slicing` sections). The active `Requires:` lines therefore describe what is *currently* blocking and the dependency graph settles as work ships. This file is purely archaeological; read it when you want to know what already shipped, not to resolve dependencies.
 
 ## Entries
 
@@ -390,7 +390,7 @@ The bug breakout file at `bugs/<slug>.md` (when present) stays in place as the h
 
 ## Cross-reference resolution
 
-`/nightshift:ready` does **not** scan this file. When a bug is fixed, every other `**Requires:**` line in `FEATURES.md` / `BUGS.md` that referenced it is edited at the same time to drop the now-satisfied reference (mirror of the `FEATURES.md` convention). The active `Requires:` lines therefore describe what is *currently* blocking; this file is purely archaeological.
+`/nightshift:ready` does **not** parse this file for work; only the line-discipline check reads it. When a bug is fixed, every other `**Requires:**` line in `FEATURES.md` / `BUGS.md` that referenced it is edited at the same time to drop the now-satisfied reference (mirror of the `FEATURES.md` convention). The active `Requires:` lines therefore describe what is *currently* blocking; this file is purely archaeological.
 
 ## Entries
 
