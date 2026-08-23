@@ -419,22 +419,31 @@ function adapterCall(fsAdapter, operation, path) {
   }
 }
 
-function requireRelativePathShape(nominatedPath, kinds) {
+function relativePathShapeViolation(nominatedPath) {
   if (typeof nominatedPath !== 'string' || nominatedPath === '' || hasControlCharacters(nominatedPath)) {
-    structural('Nominated path must be a nonempty project-relative path.', { kind: kinds.shape, path: nominatedPath });
+    return { class: 'shape', message: 'Nominated path must be a nonempty project-relative path.' };
   }
   if (nodePath.isAbsolute(nominatedPath) || /^[A-Za-z]:/.test(nominatedPath)) {
-    structural('Nominated path must remain beneath the project root.', { kind: kinds.escape, path: nominatedPath });
+    return { class: 'escape', message: 'Nominated path must remain beneath the project root.' };
   }
   const segments = nominatedPath.replace(/\\/g, '/').split('/');
   if (segments.some((segment) => segment === '..')) {
-    structural('Nominated path must remain beneath the project root.', { kind: kinds.escape, path: nominatedPath });
+    return { class: 'escape', message: 'Nominated path must remain beneath the project root.' };
   }
   if (nominatedPath.includes('\\') || segments.some((segment) => segment === '' || segment === '.')) {
-    structural('Nominated path must use canonical ordinal spelling.', { kind: kinds.shape, path: nominatedPath });
+    return { class: 'shape', message: 'Nominated path must use canonical ordinal spelling.' };
   }
 
-  return segments;
+  return null;
+}
+
+function requireRelativePathShape(nominatedPath, kinds) {
+  const violation = relativePathShapeViolation(nominatedPath);
+  if (violation !== null) {
+    structural(violation.message, { kind: kinds[violation.class], path: nominatedPath });
+  }
+
+  return nominatedPath.split('/');
 }
 
 function canonicalizePath(projectRoot, nominatedPath, fsAdapter) {
@@ -852,11 +861,7 @@ function validateScopeRecord(scope, evidenceKind = 'plan-contract-grammar') {
 }
 
 function canonicalScopePath(path) {
-  if (typeof path !== 'string' || path === '' || hasControlCharacters(path) || path.includes('\\') || nodePath.posix.isAbsolute(path) || /^[A-Za-z]:/.test(path)) {
-    return false;
-  }
-
-  return path.split('/').every((segment) => segment !== '' && segment !== '.' && segment !== '..');
+  return relativePathShapeViolation(path) === null;
 }
 
 function markdownPathLabel(path) {
@@ -2857,6 +2862,7 @@ module.exports = {
   AgreementError,
   AGREEMENT_VERSION,
   canonicalizePath,
+  canonicalScopePath,
   scanMarkdown,
   selectArtifact,
   hashSelection,

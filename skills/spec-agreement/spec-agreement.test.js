@@ -14,6 +14,7 @@ const {
   buildDerivedDiff,
   candidateToken,
   canonicalizePath,
+  canonicalScopePath,
   compareCandidates,
   createAgreementState,
   decideAgreementGate,
@@ -3201,6 +3202,30 @@ test('locateSelection reports the one-based line where the selected entry starts
   assert.deepEqual(locate({ path: 'a.md', sourceBuffer: design, selectorKind: 'design-before-hardening', selectors: [] }), { path: 'a.md', line: null, linkText: 'a.md', linkTarget: 'C:/repo/a.md' });
 
   expectStructural(() => locate({ path: 'a.md', sourceBuffer: bulletSource, selectorKind: 'bullet-entry', selectors: [{ parentHeading: '## Parent', entryTitle: 'Missing' }] }));
+});
+
+test('canonicalizePath keeps its exact kind and message for every pre-filesystem rejection', () => {
+  const fsAdapter = fakeRepository({ 'docs/a.md': '# A\n' });
+  const shape = 'Nominated path must be a nonempty project-relative path.';
+  const escape = 'Nominated path must remain beneath the project root.';
+  const spelling = 'Nominated path must use canonical ordinal spelling.';
+  const table = [
+    [7, 'path-casing', shape],
+    ['', 'path-casing', shape],
+    ['docs/a\u0007.md', 'path-casing', shape],
+    ['/docs/a.md', 'root-escape', escape],
+    ['C:/docs/a.md', 'root-escape', escape],
+    ['docs/../a.md', 'root-escape', escape],
+    ['docs\\..\\a.md', 'root-escape', escape],
+    ['docs\\a.md', 'path-casing', spelling],
+    ['docs//a.md', 'path-casing', spelling],
+    ['docs/./a.md', 'path-casing', spelling],
+  ];
+  for (const [path, kind, message] of table) {
+    assert.throws(() => canonicalizePath(projectRoot, path, fsAdapter), (error) => error instanceof AgreementError && error.code === 'structural-error' && error.evidence.kind === kind && error.message === message, JSON.stringify(path));
+    assert.equal(canonicalScopePath(path), false, JSON.stringify(path));
+  }
+  assert.equal(canonicalScopePath('docs/a.md'), true);
 });
 
 test('locateSelection renders the link target from the line-link format, never from prose', () => {
