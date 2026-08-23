@@ -21,7 +21,7 @@
 const fs = require('fs');
 const path = require('path');
 const { scanMarkdown } = require('../spec-agreement/spec-agreement.js');
-const { LABEL_AT_START, detectHardWraps, collectMarkdownFiles } = require('../init-backlog/unwrap.js');
+const { LABEL_AT_START, canonicalPath, detectHardWraps, collectMarkdownFiles } = require('../init-backlog/unwrap.js');
 
 const INDEX_FILE_STEMS = new Set([
   'QUICK_WINS', 'FEATURES', 'BUGS', 'PATTERNS',
@@ -1031,8 +1031,9 @@ function scanBreakoutTargets(breakoutTargets, claudeDir) {
       notices.push(breakoutReadNotice(rec, error?.code ?? 'unknown'));
       continue;
     }
-    if (!wrapScanned.has(resolved)) {
-      wrapScanned.add(resolved);
+    const identity = canonicalPath(resolved);
+    if (!wrapScanned.has(identity)) {
+      wrapScanned.add(identity);
       pushHardWrapNotice(notices, `breakout file ${target}`, contents);
     }
     for (const hit of scanBreakoutLines(contents)) {
@@ -1052,9 +1053,10 @@ function scanBreakoutTargets(breakoutTargets, claudeDir) {
 // hard-wrap notice; the indexes and linked breakouts were already reported.
 function scanUnlinkedBacklogFiles(claudeDir, alreadyScanned) {
   const notices = [];
-  const indexFiles = new Set([...WORK_INDEX_NAMES, 'PATTERNS'].map((name) => path.resolve(claudeDir, `${name}.md`)));
+  const indexFiles = new Set([...WORK_INDEX_NAMES, 'PATTERNS'].map((name) => canonicalPath(path.resolve(claudeDir, `${name}.md`))));
   for (const file of collectMarkdownFiles([claudeDir])) {
-    if (indexFiles.has(file) || alreadyScanned.has(file)) continue;
+    const identity = canonicalPath(file);
+    if (indexFiles.has(identity) || alreadyScanned.has(identity)) continue;
     const relative = path.relative(claudeDir, file).replace(/\\/g, '/');
     let contents;
     try {

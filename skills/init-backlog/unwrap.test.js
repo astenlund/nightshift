@@ -5,7 +5,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const test = require('node:test');
 
-const { detectHardWraps, unwrapText, collectMarkdownFiles } = require('./unwrap.js');
+const { canonicalPath, detectHardWraps, unwrapText, collectMarkdownFiles } = require('./unwrap.js');
 
 const CRLF = String.fromCharCode(13, 10);
 
@@ -216,14 +216,15 @@ test('fences, headings, HTML, and breaks nested under a list item are measured f
   assert.equal(unwrapText(text), text);
 });
 
-test('collectMarkdownFiles follows links and skips dangling ones', (t) => {
+test('collectMarkdownFiles follows links once, skips dangling ones, and survives a link loop', (t) => {
   const root = fs.mkdtempSync(path.join(require('node:os').tmpdir(), 'unwrap-'));
   try {
     fs.mkdirSync(path.join(root, 'real'));
     fs.writeFileSync(path.join(root, 'real', 'a.md'), '# A\n');
     try {
       fs.symlinkSync(path.join(root, 'real'), path.join(root, 'features'), 'junction');
-      fs.symlinkSync(path.join(root, 'missing.md'), path.join(root, 'dangling.md'), 'file');
+      fs.symlinkSync(path.join(root, 'real', 'missing.md'), path.join(root, 'real', 'dangling.md'), 'file');
+      fs.symlinkSync(path.join(root, 'real'), path.join(root, 'real', 'loop'), 'junction');
     } catch {
       // Link creation needs privileges this runner lacks; the walk is then untestable here.
       t.skip('symlinks unavailable');
@@ -234,4 +235,29 @@ test('collectMarkdownFiles follows links and skips dangling ones', (t) => {
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }
+});
+
+test('canonicalPath gives one identity to every spelling of a file and never throws', (t) => {
+  const root = fs.mkdtempSync(path.join(require('node:os').tmpdir(), 'unwrap-'));
+  try {
+    fs.mkdirSync(path.join(root, 'features'));
+    fs.writeFileSync(path.join(root, 'features', 'bar.md'), '# Bar\n');
+    assert.equal(canonicalPath(path.join(root, 'features', 'missing.md')), path.join(root, 'features', 'missing.md'));
+    assert.equal(canonicalPath(path.join(root, 'features', '..', 'features', 'bar.md')), canonicalPath(path.join(root, 'features', 'bar.md')));
+    if (!fs.existsSync(path.join(root, 'features', 'Bar.md'))) {
+      t.skip('case-sensitive filesystem');
+
+      return;
+    }
+    assert.equal(canonicalPath(path.join(root, 'features', 'Bar.md')), canonicalPath(path.join(root, 'features', 'bar.md')));
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('a two-space hard break on a continuation line survives the join, so the rewrite is idempotent', () => {
+  const text = 'foo\nbar  \nbaz\n\n- a\n  b  \n  c\n';
+  const once = unwrapText(text);
+  assert.equal(once, 'foo bar  \nbaz\n\n- a b  \n  c\n');
+  assert.equal(unwrapText(once), once);
 });

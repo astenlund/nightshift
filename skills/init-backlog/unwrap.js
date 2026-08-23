@@ -197,7 +197,10 @@ function unwrapText(text) {
   for (let index = 0; index < lines.length; index += 1) {
     if (continuation.has(index)) {
       const last = output[output.length - 1];
-      last.text = `${last.text.replace(/\s+$/, '')} ${lines[index].trim()}`;
+      const next = lines[index].trimStart();
+      // A two-space hard break on the joined line still ends it, so keep it.
+      const tail = / {2,}$/.test(next) ? `${next.trimEnd()}  ` : next.trimEnd();
+      last.text = `${last.text.replace(/\s+$/, '')} ${tail}`;
       last.ending = endings[index];
     } else {
       output.push({ text: lines[index], ending: endings[index] });
@@ -217,17 +220,45 @@ function sortedEntries(directory) {
   return fs.readdirSync(directory, { withFileTypes: true }).sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
 }
 
+// The on-disk identity of a path: links resolved and, on case-insensitive
+// filesystems, the stored casing. Falls back to the resolved path when the
+// target cannot be reached, so a comparison never throws.
+function canonicalPath(target) {
+  try {
+    return fs.realpathSync.native(target);
+  } catch {
+    // Dangling link, permission error, or a loop: the resolved spelling is the best identity available.
+    return path.resolve(target);
+  }
+}
+
+// A path entry that cannot be stat'ed (dangling link, a link loop, a
+// permission error) is skipped; the walk never throws on one entry.
+function statOrNull(target) {
+  try {
+    return fs.statSync(target);
+  } catch {
+    // Unreachable entries are out of scope rather than fatal.
+    return null;
+  }
+}
+
 // A directory target is read as a backlog root: the seven backlog files at its
-// top level plus everything under the backlog directories, following links and
-// skipping dangling ones. A file target is taken when it is markdown.
+// top level plus everything under the backlog directories, following links
+// (each directory once) and skipping dangling ones. A file target is taken
+// when it is markdown.
 function collectMarkdownFiles(targets) {
   const files = [];
+  const visitedDirectories = new Set();
   const isMarkdown = (name) => path.extname(name).toLowerCase() === '.md';
   const visitAll = (directory) => {
+    const identity = canonicalPath(directory);
+    if (visitedDirectories.has(identity)) return;
+    visitedDirectories.add(identity);
     for (const entry of sortedEntries(directory)) {
       const child = path.join(directory, entry.name);
-      const stat = fs.statSync(child, { throwIfNoEntry: false });
-      if (stat === undefined) continue;
+      const stat = statOrNull(child);
+      if (stat === null) continue;
       if (stat.isDirectory()) {
         visitAll(child);
       } else if (isMarkdown(entry.name)) {
@@ -238,8 +269,8 @@ function collectMarkdownFiles(targets) {
   const visitBacklogRoot = (root) => {
     for (const entry of sortedEntries(root)) {
       const child = path.join(root, entry.name);
-      const stat = fs.statSync(child, { throwIfNoEntry: false });
-      if (stat === undefined) continue;
+      const stat = statOrNull(child);
+      if (stat === null) continue;
       if (stat.isDirectory() && BACKLOG_DIRECTORIES.includes(entry.name)) {
         visitAll(child);
       } else if (stat.isFile() && BACKLOG_FILES.includes(entry.name)) {
@@ -294,7 +325,7 @@ function runCli(argv) {
   process.exitCode = unreadable || (report.length > 0 && !write) ? 1 : 0;
 }
 
-module.exports = { LABEL_AT_START, detectHardWraps, unwrapText, collectMarkdownFiles };
+module.exports = { LABEL_AT_START, canonicalPath, detectHardWraps, unwrapText, collectMarkdownFiles };
 
 if (require.main === module) {
   runCli(process.argv.slice(2));
