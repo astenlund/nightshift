@@ -352,6 +352,22 @@ function selectArtifact({ path, selectorKind, selectors, sourceBuffer }) {
   return selection(path, selectorKind, selectors, [rangeSpan(sourceBuffer, resolved.parent.rawStart, resolved.parent.rawEnd), rangeSpan(sourceBuffer, resolved.bullet.rawStart, lines[entryEnd - 1].rawEnd)]);
 }
 
+function locateSelection({ path, selectorKind, selectors, sourceBuffer }) {
+  const selected = selectArtifact({ path, selectorKind, selectors, sourceBuffer });
+  if (selectorKind === 'design-before-hardening') {
+    return { path, line: null };
+  }
+  const entryStart = selected.sourceRanges[selected.sourceRanges.length - 1].start;
+  let line = 1;
+  for (let offset = 0; offset < entryStart; offset += 1) {
+    if (sourceBuffer[offset] === 0x0a) {
+      line += 1;
+    }
+  }
+
+  return { path, line };
+}
+
 function hashSelection(selectionRecord) {
   validateCurrentSource(selectionRecord);
   const contentHash = createHash('sha256').update(selectionRecord.selectedBytes).digest('hex');
@@ -2743,6 +2759,8 @@ function dispatchCliOperation(operation, input, adapters) {
       return { planBytesHex: serializePlanContract(decoded).toString('hex') };
     case 'resolve':
       return resolveGoverningSet(decoded, adapters);
+    case 'locate':
+      return locateSelection(decoded);
     case 'candidate': {
       if (decoded?.kind !== 'resolved' || !Array.isArray(decoded.artifacts)) {
         invocationFailure('Candidate operation requires one resolved governing-set result.');
@@ -2818,6 +2836,7 @@ module.exports = {
   scanMarkdown,
   selectArtifact,
   hashSelection,
+  locateSelection,
   parsePlanContract,
   serializePlanContract,
   resolveGoverningSet,

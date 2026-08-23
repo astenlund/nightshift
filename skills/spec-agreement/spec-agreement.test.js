@@ -20,6 +20,7 @@ const {
   detectLegacyMarkers,
   hashSelection,
   invalidateAgreementState,
+  locateSelection,
   parsePlanContract,
   previewLegacyMarkerDeletion,
   refreshCompatibleState,
@@ -3159,6 +3160,19 @@ test('selections retain original raw ranges across BOM, CRLF, and gaps', () => {
 
   assert.deepEqual(result.sourceRanges, [{ start: 0, end: 14 }, { start: 21, end: 38 }]);
   assert.deepEqual(result.sourceSpans.map((span) => span.toString('hex')), [source.subarray(0, 14).toString('hex'), source.subarray(21, 38).toString('hex')]);
+});
+
+test('locateSelection reports the one-based line where the selected entry starts', () => {
+  const indexSource = Buffer.from([0xef, 0xbb, 0xbf, ...Buffer.from('## Parent\r\nintro\r\n### Entry\r\nbody\r\n')]);
+  assert.deepEqual(locateSelection({ path: 'a.md', sourceBuffer: indexSource, selectorKind: 'index-entry', selectors: [{ parentHeading: '## Parent', entryHeading: '### Entry' }] }), { path: 'a.md', line: 3 });
+
+  const bulletSource = Buffer.from('# Index\n\n## Other\n- Elsewhere\n\n## Parent\n- First\n- Task\n  continuation\n');
+  assert.deepEqual(locateSelection({ path: 'a.md', sourceBuffer: bulletSource, selectorKind: 'bullet-entry', selectors: [{ parentHeading: '## Parent', entryTitle: 'Task' }] }), { path: 'a.md', line: 8 });
+
+  const design = Buffer.from('# Design\n\n## Hardening\n- (None yet; this file has not been through a revise-spec run.)\n');
+  assert.deepEqual(locateSelection({ path: 'a.md', sourceBuffer: design, selectorKind: 'design-before-hardening', selectors: [] }), { path: 'a.md', line: null });
+
+  expectStructural(() => locateSelection({ path: 'a.md', sourceBuffer: bulletSource, selectorKind: 'bullet-entry', selectors: [{ parentHeading: '## Parent', entryTitle: 'Missing' }] }));
 });
 
 test('bullet selection excludes a column-zero fence after the entry', () => {
