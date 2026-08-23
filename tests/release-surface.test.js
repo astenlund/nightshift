@@ -104,6 +104,11 @@ test('CI runs every suite exactly once and runs no undeclared suite', () => {
   for (const command of CI_SUITE_COMMANDS) {
     assert.equal(countExact(ci, `      - run: ${command}\n`), 1, `CI must run ${command} exactly once`)
   }
+  // The version-increase gate resolves its range against origin/main, which a
+  // pull-request checkout only has at full depth. Pinning the checkout input
+  // keeps a later workflow edit from regressing the gate to its skip branch,
+  // which passes green and would hide the loss.
+  assert.equal(countExact(ci, '      - uses: actions/checkout@v5\n        with:\n          fetch-depth: 0\n'), 1, 'the checkout step must carry fetch-depth: 0')
 })
 
 test('AGENTS states the literal suite count CI actually runs', () => {
