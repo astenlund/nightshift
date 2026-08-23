@@ -54,7 +54,7 @@ The classification is not the model's opinion. A bundled parser reads each entry
 
 ## The workflow
 
-1. **Scaffold** once with `/nightshift:init-backlog`. Creates a four-index backlog under `.claude/` (`QUICK_WINS.md`, `FEATURES.md`, `BUGS.md`, `PATTERNS.md`), history archives, and a `plans/` directory, plus a section in the project's `CLAUDE.md` describing the layout. Asks once whether to track or ignore the backlog in git. Idempotent, so re-run it to add whatever is missing.
+1. **Scaffold** once with `/nightshift:init-backlog`. Creates a four-index backlog under `.claude/` (`QUICK_WINS.md`, `FEATURES.md`, `BUGS.md`, `PATTERNS.md`), history archives, and a `plans/` directory, plus a section in the project's `CLAUDE.md` describing the layout. Asks once whether to track or ignore the backlog in git. Idempotent, so re-run it to add whatever is missing and to unwrap hard-wrapped backlog prose.
 
 2. **Capture** ideas, bugs, refactors, and cross-cutting patterns as they come up. Each feature and bug declares its in-backlog gates on a `**Requires:**` line and any external primitives on an `**External:**` line, which is what makes step 3 mechanical. Half-formed ideas land as drafts under `## Exploring` and are never offered as ready work until they graduate.
 
