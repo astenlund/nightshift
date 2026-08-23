@@ -911,6 +911,53 @@ test('CLI locate reads the line-link format from the injected environment, defau
   assert.equal(rejected.ok, false, 'the CLI owns linkFormat; a caller cannot smuggle one in');
 });
 
+test('CLI locate exposes OSC 8 rendering only when the environment opts in', () => {
+  const input = { projectRoot, path: 'docs/FEATURES.md', selectorKind: 'bullet-entry', selectors: [{ parentHeading: '## Parent', entryTitle: 'Task' }], sourceBytesHex: Buffer.from('## Parent\n- Task\n').toString('hex') };
+  const requestText = JSON.stringify({ operation: 'locate', input });
+  const fsAdapter = fakeRepository({});
+
+  const optedIn = parseCliResult(runCli({ requestText }, { fsAdapter, readyParser, environment: { NIGHTSHIFT_LINE_LINK_FORMAT: 'editor://{path}:{line}', NIGHTSHIFT_LINK_RENDERING: 'osc8' } }));
+  assert.deepEqual(optedIn.value, { path: 'docs/FEATURES.md', line: 2, linkText: 'docs/FEATURES.md:2', linkTarget: 'editor://C:/repo/docs/FEATURES.md:2', linkRendering: 'osc8' });
+
+  const defaulted = parseCliResult(runCli({ requestText }, { fsAdapter, readyParser, environment: { NIGHTSHIFT_LINE_LINK_FORMAT: 'editor://{path}:{line}' } }));
+  assert.deepEqual(defaulted.value, { path: 'docs/FEATURES.md', line: 2, linkText: 'docs/FEATURES.md:2', linkTarget: 'editor://C:/repo/docs/FEATURES.md:2' });
+});
+
+test('CLI locate applies the file-link format to selections without a line', () => {
+  const input = { projectRoot, path: 'docs/spec.md', selectorKind: 'design-before-hardening', selectors: [], sourceBytesHex: Buffer.from('# Spec\n').toString('hex') };
+  const requestText = JSON.stringify({ operation: 'locate', input });
+  const fsAdapter = fakeRepository({});
+
+  const located = parseCliResult(runCli({ requestText }, { fsAdapter, readyParser, environment: { NIGHTSHIFT_FILE_LINK_FORMAT: 'editor://{path}', NIGHTSHIFT_LINK_RENDERING: 'osc8' } }));
+  assert.deepEqual(located.value, { path: 'docs/spec.md', line: null, linkText: 'docs/spec.md', linkTarget: 'editor://C:/repo/docs/spec.md', linkRendering: 'osc8' });
+});
+
+test('CLI locate rejects an unknown explicit link-rendering mode', () => {
+  const input = { projectRoot, path: 'docs/FEATURES.md', selectorKind: 'bullet-entry', selectors: [{ parentHeading: '## Parent', entryTitle: 'Task' }], sourceBytesHex: Buffer.from('## Parent\n- Task\n').toString('hex') };
+  const requestText = JSON.stringify({ operation: 'locate', input });
+  const fsAdapter = fakeRepository({});
+
+  const rejected = parseCliResult(runCli({ requestText }, { fsAdapter, readyParser, environment: { NIGHTSHIFT_LINK_RENDERING: 'markdown' } }));
+  assert.equal(rejected.ok, false);
+  assert.equal(rejected.error.code, 'structural-error');
+  assert.equal(rejected.error.evidence.kind, 'link-rendering');
+});
+
+test('CLI locate rejects caller-owned link configuration fields', () => {
+  const input = { projectRoot, path: 'docs/FEATURES.md', selectorKind: 'bullet-entry', selectors: [{ parentHeading: '## Parent', entryTitle: 'Task' }], sourceBytesHex: Buffer.from('## Parent\n- Task\n').toString('hex') };
+  const fsAdapter = fakeRepository({});
+
+  for (const field of ['linkFormat', 'fileLinkFormat', 'linkRendering']) {
+    const requestText = JSON.stringify({ operation: 'locate', input: { ...input, [field]: 'caller-owned' } });
+    const result = runCli({ requestText }, { fsAdapter, readyParser, environment: {} });
+    const rejected = parseCliResult(result);
+
+    assert.equal(result.exitCode, 2, field);
+    assert.equal(rejected.error.code, 'invocation-error', field);
+    assert.equal(rejected.error.evidence.field, `input.${field}`, field);
+  }
+});
+
 test('CLI maps invocation, controller, and adapter failures to exact exit classes', () => {
   const base = candidateFixture();
   const malformedRequests = [

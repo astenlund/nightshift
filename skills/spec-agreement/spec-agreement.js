@@ -353,6 +353,8 @@ function selectArtifact({ path, selectorKind, selectors, sourceBuffer }) {
 }
 
 const LINE_LINK_FORMAT_VARIABLE = 'NIGHTSHIFT_LINE_LINK_FORMAT';
+const FILE_LINK_FORMAT_VARIABLE = 'NIGHTSHIFT_FILE_LINK_FORMAT';
+const LINK_RENDERING_VARIABLE = 'NIGHTSHIFT_LINK_RENDERING';
 
 function renderLineLink(projectRoot, path, line, linkFormat) {
   const absolutePath = `${projectRoot.replace(/\\/g, '/').replace(/\/+$/, '')}/${path}`;
@@ -380,6 +382,25 @@ function locateSelection(input) {
   }
 
   return { path, line, ...renderLineLink(projectRoot, path, line, linkFormat) };
+}
+
+function applyLinkEnvironment(location, environment) {
+  const linkRendering = environment[LINK_RENDERING_VARIABLE] ?? null;
+  if (linkRendering === null || linkRendering === '') {
+    return location;
+  }
+  if (linkRendering !== 'osc8') {
+    structural('Link rendering must be osc8 when explicitly configured.', { kind: 'link-rendering', value: linkRendering });
+  }
+  const fileLinkFormat = environment[FILE_LINK_FORMAT_VARIABLE] ?? null;
+  if (fileLinkFormat !== null && typeof fileLinkFormat !== 'string') {
+    structural('File-link format must be a string when explicitly configured.', { kind: 'file-link-format' });
+  }
+  const linkTarget = location.line === null && fileLinkFormat !== null && fileLinkFormat !== ''
+    ? fileLinkFormat.replace(/\{path\}/g, () => location.linkTarget)
+    : location.linkTarget;
+
+  return { ...location, linkTarget, linkRendering };
 }
 
 function hashSelection(selectionRecord) {
@@ -2785,11 +2806,14 @@ function dispatchCliOperation(operation, input, adapters, environment) {
     case 'resolve':
       return resolveGoverningSet(decoded, adapters);
     case 'locate':
-      if (decoded !== null && typeof decoded === 'object' && Object.hasOwn(decoded, 'linkFormat')) {
-        invocationFailure('CLI field input.linkFormat is controller-owned and is read from the environment.', { field: 'input.linkFormat' });
+      if (decoded !== null && typeof decoded === 'object') {
+        const callerOwnedLinkField = ['linkFormat', 'fileLinkFormat', 'linkRendering'].find((field) => Object.hasOwn(decoded, field));
+        if (callerOwnedLinkField !== undefined) {
+          invocationFailure(`CLI field input.${callerOwnedLinkField} is controller-owned and is read from the environment.`, { field: `input.${callerOwnedLinkField}` });
+        }
       }
 
-      return locateSelection({ ...decoded, linkFormat: environment[LINE_LINK_FORMAT_VARIABLE] ?? null });
+      return applyLinkEnvironment(locateSelection({ ...decoded, linkFormat: environment[LINE_LINK_FORMAT_VARIABLE] ?? null }), environment);
     case 'candidate': {
       if (decoded?.kind !== 'resolved' || !Array.isArray(decoded.artifacts)) {
         invocationFailure('Candidate operation requires one resolved governing-set result.');
