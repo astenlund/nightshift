@@ -370,9 +370,7 @@ function locateSelection(input) {
   if (!exactOrderedKeys(input, ['projectRoot', 'path', 'selectorKind', 'selectors', 'sourceBuffer', 'linkFormat']) || typeof input.projectRoot !== 'string' || input.projectRoot === '' || (input.linkFormat !== null && typeof input.linkFormat !== 'string')) {
     structural('Locate input must carry projectRoot, path, selectorKind, selectors, sourceBuffer, and a string-or-null linkFormat.', { kind: 'locate-input' });
   }
-  if (typeof input.path !== 'string' || input.path.startsWith('/') || input.path.startsWith(String.fromCharCode(92)) || /^[A-Za-z]:/.test(input.path)) {
-    structural('Locate path must be project-relative.', { kind: 'locate-input', path: input.path });
-  }
+  requireRelativePathShape(input.path, { shape: 'locate-input', escape: 'locate-input' });
   const { projectRoot, path, selectorKind, selectors, sourceBuffer, linkFormat } = input;
   const selected = selectArtifact({ path, selectorKind, selectors, sourceBuffer });
   let line = null;
@@ -421,20 +419,26 @@ function adapterCall(fsAdapter, operation, path) {
   }
 }
 
-function canonicalizePath(projectRoot, nominatedPath, fsAdapter) {
+function requireRelativePathShape(nominatedPath, kinds) {
   if (typeof nominatedPath !== 'string' || nominatedPath === '' || hasControlCharacters(nominatedPath)) {
-    structural('Nominated path must be a nonempty project-relative path.', { kind: 'path-casing', path: nominatedPath });
+    structural('Nominated path must be a nonempty project-relative path.', { kind: kinds.shape, path: nominatedPath });
   }
   if (nodePath.isAbsolute(nominatedPath) || /^[A-Za-z]:/.test(nominatedPath)) {
-    structural('Nominated path must remain beneath the project root.', { kind: 'root-escape', path: nominatedPath });
+    structural('Nominated path must remain beneath the project root.', { kind: kinds.escape, path: nominatedPath });
   }
   const segments = nominatedPath.replace(/\\/g, '/').split('/');
   if (segments.some((segment) => segment === '..')) {
-    structural('Nominated path must remain beneath the project root.', { kind: 'root-escape', path: nominatedPath });
+    structural('Nominated path must remain beneath the project root.', { kind: kinds.escape, path: nominatedPath });
   }
   if (nominatedPath.includes('\\') || segments.some((segment) => segment === '' || segment === '.')) {
-    structural('Nominated path must use canonical ordinal spelling.', { kind: 'path-casing', path: nominatedPath });
+    structural('Nominated path must use canonical ordinal spelling.', { kind: kinds.shape, path: nominatedPath });
   }
+
+  return segments;
+}
+
+function canonicalizePath(projectRoot, nominatedPath, fsAdapter) {
+  const segments = requireRelativePathShape(nominatedPath, { shape: 'path-casing', escape: 'root-escape' });
   let current = projectRoot;
   for (const segment of segments) {
     const entries = adapterCall(fsAdapter, 'readDirectory', current);

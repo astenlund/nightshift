@@ -3227,6 +3227,12 @@ test('locateSelection renders the link target from the line-link format, never f
   expectStructural(() => locateSelection({ projectRoot: 'C:\\repo', path: 'docs/a.md', selectorKind: 'bullet-entry', selectors, sourceBuffer: bulletSource, linkFormat: 7 }), 'locate-input');
   expectStructural(() => locateSelection({ projectRoot: 'C:\\repo', path: '/docs/a.md', selectorKind: 'bullet-entry', selectors, sourceBuffer: bulletSource, linkFormat: null }), 'locate-input');
   expectStructural(() => locateSelection({ projectRoot: 'C:\\repo', path: 'D:/docs/a.md', selectorKind: 'bullet-entry', selectors, sourceBuffer: bulletSource, linkFormat: null }), 'locate-input');
+  expectStructural(() => locateSelection({ projectRoot: 'C:\\repo', path: '', selectorKind: 'bullet-entry', selectors, sourceBuffer: bulletSource, linkFormat: null }), 'locate-input');
+  expectStructural(() => locateSelection({ projectRoot: 'C:\\repo', path: '../docs/a.md', selectorKind: 'bullet-entry', selectors, sourceBuffer: bulletSource, linkFormat: null }), 'locate-input');
+  expectStructural(() => locateSelection({ projectRoot: 'C:\\repo', path: 'docs/./a.md', selectorKind: 'bullet-entry', selectors, sourceBuffer: bulletSource, linkFormat: null }), 'locate-input');
+
+  const adjacent = locateSelection({ projectRoot: '/srv/repo', path: 'docs/a.md', selectorKind: 'bullet-entry', selectors, sourceBuffer: bulletSource, linkFormat: '{path}{line}' });
+  assert.equal(adjacent.linkTarget, '/srv/repo/docs/a.md2', 'adjacent tokens substitute independently');
 });
 
 test('bullet selection excludes a column-zero fence after the entry', () => {
