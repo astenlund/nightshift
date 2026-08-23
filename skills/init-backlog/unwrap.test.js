@@ -163,3 +163,21 @@ test('each line keeps its own ending under mixed line endings', () => {
   const text = `Para one${CRLF}wrapped\n\nPara two${CRLF}`;
   assert.equal(unwrapText(text), `Para one wrapped\n\nPara two${CRLF}`);
 });
+
+test('a fence closer shorter than its opener stays inside the fence', () => {
+  const text = '````\ncode\n```\na\nb\n````\nc\nd\n';
+  assert.deepEqual(detectHardWraps(text), [{ line: 8, kind: 'paragraph' }]);
+  assert.equal(unwrapText(text), '````\ncode\n```\na\nb\n````\nc d\n');
+});
+
+test('an ATX heading indented up to three spaces and a spaced thematic break each end a paragraph', () => {
+  const text = 'para\n ## Heading\nafter\n\nmore\n_ _ _\nlast\n';
+  assert.deepEqual(detectHardWraps(text), []);
+  assert.equal(unwrapText(text), text);
+});
+
+test('rows after a piped table without a blank line stay separate rows', () => {
+  const text = '| a | b |\n|---|---|\n| 1 | 2 |\ntrailing\nmore\n';
+  assert.deepEqual(detectHardWraps(text), []);
+  assert.equal(unwrapText(text), text);
+});

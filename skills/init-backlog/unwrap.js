@@ -26,20 +26,20 @@ const path = require('node:path');
 const BOM = String.fromCharCode(0xfeff);
 const LIST_MARKER = /^\s*(?:[-*+]|\d+[.)])\s+/;
 const FENCE = /^\s{0,3}(`{3,}|~{3,})/;
-const HEADING = /^#{1,6}\s/;
+const HEADING = /^ {0,3}#{1,6}\s/;
 const SETEXT_UNDERLINE = /^\s{0,3}(?:=+|-+)\s*$/;
 const TABLE_ROW = /^\s*\|/;
 // A GFM delimiter row with at least one pipe; the row above it is the header.
 const TABLE_DELIMITER = /^\s*\|?\s*:?-+:?\s*(?:\|\s*:?-+:?\s*)+\|?\s*$/;
 const BLOCK_QUOTE = /^\s*>/;
-const THEMATIC_BREAK = /^\s{0,3}(?:-{3,}|\*{3,}|_{3,})\s*$/;
+const THEMATIC_BREAK = /^ {0,3}(?:(?:-\s*){3,}|(?:\*\s*){3,}|(?:_\s*){3,})$/;
 const INDENTED_CODE = /^(?: {4}|\t)/;
 const HTML_COMMENT_OPEN = /^\s{0,3}<!--/;
 const HTML_COMMENT_CLOSE = /-->/;
 const HTML_BLOCK_START = /^\s{0,3}<(?:\/?[a-zA-Z][\w-]*(?:\s|\/?>|$)|[?!])/;
 const HARD_BREAK = /(?: {2,}|\\)$/;
-// Mirrors the ready parser's LABEL_AT_START terminator: a **Label:** line
-// starts a new block, so **Requires:** and **External:** keep their own lines.
+// A **Label:** line starts a new block, so **Requires:** and **External:**
+// keep their own lines; the ready parser imports this as its label terminator.
 const LABEL_AT_START = /^\*\*[^*]+?:\*\*/;
 
 function splitLines(text) {
@@ -66,7 +66,6 @@ function classify(line) {
   if (THEMATIC_BREAK.test(line)) return 'break';
   if (TABLE_ROW.test(line)) return 'table';
   if (BLOCK_QUOTE.test(line)) return 'quote';
-  if (HTML_COMMENT_OPEN.test(line) || HTML_BLOCK_START.test(line)) return 'html';
   if (LIST_MARKER.test(line)) return 'list-item';
   if (LABEL_AT_START.test(line.trim())) return 'label';
   if (/^\s+\S/.test(line)) return 'indented';
@@ -74,7 +73,8 @@ function classify(line) {
   return 'paragraph';
 }
 
-// Tracks the multi-line constructs whose interior is never joined. Returns
+// Tracks the multi-line constructs whose interior is never joined. Takes the
+// open block and the previous physical line (a table header sits there). Returns
 // true while the line belongs to one of them.
 function createBlockTracker() {
   let fence = null;
@@ -83,7 +83,7 @@ function createBlockTracker() {
   let inIndentedCode = false;
   let inTable = false;
 
-  return (line, previous) => {
+  return (line, previous, lastLine) => {
     const blank = line.trim() === '';
     if (inComment) {
       inComment = !HTML_COMMENT_CLOSE.test(line);
@@ -102,12 +102,12 @@ function createBlockTracker() {
     }
     const fenceMatch = FENCE.exec(line);
     if (fence === null && fenceMatch) {
-      fence = fenceMatch[1][0];
+      fence = { char: fenceMatch[1][0], length: fenceMatch[1].length };
 
       return true;
     }
     if (fence !== null) {
-      if (fenceMatch && fenceMatch[1][0] === fence && line.trim() === fenceMatch[1]) {
+      if (fenceMatch && fenceMatch[1][0] === fence.char && fenceMatch[1].length >= fence.length && line.trim() === fenceMatch[1]) {
         fence = null;
       }
 
@@ -128,7 +128,7 @@ function createBlockTracker() {
 
       return true;
     }
-    if (TABLE_DELIMITER.test(line) && previous !== null && previous.line.includes('|')) {
+    if (TABLE_DELIMITER.test(line) && lastLine !== null && lastLine.includes('|')) {
       inTable = true;
 
       return true;
@@ -151,7 +151,7 @@ function scanWraps(lines) {
       previous = null;
       continue;
     }
-    if (insideBlock(line, previous)) {
+    if (insideBlock(line, previous, index > 0 ? lines[index - 1] : null)) {
       // A table header is the line above its delimiter row; it is never a
       // continuation of the paragraph above it.
       if (TABLE_DELIMITER.test(line) && wraps.length > 0 && wraps[wraps.length - 1].line === index) {
@@ -172,7 +172,7 @@ function scanWraps(lines) {
       previous = { kind: previous.kind, line };
       continue;
     }
-    previous = kind === 'blank' || kind === 'heading' || kind === 'break' || kind === 'table' || kind === 'quote' || kind === 'html'
+    previous = kind === 'blank' || kind === 'heading' || kind === 'break' || kind === 'table' || kind === 'quote'
       ? null
       : { kind: kind === 'indented' || kind === 'label' ? 'paragraph' : kind, line };
   }
@@ -248,7 +248,7 @@ function runCli(argv) {
   process.exitCode = report.length > 0 && !write ? 1 : 0;
 }
 
-module.exports = { detectHardWraps, unwrapText, collectMarkdownFiles };
+module.exports = { LABEL_AT_START, detectHardWraps, unwrapText, collectMarkdownFiles };
 
 if (require.main === module) {
   runCli(process.argv.slice(2));

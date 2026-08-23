@@ -19,7 +19,7 @@
 const fs = require('fs');
 const path = require('path');
 const { scanMarkdown } = require('../spec-agreement/spec-agreement.js');
-const { detectHardWraps } = require('../init-backlog/unwrap.js');
+const { LABEL_AT_START, detectHardWraps } = require('../init-backlog/unwrap.js');
 
 const INDEX_FILE_STEMS = new Set([
   'QUICK_WINS', 'FEATURES', 'BUGS', 'PATTERNS',
@@ -46,8 +46,8 @@ const PLACEHOLDER_LINES = new Set([
 ]);
 
 // A bold label at line start (e.g. **Slices:**, **Shipped:**) terminates a
-// wrapped Requires or External line; inline **bold** mid-line does not.
-const LABEL_AT_START = /^\*\*[^*]+?:\*\*/;
+// wrapped Requires or External line; inline **bold** mid-line does not. The
+// pattern is imported from the unwrapper so both read the same block boundary.
 // The two dependency labels. Requires holds in-backlog links only; External
 // holds bare-text external primitives only. Both share one grammar.
 const REQUIRES_LABEL = /^\*\*Requires:\*\*/i;
