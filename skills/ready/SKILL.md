@@ -31,7 +31,7 @@ The parsing is deterministic and lives in a script bundled with this skill; this
    - **Structural errors**: missing or empty `**Requires:**` lines, bare text in `**Requires:**`, a link, `none.`, or an empty label in `**External:**`, stale or broken references, parents whose slices have all shipped (ready to graduate to the history archive), a dependency cycle (two or more entries that block each other's next shipment), and breakout hygiene errors (a linked breakout file carrying a `**Requires:**` or `**External:**` line). Every message names its remedy. Entry-level errors replace the entry's classification; a breakout hygiene error is the one exception and leaves the entry's classification standing, because the index still describes the queue correctly. These need fixing by hand; surface them prominently.
    - **Exploring (drafts, not ready)**: after the sections above, the `exploring` entries as a titles-only list, one line total where possible. These are informational drafts, never part of the ready set; end with a one-line pointer to `/nightshift:exploring` for the full draft list (excerpts and breakout links).
 
-   Include the script's `notices` (broken breakout-file links, sections the parser could not interpret) as a short trailing list.
+   Include the script's `notices` (broken breakout-file links, sections the parser could not interpret, hard-wrapped prose in an index or breakout file) as a short trailing list.
 
    Keep the report centered on choosing work. Compactness comes from concise one-line Ready entries and Blocked grouping. All parsed Ready and Blocked items remain visible by title.
 
