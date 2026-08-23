@@ -10,16 +10,18 @@
 //
 //   { indexes, ready, blocked, external, exploring, structuralErrors, notices }
 //
-// History archives are never read: the walk-and-remove convention keeps
-// active Requires lines authoritative. PATTERNS.md is a pattern registry,
-// not a work backlog, so it is not parsed either.
+// History archives are never parsed for work: the walk-and-remove convention
+// keeps active Requires lines authoritative. PATTERNS.md is a pattern
+// registry, not a work backlog, so it is not parsed either. Every backlog
+// file is still read once for the hard-wrap notice, since the line
+// discipline covers the whole .claude/ backlog.
 //
 // Usage: node ready.js [repo-root-or-.claude-dir]   (defaults to cwd)
 
 const fs = require('fs');
 const path = require('path');
 const { scanMarkdown } = require('../spec-agreement/spec-agreement.js');
-const { LABEL_AT_START, detectHardWraps } = require('../init-backlog/unwrap.js');
+const { LABEL_AT_START, detectHardWraps, collectMarkdownFiles } = require('../init-backlog/unwrap.js');
 
 const INDEX_FILE_STEMS = new Set([
   'QUICK_WINS', 'FEATURES', 'BUGS', 'PATTERNS',
@@ -1042,7 +1044,22 @@ function scanBreakoutTargets(breakoutTargets, claudeDir) {
     }
   }
 
-  return { notices, structuralErrors };
+  return { notices, structuralErrors, scannedFiles: wrapScanned };
+}
+
+// The line discipline covers every backlog file, so the files no index entry
+// reaches (history archives, patterns, unlinked breakouts) get their own
+// hard-wrap notice; the indexes and linked breakouts were already reported.
+function scanUnlinkedBacklogFiles(claudeDir, alreadyScanned) {
+  const notices = [];
+  const indexFiles = new Set([...WORK_INDEX_NAMES, 'PATTERNS'].map((name) => path.resolve(claudeDir, `${name}.md`)));
+  for (const file of collectMarkdownFiles([claudeDir])) {
+    if (indexFiles.has(file) || alreadyScanned.has(file)) continue;
+    const relative = path.relative(claudeDir, file).replace(/\\/g, '/');
+    pushHardWrapNotice(notices, `backlog file ${relative}`, fs.readFileSync(file, 'utf8'));
+  }
+
+  return notices;
 }
 
 const MISSING_BREAKOUT_TAILS = {
@@ -1086,7 +1103,7 @@ function runCli(argRoot) {
   const result = analyze(files);
 
   const scanned = scanBreakoutTargets(result.breakoutTargets, claudeDir);
-  result.notices.push(...scanned.notices);
+  result.notices.push(...scanned.notices, ...scanUnlinkedBacklogFiles(claudeDir, scanned.scannedFiles));
   result.structuralErrors.push(...scanned.structuralErrors);
   delete result.breakoutTargets;
 

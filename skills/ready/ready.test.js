@@ -1431,9 +1431,19 @@ test('CLI reads a .claude dir and emits the same JSON shape', () => {
     const HISTORY_ONLY_TITLE = 'Retired baseline';
     fs.writeFileSync(path.join(claudeDir, 'FEATURES_HISTORY.md'), `# Features history\n\n## Entries\n\n### [${HISTORY_ONLY_TITLE}](features/retired-baseline.md)\n\n**Requires:** [Alpha](features/alpha.md).\n`);
     fs.mkdirSync(path.join(claudeDir, 'plans'), { recursive: true });
-    fs.writeFileSync(path.join(claudeDir, 'plans', 'stale-plan.md'), '# Plan\n\n**Requires:** [Alpha](features/alpha.md).\n');
+    fs.writeFileSync(path.join(claudeDir, 'plans', 'stale-plan.md'), '# Plan\n\nWrapped plan prose\nstays out of scope.\n\n**Requires:** [Alpha](features/alpha.md).\n');
+    fs.writeFileSync(path.join(claudeDir, 'BUGS_HISTORY.md'), '# Bugs history\n\nA fixed bug whose entry\nis hard-wrapped.\n');
+    fs.mkdirSync(path.join(claudeDir, 'patterns'), { recursive: true });
+    fs.writeFileSync(path.join(claudeDir, 'patterns', 'wrapped.md'), '# Pattern\n\nPattern prose\nhard-wrapped.\n');
+    fs.writeFileSync(path.join(claudeDir, 'features', 'orphan.md'), '# Orphan\n\nNo index entry links here\nand it is hard-wrapped.\n');
     const stdout = execFileSync(process.execPath, [path.join(__dirname, 'ready.js'), tmpRoot], { encoding: 'utf8' });
     const cli = JSON.parse(stdout);
+    const hardWrapNotices = cli.notices.filter((n) => n.startsWith('backlog file ') && n.includes('hard-wrapped'));
+    assert.deepStrictEqual(hardWrapNotices.map((n) => n.split(' has ')[0]), [
+      'backlog file BUGS_HISTORY.md',
+      'backlog file features/orphan.md',
+      'backlog file patterns/wrapped.md',
+    ], `every unlinked backlog file is noticed once and plans are not: ${JSON.stringify(hardWrapNotices)}`);
     assert.ok(Array.isArray(cli.ready) && cli.ready.length > 0);
     assert.ok(cli.indexes.missing.includes('PATTERNS.md'));
     assert.ok(
@@ -1470,8 +1480,8 @@ test('CLI reads a .claude dir and emits the same JSON shape', () => {
       `no structural error is attributed to a history archive index: ${JSON.stringify(cli.structuralErrors)}`,
     );
     assert.ok(
-      !cli.notices.some((n) => n.includes('HISTORY')),
-      `no notice references a history archive: ${JSON.stringify(cli.notices)}`,
+      !cli.notices.some((n) => n.includes('HISTORY') && !n.includes('hard-wrapped')),
+      `no dependency notice references a history archive (only the line-discipline sweep reads it): ${JSON.stringify(cli.notices)}`,
     );
     assert.ok(
       !cli.structuralErrors.some((e) => e.title === HISTORY_ONLY_TITLE) &&

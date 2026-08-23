@@ -17,7 +17,7 @@ The parsing is deterministic and lives in a script bundled with this skill; this
    node "${CLAUDE_PLUGIN_ROOT}/skills/ready/ready.js"
    ```
 
-   (Pass the repo root as an argument if the working directory is elsewhere.) The script reads `.claude/QUICK_WINS.md`, `.claude/FEATURES.md`, `.claude/BUGS.md`, and each breakout file that `FEATURES.md` and `BUGS.md` entries link (for dependency lines only), and emits JSON with `indexes` (found and missing index files), `ready`, `blocked`, `external`, `exploring`, `structuralErrors`, and `notices`. It never reads the history archives: the walk-and-remove convention keeps active `Requires:` lines authoritative. `PATTERNS.md` is a pattern registry, not a work backlog, and is not parsed.
+   (Pass the repo root as an argument if the working directory is elsewhere.) The script reads `.claude/QUICK_WINS.md`, `.claude/FEATURES.md`, `.claude/BUGS.md`, and each breakout file that `FEATURES.md` and `BUGS.md` entries link (for dependency lines only), and emits JSON with `indexes` (found and missing index files), `ready`, `blocked`, `external`, `exploring`, `structuralErrors`, and `notices`. It never parses the history archives for work: the walk-and-remove convention keeps active `Requires:` lines authoritative. `PATTERNS.md` is a pattern registry, not a work backlog, and is not parsed. Every backlog file (indexes, history archives, and everything under `features/`, `bugs/`, and `patterns/`) is still checked for hard-wrapped prose.
 
    If `indexes.missing` names any of the three work indexes, surface that prominently as a broken backlog before anything else; an absent index file is never silent and never renders as an empty report. (`PATTERNS.md` in the missing list is a note, not a broken backlog.)
 
@@ -31,7 +31,7 @@ The parsing is deterministic and lives in a script bundled with this skill; this
    - **Structural errors**: missing or empty `**Requires:**` lines, bare text in `**Requires:**`, a link, `none.`, or an empty label in `**External:**`, stale or broken references, parents whose slices have all shipped (ready to graduate to the history archive), a dependency cycle (two or more entries that block each other's next shipment), and breakout hygiene errors (a linked breakout file carrying a `**Requires:**` or `**External:**` line). Every message names its remedy. Entry-level errors replace the entry's classification; a breakout hygiene error is the one exception and leaves the entry's classification standing, because the index still describes the queue correctly. These need fixing by hand; surface them prominently.
    - **Exploring (drafts, not ready)**: after the sections above, the `exploring` entries as a titles-only list, one line total where possible. These are informational drafts, never part of the ready set; end with a one-line pointer to `/nightshift:exploring` for the full draft list (excerpts and breakout links).
 
-   Include the script's `notices` (broken breakout-file links, sections the parser could not interpret, hard-wrapped prose in an index or breakout file) as a short trailing list.
+   Include the script's `notices` (broken breakout-file links, sections the parser could not interpret, hard-wrapped prose in any backlog file) as a short trailing list.
 
    Keep the report centered on choosing work. Compactness comes from concise one-line Ready entries and Blocked grouping. All parsed Ready and Blocked items remain visible by title.
 
