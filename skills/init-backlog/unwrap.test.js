@@ -119,3 +119,47 @@ test("the plugin's own backlog carries no hard wraps", () => {
     .map(({ file, wraps }) => `${file} (${wraps.length}, first at line ${wraps[0].line})`);
   assert.deepEqual(offenders, [], 'run node skills/init-backlog/unwrap.js --write .claude');
 });
+
+test('indented code, HTML blocks and comments, setext headings, and pipe-less tables are never joined', () => {
+  const text = [
+    'Para',
+    '',
+    '    code line one',
+    '    code line two',
+    '',
+    '<details>',
+    '<summary>x</summary>',
+    'content',
+    '</details>',
+    '',
+    '<!-- comment line one',
+    'comment line two -->',
+    'Prose after the comment',
+    'wrapped prose',
+    '',
+    'Title',
+    '=====',
+    'Para under the title',
+    '',
+    'Subtitle',
+    '--',
+    'a | b',
+    '--|--',
+    '1 | 2',
+    '',
+  ].join('\n');
+  assert.deepEqual(detectHardWraps(text), [{ line: 14, kind: 'paragraph' }]);
+  assert.equal(unwrapText(text), text.replace('Prose after the comment\nwrapped prose', 'Prose after the comment wrapped prose'));
+});
+
+test('a leading byte-order mark survives and still shields the frontmatter', () => {
+  const bom = String.fromCharCode(0xfeff);
+  const text = `${bom}---\nname: x\ndescription: a\n  b\n---\n\nPara\nwrapped\n`;
+  assert.deepEqual(detectHardWraps(text), [{ line: 8, kind: 'paragraph' }]);
+  assert.equal(unwrapText(text), `${bom}---\nname: x\ndescription: a\n  b\n---\n\nPara wrapped\n`);
+});
+
+test('each line keeps its own ending under mixed line endings', () => {
+  const text = `Para one${CRLF}wrapped\n\nPara two${CRLF}`;
+  assert.equal(unwrapText(text), `Para one wrapped\n\nPara two${CRLF}`);
+});
