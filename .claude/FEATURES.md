@@ -121,6 +121,10 @@ Draft exploring how to bound or scope the revise engine's whole-run acknowledgem
 
 Draft exploring an explicit compaction boundary after plan hardening and before implementation, followed by a mandatory full re-read of the governing spec and hardened plan before implementation dispatch.
 
+### [Pick-time breakouts](features/pick-time-breakouts.md)
+
+Draft exploring a pick-time breakout for index-only backlog entries: when the user accepts the decision-complete digest, the controller creates a breakout file seeded from the accepted digest, which becomes the governing artifact (stamps, Operating context, review decisions land there) while the index entry stays one physical line; several quick wins picked together share one grouped breakout. Retires the bullet-entry selector-anchoring and indented-continuation follow-ups from the 2026-08-23 CI-gate run.
+
 ### [Lifecycle shape proposal](features/lifecycle-shape-proposal.md)
 
 Draft exploring a lifecycle-shape proposal presented right after the user accepts the decision-complete digest: the controller proposes which lifecycle steps the work warrants (the full ladder of harden spec, write plan, harden plan, implement, review code, verify, docs, lore for a complex feature; a direct jump to implement then revise-code for a trivial bug or quick win), and the user accepts or tweaks that shape before any work begins. Captured 2026-08-23 while a quick-win handover was running the full ladder over a twelve-line backlog bullet.
