@@ -358,12 +358,7 @@ function locateSelection({ path, selectorKind, selectors, sourceBuffer }) {
     return { path, line: null };
   }
   const entryStart = selected.sourceRanges[selected.sourceRanges.length - 1].start;
-  let line = 1;
-  for (let offset = 0; offset < entryStart; offset += 1) {
-    if (sourceBuffer[offset] === 0x0a) {
-      line += 1;
-    }
-  }
+  const line = scanMarkdown(sourceBuffer).lines.findIndex((record) => record.rawStart === entryStart) + 1;
 
   return { path, line };
 }

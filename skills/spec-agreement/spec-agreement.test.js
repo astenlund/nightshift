@@ -3167,6 +3167,9 @@ test('locateSelection reports the one-based line where the selected entry starts
   const indexSource = Buffer.from([0xef, 0xbb, 0xbf, ...Buffer.from('## Parent\r\nintro\r\n### Entry\r\nbody\r\n')]);
   assert.deepEqual(locateSelection({ path: 'a.md', sourceBuffer: indexSource, selectorKind: 'index-entry', selectors: [{ parentHeading: '## Parent', entryHeading: '### Entry' }] }), { path: 'a.md', line: 3 });
 
+  const bareCrSource = Buffer.from(['## Parent', 'intro', '### Entry', 'body', ''].join(String.fromCharCode(13)));
+  assert.deepEqual(locateSelection({ path: 'a.md', sourceBuffer: bareCrSource, selectorKind: 'index-entry', selectors: [{ parentHeading: '## Parent', entryHeading: '### Entry' }] }), { path: 'a.md', line: 3 });
+
   const bulletSource = Buffer.from('# Index\n\n## Other\n- Elsewhere\n\n## Parent\n- First\n- Task\n  continuation\n');
   assert.deepEqual(locateSelection({ path: 'a.md', sourceBuffer: bulletSource, selectorKind: 'bullet-entry', selectors: [{ parentHeading: '## Parent', entryTitle: 'Task' }] }), { path: 'a.md', line: 8 });
 
