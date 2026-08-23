@@ -213,3 +213,23 @@ test('fences, headings, HTML, and breaks nested under a list item are measured f
   assert.deepEqual(detectHardWraps(text), []);
   assert.equal(unwrapText(text), text);
 });
+
+test('collectMarkdownFiles follows links and skips dangling ones', (t) => {
+  const root = fs.mkdtempSync(path.join(require('node:os').tmpdir(), 'unwrap-'));
+  try {
+    fs.mkdirSync(path.join(root, 'real'));
+    fs.writeFileSync(path.join(root, 'real', 'a.md'), '# A\n');
+    try {
+      fs.symlinkSync(path.join(root, 'real'), path.join(root, 'features'), 'junction');
+      fs.symlinkSync(path.join(root, 'missing.md'), path.join(root, 'dangling.md'), 'file');
+    } catch {
+      // Link creation needs privileges this runner lacks; the walk is then untestable here.
+      t.skip('symlinks unavailable');
+
+      return;
+    }
+    assert.deepEqual(collectMarkdownFiles([root]).map((file) => path.relative(root, file).replace(/\\/g, '/')), ['features/a.md']);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});

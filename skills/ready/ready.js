@@ -1056,7 +1056,14 @@ function scanUnlinkedBacklogFiles(claudeDir, alreadyScanned) {
   for (const file of collectMarkdownFiles([claudeDir])) {
     if (indexFiles.has(file) || alreadyScanned.has(file)) continue;
     const relative = path.relative(claudeDir, file).replace(/\\/g, '/');
-    pushHardWrapNotice(notices, `backlog file ${relative}`, fs.readFileSync(file, 'utf8'));
+    let contents;
+    try {
+      contents = fs.readFileSync(file, 'utf8');
+    } catch (error) {
+      notices.push(`backlog file ${relative} cannot be read (${error?.code ?? 'unknown'}); retry; the file was not checked for hard wraps this run`);
+      continue;
+    }
+    pushHardWrapNotice(notices, `backlog file ${relative}`, contents);
   }
 
   return notices;
