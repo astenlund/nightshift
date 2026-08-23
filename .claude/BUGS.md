@@ -6,9 +6,11 @@ This file is **one of four repo-local indexes** agents consult on demand when re
 
 Readiness and graduation are not approval: before spec-governed work, present the current decision-complete digest and obtain explicit agreement in this session.
 
+Backlog prose is one paragraph or one bullet per physical line, never hard-wrapped at a column: a search hit then shows the whole entry, the parsers anchor on whole lines, and an edit shows as one changed line instead of a reflowed block. `/nightshift:ready` reports a hard-wrapped file as a notice and `/nightshift:init-backlog` unwraps it.
+
 ## Requires lines
 
-**Every open bug entry carries a `**Requires:**` line** declaring what must be in place before the fix can land. Comma-separated, same shape as `FEATURES.md` (long lines may wrap; `/nightshift:ready` joins them before parsing):
+**Every open bug entry carries a `**Requires:**` line** declaring what must be in place before the fix can land. Comma-separated on one physical line, same shape as `FEATURES.md` (the parser joins a wrapped line, but the line discipline above forbids wrapping):
 
 - A markdown link to a feature, quick win, or bug. The reference is a current blocker; under the walk-and-remove convention below, a satisfied dependency is edited out of the line at the moment it ships or is fixed.
 - The literal word `none.` if the fix is unblocked. An empty label is a structural error; `none.` is the only empty form.
