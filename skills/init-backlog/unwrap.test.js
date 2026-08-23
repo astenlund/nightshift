@@ -97,14 +97,22 @@ test('unwrapping is idempotent and preserves every non-whitespace character in o
   assert.equal(once.replace(/\s+/g, ''), text.replace(/\s+/g, ''));
 });
 
-test('collectMarkdownFiles walks a directory recursively and accepts single files', () => {
+test('collectMarkdownFiles reads a directory as a backlog root and accepts single files', () => {
   const root = fs.mkdtempSync(path.join(require('node:os').tmpdir(), 'unwrap-'));
   try {
-    fs.mkdirSync(path.join(root, 'features'));
+    for (const dir of ['features', 'features/nested', 'bugs', 'patterns', 'plans', 'commands']) {
+      fs.mkdirSync(path.join(root, dir));
+    }
     fs.writeFileSync(path.join(root, 'FEATURES.md'), '# F\n');
+    fs.writeFileSync(path.join(root, 'FEATURES_HISTORY.md'), '# H\n');
     fs.writeFileSync(path.join(root, 'features', 'a.md'), '# A\n');
+    fs.writeFileSync(path.join(root, 'features', 'nested', 'b.md'), '# B\n');
     fs.writeFileSync(path.join(root, 'features', 'notes.txt'), 'ignored\n');
-    assert.deepEqual(collectMarkdownFiles([root]).map((file) => path.relative(root, file).replace(/\\/g, '/')), ['FEATURES.md', 'features/a.md']);
+    fs.writeFileSync(path.join(root, 'bugs', 'c.md'), '# C\n');
+    fs.writeFileSync(path.join(root, 'patterns', 'd.md'), '# D\n');
+    fs.writeFileSync(path.join(root, 'plans', 'ephemeral.md'), '# P\n');
+    fs.writeFileSync(path.join(root, 'commands', 'host.md'), '# Host\n');
+    assert.deepEqual(collectMarkdownFiles([root]).map((file) => path.relative(root, file).replace(/\\/g, '/')), ['FEATURES.md', 'FEATURES_HISTORY.md', 'bugs/c.md', 'features/a.md', 'features/nested/b.md', 'patterns/d.md']);
     assert.deepEqual(collectMarkdownFiles([path.join(root, 'features', 'a.md')]), [path.join(root, 'features', 'a.md')]);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
@@ -178,6 +186,30 @@ test('an ATX heading indented up to three spaces and a spaced thematic break eac
 
 test('rows after a piped table without a blank line stay separate rows', () => {
   const text = '| a | b |\n|---|---|\n| 1 | 2 |\ntrailing\nmore\n';
+  assert.deepEqual(detectHardWraps(text), []);
+  assert.equal(unwrapText(text), text);
+});
+
+test('fences, headings, HTML, and breaks nested under a list item are measured from the item content', () => {
+  const text = [
+    '- item',
+    '  - sub',
+    '    ```',
+    '    code a',
+    '    code b',
+    '    ```',
+    '    ### Heading',
+    '    <details>',
+    '    <summary>x</summary>',
+    '',
+    '- other',
+    '    ---',
+    '    wrapped under a break',
+    '',
+    '    code after a blank is indented code',
+    '    second code line',
+    '',
+  ].join('\n');
   assert.deepEqual(detectHardWraps(text), []);
   assert.equal(unwrapText(text), text);
 });

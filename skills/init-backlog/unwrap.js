@@ -60,10 +60,12 @@ function frontmatterEnd(lines) {
   return close;
 }
 
-function classify(line) {
+// Block starts under a list item are measured from the item's content, so the
+// caller passes the line with its indentation stripped as the probe there.
+function classify(line, probe) {
   if (line.trim() === '') return 'blank';
-  if (HEADING.test(line)) return 'heading';
-  if (THEMATIC_BREAK.test(line)) return 'break';
+  if (HEADING.test(probe)) return 'heading';
+  if (THEMATIC_BREAK.test(probe)) return 'break';
   if (TABLE_ROW.test(line)) return 'table';
   if (BLOCK_QUOTE.test(line)) return 'quote';
   if (LIST_MARKER.test(line)) return 'list-item';
@@ -74,8 +76,8 @@ function classify(line) {
 }
 
 // Tracks the multi-line constructs whose interior is never joined. Takes the
-// open block and the previous physical line (a table header sits there). Returns
-// true while the line belongs to one of them.
+// open block, the probe (see classify), and the previous physical line (a
+// table header sits there). Returns true while the line belongs to one of them.
 function createBlockTracker() {
   let fence = null;
   let inHtml = false;
@@ -83,7 +85,7 @@ function createBlockTracker() {
   let inIndentedCode = false;
   let inTable = false;
 
-  return (line, previous, lastLine) => {
+  return (line, previous, probe, lastLine) => {
     const blank = line.trim() === '';
     if (inComment) {
       inComment = !HTML_COMMENT_CLOSE.test(line);
@@ -100,31 +102,32 @@ function createBlockTracker() {
       inIndentedCode = blank || INDENTED_CODE.test(line);
       if (inIndentedCode) return true;
     }
-    const fenceMatch = FENCE.exec(line);
+    if (previous === null && INDENTED_CODE.test(line)) {
+      inIndentedCode = true;
+
+      return true;
+    }
+    const fenceMatch = FENCE.exec(probe);
     if (fence === null && fenceMatch) {
       fence = { char: fenceMatch[1][0], length: fenceMatch[1].length };
 
       return true;
     }
     if (fence !== null) {
-      if (fenceMatch && fenceMatch[1][0] === fence.char && fenceMatch[1].length >= fence.length && line.trim() === fenceMatch[1]) {
+      const closer = FENCE.exec(line.trimStart());
+      if (closer && closer[1][0] === fence.char && closer[1].length >= fence.length && line.trim() === closer[1]) {
         fence = null;
       }
 
       return true;
     }
-    if (HTML_COMMENT_OPEN.test(line)) {
+    if (HTML_COMMENT_OPEN.test(probe)) {
       inComment = !HTML_COMMENT_CLOSE.test(line);
 
       return true;
     }
-    if (HTML_BLOCK_START.test(line)) {
+    if (HTML_BLOCK_START.test(probe)) {
       inHtml = true;
-
-      return true;
-    }
-    if (previous === null && INDENTED_CODE.test(line)) {
-      inIndentedCode = true;
 
       return true;
     }
@@ -151,7 +154,8 @@ function scanWraps(lines) {
       previous = null;
       continue;
     }
-    if (insideBlock(line, previous, index > 0 ? lines[index - 1] : null)) {
+    const probe = previous?.kind === 'paragraph' ? line : line.trimStart();
+    if (insideBlock(line, previous, probe, index > 0 ? lines[index - 1] : null)) {
       // A table header is the line above its delimiter row; it is never a
       // continuation of the paragraph above it.
       if (TABLE_DELIMITER.test(line) && wraps.length > 0 && wraps[wraps.length - 1].line === index) {
@@ -160,7 +164,7 @@ function scanWraps(lines) {
       previous = null;
       continue;
     }
-    const kind = classify(line);
+    const kind = classify(line, probe);
     if (previous?.kind === 'paragraph' && SETEXT_UNDERLINE.test(line)) {
       previous = null;
       continue;
@@ -201,20 +205,46 @@ function unwrapText(text) {
   return bom + output.map((line) => line.text + line.ending).join('');
 }
 
+// The directories under .claude/ that hold backlog prose. Anything else in a
+// .claude/ tree (plans, host commands, agents, skills, rules) is out of scope.
+const BACKLOG_DIRECTORIES = ['features', 'bugs', 'patterns'];
+
+function sortedEntries(directory) {
+  return fs.readdirSync(directory, { withFileTypes: true }).sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+}
+
+// A directory target is read as a backlog root: its top-level markdown files
+// plus everything under the backlog directories. A file target is taken as is.
 function collectMarkdownFiles(targets) {
   const files = [];
-  const visit = (target) => {
-    const stat = fs.statSync(target);
-    if (stat.isDirectory()) {
-      for (const entry of fs.readdirSync(target, { withFileTypes: true }).sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))) {
-        visit(path.join(target, entry.name));
+  const isMarkdown = (name) => path.extname(name).toLowerCase() === '.md';
+  const visitAll = (directory) => {
+    for (const entry of sortedEntries(directory)) {
+      const child = path.join(directory, entry.name);
+      if (entry.isDirectory()) {
+        visitAll(child);
+      } else if (isMarkdown(entry.name)) {
+        files.push(child);
       }
-    } else if (path.extname(target).toLowerCase() === '.md') {
-      files.push(target);
+    }
+  };
+  const visitBacklogRoot = (root) => {
+    for (const entry of sortedEntries(root)) {
+      const child = path.join(root, entry.name);
+      if (entry.isDirectory() && BACKLOG_DIRECTORIES.includes(entry.name)) {
+        visitAll(child);
+      } else if (entry.isFile() && isMarkdown(entry.name)) {
+        files.push(child);
+      }
     }
   };
   for (const target of targets) {
-    visit(path.resolve(target));
+    const resolved = path.resolve(target);
+    if (fs.statSync(resolved).isDirectory()) {
+      visitBacklogRoot(resolved);
+    } else if (isMarkdown(resolved)) {
+      files.push(resolved);
+    }
   }
 
   return files;
