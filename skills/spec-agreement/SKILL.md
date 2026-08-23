@@ -74,6 +74,8 @@ For caller mode `handover`, yield control to handover after that clean rescan so
 
 `candidateToken` may be displayed for diagnostics, but it is not authority and a response need not repeat it.
 
+Both candidate hashes are selection-scoped: `contentHash` covers the canonical selected bytes and `sourceHash` the exact raw spans of that selection (for an `index-entry` or `bullet-entry`, the parent heading line plus the entry), so an edit elsewhere in the same index file moves neither, and `compareCandidates` reports `equal`. A change that touches only the selection's representation (line endings, BOM, terminal newline) moves `sourceHash` alone and classifies as representation-only in `buildDerivedDiff`; the whole-file read is for capture and the stability recheck, never for identity.
+
 ## Decision-complete digest
 
 Render all fields below every time, without omitting a material decision for brevity:
