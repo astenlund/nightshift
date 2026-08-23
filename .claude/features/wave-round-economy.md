@@ -17,6 +17,8 @@ Draft exploring how to cut the round count a revise run consumes to converge. Pr
 - **Fix-authored surface**: fixes add new spec surface (new sentences, new fields) that later rounds then review as fresh ground; a run's own hardening extends its runway. Possibly inherent; worth measuring before mechanism-building.
 - **Verifier rounds inside the round cap**: already captured as the cap-exclusion quick win.
 
+- **Whole-file fingerprint over a shared index** (evidence from the 2026-08-23 version-increase-gate handover): the revise-spec run over one 25-line bullet in `QUICK_WINS.md` fingerprinted the whole index file with the `design-before-hardening` selector, so one clause added to the bullet in round 3 reactivated six cells already certified at the earlier fingerprint and round 5 re-reviewed the same text six more times; the run converged in 6 rounds where an entry-scoped fingerprint (the `bullet-entry` selector already exists in `skills/spec-agreement/spec-agreement.js`) would have converged in 4.
+
 ## Candidate directions (none committed)
 
 - Delta-scoped re-review: reactivated cells receive the diff since their last certification alongside the full artifact, with the full-payload certification rule preserved (compare fix-scoped-rounds, which narrows for a different reason).
