@@ -45,6 +45,19 @@ can still fix it in the same session.
   side of the collision needs fixing.
 
 ## Handover live-claim surfacing
+- **Keep the governing entry's archive move out of implementation plans.** An implementation
+  plan written for an index-only backlog entry tends to end with a task that archives the entry
+  (remove from the active index, append to the history file); executed at the implementation step,
+  that task removes the plan's own `## Governing specs` target before `revise-code` runs, so the
+  agreement controller cannot resolve the governing set (bullet-entry selector absent) and the
+  revise-code preflight cannot run. Observed 2026-08-23 twice: the version-gate run (archive commit
+  0d27fa6) and the skip-notice run (97bc69b, continued on retained volatile authority by ruling).
+  Handover's bookkeeping step already sits after review and owns the move. Candidate fixes, to be
+  chosen deliberately: the handover plan-writing step states that an index-only governing entry is
+  archived in the bookkeeping step, never by a plan task; a revise-plan check flags a task that
+  removes or relocates a `## Governing specs` target; or the agreement controller accepts a
+  history-archive bullet plus the git baseline as a representation-only relocation.
+
 - **Run the operating-context check at shift start, alongside the validation agent.** In
   `skills/handover/SKILL.md` the Validate-before-proceeding step flags an absent or skeletal
   `Operating context` section, but the grounding step that derives or consults for it
