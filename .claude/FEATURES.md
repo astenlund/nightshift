@@ -121,10 +121,6 @@ Draft exploring how to bound or scope the revise engine's whole-run acknowledgem
 
 Draft exploring an explicit compaction boundary after plan hardening and before implementation, followed by a mandatory full re-read of the governing spec and hardened plan before implementation dispatch.
 
-### [Pick-time breakouts](features/pick-time-breakouts.md)
-
-Draft exploring a pick-time breakout for index-only backlog entries: when the user accepts the decision-complete digest, the controller creates a breakout file seeded from the accepted digest, which becomes the governing artifact (stamps, Operating context, review decisions land there) while the index entry stays one physical line; several quick wins picked together share one grouped breakout. Retires the bullet-entry selector-anchoring and indented-continuation follow-ups from the 2026-08-23 CI-gate run.
-
 ### [Lifecycle shape proposal](features/lifecycle-shape-proposal.md)
 
 Draft exploring a lifecycle-shape proposal presented right after the user accepts the decision-complete digest: the controller proposes which lifecycle steps the work warrants (the full ladder of harden spec, write plan, harden plan, implement, review code, verify, docs, lore for a complex feature; a direct jump to implement then revise-code for a trivial bug or quick win), and the user accepts or tweaks that shape before any work begins. Captured 2026-08-23 while a quick-win handover was running the full ladder over a twelve-line backlog bullet.
@@ -191,7 +187,7 @@ Every design spec carries a short, durable `## Scope anchor` near its goal with 
 
 Present chosen spec for agreement before work shipped before Durable scope anchor because the accepted digest authorizes its deliberate-empty exclusion and legacy backfill.
 
-**Requires:** none.
+**Requires:** [Pick-time breakouts](features/pick-time-breakouts.md).
 
 ### [Contract-calibrated revise admission](features/contract-calibrated-revise-admission.md)
 
@@ -238,6 +234,12 @@ Gives Nightshift's user-facing surfaces a declared audience model and communicat
 **Requires:** none.
 
 ## Backlog tooling
+
+### [Pick-time breakouts](features/pick-time-breakouts.md)
+
+Materializes each selected index-only Quick Win, feature, or bug into its own permanent governing breakout after the user confirms the complete source entry, then adds only the canonical title link and presents one decision-complete digest over the new file and companion index entry. Quick Win text remains a frozen, grep-friendly captured request with exact drift detection; feature and bug excerpts retain their live synchronization contract. The two-write transition has deterministic crash recovery, dependency authority stays in the index, and no file is created before an entry is picked.
+
+**Requires:** none.
 
 ### [Move deterministic init-backlog mechanics out of promptspace](features/deterministic-init-backlog.md)
 
