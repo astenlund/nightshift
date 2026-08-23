@@ -352,15 +352,33 @@ function selectArtifact({ path, selectorKind, selectors, sourceBuffer }) {
   return selection(path, selectorKind, selectors, [rangeSpan(sourceBuffer, resolved.parent.rawStart, resolved.parent.rawEnd), rangeSpan(sourceBuffer, resolved.bullet.rawStart, lines[entryEnd - 1].rawEnd)]);
 }
 
-function locateSelection({ path, selectorKind, selectors, sourceBuffer }) {
-  const selected = selectArtifact({ path, selectorKind, selectors, sourceBuffer });
-  if (selectorKind === 'design-before-hardening') {
-    return { path, line: null };
-  }
-  const entryStart = selected.sourceRanges[selected.sourceRanges.length - 1].start;
-  const line = scanMarkdown(sourceBuffer).lines.findIndex((record) => record.rawStart === entryStart) + 1;
+const LINE_LINK_FORMAT_VARIABLE = 'NIGHTSHIFT_LINE_LINK_FORMAT';
 
-  return { path, line };
+function renderLineLink(projectRoot, path, line, linkFormat) {
+  const absolutePath = `${projectRoot.replace(/\\/g, '/').replace(/\/+$/, '')}/${path}`;
+  if (line === null) {
+    return { linkText: path, linkTarget: absolutePath };
+  }
+  const linkTarget = linkFormat === null || linkFormat === ''
+    ? absolutePath
+    : linkFormat.split('{path}').join(absolutePath).split('{line}').join(String(line));
+
+  return { linkText: `${path}:${line}`, linkTarget };
+}
+
+function locateSelection(input) {
+  if (!exactOrderedKeys(input, ['projectRoot', 'path', 'selectorKind', 'selectors', 'sourceBuffer', 'linkFormat']) || typeof input.projectRoot !== 'string' || input.projectRoot === '' || (input.linkFormat !== null && typeof input.linkFormat !== 'string')) {
+    structural('Locate input must carry projectRoot, path, selectorKind, selectors, sourceBuffer, and a string-or-null linkFormat.', { kind: 'locate-input' });
+  }
+  const { projectRoot, path, selectorKind, selectors, sourceBuffer, linkFormat } = input;
+  const selected = selectArtifact({ path, selectorKind, selectors, sourceBuffer });
+  let line = null;
+  if (selectorKind !== 'design-before-hardening') {
+    const entryStart = selected.sourceRanges[selected.sourceRanges.length - 1].start;
+    line = scanMarkdown(sourceBuffer).lines.findIndex((record) => record.rawStart === entryStart) + 1;
+  }
+
+  return { path, line, ...renderLineLink(projectRoot, path, line, linkFormat) };
 }
 
 function hashSelection(selectionRecord) {
@@ -2744,7 +2762,7 @@ function encodeCliValue(value) {
   return encoded;
 }
 
-function dispatchCliOperation(operation, input, adapters) {
+function dispatchCliOperation(operation, input, adapters, environment) {
   validateCliWireKeys(input);
   const decoded = decodeCliValue(input);
   switch (operation) {
@@ -2755,7 +2773,11 @@ function dispatchCliOperation(operation, input, adapters) {
     case 'resolve':
       return resolveGoverningSet(decoded, adapters);
     case 'locate':
-      return locateSelection(decoded);
+      if (decoded !== null && typeof decoded === 'object' && Object.hasOwn(decoded, 'linkFormat')) {
+        invocationFailure('CLI field input.linkFormat is controller-owned and is read from the environment.', { field: 'input.linkFormat' });
+      }
+
+      return locateSelection({ ...decoded, linkFormat: environment[LINE_LINK_FORMAT_VARIABLE] ?? null });
     case 'candidate': {
       if (decoded?.kind !== 'resolved' || !Array.isArray(decoded.artifacts)) {
         invocationFailure('Candidate operation requires one resolved governing-set result.');
@@ -2810,7 +2832,7 @@ function runCli(input, options = {}) {
       fsAdapter: options.fsAdapter ?? productionFsAdapter(),
       readyParser: options.readyParser,
     };
-    const value = dispatchCliOperation(requestEnvelope.operation, requestEnvelope.input, adapters);
+    const value = dispatchCliOperation(requestEnvelope.operation, requestEnvelope.input, adapters, options.environment ?? process.env);
     envelope = { ok: true, value: encodeCliValue(value) };
     exitCode = 0;
   } catch (thrown) {

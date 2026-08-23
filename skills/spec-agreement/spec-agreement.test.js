@@ -836,7 +836,7 @@ test('CLI dispatches every allowlisted operation through closed JSON records', (
     ['compare', { previousCandidate: base.candidate, currentCandidate: base.candidate }, (value) => assert.equal(value.kind, 'equal')],
     ['diff', { previousCandidate: base.candidate, currentCandidate: base.candidate, previousSources: base.currentSources.map(cliSource), currentSources: base.currentSources.map(cliSource) }, (value) => assert.deepEqual(value.hunks, [])],
     ['fit', { comparison: { kind: 'equal', evidence: [] }, hunks: [], semanticInput: null }, (value) => assert.equal(value.verdict, 'within-contract')],
-    ['locate', { path: 'docs/FEATURES.md', selectorKind: 'bullet-entry', selectors: [{ parentHeading: '## Parent', entryTitle: 'Task' }], sourceBytesHex: Buffer.from(['# Index', '', '## Parent', '- First', '- Task', ''].join('\n')).toString('hex') }, (value) => assert.deepEqual(value, { path: 'docs/FEATURES.md', line: 5 })],
+    ['locate', { projectRoot, path: 'docs/FEATURES.md', selectorKind: 'bullet-entry', selectors: [{ parentHeading: '## Parent', entryTitle: 'Task' }], sourceBytesHex: Buffer.from(['# Index', '', '## Parent', '- First', '- Task', ''].join('\n')).toString('hex') }, (value) => assert.deepEqual(value, { path: 'docs/FEATURES.md', line: 5, linkText: 'docs/FEATURES.md:5', linkTarget: `${projectRoot.replace(/\\/g, '/')}/docs/FEATURES.md` })],
     ['state-create', {
       acceptedDigest: 'digest-v1',
       presentedCandidate: base.candidate,
@@ -879,7 +879,7 @@ test('CLI dispatches every allowlisted operation through closed JSON records', (
   ];
 
   for (const [operation, input, assertValue] of cases) {
-    const result = runCli({ requestText: JSON.stringify({ operation, input }) }, { fsAdapter: artifact.adapter, readyParser });
+    const result = runCli({ requestText: JSON.stringify({ operation, input }) }, { fsAdapter: artifact.adapter, readyParser, environment: {} });
     assert.equal(result.exitCode, 0, operation);
     const envelope = parseCliResult(result);
     assert.equal(envelope.ok, true, operation);
@@ -887,6 +887,28 @@ test('CLI dispatches every allowlisted operation through closed JSON records', (
   }
 });
 
+test('CLI locate reads the line-link format from the injected environment, defaulting to the process environment', () => {
+  const input = { projectRoot, path: 'docs/FEATURES.md', selectorKind: 'bullet-entry', selectors: [{ parentHeading: '## Parent', entryTitle: 'Task' }], sourceBytesHex: Buffer.from('## Parent\n- Task\n').toString('hex') };
+  const requestText = JSON.stringify({ operation: 'locate', input });
+  const fsAdapter = fakeRepository({});
+
+  const formatted = parseCliResult(runCli({ requestText }, { fsAdapter, readyParser, environment: { NIGHTSHIFT_LINE_LINK_FORMAT: 'editor://{path}:{line}' } }));
+  assert.deepEqual(formatted.value, { path: 'docs/FEATURES.md', line: 2, linkText: 'docs/FEATURES.md:2', linkTarget: 'editor://C:/repo/docs/FEATURES.md:2' });
+
+  const unset = parseCliResult(runCli({ requestText }, { fsAdapter, readyParser, environment: {} }));
+  assert.equal(unset.value.linkTarget, 'C:/repo/docs/FEATURES.md');
+
+  const previous = process.env.NIGHTSHIFT_LINE_LINK_FORMAT;
+  process.env.NIGHTSHIFT_LINE_LINK_FORMAT = 'proc://{line}';
+  try {
+    assert.equal(parseCliResult(runCli({ requestText }, { fsAdapter, readyParser })).value.linkTarget, 'proc://2');
+  } finally {
+    if (previous === undefined) { delete process.env.NIGHTSHIFT_LINE_LINK_FORMAT; } else { process.env.NIGHTSHIFT_LINE_LINK_FORMAT = previous; }
+  }
+
+  const rejected = parseCliResult(runCli({ requestText: JSON.stringify({ operation: 'locate', input: { ...input, linkFormat: 'x' } }) }, { fsAdapter, readyParser, environment: {} }));
+  assert.equal(rejected.ok, false, 'the CLI owns linkFormat; a caller cannot smuggle one in');
+});
 test('CLI maps invocation, controller, and adapter failures to exact exit classes', () => {
   const base = candidateFixture();
   const malformedRequests = [
@@ -3164,19 +3186,41 @@ test('selections retain original raw ranges across BOM, CRLF, and gaps', () => {
 });
 
 test('locateSelection reports the one-based line where the selected entry starts', () => {
+  const locate = ({ path, sourceBuffer, selectorKind, selectors }) => locateSelection({ projectRoot: 'C:\\repo', path, selectorKind, selectors, sourceBuffer, linkFormat: null });
   const indexSource = Buffer.from([0xef, 0xbb, 0xbf, ...Buffer.from('## Parent\r\nintro\r\n### Entry\r\nbody\r\n')]);
-  assert.deepEqual(locateSelection({ path: 'a.md', sourceBuffer: indexSource, selectorKind: 'index-entry', selectors: [{ parentHeading: '## Parent', entryHeading: '### Entry' }] }), { path: 'a.md', line: 3 });
+  assert.deepEqual(locate({ path: 'a.md', sourceBuffer: indexSource, selectorKind: 'index-entry', selectors: [{ parentHeading: '## Parent', entryHeading: '### Entry' }] }), { path: 'a.md', line: 3, linkText: 'a.md:3', linkTarget: 'C:/repo/a.md' });
 
   const bareCrSource = Buffer.from(['## Parent', 'intro', '### Entry', 'body', ''].join(String.fromCharCode(13)));
-  assert.deepEqual(locateSelection({ path: 'a.md', sourceBuffer: bareCrSource, selectorKind: 'index-entry', selectors: [{ parentHeading: '## Parent', entryHeading: '### Entry' }] }), { path: 'a.md', line: 3 });
+  assert.deepEqual(locate({ path: 'a.md', sourceBuffer: bareCrSource, selectorKind: 'index-entry', selectors: [{ parentHeading: '## Parent', entryHeading: '### Entry' }] }), { path: 'a.md', line: 3, linkText: 'a.md:3', linkTarget: 'C:/repo/a.md' });
 
   const bulletSource = Buffer.from('# Index\n\n## Other\n- Elsewhere\n\n## Parent\n- First\n- Task\n  continuation\n');
-  assert.deepEqual(locateSelection({ path: 'a.md', sourceBuffer: bulletSource, selectorKind: 'bullet-entry', selectors: [{ parentHeading: '## Parent', entryTitle: 'Task' }] }), { path: 'a.md', line: 8 });
+  assert.deepEqual(locate({ path: 'a.md', sourceBuffer: bulletSource, selectorKind: 'bullet-entry', selectors: [{ parentHeading: '## Parent', entryTitle: 'Task' }] }), { path: 'a.md', line: 8, linkText: 'a.md:8', linkTarget: 'C:/repo/a.md' });
 
   const design = Buffer.from('# Design\n\n## Hardening\n- (None yet; this file has not been through a revise-spec run.)\n');
-  assert.deepEqual(locateSelection({ path: 'a.md', sourceBuffer: design, selectorKind: 'design-before-hardening', selectors: [] }), { path: 'a.md', line: null });
+  assert.deepEqual(locate({ path: 'a.md', sourceBuffer: design, selectorKind: 'design-before-hardening', selectors: [] }), { path: 'a.md', line: null, linkText: 'a.md', linkTarget: 'C:/repo/a.md' });
 
-  expectStructural(() => locateSelection({ path: 'a.md', sourceBuffer: bulletSource, selectorKind: 'bullet-entry', selectors: [{ parentHeading: '## Parent', entryTitle: 'Missing' }] }));
+  expectStructural(() => locate({ path: 'a.md', sourceBuffer: bulletSource, selectorKind: 'bullet-entry', selectors: [{ parentHeading: '## Parent', entryTitle: 'Missing' }] }));
+});
+
+test('locateSelection renders the link target from the line-link format, never from prose', () => {
+  const bulletSource = Buffer.from('## Parent\n- Task\n');
+  const selectors = [{ parentHeading: '## Parent', entryTitle: 'Task' }];
+  const format = 'subl://open?url=file:///{path}&line={line}';
+  const located = locateSelection({ projectRoot: 'C:\\repo', path: 'docs/a.md', selectorKind: 'bullet-entry', selectors, sourceBuffer: bulletSource, linkFormat: format });
+  assert.deepEqual(located, { path: 'docs/a.md', line: 2, linkText: 'docs/a.md:2', linkTarget: 'subl://open?url=file:///C:/repo/docs/a.md&line=2' });
+
+  const repeated = locateSelection({ projectRoot: '/srv/repo', path: 'docs/a.md', selectorKind: 'bullet-entry', selectors, sourceBuffer: bulletSource, linkFormat: '{path}#{line}-{line}' });
+  assert.equal(repeated.linkTarget, '/srv/repo/docs/a.md#2-2', 'every placeholder occurrence is substituted');
+
+  const design = Buffer.from('# Design\n');
+  const unlined = locateSelection({ projectRoot: 'C:\\repo', path: 'docs/a.md', selectorKind: 'design-before-hardening', selectors: [], sourceBuffer: design, linkFormat: format });
+  assert.deepEqual(unlined, { path: 'docs/a.md', line: null, linkText: 'docs/a.md', linkTarget: 'C:/repo/docs/a.md' }, 'a selection without a line links the bare path even when a format is set');
+
+  const empty = locateSelection({ projectRoot: 'C:\\repo', path: 'docs/a.md', selectorKind: 'bullet-entry', selectors, sourceBuffer: bulletSource, linkFormat: '' });
+  assert.equal(empty.linkTarget, 'C:/repo/docs/a.md', 'an empty format reads as unset');
+
+  expectStructural(() => locateSelection({ path: 'docs/a.md', selectorKind: 'bullet-entry', selectors, sourceBuffer: bulletSource, linkFormat: null }), 'locate-input');
+  expectStructural(() => locateSelection({ projectRoot: 'C:\\repo', path: 'docs/a.md', selectorKind: 'bullet-entry', selectors, sourceBuffer: bulletSource, linkFormat: 7 }), 'locate-input');
 });
 
 test('bullet selection excludes a column-zero fence after the entry', () => {
