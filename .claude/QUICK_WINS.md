@@ -45,6 +45,18 @@ can still fix it in the same session.
   side of the collision needs fixing.
 
 ## Handover live-claim surfacing
+- **Run the operating-context check at shift start, alongside the validation agent.** In
+  `skills/handover/SKILL.md` the Validate-before-proceeding step flags an absent or skeletal
+  `Operating context` section, but the grounding step that derives or consults for it
+  (`internal/revise/spec.md`) runs only when the spec gate's revise-spec run starts, after
+  agreement, validation, the stated conclusion, and queue creation. Observed 2026-08-23: the
+  check landed well after the user had handed over, so a consult-needing section would have
+  halted an unattended run. The validation agent and the operating-context check are the two
+  gates that can still need the user before the run becomes autonomous. Preferred shape: run
+  the operating-context check (derive, and consult if durable knowledge runs short) at shift
+  start while the validation agent is in flight, so both user-needing gates resolve together
+  before the stated conclusion; the spec gate then finds the section present.
+
 
 - **Make the governing spec the durable record that a provisional live-claim is a
   designed carry-forward.** The clean-detection non-flag for designed `(live-claim:
