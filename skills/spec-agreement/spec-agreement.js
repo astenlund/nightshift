@@ -361,7 +361,7 @@ function renderLineLink(projectRoot, path, line, linkFormat) {
   }
   const linkTarget = linkFormat === null || linkFormat === ''
     ? absolutePath
-    : linkFormat.split('{path}').join(absolutePath).split('{line}').join(String(line));
+    : linkFormat.replace(/\{path\}|\{line\}/g, (token) => (token === '{path}' ? absolutePath : String(line)));
 
   return { linkText: `${path}:${line}`, linkTarget };
 }
@@ -369,6 +369,9 @@ function renderLineLink(projectRoot, path, line, linkFormat) {
 function locateSelection(input) {
   if (!exactOrderedKeys(input, ['projectRoot', 'path', 'selectorKind', 'selectors', 'sourceBuffer', 'linkFormat']) || typeof input.projectRoot !== 'string' || input.projectRoot === '' || (input.linkFormat !== null && typeof input.linkFormat !== 'string')) {
     structural('Locate input must carry projectRoot, path, selectorKind, selectors, sourceBuffer, and a string-or-null linkFormat.', { kind: 'locate-input' });
+  }
+  if (typeof input.path !== 'string' || input.path.startsWith('/') || input.path.startsWith(String.fromCharCode(92)) || /^[A-Za-z]:/.test(input.path)) {
+    structural('Locate path must be project-relative.', { kind: 'locate-input', path: input.path });
   }
   const { projectRoot, path, selectorKind, selectors, sourceBuffer, linkFormat } = input;
   const selected = selectArtifact({ path, selectorKind, selectors, sourceBuffer });

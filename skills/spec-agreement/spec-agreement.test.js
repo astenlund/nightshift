@@ -836,7 +836,7 @@ test('CLI dispatches every allowlisted operation through closed JSON records', (
     ['compare', { previousCandidate: base.candidate, currentCandidate: base.candidate }, (value) => assert.equal(value.kind, 'equal')],
     ['diff', { previousCandidate: base.candidate, currentCandidate: base.candidate, previousSources: base.currentSources.map(cliSource), currentSources: base.currentSources.map(cliSource) }, (value) => assert.deepEqual(value.hunks, [])],
     ['fit', { comparison: { kind: 'equal', evidence: [] }, hunks: [], semanticInput: null }, (value) => assert.equal(value.verdict, 'within-contract')],
-    ['locate', { projectRoot, path: 'docs/FEATURES.md', selectorKind: 'bullet-entry', selectors: [{ parentHeading: '## Parent', entryTitle: 'Task' }], sourceBytesHex: Buffer.from(['# Index', '', '## Parent', '- First', '- Task', ''].join('\n')).toString('hex') }, (value) => assert.deepEqual(value, { path: 'docs/FEATURES.md', line: 5, linkText: 'docs/FEATURES.md:5', linkTarget: `${projectRoot.replace(/\\/g, '/')}/docs/FEATURES.md` })],
+    ['locate', { projectRoot, path: 'docs/FEATURES.md', selectorKind: 'bullet-entry', selectors: [{ parentHeading: '## Parent', entryTitle: 'Task' }], sourceBytesHex: Buffer.from(['# Index', '', '## Parent', '- First', '- Task', ''].join('\n')).toString('hex') }, (value) => assert.deepEqual(value, { path: 'docs/FEATURES.md', line: 5, linkText: 'docs/FEATURES.md:5', linkTarget: 'C:/repo/docs/FEATURES.md' })],
     ['state-create', {
       acceptedDigest: 'digest-v1',
       presentedCandidate: base.candidate,
@@ -909,6 +909,7 @@ test('CLI locate reads the line-link format from the injected environment, defau
   const rejected = parseCliResult(runCli({ requestText: JSON.stringify({ operation: 'locate', input: { ...input, linkFormat: 'x' } }) }, { fsAdapter, readyParser, environment: {} }));
   assert.equal(rejected.ok, false, 'the CLI owns linkFormat; a caller cannot smuggle one in');
 });
+
 test('CLI maps invocation, controller, and adapter failures to exact exit classes', () => {
   const base = candidateFixture();
   const malformedRequests = [
@@ -3212,6 +3213,9 @@ test('locateSelection renders the link target from the line-link format, never f
   const repeated = locateSelection({ projectRoot: '/srv/repo', path: 'docs/a.md', selectorKind: 'bullet-entry', selectors, sourceBuffer: bulletSource, linkFormat: '{path}#{line}-{line}' });
   assert.equal(repeated.linkTarget, '/srv/repo/docs/a.md#2-2', 'every placeholder occurrence is substituted');
 
+  const literal = locateSelection({ projectRoot: '/srv/re{line}po', path: 'docs/{path}.md', selectorKind: 'bullet-entry', selectors, sourceBuffer: bulletSource, linkFormat: format });
+  assert.equal(literal.linkTarget, 'subl://open?url=file:////srv/re{line}po/docs/{path}.md&line=2', 'placeholder text inside the substituted path is never re-substituted');
+
   const design = Buffer.from('# Design\n');
   const unlined = locateSelection({ projectRoot: 'C:\\repo', path: 'docs/a.md', selectorKind: 'design-before-hardening', selectors: [], sourceBuffer: design, linkFormat: format });
   assert.deepEqual(unlined, { path: 'docs/a.md', line: null, linkText: 'docs/a.md', linkTarget: 'C:/repo/docs/a.md' }, 'a selection without a line links the bare path even when a format is set');
@@ -3221,6 +3225,8 @@ test('locateSelection renders the link target from the line-link format, never f
 
   expectStructural(() => locateSelection({ path: 'docs/a.md', selectorKind: 'bullet-entry', selectors, sourceBuffer: bulletSource, linkFormat: null }), 'locate-input');
   expectStructural(() => locateSelection({ projectRoot: 'C:\\repo', path: 'docs/a.md', selectorKind: 'bullet-entry', selectors, sourceBuffer: bulletSource, linkFormat: 7 }), 'locate-input');
+  expectStructural(() => locateSelection({ projectRoot: 'C:\\repo', path: '/docs/a.md', selectorKind: 'bullet-entry', selectors, sourceBuffer: bulletSource, linkFormat: null }), 'locate-input');
+  expectStructural(() => locateSelection({ projectRoot: 'C:\\repo', path: 'D:/docs/a.md', selectorKind: 'bullet-entry', selectors, sourceBuffer: bulletSource, linkFormat: null }), 'locate-input');
 });
 
 test('bullet selection excludes a column-zero fence after the entry', () => {
