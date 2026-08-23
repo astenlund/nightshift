@@ -222,7 +222,14 @@ test('the unpushed-range resolver prefers the upstream, falls back to origin/mai
   const detachedRunner = () => { throw new Error('fatal: no upstream and no origin/main') }
   const skipped = resolveUnpushedRange(detachedRunner)
   assert.equal(skipped.base, null)
-  assert.match(skipped.notice, /version-increase check skipped/, 'the skip branch must report a notice')
+  assert.match(skipped.notice, /^version-increase check skipped/, 'the skip branch must report a notice')
+  assert.match(skipped.notice, /\(last git error: fatal: no upstream and no origin\/main\)$/, 'the skip notice must name the last git error')
+
+  const missingBinaryRunner = () => { throw new Error('Command failed: git merge-base HEAD origin/main\nspawnSync git ENOENT\n') }
+  assert.match(resolveUnpushedRange(missingBinaryRunner).notice, /\(last git error: Command failed: git merge-base HEAD origin\/main spawnSync git ENOENT\)$/, 'a multi-line git error is collapsed onto the notice line')
+
+  const silentRunner = () => ''
+  assert.equal(resolveUnpushedRange(silentRunner).notice, 'version-increase check skipped: no upstream and no origin/main to resolve the unpushed range', 'a probe that throws nothing appends nothing')
 
   const base = { name: 'nightshift', description: 'old', version: '2.6.2' }
   const bumped = { ...base, version: '2.6.3' }

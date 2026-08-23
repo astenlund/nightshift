@@ -81,20 +81,27 @@ const SKIP_NOTICE = 'version-increase check skipped: no upstream and no origin/m
 
 // The base is the merge-base with the upstream when one exists (the unpushed
 // commits are exactly base..HEAD), otherwise with origin/main; when neither
-// resolves the caller skips and reports the notice.
+// resolves the caller skips and reports the notice. The notice carries the
+// last probe's error so a broken git (missing binary, corrupt object store)
+// reads differently from a missing ref.
 function resolveUnpushedRange(run) {
+  let lastError = null
   for (const ref of ['@{upstream}', 'origin/main']) {
     try {
       const base = run(['merge-base', 'HEAD', ref]).trim()
       if (base !== '') {
         return { base, notice: null }
       }
-    } catch {
-      // The ref does not exist here; try the next one.
+    } catch (error) {
+      lastError = error
     }
   }
+  if (lastError === null) {
+    return { base: null, notice: SKIP_NOTICE }
+  }
+  const message = lastError.message.replace(/\s+/g, ' ').trim()
 
-  return { base: null, notice: SKIP_NOTICE }
+  return { base: null, notice: `${SKIP_NOTICE} (last git error: ${message})` }
 }
 
 function evaluateReleaseGate({ changedPaths, baseManifest, headManifest, versions }) {
