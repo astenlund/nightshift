@@ -836,6 +836,7 @@ test('CLI dispatches every allowlisted operation through closed JSON records', (
     ['compare', { previousCandidate: base.candidate, currentCandidate: base.candidate }, (value) => assert.equal(value.kind, 'equal')],
     ['diff', { previousCandidate: base.candidate, currentCandidate: base.candidate, previousSources: base.currentSources.map(cliSource), currentSources: base.currentSources.map(cliSource) }, (value) => assert.deepEqual(value.hunks, [])],
     ['fit', { comparison: { kind: 'equal', evidence: [] }, hunks: [], semanticInput: null }, (value) => assert.equal(value.verdict, 'within-contract')],
+    ['locate', { path: 'docs/FEATURES.md', selectorKind: 'bullet-entry', selectors: [{ parentHeading: '## Parent', entryTitle: 'Task' }], sourceBytesHex: Buffer.from(['# Index', '', '## Parent', '- First', '- Task', ''].join('\n')).toString('hex') }, (value) => assert.deepEqual(value, { path: 'docs/FEATURES.md', line: 5 })],
     ['state-create', {
       acceptedDigest: 'digest-v1',
       presentedCandidate: base.candidate,
