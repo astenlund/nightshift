@@ -214,14 +214,15 @@ function sortedEntries(directory) {
 }
 
 // A directory target is read as a backlog root: its top-level markdown files
-// plus everything under the backlog directories. A file target is taken as is.
+// plus everything under the backlog directories, following links. A file
+// target is taken when it is markdown.
 function collectMarkdownFiles(targets) {
   const files = [];
   const isMarkdown = (name) => path.extname(name).toLowerCase() === '.md';
   const visitAll = (directory) => {
     for (const entry of sortedEntries(directory)) {
       const child = path.join(directory, entry.name);
-      if (entry.isDirectory()) {
+      if (fs.statSync(child).isDirectory()) {
         visitAll(child);
       } else if (isMarkdown(entry.name)) {
         files.push(child);
@@ -231,9 +232,10 @@ function collectMarkdownFiles(targets) {
   const visitBacklogRoot = (root) => {
     for (const entry of sortedEntries(root)) {
       const child = path.join(root, entry.name);
-      if (entry.isDirectory() && BACKLOG_DIRECTORIES.includes(entry.name)) {
+      const stat = fs.statSync(child);
+      if (stat.isDirectory() && BACKLOG_DIRECTORIES.includes(entry.name)) {
         visitAll(child);
-      } else if (entry.isFile() && isMarkdown(entry.name)) {
+      } else if (stat.isFile() && isMarkdown(entry.name)) {
         files.push(child);
       }
     }
