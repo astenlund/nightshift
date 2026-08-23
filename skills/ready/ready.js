@@ -1018,6 +1018,7 @@ function scanBreakoutLines(contents) {
 function scanBreakoutTargets(breakoutTargets, claudeDir) {
   const notices = [];
   const structuralErrors = [];
+  const wrapScanned = new Set();
   for (const rec of breakoutTargets) {
     const target = rec.target.split('#')[0];
     const resolved = path.resolve(claudeDir, target);
@@ -1028,7 +1029,10 @@ function scanBreakoutTargets(breakoutTargets, claudeDir) {
       notices.push(breakoutReadNotice(rec, error?.code ?? 'unknown'));
       continue;
     }
-    pushHardWrapNotice(notices, `breakout file ${target}`, contents);
+    if (!wrapScanned.has(resolved)) {
+      wrapScanned.add(resolved);
+      pushHardWrapNotice(notices, `breakout file ${target}`, contents);
+    }
     for (const hit of scanBreakoutLines(contents)) {
       structuralErrors.push({
         index: rec.index,

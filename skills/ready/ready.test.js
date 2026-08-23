@@ -1320,6 +1320,7 @@ test('scanBreakoutTargets classifies a missing file, a directory, and a dependen
       { index: 'BUGS.md', title: 'Dirty', target: 'features/dirty.md#anchor', draft: false },
       { index: 'FEATURES.md', title: 'Clean', target: 'features/clean.md', draft: false },
       { index: 'FEATURES.md', title: 'Wrapped', target: 'features/wrapped.md', draft: false },
+      { index: 'BUGS.md', title: 'Wrapped again', target: 'features/wrapped.md#other', draft: false },
     ];
     const scanned = scanBreakoutTargets(targets, claudeDir);
     assert.deepStrictEqual(scanned.notices, [
