@@ -3222,9 +3222,17 @@ test('canonicalizePath keeps its exact kind and message for every pre-filesystem
     ['docs/./a.md', 'path-casing', spelling],
   ];
   for (const [path, kind, message] of table) {
-    assert.throws(() => canonicalizePath(projectRoot, path, fsAdapter), (error) => error instanceof AgreementError && error.code === 'structural-error' && error.evidence.kind === kind && error.message === message, JSON.stringify(path));
+    let raised = null;
+    try {
+      canonicalizePath(projectRoot, path, fsAdapter);
+    } catch (error) {
+      raised = error;
+    }
+    assert.ok(raised instanceof AgreementError, JSON.stringify(path));
+    assert.deepEqual({ code: raised.code, kind: raised.evidence.kind, message: raised.message }, { code: 'structural-error', kind, message }, JSON.stringify(path));
     assert.equal(canonicalScopePath(path), false, JSON.stringify(path));
   }
+  assert.equal(canonicalScopePath('\\docs/a.md'), false, 'a backslash-led path is rejected on every platform, whichever kind canonicalizePath assigns it');
   assert.equal(canonicalScopePath('docs/a.md'), true);
 });
 

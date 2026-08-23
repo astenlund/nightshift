@@ -419,31 +419,31 @@ function adapterCall(fsAdapter, operation, path) {
   }
 }
 
-function relativePathShapeViolation(nominatedPath) {
+function relativePathShape(nominatedPath) {
   if (typeof nominatedPath !== 'string' || nominatedPath === '' || hasControlCharacters(nominatedPath)) {
-    return { class: 'shape', message: 'Nominated path must be a nonempty project-relative path.' };
+    return { violation: { class: 'shape', message: 'Nominated path must be a nonempty project-relative path.' }, segments: null };
   }
   if (nodePath.isAbsolute(nominatedPath) || /^[A-Za-z]:/.test(nominatedPath)) {
-    return { class: 'escape', message: 'Nominated path must remain beneath the project root.' };
+    return { violation: { class: 'escape', message: 'Nominated path must remain beneath the project root.' }, segments: null };
   }
   const segments = nominatedPath.replace(/\\/g, '/').split('/');
   if (segments.some((segment) => segment === '..')) {
-    return { class: 'escape', message: 'Nominated path must remain beneath the project root.' };
+    return { violation: { class: 'escape', message: 'Nominated path must remain beneath the project root.' }, segments: null };
   }
   if (nominatedPath.includes('\\') || segments.some((segment) => segment === '' || segment === '.')) {
-    return { class: 'shape', message: 'Nominated path must use canonical ordinal spelling.' };
+    return { violation: { class: 'shape', message: 'Nominated path must use canonical ordinal spelling.' }, segments: null };
   }
 
-  return null;
+  return { violation: null, segments };
 }
 
 function requireRelativePathShape(nominatedPath, kinds) {
-  const violation = relativePathShapeViolation(nominatedPath);
+  const { violation, segments } = relativePathShape(nominatedPath);
   if (violation !== null) {
     structural(violation.message, { kind: kinds[violation.class], path: nominatedPath });
   }
 
-  return nominatedPath.split('/');
+  return segments;
 }
 
 function canonicalizePath(projectRoot, nominatedPath, fsAdapter) {
@@ -861,7 +861,7 @@ function validateScopeRecord(scope, evidenceKind = 'plan-contract-grammar') {
 }
 
 function canonicalScopePath(path) {
-  return relativePathShapeViolation(path) === null;
+  return relativePathShape(path).violation === null;
 }
 
 function markdownPathLabel(path) {
