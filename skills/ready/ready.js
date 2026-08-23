@@ -19,6 +19,7 @@
 const fs = require('fs');
 const path = require('path');
 const { scanMarkdown } = require('../spec-agreement/spec-agreement.js');
+const { detectHardWraps } = require('../init-backlog/unwrap.js');
 
 const INDEX_FILE_STEMS = new Set([
   'QUICK_WINS', 'FEATURES', 'BUGS', 'PATTERNS',
@@ -746,6 +747,21 @@ function createAnalysisOutput() {
   };
 }
 
+// Backlog prose is one paragraph or bullet per physical line; a wrapped file is
+// reported once with its count and first offending line so the reader can run
+// the init-backlog unwrap pass rather than hunt for the lines by hand.
+function hardWrapNotice(label, contents) {
+  const wraps = detectHardWraps(contents);
+  if (wraps.length === 0) return null;
+  const noun = wraps.length === 1 ? 'line' : 'lines';
+  return `${label} has ${wraps.length} hard-wrapped ${noun} (first at line ${wraps[0].line}); backlog prose is one paragraph or bullet per physical line; run /nightshift:init-backlog to unwrap`;
+}
+
+function pushHardWrapNotice(notices, label, contents) {
+  const notice = hardWrapNotice(label, contents);
+  if (notice !== null) notices.push(notice);
+}
+
 function parseIndexes(files, out) {
   const parsed = {};
   for (const name of WORK_INDEX_NAMES) {
@@ -754,6 +770,7 @@ function parseIndexes(files, out) {
       continue;
     }
     out.indexes.found.push(`${name}.md`);
+    pushHardWrapNotice(out.notices, `${name}.md`, files[name]);
     parsed[name] = extractEntries(files[name], EXCLUDED_SECTIONS[name], {
       bullets: name === 'QUICK_WINS',
       noticeProse: name === 'QUICK_WINS',
@@ -762,6 +779,7 @@ function parseIndexes(files, out) {
   }
   if (files.PATTERNS !== undefined && files.PATTERNS !== null) {
     out.indexes.found.push('PATTERNS.md (registry only, not parsed for work items)');
+    pushHardWrapNotice(out.notices, 'PATTERNS.md', files.PATTERNS);
   } else {
     out.indexes.missing.push('PATTERNS.md');
   }
@@ -1010,6 +1028,7 @@ function scanBreakoutTargets(breakoutTargets, claudeDir) {
       notices.push(breakoutReadNotice(rec, error?.code ?? 'unknown'));
       continue;
     }
+    pushHardWrapNotice(notices, `breakout file ${target}`, contents);
     for (const hit of scanBreakoutLines(contents)) {
       structuralErrors.push({
         index: rec.index,

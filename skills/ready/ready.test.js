@@ -552,6 +552,19 @@ test('wrapped Requires and External lines join across physical lines; a link plu
   assert.ok(!findByTitle(result.external, 'Beta'), 'Beta must not double-report under External');
 });
 
+test('hard-wrapped prose in an index file produces one notice per file naming the count and first line', () => {
+  const wrapped = analyze({
+    QUICK_WINS: '# Quick wins\n\nIntro line one\nintro line two\n\n## Area\n\n- **Entry.** Starts\n  and continues.\n',
+    FEATURES: '# Features\n\n## Area\n### [Real](features/real.md)\n\n**Requires:** none.\n',
+    PATTERNS: '# Patterns\n\nline one\nline two\n',
+  });
+  assert.deepStrictEqual(wrapped.notices, [
+    'QUICK_WINS.md has 2 hard-wrapped lines (first at line 4); backlog prose is one paragraph or bullet per physical line; run /nightshift:init-backlog to unwrap',
+    'PATTERNS.md has 1 hard-wrapped line (first at line 4); backlog prose is one paragraph or bullet per physical line; run /nightshift:init-backlog to unwrap',
+  ]);
+  assert.ok(result.notices.some((n) => n.startsWith('FEATURES.md has ') && n.includes('hard-wrapped')), 'the main fixture wraps its Requires lines on purpose and must be reported');
+});
+
 test('missing Requires line is a structural error', () => {
   const gamma = findByTitle(result.structuralErrors, 'Gamma');
   assert.ok(gamma, titles(result.structuralErrors).join(', '));
@@ -1296,6 +1309,7 @@ test('scanBreakoutTargets classifies a missing file, a directory, and a dependen
   fs.mkdirSync(path.join(claudeDir, 'features', 'as-dir.md'), { recursive: true });
   fs.writeFileSync(path.join(claudeDir, 'features', 'dirty.md'), '# Dirty\n\n**Requires:** none.\n');
   fs.writeFileSync(path.join(claudeDir, 'features', 'clean.md'), '# Clean\n\nProse only.\n');
+  fs.writeFileSync(path.join(claudeDir, 'features', 'wrapped.md'), '# Wrapped\n\nProse line one\nprose line two\n');
   try {
     const targets = [
       { index: 'FEATURES.md', title: 'Missing', target: 'features/missing.md', draft: false },
@@ -1305,6 +1319,7 @@ test('scanBreakoutTargets classifies a missing file, a directory, and a dependen
       { index: 'FEATURES.md', title: 'As dir', target: 'features/as-dir.md', draft: false },
       { index: 'BUGS.md', title: 'Dirty', target: 'features/dirty.md#anchor', draft: false },
       { index: 'FEATURES.md', title: 'Clean', target: 'features/clean.md', draft: false },
+      { index: 'FEATURES.md', title: 'Wrapped', target: 'features/wrapped.md', draft: false },
     ];
     const scanned = scanBreakoutTargets(targets, claudeDir);
     assert.deepStrictEqual(scanned.notices, [
@@ -1313,6 +1328,7 @@ test('scanBreakoutTargets classifies a missing file, a directory, and a dependen
       'FEATURES.md entry "Missing structural" links to features/missing-structural.md, which does not exist; remove the broken link or create the file (its own classification already reports a structural error)',
       'FEATURES.md entry "Missing cycle" links to features/missing-cycle.md, which does not exist; remove the broken link or create the file (it is a dependency-cycle member; see the cycle error)',
       'FEATURES.md entry "As dir" links to features/as-dir.md, which exists but cannot be read as a file (EISDIR); fix the link',
+      'breakout file features/wrapped.md has 1 hard-wrapped line (first at line 4); backlog prose is one paragraph or bullet per physical line; run /nightshift:init-backlog to unwrap',
     ]);
     assert.deepStrictEqual(scanned.structuralErrors, [{
       index: 'BUGS.md',
