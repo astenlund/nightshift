@@ -182,6 +182,12 @@ Refactors the agreement-gate revise run reviewed and agreed are valid but deferr
 - **Read non-ASCII changed paths verbatim in the version-increase gate.** `git diff --name-only` quotes and octal-escapes a non-ASCII path under the default `core.quotepath=true`, and `classifyShippedBehavior` then rejects the quoted string as not shipped. The tree is ASCII-only today. Preferred shape: pass `-c core.quotepath=false` on the diff call in the live test, or `-z` with a NUL split.
 
 - **Name the git failure in the version-increase gate's skip notice.** `resolveUnpushedRange` in `tests/release-gate.js` catches every error from both `merge-base` probes and returns the no-upstream skip notice, so a missing git binary or a corrupt object store reads as a skip (a `t.diagnostic`, never a failure). Skip-with-notice is the accepted behavior; preferred shape: append the last caught error message to the notice so a broken git is distinguishable from a missing ref.
+  Operating context: a test helper in the repository suite, run by the sole maintainer locally and in
+  CI; audience category `personal use` (public repository with no adoption signals, per the
+  2026-08-15 ruling). A wrong or missing cause in the notice costs one extra diagnostic step when a
+  skip is investigated; the gate's verdict is unchanged either way. No data or security
+  sensitivity, no concurrency, reversible by reverting the test, expected lifetime tied to the
+  version convention. No uplift predicate fires: tier low, every dimension effort low.
 
 ## Spec authoring habits
 
