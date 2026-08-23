@@ -74,6 +74,10 @@ Refactors the agreement-gate revise run reviewed and agreed are valid but deferr
 
 - **State how a copied convention list resolves mechanically.** Candidate habit held for recurrence: all five distinct confirmed findings of the 2026-08-23 revise-spec run over the version-increase-gate entry were one class, an enumeration copied from an authoritative convention (the AGENTS.md shipped-behavior list) as prose without its mechanical resolution (path predicate, field-versus-path granularity) or a pin tying the copy to its source. Preferred shape, if the class recurs: one sentence in this file's capture-shorthand paragraph or the AGENTS.md design-spec rules: when an entry copies a list from an authoritative convention, state how the list resolves mechanically and how the copy is pinned to the source.
 
+## Ready report rendering
+
+- **Number the recommendations in the ready report.** `skills/ready/SKILL.md` step 3 asks for "two or three Ready items worth picking now" but says nothing about how they are labelled, so the rendered list is bulleted and the user has no short handle to pick one with ("3" is then a guess at which bullet is third). Preferred shape: render the recommendations as an ordered list (1., 2., 3.) and say so in the skill prose, so a numeric reply selects unambiguously.
+
 ## (add sections as work emerges)
 
 ## History
