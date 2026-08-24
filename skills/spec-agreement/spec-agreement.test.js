@@ -708,7 +708,7 @@ test('related feature designs and excerpts record shipped agreement ordering and
       path: '.claude/features/durable-scope-anchor.md',
       heading: '### [Durable scope anchor](features/durable-scope-anchor.md)',
       dependencySection: '## Requirements',
-      excerptRequirement: '**Requires:** none.',
+      excerptRequirement: '**Requires:** [Pick-time breakouts](features/pick-time-breakouts.md).',
       ordering: 'Present chosen spec for agreement before work shipped before Durable scope anchor because the accepted digest authorizes its deliberate-empty exclusion and legacy backfill.',
     },
     {
