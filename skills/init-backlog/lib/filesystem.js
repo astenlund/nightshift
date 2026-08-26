@@ -633,25 +633,8 @@ function createInitialLock(root, record, options = {}) {
     const finalLockModeMatches = (options.platform ?? process.platform) === 'win32' || finalLock.mode === 0o600
     if (finalLock.identity !== stagedIdentity || !finalLock.bytes.equals(bytes) || !finalLockModeMatches) throw new Error('Initial lock changed after stage removal')
   } catch (error) {
-    if (exists(paths.stage) && stagedIdentity !== undefined && !(options.crashAfterOwnerPublish === true && exists(paths.lock)) && !(options.crashBeforeOwnerPublish === true && !exists(paths.lock))) {
-      try {
-        let currentStage
-        try {
-          currentStage = stableOpenFile(root, paths.stage, { ...options, requireSingleLink: true })
-        } catch (error) {
-          if (!stageWriteFinished || !exists(paths.lock)) throw error
-          currentStage = stableOpenFile(root, paths.stage, { ...options, requireSingleLink: false })
-          const currentLock = stableOpenFile(root, paths.lock, { ...options, requireSingleLink: false })
-          const stageLinks = (options.lstatSync ?? lstatSync)(paths.stage, { bigint: true }).nlink
-          const lockLinks = (options.lstatSync ?? lstatSync)(paths.lock, { bigint: true }).nlink
-          if (stageLinks !== 2n || lockLinks !== 2n || currentStage.identity !== stagedIdentity || currentLock.identity !== stagedIdentity || !currentLock.bytes.equals(bytes)) throw error
-        }
-        const modeMatches = (options.platform ?? process.platform) === 'win32' || currentStage.mode === 0o600
-        const expectedBytes = stageWriteFinished || stageWriteProgress ? bytes : Buffer.alloc(0)
-        if (currentStage.identity === stagedIdentity && currentStage.bytes.equals(expectedBytes) && modeMatches) removeAndVerify(paths.stage, options)
-      } catch {
-        /* Preserve the original failure and retain any stage whose ownership changed. */
-      }
+    if (exists(paths.stage) && !(options.crashAfterOwnerPublish === true && exists(paths.lock)) && !(options.crashBeforeOwnerPublish === true && !exists(paths.lock))) {
+      try { removeAndVerify(paths.stage, options) } catch { /* Preserve the original failure when cleanup itself fails. */ }
     }
     throw error
   }

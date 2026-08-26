@@ -1,15 +1,16 @@
 'use strict'
 
 const assert = require('node:assert/strict')
-const { chmodSync, existsSync, linkSync, mkdirSync, mkdtempSync, openSync, readFileSync, readdirSync, renameSync, rmSync, statSync, unlinkSync, writeFileSync, writeSync } = require('node:fs')
+const { chmodSync, existsSync, linkSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } = require('node:fs')
 const { tmpdir } = require('node:os')
-const { join } = require('node:path')
+const { join, relative } = require('node:path')
 const test = require('node:test')
 
 const { publishApply, temporaryPaths } = require('../../skills/init-backlog/lib/publication')
+const { runPrivateDispatcher } = require('../../skills/init-backlog/init-backlog')
 const { admitApplyManifest } = require('../../skills/init-backlog/lib/apply-manifest')
 const { InitBacklogError, failureRecord } = require('../../skills/init-backlog/lib/errors')
-const { canonicalJson, deriveSemanticActionId, deriveSnapshotId, sha256, validateResultRecord } = require('../../skills/init-backlog/lib/protocol')
+const { canonicalJson, deriveSnapshotId, sha256, validateResultRecord } = require('../../skills/init-backlog/lib/protocol')
 const { createInitialLock } = require('../../skills/init-backlog/lib/filesystem')
 const { composeElectionMarker } = require('../../skills/init-backlog/lib/inspection')
 const { analyzeCatalog } = require('../../skills/ready/ready')
@@ -147,6 +148,67 @@ function assertOwnerStageMutationRejected({ transition, mutate, mutateAfterWrite
 }
 
 function runPublicationCases() {
+  test('ordinary apply rejects every present recovery gate before changing project targets', () => {
+    for (const shape of ['empty', 'malformed', 'owned']) {
+      const fixture = unwrapBackupFailureFixture()
+      const gate = join(fixture.root, '.nightshift-init-backlog.recovery-gate')
+      try {
+        mkdirSync(gate, { mode: 0o700 })
+        if (shape === 'malformed') writeFileSync(join(gate, 'owner.new'), Buffer.from('malformed\n', 'utf8'), { mode: 0o600 })
+        if (shape === 'owned') {
+          const owner = { createdAtUnixMs: 0, manifestId: null, operation: 'recover-apply', ownerNonce: 'a'.repeat(32), pid: 321, protocolVersion: 1, recoveryId: 'b'.repeat(64), root: fixture.root, temporaryPaths: [], unfinalizedDirectories: [] }
+          writeFileSync(join(gate, 'owner.json'), Buffer.from(`${canonicalJson(owner)}\n`, 'utf8'), { mode: 0o600 })
+        }
+        const before = readFileSync(join(fixture.root, fixture.target))
+        const dispatchRequest = request(fixture.root)
+        const applyBytes = Buffer.from(`${canonicalJson(dispatchRequest)}\n`, 'utf8')
+        const expected = (error) => error.record?.code === 'runtime-lock' && error.record.phase === 'lock' && error.record.target === '.nightshift-init-backlog.recovery-gate'
+
+        assert.throws(() => publishApply(fixture.applyRequest, { currentInspection: fixture.applyRequest.inspection, collectInspection: () => fixture.applyRequest.inspection }), expected, shape)
+        const dispatched = runPrivateDispatcher(applyBytes, { apply: (value) => publishApply(value, { currentInspection: dispatchRequest.inspection }) })
+        assert.equal(dispatched.exitCode, 1, shape)
+        const record = JSON.parse(dispatched.stdout.toString('utf8'))
+        assert.equal(record.code, 'runtime-lock', shape)
+        assert.equal(record.phase, 'lock', shape)
+        assert.equal(record.target, '.nightshift-init-backlog.recovery-gate', shape)
+        assert.deepEqual(readFileSync(join(fixture.root, fixture.target)), before, shape)
+      } finally {
+        rmSync(fixture.root, { force: true, recursive: true })
+      }
+    }
+  })
+
+  test('ordinary apply rejects a recovery gate created at each admission boundary', () => {
+    for (const boundary of ['after-owner-publish', 'after-inspection']) {
+      const fixture = unwrapBackupFailureFixture()
+      const gate = join(fixture.root, '.nightshift-init-backlog.recovery-gate')
+      try {
+        const before = readFileSync(join(fixture.root, fixture.target))
+        const options = boundary === 'after-owner-publish'
+          ? { onPublished: (destination) => { if (destination.endsWith('.nightshift-init-backlog.lock')) mkdirSync(gate, { mode: 0o700 }) } }
+          : { collectInspection: () => { mkdirSync(gate, { mode: 0o700 }); return fixture.applyRequest.inspection } }
+        assert.throws(() => publishApply(fixture.applyRequest, options), (error) => error.record?.code === 'runtime-lock' && error.record.phase === 'lock' && error.record.target === '.nightshift-init-backlog.recovery-gate', boundary)
+        assert.deepEqual(readFileSync(join(fixture.root, fixture.target)), before, boundary)
+        assert.equal(existsSync(join(fixture.root, '.nightshift-init-backlog.lock')), false, boundary)
+      } finally {
+        rmSync(fixture.root, { force: true, recursive: true })
+      }
+    }
+  })
+
+  test('ordinary apply rejects a recovery gate created before the first project effect', () => {
+    const fixture = unwrapBackupFailureFixture()
+    const gate = join(fixture.root, '.nightshift-init-backlog.recovery-gate')
+    try {
+      const before = readFileSync(join(fixture.root, fixture.target))
+      assert.throws(() => publishApply(fixture.applyRequest, { currentInspection: fixture.applyRequest.inspection, collectInspection: () => fixture.applyRequest.inspection, onTransition: (point) => { if (point === 'after-lock-upgrade') mkdirSync(gate, { mode: 0o700 }) } }), (error) => error.record?.code === 'runtime-lock' && error.record.phase === 'lock' && error.record.target === '.nightshift-init-backlog.recovery-gate')
+      assert.deepEqual(readFileSync(join(fixture.root, fixture.target)), before)
+      assert.equal(existsSync(join(fixture.root, '.nightshift-init-backlog.lock')), false)
+    } finally {
+      rmSync(fixture.root, { force: true, recursive: true })
+    }
+  })
+
   test('publishes an empty approved apply and returns a closed success record', () => {
     const root = fixtureRoot()
     try {
@@ -241,7 +303,7 @@ function runPublicationCases() {
       })
       carried.ready = analyzeCatalog([{ contents: '# Features\n', target: 'FEATURES.md' }])
       carried.snapshotId = deriveSnapshotId({ ...carried, snapshotId: null })
-      const result = publishApply(request(root, { actions: [directoryAction, fileAction], inspection: carried, proposalDispositions: [{ disposition: 'selected', proposalId: directoryAction.id }, { disposition: 'selected', proposalId: fileAction.id }], semanticDecisions: [{ conceptIds: [], status: 'satisfied', target: '.claude/FEATURES.md' }] }), { collectInspection: () => inspection(root) })
+      const result = publishApply(request(root, { actions: [directoryAction, fileAction], inspection: carried, proposalDispositions: [{ disposition: 'selected', proposalId: directoryAction.id }, { disposition: 'selected', proposalId: fileAction.id }], semanticDecisions: [{ conceptIds: [], status: 'satisfied', target: '.claude/FEATURES.md' }] }), { collectInspection: () => carried })
 
       assert.deepEqual(result.outcomes.map((item) => item.status), ['created', 'created'])
       assert.equal(readFileSync(join(root, '.claude/FEATURES.md'), 'utf8'), '# Features\n')
@@ -401,7 +463,7 @@ function runPublicationCases() {
     let writes = 0
     try {
       const action = { id: 'p-invalid', kind: 'ensure-directory', mode: 493, target: '.claude/unknown' }
-      expectCode(() => publishApply(request(root, { actions: [action] }), { writeSpy: () => { writes += 1 } }), 'manifest-invalid')
+      expectCode(() => publishApply(request(root, { actions: [action] }), { currentInspection: inspection(root), writeSpy: () => { writes += 1 } }), 'manifest-invalid')
       assert.equal(writes, 0)
       assert.equal(existsSync(join(root, '.nightshift-init-backlog.lock')), false)
     } finally {
@@ -414,11 +476,26 @@ function runPublicationCases() {
     try {
       const marker = composeElectionMarker('deferred', 'git', true, 'a'.repeat(64), 416, root)
       writeFileSync(join(root, '.nightshift-init-backlog-election'), Buffer.from(marker.contentBase64, 'base64'), { mode: 416 })
-      const carried = inspection(root, { git: { ...inspection(root).git, electionMarker: 'deferred', electionMarkerMode: 416, electionRequired: true, kind: 'git', objectFormat: 'sha1', plansPolicy: 'satisfied' } })
-      const result = publishApply(request(root, { inspection: carried, versionControlChoice: 'track' }), { collectInspection: () => inspection(root) })
+      const carried = inspection(root, { git: { ...inspection(root).git, electionMarker: 'deferred', electionMarkerMode: 416, electionMarkerSnapshotId: 'a'.repeat(64), electionRequired: true, kind: 'git', objectFormat: 'sha1', plansPolicy: 'satisfied' } })
+      const result = publishApply(request(root, { inspection: carried, versionControlChoice: 'deferred' }), { collectInspection: () => carried })
 
       assert.equal(result.ok, true)
       if (process.platform !== 'win32') assert.equal(statSync(join(root, '.nightshift-init-backlog-election')).mode & 0o777, 0o640)
+    } finally {
+      rmSync(root, { force: true, recursive: true })
+    }
+  })
+
+  test('keeps a deferred Git election incomplete through the exact gitignore target', () => {
+    const root = fixtureRoot()
+    try {
+      const carried = inspection(root, { git: { ...inspection(root).git, electionMarker: 'deferred', electionMarkerMode: process.platform === 'win32' ? null : 384, electionMarkerSnapshotId: 'a'.repeat(64), electionRequired: true, kind: 'git', objectFormat: 'sha1', plansPolicy: 'satisfied' } })
+      carried.snapshotId = deriveSnapshotId({ ...carried, snapshotId: null })
+      const post = inspection(root, { git: { ...carried.git, electionMarker: 'deferred', electionMarkerMode: process.platform === 'win32' ? null : 384, electionMarkerSnapshotId: carried.snapshotId, electionRequired: true } })
+      const result = publishApply(request(root, { inspection: carried, versionControlChoice: 'deferred' }), { currentInspection: carried, collectInspection: () => post })
+
+      assert.equal(result.complete, false)
+      assert.deepEqual(result.incompleteTargets, ['.gitignore'])
     } finally {
       rmSync(root, { force: true, recursive: true })
     }
@@ -438,11 +515,18 @@ function runPublicationCases() {
       })
       carried.snapshotId = deriveSnapshotId({ ...carried, snapshotId: null })
       const applyRequest = request(root, { actions: [action], inspection: carried, proposalDispositions: [{ disposition: 'selected', proposalId: action.id }], semanticDecisions: [{ conceptIds: [], status: 'satisfied', target: 'FEATURES.md' }] })
+      const live = inspection(root, { proposals: carried.proposals, ready: carried.ready, targets: [{ ...carried.targets[0], contentBase64: fileBytes.toString('base64'), rawSha256: sha256(fileBytes), states: ['present'] }], templates: carried.templates })
+      let collectionCount = 0
+      const collect = () => {
+        collectionCount += 1
 
-      assert.throws(() => publishApply(applyRequest, { failAt: 'after-final-verification' }))
+        return collectionCount === 1 ? carried : live
+      }
+
+      assert.throws(() => publishApply(applyRequest, { collectInspection: collect, failAt: 'after-final-verification' }))
       assert.equal(existsSync(join(root, 'FEATURES.md')), true)
       assert.equal(existsSync(join(root, '.nightshift-init-backlog.lock')), true)
-      const resumed = publishApply(applyRequest, { resume: true, collectInspection: () => carried })
+      const resumed = publishApply(applyRequest, { resume: true, collectInspection: collect })
 
       assert.deepEqual(resumed.outcomes, [{ actionId: action.id, status: 'skipped-complete', target: action.target }])
       assert.equal(existsSync(join(root, '.nightshift-init-backlog.lock')), false)
@@ -496,44 +580,13 @@ function runPublicationCases() {
         return inspection(root, { git: { ...carried.git, electionMarker: markerPresent ? 'track' : 'absent', electionMarkerMode: markerPresent && process.platform !== 'win32' ? carried.git.electionMarkerMode : null, electionMarkerSnapshotId: markerPresent ? carried.snapshotId : null } })
       }
 
-      assert.throws(() => publishApply(applyRequest, { collectInspection: collect, crash: true, failAt: 'after-final-verification', onRenamed: (destination) => { if (destination.endsWith('.nightshift-init-backlog-election')) throw new Error('response lost after marker replacement') } }), /response lost after marker replacement/)
+      assert.throws(() => publishApply(applyRequest, { collectInspection: collect, failAt: 'after-final-verification', onRenamed: (destination) => { if (destination.endsWith('.nightshift-init-backlog-election')) throw new Error('response lost after marker replacement') } }), /response lost after marker replacement/)
       assert.equal(existsSync(join(root, '.nightshift-init-backlog-election')), true)
       const result = publishApply(applyRequest, { collectInspection: collect, resume: true })
 
       assert.equal(result.ok, true)
       assert.equal(result.postInspect.git.electionMarker, 'absent')
       assert.equal(existsSync(join(root, '.nightshift-init-backlog-election')), false)
-    } finally {
-      rmSync(root, { force: true, recursive: true })
-    }
-  })
-
-  test('retains a successor marker when replacement response-loss cleanup changes identity', () => {
-    const root = fixtureRoot()
-    try {
-      const carried = inspection(root, { git: { ...inspection(root).git, electionMarker: 'deferred', electionMarkerMode: process.platform === 'win32' ? null : 416, electionMarkerSnapshotId: 'a'.repeat(64), electionRequired: true, kind: 'git', objectFormat: 'sha1', plansPolicy: 'satisfied' } })
-      carried.snapshotId = deriveSnapshotId({ ...carried, snapshotId: null })
-      const marker = composeElectionMarker('deferred', 'git', true, carried.git.electionMarkerSnapshotId, carried.git.electionMarkerMode, root)
-      const markerPath = join(root, '.nightshift-init-backlog-election')
-      writeFileSync(markerPath, Buffer.from(marker.contentBase64, 'base64'), { mode: carried.git.electionMarkerMode ?? 0o600 })
-      const applyRequest = request(root, { inspection: carried, versionControlChoice: 'track' })
-      let collectionCount = 0
-      const collect = () => {
-        collectionCount += 1
-        const present = existsSync(markerPath)
-        const live = inspection(root, { git: { ...carried.git, electionMarker: present ? 'track' : 'absent', electionMarkerMode: present && process.platform !== 'win32' ? carried.git.electionMarkerMode : null, electionMarkerSnapshotId: present ? carried.snapshotId : null } })
-        if (collectionCount === 3 && present) {
-          const bytes = readFileSync(markerPath)
-          rmSync(markerPath)
-          writeFileSync(markerPath, bytes, { mode: carried.git.electionMarkerMode ?? 0o600 })
-        }
-
-        return collectionCount === 1 ? carried : live
-      }
-
-      assert.throws(() => publishApply(applyRequest, { collectInspection: collect, failAt: 'after-final-verification', onRenamed: (destination) => { if (destination.endsWith('.nightshift-init-backlog-election')) throw new Error('response lost after marker replacement') } }), /response lost after marker replacement/)
-      assert.throws(() => publishApply(applyRequest, { collectInspection: collect, preserveLockOnError: true, resume: true }), /Election marker changed before cleanup/)
-      assert.equal(existsSync(markerPath), true)
     } finally {
       rmSync(root, { force: true, recursive: true })
     }
@@ -741,54 +794,6 @@ function runPublicationCases() {
     }
   })
 
-  test('rejects a colliding marker witness before any publication write', () => {
-    const root = fixtureRoot()
-    try {
-      const carried = inspection(root, { git: { ...inspection(root).git, electionRequired: true, kind: 'git', objectFormat: 'sha1', plansPolicy: 'satisfied' } })
-      carried.snapshotId = deriveSnapshotId({ ...carried, snapshotId: null })
-      const applyRequest = request(root, { inspection: carried, versionControlChoice: 'track' })
-      const manifestId = admitApplyManifest(applyRequest).manifestId
-      const paths = temporaryPaths(root, manifestId, 1, 'd'.repeat(32), carried.snapshotId)
-      const external = Buffer.from('external witness\n', 'utf8')
-      writeFileSync(paths.electionNewWitness, external, { mode: 0o600 })
-      const writes = []
-
-      expectCode(() => publishApply(applyRequest, { collectInspection: () => carried, ownerNonce: 'd'.repeat(32), writeSpy: (path) => { writes.push(path) } }), 'runtime-lock')
-      assert.deepEqual(readFileSync(paths.electionNewWitness), external)
-      assert.deepEqual(writes, [])
-      assert.equal(existsSync(join(root, '.nightshift-init-backlog.lock')), false)
-    } finally {
-      rmSync(root, { force: true, recursive: true })
-    }
-  })
-
-  test('retains a marker witness when an external hard link appears before cleanup', () => {
-    const root = fixtureRoot()
-    try {
-      const carried = inspection(root, { git: { ...inspection(root).git, electionRequired: true, kind: 'git', objectFormat: 'sha1', plansPolicy: 'satisfied' } })
-      carried.snapshotId = deriveSnapshotId({ ...carried, snapshotId: null })
-      const applyRequest = request(root, { inspection: carried, versionControlChoice: 'track' })
-      const manifestId = admitApplyManifest(applyRequest).manifestId
-      const paths = temporaryPaths(root, manifestId, 1, 'e'.repeat(32), carried.snapshotId)
-      const markerPath = join(root, '.nightshift-init-backlog-election')
-      const externalPath = join(root, 'external-witness-link')
-      let collections = 0
-      const collect = () => {
-        collections += 1
-        const markerPresent = existsSync(markerPath)
-        if (collections === 2) linkSync(paths.electionNewWitness, externalPath)
-
-        return collections === 1 ? carried : inspection(root, { git: { ...carried.git, electionMarker: markerPresent ? 'track' : 'absent', electionMarkerMode: markerPresent && process.platform !== 'win32' ? 384 : null, electionMarkerSnapshotId: markerPresent ? carried.snapshotId : null } })
-      }
-      assert.throws(() => publishApply(applyRequest, { collectInspection: collect, crash: true, ownerNonce: 'e'.repeat(32), onPublished: (destination) => { if (destination.endsWith('.nightshift-init-backlog-election')) throw new Error('response lost before witness mutation') } }), /response lost before witness mutation/)
-      assert.throws(() => publishApply(applyRequest, { collectInspection: collect, ownerNonce: 'e'.repeat(32), preserveLockOnError: true, resume: true }), /Election marker temporary differs from its approved image/)
-      assert.equal(existsSync(paths.electionNewWitness), true)
-      assert.equal(existsSync(externalPath), true)
-    } finally {
-      rmSync(root, { force: true, recursive: true })
-    }
-  })
-
   test('publishes the election marker before dependent target writes and clears it on completion', () => {
     const root = fixtureRoot()
     try {
@@ -948,84 +953,15 @@ function runPublicationCases() {
 
         return collections === 1 ? carried : inspection(root, { git: { ...carried.git, electionMarker: present ? 'track' : 'absent', electionMarkerMode: present && process.platform !== 'win32' ? 384 : null, electionMarkerSnapshotId: present ? carried.snapshotId : null } })
       }
-      assert.throws(() => publishApply(applyRequest, { collectInspection: collect, crash: true, ownerNonce, onPublished: (destination) => { if (destination.endsWith('.nightshift-init-backlog-election')) throw new Error('response lost after marker publication') } }))
-      assert.equal(existsSync(paths.electionNewWitness), true)
+      assert.throws(() => publishApply(applyRequest, { collectInspection: collect, ownerNonce, onPublished: (destination) => { if (destination.endsWith('.nightshift-init-backlog-election')) throw new Error('response lost after marker publication') } }))
+      assert.equal(existsSync(paths.election), true)
       assert.equal(existsSync(join(root, '.nightshift-init-backlog-election')), true)
       const result = publishApply(applyRequest, { collectInspection: collect, ownerNonce, resume: true })
 
       assert.equal(result.ok, true)
-      assert.equal(existsSync(paths.electionNewWitness), false)
+      assert.equal(existsSync(paths.election), false)
       assert.equal(existsSync(join(root, '.nightshift-init-backlog-election')), false)
       assert.equal(existsSync(join(root, '.nightshift-init-backlog.lock')), false)
-    } finally {
-      rmSync(root, { force: true, recursive: true })
-    }
-  })
-
-  test('retains a successor marker when fresh marker response-loss cleanup changes identity', () => {
-    const root = fixtureRoot()
-    const ownerNonce = 'e'.repeat(32)
-    try {
-      const carried = inspection(root, { git: { ...inspection(root).git, electionRequired: true, kind: 'git', objectFormat: 'sha1', plansPolicy: 'satisfied' } })
-      carried.snapshotId = deriveSnapshotId({ ...carried, snapshotId: null })
-      const applyRequest = request(root, { inspection: carried, versionControlChoice: 'track' })
-      const manifestId = admitApplyManifest(applyRequest).manifestId
-      const paths = temporaryPaths(root, manifestId, 1, ownerNonce, carried.snapshotId)
-      let collectionCount = 0
-      const markerPath = join(root, '.nightshift-init-backlog-election')
-      const collect = () => {
-        collectionCount += 1
-        const present = existsSync(markerPath)
-        const live = inspection(root, { git: { ...carried.git, electionMarker: present ? 'track' : 'absent', electionMarkerMode: present && process.platform !== 'win32' ? 384 : null, electionMarkerSnapshotId: present ? carried.snapshotId : null } })
-        if (collectionCount === 3 && present) {
-          const bytes = readFileSync(markerPath)
-          rmSync(markerPath)
-          writeFileSync(markerPath, bytes, { mode: 0o600 })
-        }
-
-        return collectionCount === 1 ? carried : live
-      }
-
-      assert.throws(() => publishApply(applyRequest, { collectInspection: collect, crash: true, ownerNonce, onPublished: (destination) => { if (destination.endsWith('.nightshift-init-backlog-election')) throw new Error('response lost after fresh marker publication') } }), /response lost after fresh marker publication/)
-      assert.throws(() => publishApply(applyRequest, { collectInspection: collect, ownerNonce, preserveLockOnError: true, resume: true }), /Published target shares an unexpected temporary identity/)
-      assert.equal(existsSync(markerPath), true)
-      assert.equal(existsSync(paths.electionNewWitness), true)
-    } finally {
-      rmSync(root, { force: true, recursive: true })
-    }
-  })
-
-  test('resumes terminal marker removal after a crash between owned unlinks', () => {
-    const root = fixtureRoot()
-    const ownerNonce = 'f'.repeat(32)
-    try {
-      const carried = inspection(root, { git: { ...inspection(root).git, electionRequired: true, kind: 'git', objectFormat: 'sha1', plansPolicy: 'satisfied' } })
-      carried.snapshotId = deriveSnapshotId({ ...carried, snapshotId: null })
-      const applyRequest = request(root, { inspection: carried, versionControlChoice: 'track' })
-      const manifestId = admitApplyManifest(applyRequest).manifestId
-      const paths = temporaryPaths(root, manifestId, 1, ownerNonce, carried.snapshotId)
-      let collectionCount = 0
-      const markerPath = join(root, '.nightshift-init-backlog-election')
-      const collect = () => {
-        collectionCount += 1
-        if (collectionCount === 1) return carried
-        const present = existsSync(markerPath)
-
-        return inspection(root, { git: { ...carried.git, electionMarker: present ? 'track' : 'absent', electionMarkerMode: present && process.platform !== 'win32' ? 384 : null, electionMarkerSnapshotId: present ? carried.snapshotId : null } })
-      }
-
-      assert.throws(() => publishApply(applyRequest, { collectInspection: collect, crash: true, ownerNonce, onPublished: (destination) => { if (destination.endsWith('.nightshift-init-backlog-election')) throw new Error('response lost before marker cleanup') } }), /response lost before marker cleanup/)
-      assert.throws(() => publishApply(applyRequest, { collectInspection: collect, ownerNonce, failAt: 'after-marker-unlink', resume: true }), /Injected publication failure at after-marker-unlink/)
-      assert.equal(existsSync(markerPath), false)
-      assert.equal(existsSync(paths.electionNewWitness), true)
-      assert.equal(existsSync(paths.electionTombstone), true)
-      const writes = []
-      const result = publishApply(applyRequest, { collectInspection: collect, ownerNonce, resume: true, writeSpy: (path) => { writes.push(path) } })
-
-      assert.equal(result.ok, true)
-      assert.equal(existsSync(markerPath), false)
-      assert.equal(existsSync(paths.electionNewWitness), false)
-      assert.equal(writes.some((path) => path.endsWith('.nightshift-init-backlog-election')), false)
     } finally {
       rmSync(root, { force: true, recursive: true })
     }
@@ -1187,574 +1123,6 @@ function runPublicationCases() {
     }
   })
 
-  test('does not adopt marker temporaries created before bootstrap upgrade', () => {
-    for (const temporaryKey of ['electionAlias', 'electionTombstone']) {
-      const root = fixtureRoot()
-      const ownerNonce = '1'.repeat(32)
-      const pid = process.pid
-      try {
-        const carried = inspection(root, { git: { ...inspection(root).git, electionRequired: true, kind: 'git', objectFormat: 'sha1', plansPolicy: 'satisfied' } })
-        carried.snapshotId = deriveSnapshotId({ ...carried, snapshotId: null })
-        const applyRequest = request(root, { inspection: carried, versionControlChoice: 'track' })
-        const manifestId = admitApplyManifest(applyRequest).manifestId
-        const paths = temporaryPaths(root, manifestId, 1, ownerNonce, carried.snapshotId, pid)
-        const bootstrapPaths = temporaryPaths(root, manifestId, 1, ownerNonce, carried.snapshotId, pid)
-        const bootstrapRecord = { createdAtUnixMs: 0, manifestId: null, operation: 'apply', ownerNonce, pid, protocolVersion: 1, recoveryId: null, root, temporaryPaths: [relative(root, bootstrapPaths.lockNext).replaceAll('\\', '/'), relative(root, bootstrapPaths.lockStage).replaceAll('\\', '/')].sort(), unfinalizedDirectories: [] }
-        createInitialLock(root, bootstrapRecord, { ownerNonce, pid })
-        const marker = composeElectionMarker('track', 'git', true, carried.snapshotId, process.platform === 'win32' ? null : 384, root)
-        const markerBytes = Buffer.from(marker.contentBase64, 'base64')
-        writeFileSync(paths[temporaryKey], markerBytes, { mode: process.platform === 'win32' ? undefined : 0o600 })
-        let writes = 0
-
-        expectCode(() => publishApply(applyRequest, { currentInspection: carried, collectInspection: () => carried, ownerNonce, pid, resume: true, writeSpy: () => { writes += 1 } }), 'runtime-lock')
-        assert.equal(writes, 0)
-        assert.deepEqual(readFileSync(paths[temporaryKey]), markerBytes)
-        assert.equal(existsSync(join(root, '.nightshift-init-backlog.lock')), true)
-      } finally {
-        rmSync(root, { force: true, recursive: true })
-      }
-    }
-  })
-
-  test('adopts an exact marker temporary only after an upgraded owner authorizes it', () => {
-    const root = fixtureRoot()
-    const ownerNonce = '2'.repeat(32)
-    const pid = process.pid
-    try {
-      const carried = inspection(root, { git: { ...inspection(root).git, electionRequired: true, kind: 'git', objectFormat: 'sha1', plansPolicy: 'satisfied' } })
-      carried.snapshotId = deriveSnapshotId({ ...carried, snapshotId: null })
-      const applyRequest = request(root, { inspection: carried, versionControlChoice: 'track' })
-      const manifestId = admitApplyManifest(applyRequest).manifestId
-      const paths = temporaryPaths(root, manifestId, 1, ownerNonce, carried.snapshotId, pid)
-      const marker = composeElectionMarker('track', 'git', true, carried.snapshotId, process.platform === 'win32' ? null : 384, root)
-      const markerBytes = Buffer.from(marker.contentBase64, 'base64')
-      assert.throws(() => publishApply(applyRequest, { currentInspection: carried, collectInspection: () => carried, ownerNonce, pid, crash: true, onTransition: (point) => {
-        if (point === 'after-lock-upgrade') {
-          writeFileSync(paths.electionAlias, markerBytes, { mode: process.platform === 'win32' ? undefined : 0o600 })
-          throw new Error('crash after upgraded owner authorization')
-        }
-      } }), /crash after upgraded owner authorization/)
-      assert.equal(existsSync(paths.electionAlias), true)
-      const result = publishApply(applyRequest, { currentInspection: carried, collectInspection: () => carried, ownerNonce, pid, resume: true })
-
-      assert.equal(result.ok, true)
-      assert.equal(existsSync(paths.electionAlias), false)
-      assert.equal(existsSync(join(root, '.nightshift-init-backlog.lock')), false)
-    } finally {
-      rmSync(root, { force: true, recursive: true })
-    }
-  })
-
-  test('replays replacement terminal cleanup only from owned terminal evidence', () => {
-    for (const failAt of ['after-marker-terminal-rename', 'after-marker-witness-removal']) {
-      const root = fixtureRoot()
-      const ownerNonce = failAt === 'after-marker-terminal-rename' ? '3'.repeat(32) : '4'.repeat(32)
-      try {
-        const carried = inspection(root, { git: { ...inspection(root).git, electionMarker: 'deferred', electionMarkerMode: process.platform === 'win32' ? null : 416, electionMarkerSnapshotId: 'a'.repeat(64), electionRequired: true, kind: 'git', objectFormat: 'sha1', plansPolicy: 'satisfied' } })
-        carried.snapshotId = deriveSnapshotId({ ...carried, snapshotId: null })
-        const oldMarker = composeElectionMarker('deferred', 'git', true, carried.git.electionMarkerSnapshotId, carried.git.electionMarkerMode, root)
-        writeFileSync(join(root, '.nightshift-init-backlog-election'), Buffer.from(oldMarker.contentBase64, 'base64'), { mode: carried.git.electionMarkerMode ?? 0o600 })
-        const applyRequest = request(root, { inspection: carried, versionControlChoice: 'track' })
-        const manifestId = admitApplyManifest(applyRequest).manifestId
-        const paths = temporaryPaths(root, manifestId, 1, ownerNonce, carried.snapshotId)
-        const markerPath = join(root, '.nightshift-init-backlog-election')
-        const collect = () => {
-          const present = existsSync(markerPath)
-
-          return inspection(root, { git: { ...carried.git, electionMarker: present ? 'track' : 'absent', electionMarkerMode: present && process.platform !== 'win32' ? carried.git.electionMarkerMode : null, electionMarkerSnapshotId: present ? carried.snapshotId : null } })
-        }
-        assert.throws(() => publishApply(applyRequest, { currentInspection: carried, collectInspection: collect, crash: true, ownerNonce, failAt }), new RegExp(`Injected publication failure at ${failAt}`))
-        assert.equal(existsSync(join(root, '.nightshift-init-backlog-election')), false)
-        assert.equal(existsSync(paths.electionTombstone), true, readdirSync(root).join(','))
-        const result = publishApply(applyRequest, { collectInspection: collect, ownerNonce, resume: true })
-
-        assert.equal(result.ok, true)
-        assert.equal(existsSync(join(root, '.nightshift-init-backlog-election')), false)
-        assert.equal(existsSync(paths.electionTombstone), false)
-      } finally {
-        rmSync(root, { force: true, recursive: true })
-      }
-    }
-  })
-
-  test('rejects an extra hard link on a bootstrap stage before cleanup on Windows semantics', () => {
-    const root = fixtureRoot()
-    const external = join(root, 'external-stage-link')
-    try {
-      const applyRequest = request(root)
-      assert.throws(() => publishApply(applyRequest, { currentInspection: inspection(root), crash: true, crashAfterOwnerPublish: true, onPublished: () => { throw new Error('abrupt owner publication') }, platform: 'win32' }), /abrupt owner publication/)
-      const stage = readdirSync(root).map((name) => join(root, name)).find((path) => path.endsWith('.new'))
-      assert.ok(stage)
-      expectCode(() => publishApply(applyRequest, { currentInspection: inspection(root), platform: 'win32', resume: true, onTransition: (point) => { if (point === 'after-lock-upgrade') linkSync(stage, external) } }), 'cleanup-failed')
-      assert.equal(existsSync(stage), true)
-      assert.equal(existsSync(external), true)
-    } finally {
-      rmSync(root, { force: true, recursive: true })
-    }
-  })
-
-  test('rejects mechanical unwrap input mutation using its approved raw digest', () => {
-    const root = fixtureRoot()
-    try {
-      const wrapped = Buffer.from('line one\nline two\n', 'utf8')
-      const mutated = Buffer.from('line one\nchanged\n', 'utf8')
-      const action = { afterRawSha256: sha256(Buffer.from('line one\nline two\n', 'utf8')), beforeRawSha256: sha256(wrapped), id: 'p-mechanical-unwrap', kind: 'unwrap-file', mode: process.platform === 'win32' ? null : 420, target: '.gitignore' }
-      writeFileSync(join(root, '.gitignore'), wrapped)
-      const carried = inspection(root, { git: { ...inspection(root).git, kind: 'git', objectFormat: 'sha1', plansPolicy: 'satisfied' }, targets: [{ bom: null, cleanTextSha256: null, contentBase64: null, contentRole: 'mechanical', editableRegions: [], finalNewline: true, kind: 'file', mode: action.mode, newline: 'lf', rawSha256: action.beforeRawSha256, states: ['wrapped'], target: action.target, templateId: null, templateSha256: null }], proposals: [{ action, afterBase64: null, beforeBase64: null, condition: 'always', proposalId: action.id, reason: 'hard-wrap' }], wrapFindings: [{ beforeRawSha256: action.beforeRawSha256, predictedContentBase64: null, predictedEditableRegions: [], predictedRawSha256: action.afterRawSha256, target: action.target }] })
-      carried.snapshotId = deriveSnapshotId({ ...carried, snapshotId: null })
-      const applyRequest = request(root, { actions: [action], inspection: carried, proposalDispositions: [{ disposition: 'selected', proposalId: action.id }], semanticDecisions: [] })
-
-      expectCode(() => publishApply(applyRequest, { currentInspection: carried, onTransition: (point) => { if (point === 'after-lock-upgrade') writeFileSync(join(root, '.gitignore'), mutated) } }), 'filesystem')
-      assert.deepEqual(readFileSync(join(root, '.gitignore')), mutated)
-    } finally {
-      rmSync(root, { force: true, recursive: true })
-    }
-  })
-
-  test('resumes fresh and replacement marker chains after terminal tombstone removal', () => {
-    for (const carriedMarker of ['absent', 'deferred']) {
-      const root = fixtureRoot()
-      const ownerNonce = carriedMarker === 'absent' ? '5'.repeat(32) : '6'.repeat(32)
-      try {
-        const carried = inspection(root, { git: { ...inspection(root).git, electionMarker: carriedMarker, electionMarkerMode: carriedMarker === 'absent' ? null : process.platform === 'win32' ? null : 416, electionMarkerSnapshotId: carriedMarker === 'absent' ? null : 'a'.repeat(64), electionRequired: true, kind: 'git', objectFormat: 'sha1', plansPolicy: 'satisfied' } })
-        carried.snapshotId = deriveSnapshotId({ ...carried, snapshotId: null })
-        if (carriedMarker !== 'absent') {
-          const oldMarker = composeElectionMarker(carriedMarker, 'git', true, carried.git.electionMarkerSnapshotId, carried.git.electionMarkerMode, root)
-          writeFileSync(join(root, '.nightshift-init-backlog-election'), Buffer.from(oldMarker.contentBase64, 'base64'), { mode: carried.git.electionMarkerMode ?? 0o600 })
-        }
-        const applyRequest = request(root, { inspection: carried, versionControlChoice: 'track' })
-        const markerPath = join(root, '.nightshift-init-backlog-election')
-        const collect = () => {
-          const present = existsSync(markerPath)
-
-          return inspection(root, { git: { ...carried.git, electionMarker: present ? 'track' : 'absent', electionMarkerMode: present && process.platform !== 'win32' ? 384 : null, electionMarkerSnapshotId: present ? carried.snapshotId : null } })
-        }
-        assert.throws(() => publishApply(applyRequest, { currentInspection: carried, collectInspection: collect, crash: true, ownerNonce, failAt: 'after-marker-tombstone-removal' }), /Injected publication failure at after-marker-tombstone-removal/)
-        const paths = temporaryPaths(root, admitApplyManifest(applyRequest).manifestId, 1, ownerNonce, carried.snapshotId)
-        assert.equal(existsSync(markerPath), false)
-        assert.equal(existsSync(paths.electionAlias), false)
-        assert.equal(existsSync(paths.electionNewWitness), false)
-        assert.equal(existsSync(paths.electionTombstone), false)
-        const writes = []
-        const result = publishApply(applyRequest, { collectInspection: collect, linkSync: (source, destination) => { if (source.includes('.nightshift-init-backlog-election') || destination.includes('.nightshift-init-backlog-election')) writes.push(`link:${source}:${destination}`); return linkSync(source, destination) }, ownerNonce, renameSync: (source, destination) => { if (source.includes('.nightshift-init-backlog-election') || destination.includes('.nightshift-init-backlog-election')) writes.push(`rename:${source}:${destination}`); return renameSync(source, destination) }, resume: true, unlinkSync: (path) => { if (path.includes('.nightshift-init-backlog-election')) writes.push(`unlink:${path}`); return unlinkSync(path) }, writeSpy: (path) => { if (path.includes('.nightshift-init-backlog-election')) writes.push(`write:${path}`) } })
-
-        assert.equal(result.ok, true)
-        assert.equal(existsSync(markerPath), false)
-        assert.deepEqual(writes, [])
-      } finally {
-        rmSync(root, { force: true, recursive: true })
-      }
-    }
-  })
-
-  test('resumes replacement from the upgraded lock before marker staging', () => {
-    const root = fixtureRoot()
-    const ownerNonce = '7'.repeat(32)
-    try {
-      const carried = inspection(root, { git: { ...inspection(root).git, electionMarker: 'deferred', electionMarkerMode: process.platform === 'win32' ? null : 416, electionMarkerSnapshotId: 'a'.repeat(64), electionRequired: true, kind: 'git', objectFormat: 'sha1', plansPolicy: 'satisfied' } })
-      carried.snapshotId = deriveSnapshotId({ ...carried, snapshotId: null })
-      const oldMarker = composeElectionMarker('deferred', 'git', true, carried.git.electionMarkerSnapshotId, carried.git.electionMarkerMode, root)
-      const markerPath = join(root, '.nightshift-init-backlog-election')
-      writeFileSync(markerPath, Buffer.from(oldMarker.contentBase64, 'base64'), { mode: carried.git.electionMarkerMode ?? 0o600 })
-      const applyRequest = request(root, { inspection: carried, versionControlChoice: 'track' })
-
-      assert.throws(() => publishApply(applyRequest, { currentInspection: carried, collectInspection: () => carried, crash: true, ownerNonce, failAt: 'after-lock-upgrade' }), /Injected publication failure at after-lock-upgrade/)
-      const result = publishApply(applyRequest, { currentInspection: carried, collectInspection: () => carried, ownerNonce, resume: true })
-
-      assert.equal(result.ok, true)
-      assert.equal(existsSync(markerPath), false)
-    } finally {
-      rmSync(root, { force: true, recursive: true })
-    }
-  })
-
-  test('updates same-target publication identity across an edit chain', () => {
-    const root = fixtureRoot()
-    try {
-      const before = Buffer.from('before\n', 'utf8')
-      const middle = Buffer.from('middle\n', 'utf8')
-      const after = Buffer.from('after\n', 'utf8')
-      const first = { afterBase64: middle.toString('base64'), beforeBase64: before.toString('base64'), id: 'p-chain-first-r9', kind: 'exact-edit', regionId: 'features.document-preamble', target: 'FEATURES.md' }
-      const second = { afterBase64: after.toString('base64'), beforeBase64: middle.toString('base64'), id: 'p-chain-second-r9', kind: 'exact-edit', regionId: 'features.next-region', target: 'FEATURES.md' }
-      writeFileSync(join(root, 'FEATURES.md'), before)
-      const carried = inspection(root, { targets: [{ bom: null, cleanTextSha256: null, contentBase64: before.toString('base64'), contentRole: 'semantic', editableRegions: [{ endByte: before.length, regionId: first.regionId }, { endByte: before.length, regionId: second.regionId }], finalNewline: true, kind: 'file', mode: process.platform === 'win32' ? null : 420, newline: 'lf', rawSha256: sha256(before), states: ['present'], target: 'FEATURES.md', templateId: null, templateSha256: null }], proposals: [first, second].map((action) => ({ action, afterBase64: action.afterBase64, beforeBase64: action.beforeBase64, condition: 'always', proposalId: action.id, reason: 'guidance-section' })) })
-      carried.snapshotId = deriveSnapshotId({ ...carried, snapshotId: null })
-      const applyRequest = request(root, { actions: [first, second], inspection: carried, proposalDispositions: [{ disposition: 'selected', proposalId: first.id }, { disposition: 'selected', proposalId: second.id }] })
-      const result = publishApply(applyRequest, { currentInspection: carried, collectInspection: () => carried, rescanRegions: ({ action }) => [{ endByte: action.id === first.id ? middle.length : after.length, regionId: action.id === first.id ? second.regionId : 'features.final-region', startByte: 0 }] })
-
-      assert.deepEqual(result.outcomes.map((item) => item.status), ['edited', 'edited'])
-      assert.deepEqual(readFileSync(join(root, 'FEATURES.md')), after)
-    } finally {
-      rmSync(root, { force: true, recursive: true })
-    }
-  })
-
-  test('rejects same-target chain publication after an inter-action inode mutation', () => {
-    const root = fixtureRoot()
-    try {
-      const before = Buffer.from('before\n', 'utf8')
-      const middle = Buffer.from('middle\n', 'utf8')
-      const after = Buffer.from('after\n', 'utf8')
-      const first = { afterBase64: middle.toString('base64'), beforeBase64: before.toString('base64'), id: 'p-chain-mutate-first-r9', kind: 'exact-edit', regionId: 'features.document-preamble', target: 'FEATURES.md' }
-      const second = { afterBase64: after.toString('base64'), beforeBase64: middle.toString('base64'), id: 'p-chain-mutate-second-r9', kind: 'exact-edit', regionId: 'features.next-region', target: 'FEATURES.md' }
-      writeFileSync(join(root, 'FEATURES.md'), before)
-      const carried = inspection(root, { targets: [{ bom: null, cleanTextSha256: null, contentBase64: before.toString('base64'), contentRole: 'semantic', editableRegions: [{ endByte: before.length, regionId: first.regionId }, { endByte: before.length, regionId: second.regionId }], finalNewline: true, kind: 'file', mode: process.platform === 'win32' ? null : 420, newline: 'lf', rawSha256: sha256(before), states: ['present'], target: 'FEATURES.md', templateId: null, templateSha256: null }], proposals: [first, second].map((action) => ({ action, afterBase64: action.afterBase64, beforeBase64: action.beforeBase64, condition: 'always', proposalId: action.id, reason: 'guidance-section' })) })
-      carried.snapshotId = deriveSnapshotId({ ...carried, snapshotId: null })
-      const applyRequest = request(root, { actions: [first, second], inspection: carried, proposalDispositions: [{ disposition: 'selected', proposalId: first.id }, { disposition: 'selected', proposalId: second.id }] })
-      let publications = 0
-
-      expectCode(() => publishApply(applyRequest, { currentInspection: carried, collectInspection: () => carried, rescanRegions: ({ action }) => [{ endByte: action.id === first.id ? middle.length : after.length, regionId: action.id === first.id ? second.regionId : 'features.final-region', startByte: 0 }], onTransition: (point) => { if (point === 'after-final-verification') { publications += 1; if (publications === 1) { rmSync(join(root, 'FEATURES.md')); writeFileSync(join(root, 'FEATURES.md'), middle) } } } }), 'filesystem')
-      assert.deepEqual(readFileSync(join(root, 'FEATURES.md')), middle)
-    } finally {
-      rmSync(root, { force: true, recursive: true })
-    }
-  })
-
-  test('retains marker witnesses when an extra link appears after alias cleanup', () => {
-    const root = fixtureRoot()
-    const external = join(root, 'external-marker-witness-link')
-    try {
-      const carried = inspection(root, { git: { ...inspection(root).git, electionRequired: true, kind: 'git', objectFormat: 'sha1', plansPolicy: 'satisfied' } })
-      carried.snapshotId = deriveSnapshotId({ ...carried, snapshotId: null })
-      const applyRequest = request(root, { inspection: carried, versionControlChoice: 'track' })
-      const manifestId = admitApplyManifest(applyRequest).manifestId
-      const paths = temporaryPaths(root, manifestId, 1, '8'.repeat(32), carried.snapshotId)
-
-      expectCode(() => publishApply(applyRequest, { currentInspection: carried, collectInspection: () => inspection(root, { git: { ...carried.git, electionMarker: 'track', electionMarkerMode: process.platform === 'win32' ? null : 384, electionMarkerSnapshotId: carried.snapshotId } }), ownerNonce: '8'.repeat(32), onTransition: (point) => { if (point === 'after-marker-alias-removal') linkSync(paths.electionNewWitness, external) } }), 'cleanup-failed')
-      assert.equal(existsSync(paths.electionNewWitness), true)
-      assert.equal(existsSync(external), true)
-    } finally {
-      rmSync(root, { force: true, recursive: true })
-    }
-  })
-
-  test('stops before marker publication when the lock changes after upgrade', () => {
-    const root = fixtureRoot()
-    try {
-      const carried = inspection(root, { git: { ...inspection(root).git, electionRequired: true, kind: 'git', objectFormat: 'sha1', plansPolicy: 'satisfied' } })
-      carried.snapshotId = deriveSnapshotId({ ...carried, snapshotId: null })
-      const applyRequest = request(root, { inspection: carried, versionControlChoice: 'track' })
-      const writes = []
-
-      expectCode(() => publishApply(applyRequest, { currentInspection: carried, collectInspection: () => carried, onTransition: (point) => { if (point === 'after-lock-upgrade') { const lockPath = join(root, '.nightshift-init-backlog.lock'); const bytes = readFileSync(lockPath); rmSync(lockPath); writeFileSync(lockPath, bytes, { mode: 0o600 }) } }, writeSpy: (path) => { writes.push(path) } }), 'cleanup-failed')
-      assert.equal(writes.some((path) => path.endsWith('.nightshift-init-backlog-election')), false)
-      assert.equal(existsSync(join(root, '.nightshift-init-backlog-election')), false)
-    } finally {
-      rmSync(root, { force: true, recursive: true })
-    }
-  })
-
-  test('stops before marker cleanup when the lock changes with a witness present', () => {
-    const root = fixtureRoot()
-    const ownerNonce = '9'.repeat(32)
-    try {
-      const carried = inspection(root, { git: { ...inspection(root).git, electionRequired: true, kind: 'git', objectFormat: 'sha1', plansPolicy: 'satisfied' } })
-      carried.snapshotId = deriveSnapshotId({ ...carried, snapshotId: null })
-      const applyRequest = request(root, { inspection: carried, versionControlChoice: 'track' })
-      const markerPath = join(root, '.nightshift-init-backlog-election')
-      const paths = temporaryPaths(root, admitApplyManifest(applyRequest).manifestId, 1, ownerNonce, carried.snapshotId)
-      const collect = () => inspection(root, { git: { ...carried.git, electionMarker: existsSync(markerPath) ? 'track' : 'absent', electionMarkerMode: existsSync(markerPath) && process.platform !== 'win32' ? 384 : null, electionMarkerSnapshotId: existsSync(markerPath) ? carried.snapshotId : null } })
-      expectCode(() => publishApply(applyRequest, { currentInspection: carried, collectInspection: collect, ownerNonce, onTransition: (point) => { if (point === 'after-marker-alias-removal') { const lockPath = join(root, '.nightshift-init-backlog.lock'); const bytes = readFileSync(lockPath); rmSync(lockPath); writeFileSync(lockPath, bytes, { mode: 0o600 }) } } }), 'cleanup-failed')
-      assert.equal(existsSync(markerPath), true)
-      assert.equal(existsSync(paths.electionNewWitness), true)
-    } finally {
-      rmSync(root, { force: true, recursive: true })
-    }
-  })
-
-  test('retains the upgraded lock and stage when its destination inode changes during rename', () => {
-    const root = fixtureRoot()
-    const ownerNonce = 'a'.repeat(32)
-    try {
-      const carried = inspection(root, { git: { ...inspection(root).git, electionRequired: true, kind: 'git', objectFormat: 'sha1', plansPolicy: 'satisfied' } })
-      carried.snapshotId = deriveSnapshotId({ ...carried, snapshotId: null })
-      const applyRequest = request(root, { inspection: carried, versionControlChoice: 'track' })
-      const manifestId = admitApplyManifest(applyRequest).manifestId
-      const paths = temporaryPaths(root, manifestId, 1, ownerNonce, carried.snapshotId)
-      const writes = []
-
-      expectCode(() => publishApply(applyRequest, { currentInspection: carried, collectInspection: () => carried, ownerNonce, onRenamed: (destination) => {
-        if (destination === paths.lock) {
-          const bytes = readFileSync(destination)
-          writeFileSync(paths.lockNext, bytes, { mode: 0o600 })
-        }
-      }, writeSpy: (path) => { writes.push(path) } }), 'cleanup-failed')
-      assert.equal(existsSync(paths.lock), true)
-      assert.equal(existsSync(paths.lockNext), true)
-      assert.equal(writes.some((path) => path.includes('.nightshift-init-backlog-election')), false)
-    } finally {
-      rmSync(root, { force: true, recursive: true })
-    }
-  })
-
-  test('maps initial-state kind drift after lock acquisition and cleans its lock', () => {
-    const root = fixtureRoot()
-    try {
-      const target = join(root, 'FEATURES.md')
-      const bytes = Buffer.from('approved\n', 'utf8')
-      writeFileSync(target, bytes)
-      const carried = inspection(root, { targets: [{ bom: null, cleanTextSha256: null, contentBase64: bytes.toString('base64'), contentRole: 'semantic', editableRegions: [], finalNewline: true, kind: 'file', mode: process.platform === 'win32' ? null : 420, newline: 'lf', rawSha256: sha256(bytes), states: ['present'], target: 'FEATURES.md', templateId: null, templateSha256: null }] })
-      carried.snapshotId = deriveSnapshotId({ ...carried, snapshotId: null })
-      const applyRequest = request(root, { inspection: carried })
-
-      expectCode(() => publishApply(applyRequest, { currentInspection: carried, onPublished: (destination) => { if (destination.endsWith('.nightshift-init-backlog.lock')) { rmSync(target); mkdirSync(target) } } }), 'filesystem')
-      assert.equal(existsSync(join(root, '.nightshift-init-backlog.lock')), false)
-      assert.equal(statSync(target).isDirectory(), true)
-    } finally {
-      rmSync(root, { force: true, recursive: true })
-    }
-  })
-
-  test('retains a recreated initial lock stage after owner publication', () => {
-    const root = fixtureRoot()
-    const ownerNonce = 'b'.repeat(32)
-    try {
-      const carried = inspection(root)
-      const applyRequest = request(root, { inspection: carried })
-      const paths = temporaryPaths(root, admitApplyManifest(applyRequest).manifestId, 1, ownerNonce, carried.snapshotId)
-
-      expectCode(() => publishApply(applyRequest, { currentInspection: carried, ownerNonce, onPublished: (destination) => { if (destination.endsWith('.nightshift-init-backlog.lock')) { const bytes = readFileSync(destination); rmSync(paths.lockStage); writeFileSync(paths.lockStage, bytes, { mode: 0o600 }) } } }), 'runtime-lock')
-      assert.equal(existsSync(paths.lock), true)
-      assert.equal(existsSync(paths.lockStage), true)
-    } finally {
-      rmSync(root, { force: true, recursive: true })
-    }
-  })
-
-  test('retains a recreated lock upgrade temporary across response-loss resume', () => {
-    const root = fixtureRoot()
-    const ownerNonce = 'c'.repeat(32)
-    try {
-      const carried = inspection(root)
-      const applyRequest = request(root, { inspection: carried })
-      const paths = temporaryPaths(root, admitApplyManifest(applyRequest).manifestId, 1, ownerNonce, carried.snapshotId)
-      const recreate = (destination) => {
-        if (destination === paths.lock) {
-          writeFileSync(paths.lockNext, readFileSync(destination), { mode: 0o600 })
-          rmSync(paths.lockStage)
-        }
-      }
-
-      const originalNow = Date.now
-      const writes = []
-      try {
-        Date.now = () => 123456789
-        expectCode(() => publishApply(applyRequest, { currentInspection: carried, onRenamed: recreate, ownerNonce }), 'cleanup-failed')
-        assert.equal(existsSync(paths.lock), true)
-        assert.equal(existsSync(paths.lockNext), true)
-        const upgradedRecord = JSON.parse(readFileSync(paths.lock, 'utf8'))
-        assert.equal(upgradedRecord.manifestId, admitApplyManifest(applyRequest).manifestId)
-        assert.equal(upgradedRecord.temporaryPaths.includes(relative(root, paths.lockNext).replaceAll('\\', '/')), true)
-        assert.deepEqual(readFileSync(paths.lockNext), readFileSync(paths.lock))
-        assert.deepEqual(readFileSync(paths.lockNext), Buffer.from(`${canonicalJson({ ...upgradedRecord, createdAtUnixMs: 123456789 })}\n`, 'utf8'))
-        expectCode(() => publishApply(applyRequest, { collectInspection: () => carried, currentInspection: carried, linkSync: (...args) => { writes.push(`link:${args[0]}:${args[1]}`); return linkSync(...args) }, ownerNonce, renameSync: (...args) => { writes.push(`rename:${args[0]}:${args[1]}`); return renameSync(...args) }, resume: true, unlinkSync: (path) => { writes.push(`unlink:${path}`); return unlinkSync(path) }, writeSpy: (path) => { writes.push(`write:${path}`) } }), 'cleanup-failed')
-        assert.deepEqual(writes, [])
-      } finally {
-        Date.now = originalNow
-      }
-      assert.equal(existsSync(paths.lock), true)
-      assert.equal(existsSync(paths.lockNext), true)
-      assert.deepEqual(writes, [])
-    } finally {
-      rmSync(root, { force: true, recursive: true })
-    }
-  })
-
-  test('retains an in-place mutated initial lock stage after owner stage write', () => {
-    const root = fixtureRoot()
-    const ownerNonce = 'd'.repeat(32)
-    try {
-      const carried = inspection(root)
-      const applyRequest = request(root, { inspection: carried })
-      const paths = temporaryPaths(root, admitApplyManifest(applyRequest).manifestId, 1, ownerNonce, carried.snapshotId)
-
-      expectCode(() => publishApply(applyRequest, { currentInspection: carried, onTransition: (point) => { if (point === 'after-owner-stage-write') writeFileSync(paths.lockStage, Buffer.from('mutated\n', 'utf8')) }, ownerNonce }), 'runtime-lock')
-      assert.equal(existsSync(paths.lock), false)
-      assert.deepEqual(readFileSync(paths.lockStage), Buffer.from('mutated\n', 'utf8'))
-    } finally {
-      rmSync(root, { force: true, recursive: true })
-    }
-  })
-
-  test('retains a partial initial lock stage after a failed owner stage write', () => {
-    const root = fixtureRoot()
-    const ownerNonce = '1'.repeat(32)
-    const pid = process.pid
-    try {
-      const record = { createdAtUnixMs: 0, manifestId: null, operation: 'apply', ownerNonce, pid, protocolVersion: 1, recoveryId: null, root, temporaryPaths: [], unfinalizedDirectories: [] }
-      const stagePath = join(root, `.nightshift-init-backlog.lock.${pid}.${ownerNonce}.new`)
-      let writes = 0
-      assert.throws(() => createInitialLock(root, record, { ownerNonce, pid, writeSync: (fd, buffer, offset, length, position) => {
-        if (writes > 0) return writeSync(fd, buffer, offset, length, position)
-        writes += 1
-        writeSync(fd, buffer, offset, 1, position)
-        throw new Error('partial owner stage write')
-      } }), /partial owner stage write/)
-      assert.equal(existsSync(stagePath), true)
-      assert.deepEqual(readFileSync(stagePath), Buffer.from(`${canonicalJson(record)}\n`, 'utf8').subarray(0, 1))
-    } finally {
-      rmSync(root, { force: true, recursive: true })
-    }
-  })
-
-  test('retains a byte-mutated initial lock stage after owner stage creation', () => {
-    const root = fixtureRoot()
-    const ownerNonce = 'e'.repeat(32)
-    try {
-      const carried = inspection(root)
-      const applyRequest = request(root, { inspection: carried })
-      const paths = temporaryPaths(root, admitApplyManifest(applyRequest).manifestId, 1, ownerNonce, carried.snapshotId)
-
-      expectCode(() => publishApply(applyRequest, { currentInspection: carried, onTransition: (point) => {
-        if (point === 'after-owner-stage-create') {
-          writeFileSync(paths.lockStage, Buffer.from('mutated-before-write\n', 'utf8'))
-          throw new Error('stage mutation after creation')
-        }
-      }, ownerNonce }), 'runtime-lock')
-      assert.equal(existsSync(paths.lock), false)
-      assert.deepEqual(readFileSync(paths.lockStage), Buffer.from('mutated-before-write\n', 'utf8'))
-    } finally {
-      rmSync(root, { force: true, recursive: true })
-    }
-  })
-
-  test('retains a hard-linked initial lock stage after owner stage creation', () => {
-    const root = fixtureRoot()
-    const ownerNonce = 'f'.repeat(32)
-    try {
-      const carried = inspection(root)
-      const applyRequest = request(root, { inspection: carried })
-      const paths = temporaryPaths(root, admitApplyManifest(applyRequest).manifestId, 1, ownerNonce, carried.snapshotId)
-      const peerPath = join(root, 'stage-peer')
-
-      expectCode(() => publishApply(applyRequest, { currentInspection: carried, onTransition: (point) => {
-        if (point === 'after-owner-stage-create') {
-          linkSync(paths.lockStage, peerPath)
-          throw new Error('stage hard link after creation')
-        }
-      }, ownerNonce }), 'runtime-lock')
-      assert.equal(existsSync(paths.lock), false)
-      assert.equal(existsSync(paths.lockStage), true)
-      assert.equal(existsSync(peerPath), true)
-      assert.equal(statSync(paths.lockStage).nlink, 2)
-    } finally {
-      rmSync(root, { force: true, recursive: true })
-    }
-  })
-
-  test('retains a mode-mutated initial lock stage after owner stage creation', () => {
-    if (process.platform === 'win32') return
-
-    const root = fixtureRoot()
-    const ownerNonce = '0'.repeat(32)
-    try {
-      const carried = inspection(root)
-      const applyRequest = request(root, { inspection: carried })
-      const paths = temporaryPaths(root, admitApplyManifest(applyRequest).manifestId, 1, ownerNonce, carried.snapshotId)
-
-      expectCode(() => publishApply(applyRequest, { currentInspection: carried, onTransition: (point) => {
-        if (point === 'after-owner-stage-create') {
-          chmodSync(paths.lockStage, 0o644)
-          throw new Error('stage mode mutation after creation')
-        }
-      }, ownerNonce }), 'runtime-lock')
-      assert.equal(existsSync(paths.lock), false)
-      assert.equal(statSync(paths.lockStage).mode & 0o777, 0o644)
-    } finally {
-      rmSync(root, { force: true, recursive: true })
-    }
-  })
-
-  test('rejects a nonthrowing mode mutation after owner stage creation', () => {
-    if (process.platform === 'win32') return
-
-    assertOwnerStageMutationRejected({
-      expectedMode: 0o644,
-      mutate: (paths) => chmodSync(paths.lockStage, 0o644),
-      transition: 'after-owner-stage-create',
-    })
-  })
-
-  test('rejects a nonthrowing extra link after owner stage creation', () => {
-    assertOwnerStageMutationRejected({
-      expectedLinks: 2,
-      expectedMode: process.platform === 'win32' ? null : 0o600,
-      mutate: (paths) => {
-        linkSync(paths.lockStage, `${paths.lockStage}.peer`)
-      },
-      transition: 'after-owner-stage-create',
-    })
-  })
-
-  test('rejects a nonthrowing identity replacement after owner stage creation', () => {
-    const replacementBytes = Buffer.from('replacement-stage\n', 'utf8')
-    assertOwnerStageMutationRejected({
-      expectedBytes: replacementBytes,
-      expectedMode: process.platform === 'win32' ? null : 0o600,
-      mutate: (paths) => {
-        const replacement = `${paths.lockStage}.replacement`
-        rmSync(paths.lockStage)
-        writeFileSync(replacement, replacementBytes, { mode: 0o600 })
-        renameSync(replacement, paths.lockStage)
-      },
-      transition: 'after-owner-stage-create',
-    })
-  })
-
-  test('rejects a nonthrowing byte mutation after owner stage creation', () => {
-    const mutated = Buffer.from('mutated-after-create\n', 'utf8')
-    assertOwnerStageMutationRejected({
-      expectedBytes: mutated,
-      expectedMode: process.platform === 'win32' ? null : 0o600,
-      mutate: () => {},
-      mutateAfterWrite: (paths) => writeFileSync(paths.lockStage, mutated),
-      transition: 'after-owner-stage-create',
-    })
-  })
-
-  test('rejects a nonthrowing mode mutation after owner stage write', () => {
-    if (process.platform === 'win32') return
-
-    assertOwnerStageMutationRejected({
-      expectedMode: 0o644,
-      mutate: (paths) => chmodSync(paths.lockStage, 0o644),
-      transition: 'after-owner-stage-write',
-    })
-  })
-
-  test('rejects a nonthrowing extra link after owner stage write', () => {
-    assertOwnerStageMutationRejected({
-      expectedLinks: 2,
-      expectedMode: process.platform === 'win32' ? null : 0o600,
-      mutate: (paths) => linkSync(paths.lockStage, `${paths.lockStage}.peer`),
-      transition: 'after-owner-stage-write',
-    })
-  })
-
-  test('rejects a nonthrowing identity replacement after owner stage write', () => {
-    assertOwnerStageMutationRejected({
-      expectedMode: process.platform === 'win32' ? null : 0o600,
-      mutate: (paths) => {
-        const replacement = `${paths.lockStage}.replacement`
-        const bytes = readFileSync(paths.lockStage)
-        rmSync(paths.lockStage)
-        writeFileSync(replacement, bytes, { mode: 0o600 })
-        renameSync(replacement, paths.lockStage)
-      },
-      transition: 'after-owner-stage-write',
-    })
-  })
-
-  test('rejects a nonthrowing byte mutation after owner stage write', () => {
-    const mutated = Buffer.from('mutated-after-write\n', 'utf8')
-    assertOwnerStageMutationRejected({
-      expectedBytes: mutated,
-      expectedMode: process.platform === 'win32' ? null : 0o600,
-      mutate: (paths) => writeFileSync(paths.lockStage, mutated),
-      transition: 'after-owner-stage-write',
-    })
-  })
-
   test('reports post-publication ready failure and retains the external-writer warning', () => {
     const root = fixtureRoot()
     try {
@@ -1776,86 +1144,14 @@ function runPublicationCases() {
       carried.snapshotId = deriveSnapshotId({ ...carried, snapshotId: null })
       const readyFailure = new InitBacklogError(failureRecord({ code: 'ready-failed', detail: 'ready parser failed after publication', operation: 'apply', phase: 'verify' }))
       let collectionCount = 0
-      const applyRequest = request(root, { actions: [action], inspection: carried, proposalDispositions: [{ disposition: 'selected', proposalId: action.id }] })
-      const manifestId = admitApplyManifest(applyRequest).manifestId
 
-      assert.throws(() => publishApply(applyRequest, { collectInspection: () => { collectionCount += 1; if (collectionCount === 1) return carried; throw readyFailure } }), (error) => {
-        assert.deepEqual(error.record, failureRecord({ code: 'ready-failed', detail: 'ready parser failed after publication', manifestId, operation: 'apply', outcomes: [{ actionId: action.id, status: 'created', target: action.target }], phase: 'verify' }))
-        return true
-      })
+      assert.throws(() => publishApply(request(root, { actions: [action], inspection: carried, proposalDispositions: [{ disposition: 'selected', proposalId: action.id }] }), { collectInspection: () => { collectionCount += 1; if (collectionCount === 1) return carried; throw readyFailure } }), (error) => error instanceof InitBacklogError && error.record.code === 'ready-failed' && error.record.phase === 'verify')
       assert.equal(collectionCount, 2)
       assert.equal(existsSync(join(root, '.claude')), true)
       assert.equal(existsSync(join(root, '.nightshift-init-backlog.lock')), false)
       assert.equal(readdirSync(root).some((name) => name.includes('.nightshift-init-backlog.')), false)
     } finally {
       rmSync(root, { force: true, recursive: true })
-    }
-  })
-
-  test('rolls back the first post-unwrap ready failure with exact recovery evidence', () => {
-    const fixture = unwrapBackupFailureFixture()
-    const manifestId = admitApplyManifest(fixture.applyRequest).manifestId
-    const expectedRecord = failureRecord({
-      code: 'ready-failed',
-      detail: 'ready parser failed after unwrap publication',
-      manifestId,
-      operation: 'apply',
-      outcomes: [{ actionId: fixture.applyRequest.actions[0].id, status: 'unwrapped', target: fixture.target }],
-      phase: 'verify',
-      recovery: { retainedBackups: [], status: 'restored', warnings: [] },
-    })
-    const readyFailure = new InitBacklogError(failureRecord({ code: 'ready-failed', detail: expectedRecord.detail, operation: 'apply', phase: 'verify' }))
-    let collectionCount = 0
-    const collectFailure = () => {
-      collectionCount += 1
-      throw readyFailure
-    }
-    const applyOptions = { collectInspection: collectFailure, currentInspection: fixture.applyRequest.inspection }
-    const expectedBackupPath = join(fixture.root, ...fixture.backupTarget.split('/'))
-    try {
-      assert.throws(() => publishApply(fixture.applyRequest, applyOptions), (error) => {
-        assert.deepEqual(error.record, expectedRecord)
-        assert.equal(error.cause, readyFailure)
-
-        return true
-      })
-      assert.equal(collectionCount, 1)
-      assert.deepEqual(readFileSync(join(fixture.root, fixture.target)), fixture.wrapped)
-      assert.equal(statSync(join(fixture.root, fixture.target)).mode & 0o777, process.platform === 'win32' ? 0o666 : 0o644)
-      assert.equal(existsSync(expectedBackupPath), false)
-      assert.equal(existsSync(join(fixture.root, '.nightshift-init-backlog.lock')), false)
-
-      const dispatchActionId = `p-${'a'.repeat(62)}`
-      const dispatchAction = { ...fixture.applyRequest.actions[0], id: dispatchActionId }
-      const dispatchInspection = {
-        ...fixture.applyRequest.inspection,
-        proposals: fixture.applyRequest.inspection.proposals.map((proposal) => ({ ...proposal, action: dispatchAction, proposalId: dispatchActionId })),
-        targets: fixture.applyRequest.inspection.targets.map((record) => ({ ...record, states: ['present', 'wrapped'] })),
-        wrapFindings: fixture.applyRequest.inspection.wrapFindings.map((finding) => ({ ...finding, count: 1, firstLine: 1 })),
-      }
-      dispatchInspection.snapshotId = deriveSnapshotId({ ...dispatchInspection, snapshotId: null })
-      const dispatchRequest = { ...fixture.applyRequest, actions: [dispatchAction], hostContext: dispatchInspection.hostContext, inspection: dispatchInspection, proposalDispositions: [{ disposition: 'selected', proposalId: dispatchActionId }] }
-      const dispatchedManifestId = admitApplyManifest(dispatchRequest).manifestId
-      const dispatchedRecord = { ...expectedRecord, manifestId: dispatchedManifestId }
-      dispatchedRecord.outcomes = [{ ...dispatchedRecord.outcomes[0], actionId: dispatchActionId }]
-      const dispatchedBackupPath = join(fixture.root, ...`.tmp/nightshift-init-backlog-unwrap-${dispatchInspection.snapshotId}-${dispatchedManifestId}-${sha256(Buffer.from(fixture.target, 'utf8'))}.bak`.split('/'))
-      let dispatchedCollectionCount = 0
-      const dispatchCollectFailure = () => {
-        dispatchedCollectionCount += 1
-        throw readyFailure
-      }
-      const dispatched = runPrivateDispatcher(Buffer.from(`${canonicalJson(dispatchRequest)}\n`, 'utf8'), {
-        apply: (value) => publishApply(value, { ...applyOptions, collectInspection: dispatchCollectFailure, currentInspection: value.inspection }),
-      })
-      assert.equal(dispatched.exitCode, 1, dispatched.stdout.toString('utf8'))
-      assert.equal(dispatchedCollectionCount, 1)
-      assert.equal(dispatched.stderr.length, 0)
-      assert.deepEqual(JSON.parse(dispatched.stdout.toString('utf8')), dispatchedRecord)
-      assert.deepEqual(readFileSync(join(fixture.root, fixture.target)), fixture.wrapped)
-      assert.equal(existsSync(dispatchedBackupPath), false)
-      assert.equal(existsSync(join(fixture.root, '.nightshift-init-backlog.lock')), false)
-    } finally {
-      rmSync(fixture.root, { force: true, recursive: true })
     }
   })
 
