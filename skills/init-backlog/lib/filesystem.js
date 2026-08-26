@@ -448,7 +448,7 @@ function stageBytes(path, bytes, options = {}) {
   const descriptor = open(path, constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY, 0o600)
   let closed = false
   try {
-    if (process.platform !== 'win32') {
+    if ((options.platform ?? process.platform) !== 'win32') {
       chmod(descriptor, 0o600)
       const metadata = stat(descriptor, { bigint: true })
       if (comparableMode(metadata) !== 0o600) {
@@ -493,6 +493,55 @@ function readBackExact(path, expectedBytes, options = {}) {
   }
 
   return actual
+}
+
+function assignAndVerifyMode(path, mode, options = {}) {
+  if (mode === null || mode === undefined) {
+    if (options.platform === 'win32' || process.platform === 'win32') {
+      return null
+    }
+    throw new Error('A POSIX publication mode is required')
+  }
+  if (!Number.isSafeInteger(mode) || mode < 0 || mode > 4095) {
+    throw new Error('Publication mode is invalid')
+  }
+  if ((options.platform ?? process.platform) !== 'win32') {
+    const chmod = options.chmodSync ?? chmodSync
+    chmod(path, mode)
+    const metadata = (options.lstatSync ?? lstatSync)(path, { bigint: true })
+    if (comparableMode(metadata, options.platform) !== mode) {
+      throw new Error('Publication mode verification failed')
+    }
+  }
+
+  return mode
+}
+
+function verifyFinalMode(path, mode, options = {}) {
+  if ((options.platform ?? process.platform) === 'win32' || mode === null) {
+    return true
+  }
+  const metadata = (options.lstatSync ?? lstatSync)(path, { bigint: true })
+  if (comparableMode(metadata, options.platform) !== mode) {
+    throw new Error('Final publication mode differs')
+  }
+
+  return true
+}
+
+function renameVerified(source, destination, expectedBytes, options = {}) {
+  const rename = options.renameSync ?? renameSync
+  rename(source, destination)
+  if ((options.pathExists ?? pathExists)(source)) {
+    throw new Error('Publication source remains after rename')
+  }
+  const bytes = (options.readFileSync ?? readFileSync)(destination)
+  if (!bytes.equals(expectedBytes)) {
+    throw new Error('Renamed publication readback differs')
+  }
+  options.onRenamed?.(destination)
+
+  return destination
 }
 
 function publishNoReplace(source, destination, options = {}) {
@@ -991,6 +1040,9 @@ module.exports = {
   probeWindowsAttributes,
   publishNoReplace,
   readBackExact,
+  assignAndVerifyMode,
+  verifyFinalMode,
+  renameVerified,
   removeAndVerify,
   removeInitialLock,
   reserveRequest,
@@ -1013,3 +1065,6 @@ module.exports.flushReadBack = writeFlushedFile
 module.exports.publishExclusive = publishNoReplace
 module.exports.verifyFinalIdentity = verifyPublishedIdentity
 module.exports.removeVerified = removeAndVerify
+module.exports.assignMode = assignAndVerifyMode
+module.exports.verifyMode = verifyFinalMode
+module.exports.renameAtomic = renameVerified
