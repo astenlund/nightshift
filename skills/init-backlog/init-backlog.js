@@ -12,6 +12,7 @@ const {
 } = require('./lib/filesystem')
 const { discoverControlledMarkdown, resolveGuidance } = require('./lib/guidance')
 const { inspect } = require('./lib/inspection')
+const { admitApplyManifest } = require('./lib/apply-manifest')
 
 const INVALID_INVOCATION_LINE = Buffer.from('nightshift-init-backlog: invalid request transport invocation\n', 'ascii')
 const TRANSPORT_RESIDUE_LINE = Buffer.from('nightshift-init-backlog: request transport residue\n', 'ascii')
@@ -157,4 +158,4 @@ if (require.main === module) {
   main()
 }
 
-module.exports = { discoverControlledMarkdown, inspect, main, resolveGuidance, runCli, runPrivateDispatcher }
+module.exports = { admitApplyManifest, discoverControlledMarkdown, inspect, main, resolveGuidance, runCli, runPrivateDispatcher }
