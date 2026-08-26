@@ -8,6 +8,7 @@ const test = require('node:test')
 
 const { SOURCE_COMMIT, SOURCE_PATHS } = require('./init-backlog-controller/baseline.cases')
 const { runAssetCases } = require('./init-backlog-controller/assets.cases')
+const { runAdapterCases } = require('./init-backlog-controller/adapters.cases')
 const { canonicalJson, fixtureRoot, git, loadPromptBaseline, sha256, sourceClosure } = require('./init-backlog-controller/helpers')
 const { assembleClaudePromptBaseline, assembleCodexPromptBaseline, loadPromptBaseline: loadHostPromptBaseline, stageCandidate } = require('./host-discovery-smoke-lib')
 
@@ -97,3 +98,5 @@ test('both host prompt assemblers install only the staged copied baseline fixtur
 test('normalized scaffold assets preserve the prompt-owned template contract', () => {
   runAssetCases(REPOSITORY_ROOT)
 })
+
+runAdapterCases(REPOSITORY_ROOT)

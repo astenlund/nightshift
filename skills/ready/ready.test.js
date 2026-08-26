@@ -11,6 +11,7 @@ const path = require('path');
 const { execFileSync } = require('child_process');
 const {
   analyze,
+  analyzeCatalog,
   stripStable,
   normalizeSliceName,
   splitTopLevelCommas,
@@ -107,6 +108,194 @@ test('analyze keeps unambiguous fixture JSON byte-for-byte stable', () => {
 ` }));
 
   assert.strictEqual(output, '{"indexes":{"found":["FEATURES.md"],"missing":["QUICK_WINS.md","BUGS.md","PATTERNS.md"]},"ready":[{"index":"FEATURES.md","title":"Real","excerpt":""}],"blocked":[],"external":[],"exploring":[],"structuralErrors":[],"notices":[],"breakoutTargets":[{"index":"FEATURES.md","title":"Real","target":"features/real.md"}]}');
+});
+
+test('analyzeCatalog reproduces CLI JSON from exact catalog records and uses predicted contents without filesystem access', () => {
+  const items = [
+    { target: 'features/beta.md', contents: '# Beta\n' },
+    { target: 'FEATURES.md', contents: `## Area
+### [Alpha](features/alpha.md)
+
+**Requires:** none.
+
+### [Beta](features/beta.md)
+
+**Requires:** [Alpha](features/alpha.md).
+
+### [Missing](features/missing.md)
+
+**Requires:** none.
+` },
+    { target: 'features/alpha.md', contents: '# Alpha\n' },
+  ];
+  const tmpRoot = path.join(__dirname, '..', '..', '.tmp', `ready-catalog-test-${process.pid}`);
+  const claudeDir = path.join(tmpRoot, '.claude');
+  fs.mkdirSync(path.join(claudeDir, 'features'), { recursive: true });
+  try {
+    for (const item of items) {
+      fs.writeFileSync(path.join(claudeDir, item.target), item.contents);
+    }
+    const cli = JSON.parse(execFileSync(process.execPath, [path.join(__dirname, 'ready.js'), tmpRoot], { encoding: 'utf8' }));
+    const readFileSync = fs.readFileSync;
+    let catalog;
+    try {
+      fs.readFileSync = () => {
+        throw new Error('analyzeCatalog must not read the filesystem');
+      };
+      catalog = analyzeCatalog(items);
+    } finally {
+      fs.readFileSync = readFileSync;
+    }
+
+    const { evidence, ...publicCatalog } = catalog;
+    assert.deepStrictEqual(publicCatalog, cli);
+    assert.deepStrictEqual(evidence, {
+      structuralErrors: [],
+      notices: [{ kind: 'notices', ordinal: 0, evidencePaths: ['FEATURES.md'] }],
+      legacyHistory: [],
+    });
+    assert.deepStrictEqual(catalog.ready.map((entry) => entry.title), ['Alpha', 'Missing']);
+    assert.deepStrictEqual(catalog.blocked.map((entry) => entry.title), ['Beta']);
+    assert.ok(catalog.notices.some((notice) => notice.includes('features/missing.md')));
+  } finally {
+    fs.rmSync(tmpRoot, { recursive: true, force: true });
+  }
+});
+
+test('analyzeCatalog carries parser-owned structural, breakout, cycle, and notice evidence', () => {
+  const features = `## Area
+### [Bad](features/bad.md)
+
+### [Cycle A](features/a.md)
+
+**Requires:** [Cycle B](features/b.md).
+
+### [Cycle B](features/b.md)
+
+**Requires:** [Cycle A](features/a.md).
+
+### [Missing](features/missing.md)
+
+**Requires:** none.
+`;
+  const result = analyzeCatalog([
+    { target: 'FEATURES.md', contents: features },
+    { target: 'features/a.md', contents: '# A\n' },
+    { target: 'features/b.md', contents: '# B\n' },
+    { target: 'features/bad.md', contents: '# Bad\n\n**Requires:** none.\n' },
+  ]);
+
+  assert.deepStrictEqual(result.evidence.structuralErrors, [
+    { kind: 'structuralErrors', ordinal: 0, evidencePaths: ['FEATURES.md'] },
+    { kind: 'structuralErrors', ordinal: 1, evidencePaths: ['FEATURES.md', 'features/a.md', 'features/b.md'] },
+    { kind: 'structuralErrors', ordinal: 2, evidencePaths: ['FEATURES.md', 'features/bad.md'] },
+  ]);
+  assert.deepStrictEqual(result.evidence.notices, [
+    { kind: 'notices', ordinal: 0, evidencePaths: ['FEATURES.md'] },
+  ]);
+  assert.ok(!Object.hasOwn(result, 'breakoutTargets'));
+});
+
+test('analyzeCatalog preserves recursively discovered nested catalog identities in evidence', () => {
+  const result = analyzeCatalog([
+    { target: 'FEATURES.md', contents: `## Area
+### [Nested](features/deep/nested.md)
+
+**Requires:** none.
+` },
+    { target: 'features/deep/nested.md', contents: '# Nested\n\n**Requires:** none.\nwrapped\n' },
+    { target: 'features/deep/unlinked.md', contents: '# Unlinked\nFirst\nSecond\n' },
+  ]);
+
+  assert.deepStrictEqual(result.evidence.structuralErrors, [
+    { kind: 'structuralErrors', ordinal: 0, evidencePaths: ['FEATURES.md', 'features/deep/nested.md'] },
+  ]);
+  assert.deepStrictEqual(result.evidence.notices, [
+    { kind: 'notices', ordinal: 0, evidencePaths: ['features/deep/nested.md'] },
+    { kind: 'notices', ordinal: 1, evidencePaths: ['features/deep/unlinked.md'] },
+  ]);
+});
+
+test('analyzeCatalog requires whitespace before an ATX trailing closure', () => {
+  const result = analyzeCatalog([
+    { target: 'QUICK_WINS.md', contents: '## Implemented#\n\n- Not a legacy section.\n' },
+    { target: 'FEATURES.md', contents: '## Implemented #\n\n- Legacy section.\n' },
+    { target: 'BUGS.md', contents: '## Fixed #\n\n- Legacy bug.\n' },
+  ]);
+
+  assert.deepStrictEqual(result.evidence.legacyHistory, [
+    { indexPath: '.claude/BUGS.md', historyPath: '.claude/BUGS_HISTORY.md' },
+    { indexPath: '.claude/FEATURES.md', historyPath: '.claude/FEATURES_HISTORY.md' },
+  ]);
+});
+
+test('analyzeCatalog evidence uses only exact catalog identities', () => {
+  const missing = analyzeCatalog([
+    { target: 'FEATURES.md', contents: `## Area
+### [Missing](features/missing.md)
+
+**Requires:** none.
+` },
+  ]);
+  assert.deepStrictEqual(missing.evidence.notices, [
+    { kind: 'notices', ordinal: 0, evidencePaths: ['FEATURES.md'] },
+  ]);
+
+  for (const target of [
+    'features\\alpha.md',
+    'features/foo:bar.md',
+    'features/foo?.md',
+    'features/./alpha.md',
+    'features/deep/../alpha.md',
+    'features//alpha.md',
+  ]) {
+    assert.throws(() => analyzeCatalog([
+      { target: 'FEATURES.md', contents: `## Area
+### [Malformed](${target})
+
+**Requires:** none.
+` },
+    ]), TypeError, target);
+  }
+});
+
+test('analyzeCatalog reports only populated unmasked legacy sections when history is missing', () => {
+  const result = analyzeCatalog([
+    { target: 'QUICK_WINS.md', contents: '## Implemented\n\n- Shipped.\n' },
+    { target: 'FEATURES.md', contents: '## Implemented\n\n<!-- populated -->\n\n## Area\n' },
+    { target: 'BUGS.md', contents: '## Fixed\n\n```markdown\nold\n```\n' },
+    { target: 'QUICK_WINS_HISTORY.md', contents: '# Existing history\n' },
+  ]);
+
+  assert.deepStrictEqual(result.evidence.legacyHistory, [
+    { indexPath: '.claude/BUGS.md', historyPath: '.claude/BUGS_HISTORY.md' },
+    { indexPath: '.claude/FEATURES.md', historyPath: '.claude/FEATURES_HISTORY.md' },
+  ]);
+});
+
+test('analyzeCatalog ignores bare, whitespace-only, wrong-pairing, and masked legacy headings', () => {
+  const result = analyzeCatalog([
+    { target: 'QUICK_WINS.md', contents: '## Implemented\n\n## Area\n' },
+    { target: 'FEATURES.md', contents: '## Fixed\n\n- Wrong pairing.\n\n## Area\n' },
+    { target: 'BUGS.md', contents: '```markdown\n## Fixed\n\n- Masked.\n```\n' },
+    { target: 'FEATURES_HISTORY.md', contents: '# Existing\n' },
+    { target: 'BUGS_HISTORY.md', contents: '# Existing\n' },
+  ]);
+
+  assert.deepStrictEqual(result.evidence.legacyHistory, []);
+});
+
+test('analyzeCatalog rejects duplicate, out-of-scope, and non-portable catalog targets with TypeError', () => {
+  const contents = '# Features\n';
+
+  assert.throws(() => analyzeCatalog([{ target: 'FEATURES.md', contents }, { target: 'FEATURES.md', contents }]), TypeError);
+  assert.throws(() => analyzeCatalog([{ target: '../FEATURES.md', contents }]), TypeError);
+  assert.throws(() => analyzeCatalog([{ target: 'features\\alpha.md', contents }]), TypeError);
+  assert.throws(() => analyzeCatalog([{ target: 'plans/stale.md', contents }]), TypeError);
+  assert.throws(() => analyzeCatalog([{ target: 'AGENTS.md', contents }]), TypeError);
+  assert.throws(() => analyzeCatalog([{ target: 'features/foo:bar.md', contents }]), TypeError);
+  assert.throws(() => analyzeCatalog([{ target: 'features/foo?.md', contents }]), TypeError);
+  assert.throws(() => analyzeCatalog([{ target: 'features/CON.md', contents }]), TypeError);
 });
 
 test('ready structural parsing ignores fenced lookalikes and unclosed fences', () => {

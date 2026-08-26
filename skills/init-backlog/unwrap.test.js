@@ -5,7 +5,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const test = require('node:test');
 
-const { canonicalPath, detectHardWraps, unwrapText, collectMarkdownFiles } = require('./unwrap.js');
+const { canonicalPath, detectHardWraps, unwrapText, collectMarkdownFiles, analyzeUnwrapCatalog } = require('./unwrap.js');
 
 const CRLF = String.fromCharCode(13, 10);
 
@@ -260,4 +260,28 @@ test('a two-space hard break on a continuation line survives the join, so the re
   const once = unwrapText(text);
   assert.equal(once, 'foo bar  \nbaz\n\n- a b  \n  c\n');
   assert.equal(unwrapText(once), once);
+});
+
+test('analyzeUnwrapCatalog returns target-sorted wraps and predicted contents without filesystem access', () => {
+  const items = [
+    { target: 'features/z.md', contents: 'First line\ncontinued\n' },
+    { target: 'FEATURES.md', contents: '# Features\n' },
+    { target: 'features/a.md', contents: '- item\n  continued\n' },
+  ];
+  const readFileSync = fs.readFileSync;
+  let result;
+  try {
+    fs.readFileSync = () => {
+      throw new Error('analyzeUnwrapCatalog must not read the filesystem');
+    };
+    result = analyzeUnwrapCatalog(items);
+  } finally {
+    fs.readFileSync = readFileSync;
+  }
+
+  assert.deepEqual(result, [
+    { target: 'FEATURES.md', wraps: [], contents: '# Features\n' },
+    { target: 'features/a.md', wraps: [{ line: 2, kind: 'list-item' }], contents: '- item continued\n' },
+    { target: 'features/z.md', wraps: [{ line: 2, kind: 'paragraph' }], contents: 'First line continued\n' },
+  ]);
 });

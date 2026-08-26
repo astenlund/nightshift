@@ -21,7 +21,7 @@
 const fs = require('fs');
 const path = require('path');
 const { scanMarkdown } = require('../spec-agreement/spec-agreement.js');
-const { LABEL_AT_START, canonicalPath, detectHardWraps, collectMarkdownFiles } = require('../init-backlog/unwrap.js');
+const { LABEL_AT_START, CatalogError, canonicalPath, detectHardWraps, collectMarkdownFiles, normalizeCatalogItems } = require('../init-backlog/unwrap.js');
 
 const INDEX_FILE_STEMS = new Set([
   'QUICK_WINS', 'FEATURES', 'BUGS', 'PATTERNS',
@@ -62,6 +62,29 @@ const EMPTY_EXTERNAL_PROBLEM = 'empty **External:** label; delete the line (abse
 const NONE_IN_EXTERNAL_PROBLEM = 'none. in **External:**; delete the line (absence is the only empty form)';
 const HEADING = /^#{2,3} /;
 const BULLET = /^- /;
+const ANALYSIS_EVIDENCE = Symbol('analysisEvidence');
+
+function sidecarItem(kind, ordinal, evidencePaths) {
+  return {
+    kind,
+    ordinal,
+    evidencePaths: [...new Set(evidencePaths)].sort((left, right) => left < right ? -1 : left > right ? 1 : 0),
+  };
+}
+
+function pushAnalysisItem(output, kind, item, evidencePaths) {
+  const items = output[kind];
+  items.push(item);
+  output[ANALYSIS_EVIDENCE][kind].push(sidecarItem(kind, items.length - 1, evidencePaths));
+}
+
+function pushStructuralError(output, item, evidencePaths) {
+  pushAnalysisItem(output, 'structuralErrors', item, evidencePaths);
+}
+
+function pushNotice(output, notice, evidencePaths) {
+  pushAnalysisItem(output, 'notices', notice, evidencePaths);
+}
 
 // ---------- normalization ----------
 
@@ -680,10 +703,10 @@ function classifyUnit(unit, registry, out) {
   const { index, title, excerpt, requiresContent, externalContent, missingRequires, extraBlockers } = unit;
 
   if (missingRequires) {
-    out.structuralErrors.push({
+    pushStructuralError(out, {
       index, title,
       problem: 'missing **Requires:** line (silence is not the same as `none.`; the dependency review has not been done)',
-    });
+    }, [index]);
     return;
   }
 
@@ -715,7 +738,7 @@ function classifyUnit(unit, registry, out) {
   }
 
   if (structural.length > 0) {
-    out.structuralErrors.push({ index, title, problem: structural.join('; ') });
+    pushStructuralError(out, { index, title, problem: structural.join('; ') }, [index]);
     return;
   }
   // Whole-entry exclusion suppresses classification, not grammar
@@ -738,7 +761,7 @@ function classifyUnit(unit, registry, out) {
 // ---------- top level ----------
 
 function createAnalysisOutput() {
-  return {
+  const output = {
     indexes: { found: [], missing: [] },
     ready: [],
     blocked: [],
@@ -747,6 +770,12 @@ function createAnalysisOutput() {
     structuralErrors: [],
     notices: [],
   };
+  Object.defineProperty(output, ANALYSIS_EVIDENCE, {
+    configurable: true,
+    value: { structuralErrors: [], notices: [] },
+  });
+
+  return output;
 }
 
 // Backlog prose is one paragraph or bullet per physical line; a wrapped file is
@@ -772,7 +801,8 @@ function parseIndexes(files, out) {
       continue;
     }
     out.indexes.found.push(`${name}.md`);
-    pushHardWrapNotice(out.notices, `${name}.md`, files[name]);
+    const notice = hardWrapNotice(`${name}.md`, files[name]);
+    if (notice !== null) pushNotice(out, notice, [`${name}.md`]);
     parsed[name] = extractEntries(files[name], EXCLUDED_SECTIONS[name], {
       bullets: name === 'QUICK_WINS',
       noticeProse: name === 'QUICK_WINS',
@@ -781,7 +811,8 @@ function parseIndexes(files, out) {
   }
   if (files.PATTERNS !== undefined && files.PATTERNS !== null) {
     out.indexes.found.push('PATTERNS.md (registry only, not parsed for work items)');
-    pushHardWrapNotice(out.notices, 'PATTERNS.md', files.PATTERNS);
+    const notice = hardWrapNotice('PATTERNS.md', files.PATTERNS);
+    if (notice !== null) pushNotice(out, notice, ['PATTERNS.md']);
   } else {
     out.indexes.missing.push('PATTERNS.md');
   }
@@ -815,9 +846,9 @@ function prepareRegistryRecords(parsed, out) {
       registryRecords.push({ index: `${name}.md`, entry });
     }
     for (const section of parsed[name].proseOnlySections) {
-      out.notices.push(
+      pushNotice(out,
         `${name}.md section "## ${section}" has content but no ### entries; only ### entries are parsed as work items; check that section manually`,
-      );
+        [`${name}.md`]);
     }
   }
 
@@ -891,20 +922,20 @@ function addExploringDrafts(parsed, out, breakoutTargets) {
 function classifySlicedEntry(index, entry, excluded, registry, out) {
   const unshipped = entry.slices.filter((slice) => !slice.struck);
   if (unshipped.length === 0) {
-    out.structuralErrors.push({
+    pushStructuralError(out, {
       index,
       title: entry.title,
       problem: 'all slices shipped; graduate parent to FEATURES_HISTORY.md per the ## Slicing last-slice rule',
-    });
+    }, [index]);
 
     return;
   }
   if (entry.requiresContent === null) {
-    out.structuralErrors.push({
+    pushStructuralError(out, {
       index,
       title: entry.title,
       problem: 'missing top-level **Requires:** line (should reflect the next-to-ship slice)',
-    });
+    }, [index]);
 
     return;
   }
@@ -968,11 +999,18 @@ function classifyTrackedEntries(parsed, registry, cycleMembers, out, breakoutTar
 
 function addCycleErrors(out, cycleAnalysis) {
   for (const cycle of cycleAnalysis.cycles) {
-    out.structuralErrors.push({
+    const evidencePaths = [];
+    for (const member of cycle.members) {
+      const record = cycleAnalysis.nodeToRec.get(member);
+      if (record === undefined) continue;
+      evidencePaths.push(record.index);
+      if (isRepoRelativeTarget(record.entry.selfTarget)) evidencePaths.push(record.entry.selfTarget.split('#')[0]);
+    }
+    pushStructuralError(out, {
       index: '[cycle]',
       title: `${cycle.members.length}-node cycle`,
       problem: formatCycle(cycle, cycleAnalysis.depEdges, cycleAnalysis.nodeToRec),
-    });
+    }, evidencePaths);
   }
 }
 
@@ -1092,6 +1130,214 @@ function breakoutReadNotice(rec, code) {
   const remedy = code === 'EISDIR' ? 'fix the link' : 'retry; the file was not scanned this run';
 
   return `${link}, which exists but cannot be read as a file (${code}); ${remedy}`;
+}
+
+function scanCatalogBreakoutTargets(breakoutTargets, catalog) {
+  const notices = [];
+  const structuralErrors = [];
+  const evidence = { notices: [], structuralErrors: [] };
+  const scannedTargets = new Set();
+  for (const rec of breakoutTargets) {
+    const target = requireCatalogReferenceTarget(rec.target);
+    const contents = catalog.get(target);
+    if (contents === undefined) {
+      const notice = breakoutReadNotice(rec, 'ENOENT');
+      notices.push(notice);
+      evidence.notices.push([rec.index]);
+      continue;
+    }
+    if (!scannedTargets.has(target)) {
+      scannedTargets.add(target);
+      const notice = hardWrapNotice(`breakout file ${rec.target.split('#')[0]}`, contents);
+      if (notice !== null) {
+        notices.push(notice);
+        evidence.notices.push([target]);
+      }
+    }
+    for (const hit of scanBreakoutLines(contents)) {
+      const error = {
+        index: rec.index,
+        title: rec.title,
+        problem: `breakout file ${rec.target} carries a **${hit.label}:** line (line ${hit.line}); delete the breakout line, the index entry is the sole dependency authority (hygiene error: the entry's classification stands)`,
+      };
+      structuralErrors.push(error);
+      evidence.structuralErrors.push([rec.index, target]);
+    }
+  }
+
+  const result = { notices, structuralErrors, scannedTargets };
+  Object.defineProperty(result, ANALYSIS_EVIDENCE, { value: evidence });
+
+  return result;
+}
+
+function scanUnlinkedCatalogItems(catalog, alreadyScanned) {
+  const notices = [];
+  const evidence = [];
+  const indexTargets = new Set([...WORK_INDEX_NAMES, 'PATTERNS'].map((name) => `${name}.md`));
+  for (const { target, contents } of catalog.values()) {
+    if (indexTargets.has(target) || alreadyScanned.has(target)) {
+      continue;
+    }
+    const notice = hardWrapNotice(`backlog file ${target}`, contents);
+    if (notice !== null) {
+      notices.push(notice);
+      evidence.push([target]);
+    }
+  }
+
+  Object.defineProperty(notices, ANALYSIS_EVIDENCE, { value: evidence });
+  return notices;
+}
+
+function htmlBlockStart(line) {
+  const trimmed = line.replace(/^ {0,3}/, '');
+  if (trimmed.startsWith('<!--')) return { terminator: '-->' };
+  if (trimmed.startsWith('<?')) return { terminator: '?>' };
+  if (trimmed.startsWith('<![CDATA[')) return { terminator: ']]>' };
+  if (/^<![A-Z]/.test(trimmed)) return { terminator: '>' };
+  const rawTag = trimmed.match(/^<(script|pre|style|textarea)(?:\s|>)/i);
+  if (rawTag) return { terminator: '</', tag: rawTag[1] };
+  if (/^<(?:address|article|aside|base|blockquote|body|caption|center|col|colgroup|dd|details|dialog|dir|div|dl|dt|fieldset|figcaption|figure|footer|form|h[1-6]|head|header|hr|html|iframe|legend|li|link|main|menu|menuitem|nav|ol|p|param|search|section|summary|table|tbody|td|tfoot|th|thead|title|tr|track|ul)(?:\s|>)/i.test(trimmed)) return { blank: true };
+  if (/^<\/?[A-Za-z][A-Za-z0-9-]*(?:\s+[^<>]*)?\s*\/?>/.test(trimmed)) return { blank: true };
+
+  return null;
+}
+
+function commonMarkHeadings(contents) {
+  const parsed = scanMarkdown(Buffer.from(contents, 'utf8'));
+  const masked = new Set();
+  let html = null;
+  parsed.lines.forEach((record, index) => {
+    if (record.opensFence || !record.outsideFence) {
+      masked.add(index);
+      return;
+    }
+    if (html !== null) {
+      if (html.blank && record.content.trim() === '') {
+        html = null;
+        return;
+      }
+      masked.add(index);
+      if (html.terminator === '</' ? new RegExp(`</${html.tag}\\s*>`, 'i').test(record.content) : record.content.includes(html.terminator)) html = null;
+      return;
+    }
+    const block = htmlBlockStart(record.content);
+    if (block === null) return;
+    masked.add(index);
+    if (block.terminator === '</' && !new RegExp(`</${block.tag}\\s*>`, 'i').test(record.content)) html = block;
+    else if (block.terminator && !record.content.includes(block.terminator)) html = block;
+    else if (block.blank && record.content.trim() !== '') html = block;
+  });
+
+  return parsed.lines.flatMap((record, index) => {
+    if (masked.has(index)) return [];
+    const match = /^ {0,3}(#{1,6})(?:[ \t]+|$)(.*)$/.exec(record.content);
+    if (match === null) return [];
+    let title = match[2].trim();
+    title = title.replace(/[ \t]+#+[ \t]*$/, '').trim();
+
+    return [{ index, level: match[1].length, title, rawStart: record.rawStart, rawEnd: record.rawEnd }];
+  });
+}
+
+function legacyHistoryFactsFromCatalog(catalog) {
+  const parents = [
+    { index: 'QUICK_WINS.md', history: 'QUICK_WINS_HISTORY.md', heading: 'Implemented' },
+    { index: 'FEATURES.md', history: 'FEATURES_HISTORY.md', heading: 'Implemented' },
+    { index: 'BUGS.md', history: 'BUGS_HISTORY.md', heading: 'Fixed' },
+  ];
+  return parents.flatMap(({ index, history, heading }) => {
+    const parent = catalog.get(index);
+    if (parent === undefined || catalog.has(history)) return [];
+    const headings = commonMarkHeadings(parent.contents);
+    const matches = headings.filter((item) => item.level === 2 && item.title.replace(/[ \t]+#+[ \t]*$/, '').trim() === heading);
+    const bytes = Buffer.from(parent.contents, 'utf8');
+    const populated = matches.some((match) => {
+      const boundary = headings.find((item) => item.rawStart > match.rawStart && item.level <= match.level);
+      const end = boundary === undefined ? bytes.length : boundary.rawStart;
+      return /\S/.test(bytes.subarray(match.rawEnd, end).toString('utf8'));
+    });
+    if (!populated) return [];
+
+    return [{ indexPath: `.claude/${index}`, historyPath: `.claude/${history}` }];
+  }).sort((left, right) => {
+    const a = `${left.indexPath}\0${left.historyPath}`;
+    const b = `${right.indexPath}\0${right.historyPath}`;
+
+    return a < b ? -1 : a > b ? 1 : 0;
+  });
+}
+
+function requireCatalogReferenceTarget(raw) {
+  if (typeof raw !== 'string') {
+    throw new CatalogError('invalid catalog reference target: ' + String(raw));
+  }
+  const fileTarget = raw.split('#')[0];
+  if (fileTarget === '' || fileTarget.startsWith('/') || fileTarget.includes('\\') || /^[A-Za-z]:/.test(fileTarget)) {
+    throw new CatalogError('invalid catalog reference target: ' + raw);
+  }
+  const parts = fileTarget.split('/');
+  if (parts.some((part) => part === '' || part === '.' || part === '..')) {
+    throw new CatalogError('invalid catalog reference target: ' + raw);
+  }
+  const normalized = fileTarget;
+  try {
+    normalizeCatalogItems([{ target: normalized, contents: '' }]);
+  } catch (error) {
+    if (error instanceof CatalogError) {
+      throw error;
+    }
+
+    throw new CatalogError('invalid catalog reference target: ' + raw);
+  }
+
+  return normalized;
+}
+
+function normalizeEvidencePath(raw, catalog) {
+  if (typeof raw !== 'string') return null;
+  const normalized = requireCatalogReferenceTarget(raw);
+
+  return catalog.has(normalized) ? normalized : null;
+}
+
+function normalizeSidecar(items, catalog, kind, offset = 0) {
+  return items.map((item, index) => sidecarItem(kind, offset + index, item.evidencePaths.map((target) => normalizeEvidencePath(target, catalog)).filter((target) => target !== null)));
+}
+
+// Pure controller adapter. It accepts the complete, root-relative markdown
+// catalog in place of CLI discovery and reads no filesystem state.
+function analyzeCatalog(items) {
+  const catalogItems = normalizeCatalogItems(items);
+  const catalog = new Map(catalogItems.map((item) => [item.target, item]));
+  const files = {};
+  for (const name of [...WORK_INDEX_NAMES, 'PATTERNS']) {
+    const item = catalog.get(`${name}.md`);
+    files[name] = item?.contents;
+  }
+  const result = analyze(files);
+  const scanned = scanCatalogBreakoutTargets(result.breakoutTargets, new Map(catalogItems.map((item) => [item.target, item.contents])));
+  const unlinkedNotices = scanUnlinkedCatalogItems(catalog, scanned.scannedTargets);
+  result.notices.push(...scanned.notices, ...unlinkedNotices);
+  result.structuralErrors.push(...scanned.structuralErrors);
+  const coreEvidence = result[ANALYSIS_EVIDENCE];
+  const evidence = {
+    structuralErrors: [
+      ...normalizeSidecar(coreEvidence.structuralErrors, catalog, 'structuralErrors'),
+      ...normalizeSidecar(scanned[ANALYSIS_EVIDENCE].structuralErrors.map((evidencePaths) => ({ evidencePaths })), catalog, 'structuralErrors', result.structuralErrors.length - scanned.structuralErrors.length),
+    ],
+    notices: [
+      ...normalizeSidecar(coreEvidence.notices, catalog, 'notices'),
+      ...normalizeSidecar(scanned[ANALYSIS_EVIDENCE].notices.map((evidencePaths) => ({ evidencePaths })), catalog, 'notices', result.notices.length - scanned.notices.length - unlinkedNotices.length),
+      ...normalizeSidecar([...unlinkedNotices[ANALYSIS_EVIDENCE]].map((evidencePaths) => ({ evidencePaths })), catalog, 'notices', result.notices.length - unlinkedNotices.length),
+    ],
+    legacyHistory: legacyHistoryFactsFromCatalog(catalog),
+  };
+  Object.defineProperty(result, 'evidence', { configurable: true, enumerable: true, value: evidence });
+  delete result.breakoutTargets;
+
+  return result;
 }
 
 function runCli(argRoot) {
@@ -1256,6 +1502,7 @@ module.exports = {
   collectEntryEdges,
   nodeKey,
   findCycles,
+  analyzeCatalog,
 };
 
 if (require.main === module) {

@@ -43,6 +43,11 @@ const HARD_BREAK = /(?: {2,}|\\)$/;
 // A **Label:** line starts a new block, so **Requires:** and **External:**
 // keep their own lines; the ready parser imports this as its label terminator.
 const LABEL_AT_START = /^\*\*[^*]+?:\*\*/;
+// The files and directories under .claude/ that hold backlog prose. Anything
+// else in a .claude/ tree (plans, host instruction files, commands, agents,
+// skills, rules) is out of scope.
+const BACKLOG_FILES = ['QUICK_WINS.md', 'FEATURES.md', 'BUGS.md', 'PATTERNS.md', 'QUICK_WINS_HISTORY.md', 'FEATURES_HISTORY.md', 'BUGS_HISTORY.md'];
+const BACKLOG_DIRECTORIES = ['features', 'bugs', 'patterns'];
 
 function splitLines(text) {
   const bom = text.startsWith(BOM) ? BOM : '';
@@ -210,11 +215,79 @@ function unwrapText(text) {
   return bom + output.map((line) => line.text + line.ending).join('');
 }
 
-// The files and directories under .claude/ that hold backlog prose. Anything
-// else in a .claude/ tree (plans, host instruction files, commands, agents,
-// skills, rules) is out of scope.
-const BACKLOG_FILES = ['QUICK_WINS.md', 'FEATURES.md', 'BUGS.md', 'PATTERNS.md', 'QUICK_WINS_HISTORY.md', 'FEATURES_HISTORY.md', 'BUGS_HISTORY.md'];
-const BACKLOG_DIRECTORIES = ['features', 'bugs', 'patterns'];
+class CatalogError extends TypeError {}
+
+function compareTargets(left, right) {
+  return left < right ? -1 : left > right ? 1 : 0;
+}
+
+function isPortableComponent(component) {
+  if (component.length === 0 || /[<>:"|?*]/.test(component) || /[. ]$/.test(component)) {
+    return false;
+  }
+  for (const character of component) {
+    if (character.charCodeAt(0) < 32) {
+      return false;
+    }
+  }
+
+  return !/^(?:con|prn|aux|nul|com[1-9]|lpt[1-9])$/i.test(component.split('.')[0]);
+}
+
+function isCatalogTarget(target) {
+  if (typeof target !== 'string' || target.length === 0 || target.startsWith('/') || target.includes('\\') || !target.toLowerCase().endsWith('.md')) {
+    return false;
+  }
+  const parts = target.split('/');
+  if (!parts.every(isPortableComponent)) {
+    return false;
+  }
+  if (parts.length === 1) {
+    return BACKLOG_FILES.includes(target);
+  }
+
+  return BACKLOG_DIRECTORIES.includes(parts[0]);
+}
+
+// Validates the controller-owned, root-relative markdown catalog. Catalog
+// records intentionally hold no filesystem identity, so every consumer can
+// analyze one stable snapshot without reaching back to disk.
+function normalizeCatalogItems(items) {
+  if (!Array.isArray(items)) {
+    throw new CatalogError('catalog items must be an array');
+  }
+  const targets = new Set();
+  const normalized = items.map((item) => {
+    if (item === null || typeof item !== 'object' || Array.isArray(item) || Object.keys(item).length !== 2 || !Object.hasOwn(item, 'target') || !Object.hasOwn(item, 'contents')) {
+      throw new CatalogError('catalog items must be exact { target, contents } records');
+    }
+    if (!isCatalogTarget(item.target)) {
+      throw new CatalogError(`invalid catalog target: ${String(item.target)}`);
+    }
+    if (typeof item.contents !== 'string') {
+      throw new CatalogError(`catalog contents must be a string for ${item.target}`);
+    }
+    if (targets.has(item.target)) {
+      throw new CatalogError(`duplicate catalog target: ${item.target}`);
+    }
+    targets.add(item.target);
+
+    return { target: item.target, contents: item.contents };
+  });
+
+  return normalized.sort((left, right) => compareTargets(left.target, right.target));
+}
+
+// Pure controller adapter: predict each catalog file's unwrap result without
+// discovery or any filesystem access. The sorted output is also a stable
+// catalog for a later ready analysis.
+function analyzeUnwrapCatalog(items) {
+  return normalizeCatalogItems(items).map(({ target, contents }) => ({
+    target,
+    wraps: detectHardWraps(contents),
+    contents: unwrapText(contents),
+  }));
+}
 
 function sortedEntries(directory) {
   return fs.readdirSync(directory, { withFileTypes: true }).sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
@@ -325,7 +398,7 @@ function runCli(argv) {
   process.exitCode = unreadable || (report.length > 0 && !write) ? 1 : 0;
 }
 
-module.exports = { LABEL_AT_START, canonicalPath, detectHardWraps, unwrapText, collectMarkdownFiles };
+module.exports = { LABEL_AT_START, CatalogError, canonicalPath, detectHardWraps, unwrapText, collectMarkdownFiles, normalizeCatalogItems, analyzeUnwrapCatalog };
 
 if (require.main === module) {
   runCli(process.argv.slice(2));
