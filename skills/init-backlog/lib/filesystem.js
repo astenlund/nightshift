@@ -102,6 +102,9 @@ function comparableMode(metadata, platform = process.platform) {
   if (platform === 'win32') {
     return null
   }
+  if (typeof metadata?.mode !== 'bigint') {
+    throw new Error('Filesystem mode is not BigInt')
+  }
   const masked = metadata.mode & 0o7777n
   if (masked < 0n || masked > 4095n) {
     throw new Error('Filesystem mode is out of range')
@@ -476,6 +479,145 @@ function stageBytes(path, bytes, options = {}) {
   }
 }
 
+function writeFlushedFile(path, bytes, options = {}) {
+  const value = Buffer.isBuffer(bytes) ? bytes : Buffer.from(bytes)
+  stageBytes(path, value, { ...options, onTransition: options.onTransition })
+
+  return readFileSync(path)
+}
+
+function readBackExact(path, expectedBytes, options = {}) {
+  const actual = (options.readFileSync ?? readFileSync)(path)
+  if (!actual.equals(expectedBytes)) {
+    throw new Error('Staged file readback differs')
+  }
+
+  return actual
+}
+
+function publishNoReplace(source, destination, options = {}) {
+  try {
+    (options.linkSync ?? linkSync)(source, destination)
+  } catch (error) {
+    if (error?.code === 'EEXIST') {
+      throw new Error('No-replace publication collided', { cause: error })
+    }
+    throw error
+  }
+  if (!(options.pathExists ?? pathExists)(destination)) {
+    throw new Error('No-replace publication is absent')
+  }
+  options.onPublished?.(destination)
+
+  return destination
+}
+
+function verifyPublishedIdentity(root, source, destination, expectedBytes, expectedIdentity, expectedMode) {
+  const sourceFile = stableOpenFile(root, source)
+  const destinationFile = stableOpenFile(root, destination)
+  const sourceLinks = lstatSync(source, { bigint: true }).nlink
+  const destinationLinks = lstatSync(destination, { bigint: true }).nlink
+  const platform = process.platform
+  const modeMatches = expectedMode === undefined || platform === 'win32' || sourceFile.mode === expectedMode && destinationFile.mode === expectedMode
+  if (sourceLinks !== 2n || destinationLinks !== 2n || expectedIdentity !== undefined && (sourceFile.identity !== expectedIdentity || destinationFile.identity !== expectedIdentity) || !sourceFile.bytes.equals(expectedBytes) || !destinationFile.bytes.equals(expectedBytes) || !modeMatches) {
+    throw new Error('Published identity differs from staged identity')
+  }
+
+  return destinationFile
+}
+
+function removeAndVerify(path, options = {}) {
+  const exists = options.pathExists ?? pathExists
+  if (!exists(path)) return true
+  const remove = options.unlinkSync ?? unlinkSync
+  remove(path)
+  if (exists(path)) {
+    throw new Error('Path remains after removal')
+  }
+
+  return true
+}
+
+function initialLockPaths(root, pid, ownerNonce) {
+  if (!Number.isSafeInteger(pid) || pid <= 0 || !/^[a-f0-9]{32}$/.test(ownerNonce)) throw new TypeError('Initial lock identity is invalid')
+  const stage = join(root, `.nightshift-init-backlog.lock.${pid}.${ownerNonce}.new`)
+
+  return { lock: join(root, '.nightshift-init-backlog.lock'), stage }
+}
+
+function createInitialLock(root, record, options = {}) {
+  const pid = options.pid ?? record.pid ?? process.pid
+  const ownerNonce = options.ownerNonce ?? record.ownerNonce ?? randomBytes(16).toString('hex')
+  if (record.pid !== pid || record.ownerNonce !== ownerNonce) throw new TypeError('Initial lock record identity differs from its stage')
+  const paths = initialLockPaths(root, pid, ownerNonce)
+  const bytes = Buffer.from(`${canonicalJson(record)}\n`, 'utf8')
+  const exists = options.pathExists ?? pathExists
+  let stagedIdentity
+  let stageWriteProgress = false
+  let stageWriteFinished = false
+  try {
+    stageBytes(paths.stage, bytes, {
+      ...options,
+      onTransition: (point) => {
+        if (point === 'after-owner-stage-create') stagedIdentity = stableOpenFile(root, paths.stage, { ...options, requireSingleLink: true }).identity
+        if (point === 'after-owner-stage-write') stageWriteFinished = true
+        options.onTransition?.(point)
+      },
+      writeSync: (...args) => {
+        const count = (options.writeSync ?? writeSync)(...args)
+        if (count > 0) stageWriteProgress = true
+
+        return count
+      },
+    })
+    readBackExact(paths.stage, bytes, options)
+    const preparedStage = stableOpenFile(root, paths.stage, { ...options, requireSingleLink: true })
+    const stageModeMatches = (options.platform ?? process.platform) === 'win32' || preparedStage.mode === 0o600
+    if (preparedStage.identity !== stagedIdentity || !preparedStage.bytes.equals(bytes) || !stageModeMatches) throw new Error('Initial lock stage changed before publication')
+    options.beforePublish?.()
+    publishNoReplace(paths.stage, paths.lock, { ...options, onPublished: undefined })
+    verifyPublishedIdentity(root, paths.stage, paths.lock, bytes, stagedIdentity, 0o600)
+    options.onPublished?.(paths.lock)
+    verifyPublishedIdentity(root, paths.stage, paths.lock, bytes, stagedIdentity, 0o600)
+    removeAndVerify(paths.stage, options)
+    const finalLock = stableOpenFile(root, paths.lock, { ...options, requireSingleLink: true })
+    const finalLockModeMatches = (options.platform ?? process.platform) === 'win32' || finalLock.mode === 0o600
+    if (finalLock.identity !== stagedIdentity || !finalLock.bytes.equals(bytes) || !finalLockModeMatches) throw new Error('Initial lock changed after stage removal')
+  } catch (error) {
+    if (exists(paths.stage) && stagedIdentity !== undefined && !(options.crashAfterOwnerPublish === true && exists(paths.lock)) && !(options.crashBeforeOwnerPublish === true && !exists(paths.lock))) {
+      try {
+        let currentStage
+        try {
+          currentStage = stableOpenFile(root, paths.stage, { ...options, requireSingleLink: true })
+        } catch (error) {
+          if (!stageWriteFinished || !exists(paths.lock)) throw error
+          currentStage = stableOpenFile(root, paths.stage, { ...options, requireSingleLink: false })
+          const currentLock = stableOpenFile(root, paths.lock, { ...options, requireSingleLink: false })
+          const stageLinks = (options.lstatSync ?? lstatSync)(paths.stage, { bigint: true }).nlink
+          const lockLinks = (options.lstatSync ?? lstatSync)(paths.lock, { bigint: true }).nlink
+          if (stageLinks !== 2n || lockLinks !== 2n || currentStage.identity !== stagedIdentity || currentLock.identity !== stagedIdentity || !currentLock.bytes.equals(bytes)) throw error
+        }
+        const modeMatches = (options.platform ?? process.platform) === 'win32' || currentStage.mode === 0o600
+        const expectedBytes = stageWriteFinished || stageWriteProgress ? bytes : Buffer.alloc(0)
+        if (currentStage.identity === stagedIdentity && currentStage.bytes.equals(expectedBytes) && modeMatches) removeAndVerify(paths.stage, options)
+      } catch {
+        /* Preserve the original failure and retain any stage whose ownership changed. */
+      }
+    }
+    throw error
+  }
+
+  return { bytes, ownerNonce, paths, pid }
+}
+
+function removeInitialLock(root, paths, expectedBytes, options = {}) {
+  const open = options.stableOpenFile ?? stableOpenFile
+  const opened = open(root, paths.lock)
+  if (expectedBytes !== undefined && !opened.bytes.equals(expectedBytes)) throw new Error('Initial lock changed before removal')
+  const remove = options.removeAndVerify ?? removeAndVerify
+  remove(paths.lock, options)
+}
+
 function publishOwnerStage(root, paths, expectedBytes, options = {}) {
   linkSync(paths.ownerStage, paths.owner)
   const stage = stableOpenFile(root, paths.ownerStage)
@@ -843,14 +985,22 @@ module.exports = {
   decodeDirectoryName,
   enumerateDirectory,
   inspectRequestResidue,
+  createInitialLock,
+  initialLockPaths,
   pathIsContained,
   probeWindowsAttributes,
+  publishNoReplace,
+  readBackExact,
+  removeAndVerify,
+  removeInitialLock,
   reserveRequest,
   resolveTrustedExecutable,
   runBoundedReadOnlyHelper,
   stableMetadata,
   stableOpenFile,
   trustedWindowsPowerShellPath,
+  verifyPublishedIdentity,
+  writeFlushedFile,
 }
 
 module.exports.readStableFile = stableOpenFile
@@ -858,3 +1008,8 @@ module.exports.readDirectoryEntries = enumerateDirectory
 module.exports.resolveTrustedGit = resolveTrustedExecutable
 module.exports.runBoundedHelper = runBoundedReadOnlyHelper
 module.exports.probeAttributes = probeWindowsAttributes
+module.exports.stageFile = stageBytes
+module.exports.flushReadBack = writeFlushedFile
+module.exports.publishExclusive = publishNoReplace
+module.exports.verifyFinalIdentity = verifyPublishedIdentity
+module.exports.removeVerified = removeAndVerify

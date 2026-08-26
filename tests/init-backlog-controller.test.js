@@ -10,6 +10,7 @@ const { SOURCE_COMMIT, SOURCE_PATHS } = require('./init-backlog-controller/basel
 const { runAssetCases } = require('./init-backlog-controller/assets.cases')
 const { runAdapterCases } = require('./init-backlog-controller/adapters.cases')
 const { runDiscoveryCases } = require('./init-backlog-controller/discovery.cases')
+const { runInspectionCases } = require('./init-backlog-controller/inspection.cases')
 const { runProtocolCases } = require('./init-backlog-controller/protocol.cases')
 const { canonicalJson, fixtureRoot, git, loadPromptBaseline, sha256, sourceClosure } = require('./init-backlog-controller/helpers')
 const { assembleClaudePromptBaseline, assembleCodexPromptBaseline, loadPromptBaseline: loadHostPromptBaseline, stageCandidate } = require('./host-discovery-smoke-lib')
@@ -104,3 +105,4 @@ test('normalized scaffold assets preserve the prompt-owned template contract', (
 runAdapterCases(REPOSITORY_ROOT)
 runProtocolCases(REPOSITORY_ROOT)
 runDiscoveryCases(REPOSITORY_ROOT)
+runInspectionCases(REPOSITORY_ROOT)

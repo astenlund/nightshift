@@ -20,6 +20,14 @@ const ACTION_ID_PATTERN = /^[a-z][a-z0-9-]{0,63}$/
 const DIGEST_PATTERN = /^[a-f0-9]{64}$/
 const NONCE_PATTERN = /^[a-f0-9]{32}$/
 const SYSTEM_CODE_PATTERN = /^[A-Za-z0-9_.-]{1,128}$/
+const RECOVERY_KINDS = ['abandoned-backup', 'election-marker', 'orphan-lock-stage', 'stale-owner', 'stale-recovery-gate']
+const RECOVERY_DISPOSITION_ORDER = ['cleanup', 'deferred', 'track', 'ignore', 'abandon', 'restore', 'accept', 'remove']
+const RECOVERY_LOCK_BASENAME = '.nightshift-init-backlog.lock'
+const RECOVERY_GATE_BASENAME = '.nightshift-init-backlog.recovery-gate'
+const RECOVERY_MARKER_BASENAME = '.nightshift-init-backlog-election'
+const BACKUP_PATTERN = /^\.tmp\/nightshift-init-backlog-unwrap-([a-f0-9]{64})-([a-f0-9]{64})-([a-f0-9]{64})\.bak$/
+const BACKUP_STAGE_PATTERN = /^\.tmp\/.nightshift-init-backlog-unwrap-([a-f0-9]{64})-([a-f0-9]{64})-([a-f0-9]{64})\.tmp$/
+const RECOVERY_LOCK_STAGE_PATTERN = /^\.nightshift-init-backlog\.lock\.[1-9][0-9]*\.[a-f0-9]{32}\.new$/
 
 const OPERATIONS = ['apply', 'inspect', 'recover-apply', 'recover-inspect']
 const PHASES = ['decode', 'resolve', 'inspect', 'lock', 'prevalidate', 'publish', 'verify', 'restore', 'cleanup']
@@ -225,6 +233,25 @@ function requireArray(value, label, itemValidator, options = {}) {
   }
 
   return value
+}
+
+function recoveryTargetMatches(kind, target) {
+  if (kind === 'stale-owner') return target === RECOVERY_LOCK_BASENAME
+  if (kind === 'stale-recovery-gate') return target === RECOVERY_GATE_BASENAME
+  if (kind === 'election-marker') return target === RECOVERY_MARKER_BASENAME
+  if (kind === 'orphan-lock-stage') return RECOVERY_LOCK_STAGE_PATTERN.test(target)
+  if (kind === 'abandoned-backup') return BACKUP_PATTERN.test(target)
+
+  return false
+}
+
+function recoveryAllowedDispositions(kind, evidence) {
+  if (kind === 'stale-owner' || kind === 'stale-recovery-gate') return ['cleanup']
+  if (kind === 'orphan-lock-stage') return ['remove']
+  if (kind === 'election-marker') return evidence.marker.classification === 'invalid' && evidence.marker.gitKind === 'git' ? ['deferred', 'track', 'ignore', 'abandon'] : ['abandon']
+  if (kind === 'abandoned-backup') return evidence.backup.classification === 'divergent' ? ['restore', 'accept'] : ['remove']
+
+  throw new TypeError('Recovery evidence kind is invalid')
 }
 
 function assertSafeWindowsScalar(value, platform = process.platform) {
@@ -1088,6 +1115,8 @@ function selectFailure(candidates) {
 
 module.exports = {
   ACTION_ID_PATTERN,
+  BACKUP_PATTERN,
+  BACKUP_STAGE_PATTERN,
   DIGEST_PATTERN,
   FAILURE_CODES,
   LOGICAL_ID_PATTERN,

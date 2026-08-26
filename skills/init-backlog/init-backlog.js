@@ -11,6 +11,7 @@ const {
   reserveRequest,
 } = require('./lib/filesystem')
 const { discoverControlledMarkdown, resolveGuidance } = require('./lib/guidance')
+const { inspect } = require('./lib/inspection')
 
 const INVALID_INVOCATION_LINE = Buffer.from('nightshift-init-backlog: invalid request transport invocation\n', 'ascii')
 const TRANSPORT_RESIDUE_LINE = Buffer.from('nightshift-init-backlog: request transport residue\n', 'ascii')
@@ -119,7 +120,7 @@ function runCli(options = {}) {
         payloadRawSha256: argv[5] === 'null' ? null : argv[5],
       }, options.filesystemOptions)
     } else {
-      const dispatch = options.dispatch ?? ((bytes) => runPrivateDispatcher(bytes, options.handlers))
+      const dispatch = options.dispatch ?? ((bytes) => runPrivateDispatcher(bytes, { inspect, ...(options.handlers ?? {}) }))
       const dispatched = consumeRequest(argv[1], argv[2], dispatch, options.filesystemOptions)
       stdout.write(dispatched.stdout)
       if (dispatched.stderr.length !== 0) {
@@ -156,4 +157,4 @@ if (require.main === module) {
   main()
 }
 
-module.exports = { discoverControlledMarkdown, main, resolveGuidance, runCli, runPrivateDispatcher }
+module.exports = { discoverControlledMarkdown, inspect, main, resolveGuidance, runCli, runPrivateDispatcher }
