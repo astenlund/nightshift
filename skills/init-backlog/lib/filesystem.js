@@ -21,6 +21,8 @@ const {
   unlinkSync,
   writeSync,
 } = require('node:fs')
+const { spawnSync } = require('node:child_process')
+const { TextDecoder } = require('node:util')
 const { isAbsolute, join, relative, sep } = require('node:path')
 
 const { InitBacklogError } = require('./errors')
@@ -96,8 +98,8 @@ function comparableIdentity(metadata) {
   return `${metadata.dev.toString()}:${metadata.ino.toString()}`
 }
 
-function comparableMode(metadata) {
-  if (process.platform === 'win32') {
+function comparableMode(metadata, platform = process.platform) {
+  if (platform === 'win32') {
     return null
   }
   const masked = metadata.mode & 0o7777n
@@ -110,6 +112,7 @@ function comparableMode(metadata) {
 
 function stableOpenFile(root, target, options = {}) {
   const canonical = canonicalRoot(root)
+  const platform = options.platform ?? process.platform
   assertSafeWindowsScalar(target)
   if (typeof target !== 'string' || !isAbsolute(target) || !contained(canonical, target)) {
     throw new Error('Stable-open target escapes its root')
@@ -122,7 +125,7 @@ function stableOpenFile(root, target, options = {}) {
   if (!contained(canonical, beforeReal) || beforeReal !== target) {
     throw new Error('Stable-open target is not canonically confined')
   }
-  const flags = process.platform === 'win32' ? constants.O_RDONLY : constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0)
+  const flags = platform === 'win32' ? constants.O_RDONLY : constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0)
   const descriptor = openSync(target, flags)
   try {
     const openedBefore = fstatSync(descriptor, { bigint: true })
@@ -157,12 +160,249 @@ function stableOpenFile(root, target, options = {}) {
     return {
       bytes,
       identity: comparableIdentity(before),
-      mode: comparableMode(before),
+      mode: comparableMode(before, platform),
       rawSha256: sha256(bytes),
     }
   } finally {
     closeSync(descriptor)
   }
+}
+
+function decodeDirectoryName(name, platform = process.platform) {
+  if (platform === 'win32') {
+    assertSafeWindowsScalar(name, platform)
+
+    return name
+  }
+  if (!Buffer.isBuffer(name)) {
+    throw new TypeError('Directory names must be returned as bytes')
+  }
+  let decoded
+  try {
+    decoded = new TextDecoder('utf-8', { fatal: true }).decode(name)
+  } catch (error) {
+    const invalidName = new TypeError('Directory name is not valid UTF-8', { cause: error })
+    invalidName.code = 'invalid-directory-name'
+    throw invalidName
+  }
+  if (!Buffer.from(decoded, 'utf8').equals(name)) {
+    const invalidName = new TypeError('Directory name does not round-trip as UTF-8')
+    invalidName.code = 'invalid-directory-name'
+    throw invalidName
+  }
+
+  return decoded
+}
+
+function enumerateDirectory(directory, options = {}) {
+  const platform = options.platform ?? process.platform
+  const readDirectory = options.readdirSync ?? options.readdir ?? readdirSync
+  if (platform === 'win32' && typeof options.attributeProbe !== 'function') {
+    throw new Error('Windows directory enumeration requires an attribute probe')
+  }
+  const names = readDirectory(directory, platform === 'win32' ? { encoding: 'utf8' } : { encoding: 'buffer' })
+  const entries = names.map((rawName) => {
+    const name = decodeDirectoryName(rawName, platform)
+    assertSafeWindowsScalar(name, platform)
+    const target = join(directory, name)
+    const metadata = lstatSync(target, { bigint: true })
+    if (metadata.isSymbolicLink() || (!metadata.isFile() && !metadata.isDirectory())) {
+      throw new Error('Directory contains a link or special object')
+    }
+
+    return { metadata, name, path: target }
+  })
+
+  entries.sort((left, right) => {
+    if (platform !== 'win32' && Buffer.isBuffer(names[0])) {
+      return Buffer.from(left.name, 'utf8').compare(Buffer.from(right.name, 'utf8'))
+    }
+
+    return compareOrdinal(left.name, right.name)
+  })
+  if (platform === 'win32') {
+    const paths = entries.map((entry) => entry.path)
+    const before = options.attributeProbe(paths)
+    validateAttributeProbe(before, paths)
+    const after = options.attributeProbe(paths)
+    validateAttributeProbe(after, paths)
+    if (before.systemDirectory.toLowerCase() !== after.systemDirectory.toLowerCase() || before.items.some((item, index) => item.attributes !== after.items[index].attributes || item.path !== after.items[index].path || item.reparsePoint !== after.items[index].reparsePoint)) {
+      throw new Error('Windows directory attributes changed during enumeration')
+    }
+  }
+
+  return entries
+}
+
+function pathIsContained(root, target, pathModule = require('node:path')) {
+  const relation = pathModule.relative(root, target)
+
+  return relation !== '' && relation !== '..' && !relation.startsWith(`..${pathModule.sep}`) && !pathModule.isAbsolute(relation)
+}
+
+function compareOrdinal(left, right) {
+  const leftPoints = Array.from(left, (character) => character.codePointAt(0))
+  const rightPoints = Array.from(right, (character) => character.codePointAt(0))
+  const length = Math.min(leftPoints.length, rightPoints.length)
+  for (let index = 0; index < length; index += 1) {
+    if (leftPoints[index] !== rightPoints[index]) {
+      return leftPoints[index] < rightPoints[index] ? -1 : 1
+    }
+  }
+
+  return leftPoints.length - rightPoints.length
+}
+
+function canonicalAbsolutePath(path, platform) {
+  const pathModule = platform === 'win32' ? require('node:path').win32 : require('node:path')
+  assertSafeWindowsScalar(path, platform)
+  return typeof path === 'string' && pathModule.isAbsolute(path) && pathModule.normalize(path) === path
+}
+
+function validateAttributeProbe(response, paths) {
+  if (response === null || typeof response !== 'object') {
+    throw new Error('Windows attribute helper response is invalid')
+  }
+  const responseKeys = Object.keys(response).sort(compareOrdinal)
+  const successKeys = ['items', 'ok', 'systemDirectory'].sort(compareOrdinal)
+  if (response.ok !== true && response.ok !== false) {
+    throw new Error('Windows attribute helper response is invalid')
+  }
+  if (response.ok === false) {
+    if (responseKeys.join('\0') !== ['code', 'index', 'ok'].sort(compareOrdinal).join('\0') || response.code !== 'attribute-read-failed' || !Number.isSafeInteger(response.index) || response.index < 0 || response.index >= paths.length) {
+      throw new Error('Windows attribute helper failure is invalid')
+    }
+    throw new Error('Windows attribute helper reported a read failure')
+  }
+  if (responseKeys.join('\0') !== successKeys.join('\0') || !Array.isArray(response.items) || response.items.length !== paths.length || !canonicalAbsolutePath(response.systemDirectory, 'win32')) {
+    throw new Error('Windows attribute helper response is invalid')
+  }
+  response.items.forEach((item, index) => {
+    if (item === null || typeof item !== 'object' || Object.keys(item).sort(compareOrdinal).join('\0') !== ['attributes', 'path', 'reparsePoint'].sort(compareOrdinal).join('\0') || item.path !== paths[index] || !Number.isSafeInteger(item.attributes) || item.attributes < 0 || item.reparsePoint !== ((item.attributes & 0x400) === 0x400)) {
+      throw new Error('Windows attribute helper item is invalid')
+    }
+    if (item.reparsePoint) {
+      throw new Error('Windows reparse point is not allowed')
+    }
+  })
+
+  return response
+}
+
+function stableMetadata(path, options = {}) {
+  const metadata = lstatSync(path, { bigint: true })
+  if (metadata.isSymbolicLink() || (!metadata.isFile() && !metadata.isDirectory())) {
+    throw new Error('Path is not an ordinary filesystem object')
+  }
+  const resolved = realpathSync.native(path)
+  if (resolved !== path || (options.root !== undefined && !pathIsContained(options.root, resolved))) {
+    throw new Error('Path is not canonically confined')
+  }
+
+  return { metadata, resolved }
+}
+
+function resolveTrustedExecutable(options = {}) {
+  const platform = options.platform ?? process.platform
+  const pathModule = platform === 'win32' ? require('node:path').win32 : require('node:path')
+  const pathValue = options.pathValue ?? options.path ?? process.env.PATH ?? ''
+  const basename = options.basename ?? (platform === 'win32' ? 'git.exe' : 'git')
+  const roots = [options.root, ...(options.protectedRoots ?? [])].filter((value) => typeof value === 'string' && value.length > 0).map((value) => pathModule.resolve(value))
+  const entries = Array.isArray(pathValue) ? pathValue : pathValue.split(pathModule.delimiter)
+  for (const entry of entries) {
+    if (entry.length === 0 || !pathModule.isAbsolute(entry)) {
+      continue
+    }
+    let directory
+    try {
+      directory = realpathSync.native(entry)
+      const candidate = pathModule.join(directory, basename)
+      if (roots.some((root) => pathIsContained(root, candidate, pathModule) || root === candidate)) {
+        continue
+      }
+      const first = stableMetadata(candidate)
+      const second = stableMetadata(candidate)
+      if (!first.metadata.isFile() || !second.metadata.isFile() || first.resolved !== second.resolved || comparableIdentity(first.metadata) !== comparableIdentity(second.metadata)) {
+        continue
+      }
+      if (platform !== 'win32' && (first.metadata.mode & 0o111n) === 0n) {
+        continue
+      }
+
+      return first.resolved
+    } catch {
+      // Unusable PATH entries are ignored; the resolver fails below if none qualify.
+    }
+  }
+
+  throw new Error('No trusted executable was found')
+}
+
+function trustedWindowsPowerShellPath(options = {}) {
+  const platform = options.platform ?? process.platform
+  const pathModule = require('node:path').win32
+  const systemRoot = options.systemRoot ?? process.env.SystemRoot
+  if (platform !== 'win32' || typeof systemRoot !== 'string' || systemRoot.length === 0 || !pathModule.isAbsolute(systemRoot)) {
+    throw new Error('SystemRoot is invalid')
+  }
+  const root = realpathSync.native(systemRoot)
+  const candidate = pathModule.join(root, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe')
+  const roots = [options.root, ...(options.protectedRoots ?? [])].filter((value) => typeof value === 'string' && value.length > 0).map((value) => pathModule.resolve(value))
+  if (roots.some((protectedRoot) => pathIsContained(protectedRoot, candidate, pathModule) || protectedRoot === candidate)) {
+    throw new Error('Trusted Windows PowerShell path differs')
+  }
+  const first = stableMetadata(candidate)
+  const second = stableMetadata(candidate)
+  if (first.resolved !== candidate || second.resolved !== candidate || comparableIdentity(first.metadata) !== comparableIdentity(second.metadata) || !first.metadata.isFile() || !second.metadata.isFile()) {
+    throw new Error('Trusted Windows PowerShell path is not stable')
+  }
+
+  return candidate
+}
+
+function runBoundedReadOnlyHelper(executable, args, input, options = {}) {
+  const spawn = options.spawnSync ?? spawnSync
+  const result = spawn(executable, args, {
+    input: Buffer.isBuffer(input) ? input : Buffer.from(input ?? '', 'utf8'),
+    killSignal: 'SIGKILL',
+    maxBuffer: options.maxBuffer ?? 1048577,
+    shell: false,
+    stdio: ['pipe', 'pipe', 'pipe'],
+    timeout: options.timeout ?? 30000,
+    windowsHide: true,
+  })
+  if (result.error || result.signal !== null || result.status !== 0 || !Buffer.isBuffer(result.stdout) || !Buffer.isBuffer(result.stderr) || result.stderr.length > (options.maxStderr ?? 65536)) {
+    throw new Error('Bounded helper failed')
+  }
+
+  return { stderr: result.stderr, stdout: result.stdout }
+}
+
+function probeWindowsAttributes(paths, options = {}) {
+  const platform = options.platform ?? process.platform
+  if (!Array.isArray(paths) || paths.some((path) => !canonicalAbsolutePath(path, platform)) || paths.some((path, index) => index > 0 && compareOrdinal(paths[index - 1], path) >= 0)) {
+    throw new Error('Windows attribute paths are invalid')
+  }
+  const request = { operation: 'attributes', paths: paths.slice() }
+  let response
+  if (typeof options.runHelper === 'function') {
+    response = options.runHelper(request)
+  } else {
+    const executable = options.trustedWindowsPowerShellPath ?? trustedWindowsPowerShellPath(options)
+    const helperPath = options.helperPath ?? join(__dirname, '..', 'windows-attributes.ps1')
+    const details = runBoundedReadOnlyHelper(executable, ['-NoLogo', '-NoProfile', '-NonInteractive', '-File', helperPath], Buffer.from(canonicalJson(request) + '\n', 'utf8'), options)
+    if (!details.stdout.equals(Buffer.from(details.stdout.toString('utf8'), 'utf8')) || !details.stdout.toString('utf8').endsWith('\n') || details.stdout.toString('utf8').slice(0, -1).includes('\n')) {
+      throw new Error('Windows helper output is not UTF-8')
+    }
+    const outputText = details.stdout.toString('utf8').slice(0, -1)
+    response = JSON.parse(outputText)
+    if (canonicalJson(response) !== outputText) {
+      throw new Error('Windows helper output is not canonical')
+    }
+  }
+  validateAttributeProbe(response, paths)
+
+  return response
 }
 
 function requestPaths(root) {
@@ -598,8 +838,23 @@ module.exports = {
   canonicalRoot,
   classifyPid,
   cleanRequestResidue,
+  compareOrdinal,
   consumeRequest,
+  decodeDirectoryName,
+  enumerateDirectory,
   inspectRequestResidue,
+  pathIsContained,
+  probeWindowsAttributes,
   reserveRequest,
+  resolveTrustedExecutable,
+  runBoundedReadOnlyHelper,
+  stableMetadata,
   stableOpenFile,
+  trustedWindowsPowerShellPath,
 }
+
+module.exports.readStableFile = stableOpenFile
+module.exports.readDirectoryEntries = enumerateDirectory
+module.exports.resolveTrustedGit = resolveTrustedExecutable
+module.exports.runBoundedHelper = runBoundedReadOnlyHelper
+module.exports.probeAttributes = probeWindowsAttributes

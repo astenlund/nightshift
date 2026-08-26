@@ -10,6 +10,7 @@ const {
   inspectRequestResidue,
   reserveRequest,
 } = require('./lib/filesystem')
+const { discoverControlledMarkdown, resolveGuidance } = require('./lib/guidance')
 
 const INVALID_INVOCATION_LINE = Buffer.from('nightshift-init-backlog: invalid request transport invocation\n', 'ascii')
 const TRANSPORT_RESIDUE_LINE = Buffer.from('nightshift-init-backlog: request transport residue\n', 'ascii')
@@ -155,4 +156,4 @@ if (require.main === module) {
   main()
 }
 
-module.exports = { main, runCli, runPrivateDispatcher }
+module.exports = { discoverControlledMarkdown, main, resolveGuidance, runCli, runPrivateDispatcher }
