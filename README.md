@@ -128,6 +128,7 @@ node internal/revise/rigor.test.js
 node internal/revise/orchestration.test.js
 node --test tests/universal-skill-topology.test.js
 node tests/host-discovery-smoke.test.js
+node tests/init-backlog-controller.test.js
 node tests/release-surface.test.js
 ```
 

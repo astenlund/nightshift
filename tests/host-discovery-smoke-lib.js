@@ -3,7 +3,7 @@
 const { createHash } = require('node:crypto')
 const { copyFileSync, cpSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } = require('node:fs')
 const { tmpdir } = require('node:os')
-const { isAbsolute, join, relative } = require('node:path')
+const { dirname, isAbsolute, join, relative } = require('node:path')
 const { execFileSync, spawn } = require('node:child_process')
 const { PUBLIC_SKILLS } = require('./entry-contract')
 
@@ -161,6 +161,43 @@ function loadLegacyBaseline(candidateRoot) {
   }).sort(compareOrdinal)
 
   return { root, version: manifest.version, commandNames, skillNames }
+}
+
+function loadPromptBaseline(candidateRoot) {
+  const root = join(candidateRoot, 'tests', 'fixtures', 'init-backlog-prompt-baseline')
+  const manifestPath = join(root, 'manifest.json')
+  const manifestMetadata = lstatSync(manifestPath)
+  assertion(manifestMetadata.isSymbolicLink() === false && manifestMetadata.isFile(), 'Prompt baseline manifest is not a regular file')
+  assertion(isContained(realpathSync(candidateRoot), realpathSync(manifestPath)), 'Prompt baseline manifest escapes the copied candidate root')
+  const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'))
+  assertion(manifest && manifest.schemaVersion === 1 && typeof manifest.sourceCommit === 'string' && Array.isArray(manifest.files), 'Prompt baseline manifest is invalid')
+
+  return { manifest, root }
+}
+
+function assemblePromptBaseline({ candidateRoot, destinationRoot }) {
+  const baseline = loadPromptBaseline(candidateRoot)
+  const fixtureRoot = realpathSync(baseline.root)
+  const installedRoot = join(destinationRoot, 'plugin')
+  for (const entry of baseline.manifest.files) {
+    assertion(entry && typeof entry.path === 'string' && /^[a-zA-Z0-9._/-]+$/.test(entry.path) && !entry.path.split('/').includes('..'), 'Prompt baseline file entry is invalid')
+    const source = join(fixtureRoot, ...entry.path.split('/'))
+    const target = join(installedRoot, ...entry.path.split('/'))
+    const metadata = lstatSync(source)
+    assertion(metadata.isSymbolicLink() === false && metadata.isFile() && isContained(fixtureRoot, realpathSync(source)), 'Prompt baseline source file is invalid')
+    mkdirSync(dirname(target), { recursive: true })
+    copyFileSync(source, target)
+  }
+
+  return { fixtureRoot, installedRoot: realpathSync(installedRoot) }
+}
+
+function assembleClaudePromptBaseline(options) {
+  return assemblePromptBaseline(options)
+}
+
+function assembleCodexPromptBaseline(options) {
+  return assemblePromptBaseline(options)
 }
 
 function createMarketplace({ marketplaceRoot, snapshotRoot }) {
@@ -681,4 +718,4 @@ async function runCell({ host, mode, checkoutRoot, evidenceRoot }) {
   return row
 }
 
-module.exports = { CODEX_CATALOG_PROMPT, PUBLIC_SKILLS, RUNTIME_KEYS, assertClaudeInventory, assertEngineClosure, buildCodexArgv, classifyChildExit, createCellSequence, createMarketplace, evaluateEvidence, executeCellSequence, loadCandidateEngineResources, loadLegacyBaseline, parseClaudeAuthStatus, parseClaudeDetails, parseCodexAuthStatus, projectRuntimeEnvironment, resolveExternalClaudeConfigRoot, runCell, stageCandidate, validateEvidenceRow }
+module.exports = { CODEX_CATALOG_PROMPT, PUBLIC_SKILLS, RUNTIME_KEYS, assembleClaudePromptBaseline, assembleCodexPromptBaseline, assertClaudeInventory, assertEngineClosure, buildCodexArgv, classifyChildExit, createCellSequence, createMarketplace, evaluateEvidence, executeCellSequence, loadCandidateEngineResources, loadLegacyBaseline, loadPromptBaseline, parseClaudeAuthStatus, parseClaudeDetails, parseCodexAuthStatus, projectRuntimeEnvironment, resolveExternalClaudeConfigRoot, runCell, stageCandidate, validateEvidenceRow }

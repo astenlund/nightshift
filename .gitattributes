@@ -3,3 +3,5 @@
 # checkout everywhere (overriding a system-level core.autocrlf=true on Windows) so
 # the installed plugin copy is never CRLF and Workflow(scriptPath=...) stays usable.
 *.workflow.js text eol=lf
+tests/fixtures/init-backlog-prompt-baseline/** -text
+tests/fixtures/init-backlog-prompt-baseline/** !eol

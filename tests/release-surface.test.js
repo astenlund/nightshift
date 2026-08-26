@@ -38,6 +38,7 @@ const CI_SUITE_COMMANDS = Object.freeze([
   'node internal/revise/orchestration.test.js',
   'node --test tests/universal-skill-topology.test.js',
   'node tests/host-discovery-smoke.test.js',
+  'node tests/init-backlog-controller.test.js',
   'node tests/release-surface.test.js',
 ])
 
@@ -46,6 +47,7 @@ const CI_SUITE_COMMANDS = Object.freeze([
 // actually caused confusion.
 const DOCUMENTED_SUITE_COMMANDS = Object.freeze([
   'node tests/host-discovery-smoke.test.js',
+  'node tests/init-backlog-controller.test.js',
   'node skills/spec-agreement/spec-agreement.test.js',
   'node tests/release-surface.test.js',
 ])
