@@ -1,0 +1,10 @@
+.claude/QUICK_WINS.md
+.claude/FEATURES.md
+.claude/BUGS.md
+.claude/PATTERNS.md
+.claude/QUICK_WINS_HISTORY.md
+.claude/FEATURES_HISTORY.md
+.claude/BUGS_HISTORY.md
+.claude/features/
+.claude/bugs/
+.claude/patterns/
