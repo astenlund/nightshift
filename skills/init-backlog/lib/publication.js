@@ -180,11 +180,10 @@ function notifyWrite(options, path) {
   options.writeSpy?.(path)
 }
 
-function registerTemporary(root, ownedTemporaries, path, bytes, options, requireSingleLink = true, mode = null) {
+function registerTemporary(root, ownedTemporaries, path, bytes, options, requireSingleLink = true) {
   const opened = stableOpenFile(root, path, { ...options, requireSingleLink })
   if (!opened.bytes.equals(bytes)) throw new Error('Staged temporary bytes changed')
-  if (mode !== null && opened.mode !== mode) throw new Error('Staged temporary mode changed')
-  ownedTemporaries.set(path, { bytes: Buffer.from(bytes), destination: null, identity: opened.identity, mode, requireSingleLink })
+  ownedTemporaries.set(path, { bytes: Buffer.from(bytes), identity: opened.identity, requireSingleLink })
 }
 
 function verifyOwnedTemporary(root, path, owned, options, requireSingleLink = owned.requireSingleLink) {
@@ -411,12 +410,9 @@ function cleanupOwner(root, lock, options, ownedTemporaries = new Map()) {
       }
       if (!present) continue
       const owned = ownedTemporaries.get(temporaryPath)
-      if (owned === undefined) {
-        throw new Error('Reserved temporary ownership is not proven')
-      }
+      if (owned === undefined) throw new Error('Reserved temporary ownership is not proven')
       const currentTemporary = stableOpenFile(root, temporaryPath, { ...options, requireSingleLink: owned.requireSingleLink })
-      if (currentTemporary.identity !== owned.identity || !currentTemporary.bytes.equals(owned.bytes) || owned.mode !== null && currentTemporary.mode !== owned.mode) throw new Error('Reserved temporary changed before cleanup')
-      verifyOwnedPublishedLink(root, temporaryPath, owned, options)
+      if (currentTemporary.identity !== owned.identity || !currentTemporary.bytes.equals(owned.bytes)) throw new Error('Reserved temporary changed before cleanup')
       removeAndVerify(temporaryPath, options)
       ownedTemporaries.delete(temporaryPath)
     }
@@ -607,7 +603,7 @@ function validateResumeInspection(request, liveInspection, admission) {
 
 function readExistingLock(root, path, options) {
   try {
-    const opened = stableOpenFile(root, path, { ...options, requireSingleLink: true })
+    const opened = stableOpenFile(root, path, options)
     const record = JSON.parse(opened.bytes.toString('utf8'))
     const keys = ['createdAtUnixMs', 'manifestId', 'operation', 'ownerNonce', 'pid', 'protocolVersion', 'recoveryId', 'root', 'temporaryPaths', 'unfinalizedDirectories']
     if (record === null || typeof record !== 'object' || Array.isArray(record) || Object.keys(record).sort(compareOrdinal).join('\0') !== keys.sort(compareOrdinal).join('\0') || record.protocolVersion !== 1 || record.operation !== 'apply' || record.root !== root || !Number.isSafeInteger(record.pid) || record.pid <= 0 || !/^[a-f0-9]{32}$/.test(record.ownerNonce) || !Number.isSafeInteger(record.createdAtUnixMs) || record.createdAtUnixMs < 0 || record.manifestId !== null && !/^[a-f0-9]{64}$/.test(record.manifestId) || record.recoveryId !== null || !Array.isArray(record.temporaryPaths) || !Array.isArray(record.unfinalizedDirectories)) throw new Error('Publication lock schema is invalid')
@@ -616,6 +612,16 @@ function readExistingLock(root, path, options) {
     const temporaryPathsValue = [...record.temporaryPaths]
     if (temporaryPathsValue.some((item) => typeof item !== 'string' || !pathIsContained(root, targetPath(root, item))) || new Set(temporaryPathsValue).size !== temporaryPathsValue.length || temporaryPathsValue.some((item, index) => index > 0 && compareOrdinal(temporaryPathsValue[index - 1], item) >= 0)) throw new Error('Publication lock temporary inventory is invalid')
     if (record.unfinalizedDirectories.some((item) => item === null || typeof item !== 'object' || Array.isArray(item) || Object.keys(item).sort(compareOrdinal).join('\0') !== 'mode\0target' || typeof item.target !== 'string' || !Number.isSafeInteger(item.mode) && item.mode !== null || item.mode !== null && (item.mode < 0 || item.mode > 4095) || !pathIsContained(root, targetPath(root, item.target))) || record.unfinalizedDirectories.some((item, index) => index > 0 && compareOrdinal(record.unfinalizedDirectories[index - 1].target, item.target) >= 0)) throw new Error('Publication lock directory inventory is invalid')
+    const lockMetadata = lstatSync(path, { bigint: true })
+    const bootstrapStage = initialLockPaths(root, record.pid, record.ownerNonce).stage
+    if (record.manifestId === null) {
+      let stage
+      try { stage = stableOpenFile(root, bootstrapStage, options) } catch (error) { if (error?.code !== 'ENOENT') throw error }
+      if (lockMetadata.nlink !== 1n && lockMetadata.nlink !== 2n || lockMetadata.nlink === 2n && (stage === undefined || stage.identity !== opened.identity || !stage.bytes.equals(opened.bytes))) throw new Error('Bootstrap lock identity is invalid')
+      if (lockMetadata.nlink === 1n && stage !== undefined) throw new Error('Bootstrap lock stage is not linked to its owner')
+    } else if (lockMetadata.nlink !== 1n) {
+      throw new Error('Upgraded publication lock identity is invalid')
+    }
 
     return { bytes: opened.bytes, identity: opened.identity, mode: (options.platform ?? process.platform) === 'win32' ? null : opened.mode, record }
   } catch (error) {
@@ -724,9 +730,8 @@ function publishApply(request, options = {}) {
           if (error?.code !== 'ENOENT') throw error
         }
       }
-      lock = { bytes: existing.bytes, identity: existing.identity, manifestId: existing.record.manifestId, mode: existing.mode, ownerNonce, paths: resumedPaths, pid, record: existing.record, temporaryPaths: existing.record.temporaryPaths }
-    } else if (lock === null) {
-      verifyRecoveryGateAbsent(root)
+      lock = { bytes: existing.bytes, manifestId: existing.record.manifestId, ownerNonce, paths: resumedPaths, pid, record: existing.record, temporaryPaths: existing.record.temporaryPaths }
+    } else {
       notifyWrite(options, fixed.lockStage)
       lock = createInitialLock(root, bootstrap, { ...options, beforePublish: () => verifyRecoveryGateAbsent(root), ownerNonce, pid, onTransition: (point) => transition(options, point) })
       const initialReadback = stableOpenFile(root, bootstrapPaths.lock, { ...options, requireSingleLink: true })

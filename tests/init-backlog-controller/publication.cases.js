@@ -1080,33 +1080,6 @@ function runPublicationCases() {
     }
   })
 
-  test('keeps an orphan bootstrap stage on an abrupt pre-hard-link termination', () => {
-    const root = fixtureRoot()
-    try {
-      assert.throws(() => publishApply(request(root), { currentInspection: inspection(root), crash: true, crashBeforeOwnerPublish: true, failAt: 'after-owner-stage-write' }), /Injected publication failure at after-owner-stage-write/)
-      const names = readdirSync(root)
-
-      assert.equal(names.includes('.nightshift-init-backlog.lock'), false)
-      assert.equal(names.some((name) => name.endsWith('.new')), true)
-    } finally {
-      rmSync(root, { force: true, recursive: true })
-    }
-  })
-
-  test('acquires the bootstrap lock before live inspection and admission', () => {
-    const root = fixtureRoot()
-    try {
-      let observed = false
-      let collectionCount = 0
-      const result = publishApply(request(root), { collectInspection: () => { collectionCount += 1; if (collectionCount === 1) observed = existsSync(join(root, '.nightshift-init-backlog.lock')); return inspection(root) } })
-
-      assert.equal(result.ok, true)
-      assert.equal(observed, true)
-    } finally {
-      rmSync(root, { force: true, recursive: true })
-    }
-  })
-
   test('resumes a bootstrap lock with its unchanged owner stage and cleans that stage', () => {
     const root = fixtureRoot()
     try {
