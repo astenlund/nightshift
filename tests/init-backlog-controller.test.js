@@ -15,6 +15,7 @@ const { runAdmissionCases } = require('./init-backlog-controller/admission.cases
 const { runPublicationCases } = require('./init-backlog-controller/publication.cases')
 const { runRecoveryCases } = require('./init-backlog-controller/recovery.cases')
 const { runProtocolCases } = require('./init-backlog-controller/protocol.cases')
+const { runActivationCases } = require('./init-backlog-controller/activation.cases')
 const { canonicalJson, fixtureRoot, git, loadPromptBaseline, sha256, sourceClosure } = require('./init-backlog-controller/helpers')
 const { assembleClaudePromptBaseline, assembleCodexPromptBaseline, loadPromptBaseline: loadHostPromptBaseline, stageCandidate } = require('./host-discovery-smoke-lib')
 
@@ -112,3 +113,4 @@ runInspectionCases(REPOSITORY_ROOT)
 runAdmissionCases(REPOSITORY_ROOT)
 runPublicationCases(REPOSITORY_ROOT)
 runRecoveryCases(REPOSITORY_ROOT)
+runActivationCases(REPOSITORY_ROOT)

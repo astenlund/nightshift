@@ -107,8 +107,16 @@ function assetPath(root, relativePath) {
   return target
 }
 
+const BASELINE_PROMPT_PATH = ['tests', 'fixtures', 'init-backlog-prompt-baseline', 'skills', 'init-backlog', 'SKILL.md']
+const PLANS_BULLET_BASELINE = '- `.claude/plans/<date>-<slug>.md`: implementation plans produced by the writing-plans workflow. **Ephemeral**: a plan exists while the implementation is in flight and is deleted once the work lands. The code, tests, and commits are the durable record. Plans are purely mechanical step-by-step instructions for the agent doing the work. There is no "implemented plans" archive.'
+const PLANS_BULLET_ACTIVATED = `${PLANS_BULLET_BASELINE} Plans are never committed: in a Git repository, \`.claude/plans/\` is git-ignored by the repository-local \`.gitignore\`, independent of any track-or-ignore election for the durable backlog files.`
+
+function readBaselinePrompt(root) {
+  return readFileSync(join(root, ...BASELINE_PROMPT_PATH), 'utf8').replace(/\r\n/g, '\n')
+}
+
 function expectedPromptAssets(root) {
-  const prompt = readFileSync(join(root, 'skills', 'init-backlog', 'SKILL.md'), 'utf8').replace(/\r\n/g, '\n')
+  const prompt = readBaselinePrompt(root)
   const expected = new Map()
   for (const [fileName, heading] of Object.entries(FILE_HEADING_BY_ASSET)) {
     const marker = `### \`${heading}\`\n\n~~~markdown\n`
@@ -156,6 +164,15 @@ function expectedQuickWinReplacementAssets(prompt, expected) {
     assert.equal(asset.split(before).length - 1, 1, `${assetPath} must contain one approved replacement site`)
     result.set(assetPath, asset.replace(before, after))
   }
+
+  return result
+}
+
+function expectedPlansPolicyAssets(expected) {
+  const result = new Map(expected)
+  const guidance = result.get('root-guidance.md')
+  assert.equal(guidance.split(PLANS_BULLET_BASELINE).length - 1, 1, 'root-guidance.md must contain one baseline plans bullet to activate')
+  result.set('root-guidance.md', guidance.replace(PLANS_BULLET_BASELINE, PLANS_BULLET_ACTIVATED))
 
   return result
 }
@@ -212,11 +229,11 @@ function runAssetCases(repositoryRoot) {
   const templatesRoot = join(repositoryRoot, 'skills', 'init-backlog', 'templates')
   const manifest = JSON.parse(readFileSync(join(templatesRoot, 'manifest.json'), 'utf8'))
   validateManifest(templatesRoot, manifest)
-  const prompt = readFileSync(join(repositoryRoot, 'skills', 'init-backlog', 'SKILL.md'), 'utf8')
-  const expected = expectedQuickWinReplacementAssets(prompt, expectedPromptAssets(repositoryRoot))
+  const prompt = readBaselinePrompt(repositoryRoot)
+  const expected = expectedPlansPolicyAssets(expectedQuickWinReplacementAssets(prompt, expectedPromptAssets(repositoryRoot)))
   const assets = new Map(manifest.assets.map((entry) => [entry.path, logicalText(readFileSync(assetPath(templatesRoot, entry.path)), entry.finalNewline, entry.assetId)]))
   for (const [fileName, expectedBytes] of expected) {
-    assert.equal(assets.get(fileName), expectedBytes, `${fileName} drifted from its current prompt-owned body`)
+    assert.equal(assets.get(fileName), expectedBytes, `${fileName} drifted from its pinned baseline-derived body`)
   }
   assert.equal(compose(manifest, assets, 'guidance.claude'), assets.get('claude-prologue.md') + assets.get('root-guidance.md'))
   assert.equal(compose(manifest, assets, 'guidance.codex'), assets.get('codex-prologue.md') + assets.get('root-guidance.md'))
@@ -253,4 +270,4 @@ function runAssetCases(repositoryRoot) {
   assert.throws(() => validateManifest(templatesRoot, regionMutation), /malformed region/)
 }
 
-module.exports = { runAssetCases }
+module.exports = { runAssetCases, validateManifest }

@@ -168,19 +168,6 @@ function extractSection(source, heading) {
   return normalized.slice(start, nextHeading === -1 ? normalized.length : nextHeading);
 }
 
-function extractTemplate(skill, heading) {
-  const normalized = skill.replace(/\r\n?/g, '\n');
-  const headingStart = normalized.indexOf(`${heading}\n`);
-  assert.notEqual(headingStart, -1, `missing template heading ${heading}`);
-  const fenceStart = normalized.indexOf('~~~markdown\n', headingStart);
-  assert.notEqual(fenceStart, -1, `missing template fence for ${heading}`);
-  const contentStart = fenceStart + '~~~markdown\n'.length;
-  const fenceEnd = normalized.indexOf('\n~~~', contentStart);
-  assert.notEqual(fenceEnd, -1, `missing template fence end for ${heading}`);
-
-  return normalized.slice(contentStart, fenceEnd);
-}
-
 function extractFeatureEntry(features, entryHeading) {
   const normalized = features.replace(/\r\n?/g, '\n');
   const start = normalized.indexOf(`${entryHeading}\n`);
@@ -647,12 +634,14 @@ test('init-backlog checklist owns final presentation freshness and targeted reru
   assert.equal(countExact(conceptChecklists, targetedAgreementPatchRule), 1, 'concept checklist must contain one targeted rerun rule');
 });
 
-test('authoritative and live index headers require current-session agreement exactly once', () => {
-  const initBacklog = readRepositoryFile('skills/init-backlog/SKILL.md');
-  const indexes = ['QUICK_WINS.md', 'FEATURES.md', 'BUGS.md', 'PATTERNS.md'];
+test('normalized index templates and live index headers require current-session agreement exactly once', () => {
+  const templatesRoot = join(repositoryRoot, 'skills', 'init-backlog', 'templates');
+  const manifest = JSON.parse(readFileSync(join(templatesRoot, 'manifest.json'), 'utf8'));
+  const assetPathById = new Map(manifest.assets.map((entry) => [entry.assetId, entry.path]));
+  const indexes = [['QUICK_WINS.md', 'backlog.quick-wins'], ['FEATURES.md', 'backlog.features'], ['BUGS.md', 'backlog.bugs'], ['PATTERNS.md', 'backlog.patterns']];
 
-  for (const index of indexes) {
-    const template = extractTemplate(initBacklog, `### \`.claude/${index}\``);
+  for (const [index, assetId] of indexes) {
+    const template = readFileSync(join(templatesRoot, assetPathById.get(assetId)), 'utf8');
     const templateHeader = beforeFirstLevelTwoHeading(template);
     const liveHeader = beforeFirstLevelTwoHeading(readRepositoryFile(`.claude/${index}`));
 
@@ -661,15 +650,23 @@ test('authoritative and live index headers require current-session agreement exa
   }
 });
 
-test('fresh and existing-root guidance composition carries agreement and autonomous continuation', () => {
+test('init-backlog agreement guidance composes from normalized manifest assets', () => {
   const initBacklog = readRepositoryFile('skills/init-backlog/SKILL.md');
-  const freshRoot = extractTemplate(initBacklog, '### `CLAUDE.md` (fresh minimal file)');
-  const freshGuidance = extractSection(freshRoot, '## Backlogs and indexes');
-  const existingRootInstructions = extractSection(initBacklog, '### `CLAUDE.md` section (to append when `CLAUDE.md` exists without it)');
-  assert.match(existingRootInstructions, /Use the complete `## Backlogs and indexes` section from the fresh `CLAUDE\.md` template above/);
-  const existingRootGuidance = freshGuidance;
+  assert.equal(countExact(initBacklog, '### `CLAUDE.md` (fresh minimal file)'), 0, 'the agreement fixture assembler still derives root guidance from prompt-owned skill prose instead of the normalized manifest composition');
 
-  for (const [name, guidance] of [['fresh root', freshGuidance], ['existing root', existingRootGuidance]]) {
+  const templatesRoot = join(repositoryRoot, 'skills', 'init-backlog', 'templates');
+  const manifest = JSON.parse(readFileSync(join(templatesRoot, 'manifest.json'), 'utf8'));
+  const assetsById = new Map(manifest.assets.map((entry) => [entry.assetId, readFileSync(join(templatesRoot, entry.path), 'utf8').replace(/\r\n/g, '\n')]));
+  const composeGuidance = (templateId) => {
+    const template = manifest.templates.find((entry) => entry.templateId === templateId);
+    assert.notEqual(template, undefined, `manifest must define ${templateId}`);
+
+    return template.assetIds.map((assetId) => assetsById.get(assetId)).join('');
+  };
+  const freshGuidance = extractSection(composeGuidance('guidance.claude'), '## Backlogs and indexes');
+  const sectionGuidance = extractSection(composeGuidance('guidance.section'), '## Backlogs and indexes');
+
+  for (const [name, guidance] of [['composed fresh-root', freshGuidance], ['section-only', sectionGuidance]]) {
     assert.equal(countExact(guidance, currentSessionAgreementRule), 1, `${name} guidance must contain one current-session agreement rule`);
     assert.equal(countExact(guidance, withinContractContinuationRule), 1, `${name} guidance must contain one autonomous continuation rule`);
     assert.equal(countExact(guidance, finalPresentationRule), 1, `${name} guidance must contain one final-presentation rule`);

@@ -54,7 +54,7 @@ The classification is not the model's opinion. A bundled parser reads each entry
 
 ## The workflow
 
-1. **Scaffold** once with `/nightshift:init-backlog`. Creates a four-index backlog under `.claude/` (`QUICK_WINS.md`, `FEATURES.md`, `BUGS.md`, `PATTERNS.md`), history archives, and a `plans/` directory, plus a section in the project's `CLAUDE.md` describing the layout. Asks once whether to track or ignore the backlog in git. Idempotent, so re-run it to add whatever is missing and to unwrap hard-wrapped backlog prose.
+1. **Scaffold** once with `/nightshift:init-backlog`. Creates a four-index backlog under `.claude/` (`QUICK_WINS.md`, `FEATURES.md`, `BUGS.md`, `PATTERNS.md`), history archives, and a `plans/` directory, plus a section in the project's `CLAUDE.md` describing the layout. Asks once whether to track or ignore the durable backlog files in git; `.claude/plans/` is always git-ignored, so plans are never committed. Idempotent, so re-run it to add whatever is missing and to unwrap hard-wrapped backlog prose.
 
 2. **Capture** ideas, bugs, refactors, and cross-cutting patterns as they come up. Each feature and bug declares its in-backlog gates on a `**Requires:**` line and any external primitives on an `**External:**` line, which is what makes step 3 mechanical. Half-formed ideas land as drafts under `## Exploring` and are never offered as ready work until they graduate.
 
@@ -99,7 +99,7 @@ A few decisions that are load-bearing, and the reasoning behind them:
 - **The dependency graph is code, not a prompt.** Work selection is a deterministic parser with fixture tests, because a model asked to eyeball a backlog will produce a plausible answer that is wrong in ways nobody notices.
 - **Agreement is explicit and same-session.** Before spec-governed work starts, the current decisions are restated and you agree to them. Readiness, a previous session's approval, and "it was in the backlog" are all explicitly not agreement. Cited within-contract edits to the governing text continue autonomously; a changed or unclear decision returns to the agreement boundary.
 - **Reviewing does not mean asking.** During an unattended run, approval pauses become items in the morning report rather than prompts that stall the run until you wake up. Deferral, not waiver.
-- **Ephemeral plans, durable specs.** Plans are scaffolding and get deleted once work lands. Code, tests, commits, and the spec are the record.
+- **Ephemeral plans, durable specs.** Plans are scaffolding: never committed (`.claude/plans/` is git-ignored) and deleted once work lands. Code, tests, commits, and the spec are the record.
 
 ## Dependencies
 

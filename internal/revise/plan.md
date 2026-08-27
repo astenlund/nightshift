@@ -9,7 +9,7 @@ Here, "plan" is an implementation plan: a file describing the steps required to 
 If the scope is empty, determine it automatically. Prefer (in order):
 1. The plan file path shown in the plan-mode system message, if the session is currently in plan mode.
 2. The most recently modified file under `.claude/plans/` (repo-local) or `~/.claude/plans/` (global), whichever the current working directory makes more natural.
-3. Recently touched plan-shaped files in `git status` and `git diff --stat`; those signals only see tracked files, so for untracked or git-ignored plans (a supported election; the project's `.gitignore` is the source of truth) fall back to file modification time.
+3. Recently touched plan-shaped files in `git status` and `git diff --stat`; `git status` reports tracked changes and ordinary untracked files, while `git diff --stat` reports tracked differences; ignored `.claude/plans/` files appear in neither normal output, so fall back to file modification time.
 
 Only ask the user if genuinely ambiguous.
 

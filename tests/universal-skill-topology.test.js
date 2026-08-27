@@ -75,13 +75,13 @@ function assertInitBacklogScaffoldInventory(body) {
   }
   assert.match(inventorySection, /archives \(single files, top-level under `\.claude\/`\)/, 'init-backlog must classify the history archives as top-level files')
 
-  const confirmStep = '3. **Confirm.** Wait for explicit user confirmation before any writes.'
-  const applyStep = '4. **Apply.** Execute the approved actions.'
-  const confirmIndex = body.indexOf(confirmStep)
+  const approvalStep = '6. **Approve.** Obtain explicit approval for the complete manifest before any `apply` request.'
+  const applyStep = '7. **Apply.**'
+  const approvalIndex = body.indexOf(approvalStep)
   const applyIndex = body.indexOf(applyStep)
-  assert.equal(countExact(body, confirmStep), 1, 'init-backlog must require explicit confirmation before writes exactly once')
+  assert.equal(countExact(body, approvalStep), 1, 'init-backlog must require explicit approval before writes exactly once')
   assert.notEqual(applyIndex, -1, 'init-backlog must retain its apply step')
-  assert.equal(confirmIndex < applyIndex, true, 'init-backlog must require explicit confirmation before Apply')
+  assert.equal(approvalIndex < applyIndex, true, 'init-backlog must require explicit approval before Apply')
 }
 
 function normalizeProcedure(entryName, text) {
@@ -180,11 +180,10 @@ test('handover pins the durable queue lifecycle contract', () => {
   assert.equal(body.includes('sub-step resume is deliberately not tracked'), false, 'handover must not deny the cross-session step resume the queue now provides')
 })
 
-test('init-backlog preserves scaffolding behavior and reinforces current-session agreement', () => {
+test('init-backlog preserves scaffolding behavior over the controller and normalized assets', () => {
   const initBacklogPath = join(PUBLIC_SKILLS_ROOT, 'init-backlog', 'SKILL.md')
   const body = parseFrontmatter(initBacklogPath).body.replace(/\r?\n/g, '\n')
   const indexNames = ['QUICK_WINS.md', 'FEATURES.md', 'BUGS.md', 'PATTERNS.md']
-  const currentSessionRule = 'Readiness and graduation are not approval: before spec-governed work, present the current decision-complete digest and obtain explicit agreement in this session.'
   const finalPresentationRule = 'When a final governing design is presented, invoke /nightshift:spec-agreement in final-presentation mode before asking for agreement.'
   const freshnessRule = 'Existing agreement is fresh only when the complete current candidate matches or passes contract-fit evaluation in the same session.'
 
@@ -193,24 +192,28 @@ test('init-backlog preserves scaffolding behavior and reinforces current-session
   assert.match(body, /\*\*Index files\*\* \(four, top-level under `\.claude\/`\)/, 'init-backlog must retain its four-index target inventory')
   for (const indexName of indexNames) {
     assert.equal(body.includes(`- \`.claude/${indexName}\``), true, `init-backlog must target .claude/${indexName}`)
-    assert.equal(body.includes(`### \`.claude/${indexName}\``), true, `init-backlog must retain the authoritative ${indexName} template`)
   }
-  assert.match(body, /Create from template if missing/, 'init-backlog must create missing index files from its authoritative templates')
+  assert.match(body, /created from its manifest template/, 'init-backlog must create missing index files from the normalized manifest templates')
+  assert.match(body, /skills\/init-backlog\/templates\//, 'init-backlog must reference the normalized template assets')
+  assert.match(body, /manifest\.json/, 'init-backlog must reference the template manifest')
 
   assert.match(body, /version-control election/, 'init-backlog must retain the version-control election')
   assert.match(body, /tracked in git or ignored/, 'init-backlog must retain the track-vs-ignore choice')
-  assert.match(body, /appends the scaffolded paths to `\.gitignore`/, 'init-backlog must implement the ignore election')
+  assert.match(body, /appends the elective backlog paths to `\.gitignore`/, 'init-backlog must implement the ignore election')
   assert.match(body, /`git rm --cached`/, 'init-backlog must retain the tracked-to-ignored migration warning')
+  assert.equal(countExact(body, '`.claude/plans/` is git-ignored in every Git repository'), 1, 'init-backlog must require the plans-ignore policy unconditionally')
+  const repositoryIgnore = readRequiredFile(join(REPOSITORY_ROOT, '.gitignore'))
+  assert.equal(repositoryIgnore.split(/\r?\n/).includes('.claude/plans/'), true, 'this repository must git-ignore .claude/plans/ itself')
 
-  assert.match(body, /The skill is idempotent: re-running on an existing project adds only\nwhat's missing/, 'init-backlog must remain add-missing and idempotent')
+  assert.match(body, /idempotent: re-running on an existing project adds only what's missing/, 'init-backlog must remain add-missing and idempotent')
   assert.match(body, /Never overwrite an existing top-level index file or an existing subdirectory's contents/, 'init-backlog must preserve existing backlog content')
   assert.match(body, /Skip every up-to-date index file and every existing subdirectory/, 'init-backlog reruns must skip current targets')
 
-  assert.match(body, /### `CLAUDE\.md` \(fresh minimal file\)[\s\S]*Use the complete `## Backlogs and indexes` section from the fresh `CLAUDE\.md` template above/, 'existing-root guidance must compose from the complete fresh-root section')
+  assert.match(body, /a Claude `@AGENTS\.md` delegation deliberately receives the Codex-neutral composition/, 'init-backlog must preserve adapter-delegation composition')
+  assert.match(body, /host-canonical writable guidance target/, 'init-backlog must preserve host-canonical guidance target selection')
   assert.match(body, /\*\*Targeted-patch insertion rules\*\*[\s\S]*Never re-flow/, 'existing-root updates must remain targeted rather than destructive rewrites')
-  assert.equal(countExact(body, currentSessionRule), 5, 'init-backlog must reinforce agreement in four index templates and fresh root guidance')
-  assert.equal(countExact(body, finalPresentationRule), 2, 'init-backlog must protect the final-presentation checklist and generated guidance')
-  assert.equal(countExact(body, freshnessRule), 2, 'init-backlog must protect the freshness checklist and generated guidance')
+  assert.equal(countExact(body, finalPresentationRule), 1, 'init-backlog must protect the final-presentation checklist concept')
+  assert.equal(countExact(body, freshnessRule), 1, 'init-backlog must protect the freshness checklist concept')
 
   assert.equal(body.includes('commands/'), false, 'init-backlog must not reference a duplicate host-specific command surface')
   requireAbsent(join(REPOSITORY_ROOT, 'commands', 'init-backlog.md'))
@@ -226,7 +229,7 @@ test('init-backlog scaffold contract rejects missing targets and confirmation', 
     ['QUICK_WINS_HISTORY.md', 'init-backlog must target .claude/QUICK_WINS_HISTORY.md as a top-level archive'],
     ['FEATURES_HISTORY.md', 'init-backlog must target .claude/FEATURES_HISTORY.md as a top-level archive'],
     ['BUGS_HISTORY.md', 'init-backlog must target .claude/BUGS_HISTORY.md as a top-level archive'],
-    ['3. **Confirm.** Wait for explicit user confirmation before any writes.', 'init-backlog must require explicit confirmation before writes exactly once'],
+    ['6. **Approve.** Obtain explicit approval for the complete manifest before any `apply` request.', 'init-backlog must require explicit approval before writes exactly once'],
   ]
 
   for (const [removedText, expectedMessage] of mutations) {
@@ -238,6 +241,13 @@ test('init-backlog scaffold contract rejects missing targets and confirmation', 
       `removing ${removedText} must fail the scaffold contract`,
     )
   }
+})
+
+test('init-backlog embeds no prompt-owned template bodies', () => {
+  const body = parseFrontmatter(join(PUBLIC_SKILLS_ROOT, 'init-backlog', 'SKILL.md')).body.replace(/\r?\n/g, '\n')
+  assert.equal(countExact(body, '# Quick wins\n'), 0, 'skills/init-backlog/SKILL.md still contains the prompt-owned `# Quick wins` template body')
+  assert.equal(countExact(body, '~~~markdown'), 0, 'init-backlog must not fence any prompt-owned template body')
+  assert.equal(countExact(body, '### `.claude/'), 0, 'init-backlog must not carry per-target template headings')
 })
 
 test('handover preserves lifecycle behavior behind the agreement gate', () => {

@@ -5,23 +5,13 @@ description: Use when a project needs the four-index .claude/ backlog structure 
 
 # /nightshift:init-backlog
 
-Scaffold the four-index backlog structure under `.claude/` for the
-current project, plus the on-demand `plans/` subdirectory, the on-demand
-`QUICK_WINS_HISTORY.md` / `FEATURES_HISTORY.md` / `BUGS_HISTORY.md`
-archives, and a `CLAUDE.md` section that documents the layout and when
-to consult it.
+Scaffold the four-index backlog structure under `.claude/` for the current project, plus the on-demand `plans/` subdirectory, the on-demand history archives, and a root-guidance section that documents the layout and when to consult it. The skill is idempotent: re-running on an existing project adds only what's missing, proposes exact repairs for template-controlled guidance that lost required concepts, and unwraps hard-wrapped backlog prose. Paths are relative to the repository root.
 
-The skill is idempotent: re-running on an existing project adds only
-what's missing and proposes merges for template-controlled guidance
-that has drifted from the current template. Paths are relative to the
-current working directory (typically the repo root).
+Every deterministic mechanic (target states, template bytes, guidance resolution, Git and newline policy, exact edits, unwraps, crash recovery) is owned by the bundled controller; this skill owns the semantic judgments and the conversation. The controller is the only writer of project targets, and it writes only an explicitly approved manifest.
 
-**Line discipline.** Backlog prose is one paragraph or one bullet per physical line, never hard-wrapped at a column: a search hit then shows the whole entry, the parsers anchor on whole lines, and an edit shows as one changed line instead of a reflowed block. `/nightshift:ready` reports a hard-wrapped file as a notice and `/nightshift:init-backlog` unwraps it. The discipline covers the backlog files under `.claude/`: the four indexes and three history archives at the top level plus everything under `features/`, `bugs/`, and `patterns/`; `plans/`, any other top-level markdown, and host-owned markdown in the same tree are out of scope, and a directory argument to the tool walks exactly that set. The detector and unwrapper are bundled as `${CLAUDE_PLUGIN_ROOT}/skills/init-backlog/unwrap.js`; the check form is `node "${CLAUDE_PLUGIN_ROOT}/skills/init-backlog/unwrap.js" .claude` (prints a JSON report of offending files with counts and first lines; exit 1 when any exist or when a file could not be read, which the report lists with its `error` code; exit 2 for a missing target) and the repair form adds `--write`. The unwrapper joins only continuation lines the `ready` parser reads as the same block (it reads only the first physical line of an excerpt or a slice bullet, so those grow): it stops at ATX and setext headings, thematic breaks, list markers, blank lines, `**Label:**` lines, tables, block quotes, fenced and indented code, HTML blocks and comments, and frontmatter, and it keeps a deliberate two-space or backslash hard break. A correct repair changes `/nightshift:ready` output in two classes only. Presentation: the hard-wrap notices disappear and `excerpt` fields grow to the joined first line. Slice reclassification: a sliced entry whose `**Slices:**` block carried a wrap was mis-read before the repair (a truncated slice name, a strikethrough split across lines), so its slice titles, its blocker lists (the implicit MVP gate included), and the ready, blocked, or structural membership of its slices and of every entry that references them may all change, and a `**Requires:**` reference written against a truncated slice name surfaces as a new structural error that is fixed by hand. Run it before and after, set those two classes aside, and treat any other difference as a stop.
+**Line discipline.** Backlog prose is one paragraph or one bullet per physical line, never hard-wrapped at a column: a search hit then shows the whole entry, the parsers anchor on whole lines, and an edit shows as one changed line instead of a reflowed block. `/nightshift:ready` reports a hard-wrapped file as a notice and `/nightshift:init-backlog` unwraps it. The discipline covers the backlog files under `.claude/`: the four indexes and three history archives at the top level plus everything under `features/`, `bugs/`, and `patterns/`; `plans/`, any other top-level markdown, and host-owned markdown in the same tree are out of scope, and a directory argument to the tool walks exactly that set. The detector and unwrapper are bundled as `${CLAUDE_PLUGIN_ROOT}/skills/init-backlog/unwrap.js`; the check form is `node "${CLAUDE_PLUGIN_ROOT}/skills/init-backlog/unwrap.js" .claude` (prints a JSON report of offending files with counts and first lines; exit 1 when any exist or when a file could not be read, which the report lists with its `error` code; exit 2 for a missing target) and the repair form adds `--write`. The controller imports the same `unwrapText` for its unwrap actions, so a check-form report and the controller's wrap findings describe the same repair. The unwrapper joins only continuation lines the `ready` parser reads as the same block (it reads only the first physical line of an excerpt or a slice bullet, so those grow): it stops at ATX and setext headings, thematic breaks, list markers, blank lines, `**Label:**` lines, tables, block quotes, fenced and indented code, HTML blocks and comments, and frontmatter, and it keeps a deliberate two-space or backslash hard break. A correct repair changes `/nightshift:ready` output in two classes only. Presentation: the hard-wrap notices disappear and `excerpt` fields grow to the joined first line. Slice reclassification: a sliced entry whose `**Slices:**` block carried a wrap was mis-read before the repair (a truncated slice name, a strikethrough split across lines), so its slice titles, its blocker lists (the implicit MVP gate included), and the ready, blocked, or structural membership of its slices and of every entry that references them may all change, and a `**Requires:**` reference written against a truncated slice name surfaces as a new structural error that is fixed by hand.
 
-Brainstorming output lives in feature files (or in patterns when
-cross-cutting / in bugs when diagnostic). Pre-feature exploratory work
-lands as a draft feature with `status: exploring` frontmatter and an
-entry in `FEATURES.md`'s `## Exploring` section.
+Brainstorming output lives in feature files (or in patterns when cross-cutting / in bugs when diagnostic). Pre-feature exploratory work lands as a draft feature with `status: exploring` frontmatter and an entry in `FEATURES.md`'s `## Exploring` section.
 
 ## Targets
 
@@ -43,40 +33,47 @@ QUICK_WINS, FEATURES, and BUGS have no subdirectory at the archive level; active
 
 The on-demand locations have different lifecycles:
 
-- **Plans are ephemeral.** A plan exists while the implementation is in flight and is deleted once the work lands. Plans are purely mechanical step-by-step instructions for the agent doing the work; the code, tests, and commits are the durable record of what was built. There is no "implemented plans" archive.
+- **Plans are ephemeral.** A plan exists while the implementation is in flight and is deleted once the work lands. Plans are purely mechanical step-by-step instructions for the agent doing the work; the code, tests, and commits are the durable record of what was built. There is no "implemented plans" archive. Plans are never committed: in a Git repository, `.claude/plans/` is git-ignored by the repository-local `.gitignore`, independent of any track-or-ignore election for the durable backlog files.
 - **Feature breakout files are durable.** A feature file under `.claude/features/<slug>.md` captures the design reasoning that led to what's implemented and evolves with the feature over its lifetime. Brainstorming output lands directly in feature files (or in patterns when cross-cutting / bugs when diagnostic) rather than as separate dated specs. The `## Exploring` section in `FEATURES.md` plus a `status: exploring` frontmatter on the breakout file handles pre-dependency-analysis brainstorms; these graduate into themed `##` sections with `**Requires:**` lines once the design firms up.
 - **History archives are archaeological.** `QUICK_WINS_HISTORY.md`, `FEATURES_HISTORY.md`, and `BUGS_HISTORY.md` are appended to as soon as a quick win, feature (or slice), or bug-fix lands; the files themselves are consulted only when something pulls them in (an archaeological lookup, a pattern-doc cross-reference, a negative-knowledge sweep). Splitting shipped entries out keeps the active backlogs scannable. Negative-knowledge entries in `QUICK_WINS_HISTORY.md` (approaches attempted and reverted, with reasons) are first-class promotion candidates into the relevant `.claude/patterns/<slug>.md` Cautionary tales sections. **`/nightshift:ready` never parses these archives for work** (the line-discipline check still reads them): when an item ships or is fixed, every active `**Requires:**` line referencing it is edited at the same time to drop the now-satisfied reference, so the active `Requires:` lines describe what is *currently* blocking.
 
 **Project guidance:**
 
-- `## Backlogs and indexes` section in the repo-root `CLAUDE.md`.
-- If `CLAUDE.md` does not exist, create a minimal one containing just that section.
+- The controller resolves one host-canonical writable guidance target: root `CLAUDE.md` under Claude Code, or the root `AGENTS.override.md` / `AGENTS.md` precedence chain plus user-confirmed fallback basenames under Codex. Under Claude Code it follows recognized adapter delegation, so a root `CLAUDE.md` whose import graph reaches `@AGENTS.md` resolves that delegated adapter as the writable target; a missing delegated `AGENTS.md` target is created with the Codex-neutral `# AGENTS.md` prologue (a Claude `@AGENTS.md` delegation deliberately receives the Codex-neutral composition), while a missing `CLAUDE.md` target receives the Claude prologue. An existing guidance file receives only the shared `## Backlogs and indexes` section; unrelated prose in it is never touched.
+- Any other guidance file that carries the controlled `Backlogs and indexes` section is a conflict the controller reports for explicit manual consolidation into the resolved adapter; it never edits a second guidance file automatically.
+
+## Controller contract
+
+The deterministic controller is `${CLAUDE_PLUGIN_ROOT}/skills/init-backlog/init-backlog.js` (Node 22, no third-party dependencies). Talk to it only through its bounded request spool, never through argv, shell quoting, command substitution, or an inline script; raw stdin is private to the controller and its tests. One operation is one spool lifecycle: run `node "${CLAUDE_PLUGIN_ROOT}/skills/init-backlog/init-backlog.js" --reserve-request <canonical-root>`, write the protocol-canonical request plus one trailing newline to the returned `requestPath` exactly once through the host's byte-preserving file write, re-read it to confirm byte equality, then run `--consume-request <canonical-root> <nonce>` and read the controller's single JSON result from stdout. `--inspect-request-residue <canonical-root>` classifies leftover spool state, and `--clean-request-residue` removes it only with the exact evidence digests that inspection returned.
+
+Every request carries `protocolVersion: 1`, the operation (`inspect`, `apply`, `recover-inspect`, or `recover-apply`), the canonical absolute root, the host (`claude-code` or `codex`), and the host context the controller contract requires: the observed Claude root-exclusion status for Claude Code, or the user-confirmed Codex instruction fallback list, effective byte limit, and invocation directory. The controller rejects unknown fields, unknown values, and unconfirmed provenance.
+
+Template bodies live only in `${CLAUDE_PLUGIN_ROOT}/skills/init-backlog/templates/`, indexed by `manifest.json`: seven backlog-file templates, the shared root-guidance section, the Claude and Codex root-guidance prologues, and the two `.gitignore` fragments (`plans-ignore.txt` mandatory, `backlog-ignore.txt` elective). The manifest composes them into logical templates (`guidance.claude` is the Claude prologue plus the shared section, `guidance.codex` is the Codex prologue plus the same section, and an existing guidance file receives `guidance.section` alone), and the controller materializes each target's newline convention. Never restate template bodies in prose and never write one by hand: a missing index file is created from its manifest template through an approved `create-from-template` action, and the manifest's concept IDs name exactly the checklist items below.
 
 ## Process
 
-1. **Inventory.** Check each scaffold target and classify as `missing`, `present`, or `stale`. `Stale` is the state where the file exists but its *template-controlled portion* is missing concepts the current template now documents; the user's content (entries, customizations) is never classified as stale, and **enriched supersets are not stale**.
-   - **Index files** are stale only if their **template-controlled portion** is missing concepts the current template documents. The template-controlled portion is **the H1 + every `##` section the template documents as a convention section** (e.g., FEATURES.md template's `## Requires lines`, `## Slicing`, `## Exploring`; BUGS.md template's `## Requires lines`; history templates' `## Cross-reference resolution`). It does NOT include **user-controlled sections**: the inline-entries area like `## (add sections as features emerge)` / `## Open` / `## Current patterns` and the themed entry sections the user creates (e.g., `## Progression`, `## Analysis` in FEATURES.md). Two sections have **special user-controlled treatment** worth calling out:
-     - **`## Entries`** in history archives: the heading is templated as a bootstrap landing pad, but once any user content lands beneath it the section becomes user-controlled and is skipped. Treat the heading as fixed; don't inspect the body.
-     - **`## History`** pointer in the active indexes: the body is fixed boilerplate templated content, but drift in the pointer text doesn't affect dependency-graph correctness, so treat as intentionally-untracked user-controlled territory. Don't propose patches against it.
+1. **Recover.** Before any ordinary operation, check for leftover runtime state. Run `--inspect-request-residue` against the repository root and, when it reports cleanable residue, clean it with `--clean-request-residue` and the exact returned evidence; a live or indeterminate owner blocks instead. When ordinary inspection fails on a stale lock, an orphan lock stage, a stale recovery gate, an invalid election marker, or an abandoned unwrap backup, run the controller's `recover-inspect` for that one subject, present the returned evidence exactly as carried (images, digests, modes, classification), and submit `recover-apply` only for an explicitly approved disposition bound to the returned `recoveryId`. Denial or an unavailable user leaves the artifact unchanged, and every successful recovery is followed by a fresh inspection.
+2. **Inspect.** Through the request spool, run the controller's `inspect` operation and retain its complete result: every target and its states, template identities, resolved guidance, Git and plans policy, wrap findings with predicted unwrap identities, mechanical proposals, the ready baseline with its predicted unwrap overlay, typed problems, retained backups, and the binding `snapshotId`. Inspection reports facts (missing, present, exact-template, wrapped, structurally invalid); it never judges customized prose.
+3. **Classify.** Apply the concept checklists below to every customized template-controlled semantic target the inspection returned. Judge each as complete (enriched supersets included), missing concepts, or ambiguous, and encode the judgment in `semanticDecisions`: `satisfied` when coverage is complete or an approved semantic edit will make it complete, `deferred` for ambiguity, a rejected patch, or postponed repair. Mechanical targets carry no semantic decision, and a deferred target keeps the apply incomplete rather than silently passing.
+4. **Design repairs.** For each unambiguous missing concept, author a targeted semantic `exact-edit` under the insertion rules below: complete before and after file bytes over exactly one manifest-controlled region, never a diff, a substring anchor, or a rewrite of user-controlled sections. Prefer `ask` over guessing for heavily customized prose.
+5. **Present.** Present every target, state, and exact proposed action payload before asking for anything. Missing files name their template. Semantic exact edits and whole-file mechanical proposals show the exact decoded before and after content. A mechanical breakout unwrap instead shows its target, mode, wrap count, first offending line, and exact before and after raw digests; the bounded protocol deliberately withholds both prose images, and those controller-produced carriers are the complete approval surface for that deterministic transformation. For an unwrap batch, also present the predicted ready delta (baseline `ready` against `unwrapReady.after`): presentation changes and slice reclassification are the two expected classes, and any other predicted difference is a stop to investigate before approval. Ambiguous cases ask rather than guess.
+6. **Approve.** Obtain explicit approval for the complete manifest before any `apply` request. Whenever the inspection reports `electionRequired`, resolve the version-control election inside the same approval: a fresh or deferred marker asks for `track`, `ignore`, or `deferred`; a direct marker presents its already-bound choice and permits no alternative. On denial, an unavailable user, or an unattended run without approval, no apply request is made and no project target changes.
+7. **Apply.** Build the request with the bundled canonical manifest builder, then submit exactly the approved manifest through the request spool and let the controller validate, simulate, and publish it. Any changed bound fact outside the approved simulated states fails closed as `snapshot-drift`; the remedy is a fresh `inspect`, fresh classification, and fresh approval, so never resubmit or hand-edit an old manifest. If the request is lost after apply (a crash, a dropped response), resubmit the identical manifest: the controller recognizes completed states and reports them as `skipped-complete`.
+8. **Report.** Present the structured apply result: per-action outcomes, `complete` versus incomplete, `incompleteTargets`, warnings, and retained backups. An incomplete apply is a protocol success that names exactly what still blocks completion (deferred semantic decisions, blocking problems, tracked plan paths, an unresolved election); report it as remaining work, never as a failure, and do not reprint full file contents.
+9. **Ready check.** The apply result's final post-inspection carries the complete ready result. For an unwrap batch the controller has already verified the aggregate result against the carried prediction, restoring every batch target byte-exact on any mismatch; what remains is to present surviving structural errors and notices and route them to manual repair by the user.
 
-     The per-file concept checklists in `## Concept checklists` below specify exactly which sections each checklist item covers and are authoritative: judge each checklist item as present-in-equivalent-prose vs absent on the live template-controlled portion, and only flag stale if at least one is absent. Identical-or-enriched template-controlled content (the live file covers everything on the checklist, possibly with additional project-specific prose) is NOT stale and must be left alone. Drift in wording, paragraph order, or added emphasis is not staleness; missing checklist coverage is. User-controlled sections are never inspected for staleness. A `## Requires lines` section that describes bare text as a legal `**Requires:**` form is stale regardless of concept coverage.
-   - **`QUICK_WINS_HISTORY.md`**, **`FEATURES_HISTORY.md`**, and **`BUGS_HISTORY.md`** follow the same staleness rule as index files (template-controlled portion = H1 + `## Cross-reference resolution` section; `## Entries` is the user-controlled section). If any history file is missing on a project that still has a populated `## Implemented` / `## Fixed` section inside its parent index, surface the migration opportunity in the plan output but do not auto-move entries; the user decides when to perform the split.
-   - **Hard-wrapped prose** is its own inventory state, `wrapped`, orthogonal to `present` / `stale`: run the bundled check form over `.claude/` and list each file the report names with its count and first offending line. A wrapped file is never `stale` on that ground alone; the two states combine (a file can be `stale` and `wrapped`).
-   - The **CLAUDE.md `Backlogs and indexes` section** is stale if it is missing any concept named by its checklist below, including the current-session agreement boundary and autonomous within-contract continuation. When the section contains an earlier automatic-loading claim, replace that claim with the on-demand instruction. Coverage check, not literal-string match; other project-specific phrasing or added detail is fine.
+## Version control
 
-2. **Plan.** Present a concise table to the user: target, state, action. Actions are `create` (missing), `skip` (present and up to date, never clobber), `merge` (template-controlled portion is stale; propose replacing only that portion), `unwrap` (the file carries hard-wrapped prose; rewrite it with the bundled repair form, which touches no content beyond joining continuation lines), or `ask` (existing content is project-specific custom enough that we don't want to silently overwrite). On a fresh scaffold (no `.claude/` yet), the plan also includes the **version-control election**: ask once whether the `.claude/` backlog files should be tracked in git or ignored. On `ignore`, the apply step appends the scaffolded paths to `.gitignore` (creating it if absent). On projects already scaffolded, skip the question; the election lives in `.gitignore` itself, and changing it later is a direct `.gitignore` edit (in the tracked-to-ignored direction that also means finishing the untracking with `git rm --cached`). Downstream skills check tracked-ness per file and never assume it.
-
-3. **Confirm.** Wait for explicit user confirmation before any writes. If the user wants to adjust the plan, accept their edits and re-confirm.
-
-4. **Apply.** Execute the approved actions. Never overwrite an existing top-level index file or an existing subdirectory's contents. For `unwrap` actions, capture `/nightshift:ready` output first, copy each file the check form lists into `.tmp/unwrap-backup/` preserving its path relative to `.claude/` (the only restore point when the backlog is git-ignored), run the repair form over `.claude/`, stop on any `error` entry in its report, then capture the output again and compare, setting aside the two classes named under line discipline (presentation and slice reclassification); any other difference means the unwrapper joined a line the parser reads as its own block, so restore that file from the backup and report it rather than keeping the rewrite.
-
-5. **Report.** One-line summary of created, merged, skipped, and flagged targets. Do not print full file contents.
+- **Plans are policy, not election.** `.claude/plans/` is git-ignored in every Git repository. Inspection classifies the plans policy as `satisfied`, `action-required`, `tracked-conflict`, or `nested-conflict` (`not-applicable` outside Git) and proposes the exact mandatory `.gitignore` append whenever the root line is required and predicted effective, including while tracked plan paths keep the result incomplete; it suppresses the append only when the policy is already satisfied or a surviving nested ignore rule would defeat the root line. Tracked plan paths and nested rules are reported with their exact paths and patterns for explicit manual repair before rerun (the controller never mutates the Git index), and the policy is never a user preference.
+- **The election covers only the durable backlog files.** On a fresh Git scaffold, and while an election marker remains, ask once whether the durable `.claude/` backlog files should be tracked in git or ignored, or defer the choice; this version-control election covers the four indexes, the three history archives, and the three breakout directories. On `ignore`, the approved manifest appends the elective backlog paths to `.gitignore` through the controller's predicted-intermediate exact edit; `track` and `deferred` add no elective action. The controller verifies the chosen branch's compatibility (no repository-local ignore match for `track`; every probe ignored and no tracked backlog path for `ignore`) and retains the marker until a direct choice proves compatible. On projects already scaffolded with no marker, skip the question; the election lives in `.gitignore` itself, and changing it later is a direct `.gitignore` edit (in the tracked-to-ignored direction that also means finishing the untracking with `git rm --cached`). Downstream skills check tracked-ness per file and never assume it.
 
 ## Concept checklists
 
-For each templated file, these are the load-bearing concepts its template-controlled portion must convey. Use the checklists to make the "missing concepts" judgment in step 1 objective: judge each item as **present-in-equivalent-prose** vs **absent** on the live file's template-controlled portion. Equivalent prose means the live file makes the same claim: subject and predicate match, paraphrase is fine, the live file may carry extra context or different examples. Only mark the file stale if at least one checklist item is absent. If a borderline item could plausibly be read either way, prefer `ask` over silent merge.
+For each templated file, these are the load-bearing concepts its template-controlled portion must convey. Use the checklists to make the "missing concepts" judgment in the classification step objective: judge each item as **present-in-equivalent-prose** vs **absent** on the live file's template-controlled portion. Equivalent prose means the live file makes the same claim: subject and predicate match, paraphrase is fine, the live file may carry extra context or different examples. Only classify the file as missing concepts if at least one checklist item is absent. If a borderline item could plausibly be read either way, prefer `ask` over a silent repair.
 
-**Scope of each check.** Each checklist item below names the section(s) it inspects in parentheses when the section is not the H1 header. Items without a section annotation are H1-header content (when a whole checklist is H1-only the annotations are omitted as redundant). The convention sections to inspect for staleness are exactly those the checklist items name, **matched on exact `##` heading text**: if a project renames the section (e.g., `## Cross-references` instead of `## Cross-reference resolution`), the checklist won't find it and that counts as a missing concept. Everything else (user-entries sections like `## Open` / `## Entries` / themed sections, the trailing `## History` pointer's fixed boilerplate) is user-controlled and skipped.
+**Template-controlled portions.** The template-controlled portion of an index file is the H1 preamble plus every `##` section the template documents as a convention section (e.g., FEATURES.md's `## Requires lines`, `## Slicing`, `## Exploring` preamble; BUGS.md's `## Requires lines`; the history archives' `## Cross-reference resolution`). It never includes user-controlled sections: the inline-entries areas (`## (add sections as work emerges)`, `## Open`, `## Current patterns`), the themed entry sections the user creates, a history archive's `## Entries` body once content lands beneath it, and the trailing `## History` pointer's boilerplate. The controller's manifest regions bound exactly the editable portions, so a proposed semantic edit can never touch user-controlled bytes. Identical-or-enriched template-controlled content (the live file covers everything on the checklist, possibly with additional project-specific prose) is complete and left alone; drift in wording, paragraph order, or added emphasis is not a missing concept. One legacy exception is mechanical: a `## Requires lines` section that still describes bare text as a legal `**Requires:**` form (the pre-External grammar) is repaired by replacing that whole section with the current template's section through an approved semantic edit, regardless of concept coverage. Hard-wrapped prose is an orthogonal controller-reported state, not a concept judgment, and a populated legacy `## Implemented` / `## Fixed` section whose history archive is missing is surfaced as a nonblocking migration problem for the user to resolve by hand; never auto-migrate entries.
+
+**Scope of each check.** Each checklist item below names the section(s) it inspects in parentheses when the section is not the H1 header. Items without a section annotation are H1-header content (when a whole checklist is H1-only the annotations are omitted as redundant). The convention sections to inspect are exactly those the checklist items name, **matched on exact `##` heading text**: if a project renames the section (e.g., `## Cross-references` instead of `## Cross-reference resolution`), the checklist won't find it and that counts as a missing concept. Everything else (user-entries sections like `## Open` / `## Entries` / themed sections, the trailing `## History` pointer's fixed boilerplate) is user-controlled and skipped.
 
 **Either-location satisfaction.** When a concept could plausibly live in more than one templated section (e.g., the FEATURES.md "`/nightshift:ready` reports `## Exploring` separately as drafts, never in the ready set, and `/nightshift:exploring` renders them in full" claim is teachable in both the `## Exploring` preamble and the `## Requires lines` carve-outs paragraph), the checklist item is satisfied if covered in EITHER location. Annotation names the primary expected location; secondary locations are acceptable substitutes.
 
@@ -90,7 +87,7 @@ For each templated file, these are the load-bearing concepts its template-contro
 1. Names this file as one of four repo-local indexes consulted on demand when relevant.
 2. States that active entries stay inline organized under thematic `##` sections invented as work emerges.
 3. Points at `QUICK_WINS_HISTORY.md` as the archive for shipped entries.
-4. Notes the negative-knowledge → patterns Cautionary tales promotion path.
+4. Notes the negative-knowledge to patterns Cautionary tales promotion path.
 5. Describes the capture shorthand (name + smell + preferred shape).
 6. States the stable-anchor rule for entries (locate by symbol names, entry titles, commit hashes; never by line numbers, plan-phase ordinals, bullet positions, or temporal qualifiers).
 7. Instructs the author to run `/nightshift:ready` after adding a new entry to confirm it parses as a work item against the real grammar in `skills/ready/ready.js`.
@@ -100,7 +97,7 @@ For each templated file, these are the load-bearing concepts its template-contro
 1. Names this file as archival / archaeological and loaded on demand. *(H1)*
 2. States that shipped quick wins are appended here, not to the active file. *(H1)*
 3. Carries forward-looking guidance on entry shape (enough context to recover reasoning, including investigation findings, reverted approaches, benchmarks, the commit or scope it landed in). *(H1)*
-4. Notes the negative-knowledge → patterns promotion path with one-line redirect convention. *(H1)*
+4. Notes the negative-knowledge to patterns promotion path with one-line redirect convention. *(H1)*
 5. States `/nightshift:ready` does not parse this file for work (because the walk-and-remove convention keeps active `Requires:` lines authoritative) and that the line-discipline check still reads it. *(`## Cross-reference resolution` section)*
 
 **`FEATURES.md`:**
@@ -142,7 +139,7 @@ For each templated file, these are the load-bearing concepts its template-contro
 5. Notes that `/nightshift:ready` does not parse PATTERNS.md (it is a pattern registry, not a work backlog), and directs the author to verify an added entry's breakout-file link target and run `ready` as a whole-session sanity pass.
 6. States the line discipline (one paragraph or bullet per physical line, never hard-wrapped).
 
-**Root `CLAUDE.md` `Backlogs and indexes` section:**
+**Root-guidance `Backlogs and indexes` section:**
 1. Instructs agents to consult relevant indexes on demand before proposing or starting related work.
 2. Names the four subdirectories and three history archives.
 3. Explains the walk-and-remove convention, `## Exploring`, and `/nightshift:ready`, including that `**Requires:**` carries in-backlog links only, that external primitives go on the optional `**External:**` line, and that breakout files carry neither line.
@@ -155,310 +152,20 @@ An earlier automatic-loading claim is replaced by the on-demand instruction rath
 
 ## Rules
 
-- **Targeted-patch insertion rules** (shared across all rules below that say "propose a targeted patch"): (a) **append** the missing concept as a new paragraph at the end of the relevant template-controlled portion (after its last existing paragraph), unless the missing concept is naturally a sub-clause of an existing paragraph: then propose an **in-place edit** that adds the clause to that paragraph, quoting both before and after in the plan output so the user sees the exact change. (b) **Never re-flow** surrounding prose to "integrate" the addition; mechanical append is the safe default. (c) If multiple checklist items are missing, propose them as separate patches in the plan, not a single rewrite. The user can accept, reject, or hand-edit each patch.
-- **Index files.** Create from template if missing. If present and the template-controlled portion covers every concept on the per-file checklist in `## Concept checklists` (verbatim or in equivalent project-specific prose), skip: including the enriched-superset case where the live content carries extra material the template doesn't. If present and missing checklist items, propose a **targeted patch** per the shared insertion rules above. User-controlled sections (per the template-controlled-portion definition in step 1) are never touched. If the live content is clearly project-specific custom enough that you can't confidently identify which concepts are missing vs. just-worded-differently, prefer `ask` over an automatic merge proposal. One replace rule sits beside the automatic-loading one: an index header whose `## Requires lines` section still describes bare text as a legal `**Requires:**` form (the pre-External grammar) has that whole template-controlled section replaced by the current template's section through the user-confirmed section-level merge, since the legacy section states the form in its bullet list and, in `FEATURES.md`, also in its form count and fenced example.
-- **`QUICK_WINS_HISTORY.md`**, **`FEATURES_HISTORY.md`**, and **`BUGS_HISTORY.md`.** Create from template if missing. If present, follow the index-file rule: skip when concept-coverage is complete, propose a targeted patch (per shared insertion rules above) when concepts are missing, never touch the user-controlled `## Entries` section. If the parent index still has a populated `## Implemented` / `## Fixed` section while its history sibling is missing, surface the situation in the plan output but do not auto-migrate; the user decides whether to move them by hand.
-- **Subdirectories.** Create if missing. Never touch existing contents. Applies to the four subdirs (`features/`, `bugs/`, `patterns/`, `plans/`). Any pre-existing subdirectory outside that set is left alone untouched.
-- **`CLAUDE.md`.** Create minimally from template if missing. If present without a `Backlogs and indexes` section, offer to append it. If present with a section that's missing concepts the CLAUDE.md staleness rule above lists, propose a targeted patch (per shared insertion rules above; the section is the "template-controlled portion" here). Replace an earlier automatic-loading claim with the on-demand consultation rule in the same targeted patch. Enriched-superset sections (cover everything the template covers, plus non-contradictory project-specific phrasing or extras) are NOT stale and are skipped. If present with a similar section (any `##` heading containing "backlog" or "index") that's clearly project-specific custom content, show it and ask before editing.
-- Do not add content to `CLAUDE.md` beyond the Backlogs-and-indexes block. Users have their own conventions for the rest of `CLAUDE.md`.
+- **Targeted-patch insertion rules** (shared across every rule below that proposes a semantic repair): (a) **append** the missing concept as a new paragraph at the end of the relevant template-controlled portion (after its last existing paragraph), unless the missing concept is naturally a sub-clause of an existing paragraph: then propose an **in-place edit** that adds the clause to that paragraph, showing both before and after in the presentation so the user sees the exact change. (b) **Never re-flow** surrounding prose to "integrate" the addition; mechanical append is the safe default, and the controller enforces that only the named manifest region changes. (c) If multiple checklist items are missing, propose them as separate patches in the presentation, not a single rewrite. The user can accept, reject, or hand-edit each patch; a rejected patch leaves that target's semantic decision `deferred`.
+- **Nothing is overwritten.** Never overwrite an existing top-level index file or an existing subdirectory's contents. The controller's closed action grammar (`ensure-directory`, `create-from-template`, `exact-edit`, `unwrap-file`) cannot delete, move, or blind-write anything: a creation requires a missing target, and every edit binds the exact inspected before-bytes.
+- **Index and history files.** Created from their manifest templates when missing; skipped when the template-controlled portion covers every checklist concept (the enriched-superset case included); repaired through targeted patches when concepts are missing. If the live content is so heavily customized that missing-vs-reworded cannot be judged confidently, prefer `ask` over an automatic repair proposal.
+- **Guidance.** If the resolved guidance file lacks the `Backlogs and indexes` section, the controller proposes the section append. If the section exists but misses checklist concepts, propose targeted patches; replace an earlier automatic-loading claim with the on-demand consultation rule in the same patch. If the file carries a similar project-specific section (any `##` heading containing "backlog" or "index") that is clearly custom, show it and ask before editing. Do not add content to the guidance file beyond the Backlogs-and-indexes block; users have their own conventions for the rest.
+- **Subdirectories.** Created if missing; existing contents are never touched. Any pre-existing subdirectory outside the controlled set is left alone.
 
 ### Re-run on existing projects
 
-The skill is idempotent. Re-running on a project that was scaffolded against an earlier version of these templates will:
+The skill is idempotent. Re-running on a project that was scaffolded against an earlier template version will:
 
 - Skip every up-to-date index file and every existing subdirectory.
 - Create any newly-required subdirectories that don't exist yet (commonly `plans/` on projects that predate that addition).
-- Detect any stale template-controlled content (index file headers and the CLAUDE.md `Backlogs and indexes` section) and propose a header- or section-level merge that preserves user content (entries and custom CLAUDE.md prose).
-- Detect hard-wrapped prose in any backlog file under `.claude/` and propose an `unwrap` action per file; the rewrite joins continuation lines and changes nothing else.
-
-Always confirm the planned merge with the user before any file is rewritten.
-
-## Templates
-
-The content blocks below are authoritative. When creating `missing` files, write the template verbatim. When merging into existing files, adapt the relevant block only.
-
-### `.claude/QUICK_WINS.md`
-
-~~~markdown
-# Quick wins
-
-Refactors ready to land when time allows; not blocking any feature, but would improve the codebase meaningfully.
-
-This file is **one of four repo-local indexes** agents consult on demand when relevant (alongside `FEATURES.md`, `BUGS.md`, `PATTERNS.md`). Active entries are kept inline, organized under thematic `##` sections you invent as work emerges. When a quick win lands, append a shipped-note entry to [`QUICK_WINS_HISTORY.md`](QUICK_WINS_HISTORY.md); do not move it within this file. Negative-knowledge findings (approaches attempted and reverted) are first-class promotion candidates from the history into the relevant `.claude/patterns/<slug>.md` Cautionary tales sections.
-
-Readiness and graduation are not approval: before spec-governed work, present the current decision-complete digest and obtain explicit agreement in this session.
-
-Backlog prose is one paragraph or one bullet per physical line, never hard-wrapped at a column: a search hit then shows the whole entry, the parsers anchor on whole lines, and an edit shows as one changed line instead of a reflowed block. `/nightshift:ready` reports a hard-wrapped file as a notice and `/nightshift:init-backlog` unwraps it.
-
-Capture shorthand: name the refactor, describe the current smell in a sentence or two, sketch the preferred shape. A reader should be able to start work from the entry alone. Anchor entries on identifiers that survive refactors -- symbol names, entry titles, commit hashes, config keys -- never on line numbers, plan-phase ordinals, bullet positions, or temporal qualifiers ("new", "recent"): a precise locator that rots misleads harder than a coarse one that holds.
-
-**After adding a new entry, run `/nightshift:ready`** from the repo root to confirm it parses as a quick-wins work item against the real grammar in `skills/ready/ready.js`. Quick wins carry neither a `**Requires:**` nor an `**External:**` line; the failure mode to catch is an entry that doesn't parse as a `- ` bullet or `###` heading (ready reports it as a prose-only-section notice) while you can still fix it in the same session.
-
-## (add sections as work emerges)
-
-Nothing tracked yet.
-
-## History
-
-Implemented quick wins are archived in [`QUICK_WINS_HISTORY.md`](QUICK_WINS_HISTORY.md), consulted only on demand so the active backlog above stays scannable. When a quick win lands, append its entry there rather than to this file.
-~~~
-
-### `.claude/QUICK_WINS_HISTORY.md`
-
-~~~markdown
-# Quick wins (history)
-
-Implemented quick wins, archived from `QUICK_WINS.md` so the active backlog stays scannable. **Archaeological**: loaded on demand. When a quick win lands, append its entry here rather than to the active file.
-
-Entries appear in the order they shipped. Write each with enough context to recover the reasoning from the entry alone: investigation findings, reverted approaches, benchmarks, the commit or scope it landed in. Negative-knowledge findings (approaches attempted and reverted, with the reason) are the most valuable content here for preventing re-attempts; consider promoting those into the relevant `.claude/patterns/<slug>.md` Cautionary tales section when touching the pattern doc, leaving a one-line redirect here if cross-referenced.
-
-## Cross-reference resolution
-
-`/nightshift:ready` does **not** parse this file for work; only the line-discipline check reads it. When a quick win lands, every other `**Requires:**` line in `FEATURES.md` / `BUGS.md` that referenced it is edited at the same time to drop the now-satisfied reference. The active `Requires:` lines therefore describe what is *currently* blocking. This file is purely archaeological; read it when you want to know what already shipped or to mine negative-knowledge findings, not to resolve dependencies.
-
-## Entries
-
-Nothing yet.
-~~~
-
-### `.claude/FEATURES.md`
-
-~~~markdown
-# Features
-
-Product-level feature ideas captured during brainstorming. Each entry points at a standalone file under `.claude/features/<slug>.md` with the full design sketch. Check this index before proposing new feature directions in the same territory.
-
-This file is **one of four repo-local indexes** agents consult on demand when relevant (alongside `QUICK_WINS.md`, `BUGS.md`, `PATTERNS.md`). Each entry here is a short paragraph summary plus a `**Requires:**` line, an optional `**External:**` line, and optionally a `**Slices:**` block (formal MVP plus continuations; see `## Slicing` below). For features that are partially done without a formal slice breakdown, describe the partial progress in the entry's own prose: there is no separate marker convention for "partially shipped". The detailed design lives in the linked file. When a feature (or a slice of a sliced feature) ships, append its entry to [`FEATURES_HISTORY.md`](FEATURES_HISTORY.md); do not keep an `## Implemented` section inline.
-
-Readiness and graduation are not approval: before spec-governed work, present the current decision-complete digest and obtain explicit agreement in this session.
-
-Backlog prose is one paragraph or one bullet per physical line, never hard-wrapped at a column: a search hit then shows the whole entry, the parsers anchor on whole lines, and an edit shows as one changed line instead of a reflowed block. `/nightshift:ready` reports a hard-wrapped file as a notice and `/nightshift:init-backlog` unwraps it.
-
-## Requires lines
-
-**Every feature index entry carries a `**Requires:**` line** declaring the upstream gates that block the feature. The line is comma-separated and stays on one physical line (the parser joins a wrapped line, but the line discipline above forbids wrapping). Each item is one of two forms:
-
-- A markdown link to a feature, quick win, or bug entry tracked in one of the four indexes. The reference is a current blocker; under the walk-and-remove convention below, a satisfied dependency is edited out of the line at the moment it ships, so `/nightshift:ready` treats every in-backlog reference as actively blocking.
-- The literal word `none.` if there are no upstream gates. An empty label is a structural error; `none.` is the only empty form.
-
-Bare text in `**Requires:**` is a structural error. External primitives (an SDK feature, infrastructure capability, library, hardware, a user decision) go on a separate, optional `**External:**` line directly below it, with the same comma-separated grammar: `**External:** vendor SDK 3.0, hardware enclosure.` Absence is its only empty form, so `none.`, an empty label, or a markdown link in it is a structural error (a link parked there would be invisible to the walk-and-remove convention). A link means an item that is entirely a markdown link; prose that merely contains a link is bare text. `/nightshift:ready` classifies a work unit with at least one in-backlog blocker as Blocked with its externals noted parenthetically, and a work unit with externals and no blocker as External. Every structural error names its remedy.
-
-A missing `Requires:` line is a structural error: every entry must say something. Silence is not the same as `none.`; it indicates the dependency review hasn't been done. The `/nightshift:ready` skill parses these lines to compute the unblocked work set.
-
-**After adding a new entry (or a feature breakout file), and after graduating a draft from `## Exploring`, run `/nightshift:ready`** from the repo root so the bundled `skills/ready/ready.js` validates the post-edit backlog. A new entry must parse and its `**Requires:**` line must resolve. A graduation is incomplete until the selected entry is absent from `exploring`, the selected entry or its unshipped slice work units appear in `ready`, `blocked`, or `external`, the selected entry has no structural error or notice, and the transition introduced no new structural error or notice. Surface pre-existing unrelated problems again, but they do not alone block that graduation. A failed parser invocation, missing work index, missing active classification, selected-entry problem, or newly introduced problem stops graduation until corrected and rechecked.
-
-Downstream relationships (this feature **enables** what) are not encoded structurally. They can be derived by walking the upstream graph in reverse, and over-codifying them creates a second source of truth that drifts. Mention downstream relationships in design prose where they aid understanding.
-
-**Carve-outs:** sections like `## Working hypotheses`, `## Staging`, `## Future directions (not yet designed)`, `## Author tooling`, and `## Exploring` describe pre-feature material (orienting prose, shipping order, shallow placeholders, workflow notes, exploratory brainstorms) rather than ready-to-implement entries. Items in those sections do not carry `Requires:` lines (or, in `## Exploring`'s case, may carry them as historical artifacts only). `/nightshift:ready` ignores the bulleted sections entirely and keeps `## Exploring` out of the readiness set, reporting its entries separately as titles-only drafts; `/nightshift:exploring` renders them in full. Working hypotheses / Staging / Future directions (not yet designed) / Author tooling are bulleted rather than `###` headings, so the `###`-only candidate filter handles them naturally; `## Exploring` holds `###` entries, collected as drafts and never classified.
-
-Concrete entry shape inside the index. The example shows a feature link, a quick-win link, and an External line to show both lines; a real entry only includes whatever it actually depends on:
-
-```markdown
-### [<Feature name>](features/slug.md)
-
-<Short paragraph summary.>
-
-**Requires:** [other-feature](features/other-feature.md), [shared
-helper extraction](../QUICK_WINS.md#shared-helper-extraction).
-**External:** some external primitive.
-```
-
-**When a feature is implemented**, move its index entry to [`FEATURES_HISTORY.md`](FEATURES_HISTORY.md); drop its `Requires:` and `External:` lines in the move (history entries don't need them). The feature file stays in place as a historical design record.
-
-**Then walk every other `**Requires:**` line in `FEATURES.md` and `BUGS.md`** and remove references to the just-shipped feature: if it was the only item on the line, set the line to `Requires: none.`. This keeps `Requires:` lines as a literal record of what is *currently* blocking and means `/nightshift:ready` never needs to consult the history file.
-
-**Partially-implemented features** have two routes. If the shipped and remaining work is scoped clearly enough to name a named MVP plus named continuations, use the formal `**Slices:**` block described in `## Slicing` below; `/nightshift:ready` then expands per-slice work units and downstream features can reference specific slices via the `[Feature: slice-name]` link suffix. If the shipped work is real but not yet sliceable (e.g., one layer landed, remaining layers are a wishlist not a planned breakdown), describe the partial progress in the entry's own prose without any special markers. `/nightshift:ready` treats such entries as the `**Requires:**` line dictates; partial progress is editorial context for the reader, not a machine-readable signal.
-
-## Slicing
-
-Features that bundle multiple shippable layers under one design split into a named **MVP** plus one or more **continuations**. The MVP is the smallest surface that unblocks downstream features whose `Requires:` line points at this feature; continuations layer extensions on top.
-
-A sliced feature entry carries a `**Slices:**` block listing each slice (MVP first, then continuations) with one or two sentences on what each delivers. The entry's `**Requires:**` line reflects the *next-to-ship* slice (initially MVP).
-
-After MVP ships, the MVP entry moves to [`FEATURES_HISTORY.md`](FEATURES_HISTORY.md); the MVP bullet in the parent's `**Slices:**` block is struck through with a pointer to the history file; the parent entry stays in its themed section; the top-level `**Requires:**` and `**External:**` lines advance to the next-to-ship slice's gates; and every other `**Requires:**` line in `FEATURES.md` / `BUGS.md` that referenced the just-shipped slice (bare-link defaults to MVP) is edited to drop the now-satisfied reference. When later continuations have independent gates (they can ship in any order rather than sequentially), each slice bullet may carry inline `**Requires:**` and `**External:**` annotations for documentation. Example shape post-MVP:
-
-````
-**Slices:**
-
-- ~~MVP - floating-reference core.~~ (Shipped; see FEATURES_HISTORY.md.)
-- **Re-anchor events.** Manual UI re-anchor + `AnchorEvent` plumbing.
-- **Late-join replay.** `GetSessionHistory` pull endpoint.
-- **`RepertoireChordSource`.** Drop-in replacement consuming chart repertoire.
-  **Requires:** [chart-repertoire](features/chart-repertoire.md).
-
-**Requires:** none.
-````
-
-Downstream features that need a specific continuation (not just the MVP) encode the slice name in the link's display text:
-
-```
-[feature-title: continuation name](features/slug.md)
-```
-
-A link without a `: slice-name` suffix resolves to the MVP: the default unblock point.
-
-As each slice ships, append a line to `FEATURES_HISTORY.md`:
-
-```
-- [Feature title: slice name](features/slug.md): brief note.
-```
-
-The parent entry stays in its themed section until the **last** slice ships, at which point it graduates with the final history line.
-
-`/nightshift:ready` reads the top-level `**Requires:**` and `**External:**` lines and any inline `**Requires:**` and `**External:**` annotations on slice bullets, then reports each unshipped slice as a separate work unit (`[Feature title: slice name]`). A slice is "unshipped" when its bullet in the `**Slices:**` block is *not* struck through; the strikethrough is the live slice-status indicator that `/nightshift:ready` reads. The **first unshipped slice** (top-most non-struck bullet) uses the top-level lines as its gates; other unshipped slices use their inline annotations if present, or have no extra gates if no annotation. All non-MVP slices **implicitly depend on MVP being struck through**, regardless of top-level or inline gates; a continuation is never reported as Ready while MVP is unshipped. A slice may declare an inline `**Requires:**` pointing at another slice of the same feature via the suffixed-link form, useful when one continuation builds directly on another; resolve the reference by checking whether the target slice's bullet is struck through. As each slice ships, append its entry to `FEATURES_HISTORY.md`, strike through its bullet in the parent's `**Slices:**` block, advance the top-level `**Requires:**` and `**External:**` lines to the new next-to-ship slice's gates (dropping `**External:**` when that slice declares none), and walk every other `**Requires:**` line in `FEATURES.md` / `BUGS.md` to drop now-satisfied references.
-
-## Exploring
-
-Pre-dependency-analysis brainstorms live here. An entry is a draft feature whose breakout file carries `status: exploring` in its frontmatter; the design is being firmed up and a `**Requires:**` line isn't expected yet. `/nightshift:ready` lists these drafts titles-only in a clearly-marked not-ready section, never in the readiness set, and `/nightshift:exploring` renders the full draft list. When a draft firms up enough to declare its upstream gates, move it out of `## Exploring` into the appropriate themed `##` section, add the `**Requires:**` line, and drop the `status: exploring` frontmatter on the breakout file. The post-edit `/nightshift:ready` gate in `## Requires lines` is part of graduation, not a later cleanup.
-
-Nothing being explored yet.
-
-## (add sections as features emerge)
-
-Nothing captured yet.
-
-## History
-
-Implemented features are archived in [`FEATURES_HISTORY.md`](FEATURES_HISTORY.md), loaded on demand so the active backlog above stays scannable. When a feature (or slice) ships, append its entry there rather than to this file, AND walk every other `**Requires:**` line in `FEATURES.md` / `BUGS.md`: remove the now-satisfied reference (if it was the only one, set the line to `Requires: none.`). The active `Requires:` lines describe what is *currently* blocking, so `/nightshift:ready` never has to consult the history file; the dependency graph settles as features ship.
-~~~
-
-### `.claude/FEATURES_HISTORY.md`
-
-~~~markdown
-# Features (history)
-
-Implemented features, archived from `FEATURES.md` so the active backlog stays scannable. **Archaeological**: read only when consulted. When a feature (or a slice of a sliced feature) ships, append its entry here rather than to the active file.
-
-The feature breakout file at `features/<slug>.md` stays in place as the historical design record; the entry here is a brief one-line note on what shipped and in which feature scope or commit. If follow-up work on the same feature changes the design meaningfully, prefer editing the original breakout file (and adding a second entry here for the follow-up) over creating a new file.
-
-## Cross-reference resolution
-
-`/nightshift:ready` does **not** parse this file for work; only the line-discipline check reads it. When a feature ships, every other `**Requires:**` line in `FEATURES.md` / `BUGS.md` that referenced it is edited at the same time to drop the now-satisfied reference (see the convention in `FEATURES.md`'s `## Requires lines` and `## Slicing` sections). The active `Requires:` lines therefore describe what is *currently* blocking and the dependency graph settles as work ships. This file is purely archaeological; read it when you want to know what already shipped, not to resolve dependencies.
-
-## Entries
-
-Nothing yet.
-~~~
-
-### `.claude/BUGS.md`
-
-~~~markdown
-# Bugs
-
-Known bugs awaiting attention. Short entries live here; bugs that need more than a few lines of description graduate to a dedicated file under `.claude/bugs/<slug>.md`.
-
-This file is **one of four repo-local indexes** agents consult on demand when relevant (alongside `QUICK_WINS.md`, `FEATURES.md`, `PATTERNS.md`). When a bug is fixed, append its entry to [`BUGS_HISTORY.md`](BUGS_HISTORY.md); do not keep a `## Fixed` section inline.
-
-Readiness and graduation are not approval: before spec-governed work, present the current decision-complete digest and obtain explicit agreement in this session.
-
-Backlog prose is one paragraph or one bullet per physical line, never hard-wrapped at a column: a search hit then shows the whole entry, the parsers anchor on whole lines, and an edit shows as one changed line instead of a reflowed block. `/nightshift:ready` reports a hard-wrapped file as a notice and `/nightshift:init-backlog` unwraps it.
-
-## Requires lines
-
-**Every open bug entry carries a `**Requires:**` line** declaring what must be in place before the fix can land. Comma-separated on one physical line, same shape as `FEATURES.md` (the parser joins a wrapped line, but the line discipline above forbids wrapping):
-
-- A markdown link to a feature, quick win, or bug. The reference is a current blocker; under the walk-and-remove convention below, a satisfied dependency is edited out of the line at the moment it ships or is fixed.
-- The literal word `none.` if the fix is unblocked. An empty label is a structural error; `none.` is the only empty form.
-
-Bare text in `**Requires:**` is a structural error. An external primitive (driver release, vendor support, user decision) goes on a separate, optional `**External:**` line directly below it, same grammar; `none.`, an empty label, or a link in it is a structural error. Every structural error names its remedy.
-
-A missing `Requires:` line is a structural error. `/nightshift:ready` parses these lines. History entries carry neither line.
-
-**After adding a new entry (or a bug breakout file), run `/nightshift:ready`** from the repo root to confirm the new entry parses and its `**Requires:**` line resolves against the real grammar in `skills/ready/ready.js`. A malformed line (wrapped without the parser's join rule, a misplaced `none.`, a broken or ambiguous link target, or a missing line entirely) otherwise sits in the backlog until the next readiness pass surfaces it.
-
-**When a bug is fixed**, move its entry to [`BUGS_HISTORY.md`](BUGS_HISTORY.md) with a brief note on the fix and the commit it landed in; drop its `Requires:` and `External:` lines in the move. If the bug had its own file, keep the file in place as a historical record of the diagnosis.
-
-**Then walk every other `**Requires:**` line in `FEATURES.md` and `BUGS.md`** and remove references to the just-fixed bug: if it was the only item on the line, set the line to `Requires: none.`. Mirror of the `FEATURES.md` walk-and-remove convention; `/nightshift:ready` never has to consult `BUGS_HISTORY.md` to resolve dependencies.
-
-## Open
-
-Nothing currently tracked.
-
-## History
-
-Fixed bugs are archived in [`BUGS_HISTORY.md`](BUGS_HISTORY.md), loaded on demand so the active list above stays scannable. When a bug is fixed, append its entry there rather than to this file, AND walk every other `**Requires:**` line in `FEATURES.md` / `BUGS.md`: remove the now-satisfied reference (if it was the only one, set the line to `Requires: none.`). The active `Requires:` lines describe what is *currently* blocking, so `/nightshift:ready` never has to consult the history file; the dependency graph settles as bugs are fixed.
-~~~
-
-### `.claude/BUGS_HISTORY.md`
-
-~~~markdown
-# Bugs (history)
-
-Fixed bugs, archived from `BUGS.md` so the active list stays scannable. **Archaeological**: read only when consulted. When a bug is fixed, append its entry here rather than to the active file.
-
-The bug breakout file at `bugs/<slug>.md` (when present) stays in place as the historical diagnosis record; the entry here is a brief description of the fix and the commit it landed in.
-
-## Cross-reference resolution
-
-`/nightshift:ready` does **not** parse this file for work; only the line-discipline check reads it. When a bug is fixed, every other `**Requires:**` line in `FEATURES.md` / `BUGS.md` that referenced it is edited at the same time to drop the now-satisfied reference (mirror of the `FEATURES.md` convention). The active `Requires:` lines therefore describe what is *currently* blocking; this file is purely archaeological.
-
-## Entries
-
-Nothing yet.
-~~~
-
-### `.claude/PATTERNS.md`
-
-~~~markdown
-# Patterns
-
-Cross-cutting design patterns that apply across multiple features or feature families. Each entry points at a standalone file under `.claude/patterns/<slug>.md` with the full treatment.
-
-This file is **one of four repo-local indexes** agents consult on demand when relevant (alongside `QUICK_WINS.md`, `FEATURES.md`, `BUGS.md`).
-
-Readiness and graduation are not approval: before spec-governed work, present the current decision-complete digest and obtain explicit agreement in this session.
-
-Backlog prose is one paragraph or one bullet per physical line, never hard-wrapped at a column: a search hit then shows the whole entry, the parsers anchor on whole lines, and an edit shows as one changed line instead of a reflowed block. `/nightshift:ready` reports a hard-wrapped file as a notice and `/nightshift:init-backlog` unwraps it.
-
-A pattern graduates here when the same structure would otherwise be re-described in two or more feature files. Lifting it into a shared home lets features link at the pattern rather than duplicating it, and makes design decisions about the pattern uniform across its members.
-
-**Adding a pattern (or its breakout file) is not grammar-checked:** `/nightshift:ready` does not parse PATTERNS.md (it is a pattern registry, not a work backlog). When you add a pattern, verify its breakout-file link targets a real file under `.claude/patterns/` and run `/nightshift:ready` afterward as a whole-session sanity pass, so a stray malformed entry in the three work indexes is caught before it ships.
-
-## Current patterns
-
-Nothing captured yet.
-~~~
-
-### `CLAUDE.md` (fresh minimal file)
-
-~~~markdown
-# CLAUDE.md
-
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
-
-## Backlogs and indexes
-
-Four repo-local indexes live under `.claude/`. Consult the relevant indexes before proposing or starting related work because a task may already be queued, designed, diagnosed, or covered by an existing pattern:
-
-Readiness and graduation are not approval: before spec-governed work, present the current decision-complete digest and obtain explicit agreement in this session.
-
-Backlog prose is one paragraph or one bullet per physical line, never hard-wrapped at a column: a search hit then shows the whole entry, the parsers anchor on whole lines, and an edit shows as one changed line instead of a reflowed block. `/nightshift:ready` reports a hard-wrapped file as a notice and `/nightshift:init-backlog` unwraps it.
-
-Compatible governing-text changes that remain within the accepted digest continue autonomously after a cited contract-fit check.
-
-When a final governing design is presented, invoke /nightshift:spec-agreement in final-presentation mode before asking for agreement.
-
-Existing agreement is fresh only when the complete current candidate matches or passes contract-fit evaluation in the same session.
-
-- `.claude/QUICK_WINS.md`: refactors ready to land when time allows. Shipped entries are appended to `.claude/QUICK_WINS_HISTORY.md` (described below).
-- `.claude/FEATURES.md`: product-level feature ideas, with one file per feature under `.claude/features/`. Shipped entries are appended to `.claude/FEATURES_HISTORY.md` (described below). When sibling feature files start duplicating shared concerns (machinery, patterns, conventions), promote an umbrella file that hosts the shared content and trim the siblings to deltas; cross-references through an umbrella scale better than pairwise cross-references.
-- `.claude/BUGS.md`: known bugs awaiting fix, with one file per bug under `.claude/bugs/` when more than a few lines of description is needed. Fixed entries are appended to `.claude/BUGS_HISTORY.md` (described below).
-- `.claude/PATTERNS.md`: cross-cutting design patterns that span multiple features, with one file per pattern under `.claude/patterns/`. Complementary to the umbrella-promotion heuristic above: umbrellas cluster children of one family; patterns cluster concerns that span families. A pattern graduates here when the same structure would otherwise be re-described in two or more feature files.
-
-Four locations sit alongside the indexes and are consulted only on demand when relevant work is in flight:
-
-- `.claude/plans/<date>-<slug>.md`: implementation plans produced by the writing-plans workflow. **Ephemeral**: a plan exists while the implementation is in flight and is deleted once the work lands. The code, tests, and commits are the durable record. Plans are purely mechanical step-by-step instructions for the agent doing the work. There is no "implemented plans" archive.
-- `.claude/QUICK_WINS_HISTORY.md`: archive of shipped quick wins, split out from `QUICK_WINS.md` so the active backlog stays scannable. Append entries here as soon as the quick win lands; the file itself is consulted only when something pulls it in (a pattern-doc cross-reference, an archaeological lookup, a negative-knowledge sweep). Negative-knowledge entries (approaches attempted and reverted) are first-class promotion candidates into the relevant `.claude/patterns/<slug>.md` Cautionary tales sections.
-- `.claude/FEATURES_HISTORY.md`: archive of shipped features and shipped slices, split out from `FEATURES.md` so the active backlog stays scannable. Append entries here as soon as a feature or slice lands.
-- `.claude/BUGS_HISTORY.md`: archive of fixed bugs, split out from `BUGS.md`. Append entries here as soon as a bug is fixed.
-
-**Walk-and-remove convention.** When a feature, slice, quick win, or bug-fix ships, the same change set that appends its entry to the relevant history archive ALSO walks every other `**Requires:**` line in `FEATURES.md` / `BUGS.md` and drops references to the just-shipped item; if the dropped reference was the only one on the line, the line becomes `Requires: none.`. Active `Requires:` lines therefore describe what is *currently* blocking, and `/nightshift:ready` never has to consult the history archives to resolve dependencies; the dependency graph settles as work ships.
-
-Brainstorming output lives in feature files (or in patterns when cross-cutting / in bugs when diagnostic) rather than as separate dated specs. Pre-feature exploratory brainstorms land as draft features with `status: exploring` frontmatter and an entry in `FEATURES.md`'s `## Exploring` section; `/nightshift:ready` lists them titles-only as drafts, never in the ready set, and `/nightshift:exploring` shows the full draft list. They graduate to a themed `##` section with a `**Requires:**` line once the design firms up.
-
-The `/nightshift:ready` skill parses each entry's `**Requires:**` line (in-backlog links only) and optional `**External:**` line (external primitives only) in `FEATURES.md` and `BUGS.md` and reports the unblocked work set. Breakout files carry neither line; the index is the sole dependency authority and the parser reports a breakout that carries one. Run it when picking what to work on next.
-~~~
-
-### `CLAUDE.md` section (to append when `CLAUDE.md` exists without it)
-
-Use the complete `## Backlogs and indexes` section from the fresh `CLAUDE.md` template above, minus the `# CLAUDE.md` header and intro line. Append with one blank line before the heading.
+- Detect template-controlled prose that lost required concepts and propose targeted semantic patches that preserve user content (entries and custom guidance prose).
+- Detect hard-wrapped prose in any backlog file under `.claude/` and propose an `unwrap` action per file; the rewrite joins continuation lines and changes nothing else, and the controller restores every batch target byte-exact if the observed ready result differs from the approved prediction.
+- Require the plans-ignore policy independently of any earlier election, proposing the mandatory `.gitignore` append when it is missing and effective.
+
+Always obtain the explicit approval in the Process above before any project target or apply-owned durable state is written; the bounded request-spool transport and inspection-ownership writes needed to obtain the proposal are not apply authorization, and a re-run never writes project content on recognition alone.
