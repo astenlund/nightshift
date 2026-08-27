@@ -154,6 +154,34 @@ function runRecoveryCases() {
     }
   })
 
+  test('orphan-stage, election-marker, and abandoned-backup recovery all block on an unrelated gate', () => {
+    const cases = [
+      () => {
+        const root = fixtureRoot()
+        const target = stageFixture(root)
+        return { request: request(root, 'orphan-lock-stage', target), options: { killProcess: absentPid() }, root }
+      },
+      () => {
+        const root = fixtureRoot()
+        writeFileSync(join(root, '.nightshift-init-backlog-election'), Buffer.from('partial\n', 'utf8'), { mode: 0o600 })
+        return { request: request(root, 'election-marker', '.nightshift-init-backlog-election'), options: { currentInspection: { git: { kind: 'git' } } }, root }
+      },
+      () => {
+        const fixture = backupFixture()
+        return { request: request(fixture.root, 'abandoned-backup', fixture.backupTarget), options: { currentInspection: { targets: [{ target: fixture.target }] } }, root: fixture.root }
+      },
+    ]
+    for (const makeCase of cases) {
+      const item = makeCase()
+      try {
+        mkdirSync(join(item.root, '.nightshift-init-backlog.recovery-gate'), { mode: 0o700 })
+        assert.throws(() => inspectRecovery(item.request, item.options), /lock|coordination|runtime|gate/i)
+      } finally {
+        rmSync(item.root, { force: true, recursive: true })
+      }
+    }
+  })
+
   test('orphan lock-stage inspection returns bounded malformed-stage evidence without parsing authority', () => {
     const root = fixtureRoot()
     try {
