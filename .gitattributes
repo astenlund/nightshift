@@ -5,3 +5,6 @@
 *.workflow.js text eol=lf
 tests/fixtures/init-backlog-prompt-baseline/** -text
 tests/fixtures/init-backlog-prompt-baseline/** !eol
+tests/fixtures/init-backlog-host/** -text
+tests/fixtures/init-backlog-import/** -text
+tests/fixtures/init-backlog-eval/** -text
