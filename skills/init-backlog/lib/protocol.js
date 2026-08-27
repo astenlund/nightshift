@@ -25,8 +25,7 @@ const RECOVERY_DISPOSITION_ORDER = ['cleanup', 'deferred', 'track', 'ignore', 'a
 const RECOVERY_LOCK_BASENAME = '.nightshift-init-backlog.lock'
 const RECOVERY_GATE_BASENAME = '.nightshift-init-backlog.recovery-gate'
 const RECOVERY_MARKER_BASENAME = '.nightshift-init-backlog-election'
-const BACKUP_PATTERN = /^\.tmp\/nightshift-init-backlog-unwrap-([a-f0-9]{64})-([a-f0-9]{64})-([a-f0-9]{64})\.bak$/
-const BACKUP_STAGE_PATTERN = /^\.tmp\/.nightshift-init-backlog-unwrap-([a-f0-9]{64})-([a-f0-9]{64})-([a-f0-9]{64})\.tmp$/
+const RECOVERY_BACKUP_PATTERN = /^\.tmp\/nightshift-init-backlog-unwrap-[a-f0-9]{64}-[a-f0-9]{64}-[a-f0-9]{64}\.bak$/
 const RECOVERY_LOCK_STAGE_PATTERN = /^\.nightshift-init-backlog\.lock\.[1-9][0-9]*\.[a-f0-9]{32}\.new$/
 
 const OPERATIONS = ['apply', 'inspect', 'recover-apply', 'recover-inspect']
@@ -143,6 +142,10 @@ function canonicalBytes(value) {
   return Buffer.from(canonicalJson(value), 'utf8')
 }
 
+function buildRecoveryApplyRequest(request, recoveryInspection, disposition) {
+  return { disposition, host: request.host, hostContext: request.hostContext, operation: 'recover-apply', protocolVersion: 1, recoveryInspection, root: request.root }
+}
+
 function sha256(bytes) {
   return createHash('sha256').update(bytes).digest('hex')
 }
@@ -240,7 +243,7 @@ function recoveryTargetMatches(kind, target) {
   if (kind === 'stale-recovery-gate') return target === RECOVERY_GATE_BASENAME
   if (kind === 'election-marker') return target === RECOVERY_MARKER_BASENAME
   if (kind === 'orphan-lock-stage') return RECOVERY_LOCK_STAGE_PATTERN.test(target)
-  if (kind === 'abandoned-backup') return BACKUP_PATTERN.test(target)
+  if (kind === 'abandoned-backup') return RECOVERY_BACKUP_PATTERN.test(target)
 
   return false
 }
@@ -584,12 +587,12 @@ function validateRecoveryInspection(value) {
   requireString(value.host, 'host', { values: ['claude-code', 'codex'] })
   validateHostContext(value.hostContext, value.host)
   validateDigest(value.recoveryId)
-  requireString(value.recoveryKind, 'recovery kind', { values: ['abandoned-backup', 'election-marker', 'orphan-lock-stage', 'stale-owner', 'stale-recovery-gate'] })
+  requireString(value.recoveryKind, 'recovery kind', { values: RECOVERY_KINDS })
   validateTarget(value.recoveryTarget)
   requireRecord(value.evidence, ['owner', 'lockStage', 'recoveryGate', 'marker', 'backup'], 'recovery evidence')
   const present = Object.values(value.evidence).filter((item) => item !== null)
   if (present.length !== 1) {
-    invalid('invalid-request', 'decode', 'Recovery evidence is invalid.')
+    invalid('recovery-invalid', 'prevalidate', 'Recovery evidence must contain exactly one member.')
   }
   if (value.evidence.lockStage !== null) {
     const item = value.evidence.lockStage
@@ -666,15 +669,64 @@ function validateRecoveryInspection(value) {
     validateMode(item.currentMode)
     requireNullable(item.currentContentBase64, validateBase64)
   }
-  const dispositionOrder = ['cleanup', 'deferred', 'track', 'ignore', 'abandon', 'restore', 'accept', 'remove']
-  requireArray(value.allowedDispositions, 'allowed dispositions', (item) => requireString(item, 'disposition', { values: dispositionOrder }), { uniqueBy: (item) => item })
+  requireArray(value.allowedDispositions, 'allowed dispositions', (item) => requireString(item, 'disposition', { values: RECOVERY_DISPOSITION_ORDER }), { uniqueBy: (item) => item })
   let last = -1
   for (const disposition of value.allowedDispositions) {
-    const position = dispositionOrder.indexOf(disposition)
+    const position = RECOVERY_DISPOSITION_ORDER.indexOf(disposition)
     if (position <= last) {
       invalid('invalid-request', 'decode', 'Allowed dispositions are not ordered.')
     }
     last = position
+  }
+
+  const expectedEvidence = {
+    'abandoned-backup': 'backup',
+    'election-marker': 'marker',
+    'orphan-lock-stage': 'lockStage',
+    'stale-owner': 'owner',
+    'stale-recovery-gate': 'recoveryGate',
+  }[value.recoveryKind]
+  if (!recoveryTargetMatches(value.recoveryKind, value.recoveryTarget)) {
+    invalid('recovery-invalid', 'prevalidate', 'Recovery target does not match its recovery kind.', { target: value.recoveryTarget })
+  }
+  if (value.evidence[expectedEvidence] === null || Object.keys(value.evidence).some((key) => key !== expectedEvidence && value.evidence[key] !== null)) {
+    invalid('recovery-invalid', 'prevalidate', 'Recovery evidence does not match its recovery kind.', { target: value.recoveryTarget })
+  }
+  const evidence = value.evidence[expectedEvidence]
+  if (value.recoveryKind === 'stale-owner' && (!OPERATIONS.includes(evidence.record.operation) || evidence.record.root !== value.root)) {
+    invalid('recovery-invalid', 'prevalidate', 'Publication lock evidence is invalid.', { target: value.recoveryTarget })
+  }
+  if (value.recoveryKind === 'orphan-lock-stage' && evidence.record !== null && (!OPERATIONS.includes(evidence.record.operation) || evidence.record.root !== value.root || evidence.record.pid !== evidence.pid || evidence.record.ownerNonce !== evidence.ownerNonce)) {
+    invalid('recovery-invalid', 'prevalidate', 'Lock stage evidence is invalid.', { target: value.recoveryTarget })
+  }
+  if (value.recoveryKind === 'stale-recovery-gate') {
+    const empty = evidence.ownerName === null && evidence.ownerRawSha256 === null && evidence.ownerMode === null && evidence.ownerStageRawSha256 === null && evidence.ownerStageMode === null && evidence.record === null && evidence.pidStatus === null
+    const stageOnly = evidence.ownerName === null && evidence.ownerRawSha256 === null && evidence.ownerMode === null && evidence.ownerStageRawSha256 !== null && evidence.ownerStageMode !== null && evidence.record === null && evidence.pidStatus === null
+    const ownerOnly = evidence.ownerName === 'owner.json' && evidence.ownerRawSha256 !== null && evidence.ownerMode !== null && evidence.ownerStageRawSha256 === null && evidence.ownerStageMode === null && evidence.record !== null && evidence.pidStatus === 'absent'
+    const ownerPair = evidence.ownerName === 'owner.json' && evidence.ownerRawSha256 !== null && evidence.ownerMode !== null && evidence.ownerStageRawSha256 !== null && evidence.ownerStageMode !== null && evidence.record !== null && evidence.pidStatus === 'absent'
+    if (!(empty || stageOnly || ownerOnly || ownerPair) || evidence.record !== null && (evidence.record.operation !== 'recover-apply' || evidence.record.root !== value.root)) {
+      invalid('recovery-invalid', 'prevalidate', 'Recovery gate evidence is invalid.', { target: value.recoveryTarget })
+    }
+  }
+  if (value.recoveryKind === 'election-marker' && !((evidence.classification === 'invalid' && ['git', 'non-git'].includes(evidence.gitKind)) || (evidence.classification === 'valid-non-git' && evidence.gitKind === 'non-git'))) {
+    invalid('recovery-invalid', 'prevalidate', 'Election marker classification is invalid.', { target: value.recoveryTarget })
+  }
+  if (value.recoveryKind === 'abandoned-backup') {
+    const orphan = evidence.classification === 'orphan' && evidence.currentTarget === null && evidence.currentRawSha256 === null && evidence.currentMode === null && evidence.currentContentBase64 === null
+    const present = evidence.classification !== 'orphan' && evidence.currentTarget !== null && evidence.currentRawSha256 !== null && evidence.currentContentBase64 !== null
+    if (!(orphan || present)) {
+      invalid('recovery-invalid', 'prevalidate', 'Backup evidence classification is invalid.', { target: value.recoveryTarget })
+    }
+    if (evidence.classification === 'redundant' && (evidence.currentRawSha256 !== evidence.backupRawSha256 || evidence.currentMode !== evidence.backupMode)) {
+      invalid('recovery-invalid', 'prevalidate', 'Redundant backup evidence is invalid.', { target: value.recoveryTarget })
+    }
+    if (evidence.classification === 'divergent' && evidence.currentRawSha256 === evidence.backupRawSha256 && evidence.currentMode === evidence.backupMode) {
+      invalid('recovery-invalid', 'prevalidate', 'Divergent backup evidence is invalid.', { target: value.recoveryTarget })
+    }
+  }
+  const expectedDispositions = recoveryAllowedDispositions(value.recoveryKind, value.evidence)
+  if (canonicalJson(value.allowedDispositions) !== canonicalJson(expectedDispositions)) {
+    invalid('recovery-invalid', 'prevalidate', 'Recovery dispositions are not legal for its evidence.', { target: value.recoveryTarget })
   }
 
   return value
@@ -692,6 +744,9 @@ function validateOwnerRecord(value) {
   requireSafeInteger(value.createdAtUnixMs, 'owner creation time', { minimum: 0 })
   requireNullable(value.manifestId, validateDigest)
   requireNullable(value.recoveryId, validateDigest)
+  if (['inspect', 'recover-inspect'].includes(value.operation) && (value.manifestId !== null || value.recoveryId !== null) || value.operation === 'apply' && value.recoveryId !== null || value.operation === 'recover-apply' && (value.manifestId !== null || value.recoveryId === null)) {
+    invalid('recovery-invalid', 'prevalidate', 'Owner record identity fields do not match its operation.')
+  }
   requireArray(value.temporaryPaths, 'temporary paths', validateTarget, { ordinalBy: (item) => item, uniqueBy: (item) => item })
   requireArray(value.unfinalizedDirectories, 'unfinalized directories', (item) => {
     requireRecord(item, ['target', 'mode'], 'unfinalized directory')
@@ -783,14 +838,25 @@ function validateRequestRecord(value, options = {}) {
     validateProposalDispositions(value.inspection.proposals, value.proposalDispositions, { versionControlChoice: value.versionControlChoice })
     requireArray(value.actions, 'actions', (item) => validateAction(item), { uniqueBy: (item) => item.id })
   } else if (value.operation === 'recover-inspect') {
-    requireString(value.recoveryKind, 'recovery kind', { values: ['abandoned-backup', 'election-marker', 'orphan-lock-stage', 'stale-owner', 'stale-recovery-gate'] })
+    requireString(value.recoveryKind, 'recovery kind', { values: RECOVERY_KINDS })
     try {
       validateTarget(value.recoveryTarget)
     } catch {
       invalid('invalid-request', 'decode', 'Recovery target is invalid.', { operation: value.operation })
     }
+    if (!recoveryTargetMatches(value.recoveryKind, value.recoveryTarget)) {
+      invalid('recovery-invalid', 'prevalidate', 'Recovery target does not match its recovery kind.', { target: value.recoveryTarget })
+    }
   } else if (value.operation === 'recover-apply') {
-    validateRecoveryInspection(value.recoveryInspection)
+    try {
+      validateRecoveryInspection(value.recoveryInspection)
+    } catch (error) {
+      if (error instanceof TypeError || error instanceof InitBacklogError && error.record.code === 'invalid-request') {
+        invalid('recovery-invalid', 'prevalidate', 'Carried recovery inspection is invalid.', { target: value.recoveryInspection?.recoveryTarget ?? null })
+      }
+
+      throw error
+    }
     if (value.recoveryInspection.root !== value.root || value.recoveryInspection.host !== value.host || canonicalJson(value.recoveryInspection.hostContext) !== canonicalJson(value.hostContext)) {
       invalid('recovery-invalid', 'prevalidate', 'Carried recovery inspection identity does not match the request.')
     }
@@ -845,7 +911,7 @@ function validateResultRecord(value) {
     requireString(value.host, 'host', { values: ['claude-code', 'codex'] })
     validateHostContext(value.hostContext, value.host)
     validateDigest(value.recoveryId)
-    requireString(value.recoveryKind, 'recovery kind', { values: ['abandoned-backup', 'election-marker', 'orphan-lock-stage', 'stale-owner', 'stale-recovery-gate'] })
+    requireString(value.recoveryKind, 'recovery kind', { values: RECOVERY_KINDS })
     validateTarget(value.recoveryTarget)
     requireString(value.disposition, 'disposition', { values: ['abandon', 'accept', 'cleanup', 'deferred', 'ignore', 'remove', 'restore', 'track'] })
     requireString(value.status, 'status', { values: ['already-complete', 'completed'] })
@@ -1136,6 +1202,7 @@ module.exports = {
   canonicalBytes,
   canonicalJson,
   compareOrdinal,
+  buildRecoveryApplyRequest,
   decodeRequest,
   deriveManifestId,
   deriveProposalId,
@@ -1143,6 +1210,8 @@ module.exports = {
   deriveSemanticActionId,
   deriveSnapshotId,
   encodeResult,
+  recoveryAllowedDispositions,
+  recoveryTargetMatches,
   selectFailure,
   sha256,
   validateAbsoluteRoot,

@@ -94,6 +94,31 @@ function expectCode(callback, code) {
   assert.throws(callback, (error) => error?.record?.code === code || error?.code === code)
 }
 
+function unwrapBackupFailureFixture() {
+  const root = fixtureRoot()
+  const target = '.claude/FEATURES.md'
+  const wrapped = Buffer.from('## Area\n### [Alpha](features/alpha.md)\n\n**Requires:** none.\nwrapped\n', 'utf8')
+  const unwrapped = Buffer.from('## Area\n### [Alpha](features/alpha.md)\n\n**Requires:** none.\n', 'utf8')
+  const mode = process.platform === 'win32' ? null : 0o644
+  const action = { afterRawSha256: sha256(unwrapped), beforeRawSha256: sha256(wrapped), id: 'backup-publication-failure', kind: 'unwrap-file', mode, target }
+  const carried = inspection(root, {
+    ready: analyzeCatalog([{ contents: wrapped.toString('utf8'), target: 'FEATURES.md' }]),
+    targets: [{ bom: null, cleanTextSha256: null, contentBase64: wrapped.toString('base64'), contentRole: 'semantic', editableRegions: [{ endByte: wrapped.length, regionId: 'features.document-preamble', startByte: 0 }], finalNewline: true, kind: 'file', mode, newline: 'lf', rawSha256: sha256(wrapped), states: ['wrapped'], target, templateId: 'backlog.features', templateSha256: 'c'.repeat(64) }],
+    templates: [{ conceptIds: ['features.dependency-grammar'], logicalSha256: 'c'.repeat(64), target, templateId: 'backlog.features' }],
+    proposals: [{ action, afterBase64: unwrapped.toString('base64'), beforeBase64: wrapped.toString('base64'), condition: 'always', proposalId: action.id, reason: 'hard-wrap' }],
+    unwrapReady: { after: analyzeCatalog([{ contents: unwrapped.toString('utf8'), target: 'FEATURES.md' }]), targets: [target] },
+    wrapFindings: [{ beforeRawSha256: sha256(wrapped), predictedContentBase64: unwrapped.toString('base64'), predictedEditableRegions: [{ endByte: unwrapped.length, regionId: 'features.document-preamble', startByte: 0 }], predictedRawSha256: sha256(unwrapped), target }],
+  })
+  carried.snapshotId = deriveSnapshotId({ ...carried, snapshotId: null })
+  const applyRequest = request(root, { actions: [action], inspection: carried, proposalDispositions: [{ disposition: 'selected', proposalId: action.id }], semanticDecisions: [{ conceptIds: ['features.dependency-grammar'], status: 'satisfied', target }] })
+  mkdirSync(join(root, '.claude'), { mode: 0o755 })
+  writeFileSync(join(root, target), wrapped, { mode: 0o644 })
+  const manifestId = admitApplyManifest(applyRequest).manifestId
+  const backupTarget = `.tmp/nightshift-init-backlog-unwrap-${carried.snapshotId}-${manifestId}-${sha256(Buffer.from(target, 'utf8'))}.bak`
+
+  return { applyRequest, backupTarget, root, target, unwrapped, wrapped }
+}
+
 function assertOwnerStageMutationRejected({ transition, mutate, mutateAfterWrite, expectedBytes, expectedMode, expectedLinks = 1 }) {
   const root = fixtureRoot()
   const ownerNonce = '2'.repeat(32)
@@ -222,6 +247,82 @@ function runPublicationCases() {
       assert.equal(readdirSync(root).length, 0)
     } finally {
       rmSync(root, { force: true, recursive: true })
+    }
+  })
+
+  test('handled backup publication failures retain the linked backup in typed recovery evidence', () => {
+    const fixture = unwrapBackupFailureFixture()
+    try {
+      assert.throws(() => publishApply(fixture.applyRequest, { currentInspection: fixture.applyRequest.inspection, collectInspection: () => fixture.applyRequest.inspection, onPublished: (destination) => { if (destination.endsWith('.bak')) throw new Error('backup callback failure') } }), (error) => {
+        assert.equal(error.record?.code, 'cleanup-failed')
+        assert.deepEqual(error.record?.recovery, { retainedBackups: [fixture.backupTarget], status: 'cleanup-failed', warnings: [{ code: 'manual-cleanup', detail: 'Publication lock requires manual cleanup.', target: '.nightshift-init-backlog.lock' }] })
+        return true
+      })
+      assert.equal(existsSync(join(fixture.root, ...fixture.backupTarget.split('/'))), true)
+      assert.equal(statSync(join(fixture.root, ...fixture.backupTarget.split('/'))).nlink, 2)
+      assert.deepEqual(readFileSync(join(fixture.root, ...fixture.backupTarget.split('/'))), fixture.wrapped)
+      assert.deepEqual(readFileSync(join(fixture.root, fixture.target)), fixture.wrapped)
+    } finally {
+      rmSync(fixture.root, { force: true, recursive: true })
+    }
+  })
+
+  test('generic handled failure after backup publication reports the retained backup on disk', () => {
+    const fixture = unwrapBackupFailureFixture()
+    try {
+      assert.throws(() => publishApply(fixture.applyRequest, { currentInspection: fixture.applyRequest.inspection, collectInspection: () => fixture.applyRequest.inspection, onRenamed: (destination) => { if (destination.endsWith('FEATURES.md')) throw new Error('target callback failure after backup publication') } }), (error) => {
+        assert.equal(error.record?.code, 'filesystem')
+        assert.equal(error.record?.phase, 'publish')
+        assert.deepEqual(error.record?.recovery, { retainedBackups: [fixture.backupTarget], status: 'none', warnings: [{ code: 'manual-cleanup', detail: 'Unwrap backups remain retained after publication failure.', target: null }] })
+        return true
+      })
+      assert.equal(existsSync(join(fixture.root, ...fixture.backupTarget.split('/'))), true)
+      assert.equal(statSync(join(fixture.root, ...fixture.backupTarget.split('/'))).nlink, 1)
+      assert.deepEqual(readFileSync(join(fixture.root, ...fixture.backupTarget.split('/'))), fixture.wrapped)
+      assert.deepEqual(readFileSync(join(fixture.root, fixture.target)), fixture.unwrapped)
+    } finally {
+      rmSync(fixture.root, { force: true, recursive: true })
+    }
+  })
+
+  test('successful unwrap discloses creation of the retained empty backup directory exactly once', () => {
+    const createFixture = (withTmp) => {
+      const root = fixtureRoot()
+      const target = '.claude/FEATURES.md'
+      const wrapped = Buffer.from('## Area\n### [Alpha](features/alpha.md)\n\n**Requires:** none.\nwrapped\n', 'utf8')
+      const unwrapped = Buffer.from('## Area\n### [Alpha](features/alpha.md)\n\n**Requires:** none.\n', 'utf8')
+      const mode = process.platform === 'win32' ? null : 0o644
+      const action = { afterRawSha256: sha256(unwrapped), beforeRawSha256: sha256(wrapped), id: 'backup-directory-warning', kind: 'unwrap-file', mode, target }
+      const carried = inspection(root, {
+        ready: analyzeCatalog([{ contents: wrapped.toString('utf8'), target: 'FEATURES.md' }]),
+        targets: [{ bom: null, cleanTextSha256: null, contentBase64: wrapped.toString('base64'), contentRole: 'semantic', editableRegions: [{ endByte: wrapped.length, regionId: 'features.document-preamble', startByte: 0 }], finalNewline: true, kind: 'file', mode, newline: 'lf', rawSha256: sha256(wrapped), states: ['wrapped'], target, templateId: 'backlog.features', templateSha256: 'c'.repeat(64) }],
+        templates: [{ conceptIds: ['features.dependency-grammar'], logicalSha256: 'c'.repeat(64), target, templateId: 'backlog.features' }],
+        proposals: [{ action, afterBase64: unwrapped.toString('base64'), beforeBase64: wrapped.toString('base64'), condition: 'always', proposalId: action.id, reason: 'hard-wrap' }],
+        unwrapReady: { after: analyzeCatalog([{ contents: unwrapped.toString('utf8'), target: 'FEATURES.md' }]), targets: [target] },
+        wrapFindings: [{ beforeRawSha256: sha256(wrapped), predictedContentBase64: unwrapped.toString('base64'), predictedEditableRegions: [{ endByte: unwrapped.length, regionId: 'features.document-preamble', startByte: 0 }], predictedRawSha256: sha256(unwrapped), target }],
+      })
+      carried.snapshotId = deriveSnapshotId({ ...carried, snapshotId: null })
+      const post = inspection(root, { ready: carried.unwrapReady.after, targets: [{ ...carried.targets[0], contentBase64: unwrapped.toString('base64'), rawSha256: sha256(unwrapped), states: ['present'] }], unwrapReady: { after: carried.unwrapReady.after, targets: [] }, wrapFindings: [] })
+      const applyRequest = request(root, { actions: [action], inspection: carried, proposalDispositions: [{ disposition: 'selected', proposalId: action.id }], semanticDecisions: [{ conceptIds: ['features.dependency-grammar'], status: 'satisfied', target }] })
+      mkdirSync(join(root, '.claude'), { mode: 0o755 })
+      writeFileSync(join(root, target), wrapped, { mode: 0o644 })
+      if (withTmp) mkdirSync(join(root, '.tmp'), { mode: 0o700 })
+
+      return { applyRequest, post, root }
+    }
+    const fresh = createFixture(false)
+    const existing = createFixture(true)
+    try {
+      const freshResult = publishApply(fresh.applyRequest, { currentInspection: fresh.applyRequest.inspection, collectInspection: () => fresh.post })
+      const existingResult = publishApply(existing.applyRequest, { currentInspection: existing.applyRequest.inspection, collectInspection: () => existing.post })
+
+      assert.deepEqual(freshResult.warnings.filter((item) => item.code === 'runtime-support-created'), [{ code: 'runtime-support-created', detail: 'Controller created the shared .tmp directory.', target: '.tmp' }])
+      assert.equal(existingResult.warnings.some((item) => item.code === 'runtime-support-created'), false)
+      assert.equal(existsSync(join(fresh.root, '.tmp')), true)
+      assert.deepEqual(readdirSync(join(fresh.root, '.tmp')), [])
+    } finally {
+      rmSync(fresh.root, { force: true, recursive: true })
+      rmSync(existing.root, { force: true, recursive: true })
     }
   })
 

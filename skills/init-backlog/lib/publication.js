@@ -1,10 +1,11 @@
 'use strict'
 
 const { randomBytes } = require('node:crypto')
-const { join, relative } = require('node:path')
+const { dirname, join, relative } = require('node:path')
 const { lstatSync, mkdirSync } = require('node:fs')
 
 const { admitApplyManifest } = require('./apply-manifest')
+const { BACKUP_PATTERN, backupStageTarget, backupTarget, retainedBackupPaths } = require('./backups')
 const { InitBacklogError, failureRecord, trustedSystemCode } = require('./errors')
 const { unwrapText } = require('../unwrap')
 const {
@@ -19,6 +20,7 @@ const {
   renameVerified,
   stableOpenFile,
   stageFile,
+  stableMetadata,
   verifyFinalMode,
   verifyPublishedIdentity,
 } = require('./filesystem')
@@ -30,7 +32,6 @@ const RECOVERY_GATE_BASENAME = '.nightshift-init-backlog.recovery-gate'
 const ELECTION_BASENAME = '.nightshift-init-backlog-election'
 const POSIX_DEFAULT_FILE_MODE = 0o644
 const POSIX_DEFAULT_DIRECTORY_MODE = 0o755
-
 function publicationError(detail, fields = {}, cause) {
   throw new InitBacklogError(failureRecord({ code: fields.code ?? 'filesystem', detail, operation: 'apply', phase: fields.phase ?? 'publish', manifestId: fields.manifestId ?? null, actionId: fields.actionId ?? null, target: fields.target ?? null, outcomes: fields.outcomes ?? [], recovery: fields.recovery ?? { retainedBackups: [], status: 'none', warnings: [] }, systemCode: fields.systemCode ?? null }), { cause })
 }
@@ -54,7 +55,36 @@ function relativeArtifact(root, path) {
   return relative(root, path).replaceAll('\\', '/')
 }
 
-function temporaryPaths(root, manifestId, actionOrdinal = 1, ownerNonce = '0'.repeat(32), snapshotId = '0'.repeat(64), pid = process.pid) {
+function recoveryTemporaryTarget(target, recoveryId) {
+  const separator = target.includes('/') ? target.slice(0, target.lastIndexOf('/') + 1) : ''
+
+  return `${separator}.nightshift-init-backlog.${recoveryId}.${sha256(Buffer.from(target, 'utf8'))}.tmp`
+}
+
+function recoveryTemporaryMatches(target, recoveryId) {
+  if (typeof target !== 'string' || typeof recoveryId !== 'string' || !/^[a-f0-9]{64}$/.test(recoveryId)) return false
+  const basename = target.slice(target.lastIndexOf('/') + 1)
+  const prefix = `.nightshift-init-backlog.${recoveryId}.`
+  if (!basename.startsWith(prefix) || !basename.endsWith('.tmp')) return false
+
+  const targetHash = basename.slice(prefix.length, -4)
+
+  return /^[a-f0-9]{64}$/.test(targetHash)
+}
+
+function restoreUnwrapBatch(root, actions, manifestId, snapshotId, options = {}) {
+  for (const action of [...actions].reverse()) {
+    const backup = backupTarget(action.target, snapshotId, manifestId)
+    const backupPath = targetPath(root, backup)
+    const opened = stableOpenFile(root, backupPath, { ...options, requireSingleLink: true })
+    const targetPathValue = targetPath(root, action.target)
+    const current = stableOpenFile(root, targetPathValue, { ...options, requireSingleLink: true })
+    const approvedMode = (options.platform ?? process.platform) === 'win32' ? null : action.mode
+    publishRecoveryFile(root, targetPathValue, opened.bytes, opened.mode, { ...options, expected: { identity: current.identity, mode: approvedMode, rawSha256: action.afterRawSha256 }, recoveryId: manifestId, temporary: targetPath(root, recoveryTemporaryTarget(action.target, manifestId)) })
+  }
+}
+
+function temporaryPaths(root, manifestId, actionOrdinal = 1, ownerNonce = randomBytes(16).toString('hex'), snapshotId = '0'.repeat(64), pid = process.pid) {
   if (!Number.isSafeInteger(pid) || pid <= 0 || !/^[a-f0-9]{32}$/.test(ownerNonce) || !/^[a-f0-9]{64}$/.test(manifestId) || !/^[a-f0-9]{64}$/.test(snapshotId) || !Number.isSafeInteger(actionOrdinal) || actionOrdinal <= 0) {
     throw new TypeError('Temporary identity is invalid')
   }
@@ -85,6 +115,24 @@ function targetPath(root, target) {
   }
 
   return path
+}
+
+function verifyBackupDirectory(root, options) {
+  const directory = targetPath(root, '.tmp')
+  try {
+    const metadata = stableMetadata(directory, { root })
+    if (!metadata.metadata.isDirectory() || metadata.metadata.isSymbolicLink()) throw new Error('Backup directory is not an ordinary confined directory')
+    if ((options.platform ?? process.platform) !== 'win32' && (metadata.metadata.mode & 0o7777n) !== 0o700n) throw new Error('Backup directory mode is invalid')
+  } catch (error) {
+    if (error?.code !== 'ENOENT') throw error
+    mkdirSync(directory, { mode: 0o700 })
+    const created = stableMetadata(directory, { root })
+    if (!created.metadata.isDirectory() || created.metadata.isSymbolicLink() || (options.platform ?? process.platform) !== 'win32' && (created.metadata.mode & 0o7777n) !== 0o700n) throw new Error('Backup directory creation is invalid')
+
+    return true
+  }
+
+  return false
 }
 
 function readRecordBytes(record) {
@@ -299,6 +347,48 @@ function publishDirectory(root, path, mode, options) {
   transition(options, 'after-directory-verify')
 }
 
+function publishRecoveryFile(root, path, bytes, mode, options = {}) {
+  const target = relativeArtifact(root, path)
+  const temporary = options.temporary ?? targetPath(root, recoveryTemporaryTarget(target, options.recoveryId ?? '0'.repeat(64)))
+  const expected = options.expected ?? null
+  if (dirname(temporary) !== dirname(path)) throw new Error('Recovery temporary must be in the target directory')
+  stageFile(temporary, bytes, options)
+  readBackExact(temporary, bytes, options)
+  assignAndVerifyMode(temporary, mode, options)
+  verifyFinalMode(temporary, mode, options)
+  options.onTemporaryStaged?.(temporary, bytes, mode)
+  if (expected === null) {
+    options.verifyLock?.()
+    options.writeSpy?.(path)
+    publishNoReplace(temporary, path, options)
+    verifyPublishedIdentity(root, temporary, path, bytes)
+  } else {
+    options.onBeforeRename?.(path)
+    const current = stableOpenFile(root, path, { ...options, requireSingleLink: true })
+    if (expected.identity !== undefined && current.identity !== expected.identity || expected.rawSha256 !== undefined && current.rawSha256 !== expected.rawSha256 || expected.mode !== undefined && expected.mode !== null && current.mode !== expected.mode) throw new Error('Recovery publication target changed before rename')
+    options.verifyLock?.()
+    renameVerified(temporary, path, bytes, options)
+  }
+  const final = stableOpenFile(root, path, { ...options, requireSingleLink: expected === null ? false : true })
+  if (!final.bytes.equals(bytes) || mode !== null && final.mode !== mode) throw new Error('Recovery publication verification failed')
+  if (expected === null) {
+    removeAndVerify(temporary, options)
+  }
+
+  return final
+}
+
+function removeRecoveryFile(root, path, expected, options = {}) {
+  const current = stableOpenFile(root, path, { ...options, requireSingleLink: true })
+  if (expected !== undefined && (current.rawSha256 !== expected.rawSha256 || expected.mode !== null && current.mode !== expected.mode || expected.identity !== undefined && current.identity !== expected.identity)) throw new Error('Recovery removal evidence changed')
+  options.onBeforeRemove?.(path)
+  const rebound = stableOpenFile(root, path, { ...options, requireSingleLink: true })
+  if (expected !== undefined && (rebound.rawSha256 !== expected.rawSha256 || expected.mode !== null && rebound.mode !== expected.mode || expected.identity !== undefined && rebound.identity !== expected.identity)) throw new Error('Recovery removal evidence changed')
+  options.verifyLock?.()
+  const remove = options.removeAndVerify ?? removeAndVerify
+  remove(path, options)
+}
+
 function completePostInspect(postInspect, admission, request) {
   const incomplete = new Set()
   for (const record of postInspect.targets ?? []) {
@@ -311,6 +401,12 @@ function completePostInspect(postInspect, admission, request) {
     if (problem.blocking === true) {
       if (problem.target !== null && problem.target !== undefined) incomplete.add(problem.target)
       for (const evidence of problem.evidencePaths ?? []) incomplete.add(evidence)
+    }
+  }
+  const expectedReady = request.inspection?.unwrapReady?.after
+  if (expectedReady !== undefined && canonicalJson(postInspect.ready ?? null) !== canonicalJson(expectedReady)) {
+    for (const action of request.actions ?? []) {
+      if (action.kind === 'unwrap-file') incomplete.add(action.target)
     }
   }
   const git = postInspect.git ?? request.inspection.git
@@ -335,7 +431,7 @@ function completePostInspect(postInspect, admission, request) {
 
 function resultRecord(request, admission, postInspect, outcomes, warnings = [], retainedBackups = []) {
   const incompleteTargets = completePostInspect(postInspect, admission, request)
-  const effectiveWarnings = [...(postInspect.warnings ?? []), ...warnings]
+  const effectiveWarnings = [...(postInspect.warnings ?? []), ...warnings].filter((warning, index, all) => all.findIndex((candidate) => candidate.code === warning.code) === index)
   if (!effectiveWarnings.some((warning) => warning.code === 'external-writer-window')) effectiveWarnings.push({ code: 'external-writer-window', detail: 'Controlled targets may change during publication.', target: null })
   effectiveWarnings.sort((left, right) => compareOrdinal(left.code, right.code))
 
@@ -399,7 +495,7 @@ function cleanupOwner(root, lock, options, ownedTemporaries = new Map()) {
       if (BACKUP_PATTERN.test(temporary)) {
         continue
       }
-      verifyLockState(root, lock, { ...options, skipRecoveryGateCheck: true })
+      verifyLockState(root, lock, options)
       const temporaryPath = targetPath(root, temporary)
       let present = false
       try {
@@ -419,7 +515,8 @@ function cleanupOwner(root, lock, options, ownedTemporaries = new Map()) {
     verifyLockState(root, lock, { ...options, skipRecoveryGateCheck: true })
     removeAndVerify(lock.paths.lock, options)
   } catch (error) {
-    publicationError('Publication lock cleanup failed.', { code: 'cleanup-failed', phase: 'cleanup', manifestId: lock.manifestId, recovery: { retainedBackups: [], status: 'cleanup-failed', warnings: [{ code: 'manual-cleanup', detail: 'Publication lock requires manual cleanup.', target: relativeArtifact(root, lock.paths.lock) }] } }, error)
+    const retained = retainedBackupPaths(root, lock.record?.temporaryPaths ?? [])
+    publicationError('Publication lock cleanup failed.', { code: 'cleanup-failed', phase: 'cleanup', manifestId: lock.manifestId, recovery: { retainedBackups: retained, status: 'cleanup-failed', warnings: [{ code: 'manual-cleanup', detail: 'Publication lock requires manual cleanup.', target: relativeArtifact(root, lock.paths.lock) }] } }, error)
   }
 }
 
@@ -469,24 +566,39 @@ function adoptResumeTemporaries(root, existing, expectedTemporaries, options, ow
     }
     const expected = expectedTemporaries.get(path)
     if (expected === undefined) throw new Error('Publication lock temporary inventory is not recognized')
-    if (expected.bytes === null) {
+    if (expected.marker === true) continue
+      if (expected.bytes === null) {
       try { lstatSync(path) } catch (error) { if (error?.code === 'ENOENT') continue; throw error }
       throw new Error('Non-publication action temporary is present')
-    }
-    try {
-      let opened
-      let requireSingleLink = true
-      try {
-        opened = stableOpenFile(root, path, { ...options, requireSingleLink: true })
-      } catch (error) {
-        const metadata = lstatSync(path, { bigint: true })
-        if (expected.destination === null || metadata.nlink !== 2n) throw error
-        opened = stableOpenFile(root, path, { ...options, requireSingleLink: false })
-        const destination = stableOpenFile(root, expected.destination, { ...options, requireSingleLink: false })
-        if (destination.identity !== opened.identity || !destination.bytes.equals(expected.bytes) || expected.mode !== null && destination.mode !== expected.mode) throw error
-        requireSingleLink = false
       }
-      if (!opened.bytes.equals(expected.bytes) || expected.mode !== null && opened.mode !== expected.mode) throw new Error('Resumed temporary differs from its approved image')
+      try {
+        let opened
+        let requireSingleLink = true
+        try {
+          opened = stableOpenFile(root, path, { ...options, requireSingleLink: true })
+        } catch (error) {
+          const metadata = lstatSync(path, { bigint: true })
+          if (metadata.nlink !== 2n) throw error
+          if (expected.destination === null) {
+            const stagedPeer = [...expectedTemporaries.entries()].find(([candidate, value]) => value.destination === path && candidate !== path)
+            if (stagedPeer === undefined) throw error
+            const peer = stableOpenFile(root, stagedPeer[0], { ...options, requireSingleLink: false })
+            const final = stableOpenFile(root, path, { ...options, requireSingleLink: false })
+            if (peer.identity !== final.identity || !peer.bytes.equals(expected.bytes) || !final.bytes.equals(expected.bytes) || expected.mode !== null && final.mode !== expected.mode) throw error
+            removeAndVerify(stagedPeer[0], options)
+            opened = final
+          } else {
+            opened = stableOpenFile(root, path, { ...options, requireSingleLink: false })
+            const destination = stableOpenFile(root, expected.destination, { ...options, requireSingleLink: false })
+            if (destination.identity !== opened.identity || !destination.bytes.equals(expected.bytes) || expected.mode !== null && destination.mode !== expected.mode) throw error
+            requireSingleLink = false
+          }
+        }
+        if (expected.destination !== null && opened.bytes.length === 0) {
+          removeAndVerify(path, options)
+          continue
+        }
+        if (!opened.bytes.equals(expected.bytes) || expected.mode !== null && opened.mode !== expected.mode) throw new Error('Resumed temporary differs from its approved image')
       ownedTemporaries.set(path, { bytes: Buffer.from(expected.bytes), destination: requireSingleLink ? null : expected.destination, identity: opened.identity, mode: expected.mode, requireSingleLink })
     } catch (error) {
       if (error?.code !== 'ENOENT') throw error
@@ -634,6 +746,7 @@ function publishApply(request, options = {}) {
   const root = canonicalRoot(request.root)
   let pid = options.pid ?? process.pid
   let ownerNonce = options.ownerNonce ?? randomBytes(16).toString('hex')
+  let backupCandidates = []
   let lockHint = null
   verifyRecoveryGateAbsent(root)
   try {
@@ -650,6 +763,8 @@ function publishApply(request, options = {}) {
   let lock = null
   const ownedTemporaries = new Map()
   const outcomes = []
+  let retainedBackups = []
+  let backupDirectoryCreated = false
   try {
     if (options.resume !== true) {
       try {
@@ -696,9 +811,15 @@ function publishApply(request, options = {}) {
   const allActions = request.actions ?? []
   const fixed = temporaryPaths(root, admission.manifestId, 1, ownerNonce, request.inspection.snapshotId, pid)
   const actionTemps = allActions.map((action, index) => targetPath(root, action.target) && join(root, action.target.includes('/') ? action.target.slice(0, action.target.lastIndexOf('/')) : '.', `.nightshift-init-backlog.${admission.manifestId}.${index + 1}.tmp`))
+  const unwrapActions = allActions.filter((action) => action.kind === 'unwrap-file')
+  const backupTargets = unwrapActions.map((action) => backupTarget(action.target, request.inspection.snapshotId, admission.manifestId))
+  backupCandidates = backupTargets
+  const backupPaths = backupTargets.map((target) => targetPath(root, target))
+  const backupStagingPaths = unwrapActions.map((action) => targetPath(root, backupStageTarget(action.target, request.inspection.snapshotId, admission.manifestId)))
+  const rollbackTemporaryPaths = unwrapActions.map((action) => targetPath(root, recoveryTemporaryTarget(action.target, admission.manifestId)))
   const unfinalizedDirectories = allActions.filter((action) => action.kind === 'ensure-directory').map((action) => ({ mode: action.mode, target: action.target }))
   const markerTemporaries = admission.electionMarker.state === 'absent' ? [] : [fixed.electionAlias, fixed.electionNewWitness, ...(request.inspection.git?.electionMarker !== undefined && request.inspection.git?.electionMarker !== 'absent' ? [fixed.electionOldWitness] : []), fixed.electionTombstone]
-  const tempSet = [...actionTemps, fixed.lockStage, fixed.lockNext, ...markerTemporaries]
+  const tempSet = [...actionTemps, ...backupPaths, ...backupStagingPaths, ...rollbackTemporaryPaths, fixed.lockStage, fixed.lockNext, ...markerTemporaries]
   const targets = allActions.map((action) => targetPath(root, action.target))
   try {
     verifyRecoveryGateAbsent(root)
@@ -778,7 +899,14 @@ function publishApply(request, options = {}) {
       ownedTemporaries.delete(fixed.lockNext)
       transition(options, 'after-lock-upgrade')
     }
-    const expectedTemporaries = new Map([[fixed.lockNext, { bytes: upgradedBytes, destination: null, mode: 0o600 }], [fixed.lockStage, { bytes: null, destination: null, mode: null }]])
+    const expectedTemporaries = new Map([[fixed.lockNext, { bytes: upgradedBytes, destination: null, mode: (options.platform ?? process.platform) === 'win32' ? null : 0o600 }], [fixed.lockStage, { bytes: null, destination: null, mode: null }]])
+    for (let index = 0; index < backupPaths.length; index += 1) {
+      const state = states.get(unwrapActions[index].target)
+      if (state?.content === null || state?.content === undefined) throw new Error('Unwrap backup source is unavailable')
+      expectedTemporaries.set(backupPaths[index], { bytes: state.content, destination: null, mode: (options.platform ?? process.platform) === 'win32' ? null : state.mode })
+      expectedTemporaries.set(backupStagingPaths[index], { bytes: state.content, destination: backupPaths[index], mode: (options.platform ?? process.platform) === 'win32' ? null : state.mode })
+      expectedTemporaries.set(rollbackTemporaryPaths[index], { bytes: state.content, destination: null, mode: (options.platform ?? process.platform) === 'win32' ? null : state.mode })
+    }
     for (let index = 0; index < allActions.length; index += 1) {
       const action = allActions[index]
       const bytes = actionAfter(request, action)
@@ -813,7 +941,6 @@ function publishApply(request, options = {}) {
       retainedBackups = []
     }
     if (backupPaths.length !== 0) {
-      publicationOptions.verifyLock?.()
       backupDirectoryCreated = verifyBackupDirectory(root, options)
       for (let index = 0; index < backupPaths.length; index += 1) {
         const action = unwrapActions[index]
@@ -911,6 +1038,20 @@ function publishApply(request, options = {}) {
       if (error instanceof InitBacklogError && error.record.code === 'ready-failed' && error.record.phase === 'verify') throw error
       publicationError('Post-publication ready verification failed.', { code: 'ready-failed', phase: 'verify', manifestId: admission.manifestId, outcomes }, error)
     }
+    const expectedUnwrapReady = request.inspection?.unwrapReady?.after
+    if (unwrapActions.length !== 0 && expectedUnwrapReady !== undefined && canonicalJson(postInspect.ready ?? null) !== canonicalJson(expectedUnwrapReady)) {
+      try {
+        restoreUnwrapBatch(root, unwrapActions, admission.manifestId, request.inspection.snapshotId, publicationOptions)
+      } catch (error) {
+        retainedBackups = retainedBackupPaths(root, retainedBackups)
+        publicationError('Unwrap restoration failed after ready verification drift.', { code: 'restore-failed', phase: 'restore', manifestId: admission.manifestId, outcomes, recovery: { retainedBackups, status: 'restore-failed', warnings: [{ code: 'manual-cleanup', detail: 'Unwrap backups require manual cleanup after restoration failure.', target: null }] } }, error)
+      }
+      cleanupUnwrapBackups()
+      publicationError('Predicted ready result differs after unwrap publication.', { code: 'ready-delta', phase: 'verify', manifestId: admission.manifestId, outcomes })
+    }
+    if (unwrapActions.length !== 0 && expectedUnwrapReady !== undefined) {
+      cleanupUnwrapBackups()
+    }
     if (admission.electionMarker.state !== 'absent' && postInspect.git?.electionMarker !== 'absent' && request.versionControlChoice !== 'deferred' && completePostInspect(postInspect, admission, request).length === 0) {
       removeMarker(request, admission, root, publicationOptions)
       try {
@@ -922,7 +1063,9 @@ function publishApply(request, options = {}) {
     }
     cleanupOwner(root, lock, options, ownedTemporaries)
 
-    return resultRecord(request, admission, postInspect, outcomes)
+    const warnings = backupDirectoryCreated ? [{ code: 'runtime-support-created', detail: 'Controller created the shared .tmp directory.', target: '.tmp' }] : []
+
+    return resultRecord(request, admission, postInspect, outcomes, warnings, retainedBackups)
   } catch (error) {
     if (error instanceof InitBacklogError) {
       if (options.preserveLockOnError === true || options.crash === true) throw error
@@ -931,8 +1074,9 @@ function publishApply(request, options = {}) {
     }
     if (options.preserveLockOnError === true || options.crash === true || options.failAt !== undefined) throw error
     try { cleanupOwner(root, lock, options, ownedTemporaries) } catch (cleanupError) { throw cleanupError }
-    publicationError('Publication effect failed.', { code: 'filesystem', phase: 'publish', manifestId: admission.manifestId, outcomes, systemCode: trustedSystemCode(error) }, error)
+    const retained = retainedBackupPaths(root, [...new Set([...retainedBackups, ...backupCandidates])])
+    publicationError('Publication effect failed.', { code: 'filesystem', phase: 'publish', manifestId: admission.manifestId, outcomes, recovery: retained.length === 0 ? undefined : { retainedBackups: retained, status: 'none', warnings: [{ code: 'manual-cleanup', detail: 'Unwrap backups remain retained after publication failure.', target: null }] }, systemCode: trustedSystemCode(error) }, error)
   }
 }
 
-module.exports = { deriveTemporaryPaths, publishApply, temporaryPaths }
+module.exports = { deriveTemporaryPaths, publishApply, publishRecoveryFile, recoveryTemporaryMatches, recoveryTemporaryTarget, removeRecoveryFile, temporaryPaths }

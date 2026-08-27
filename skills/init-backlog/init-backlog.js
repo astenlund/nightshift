@@ -11,9 +11,10 @@ const {
   reserveRequest,
 } = require('./lib/filesystem')
 const { discoverControlledMarkdown, resolveGuidance } = require('./lib/guidance')
-const { inspect } = require('./lib/inspection')
+const { collectInspection, inspect } = require('./lib/inspection')
 const { admitApplyManifest } = require('./lib/apply-manifest')
 const { publishApply } = require('./lib/publication')
+const { applyRecovery, inspectRecovery } = require('./lib/recovery')
 
 const INVALID_INVOCATION_LINE = Buffer.from('nightshift-init-backlog: invalid request transport invocation\n', 'ascii')
 const TRANSPORT_RESIDUE_LINE = Buffer.from('nightshift-init-backlog: request transport residue\n', 'ascii')
@@ -122,7 +123,7 @@ function runCli(options = {}) {
         payloadRawSha256: argv[5] === 'null' ? null : argv[5],
       }, options.filesystemOptions)
     } else {
-      const dispatch = options.dispatch ?? ((bytes) => runPrivateDispatcher(bytes, { inspect, apply: (request) => publishApply(request, options.filesystemOptions ?? {}), ...(options.handlers ?? {}) }))
+      const dispatch = options.dispatch ?? ((bytes) => runPrivateDispatcher(bytes, { inspect, apply: (request) => publishApply(request, options.filesystemOptions ?? {}), 'recover-inspect': (request) => inspectRecovery(request, { ...options.filesystemOptions, collectInspection }), 'recover-apply': (request) => applyRecovery(request, { ...options.filesystemOptions, collectInspection }), ...(options.handlers ?? {}) }))
       const dispatched = consumeRequest(argv[1], argv[2], dispatch, options.filesystemOptions)
       stdout.write(dispatched.stdout)
       if (dispatched.stderr.length !== 0) {
@@ -159,4 +160,4 @@ if (require.main === module) {
   main()
 }
 
-module.exports = { admitApplyManifest, discoverControlledMarkdown, inspect, main, publishApply, resolveGuidance, runCli, runPrivateDispatcher }
+module.exports = { admitApplyManifest, applyRecovery, discoverControlledMarkdown, inspect, inspectRecovery, main, publishApply, resolveGuidance, runCli, runPrivateDispatcher }

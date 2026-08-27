@@ -426,6 +426,44 @@ function runProtocolCases(repositoryRoot) {
     }
   })
 
+  test('recovery request validation rejects every forged cross-field inspection as recovery-invalid', () => {
+    const root = canonicalRoot(repositoryRoot)
+    const base = recoveryApplyRequest(root)
+    const mutations = [
+      ['target grammar', (request) => { request.recoveryInspection.recoveryTarget = '.nightshift-init-backlog.lock' }],
+      ['kind and evidence', (request) => { request.recoveryInspection.recoveryKind = 'stale-owner' }],
+      ['evidence member', (request) => { request.recoveryInspection.evidence.owner = { ...request.recoveryInspection.evidence.lockStage } }],
+      ['classification', (request) => { request.recoveryInspection.evidence.lockStage.record = { protocolVersion: 1 } }],
+      ['dispositions', (request) => { request.recoveryInspection.allowedDispositions = ['cleanup'] }],
+    ]
+    for (const [label, mutate] of mutations) {
+      const request = clone(base)
+      mutate(request)
+      assert.throws(() => validateRequestRecord(request), (error) => error.record?.code === 'recovery-invalid' && error.record.phase === 'prevalidate', label)
+    }
+
+    const backup = clone(base)
+    backup.recoveryInspection.recoveryKind = 'abandoned-backup'
+    backup.recoveryInspection.recoveryTarget = `.tmp/nightshift-init-backlog-unwrap-${DIGEST_A}-${DIGEST_B}-${DIGEST_A}.bak`
+    backup.recoveryInspection.evidence = {
+      backup: { backupContentBase64: 'YQ==', backupMode: null, backupRawSha256: DIGEST_A, classification: 'orphan', currentContentBase64: null, currentMode: null, currentRawSha256: null, currentTarget: null },
+      lockStage: null,
+      marker: null,
+      owner: null,
+      recoveryGate: null,
+    }
+    backup.recoveryInspection.allowedDispositions = ['remove']
+    for (const mutate of [
+      (request) => { request.recoveryInspection.evidence.backup.classification = 'divergent' },
+      (request) => { request.recoveryInspection.evidence.backup.currentTarget = 'FEATURES.md' },
+      (request) => { request.recoveryInspection.allowedDispositions = ['restore', 'accept'] },
+    ]) {
+      const request = clone(backup)
+      mutate(request)
+      expectInitError(() => validateRequestRecord(request), 'recovery-invalid', 'prevalidate')
+    }
+  })
+
   test('apply request validation enforces complete proposal disposition coverage', () => {
     const root = canonicalRoot(repositoryRoot)
     const proposal = {
@@ -1317,6 +1355,20 @@ function runProtocolCases(repositoryRoot) {
     } finally {
       removeTemporaryRoot(root)
     }
+  })
+
+  test('recovery result paths use code-point ordinal ordering for non-BMP values', () => {
+    const result = recoveryApplyResult(join(tmpdir(), 'nightshift-recovery-result-root'))
+    const bmp = 'a/\uE000'
+    const nonBmp = 'a/\u{1F600}'
+    result.changedPaths = [bmp, nonBmp]
+    result.retainedPaths = [bmp, nonBmp]
+    assert.doesNotThrow(() => validateResultRecord(result))
+    result.changedPaths = [nonBmp, bmp]
+    assert.throws(() => validateResultRecord(result), /ordinal|sorted/i)
+    result.changedPaths = [bmp, nonBmp]
+    result.retainedPaths = [nonBmp, bmp]
+    assert.throws(() => validateResultRecord(result), /ordinal|sorted/i)
   })
 
   test('concurrent reservations serialize on one fixed gate pathname', async () => {

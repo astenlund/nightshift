@@ -329,6 +329,10 @@ function composeElectionMarker(electionMarker, gitKind, scaffoldPresent, digest,
   return { classification: gitKind === 'git' ? 'invalid' : 'valid-non-git', contentBase64: content.toString('base64'), gitKind, mode, policyDigest: digest, scaffoldPresent: scaffoldPresent === true }
 }
 
+function validateElectionMarkerRecord(value, root) {
+  return value !== null && typeof value === 'object' && !Array.isArray(value) && Object.keys(value).sort(compareOrdinal).join('\0') === ['protocolVersion', 'root', 'snapshotId', 'state'].sort(compareOrdinal).join('\0') && value.protocolVersion === 1 && value.root === root && ['deferred', 'track', 'ignore'].includes(value.state) && typeof value.snapshotId === 'string' && /^[a-f0-9]{64}$/.test(value.snapshotId)
+}
+
 function readElectionMarker(root, options = {}) {
   const path = join(root, '.nightshift-init-backlog-election')
   let metadata
@@ -355,7 +359,7 @@ function readElectionMarker(root, options = {}) {
   } catch (error) {
     throw new Error('Election marker is malformed', { cause: error })
   }
-  if (Object.keys(value).sort(compareOrdinal).join('\0') !== ['protocolVersion', 'root', 'snapshotId', 'state'].sort(compareOrdinal).join('\0') || value.protocolVersion !== 1 || value.root !== root || !['deferred', 'track', 'ignore'].includes(value.state) || !/^[a-f0-9]{64}$/.test(value.snapshotId)) throw new Error('Election marker schema is invalid')
+  if (!validateElectionMarkerRecord(value, root)) throw new Error('Election marker schema is invalid')
 
   const mode = stable?.mode ?? modeFromMetadata(metadata, options.platform)
 
@@ -738,4 +742,4 @@ function inspect(root, host, hostContext = {}, options = {}) {
   }
 }
 
-module.exports = { buildIgnoreProbes, buildReadyCatalog, collectInspection, composeElectionMarker, composeElectionRecord, creationMode, decodeText, discoverInitialLockStages, inspect, inspectRegions, isReadyCatalogTarget, lineRecords, materializeText, maskedRecords, modeFromMetadata, projectGitProblems, projectReadyProblems, proposal, readElectionMarker, targetRecord, targetState }
+module.exports = { buildIgnoreProbes, buildReadyCatalog, collectInspection, composeElectionMarker, composeElectionRecord, creationMode, decodeText, discoverInitialLockStages, inspect, inspectRegions, isReadyCatalogTarget, lineRecords, materializeText, maskedRecords, modeFromMetadata, projectGitProblems, projectReadyProblems, proposal, readElectionMarker, targetRecord, targetState, validateElectionMarkerRecord }
