@@ -31,13 +31,14 @@ const SCENARIO_IDS = [
 
 const COMMITTED_FIXTURE_LEAVES = [
   TURN_SCHEMA_PATH,
+  `${EVAL_FIXTURE_DIRECTORY}/controller-proxy.js`,
   `${HOST_FIXTURE_DIRECTORY}/manifest.json`,
   ...SCENARIO_IDS.map((scenarioId) => `${HOST_FIXTURE_DIRECTORY}/scenarios/${scenarioId}.json`),
   `${IMPORT_FIXTURE_DIRECTORY}/cases.json`,
   `${IMPORT_FIXTURE_DIRECTORY}/compatibility.json`,
 ]
 
-const CLOSED_FUTURE_FIXTURE_LEAVES = [`${EVAL_FIXTURE_DIRECTORY}/controller-proxy.js`, ...COMMITTED_FIXTURE_LEAVES]
+const CLOSED_FUTURE_FIXTURE_LEAVES = [...COMMITTED_FIXTURE_LEAVES]
 
 const INITIAL_PROMPT = 'Initialize the Nightshift backlog for this repository.'
 const APPROVAL_RESPONSES = { approved: 'Approve this manifest.', denied: 'Do not apply this manifest.', deferred: 'Defer this manifest.' }

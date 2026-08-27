@@ -1,0 +1,379 @@
+'use strict'
+
+const { BYTE_BOUNDS, DEADLINES } = require('./state')
+const { canonicalJson, canonicalJsonLine } = require('./transcript')
+
+const CLIENT_FRAME_MEMBERS = 'requestBase64,token'
+const WORKER_REPLY_MEMBERS = 'exitCode,ordinal,stderrBase64,stdoutBase64'
+
+// Mirrors the production spool's MAX_APPLY_REQUEST_BYTES without importing
+// production controller modules into the driver process.
+const MAX_APPLY_REQUEST_BYTES = 16777216
+// Fixed allowance for the token member, JSON punctuation, and member names
+// around the Base64 request payload in one client frame.
+const PROXY_CLIENT_FRAME_ENVELOPE_ALLOWANCE_BYTES = 1024
+const MAX_PROXY_CLIENT_FRAME_BYTES = 4 * Math.ceil(MAX_APPLY_REQUEST_BYTES / 3) + PROXY_CLIENT_FRAME_ENVELOPE_ALLOWANCE_BYTES
+
+function isCanonicalBase64(value) {
+  if (typeof value !== 'string' || !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(value)) {
+    return false
+  }
+
+  return Buffer.from(value, 'base64').toString('base64') === value
+}
+
+function parseCanonicalObject(bytes, expectedMemberKey) {
+  let parsed
+  try {
+    parsed = JSON.parse(bytes.toString('utf8'))
+  } catch {
+    return null
+  }
+  if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    return null
+  }
+  if (Object.keys(parsed).sort().join(',') !== expectedMemberKey) {
+    return null
+  }
+
+  return parsed
+}
+
+function createAuthorizationGate({ host, hostContext, scenarioRoot }) {
+  const expectedHostContext = canonicalJson(hostContext)
+  let authorizedOperation = null
+  let inspectClosed = false
+  let applyClosedForever = false
+  let authorizedApplyBytes = null
+  let storedInspection = null
+
+  return {
+    admit(requestBytes) {
+      let request
+      try {
+        request = JSON.parse(Buffer.from(requestBytes).toString('utf8'))
+      } catch {
+        return { ok: false, reason: 'field' }
+      }
+      if (request === null || typeof request !== 'object' || Array.isArray(request)) {
+        return { ok: false, reason: 'field' }
+      }
+      if (authorizedOperation === null && !inspectClosed && authorizedApplyBytes === null) {
+        if (request.operation === 'apply' && (applyClosedForever || storedInspection !== null)) {
+          return { ok: false, reason: 'approval-state' }
+        }
+
+        return { ok: false, reason: 'order' }
+      }
+      if (request.root !== scenarioRoot) {
+        return { ok: false, reason: 'root' }
+      }
+      if (request.protocolVersion !== 1 || request.host !== host || canonicalJson(request.hostContext ?? null) !== expectedHostContext) {
+        return { ok: false, reason: 'field' }
+      }
+      if (request.operation === 'inspect') {
+        if (inspectClosed) {
+          return { ok: false, reason: 'duplicate-call' }
+        }
+        if (authorizedOperation !== 'inspect') {
+          return { ok: false, reason: 'operation' }
+        }
+
+        return { ok: true, operation: 'inspect' }
+      }
+      if (request.operation === 'apply') {
+        if (authorizedOperation === 'inspect') {
+          return { ok: false, reason: 'operation' }
+        }
+        if (authorizedApplyBytes === null) {
+          return { ok: false, reason: 'approval-state' }
+        }
+        if (!Buffer.from(requestBytes).equals(authorizedApplyBytes)) {
+          return { ok: false, reason: 'request-byte' }
+        }
+
+        return { ok: true, operation: 'apply' }
+      }
+
+      return { ok: false, reason: 'operation' }
+    },
+    authorizeInspect() {
+      if (inspectClosed) {
+        throw new Error('inspect admission is already closed')
+      }
+      authorizedOperation = 'inspect'
+    },
+    closeApplyForever() {
+      applyClosedForever = true
+      authorizedOperation = authorizedOperation === 'apply' ? null : authorizedOperation
+    },
+    installApplyAuthorization(exactRequestBytes) {
+      if (applyClosedForever) {
+        throw new Error('a non-approved branch permanently authorizes no apply')
+      }
+      if (storedInspection === null) {
+        throw new Error('apply authorization requires the stored inspection')
+      }
+      if (authorizedApplyBytes !== null) {
+        throw new Error('apply authorization is installed at most once')
+      }
+      authorizedApplyBytes = Buffer.from(exactRequestBytes)
+      authorizedOperation = 'apply'
+    },
+    recordInspectSuccess(resultBytes) {
+      storedInspection = Buffer.from(resultBytes)
+      inspectClosed = true
+      authorizedOperation = authorizedOperation === 'inspect' ? null : authorizedOperation
+    },
+    storedInspectionBytes() {
+      return storedInspection === null ? null : Buffer.from(storedInspection)
+    },
+  }
+}
+
+function createProxyServer({ callDeadlineMilliseconds = DEADLINES.WORKER_CALL_MILLISECONDS, clock, gate, onFailure, termination, token, trace, worker }) {
+  let admissionOpen = true
+  let closeRequested = false
+  let closeCallbackFired = false
+  let proxyFailureRecorded = false
+  let hostTerminationStarted = false
+  let workerTerminationStarted = false
+  let nextOrdinal = 1
+  let activeCall = null
+  const completedCalls = []
+  const accountingFailures = []
+  const connections = new Map()
+
+  const clearCallDeadline = (call) => {
+    if (call !== null && call.deadlineHandle !== null) {
+      clock.clearTimeout(call.deadlineHandle)
+      call.deadlineHandle = null
+    }
+  }
+
+  const startTerminations = () => {
+    if (!hostTerminationStarted) {
+      hostTerminationStarted = true
+      termination.startHost()
+    }
+    if (!workerTerminationStarted) {
+      workerTerminationStarted = true
+      termination.startWorker()
+    }
+  }
+
+  const serverFailure = (detailCode, context) => {
+    clearCallDeadline(activeCall)
+    if (proxyFailureRecorded) {
+      accountingFailures.push({ context, detailCode })
+
+      return
+    }
+    proxyFailureRecorded = true
+    admissionOpen = false
+    onFailure({ detailCode })
+    startTerminations()
+  }
+
+  const proxyFailure = (context) => {
+    serverFailure('proxy', context)
+  }
+
+  const clientFrameCapacityFailure = (connection, context) => {
+    connection.end()
+    serverFailure('output-capacity', context)
+  }
+
+  const rejectAuthorization = (connection) => {
+    onFailure({ detailCode: 'proxy-authorization' })
+    connection.end()
+  }
+
+  return {
+    activeOrdinal() {
+      return activeCall === null ? null : activeCall.ordinal
+    },
+    admissionOpen() {
+      return admissionOpen
+    },
+    close(callback) {
+      if (closeRequested) {
+        throw new Error('proxy admission is closed exactly once')
+      }
+      closeRequested = true
+      admissionOpen = false
+      closeCallbackFired = true
+      callback()
+    },
+    connectionDrained(connection) {
+      const record = connections.get(connection)
+      if (record !== undefined && record.pendingDrainOrdinal !== null) {
+        const completed = completedCalls.find((call) => call.ordinal === record.pendingDrainOrdinal)
+        if (completed !== undefined) {
+          completed.replyFlushed = true
+        }
+        record.pendingDrainOrdinal = null
+      }
+    },
+    handleConnection(connection) {
+      if (!admissionOpen) {
+        connection.end()
+
+        return { admitted: false }
+      }
+      connections.set(connection, { buffered: Buffer.alloc(0), framed: false, pendingDrainOrdinal: null })
+
+      return { admitted: true }
+    },
+    receiveData(connection, chunk) {
+      const record = connections.get(connection)
+      if (record === undefined) {
+        connection.end()
+
+        return
+      }
+      record.buffered = Buffer.concat([record.buffered, Buffer.from(chunk)])
+      const terminator = record.buffered.indexOf(0x0a)
+      if (terminator === -1) {
+        if (record.buffered.length > MAX_PROXY_CLIENT_FRAME_BYTES) {
+          record.buffered = Buffer.alloc(0)
+          clientFrameCapacityFailure(connection, 'client-frame-unterminated')
+        }
+
+        return
+      }
+      if (terminator > MAX_PROXY_CLIENT_FRAME_BYTES) {
+        record.buffered = Buffer.alloc(0)
+        clientFrameCapacityFailure(connection, 'client-frame')
+
+        return
+      }
+      const lineBytes = record.buffered.subarray(0, terminator)
+      const remainder = record.buffered.subarray(terminator + 1)
+      record.buffered = Buffer.alloc(0)
+      if (record.framed || remainder.length !== 0) {
+        rejectAuthorization(connection)
+
+        return
+      }
+      record.framed = true
+      const frame = parseCanonicalObject(lineBytes, CLIENT_FRAME_MEMBERS)
+      if (frame === null || frame.token !== token || !isCanonicalBase64(frame.requestBase64)) {
+        rejectAuthorization(connection)
+
+        return
+      }
+      if (activeCall !== null) {
+        rejectAuthorization(connection)
+
+        return
+      }
+      const requestBytes = Buffer.from(frame.requestBase64, 'base64')
+      const admitted = gate.admit(requestBytes)
+      if (admitted.ok !== true) {
+        rejectAuthorization(connection)
+
+        return
+      }
+      const ordinal = nextOrdinal
+      nextOrdinal += 1
+      const call = {
+        connection,
+        deadlineHandle: null,
+        operation: admitted.operation,
+        ordinal,
+        replyFlushed: false,
+        requestBase64: frame.requestBase64,
+        traceFlushed: false,
+      }
+      activeCall = call
+      try {
+        worker.send(canonicalJsonLine({ ordinal, requestBase64: frame.requestBase64 }))
+      } catch {
+        activeCall = null
+        proxyFailure('worker-send')
+
+        return
+      }
+      call.deadlineHandle = clock.setTimeout(() => {
+        call.deadlineHandle = null
+        activeCall = null
+        proxyFailure('call-deadline')
+      }, callDeadlineMilliseconds)
+    },
+    receiveWorkerLine(lineBytes) {
+      if (activeCall === null) {
+        proxyFailure('unexpected-worker-frame')
+
+        return
+      }
+      const call = activeCall
+      if (lineBytes.length > BYTE_BOUNDS.MAX_RUNNER_FRAME_BYTES) {
+        clearCallDeadline(call)
+        activeCall = null
+        proxyFailure('worker-frame-capacity')
+
+        return
+      }
+      const frame = parseCanonicalObject(lineBytes, WORKER_REPLY_MEMBERS)
+      if (frame === null || frame.ordinal !== call.ordinal || !isCanonicalBase64(frame.stdoutBase64) || !isCanonicalBase64(frame.stderrBase64) || !Number.isSafeInteger(frame.exitCode)) {
+        clearCallDeadline(call)
+        activeCall = null
+        proxyFailure('worker-frame')
+
+        return
+      }
+      const traceRecord = { exitCode: frame.exitCode, ordinal: frame.ordinal, requestBase64: call.requestBase64, stderrBase64: frame.stderrBase64, stdoutBase64: frame.stdoutBase64 }
+      try {
+        trace.append(traceRecord)
+      } catch {
+        clearCallDeadline(call)
+        activeCall = null
+        proxyFailure('trace-append')
+
+        return
+      }
+      call.traceFlushed = true
+      let writeReturn
+      try {
+        writeReturn = call.connection.write(canonicalJsonLine(traceRecord))
+      } catch {
+        clearCallDeadline(call)
+        activeCall = null
+        proxyFailure('reply-write')
+
+        return
+      }
+      if (writeReturn === true) {
+        call.replyFlushed = true
+      } else {
+        const record = connections.get(call.connection)
+        if (record !== undefined) {
+          record.pendingDrainOrdinal = call.ordinal
+        }
+      }
+      clearCallDeadline(call)
+      if (call.operation === 'inspect' && frame.exitCode === 0) {
+        gate.recordInspectSuccess(Buffer.from(frame.stdoutBase64, 'base64'))
+      }
+      completedCalls.push(call)
+      activeCall = null
+    },
+    verifiedClosure() {
+      return closeCallbackFired && activeCall === null && completedCalls.every((call) => call.traceFlushed && call.replyFlushed)
+    },
+    workerDisconnected() {
+      if (closeRequested && activeCall === null) {
+        accountingFailures.push({ context: 'worker-close-after-closure', detailCode: 'proxy' })
+
+        return
+      }
+      const interrupted = activeCall
+      clearCallDeadline(interrupted)
+      activeCall = null
+      proxyFailure(interrupted === null ? 'worker-disconnect' : 'worker-disconnect-active')
+    },
+  }
+}
+
+module.exports = { MAX_PROXY_CLIENT_FRAME_BYTES, PROXY_CLIENT_FRAME_ENVELOPE_ALLOWANCE_BYTES, createAuthorizationGate, createProxyServer }
