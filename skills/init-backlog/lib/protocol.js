@@ -32,6 +32,7 @@ const RECOVERY_LOCK_STAGE_PATTERN = /^\.nightshift-init-backlog\.lock\.[1-9][0-9
 
 const OPERATIONS = ['apply', 'inspect', 'recover-apply', 'recover-inspect']
 const PHASES = ['decode', 'resolve', 'inspect', 'lock', 'prevalidate', 'publish', 'verify', 'restore', 'cleanup']
+const WARNING_CODES = ['external-writer-window', 'manual-cleanup', 'nonblocking-ready-notice', 'runtime-support-created']
 const FAILURE_CODES = [
   'cleanup-failed',
   'content-invalid',
@@ -440,7 +441,7 @@ function validateProblem(value) {
 
 function validateWarning(value) {
   requireRecord(value, ['code', 'target', 'detail'], 'warning')
-  requireString(value.code, 'warning code', { values: ['external-writer-window', 'manual-cleanup', 'nonblocking-ready-notice', 'runtime-support-created'] })
+  requireString(value.code, 'warning code', { values: WARNING_CODES })
   requireNullable(value.target, validateTarget)
   requireString(value.detail, 'warning detail', { maxBytes: 4096, nonblank: true })
 }
@@ -1222,6 +1223,7 @@ module.exports = {
   RECOVERY_GATE_BASENAME,
   RECOVERY_LOCK_BASENAME,
   RECOVERY_MARKER_BASENAME,
+  WARNING_CODES,
   assertSafeWindowsScalar,
   backupFileNames,
   canonicalActionOrder,

@@ -2,7 +2,7 @@
 
 const { join, relative } = require('node:path')
 const { randomBytes } = require('node:crypto')
-const { closeSync, existsSync, fsyncSync, linkSync, lstatSync, mkdirSync, openSync, readdirSync, rmdirSync, unlinkSync, writeSync } = require('node:fs')
+const { existsSync, linkSync, lstatSync, mkdirSync, readdirSync, rmdirSync, unlinkSync } = require('node:fs')
 
 const { InitBacklogError, failureRecord, trustedSystemCode } = require('./errors')
 const { BACKUP_PATTERN, BACKUP_STAGE_PATTERN, backupParts, classifyBackup } = require('./backups')
@@ -16,8 +16,9 @@ const {
   removeAndVerify,
   removeInitialLock,
   stableOpenFile,
+  stageFile,
 } = require('./filesystem')
-const { DIGEST_PATTERN, MAX_INLINE_FILE_BYTES, MAX_RECOVERY_REQUEST_BYTES, MAX_RECOVERY_RESULT_BYTES, NONCE_PATTERN, RECOVERY_GATE_BASENAME, RECOVERY_LOCK_BASENAME: LOCK_BASENAME, RECOVERY_MARKER_BASENAME: MARKER_BASENAME, buildRecoveryApplyRequest, canonicalBytes, canonicalJson, compareOrdinal, deriveRecoveryId, electionMarkerTemporaryNames, recoveryAllowedDispositions, sameKeys, sha256, validateTarget } = require('./protocol')
+const { DIGEST_PATTERN, MAX_INLINE_FILE_BYTES, MAX_RECOVERY_REQUEST_BYTES, MAX_RECOVERY_RESULT_BYTES, NONCE_PATTERN, RECOVERY_GATE_BASENAME, RECOVERY_LOCK_BASENAME: LOCK_BASENAME, RECOVERY_MARKER_BASENAME: MARKER_BASENAME, WARNING_CODES, buildRecoveryApplyRequest, canonicalBytes, canonicalJson, compareOrdinal, deriveRecoveryId, electionMarkerTemporaryNames, recoveryAllowedDispositions, sameKeys, sha256, validateTarget } = require('./protocol')
 const { collectInspection, validateElectionMarkerRecord } = require('./inspection')
 const { publishRecoveryFile, recoveryTemporaryMatches, recoveryTemporaryTarget, removeRecoveryFile } = require('./publication')
 
@@ -760,18 +761,7 @@ function removeOwnedRecoveryGate(path, expectedIdentity) {
 }
 
 function writeRecoveryGateStage(root, stage, bytes, options) {
-  const descriptor = openSync(stage, 'wx', 0o600)
-  try {
-    let offset = 0
-    while (offset < bytes.length) {
-      const count = writeSync(descriptor, bytes, offset, bytes.length - offset, offset)
-      if (count <= 0) throw new Error('Recovery gate stage write made no progress')
-      offset += count
-    }
-    fsyncSync(descriptor)
-  } finally {
-    closeSync(descriptor)
-  }
+  stageFile(stage, bytes, { ...options, onTransition: undefined })
   const opened = stableOpenFile(root, stage, { ...options, requireSingleLink: true })
   if (!opened.bytes.equals(bytes) || (options.platform ?? process.platform) !== 'win32' && opened.mode !== 0o600) throw new Error('Recovery gate stage readback differs')
 
@@ -1025,7 +1015,7 @@ function recoveryCapacityWarnings(paths) {
   }).at(-1)
   const capacityDetail = '\u0000'.repeat(4096)
 
-  return ['external-writer-window', 'manual-cleanup', 'nonblocking-ready-notice', 'runtime-support-created'].sort(compareOrdinal).map((code) => ({ code, detail: capacityDetail, target: capacityWarningTarget }))
+  return [...WARNING_CODES].sort(compareOrdinal).map((code) => ({ code, detail: capacityDetail, target: capacityWarningTarget }))
 }
 
 function enforceRecoveryResultCapacity(request, inspection, disposition, options) {

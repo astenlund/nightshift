@@ -989,6 +989,22 @@ function runProtocolCases(repositoryRoot) {
     }
   })
 
+  test('owner records that are not plain objects raise the schema error on residue and consume paths', () => {
+    const schemaInvalid = (error) => error instanceof InitBacklogError && error.record.code === 'request-filesystem' && !(error.cause instanceof TypeError) && error.cause?.message === 'Published request owner schema is invalid'
+    for (const stored of ['null\n', '[]\n', '"reserved"\n']) {
+      const root = makeTemporaryRoot()
+      try {
+        reserveRequest(root, { nonce: NONCE_A })
+        putPayload(root)
+        writeFileSync(requestPaths(root).owner, Buffer.from(stored, 'utf8'))
+        assert.throws(() => inspectRequestResidue(root), schemaInvalid)
+        assert.throws(() => consumeRequest(root, NONCE_A, () => assert.fail('dispatch ran for an invalid owner record')), schemaInvalid)
+      } finally {
+        removeTemporaryRoot(root)
+      }
+    }
+  })
+
   test('residue inspection is stable and rejects wrong kind, links, extra entries, and digest drift', () => {
     const mutators = [
       (root) => mkdirSync(requestPaths(root).owner),

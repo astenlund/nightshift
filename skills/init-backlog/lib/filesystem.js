@@ -657,9 +657,9 @@ function parseOwner(bytes, root) {
   } catch (error) {
     throw new Error('Published request owner is malformed', { cause: error })
   }
-  const keys = Object.keys(record).sort().join(',')
-  const expectedKeys = record.state === 'reserved' ? 'nonce,protocolVersion,root,state' : record.state === 'consuming' ? 'nonce,pid,protocolVersion,root,state' : ''
-  if (keys !== expectedKeys || record.protocolVersion !== 1 || record.root !== root || !NONCE_PATTERN.test(record.nonce) || (record.state === 'consuming' && (!Number.isSafeInteger(record.pid) || record.pid <= 0))) {
+  const consuming = sameKeys(record, ['nonce', 'pid', 'protocolVersion', 'root', 'state'])
+  const shaped = consuming || sameKeys(record, ['nonce', 'protocolVersion', 'root', 'state'])
+  if (!shaped || record.state !== (consuming ? 'consuming' : 'reserved') || record.protocolVersion !== 1 || record.root !== root || !NONCE_PATTERN.test(record.nonce) || (consuming && (!Number.isSafeInteger(record.pid) || record.pid <= 0))) {
     throw new Error('Published request owner schema is invalid')
   }
 
