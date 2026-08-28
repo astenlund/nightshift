@@ -16,7 +16,7 @@ const {
   removeInitialLock,
   stableOpenFile,
 } = require('./filesystem')
-const { DIGEST_PATTERN, MAX_INLINE_FILE_BYTES, MAX_RECOVERY_REQUEST_BYTES, MAX_RECOVERY_RESULT_BYTES, NONCE_PATTERN, RECOVERY_GATE_BASENAME, RECOVERY_LOCK_BASENAME: LOCK_BASENAME, RECOVERY_MARKER_BASENAME: MARKER_BASENAME, buildRecoveryApplyRequest, canonicalBytes, canonicalJson, compareOrdinal, deriveRecoveryId, recoveryAllowedDispositions, sameKeys, sha256, validateTarget } = require('./protocol')
+const { DIGEST_PATTERN, MAX_INLINE_FILE_BYTES, MAX_RECOVERY_REQUEST_BYTES, MAX_RECOVERY_RESULT_BYTES, NONCE_PATTERN, RECOVERY_GATE_BASENAME, RECOVERY_LOCK_BASENAME: LOCK_BASENAME, RECOVERY_MARKER_BASENAME: MARKER_BASENAME, buildRecoveryApplyRequest, canonicalBytes, canonicalJson, compareOrdinal, deriveRecoveryId, electionMarkerTemporaryNames, recoveryAllowedDispositions, sameKeys, sha256, validateTarget } = require('./protocol')
 const { collectInspection, validateElectionMarkerRecord } = require('./inspection')
 const { publishRecoveryFile, recoveryTemporaryMatches, recoveryTemporaryTarget, removeRecoveryFile } = require('./publication')
 
@@ -174,11 +174,8 @@ function markerTopology(root, target, record) {
   if (record.manifestId === null) return null
   const markerPrefix = `${MARKER_BASENAME}.${record.manifestId}`
   const paths = {
-    alias: `${markerPrefix}.tmp`,
+    ...electionMarkerTemporaryNames(markerPrefix),
     marker: MARKER_BASENAME,
-    newWitness: `${markerPrefix}.new.tmp`,
-    oldWitness: `${markerPrefix}.old.tmp`,
-    tombstone: `${markerPrefix}.tombstone.tmp`,
   }
   const temporary = new Set(record.temporaryPaths)
   const present = (candidate) => temporary.has(candidate) && !absent(artifactPath(root, candidate))
@@ -299,12 +296,7 @@ function validOwnerTemporary(root, target, record) {
     const ordinal = basename.slice(actionPrefix.length, -4)
     if (/^[1-9][0-9]*$/.test(ordinal)) return true
   }
-  const markerNames = [
-    `${MARKER_BASENAME}.${record.manifestId}.tmp`,
-    `${MARKER_BASENAME}.${record.manifestId}.new.tmp`,
-    `${MARKER_BASENAME}.${record.manifestId}.old.tmp`,
-    `${MARKER_BASENAME}.${record.manifestId}.tombstone.tmp`,
-  ]
+  const markerNames = Object.values(electionMarkerTemporaryNames(`${MARKER_BASENAME}.${record.manifestId}`))
 
   return markerNames.includes(target)
 }

@@ -25,7 +25,7 @@ const {
   verifyPublishedIdentity,
 } = require('./filesystem')
 const { collectInspection, composeElectionMarker } = require('./inspection')
-const { DIGEST_PATTERN, NONCE_PATTERN, RECOVERY_GATE_BASENAME, RECOVERY_LOCK_BASENAME: LOCK_BASENAME, RECOVERY_MARKER_BASENAME: ELECTION_BASENAME, canonicalJson, compareOrdinal, sameKeys, sha256 } = require('./protocol')
+const { DIGEST_PATTERN, NONCE_PATTERN, RECOVERY_GATE_BASENAME, RECOVERY_LOCK_BASENAME: LOCK_BASENAME, RECOVERY_MARKER_BASENAME: ELECTION_BASENAME, canonicalJson, compareOrdinal, electionMarkerTemporaryNames, sameKeys, sha256 } = require('./protocol')
 
 const POSIX_DEFAULT_FILE_MODE = 0o644
 const POSIX_DEFAULT_DIRECTORY_MODE = 0o755
@@ -86,15 +86,16 @@ function temporaryPaths(root, manifestId, actionOrdinal = 1, ownerNonce = random
     throw new TypeError('Temporary identity is invalid')
   }
   const lockPaths = initialLockPaths(root, pid, ownerNonce)
-  const electionAlias = join(root, `${ELECTION_BASENAME}.${manifestId}.tmp`)
+  const markerNames = electionMarkerTemporaryNames(`${ELECTION_BASENAME}.${manifestId}`)
+  const electionAlias = join(root, markerNames.alias)
 
   return {
     action: join(root, `.nightshift-init-backlog.${manifestId}.${actionOrdinal}.tmp`),
     election: electionAlias,
     electionAlias,
-    electionNewWitness: join(root, `${ELECTION_BASENAME}.${manifestId}.new.tmp`),
-    electionOldWitness: join(root, `${ELECTION_BASENAME}.${manifestId}.old.tmp`),
-    electionTombstone: join(root, `${ELECTION_BASENAME}.${manifestId}.tombstone.tmp`),
+    electionNewWitness: join(root, markerNames.newWitness),
+    electionOldWitness: join(root, markerNames.oldWitness),
+    electionTombstone: join(root, markerNames.tombstone),
     lock: lockPaths.lock,
     lockNext: join(root, `${LOCK_BASENAME}.${ownerNonce}.next`),
     lockStage: lockPaths.stage,

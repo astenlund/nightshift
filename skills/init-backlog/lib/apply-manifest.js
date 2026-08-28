@@ -13,6 +13,7 @@ const {
   deriveManifestId,
   deriveSemanticActionId,
   deriveSnapshotId,
+  isSemanticActionId,
   sameKeys,
   sha256,
   validateAction,
@@ -137,7 +138,7 @@ function selectedProposals(inspection, dispositions, choice) {
 function proposalForAction(action, proposals) {
   const proposal = proposals.find((item) => same(item.action, action))
   if (proposal !== undefined) return proposal
-  if (action.kind === 'exact-edit' && action.id.startsWith('s-')) return null
+  if (action.kind === 'exact-edit' && isSemanticActionId(action.id)) return null
   admissionError('Action is not one of the approved proposals.', { actionId: action.id, target: action.target })
 }
 
@@ -217,7 +218,7 @@ function createRegionDeclarationsResolver(inspection, options) {
 }
 
 function validateSemanticAction(action, record, inspection, options, declarationsFor) {
-  if (!action.id.startsWith('s-')) return
+  if (!isSemanticActionId(action.id)) return
   if (record.contentRole !== 'semantic' || record.templateId === null || typeof record.templateId !== 'string') admissionError('Semantic action requires an authorized inspected template.', { actionId: action.id, target: action.target })
   const template = Array.isArray(inspection.templates) ? inspection.templates.find((item) => item.templateId === record.templateId && item.target === record.target) : undefined
   if (template === undefined || template.logicalSha256 !== record.templateSha256 || !Array.isArray(template.conceptIds) || template.conceptIds.length === 0) admissionError('Semantic action requires a nonempty inspected concept set.', { actionId: action.id, target: action.target })
@@ -290,13 +291,13 @@ function simulateAction(action, state, inspection, targets, options, declaration
   if (state.content === null || Buffer.from(state.content).toString('base64') !== action.beforeBase64) admissionError('Exact edit input differs from inspection or prior action.', { actionId: action.id, target: action.target })
   const region = regionFor({ editableRegions: state.regions }, action.regionId)
   if (region === undefined) admissionError('Exact edit region is not available in the current transition state.', { actionId: action.id, target: action.target })
-  if (action.id.startsWith('s-')) {
+  if (isSemanticActionId(action.id)) {
     const expectedId = deriveSemanticActionId({ afterBase64: action.afterBase64, beforeBase64: action.beforeBase64, kind: action.kind, regionId: action.regionId, target: action.target })
     if (expectedId !== action.id || action.regionId.endsWith('empty-document')) admissionError('Semantic action is not bound to an approved semantic region.', { actionId: action.id, target: action.target })
   }
   const before = Buffer.from(state.content)
   const after = validateBase64(action.afterBase64)
-  if (action.id.startsWith('s-') && (!before.subarray(0, region.startByte).equals(after.subarray(0, region.startByte)) || !before.subarray(region.endByte).equals(after.subarray(region.endByte)))) admissionError('Exact edit broadens its approved region.', { actionId: action.id, target: action.target })
+  if (isSemanticActionId(action.id) && (!before.subarray(0, region.startByte).equals(after.subarray(0, region.startByte)) || !before.subarray(region.endByte).equals(after.subarray(region.endByte)))) admissionError('Exact edit broadens its approved region.', { actionId: action.id, target: action.target })
   state.content = after
   state.rawSha256 = sha256(after)
   state.regions = rescanRegions(action, after, inspection, options, declarationsFor)
@@ -304,7 +305,7 @@ function simulateAction(action, state, inspection, targets, options, declaration
 
 function simulateReady(inspection, actions, states, options = {}) {
   const unwrap = actions.filter((action) => action.kind === 'unwrap-file')
-  const semanticChanges = actions.some((action) => action.id.startsWith('s-') && action.beforeBase64 !== action.afterBase64)
+  const semanticChanges = actions.some((action) => isSemanticActionId(action.id) && action.beforeBase64 !== action.afterBase64)
   if (unwrap.length > 0 && !Array.isArray(options.readyCatalog)) {
     if (semanticChanges) admissionError('Compound ready simulation requires the carried post-unwrap catalog.', { code: 'manifest-invalid' })
 

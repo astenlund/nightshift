@@ -1145,6 +1145,19 @@ function deriveSemanticActionId(actionWithoutId) {
   return `s-${sha256(canonicalBytes(actionWithoutId)).slice(0, 62)}`
 }
 
+function isSemanticActionId(id) {
+  return id.startsWith('s-')
+}
+
+function electionMarkerTemporaryNames(prefix) {
+  return {
+    alias: `${prefix}.tmp`,
+    newWitness: `${prefix}.new.tmp`,
+    oldWitness: `${prefix}.old.tmp`,
+    tombstone: `${prefix}.tombstone.tmp`,
+  }
+}
+
 function deriveSnapshotId(inspectWithNullId) {
   return sha256(canonicalBytes(inspectWithNullId))
 }
@@ -1211,7 +1224,9 @@ module.exports = {
   deriveRecoveryId,
   deriveSemanticActionId,
   deriveSnapshotId,
+  electionMarkerTemporaryNames,
   encodeResult,
+  isSemanticActionId,
   recoveryAllowedDispositions,
   recoveryTargetMatches,
   sameKeys,
