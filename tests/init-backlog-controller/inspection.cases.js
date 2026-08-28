@@ -39,6 +39,12 @@ const { createInitialLock, initialLockPaths, publishNoReplace, removeInitialLock
 const { canonicalJson, sha256, validateProposalDispositions } = require('../../skills/init-backlog/lib/protocol')
 const { analyzeCatalog } = require('../../skills/ready/ready')
 
+// Fresh valid Codex host context for direct inspect/collect calls; every
+// caller may mutate its copy freely.
+function codexHostContext() {
+  return { claudeContextSource: null, claudeRootExclusionStatus: null, codexContextSource: 'user-confirmed', codexInvocationDirectory: '.', codexProjectDocMaxBytes: 1048576, codexProjectInstructions: [] }
+}
+
 function runInspectionCases(repositoryRoot) {
   test('inspection module recognizes controlled Markdown regions outside code and HTML', () => {
     const source = Buffer.from('\ufeff# Title\n\n```\n## Section\n```\n<!--\n## Section\n-->\n## Section\nbody\n## Tail\n', 'utf8')
@@ -332,7 +338,7 @@ function runInspectionCases(repositoryRoot) {
       cpSync(join(repositoryRoot, '.claude'), join(root, '.claude'), { recursive: true })
       cpSync(join(repositoryRoot, 'AGENTS.md'), join(root, 'AGENTS.md'))
       cpSync(join(repositoryRoot, 'CLAUDE.md'), join(root, 'CLAUDE.md'))
-      const context = { claudeContextSource: null, claudeRootExclusionStatus: null, codexContextSource: 'user-confirmed', codexInvocationDirectory: '.', codexProjectDocMaxBytes: 1048576, codexProjectInstructions: [] }
+      const context = codexHostContext()
       let collections = 0
       assert.throws(() => inspect(root, 'codex', context, {
         candidates: [],
@@ -352,7 +358,7 @@ function runInspectionCases(repositoryRoot) {
       cpSync(join(repositoryRoot, '.claude'), join(root, '.claude'), { recursive: true })
       cpSync(join(repositoryRoot, 'AGENTS.md'), join(root, 'AGENTS.md'))
       cpSync(join(repositoryRoot, 'CLAUDE.md'), join(root, 'CLAUDE.md'))
-      const context = { claudeContextSource: null, claudeRootExclusionStatus: null, codexContextSource: 'user-confirmed', codexInvocationDirectory: '.', codexProjectDocMaxBytes: 1048576, codexProjectInstructions: [] }
+      const context = codexHostContext()
       let removals = 0
       assert.throws(() => inspect(root, 'codex', context, {
         candidates: [],
@@ -367,7 +373,7 @@ function runInspectionCases(repositoryRoot) {
   })
 
   test('direct inspection maps guidance, Git, filesystem, marker, and lock failures', () => {
-    const context = { claudeContextSource: null, claudeRootExclusionStatus: null, codexContextSource: 'user-confirmed', codexInvocationDirectory: '.', codexProjectDocMaxBytes: 1048576, codexProjectInstructions: [] }
+    const context = codexHostContext()
     const fixture = () => {
       const root = mkdtempSync(join(tmpdir(), 'nightshift-inspect-failure-'))
       cpSync(join(repositoryRoot, '.claude'), join(root, '.claude'), { recursive: true })
@@ -419,7 +425,7 @@ function runInspectionCases(repositoryRoot) {
       cpSync(join(repositoryRoot, '.claude'), join(root, '.claude'), { recursive: true })
       cpSync(join(repositoryRoot, 'AGENTS.md'), join(root, 'AGENTS.md'))
       cpSync(join(repositoryRoot, 'CLAUDE.md'), join(root, 'CLAUDE.md'))
-      const context = { claudeContextSource: null, claudeRootExclusionStatus: null, codexContextSource: 'user-confirmed', codexInvocationDirectory: '.', codexProjectDocMaxBytes: 1048576, codexProjectInstructions: [] }
+      const context = codexHostContext()
       const original = readFileSync(join(root, '.claude', 'FEATURES.md'))
       let collections = 0
       const result = inspect(root, 'codex', context, {
@@ -540,7 +546,7 @@ function runInspectionCases(repositoryRoot) {
       assert.equal(existsSync(publishedPaths.lock), false)
       let nested
       const inspectionRoot = mkdtempSync(join(tmpdir(), 'nightshift-inspect-concurrent-'))
-      const context = { claudeContextSource: null, claudeRootExclusionStatus: null, codexContextSource: 'user-confirmed', codexInvocationDirectory: '.', codexProjectDocMaxBytes: 1048576, codexProjectInstructions: [] }
+      const context = codexHostContext()
       try {
         cpSync(join(repositoryRoot, '.claude'), join(inspectionRoot, '.claude'), { recursive: true })
         cpSync(join(repositoryRoot, 'AGENTS.md'), join(inspectionRoot, 'AGENTS.md'))
@@ -569,7 +575,7 @@ function runInspectionCases(repositoryRoot) {
       const inspectBoundary = (name, options, expectedNames) => {
         const boundaryRoot = mkdtempSync(join(tmpdir(), `nightshift-lock-${name}-`))
         try {
-          assert.throws(() => inspect(boundaryRoot, 'codex', { claudeContextSource: null, claudeRootExclusionStatus: null, codexContextSource: 'user-confirmed', codexInvocationDirectory: '.', codexProjectDocMaxBytes: 1048576, codexProjectInstructions: [] }, { candidates: [], pid: record.pid, ownerNonce: record.ownerNonce, ...options }), (error) => error.record?.code === 'filesystem' && error.record?.phase === 'lock' && error.record?.target === '.nightshift-init-backlog.lock')
+          assert.throws(() => inspect(boundaryRoot, 'codex', codexHostContext(), { candidates: [], pid: record.pid, ownerNonce: record.ownerNonce, ...options }), (error) => error.record?.code === 'filesystem' && error.record?.phase === 'lock' && error.record?.target === '.nightshift-init-backlog.lock')
           assert.deepEqual(readdirSync(boundaryRoot).sort(), expectedNames)
         } finally {
           rmSync(boundaryRoot, { force: true, recursive: true })
@@ -586,7 +592,7 @@ function runInspectionCases(repositoryRoot) {
         cpSync(join(repositoryRoot, '.claude'), join(isolatedRoot, '.claude'), { recursive: true })
         cpSync(join(repositoryRoot, 'AGENTS.md'), join(isolatedRoot, 'AGENTS.md'))
         cpSync(join(repositoryRoot, 'CLAUDE.md'), join(isolatedRoot, 'CLAUDE.md'))
-        const context = { claudeContextSource: null, claudeRootExclusionStatus: null, codexContextSource: 'user-confirmed', codexInvocationDirectory: '.', codexProjectDocMaxBytes: 1048576, codexProjectInstructions: [] }
+        const context = codexHostContext()
         const result = inspect(isolatedRoot, 'codex', context, {
           candidates: [],
           pid: 1234,
@@ -618,7 +624,7 @@ function runInspectionCases(repositoryRoot) {
         const marker = readElectionMarker(root)
         assert.deepEqual({ marker: marker.marker, snapshotId: marker.snapshotId }, { marker: state, snapshotId: stale })
       }
-      assert.throws(() => collectInspection(root, 'codex', { claudeContextSource: null, claudeRootExclusionStatus: null, codexContextSource: 'user-confirmed', codexInvocationDirectory: '.', codexProjectDocMaxBytes: 1048576, codexProjectInstructions: [] }, { candidates: [] }), (error) => error.record?.code === 'runtime-marker' && error.record?.phase === 'inspect')
+      assert.throws(() => collectInspection(root, 'codex', codexHostContext(), { candidates: [] }), (error) => error.record?.code === 'runtime-marker' && error.record?.phase === 'inspect')
     } finally {
       rmSync(root, { force: true, recursive: true })
     }
@@ -676,7 +682,7 @@ function runInspectionCases(repositoryRoot) {
   })
 
   test('direct inspection collects a stable Git snapshot and removes its transient lock', () => {
-    const context = { claudeContextSource: null, claudeRootExclusionStatus: null, codexContextSource: 'user-confirmed', codexInvocationDirectory: '.', codexProjectDocMaxBytes: 1048576, codexProjectInstructions: [] }
+    const context = codexHostContext()
     const result = inspect(repositoryRoot, 'codex', context, { trustedGitPath: 'C:/Program Files/Git/cmd/git.exe', ownerNonce: 'f'.repeat(32) })
     assert.equal(result.ok, true)
     assert.equal(result.operation, 'inspect')
@@ -686,7 +692,7 @@ function runInspectionCases(repositoryRoot) {
 
   test('ordinary inspection classifies flat backups in deterministic order and ignores malformed entries', () => {
     const root = mkdtempSync(join(tmpdir(), 'nightshift-inspect-backups-'))
-    const context = { claudeContextSource: null, claudeRootExclusionStatus: null, codexContextSource: 'user-confirmed', codexInvocationDirectory: '.', codexProjectDocMaxBytes: 1048576, codexProjectInstructions: [] }
+    const context = codexHostContext()
     const target = '.claude/FEATURES.md'
     const targetBytes = readFileSync(join(repositoryRoot, target))
     const targetMode = statSync(join(repositoryRoot, target)).mode & 0o777

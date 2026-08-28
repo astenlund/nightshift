@@ -22,13 +22,16 @@ const { canonicalJson, canonicalJsonLine } = require('./init-backlog-session-dri
 // the dialogue cases do.
 const adjudication = require('./init-backlog-session-driver/adjudication')
 const dialogue = require('./init-backlog-session-driver/dialogue')
+const evidence = require('./init-backlog-session-driver/evidence')
 const hostEvents = require('./init-backlog-session-driver/host-events')
 const oracles = require('./init-backlog-controller/oracles.cases')
 
 const HOST_ORDER = Object.freeze(['claude-code', 'codex'])
 const LOGICAL_COMMANDS = Object.freeze({ 'claude-code': 'claude', codex: 'codex' })
 const LAUNCH_BOUNDARIES = Object.freeze(['version', 'authentication', 'plugin-setup', 'import-probe', 'worker', 'session'])
-const ENABLED_REPETITIONS = 3
+// Derived from the evidence leaf grammar's closed repetition ordinals so the
+// two surfaces cannot drift apart.
+const ENABLED_REPETITIONS = evidence.ENABLED_REPETITIONS.length
 const DISABLED_REPETITIONS = 1
 const CODEX_PLUGIN_ID = 'nightshift@astenlund'
 const MAX_SYMLINK_CHAIN_LINKS = 32
@@ -552,15 +555,7 @@ async function provisionCodexAuthentication({ ambientEnvironment, filesystem = n
     return false
   }
   const retainedCredentialCarrier = (initialCode) => ({
-    result: {
-      ok: false,
-      host: 'codex',
-      code: 'harness-infrastructure',
-      phase: 'authentication',
-      initialCode,
-      detailCode: 'cleanup',
-      retainedRunRoot: isolatedCodexHome,
-    },
+    result: infrastructureCarrier({ detailCode: 'cleanup', host: 'codex', initialCode, phase: 'authentication', retainedRunRoot: isolatedCodexHome }),
     status: 'authentication-unavailable',
   })
   // Every non-continuing outcome below this point removes and
@@ -712,15 +707,7 @@ async function runVersionPreflight({ ambientEnvironment, checkoutRoot, controlle
   const hostTemp = driver.createHostTempChild({ filesystem, platform, runRoot: preflightRunRoot })
   const versions = {}
   const escalateCleanup = (host, initialCode) => ({
-    result: {
-      ok: false,
-      host,
-      code: 'harness-infrastructure',
-      phase: 'version',
-      initialCode,
-      detailCode: 'cleanup',
-      retainedRunRoot: preflightRunRoot,
-    },
+    result: infrastructureCarrier({ detailCode: 'cleanup', host, initialCode, phase: 'version', retainedRunRoot: preflightRunRoot }),
   })
   for (const host of hosts) {
     const descriptor = descriptors[host]
@@ -1087,7 +1074,7 @@ async function runImportMatrix({ ambientEnvironment, checkoutRoot, controllerPat
     verdicts.push(verdict.passed === true ? { caseId: importCase.caseId, passed: true } : { caseId: importCase.caseId, passed: false, reason: verdict.reason })
     if (!cleanupRunRoot({ filesystem, path: caseRoot }).ok) {
       return {
-        failure: { ok: false, host: 'claude-code', code: 'harness-infrastructure', phase: 'import-probe', initialCode: null, detailCode: 'cleanup', retainedRunRoot: caseRoot },
+        failure: infrastructureCarrier({ detailCode: 'cleanup', host: 'claude-code', phase: 'import-probe', retainedRunRoot: caseRoot }),
         verdicts,
       }
     }
@@ -1322,7 +1309,7 @@ async function runEvaluation(options) {
         protectedRoots,
       }).executable
     } catch {
-      return stopWith({ ok: false, host: hosts[0], code: 'harness-infrastructure', phase: 'version', initialCode: null, detailCode: 'containment-unavailable', retainedRunRoot: null })
+      return stopWith(infrastructureCarrier({ detailCode: 'containment-unavailable', host: hosts[0], phase: 'version' }))
     }
     effectiveRunGitFactory = ({ gitIsolation, scenarioRoot }) => createScenarioGitRunner({
       environment: driver.buildHarnessGitEnvironment({
@@ -1412,15 +1399,7 @@ async function runEvaluation(options) {
         return false
       }
     }
-    const retainedCredentialCarrier = () => ({
-      ok: false,
-      host,
-      code: 'harness-infrastructure',
-      phase: 'authentication',
-      initialCode: null,
-      detailCode: 'cleanup',
-      retainedRunRoot: runRoot,
-    })
+    const retainedCredentialCarrier = () => infrastructureCarrier({ detailCode: 'cleanup', host, phase: 'authentication', retainedRunRoot: runRoot })
     // Every non-continuing outcome after a credential copy removes and
     // absence-verifies the copied credential; a result that already names a
     // retained root keeps the sanctioned retained-root rule instead.
@@ -1468,15 +1447,7 @@ async function runEvaluation(options) {
         })
         if (workerCompletion === null || typeof workerCompletion !== 'object' || workerCompletion.ready !== true) {
           return stopWithCredentialRelease({
-            result: {
-              ok: false,
-              host,
-              code: 'harness-infrastructure',
-              phase: 'initial-turn',
-              initialCode: null,
-              detailCode: 'proxy',
-              retainedRunRoot: runRoot,
-            },
+            result: infrastructureCarrier({ detailCode: 'proxy', host, phase: 'initial-turn', retainedRunRoot: runRoot }),
           })
         }
       }
@@ -1524,15 +1495,7 @@ async function runEvaluation(options) {
       const attestation = driver.attestTerminalRepository({ collectRepository, host, member, platform, scenarioRoot })
       if (attestation.failure) {
         return {
-          result: {
-            ok: false,
-            host,
-            code: 'harness-infrastructure',
-            phase: 'post-session',
-            initialCode: null,
-            detailCode: 'repository-attestation',
-            retainedRunRoot: runRoot,
-          },
+          result: infrastructureCarrier({ detailCode: 'repository-attestation', host, phase: 'post-session', retainedRunRoot: runRoot }),
         }
       }
       if (evidenceOutputRoot !== null) {
@@ -1549,15 +1512,7 @@ async function runEvaluation(options) {
         })
         if (published.ok !== true) {
           return {
-            result: {
-              ok: false,
-              host,
-              code: 'harness-infrastructure',
-              phase: 'post-session',
-              initialCode: null,
-              detailCode: published.detailCode,
-              retainedRunRoot: runRoot,
-            },
+            result: infrastructureCarrier({ detailCode: published.detailCode, host, phase: 'post-session', retainedRunRoot: runRoot }),
           }
         }
         evidenceRootUsedBytes += published.leafBytes
@@ -1566,15 +1521,7 @@ async function runEvaluation(options) {
       const finalization = driver.finalizeRunRoot({ filesystem, runRoot, terminationProven: sessionRecord.terminationProven === true })
       if (finalization.retainedRunRoot !== null) {
         return {
-          result: {
-            ok: false,
-            host,
-            code: 'harness-infrastructure',
-            phase: 'post-session',
-            initialCode: null,
-            detailCode: finalization.detailCode ?? 'termination',
-            retainedRunRoot: finalization.retainedRunRoot,
-          },
+          result: infrastructureCarrier({ detailCode: finalization.detailCode ?? 'termination', host, phase: 'post-session', retainedRunRoot: finalization.retainedRunRoot }),
         }
       }
 

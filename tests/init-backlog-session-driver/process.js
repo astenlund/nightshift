@@ -273,9 +273,9 @@ function createWindowsJobRunnerAdapter({
     return null
   }
 
-  const writeFrame = (frame) => {
+  const writeFrameLine = (line) => {
     try {
-      child.stdin.write(canonicalJsonLine(frame))
+      child.stdin.write(line)
 
       return true
     } catch {
@@ -285,6 +285,8 @@ function createWindowsJobRunnerAdapter({
       return false
     }
   }
+
+  const writeFrame = (frame) => writeFrameLine(canonicalJsonLine(frame))
 
   const naturalConjunction = () => startedSeen && hostExitCode !== null && jobEmpty && runnerStdoutEof && runnerClosed && runnerExitCode === 0 && !forcedClose && primaryFailure === null
 
@@ -513,7 +515,7 @@ function createWindowsJobRunnerAdapter({
       }
       nextInputOrdinal += 1
       pendingInputOrdinals.push(ordinal)
-      if (!writeFrame({ dataBase64: Buffer.from(bytes).toString('base64'), kind: 'host-input', ordinal })) {
+      if (!writeFrameLine(frame)) {
         return { ok: false }
       }
 

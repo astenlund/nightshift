@@ -97,7 +97,7 @@ function publishEvidenceLeaf({ files, filesystem = nodeFilesystem, host, leafLim
     for (const file of publish) {
       const target = join(stagingPath, ...file.path.split('/'))
       const staged = filesystem.readFileSync(target)
-      if (!Buffer.from(staged).equals(file.bytes) || sha256(staged) !== sha256(file.bytes)) {
+      if (!Buffer.from(staged).equals(file.bytes)) {
         throw new Error(`staged evidence bytes differ: ${file.path}`)
       }
     }
@@ -121,4 +121,4 @@ function publishEvidenceLeaf({ files, filesystem = nodeFilesystem, host, leafLim
   return { evidenceManifestSha256: manifest.evidenceManifestSha256, leafBytes, leafPath, ok: true }
 }
 
-module.exports = { buildEvidenceManifest, buildLeafPath, publishEvidenceLeaf }
+module.exports = { ENABLED_REPETITIONS, buildEvidenceManifest, buildLeafPath, publishEvidenceLeaf }
