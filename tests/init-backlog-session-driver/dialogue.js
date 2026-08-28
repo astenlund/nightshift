@@ -1,6 +1,6 @@
 'use strict'
 
-const { isPlainObject, sha256 } = require('./state')
+const { APPROVAL_BRANCHES, VERSION_CONTROL_OPTION_ORDER, isPlainObject, sha256 } = require('./state')
 const { canonicalJson } = require('./transcript')
 const { CLAUDE_ROOT_EXCLUSION_CONFIRMATION, CODEX_HOST_CONTEXT_CONFIRMATION, HOST_CONTROL_RECORDS, validateTurnObject } = require('../init-backlog-controller/oracles.cases')
 // Plan-mandated production binding: the approved apply request is built and
@@ -8,12 +8,10 @@ const { CLAUDE_ROOT_EXCLUSION_CONFIRMATION, CODEX_HOST_CONTEXT_CONFIRMATION, HOS
 // never hand-serialized by the harness.
 const { canonicalActionOrder, canonicalBytes, validateRequestRecord } = require('../../skills/init-backlog/lib/protocol')
 
-const APPROVAL_BRANCHES = Object.freeze(['approved', 'denied', 'deferred', 'unavailable', 'auto-denied'])
 const SCRIPTED_BRANCHES = Object.freeze(['approved', 'denied', 'deferred'])
 const HOST_OUTCOMES = Object.freeze(['none', 'unavailable', 'auto-denied'])
 const FAULT_SCHEDULES = Object.freeze(['none', 'after-approval-create-features'])
 const RESERVED_GATE_IDS = Object.freeze(['host-context-confirmation', 'claude-root-exclusion-confirmation', 'action-disclosure', 'manifest-approval'])
-const VERSION_CONTROL_OPTION_ORDER = Object.freeze(['track', 'ignore', 'deferred', 'not-required'])
 const MANIFEST_PROPOSAL_MEMBERS = 'actions,proposalDispositions,semanticDecisions,versionControlChoice,versionControlOptions'
 const CONTEXT_STOP_RESULT_JSON = canonicalJson({ approvalBranch: 'unavailable', reasonCode: 'guidance-resolution' })
 

@@ -35,6 +35,10 @@ const SESSION_FAILURE_CODES = Object.freeze(['session-input', 'session-timeout']
 
 const HOSTS = Object.freeze(['claude-code', 'codex'])
 
+const APPROVAL_BRANCHES = Object.freeze(['approved', 'denied', 'deferred', 'unavailable', 'auto-denied'])
+
+const VERSION_CONTROL_OPTION_ORDER = Object.freeze(['track', 'ignore', 'deferred', 'not-required'])
+
 function sha256(bytes) {
   return createHash('sha256').update(bytes).digest('hex')
 }
@@ -358,6 +362,7 @@ function createLineDecoder({ limit, limitName, onLine, onOverflow }) {
 }
 
 module.exports = {
+  APPROVAL_BRANCHES,
   BYTE_BOUNDS,
   DEADLINES,
   HOSTS,
@@ -365,6 +370,7 @@ module.exports = {
   INFRASTRUCTURE_PHASES,
   PRIMARY_INITIAL_CODES,
   PROCESS_ADAPTER_EVENTS,
+  VERSION_CONTROL_OPTION_ORDER,
   compareOrdinal,
   createByteBudget,
   createInfrastructureAccount,

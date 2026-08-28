@@ -1,12 +1,10 @@
 'use strict'
 
-const { compareOrdinal, isPlainObject, sha256 } = require('./state')
+const { APPROVAL_BRANCHES, VERSION_CONTROL_OPTION_ORDER, compareOrdinal, isPlainObject, sha256 } = require('./state')
 const { canonicalJson } = require('./transcript')
 const { BREAKOUT_DIGEST_NOTICE, buildDecodedContentDisclosures } = require('../init-backlog-controller/oracles.cases')
 
-const APPROVAL_BRANCHES = Object.freeze(['approved', 'denied', 'deferred', 'unavailable', 'auto-denied'])
 const NO_APPLY_BRANCHES = Object.freeze(['denied', 'deferred', 'unavailable', 'auto-denied'])
-const VERSION_CONTROL_OPTION_ORDER = Object.freeze(['track', 'ignore', 'deferred', 'not-required'])
 const ELECTION_CHOICES = Object.freeze(['track', 'ignore', 'deferred'])
 const CARRIER_KINDS = Object.freeze(['breakout-digest', 'decoded', 'structural-action'])
 const MANIFEST_PROJECTION_MEMBERS = 'actions,proposalDispositions,semanticDecisions,versionControlChoice'
