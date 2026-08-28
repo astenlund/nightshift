@@ -9,6 +9,7 @@ const { DIGEST_PATTERN, canonicalJson, compareOrdinal, sameKeys, sha256 } = requ
 const { resolveTrustedExecutable } = require('./filesystem')
 
 const GIT_CANDIDATES = ['HEAD', 'objects', 'refs']
+const GIT_ATTRIBUTE_NAMES = ['text', 'eol', 'filter', 'ident', 'working-tree-encoding']
 const CONFIG_KEYS = ['core.autocrlf', 'core.eol', 'core.excludesFile']
 const [AUTOCRLF_CONFIG_KEY, EOL_CONFIG_KEY, EXCLUDES_FILE_CONFIG_KEY] = CONFIG_KEYS
 
@@ -20,7 +21,7 @@ function validateCheckAttrRecords(records, paths, attributes) {
   if (!Array.isArray(records) || !Array.isArray(paths) || !Array.isArray(attributes) || records.length !== paths.length * attributes.length) {
     throw new Error('Git check-attr cardinality is invalid')
   }
-  const canonicalAttributes = ['text', 'eol', 'filter', 'ident', 'working-tree-encoding']
+  const canonicalAttributes = GIT_ATTRIBUTE_NAMES
   if (paths.some((path, index) => typeof path !== 'string' || index > 0 && compareOrdinal(paths[index - 1], path) >= 0) || attributes.some((attribute, index) => typeof attribute !== 'string' || attributes.indexOf(attribute) !== index || attribute !== canonicalAttributes[index])) {
     throw new Error('Git check-attr ordering is invalid')
   }
@@ -404,7 +405,7 @@ function inspectGitPolicy(root, options = {}) {
   const trackedBacklogPaths = parseNulPaths(requireGitResult(runGit(root, ['ls-files', '-z', '--', ...electivePaths], gitOptions), 'tracked backlog paths'))
   if (trackedPlanPaths.some((item) => item !== '.claude/plans' && !item.startsWith('.claude/plans/')) || trackedBacklogPaths.some((item) => !electivePaths.includes(item) && !electivePaths.some((prefix) => prefix.endsWith('/') && item.startsWith(prefix)))) throw new Error('Git tracked path is outside its policy domain')
   const attributePaths = [...(options.attributePaths ?? [])].sort(compareOrdinal)
-  const attributes = ['text', 'eol', 'filter', 'ident', 'working-tree-encoding']
+  const attributes = GIT_ATTRIBUTE_NAMES
   let checkAttr = []
   if (attributePaths.length > 0) {
     checkAttr = classifyCheckAttrProcess(runGit(root, ['check-attr', '-z', ...attributes, '--', ...attributePaths], gitOptions), attributePaths, attributes)
