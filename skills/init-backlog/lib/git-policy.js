@@ -27,10 +27,6 @@ function classifyConfigProcess(result) {
   throw new Error('Git configuration process result is not an absent tuple')
 }
 
-function classifyConfigResult(result) {
-  return classifyConfigProcess(result)
-}
-
 function validateCheckAttrRecords(records, paths, attributes) {
   if (!Array.isArray(records) || !Array.isArray(paths) || !Array.isArray(attributes) || records.length !== paths.length * attributes.length) {
     throw new Error('Git check-attr cardinality is invalid')
@@ -691,7 +687,6 @@ module.exports = {
   candidateSet,
   classifyCompletedGit,
   classifyConfigProcess,
-  classifyConfigResult,
   classifyCheckAttrProcess,
   classifyGitKind,
   detectGitKind,

@@ -101,10 +101,6 @@ function temporaryPaths(root, manifestId, actionOrdinal = 1, ownerNonce = random
   }
 }
 
-function deriveTemporaryPaths(root, manifestId, actionOrdinal, ownerNonce, snapshotId, pid) {
-  return temporaryPaths(root, manifestId, actionOrdinal, ownerNonce, snapshotId, pid)
-}
-
 function targetPath(root, target) {
   const path = join(root, ...target.split('/'))
   if (!pathIsContained(root, path)) {
@@ -1203,4 +1199,4 @@ function publishApply(request, options = {}) {
   }
 }
 
-module.exports = { deriveTemporaryPaths, publishApply, publishRecoveryFile, recoveryTemporaryMatches, recoveryTemporaryTarget, removeRecoveryFile, temporaryPaths }
+module.exports = { publishApply, publishRecoveryFile, recoveryTemporaryMatches, recoveryTemporaryTarget, removeRecoveryFile, temporaryPaths }

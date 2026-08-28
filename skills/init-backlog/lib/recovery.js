@@ -23,7 +23,6 @@ const { publishRecoveryFile, recoveryTemporaryMatches, recoveryTemporaryTarget, 
 const RECOVERY_OWNER_STAGE_BASENAME = 'owner.new'
 const RECOVERY_OWNER_BASENAME = 'owner.json'
 const LOCK_STAGE_PATTERN = /^\.nightshift-init-backlog\.lock\.([1-9][0-9]*)\.([a-f0-9]{32})\.new$/
-const ALLOWED_DISPOSITIONS = ['cleanup', 'deferred', 'track', 'ignore', 'abandon', 'restore', 'accept', 'remove']
 
 function failure(operation, phase, code, detail, target = null, cause = undefined, fields = {}) {
   throw new InitBacklogError(failureRecord({ ...fields, code, detail, operation, phase, target, systemCode: trustedSystemCode(cause) }), { cause })
@@ -1244,12 +1243,9 @@ function applyRecovery(request, options = {}) {
 }
 
 module.exports = {
-  ALLOWED_DISPOSITIONS,
   BACKUP_PATTERN,
   LOCK_STAGE_PATTERN,
   RECOVERY_GATE_BASENAME,
   applyRecovery,
   inspectRecovery,
-  recoverApply: applyRecovery,
-  recoverInspect: inspectRecovery,
 }
