@@ -511,7 +511,7 @@ function discoverControlledMarkdown(root, directories = ['.claude/bugs', '.claud
         throwInitBacklogError({ code: 'filesystem', detail: 'Controlled targets share a physical identity.', operation: 'inspect', phase: 'inspect', target })
       }
       identities.add(opened.identity)
-      discovered.push({ applicability: 'always', conceptIds: [], identity: opened.identity, kind: 'file', mode: opened.mode, path: entry.path, regions: [], target, templateRule: null, bytes: opened.bytes, rawSha256: opened.rawSha256 })
+      discovered.push({ applicability: 'always', conceptIds: [], identity: opened.identity, kind: 'file', mode: opened.mode, path: entry.path, present: true, regions: [], target, templateRule: null, bytes: opened.bytes, rawSha256: opened.rawSha256 })
     }
   }
   for (const directory of directories) {

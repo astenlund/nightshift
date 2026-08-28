@@ -44,6 +44,23 @@ function codexHostContext() {
   return { claudeContextSource: null, claudeRootExclusionStatus: null, codexContextSource: 'user-confirmed', codexInvocationDirectory: '.', codexProjectDocMaxBytes: 1048576, codexProjectInstructions: [] }
 }
 
+// Scaffolds a repository whose only controlled content is one discovered
+// breakout under `.claude/bugs`, linked from a minimal `BUGS.md` index, and
+// hands the caller the resulting inspection.
+function inspectDiscoveredBreakout(prefix, breakoutContents, run) {
+  const root = mkdtempSync(join(tmpdir(), prefix))
+  try {
+    mkdirSync(join(root, '.claude', 'bugs'), { recursive: true })
+    writeFileSync(join(root, 'CLAUDE.md'), '@AGENTS.md\n')
+    writeFileSync(join(root, 'AGENTS.md'), '')
+    writeFileSync(join(root, '.claude', 'BUGS.md'), '## Open\n\n### [Issue](bugs/issue.md)\n\n**Requires:** none.\n')
+    writeFileSync(join(root, '.claude', 'bugs', 'issue.md'), breakoutContents)
+    run(collectInspection(root, 'claude-code', { claudeContextSource: 'host-observed', claudeRootExclusionStatus: 'included' }, { candidates: [] }))
+  } finally {
+    rmSync(root, { force: true, recursive: true })
+  }
+}
+
 function runInspectionCases(repositoryRoot) {
   test('inspection module recognizes controlled Markdown regions outside code and HTML', () => {
     const source = Buffer.from('\ufeff# Title\n\n```\n## Section\n```\n<!--\n## Section\n-->\n## Section\nbody\n## Tail\n', 'utf8')
@@ -512,6 +529,46 @@ function runInspectionCases(repositoryRoot) {
     } finally {
       rmSync(root, { force: true, recursive: true })
     }
+  })
+
+  test('a discovered breakout inspects as a present mechanical target', () => {
+    inspectDiscoveredBreakout('nightshift-breakout-present-', '# Issue\n\nOne unwrapped paragraph on one physical line.\n', (result) => {
+      const record = result.targets.find((item) => item.target === '.claude/bugs/issue.md')
+
+      assert.deepEqual(record.states, ['present'])
+      assert.equal(record.kind, 'file')
+      assert.equal(record.contentRole, 'mechanical')
+      assert.equal(record.rawSha256, sha256(Buffer.from('# Issue\n\nOne unwrapped paragraph on one physical line.\n', 'utf8')))
+      assert.equal(result.ready.notices.some((notice) => notice.includes('bugs/issue.md')), false)
+      assert.deepEqual(result.ready.structuralErrors, [])
+    })
+  })
+
+  test('a hard-wrapped discovered breakout yields a mechanical unwrap proposal', () => {
+    const wrapped = '# Issue\n\nThis paragraph is deliberately hard wrapped across\ntwo physical lines so the detector fires.\n'
+    const unwrapped = '# Issue\n\nThis paragraph is deliberately hard wrapped across two physical lines so the detector fires.\n'
+    inspectDiscoveredBreakout('nightshift-breakout-wrapped-', wrapped, (result) => {
+      const record = result.targets.find((item) => item.target === '.claude/bugs/issue.md')
+      assert.deepEqual(record.states, ['present', 'wrapped'])
+      assert.deepEqual(result.wrapFindings, [{ target: '.claude/bugs/issue.md', count: 1, firstLine: 4, beforeRawSha256: sha256(Buffer.from(wrapped, 'utf8')), predictedRawSha256: sha256(Buffer.from(unwrapped, 'utf8')), predictedContentBase64: null, predictedEditableRegions: [] }])
+      const unwrapProposals = result.proposals.filter((item) => item.action.kind === 'unwrap-file')
+      assert.equal(unwrapProposals.length, 1)
+      assert.equal(unwrapProposals[0].reason, 'hard-wrap')
+      assert.equal(unwrapProposals[0].beforeBase64, null)
+      assert.equal(unwrapProposals[0].afterBase64, null)
+      assert.equal(unwrapProposals[0].action.target, '.claude/bugs/issue.md')
+      assert.equal(unwrapProposals[0].action.beforeRawSha256, sha256(Buffer.from(wrapped, 'utf8')))
+      assert.equal(unwrapProposals[0].action.afterRawSha256, sha256(Buffer.from(unwrapped, 'utf8')))
+      assert.deepEqual(result.unwrapReady.targets, ['.claude/bugs/issue.md'])
+    })
+  })
+
+  test('the ready catalog sees a discovered breakout body rather than a broken link', () => {
+    inspectDiscoveredBreakout('nightshift-breakout-catalog-', '# Issue\n\n**Requires:** none.\n', (result) => {
+      assert.equal(result.ready.structuralErrors.length, 1)
+      assert.match(result.ready.structuralErrors[0].problem, /^breakout file bugs\/issue\.md carries a \*\*Requires:\*\* line \(line 3\)/)
+      assert.equal(result.ready.notices.some((notice) => notice.includes('does not exist')), false)
+    })
   })
 
   test('direct inspection serializes concurrent callers and maps initial-lock crash prefixes', () => {
