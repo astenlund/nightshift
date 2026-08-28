@@ -256,7 +256,8 @@ function verifyOwnedPublishedLink(root, path, owned, options) {
   if (temporaryMetadata.nlink !== 2n || destinationMetadata.nlink !== 2n || destination.identity !== owned.identity || !destination.bytes.equals(owned.bytes) || owned.mode !== null && destination.mode !== owned.mode) throw new Error('Published target shares an unexpected temporary identity')
 }
 
-function publishContent(root, path, bytes, mode, temp, options, replace, expectedContent, expectedMode, expectedIdentity = null) {
+function publishContent(root, path, bytes, mode, temp, options, replace, expected) {
+  options.verifyLock?.()
   notifyWrite(options, path)
   const fileOptions = { ...options, onTransition: (point) => transition(options, point) }
   const adopted = options.ownedTemporaries?.get(temp)
@@ -273,6 +274,7 @@ function publishContent(root, path, bytes, mode, temp, options, replace, expecte
   const staged = options.ownedTemporaries?.get(temp)
   if (staged === undefined) throw new Error('Reserved temporary ownership is not proven')
   verifyOwnedTemporary(root, temp, staged, options)
+  const { content: expectedContent, identity: expectedIdentity = null, mode: expectedMode } = expected
   stableTarget(root, path, { content: replace ? expectedContent : null, identity: replace ? expectedIdentity : null, kind: 'file', mode: replace ? expectedMode : null, present: replace }, options)
   if (replace) {
     renameVerified(temp, path, bytes, fileOptions)
@@ -1187,7 +1189,7 @@ function publishApply(request, options = {}) {
           already = targetMatchesPublishedTemporary(root, path, bytes, effectiveMode, actionTemps[index], publicationOptions) || targetMatchesOutput(root, path, 'file', bytes, effectiveMode, options)
           const expectedContent = state.content ?? actionBefore(request, action, root, options)
           let published
-          if (!already) published = publishContent(root, path, bytes, effectiveMode, actionTemps[index], publicationOptions, state.present, expectedContent, state.mode, state.identity)
+          if (!already) published = publishContent(root, path, bytes, effectiveMode, actionTemps[index], publicationOptions, state.present, { content: expectedContent, identity: state.identity, mode: state.mode })
           state.present = true
           state.content = terminalBytes
           states.set(action.target, state)

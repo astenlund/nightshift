@@ -30,6 +30,9 @@ const { DIGEST_PATTERN, MAX_APPLY_REQUEST_BYTES, NONCE_PATTERN, OWNER_BASENAME: 
 
 const REQUEST_GATE_BASENAME = '.nightshift-init-backlog.request-gate'
 const REQUEST_PAYLOAD_BASENAME = 'request.json'
+const OWNER_STAGE_CHILDREN = [REQUEST_OWNER_BASENAME, REQUEST_OWNER_STAGE_BASENAME].sort().join(',')
+const OWNER_PAYLOAD_CHILDREN = [REQUEST_OWNER_BASENAME, REQUEST_PAYLOAD_BASENAME].sort().join(',')
+const OWNER_STAGE_PAYLOAD_CHILDREN = [REQUEST_OWNER_BASENAME, REQUEST_OWNER_STAGE_BASENAME, REQUEST_PAYLOAD_BASENAME].sort().join(',')
 
 class RequestTransportResidueError extends Error {
   constructor(cause) {
@@ -716,15 +719,15 @@ function collectRequestResidue(root, options = {}) {
       state = 'empty-gate'
     } else if (childSet === REQUEST_OWNER_STAGE_BASENAME) {
       state = 'owner-stage'
-    } else if (childSet === [REQUEST_OWNER_BASENAME, REQUEST_OWNER_STAGE_BASENAME].sort().join(',') && record?.state === 'reserved' && owner.identity === ownerStage.identity && owner.bytes.equals(ownerStage.bytes)) {
+    } else if (childSet === OWNER_STAGE_CHILDREN && record?.state === 'reserved' && owner.identity === ownerStage.identity && owner.bytes.equals(ownerStage.bytes)) {
       state = 'published-owner-stage'
     } else if (childSet === REQUEST_OWNER_BASENAME && record?.state === 'reserved') {
       state = 'reserved'
-    } else if (childSet === [REQUEST_OWNER_BASENAME, REQUEST_PAYLOAD_BASENAME].sort().join(',') && record?.state === 'reserved') {
+    } else if (childSet === OWNER_PAYLOAD_CHILDREN && record?.state === 'reserved') {
       state = 'reserved-payload'
-    } else if (childSet === [REQUEST_OWNER_BASENAME, REQUEST_OWNER_STAGE_BASENAME, REQUEST_PAYLOAD_BASENAME].sort().join(',') && record?.state === 'reserved') {
+    } else if (childSet === OWNER_STAGE_PAYLOAD_CHILDREN && record?.state === 'reserved') {
       state = 'consuming-stage-payload'
-    } else if (childSet === [REQUEST_OWNER_BASENAME, REQUEST_PAYLOAD_BASENAME].sort().join(',') && record?.state === 'consuming') {
+    } else if (childSet === OWNER_PAYLOAD_CHILDREN && record?.state === 'consuming') {
       state = 'consuming-payload'
     } else if (childSet === REQUEST_OWNER_BASENAME && record?.state === 'consuming') {
       state = 'consuming-owner'
