@@ -1562,7 +1562,15 @@ const LIVE_COMPLETION_POLL_MILLISECONDS = 50
 const DRIFT_FAULT_BYTES = Buffer.from('drift\n', 'utf8')
 
 function infrastructureCarrier({ detailCode, host, initialCode = null, phase, retainedRunRoot = null }) {
-  return { ok: false, host, code: 'harness-infrastructure', phase, initialCode, detailCode, retainedRunRoot }
+  if (detailCode === 'cleanup' && phase !== 'post-session') {
+    // Pre-session cleanup carriers stay locally constructed: the driver
+    // validator pins cleanup to post-session, while the recorded Task 14
+    // ruling accepts the authentication/version/import-probe cleanup carriers
+    // as an extrapolation of the plan's version-phase carve-out.
+    return { ok: false, host, code: 'harness-infrastructure', phase, initialCode, detailCode, retainedRunRoot }
+  }
+
+  return driver.infrastructureFailure({ detailCode, host, initialCode, phase, retainedRunRoot })
 }
 
 function latestClassificationsByTarget(turnRecords) {
