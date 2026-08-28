@@ -191,13 +191,16 @@ function scanWraps(lines) {
   return wraps;
 }
 
-function detectHardWraps(text) {
-  return scanWraps(splitLines(text).lines);
+// Private single-scan core: one splitLines + scanWraps pass per text, shared
+// by detection and repair so a caller needing both never scans twice.
+function analyzeText(text) {
+  const { bom, lines, endings } = splitLines(text);
+
+  return { bom, lines, endings, wraps: scanWraps(lines) };
 }
 
-function unwrapText(text) {
-  const { bom, lines, endings } = splitLines(text);
-  const continuation = new Set(scanWraps(lines).map((wrap) => wrap.line - 1));
+function joinContinuations({ bom, lines, endings, wraps }) {
+  const continuation = new Set(wraps.map((wrap) => wrap.line - 1));
   const output = [];
   for (let index = 0; index < lines.length; index += 1) {
     if (continuation.has(index)) {
@@ -213,6 +216,14 @@ function unwrapText(text) {
   }
 
   return bom + output.map((line) => line.text + line.ending).join('');
+}
+
+function detectHardWraps(text) {
+  return analyzeText(text).wraps;
+}
+
+function unwrapText(text) {
+  return joinContinuations(analyzeText(text));
 }
 
 class CatalogError extends TypeError {}
@@ -282,11 +293,11 @@ function normalizeCatalogItems(items) {
 // discovery or any filesystem access. The sorted output is also a stable
 // catalog for a later ready analysis.
 function analyzeUnwrapCatalog(items) {
-  return normalizeCatalogItems(items).map(({ target, contents }) => ({
-    target,
-    wraps: detectHardWraps(contents),
-    contents: unwrapText(contents),
-  }));
+  return normalizeCatalogItems(items).map(({ target, contents }) => {
+    const analysis = analyzeText(contents);
+
+    return { target, wraps: analysis.wraps, contents: joinContinuations(analysis) };
+  });
 }
 
 function sortedEntries(directory) {
@@ -386,11 +397,12 @@ function runCli(argv) {
       report.push({ file, error: error?.code ?? 'unknown' });
       continue;
     }
-    const wraps = detectHardWraps(text);
+    const analysis = analyzeText(text);
+    const wraps = analysis.wraps;
     if (wraps.length === 0) continue;
     report.push({ file, wraps: wraps.length, firstLine: wraps[0].line, rewritten: write });
     if (write) {
-      fs.writeFileSync(file, unwrapText(text));
+      fs.writeFileSync(file, joinContinuations(analysis));
     }
   }
   process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);

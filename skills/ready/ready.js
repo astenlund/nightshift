@@ -672,11 +672,15 @@ function resolveLink(item, registry) {
 
 // ---------- unit classification ----------
 
+function truncateExcerpt(text) {
+  return text.length > 200 ? text.slice(0, 197) + '...' : text;
+}
+
 function firstExcerpt(bodyLines) {
   for (const line of bodyLines) {
     const t = line.trim();
     if (t === '' || LABEL_AT_START.test(t) || HEADING.test(line)) continue;
-    return t.length > 200 ? t.slice(0, 197) + '...' : t;
+    return truncateExcerpt(t);
   }
   return '';
 }
@@ -950,7 +954,7 @@ function classifySlicedEntry(index, entry, excluded, registry, out) {
     classifyUnit({
       index,
       title: `[${entry.title}: ${slice.displayName}]`,
-      excerpt: slice.raw.length > 200 ? slice.raw.slice(0, 197) + '...' : slice.raw,
+      excerpt: truncateExcerpt(slice.raw),
       requiresContent: slice === firstUnshipped ? entry.requiresContent : slice.inlineRequires,
       externalContent: slice === firstUnshipped ? entry.externalContent : slice.inlineExternal,
       missingRequires: false,
@@ -1306,6 +1310,18 @@ function normalizeSidecar(items, catalog, kind, offset = 0) {
   return items.map((item, index) => sidecarItem(kind, offset + index, item.evidencePaths.map((target) => normalizeEvidencePath(target, catalog)).filter((target) => target !== null)));
 }
 
+// Concatenates lockstep-pushed evidence segments in their push order; each
+// segment's ordinal offset is the count of items already emitted, so the
+// ordinals track the segments themselves rather than re-derived array lengths.
+function concatSidecarSegments(kind, catalog, segments) {
+  const items = [];
+  for (const segment of segments) {
+    items.push(...normalizeSidecar(segment, catalog, kind, items.length));
+  }
+
+  return items;
+}
+
 // Pure controller adapter. It accepts the complete, root-relative markdown
 // catalog in place of CLI discovery and reads no filesystem state.
 function analyzeCatalog(items) {
@@ -1323,21 +1339,32 @@ function analyzeCatalog(items) {
   result.structuralErrors.push(...scanned.structuralErrors);
   const coreEvidence = result[ANALYSIS_EVIDENCE];
   const evidence = {
-    structuralErrors: [
-      ...normalizeSidecar(coreEvidence.structuralErrors, catalog, 'structuralErrors'),
-      ...normalizeSidecar(scanned[ANALYSIS_EVIDENCE].structuralErrors.map((evidencePaths) => ({ evidencePaths })), catalog, 'structuralErrors', result.structuralErrors.length - scanned.structuralErrors.length),
-    ],
-    notices: [
-      ...normalizeSidecar(coreEvidence.notices, catalog, 'notices'),
-      ...normalizeSidecar(scanned[ANALYSIS_EVIDENCE].notices.map((evidencePaths) => ({ evidencePaths })), catalog, 'notices', result.notices.length - scanned.notices.length - unlinkedNotices.length),
-      ...normalizeSidecar([...unlinkedNotices[ANALYSIS_EVIDENCE]].map((evidencePaths) => ({ evidencePaths })), catalog, 'notices', result.notices.length - unlinkedNotices.length),
-    ],
+    structuralErrors: concatSidecarSegments('structuralErrors', catalog, [
+      coreEvidence.structuralErrors,
+      scanned[ANALYSIS_EVIDENCE].structuralErrors.map((evidencePaths) => ({ evidencePaths })),
+    ]),
+    notices: concatSidecarSegments('notices', catalog, [
+      coreEvidence.notices,
+      scanned[ANALYSIS_EVIDENCE].notices.map((evidencePaths) => ({ evidencePaths })),
+      [...unlinkedNotices[ANALYSIS_EVIDENCE]].map((evidencePaths) => ({ evidencePaths })),
+    ]),
     legacyHistory: legacyHistoryFactsFromCatalog(catalog),
   };
   Object.defineProperty(result, 'evidence', { configurable: true, enumerable: true, value: evidence });
   delete result.breakoutTargets;
 
   return result;
+}
+
+// Direct read with the missing-file case folded into the result, so there is
+// no check-then-read window; any error other than absence still throws.
+function readFileIfPresent(p) {
+  try {
+    return fs.readFileSync(p, 'utf8');
+  } catch (error) {
+    if (error?.code === 'ENOENT') return undefined;
+    throw error;
+  }
 }
 
 function runCli(argRoot) {
@@ -1352,8 +1379,7 @@ function runCli(argRoot) {
   }
   const files = {};
   for (const name of [...WORK_INDEX_NAMES, 'PATTERNS']) {
-    const p = path.join(claudeDir, `${name}.md`);
-    files[name] = fs.existsSync(p) ? fs.readFileSync(p, 'utf8') : undefined;
+    files[name] = readFileIfPresent(path.join(claudeDir, `${name}.md`));
   }
   const result = analyze(files);
 
