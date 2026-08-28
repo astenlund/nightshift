@@ -15,18 +15,6 @@ function buffers(value) {
   return Buffer.isBuffer(value) ? value : Buffer.from(value ?? '', 'utf8')
 }
 
-function classifyConfigProcess(result) {
-  if (result === null || typeof result !== 'object') {
-    throw new Error('Git configuration process result is invalid')
-  }
-  const stdout = buffers(result.stdout)
-  const stderr = buffers(result.stderr)
-  if (!result.error && (result.signal === undefined || result.signal === null) && result.status === 1 && stdout.length === 0 && stderr.length === 0) {
-    return 'absent'
-  }
-  throw new Error('Git configuration process result is not an absent tuple')
-}
-
 function validateCheckAttrRecords(records, paths, attributes) {
   if (!Array.isArray(records) || !Array.isArray(paths) || !Array.isArray(attributes) || records.length !== paths.length * attributes.length) {
     throw new Error('Git check-attr cardinality is invalid')
@@ -686,7 +674,6 @@ module.exports = {
   GIT_CANDIDATES,
   candidateSet,
   classifyCompletedGit,
-  classifyConfigProcess,
   classifyCheckAttrProcess,
   classifyGitKind,
   detectGitKind,

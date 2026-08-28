@@ -23,7 +23,7 @@ const { spawn } = require('node:child_process')
 const test = require('node:test')
 
 const { runCli, runPrivateDispatcher } = require('../../skills/init-backlog/init-backlog')
-const { InitBacklogError, wrapInitBacklogError } = require('../../skills/init-backlog/lib/errors')
+const { InitBacklogError } = require('../../skills/init-backlog/lib/errors')
 const {
   MAX_APPLY_REQUEST_BYTES,
   MAX_APPLY_RESULT_BYTES,
@@ -744,26 +744,6 @@ function runProtocolCases(repositoryRoot) {
     assert.deepEqual(selectFailure(candidates), candidates[4])
     assert.deepEqual(selectFailure(candidates.slice(1, 4)), candidates[3])
     assert.deepEqual(selectFailure([{ code: 'invalid-request', phase: 'decode' }, { code: 'invalid-json', phase: 'decode' }]), { code: 'invalid-json', phase: 'decode' })
-  })
-
-  test('typed error wrapping rethrows typed failures and maps system codes once', () => {
-    const existing = new InitBacklogError(failureResult())
-    assert.throws(() => wrapInitBacklogError(existing, { code: 'filesystem', detail: 'Ignored.', phase: 'inspect' }), (error) => error === existing)
-
-    const cause = Object.assign(new Error('private path data'), { code: 'EACCES' })
-    assert.throws(
-      () => wrapInitBacklogError(cause, { code: 'filesystem', detail: 'Stable open failed.', operation: 'inspect', phase: 'inspect', target: 'AGENTS.md' }),
-      (error) => {
-        assert.ok(error instanceof InitBacklogError)
-        assert.equal(error.cause, cause)
-        assert.equal(error.record.systemCode, 'EACCES')
-        assert.equal(error.record.detail, 'Stable open failed.')
-        assert.equal(error.record.target, 'AGENTS.md')
-        assert.equal(error.message.includes('private path data'), false)
-
-        return true
-      },
-    )
   })
 
   test('logical asset normalization is checkout-independent and composition inserts no bytes', () => {

@@ -35,12 +35,4 @@ function throwInitBacklogError(fields, cause) {
   throw new InitBacklogError(failureRecord({ ...fields, systemCode: fields.systemCode ?? trustedSystemCode(cause) }), { cause })
 }
 
-function wrapInitBacklogError(error, fields) {
-  if (error instanceof InitBacklogError) {
-    throw error
-  }
-
-  throwInitBacklogError(fields, error)
-}
-
-module.exports = { InitBacklogError, SYSTEM_CODE_PATTERN, failureRecord, throwInitBacklogError, trustedSystemCode, wrapInitBacklogError }
+module.exports = { InitBacklogError, SYSTEM_CODE_PATTERN, failureRecord, throwInitBacklogError, trustedSystemCode }

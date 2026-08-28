@@ -25,7 +25,6 @@ const {
 const { HTML_BLOCK_TYPE_SIX_TAGS, guidanceImports } = require('../../skills/init-backlog/lib/guidance')
 const {
   classifyCheckAttrProcess,
-  classifyConfigProcess,
   classifyGitKind,
   normalizeConfigValue,
   resolveGitExcludesFile,
@@ -75,19 +74,6 @@ function runInspectionCases(repositoryRoot) {
     assert.equal(classifyGitKind([]).kind, 'non-git')
     assert.equal(classifyGitKind([{ name: 'HEAD', kind: 'file' }]).kind, 'git')
     assert.throws(() => classifyGitKind([{ name: 'HEAD', kind: 'link' }]))
-  })
-
-  test('configuration process classifier accepts only the absent exit tuple', () => {
-    assert.equal(classifyConfigProcess({ status: 1, stdout: Buffer.alloc(0), stderr: Buffer.alloc(0) }), 'absent')
-    for (const result of [
-      { status: 1, stdout: Buffer.from('x'), stderr: Buffer.alloc(0) },
-      { status: 1, stdout: Buffer.alloc(0), stderr: Buffer.from('x') },
-      { status: 0, stdout: Buffer.alloc(0), stderr: Buffer.alloc(0) },
-      { status: 2, stdout: Buffer.alloc(0), stderr: Buffer.alloc(0) },
-      { status: 1, stdout: Buffer.alloc(0), stderr: Buffer.alloc(0), error: new Error('spawn') },
-    ]) {
-      assert.throws(() => classifyConfigProcess(result))
-    }
   })
 
   test('inspection catalog contains only ready-owned Markdown targets', () => {
