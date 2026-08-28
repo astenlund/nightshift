@@ -470,7 +470,7 @@ function inspectGitPolicy(root, options = {}) {
     } else if (match === null || match.pattern === null) {
       nonPlanUnignoredPaths.push(item.target)
     } else {
-      ignoreMatches.push({ pattern: match.pattern, sourcePath: match.sourcePath, target: item.target })
+      ignoreMatches.push({ pattern: match.pattern, probe: item.probe, sourcePath: match.sourcePath, target: item.target })
     }
   }
   for (const [gateIndex, item] of gateProbes.entries()) {

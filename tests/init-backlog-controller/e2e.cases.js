@@ -120,6 +120,30 @@ function runE2eCases() {
       removeRoot(root)
     }
   })
+
+  test('inspection over a Git repository whose backlog directories are ignored survives the CLI transport', () => {
+    const root = makeGitRoot()
+    try {
+      writeFileSync(join(root, '.gitignore'), '.claude/bugs/\n.claude/features/\n.claude/patterns/\n.claude/plans/\n', 'utf8')
+      const outcome = driveCli(root, inspectRequest(root))
+
+      assert.equal(outcome.stderr, '', 'the controller must not fall back to the internal-failure transport')
+      assert.equal(outcome.exitCode, 0)
+      assert.equal(outcome.record.ok, true)
+      const matches = outcome.record.git.nonPlanIgnoreMatches
+      assert.ok(matches.length > 0, 'repository-local ignore rules must be reported')
+      for (const match of matches) {
+        assert.deepEqual(Object.keys(match).sort(compareOrdinal), ['pattern', 'probe', 'sourcePath', 'target'])
+        assert.equal(match.sourcePath, '.gitignore')
+        assert.ok(match.probe.startsWith(`${match.target}/`), 'the probe must address a path inside its recorded target')
+      }
+      const problem = outcome.record.problems.find((item) => item.detail === 'Repository-local ignore rules match non-plan backlog paths.')
+      assert.ok(problem !== undefined, 'the ignore-match problem must be projected')
+      assert.equal(problem.evidencePaths.every((item) => typeof item === 'string'), true)
+    } finally {
+      removeRoot(root)
+    }
+  })
 }
 
 module.exports = { canonicalJson, captureStreams, claudeHostContext, driveCli, inspectRequest, makeGitRoot, makeRoot, removeRoot, runE2eCases }
