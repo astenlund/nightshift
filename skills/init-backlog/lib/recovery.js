@@ -12,6 +12,7 @@ const {
   createInitialLock,
   initialLockPaths,
   pathIsContained,
+  platformMode,
   removeAndVerify,
   removeInitialLock,
   stableOpenFile,
@@ -153,7 +154,7 @@ function gateEvidence(root, options = {}) {
   const pidStatus = record === null ? null : pidEvidence(record.pid, options)
 
   return {
-    mode: (options.platform ?? process.platform) === 'win32' ? null : Number(metadata.mode & 0o7777n),
+    mode: platformMode(options, Number(metadata.mode & 0o7777n)),
     ownerName: owner === null ? null : RECOVERY_OWNER_BASENAME,
     ownerRawSha256: owner?.rawSha256 ?? null,
     ownerMode: modeFor(owner, options.platform),
@@ -329,7 +330,7 @@ function ownerEvidence(root, options = {}) {
     try {
       const metadata = lstatSync(path, { bigint: true })
       if (!metadata.isDirectory() || metadata.isSymbolicLink()) throw new Error('Unfinalized directory is invalid')
-      const mode = (options.platform ?? process.platform) === 'win32' ? null : Number(metadata.mode & 0o7777n)
+      const mode = platformMode(options, Number(metadata.mode & 0o7777n))
       if (mode !== item.mode) throw new Error('Unfinalized directory mode changed')
 
       return { mode, present: true, target: item.target }
@@ -686,7 +687,7 @@ function validateStaleOwnerReplay(root, owner, options) {
     try {
       const metadata = lstatSync(path, { bigint: true })
       if (!metadata.isDirectory() || metadata.isSymbolicLink()) throw new Error('Stale owner directory is invalid')
-      current = { mode: (options.platform ?? process.platform) === 'win32' ? null : Number(metadata.mode & 0o7777n), present: true }
+      current = { mode: platformMode(options, Number(metadata.mode & 0o7777n)), present: true }
     } catch (error) {
       if (error?.code !== 'ENOENT') throw error
 

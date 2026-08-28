@@ -77,25 +77,6 @@ function classifyCheckAttrProcess(result, paths, attributes) {
   return validateCheckAttrRecords(records, paths, attributes)
 }
 
-function classifyCompletedGit(result, options = {}) {
-  if (result === null || typeof result !== 'object') {
-    throw new Error('Git process result is invalid')
-  }
-  const stdout = buffers(result.stdout)
-  const stderr = buffers(result.stderr)
-  if (result.error || result.signal !== null && result.signal !== undefined) {
-    throw new Error('Git process did not complete')
-  }
-  if (result.status === 1 && stdout.length === 0 && stderr.length === 0 && options.allowAbsent === true) {
-    return null
-  }
-  if (result.status !== 0 || stderr.length !== 0) {
-    throw new Error('Git process failed')
-  }
-
-  return stdout
-}
-
 function pathIdentity(left, right, platform = process.platform) {
   if (platform === 'win32') {
     return left.toLowerCase() === right.toLowerCase()
@@ -269,10 +250,16 @@ function runGit(root, args, options = {}) {
   return result
 }
 
-function requireGitResult(result, label, allowEmpty = true) {
+function requireGitCompletion(result, label) {
   if (result === null || typeof result !== 'object' || result.error || result.signal !== undefined && result.signal !== null) {
     throw new Error(`Git ${label} process did not complete`)
   }
+
+  return result
+}
+
+function requireGitResult(result, label, allowEmpty = true) {
+  requireGitCompletion(result, label)
   const stdout = buffers(result.stdout)
   const stderr = buffers(result.stderr)
   if (result.status !== 0 || stderr.length !== 0 || !allowEmpty && stdout.length === 0) {
@@ -313,11 +300,10 @@ function decodeGitPath(result, label, root) {
 }
 
 function decodeGitLine(result, label, allowAbsent = false) {
-  if (result === null || typeof result !== 'object' || result.error || result.signal !== undefined && result.signal !== null) throw new Error(`Git ${label} process did not complete`)
-  const stdout = buffers(result.stdout)
-  const stderr = buffers(result.stderr)
-  if (allowAbsent && result.status === 1 && stdout.length === 0 && stderr.length === 0) return null
-  if (result.status !== 0 || stderr.length !== 0 || stdout.length === 0 || stdout[stdout.length - 1] !== 0x0a) throw new Error(`Git ${label} process failed`)
+  requireGitCompletion(result, label)
+  if (allowAbsent && result.status === 1 && buffers(result.stdout).length === 0 && buffers(result.stderr).length === 0) return null
+  const stdout = requireGitResult(result, label, false)
+  if (stdout[stdout.length - 1] !== 0x0a) throw new Error(`Git ${label} process failed`)
   let text
   try {
     text = new TextDecoder('utf-8', { fatal: true }).decode(stdout)
@@ -672,7 +658,6 @@ module.exports = {
   CONFIG_KEYS,
   GIT_CANDIDATES,
   candidateSet,
-  classifyCompletedGit,
   classifyCheckAttrProcess,
   classifyGitKind,
   detectGitKind,

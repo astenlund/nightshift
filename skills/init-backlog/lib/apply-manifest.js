@@ -3,7 +3,7 @@
 const { Buffer } = require('node:buffer')
 
 const { analyzeCatalog } = require('../../ready/ready')
-const { loadManifest } = require('./assets')
+const { BACKLOG_DIRECTORY_TARGETS, loadManifest } = require('./assets')
 const { InitBacklogError, failureRecord } = require('./errors')
 const { buildReadyCatalog, inspectRegions } = require('./inspection')
 const {
@@ -23,7 +23,7 @@ const {
   validateProposalDispositions,
 } = require('./protocol')
 
-const DIRECTORY_TARGETS = new Set(['.claude', '.claude/bugs', '.claude/features', '.claude/patterns', '.claude/plans'])
+const DIRECTORY_TARGETS = new Set(['.claude', ...BACKLOG_DIRECTORY_TARGETS])
 const ACTION_KINDS = new Set(['ensure-directory', 'create-from-template', 'exact-edit', 'unwrap-file'])
 
 function admissionError(detail, fields = {}) {

@@ -36,6 +36,8 @@ const TEMPLATE_IDS = [
   'guidance.codex',
   'guidance.section',
 ]
+const PLANS_DIRECTORY_TARGET = '.claude/plans'
+const BACKLOG_DIRECTORY_TARGETS = ['.claude/bugs', '.claude/features', '.claude/patterns', PLANS_DIRECTORY_TARGET]
 const TARGET_SELECTORS = [
   '.claude',
   '.claude/BUGS.md',
@@ -45,10 +47,7 @@ const TARGET_SELECTORS = [
   '.claude/PATTERNS.md',
   '.claude/QUICK_WINS.md',
   '.claude/QUICK_WINS_HISTORY.md',
-  '.claude/bugs',
-  '.claude/features',
-  '.claude/patterns',
-  '.claude/plans',
+  ...BACKLOG_DIRECTORY_TARGETS,
   '.gitignore',
   '@resolved-guidance',
 ]
@@ -90,10 +89,7 @@ const EXPECTED_TARGETS = new Map([
     ['quick-wins-history.document-preamble', 'markdown-preamble', '# Quick wins (history)', 'forbidden', true],
     ['quick-wins-history.empty-document', 'empty-document', null, 'start', false],
   ], templateRule: 'backlog.quick-wins-history' }],
-  ['.claude/bugs', { applicability: 'always', conceptIds: [], kind: 'directory', regions: [], templateRule: null }],
-  ['.claude/features', { applicability: 'always', conceptIds: [], kind: 'directory', regions: [], templateRule: null }],
-  ['.claude/patterns', { applicability: 'always', conceptIds: [], kind: 'directory', regions: [], templateRule: null }],
-  ['.claude/plans', { applicability: 'always', conceptIds: [], kind: 'directory', regions: [], templateRule: null }],
+  ...BACKLOG_DIRECTORY_TARGETS.map((target) => [target, { applicability: 'always', conceptIds: [], kind: 'directory', regions: [], templateRule: null }]),
   ['.gitignore', { applicability: 'git-only', conceptIds: [], kind: 'file', regions: [
     ['gitignore.empty-document', 'empty-document', null, 'start', false],
     ['gitignore.policy-append', 'gitignore-append', null, 'end', false],
@@ -348,4 +344,4 @@ function loadManifest(templatesRoot = join(__dirname, '..', 'templates')) {
   }
 }
 
-module.exports = { composeTemplate, loadManifest, normalizeLogicalAsset, validateManifest }
+module.exports = { BACKLOG_DIRECTORY_TARGETS, PLANS_DIRECTORY_TARGET, composeTemplate, loadManifest, normalizeLogicalAsset, validateManifest }

@@ -98,6 +98,10 @@ function comparableMode(metadata, platform = process.platform) {
   return Number(masked)
 }
 
+function platformMode(options, mode) {
+  return (options.platform ?? process.platform) === 'win32' ? null : mode
+}
+
 function stableOpenFile(root, target, options = {}) {
   const canonical = canonicalRoot(root)
   const platform = options.platform ?? process.platform
@@ -991,6 +995,7 @@ module.exports = {
   createInitialLock,
   initialLockPaths,
   pathIsContained,
+  platformMode,
   probeWindowsAttributes,
   publishNoReplace,
   readBackExact,

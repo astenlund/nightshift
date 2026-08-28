@@ -24,7 +24,10 @@ const RECOVERY_DISPOSITION_ORDER = ['cleanup', 'deferred', 'track', 'ignore', 'a
 const RECOVERY_LOCK_BASENAME = '.nightshift-init-backlog.lock'
 const RECOVERY_GATE_BASENAME = '.nightshift-init-backlog.recovery-gate'
 const RECOVERY_MARKER_BASENAME = '.nightshift-init-backlog-election'
-const RECOVERY_BACKUP_PATTERN = /^\.tmp\/nightshift-init-backlog-unwrap-[a-f0-9]{64}-[a-f0-9]{64}-[a-f0-9]{64}\.bak$/
+const BACKUP_STEM = 'nightshift-init-backlog-unwrap'
+const BACKUP_TRIPLE_PATTERN = '([a-f0-9]{64})-([a-f0-9]{64})-([a-f0-9]{64})'
+const BACKUP_PATTERN = new RegExp(`^\\.tmp\\/${BACKUP_STEM}-${BACKUP_TRIPLE_PATTERN}\\.bak$`)
+const BACKUP_STAGE_PATTERN = new RegExp(`^\\.tmp\\/.${BACKUP_STEM}-${BACKUP_TRIPLE_PATTERN}\\.tmp$`)
 const RECOVERY_LOCK_STAGE_PATTERN = /^\.nightshift-init-backlog\.lock\.[1-9][0-9]*\.[a-f0-9]{32}\.new$/
 
 const OPERATIONS = ['apply', 'inspect', 'recover-apply', 'recover-inspect']
@@ -1149,6 +1152,13 @@ function isSemanticActionId(id) {
   return id.startsWith('s-')
 }
 
+function backupFileNames(snapshotId, manifestId, targetHash) {
+  return {
+    final: `.tmp/${BACKUP_STEM}-${snapshotId}-${manifestId}-${targetHash}.bak`,
+    stage: `.tmp/.${BACKUP_STEM}-${snapshotId}-${manifestId}-${targetHash}.tmp`,
+  }
+}
+
 function electionMarkerTemporaryNames(prefix) {
   return {
     alias: `${prefix}.tmp`,
@@ -1213,6 +1223,7 @@ module.exports = {
   RECOVERY_LOCK_BASENAME,
   RECOVERY_MARKER_BASENAME,
   assertSafeWindowsScalar,
+  backupFileNames,
   canonicalActionOrder,
   canonicalBytes,
   canonicalJson,

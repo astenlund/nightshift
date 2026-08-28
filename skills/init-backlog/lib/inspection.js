@@ -6,7 +6,7 @@ const { lstatSync, readFileSync, readdirSync } = require('node:fs')
 const { join } = require('node:path')
 const { detectHardWraps, unwrapText } = require('../unwrap')
 const { analyzeCatalog } = require('../../ready/ready')
-const { loadManifest } = require('./assets')
+const { BACKLOG_DIRECTORY_TARGETS, PLANS_DIRECTORY_TARGET, loadManifest } = require('./assets')
 const { inspectBackups } = require('./backups')
 const { InitBacklogError, failureRecord } = require('./errors')
 const { HTML_BLOCK_TYPE_SIX_TAGS, discoverControlledMarkdown, resolveGuidance } = require('./guidance')
@@ -486,8 +486,9 @@ function buildIgnoreProbes(root, descriptors) {
     const relative = entry.target.slice('.claude/'.length)
     if (isReadyCatalogTarget(relative)) add(entry.target, entry.target)
   }
-  add('.claude/plans', '.claude/plans/', true, true)
-  for (const [directory, plan] of [['.claude/features', false], ['.claude/bugs', false], ['.claude/patterns', false], ['.claude/plans', true]]) {
+  add(PLANS_DIRECTORY_TARGET, `${PLANS_DIRECTORY_TARGET}/`, true, true)
+  for (const directory of BACKLOG_DIRECTORY_TARGETS) {
+    const plan = directory === PLANS_DIRECTORY_TARGET
     let selected = null
     for (let index = 0; index <= 65535; index += 1) {
       const suffix = index === 0 ? '' : `-${index}`

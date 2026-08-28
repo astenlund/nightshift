@@ -4,7 +4,7 @@ const { lstatSync } = require('node:fs')
 const { join } = require('node:path')
 
 const { enumerateDirectory, probeWindowsAttributes, stableMetadata, stableOpenFile } = require('./filesystem')
-const { BACKUP_PATTERN, BACKUP_STAGE_PATTERN, compareOrdinal, sha256 } = require('./protocol')
+const { BACKUP_PATTERN, BACKUP_STAGE_PATTERN, backupFileNames, compareOrdinal, sha256 } = require('./protocol')
 
 function backupParts(target) {
   const stage = BACKUP_STAGE_PATTERN.exec(target)
@@ -15,12 +15,16 @@ function backupParts(target) {
   return null
 }
 
+function backupNames(target, snapshotId, manifestId) {
+  return backupFileNames(snapshotId, manifestId, sha256(Buffer.from(target, 'utf8')))
+}
+
 function backupTarget(target, snapshotId, manifestId) {
-  return `.tmp/nightshift-init-backlog-unwrap-${snapshotId}-${manifestId}-${sha256(Buffer.from(target, 'utf8'))}.bak`
+  return backupNames(target, snapshotId, manifestId).final
 }
 
 function backupStageTarget(target, snapshotId, manifestId) {
-  return `.tmp/.nightshift-init-backlog-unwrap-${snapshotId}-${manifestId}-${sha256(Buffer.from(target, 'utf8'))}.tmp`
+  return backupNames(target, snapshotId, manifestId).stage
 }
 
 function classifyBackup(backup, current) {

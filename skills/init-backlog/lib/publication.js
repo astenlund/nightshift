@@ -14,6 +14,7 @@ const {
   createInitialLock,
   initialLockPaths,
   pathIsContained,
+  platformMode,
   publishNoReplace,
   readBackExact,
   removeAndVerify,
@@ -76,7 +77,7 @@ function restoreUnwrapBatch(root, actions, manifestId, snapshotId, options = {})
     const opened = stableOpenFile(root, backupPath, { ...options, requireSingleLink: true })
     const targetPathValue = targetPath(root, action.target)
     const current = stableOpenFile(root, targetPathValue, { ...options, requireSingleLink: true })
-    const approvedMode = (options.platform ?? process.platform) === 'win32' ? null : action.mode
+    const approvedMode = platformMode(options, action.mode)
     publishRecoveryFile(root, targetPathValue, opened.bytes, opened.mode, { ...options, expected: { identity: current.identity, mode: approvedMode, rawSha256: action.afterRawSha256 }, recoveryId: manifestId, temporary: targetPath(root, recoveryTemporaryTarget(action.target, manifestId)) })
   }
 }
@@ -521,10 +522,6 @@ function markerBytes(request, admission, root) {
   return Buffer.from(marker.contentBase64, 'base64')
 }
 
-function markerMode(options, mode) {
-  return (options.platform ?? process.platform) === 'win32' ? null : mode
-}
-
 function markerOwnership(root, path, bytes, mode, options, linkCount, peers = []) {
   const opened = stableOpenFile(root, path, { ...options, requireSingleLink: false })
   const metadata = lstatSync(path, { bigint: true })
@@ -656,7 +653,7 @@ function adoptBootstrapStage(root, path, existingRecord, options, ownedTemporari
   const expectedPaths = [relativeArtifact(root, path), relativeArtifact(root, next)].sort(compareOrdinal)
   const expectedKeys = ['createdAtUnixMs', 'manifestId', 'operation', 'ownerNonce', 'pid', 'protocolVersion', 'recoveryId', 'root', 'temporaryPaths', 'unfinalizedDirectories']
   if (!sameKeys(record, expectedKeys) || record.createdAtUnixMs < 0 || !Number.isSafeInteger(record.createdAtUnixMs) || record.manifestId !== null || record.operation !== 'apply' || record.ownerNonce !== existingRecord.ownerNonce || record.pid !== existingRecord.pid || record.protocolVersion !== 1 || record.recoveryId !== null || record.root !== root || canonicalJson(record.temporaryPaths) !== canonicalJson(expectedPaths) || canonicalJson(record.unfinalizedDirectories) !== '[]' || !Buffer.from(`${canonicalJson(record)}\n`, 'utf8').equals(opened.bytes) || (options.platform ?? process.platform) !== 'win32' && opened.mode !== 0o600) throw new Error('Bootstrap stage record is invalid')
-  ownedTemporaries.set(path, { bytes: Buffer.from(opened.bytes), destination: null, identity: opened.identity, mode: (options.platform ?? process.platform) === 'win32' ? null : 0o600, requireSingleLink: true })
+  ownedTemporaries.set(path, { bytes: Buffer.from(opened.bytes), destination: null, identity: opened.identity, mode: platformMode(options, 0o600), requireSingleLink: true })
 }
 
 function adoptPendingLockUpgrade(root, existing, expectedRecord, path, options, ownedTemporaries) {
@@ -666,7 +663,7 @@ function adoptPendingLockUpgrade(root, existing, expectedRecord, path, options, 
     const record = JSON.parse(opened.bytes.toString('utf8'))
     const expected = { ...expectedRecord, createdAtUnixMs: record?.createdAtUnixMs }
     if (record === null || typeof record !== 'object' || Array.isArray(record) || !Number.isSafeInteger(record.createdAtUnixMs) || record.createdAtUnixMs < 0 || canonicalJson(record) !== canonicalJson(expected) || (options.platform ?? process.platform) !== 'win32' && opened.mode !== 0o600) throw new Error('Pending lock upgrade differs from the approved manifest')
-    ownedTemporaries.set(path, { bytes: Buffer.from(opened.bytes), destination: null, identity: opened.identity, mode: (options.platform ?? process.platform) === 'win32' ? null : 0o600, requireSingleLink: true })
+    ownedTemporaries.set(path, { bytes: Buffer.from(opened.bytes), destination: null, identity: opened.identity, mode: platformMode(options, 0o600), requireSingleLink: true })
 
     return { bytes: opened.bytes, record }
   } catch (error) {
@@ -739,32 +736,20 @@ function publishMarker(request, admission, root, manifestId, ownerMode, options)
   let expectedIdentity = null
   const carriedGit = request.inspection.git ?? {}
   const carriedState = carriedGit.electionMarker
-  const approvedState = carriedState === 'absent' && options.resume === true ? admission.electionMarker.state : carriedState
-  const carriedSnapshotId = carriedGit.electionMarkerSnapshotId ?? request.inspection.snapshotId
-  const carriedMarker = approvedState === 'absent' ? null : composeElectionMarker(approvedState, carriedGit.kind ?? 'git', true, carriedSnapshotId, carriedGit.electionMarkerMode, root)
-  const carriedMode = (options.platform ?? process.platform) === 'win32' ? null : carriedGit.electionMarkerMode ?? 0o600
-  try {
-    const existing = stableOpenFile(root, path, { ...options, requireSingleLink: true })
-    const carriedBytes = carriedMarker === null ? null : Buffer.from(carriedMarker.contentBase64, 'base64')
-    if (carriedBytes !== null && existing.bytes.equals(carriedBytes) && (carriedMode === null || existing.mode === carriedMode)) {
-      replace = true
-      mode = carriedMode
-      expectedContent = existing.bytes
-      expectedIdentity = existing.identity
-    } else if (options.resume === true && existing.bytes.equals(bytes) && (carriedMode === null || existing.mode === carriedMode)) {
-      verifyFinalMode(path, carriedMode, options)
-
-      return false
-    } else {
-      throw new Error('Election marker differs from the approved carried marker')
-    }
-  } catch (error) {
-    if (error?.code !== 'ENOENT') throw error
-  }
-  try {
-    const existing = stableOpenFile(root, path, { ...options, requireSingleLink: true })
-    if (existing.bytes.equals(bytes)) {
-      verifyFinalMode(path, mode, options)
+  const oldBytes = markerOldBytes(request, root)
+  const oldMode = platformMode(options, carriedGit.electionMarkerMode ?? 0o600)
+  let mode = platformMode(options, ownerMode)
+  const markerPresent = markerPathPresent(path)
+  const tombstonePresent = markerPathPresent(paths.electionTombstone)
+  if (tombstonePresent && !markerPresent && !markerPathPresent(paths.electionAlias)) return false
+  if (markerPresent) {
+    const current = stableOpenFile(root, path, { ...options, requireSingleLink: false })
+    if (current.bytes.equals(bytes) && (mode === null || current.mode === mode)) {
+      if (markerPathPresent(paths.electionNewWitness)) {
+        if (markerPathPresent(paths.electionAlias)) {
+          removeOwnedTemporary(root, paths.electionAlias, options)
+          markerOwnership(root, paths.electionNewWitness, bytes, mode, options, 2, [path])
+        }
 
         return false
       }
@@ -785,13 +770,20 @@ function publishMarker(request, admission, root, manifestId, ownerMode, options)
 function removeMarker(request, admission, root, options) {
   const path = join(root, ELECTION_BASENAME)
   const expected = markerBytes(request, admission, root)
-  const temporary = join(root, `.nightshift-init-backlog-election.${admission.manifestId}.tmp`)
-  if (targetMatchesPublishedTemporary(root, path, expected, null, temporary, options)) {
-    removeAndVerify(path, options)
-    const owned = options.ownedTemporaries?.get(temporary)
-    verifyOwnedTemporary(root, temporary, owned, options, true)
-    removeAndVerify(temporary, options)
-    options.onTemporaryRemoved?.(temporary)
+  const mode = platformMode(options, request.inspection.git?.electionMarkerMode ?? 0o600)
+  options.verifyLock?.()
+  if (markerPathPresent(path)) {
+    const current = stableOpenFile(root, path, { ...options, requireSingleLink: false })
+    if (!current.bytes.equals(expected) || mode !== null && current.mode !== mode) throw new Error('Election marker changed before cleanup')
+    const witness = options.ownedTemporaries?.get(paths.electionNewWitness)
+    if (witness !== undefined && witness.identity !== current.identity) throw new Error(request.inspection.git?.electionMarker === 'absent' ? 'Published target shares an unexpected temporary identity' : 'Election marker changed before cleanup')
+    if (markerPathPresent(paths.electionTombstone)) throw new Error('Election marker tombstone state is invalid')
+    options.verifyLock?.()
+    renameVerified(path, paths.electionTombstone, expected, { ...options, onTransition: (point) => transition(options, point) })
+    markerOwnership(root, paths.electionTombstone, expected, mode, options, markerPathPresent(paths.electionNewWitness) ? 2 : 1, markerPathPresent(paths.electionNewWitness) ? [paths.electionNewWitness] : [])
+    if (markerPathPresent(paths.electionNewWitness)) markerOwnership(root, paths.electionNewWitness, expected, mode, options, 2, [paths.electionTombstone])
+    transition(options, 'after-marker-unlink')
+    transition(options, 'after-marker-terminal-rename')
     transition(options, 'after-marker-removal')
 
     return
@@ -824,7 +816,59 @@ function resumeInspectionProjection(inspection, actionTargets, markerStates) {
   }
 }
 
-function validateResumeInspection(request, liveInspection, admission) {
+function allActionsComplete(request, admission, root, options) {
+  for (const action of admission.actions) {
+    const path = targetPath(root, action.target)
+    if (action.kind === 'ensure-directory') {
+      const mode = platformMode(options, action.mode)
+      if (!targetMatchesOutput(root, path, 'directory', null, mode, options)) return false
+      continue
+    }
+    const bytes = actionAfter(request, action, root, options)
+    const mode = platformMode(options, action.mode ?? POSIX_DEFAULT_FILE_MODE)
+    if (bytes === null || !targetMatchesOutput(root, path, 'file', bytes, mode, options)) return false
+  }
+
+  return true
+}
+
+function hasTerminalMarkerEvidence(request, admission, root, existing, paths, expectedBytes, expectedMode, options) {
+  if (existing === null || existing.record.manifestId === null) return false
+  const inventory = new Set(existing.record.temporaryPaths)
+  const requiredPaths = [paths.electionAlias, paths.electionNewWitness, paths.electionTombstone]
+  if (request.inspection.git?.electionMarker !== undefined && request.inspection.git.electionMarker !== 'absent') requiredPaths.push(paths.electionOldWitness)
+  const required = requiredPaths.map((path) => relativeArtifact(root, path))
+  if (required.some((path) => !inventory.has(path))) return false
+  const relativeTombstone = relativeArtifact(root, paths.electionTombstone)
+  const relativeWitness = relativeArtifact(root, paths.electionNewWitness)
+  const present = (path) => {
+    try {
+      lstatSync(path)
+
+      return true
+    } catch (error) {
+      if (error?.code === 'ENOENT') return false
+      throw error
+    }
+  }
+  if (present(join(root, ELECTION_BASENAME)) || present(paths.electionAlias) || present(paths.electionOldWitness)) return false
+  if (!present(paths.electionTombstone) && !present(paths.electionNewWitness)) return allActionsComplete(request, admission, root, options)
+  try {
+    const tombstone = stableOpenFile(root, paths.electionTombstone, { ...options, requireSingleLink: false })
+    if (!tombstone.bytes.equals(expectedBytes) || expectedMode !== null && tombstone.mode !== expectedMode) return false
+    const tombstoneMetadata = lstatSync(paths.electionTombstone, { bigint: true })
+    if (!present(paths.electionNewWitness)) return tombstoneMetadata.nlink === 1n
+    const witness = stableOpenFile(root, paths.electionNewWitness, { ...options, requireSingleLink: false })
+    const witnessMetadata = lstatSync(paths.electionNewWitness, { bigint: true })
+
+    return tombstoneMetadata.nlink === 2n && witnessMetadata.nlink === 2n && witness.identity === tombstone.identity && witness.bytes.equals(expectedBytes) && (expectedMode === null || witness.mode === expectedMode)
+  } catch (error) {
+    if (error?.code === 'ENOENT') return false
+    throw error
+  }
+}
+
+function validateResumeInspection(request, liveInspection, admission, terminalMarkerEvidence = false) {
   const actionTargets = new Set(admission.actions.map((action) => action.target))
   const carriedGit = request.inspection.git ?? {}
   const markerStates = { carried: carriedGit.electionMarker, mode: carriedGit.electionMarkerMode, snapshotId: carriedGit.electionMarkerSnapshotId, values: new Set([carriedGit.electionMarker, admission.electionMarker.state]) }
@@ -856,7 +900,7 @@ function readExistingLock(root, path, options) {
       throw new Error('Upgraded publication lock identity is invalid')
     }
 
-    return { bytes: opened.bytes, identity: opened.identity, mode: (options.platform ?? process.platform) === 'win32' ? null : opened.mode, record }
+    return { bytes: opened.bytes, identity: opened.identity, mode: platformMode(options, opened.mode), record }
   } catch (error) {
     if (error?.code === 'ENOENT') return null
     throw error
@@ -897,7 +941,7 @@ function publishApply(request, options = {}) {
       }
       const initial = createInitialLock(root, bootstrap, { ...options, beforePublish: () => verifyRecoveryGateAbsent(root), ownerNonce, pid, onTransition: (point) => transition(options, point) })
       const initialReadback = stableOpenFile(root, bootstrapPaths.lock, { ...options, requireSingleLink: true })
-      lock = { bytes: initial.bytes, identity: initialReadback.identity, manifestId: null, mode: (options.platform ?? process.platform) === 'win32' ? null : initialReadback.mode, ownerNonce, paths: bootstrapPaths, pid, record: bootstrap, temporaryPaths: bootstrap.temporaryPaths }
+      lock = { bytes: initial.bytes, identity: initialReadback.identity, manifestId: null, mode: platformMode(options, initialReadback.mode), ownerNonce, paths: bootstrapPaths, pid, record: bootstrap, temporaryPaths: bootstrap.temporaryPaths }
       verifyRecoveryGateAbsent(root)
     }
   } catch (error) {
@@ -942,6 +986,14 @@ function publishApply(request, options = {}) {
   const markerTemporaries = admission.electionMarker.state === 'absent' ? [] : [fixed.electionAlias, fixed.electionNewWitness, ...(request.inspection.git?.electionMarker !== undefined && request.inspection.git?.electionMarker !== 'absent' ? [fixed.electionOldWitness] : []), fixed.electionTombstone]
   const tempSet = [...actionTemps, ...backupPaths, ...backupStagingPaths, ...rollbackTemporaryPaths, fixed.lockStage, fixed.lockNext, ...markerTemporaries]
   const targets = allActions.map((action) => targetPath(root, action.target))
+  const existing = lockHint
+  let terminalMarkerEvidence = false
+  let terminalMarkerComplete = false
+  if (options.resume === true) {
+    terminalMarkerEvidence = admission.electionMarker.state !== 'absent' && hasTerminalMarkerEvidence(request, admission, root, existing, fixed, markerBytes(request, admission, root), platformMode(options, request.inspection.git?.electionMarkerMode ?? 0o600), options)
+    terminalMarkerComplete = terminalMarkerEvidence && !markerPathPresent(fixed.electionTombstone) && !markerPathPresent(fixed.electionNewWitness)
+    validateResumeInspection(request, liveInspection, admission, terminalMarkerEvidence)
+  }
   try {
     verifyRecoveryGateAbsent(root)
     if (new Set(tempSet).size !== tempSet.length || tempSet.some((path) => targets.includes(path))) publicationError('Derived publication temporary collides with a target.', { code: 'manifest-invalid', phase: 'prevalidate', manifestId: admission.manifestId })
@@ -966,8 +1018,12 @@ function publishApply(request, options = {}) {
       if (existing.record.manifestId !== null && canonicalJson(existing.record.unfinalizedDirectories) !== canonicalJson(unfinalizedDirectories)) publicationError('Existing publication directory inventory does not match the approved manifest.', { code: 'runtime-lock', phase: 'lock', manifestId: admission.manifestId, target: LOCK_BASENAME })
       if (existing.record.manifestId === null) {
         try {
-          lstatSync(fixed.lockStage)
-          registerTemporary(root, ownedTemporaries, fixed.lockStage, existing.bytes, options, false)
+          const stageMetadata = lstatSync(fixed.lockStage, { bigint: true })
+          if (stageMetadata.nlink !== 2n) throw new Error('Publication bootstrap stage link count is invalid')
+          registerTemporary(root, ownedTemporaries, fixed.lockStage, existing.bytes, options, false, platformMode(options, 0o600))
+          const stage = ownedTemporaries.get(fixed.lockStage)
+          stage.linkCount = 2
+          stage.peers = [fixed.lock]
         } catch (error) {
           if (error?.code !== 'ENOENT') throw error
         }
@@ -978,7 +1034,7 @@ function publishApply(request, options = {}) {
       lock = createInitialLock(root, bootstrap, { ...options, beforePublish: () => verifyRecoveryGateAbsent(root), ownerNonce, pid, onTransition: (point) => transition(options, point) })
       const initialReadback = stableOpenFile(root, bootstrapPaths.lock, { ...options, requireSingleLink: true })
       lock.identity = initialReadback.identity
-      lock.mode = (options.platform ?? process.platform) === 'win32' ? null : initialReadback.mode
+      lock.mode = platformMode(options, initialReadback.mode)
     }
     const generatedUpgrade = lockRecord(request, root, pid, ownerNonce, admission.manifestId, tempSet, unfinalizedDirectories)
     const pendingUpgrade = adoptPendingLockUpgrade(root, existing, generatedUpgrade, fixed.lockNext, options, ownedTemporaries)
@@ -994,7 +1050,7 @@ function publishApply(request, options = {}) {
         stageFile(fixed.lockNext, upgradedBytes, { ...options, onTransition: (point) => transition(options, point) })
         readBackExact(fixed.lockNext, upgradedBytes, options)
         assignAndVerifyMode(fixed.lockNext, 0o600, options)
-        registerTemporary(root, ownedTemporaries, fixed.lockNext, upgradedBytes, options, true, (options.platform ?? process.platform) === 'win32' ? null : 0o600)
+        registerTemporary(root, ownedTemporaries, fixed.lockNext, upgradedBytes, options, true, platformMode(options, 0o600))
       }
       const currentLock = stableOpenFile(root, fixed.lock, { ...options, requireSingleLink: lock.record?.manifestId !== null })
       const currentLockMetadata = lstatSync(fixed.lock, { bigint: true })
@@ -1012,7 +1068,7 @@ function publishApply(request, options = {}) {
       lock.bytes = upgradedBytes
       lock.identity = upgradedReadback.identity
       lock.manifestId = admission.manifestId
-      lock.mode = (options.platform ?? process.platform) === 'win32' ? null : upgradedReadback.mode
+      lock.mode = platformMode(options, upgradedReadback.mode)
       lock.temporaryPaths = tempSet
       lock.record = upgraded
       verifyRecoveryGateAbsent(root)
@@ -1020,30 +1076,30 @@ function publishApply(request, options = {}) {
       ownedTemporaries.delete(fixed.lockNext)
       transition(options, 'after-lock-upgrade')
     }
-    const expectedTemporaries = new Map([[fixed.lockNext, { bytes: upgradedBytes, destination: null, mode: (options.platform ?? process.platform) === 'win32' ? null : 0o600 }], [fixed.lockStage, { bytes: null, destination: null, mode: null }]])
+    const expectedTemporaries = new Map([[fixed.lockNext, { bytes: upgradedBytes, destination: null, mode: platformMode(options, 0o600) }], [fixed.lockStage, { bytes: null, destination: null, mode: null }]])
     for (let index = 0; index < backupPaths.length; index += 1) {
       const state = states.get(unwrapActions[index].target)
       if (state?.content === null || state?.content === undefined) throw new Error('Unwrap backup source is unavailable')
-      expectedTemporaries.set(backupPaths[index], { bytes: state.content, destination: null, mode: (options.platform ?? process.platform) === 'win32' ? null : state.mode })
-      expectedTemporaries.set(backupStagingPaths[index], { bytes: state.content, destination: backupPaths[index], mode: (options.platform ?? process.platform) === 'win32' ? null : state.mode })
-      expectedTemporaries.set(rollbackTemporaryPaths[index], { bytes: state.content, destination: null, mode: (options.platform ?? process.platform) === 'win32' ? null : state.mode })
+      expectedTemporaries.set(backupPaths[index], { bytes: state.content, destination: null, mode: platformMode(options, state.mode) })
+      expectedTemporaries.set(backupStagingPaths[index], { bytes: state.content, destination: backupPaths[index], mode: platformMode(options, state.mode) })
+      expectedTemporaries.set(rollbackTemporaryPaths[index], { bytes: state.content, destination: null, mode: platformMode(options, state.mode) })
     }
     for (let index = 0; index < allActions.length; index += 1) {
       const action = allActions[index]
-      const bytes = actionAfter(request, action)
-      expectedTemporaries.set(actionTemps[index], { bytes, destination: targetPath(root, action.target), mode: bytes === null || (options.platform ?? process.platform) === 'win32' ? null : action.mode ?? POSIX_DEFAULT_FILE_MODE })
+      const bytes = actionAfter(request, action, root, options)
+      expectedTemporaries.set(actionTemps[index], { bytes, destination: targetPath(root, action.target), mode: bytes === null ? null : platformMode(options, action.mode ?? POSIX_DEFAULT_FILE_MODE) })
     }
     if (admission.electionMarker.state !== 'absent') {
       const finalMarkerBytes = markerBytes(request, admission, root)
-      const finalMarkerMode = markerMode(options, request.inspection.git?.electionMarkerMode ?? 0o600)
+      const finalMarkerMode = platformMode(options, request.inspection.git?.electionMarkerMode ?? 0o600)
       expectedTemporaries.set(fixed.electionAlias, { bytes: finalMarkerBytes, destination: null, mode: finalMarkerMode, marker: true })
       expectedTemporaries.set(fixed.electionNewWitness, { bytes: finalMarkerBytes, destination: null, mode: finalMarkerMode, marker: true })
       expectedTemporaries.set(fixed.electionTombstone, { bytes: finalMarkerBytes, destination: null, mode: finalMarkerMode, marker: true })
-      if (markerTemporaries.includes(fixed.electionOldWitness)) expectedTemporaries.set(fixed.electionOldWitness, { bytes: markerOldBytes(request, root), destination: null, mode: markerMode(options, request.inspection.git?.electionMarkerMode ?? 0o600), marker: true })
+      if (markerTemporaries.includes(fixed.electionOldWitness)) expectedTemporaries.set(fixed.electionOldWitness, { bytes: markerOldBytes(request, root), destination: null, mode: platformMode(options, request.inspection.git?.electionMarkerMode ?? 0o600), marker: true })
     }
     adoptResumeTemporaries(root, existing, expectedTemporaries, options, ownedTemporaries, fixed.lockStage, fixed.lockNext)
     if (admission.electionMarker.state !== 'absent') {
-      adoptMarkerTemporaries(root, existing, fixed, markerBytes(request, admission, root), markerMode(options, request.inspection.git?.electionMarkerMode ?? 0o600), markerOldBytes(request, root), markerMode(options, request.inspection.git?.electionMarkerMode ?? 0o600), { ...options, ownedTemporaries })
+      adoptMarkerTemporaries(root, existing, fixed, markerBytes(request, admission, root), platformMode(options, request.inspection.git?.electionMarkerMode ?? 0o600), markerOldBytes(request, root), platformMode(options, request.inspection.git?.electionMarkerMode ?? 0o600), { ...options, ownedTemporaries })
     }
     const publicationOptions = { ...options, ownedTemporaries, verifyLock: () => verifyLockState(root, lock, options), onTemporaryStaged: (path, bytes, mode) => registerTemporary(root, ownedTemporaries, path, bytes, options, true, mode), onTemporaryRemoved: (path) => { ownedTemporaries.delete(path) } }
     retainedBackups = []
@@ -1078,13 +1134,13 @@ function publishApply(request, options = {}) {
         if (!backupPresent) {
           publishRecoveryFile(root, backupPath, state.content, state.mode, { ...publicationOptions, temporary: backupStagingPaths[index], recoveryId: admission.manifestId })
         }
-        registerTemporary(root, ownedTemporaries, backupPath, state.content, options, true, (options.platform ?? process.platform) === 'win32' ? null : state.mode)
+        registerTemporary(root, ownedTemporaries, backupPath, state.content, options, true, platformMode(options, state.mode))
         retainedBackups.push(backupTargets[index])
       }
     }
     if (!terminalMarkerComplete) {
       if (markerPathPresent(fixed.electionTombstone)) removeMarker(request, admission, root, publicationOptions, fixed)
-      else publishMarker(request, admission, root, admission.manifestId, (options.platform ?? process.platform) === 'win32' ? null : 0o600, publicationOptions, fixed)
+      else publishMarker(request, admission, root, admission.manifestId, platformMode(options, 0o600), publicationOptions, fixed)
     }
     const publishActions = (startIndex, endIndex) => {
       for (let index = startIndex; index < endIndex; index += 1) {
@@ -1095,7 +1151,7 @@ function publishApply(request, options = {}) {
         for (let chainIndex = index; chainIndex < endIndex && allActions[chainIndex].target === action.target; chainIndex += 1) chain.push(allActions[chainIndex])
         if (chain.length > 1 && action.kind !== 'ensure-directory') {
           const terminalBytes = actionAfter(request, chain[chain.length - 1], root, options)
-          const terminalMode = (options.platform ?? process.platform) === 'win32' ? null : chain[chain.length - 1].mode ?? state.mode ?? POSIX_DEFAULT_FILE_MODE
+          const terminalMode = platformMode(options, chain[chain.length - 1].mode ?? state.mode ?? POSIX_DEFAULT_FILE_MODE)
           if (terminalBytes !== null && targetMatchesOutput(root, path, 'file', terminalBytes, terminalMode, options)) {
             for (const completed of chain) outcomes.push({ actionId: completed.id, status: 'skipped-complete', target: completed.target })
             state.present = true
@@ -1106,7 +1162,7 @@ function publishApply(request, options = {}) {
           }
         }
         if (action.kind === 'ensure-directory') {
-          const approvedMode = (options.platform ?? process.platform) === 'win32' ? null : action.mode
+          const approvedMode = platformMode(options, action.mode)
           const already = state.present || targetMatchesOutput(root, path, 'directory', null, approvedMode, options)
           if (!state.present) {
             if (!already) publishDirectory(root, path, approvedMode, publicationOptions)
@@ -1117,7 +1173,7 @@ function publishApply(request, options = {}) {
           const bytes = actionAfter(request, action, root, options)
           if (bytes === null) publicationError('Approved action has no content image.', { code: 'manifest-invalid', phase: 'prevalidate', manifestId: admission.manifestId, actionId: action.id, target: action.target })
           let already = false
-          const effectiveMode = (options.platform ?? process.platform) === 'win32' ? null : action.mode ?? state.mode ?? POSIX_DEFAULT_FILE_MODE
+          const effectiveMode = platformMode(options, action.mode ?? state.mode ?? POSIX_DEFAULT_FILE_MODE)
           already = targetMatchesPublishedTemporary(root, path, bytes, effectiveMode, actionTemps[index], publicationOptions) || targetMatchesOutput(root, path, 'file', bytes, effectiveMode, options)
           const expectedContent = state.content ?? actionBefore(request, action, root, options)
           let published
