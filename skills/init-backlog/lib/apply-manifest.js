@@ -339,6 +339,28 @@ function simulateReady(inspection, actions, states, options = {}) {
   }
 }
 
+// The manifest identity is a pure function of the request, so publication can
+// recognize a durable owner record for the same manifest before admission runs.
+// Admission derives its own identity through this helper so the two can never
+// disagree.
+function manifestProjection(request) {
+  const inspection = request?.inspection ?? request
+  const choice = request?.versionControlChoice ?? 'not-required'
+
+  return {
+    actions: request?.actions ?? [],
+    electionMarker: electionMarkerState(inspection, choice),
+    proposalDispositions: request?.proposalDispositions ?? [],
+    semanticDecisions: request?.semanticDecisions ?? [],
+    snapshotId: inspection.snapshotId,
+    versionControlChoice: choice,
+  }
+}
+
+function deriveRequestManifestId(request) {
+  return deriveManifestId(manifestProjection(request))
+}
+
 function admitApplyManifest(request, options = {}) {
   const inspection = request?.inspection ?? request
   if (request?.operation !== undefined && request.operation !== 'apply') admissionError('Apply manifest operation is invalid.')
@@ -400,14 +422,7 @@ function admitApplyManifest(request, options = {}) {
   const inspectedTransition = actions.filter((action) => !authoredActionIds.has(action.id))
   const expectedReady = inspectedTransition.length === actions.length ? ready : simulateReady(inspection, inspectedTransition, simulateStates(inspectedTransition), options)
   if (!sameCanonical(ready, expectedReady)) admissionError('Simulated ready result differs from the inspected prediction.', { code: 'manifest-invalid' })
-  const projection = {
-    actions,
-    electionMarker: electionMarkerState(inspection, choice),
-    proposalDispositions: dispositions,
-    semanticDecisions: request?.semanticDecisions ?? [],
-    snapshotId: inspection.snapshotId,
-    versionControlChoice: choice,
-  }
+  const projection = manifestProjection(request)
   const manifestId = deriveManifestId(projection)
   if (typeof options.writeAdapter === 'function') {
     // Admission is deliberately effect-free. Publication owns the adapter call.
@@ -416,4 +431,4 @@ function admitApplyManifest(request, options = {}) {
   return { actions, electionMarker: projection.electionMarker, manifestId, ready, snapshotId: inspection.snapshotId, states: [...states.entries()].map(([target, state]) => ({ ...state, target })) }
 }
 
-module.exports = { admitApplyManifest, simulateReady }
+module.exports = { admitApplyManifest, deriveRequestManifestId, simulateReady }

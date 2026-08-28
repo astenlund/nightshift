@@ -7,7 +7,7 @@
 // cases exist to catch wiring defects those suites cannot observe.
 
 const assert = require('node:assert/strict')
-const { execFileSync } = require('node:child_process')
+const { execFileSync, spawn } = require('node:child_process')
 const { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } = require('node:fs')
 const { tmpdir } = require('node:os')
 const { join } = require('node:path')
@@ -83,7 +83,9 @@ function nextNonce() {
 
 // Drives one request through the public CLI transport: reserve the request
 // gate, write the payload, then consume it with the production dispatcher.
-function driveCli(root, request) {
+// `filesystemOptions` is used only to inject a crash that manufactures a
+// durable partial state; every resubmit under test runs with none.
+function driveCli(root, request, filesystemOptions = undefined) {
   const nonce = nextNonce()
   const reserveStreams = captureStreams()
   const reserveExit = runCli({ argv: ['--reserve-request', root], nonce, stderr: reserveStreams.stderr, stdout: reserveStreams.stdout })
@@ -91,10 +93,27 @@ function driveCli(root, request) {
   const reserved = JSON.parse(reserveStreams.stdoutBytes().toString('utf8'))
   writeFileSync(join(root, ...reserved.requestPath.split('/')), Buffer.from(canonicalJson(request) + '\n', 'utf8'), { flag: 'wx' })
   const streams = captureStreams()
-  const exitCode = runCli({ argv: ['--consume-request', root, nonce], stderr: streams.stderr, stdout: streams.stdout })
+  const exitCode = runCli({ argv: ['--consume-request', root, nonce], filesystemOptions, stderr: streams.stderr, stdout: streams.stdout })
   const stdout = streams.stdoutBytes().toString('utf8')
 
   return { exitCode, record: stdout.length === 0 ? null : JSON.parse(stdout), stderr: streams.stderrBytes().toString('utf8') }
+}
+
+// Reaches the durable state a response-loss leaves behind: inspect, approve the
+// manifest, then either complete the apply or crash it at a named transition.
+function interruptedApply(root, { bare = false, failAt = null } = {}) {
+  if (!bare) writeFileSync(join(root, 'CLAUDE.md'), BARE_GUIDANCE, 'utf8')
+  const inspected = driveCli(root, inspectRequest(root, 'claude-code', claudeHostContext(bare ? 'unexcluded-missing' : 'included')))
+  assert.equal(inspected.exitCode, 0, inspected.stderr)
+  const request = buildApplyRequest(root, inspected.record)
+  if (failAt === null) {
+    assert.equal(driveCli(root, request).record.ok, true, 'the first apply must succeed')
+  } else {
+    driveCli(root, request, { crash: true, failAt })
+    assert.ok(existsSync(join(root, LOCK_BASENAME)), `the crash at ${failAt} must leave a durable owner record`)
+  }
+
+  return request
 }
 
 function inspectRequest(root, host = 'claude-code', hostContext = claudeHostContext()) {
@@ -108,6 +127,19 @@ function semanticEdit(target, regionId, before, after) {
 }
 
 const BARE_GUIDANCE = ['# Project', '', 'Local guidance.', ''].join('\r\n')
+
+const LOCK_BASENAME = '.nightshift-init-backlog.lock'
+
+// Each entry names a durable state a lost response can leave behind. All of
+// them are the same approved manifest at a unique approved prefix, so
+// resubmitting it must complete rather than report drift.
+const RESUME_CASES = [
+  { name: 'a crash before any action published', options: { failAt: 'after-lock-upgrade' } },
+  { name: 'a crash midway through the directory prefix', options: { failAt: 'after-directory-create' } },
+  { name: 'a crash midway through the file prefix', options: { failAt: 'after-final-verification' } },
+  { name: 'a completed apply whose owner record was already cleaned', options: {} },
+  { name: 'a completed apply that created the root guidance file', options: { bare: true } },
+]
 
 const POPULATED_GUIDANCE = ['# Project', '', '## Backlogs and indexes', '', 'Existing controlled prose.', '', '## Local conventions', '', 'Tail prose the edit must not touch.', ''].join('\r\n')
 
@@ -306,6 +338,88 @@ function runE2eCases() {
       assert.equal(applied.record.detail, 'Exact edit broadens its approved region.')
       assert.equal(readFileSync(join(root, 'CLAUDE.md'), 'utf8'), POPULATED_GUIDANCE, 'a refused manifest writes nothing')
     } finally {
+      removeRoot(root)
+    }
+  })
+
+  for (const item of RESUME_CASES) {
+    test(`resubmitting the identical manifest after ${item.name} completes`, () => {
+      const root = makeRoot()
+      try {
+        const request = interruptedApply(root, item.options)
+
+        const resumed = driveCli(root, request)
+
+        assert.equal(resumed.stderr, '')
+        assert.equal(resumed.record.ok, true, `resubmit failed: ${JSON.stringify(resumed.record).slice(0, 400)}`)
+        assert.equal(resumed.record.complete, true, `resubmit is incomplete: ${JSON.stringify(resumed.record.incompleteTargets)}`)
+        assert.equal(resumed.exitCode, 0)
+        assert.deepEqual(resumed.record.outcomes.map((outcome) => outcome.target).sort(compareOrdinal), request.actions.map((action) => action.target).sort(compareOrdinal), 'every approved action must be accounted for')
+        for (const outcome of resumed.record.outcomes) {
+          assert.ok(['created', 'edited', 'skipped-complete'].includes(outcome.status), `unexpected resume outcome: ${outcome.status}`)
+        }
+        assert.equal(existsSync(join(root, LOCK_BASENAME)), false, 'a completed resume releases the owner record')
+      } finally {
+        removeRoot(root)
+      }
+    })
+  }
+
+  test('a third-party edit to a published target during the crash window is drift, not resume', () => {
+    const root = makeRoot()
+    try {
+      const request = interruptedApply(root, { failAt: 'after-final-verification' })
+      const tampered = join(root, '.claude', 'BUGS.md')
+      assert.ok(existsSync(tampered), 'the fixture must have published the tampered target')
+      writeFileSync(tampered, '# Tampered\r\n', 'utf8')
+
+      const resumed = driveCli(root, request)
+
+      assert.equal(resumed.record.ok, false)
+      assert.equal(resumed.record.code, 'snapshot-drift')
+      assert.equal(resumed.record.detail, 'Durable target state is not a unique approved prefix of the manifest.')
+      assert.equal(readFileSync(tampered, 'utf8'), '# Tampered\r\n', 'a refused resume publishes nothing')
+      assert.ok(existsSync(join(root, LOCK_BASENAME)), 'a refused resume never removes an owner record it did not create')
+    } finally {
+      removeRoot(root)
+    }
+  })
+
+  test('a third-party file added to the controlled surface during the crash window is drift, not resume', () => {
+    const root = makeRoot()
+    try {
+      const request = interruptedApply(root, { failAt: 'after-final-verification' })
+      writeFileSync(join(root, '.claude', 'features', 'intruder.md'), '# Intruder\r\n', 'utf8')
+
+      const resumed = driveCli(root, request)
+
+      assert.equal(resumed.record.ok, false)
+      assert.equal(resumed.record.code, 'snapshot-drift')
+      assert.equal(resumed.record.detail, 'Live repository differs from the approved resume state.')
+    } finally {
+      removeRoot(root)
+    }
+  })
+
+  test('an owner record naming a different live process still blocks instead of resuming', () => {
+    const root = makeRoot()
+    const owner = spawn(process.execPath, ['-e', 'setTimeout(() => {}, 120000)'], { stdio: 'ignore', windowsHide: true })
+    try {
+      writeFileSync(join(root, 'CLAUDE.md'), BARE_GUIDANCE, 'utf8')
+      const inspected = driveCli(root, inspectRequest(root, 'claude-code', claudeHostContext('included')))
+      const request = buildApplyRequest(root, inspected.record)
+      driveCli(root, request, { crash: true, failAt: 'after-lock-upgrade', pid: owner.pid })
+      assert.ok(existsSync(join(root, LOCK_BASENAME)))
+      assert.notEqual(owner.pid, process.pid)
+
+      const blocked = driveCli(root, request)
+
+      assert.equal(blocked.record.ok, false)
+      assert.equal(blocked.record.code, 'runtime-lock')
+      assert.equal(blocked.record.detail, 'Publication lock is already present.')
+      assert.equal(existsSync(join(root, '.claude', 'FEATURES.md')), false, 'a blocked apply publishes nothing')
+    } finally {
+      owner.kill()
       removeRoot(root)
     }
   })
