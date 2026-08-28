@@ -141,9 +141,9 @@ function workerReplyLine(overrides = {}) {
 function runSessionCases(repositoryRoot) {
   const controllerEntryPath = join(repositoryRoot, 'skills', 'init-backlog', 'init-backlog.js')
 
-  test('the session driver package is closed to its seven private modules and pins the process adapter events', () => {
+  test('the session driver package is closed to its ten private modules and pins the process adapter events', () => {
     const privateModules = readdirSync(join(repositoryRoot, 'tests', 'init-backlog-session-driver')).sort()
-    assert.deepEqual(privateModules, ['aggregation.js', 'cleanup.js', 'evidence.js', 'process.js', 'proxy.js', 'state.js', 'transcript.js'])
+    assert.deepEqual(privateModules, ['adjudication.js', 'aggregation.js', 'cleanup.js', 'dialogue.js', 'evidence.js', 'host-events.js', 'process.js', 'proxy.js', 'state.js', 'transcript.js'])
     assert.deepEqual(driver.PROCESS_ADAPTER_EVENTS, ['start', 'input', 'close-input', 'terminate', 'closure-proof'])
     assert.deepEqual(Object.keys(driver).sort(), [
       'BYTE_BOUNDS',
