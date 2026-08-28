@@ -922,6 +922,10 @@ function removeRecoveryBackup(root, backupPath, evidence, options, remove) {
   }
 }
 
+function invalidatedMarkerRecord(root, marker, state) {
+  return { protocolVersion: 1, root, snapshotId: sha256(Buffer.from(canonicalJson({ invalidMarkerSha256: marker.rawSha256, protocolVersion: 1, root, state }), 'utf8')), state }
+}
+
 function markerAlreadyApplied(root, inspection, disposition, options = {}) {
   const path = artifactPath(root, MARKER_BASENAME)
   try {
@@ -929,7 +933,7 @@ function markerAlreadyApplied(root, inspection, disposition, options = {}) {
     const current = readArtifact(root, MARKER_BASENAME, options, true)
     if (current === null) return false
     const marker = inspection.evidence.marker
-    const expected = { protocolVersion: 1, root, snapshotId: sha256(Buffer.from(canonicalJson({ invalidMarkerSha256: marker.rawSha256, protocolVersion: 1, root, state: disposition }), 'utf8')), state: disposition }
+    const expected = invalidatedMarkerRecord(root, marker, disposition)
 
     return current.bytes.equals(Buffer.from(`${canonicalJson(expected)}\n`, 'utf8')) && (marker.mode === null || current.mode === marker.mode)
   } catch {
@@ -1184,7 +1188,7 @@ function applyRecovery(request, options = {}) {
       } else {
         const temporary = artifactPath(root, recoveryTemporaryTarget(MARKER_BASENAME, inspection.recoveryId))
         const state = request.disposition
-        const valid = { protocolVersion: 1, root, snapshotId: sha256(Buffer.from(canonicalJson({ invalidMarkerSha256: marker.rawSha256, protocolVersion: 1, root, state }), 'utf8')), state }
+        const valid = invalidatedMarkerRecord(root, marker, state)
         if (existsSync(temporary)) {
           const staged = stableOpenFile(root, temporary, { ...options, requireSingleLink: true })
           if (!staged.bytes.equals(Buffer.from(`${canonicalJson(valid)}\n`, 'utf8')) || marker.mode !== null && staged.mode !== marker.mode) throw new Error('Marker recovery temporary changed')

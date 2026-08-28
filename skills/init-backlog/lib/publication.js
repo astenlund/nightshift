@@ -987,10 +987,11 @@ function publishApply(request, options = {}) {
   const tempSet = [...actionTemps, ...backupPaths, ...backupStagingPaths, ...rollbackTemporaryPaths, fixed.lockStage, fixed.lockNext, ...markerTemporaries]
   const targets = allActions.map((action) => targetPath(root, action.target))
   const existing = lockHint
+  const finalMarkerMode = platformMode(options, request.inspection.git?.electionMarkerMode ?? 0o600)
   let terminalMarkerEvidence = false
   let terminalMarkerComplete = false
   if (options.resume === true) {
-    terminalMarkerEvidence = admission.electionMarker.state !== 'absent' && hasTerminalMarkerEvidence(request, admission, root, existing, fixed, markerBytes(request, admission, root), platformMode(options, request.inspection.git?.electionMarkerMode ?? 0o600), options)
+    terminalMarkerEvidence = admission.electionMarker.state !== 'absent' && hasTerminalMarkerEvidence(request, admission, root, existing, fixed, markerBytes(request, admission, root), finalMarkerMode, options)
     terminalMarkerComplete = terminalMarkerEvidence && !markerPathPresent(fixed.electionTombstone) && !markerPathPresent(fixed.electionNewWitness)
     validateResumeInspection(request, liveInspection, admission, terminalMarkerEvidence)
   }
@@ -1091,15 +1092,14 @@ function publishApply(request, options = {}) {
     }
     if (admission.electionMarker.state !== 'absent') {
       const finalMarkerBytes = markerBytes(request, admission, root)
-      const finalMarkerMode = platformMode(options, request.inspection.git?.electionMarkerMode ?? 0o600)
       expectedTemporaries.set(fixed.electionAlias, { bytes: finalMarkerBytes, destination: null, mode: finalMarkerMode, marker: true })
       expectedTemporaries.set(fixed.electionNewWitness, { bytes: finalMarkerBytes, destination: null, mode: finalMarkerMode, marker: true })
       expectedTemporaries.set(fixed.electionTombstone, { bytes: finalMarkerBytes, destination: null, mode: finalMarkerMode, marker: true })
-      if (markerTemporaries.includes(fixed.electionOldWitness)) expectedTemporaries.set(fixed.electionOldWitness, { bytes: markerOldBytes(request, root), destination: null, mode: platformMode(options, request.inspection.git?.electionMarkerMode ?? 0o600), marker: true })
+      if (markerTemporaries.includes(fixed.electionOldWitness)) expectedTemporaries.set(fixed.electionOldWitness, { bytes: markerOldBytes(request, root), destination: null, mode: finalMarkerMode, marker: true })
     }
     adoptResumeTemporaries(root, existing, expectedTemporaries, options, ownedTemporaries, fixed.lockStage, fixed.lockNext)
     if (admission.electionMarker.state !== 'absent') {
-      adoptMarkerTemporaries(root, existing, fixed, markerBytes(request, admission, root), platformMode(options, request.inspection.git?.electionMarkerMode ?? 0o600), markerOldBytes(request, root), platformMode(options, request.inspection.git?.electionMarkerMode ?? 0o600), { ...options, ownedTemporaries })
+      adoptMarkerTemporaries(root, existing, fixed, markerBytes(request, admission, root), finalMarkerMode, markerOldBytes(request, root), finalMarkerMode, { ...options, ownedTemporaries })
     }
     const publicationOptions = { ...options, ownedTemporaries, verifyLock: () => verifyLockState(root, lock, options), onTemporaryStaged: (path, bytes, mode) => registerTemporary(root, ownedTemporaries, path, bytes, options, true, mode), onTemporaryRemoved: (path) => { ownedTemporaries.delete(path) } }
     retainedBackups = []
