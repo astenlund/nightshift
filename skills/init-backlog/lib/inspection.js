@@ -11,7 +11,7 @@ const { inspectBackups } = require('./backups')
 const { InitBacklogError, failureRecord } = require('./errors')
 const { HTML_BLOCK_TYPE_SIX_TAGS, discoverControlledMarkdown, resolveGuidance } = require('./guidance')
 const { canonicalRoot, comparableMode, createInitialLock, initialLockPaths, removeInitialLock, stableOpenFile } = require('./filesystem')
-const { DIGEST_PATTERN, RECOVERY_LOCK_BASENAME, RECOVERY_MARKER_BASENAME, canonicalJson, compareOrdinal, deriveProposalId, deriveSnapshotId, sameKeys, sha256 } = require('./protocol')
+const { DIGEST_PATTERN, RECOVERY_LOCK_BASENAME, RECOVERY_LOCK_STAGE_PATTERN, RECOVERY_MARKER_BASENAME, canonicalJson, compareOrdinal, deriveProposalId, deriveSnapshotId, sameKeys, sha256 } = require('./protocol')
 const { detectGitKind, inspectGitPolicy, newlineStyle } = require('./git-policy')
 
 function inspectError(code, detail, target = null, cause, phase = 'inspect') {
@@ -375,7 +375,7 @@ function discoverInitialLockStages(root, options = {}) {
   } catch (error) {
     inspectError('runtime-lock', 'Inspection lock residue cannot be enumerated.', null, error, 'lock')
   }
-  const candidates = names.filter((name) => /^\.nightshift-init-backlog\.lock\.[1-9][0-9]*\.[a-f0-9]{32}\.new$/.test(name)).sort(compareOrdinal)
+  const candidates = names.filter((name) => RECOVERY_LOCK_STAGE_PATTERN.test(name)).sort(compareOrdinal)
   return candidates.map((name) => {
     const path = join(root, name)
     try {

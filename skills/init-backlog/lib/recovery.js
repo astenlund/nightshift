@@ -18,7 +18,7 @@ const {
   stableOpenFile,
   stageFile,
 } = require('./filesystem')
-const { DIGEST_PATTERN, MAX_INLINE_FILE_BYTES, MAX_RECOVERY_REQUEST_BYTES, MAX_RECOVERY_RESULT_BYTES, NONCE_PATTERN, RECOVERY_GATE_BASENAME, RECOVERY_LOCK_BASENAME: LOCK_BASENAME, RECOVERY_MARKER_BASENAME: MARKER_BASENAME, WARNING_CODES, buildRecoveryApplyRequest, canonicalBytes, canonicalJson, compareOrdinal, deriveRecoveryId, electionMarkerTemporaryNames, recoveryAllowedDispositions, sameKeys, sha256, validateTarget } = require('./protocol')
+const { DIGEST_PATTERN, MAX_INLINE_FILE_BYTES, MAX_RECOVERY_REQUEST_BYTES, MAX_RECOVERY_RESULT_BYTES, NONCE_PATTERN, RECOVERY_GATE_BASENAME, RECOVERY_LOCK_BASENAME: LOCK_BASENAME, RECOVERY_MARKER_BASENAME: MARKER_BASENAME, WARNING_CODES, buildRecoveryApplyRequest, canonicalBytes, canonicalJson, compareOrdinal, deriveRecoveryId, electionMarkerTemporaryNames, recoveryAllowedDispositions, sameCanonical, sameKeys, sha256, validateTarget } = require('./protocol')
 const { collectInspection, validateElectionMarkerRecord } = require('./inspection')
 const { publishRecoveryFile, recoveryTemporaryMatches, recoveryTemporaryTarget, removeRecoveryFile } = require('./publication')
 
@@ -627,11 +627,11 @@ function inspectRecovery(request, options = {}) {
 }
 
 function sameEvidence(left, right) {
-  return canonicalJson(left.evidence) === canonicalJson(right.evidence)
+  return sameCanonical(left.evidence, right.evidence)
 }
 
 function sameRecoveryGate(left, right) {
-  return canonicalJson(left) === canonicalJson(right)
+  return sameCanonical(left, right)
 }
 
 function emptyRecoveryGate(gate) {

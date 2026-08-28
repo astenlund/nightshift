@@ -8,12 +8,12 @@ const { InitBacklogError, failureRecord } = require('./errors')
 const { buildReadyCatalog, inspectRegions } = require('./inspection')
 const {
   canonicalActionOrder,
-  canonicalJson,
   compareOrdinal,
   deriveManifestId,
   deriveSemanticActionId,
   deriveSnapshotId,
   isSemanticActionId,
+  sameCanonical,
   sameKeys,
   sha256,
   validateAction,
@@ -28,10 +28,6 @@ const ACTION_KINDS = new Set(['ensure-directory', 'create-from-template', 'exact
 
 function admissionError(detail, fields = {}) {
   throw new InitBacklogError(failureRecord({ code: fields.code ?? 'manifest-invalid', detail, operation: 'apply', phase: 'prevalidate', ...fields }))
-}
-
-function same(value, other) {
-  return canonicalJson(value) === canonicalJson(other)
 }
 
 function clone(value) {
@@ -58,7 +54,7 @@ function validateInspectionIdentity(inspection, currentInspection) {
     admissionError('Carried inspection identity cannot be derived.', { code: 'snapshot-drift', systemCode: error.code })
   }
   if (inspection.snapshotId !== expected) admissionError('Carried inspection snapshot does not match its contents.', { code: 'snapshot-drift' })
-  if (currentInspection !== undefined && !same({ ...inspection, snapshotId: null }, { ...currentInspection, snapshotId: null })) {
+  if (currentInspection !== undefined && !sameCanonical({ ...inspection, snapshotId: null }, { ...currentInspection, snapshotId: null })) {
     admissionError('Current inspection differs from the approved snapshot.', { code: 'snapshot-drift' })
   }
 }
@@ -106,9 +102,9 @@ function validateSemanticDecisions(inspection, decisions, targets) {
     const expected = template?.conceptIds ?? []
     if (!['deferred', 'satisfied'].includes(decision.status)) admissionError('Semantic decision status is invalid.', { target: decision.target })
     const orderedConcepts = [...concepts].sort(compareOrdinal)
-    if (!same(concepts, orderedConcepts)) admissionError('Semantic decision concepts must be ordinal sorted.', { target: decision.target })
+    if (!sameCanonical(concepts, orderedConcepts)) admissionError('Semantic decision concepts must be ordinal sorted.', { target: decision.target })
     if (new Set(concepts).size !== concepts.length) admissionError('Semantic decision concepts must be unique.', { target: decision.target })
-    if (decision.status === 'satisfied' && !same(concepts, expected)) admissionError('Satisfied semantic decisions must attest every concept.', { target: decision.target })
+    if (decision.status === 'satisfied' && !sameCanonical(concepts, expected)) admissionError('Satisfied semantic decisions must attest every concept.', { target: decision.target })
     if (decision.status === 'deferred' && (concepts.length === 0 || concepts.some((id) => !expected.includes(id)))) admissionError('Deferred semantic decisions must name unresolved concepts.', { target: decision.target })
   }
   if (seen.size !== required.size) admissionError('Semantic decisions do not cover every required semantic target.')
@@ -129,14 +125,14 @@ function selectedProposals(inspection, dispositions, choice) {
   if (wraps.length > 0) {
     const selectedTargets = selected.filter((item) => item.reason === 'hard-wrap').map((item) => item.action.target)
     const expectedTargets = wraps.map((item) => item.target).sort()
-    if (!same(selectedTargets.slice().sort(), expectedTargets)) admissionError('Unwrap proposals must be admitted as one complete batch.')
+    if (!sameCanonical(selectedTargets.slice().sort(), expectedTargets)) admissionError('Unwrap proposals must be admitted as one complete batch.')
   }
 
   return selected
 }
 
 function proposalForAction(action, proposals) {
-  const proposal = proposals.find((item) => same(item.action, action))
+  const proposal = proposals.find((item) => sameCanonical(item.action, action))
   if (proposal !== undefined) return proposal
   if (action.kind === 'exact-edit' && isSemanticActionId(action.id)) return null
   admissionError('Action is not one of the approved proposals.', { actionId: action.id, target: action.target })
@@ -367,14 +363,14 @@ function admitApplyManifest(request, options = {}) {
   for (const action of actions) {
     proposalForAction(action, selected)
   }
-  for (const action of selectedActions) if (!actions.some((item) => same(item, action))) admissionError('A selected proposal action is missing.', { actionId: action.id })
+  for (const action of selectedActions) if (!actions.some((item) => sameCanonical(item, action))) admissionError('A selected proposal action is missing.', { actionId: action.id })
   let ordered
   try {
     ordered = canonicalActionOrder(actions)
   } catch (error) {
     admissionError('Action transition graph is invalid.', { systemCode: error?.code })
   }
-  if (!same(ordered, actions)) admissionError('Actions are not in stable dependency order.')
+  if (!sameCanonical(ordered, actions)) admissionError('Actions are not in stable dependency order.')
   const states = new Map([...targets].map(([target, record]) => [target, initialState(record, inspection)]))
   const deferredTargets = new Set((request?.semanticDecisions ?? []).filter((item) => item.status === 'deferred').map((item) => item.target))
   for (const action of actions) {
@@ -385,7 +381,7 @@ function admitApplyManifest(request, options = {}) {
   }
   const ready = simulateReady(inspection, actions, states, options)
   const expectedReady = inspection.unwrapReady?.targets?.length > 0 ? inspection.unwrapReady.after : inspection.ready
-  if (!same(ready, expectedReady)) admissionError('Simulated ready result differs from the inspected prediction.', { code: 'manifest-invalid' })
+  if (!sameCanonical(ready, expectedReady)) admissionError('Simulated ready result differs from the inspected prediction.', { code: 'manifest-invalid' })
   const projection = {
     actions,
     electionMarker: electionMarkerState(inspection, choice),

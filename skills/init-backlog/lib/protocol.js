@@ -145,6 +145,10 @@ function canonicalBytes(value) {
   return Buffer.from(canonicalJson(value), 'utf8')
 }
 
+function sameCanonical(left, right) {
+  return canonicalJson(left) === canonicalJson(right)
+}
+
 function buildRecoveryApplyRequest(request, recoveryInspection, disposition) {
   return { disposition, host: request.host, hostContext: request.hostContext, operation: 'recover-apply', protocolVersion: 1, recoveryInspection, root: request.root }
 }
@@ -1222,6 +1226,7 @@ module.exports = {
   PHASES,
   RECOVERY_GATE_BASENAME,
   RECOVERY_LOCK_BASENAME,
+  RECOVERY_LOCK_STAGE_PATTERN,
   RECOVERY_MARKER_BASENAME,
   WARNING_CODES,
   assertSafeWindowsScalar,
@@ -1242,6 +1247,7 @@ module.exports = {
   isSemanticActionId,
   recoveryAllowedDispositions,
   recoveryTargetMatches,
+  sameCanonical,
   sameKeys,
   selectFailure,
   sha256,
