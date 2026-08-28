@@ -14,7 +14,7 @@ const { join } = require('node:path')
 const test = require('node:test')
 
 const { runCli } = require('../../skills/init-backlog/init-backlog')
-const { canonicalActionOrder } = require('../../skills/init-backlog/lib/protocol')
+const { canonicalActionOrder, deriveSemanticActionId } = require('../../skills/init-backlog/lib/protocol')
 
 function compareOrdinal(left, right) {
   return left < right ? -1 : left > right ? 1 : 0
@@ -100,6 +100,24 @@ function driveCli(root, request) {
 function inspectRequest(root, host = 'claude-code', hostContext = claudeHostContext()) {
   return { host, hostContext, operation: 'inspect', protocolVersion: 1, root }
 }
+
+function semanticEdit(target, regionId, before, after) {
+  const actionWithoutId = { afterBase64: after.toString('base64'), beforeBase64: before.toString('base64'), kind: 'exact-edit', regionId, target }
+
+  return { ...actionWithoutId, id: deriveSemanticActionId(actionWithoutId) }
+}
+
+const BARE_GUIDANCE = ['# Project', '', 'Local guidance.', ''].join('\r\n')
+
+const POPULATED_GUIDANCE = ['# Project', '', '## Backlogs and indexes', '', 'Existing controlled prose.', '', '## Local conventions', '', 'Tail prose the edit must not touch.', ''].join('\r\n')
+
+// The documented semantic repair is appending a missing section or concept, so
+// both the empty region a missing section presents and a populated region with
+// live bytes after it must admit a length-changing insertion.
+const SEMANTIC_INSERTION_CASES = [
+  { guidance: BARE_GUIDANCE, insertion: '## Backlogs and indexes\r\n\r\nInserted section.\r\n', name: 'appends a missing section into a zero-width region', zeroWidth: true },
+  { guidance: POPULATED_GUIDANCE, insertion: 'More controlled prose.\r\n', name: 'extends a populated region without touching the bytes after it', zeroWidth: false },
+]
 
 // Mirrors the manifest an approving agent submits: every proposal disposed by
 // its own condition, the selected proposals' actions in canonical order, and a
@@ -238,6 +256,55 @@ function runE2eCases() {
       assert.equal(applied.record.postInspect.hostContext.claudeRootExclusionStatus, 'included', 'the verification host context must reflect the published guidance file')
       assert.ok(existsSync(join(root, 'CLAUDE.md')), 'the guidance file must remain published')
       assert.ok(readFileSync(join(root, 'CLAUDE.md'), 'utf8').includes('Backlogs and indexes'), 'the published guidance file must carry the controlled section')
+    } finally {
+      removeRoot(root)
+    }
+  })
+
+  for (const item of SEMANTIC_INSERTION_CASES) {
+    test(`a length-changing semantic edit ${item.name}`, () => {
+      const root = makeRoot()
+      try {
+        writeFileSync(join(root, 'CLAUDE.md'), item.guidance, 'utf8')
+        const inspection = driveCli(root, inspectRequest(root, 'claude-code', claudeHostContext('included'))).record
+        const record = inspection.targets.find((entry) => entry.target === 'CLAUDE.md')
+        const region = record.editableRegions.find((entry) => entry.regionId === 'root-guidance.backlogs-and-indexes')
+        assert.ok(region !== undefined, 'the controlled guidance region must be inspected')
+        assert.equal(region.endByte - region.startByte === 0, item.zeroWidth, `region width does not match the case: ${JSON.stringify(region)}`)
+        const before = Buffer.from(record.contentBase64, 'base64')
+        const after = Buffer.concat([before.subarray(0, region.endByte), Buffer.from(item.insertion, 'utf8'), before.subarray(region.endByte)])
+        assert.notEqual(after.length, before.length, 'the case must exercise a length-changing edit')
+
+        const applied = driveCli(root, buildApplyRequest(root, inspection, 'not-required', { extraActions: [semanticEdit('CLAUDE.md', region.regionId, before, after)] }))
+
+        assert.equal(applied.stderr, '')
+        assert.notEqual(applied.record.detail, 'Exact edit broadens its approved region.', 'an insertion inside the approved region does not broaden it')
+        assert.equal(applied.record.ok, true, `apply failed: ${JSON.stringify(applied.record)}`)
+        assert.deepEqual(readFileSync(join(root, 'CLAUDE.md')), after, 'the published bytes must be the approved image')
+      } finally {
+        removeRoot(root)
+      }
+    })
+  }
+
+  test('a semantic edit that rewrites bytes outside its approved region is still refused', () => {
+    const root = makeRoot()
+    try {
+      writeFileSync(join(root, 'CLAUDE.md'), POPULATED_GUIDANCE, 'utf8')
+      const inspection = driveCli(root, inspectRequest(root, 'claude-code', claudeHostContext('included'))).record
+      const record = inspection.targets.find((entry) => entry.target === 'CLAUDE.md')
+      const region = record.editableRegions.find((entry) => entry.regionId === 'root-guidance.backlogs-and-indexes')
+      const before = Buffer.from(record.contentBase64, 'base64')
+      const tail = Buffer.from(before.subarray(region.endByte).toString('utf8').replace('Tail prose', 'Rewritten'), 'utf8')
+      const after = Buffer.concat([before.subarray(0, region.endByte), Buffer.from('More controlled prose.\r\n', 'utf8'), tail])
+      assert.notDeepEqual(tail, before.subarray(region.endByte), 'the case must actually alter the tail')
+
+      const applied = driveCli(root, buildApplyRequest(root, inspection, 'not-required', { extraActions: [semanticEdit('CLAUDE.md', region.regionId, before, after)] }))
+
+      assert.equal(applied.record.ok, false)
+      assert.equal(applied.record.code, 'manifest-invalid')
+      assert.equal(applied.record.detail, 'Exact edit broadens its approved region.')
+      assert.equal(readFileSync(join(root, 'CLAUDE.md'), 'utf8'), POPULATED_GUIDANCE, 'a refused manifest writes nothing')
     } finally {
       removeRoot(root)
     }

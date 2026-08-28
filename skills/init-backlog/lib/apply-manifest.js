@@ -293,7 +293,12 @@ function simulateAction(action, state, inspection, targets, options, declaration
   }
   const before = Buffer.from(state.content)
   const after = validateBase64(action.afterBase64)
-  if (isSemanticActionId(action.id) && (!before.subarray(0, region.startByte).equals(after.subarray(0, region.startByte)) || !before.subarray(region.endByte).equals(after.subarray(region.endByte)))) admissionError('Exact edit broadens its approved region.', { actionId: action.id, target: action.target })
+  // The bytes after the region keep their content, not their offsets: a
+  // semantic repair inserts into the region, so the preserved tail moves.
+  // Comparing it at its original absolute offset would reject every
+  // length-changing edit, the documented append included.
+  const preservedTail = before.length - region.endByte
+  if (isSemanticActionId(action.id) && (after.length < region.startByte + preservedTail || !before.subarray(0, region.startByte).equals(after.subarray(0, region.startByte)) || !before.subarray(region.endByte).equals(after.subarray(after.length - preservedTail)))) admissionError('Exact edit broadens its approved region.', { actionId: action.id, target: action.target })
   state.content = after
   state.rawSha256 = sha256(after)
   state.regions = rescanRegions(action, after, inspection, options, declarationsFor)
