@@ -486,7 +486,9 @@ function buildIgnoreProbes(root, descriptors) {
     const relative = entry.target.slice('.claude/'.length)
     if (isReadyCatalogTarget(relative)) add(entry.target, entry.target)
   }
-  add(PLANS_DIRECTORY_TARGET, `${PLANS_DIRECTORY_TARGET}/`, true, true)
+  // Probe strings address a path Git can classify; recorded targets are
+  // confined protocol targets, so a directory target carries no separator.
+  add(PLANS_DIRECTORY_TARGET, PLANS_DIRECTORY_TARGET, true, true)
   for (const directory of BACKLOG_DIRECTORY_TARGETS) {
     const plan = directory === PLANS_DIRECTORY_TARGET
     let selected = null
@@ -504,7 +506,7 @@ function buildIgnoreProbes(root, descriptors) {
       }
     }
     if (selected === null) throw new Error(`No free Git ignore probe for ${directory}`)
-    add(selected, `${directory}/`, plan)
+    add(selected, directory, plan)
   }
 
   return probes.sort((left, right) => compareOrdinal(left.probe, right.probe))

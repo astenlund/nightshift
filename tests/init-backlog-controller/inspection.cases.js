@@ -229,7 +229,8 @@ function runInspectionCases(repositoryRoot) {
 
   test('plans policy builds a separate directory gate probe', () => {
     const probes = buildIgnoreProbes(repositoryRoot, [])
-    assert.ok(probes.some((item) => item.gate === true && item.probe === '.claude/plans' && item.target === '.claude/plans/'))
+    assert.ok(probes.some((item) => item.gate === true && item.probe === '.claude/plans' && item.target === '.claude/plans'))
+    assert.equal(probes.some((item) => item.target.endsWith('/')), false, 'recorded probe targets must be confined protocol targets')
   })
 
   test('default global ignore identity follows XDG before platform fallbacks', () => {
