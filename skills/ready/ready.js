@@ -1056,15 +1056,25 @@ function scanBreakoutLines(contents) {
 // Filesystem checks for breakout-file links (relative to the index dir):
 // a missing file is a notice, an unreadable target is a notice, and a
 // dependency line inside the file is a hygiene structural error that
-// leaves the entry's classification standing. The read is attempted
-// directly and its error code classified, so there is no check-then-read
-// window between an existence probe and the read.
+// leaves the entry's classification standing. Every target passes the same
+// closed catalog-reference validation as catalog mode before it is resolved,
+// so an absolute, traversing, or backslashed link never reads outside the
+// backlog and surfaces as the broken-link notice instead. The read is
+// attempted directly and its error code classified, so there is no
+// check-then-read window between an existence probe and the read.
 function scanBreakoutTargets(breakoutTargets, claudeDir) {
   const notices = [];
   const structuralErrors = [];
   const wrapScanned = new Set();
   for (const rec of breakoutTargets) {
-    const target = rec.target.split('#')[0];
+    let target;
+    try {
+      target = requireCatalogReferenceTarget(rec.target);
+    } catch (error) {
+      if (!(error instanceof CatalogError)) throw error;
+      notices.push(breakoutReadNotice(rec, 'ENOENT'));
+      continue;
+    }
     const resolved = path.resolve(claudeDir, target);
     let contents;
     try {

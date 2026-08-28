@@ -1530,6 +1530,32 @@ test('scanBreakoutTargets classifies a missing file, a directory, and a dependen
   }
 });
 
+test('scanBreakoutTargets treats traversal, absolute, and backslash targets as broken links and never reads outside the backlog', () => {
+  const tmpRoot = path.join(__dirname, '..', '..', '.tmp', `ready-confine-${process.pid}`);
+  const claudeDir = path.join(tmpRoot, '.claude');
+  fs.mkdirSync(path.join(claudeDir, 'features'), { recursive: true });
+  // A real file outside the backlog directory that the traversal target would
+  // reach; its dependency line and hard wrap must never surface in the scan.
+  fs.writeFileSync(path.join(tmpRoot, 'outside.md'), '# Outside\n\n**Requires:** none.\n\nwrapped line one\nwrapped line two\n');
+  try {
+    const targets = [
+      { index: 'FEATURES.md', title: 'Traversal', target: '../outside.md', draft: false },
+      { index: 'FEATURES.md', title: 'Absolute', target: '/outside.md', draft: false },
+      { index: 'FEATURES.md', title: 'Backslash', target: 'features\\outside.md', draft: false },
+    ];
+    const scanned = scanBreakoutTargets(targets, claudeDir);
+    assert.deepStrictEqual(scanned.notices, [
+      'FEATURES.md entry "Traversal" links to ../outside.md, which does not exist; remove the broken link or create the file (its Requires line still resolves normally)',
+      'FEATURES.md entry "Absolute" links to /outside.md, which does not exist; remove the broken link or create the file (its Requires line still resolves normally)',
+      'FEATURES.md entry "Backslash" links to features\\outside.md, which does not exist; remove the broken link or create the file (its Requires line still resolves normally)',
+    ]);
+    assert.deepStrictEqual(scanned.structuralErrors, [], 'the outside file\'s Requires line must never be scanned');
+    assert.deepStrictEqual([...scanned.scannedFiles], [], 'no file may be read for a rejected target');
+  } finally {
+    fs.rmSync(tmpRoot, { recursive: true, force: true });
+  }
+});
+
 test('breakoutTargets include entries whose classification terminated in a structural error', () => {
   assert.ok(gates.breakoutTargets.some((t) => t.target === 'features/kappa.md'), JSON.stringify(gates.breakoutTargets));
 });
