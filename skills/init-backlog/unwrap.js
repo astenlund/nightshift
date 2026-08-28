@@ -413,7 +413,7 @@ function runCli(argv) {
   process.exitCode = unreadable || (report.length > 0 && !write) ? 1 : 0;
 }
 
-module.exports = { LABEL_AT_START, CatalogError, canonicalPath, detectHardWraps, unwrapText, collectMarkdownFiles, normalizeCatalogItems, analyzeUnwrapCatalog };
+module.exports = { LABEL_AT_START, CatalogError, canonicalPath, compareTargets, detectHardWraps, unwrapText, collectMarkdownFiles, normalizeCatalogItems, analyzeUnwrapCatalog };
 
 if (require.main === module) {
   runCli(process.argv.slice(2));

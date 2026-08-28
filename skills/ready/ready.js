@@ -21,7 +21,7 @@
 const fs = require('fs');
 const path = require('path');
 const { scanMarkdown } = require('../spec-agreement/spec-agreement.js');
-const { LABEL_AT_START, CatalogError, canonicalPath, detectHardWraps, collectMarkdownFiles, normalizeCatalogItems } = require('../init-backlog/unwrap.js');
+const { LABEL_AT_START, CatalogError, canonicalPath, compareTargets, detectHardWraps, collectMarkdownFiles, normalizeCatalogItems } = require('../init-backlog/unwrap.js');
 
 const INDEX_FILE_STEMS = new Set([
   'QUICK_WINS', 'FEATURES', 'BUGS', 'PATTERNS',
@@ -68,7 +68,7 @@ function sidecarItem(kind, ordinal, evidencePaths) {
   return {
     kind,
     ordinal,
-    evidencePaths: [...new Set(evidencePaths)].sort((left, right) => left < right ? -1 : left > right ? 1 : 0),
+    evidencePaths: [...new Set(evidencePaths)].sort(compareTargets),
   };
 }
 
@@ -792,11 +792,6 @@ function hardWrapNotice(label, contents) {
   return `${label} has ${wraps.length} hard-wrapped ${noun} (first at line ${wraps[0].line}); backlog prose is one paragraph or bullet per physical line; run /nightshift:init-backlog to unwrap`;
 }
 
-function pushHardWrapNotice(notices, label, contents) {
-  const notice = hardWrapNotice(label, contents);
-  if (notice !== null) notices.push(notice);
-}
-
 function parseIndexes(files, out) {
   const parsed = {};
   for (const name of WORK_INDEX_NAMES) {
@@ -1062,43 +1057,45 @@ function scanBreakoutLines(contents) {
 // backlog and surfaces as the broken-link notice instead. The read is
 // attempted directly and its error code classified, so there is no
 // check-then-read window between an existence probe and the read.
-function scanBreakoutTargets(breakoutTargets, claudeDir) {
+// Shared loop for the two breakout-target scanners. The content source is
+// parameterized: filesystem mode reads through a per-resolved-path cache and
+// keys identities canonically, catalog mode looks the target up directly and
+// the target is its own identity; catalog mode additionally records lockstep
+// evidence segments for the analysis sidecar. Each distinct identity's
+// dependency-line scan is parsed once; every referencing entry still gets
+// its own notice and structural error from the cached results.
+function scanBreakoutTargetsWith(breakoutTargets, load, collectEvidence) {
   const notices = [];
   const structuralErrors = [];
-  const wrapScanned = new Set();
-  // Each distinct resolved path is read once and its dependency-line scan
-  // parsed once per identity; every referencing entry still gets its own
-  // notice and structural error from the cached results.
-  const readCache = new Map();
+  const scanned = new Set();
   const lineHitsCache = new Map();
+  const evidence = collectEvidence ? { notices: [], structuralErrors: [] } : null;
+  const pushReadNotice = (rec, code) => {
+    notices.push(breakoutReadNotice(rec, code));
+    if (evidence !== null) evidence.notices.push([rec.index]);
+  };
   for (const rec of breakoutTargets) {
     let target;
     try {
       target = requireCatalogReferenceTarget(rec.target);
     } catch (error) {
       if (!(error instanceof CatalogError)) throw error;
-      notices.push(breakoutReadNotice(rec, 'ENOENT'));
+      pushReadNotice(rec, 'ENOENT');
       continue;
     }
-    const resolved = path.resolve(claudeDir, target);
-    let read = readCache.get(resolved);
-    if (read === undefined) {
-      try {
-        read = { contents: fs.readFileSync(resolved, 'utf8') };
-      } catch (error) {
-        read = { errorCode: error?.code ?? 'unknown' };
-      }
-      readCache.set(resolved, read);
-    }
+    const read = load(target);
     if (read.contents === undefined) {
-      notices.push(breakoutReadNotice(rec, read.errorCode));
+      pushReadNotice(rec, read.errorCode);
       continue;
     }
-    const contents = read.contents;
-    const identity = canonicalPath(resolved);
-    if (!wrapScanned.has(identity)) {
-      wrapScanned.add(identity);
-      pushHardWrapNotice(notices, `breakout file ${target}`, contents);
+    const { contents, identity } = read;
+    if (!scanned.has(identity)) {
+      scanned.add(identity);
+      const notice = hardWrapNotice(`breakout file ${target}`, contents);
+      if (notice !== null) {
+        notices.push(notice);
+        if (evidence !== null) evidence.notices.push([target]);
+      }
     }
     let lineHits = lineHitsCache.get(identity);
     if (lineHits === undefined) {
@@ -1111,33 +1108,76 @@ function scanBreakoutTargets(breakoutTargets, claudeDir) {
         title: rec.title,
         problem: `breakout file ${rec.target} carries a **${hit.label}:** line (line ${hit.line}); delete the breakout line, the index entry is the sole dependency authority (hygiene error: the entry's classification stands)`,
       });
+      if (evidence !== null) evidence.structuralErrors.push([rec.index, target]);
     }
   }
 
-  return { notices, structuralErrors, scannedFiles: wrapScanned };
+  return { notices, structuralErrors, scanned, evidence };
+}
+
+function scanBreakoutTargets(breakoutTargets, claudeDir) {
+  const readCache = new Map();
+  const { notices, structuralErrors, scanned } = scanBreakoutTargetsWith(breakoutTargets, (target) => {
+    const resolved = path.resolve(claudeDir, target);
+    let read = readCache.get(resolved);
+    if (read === undefined) {
+      try {
+        read = { contents: fs.readFileSync(resolved, 'utf8'), identity: canonicalPath(resolved) };
+      } catch (error) {
+        read = { errorCode: error?.code ?? 'unknown' };
+      }
+      readCache.set(resolved, read);
+    }
+
+    return read;
+  }, false);
+
+  return { notices, structuralErrors, scannedFiles: scanned };
 }
 
 // The line discipline covers every backlog file, so the files no index entry
 // reaches (history archives, patterns, unlinked breakouts) get their own
 // hard-wrap notice; the indexes and linked breakouts were already reported.
-function scanUnlinkedBacklogFiles(claudeDir, alreadyScanned) {
+// Shared loop for the two unlinked-file scanners: skip the indexes and the
+// already-scanned linked breakouts, report an unreadable entry (a filesystem
+// possibility only), and report hard wraps; catalog mode additionally records
+// lockstep evidence for the analysis sidecar.
+function scanUnlinkedWith(entries, alreadyScanned, indexKeys, collectEvidence) {
   const notices = [];
-  const indexFiles = new Set([...WORK_INDEX_NAMES, 'PATTERNS'].map((name) => canonicalPath(path.resolve(claudeDir, `${name}.md`))));
-  for (const file of collectMarkdownFiles([claudeDir])) {
-    const identity = canonicalPath(file);
-    if (indexFiles.has(identity) || alreadyScanned.has(identity)) continue;
-    const relative = path.relative(claudeDir, file).replace(/\\/g, '/');
-    let contents;
-    try {
-      contents = fs.readFileSync(file, 'utf8');
-    } catch (error) {
-      notices.push(`backlog file ${relative} cannot be read (${error?.code ?? 'unknown'}); retry; the file was not checked for hard wraps this run`);
+  const evidence = collectEvidence ? [] : null;
+  for (const entry of entries) {
+    if (indexKeys.has(entry.identity) || alreadyScanned.has(entry.identity)) continue;
+    const read = entry.load();
+    if (read.contents === undefined) {
+      notices.push(`backlog file ${entry.label} cannot be read (${read.errorCode}); retry; the file was not checked for hard wraps this run`);
       continue;
     }
-    pushHardWrapNotice(notices, `backlog file ${relative}`, contents);
+    const notice = hardWrapNotice(`backlog file ${entry.label}`, read.contents);
+    if (notice !== null) {
+      notices.push(notice);
+      if (evidence !== null) evidence.push([entry.identity]);
+    }
   }
+  if (evidence !== null) Object.defineProperty(notices, ANALYSIS_EVIDENCE, { value: evidence });
 
   return notices;
+}
+
+function scanUnlinkedBacklogFiles(claudeDir, alreadyScanned) {
+  const indexFiles = new Set([...WORK_INDEX_NAMES, 'PATTERNS'].map((name) => canonicalPath(path.resolve(claudeDir, `${name}.md`))));
+  const entries = collectMarkdownFiles([claudeDir]).map((file) => ({
+    identity: canonicalPath(file),
+    label: path.relative(claudeDir, file).replace(/\\/g, '/'),
+    load: () => {
+      try {
+        return { contents: fs.readFileSync(file, 'utf8') };
+      } catch (error) {
+        return { errorCode: error?.code ?? 'unknown' };
+      }
+    },
+  }));
+
+  return scanUnlinkedWith(entries, alreadyScanned, indexFiles, false);
 }
 
 const MISSING_BREAKOUT_TAILS = {
@@ -1164,69 +1204,22 @@ function breakoutReadNotice(rec, code) {
 }
 
 function scanCatalogBreakoutTargets(breakoutTargets, catalog) {
-  const notices = [];
-  const structuralErrors = [];
-  const evidence = { notices: [], structuralErrors: [] };
-  const scannedTargets = new Set();
-  for (const rec of breakoutTargets) {
-    let target;
-    try {
-      target = requireCatalogReferenceTarget(rec.target);
-    } catch (error) {
-      if (!(error instanceof CatalogError)) throw error;
-      notices.push(breakoutReadNotice(rec, 'ENOENT'));
-      evidence.notices.push([rec.index]);
-      continue;
-    }
+  const { notices, structuralErrors, scanned, evidence } = scanBreakoutTargetsWith(breakoutTargets, (target) => {
     const contents = catalog.get(target);
-    if (contents === undefined) {
-      const notice = breakoutReadNotice(rec, 'ENOENT');
-      notices.push(notice);
-      evidence.notices.push([rec.index]);
-      continue;
-    }
-    if (!scannedTargets.has(target)) {
-      scannedTargets.add(target);
-      const notice = hardWrapNotice(`breakout file ${rec.target.split('#')[0]}`, contents);
-      if (notice !== null) {
-        notices.push(notice);
-        evidence.notices.push([target]);
-      }
-    }
-    for (const hit of scanBreakoutLines(contents)) {
-      const error = {
-        index: rec.index,
-        title: rec.title,
-        problem: `breakout file ${rec.target} carries a **${hit.label}:** line (line ${hit.line}); delete the breakout line, the index entry is the sole dependency authority (hygiene error: the entry's classification stands)`,
-      };
-      structuralErrors.push(error);
-      evidence.structuralErrors.push([rec.index, target]);
-    }
-  }
 
-  const result = { notices, structuralErrors, scannedTargets };
+    return contents === undefined ? { errorCode: 'ENOENT' } : { contents, identity: target };
+  }, true);
+  const result = { notices, structuralErrors, scannedTargets: scanned };
   Object.defineProperty(result, ANALYSIS_EVIDENCE, { value: evidence });
 
   return result;
 }
 
 function scanUnlinkedCatalogItems(catalog, alreadyScanned) {
-  const notices = [];
-  const evidence = [];
   const indexTargets = new Set([...WORK_INDEX_NAMES, 'PATTERNS'].map((name) => `${name}.md`));
-  for (const { target, contents } of catalog.values()) {
-    if (indexTargets.has(target) || alreadyScanned.has(target)) {
-      continue;
-    }
-    const notice = hardWrapNotice(`backlog file ${target}`, contents);
-    if (notice !== null) {
-      notices.push(notice);
-      evidence.push([target]);
-    }
-  }
+  const entries = [...catalog.values()].map(({ target, contents }) => ({ identity: target, label: target, load: () => ({ contents }) }));
 
-  Object.defineProperty(notices, ANALYSIS_EVIDENCE, { value: evidence });
-  return notices;
+  return scanUnlinkedWith(entries, alreadyScanned, indexTargets, true);
 }
 
 function htmlBlockStart(line) {
@@ -1300,12 +1293,7 @@ function legacyHistoryFactsFromCatalog(catalog) {
     if (!populated) return [];
 
     return [{ indexPath: `.claude/${index}`, historyPath: `.claude/${history}` }];
-  }).sort((left, right) => {
-    const a = `${left.indexPath}\0${left.historyPath}`;
-    const b = `${right.indexPath}\0${right.historyPath}`;
-
-    return a < b ? -1 : a > b ? 1 : 0;
-  });
+  }).sort((left, right) => compareTargets(`${left.indexPath}\0${left.historyPath}`, `${right.indexPath}\0${right.historyPath}`));
 }
 
 function requireCatalogReferenceTarget(raw) {
@@ -1482,7 +1470,7 @@ function findCycles(edges) {
     }
   };
   for (const v of sortedNodes) strongconnect(v);
-  return components.sort((a, b) => a.members[0].localeCompare(b.members[0]));
+  return components.sort((a, b) => compareTargets(a.members[0], b.members[0]));
 }
 
 // Resolve each entry's top-level **Requires:** line to directed blocked
@@ -1539,7 +1527,7 @@ function formatCycle(cycle, edges, nodeToRec) {
       seen.add(key);
       return true;
     })
-    .sort((a, b) => (a.from + '::' + a.to).localeCompare(b.from + '::' + b.to));
+    .sort((a, b) => compareTargets(a.from + '::' + a.to, b.from + '::' + b.to));
   const memberLabels = members.map((n) => nodeLabel(nodeToRec.get(n)));
   const edgeLabels = cycleEdges.map((e) => `${nodeLabel(nodeToRec.get(e.from))} -> ${nodeLabel(nodeToRec.get(e.to))}`);
   return `members: ${memberLabels.join(', ')}${edgeLabels.length ? `; edges: ${edgeLabels.join(', ')}` : ''}`;
