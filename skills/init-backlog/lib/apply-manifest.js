@@ -142,10 +142,26 @@ function targetBytes(record) {
   return record.contentBase64 === null ? null : validateBase64(record.contentBase64)
 }
 
+// A target can carry a chain of predicted-intermediate exact edits, and the
+// carried proposals are ordinal by proposal identity, which is a content
+// digest and says nothing about chain order. The starting content is the
+// chain head: the one candidate whose input no sibling proposal produces.
+// Taking whichever candidate sorts first would seed a mechanical target with a
+// mid-chain intermediate whenever the digests happened to fall that way.
+function chainHeadProposal(inspection, target) {
+  const siblings = (inspection.proposals ?? []).filter((item) => item.action.target === target)
+  const produced = new Set(siblings.map((item) => item.afterBase64).filter((value) => value !== null && value !== undefined))
+  const heads = siblings.filter((item) => item.beforeBase64 !== null && item.beforeBase64 !== undefined && !produced.has(item.beforeBase64))
+
+  // No unique head means the chain is ambiguous, so the caller seeds nothing
+  // and the edit's own input check refuses the manifest.
+  return heads.length === 1 ? heads[0] : undefined
+}
+
 function initialState(record, inspection) {
   let content = targetBytes(record)
   if (content === null && record.kind === 'file') {
-    const proposal = inspection.proposals.find((item) => item.action.target === record.target && item.beforeBase64 !== null)
+    const proposal = chainHeadProposal(inspection, record.target)
     content = proposal === undefined ? null : validateBase64(proposal.beforeBase64)
   }
 

@@ -98,6 +98,55 @@ function expectManifestError(callback, code = 'manifest-invalid') {
 }
 
 function runAdmissionCases() {
+  test('seeds a chained mechanical target from the chain head in either proposal order', () => {
+    const first = Buffer.from('seed\n', 'utf8')
+    const middle = Buffer.from('seed\nmandatory\n', 'utf8')
+    const last = Buffer.from('seed\nmandatory\nelective\n', 'utf8')
+    const edit = (id, before, after) => ({ afterBase64: after.toString('base64'), beforeBase64: before.toString('base64'), id, kind: 'exact-edit', regionId: 'gitignore.policy-append', target: '.gitignore' })
+    const head = edit('p-chain-head', first, middle)
+    const tail = edit('p-chain-tail', middle, last)
+    const asProposal = (action) => ({ action, afterBase64: action.afterBase64, beforeBase64: action.beforeBase64, condition: 'always', proposalId: action.id, reason: 'plans-policy' })
+
+    // The carried order is a digest artifact, so both orders must admit
+    // identically and reach the same terminal content.
+    for (const order of [[head, tail], [tail, head]]) {
+      const inspection = baseInspection()
+      // A mechanical target withholds its content image, which is exactly when
+      // admission has to recover the starting bytes from the proposals.
+      inspection.targets = [target('.claude', 'directory', 'present'), { ...target('.gitignore', 'file', 'present'), contentBase64: null, contentRole: 'mechanical', editableRegions: [{ endByte: first.length, regionId: 'gitignore.policy-append', startByte: first.length }], templateId: null, templateSha256: null }]
+      inspection.proposals = order.map(asProposal)
+      inspection.snapshotId = deriveSnapshotId({ ...inspection, snapshotId: null })
+
+      const result = admitApplyManifest(request({
+        actions: [head, tail],
+        inspection,
+        proposalDispositions: inspection.proposals.map((item) => ({ disposition: 'selected', proposalId: item.proposalId })),
+      }), { rescanRegions: ({ content }) => [{ endByte: content.length, regionId: 'gitignore.policy-append', startByte: content.length }] })
+
+      assert.equal(result.states.find((item) => item.target === '.gitignore').content.toString('utf8'), last.toString('utf8'))
+    }
+  })
+
+  test('refuses a chained mechanical target whose proposals expose no unique head', () => {
+    const first = Buffer.from('seed\n', 'utf8')
+    const other = Buffer.from('other\n', 'utf8')
+    const edit = (id, before, after) => ({ afterBase64: after.toString('base64'), beforeBase64: before.toString('base64'), id, kind: 'exact-edit', regionId: 'gitignore.policy-append', target: '.gitignore' })
+    // Two candidate heads, so the starting bytes are ambiguous and admission
+    // must refuse rather than pick one.
+    const left = edit('p-chain-left', first, Buffer.from('seed\nleft\n', 'utf8'))
+    const right = edit('p-chain-right', other, Buffer.from('other\nright\n', 'utf8'))
+    const inspection = baseInspection()
+    inspection.targets = [target('.claude', 'directory', 'present'), { ...target('.gitignore', 'file', 'present'), contentBase64: null, contentRole: 'mechanical', editableRegions: [{ endByte: first.length, regionId: 'gitignore.policy-append', startByte: first.length }], templateId: null, templateSha256: null }]
+    inspection.proposals = [left, right].map((action) => ({ action, afterBase64: action.afterBase64, beforeBase64: action.beforeBase64, condition: 'always', proposalId: action.id, reason: 'plans-policy' }))
+    inspection.snapshotId = deriveSnapshotId({ ...inspection, snapshotId: null })
+
+    expectManifestError(() => admitApplyManifest(request({
+      actions: [left],
+      inspection,
+      proposalDispositions: inspection.proposals.map((item) => ({ disposition: item.proposalId === left.id ? 'selected' : 'condition-not-selected', proposalId: item.proposalId })),
+    })))
+  })
+
   test('admits an empty direct manifest and returns a stable identity', () => {
     const result = admitApplyManifest(request())
 

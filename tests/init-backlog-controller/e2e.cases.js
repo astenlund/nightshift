@@ -190,6 +190,13 @@ const IGNORE_ELECTION_CASES = [
   { name: 'chains the elective append onto the mandatory plans append', reasons: ['elective-ignore', 'plans-policy'], seed: 'node_modules/\r\n' },
 ]
 
+// Proposal identity is a content digest, so the seed content alone decides
+// whether the elective proposal sorts before or after the mandatory one in the
+// carried inspection. Both orders must admit and land identically. The two
+// elective-first seeds are the ones that were rejected before the chain-head
+// fix; the plans-first seeds guard against regressing the other direction.
+const IGNORE_CHAIN_ORDER_SEEDS = ['node_modules/\r\n', 'dist/\r\n', 'coverage/\r\n*.tmp\r\n', 'node_modules/\r\n*.log\r\n', 'build/\r\n']
+
 function electionApply(root, choice) {
   const inspected = driveCli(root, inspectRequest(root, 'claude-code', claudeHostContext('included')))
   assert.equal(inspected.exitCode, 0, inspected.stderr)
@@ -597,6 +604,27 @@ function runE2eCases() {
     } finally {
       removeRoot(root)
     }
+  })
+
+  test('an ignore election lands regardless of how the policy proposals sort', () => {
+    const orders = new Set()
+    for (const seed of IGNORE_CHAIN_ORDER_SEEDS) {
+      const root = makeElectionRoot(seed)
+      try {
+        const { applied, inspection } = electionApply(root, 'ignore')
+
+        orders.add(inspection.proposals.filter((entry) => entry.action.target === '.gitignore').map((entry) => entry.reason).join(','))
+        assert.equal(applied.record.ok, true, `seed ${JSON.stringify(seed)} was refused: ${JSON.stringify(applied.record).slice(0, 300)}`)
+        assert.equal(applied.record.complete, true, `seed ${JSON.stringify(seed)} is incomplete: ${JSON.stringify(applied.record.incompleteTargets)}`)
+        const rules = readFileSync(join(root, '.gitignore'), 'utf8').split('\r\n')
+        assert.ok(rules.includes('.claude/FEATURES.md'), `seed ${JSON.stringify(seed)} did not land the elective append`)
+        assert.ok(rules.includes('.claude/plans/'), `seed ${JSON.stringify(seed)} lost the mandatory plans rule`)
+        assert.ok(rules.includes(seed.split('\r\n')[0]), `seed ${JSON.stringify(seed)} lost its own pre-existing rules`)
+      } finally {
+        removeRoot(root)
+      }
+    }
+    assert.equal(orders.size, 2, `the seeds must cover both carried orders, saw ${JSON.stringify([...orders])}`)
   })
 
   test('an ignore election still refuses while a backlog path stays tracked', () => {
