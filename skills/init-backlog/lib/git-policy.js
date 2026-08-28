@@ -685,22 +685,6 @@ function normalizeElectionMarker(value) {
   return { marker: value.marker, mode: value.mode ?? null, snapshotId: value.snapshotId }
 }
 
-function policyDigest(policy, canonicalJson) {
-  const projection = {
-    kind: policy.kind,
-    objectFormat: policy.objectFormat,
-    scaffoldPresent: policy.scaffoldPresent === true || policy.freshScaffold === true,
-    plansPolicy: policy.plansPolicy,
-    trackedPlanPaths: policy.trackedPlanPaths,
-    trackedBacklogPaths: policy.trackedBacklogPaths,
-    nonPlanIgnoreMatches: policy.nonPlanIgnoreMatches,
-    nonPlanUnignoredPaths: policy.nonPlanUnignoredPaths,
-    newlinePolicies: policy.newlinePolicies,
-  }
-
-  return sha256(Buffer.from(canonicalJson(projection), 'utf8'))
-}
-
 module.exports = {
   CONFIG_KEYS,
   GIT_CANDIDATES,
@@ -719,7 +703,6 @@ module.exports = {
   normalizeElectionMarker,
   parseNulPaths,
   pathIdentity,
-  policyDigest,
   resolveNewlinePolicy,
   resolveGitExcludesFile,
   resolveDefaultGlobalIgnoreFile,
