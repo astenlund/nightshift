@@ -1,5 +1,6 @@
 'use strict'
 
+const { isPlainObject } = require('./state')
 const { canonicalJson } = require('./transcript')
 
 const CLAUDE_PUBLIC_SKILL_INVENTORY = Object.freeze(['exploring', 'handover', 'init-backlog', 'ready', 'revise-code', 'revise-docs', 'revise-lore', 'revise-plan', 'revise-spec', 'spec-agreement'])
@@ -88,10 +89,6 @@ function validateImportProbeInit(event) {
   }
 
   return { ok: true }
-}
-
-function isPlainObject(value) {
-  return value !== null && typeof value === 'object' && !Array.isArray(value)
 }
 
 function createClaudeSessionConductor({ sessionPluginRoot }) {

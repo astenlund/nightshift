@@ -1,7 +1,6 @@
 'use strict'
 
-const { createHash } = require('node:crypto')
-
+const { isPlainObject, sha256 } = require('./state')
 const { canonicalJson } = require('./transcript')
 const { CLAUDE_ROOT_EXCLUSION_CONFIRMATION, CODEX_HOST_CONTEXT_CONFIRMATION, HOST_CONTROL_RECORDS, validateTurnObject } = require('../init-backlog-controller/oracles.cases')
 // Plan-mandated production binding: the approved apply request is built and
@@ -17,14 +16,6 @@ const RESERVED_GATE_IDS = Object.freeze(['host-context-confirmation', 'claude-ro
 const VERSION_CONTROL_OPTION_ORDER = Object.freeze(['track', 'ignore', 'deferred', 'not-required'])
 const MANIFEST_PROPOSAL_MEMBERS = 'actions,proposalDispositions,semanticDecisions,versionControlChoice,versionControlOptions'
 const CONTEXT_STOP_RESULT_JSON = canonicalJson({ approvalBranch: 'unavailable', reasonCode: 'guidance-resolution' })
-
-function sha256(bytes) {
-  return createHash('sha256').update(bytes).digest('hex')
-}
-
-function isPlainObject(value) {
-  return value !== null && typeof value === 'object' && !Array.isArray(value)
-}
 
 function isNonblankString(value) {
   return typeof value === 'string' && value.trim() !== ''

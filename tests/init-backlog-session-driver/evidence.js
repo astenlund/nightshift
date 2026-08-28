@@ -2,21 +2,13 @@
 
 const nodeFilesystem = require('node:fs')
 const { dirname, join } = require('node:path')
-const { createHash } = require('node:crypto')
 
-const { BYTE_BOUNDS, HOSTS } = require('./state')
+const { BYTE_BOUNDS, HOSTS, compareOrdinal, sha256 } = require('./state')
 const { canonicalJson, canonicalJsonLine } = require('./transcript')
 
 const EVIDENCE_HOSTS = HOSTS
 const ENABLED_REPETITIONS = Object.freeze([1, 2, 3])
 
-function sha256(bytes) {
-  return createHash('sha256').update(bytes).digest('hex')
-}
-
-function compareOrdinal(left, right) {
-  return left < right ? -1 : left > right ? 1 : 0
-}
 
 function buildLeafPath({ host, mode, repetition, scenario }) {
   if (!EVIDENCE_HOSTS.includes(host)) {

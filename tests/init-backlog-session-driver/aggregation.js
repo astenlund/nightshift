@@ -1,20 +1,10 @@
 'use strict'
 
-const { createHash } = require('node:crypto')
-
-const { HOSTS } = require('./state')
+const { HOSTS, compareOrdinal, sha256 } = require('./state')
 const { canonicalJson } = require('./transcript')
 const { ELECTION_MARKER_PATH, selectTerminalExpectation, validateLiveElectionMarker } = require('../init-backlog-controller/oracles.cases')
 
 const RESULT_RECORD_KEYS = Object.freeze(['deterministicDigest', 'dialogueFacts', 'lifecycleFacts', 'passed', 'semanticActionDispositions', 'semanticClassifications', 'semanticDecisionSource', 'semanticDecisions', 'semanticRepairOracles', 'structuredResult', 'terminalRepositorySha256'])
-
-function sha256(bytes) {
-  return createHash('sha256').update(bytes).digest('hex')
-}
-
-function compareOrdinal(left, right) {
-  return left < right ? -1 : left > right ? 1 : 0
-}
 
 function normalizePlatformModes(repository, platform) {
   if (platform !== 'win32') {

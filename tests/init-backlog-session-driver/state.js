@@ -1,5 +1,7 @@
 'use strict'
 
+const { createHash } = require('node:crypto')
+
 const BYTE_BOUNDS = Object.freeze({
   MAX_EVIDENCE_LEAF_BYTES: 201326592,
   MAX_EVIDENCE_ROOT_BYTES: 1073741824,
@@ -32,6 +34,18 @@ const PROCESS_ADAPTER_EVENTS = Object.freeze(['start', 'input', 'close-input', '
 const SESSION_FAILURE_CODES = Object.freeze(['session-input', 'session-timeout'])
 
 const HOSTS = Object.freeze(['claude-code', 'codex'])
+
+function sha256(bytes) {
+  return createHash('sha256').update(bytes).digest('hex')
+}
+
+function compareOrdinal(left, right) {
+  return left < right ? -1 : left > right ? 1 : 0
+}
+
+function isPlainObject(value) {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
+}
 
 function requireHost(host) {
   if (!HOSTS.includes(host)) {
@@ -351,6 +365,7 @@ module.exports = {
   INFRASTRUCTURE_PHASES,
   PRIMARY_INITIAL_CODES,
   PROCESS_ADAPTER_EVENTS,
+  compareOrdinal,
   createByteBudget,
   createInfrastructureAccount,
   createLaunchState,
@@ -359,4 +374,6 @@ module.exports = {
   createTurnSequencer,
   createWriteState,
   infrastructureFailure,
+  isPlainObject,
+  sha256,
 }

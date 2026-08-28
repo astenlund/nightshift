@@ -1,7 +1,6 @@
 'use strict'
 
-const { createHash } = require('node:crypto')
-
+const { compareOrdinal, isPlainObject, sha256 } = require('./state')
 const { canonicalJson } = require('./transcript')
 const { BREAKOUT_DIGEST_NOTICE, buildDecodedContentDisclosures } = require('../init-backlog-controller/oracles.cases')
 
@@ -13,14 +12,6 @@ const CARRIER_KINDS = Object.freeze(['breakout-digest', 'decoded', 'structural-a
 const MANIFEST_PROJECTION_MEMBERS = 'actions,proposalDispositions,semanticDecisions,versionControlChoice'
 const FINAL_TARGET_MEMBERS = 'kind,mode,rawSha256,target'
 const EXTERNAL_WRITER_WINDOW_CODE = 'external-writer-window'
-
-function sha256(bytes) {
-  return createHash('sha256').update(bytes).digest('hex')
-}
-
-function isPlainObject(value) {
-  return value !== null && typeof value === 'object' && !Array.isArray(value)
-}
 
 function requireApprovalBranch(value) {
   if (!APPROVAL_BRANCHES.includes(value)) {
@@ -261,10 +252,6 @@ function deriveWriterDisclosure({ observedCodes, windowExpected }) {
   }
 
   return windowExpected ? observedCodes.includes(EXTERNAL_WRITER_WINDOW_CODE) : observedCodes.length === 0
-}
-
-function compareOrdinal(left, right) {
-  return left < right ? -1 : left > right ? 1 : 0
 }
 
 function validateFinalTargets(finalTargets) {

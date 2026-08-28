@@ -1,6 +1,5 @@
 'use strict'
 
-const { createHash } = require('node:crypto')
 const nodeFilesystem = require('node:fs')
 const { basename, dirname, join } = require('node:path')
 
@@ -13,16 +12,13 @@ const cleanupModule = require('./init-backlog-session-driver/cleanup')
 const aggregationModule = require('./init-backlog-session-driver/aggregation')
 
 const { canonicalJson } = transcriptModule
+const { sha256 } = state
 
 const ELIGIBLE_AMBIENT_KEYS = Object.freeze(['PATH', 'SystemRoot', 'ComSpec', 'PATHEXT', 'HOME', 'USERPROFILE', 'USER', 'LOGNAME', 'SHELL', 'XDG_RUNTIME_DIR', 'LANG', 'LC_ALL', 'LC_CTYPE', 'HTTP_PROXY', 'HTTPS_PROXY', 'NO_PROXY', 'http_proxy', 'https_proxy', 'no_proxy', 'SSL_CERT_FILE', 'SSL_CERT_DIR', 'NODE_EXTRA_CA_CERTS', 'ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN', 'CLAUDE_CODE_OAUTH_TOKEN', 'CODEX_API_KEY', 'OPENAI_API_KEY'])
 
 const CREDENTIAL_KEYS = Object.freeze(['ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN', 'CLAUDE_CODE_OAUTH_TOKEN', 'CODEX_API_KEY', 'OPENAI_API_KEY'])
 
 const NEVER_COPIED_TEMP_KEYS = Object.freeze(['TEMP', 'TMP', 'TMPDIR'])
-
-function sha256(bytes) {
-  return createHash('sha256').update(bytes).digest('hex')
-}
 
 function comparablePath(path, platform) {
   return platform === 'win32' ? path.toLowerCase() : path

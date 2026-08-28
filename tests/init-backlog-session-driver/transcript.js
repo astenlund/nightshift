@@ -1,12 +1,8 @@
 'use strict'
 
-const { BYTE_BOUNDS, createByteBudget } = require('./state')
+const { BYTE_BOUNDS, compareOrdinal, createByteBudget } = require('./state')
 
 const PROXY_TRACE_MEMBERS = Object.freeze(['exitCode', 'ordinal', 'requestBase64', 'stderrBase64', 'stdoutBase64'])
-
-function compareOrdinal(left, right) {
-  return left < right ? -1 : left > right ? 1 : 0
-}
 
 function canonicalize(value) {
   if (Array.isArray(value)) {
