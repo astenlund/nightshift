@@ -1,7 +1,7 @@
 'use strict'
 
 const assert = require('node:assert/strict')
-const { readFileSync, readdirSync } = require('node:fs')
+const { readFileSync, readdirSync, realpathSync } = require('node:fs')
 const { join } = require('node:path')
 const { execFileSync } = require('node:child_process')
 const test = require('node:test')
@@ -328,4 +328,81 @@ test('every checked-in suite is declared to CI', () => {
     [...declaredPaths].sort(),
     'every *.test.js file must be declared in CI_SUITE_COMMANDS, and every declared command must name a real suite',
   )
+})
+
+// The controller suite was registered when the deterministic controller landed;
+// these pins keep a later edit from double-declaring any suite or dropping the
+// controller suite from either authoritative list.
+test('the suite declarations are duplicate-free and include the init-backlog controller suite', () => {
+  const controllerSuite = 'node tests/init-backlog-controller.test.js'
+
+  assert.equal(new Set(CI_SUITE_COMMANDS).size, CI_SUITE_COMMANDS.length, 'CI_SUITE_COMMANDS must declare each suite exactly once')
+  assert.equal(new Set(DOCUMENTED_SUITE_COMMANDS).size, DOCUMENTED_SUITE_COMMANDS.length, 'DOCUMENTED_SUITE_COMMANDS must declare each suite exactly once')
+  for (const command of DOCUMENTED_SUITE_COMMANDS) {
+    assert.ok(CI_SUITE_COMMANDS.includes(command), `documented suite must also run in CI: ${command}`)
+  }
+  assert.ok(CI_SUITE_COMMANDS.includes(controllerSuite), 'CI must declare the init-backlog controller suite')
+  assert.ok(DOCUMENTED_SUITE_COMMANDS.includes(controllerSuite), 'the documented subset must declare the init-backlog controller suite')
+})
+
+// The controller and its normalized assets ship to every installation, so a
+// change to any of them must trip the version-increase convention.
+test('the shipped-behavior classifier covers the init-backlog controller and its bundled assets', () => {
+  const base = { name: 'nightshift', description: 'old', version: '2.6.14' }
+  const controllerPaths = [
+    'skills/init-backlog/SKILL.md',
+    'skills/init-backlog/init-backlog.js',
+    'skills/init-backlog/windows-attributes.ps1',
+    ...readdirSync(join(repositoryRoot, 'skills', 'init-backlog', 'lib')).map((name) => `skills/init-backlog/lib/${name}`),
+    ...readdirSync(join(repositoryRoot, 'skills', 'init-backlog', 'templates')).map((name) => `skills/init-backlog/templates/${name}`),
+  ]
+
+  assert.deepEqual(classifyShippedBehavior(controllerPaths, base, base), controllerPaths, 'every controller file and normalized template asset must classify as shipped behavior')
+})
+
+// The prompt baseline replays a historical prompt-only install for evaluation
+// runs; it lives under tests/fixtures and must never count as shipped input.
+test('the prompt baseline is test input, not shipped production input', () => {
+  const base = { name: 'nightshift', description: 'old', version: '2.6.14' }
+  const baselineRoot = 'tests/fixtures/init-backlog-prompt-baseline'
+  const baselineManifest = JSON.parse(readRepositoryFile(`${baselineRoot}/manifest.json`))
+
+  assert.equal(baselineManifest.schemaVersion, 1, 'prompt baseline manifest must declare schema version 1')
+  assert.ok(Array.isArray(baselineManifest.files) && baselineManifest.files.length > 0, 'prompt baseline manifest must list files')
+  const baselinePaths = [`${baselineRoot}/manifest.json`, ...baselineManifest.files.map((entry) => `${baselineRoot}/${entry.path}`)]
+  assert.deepEqual(classifyShippedBehavior(baselinePaths, base, base), [], 'prompt-baseline fixture changes must not require a version increase')
+})
+
+// loadManifest is the runtime loader itself: it verifies the canonical
+// manifest, resolves every referenced asset, and checks each logical digest,
+// so a missing or drifted template asset fails here before it ships.
+test('the runtime closure includes every asset the template manifest references', () => {
+  const { loadManifest } = require('../skills/init-backlog/lib/assets')
+  const templatesRoot = realpathSync.native(join(repositoryRoot, 'skills', 'init-backlog', 'templates'))
+
+  const { assets, manifest } = loadManifest(templatesRoot)
+
+  assert.equal(assets.size, manifest.assets.length, 'the loader must resolve every declared asset')
+  const referencedPaths = [...manifest.assets.map((item) => item.path)].sort()
+  const presentPaths = readdirSync(templatesRoot).filter((name) => name !== 'manifest.json').sort()
+  assert.deepEqual(presentPaths, referencedPaths, 'the templates directory must hold exactly the manifest-referenced assets')
+})
+
+test('bundled template assets are checked out as text with LF', () => {
+  const { manifest } = require('../skills/init-backlog/lib/assets').loadManifest(join(repositoryRoot, 'skills', 'init-backlog', 'templates'))
+  const templatePaths = ['manifest.json', ...manifest.assets.map((item) => item.path)].map((path) => `skills/init-backlog/templates/${path}`)
+  const attributes = git(['check-attr', 'text', 'eol', '--', ...templatePaths]).trim().split(/\r?\n/)
+
+  assert.deepEqual(attributes, templatePaths.flatMap((path) => [`${path}: text: set`, `${path}: eol: lf`]))
+})
+
+// README is the architecture surface a user reads first; it must name the
+// deterministic controller and the normalized template manifest it applies.
+test('README names the init-backlog controller and its normalized template manifest', () => {
+  const readme = readRepositoryFile('README.md')
+
+  assert.equal(countExact(readme, 'skills/init-backlog/init-backlog.js'), 1, 'README must name the init-backlog controller exactly once')
+  assert.equal(countExact(readme, 'skills/init-backlog/templates/manifest.json'), 1, 'README must name the normalized template manifest exactly once')
+  assert.equal(countExact(readme, 'host-canonical project guidance file'), 1, 'README must describe the resolved guidance target rather than promising CLAUDE.md')
+  assert.equal(countExact(readme, 'track, ignore, or defer'), 1, 'README must name every durable-backlog election choice')
 })

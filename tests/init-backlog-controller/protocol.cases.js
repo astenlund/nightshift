@@ -3,6 +3,7 @@
 const assert = require('node:assert/strict')
 const { randomBytes } = require('node:crypto')
 const {
+  cpSync,
   existsSync,
   linkSync,
   mkdirSync,
@@ -786,6 +787,26 @@ function runProtocolCases(repositoryRoot) {
     ]
     for (const bytes of invalidInputs) {
       assert.throws(() => normalizeLogicalAsset(bytes))
+    }
+  })
+
+  test('manifest loading accepts a canonical CRLF checkout', () => {
+    const root = makeTemporaryRoot()
+    const sourceTemplatesRoot = join(repositoryRoot, 'skills', 'init-backlog', 'templates')
+    const templatesRoot = join(root, 'templates')
+    try {
+      cpSync(sourceTemplatesRoot, templatesRoot, { recursive: true })
+      const manifestPath = join(templatesRoot, 'manifest.json')
+      const logicalManifest = normalizeLogicalAsset(readFileSync(manifestPath)).logicalBytes.toString('utf8')
+      writeFileSync(manifestPath, Buffer.from(logicalManifest.replaceAll('\n', '\r\n'), 'utf8'))
+
+      const loaded = loadManifest(templatesRoot)
+
+      assert.equal(loaded.manifest.protocolVersion, 1)
+      assert.equal(loaded.assets.size, loaded.manifest.assets.length)
+      assert.equal(loaded.templates.size, loaded.manifest.templates.length)
+    } finally {
+      removeTemporaryRoot(root)
     }
   })
 

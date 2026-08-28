@@ -243,6 +243,23 @@ test('init-backlog scaffold contract rejects missing targets and confirmation', 
   }
 })
 
+test('init-backlog topology requires the controller, its libraries, and normalized assets as regular files', () => {
+  const controllerRoot = join(PUBLIC_SKILLS_ROOT, 'init-backlog')
+  for (const fileName of ['SKILL.md', 'init-backlog.js', 'unwrap.js', 'windows-attributes.ps1']) {
+    requireRegularFile(join(controllerRoot, fileName))
+  }
+  for (const libraryName of ['apply-manifest.js', 'assets.js', 'backups.js', 'errors.js', 'filesystem.js', 'git-policy.js', 'guidance.js', 'inspection.js', 'protocol.js', 'publication.js', 'recovery.js']) {
+    requireRegularFile(join(controllerRoot, 'lib', libraryName))
+  }
+  const manifestPath = join(controllerRoot, 'templates', 'manifest.json')
+  requireRegularFile(manifestPath)
+  const templateManifest = JSON.parse(readRequiredFile(manifestPath))
+  assert.equal(Array.isArray(templateManifest.assets) && templateManifest.assets.length > 0, true, 'template manifest must declare assets')
+  for (const asset of templateManifest.assets) {
+    requireRegularFile(join(controllerRoot, 'templates', asset.path))
+  }
+})
+
 test('init-backlog embeds no prompt-owned template bodies', () => {
   const body = parseFrontmatter(join(PUBLIC_SKILLS_ROOT, 'init-backlog', 'SKILL.md')).body.replace(/\r?\n/g, '\n')
   assert.equal(countExact(body, '# Quick wins\n'), 0, 'skills/init-backlog/SKILL.md still contains the prompt-owned `# Quick wins` template body')

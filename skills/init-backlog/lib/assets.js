@@ -324,11 +324,11 @@ function readOrdinaryFile(root, target) {
 
 function loadManifest(templatesRoot) {
   try {
-    const manifestBytes = readOrdinaryFile(templatesRoot, 'manifest.json')
-    const manifestText = new TextDecoder('utf-8', { fatal: true }).decode(manifestBytes)
+    const normalizedManifest = normalizeLogicalAsset(readOrdinaryFile(templatesRoot, 'manifest.json'))
+    const manifestText = normalizedManifest.logicalBytes.toString('utf8')
     const manifest = JSON.parse(manifestText)
     validateManifest(manifest)
-    if (!manifestBytes.equals(Buffer.from(canonicalJson(manifest) + '\n', 'utf8'))) {
+    if (!normalizedManifest.logicalBytes.equals(Buffer.from(canonicalJson(manifest) + '\n', 'utf8'))) {
       templateInvalid('Template manifest is not canonical.')
     }
     const assets = new Map()

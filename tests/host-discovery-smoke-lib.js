@@ -563,6 +563,41 @@ function assertEngineClosure(installedRoot, resources) {
   return engineRoot
 }
 
+function assertInstalledRegularFile(rootPath, relativePath, label) {
+  const target = join(rootPath, ...relativePath.split('/'))
+  let metadata
+  let resolvedRoot
+  let resolvedTarget
+  try {
+    metadata = lstatSync(target)
+    resolvedRoot = realpathSync(rootPath)
+    resolvedTarget = realpathSync(target)
+  } catch {
+    throw new Error(label + ' is unavailable: ' + relativePath)
+  }
+  assertion(metadata.isSymbolicLink() === false && metadata.isFile() && isContained(resolvedRoot, resolvedTarget), label + ' is unavailable: ' + relativePath)
+}
+
+function assertInitBacklogClosure(installedRoot) {
+  const skillRoot = join(installedRoot, 'skills', 'init-backlog')
+  for (const fileName of ['SKILL.md', 'init-backlog.js']) {
+    assertInstalledRegularFile(installedRoot, 'skills/init-backlog/' + fileName, 'Installed init-backlog controller file')
+  }
+  let manifest
+  try {
+    manifest = JSON.parse(readFileSync(join(skillRoot, 'templates', 'manifest.json'), 'utf8'))
+  } catch {
+    throw new Error('Installed template manifest is unavailable')
+  }
+  assertion(manifest !== null && typeof manifest === 'object' && !Array.isArray(manifest) && Array.isArray(manifest.assets) && manifest.assets.length > 0, 'Installed template manifest is invalid')
+  for (const asset of manifest.assets) {
+    assertion(asset !== null && typeof asset === 'object' && typeof asset.path === 'string' && /^[a-zA-Z0-9_-][a-zA-Z0-9._-]*$/.test(asset.path), 'Installed template asset path is invalid')
+    assertInstalledRegularFile(skillRoot, 'templates/' + asset.path, 'Installed template asset')
+  }
+
+  return skillRoot
+}
+
 async function verifyInstalled({ host, execute, candidate, tempRoot, row }) {
   const resources = loadCandidateEngineResources(candidate.root)
   if (host === 'claude') {
@@ -570,6 +605,7 @@ async function verifyInstalled({ host, execute, candidate, tempRoot, row }) {
     const details = await execute('claude', ['plugin', 'details', 'nightshift@astenlund'])
     const installedRoot = assertInstalledCandidate(candidate.root, parseClaudeInstalledRoot(list.stdout), tempRoot, candidate.version)
     assertEngineClosure(installedRoot, resources)
+    assertInitBacklogClosure(installedRoot)
     const observed = assertClaudeInventory(details.stdout, PUBLIC_SKILLS, 'Claude public discovery differs from candidate')
     row.publicSkills = observed.map((name) => 'nightshift:' + name)
     row.legacyCommands = []
@@ -580,6 +616,7 @@ async function verifyInstalled({ host, execute, candidate, tempRoot, row }) {
   const list = await execute('codex', ['plugin', 'list', '--json'])
   const installedRoot = assertInstalledCandidate(candidate.root, parseCodexInstalledRoot(list.stdout), tempRoot, candidate.version)
   assertEngineClosure(installedRoot, resources)
+  assertInitBacklogClosure(installedRoot)
   const catalog = await execute('codex', buildCodexArgv({ prompt: CODEX_CATALOG_PROMPT, schemaPath: join(candidate.root, 'tests', 'fixtures', 'codex-skill-catalog.schema.json') }))
   const observed = parseJsonOutput(catalog.stdout, 'Codex skill catalog').skills
   assertion(Array.isArray(observed) && observed.every((name) => typeof name === 'string') && new Set(observed).size === observed.length && [...observed].sort(compareOrdinal).join(',') === observed.join(',') && observed.join(',') === expectedPublicSkillNames().join(','), 'Codex public discovery differs from candidate')
@@ -718,4 +755,4 @@ async function runCell({ host, mode, checkoutRoot, evidenceRoot }) {
   return row
 }
 
-module.exports = { CODEX_CATALOG_PROMPT, PUBLIC_SKILLS, RUNTIME_KEYS, assembleClaudePromptBaseline, assembleCodexPromptBaseline, assertClaudeInventory, assertEngineClosure, buildCodexArgv, classifyChildExit, createCellSequence, createMarketplace, evaluateEvidence, executeCellSequence, loadCandidateEngineResources, loadLegacyBaseline, loadPromptBaseline, parseClaudeAuthStatus, parseClaudeDetails, parseCodexAuthStatus, projectRuntimeEnvironment, resolveExternalClaudeConfigRoot, runCell, stageCandidate, validateEvidenceRow }
+module.exports = { CODEX_CATALOG_PROMPT, PUBLIC_SKILLS, RUNTIME_KEYS, assembleClaudePromptBaseline, assembleCodexPromptBaseline, assertClaudeInventory, assertEngineClosure, assertInitBacklogClosure, buildCodexArgv, classifyChildExit, createCellSequence, createMarketplace, evaluateEvidence, executeCellSequence, loadCandidateEngineResources, loadLegacyBaseline, loadPromptBaseline, parseClaudeAuthStatus, parseClaudeDetails, parseCodexAuthStatus, projectRuntimeEnvironment, resolveExternalClaudeConfigRoot, runCell, stageCandidate, validateEvidenceRow }
