@@ -45,6 +45,7 @@ Backlog prose is one paragraph or one bullet per physical line, never hard-wrapp
 - Run the init-backlog controller suite: `node tests/init-backlog-controller.test.js`.
 - Run the release surface suite: `node tests/release-surface.test.js` (release state, CI conformance, documented command lists, and the version-increase gate over the unpushed range locally or the pull-request range in CI, where the checkout fetches full history so `origin/main` resolves; generic, so version bumps and doc edits never touch a feature suite). The gate reads committed state only and skips with a diagnostic when no upstream or `origin/main` resolves; the diagnostic names the last git error so a broken git reads differently from a missing ref.
 - CI runs all ten suites on Node 22.
+- The plugin is developed and verified on Windows, and CI runs on `windows-latest`; POSIX code paths exist but are inert and unsupported for live use.
 - Run the ready parser manually: `node skills/ready/ready.js [repo-root-or-.claude-dir]` (emits JSON on stdout).
 - Check or repair backlog line discipline manually: `node skills/init-backlog/unwrap.js [--write] .claude` (JSON report on stdout; exit 1 in check mode when any file is hard-wrapped, or in either mode when a file could not be read).
 - There is no build or lint step.

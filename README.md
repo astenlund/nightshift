@@ -17,7 +17,7 @@ Nightshift's answer is structural rather than motivational. Reviewers are separa
 /plugin install nightshift@astenlund
 ```
 
-Needs Node.js on PATH. Skills are namespaced: `/nightshift:handover`, `/nightshift:ready`, and so on.
+Needs Node.js on PATH. The plugin is developed and verified on Windows; POSIX code paths exist but are inert and unsupported for live use. Skills are namespaced: `/nightshift:handover`, `/nightshift:ready`, and so on.
 
 ## What it looks like
 
