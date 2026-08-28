@@ -27,6 +27,14 @@ function canonicalJsonLine(value) {
   return Buffer.from(canonicalJson(value) + '\n', 'utf8')
 }
 
+function isCanonicalBase64(value) {
+  if (typeof value !== 'string' || !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(value)) {
+    return false
+  }
+
+  return Buffer.from(value, 'base64').toString('base64') === value
+}
+
 function createTranscript({ limit = BYTE_BOUNDS.MAX_TRANSCRIPT_BYTES } = {}) {
   const budget = createByteBudget({ limit, limitName: 'MAX_TRANSCRIPT_BYTES' })
   const lines = []
@@ -90,4 +98,4 @@ function createProxyTrace({ flush, limit = BYTE_BOUNDS.MAX_PROXY_TRACE_BYTES } =
   }
 }
 
-module.exports = { canonicalJson, canonicalJsonLine, createProxyTrace, createTranscript }
+module.exports = { canonicalJson, canonicalJsonLine, createProxyTrace, createTranscript, isCanonicalBase64 }

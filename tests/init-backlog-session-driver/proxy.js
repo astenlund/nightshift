@@ -1,7 +1,7 @@
 'use strict'
 
 const { BYTE_BOUNDS, DEADLINES } = require('./state')
-const { canonicalJson, canonicalJsonLine } = require('./transcript')
+const { canonicalJson, canonicalJsonLine, isCanonicalBase64 } = require('./transcript')
 
 const CLIENT_FRAME_MEMBERS = 'requestBase64,token'
 const WORKER_REPLY_MEMBERS = 'exitCode,ordinal,stderrBase64,stdoutBase64'
@@ -13,14 +13,6 @@ const MAX_APPLY_REQUEST_BYTES = 16777216
 // around the Base64 request payload in one client frame.
 const PROXY_CLIENT_FRAME_ENVELOPE_ALLOWANCE_BYTES = 1024
 const MAX_PROXY_CLIENT_FRAME_BYTES = 4 * Math.ceil(MAX_APPLY_REQUEST_BYTES / 3) + PROXY_CLIENT_FRAME_ENVELOPE_ALLOWANCE_BYTES
-
-function isCanonicalBase64(value) {
-  if (typeof value !== 'string' || !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(value)) {
-    return false
-  }
-
-  return Buffer.from(value, 'base64').toString('base64') === value
-}
 
 function parseCanonicalObject(bytes, expectedMemberKey) {
   let parsed

@@ -4,21 +4,13 @@
 const { dirname, join } = require('node:path')
 
 const { BYTE_BOUNDS, collectControllerRuntimeClosure, createLineDecoder } = require('./init-backlog-session-driver')
-const { canonicalJson, canonicalJsonLine } = require('./init-backlog-session-driver/transcript')
+const { canonicalJson, canonicalJsonLine, isCanonicalBase64 } = require('./init-backlog-session-driver/transcript')
 
 class WorkerProtocolError extends Error {
   constructor(message) {
     super(message)
     this.name = 'WorkerProtocolError'
   }
-}
-
-function isCanonicalBase64(value) {
-  if (typeof value !== 'string' || !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(value)) {
-    return false
-  }
-
-  return Buffer.from(value, 'base64').toString('base64') === value
 }
 
 function createWorkerRuntime({ entryPath, loadModule = require }) {
