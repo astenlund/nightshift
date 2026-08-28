@@ -160,6 +160,30 @@ function windowsHomeCandidates(env, systemDirectory) {
   return result
 }
 
+function pushConfiguredIgnoreCandidate(candidates, configured, { isAbsolutePath, resolvePath, root }) {
+  if (isAbsolutePath(configured)) candidates.push(configured)
+  else if (typeof root === 'string' && isAbsolutePath(root)) candidates.push(resolvePath(root, configured))
+  else throw new Error('Configured global ignore path is not absolute')
+}
+
+function firstExistingIgnoreCandidate(candidates, { canonicalize, isExisting, platform, resolvePath, systemDirectory }) {
+  for (const candidate of candidates) {
+    const path = resolvePath(candidate)
+    if (systemDirectory && pathIdentity(path, resolvePath(systemDirectory), platform)) {
+      continue
+    }
+    try {
+      if (isExisting(path)) {
+        return canonicalize(path)
+      }
+    } catch {
+      // An inaccessible candidate is not a winning source.
+    }
+  }
+
+  return null
+}
+
 function resolveGitExcludesFile(options = {}) {
   const platform = options.platform ?? process.platform
   const env = options.env ?? process.env
@@ -171,9 +195,7 @@ function resolveGitExcludesFile(options = {}) {
   const resolvePath = platform === 'win32' ? win32.resolve : resolve
   const isAbsolutePath = platform === 'win32' ? win32.isAbsolute : isAbsolute
   if (typeof configured === 'string' && configured.length > 0) {
-    if (isAbsolutePath(configured)) candidates.push(configured)
-    else if (typeof options.root === 'string' && isAbsolutePath(options.root)) candidates.push(resolvePath(options.root, configured))
-    else throw new Error('Configured global ignore path is not absolute')
+    pushConfiguredIgnoreCandidate(candidates, configured, { isAbsolutePath, resolvePath, root: options.root })
   }
   if (typeof configured !== 'string' || configured.length === 0) {
     if (platform === 'win32' && !env.HOME) {
@@ -186,21 +208,8 @@ function resolveGitExcludesFile(options = {}) {
       candidates.push(env.USERPROFILE)
     }
   }
-  for (const candidate of candidates) {
-    const path = resolvePath(candidate)
-    if (systemDirectory && pathIdentity(path, resolvePath(systemDirectory), platform)) {
-      continue
-    }
-    try {
-      if (isExisting(path)) {
-        return canonicalize(path)
-      }
-    } catch {
-      // An inaccessible home candidate is not a winning source.
-    }
-  }
 
-  return null
+  return firstExistingIgnoreCandidate(candidates, { canonicalize, isExisting, platform, resolvePath, systemDirectory })
 }
 
 function resolveDefaultGlobalIgnoreFile(options = {}) {
@@ -214,9 +223,7 @@ function resolveDefaultGlobalIgnoreFile(options = {}) {
   const configured = options.configuredPath
   const candidates = []
   if (typeof configured === 'string' && configured.length > 0) {
-    if (isAbsolutePath(configured)) candidates.push(configured)
-    else if (typeof options.root === 'string' && isAbsolutePath(options.root)) candidates.push(resolvePath(options.root, configured))
-    else throw new Error('Configured global ignore path is not absolute')
+    pushConfiguredIgnoreCandidate(candidates, configured, { isAbsolutePath, resolvePath, root: options.root })
   } else if (typeof env.XDG_CONFIG_HOME === 'string' && env.XDG_CONFIG_HOME.length > 0) {
     candidates.push(joinPath(env.XDG_CONFIG_HOME, 'git', 'ignore'))
   } else {
@@ -228,17 +235,8 @@ function resolveDefaultGlobalIgnoreFile(options = {}) {
       for (const home of homes) candidates.push(joinPath(home, '.config', 'git', 'ignore'))
     }
   }
-  for (const candidate of candidates) {
-    const absolute = resolvePath(candidate)
-    if (options.systemDirectory !== undefined && pathIdentity(absolute, resolvePath(options.systemDirectory), platform)) continue
-    try {
-      if (exists(absolute)) return canonicalize(absolute)
-    } catch {
-      // An inaccessible candidate is not a winning diagnostic identity.
-    }
-  }
 
-  return null
+  return firstExistingIgnoreCandidate(candidates, { canonicalize, isExisting: exists, platform, resolvePath, systemDirectory: options.systemDirectory })
 }
 
 function runGit(root, args, options = {}) {

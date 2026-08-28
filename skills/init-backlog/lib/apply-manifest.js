@@ -398,7 +398,7 @@ function admitApplyManifest(request, options = {}) {
     // Admission is deliberately effect-free. Publication owns the adapter call.
   }
 
-  return { actions, electionMarker: electionMarkerState(inspection, choice), manifestId, ready, snapshotId: inspection.snapshotId, states: [...states.entries()].map(([target, state]) => ({ ...state, target })) }
+  return { actions, electionMarker: projection.electionMarker, manifestId, ready, snapshotId: inspection.snapshotId, states: [...states.entries()].map(([target, state]) => ({ ...state, target })) }
 }
 
 module.exports = { admitApplyManifest, simulateReady }

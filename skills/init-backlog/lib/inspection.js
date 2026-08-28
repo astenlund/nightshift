@@ -10,7 +10,7 @@ const { loadManifest } = require('./assets')
 const { inspectBackups } = require('./backups')
 const { InitBacklogError, failureRecord } = require('./errors')
 const { HTML_BLOCK_TYPE_SIX_TAGS, discoverControlledMarkdown, resolveGuidance } = require('./guidance')
-const { canonicalRoot, createInitialLock, initialLockPaths, removeInitialLock, stableOpenFile } = require('./filesystem')
+const { canonicalRoot, comparableMode, createInitialLock, initialLockPaths, removeInitialLock, stableOpenFile } = require('./filesystem')
 const { DIGEST_PATTERN, RECOVERY_LOCK_BASENAME, RECOVERY_MARKER_BASENAME, canonicalJson, compareOrdinal, deriveProposalId, deriveSnapshotId, sameKeys, sha256 } = require('./protocol')
 const { detectGitKind, inspectGitPolicy, newlineStyle } = require('./git-policy')
 
@@ -363,7 +363,7 @@ function readElectionMarker(root, options = {}) {
   }
   if (!validateElectionMarkerRecord(value, root)) throw new Error('Election marker schema is invalid')
 
-  const mode = stable?.mode ?? modeFromMetadata(metadata, options.platform)
+  const mode = stable?.mode ?? comparableMode(metadata, options.platform)
 
   return { marker: value.state, mode, path, snapshotId: value.snapshotId }
 }
@@ -386,15 +386,6 @@ function discoverInitialLockStages(root, options = {}) {
       inspectError('runtime-lock', 'Orphan initial lock stage cannot be trusted.', name, error, 'lock')
     }
   })
-}
-
-function modeFromMetadata(metadata, platform = process.platform) {
-  if (platform === 'win32') return null
-  if (typeof metadata?.mode !== 'bigint') throw new Error('Filesystem mode is not BigInt')
-  const masked = metadata.mode & 0o7777n
-  if (masked < 0n || masked > 4095n) throw new Error('Filesystem mode is out of range')
-
-  return Number(masked)
 }
 
 function creationMode(kind, options = {}) {
@@ -427,7 +418,7 @@ function targetState(target, root, options = {}) {
   }
   if (metadata.isSymbolicLink() || (!metadata.isFile() && !metadata.isDirectory())) inspectError('filesystem', 'Inspected target is not an ordinary object.', target)
   if (options.expectedKind !== undefined && (options.expectedKind === 'file' ? !metadata.isFile() : !metadata.isDirectory())) inspectError('filesystem', 'Inspected target kind does not match its declaration.', target)
-  if (metadata.isDirectory()) return { kind: 'directory', metadata, mode: modeFromMetadata(metadata, options.platform), path: absolute, present: true }
+  if (metadata.isDirectory()) return { kind: 'directory', metadata, mode: comparableMode(metadata, options.platform), path: absolute, present: true }
   try {
     return { ...stableOpenFile(root, absolute, { ...options, requireSingleLink: true }), kind: 'file', metadata, path: absolute, present: true }
   } catch (error) {
@@ -766,4 +757,4 @@ function inspect(root, host, hostContext = {}, options = {}) {
   }
 }
 
-module.exports = { buildIgnoreProbes, buildReadyCatalog, collectInspection, composeElectionMarker, composeElectionRecord, creationMode, decodeText, discoverInitialLockStages, inspect, inspectRegions, isReadyCatalogTarget, lineRecords, materializeText, maskedRecords, modeFromMetadata, projectGitProblems, projectReadyProblems, proposal, readElectionMarker, targetRecord, targetState, validateElectionMarkerRecord }
+module.exports = { buildIgnoreProbes, buildReadyCatalog, collectInspection, composeElectionMarker, composeElectionRecord, creationMode, decodeText, discoverInitialLockStages, inspect, inspectRegions, isReadyCatalogTarget, lineRecords, materializeText, maskedRecords, projectGitProblems, projectReadyProblems, proposal, readElectionMarker, targetRecord, targetState, validateElectionMarkerRecord }

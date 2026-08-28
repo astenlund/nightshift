@@ -983,6 +983,7 @@ module.exports = {
   canonicalRoot,
   classifyPid,
   cleanRequestResidue,
+  comparableMode,
   consumeRequest,
   decodeDirectoryName,
   enumerateDirectory,
