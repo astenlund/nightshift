@@ -11,7 +11,7 @@ const { inspectBackups } = require('./backups')
 const { InitBacklogError, failureRecord } = require('./errors')
 const { HTML_BLOCK_TYPE_SIX_TAGS, discoverControlledMarkdown, resolveGuidance } = require('./guidance')
 const { canonicalRoot, createInitialLock, initialLockPaths, removeInitialLock, stableOpenFile } = require('./filesystem')
-const { DIGEST_PATTERN, RECOVERY_LOCK_BASENAME, RECOVERY_MARKER_BASENAME, canonicalJson, compareOrdinal, deriveProposalId, deriveSnapshotId, sha256 } = require('./protocol')
+const { DIGEST_PATTERN, RECOVERY_LOCK_BASENAME, RECOVERY_MARKER_BASENAME, canonicalJson, compareOrdinal, deriveProposalId, deriveSnapshotId, sameKeys, sha256 } = require('./protocol')
 const { detectGitKind, inspectGitPolicy, newlineStyle } = require('./git-policy')
 
 function inspectError(code, detail, target = null, cause, phase = 'inspect') {
@@ -261,10 +261,10 @@ function projectReadyProblems(ready, catalog = []) {
   }
   const problems = []
   const evidence = ready.evidence
-  if (evidence === null || typeof evidence !== 'object' || Array.isArray(evidence) || Object.keys(evidence).sort(compareOrdinal).join('\0') !== ['legacyHistory', 'notices', 'structuralErrors'].sort(compareOrdinal).join('\0')) throw new Error('Ready evidence sidecar is invalid')
+  if (!sameKeys(evidence, ['legacyHistory', 'notices', 'structuralErrors'])) throw new Error('Ready evidence sidecar is invalid')
   const evidenceItems = (category, index) => {
     const items = evidence[category]
-    if (!Array.isArray(items) || items.length !== (category === 'structuralErrors' ? (ready.structuralErrors ?? []).length : (ready.notices ?? []).length) || items[index] === null || typeof items[index] !== 'object' || Array.isArray(items[index]) || Object.keys(items[index]).sort(compareOrdinal).join('\0') !== ['evidencePaths', 'kind', 'ordinal'].sort(compareOrdinal).join('\0') || items[index].kind !== category || items[index].ordinal !== index || !Array.isArray(items[index].evidencePaths)) throw new Error('Ready evidence sidecar is invalid')
+    if (!Array.isArray(items) || items.length !== (category === 'structuralErrors' ? (ready.structuralErrors ?? []).length : (ready.notices ?? []).length) || !sameKeys(items[index], ['evidencePaths', 'kind', 'ordinal']) || items[index].kind !== category || items[index].ordinal !== index || !Array.isArray(items[index].evidencePaths)) throw new Error('Ready evidence sidecar is invalid')
     if (items[index].evidencePaths.some((path, pathIndex) => typeof path !== 'string' || pathIndex > 0 && compareOrdinal(items[index].evidencePaths[pathIndex - 1], path) >= 0)) throw new Error('Ready evidence sidecar paths are not ordered')
 
     return items[index].evidencePaths
@@ -284,7 +284,7 @@ function projectReadyProblems(ready, catalog = []) {
     problems.push({ blocking: false, code: 'ready-notice', detail: notice, evidencePaths, target })
   }
   const legacyItems = evidence.legacyHistory
-  if (legacyItems.some((item, index) => item === null || typeof item !== 'object' || Array.isArray(item) || Object.keys(item).sort(compareOrdinal).join('\0') !== ['historyPath', 'indexPath'].sort(compareOrdinal).join('\0') || typeof item.indexPath !== 'string' || typeof item.historyPath !== 'string' || index > 0 && compareOrdinal(`${legacyItems[index - 1].indexPath}\0${legacyItems[index - 1].historyPath}`, `${item.indexPath}\0${item.historyPath}`) >= 0)) throw new Error('Legacy history evidence is invalid')
+  if (legacyItems.some((item, index) => !sameKeys(item, ['historyPath', 'indexPath']) || typeof item.indexPath !== 'string' || typeof item.historyPath !== 'string' || index > 0 && compareOrdinal(`${legacyItems[index - 1].indexPath}\0${legacyItems[index - 1].historyPath}`, `${item.indexPath}\0${item.historyPath}`) >= 0)) throw new Error('Legacy history evidence is invalid')
   for (const item of legacyItems) {
     const indexPath = legacyEvidenceTarget(item.indexPath)
     const historyPath = item.historyPath
@@ -332,7 +332,7 @@ function composeElectionMarker(electionMarker, gitKind, scaffoldPresent, digest,
 }
 
 function validateElectionMarkerRecord(value, root) {
-  return value !== null && typeof value === 'object' && !Array.isArray(value) && Object.keys(value).sort(compareOrdinal).join('\0') === ['protocolVersion', 'root', 'snapshotId', 'state'].sort(compareOrdinal).join('\0') && value.protocolVersion === 1 && value.root === root && ['deferred', 'track', 'ignore'].includes(value.state) && typeof value.snapshotId === 'string' && DIGEST_PATTERN.test(value.snapshotId)
+  return sameKeys(value, ['protocolVersion', 'root', 'snapshotId', 'state']) && value.protocolVersion === 1 && value.root === root && ['deferred', 'track', 'ignore'].includes(value.state) && typeof value.snapshotId === 'string' && DIGEST_PATTERN.test(value.snapshotId)
 }
 
 function readElectionMarker(root, options = {}) {

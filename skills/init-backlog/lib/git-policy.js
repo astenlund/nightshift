@@ -5,11 +5,12 @@ const { TextDecoder } = require('node:util')
 const { existsSync, lstatSync, realpathSync } = require('node:fs')
 const { isAbsolute, join, relative, resolve, win32 } = require('node:path')
 
-const { DIGEST_PATTERN, canonicalJson, compareOrdinal, sha256 } = require('./protocol')
+const { DIGEST_PATTERN, canonicalJson, compareOrdinal, sameKeys, sha256 } = require('./protocol')
 const { resolveTrustedExecutable } = require('./filesystem')
 
 const GIT_CANDIDATES = ['HEAD', 'objects', 'refs']
 const CONFIG_KEYS = ['core.autocrlf', 'core.eol', 'core.excludesFile']
+const [AUTOCRLF_CONFIG_KEY, EOL_CONFIG_KEY, EXCLUDES_FILE_CONFIG_KEY] = CONFIG_KEYS
 
 function buffers(value) {
   return Buffer.isBuffer(value) ? value : Buffer.from(value ?? '', 'utf8')
@@ -33,7 +34,7 @@ function validateCheckAttrRecords(records, paths, attributes) {
       text: new Set(['auto', 'set', 'unset', 'unspecified']),
       'working-tree-encoding': new Set(['unset', 'unspecified']),
     }
-    if (record === null || typeof record !== 'object' || Object.keys(record).sort(compareOrdinal).join('\0') !== ['attribute', 'path', 'value'].sort(compareOrdinal).join('\0') || record.path !== expected[index].path || record.attribute !== expected[index].attribute || typeof record.value !== 'string' || !values[record.attribute]?.has(record.value)) {
+    if (!sameKeys(record, ['attribute', 'path', 'value']) || record.path !== expected[index].path || record.attribute !== expected[index].attribute || typeof record.value !== 'string' || !values[record.attribute]?.has(record.value)) {
       throw new Error('Git check-attr record is invalid')
     }
   })
@@ -411,9 +412,9 @@ function inspectGitPolicy(root, options = {}) {
   decodeGitPath(runGit(root, ['rev-parse', '--show-toplevel'], gitOptions), 'top-level probe', root)
   const format = decodeGitLine(runGit(root, ['rev-parse', '--show-object-format=storage'], gitOptions), 'object format')
   if (!['sha1', 'sha256'].includes(format)) throw new Error('Git object format is invalid')
-  const autocrlf = readGitConfig(root, 'core.autocrlf', 'autocrlf', gitOptions)
-  const eol = readGitConfig(root, 'core.eol', 'eol', gitOptions)
-  const excludesFile = readGitConfig(root, 'core.excludesFile', 'path', { ...gitOptions, configPath: true })
+  const autocrlf = readGitConfig(root, AUTOCRLF_CONFIG_KEY, 'autocrlf', gitOptions)
+  const eol = readGitConfig(root, EOL_CONFIG_KEY, 'eol', gitOptions)
+  const excludesFile = readGitConfig(root, EXCLUDES_FILE_CONFIG_KEY, 'path', { ...gitOptions, configPath: true })
   const trackedPlanPaths = parseNulPaths(requireGitResult(runGit(root, ['ls-files', '-z', '--', '.claude/plans'], gitOptions), 'tracked plan paths'))
   const electivePaths = ['.claude/QUICK_WINS.md', '.claude/FEATURES.md', '.claude/BUGS.md', '.claude/PATTERNS.md', '.claude/QUICK_WINS_HISTORY.md', '.claude/FEATURES_HISTORY.md', '.claude/BUGS_HISTORY.md', '.claude/features/', '.claude/bugs/', '.claude/patterns/']
   const trackedBacklogPaths = parseNulPaths(requireGitResult(runGit(root, ['ls-files', '-z', '--', ...electivePaths], gitOptions), 'tracked backlog paths'))
@@ -629,7 +630,7 @@ function normalizeGitPolicy(policy = {}) {
     throw new Error('Git policy fields are invalid')
   }
   const newlinePolicies = [...(policy.newlinePolicies ?? [])].map((item) => {
-    if (item === null || typeof item !== 'object' || Object.keys(item).sort(compareOrdinal).join('\0') !== ['mode', 'source', 'style', 'target'].sort(compareOrdinal).join('\0') || typeof item.target !== 'string' || !['git', 'siblings', 'platform', 'choice'].includes(item.source) || !['lf', 'crlf', 'choice-required'].includes(item.style) || item.mode !== null && (!Number.isSafeInteger(item.mode) || item.mode < 0 || item.mode > 4095)) {
+    if (!sameKeys(item, ['mode', 'source', 'style', 'target']) || typeof item.target !== 'string' || !['git', 'siblings', 'platform', 'choice'].includes(item.source) || !['lf', 'crlf', 'choice-required'].includes(item.style) || item.mode !== null && (!Number.isSafeInteger(item.mode) || item.mode < 0 || item.mode > 4095)) {
       throw new Error('Git newline policy fields are invalid')
     }
 

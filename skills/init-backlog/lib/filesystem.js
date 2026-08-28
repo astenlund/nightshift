@@ -26,7 +26,7 @@ const { TextDecoder } = require('node:util')
 const { isAbsolute, join } = require('node:path')
 
 const { InitBacklogError } = require('./errors')
-const { DIGEST_PATTERN, MAX_APPLY_REQUEST_BYTES, NONCE_PATTERN, RECOVERY_LOCK_BASENAME, assertSafeWindowsScalar, canonicalJson, compareOrdinal, sha256, validateNonce } = require('./protocol')
+const { DIGEST_PATTERN, MAX_APPLY_REQUEST_BYTES, NONCE_PATTERN, RECOVERY_LOCK_BASENAME, assertSafeWindowsScalar, canonicalJson, compareOrdinal, sameKeys, sha256, validateNonce } = require('./protocol')
 
 const REQUEST_GATE_BASENAME = '.nightshift-init-backlog.request-gate'
 const REQUEST_OWNER_STAGE_BASENAME = 'owner.new'
@@ -253,7 +253,7 @@ function validateAttributeProbe(response, paths) {
     throw new Error('Windows attribute helper response is invalid')
   }
   response.items.forEach((item, index) => {
-    if (item === null || typeof item !== 'object' || Object.keys(item).sort(compareOrdinal).join('\0') !== ['attributes', 'path', 'reparsePoint'].sort(compareOrdinal).join('\0') || item.path !== paths[index] || !Number.isSafeInteger(item.attributes) || item.attributes < 0 || item.reparsePoint !== ((item.attributes & 0x400) === 0x400)) {
+    if (!sameKeys(item, ['attributes', 'path', 'reparsePoint']) || item.path !== paths[index] || !Number.isSafeInteger(item.attributes) || item.attributes < 0 || item.reparsePoint !== ((item.attributes & 0x400) === 0x400)) {
       throw new Error('Windows attribute helper item is invalid')
     }
     if (item.reparsePoint) {

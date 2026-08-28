@@ -301,7 +301,7 @@ function analyzeUnwrapCatalog(items) {
 }
 
 function sortedEntries(directory) {
-  return fs.readdirSync(directory, { withFileTypes: true }).sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+  return fs.readdirSync(directory, { withFileTypes: true }).sort((a, b) => compareTargets(a.name, b.name));
 }
 
 // The on-disk identity of a path: links resolved and, on case-insensitive
