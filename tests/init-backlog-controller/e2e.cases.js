@@ -8,7 +8,7 @@
 
 const assert = require('node:assert/strict')
 const { execFileSync } = require('node:child_process')
-const { existsSync, mkdtempSync, realpathSync, rmSync, writeFileSync } = require('node:fs')
+const { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } = require('node:fs')
 const { tmpdir } = require('node:os')
 const { join } = require('node:path')
 const test = require('node:test')
@@ -214,6 +214,30 @@ function runE2eCases() {
       for (const target of ['.claude/BUGS.md', '.claude/FEATURES.md', '.claude/PATTERNS.md', '.claude/QUICK_WINS.md']) {
         assert.ok(existsSync(join(root, ...target.split('/'))), `scaffold target was not published: ${target}`)
       }
+    } finally {
+      removeRoot(root)
+    }
+  })
+
+  test('creating the missing root guidance file does not fail its own post-publication verification', () => {
+    const root = makeRoot()
+    try {
+      const inspected = driveCli(root, inspectRequest(root))
+      assert.equal(inspected.exitCode, 0, inspected.stderr)
+      const inspection = inspected.record
+      assert.equal(inspection.hostContext.claudeRootExclusionStatus, 'unexcluded-missing')
+      assert.ok(inspection.proposals.some((item) => item.action.kind === 'create-from-template' && item.action.target === 'CLAUDE.md'), 'the guidance creation must be proposed')
+
+      const applied = driveCli(root, buildApplyRequest(root, inspection))
+
+      assert.equal(applied.stderr, '')
+      assert.notEqual(applied.record.detail, 'Post-publication ready verification failed.', 'verification must expect the guidance file the apply itself created')
+      assert.equal(applied.record.ok, true, `apply failed: ${JSON.stringify(applied.record)}`)
+      assert.equal(applied.record.complete, true, `apply is incomplete: ${JSON.stringify(applied.record.incompleteTargets)}`)
+      assert.equal(applied.exitCode, 0)
+      assert.equal(applied.record.postInspect.hostContext.claudeRootExclusionStatus, 'included', 'the verification host context must reflect the published guidance file')
+      assert.ok(existsSync(join(root, 'CLAUDE.md')), 'the guidance file must remain published')
+      assert.ok(readFileSync(join(root, 'CLAUDE.md'), 'utf8').includes('Backlogs and indexes'), 'the published guidance file must carry the controlled section')
     } finally {
       removeRoot(root)
     }

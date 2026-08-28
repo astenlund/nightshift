@@ -837,15 +837,30 @@ function removeMarker(request, admission, root, options) {
   if (options.ownedTemporaries?.has(paths.electionOldWitness)) removeOwnedTemporary(root, paths.electionOldWitness, options)
 }
 
-function currentInspection(request, root, options) {
-  if (typeof options.collectInspection === 'function') return options.collectInspection(root, request.host, request.hostContext, options)
+function currentInspection(request, root, options, hostContext = request.hostContext) {
+  if (typeof options.collectInspection === 'function') return options.collectInspection(root, request.host, hostContext, options)
 
-  return collectInspection(root, request.host, request.hostContext, options)
+  return collectInspection(root, request.host, hostContext, options)
+}
+
+// Post-publication verification observes the tree the manifest just wrote, so
+// the host context it re-resolves guidance under must account for the approved
+// actions already published. Creating the missing Claude root guidance file
+// makes it present, and re-inspecting under the request's original
+// `unexcluded-missing` status would reject the apply's own durable effect.
+function publishedHostContext(request, admission, outcomes) {
+  const hostContext = request.hostContext
+  if (request.host !== 'claude-code' || hostContext.claudeRootExclusionStatus !== 'unexcluded-missing') return hostContext
+  const rootGuidance = request.inspection?.guidance?.baseAdapter
+  const published = outcomes.some((outcome) => outcome.target === rootGuidance && (admission?.actions ?? []).some((action) => action.id === outcome.actionId && action.kind === 'create-from-template'))
+  if (!published) return hostContext
+
+  return { ...hostContext, claudeContextSource: 'host-observed', claudeRootExclusionStatus: 'included' }
 }
 
 function verifiedPostInspect(request, root, options, admission, outcomes, { onReadyFailure } = {}) {
   try {
-    return currentInspection(request, root, options)
+    return currentInspection(request, root, options, publishedHostContext(request, admission, outcomes))
   } catch (error) {
     if (onReadyFailure !== undefined) onReadyFailure(error)
     if (error instanceof InitBacklogError && error.record.code === 'ready-failed' && error.record.phase === 'verify') throwEnrichedReadyFailure(error, admission.manifestId, outcomes)
