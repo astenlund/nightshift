@@ -19,6 +19,7 @@ const { runActivationCases } = require('./init-backlog-controller/activation.cas
 const { runOracleCases } = require('./init-backlog-controller/oracles.cases')
 const { runSessionCases } = require('./init-backlog-controller/session.cases')
 const { runProcessCases } = require('./init-backlog-controller/process.cases')
+const { runHostEntryCases } = require('./init-backlog-controller/host-entry.cases')
 const { canonicalJson, fixtureRoot, git, loadPromptBaseline, sha256, sourceClosure } = require('./init-backlog-controller/helpers')
 const { assembleClaudePromptBaseline, assembleCodexPromptBaseline, loadPromptBaseline: loadHostPromptBaseline, stageCandidate } = require('./host-discovery-smoke-lib')
 
@@ -120,3 +121,4 @@ runActivationCases(REPOSITORY_ROOT)
 runOracleCases(REPOSITORY_ROOT)
 runSessionCases(REPOSITORY_ROOT)
 runProcessCases(REPOSITORY_ROOT)
+runHostEntryCases(REPOSITORY_ROOT)

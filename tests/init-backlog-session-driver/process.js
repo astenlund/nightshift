@@ -123,6 +123,9 @@ function createDirectPosixFallbackAdapter({ clock = realClock(), kill = (pid, si
     groupTerminationProven() {
       return groupAbsent
     },
+    hostExitCode() {
+      return null
+    },
     input(bytes) {
       if (mode !== 'session' || launch.state() !== 'spawned' || child === null || child.stdin === null) {
         return { ok: false }
@@ -479,6 +482,9 @@ function createWindowsJobRunnerAdapter({
       }
 
       return { proven: false, reason: 'the natural-completion conjunction is incomplete' }
+    },
+    hostExitCode() {
+      return hostExitCode
     },
     dispose() {
       if (disposed) {
