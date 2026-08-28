@@ -241,6 +241,9 @@ test('analyzeCatalog evidence uses only exact catalog identities', () => {
     { kind: 'notices', ordinal: 0, evidencePaths: ['FEATURES.md'] },
   ]);
 
+  // A malformed breakout link is the entry's own defect: it surfaces as the
+  // broken-link notice whose evidence carries only the exact catalog identity
+  // of the index file, never the malformed target itself.
   for (const target of [
     'features\\alpha.md',
     'features/foo:bar.md',
@@ -249,13 +252,19 @@ test('analyzeCatalog evidence uses only exact catalog identities', () => {
     'features/deep/../alpha.md',
     'features//alpha.md',
   ]) {
-    assert.throws(() => analyzeCatalog([
+    const malformed = analyzeCatalog([
       { target: 'FEATURES.md', contents: `## Area
 ### [Malformed](${target})
 
 **Requires:** none.
 ` },
-    ]), TypeError, target);
+    ]);
+    assert.deepStrictEqual(malformed.notices, [
+      `FEATURES.md entry "Malformed" links to ${target}, which does not exist; remove the broken link or create the file (its Requires line still resolves normally)`,
+    ], target);
+    assert.deepStrictEqual(malformed.evidence.notices, [
+      { kind: 'notices', ordinal: 0, evidencePaths: ['FEATURES.md'] },
+    ], target);
   }
 });
 
@@ -1554,6 +1563,37 @@ test('scanBreakoutTargets treats traversal, absolute, and backslash targets as b
   } finally {
     fs.rmSync(tmpRoot, { recursive: true, force: true });
   }
+});
+
+test('analyzeCatalog treats traversal, absolute, and backslash breakout links as broken links and never throws', () => {
+  const features = `# Features
+
+## Area
+
+### [Traversal](../outside.md)
+
+**Requires:** none.
+
+### [Absolute](/outside.md)
+
+**Requires:** none.
+
+### [Backslash](features\\outside.md)
+
+**Requires:** none.
+`;
+  const result = analyzeCatalog([{ target: 'FEATURES.md', contents: features }]);
+  assert.deepStrictEqual(result.notices, [
+    'FEATURES.md entry "Traversal" links to ../outside.md, which does not exist; remove the broken link or create the file (its Requires line still resolves normally)',
+    'FEATURES.md entry "Absolute" links to /outside.md, which does not exist; remove the broken link or create the file (its Requires line still resolves normally)',
+    'FEATURES.md entry "Backslash" links to features\\outside.md, which does not exist; remove the broken link or create the file (its Requires line still resolves normally)',
+  ]);
+  assert.deepStrictEqual(result.evidence.notices, [
+    { kind: 'notices', ordinal: 0, evidencePaths: ['FEATURES.md'] },
+    { kind: 'notices', ordinal: 1, evidencePaths: ['FEATURES.md'] },
+    { kind: 'notices', ordinal: 2, evidencePaths: ['FEATURES.md'] },
+  ]);
+  assert.deepStrictEqual(result.structuralErrors, [], 'a broken link is a notice, not a structural error');
 });
 
 test('breakoutTargets include entries whose classification terminated in a structural error', () => {

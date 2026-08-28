@@ -1152,7 +1152,15 @@ function scanCatalogBreakoutTargets(breakoutTargets, catalog) {
   const evidence = { notices: [], structuralErrors: [] };
   const scannedTargets = new Set();
   for (const rec of breakoutTargets) {
-    const target = requireCatalogReferenceTarget(rec.target);
+    let target;
+    try {
+      target = requireCatalogReferenceTarget(rec.target);
+    } catch (error) {
+      if (!(error instanceof CatalogError)) throw error;
+      notices.push(breakoutReadNotice(rec, 'ENOENT'));
+      evidence.notices.push([rec.index]);
+      continue;
+    }
     const contents = catalog.get(target);
     if (contents === undefined) {
       const notice = breakoutReadNotice(rec, 'ENOENT');
