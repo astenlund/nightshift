@@ -5,7 +5,7 @@ const { randomBytes } = require('node:crypto')
 const { existsSync, linkSync, lstatSync, mkdirSync, readdirSync, rmdirSync, unlinkSync } = require('node:fs')
 
 const { InitBacklogError, failureRecord, trustedSystemCode } = require('./errors')
-const { BACKUP_PATTERN, BACKUP_STAGE_PATTERN, backupParts, classifyBackup } = require('./backups')
+const { BACKUP_PATTERN, backupParts, classifyBackup } = require('./backups')
 const {
   canonicalRoot,
   classifyPid,
