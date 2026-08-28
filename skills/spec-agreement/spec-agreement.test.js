@@ -35,6 +35,7 @@ const {
   writeProvenanceStamp,
 } = require('./spec-agreement');
 const readyImplementation = require('../ready/ready');
+const { compareTargets } = require('../init-backlog/unwrap');
 
 const fixturePath = join(__dirname, 'fixtures', 'fingerprint-v1.json');
 const corpus = JSON.parse(readFileSync(fixturePath, 'utf8'));
@@ -69,13 +70,7 @@ function repositoryMarkdownPaths(relativeRoot) {
   const markdownPaths = [];
 
   function visit(relativePath) {
-    const entries = readdirSync(join(repositoryRoot, relativePath), { withFileTypes: true }).sort((left, right) => {
-      if (left.name === right.name) {
-        return 0;
-      }
-
-      return left.name < right.name ? -1 : 1;
-    });
+    const entries = readdirSync(join(repositoryRoot, relativePath), { withFileTypes: true }).sort((left, right) => compareTargets(left.name, right.name));
     for (const entry of entries) {
       const entryPath = `${relativePath}/${entry.name}`;
       if (entry.isDirectory()) {
