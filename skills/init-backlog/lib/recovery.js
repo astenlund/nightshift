@@ -9,6 +9,7 @@ const { BACKUP_PATTERN, BACKUP_STAGE_PATTERN, backupParts, classifyBackup } = re
 const {
   canonicalRoot,
   classifyPid,
+  comparableIdentity,
   createInitialLock,
   initialLockPaths,
   pathIsContained,
@@ -733,14 +734,14 @@ function recoverySuccess(request, inspection, disposition, status, changedPaths,
 function directoryIdentity(path) {
   const metadata = lstatSync(path, { bigint: true })
 
-  return `${metadata.dev}:${metadata.ino}`
+  return comparableIdentity(metadata)
 }
 
 function verifyRecoveryGateDirectory(path, options, expectedIdentity = null) {
   const metadata = lstatSync(path, { bigint: true })
   if (!metadata.isDirectory() || metadata.isSymbolicLink()) throw new Error('Recovery gate is not an ordinary directory')
   if ((options.platform ?? process.platform) !== 'win32' && Number(metadata.mode & 0o7777n) !== 0o700) throw new Error('Recovery gate mode is invalid')
-  const identity = `${metadata.dev}:${metadata.ino}`
+  const identity = comparableIdentity(metadata)
   if (expectedIdentity !== null && identity !== expectedIdentity) throw new Error('Recovery gate identity changed before owner staging')
 
   return identity
@@ -749,7 +750,7 @@ function verifyRecoveryGateDirectory(path, options, expectedIdentity = null) {
 function removeOwnedRecoveryGate(path, expectedIdentity) {
   try {
     const metadata = lstatSync(path, { bigint: true })
-    const identity = `${metadata.dev}:${metadata.ino}`
+    const identity = comparableIdentity(metadata)
     if (!metadata.isDirectory() || metadata.isSymbolicLink() || identity !== expectedIdentity || readdirSync(path).length !== 0) return
 
     rmdirSync(path)

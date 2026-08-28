@@ -996,6 +996,7 @@ module.exports = {
   canonicalRoot,
   classifyPid,
   cleanRequestResidue,
+  comparableIdentity,
   comparableMode,
   consumeRequest,
   decodeDirectoryName,
