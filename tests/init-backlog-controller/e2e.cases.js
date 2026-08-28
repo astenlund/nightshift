@@ -8,7 +8,7 @@
 
 const assert = require('node:assert/strict')
 const { execFileSync, spawn } = require('node:child_process')
-const { existsSync, linkSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } = require('node:fs')
+const { existsSync, linkSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } = require('node:fs')
 const { tmpdir } = require('node:os')
 const { join } = require('node:path')
 const test = require('node:test')
@@ -166,6 +166,29 @@ function makeElectionRoot(seed = '.claude/plans/\r\n') {
 
   return root
 }
+
+// The elective fragment the ignore branch appends, as the bundled template
+// declares it. Kept here as an explicit expectation so a template edit that
+// changes the covered surface has to update this pin deliberately.
+const ELECTIVE_IGNORE_PATHS = [
+  '.claude/QUICK_WINS.md',
+  '.claude/FEATURES.md',
+  '.claude/BUGS.md',
+  '.claude/PATTERNS.md',
+  '.claude/QUICK_WINS_HISTORY.md',
+  '.claude/FEATURES_HISTORY.md',
+  '.claude/BUGS_HISTORY.md',
+  '.claude/features/',
+  '.claude/bugs/',
+  '.claude/patterns/',
+]
+
+// Both shapes the elective append can take: alone when the mandatory plans rule
+// is already satisfied, and chained onto the mandatory append when it is not.
+const IGNORE_ELECTION_CASES = [
+  { name: 'appends the elective paths when the plans rule is already satisfied', reasons: ['elective-ignore'], seed: '.claude/plans/\r\n' },
+  { name: 'chains the elective append onto the mandatory plans append', reasons: ['elective-ignore', 'plans-policy'], seed: 'node_modules/\r\n' },
+]
 
 function electionApply(root, choice) {
   const inspected = driveCli(root, inspectRequest(root, 'claude-code', claudeHostContext('included')))
@@ -525,6 +548,92 @@ function runE2eCases() {
       assert.equal(linked.record.ok, false)
       assert.equal(linked.record.code, 'runtime-marker')
       assert.equal(linked.record.detail, 'Election marker is invalid.')
+    } finally {
+      removeRoot(root)
+    }
+  })
+
+  for (const item of IGNORE_ELECTION_CASES) {
+    test(`an ignore election ${item.name}`, () => {
+      const root = makeElectionRoot(item.seed)
+      try {
+        const { applied, inspection } = electionApply(root, 'ignore')
+
+        assert.deepEqual(inspection.proposals.filter((entry) => entry.action.target === '.gitignore').map((entry) => entry.reason).sort(compareOrdinal), item.reasons, 'the inspected policy actions must cover the ignore branch')
+        assert.equal(inspection.proposals.some((entry) => entry.reason === 'elective-ignore' && entry.condition === 'version-control-ignore'), true, 'the elective action must be selected only by the ignore branch')
+        assert.equal(applied.stderr, '')
+        assert.equal(applied.record.ok, true, `ignore apply failed: ${JSON.stringify(applied.record).slice(0, 400)}`)
+        assert.equal(applied.record.complete, true, `ignore apply is incomplete: ${JSON.stringify(applied.record.incompleteTargets)}`)
+        assert.equal(applied.exitCode, 0)
+        const rules = readFileSync(join(root, '.gitignore'), 'utf8').split('\r\n')
+        for (const path of ELECTIVE_IGNORE_PATHS) {
+          assert.ok(rules.includes(path), `the elective append is missing ${path}`)
+        }
+        assert.ok(rules.includes('.claude/plans/'), 'the mandatory plans rule must survive the elective append')
+        for (const target of ['.claude/FEATURES.md', '.claude/BUGS.md', '.claude/features/breakout.md', '.claude/plans/plan.md']) {
+          assert.equal(ignoredByGit(root, target), true, `git does not ignore ${target}`)
+        }
+        assert.deepEqual(controllerResidue(root), [], 'a proved ignore election retires its marker')
+      } finally {
+        removeRoot(root)
+      }
+    })
+  }
+
+  test('re-running the whole flow after an ignore election is a no-op', () => {
+    const root = makeElectionRoot()
+    try {
+      assert.equal(electionApply(root, 'ignore').applied.record.complete, true)
+      const ignoreBefore = readFileSync(join(root, '.gitignore'))
+
+      const repeated = electionApply(root, 'not-required')
+
+      assert.equal(repeated.inspection.git.electionRequired, false, 'a converged election never reopens')
+      assert.deepEqual(repeated.inspection.proposals, [], 'a converged scaffold proposes nothing, the elective append included')
+      assert.equal(repeated.applied.record.ok, true, `re-run failed: ${JSON.stringify(repeated.applied.record).slice(0, 400)}`)
+      assert.equal(repeated.applied.record.complete, true)
+      assert.deepEqual(repeated.applied.record.outcomes, [])
+      assert.deepEqual(readFileSync(join(root, '.gitignore')), ignoreBefore, 'the re-run appends the elective paths a second time')
+    } finally {
+      removeRoot(root)
+    }
+  })
+
+  test('an ignore election still refuses while a backlog path stays tracked', () => {
+    const root = makeGitRoot()
+    try {
+      writeFileSync(join(root, 'CLAUDE.md'), BARE_GUIDANCE, 'utf8')
+      writeFileSync(join(root, '.gitignore'), '.claude/plans/\r\n', 'utf8')
+      mkdirSync(join(root, '.claude'), { recursive: true })
+      writeFileSync(join(root, '.claude', 'FEATURES.md'), '# Features\r\n', 'utf8')
+      git(root, ['add', '.gitignore', '.claude/FEATURES.md'])
+      git(root, ['-c', 'user.email=nightshift@example.invalid', '-c', 'user.name=Nightshift', 'commit', '-qm', 'seed'])
+      // Tracked in the index but absent from the worktree, so the scaffold is
+      // still fresh and the election still opens over a tracked backlog path.
+      rmSync(join(root, '.claude', 'FEATURES.md'))
+
+      const { applied, inspection } = electionApply(root, 'ignore')
+
+      assert.deepEqual(inspection.git.trackedBacklogPaths, ['.claude/FEATURES.md'])
+      assert.equal(applied.record.ok, true, 'a conflict is a reported incompletion, never a protocol failure')
+      assert.equal(applied.record.complete, false, 'ignore cannot complete while a backlog path stays tracked')
+      assert.ok(applied.record.incompleteTargets.includes('.claude/FEATURES.md'), 'the refusal must name the tracked path')
+    } finally {
+      removeRoot(root)
+    }
+  })
+
+  test('the mechanical gitignore target is never read as hard-wrapped prose', () => {
+    const root = makeElectionRoot()
+    try {
+      assert.equal(electionApply(root, 'ignore').applied.record.complete, true)
+
+      const inspected = driveCli(root, inspectRequest(root, 'claude-code', claudeHostContext('included')))
+
+      const record = inspected.record.targets.find((entry) => entry.target === '.gitignore')
+      assert.deepEqual(record.states, ['present'], 'consecutive ignore rules are not wrapped prose')
+      assert.equal(inspected.record.wrapFindings.some((entry) => entry.target === '.gitignore'), false)
+      assert.equal(inspected.record.proposals.some((entry) => entry.action.kind === 'unwrap-file'), false, 'no unwrap may ever join ignore rules into one pattern')
     } finally {
       removeRoot(root)
     }

@@ -217,6 +217,14 @@ function isReadyCatalogTarget(target) {
   return parts.every((part) => part.length > 0 && part !== '.' && part !== '..')
 }
 
+// Line discipline is a backlog-prose rule over exactly the files the ready
+// parser reads. It must never reach a mechanical target such as `.gitignore`,
+// whose consecutive rule lines look like wrapped prose to the detector and
+// whose repair would join them into one broken pattern.
+function isLineDisciplineTarget(target) {
+  return typeof target === 'string' && target.startsWith('.claude/') && isReadyCatalogTarget(target.slice('.claude/'.length))
+}
+
 function buildReadyCatalog(entries) {
   if (!Array.isArray(entries)) throw new TypeError('Ready catalog entries are invalid')
   const result = []
@@ -307,7 +315,12 @@ function projectGitProblems(git) {
     const evidencePaths = ['.gitignore', ...git.trackedPlanPaths, ...git.nonPlanUnignoredPaths].sort(compareOrdinal)
     problems.push({ blocking: true, code: 'git-policy', detail: `Git plans policy is ${git.plansPolicy}.`, evidencePaths: [...new Set(evidencePaths)], target: '.gitignore' })
   }
-  if (git.nonPlanIgnoreMatches.length > 0) {
+  // Repository-local ignore rules over the non-plan surface are what the
+  // election's ignore branch exists to create, so they are an incompatibility
+  // only while an election is still open on some other branch. A marker bound
+  // to ignore is that branch, and a retired election leaves the rules as the
+  // project's historical policy, which the controller reads and never reopens.
+  if (git.nonPlanIgnoreMatches.length > 0 && git.electionRequired && git.electionMarker !== 'ignore') {
     const evidencePaths = git.nonPlanIgnoreMatches.flatMap((item) => [item.target, item.probe]).sort(compareOrdinal)
     problems.push({ blocking: true, code: 'git-policy', detail: 'Repository-local ignore rules match non-plan backlog paths.', evidencePaths: [...new Set(evidencePaths)], target: '.gitignore' })
   }
@@ -483,7 +496,7 @@ function targetRecord(target, descriptor, declaration, template, options = {}) {
   const hasForbiddenMissing = decoded.logicalBytes.length !== 0 && declaration.regions.some((item) => item.missingPlacement === 'forbidden' && item.syntax !== 'empty-document' && !editableRegions.some((region) => region.regionId === item.regionId))
   const states = ['present']
   if (template && decoded.logicalBytes.equals(template.logicalBytes)) states.push('exact-template')
-  if (detectHardWraps(decoded.text).length > 0) states.push('wrapped')
+  if (isLineDisciplineTarget(target) && detectHardWraps(decoded.text).length > 0) states.push('wrapped')
   if (hasForbiddenMissing || boundaryInvalid) {
     states.push('structurally-invalid')
     editableRegions = []
@@ -676,11 +689,16 @@ function collectInspection(root, host, hostContext = {}, options = {}) {
   } catch (error) {
     inspectError('git-policy', 'Git policy inspection failed.', null, error)
   }
+  const hasControlledContent = targetRecords.some((item) => (isReadyCatalogTarget(item.target.slice('.claude/'.length)) && item.target.startsWith('.claude/')) && item.states.includes('present'))
+  const freshScaffold = git.kind === 'git' && marker.marker === 'absent' && !hasControlledContent
+  gitRecord.freshScaffold = freshScaffold
+  gitRecord.electionRequired = freshScaffold || marker.marker !== 'absent'
   const proposals = []
   const newlineByTarget = new Map(gitRecord.newlinePolicies.map((item) => [item.target, item]))
   const plansTemplate = bundle.templates.get('gitignore.plans')
   const gitignoreEntry = descriptors.find((entry) => entry.target === '.gitignore')
   const mandatoryPlans = plansTemplate?.logicalBytes ?? Buffer.alloc(0)
+  const electiveBacklog = bundle.templates.get('gitignore.backlog')?.logicalBytes ?? Buffer.alloc(0)
   for (const entry of descriptors) {
     const record = targetRecords.find((item) => item.target === entry.target)
     if (record === undefined) continue
@@ -711,21 +729,37 @@ function collectInspection(root, host, hostContext = {}, options = {}) {
       }
     }
   }
-  if (gitignoreEntry?.descriptor.present && gitignoreEntry.descriptor.kind === 'file' && decodeTargetText(gitignoreEntry.descriptor.bytes).logicalBytes.length > 0 && mandatoryPlans.length > 0 && gitRecord.plansPolicy !== 'satisfied' && gitRecord.plansPolicy !== 'nested-conflict') {
-    const current = gitignoreEntry.descriptor.bytes
+  const appendableGitignore = gitignoreEntry?.descriptor.present === true && gitignoreEntry.descriptor.kind === 'file' && decodeTargetText(gitignoreEntry.descriptor.bytes).logicalBytes.length > 0
+  // Both `.gitignore` policy appends are the same transformation over different
+  // fragments, and when both apply the elective one consumes the intermediate
+  // the mandatory one predicts, so they form a single deterministic edit chain.
+  let gitignoreBase = appendableGitignore ? gitignoreEntry.descriptor.bytes : null
+  const appendGitignorePolicy = (reason, condition, fragmentBytes) => {
+    const current = gitignoreBase
     const logical = decodeTargetText(current)
-    if (!logical.text.split(/\r?\n/).includes('.claude/plans/')) {
-      const separator = current.length === 0 || current.at(-1) === 0x0a || current.at(-1) === 0x0d ? Buffer.alloc(0) : Buffer.from(logical.style === 'crlf' ? '\r\n' : '\n')
-      const fragment = Buffer.from(mandatoryPlans.toString('utf8').replaceAll('\n', logical.style === 'crlf' ? '\r\n' : '\n'), 'utf8')
-      const after = Buffer.concat([current, separator, fragment])
-      const region = gitignoreEntry.declaration.regions.find((item) => item.syntax === 'gitignore-append')
-      proposals.push(proposal('plans-policy', 'always', { afterBase64: after.toString('base64'), beforeBase64: current.toString('base64'), kind: 'exact-edit', mode: targetRecords.find((item) => item.target === '.gitignore').mode, regionId: region.regionId, target: '.gitignore' }, current.toString('base64'), after.toString('base64')))
-    }
+    const separator = current.length === 0 || current.at(-1) === 0x0a || current.at(-1) === 0x0d ? Buffer.alloc(0) : Buffer.from(logical.style === 'crlf' ? '\r\n' : '\n')
+    const fragment = Buffer.from(fragmentBytes.toString('utf8').replaceAll('\n', logical.style === 'crlf' ? '\r\n' : '\n'), 'utf8')
+    const after = Buffer.concat([current, separator, fragment])
+    const region = gitignoreEntry.declaration.regions.find((item) => item.syntax === 'gitignore-append')
+    proposals.push(proposal(reason, condition, { afterBase64: after.toString('base64'), beforeBase64: current.toString('base64'), kind: 'exact-edit', regionId: region.regionId, target: '.gitignore' }, current.toString('base64'), after.toString('base64')))
+    gitignoreBase = after
   }
-  const hasControlledContent = targetRecords.some((item) => (isReadyCatalogTarget(item.target.slice('.claude/'.length)) && item.target.startsWith('.claude/')) && item.states.includes('present'))
-  const freshScaffold = git.kind === 'git' && marker.marker === 'absent' && !hasControlledContent
-  gitRecord.freshScaffold = freshScaffold
-  gitRecord.electionRequired = freshScaffold || marker.marker !== 'absent'
+  const missingIgnoreLines = (fragmentBytes) => {
+    const present = new Set(decodeTargetText(gitignoreBase).text.split(/\r?\n/))
+
+    return fragmentBytes.toString('utf8').split('\n').filter((line) => line.length > 0 && !present.has(line))
+  }
+  if (appendableGitignore && mandatoryPlans.length > 0 && gitRecord.plansPolicy !== 'satisfied' && gitRecord.plansPolicy !== 'nested-conflict' && missingIgnoreLines(mandatoryPlans).length > 0) {
+    appendGitignorePolicy('plans-policy', 'always', mandatoryPlans)
+  }
+  // The election's ignore branch is the only selector of the elective append,
+  // so the proposal is emitted whenever that branch is still reachable: while
+  // the election is open, and while a marker already binds it to ignore. A
+  // marker bound to track or a scaffold with no election never selects it.
+  if (appendableGitignore && electiveBacklog.length > 0 && gitRecord.electionRequired && marker.marker !== 'track') {
+    const missing = missingIgnoreLines(electiveBacklog)
+    if (missing.length > 0) appendGitignorePolicy('elective-ignore', 'version-control-ignore', Buffer.from(missing.join('\n') + '\n', 'utf8'))
+  }
   const projectedProblems = [...readyProblems.problems, ...projectGitProblems(gitRecord)].sort((left, right) => compareOrdinal(`${left.code}\0${left.target ?? ''}\0${left.detail}`, `${right.code}\0${right.target ?? ''}\0${right.detail}`))
   let backupEvidence
   try {
