@@ -23,7 +23,7 @@ const {
 } = require('node:fs')
 const { spawnSync } = require('node:child_process')
 const { TextDecoder } = require('node:util')
-const { isAbsolute, join, relative, sep } = require('node:path')
+const { isAbsolute, join } = require('node:path')
 
 const { InitBacklogError } = require('./errors')
 const { MAX_APPLY_REQUEST_BYTES, RECOVERY_LOCK_BASENAME, assertSafeWindowsScalar, canonicalJson, compareOrdinal, sha256, validateNonce } = require('./protocol')
@@ -65,11 +65,6 @@ function canonicalRoot(root) {
   }
 }
 
-function contained(root, target) {
-  const relation = relative(root, target)
-  return relation !== '..' && !relation.startsWith(`..${sep}`) && !isAbsolute(relation)
-}
-
 function pathExists(path) {
   try {
     lstatSync(path)
@@ -107,7 +102,7 @@ function stableOpenFile(root, target, options = {}) {
   const canonical = canonicalRoot(root)
   const platform = options.platform ?? process.platform
   assertSafeWindowsScalar(target)
-  if (typeof target !== 'string' || !isAbsolute(target) || !contained(canonical, target)) {
+  if (typeof target !== 'string' || !isAbsolute(target) || !pathIsContained(canonical, target)) {
     throw new Error('Stable-open target escapes its root')
   }
   const before = lstatSync(target, { bigint: true })
@@ -115,7 +110,7 @@ function stableOpenFile(root, target, options = {}) {
     throw new Error('Stable-open target is not an ordinary nonlinked file')
   }
   const beforeReal = realpathSync.native(target)
-  if (!contained(canonical, beforeReal) || beforeReal !== target) {
+  if (!pathIsContained(canonical, beforeReal) || beforeReal !== target) {
     throw new Error('Stable-open target is not canonically confined')
   }
   const flags = platform === 'win32' ? constants.O_RDONLY : constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0)
@@ -124,7 +119,7 @@ function stableOpenFile(root, target, options = {}) {
     const openedBefore = fstatSync(descriptor, { bigint: true })
     const pathDuring = lstatSync(target, { bigint: true })
     const duringReal = realpathSync.native(target)
-    if (!openedBefore.isFile() || !pathDuring.isFile() || pathDuring.isSymbolicLink() || comparableIdentity(openedBefore) !== comparableIdentity(before) || comparableIdentity(pathDuring) !== comparableIdentity(before) || openedBefore.size !== before.size || openedBefore.mtimeNs !== before.mtimeNs || pathDuring.size !== before.size || pathDuring.mtimeNs !== before.mtimeNs || duringReal !== target || !contained(canonical, duringReal) || (options.requireSingleLink === true && (openedBefore.nlink !== 1n || pathDuring.nlink !== 1n))) {
+    if (!openedBefore.isFile() || !pathDuring.isFile() || pathDuring.isSymbolicLink() || comparableIdentity(openedBefore) !== comparableIdentity(before) || comparableIdentity(pathDuring) !== comparableIdentity(before) || openedBefore.size !== before.size || openedBefore.mtimeNs !== before.mtimeNs || pathDuring.size !== before.size || pathDuring.mtimeNs !== before.mtimeNs || duringReal !== target || !pathIsContained(canonical, duringReal) || (options.requireSingleLink === true && (openedBefore.nlink !== 1n || pathDuring.nlink !== 1n))) {
       throw new Error('Stable-open target identity changed')
     }
     const size = Number(openedBefore.size)
@@ -146,7 +141,7 @@ function stableOpenFile(root, target, options = {}) {
     const openedAfter = fstatSync(descriptor, { bigint: true })
     const pathAfter = lstatSync(target, { bigint: true })
     const afterReal = realpathSync.native(target)
-    if (!openedAfter.isFile() || !pathAfter.isFile() || pathAfter.isSymbolicLink() || comparableIdentity(openedAfter) !== comparableIdentity(before) || comparableIdentity(pathAfter) !== comparableIdentity(before) || openedAfter.size !== openedBefore.size || openedAfter.mtimeNs !== openedBefore.mtimeNs || pathAfter.size !== openedBefore.size || pathAfter.mtimeNs !== openedBefore.mtimeNs || afterReal !== target || !contained(canonical, afterReal) || (options.requireSingleLink === true && (openedAfter.nlink !== 1n || pathAfter.nlink !== 1n))) {
+    if (!openedAfter.isFile() || !pathAfter.isFile() || pathAfter.isSymbolicLink() || comparableIdentity(openedAfter) !== comparableIdentity(before) || comparableIdentity(pathAfter) !== comparableIdentity(before) || openedAfter.size !== openedBefore.size || openedAfter.mtimeNs !== openedBefore.mtimeNs || pathAfter.size !== openedBefore.size || pathAfter.mtimeNs !== openedBefore.mtimeNs || afterReal !== target || !pathIsContained(canonical, afterReal) || (options.requireSingleLink === true && (openedAfter.nlink !== 1n || pathAfter.nlink !== 1n))) {
       throw new Error('Stable-open target changed during the read')
     }
 

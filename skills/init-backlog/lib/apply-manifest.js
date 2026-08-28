@@ -1,7 +1,6 @@
 'use strict'
 
 const { Buffer } = require('node:buffer')
-const { join } = require('node:path')
 
 const { analyzeCatalog } = require('../../ready/ready')
 const { loadManifest } = require('./assets')
@@ -208,7 +207,7 @@ function createRegionDeclarationsResolver(inspection, options) {
     }
     if (resolved.has(target)) return resolved.get(target)
     try {
-      manifest ??= loadManifest(options.templatesRoot ?? join(__dirname, '..', 'templates'))
+      manifest ??= loadManifest(options.templatesRoot)
       const selector = target === inspection?.guidance?.resolvedTarget ? '@resolved-guidance' : target
       const declarations = manifest.manifest.targets.find((item) => item.targetSelector === selector)?.regions
       resolved.set(target, declarations)

@@ -440,7 +440,7 @@ function targetRecord(target, descriptor, declaration, template, options = {}) {
   if (descriptor.kind === 'directory') return { bom: null, cleanTextSha256: null, contentBase64: null, contentRole: 'none', editableRegions: [], finalNewline: null, kind: 'directory', mode: options.platform === 'win32' ? null : descriptor.mode ?? null, newline: null, rawSha256: null, states: ['present'], target, templateId: null, templateSha256: null }
   let decoded
   try {
-    decoded = decodeText(descriptor.bytes)
+    decoded = (options.decode ?? decodeText)(descriptor.bytes)
   } catch (error) {
     inspectError('content-invalid', 'Inspected target text is invalid.', target, error)
   }
@@ -550,7 +550,7 @@ function collectInspection(root, host, hostContext = {}, options = {}) {
     if (error instanceof InitBacklogError) throw error
     inspectError('guidance-resolution', 'Guidance resolution failed.', null, error)
   }
-  const bundle = loadManifest(options.templatesRoot ?? join(__dirname, '..', 'templates'))
+  const bundle = loadManifest(options.templatesRoot)
   let git
   try {
     git = detectGitKind(canonical, options)
@@ -573,6 +573,29 @@ function collectInspection(root, host, hostContext = {}, options = {}) {
     descriptors.push({ declaration: { ...declaration, contentRole: target === '.gitignore' ? 'mechanical' : 'semantic' }, descriptor, target, template: templateId ? bundle.templates.get(templateId) : null })
   }
   for (const item of discoverControlledMarkdown(canonical, undefined, options)) descriptors.push({ declaration: { contentRole: 'mechanical', kind: 'file', regions: [] }, descriptor: item, target: item.target, template: null })
+  // Decode and unwrap results are pure per byte buffer; the memos below let
+  // the catalog scan, the target records, and the proposal loop share one
+  // computation per target instead of re-decoding the same bytes.
+  const decodedByBytes = new Map()
+  const decodeTargetText = (bytes) => {
+    let decoded = decodedByBytes.get(bytes)
+    if (decoded === undefined) {
+      decoded = decodeText(bytes)
+      decodedByBytes.set(bytes, decoded)
+    }
+
+    return decoded
+  }
+  const unwrappedByBytes = new Map()
+  const unwrapTargetText = (bytes) => {
+    let unwrapped = unwrappedByBytes.get(bytes)
+    if (unwrapped === undefined) {
+      unwrapped = unwrapText(decodeTargetText(bytes).text)
+      unwrappedByBytes.set(bytes, unwrapped)
+    }
+
+    return unwrapped
+  }
   const catalog = []
   const wrapFindings = []
   const predictedCatalogContents = new Map()
@@ -580,13 +603,12 @@ function collectInspection(root, host, hostContext = {}, options = {}) {
     if (!entry.descriptor.present || entry.descriptor.kind !== 'file') continue
     const target = entry.target.startsWith('.claude/') ? entry.target.slice('.claude/'.length) : entry.target
     if (!isReadyCatalogTarget(target)) continue
-    const decoded = decodeText(entry.descriptor.bytes)
+    const decoded = decodeTargetText(entry.descriptor.bytes)
     catalog.push({ contents: decoded.text, target })
-    const unwrapped = unwrapText(decoded.text)
+    const unwrapped = unwrapTargetText(entry.descriptor.bytes)
     const wraps = detectHardWraps(decoded.text)
     if (wraps.length > 0) {
-      const predictedText = unwrapText(decoded.text)
-      predictedCatalogContents.set(entry.target, predictedText)
+      predictedCatalogContents.set(entry.target, unwrapped)
       let predictedEditableRegions = []
       try { predictedEditableRegions = inspectRegions(Buffer.from(unwrapped, 'utf8'), entry.declaration.regions ?? []) } catch { predictedEditableRegions = [] }
       wrapFindings.push({ target: entry.target, count: wraps.length, firstLine: wraps[0].line, beforeRawSha256: entry.descriptor.rawSha256, predictedRawSha256: sha256(Buffer.from(unwrapped, 'utf8')), predictedContentBase64: entry.declaration.contentRole === 'semantic' ? Buffer.from(unwrapped, 'utf8').toString('base64') : null, predictedEditableRegions })
@@ -610,7 +632,7 @@ function collectInspection(root, host, hostContext = {}, options = {}) {
   } catch (error) {
     inspectError('ready-failed', 'Ready parser conversion failed.', null, error)
   }
-  const targetRecords = descriptors.map((entry) => targetRecord(entry.target, entry.descriptor, { ...entry.declaration, contentRole: entry.declaration.contentRole ?? 'semantic' }, entry.template, { ...options, gitKind: git.kind, unwrapFindings: wrapFindings }))
+  const targetRecords = descriptors.map((entry) => targetRecord(entry.target, entry.descriptor, { ...entry.declaration, contentRole: entry.declaration.contentRole ?? 'semantic' }, entry.template, { ...options, decode: decodeTargetText, gitKind: git.kind, unwrapFindings: wrapFindings }))
   let gitRecord
   try {
     const ignoreProbes = options.ignoreProbes ?? buildIgnoreProbes(canonical, descriptors)
@@ -645,16 +667,16 @@ function collectInspection(root, host, hostContext = {}, options = {}) {
         proposals.push(proposal(entry.target === '.gitignore' ? 'plans-policy' : 'missing-target', record.newline === 'crlf' || record.newline === 'lf' ? 'always' : variant.condition, { kind: 'create-from-template', mode: record.mode, newline, target: entry.target, templateId: entry.template.templateId }, null, output.toString('base64')))
       }
     } else if (record.kind === 'file' && record.states.includes('wrapped')) {
-      const predicted = unwrapText(decodeText(entry.descriptor.bytes).text)
+      const predicted = unwrapTargetText(entry.descriptor.bytes)
       const action = { afterRawSha256: sha256(Buffer.from(predicted, 'utf8')), beforeRawSha256: entry.descriptor.rawSha256, kind: 'unwrap-file', mode: record.mode, target: entry.target }
       proposals.push(proposal('hard-wrap', 'always', action, record.contentRole === 'semantic' ? record.contentBase64 : null, record.contentRole === 'semantic' ? Buffer.from(predicted, 'utf8').toString('base64') : null))
-    } else if (record.kind === 'file' && entry.template && decodeText(entry.descriptor.bytes).logicalBytes.length === 0) {
+    } else if (record.kind === 'file' && entry.template && decodeTargetText(entry.descriptor.bytes).logicalBytes.length === 0) {
       const emptyTemplate = entry.target === guidance.resolvedTarget ? bundle.templates.get('guidance.section') : entry.template
       const policy = newlineByTarget.get(entry.target)
       for (const variant of newlineVariants(policy)) {
         const newline = record.newline === 'crlf' || record.newline === 'lf' ? record.newline : variant.style
         const logicalOutput = Buffer.from(emptyTemplate.logicalBytes.toString('utf8').replaceAll('\n', newline === 'crlf' ? '\r\n' : '\n'), 'utf8')
-        const output = decodeText(entry.descriptor.bytes).bom ? Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), logicalOutput]) : logicalOutput
+        const output = decodeTargetText(entry.descriptor.bytes).bom ? Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), logicalOutput]) : logicalOutput
         const emptyRegion = record.editableRegions.find((item) => item.regionId.endsWith('empty-document')) ?? { endByte: 0, regionId: `${entry.target.replaceAll('/', '.')}.empty-document`, startByte: 0 }
         const before = entry.descriptor.bytes.toString('base64')
         const action = { afterBase64: output.toString('base64'), beforeBase64: before, kind: 'exact-edit', mode: record.mode, regionId: emptyRegion.regionId, target: entry.target }
@@ -662,9 +684,9 @@ function collectInspection(root, host, hostContext = {}, options = {}) {
       }
     }
   }
-  if (gitignoreEntry?.descriptor.present && gitignoreEntry.descriptor.kind === 'file' && decodeText(gitignoreEntry.descriptor.bytes).logicalBytes.length > 0 && mandatoryPlans.length > 0 && gitRecord.plansPolicy !== 'satisfied' && gitRecord.plansPolicy !== 'nested-conflict') {
+  if (gitignoreEntry?.descriptor.present && gitignoreEntry.descriptor.kind === 'file' && decodeTargetText(gitignoreEntry.descriptor.bytes).logicalBytes.length > 0 && mandatoryPlans.length > 0 && gitRecord.plansPolicy !== 'satisfied' && gitRecord.plansPolicy !== 'nested-conflict') {
     const current = gitignoreEntry.descriptor.bytes
-    const logical = decodeText(current)
+    const logical = decodeTargetText(current)
     if (!logical.text.split(/\r?\n/).includes('.claude/plans/')) {
       const separator = current.length === 0 || current.at(-1) === 0x0a || current.at(-1) === 0x0d ? Buffer.alloc(0) : Buffer.from(logical.style === 'crlf' ? '\r\n' : '\n')
       const fragment = Buffer.from(mandatoryPlans.toString('utf8').replaceAll('\n', logical.style === 'crlf' ? '\r\n' : '\n'), 'utf8')

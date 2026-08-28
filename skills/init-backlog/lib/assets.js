@@ -1,7 +1,7 @@
 'use strict'
 
 const { lstatSync, realpathSync } = require('node:fs')
-const { isAbsolute, resolve } = require('node:path')
+const { isAbsolute, join, resolve } = require('node:path')
 const { TextDecoder } = require('node:util')
 
 const { InitBacklogError, failureRecord } = require('./errors')
@@ -317,7 +317,10 @@ function readOrdinaryFile(root, target) {
   }
 }
 
-function loadManifest(templatesRoot) {
+// The default resolves the bundled templates relative to this module, which
+// sits beside inspection and apply-manifest in lib/, so the resolved root is
+// identical for every caller that passes no explicit templatesRoot.
+function loadManifest(templatesRoot = join(__dirname, '..', 'templates')) {
   try {
     const normalizedManifest = normalizeLogicalAsset(readOrdinaryFile(templatesRoot, 'manifest.json'))
     const manifestText = normalizedManifest.logicalBytes.toString('utf8')
