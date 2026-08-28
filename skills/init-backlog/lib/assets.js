@@ -1,11 +1,11 @@
 'use strict'
 
 const { lstatSync, realpathSync } = require('node:fs')
-const { isAbsolute, relative, resolve, sep } = require('node:path')
+const { isAbsolute, resolve } = require('node:path')
 const { TextDecoder } = require('node:util')
 
 const { InitBacklogError, failureRecord } = require('./errors')
-const { stableOpenFile } = require('./filesystem')
+const { pathIsContained, stableOpenFile } = require('./filesystem')
 const { canonicalJson, compareOrdinal, sha256, validateDigest, validateLogicalId, validateSelector, validateTarget } = require('./protocol')
 
 const ASSET_IDS = [
@@ -297,11 +297,6 @@ function validateManifest(manifest) {
   return manifest
 }
 
-function contained(root, target) {
-  const relation = relative(root, target)
-  return relation !== '' && relation !== '..' && !relation.startsWith(`..${sep}`) && !isAbsolute(relation)
-}
-
 function readOrdinaryFile(root, target) {
   const rootMetadata = lstatSync(root, { bigint: true })
   if (!rootMetadata.isDirectory() || rootMetadata.isSymbolicLink()) {
@@ -312,7 +307,7 @@ function readOrdinaryFile(root, target) {
     templateInvalid('Template root is not canonically confined.')
   }
   const resolvedTarget = resolve(resolvedRoot, target)
-  if (!contained(resolvedRoot, resolvedTarget)) {
+  if (!pathIsContained(resolvedRoot, resolvedTarget)) {
     templateInvalid('Template asset path escapes the template root.')
   }
   try {

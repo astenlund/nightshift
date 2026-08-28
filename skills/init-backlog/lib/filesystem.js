@@ -26,7 +26,7 @@ const { TextDecoder } = require('node:util')
 const { isAbsolute, join, relative, sep } = require('node:path')
 
 const { InitBacklogError } = require('./errors')
-const { MAX_APPLY_REQUEST_BYTES, assertSafeWindowsScalar, canonicalJson, compareOrdinal, sha256, validateNonce } = require('./protocol')
+const { MAX_APPLY_REQUEST_BYTES, RECOVERY_LOCK_BASENAME, assertSafeWindowsScalar, canonicalJson, compareOrdinal, sha256, validateNonce } = require('./protocol')
 
 const REQUEST_GATE_BASENAME = '.nightshift-init-backlog.request-gate'
 const REQUEST_OWNER_STAGE_BASENAME = 'owner.new'
@@ -566,9 +566,9 @@ function removeAndVerify(path, options = {}) {
 
 function initialLockPaths(root, pid, ownerNonce) {
   if (!Number.isSafeInteger(pid) || pid <= 0 || !/^[a-f0-9]{32}$/.test(ownerNonce)) throw new TypeError('Initial lock identity is invalid')
-  const stage = join(root, `.nightshift-init-backlog.lock.${pid}.${ownerNonce}.new`)
+  const stage = join(root, `${RECOVERY_LOCK_BASENAME}.${pid}.${ownerNonce}.new`)
 
-  return { lock: join(root, '.nightshift-init-backlog.lock'), stage }
+  return { lock: join(root, RECOVERY_LOCK_BASENAME), stage }
 }
 
 function createInitialLock(root, record, options = {}) {

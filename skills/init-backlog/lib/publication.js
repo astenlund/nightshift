@@ -25,11 +25,8 @@ const {
   verifyPublishedIdentity,
 } = require('./filesystem')
 const { collectInspection, composeElectionMarker } = require('./inspection')
-const { canonicalJson, compareOrdinal, sha256 } = require('./protocol')
+const { RECOVERY_GATE_BASENAME, RECOVERY_LOCK_BASENAME: LOCK_BASENAME, RECOVERY_MARKER_BASENAME: ELECTION_BASENAME, canonicalJson, compareOrdinal, sha256 } = require('./protocol')
 
-const LOCK_BASENAME = '.nightshift-init-backlog.lock'
-const RECOVERY_GATE_BASENAME = '.nightshift-init-backlog.recovery-gate'
-const ELECTION_BASENAME = '.nightshift-init-backlog-election'
 const POSIX_DEFAULT_FILE_MODE = 0o644
 const POSIX_DEFAULT_DIRECTORY_MODE = 0o755
 function publicationError(detail, fields = {}, cause) {
@@ -89,17 +86,17 @@ function temporaryPaths(root, manifestId, actionOrdinal = 1, ownerNonce = random
     throw new TypeError('Temporary identity is invalid')
   }
   const lockPaths = initialLockPaths(root, pid, ownerNonce)
-  const electionAlias = join(root, `.nightshift-init-backlog-election.${manifestId}.tmp`)
+  const electionAlias = join(root, `${ELECTION_BASENAME}.${manifestId}.tmp`)
 
   return {
     action: join(root, `.nightshift-init-backlog.${manifestId}.${actionOrdinal}.tmp`),
     election: electionAlias,
     electionAlias,
-    electionNewWitness: join(root, `.nightshift-init-backlog-election.${manifestId}.new.tmp`),
-    electionOldWitness: join(root, `.nightshift-init-backlog-election.${manifestId}.old.tmp`),
-    electionTombstone: join(root, `.nightshift-init-backlog-election.${manifestId}.tombstone.tmp`),
+    electionNewWitness: join(root, `${ELECTION_BASENAME}.${manifestId}.new.tmp`),
+    electionOldWitness: join(root, `${ELECTION_BASENAME}.${manifestId}.old.tmp`),
+    electionTombstone: join(root, `${ELECTION_BASENAME}.${manifestId}.tombstone.tmp`),
     lock: lockPaths.lock,
-    lockNext: join(root, `.nightshift-init-backlog.lock.${ownerNonce}.next`),
+    lockNext: join(root, `${LOCK_BASENAME}.${ownerNonce}.next`),
     lockStage: lockPaths.stage,
   }
 }
@@ -527,11 +524,138 @@ function markerBytes(request, admission, root) {
   return Buffer.from(marker.contentBase64, 'base64')
 }
 
+function markerMode(options, mode) {
+  return (options.platform ?? process.platform) === 'win32' ? null : mode
+}
+
+function markerOwnership(root, path, bytes, mode, options, linkCount, peers = []) {
+  const opened = stableOpenFile(root, path, { ...options, requireSingleLink: false })
+  const metadata = lstatSync(path, { bigint: true })
+  if (!opened.bytes.equals(bytes) || mode !== null && opened.mode !== mode || metadata.nlink !== BigInt(linkCount)) throw new Error('Election marker temporary differs from its approved image')
+  for (const peer of peers) {
+    const peerOpened = stableOpenFile(root, peer, { ...options, requireSingleLink: false })
+    if (peerOpened.identity !== opened.identity || !peerOpened.bytes.equals(bytes) || mode !== null && peerOpened.mode !== mode) throw new Error('Election marker temporary identity differs from its approved image')
+  }
+  options.ownedTemporaries?.set(path, { bytes: Buffer.from(bytes), destination: null, identity: opened.identity, linkCount, mode, peers, requireSingleLink: false })
+
+  return opened
+}
+
+function markerLinkState(root, first, second, bytes, mode, options) {
+  const firstPath = first
+  const secondPath = second
+  markerOwnership(root, firstPath, bytes, mode, options, 2, [secondPath])
+  markerOwnership(root, secondPath, bytes, mode, options, 2, [firstPath])
+}
+
+function stageMarkerAlias(root, path, bytes, mode, options) {
+  options.verifyLock?.()
+  stageFile(path, bytes, { ...options, onTransition: (point) => transition(options, point) })
+  readBackExact(path, bytes, options)
+  assignAndVerifyMode(path, mode, options)
+  verifyFinalMode(path, mode, options)
+  markerOwnership(root, path, bytes, mode, options, 1)
+  transition(options, 'after-mode-assignment')
+}
+
+function linkMarkerPath(root, source, destination, bytes, mode, options, point) {
+  options.verifyLock?.()
+  publishNoReplace(source, destination, { ...options, onPublished: undefined })
+  markerOwnership(root, source, bytes, mode, options, 2, [destination])
+  markerOwnership(root, destination, bytes, mode, options, 2, [source])
+  transition(options, point)
+}
+
+function markerPathPresent(path) {
+  try {
+    lstatSync(path)
+
+    return true
+  } catch (error) {
+    if (error?.code === 'ENOENT') return false
+    throw error
+  }
+}
+
+function markerOldBytes(request, root) {
+  const carriedGit = request.inspection.git ?? {}
+  if (carriedGit.electionMarker === undefined || carriedGit.electionMarker === 'absent') return null
+  const carriedSnapshotId = carriedGit.electionMarkerSnapshotId ?? request.inspection.snapshotId
+  const carried = composeElectionMarker(carriedGit.electionMarker, carriedGit.kind ?? 'git', true, carriedSnapshotId, carriedGit.electionMarkerMode, root)
+
+  return Buffer.from(carried.contentBase64, 'base64')
+}
+
+function adoptMarkerTemporaries(root, existing, paths, finalBytes, finalMode, oldBytes, oldMode, options) {
+  if (existing === null) return
+  const read = (path) => {
+    try { return stableOpenFile(root, path, { ...options, requireSingleLink: false }) } catch (error) { if (error?.code === 'ENOENT') return null; throw error }
+  }
+  const alias = read(paths.electionAlias)
+  const oldWitness = read(paths.electionOldWitness)
+  const newWitness = read(paths.electionNewWitness)
+  const tombstone = read(paths.electionTombstone)
+  const markerPath = join(root, ELECTION_BASENAME)
+  const marker = read(markerPath)
+  if (oldWitness !== null) {
+    if (oldBytes === null) throw new Error('Unexpected old election marker witness')
+    markerOwnership(root, paths.electionOldWitness, oldBytes, oldMode, options, oldWitness.identity === marker?.identity ? 2 : 1, oldWitness.identity === marker?.identity ? [markerPath] : [])
+  }
+  if (tombstone !== null) {
+    if (marker !== null || alias !== null || !tombstone.bytes.equals(finalBytes) || finalMode !== null && tombstone.mode !== finalMode) throw new Error('Election marker tombstone state is invalid')
+    if (newWitness !== null) {
+      if (tombstone.identity !== newWitness.identity) throw new Error('Election marker witness identity differs from tombstone')
+      markerLinkState(root, paths.electionTombstone, paths.electionNewWitness, finalBytes, finalMode, options)
+    } else {
+      markerOwnership(root, paths.electionTombstone, finalBytes, finalMode, options, 1)
+    }
+
+    return
+  }
+  if (marker !== null && marker.bytes.equals(finalBytes) && (finalMode === null || marker.mode === finalMode) && newWitness !== null && marker.identity === newWitness.identity) {
+    if (alias !== null) {
+      if (alias.identity !== marker.identity || alias.bytes.length !== finalBytes.length) throw new Error('Election marker alias state is invalid')
+      markerOwnership(root, paths.electionAlias, finalBytes, finalMode, options, 3, [paths.electionNewWitness, markerPath])
+      markerOwnership(root, paths.electionNewWitness, finalBytes, finalMode, options, 3, [paths.electionAlias, markerPath])
+    } else {
+      markerLinkState(root, paths.electionNewWitness, markerPath, finalBytes, finalMode, options)
+    }
+
+    return
+  }
+  if (marker !== null && marker.bytes.equals(finalBytes) && (finalMode === null || marker.mode === finalMode) && newWitness !== null && marker.identity !== newWitness.identity) throw new Error(oldBytes === null ? 'Published target shares an unexpected temporary identity' : 'Election marker changed before cleanup')
+  if (marker !== null && oldBytes !== null && marker.bytes.equals(oldBytes) && oldMode !== null && marker.mode !== oldMode) throw new Error('Election marker changed before cleanup')
+  if (marker !== null && oldBytes !== null && marker.bytes.equals(oldBytes) && oldWitness === null && alias === null && newWitness === null) return
+  if (marker !== null && oldBytes !== null && marker.bytes.equals(oldBytes) && oldWitness !== null && marker.identity === oldWitness.identity && alias === null && newWitness === null) return
+  if (marker !== null && oldBytes !== null && marker.bytes.equals(oldBytes) && oldWitness !== null && marker.identity === oldWitness.identity && alias !== null && newWitness === null && alias.bytes.equals(finalBytes)) {
+    markerOwnership(root, paths.electionAlias, finalBytes, finalMode, options, 1)
+
+    return
+  }
+  if (marker !== null && oldBytes !== null && marker.bytes.equals(oldBytes) && oldWitness !== null && marker.identity === oldWitness.identity && alias !== null && newWitness !== null && alias.identity === newWitness.identity && alias.bytes.equals(finalBytes) && newWitness.bytes.equals(finalBytes)) {
+    markerLinkState(root, paths.electionAlias, paths.electionNewWitness, finalBytes, finalMode, options)
+
+    return
+  }
+  if (alias !== null && newWitness !== null && alias.identity === newWitness.identity && alias.bytes.equals(finalBytes) && newWitness.bytes.equals(finalBytes)) {
+    markerLinkState(root, paths.electionAlias, paths.electionNewWitness, finalBytes, finalMode, options)
+
+    return
+  }
+  if (alias !== null && marker === null && newWitness === null) {
+    markerOwnership(root, paths.electionAlias, finalBytes, finalMode, options, 1)
+
+    return
+  }
+  if (marker === null && alias === null && newWitness === null && oldWitness === null) return
+  throw new Error('Election marker temporary state is invalid')
+}
+
 function adoptBootstrapStage(root, path, existingRecord, options, ownedTemporaries) {
   const opened = stableOpenFile(root, path, { ...options, requireSingleLink: true })
   let record
   try { record = JSON.parse(opened.bytes.toString('utf8')) } catch (error) { throw new Error('Bootstrap stage record is invalid', { cause: error }) }
-  const next = join(root, `.nightshift-init-backlog.lock.${existingRecord.ownerNonce}.next`)
+  const next = join(root, `${LOCK_BASENAME}.${existingRecord.ownerNonce}.next`)
   const expectedPaths = [relativeArtifact(root, path), relativeArtifact(root, next)].sort(compareOrdinal)
   const expectedKeys = ['createdAtUnixMs', 'manifestId', 'operation', 'ownerNonce', 'pid', 'protocolVersion', 'recoveryId', 'root', 'temporaryPaths', 'unfinalizedDirectories'].sort(compareOrdinal)
   if (record === null || typeof record !== 'object' || Array.isArray(record) || Object.keys(record).sort(compareOrdinal).join('\0') !== expectedKeys.join('\0') || record.createdAtUnixMs < 0 || !Number.isSafeInteger(record.createdAtUnixMs) || record.manifestId !== null || record.operation !== 'apply' || record.ownerNonce !== existingRecord.ownerNonce || record.pid !== existingRecord.pid || record.protocolVersion !== 1 || record.recoveryId !== null || record.root !== root || canonicalJson(record.temporaryPaths) !== canonicalJson(expectedPaths) || canonicalJson(record.unfinalizedDirectories) !== '[]' || !Buffer.from(`${canonicalJson(record)}\n`, 'utf8').equals(opened.bytes) || (options.platform ?? process.platform) !== 'win32' && opened.mode !== 0o600) throw new Error('Bootstrap stage record is invalid')
@@ -759,7 +883,7 @@ function publishApply(request, options = {}) {
     pid = lockHint.record.pid
   }
   const bootstrapPaths = initialLockPaths(root, pid, ownerNonce)
-  const bootstrap = lockRecord(request, root, pid, ownerNonce, null, [bootstrapPaths.stage, join(root, `.nightshift-init-backlog.lock.${ownerNonce}.next`)], [])
+  const bootstrap = lockRecord(request, root, pid, ownerNonce, null, [bootstrapPaths.stage, join(root, `${LOCK_BASENAME}.${ownerNonce}.next`)], [])
   let lock = null
   const ownedTemporaries = new Map()
   const outcomes = []
@@ -922,7 +1046,7 @@ function publishApply(request, options = {}) {
     }
     adoptResumeTemporaries(root, existing, expectedTemporaries, options, ownedTemporaries, fixed.lockStage, fixed.lockNext)
     if (admission.electionMarker.state !== 'absent') {
-      adoptMarkerTemporaries(root, existing, fixed, markerBytes(request, admission, root), markerMode(options, request.inspection.git?.electionMarkerMode ?? 0o600), markerOldBytes(request, root), markerMode(options, request.inspection.git?.electionMarkerMode ?? 0o600), { ...options, ownedTemporaries }, ownedTemporaries)
+      adoptMarkerTemporaries(root, existing, fixed, markerBytes(request, admission, root), markerMode(options, request.inspection.git?.electionMarkerMode ?? 0o600), markerOldBytes(request, root), markerMode(options, request.inspection.git?.electionMarkerMode ?? 0o600), { ...options, ownedTemporaries })
     }
     const publicationOptions = { ...options, ownedTemporaries, verifyLock: () => verifyLockState(root, lock, options), onTemporaryStaged: (path, bytes, mode) => registerTemporary(root, ownedTemporaries, path, bytes, options, true, mode), onTemporaryRemoved: (path) => { ownedTemporaries.delete(path) } }
     retainedBackups = []

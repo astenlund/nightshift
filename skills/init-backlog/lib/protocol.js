@@ -4,7 +4,7 @@ const { createHash } = require('node:crypto')
 const { isAbsolute } = require('node:path')
 const { TextDecoder } = require('node:util')
 
-const { InitBacklogError, failureRecord, throwInitBacklogError } = require('./errors')
+const { InitBacklogError, SYSTEM_CODE_PATTERN, failureRecord, throwInitBacklogError } = require('./errors')
 
 const MAX_INSPECT_REQUEST_BYTES = 65536
 const MAX_INLINE_FILE_BYTES = 65536
@@ -19,7 +19,6 @@ const LOGICAL_ID_PATTERN = /^(?=.{1,64}$)[a-z](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z](
 const ACTION_ID_PATTERN = /^[a-z][a-z0-9-]{0,63}$/
 const DIGEST_PATTERN = /^[a-f0-9]{64}$/
 const NONCE_PATTERN = /^[a-f0-9]{32}$/
-const SYSTEM_CODE_PATTERN = /^[A-Za-z0-9_.-]{1,128}$/
 const RECOVERY_KINDS = ['abandoned-backup', 'election-marker', 'orphan-lock-stage', 'stale-owner', 'stale-recovery-gate']
 const RECOVERY_DISPOSITION_ORDER = ['cleanup', 'deferred', 'track', 'ignore', 'abandon', 'restore', 'accept', 'remove']
 const RECOVERY_LOCK_BASENAME = '.nightshift-init-backlog.lock'
@@ -1197,6 +1196,9 @@ module.exports = {
   NONCE_PATTERN,
   OPERATIONS,
   PHASES,
+  RECOVERY_GATE_BASENAME,
+  RECOVERY_LOCK_BASENAME,
+  RECOVERY_MARKER_BASENAME,
   assertSafeWindowsScalar,
   canonicalActionOrder,
   canonicalBytes,

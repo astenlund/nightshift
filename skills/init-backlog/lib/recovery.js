@@ -11,19 +11,17 @@ const {
   classifyPid,
   createInitialLock,
   initialLockPaths,
+  pathIsContained,
   removeAndVerify,
   removeInitialLock,
   stableOpenFile,
 } = require('./filesystem')
-const { MAX_INLINE_FILE_BYTES, MAX_RECOVERY_REQUEST_BYTES, MAX_RECOVERY_RESULT_BYTES, buildRecoveryApplyRequest, canonicalBytes, canonicalJson, compareOrdinal, deriveRecoveryId, recoveryAllowedDispositions, sha256, validateTarget } = require('./protocol')
+const { MAX_INLINE_FILE_BYTES, MAX_RECOVERY_REQUEST_BYTES, MAX_RECOVERY_RESULT_BYTES, RECOVERY_GATE_BASENAME, RECOVERY_LOCK_BASENAME: LOCK_BASENAME, RECOVERY_MARKER_BASENAME: MARKER_BASENAME, buildRecoveryApplyRequest, canonicalBytes, canonicalJson, compareOrdinal, deriveRecoveryId, recoveryAllowedDispositions, sha256, validateTarget } = require('./protocol')
 const { collectInspection, validateElectionMarkerRecord } = require('./inspection')
 const { publishRecoveryFile, recoveryTemporaryMatches, recoveryTemporaryTarget, removeRecoveryFile } = require('./publication')
 
-const RECOVERY_GATE_BASENAME = '.nightshift-init-backlog.recovery-gate'
 const RECOVERY_OWNER_STAGE_BASENAME = 'owner.new'
 const RECOVERY_OWNER_BASENAME = 'owner.json'
-const LOCK_BASENAME = '.nightshift-init-backlog.lock'
-const MARKER_BASENAME = '.nightshift-init-backlog-election'
 const LOCK_STAGE_PATTERN = /^\.nightshift-init-backlog\.lock\.([1-9][0-9]*)\.([a-f0-9]{32})\.new$/
 const ALLOWED_DISPOSITIONS = ['cleanup', 'deferred', 'track', 'ignore', 'abandon', 'restore', 'accept', 'remove']
 
@@ -34,7 +32,7 @@ function failure(operation, phase, code, detail, target = null, cause = undefine
 function artifactPath(root, target) {
   validateTarget(target)
   const path = join(root, ...target.split('/'))
-  if (relative(root, path).startsWith('..')) {
+  if (!pathIsContained(root, path)) {
     throw new Error('Recovery artifact escapes its root')
   }
 
@@ -175,7 +173,7 @@ function ownerRecordValid(record, root) {
 
 function markerTopology(root, target, record) {
   if (record.manifestId === null) return null
-  const markerPrefix = `.nightshift-init-backlog-election.${record.manifestId}`
+  const markerPrefix = `${MARKER_BASENAME}.${record.manifestId}`
   const paths = {
     alias: `${markerPrefix}.tmp`,
     marker: MARKER_BASENAME,
@@ -211,7 +209,7 @@ function markerTopology(root, target, record) {
 }
 
 function hardLinkTopology(root, target, record) {
-  const initial = `.nightshift-init-backlog.lock.${record.pid}.${record.ownerNonce}.new`
+  const initial = `${LOCK_BASENAME}.${record.pid}.${record.ownerNonce}.new`
   if (target === LOCK_BASENAME || target === initial) {
     const peer = target === LOCK_BASENAME ? initial : LOCK_BASENAME
     const peerPresent = !absent(artifactPath(root, peer))
@@ -284,8 +282,8 @@ function validOwnerTemporary(root, target, record) {
   } catch {
     return false
   }
-  const initial = `.nightshift-init-backlog.lock.${record.pid}.${record.ownerNonce}.new`
-  const next = `.nightshift-init-backlog.lock.${record.ownerNonce}.next`
+  const initial = `${LOCK_BASENAME}.${record.pid}.${record.ownerNonce}.new`
+  const next = `${LOCK_BASENAME}.${record.ownerNonce}.next`
   if (target === initial) return true
   if (record.operation === 'apply' && target === next) return true
   if (record.operation === 'recover-apply') {
@@ -303,10 +301,10 @@ function validOwnerTemporary(root, target, record) {
     if (/^[1-9][0-9]*$/.test(ordinal)) return true
   }
   const markerNames = [
-    `.nightshift-init-backlog-election.${record.manifestId}.tmp`,
-    `.nightshift-init-backlog-election.${record.manifestId}.new.tmp`,
-    `.nightshift-init-backlog-election.${record.manifestId}.old.tmp`,
-    `.nightshift-init-backlog-election.${record.manifestId}.tombstone.tmp`,
+    `${MARKER_BASENAME}.${record.manifestId}.tmp`,
+    `${MARKER_BASENAME}.${record.manifestId}.new.tmp`,
+    `${MARKER_BASENAME}.${record.manifestId}.old.tmp`,
+    `${MARKER_BASENAME}.${record.manifestId}.tombstone.tmp`,
   ]
 
   return markerNames.includes(target)
@@ -359,8 +357,8 @@ function ownerEvidence(root, options = {}) {
   }
 
   for (const states of [temporaryStates, directoryStates]) {
-    const initialLockStage = `.nightshift-init-backlog.lock.${record.pid}.${record.ownerNonce}.new`
-    const nextLockStage = `.nightshift-init-backlog.lock.${record.ownerNonce}.next`
+    const initialLockStage = `${LOCK_BASENAME}.${record.pid}.${record.ownerNonce}.new`
+    const nextLockStage = `${LOCK_BASENAME}.${record.ownerNonce}.next`
     if (states.some((item, index) => !item.present && states.slice(index + 1).some((later) => later.present && !exactBackupPair(item.target, later.target) && !validRecoveryTemporaryTarget(item.target, record) && !(item.target === nextLockStage && later.target === initialLockStage) && !(backupParts(later.target)?.manifestId === record.manifestId) && !(item.target === initialLockStage && (backupParts(later.target) !== null || validRecoveryTemporaryTarget(later.target, record)))))) throw new Error('Owner inventory is not a contiguous cleanup prefix')
   }
 

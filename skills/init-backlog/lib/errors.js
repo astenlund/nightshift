@@ -43,4 +43,4 @@ function wrapInitBacklogError(error, fields) {
   throwInitBacklogError(fields, error)
 }
 
-module.exports = { InitBacklogError, failureRecord, throwInitBacklogError, trustedSystemCode, wrapInitBacklogError }
+module.exports = { InitBacklogError, SYSTEM_CODE_PATTERN, failureRecord, throwInitBacklogError, trustedSystemCode, wrapInitBacklogError }

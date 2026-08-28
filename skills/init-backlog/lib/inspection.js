@@ -11,7 +11,7 @@ const { inspectBackups } = require('./backups')
 const { InitBacklogError, failureRecord } = require('./errors')
 const { HTML_BLOCK_TYPE_SIX_TAGS, discoverControlledMarkdown, resolveGuidance } = require('./guidance')
 const { canonicalRoot, createInitialLock, initialLockPaths, removeInitialLock, stableOpenFile } = require('./filesystem')
-const { canonicalJson, compareOrdinal, deriveProposalId, deriveSnapshotId, sha256 } = require('./protocol')
+const { RECOVERY_LOCK_BASENAME, RECOVERY_MARKER_BASENAME, canonicalJson, compareOrdinal, deriveProposalId, deriveSnapshotId, sha256 } = require('./protocol')
 const { detectGitKind, inspectGitPolicy, newlineStyle } = require('./git-policy')
 
 function inspectError(code, detail, target = null, cause, phase = 'inspect') {
@@ -336,7 +336,7 @@ function validateElectionMarkerRecord(value, root) {
 }
 
 function readElectionMarker(root, options = {}) {
-  const path = join(root, '.nightshift-init-backlog-election')
+  const path = join(root, RECOVERY_MARKER_BASENAME)
   let metadata
   let stable = null
   try {
@@ -561,9 +561,9 @@ function collectInspection(root, host, hostContext = {}, options = {}) {
   try {
     marker = readElectionMarker(canonical, options)
   } catch (error) {
-    inspectError('runtime-marker', 'Election marker is invalid.', '.nightshift-init-backlog-election', error)
+    inspectError('runtime-marker', 'Election marker is invalid.', RECOVERY_MARKER_BASENAME, error)
   }
-  if (git.kind === 'non-git' && marker.marker !== 'absent') inspectError('runtime-marker', 'Election marker is not valid outside Git.', '.nightshift-init-backlog-election')
+  if (git.kind === 'non-git' && marker.marker !== 'absent') inspectError('runtime-marker', 'Election marker is not valid outside Git.', RECOVERY_MARKER_BASENAME)
   const fixed = bundle.manifest.targets.filter((item) => item.applicability === 'always' || git.kind === 'git' && item.applicability === 'git-only')
   const descriptors = []
   for (const declaration of fixed) {
@@ -698,22 +698,22 @@ function inspect(root, host, hostContext = {}, options = {}) {
     root = root.root
   }
   const canonical = canonicalRoot(root)
-  const lockPath = join(canonical, '.nightshift-init-backlog.lock')
+  const lockPath = join(canonical, RECOVERY_LOCK_BASENAME)
   const stages = discoverInitialLockStages(canonical, options)
   if (stages.length > 0) inspectError('runtime-lock', 'Orphan initial lock stage requires recovery.', stages[0].name, undefined, 'lock')
   try {
     lstatSync(lockPath, { bigint: true })
-    inspectError('runtime-lock', 'Inspection lock already exists.', '.nightshift-init-backlog.lock', undefined, 'lock')
+    inspectError('runtime-lock', 'Inspection lock already exists.', RECOVERY_LOCK_BASENAME, undefined, 'lock')
   } catch (error) {
     if (error instanceof InitBacklogError) throw error
-    if (error?.code !== 'ENOENT') inspectError('runtime-lock', 'Inspection lock cannot be inspected.', '.nightshift-init-backlog.lock', error, 'lock')
+    if (error?.code !== 'ENOENT') inspectError('runtime-lock', 'Inspection lock cannot be inspected.', RECOVERY_LOCK_BASENAME, error, 'lock')
   }
   const pid = options.pid ?? process.pid
   let ownerNonce
   try {
     ownerNonce = options.ownerNonce ?? randomBytes(16).toString('hex')
   } catch (error) {
-    inspectError('runtime-lock', 'Owner nonce generation failed.', '.nightshift-init-backlog.lock', error)
+    inspectError('runtime-lock', 'Owner nonce generation failed.', RECOVERY_LOCK_BASENAME, error)
   }
   const paths = initialLockPaths(canonical, pid, ownerNonce)
   const stageName = paths.stage.slice(canonical.length + 1).replaceAll('\\', '/')
@@ -722,7 +722,7 @@ function inspect(root, host, hostContext = {}, options = {}) {
     lock = createInitialLock(canonical, { createdAtUnixMs: Date.now(), manifestId: null, operation: 'inspect', ownerNonce, pid, protocolVersion: 1, recoveryId: null, root: canonical, temporaryPaths: [stageName], unfinalizedDirectories: [] }, { ...options, ownerNonce, pid })
   } catch (error) {
     const code = error?.cause?.code
-    inspectError(code === 'EEXIST' ? 'runtime-lock' : 'filesystem', 'Inspection lock could not be acquired.', '.nightshift-init-backlog.lock', error, 'lock')
+    inspectError(code === 'EEXIST' ? 'runtime-lock' : 'filesystem', 'Inspection lock could not be acquired.', RECOVERY_LOCK_BASENAME, error, 'lock')
   }
   try {
     const first = collectInspection(canonical, host, hostContext, options)
@@ -739,7 +739,7 @@ function inspect(root, host, hostContext = {}, options = {}) {
       removeInitialLock(canonical, lock.paths, lock.bytes, options)
     } catch (error) {
       if (error instanceof InitBacklogError) throw error
-      inspectError('filesystem', 'Inspection lock cleanup failed.', '.nightshift-init-backlog.lock', error, 'cleanup')
+      inspectError('filesystem', 'Inspection lock cleanup failed.', RECOVERY_LOCK_BASENAME, error, 'cleanup')
     }
   }
 }
