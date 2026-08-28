@@ -1,6 +1,6 @@
 'use strict'
 
-const { join, relative } = require('node:path')
+const { join } = require('node:path')
 const { randomBytes } = require('node:crypto')
 const { existsSync, linkSync, lstatSync, mkdirSync, readdirSync, rmdirSync, unlinkSync } = require('node:fs')
 
@@ -10,20 +10,19 @@ const {
   canonicalRoot,
   classifyPid,
   comparableIdentity,
+  containedTargetPath,
   createInitialLock,
   initialLockPaths,
-  pathIsContained,
+  pathExists,
   platformMode,
   removeAndVerify,
   removeInitialLock,
   stableOpenFile,
   stageFile,
 } = require('./filesystem')
-const { DIGEST_PATTERN, MAX_INLINE_FILE_BYTES, MAX_RECOVERY_REQUEST_BYTES, MAX_RECOVERY_RESULT_BYTES, NONCE_PATTERN, OWNER_BASENAME: RECOVERY_OWNER_BASENAME, OWNER_STAGE_BASENAME: RECOVERY_OWNER_STAGE_BASENAME, RECOVERY_GATE_BASENAME, RECOVERY_LOCK_BASENAME: LOCK_BASENAME, RECOVERY_MARKER_BASENAME: MARKER_BASENAME, WARNING_CODES, buildRecoveryApplyRequest, canonicalBytes, canonicalJson, compareOrdinal, deriveRecoveryId, electionMarkerTemporaryNames, recoveryAllowedDispositions, sameCanonical, sameKeys, sha256, validateTarget } = require('./protocol')
+const { DIGEST_PATTERN, MAX_INLINE_FILE_BYTES, MAX_RECOVERY_REQUEST_BYTES, MAX_RECOVERY_RESULT_BYTES, NONCE_PATTERN, OWNER_BASENAME: RECOVERY_OWNER_BASENAME, OWNER_STAGE_BASENAME: RECOVERY_OWNER_STAGE_BASENAME, RECOVERY_GATE_BASENAME, RECOVERY_LOCK_BASENAME: LOCK_BASENAME, RECOVERY_LOCK_STAGE_PATTERN: LOCK_STAGE_PATTERN, RECOVERY_MARKER_BASENAME: MARKER_BASENAME, WARNING_CODES, buildRecoveryApplyRequest, canonicalBytes, canonicalJson, compareOrdinal, deriveRecoveryId, electionMarkerTemporaryNames, recoveryAllowedDispositions, sameCanonical, sameKeys, sha256, validateTarget } = require('./protocol')
 const { collectInspection, validateElectionMarkerRecord } = require('./inspection')
-const { publishRecoveryFile, recoveryTemporaryMatches, recoveryTemporaryTarget, removeRecoveryFile } = require('./publication')
-
-const LOCK_STAGE_PATTERN = /^\.nightshift-init-backlog\.lock\.([1-9][0-9]*)\.([a-f0-9]{32})\.new$/
+const { publishRecoveryFile, recoveryTemporaryMatches, recoveryTemporaryTarget, relativeArtifact, removeRecoveryFile } = require('./publication')
 
 function failure(operation, phase, code, detail, target = null, cause = undefined, fields = {}) {
   throw new InitBacklogError(failureRecord({ ...fields, code, detail, operation, phase, target, systemCode: trustedSystemCode(cause) }), { cause })
@@ -31,20 +30,12 @@ function failure(operation, phase, code, detail, target = null, cause = undefine
 
 function artifactPath(root, target) {
   validateTarget(target)
-  const path = join(root, ...target.split('/'))
-  if (!pathIsContained(root, path)) {
-    throw new Error('Recovery artifact escapes its root')
-  }
 
-  return path
+  return containedTargetPath(root, target, 'Recovery artifact escapes its root')
 }
 
 function modeFor(opened, platform = process.platform) {
   return platform === 'win32' || opened === null ? null : opened.mode
-}
-
-function targetName(root, path) {
-  return relative(root, path).replaceAll('\\', '/')
 }
 
 function targetDirectory(target) {
@@ -79,18 +70,6 @@ function exactBackupPair(stageTarget, finalTarget) {
   const final = backupParts(finalTarget)
 
   return stage?.kind === 'stage' && final?.kind === 'final' && stage.directory === final.directory && stage.snapshotId === final.snapshotId && stage.manifestId === final.manifestId && stage.targetHash === final.targetHash
-}
-
-function absent(path) {
-  try {
-    lstatSync(path)
-
-    return false
-  } catch (error) {
-    if (error?.code === 'ENOENT') return true
-
-    throw error
-  }
 }
 
 function readArtifact(root, target, options = {}, requireSingleLink = true) {
@@ -179,8 +158,8 @@ function markerTopology(root, target, record) {
     marker: MARKER_BASENAME,
   }
   const temporary = new Set(record.temporaryPaths)
-  const present = (candidate) => temporary.has(candidate) && !absent(artifactPath(root, candidate))
-  const markerPresent = !absent(artifactPath(root, paths.marker))
+  const present = (candidate) => temporary.has(candidate) && pathExists(artifactPath(root, candidate))
+  const markerPresent = pathExists(artifactPath(root, paths.marker))
   const peers = []
 
   if (target === paths.alias) {
@@ -209,7 +188,7 @@ function hardLinkTopology(root, target, record) {
   const initial = `${LOCK_BASENAME}.${record.pid}.${record.ownerNonce}.new`
   if (target === LOCK_BASENAME || target === initial) {
     const peer = target === LOCK_BASENAME ? initial : LOCK_BASENAME
-    const peerPresent = !absent(artifactPath(root, peer))
+    const peerPresent = pathExists(artifactPath(root, peer))
 
     return { expectedLinkCount: peerPresent ? 2 : 1, peers: peerPresent ? [peer] : [], valid: true }
   }
@@ -221,7 +200,7 @@ function hardLinkTopology(root, target, record) {
       return candidateParts !== null && candidateParts.kind !== parts.kind && (parts.kind === 'stage' ? exactBackupPair(target, candidate) : exactBackupPair(candidate, target))
     })
 
-    const peerPresent = peer !== undefined && !absent(artifactPath(root, peer))
+    const peerPresent = peer !== undefined && pathExists(artifactPath(root, peer))
 
     return { expectedLinkCount: peerPresent ? 2 : 1, peers: peerPresent ? [peer] : [], valid: true }
   }
@@ -458,13 +437,13 @@ function buildRecoveryResult(request, recoveryKind, recoveryTarget, evidence, al
 function withTransientRecoveryLock(root, request, options, callback, lockContext = {}) {
   const lock = join(root, LOCK_BASENAME)
   const gate = recoveryGatePath(root)
-  const lockPresent = !absent(lock)
-  const gatePresent = !absent(gate)
+  const lockPresent = pathExists(lock)
+  const gatePresent = pathExists(gate)
   if (lockPresent || gatePresent) failure(request.operation, 'lock', 'runtime-lock', 'Recovery is blocked by existing coordination state.', lockPresent ? LOCK_BASENAME : RECOVERY_GATE_BASENAME)
   const pid = recoveryPidFor(options, request)
   const ownerNonce = ownerNonceFor(options, request)
   const paths = initialLockPaths(root, pid, ownerNonce)
-  const temporaryPaths = [targetName(root, paths.stage), ...(lockContext.temporaryPaths ?? [])].sort(compareOrdinal)
+  const temporaryPaths = [relativeArtifact(root, paths.stage), ...(lockContext.temporaryPaths ?? [])].sort(compareOrdinal)
   const record = { createdAtUnixMs: Date.now(), manifestId: null, operation: lockContext.operation ?? 'recover-inspect', ownerNonce, pid, protocolVersion: 1, recoveryId: lockContext.recoveryId ?? null, root, temporaryPaths, unfinalizedDirectories: [] }
   const lockCleanupOptions = { ...options }
   delete lockCleanupOptions.unlinkSync
@@ -475,7 +454,7 @@ function withTransientRecoveryLock(root, request, options, callback, lockContext
   try {
     acquired = createInitialLock(root, record, { ...lockCleanupOptions, ownerNonce, pid })
     acquiredIdentity = stableOpenFile(root, acquired.paths.lock, { ...lockCleanupOptions, requireSingleLink: true }).identity
-    if (!absent(gate)) {
+    if (pathExists(gate)) {
       removeInitialLock(root, acquired.paths, acquired.bytes, lockCleanupOptions)
       acquired = undefined
       failure(request.operation, 'lock', 'runtime-lock', 'Recovery gate appeared while acquiring the transient lock.', RECOVERY_GATE_BASENAME)
@@ -502,7 +481,7 @@ function withTransientRecoveryLock(root, request, options, callback, lockContext
     if (acquired !== undefined) {
       try {
         const cleanupInventory = lockContext.cleanupInventory ?? temporaryPaths
-        const retainsInventory = cleanupInventory.some((target) => !absent(artifactPath(root, target)))
+        const retainsInventory = cleanupInventory.some((target) => pathExists(artifactPath(root, target)))
         if (!retainsInventory) removeInitialLock(root, acquired.paths, acquired.bytes, lockCleanupOptions)
       } catch (error) {
         if (callbackError !== undefined) {
@@ -705,7 +684,7 @@ function validateStaleOwnerLock(root, owner, options) {
 
 function removeArtifact(root, target, expected, options = {}, requireSingleLink = true) {
   const path = artifactPath(root, target)
-  if (absent(path)) return false
+  if (!pathExists(path)) return false
   const current = stableOpenFile(root, path, { ...options, requireSingleLink })
   if (expected !== null && (current.rawSha256 !== expected.rawSha256 || expected.mode !== null && current.mode !== expected.mode || expected.identity !== undefined && current.identity !== expected.identity || expected.recoveryId !== undefined && parseCanonicalRecord(current)?.recoveryId !== expected.recoveryId)) throw new Error('Recovery artifact changed before removal')
   const remove = options.removeAndVerify ?? removeAndVerify
@@ -717,7 +696,7 @@ function removeArtifact(root, target, expected, options = {}, requireSingleLink 
 
 function removeOwnerArtifact(root, target, expected, options, record) {
   const path = artifactPath(root, target)
-  if (absent(path)) return false
+  if (!pathExists(path)) return false
   const current = readOwnerArtifact(root, target, options, record)
   if (current === null || expected !== null && (current.rawSha256 !== expected.rawSha256 || expected.mode !== null && current.mode !== expected.mode || expected.identity !== undefined && current.identity !== expected.identity)) throw new Error('Recovery artifact changed before removal')
   const remove = options.removeAndVerify ?? removeAndVerify
@@ -815,7 +794,7 @@ function claimRecoveryGate(root, inspection, options = {}) {
     const ownerMetadata = lstatSync(owner, { bigint: true })
     if (stageMetadata.nlink !== 2n || ownerMetadata.nlink !== 2n || published.identity !== staged.identity || !published.bytes.equals(bytes)) throw new Error('Recovery gate owner identity differs from its stage')
     unlinkSync(stage)
-    if (!absent(stage)) throw new Error('Recovery gate owner stage was not removed')
+    if (pathExists(stage)) throw new Error('Recovery gate owner stage was not removed')
     options.onTransition?.('after-recovery-gate-owner-publish')
   } catch (error) {
     if (created && createdIdentity !== null) removeOwnedRecoveryGate(gate, createdIdentity)
@@ -928,7 +907,7 @@ function invalidatedMarkerRecord(root, marker, state) {
 function markerAlreadyApplied(root, inspection, disposition, options = {}) {
   const path = artifactPath(root, MARKER_BASENAME)
   try {
-    if (disposition === 'abandon') return absent(path)
+    if (disposition === 'abandon') return !pathExists(path)
     const current = readArtifact(root, MARKER_BASENAME, options, true)
     if (current === null) return false
     const marker = inspection.evidence.marker
@@ -965,7 +944,7 @@ function verifyTerminalRecovery(root, request, inspection, fresh, options) {
       const backup = readArtifact(root, inspection.recoveryTarget, options, true)
       if (backup !== null && (backup.rawSha256 !== evidence.backupRawSha256 || modeFor(backup, options.platform) !== evidence.backupMode)) throw new Error('Recovery backup changed')
     }
-    if (request.disposition !== 'restore' && !absent(artifactPath(root, inspection.recoveryTarget))) throw new Error('Recovery backup successor is present')
+    if (request.disposition !== 'restore' && pathExists(artifactPath(root, inspection.recoveryTarget))) throw new Error('Recovery backup successor is present')
   } else if (inspection.recoveryKind === 'election-marker') {
     const marker = inspection.evidence.marker
     if (fresh.authoritative && sha256(Buffer.from(canonicalJson(recoveryPolicyProjection(fresh.inspection)), 'utf8')) !== marker.policyDigest) throw new Error('Recovery policy changed')
@@ -993,7 +972,7 @@ function recoveryTemporaryPaths(root, inspection, disposition, ownerNonce, pid) 
     paths.push(artifactPath(root, inspection.recoveryTarget))
   }
 
-  return paths.map((path) => targetName(root, path)).sort(compareOrdinal)
+  return paths.map((path) => relativeArtifact(root, path)).sort(compareOrdinal)
 }
 
 function recoveryCapacityPaths(root, inspection, temporaryPaths) {
@@ -1051,7 +1030,7 @@ function applyRecovery(request, options = {}) {
   options = recoveryOwnerOptions
   const recoveryLockTemporaryPaths = enforceRecoveryResultCapacity(request, inspection, request.disposition, recoveryOwnerOptions)
   if (['orphan-lock-stage', 'election-marker', 'abandoned-backup'].includes(inspection.recoveryKind) && options.skipTransientLock !== true) {
-    const stageTarget = targetName(root, initialLockPaths(root, recoveryOwnerOptions.pid, recoveryOwnerOptions.ownerNonce).stage)
+    const stageTarget = relativeArtifact(root, initialLockPaths(root, recoveryOwnerOptions.pid, recoveryOwnerOptions.ownerNonce).stage)
     const lockContext = ['election-marker', 'abandoned-backup'].includes(inspection.recoveryKind) ? { cleanupInventory: recoveryLockTemporaryPaths.filter((target) => target !== stageTarget && target !== inspection.recoveryTarget), operation: 'recover-apply', recoveryId: inspection.recoveryId, temporaryPaths: recoveryLockTemporaryPaths.filter((target) => target !== stageTarget) } : {}
 
     try {
@@ -1067,10 +1046,10 @@ function applyRecovery(request, options = {}) {
   }
   const remove = options.removeAndVerify ?? removeAndVerify
   try {
-    if (inspection.recoveryKind === 'orphan-lock-stage' && absent(artifactPath(root, inspection.recoveryTarget))) return recoverySuccess(request, inspection, request.disposition, 'already-complete', [], [])
-    if (inspection.recoveryKind === 'stale-recovery-gate' && absent(recoveryGatePath(root))) return recoverySuccess(request, inspection, request.disposition, 'already-complete', [], [])
+    if (inspection.recoveryKind === 'orphan-lock-stage' && !pathExists(artifactPath(root, inspection.recoveryTarget))) return recoverySuccess(request, inspection, request.disposition, 'already-complete', [], [])
+    if (inspection.recoveryKind === 'stale-recovery-gate' && !pathExists(recoveryGatePath(root))) return recoverySuccess(request, inspection, request.disposition, 'already-complete', [], [])
     const carriedTargets = inspection.evidence.backup?.currentTarget === null || inspection.evidence.backup?.currentTarget === undefined ? [] : [{ target: inspection.evidence.backup.currentTarget }]
-    const lockAbsentStaleOwner = inspection.recoveryKind === 'stale-owner' && absent(join(root, LOCK_BASENAME))
+    const lockAbsentStaleOwner = inspection.recoveryKind === 'stale-owner' && !pathExists(join(root, LOCK_BASENAME))
     if (lockAbsentStaleOwner) {
       try {
         validateStaleOwnerReplay(root, inspection.evidence.owner, options)
@@ -1079,8 +1058,8 @@ function applyRecovery(request, options = {}) {
       }
     }
     const restoreState = inspection.recoveryKind === 'abandoned-backup' && request.disposition === 'restore' ? backupRestoreState(root, inspection, options) : null
-    const terminalBackup = inspection.recoveryKind === 'abandoned-backup' && absent(artifactPath(root, inspection.recoveryTarget)) && ['accept', 'remove'].includes(request.disposition)
-    const terminalMarker = inspection.recoveryKind === 'election-marker' && (request.disposition === 'abandon' && absent(artifactPath(root, MARKER_BASENAME)) || request.disposition !== 'abandon' && markerAlreadyApplied(root, inspection, request.disposition, options))
+    const terminalBackup = inspection.recoveryKind === 'abandoned-backup' && !pathExists(artifactPath(root, inspection.recoveryTarget)) && ['accept', 'remove'].includes(request.disposition)
+    const terminalMarker = inspection.recoveryKind === 'election-marker' && (request.disposition === 'abandon' && !pathExists(artifactPath(root, MARKER_BASENAME)) || request.disposition !== 'abandon' && markerAlreadyApplied(root, inspection, request.disposition, options))
     if (terminalBackup || terminalMarker || restoreState !== null) {
       const fresh = collectFreshRecoveryProjection(root, request, options, carriedTargets)
       try {
@@ -1182,7 +1161,7 @@ function applyRecovery(request, options = {}) {
 
           throw error
         }
-        if (!absent(markerPath)) throw new Error('Election marker remains after cleanup')
+        if (pathExists(markerPath)) throw new Error('Election marker remains after cleanup')
         mutated = true
       } else {
         const temporary = artifactPath(root, recoveryTemporaryTarget(MARKER_BASENAME, inspection.recoveryId))

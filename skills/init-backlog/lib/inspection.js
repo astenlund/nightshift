@@ -10,7 +10,7 @@ const { BACKLOG_DIRECTORY_TARGETS, PLANS_DIRECTORY_TARGET, loadManifest } = requ
 const { inspectBackups } = require('./backups')
 const { InitBacklogError, failureRecord } = require('./errors')
 const { HTML_BLOCK_TYPE_SIX_TAGS, discoverControlledMarkdown, resolveGuidance } = require('./guidance')
-const { canonicalRoot, comparableMode, createInitialLock, initialLockPaths, removeInitialLock, stableOpenFile } = require('./filesystem')
+const { canonicalRoot, comparableMode, createInitialLock, initialLockPaths, removeInitialLock, stableOpenFile, targetPath } = require('./filesystem')
 const { DIGEST_PATTERN, RECOVERY_LOCK_BASENAME, RECOVERY_LOCK_STAGE_PATTERN, RECOVERY_MARKER_BASENAME, canonicalJson, compareOrdinal, deriveProposalId, deriveSnapshotId, sameKeys, sha256 } = require('./protocol')
 const { detectGitKind, inspectGitPolicy, newlineStyle } = require('./git-policy')
 
@@ -397,10 +397,6 @@ function creationMode(kind, options = {}) {
   if (kind === 'directory' ? (mode & 0o700) !== 0o700 : (mode & 0o600) !== 0o600) throw new Error('Filesystem creation mode lacks owner permissions')
 
   return mode
-}
-
-function targetPath(root, target) {
-  return join(root, ...target.split('/'))
 }
 
 function targetState(target, root, options = {}) {

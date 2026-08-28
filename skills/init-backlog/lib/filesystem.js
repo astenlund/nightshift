@@ -233,6 +233,19 @@ function pathIsContained(root, target, pathModule = require('node:path')) {
   return relation !== '' && relation !== '..' && !relation.startsWith(`..${pathModule.sep}`) && !pathModule.isAbsolute(relation)
 }
 
+function targetPath(root, target) {
+  return join(root, ...target.split('/'))
+}
+
+function containedTargetPath(root, target, message) {
+  const path = targetPath(root, target)
+  if (!pathIsContained(root, path)) {
+    throw new Error(message)
+  }
+
+  return path
+}
+
 function canonicalAbsolutePath(path, platform) {
   const pathModule = platform === 'win32' ? require('node:path').win32 : require('node:path')
   assertSafeWindowsScalar(path, platform)
@@ -1005,11 +1018,13 @@ module.exports = {
   comparableIdentity,
   comparableMode,
   consumeRequest,
+  containedTargetPath,
   decodeDirectoryName,
   enumerateDirectory,
   inspectRequestResidue,
   createInitialLock,
   initialLockPaths,
+  pathExists,
   pathIsContained,
   platformMode,
   probeWindowsAttributes,
@@ -1026,6 +1041,7 @@ module.exports = {
   stableMetadata,
   stableOpenFile,
   stageFile: stageBytes,
+  targetPath,
   trustedWindowsPowerShellPath,
   verifyPublishedIdentity,
   withAttributeProbe,

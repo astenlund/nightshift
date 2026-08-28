@@ -11,8 +11,10 @@ const { unwrapText } = require('../unwrap')
 const {
   assignAndVerifyMode,
   canonicalRoot,
+  containedTargetPath,
   createInitialLock,
   initialLockPaths,
+  pathExists,
   pathIsContained,
   platformMode,
   publishNoReplace,
@@ -104,12 +106,7 @@ function temporaryPaths(root, manifestId, actionOrdinal = 1, ownerNonce = random
 }
 
 function targetPath(root, target) {
-  const path = join(root, ...target.split('/'))
-  if (!pathIsContained(root, path)) {
-    throw new Error('Publication target escapes its root')
-  }
-
-  return path
+  return containedTargetPath(root, target, 'Publication target escapes its root')
 }
 
 function verifyBackupDirectory(root, options) {
@@ -578,17 +575,6 @@ function linkMarkerPath(root, source, destination, bytes, mode, options, point) 
   transition(options, point)
 }
 
-function markerPathPresent(path) {
-  try {
-    lstatSync(path)
-
-    return true
-  } catch (error) {
-    if (error?.code === 'ENOENT') return false
-    throw error
-  }
-}
-
 function markerOldBytes(request, root) {
   const carriedGit = request.inspection.git ?? {}
   if (carriedGit.electionMarker === undefined || carriedGit.electionMarker === 'absent') return null
@@ -757,14 +743,14 @@ function publishMarker(request, admission, root, manifestId, ownerMode, options)
   const oldBytes = markerOldBytes(request, root)
   const oldMode = platformMode(options, carriedGit.electionMarkerMode ?? 0o600)
   let mode = platformMode(options, ownerMode)
-  const markerPresent = markerPathPresent(path)
-  const tombstonePresent = markerPathPresent(paths.electionTombstone)
-  if (tombstonePresent && !markerPresent && !markerPathPresent(paths.electionAlias)) return false
+  const markerPresent = pathExists(path)
+  const tombstonePresent = pathExists(paths.electionTombstone)
+  if (tombstonePresent && !markerPresent && !pathExists(paths.electionAlias)) return false
   if (markerPresent) {
     const current = stableOpenFile(root, path, { ...options, requireSingleLink: false })
     if (current.bytes.equals(bytes) && (mode === null || current.mode === mode)) {
-      if (markerPathPresent(paths.electionNewWitness)) {
-        if (markerPathPresent(paths.electionAlias)) {
+      if (pathExists(paths.electionNewWitness)) {
+        if (pathExists(paths.electionAlias)) {
           removeOwnedTemporary(root, paths.electionAlias, options)
           markerOwnership(root, paths.electionNewWitness, bytes, mode, options, 2, [path])
         }
@@ -780,7 +766,32 @@ function publishMarker(request, admission, root, manifestId, ownerMode, options)
       linkMarkerPath(root, path, paths.electionOldWitness, oldBytes, oldMode, options, 'after-marker-old-witness')
     }
   }
-  publishContent(root, path, bytes, mode, temp, options, replace, expectedContent, mode, expectedIdentity)
+  if (!pathExists(paths.electionAlias)) stageMarkerAlias(root, paths.electionAlias, bytes, mode, options)
+  if (!pathExists(paths.electionNewWitness)) linkMarkerPath(root, paths.electionAlias, paths.electionNewWitness, bytes, mode, options, 'after-marker-new-witness')
+  if (pathExists(path)) {
+    const current = stableOpenFile(root, path, { ...options, requireSingleLink: false })
+    if (oldBytes === null || !current.bytes.equals(oldBytes) || oldMode !== null && current.mode !== oldMode) throw new Error('Election marker differs from the approved carried marker')
+    const replacementTarget = stableOpenFile(root, path, { ...options, requireSingleLink: false })
+    if (!replacementTarget.bytes.equals(oldBytes) || replacementTarget.identity !== current.identity || oldMode !== null && replacementTarget.mode !== oldMode) throw new Error('Election marker changed before replacement')
+    options.verifyLock?.()
+    renameVerified(paths.electionAlias, path, bytes, { ...options, onTransition: (point) => transition(options, point) })
+    markerOwnership(root, paths.electionNewWitness, bytes, mode, options, 2, [path])
+    markerOwnership(root, paths.electionOldWitness, oldBytes, oldMode, options, 1)
+    transition(options, 'after-marker-replacement')
+  } else {
+    options.verifyLock?.()
+    publishNoReplace(paths.electionAlias, path, { ...options, onPublished: undefined })
+    markerOwnership(root, paths.electionAlias, bytes, mode, options, 3, [paths.electionNewWitness, path])
+    markerOwnership(root, paths.electionNewWitness, bytes, mode, options, 3, [paths.electionAlias, path])
+    transition(options, 'after-marker-publication')
+    removeOwnedTemporary(root, paths.electionAlias, options)
+    markerOwnership(root, paths.electionNewWitness, bytes, mode, options, 2, [path])
+    transition(options, 'after-marker-alias-removal')
+    options.onPublished?.(path)
+  }
+  if (options.ownedTemporaries?.has(paths.electionOldWitness)) removeOwnedTemporary(root, paths.electionOldWitness, options)
+  transition(options, 'after-final-verification')
+  transition(options, 'after-temporary-cleanup')
 
   return true
 }
@@ -790,26 +801,40 @@ function removeMarker(request, admission, root, options) {
   const expected = markerBytes(request, admission, root)
   const mode = platformMode(options, request.inspection.git?.electionMarkerMode ?? 0o600)
   options.verifyLock?.()
-  if (markerPathPresent(path)) {
+  if (pathExists(path)) {
     const current = stableOpenFile(root, path, { ...options, requireSingleLink: false })
     if (!current.bytes.equals(expected) || mode !== null && current.mode !== mode) throw new Error('Election marker changed before cleanup')
     const witness = options.ownedTemporaries?.get(paths.electionNewWitness)
     if (witness !== undefined && witness.identity !== current.identity) throw new Error(request.inspection.git?.electionMarker === 'absent' ? 'Published target shares an unexpected temporary identity' : 'Election marker changed before cleanup')
-    if (markerPathPresent(paths.electionTombstone)) throw new Error('Election marker tombstone state is invalid')
+    if (pathExists(paths.electionTombstone)) throw new Error('Election marker tombstone state is invalid')
     options.verifyLock?.()
     renameVerified(path, paths.electionTombstone, expected, { ...options, onTransition: (point) => transition(options, point) })
-    markerOwnership(root, paths.electionTombstone, expected, mode, options, markerPathPresent(paths.electionNewWitness) ? 2 : 1, markerPathPresent(paths.electionNewWitness) ? [paths.electionNewWitness] : [])
-    if (markerPathPresent(paths.electionNewWitness)) markerOwnership(root, paths.electionNewWitness, expected, mode, options, 2, [paths.electionTombstone])
+    markerOwnership(root, paths.electionTombstone, expected, mode, options, pathExists(paths.electionNewWitness) ? 2 : 1, pathExists(paths.electionNewWitness) ? [paths.electionNewWitness] : [])
+    if (pathExists(paths.electionNewWitness)) markerOwnership(root, paths.electionNewWitness, expected, mode, options, 2, [paths.electionTombstone])
     transition(options, 'after-marker-unlink')
     transition(options, 'after-marker-terminal-rename')
     transition(options, 'after-marker-removal')
 
     return
   }
-  const current = stableOpenFile(root, path, { ...options, requireSingleLink: true })
-  if (!current.bytes.equals(expected)) throw new Error('Election marker changed before cleanup')
-  removeAndVerify(path, options)
-  transition(options, 'after-marker-removal')
+  if (pathExists(paths.electionNewWitness)) {
+    const owned = options.ownedTemporaries?.get(paths.electionNewWitness)
+    if (owned === undefined) throw new Error('Election marker witness ownership is not proven')
+    const tombstone = pathExists(paths.electionTombstone) ? paths.electionTombstone : null
+    verifyOwnedTemporary(root, paths.electionNewWitness, owned, options)
+    if (tombstone !== null) markerOwnership(root, paths.electionNewWitness, expected, mode, options, 2, [tombstone])
+    removeOwnedTemporary(root, paths.electionNewWitness, options)
+    if (pathExists(paths.electionTombstone)) markerOwnership(root, paths.electionTombstone, expected, mode, options, 1)
+    transition(options, 'after-marker-witness-removal')
+  }
+  if (pathExists(paths.electionTombstone)) {
+    const owned = options.ownedTemporaries?.get(paths.electionTombstone)
+    if (owned === undefined) throw new Error('Election marker tombstone ownership is not proven')
+    verifyOwnedTemporary(root, paths.electionTombstone, owned, options)
+    removeOwnedTemporary(root, paths.electionTombstone, options)
+    transition(options, 'after-marker-tombstone-removal')
+  }
+  if (options.ownedTemporaries?.has(paths.electionOldWitness)) removeOwnedTemporary(root, paths.electionOldWitness, options)
 }
 
 function currentInspection(request, root, options) {
@@ -1020,7 +1045,7 @@ function publishApply(request, options = {}) {
   let terminalMarkerComplete = false
   if (options.resume === true) {
     terminalMarkerEvidence = admission.electionMarker.state !== 'absent' && hasTerminalMarkerEvidence(request, admission, root, existing, fixed, markerBytes(request, admission, root), finalMarkerMode, options)
-    terminalMarkerComplete = terminalMarkerEvidence && !markerPathPresent(fixed.electionTombstone) && !markerPathPresent(fixed.electionNewWitness)
+    terminalMarkerComplete = terminalMarkerEvidence && !pathExists(fixed.electionTombstone) && !pathExists(fixed.electionNewWitness)
     validateResumeInspection(request, liveInspection, admission, terminalMarkerEvidence)
   }
   try {
@@ -1167,7 +1192,7 @@ function publishApply(request, options = {}) {
       }
     }
     if (!terminalMarkerComplete) {
-      if (markerPathPresent(fixed.electionTombstone)) removeMarker(request, admission, root, publicationOptions, fixed)
+      if (pathExists(fixed.electionTombstone)) removeMarker(request, admission, root, publicationOptions, fixed)
       else publishMarker(request, admission, root, admission.manifestId, platformMode(options, 0o600), publicationOptions, fixed)
     }
     const publishActions = (startIndex, endIndex) => {
@@ -1286,4 +1311,4 @@ function publishApply(request, options = {}) {
   }
 }
 
-module.exports = { publishApply, publishRecoveryFile, recoveryTemporaryMatches, recoveryTemporaryTarget, removeRecoveryFile, temporaryPaths }
+module.exports = { publishApply, publishRecoveryFile, relativeArtifact, recoveryTemporaryMatches, recoveryTemporaryTarget, removeRecoveryFile, temporaryPaths }

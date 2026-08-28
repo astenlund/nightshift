@@ -30,7 +30,7 @@ const BACKUP_STEM = 'nightshift-init-backlog-unwrap'
 const BACKUP_TRIPLE_PATTERN = '([a-f0-9]{64})-([a-f0-9]{64})-([a-f0-9]{64})'
 const BACKUP_PATTERN = new RegExp(`^\\.tmp\\/${BACKUP_STEM}-${BACKUP_TRIPLE_PATTERN}\\.bak$`)
 const BACKUP_STAGE_PATTERN = new RegExp(`^\\.tmp\\/.${BACKUP_STEM}-${BACKUP_TRIPLE_PATTERN}\\.tmp$`)
-const RECOVERY_LOCK_STAGE_PATTERN = /^\.nightshift-init-backlog\.lock\.[1-9][0-9]*\.[a-f0-9]{32}\.new$/
+const RECOVERY_LOCK_STAGE_PATTERN = /^\.nightshift-init-backlog\.lock\.([1-9][0-9]*)\.([a-f0-9]{32})\.new$/
 
 const OPERATIONS = ['apply', 'inspect', 'recover-apply', 'recover-inspect']
 const PHASES = ['decode', 'resolve', 'inspect', 'lock', 'prevalidate', 'publish', 'verify', 'restore', 'cleanup']
