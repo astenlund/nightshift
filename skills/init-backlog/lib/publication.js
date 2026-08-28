@@ -800,6 +800,16 @@ function currentInspection(request, root, options) {
   return collectInspection(root, request.host, request.hostContext, options)
 }
 
+function verifiedPostInspect(request, root, options, admission, outcomes, { onReadyFailure } = {}) {
+  try {
+    return currentInspection(request, root, options)
+  } catch (error) {
+    if (onReadyFailure !== undefined) onReadyFailure(error)
+    if (error instanceof InitBacklogError && error.record.code === 'ready-failed' && error.record.phase === 'verify') throwEnrichedReadyFailure(error, admission.manifestId, outcomes)
+    publicationError('Post-publication ready verification failed.', { code: 'ready-failed', phase: 'verify', manifestId: admission.manifestId, outcomes }, error)
+  }
+}
+
 function resumeInspectionProjection(inspection, actionTargets, markerStates) {
   const git = { ...inspection.git }
   if (git.electionMarker !== undefined && markerStates.values.has(git.electionMarker)) {
@@ -1208,13 +1218,15 @@ function publishApply(request, options = {}) {
       }
       states.set(action.target, state)
     }
-    let postInspect
-    try {
-      postInspect = currentInspection(request, root, options)
-    } catch (error) {
-      if (error instanceof InitBacklogError && error.record.code === 'ready-failed' && error.record.phase === 'verify') throw error
-      publicationError('Post-publication ready verification failed.', { code: 'ready-failed', phase: 'verify', manifestId: admission.manifestId, outcomes }, error)
-    }
+    const firstRankTwo = allActions.findIndex((action) => action.kind !== 'ensure-directory' && action.kind !== 'unwrap-file')
+    const hasUnwrapBatch = unwrapActions.length !== 0
+    const unwrapEnd = hasUnwrapBatch && firstRankTwo !== -1 ? firstRankTwo : allActions.length
+    publishActions(0, unwrapEnd)
+    let postInspect = verifiedPostInspect(request, root, options, admission, outcomes, {
+      onReadyFailure: (error) => {
+        if (unwrapActions.length !== 0) rollbackUnwrapAfterVerification(error)
+      },
+    })
     const expectedUnwrapReady = request.inspection?.unwrapReady?.after
     if (unwrapActions.length !== 0 && expectedUnwrapReady !== undefined && canonicalJson(postInspect.ready ?? null) !== canonicalJson(expectedUnwrapReady)) {
       try {
@@ -1229,14 +1241,14 @@ function publishApply(request, options = {}) {
     if (unwrapActions.length !== 0 && expectedUnwrapReady !== undefined) {
       cleanupUnwrapBackups()
     }
+    if (hasUnwrapBatch) {
+      publishActions(unwrapEnd, allActions.length)
+      postInspect = verifiedPostInspect(request, root, options, admission, outcomes, {})
+    }
+    if (canonicalJson(postInspect.ready ?? null) !== canonicalJson(admission.ready ?? null)) publicationError('Predicted ready result differs after semantic publication.', { code: 'ready-delta', phase: 'verify', manifestId: admission.manifestId, outcomes })
     if (admission.electionMarker.state !== 'absent' && postInspect.git?.electionMarker !== 'absent' && request.versionControlChoice !== 'deferred' && completePostInspect(postInspect, admission, request).length === 0) {
-      removeMarker(request, admission, root, publicationOptions)
-      try {
-        postInspect = currentInspection(request, root, options)
-      } catch (error) {
-        if (error instanceof InitBacklogError && error.record.code === 'ready-failed' && error.record.phase === 'verify') throw error
-        publicationError('Post-publication ready verification failed.', { code: 'ready-failed', phase: 'verify', manifestId: admission.manifestId, outcomes }, error)
-      }
+      removeMarker(request, admission, root, publicationOptions, fixed)
+      postInspect = verifiedPostInspect(request, root, options, admission, outcomes, {})
     }
     cleanupOwner(root, lock, options, ownedTemporaries)
 

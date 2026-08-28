@@ -281,12 +281,20 @@ function stableMetadata(path, options = {}) {
   return { metadata, resolved }
 }
 
+function buildProtectedRoots(options, pathModule) {
+  return [options.root, ...(options.protectedRoots ?? [])].filter((value) => typeof value === 'string' && value.length > 0).map((value) => pathModule.resolve(value))
+}
+
+function candidateInProtectedRoots(roots, candidate, pathModule) {
+  return roots.some((root) => pathIsContained(root, candidate, pathModule) || root === candidate)
+}
+
 function resolveTrustedExecutable(options = {}) {
   const platform = options.platform ?? process.platform
   const pathModule = platform === 'win32' ? require('node:path').win32 : require('node:path')
   const pathValue = options.pathValue ?? options.path ?? process.env.PATH ?? ''
   const basename = options.basename ?? (platform === 'win32' ? 'git.exe' : 'git')
-  const roots = [options.root, ...(options.protectedRoots ?? [])].filter((value) => typeof value === 'string' && value.length > 0).map((value) => pathModule.resolve(value))
+  const roots = buildProtectedRoots(options, pathModule)
   const entries = Array.isArray(pathValue) ? pathValue : pathValue.split(pathModule.delimiter)
   for (const entry of entries) {
     if (entry.length === 0 || !pathModule.isAbsolute(entry)) {
@@ -296,7 +304,7 @@ function resolveTrustedExecutable(options = {}) {
     try {
       directory = realpathSync.native(entry)
       const candidate = pathModule.join(directory, basename)
-      if (roots.some((root) => pathIsContained(root, candidate, pathModule) || root === candidate)) {
+      if (candidateInProtectedRoots(roots, candidate, pathModule)) {
         continue
       }
       const first = stableMetadata(candidate)
@@ -326,8 +334,8 @@ function trustedWindowsPowerShellPath(options = {}) {
   }
   const root = realpathSync.native(systemRoot)
   const candidate = pathModule.join(root, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe')
-  const roots = [options.root, ...(options.protectedRoots ?? [])].filter((value) => typeof value === 'string' && value.length > 0).map((value) => pathModule.resolve(value))
-  if (roots.some((protectedRoot) => pathIsContained(protectedRoot, candidate, pathModule) || protectedRoot === candidate)) {
+  const roots = buildProtectedRoots(options, pathModule)
+  if (candidateInProtectedRoots(roots, candidate, pathModule)) {
     throw new Error('Trusted Windows PowerShell path differs')
   }
   const first = stableMetadata(candidate)

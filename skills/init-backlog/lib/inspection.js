@@ -426,9 +426,13 @@ function targetState(target, root, options = {}) {
   }
 }
 
+function nonFileRecord(target, descriptor, options, overrides) {
+  return { bom: null, cleanTextSha256: null, contentBase64: null, contentRole: 'none', editableRegions: [], finalNewline: null, kind: overrides.kind, mode: options.platform === 'win32' ? null : descriptor.mode ?? null, newline: null, rawSha256: null, states: overrides.states, target, templateId: overrides.templateId, templateSha256: overrides.templateSha256 }
+}
+
 function targetRecord(target, descriptor, declaration, template, options = {}) {
-  if (!descriptor.present) return { bom: null, cleanTextSha256: null, contentBase64: null, contentRole: 'none', editableRegions: [], finalNewline: null, kind: declaration.kind, mode: options.platform === 'win32' ? null : descriptor.mode ?? null, newline: null, rawSha256: null, states: ['missing'], target, templateId: template?.templateId ?? null, templateSha256: template?.logicalSha256 ?? null }
-  if (descriptor.kind === 'directory') return { bom: null, cleanTextSha256: null, contentBase64: null, contentRole: 'none', editableRegions: [], finalNewline: null, kind: 'directory', mode: options.platform === 'win32' ? null : descriptor.mode ?? null, newline: null, rawSha256: null, states: ['present'], target, templateId: null, templateSha256: null }
+  if (!descriptor.present) return nonFileRecord(target, descriptor, options, { kind: declaration.kind, states: ['missing'], templateId: template?.templateId ?? null, templateSha256: template?.logicalSha256 ?? null })
+  if (descriptor.kind === 'directory') return nonFileRecord(target, descriptor, options, { kind: 'directory', states: ['present'], templateId: null, templateSha256: null })
   let decoded
   try {
     decoded = (options.decode ?? decodeText)(descriptor.bytes)
