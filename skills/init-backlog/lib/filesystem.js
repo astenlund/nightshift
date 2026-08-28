@@ -26,22 +26,12 @@ const { TextDecoder } = require('node:util')
 const { isAbsolute, join, relative, sep } = require('node:path')
 
 const { InitBacklogError } = require('./errors')
-const { MAX_APPLY_REQUEST_BYTES, assertSafeWindowsScalar, canonicalJson, sha256, validateNonce } = require('./protocol')
+const { MAX_APPLY_REQUEST_BYTES, assertSafeWindowsScalar, canonicalJson, compareOrdinal, sha256, validateNonce } = require('./protocol')
 
 const REQUEST_GATE_BASENAME = '.nightshift-init-backlog.request-gate'
 const REQUEST_OWNER_STAGE_BASENAME = 'owner.new'
 const REQUEST_OWNER_BASENAME = 'owner.json'
 const REQUEST_PAYLOAD_BASENAME = 'request.json'
-const REQUEST_STATES = [
-  'empty-gate',
-  'owner-stage',
-  'published-owner-stage',
-  'reserved',
-  'reserved-payload',
-  'consuming-stage-payload',
-  'consuming-payload',
-  'consuming-owner',
-]
 
 class RequestTransportResidueError extends Error {
   constructor(cause) {
@@ -241,19 +231,6 @@ function pathIsContained(root, target, pathModule = require('node:path')) {
   const relation = pathModule.relative(root, target)
 
   return relation !== '' && relation !== '..' && !relation.startsWith(`..${pathModule.sep}`) && !pathModule.isAbsolute(relation)
-}
-
-function compareOrdinal(left, right) {
-  const leftPoints = Array.from(left, (character) => character.codePointAt(0))
-  const rightPoints = Array.from(right, (character) => character.codePointAt(0))
-  const length = Math.min(leftPoints.length, rightPoints.length)
-  for (let index = 0; index < length; index += 1) {
-    if (leftPoints[index] !== rightPoints[index]) {
-      return leftPoints[index] < rightPoints[index] ? -1 : 1
-    }
-  }
-
-  return leftPoints.length - rightPoints.length
 }
 
 function canonicalAbsolutePath(path, platform) {
@@ -1007,12 +984,10 @@ module.exports = {
   REQUEST_OWNER_BASENAME,
   REQUEST_OWNER_STAGE_BASENAME,
   REQUEST_PAYLOAD_BASENAME,
-  REQUEST_STATES,
   RequestTransportResidueError,
   canonicalRoot,
   classifyPid,
   cleanRequestResidue,
-  compareOrdinal,
   consumeRequest,
   decodeDirectoryName,
   enumerateDirectory,
@@ -1033,21 +1008,8 @@ module.exports = {
   runBoundedReadOnlyHelper,
   stableMetadata,
   stableOpenFile,
+  stageFile: stageBytes,
   trustedWindowsPowerShellPath,
   verifyPublishedIdentity,
   writeFlushedFile,
 }
-
-module.exports.readStableFile = stableOpenFile
-module.exports.readDirectoryEntries = enumerateDirectory
-module.exports.resolveTrustedGit = resolveTrustedExecutable
-module.exports.runBoundedHelper = runBoundedReadOnlyHelper
-module.exports.probeAttributes = probeWindowsAttributes
-module.exports.stageFile = stageBytes
-module.exports.flushReadBack = writeFlushedFile
-module.exports.publishExclusive = publishNoReplace
-module.exports.verifyFinalIdentity = verifyPublishedIdentity
-module.exports.removeVerified = removeAndVerify
-module.exports.assignMode = assignAndVerifyMode
-module.exports.verifyMode = verifyFinalMode
-module.exports.renameAtomic = renameVerified

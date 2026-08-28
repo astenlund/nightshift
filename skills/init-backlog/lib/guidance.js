@@ -5,8 +5,8 @@ const { realpathSync } = require('node:fs')
 const { TextDecoder } = require('node:util')
 
 const { InitBacklogError, throwInitBacklogError } = require('./errors')
-const { canonicalRoot, compareOrdinal, enumerateDirectory, pathIsContained, probeWindowsAttributes, stableOpenFile } = require('./filesystem')
-const { assertSafeWindowsScalar } = require('./protocol')
+const { canonicalRoot, enumerateDirectory, pathIsContained, probeWindowsAttributes, stableOpenFile } = require('./filesystem')
+const { assertSafeWindowsScalar, compareOrdinal } = require('./protocol')
 
 const GUIDANCE_SECTION = '## Backlogs and indexes'
 const CLAUDE_CANDIDATES = ['CLAUDE.md', 'CLAUDE.local.md']

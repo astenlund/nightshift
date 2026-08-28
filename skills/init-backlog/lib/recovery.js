@@ -9,14 +9,13 @@ const { BACKUP_PATTERN, BACKUP_STAGE_PATTERN, backupParts, classifyBackup } = re
 const {
   canonicalRoot,
   classifyPid,
-  compareOrdinal,
   createInitialLock,
   initialLockPaths,
   removeAndVerify,
   removeInitialLock,
   stableOpenFile,
 } = require('./filesystem')
-const { MAX_INLINE_FILE_BYTES, MAX_RECOVERY_REQUEST_BYTES, MAX_RECOVERY_RESULT_BYTES, buildRecoveryApplyRequest, canonicalBytes, canonicalJson, deriveRecoveryId, recoveryAllowedDispositions, sha256, validateTarget } = require('./protocol')
+const { MAX_INLINE_FILE_BYTES, MAX_RECOVERY_REQUEST_BYTES, MAX_RECOVERY_RESULT_BYTES, buildRecoveryApplyRequest, canonicalBytes, canonicalJson, compareOrdinal, deriveRecoveryId, recoveryAllowedDispositions, sha256, validateTarget } = require('./protocol')
 const { collectInspection, validateElectionMarkerRecord } = require('./inspection')
 const { publishRecoveryFile, recoveryTemporaryMatches, recoveryTemporaryTarget, removeRecoveryFile } = require('./publication')
 

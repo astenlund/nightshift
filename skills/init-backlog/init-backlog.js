@@ -31,22 +31,26 @@ function controllerExitCode(result) {
   return 0
 }
 
+function internalFailureCompletion() {
+  return { exitCode: 3, stderr: INTERNAL_FAILURE_LINE, stdout: Buffer.alloc(0) }
+}
+
+function encodedCompletion(record) {
+  try {
+    const stdout = encodeResult(record)
+
+    return { exitCode: controllerExitCode(record), stderr: Buffer.alloc(0), stdout }
+  } catch {
+    return internalFailureCompletion()
+  }
+}
+
 function runPrivateDispatcher(requestBytes, handlers = {}) {
   let request
   try {
     request = decodeRequest(requestBytes)
   } catch (error) {
-    if (error instanceof InitBacklogError) {
-      try {
-        const stdout = encodeResult(error.record)
-
-        return { exitCode: controllerExitCode(error.record), stderr: Buffer.alloc(0), stdout }
-      } catch {
-        return { exitCode: 3, stderr: INTERNAL_FAILURE_LINE, stdout: Buffer.alloc(0) }
-      }
-    }
-
-    return { exitCode: 3, stderr: INTERNAL_FAILURE_LINE, stdout: Buffer.alloc(0) }
+    return error instanceof InitBacklogError ? encodedCompletion(error.record) : internalFailureCompletion()
   }
 
   let result
@@ -57,26 +61,10 @@ function runPrivateDispatcher(requestBytes, handlers = {}) {
     }
     result = handler(request)
   } catch (error) {
-    if (error instanceof InitBacklogError) {
-      try {
-        const stdout = encodeResult(error.record)
-
-        return { exitCode: controllerExitCode(error.record), stderr: Buffer.alloc(0), stdout }
-      } catch {
-        return { exitCode: 3, stderr: INTERNAL_FAILURE_LINE, stdout: Buffer.alloc(0) }
-      }
-    }
-
-    return { exitCode: 3, stderr: INTERNAL_FAILURE_LINE, stdout: Buffer.alloc(0) }
+    return error instanceof InitBacklogError ? encodedCompletion(error.record) : internalFailureCompletion()
   }
 
-  try {
-    const stdout = encodeResult(result)
-
-    return { exitCode: controllerExitCode(result), stderr: Buffer.alloc(0), stdout }
-  } catch {
-    return { exitCode: 3, stderr: INTERNAL_FAILURE_LINE, stdout: Buffer.alloc(0) }
-  }
+  return encodedCompletion(result)
 }
 
 function writePublicRecord(stream, value) {
