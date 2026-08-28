@@ -18,9 +18,11 @@ const {
   inspect,
   creationMode,
   discoverInitialLockStages,
+  maskedRecords,
   readElectionMarker,
   targetRecord,
 } = require('../../skills/init-backlog/lib/inspection')
+const { HTML_BLOCK_TYPE_SIX_TAGS, guidanceImports } = require('../../skills/init-backlog/lib/guidance')
 const {
   classifyCheckAttrProcess,
   classifyConfigProcess,
@@ -304,6 +306,24 @@ function runInspectionCases(repositoryRoot) {
     assert.throws(() => inspectRegions(Buffer.from('intro\n```\n## Section\n', 'utf8'), [declaration]), (error) => error.code === 'structural-invalid')
     assert.deepEqual(inspectRegions(Buffer.from('## Section\nbody\n```\n', 'utf8'), [{ ...declaration, missingPlacement: 'end' }]), [{ endByte: Buffer.byteLength('## Section\nbody\n```\n'), regionId: 'section', startByte: 0 }])
     assert.deepEqual(inspectRegions(Buffer.from('## Section\nbody\n<!--\n', 'utf8'), [{ ...declaration, missingPlacement: 'end' }]), [{ endByte: Buffer.byteLength('## Section\nbody\n<!--\n'), regionId: 'section', startByte: 0 }])
+  })
+
+  test('markdown scanners share the closed CommonMark 0.31.2 type-6 tag inventory', () => {
+    // Arrange: the exact start-condition-6 tag list of CommonMark 0.31.2
+    // (condition-1 tags pre, script, style, and textarea excluded).
+    const specTags = ['address', 'article', 'aside', 'base', 'basefont', 'blockquote', 'body', 'caption', 'center', 'col', 'colgroup', 'dd', 'details', 'dialog', 'dir', 'div', 'dl', 'dt', 'fieldset', 'figcaption', 'figure', 'footer', 'form', 'frame', 'frameset', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'head', 'header', 'hr', 'html', 'iframe', 'legend', 'li', 'link', 'main', 'menu', 'menuitem', 'nav', 'noframes', 'ol', 'optgroup', 'option', 'p', 'param', 'search', 'section', 'summary', 'table', 'tbody', 'td', 'tfoot', 'th', 'thead', 'title', 'tr', 'track', 'ul']
+
+    // Act + Assert: the shared constant is the closed spec inventory, and an
+    // unterminated open tag for every member starts a blank-terminated HTML
+    // block in both the guidance scanner and the inspection scanner.
+    assert.deepEqual([...HTML_BLOCK_TYPE_SIX_TAGS], specTags)
+    for (const tag of HTML_BLOCK_TYPE_SIX_TAGS) {
+      assert.deepEqual(guidanceImports(`<${tag} attr\n@masked.md\n\n@kept.md\n`), ['kept.md'], `guidance scanner must mask an HTML block opened by <${tag}>`)
+      assert.deepEqual([...maskedRecords(Buffer.from(`<${tag} attr\nbody\n\n## Tail\n`, 'utf8')).masked], [0, 1], `inspection scanner must mask an HTML block opened by <${tag}>`)
+    }
+    // A name outside the inventory without a complete tag is ordinary text.
+    assert.deepEqual(guidanceImports('<pretend attr\n@kept.md\n'), ['kept.md'])
+    assert.deepEqual([...maskedRecords(Buffer.from('<pretend attr\nbody\n', 'utf8')).masked], [])
   })
 
   test('direct inspection maps snapshot drift and cleanup failures without target writes', () => {

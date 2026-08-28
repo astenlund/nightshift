@@ -9,7 +9,7 @@ const { analyzeCatalog } = require('../../ready/ready')
 const { loadManifest } = require('./assets')
 const { inspectBackups } = require('./backups')
 const { InitBacklogError, failureRecord } = require('./errors')
-const { discoverControlledMarkdown, resolveGuidance } = require('./guidance')
+const { HTML_BLOCK_TYPE_SIX_TAGS, discoverControlledMarkdown, resolveGuidance } = require('./guidance')
 const { canonicalRoot, createInitialLock, initialLockPaths, removeInitialLock, stableOpenFile } = require('./filesystem')
 const { canonicalJson, compareOrdinal, deriveProposalId, deriveSnapshotId, sha256 } = require('./protocol')
 const { detectGitKind, inspectGitPolicy, newlineStyle } = require('./git-policy')
@@ -35,6 +35,8 @@ function lineRecords(bytes) {
   return { bomLength, records }
 }
 
+const HTML_BLOCK_TYPE_SIX_START = new RegExp(`^<(?:${HTML_BLOCK_TYPE_SIX_TAGS.join('|')})(?:\\s|>)`, 'i')
+
 function htmlBlockStart(line) {
   const match = line.match(/^ {0,3}(.*)$/)
   if (match === null) return null
@@ -45,7 +47,7 @@ function htmlBlockStart(line) {
   if (/^<![A-Z]/.test(trimmed)) return { terminator: '>' }
   const typeOne = trimmed.match(/^<(script|pre|style|textarea)(?:\s|>)/i)
   if (typeOne) return { terminator: '</', tag: typeOne[1] }
-  if (/^<(?:address|article|aside|base|blockquote|body|caption|center|col|colgroup|dd|details|dialog|dir|div|dl|dt|fieldset|figcaption|figure|footer|form|h[1-6]|head|header|hr|html|iframe|legend|li|link|main|menu|menuitem|nav|ol|p|param|search|section|summary|table|tbody|td|tfoot|th|thead|title|tr|track|ul)(?:\s|>)/i.test(trimmed)) return { blank: true }
+  if (HTML_BLOCK_TYPE_SIX_START.test(trimmed)) return { blank: true }
   if (/^<\/?[A-Za-z][A-Za-z0-9-]*(?:\s+[^<>]*)?\s*\/?>/.test(trimmed)) return { blank: true }
 
   return null

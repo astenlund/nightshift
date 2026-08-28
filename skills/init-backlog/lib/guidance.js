@@ -104,7 +104,12 @@ function maskRange(characters, start, end) {
   }
 }
 
-const RAW_HTML_BLOCK_TAGS = '(?:address|article|aside|base|basefont|blockquote|body|caption|center|col|colgroup|dd|details|dialog|dir|div|dl|dt|fieldset|figcaption|figure|footer|form|h1|h2|h3|h4|h5|h6|head|header|hr|html|iframe|legend|li|link|main|menu|menuitem|nav|ol|p|pre|script|section|summary|table|tbody|td|tfoot|th|thead|title|tr|track|ul)'
+// The closed tag inventory of CommonMark 0.31.2 HTML blocks, start condition
+// 6, owned here and shared with lib/inspection.js's scanner. Condition-1 tags
+// (pre, script, style, textarea) are matched by their own branch and are
+// deliberately absent.
+const HTML_BLOCK_TYPE_SIX_TAGS = Object.freeze(['address', 'article', 'aside', 'base', 'basefont', 'blockquote', 'body', 'caption', 'center', 'col', 'colgroup', 'dd', 'details', 'dialog', 'dir', 'div', 'dl', 'dt', 'fieldset', 'figcaption', 'figure', 'footer', 'form', 'frame', 'frameset', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'head', 'header', 'hr', 'html', 'iframe', 'legend', 'li', 'link', 'main', 'menu', 'menuitem', 'nav', 'noframes', 'ol', 'optgroup', 'option', 'p', 'param', 'search', 'section', 'summary', 'table', 'tbody', 'td', 'tfoot', 'th', 'thead', 'title', 'tr', 'track', 'ul'])
+const RAW_HTML_BLOCK_TAGS = `(?:${HTML_BLOCK_TYPE_SIX_TAGS.join('|')})`
 
 function rawHtmlBlockStart(line) {
   if (/^ {0,3}<!--/.test(line)) {
@@ -531,4 +536,4 @@ function discoverControlledMarkdown(root, directories = ['.claude/bugs', '.claud
   return discovered.sort((left, right) => compareOrdinal(left.target, right.target))
 }
 
-module.exports = { GUIDANCE_SECTION, discoverControlledMarkdown, guidanceImports, resolveClaude, resolveCodex, resolveGuidance }
+module.exports = { GUIDANCE_SECTION, HTML_BLOCK_TYPE_SIX_TAGS, discoverControlledMarkdown, guidanceImports, resolveClaude, resolveCodex, resolveGuidance }
