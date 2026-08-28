@@ -867,7 +867,7 @@ function validateRequestRecord(value, options = {}) {
     if (value.recoveryInspection.root !== value.root || value.recoveryInspection.host !== value.host || canonicalJson(value.recoveryInspection.hostContext) !== canonicalJson(value.hostContext)) {
       invalid('recovery-invalid', 'prevalidate', 'Carried recovery inspection identity does not match the request.')
     }
-    requireString(value.disposition, 'recovery disposition', { values: ['abandon', 'accept', 'cleanup', 'deferred', 'ignore', 'remove', 'restore', 'track'] })
+    requireString(value.disposition, 'recovery disposition', { values: RECOVERY_DISPOSITION_ORDER })
     if (!value.recoveryInspection.allowedDispositions.includes(value.disposition)) {
       invalid('recovery-invalid', 'prevalidate', 'Recovery disposition is not allowed.')
     }
@@ -920,7 +920,7 @@ function validateResultRecord(value) {
     validateDigest(value.recoveryId)
     requireString(value.recoveryKind, 'recovery kind', { values: RECOVERY_KINDS })
     validateTarget(value.recoveryTarget)
-    requireString(value.disposition, 'disposition', { values: ['abandon', 'accept', 'cleanup', 'deferred', 'ignore', 'remove', 'restore', 'track'] })
+    requireString(value.disposition, 'disposition', { values: RECOVERY_DISPOSITION_ORDER })
     requireString(value.status, 'status', { values: ['already-complete', 'completed'] })
     requireArray(value.changedPaths, 'changed paths', validateTarget, { ordinalBy: (item) => item, uniqueBy: (item) => item })
     requireArray(value.retainedPaths, 'retained paths', validateTarget, { ordinalBy: (item) => item, uniqueBy: (item) => item })
