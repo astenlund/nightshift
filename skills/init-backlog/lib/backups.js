@@ -3,7 +3,7 @@
 const { lstatSync } = require('node:fs')
 const { join } = require('node:path')
 
-const { enumerateDirectory, probeWindowsAttributes, stableMetadata, stableOpenFile } = require('./filesystem')
+const { enumerateDirectory, stableMetadata, stableOpenFile, withAttributeProbe } = require('./filesystem')
 const { BACKUP_PATTERN, BACKUP_STAGE_PATTERN, backupFileNames, compareOrdinal, sha256 } = require('./protocol')
 
 function backupParts(target) {
@@ -41,7 +41,7 @@ function inspectBackups(root, targets, options = {}) {
 
     throw error
   }
-  const enumerationOptions = (options.platform ?? process.platform) === 'win32' && typeof options.attributeProbe !== 'function' ? { ...options, attributeProbe: (paths) => probeWindowsAttributes(paths, options) } : options
+  const enumerationOptions = withAttributeProbe(options)
   const entries = enumerateDirectory(directory, enumerationOptions)
   const targetByHash = new Map((targets ?? []).map((item) => [sha256(Buffer.from(item.target, 'utf8')), item.target]))
   const backups = []

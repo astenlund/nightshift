@@ -393,6 +393,12 @@ function probeWindowsAttributes(paths, options = {}) {
   return response
 }
 
+function withAttributeProbe(options = {}) {
+  const platform = options.platform ?? process.platform
+
+  return platform === 'win32' && typeof options.attributeProbe !== 'function' ? { ...options, attributeProbe: (paths) => probeWindowsAttributes(paths, options) } : options
+}
+
 function requestPaths(root) {
   const requestDirectory = join(root, REQUEST_GATE_BASENAME)
 
@@ -1022,5 +1028,6 @@ module.exports = {
   stageFile: stageBytes,
   trustedWindowsPowerShellPath,
   verifyPublishedIdentity,
+  withAttributeProbe,
   writeFlushedFile,
 }

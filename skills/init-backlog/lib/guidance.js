@@ -5,22 +5,13 @@ const { realpathSync } = require('node:fs')
 const { TextDecoder } = require('node:util')
 
 const { InitBacklogError, throwInitBacklogError } = require('./errors')
-const { canonicalRoot, enumerateDirectory, pathIsContained, probeWindowsAttributes, stableOpenFile } = require('./filesystem')
+const { canonicalRoot, enumerateDirectory, pathIsContained, stableOpenFile, withAttributeProbe } = require('./filesystem')
 const { assertSafeWindowsScalar, compareOrdinal } = require('./protocol')
 
 const GUIDANCE_SECTION = '## Backlogs and indexes'
 const CLAUDE_CANDIDATES = ['CLAUDE.md', 'CLAUDE.local.md']
 const CODEX_CANDIDATES = ['AGENTS.override.md', 'AGENTS.md']
 const MAX_IMPORT_DEPTH = 4
-
-function filesystemOptions(options = {}) {
-  const platform = options.platform ?? process.platform
-  if (platform === 'win32' && typeof options.attributeProbe !== 'function') {
-    return { ...options, attributeProbe: (paths) => probeWindowsAttributes(paths, options) }
-  }
-
-  return options
-}
 
 function fail(detail, cause, target = null) {
   throwInitBacklogError({ code: 'guidance-resolution', detail, operation: 'inspect', phase: 'resolve', target }, cause)
@@ -268,7 +259,7 @@ function isRecognizedAdapter(target) {
 
 function validCodexBasename(name, options) {
   const pathModule = options.platform === 'win32' ? require('node:path').win32 : require('node:path')
-  if (typeof name !== 'string' || name.length === 0 || name === 'AGENTS.override.md' || name === 'AGENTS.md') {
+  if (typeof name !== 'string' || name.length === 0 || CODEX_CANDIDATES.includes(name)) {
     return false
   }
   if (name !== name.normalize('NFC') || name.includes('/') || name.includes('\\') || /^[A-Za-z]:/.test(name) || pathModule.isAbsolute(name) || pathModule.basename(name) !== name || (options.platform === 'win32' && /[ .]$/.test(name))) {
@@ -434,7 +425,7 @@ function resolveCodex(root, hostContext, options = {}) {
     }
   }
   if (rootAdapter === null) {
-    rootAdapter = readCandidate(root, 'AGENTS.override.md') !== null ? 'AGENTS.override.md' : 'AGENTS.md'
+    rootAdapter = readCandidate(root, CODEX_CANDIDATES[0]) !== null ? CODEX_CANDIDATES[0] : CODEX_CANDIDATES[CODEX_CANDIDATES.length - 1]
   }
   const graphPaths = [...new Set(graph)].sort(compareOrdinal)
   const totalBytes = graphPaths.reduce((total, target) => total + readCandidate(root, target).bytes.length, 0)
@@ -461,7 +452,7 @@ function resolveGuidance(root, host, hostContext = {}, options = {}) {
     fail('Guidance repository root is invalid.', error)
   }
   try {
-    const resolvedFilesystemOptions = filesystemOptions(options.filesystemOptions ?? hostContext.filesystemOptions ?? options)
+    const resolvedFilesystemOptions = withAttributeProbe(options.filesystemOptions ?? hostContext.filesystemOptions ?? options)
 
     return host === 'claude-code' ? resolveClaude(canonical, hostContext, resolvedFilesystemOptions) : resolveCodex(canonical, hostContext, resolvedFilesystemOptions)
   } catch (error) {
@@ -481,7 +472,7 @@ function discoverControlledMarkdown(root, directories = ['.claude/bugs', '.claud
   }
   const discovered = []
   const identities = new Set()
-  const resolvedOptions = filesystemOptions(options)
+  const resolvedOptions = withAttributeProbe(options)
   function walk(directory) {
     let entries
     try {
