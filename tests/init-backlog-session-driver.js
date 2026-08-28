@@ -282,12 +282,8 @@ function collectControllerRuntimeClosure({ entryPath, filesystem = nodeFilesyste
   return { controllerRuntimeSha256: sha256(Buffer.from(canonicalJson(inventory), 'utf8')), entryPath, files: inventory }
 }
 
-function windowsRepositoryImage(repository) {
-  return { entries: repository.entries.map((entry) => ({ ...entry, mode: null })), git: repository.git }
-}
-
 function scenarioRootDigest(repository, platform) {
-  return sha256(Buffer.from(canonicalJson(platform === 'win32' ? windowsRepositoryImage(repository) : repository), 'utf8'))
+  return sha256(Buffer.from(canonicalJson(aggregationModule.normalizePlatformModes(repository, platform)), 'utf8'))
 }
 
 function runHarnessGit(runGit, argv) {

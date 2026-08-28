@@ -1825,4 +1825,5 @@ module.exports = {
   validateLiveElectionMarker,
   validateScenarioObject,
   validateTurnObject,
+  windowsRepositoryImage,
 }

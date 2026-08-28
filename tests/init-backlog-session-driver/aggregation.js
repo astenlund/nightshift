@@ -2,16 +2,12 @@
 
 const { HOSTS, compareOrdinal, sha256 } = require('./state')
 const { canonicalJson } = require('./transcript')
-const { ELECTION_MARKER_PATH, selectTerminalExpectation, validateLiveElectionMarker } = require('../init-backlog-controller/oracles.cases')
+const { ELECTION_MARKER_PATH, selectTerminalExpectation, validateLiveElectionMarker, windowsRepositoryImage } = require('../init-backlog-controller/oracles.cases')
 
 const RESULT_RECORD_KEYS = Object.freeze(['deterministicDigest', 'dialogueFacts', 'lifecycleFacts', 'passed', 'semanticActionDispositions', 'semanticClassifications', 'semanticDecisionSource', 'semanticDecisions', 'semanticRepairOracles', 'structuredResult', 'terminalRepositorySha256'])
 
 function normalizePlatformModes(repository, platform) {
-  if (platform !== 'win32') {
-    return repository
-  }
-
-  return { entries: repository.entries.map((entry) => ({ ...entry, mode: null })), git: repository.git }
+  return platform === 'win32' ? windowsRepositoryImage(repository) : repository
 }
 
 function attestTerminalRepository({ collectRepository, host, member, platform, scenarioRoot }) {
@@ -116,4 +112,4 @@ function buildSummary({ evidenceManifests, rows, scenarioIds }) {
   return { evidenceManifests, rows }
 }
 
-module.exports = { attestTerminalRepository, buildResultRecord, buildSummary }
+module.exports = { attestTerminalRepository, buildResultRecord, buildSummary, normalizePlatformModes }
