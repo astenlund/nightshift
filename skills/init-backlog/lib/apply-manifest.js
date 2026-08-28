@@ -13,6 +13,7 @@ const {
   deriveManifestId,
   deriveSemanticActionId,
   deriveSnapshotId,
+  sameKeys,
   sha256,
   validateAction,
   validateBase64,
@@ -34,10 +35,6 @@ function same(value, other) {
 
 function clone(value) {
   return JSON.parse(JSON.stringify(value))
-}
-
-function sameKeys(value, keys) {
-  return Object.keys(value).sort(compareOrdinal).join('\0') === [...keys].sort(compareOrdinal).join('\0')
 }
 
 function targetMap(inspection) {

@@ -11,7 +11,7 @@ const { inspectBackups } = require('./backups')
 const { InitBacklogError, failureRecord } = require('./errors')
 const { HTML_BLOCK_TYPE_SIX_TAGS, discoverControlledMarkdown, resolveGuidance } = require('./guidance')
 const { canonicalRoot, createInitialLock, initialLockPaths, removeInitialLock, stableOpenFile } = require('./filesystem')
-const { RECOVERY_LOCK_BASENAME, RECOVERY_MARKER_BASENAME, canonicalJson, compareOrdinal, deriveProposalId, deriveSnapshotId, sha256 } = require('./protocol')
+const { DIGEST_PATTERN, RECOVERY_LOCK_BASENAME, RECOVERY_MARKER_BASENAME, canonicalJson, compareOrdinal, deriveProposalId, deriveSnapshotId, sha256 } = require('./protocol')
 const { detectGitKind, inspectGitPolicy, newlineStyle } = require('./git-policy')
 
 function inspectError(code, detail, target = null, cause, phase = 'inspect') {
@@ -319,20 +319,20 @@ function projectGitProblems(git) {
 }
 
 function composeElectionRecord(state, root, snapshotId) {
-  if (!['deferred', 'ignore', 'track'].includes(state) || typeof root !== 'string' || !/^[a-f0-9]{64}$/.test(snapshotId)) throw new TypeError('Election record fields are invalid')
+  if (!['deferred', 'ignore', 'track'].includes(state) || typeof root !== 'string' || !DIGEST_PATTERN.test(snapshotId)) throw new TypeError('Election record fields are invalid')
 
   return { protocolVersion: 1, root, snapshotId, state }
 }
 
 function composeElectionMarker(electionMarker, gitKind, scaffoldPresent, digest, mode = null, root = '') {
-  if (!['deferred', 'track', 'ignore'].includes(electionMarker) || !['git', 'non-git'].includes(gitKind) || typeof digest !== 'string' || !/^[a-f0-9]{64}$/.test(digest) || typeof root !== 'string') throw new TypeError('Election marker fields are invalid')
+  if (!['deferred', 'track', 'ignore'].includes(electionMarker) || !['git', 'non-git'].includes(gitKind) || typeof digest !== 'string' || !DIGEST_PATTERN.test(digest) || typeof root !== 'string') throw new TypeError('Election marker fields are invalid')
   const content = Buffer.from(`${canonicalJson(composeElectionRecord(electionMarker, root, digest))}\n`, 'utf8')
 
   return { classification: gitKind === 'git' ? 'invalid' : 'valid-non-git', contentBase64: content.toString('base64'), gitKind, mode, policyDigest: digest, scaffoldPresent: scaffoldPresent === true }
 }
 
 function validateElectionMarkerRecord(value, root) {
-  return value !== null && typeof value === 'object' && !Array.isArray(value) && Object.keys(value).sort(compareOrdinal).join('\0') === ['protocolVersion', 'root', 'snapshotId', 'state'].sort(compareOrdinal).join('\0') && value.protocolVersion === 1 && value.root === root && ['deferred', 'track', 'ignore'].includes(value.state) && typeof value.snapshotId === 'string' && /^[a-f0-9]{64}$/.test(value.snapshotId)
+  return value !== null && typeof value === 'object' && !Array.isArray(value) && Object.keys(value).sort(compareOrdinal).join('\0') === ['protocolVersion', 'root', 'snapshotId', 'state'].sort(compareOrdinal).join('\0') && value.protocolVersion === 1 && value.root === root && ['deferred', 'track', 'ignore'].includes(value.state) && typeof value.snapshotId === 'string' && DIGEST_PATTERN.test(value.snapshotId)
 }
 
 function readElectionMarker(root, options = {}) {

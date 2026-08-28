@@ -5,7 +5,7 @@ const { TextDecoder } = require('node:util')
 const { existsSync, lstatSync, realpathSync } = require('node:fs')
 const { isAbsolute, join, relative, resolve, win32 } = require('node:path')
 
-const { canonicalJson, compareOrdinal, sha256 } = require('./protocol')
+const { DIGEST_PATTERN, canonicalJson, compareOrdinal, sha256 } = require('./protocol')
 const { resolveTrustedExecutable } = require('./filesystem')
 
 const GIT_CANDIDATES = ['HEAD', 'objects', 'refs']
@@ -625,7 +625,7 @@ function normalizeGitPolicy(policy = {}) {
   const electionMarkerSnapshotId = policy.electionMarkerSnapshotId ?? null
   const electionMarkerMode = policy.electionMarkerMode ?? null
   const plansPolicy = policy.plansPolicy ?? (kind === 'git' ? 'action-required' : 'not-applicable')
-  if (!['git', 'non-git'].includes(kind) || kind === 'git' && !['sha1', 'sha256'].includes(objectFormat) || kind === 'non-git' && objectFormat !== null || !['satisfied', 'action-required', 'tracked-conflict', 'nested-conflict', 'not-applicable'].includes(plansPolicy) || kind === 'non-git' && plansPolicy !== 'not-applicable' || !['absent', 'deferred', 'track', 'ignore'].includes(electionMarker) || electionMarker === 'absent' && electionMarkerSnapshotId !== null || electionMarker !== 'absent' && (typeof electionMarkerSnapshotId !== 'string' || !/^[a-f0-9]{64}$/.test(electionMarkerSnapshotId)) || electionMarkerMode !== null && (!Number.isSafeInteger(electionMarkerMode) || electionMarkerMode < 0 || electionMarkerMode > 4095)) {
+  if (!['git', 'non-git'].includes(kind) || kind === 'git' && !['sha1', 'sha256'].includes(objectFormat) || kind === 'non-git' && objectFormat !== null || !['satisfied', 'action-required', 'tracked-conflict', 'nested-conflict', 'not-applicable'].includes(plansPolicy) || kind === 'non-git' && plansPolicy !== 'not-applicable' || !['absent', 'deferred', 'track', 'ignore'].includes(electionMarker) || electionMarker === 'absent' && electionMarkerSnapshotId !== null || electionMarker !== 'absent' && (typeof electionMarkerSnapshotId !== 'string' || !DIGEST_PATTERN.test(electionMarkerSnapshotId)) || electionMarkerMode !== null && (!Number.isSafeInteger(electionMarkerMode) || electionMarkerMode < 0 || electionMarkerMode > 4095)) {
     throw new Error('Git policy fields are invalid')
   }
   const newlinePolicies = [...(policy.newlinePolicies ?? [])].map((item) => {
@@ -664,7 +664,7 @@ function classifyPlansPolicy({ git = true, rootRuleEffective = false, nestedConf
 
 function normalizeElectionMarker(value) {
   if (value === null || value === undefined) return { marker: 'absent', mode: null, snapshotId: null }
-  if (typeof value !== 'object' || !['deferred', 'track', 'ignore'].includes(value.marker) || typeof value.snapshotId !== 'string' || !/^[a-f0-9]{64}$/.test(value.snapshotId)) throw new Error('Election marker is invalid')
+  if (typeof value !== 'object' || !['deferred', 'track', 'ignore'].includes(value.marker) || typeof value.snapshotId !== 'string' || !DIGEST_PATTERN.test(value.snapshotId)) throw new Error('Election marker is invalid')
 
   return { marker: value.marker, mode: value.mode ?? null, snapshotId: value.snapshotId }
 }

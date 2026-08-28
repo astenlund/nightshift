@@ -26,7 +26,7 @@ const { TextDecoder } = require('node:util')
 const { isAbsolute, join } = require('node:path')
 
 const { InitBacklogError } = require('./errors')
-const { MAX_APPLY_REQUEST_BYTES, RECOVERY_LOCK_BASENAME, assertSafeWindowsScalar, canonicalJson, compareOrdinal, sha256, validateNonce } = require('./protocol')
+const { DIGEST_PATTERN, MAX_APPLY_REQUEST_BYTES, NONCE_PATTERN, RECOVERY_LOCK_BASENAME, assertSafeWindowsScalar, canonicalJson, compareOrdinal, sha256, validateNonce } = require('./protocol')
 
 const REQUEST_GATE_BASENAME = '.nightshift-init-backlog.request-gate'
 const REQUEST_OWNER_STAGE_BASENAME = 'owner.new'
@@ -560,7 +560,7 @@ function removeAndVerify(path, options = {}) {
 }
 
 function initialLockPaths(root, pid, ownerNonce) {
-  if (!Number.isSafeInteger(pid) || pid <= 0 || !/^[a-f0-9]{32}$/.test(ownerNonce)) throw new TypeError('Initial lock identity is invalid')
+  if (!Number.isSafeInteger(pid) || pid <= 0 || !NONCE_PATTERN.test(ownerNonce)) throw new TypeError('Initial lock identity is invalid')
   const stage = join(root, `${RECOVERY_LOCK_BASENAME}.${pid}.${ownerNonce}.new`)
 
   return { lock: join(root, RECOVERY_LOCK_BASENAME), stage }
@@ -655,7 +655,7 @@ function parseOwner(bytes, root) {
   }
   const keys = Object.keys(record).sort().join(',')
   const expectedKeys = record.state === 'reserved' ? 'nonce,protocolVersion,root,state' : record.state === 'consuming' ? 'nonce,pid,protocolVersion,root,state' : ''
-  if (keys !== expectedKeys || record.protocolVersion !== 1 || record.root !== root || !/^[a-f0-9]{32}$/.test(record.nonce) || (record.state === 'consuming' && (!Number.isSafeInteger(record.pid) || record.pid <= 0))) {
+  if (keys !== expectedKeys || record.protocolVersion !== 1 || record.root !== root || !NONCE_PATTERN.test(record.nonce) || (record.state === 'consuming' && (!Number.isSafeInteger(record.pid) || record.pid <= 0))) {
     throw new Error('Published request owner schema is invalid')
   }
 
@@ -857,7 +857,7 @@ function cleanRequestResidue(root, evidence, options = {}) {
     payloadRawSha256: evidence.payloadRawSha256 ?? null,
   }
   for (const [key, value] of Object.entries(carried)) {
-    const pattern = key === 'nonce' ? /^[a-f0-9]{32}$/ : /^[a-f0-9]{64}$/
+    const pattern = key === 'nonce' ? NONCE_PATTERN : DIGEST_PATTERN
     if (value !== null && (typeof value !== 'string' || !pattern.test(value))) {
       transportError('request-evidence-mismatch', 'Request cleanup evidence is malformed.')
     }

@@ -6,7 +6,7 @@ const { TextDecoder } = require('node:util')
 
 const { InitBacklogError, failureRecord } = require('./errors')
 const { pathIsContained, stableOpenFile } = require('./filesystem')
-const { canonicalJson, compareOrdinal, sha256, validateDigest, validateLogicalId, validateSelector, validateTarget } = require('./protocol')
+const { canonicalJson, compareOrdinal, sameKeys, sha256, validateDigest, validateLogicalId, validateSelector, validateTarget } = require('./protocol')
 
 const ASSET_IDS = [
   'backlog.bugs',
@@ -157,10 +157,6 @@ function composeTemplate(assets) {
   return { logicalBytes, logicalSha256: sha256(logicalBytes) }
 }
 
-function exactKeys(value, keys) {
-  return value !== null && typeof value === 'object' && !Array.isArray(value) && Object.getPrototypeOf(value) === Object.prototype && Object.keys(value).sort(compareOrdinal).join('\0') === [...keys].sort(compareOrdinal).join('\0')
-}
-
 function validateSortedUnique(items, keySelector, label) {
   for (let index = 0; index < items.length; index += 1) {
     const key = keySelector(items[index])
@@ -189,11 +185,11 @@ function validateConceptIds(value, label) {
 }
 
 function validateManifest(manifest) {
-  if (!exactKeys(manifest, ['protocolVersion', 'assets', 'templates', 'targets']) || manifest.protocolVersion !== 1 || !Array.isArray(manifest.assets) || !Array.isArray(manifest.templates) || !Array.isArray(manifest.targets)) {
+  if (!sameKeys(manifest, ['protocolVersion', 'assets', 'templates', 'targets']) || manifest.protocolVersion !== 1 || !Array.isArray(manifest.assets) || !Array.isArray(manifest.templates) || !Array.isArray(manifest.targets)) {
     templateInvalid('Template manifest record is invalid.')
   }
   for (const asset of manifest.assets) {
-    if (!exactKeys(asset, ['assetId', 'path', 'logicalSha256', 'finalNewline']) || asset.finalNewline !== true || typeof asset.path !== 'string' || asset.path.length === 0 || isAbsolute(asset.path) || asset.path.includes('\\')) {
+    if (!sameKeys(asset, ['assetId', 'path', 'logicalSha256', 'finalNewline']) || asset.finalNewline !== true || typeof asset.path !== 'string' || asset.path.length === 0 || isAbsolute(asset.path) || asset.path.includes('\\')) {
       templateInvalid('Template asset manifest item is invalid.')
     }
     try {
@@ -211,7 +207,7 @@ function validateManifest(manifest) {
 
   const assets = new Map(manifest.assets.map((item) => [item.assetId, item]))
   for (const template of manifest.templates) {
-    if (!exactKeys(template, ['templateId', 'targetSelector', 'assetIds', 'conceptIds']) || !Array.isArray(template.assetIds) || template.assetIds.length === 0) {
+    if (!sameKeys(template, ['templateId', 'targetSelector', 'assetIds', 'conceptIds']) || !Array.isArray(template.assetIds) || template.assetIds.length === 0) {
       templateInvalid('Template manifest item is invalid.')
     }
     try {
@@ -239,7 +235,7 @@ function validateManifest(manifest) {
 
   const templates = new Map(manifest.templates.map((item) => [item.templateId, item]))
   for (const target of manifest.targets) {
-    if (!exactKeys(target, ['targetSelector', 'kind', 'applicability', 'templateRule', 'conceptIds', 'regions']) || !['directory', 'file'].includes(target.kind) || !['always', 'git-only'].includes(target.applicability) || !Array.isArray(target.regions)) {
+    if (!sameKeys(target, ['targetSelector', 'kind', 'applicability', 'templateRule', 'conceptIds', 'regions']) || !['directory', 'file'].includes(target.kind) || !['always', 'git-only'].includes(target.applicability) || !Array.isArray(target.regions)) {
       templateInvalid('Template target manifest item is invalid.')
     }
     try {
@@ -274,7 +270,7 @@ function validateManifest(manifest) {
       }
     }
     for (const region of target.regions) {
-      if (!exactKeys(region, ['regionId', 'syntax', 'heading', 'missingPlacement', 'semantic']) || !['markdown-section', 'markdown-preamble', 'empty-document', 'gitignore-append'].includes(region.syntax) || !['start', 'end', 'forbidden'].includes(region.missingPlacement) || typeof region.semantic !== 'boolean') {
+      if (!sameKeys(region, ['regionId', 'syntax', 'heading', 'missingPlacement', 'semantic']) || !['markdown-section', 'markdown-preamble', 'empty-document', 'gitignore-append'].includes(region.syntax) || !['start', 'end', 'forbidden'].includes(region.missingPlacement) || typeof region.semantic !== 'boolean') {
         templateInvalid('Template region is invalid.')
       }
       try {

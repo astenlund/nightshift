@@ -1214,6 +1214,7 @@ module.exports = {
   encodeResult,
   recoveryAllowedDispositions,
   recoveryTargetMatches,
+  sameKeys,
   selectFailure,
   sha256,
   validateAbsoluteRoot,

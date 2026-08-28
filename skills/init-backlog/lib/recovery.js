@@ -16,7 +16,7 @@ const {
   removeInitialLock,
   stableOpenFile,
 } = require('./filesystem')
-const { MAX_INLINE_FILE_BYTES, MAX_RECOVERY_REQUEST_BYTES, MAX_RECOVERY_RESULT_BYTES, RECOVERY_GATE_BASENAME, RECOVERY_LOCK_BASENAME: LOCK_BASENAME, RECOVERY_MARKER_BASENAME: MARKER_BASENAME, buildRecoveryApplyRequest, canonicalBytes, canonicalJson, compareOrdinal, deriveRecoveryId, recoveryAllowedDispositions, sha256, validateTarget } = require('./protocol')
+const { DIGEST_PATTERN, MAX_INLINE_FILE_BYTES, MAX_RECOVERY_REQUEST_BYTES, MAX_RECOVERY_RESULT_BYTES, NONCE_PATTERN, RECOVERY_GATE_BASENAME, RECOVERY_LOCK_BASENAME: LOCK_BASENAME, RECOVERY_MARKER_BASENAME: MARKER_BASENAME, buildRecoveryApplyRequest, canonicalBytes, canonicalJson, compareOrdinal, deriveRecoveryId, recoveryAllowedDispositions, sha256, validateTarget } = require('./protocol')
 const { collectInspection, validateElectionMarkerRecord } = require('./inspection')
 const { publishRecoveryFile, recoveryTemporaryMatches, recoveryTemporaryTarget, removeRecoveryFile } = require('./publication')
 
@@ -167,7 +167,7 @@ function gateEvidence(root, options = {}) {
 function ownerRecordValid(record, root) {
   const keys = ['createdAtUnixMs', 'manifestId', 'operation', 'ownerNonce', 'pid', 'protocolVersion', 'recoveryId', 'root', 'temporaryPaths', 'unfinalizedDirectories']
 
-  return record !== null && Object.keys(record).sort(compareOrdinal).join('\0') === keys.sort(compareOrdinal).join('\0') && Number.isSafeInteger(record.createdAtUnixMs) && record.createdAtUnixMs >= 0 && record.protocolVersion === 1 && record.operation === 'recover-apply' && record.root === root && Number.isSafeInteger(record.pid) && record.pid > 0 && typeof record.ownerNonce === 'string' && /^[a-f0-9]{32}$/.test(record.ownerNonce) && record.manifestId === null && typeof record.recoveryId === 'string' && /^[a-f0-9]{64}$/.test(record.recoveryId) && Array.isArray(record.temporaryPaths) && record.temporaryPaths.length === 0 && Array.isArray(record.unfinalizedDirectories) && record.unfinalizedDirectories.length === 0
+  return record !== null && Object.keys(record).sort(compareOrdinal).join('\0') === keys.sort(compareOrdinal).join('\0') && Number.isSafeInteger(record.createdAtUnixMs) && record.createdAtUnixMs >= 0 && record.protocolVersion === 1 && record.operation === 'recover-apply' && record.root === root && Number.isSafeInteger(record.pid) && record.pid > 0 && typeof record.ownerNonce === 'string' && NONCE_PATTERN.test(record.ownerNonce) && record.manifestId === null && typeof record.recoveryId === 'string' && DIGEST_PATTERN.test(record.recoveryId) && Array.isArray(record.temporaryPaths) && record.temporaryPaths.length === 0 && Array.isArray(record.unfinalizedDirectories) && record.unfinalizedDirectories.length === 0
 }
 
 function markerTopology(root, target, record) {
@@ -315,9 +315,9 @@ function validOwnerRecord(record, root, opened, platform = process.platform) {
 
 function validOwnerRecordShape(record, root) {
   const keys = ['createdAtUnixMs', 'manifestId', 'operation', 'ownerNonce', 'pid', 'protocolVersion', 'recoveryId', 'root', 'temporaryPaths', 'unfinalizedDirectories']
-  const operationFieldsValid = record?.operation === 'apply' && record.recoveryId === null || ['inspect', 'recover-inspect'].includes(record?.operation) && record.manifestId === null && record.recoveryId === null || record?.operation === 'recover-apply' && record.manifestId === null && typeof record.recoveryId === 'string' && /^[a-f0-9]{64}$/.test(record.recoveryId)
+  const operationFieldsValid = record?.operation === 'apply' && record.recoveryId === null || ['inspect', 'recover-inspect'].includes(record?.operation) && record.manifestId === null && record.recoveryId === null || record?.operation === 'recover-apply' && record.manifestId === null && typeof record.recoveryId === 'string' && DIGEST_PATTERN.test(record.recoveryId)
 
-  return record !== null && Object.keys(record).sort(compareOrdinal).join('\0') === keys.sort(compareOrdinal).join('\0') && record.root === root && ['inspect', 'apply', 'recover-inspect', 'recover-apply'].includes(record.operation) && operationFieldsValid && record.protocolVersion === 1 && Number.isSafeInteger(record.pid) && record.pid > 0 && /^[a-f0-9]{32}$/.test(record.ownerNonce) && Number.isSafeInteger(record.createdAtUnixMs) && record.createdAtUnixMs >= 0 && (record.manifestId === null || /^[a-f0-9]{64}$/.test(record.manifestId)) && (record.recoveryId === null || /^[a-f0-9]{64}$/.test(record.recoveryId)) && Array.isArray(record.temporaryPaths) && new Set(record.temporaryPaths).size === record.temporaryPaths.length && !record.temporaryPaths.some((item, index) => !validOwnerTemporary(root, item, record) || index > 0 && compareOrdinal(record.temporaryPaths[index - 1], item) >= 0) && Array.isArray(record.unfinalizedDirectories) && new Set(record.unfinalizedDirectories.map((item) => item?.target)).size === record.unfinalizedDirectories.length && !record.unfinalizedDirectories.some((item, index) => item === null || typeof item !== 'object' || Array.isArray(item) || Object.keys(item).sort(compareOrdinal).join('\0') !== 'mode\0target' || typeof item.target !== 'string' || !Number.isSafeInteger(item.mode) && item.mode !== null || item.mode !== null && (item.mode < 0 || item.mode > 4095) || index > 0 && compareOrdinal(record.unfinalizedDirectories[index - 1].target, item.target) >= 0)
+  return record !== null && Object.keys(record).sort(compareOrdinal).join('\0') === keys.sort(compareOrdinal).join('\0') && record.root === root && ['inspect', 'apply', 'recover-inspect', 'recover-apply'].includes(record.operation) && operationFieldsValid && record.protocolVersion === 1 && Number.isSafeInteger(record.pid) && record.pid > 0 && NONCE_PATTERN.test(record.ownerNonce) && Number.isSafeInteger(record.createdAtUnixMs) && record.createdAtUnixMs >= 0 && (record.manifestId === null || DIGEST_PATTERN.test(record.manifestId)) && (record.recoveryId === null || DIGEST_PATTERN.test(record.recoveryId)) && Array.isArray(record.temporaryPaths) && new Set(record.temporaryPaths).size === record.temporaryPaths.length && !record.temporaryPaths.some((item, index) => !validOwnerTemporary(root, item, record) || index > 0 && compareOrdinal(record.temporaryPaths[index - 1], item) >= 0) && Array.isArray(record.unfinalizedDirectories) && new Set(record.unfinalizedDirectories.map((item) => item?.target)).size === record.unfinalizedDirectories.length && !record.unfinalizedDirectories.some((item, index) => item === null || typeof item !== 'object' || Array.isArray(item) || Object.keys(item).sort(compareOrdinal).join('\0') !== 'mode\0target' || typeof item.target !== 'string' || !Number.isSafeInteger(item.mode) && item.mode !== null || item.mode !== null && (item.mode < 0 || item.mode > 4095) || index > 0 && compareOrdinal(record.unfinalizedDirectories[index - 1].target, item.target) >= 0)
 }
 
 function ownerEvidence(root, options = {}) {
@@ -528,7 +528,7 @@ function withTransientRecoveryLock(root, request, options, callback, lockContext
 function ownerNonceFor(options, request) {
   try {
     const ownerNonce = options.ownerNonce ?? randomBytes(16).toString('hex')
-    if (!/^[a-f0-9]{32}$/.test(ownerNonce)) throw new TypeError('Owner nonce is invalid')
+    if (!NONCE_PATTERN.test(ownerNonce)) throw new TypeError('Owner nonce is invalid')
 
     return ownerNonce
   } catch (error) {

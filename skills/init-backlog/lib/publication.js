@@ -25,7 +25,7 @@ const {
   verifyPublishedIdentity,
 } = require('./filesystem')
 const { collectInspection, composeElectionMarker } = require('./inspection')
-const { RECOVERY_GATE_BASENAME, RECOVERY_LOCK_BASENAME: LOCK_BASENAME, RECOVERY_MARKER_BASENAME: ELECTION_BASENAME, canonicalJson, compareOrdinal, sha256 } = require('./protocol')
+const { DIGEST_PATTERN, NONCE_PATTERN, RECOVERY_GATE_BASENAME, RECOVERY_LOCK_BASENAME: LOCK_BASENAME, RECOVERY_MARKER_BASENAME: ELECTION_BASENAME, canonicalJson, compareOrdinal, sha256 } = require('./protocol')
 
 const POSIX_DEFAULT_FILE_MODE = 0o644
 const POSIX_DEFAULT_DIRECTORY_MODE = 0o755
@@ -59,14 +59,14 @@ function recoveryTemporaryTarget(target, recoveryId) {
 }
 
 function recoveryTemporaryMatches(target, recoveryId) {
-  if (typeof target !== 'string' || typeof recoveryId !== 'string' || !/^[a-f0-9]{64}$/.test(recoveryId)) return false
+  if (typeof target !== 'string' || typeof recoveryId !== 'string' || !DIGEST_PATTERN.test(recoveryId)) return false
   const basename = target.slice(target.lastIndexOf('/') + 1)
   const prefix = `.nightshift-init-backlog.${recoveryId}.`
   if (!basename.startsWith(prefix) || !basename.endsWith('.tmp')) return false
 
   const targetHash = basename.slice(prefix.length, -4)
 
-  return /^[a-f0-9]{64}$/.test(targetHash)
+  return DIGEST_PATTERN.test(targetHash)
 }
 
 function restoreUnwrapBatch(root, actions, manifestId, snapshotId, options = {}) {
@@ -82,7 +82,7 @@ function restoreUnwrapBatch(root, actions, manifestId, snapshotId, options = {})
 }
 
 function temporaryPaths(root, manifestId, actionOrdinal = 1, ownerNonce = randomBytes(16).toString('hex'), snapshotId = '0'.repeat(64), pid = process.pid) {
-  if (!Number.isSafeInteger(pid) || pid <= 0 || !/^[a-f0-9]{32}$/.test(ownerNonce) || !/^[a-f0-9]{64}$/.test(manifestId) || !/^[a-f0-9]{64}$/.test(snapshotId) || !Number.isSafeInteger(actionOrdinal) || actionOrdinal <= 0) {
+  if (!Number.isSafeInteger(pid) || pid <= 0 || !NONCE_PATTERN.test(ownerNonce) || !DIGEST_PATTERN.test(manifestId) || !DIGEST_PATTERN.test(snapshotId) || !Number.isSafeInteger(actionOrdinal) || actionOrdinal <= 0) {
     throw new TypeError('Temporary identity is invalid')
   }
   const lockPaths = initialLockPaths(root, pid, ownerNonce)
@@ -838,7 +838,7 @@ function readExistingLock(root, path, options) {
     const opened = stableOpenFile(root, path, options)
     const record = JSON.parse(opened.bytes.toString('utf8'))
     const keys = ['createdAtUnixMs', 'manifestId', 'operation', 'ownerNonce', 'pid', 'protocolVersion', 'recoveryId', 'root', 'temporaryPaths', 'unfinalizedDirectories']
-    if (record === null || typeof record !== 'object' || Array.isArray(record) || Object.keys(record).sort(compareOrdinal).join('\0') !== keys.sort(compareOrdinal).join('\0') || record.protocolVersion !== 1 || record.operation !== 'apply' || record.root !== root || !Number.isSafeInteger(record.pid) || record.pid <= 0 || !/^[a-f0-9]{32}$/.test(record.ownerNonce) || !Number.isSafeInteger(record.createdAtUnixMs) || record.createdAtUnixMs < 0 || record.manifestId !== null && !/^[a-f0-9]{64}$/.test(record.manifestId) || record.recoveryId !== null || !Array.isArray(record.temporaryPaths) || !Array.isArray(record.unfinalizedDirectories)) throw new Error('Publication lock schema is invalid')
+    if (record === null || typeof record !== 'object' || Array.isArray(record) || Object.keys(record).sort(compareOrdinal).join('\0') !== keys.sort(compareOrdinal).join('\0') || record.protocolVersion !== 1 || record.operation !== 'apply' || record.root !== root || !Number.isSafeInteger(record.pid) || record.pid <= 0 || !NONCE_PATTERN.test(record.ownerNonce) || !Number.isSafeInteger(record.createdAtUnixMs) || record.createdAtUnixMs < 0 || record.manifestId !== null && !DIGEST_PATTERN.test(record.manifestId) || record.recoveryId !== null || !Array.isArray(record.temporaryPaths) || !Array.isArray(record.unfinalizedDirectories)) throw new Error('Publication lock schema is invalid')
     if (!Buffer.from(`${canonicalJson(record)}\n`, 'utf8').equals(opened.bytes)) throw new Error('Publication lock bytes are not canonical')
     if ((options.platform ?? process.platform) !== 'win32' && opened.mode !== 0o600) throw new Error('Publication lock mode is invalid')
     const temporaryPathsValue = [...record.temporaryPaths]

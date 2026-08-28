@@ -2,7 +2,7 @@
 'use strict'
 
 const { InitBacklogError } = require('./lib/errors')
-const { canonicalJson, decodeRequest, encodeResult } = require('./lib/protocol')
+const { DIGEST_PATTERN, NONCE_PATTERN, canonicalJson, decodeRequest, encodeResult } = require('./lib/protocol')
 const {
   RequestTransportResidueError,
   cleanRequestResidue,
@@ -79,10 +79,10 @@ function validPublicInvocation(argv) {
     return argv.length === 2
   }
   if (argv[0] === '--consume-request') {
-    return argv.length === 3 && /^[a-f0-9]{32}$/.test(argv[2])
+    return argv.length === 3 && NONCE_PATTERN.test(argv[2])
   }
   if (argv[0] === '--clean-request-residue') {
-    return argv.length === 6 && (argv[2] === 'null' || /^[a-f0-9]{32}$/.test(argv[2])) && argv.slice(3).every((item) => item === 'null' || /^[a-f0-9]{64}$/.test(item))
+    return argv.length === 6 && (argv[2] === 'null' || NONCE_PATTERN.test(argv[2])) && argv.slice(3).every((item) => item === 'null' || DIGEST_PATTERN.test(item))
   }
 
   return false
