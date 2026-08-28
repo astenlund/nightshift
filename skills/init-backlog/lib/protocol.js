@@ -26,11 +26,14 @@ const RECOVERY_GATE_BASENAME = '.nightshift-init-backlog.recovery-gate'
 const RECOVERY_MARKER_BASENAME = '.nightshift-init-backlog-election'
 const OWNER_BASENAME = 'owner.json'
 const OWNER_STAGE_BASENAME = 'owner.new'
+const BACKUP_DIRECTORY = '.tmp'
 const BACKUP_STEM = 'nightshift-init-backlog-unwrap'
 const BACKUP_TRIPLE_PATTERN = '([a-f0-9]{64})-([a-f0-9]{64})-([a-f0-9]{64})'
 const BACKUP_PATTERN = new RegExp(`^\\.tmp\\/${BACKUP_STEM}-${BACKUP_TRIPLE_PATTERN}\\.bak$`)
 const BACKUP_STAGE_PATTERN = new RegExp(`^\\.tmp\\/.${BACKUP_STEM}-${BACKUP_TRIPLE_PATTERN}\\.tmp$`)
 const RECOVERY_LOCK_STAGE_PATTERN = /^\.nightshift-init-backlog\.lock\.([1-9][0-9]*)\.([a-f0-9]{32})\.new$/
+
+const OWNER_RECORD_KEYS = ['createdAtUnixMs', 'manifestId', 'operation', 'ownerNonce', 'pid', 'protocolVersion', 'recoveryId', 'root', 'temporaryPaths', 'unfinalizedDirectories']
 
 const OPERATIONS = ['apply', 'inspect', 'recover-apply', 'recover-inspect']
 const PHASES = ['decode', 'resolve', 'inspect', 'lock', 'prevalidate', 'publish', 'verify', 'restore', 'cleanup']
@@ -742,7 +745,7 @@ function validateRecoveryInspection(value) {
 }
 
 function validateOwnerRecord(value) {
-  requireRecord(value, ['protocolVersion', 'operation', 'pid', 'ownerNonce', 'root', 'createdAtUnixMs', 'manifestId', 'recoveryId', 'temporaryPaths', 'unfinalizedDirectories'], 'owner record')
+  requireRecord(value, OWNER_RECORD_KEYS, 'owner record')
   if (value.protocolVersion !== 1) {
     invalid('invalid-request', 'decode', 'Owner record is invalid.')
   }
@@ -1161,8 +1164,8 @@ function isSemanticActionId(id) {
 
 function backupFileNames(snapshotId, manifestId, targetHash) {
   return {
-    final: `.tmp/${BACKUP_STEM}-${snapshotId}-${manifestId}-${targetHash}.bak`,
-    stage: `.tmp/.${BACKUP_STEM}-${snapshotId}-${manifestId}-${targetHash}.tmp`,
+    final: `${BACKUP_DIRECTORY}/${BACKUP_STEM}-${snapshotId}-${manifestId}-${targetHash}.bak`,
+    stage: `${BACKUP_DIRECTORY}/.${BACKUP_STEM}-${snapshotId}-${manifestId}-${targetHash}.tmp`,
   }
 }
 
@@ -1210,6 +1213,7 @@ function selectFailure(candidates) {
 
 module.exports = {
   ACTION_ID_PATTERN,
+  BACKUP_DIRECTORY,
   BACKUP_PATTERN,
   BACKUP_STAGE_PATTERN,
   DIGEST_PATTERN,
@@ -1226,6 +1230,7 @@ module.exports = {
   NONCE_PATTERN,
   OPERATIONS,
   OWNER_BASENAME,
+  OWNER_RECORD_KEYS,
   OWNER_STAGE_BASENAME,
   PHASES,
   RECOVERY_GATE_BASENAME,

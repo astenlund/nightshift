@@ -4,13 +4,13 @@ const { lstatSync } = require('node:fs')
 const { join } = require('node:path')
 
 const { enumerateDirectory, stableMetadata, stableOpenFile, withAttributeProbe } = require('./filesystem')
-const { BACKUP_PATTERN, BACKUP_STAGE_PATTERN, backupFileNames, compareOrdinal, sha256 } = require('./protocol')
+const { BACKUP_DIRECTORY, BACKUP_PATTERN, BACKUP_STAGE_PATTERN, backupFileNames, compareOrdinal, sha256 } = require('./protocol')
 
 function backupParts(target) {
   const stage = BACKUP_STAGE_PATTERN.exec(target)
-  if (stage !== null) return { directory: '.tmp', kind: 'stage', manifestId: stage[2], snapshotId: stage[1], targetHash: stage[3] }
+  if (stage !== null) return { directory: BACKUP_DIRECTORY, kind: 'stage', manifestId: stage[2], snapshotId: stage[1], targetHash: stage[3] }
   const final = BACKUP_PATTERN.exec(target)
-  if (final !== null) return { directory: '.tmp', kind: 'final', manifestId: final[2], snapshotId: final[1], targetHash: final[3] }
+  if (final !== null) return { directory: BACKUP_DIRECTORY, kind: 'final', manifestId: final[2], snapshotId: final[1], targetHash: final[3] }
 
   return null
 }
@@ -32,7 +32,7 @@ function classifyBackup(backup, current) {
 }
 
 function inspectBackups(root, targets, options = {}) {
-  const directory = join(root, '.tmp')
+  const directory = join(root, BACKUP_DIRECTORY)
   try {
     const metadata = stableMetadata(directory, { root })
     if (!metadata.metadata.isDirectory() || metadata.metadata.isSymbolicLink()) throw new Error('Backup directory is not an ordinary confined directory')
@@ -48,7 +48,7 @@ function inspectBackups(root, targets, options = {}) {
   const problems = []
   for (const entry of entries) {
     const name = entry.name
-    const target = `.tmp/${name}`
+    const target = `${BACKUP_DIRECTORY}/${name}`
     const parts = backupParts(target)
     if (parts === null || parts.kind !== 'final') continue
     const path = join(root, ...target.split('/'))

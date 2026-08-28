@@ -11,7 +11,7 @@ const { inspectBackups } = require('./backups')
 const { InitBacklogError, failureRecord } = require('./errors')
 const { HTML_BLOCK_TYPE_SIX_TAGS, discoverControlledMarkdown, resolveGuidance } = require('./guidance')
 const { canonicalRoot, comparableIdentity, comparableMode, createInitialLock, initialLockPaths, removeInitialLock, stableOpenFile, targetPath } = require('./filesystem')
-const { DIGEST_PATTERN, RECOVERY_LOCK_BASENAME, RECOVERY_LOCK_STAGE_PATTERN, RECOVERY_MARKER_BASENAME, canonicalJson, compareOrdinal, deriveProposalId, deriveSnapshotId, sameKeys, sha256 } = require('./protocol')
+const { BACKUP_DIRECTORY, DIGEST_PATTERN, RECOVERY_LOCK_BASENAME, RECOVERY_LOCK_STAGE_PATTERN, RECOVERY_MARKER_BASENAME, canonicalJson, compareOrdinal, deriveProposalId, deriveSnapshotId, sameKeys, sha256 } = require('./protocol')
 const { detectGitKind, inspectGitPolicy, newlineStyle } = require('./git-policy')
 
 function inspectError(code, detail, target = null, cause, phase = 'inspect') {
@@ -765,7 +765,7 @@ function collectInspection(root, host, hostContext = {}, options = {}) {
   try {
     backupEvidence = inspectBackups(canonical, targetRecords, options)
   } catch (error) {
-    inspectError('filesystem', 'Retained backup inspection failed.', '.tmp', error)
+    inspectError('filesystem', 'Retained backup inspection failed.', BACKUP_DIRECTORY, error)
   }
   const result = { git: gitRecord, guidance: { baseAdapter: guidance.baseAdapter, candidates: guidance.candidates, graphPaths: guidance.graphPaths, imports: guidance.imports, independentPaths: guidance.independentPaths, resolvedTarget: guidance.resolvedTarget }, host, hostContext, ok: true, operation: 'inspect', problems: [...projectedProblems, ...backupEvidence.problems].sort((left, right) => compareOrdinal(`${left.code}\0${left.target ?? ''}\0${left.detail}`, `${right.code}\0${right.target ?? ''}\0${right.detail}`)), proposals: proposals.sort((left, right) => compareOrdinal(left.proposalId, right.proposalId)), protocolVersion: 1, retainedBackups: backupEvidence.backups, root: canonical, snapshotId: null, targets: targetRecords.sort((left, right) => compareOrdinal(left.target, right.target)), templates: descriptors.filter((entry) => entry.template).map((entry) => ({ conceptIds: entry.template.conceptIds, logicalSha256: entry.template.logicalSha256, target: entry.target, templateId: entry.template.templateId })).sort((left, right) => compareOrdinal(left.templateId, right.templateId)), unwrapReady: { after, targets: wrapFindings.map((item) => item.target).sort(compareOrdinal) }, warnings: [...readyProblems.warnings, ...backupEvidence.warnings].sort((left, right) => compareOrdinal(left.code, right.code)), wrapFindings, ready }
   result.snapshotId = deriveSnapshotId({ ...result, snapshotId: null })
