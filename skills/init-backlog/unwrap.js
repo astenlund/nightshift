@@ -330,7 +330,8 @@ function statOrNull(target) {
 // A directory target is read as a backlog root: the seven backlog files at its
 // top level plus everything under the backlog directories, following links
 // (each directory once) and skipping dangling ones. A file target is taken
-// when it is markdown.
+// when it is markdown. A target is a path string (statted here, throwing when
+// unreachable) or a { path, stat } pair carrying an already-obtained stat.
 function collectMarkdownFiles(targets) {
   const files = [];
   const visitedDirectories = new Set();
@@ -363,8 +364,9 @@ function collectMarkdownFiles(targets) {
     }
   };
   for (const target of targets) {
-    const resolved = path.resolve(target);
-    if (fs.statSync(resolved).isDirectory()) {
+    const resolved = path.resolve(typeof target === 'string' ? target : target.path);
+    const stat = typeof target === 'string' ? fs.statSync(resolved) : target.stat;
+    if (stat.isDirectory()) {
       visitBacklogRoot(resolved);
     } else if (isMarkdown(resolved)) {
       files.push(resolved);
@@ -382,14 +384,15 @@ function runCli(argv) {
     process.exitCode = 2;
     return;
   }
-  const missing = targets.find((target) => !fs.existsSync(target));
+  const statted = targets.map((target) => ({ path: target, stat: statOrNull(path.resolve(target)) }));
+  const missing = statted.find((entry) => entry.stat === null);
   if (missing !== undefined) {
-    process.stderr.write(`unwrap.js: no such file or directory: ${missing}\n`);
+    process.stderr.write(`unwrap.js: no such file or directory: ${missing.path}\n`);
     process.exitCode = 2;
     return;
   }
   const report = [];
-  for (const file of collectMarkdownFiles(targets)) {
+  for (const file of collectMarkdownFiles(statted)) {
     let text;
     try {
       text = fs.readFileSync(file, 'utf8');
