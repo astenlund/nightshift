@@ -196,33 +196,41 @@ function validateRescannedRegions(regions, contentLength, action, declarations =
   return regions
 }
 
-function regionDeclarations(target, inspection, options) {
-  const configured = options.regionDeclarations
-  if (configured !== undefined) {
-    const declarations = configured instanceof Map ? configured.get(target) : configured[target]
-    if (declarations !== undefined) return declarations
-  }
-  try {
-    const manifest = loadManifest(options.templatesRoot ?? join(__dirname, '..', 'templates'))
-    const selector = target === inspection?.guidance?.resolvedTarget ? '@resolved-guidance' : target
+function createRegionDeclarationsResolver(inspection, options) {
+  let manifest = null
+  const resolved = new Map()
 
-    return manifest.manifest.targets.find((item) => item.targetSelector === selector)?.regions
-  } catch (error) {
-    admissionError('Template region declarations could not be loaded.', { target, systemCode: error?.code })
+  return (target) => {
+    const configured = options.regionDeclarations
+    if (configured !== undefined) {
+      const declarations = configured instanceof Map ? configured.get(target) : configured[target]
+      if (declarations !== undefined) return declarations
+    }
+    if (resolved.has(target)) return resolved.get(target)
+    try {
+      manifest ??= loadManifest(options.templatesRoot ?? join(__dirname, '..', 'templates'))
+      const selector = target === inspection?.guidance?.resolvedTarget ? '@resolved-guidance' : target
+      const declarations = manifest.manifest.targets.find((item) => item.targetSelector === selector)?.regions
+      resolved.set(target, declarations)
+
+      return declarations
+    } catch (error) {
+      admissionError('Template region declarations could not be loaded.', { target, systemCode: error?.code })
+    }
   }
 }
 
-function validateSemanticAction(action, record, inspection, options) {
+function validateSemanticAction(action, record, inspection, options, declarationsFor) {
   if (!action.id.startsWith('s-')) return
   if (record.contentRole !== 'semantic' || record.templateId === null || typeof record.templateId !== 'string') admissionError('Semantic action requires an authorized inspected template.', { actionId: action.id, target: action.target })
   const template = Array.isArray(inspection.templates) ? inspection.templates.find((item) => item.templateId === record.templateId && item.target === record.target) : undefined
   if (template === undefined || template.logicalSha256 !== record.templateSha256 || !Array.isArray(template.conceptIds) || template.conceptIds.length === 0) admissionError('Semantic action requires a nonempty inspected concept set.', { actionId: action.id, target: action.target })
-  const declarations = regionDeclarations(action.target, inspection, options)
+  const declarations = declarationsFor(action.target)
   const declaration = declarations?.find((item) => item.regionId === action.regionId)
   if (declaration === undefined || declaration.semantic !== true) admissionError('Semantic action region is not authorized by the inspected metadata.', { actionId: action.id, target: action.target })
 }
 
-function rescanRegions(action, after, inspection, options) {
+function rescanRegions(action, after, inspection, options, declarationsFor) {
   if (typeof options.rescanRegions === 'function') {
     let regions
     try {
@@ -235,15 +243,15 @@ function rescanRegions(action, after, inspection, options) {
   }
   let regions
   try {
-    regions = inspectRegions(after, regionDeclarations(action.target, inspection, options))
+    regions = inspectRegions(after, declarationsFor(action.target))
   } catch (error) {
     admissionError('Exact edit output could not be rescanned.', { actionId: action.id, target: action.target, systemCode: error?.code })
   }
 
-  return validateRescannedRegions(regions, after.length, action, regionDeclarations(action.target, inspection, options))
+  return validateRescannedRegions(regions, after.length, action, declarationsFor(action.target))
 }
 
-function simulateAction(action, state, inspection, targets, options) {
+function simulateAction(action, state, inspection, targets, options, declarationsFor) {
   if (!ACTION_KINDS.has(action.kind)) admissionError('Action kind is not supported.', { actionId: action.id })
   const record = targets.get(action.target)
   if (record === undefined) admissionError('Action target is outside the inspected closed surface.', { actionId: action.id, target: action.target })
@@ -295,7 +303,7 @@ function simulateAction(action, state, inspection, targets, options) {
   if (action.id.startsWith('s-') && (!before.subarray(0, region.startByte).equals(after.subarray(0, region.startByte)) || !before.subarray(region.endByte).equals(after.subarray(region.endByte)))) admissionError('Exact edit broadens its approved region.', { actionId: action.id, target: action.target })
   state.content = after
   state.rawSha256 = sha256(after)
-  state.regions = rescanRegions(action, after, inspection, options)
+  state.regions = rescanRegions(action, after, inspection, options, declarationsFor)
 }
 
 function simulateReady(inspection, actions, states, options = {}) {
@@ -345,6 +353,7 @@ function admitApplyManifest(request, options = {}) {
   validateSemanticDecisions(inspection, request?.semanticDecisions ?? [], targets)
   const selected = selectedProposals(inspection, dispositions, choice)
   const selectedActions = selected.map((item) => item.action)
+  const declarationsFor = createRegionDeclarationsResolver(inspection, options)
   const actionIds = new Set()
   for (const action of actions) {
     try {
@@ -354,7 +363,7 @@ function admitApplyManifest(request, options = {}) {
     }
     validateAction(action, 'manifest-invalid', 'prevalidate')
     const record = targets.get(action.target)
-    if (record !== undefined) validateSemanticAction(action, record, inspection, options)
+    if (record !== undefined) validateSemanticAction(action, record, inspection, options, declarationsFor)
     if (actionIds.has(action.id)) admissionError('Action IDs must be unique.', { actionId: action.id })
     actionIds.add(action.id)
   }
@@ -375,7 +384,7 @@ function admitApplyManifest(request, options = {}) {
     if (deferredTargets.has(action.target)) admissionError('Deferred semantic targets cannot receive an action.', { actionId: action.id, target: action.target })
     const parent = parentTarget(action.target)
     if (parent !== null && states.has(parent) && !states.get(parent).present) admissionError('Action prerequisite parent is not present.', { actionId: action.id, target: action.target })
-    simulateAction(action, states.get(action.target), inspection, targets, options)
+    simulateAction(action, states.get(action.target), inspection, targets, options, declarationsFor)
   }
   const ready = simulateReady(inspection, actions, states, options)
   const expectedReady = inspection.unwrapReady?.targets?.length > 0 ? inspection.unwrapReady.after : inspection.ready
