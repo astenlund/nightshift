@@ -360,8 +360,9 @@ function admitApplyManifest(request, options = {}) {
     if (actionIds.has(action.id)) admissionError('Action IDs must be unique.', { actionId: action.id })
     actionIds.add(action.id)
   }
+  const authoredActionIds = new Set()
   for (const action of actions) {
-    proposalForAction(action, selected)
+    if (proposalForAction(action, selected) === null) authoredActionIds.add(action.id)
   }
   for (const action of selectedActions) if (!actions.some((item) => sameCanonical(item, action))) admissionError('A selected proposal action is missing.', { actionId: action.id })
   let ordered
@@ -371,16 +372,28 @@ function admitApplyManifest(request, options = {}) {
     admissionError('Action transition graph is invalid.', { systemCode: error?.code })
   }
   if (!sameCanonical(ordered, actions)) admissionError('Actions are not in stable dependency order.')
-  const states = new Map([...targets].map(([target, record]) => [target, initialState(record, inspection)]))
   const deferredTargets = new Set((request?.semanticDecisions ?? []).filter((item) => item.status === 'deferred').map((item) => item.target))
-  for (const action of actions) {
-    if (deferredTargets.has(action.target)) admissionError('Deferred semantic targets cannot receive an action.', { actionId: action.id, target: action.target })
-    const parent = parentTarget(action.target)
-    if (parent !== null && states.has(parent) && !states.get(parent).present) admissionError('Action prerequisite parent is not present.', { actionId: action.id, target: action.target })
-    simulateAction(action, states.get(action.target), inspection, targets, options, declarationsFor)
+  const simulateStates = (transition) => {
+    const simulated = new Map([...targets].map(([target, record]) => [target, initialState(record, inspection)]))
+    for (const action of transition) {
+      if (deferredTargets.has(action.target)) admissionError('Deferred semantic targets cannot receive an action.', { actionId: action.id, target: action.target })
+      const parent = parentTarget(action.target)
+      if (parent !== null && simulated.has(parent) && !simulated.get(parent).present) admissionError('Action prerequisite parent is not present.', { actionId: action.id, target: action.target })
+      simulateAction(action, simulated.get(action.target), inspection, targets, options, declarationsFor)
+    }
+
+    return simulated
   }
+  const states = simulateStates(actions)
   const ready = simulateReady(inspection, actions, states, options)
-  const expectedReady = inspection.unwrapReady?.targets?.length > 0 ? inspection.unwrapReady.after : inspection.ready
+  // The inspected transition is the manifest restricted to approved proposals:
+  // every one of those effects, creations included, is predicted by inspection
+  // itself, so comparing against the untouched baseline would reject the very
+  // scaffold the inspection proposed. The gate therefore holds the manifest's
+  // request-authored semantic edits to the inspected prediction, which is the
+  // only part of the manifest inspection did not compute.
+  const inspectedTransition = actions.filter((action) => !authoredActionIds.has(action.id))
+  const expectedReady = inspectedTransition.length === actions.length ? ready : simulateReady(inspection, inspectedTransition, simulateStates(inspectedTransition), options)
   if (!sameCanonical(ready, expectedReady)) admissionError('Simulated ready result differs from the inspected prediction.', { code: 'manifest-invalid' })
   const projection = {
     actions,

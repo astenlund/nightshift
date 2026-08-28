@@ -8,12 +8,13 @@
 
 const assert = require('node:assert/strict')
 const { execFileSync } = require('node:child_process')
-const { mkdtempSync, realpathSync, rmSync, writeFileSync } = require('node:fs')
+const { existsSync, mkdtempSync, realpathSync, rmSync, writeFileSync } = require('node:fs')
 const { tmpdir } = require('node:os')
 const { join } = require('node:path')
 const test = require('node:test')
 
 const { runCli } = require('../../skills/init-backlog/init-backlog')
+const { canonicalActionOrder } = require('../../skills/init-backlog/lib/protocol')
 
 function compareOrdinal(left, right) {
   return left < right ? -1 : left > right ? 1 : 0
@@ -100,6 +101,55 @@ function inspectRequest(root, host = 'claude-code', hostContext = claudeHostCont
   return { host, hostContext, operation: 'inspect', protocolVersion: 1, root }
 }
 
+// Mirrors the manifest an approving agent submits: every proposal disposed by
+// its own condition, the selected proposals' actions in canonical order, and a
+// satisfied decision for every semantic target the inspection requires.
+function semanticDecisionsFor(inspection, status = 'satisfied') {
+  return inspection.targets
+    .filter((item) => item.contentRole === 'semantic' && item.templateId !== null && !item.states.includes('exact-template'))
+    .map((item) => ({
+      conceptIds: inspection.templates.find((entry) => entry.templateId === item.templateId && entry.target === item.target)?.conceptIds ?? [],
+      status,
+      target: item.target,
+    }))
+    .sort((left, right) => compareOrdinal(left.target, right.target))
+}
+
+function buildApplyRequest(root, inspection, choice = 'not-required', options = {}) {
+  const newlineChoice = options.newline ?? 'crlf'
+  const dispositions = []
+  const actions = []
+  for (const proposal of inspection.proposals) {
+    let selected
+    if (proposal.condition === 'always') {
+      selected = true
+    } else if (proposal.condition === 'version-control-ignore') {
+      selected = choice === 'ignore'
+    } else if (proposal.condition === 'newline-lf' || proposal.condition === 'newline-crlf') {
+      selected = proposal.condition === `newline-${newlineChoice}`
+    } else {
+      throw new Error(`unrecognized proposal condition: ${proposal.condition}`)
+    }
+    dispositions.push({ disposition: selected ? 'selected' : 'condition-not-selected', proposalId: proposal.proposalId })
+    if (selected) {
+      actions.push(proposal.action)
+    }
+  }
+
+  return {
+    actions: canonicalActionOrder([...actions, ...(options.extraActions ?? [])]),
+    host: inspection.host,
+    hostContext: inspection.hostContext,
+    inspection,
+    operation: 'apply',
+    protocolVersion: 1,
+    proposalDispositions: dispositions,
+    root,
+    semanticDecisions: options.semanticDecisions ?? semanticDecisionsFor(inspection),
+    versionControlChoice: choice,
+  }
+}
+
 function runE2eCases() {
   test('inspection over a Git repository with unignored backlog directories survives the CLI transport', () => {
     const root = makeGitRoot()
@@ -144,6 +194,30 @@ function runE2eCases() {
       removeRoot(root)
     }
   })
+
+  test('a scaffold-creating manifest is admitted even though creation changes the ready result', () => {
+    const root = makeRoot()
+    try {
+      writeFileSync(join(root, 'CLAUDE.md'), '# Project\n\nLocal guidance.\n', 'utf8')
+      const inspected = driveCli(root, inspectRequest(root, 'claude-code', claudeHostContext('included')))
+      assert.equal(inspected.exitCode, 0, inspected.stderr)
+      const inspection = inspected.record
+      assert.ok(inspection.proposals.some((item) => item.action.kind === 'create-from-template' && item.action.target === '.claude/FEATURES.md'), 'the scaffold creations must be proposed')
+
+      const applied = driveCli(root, buildApplyRequest(root, inspection))
+
+      assert.equal(applied.stderr, '')
+      assert.notEqual(applied.record.detail, 'Simulated ready result differs from the inspected prediction.', 'the drift gate must not reject the inspected transition itself')
+      assert.equal(applied.record.ok, true, `apply failed: ${JSON.stringify(applied.record)}`)
+      assert.equal(applied.record.complete, true, `apply is incomplete: ${JSON.stringify(applied.record.incompleteTargets)}`)
+      assert.equal(applied.exitCode, 0)
+      for (const target of ['.claude/BUGS.md', '.claude/FEATURES.md', '.claude/PATTERNS.md', '.claude/QUICK_WINS.md']) {
+        assert.ok(existsSync(join(root, ...target.split('/'))), `scaffold target was not published: ${target}`)
+      }
+    } finally {
+      removeRoot(root)
+    }
+  })
 }
 
-module.exports = { canonicalJson, captureStreams, claudeHostContext, driveCli, inspectRequest, makeGitRoot, makeRoot, removeRoot, runE2eCases }
+module.exports = { buildApplyRequest, canonicalJson, captureStreams, claudeHostContext, driveCli, inspectRequest, makeGitRoot, makeRoot, removeRoot, runE2eCases, semanticDecisionsFor }
