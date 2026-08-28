@@ -141,9 +141,9 @@ function workerReplyLine(overrides = {}) {
 function runSessionCases(repositoryRoot) {
   const controllerEntryPath = join(repositoryRoot, 'skills', 'init-backlog', 'init-backlog.js')
 
-  test('the session driver package is closed to its six private modules and pins the process adapter events', () => {
+  test('the session driver package is closed to its seven private modules and pins the process adapter events', () => {
     const privateModules = readdirSync(join(repositoryRoot, 'tests', 'init-backlog-session-driver')).sort()
-    assert.deepEqual(privateModules, ['aggregation.js', 'cleanup.js', 'evidence.js', 'proxy.js', 'state.js', 'transcript.js'])
+    assert.deepEqual(privateModules, ['aggregation.js', 'cleanup.js', 'evidence.js', 'process.js', 'proxy.js', 'state.js', 'transcript.js'])
     assert.deepEqual(driver.PROCESS_ADAPTER_EVENTS, ['start', 'input', 'close-input', 'terminate', 'closure-proof'])
     assert.deepEqual(Object.keys(driver).sort(), [
       'BYTE_BOUNDS',
@@ -153,6 +153,9 @@ function runSessionCases(repositoryRoot) {
       'MAX_PROXY_CLIENT_FRAME_BYTES',
       'PRIMARY_INITIAL_CODES',
       'PROCESS_ADAPTER_EVENTS',
+      'RUNNER_CLOSE_MILLISECONDS',
+      'WINDOWS_RUNNER_INPUT_FRAME_KINDS',
+      'WINDOWS_RUNNER_OUTPUT_FRAME_KINDS',
       'attestTerminalRepository',
       'buildClosedProjection',
       'buildHarnessGitEnvironment',
@@ -163,17 +166,20 @@ function runSessionCases(repositoryRoot) {
       'collectControllerRuntimeClosure',
       'createAuthorizationGate',
       'createByteBudget',
+      'createDirectPosixFallbackAdapter',
       'createFinalizationBarrier',
       'createGitIsolationInputs',
       'createHostTempChild',
       'createInfrastructureAccount',
       'createLaunchState',
       'createLineDecoder',
+      'createProductionProcessAdapter',
       'createProxyServer',
       'createProxyTrace',
       'createSessionLatch',
       'createTranscript',
       'createTurnSequencer',
+      'createWindowsJobRunnerAdapter',
       'createWriteState',
       'evaluateLinuxContainment',
       'finalizeRunRoot',
@@ -183,6 +189,7 @@ function runSessionCases(repositoryRoot) {
       'publishEvidenceLeaf',
       'scenarioRootDigest',
       'verifyScenarioFileSet',
+      'windowsJobRunnerPath',
     ])
   })
 

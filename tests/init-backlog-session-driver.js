@@ -5,6 +5,7 @@ const nodeFilesystem = require('node:fs')
 const { basename, dirname, join } = require('node:path')
 
 const state = require('./init-backlog-session-driver/state')
+const processModule = require('./init-backlog-session-driver/process')
 const transcriptModule = require('./init-backlog-session-driver/transcript')
 const proxyModule = require('./init-backlog-session-driver/proxy')
 const evidenceModule = require('./init-backlog-session-driver/evidence')
@@ -152,10 +153,6 @@ function buildHarnessGitEnvironment({ ambientEnvironment, attributesPath, config
   Object.assign(environment, gitIsolationEntries({ attributesPath, configPath, templatePath }))
 
   return Object.freeze(environment)
-}
-
-function evaluateLinuxContainment() {
-  return { detailCode: 'containment-unavailable', ok: false }
 }
 
 function parseTrackedSetOutput({ exitCode, expectedTrackedPaths, stderr, stdout }) {
@@ -395,6 +392,9 @@ module.exports = {
   MAX_PROXY_CLIENT_FRAME_BYTES: proxyModule.MAX_PROXY_CLIENT_FRAME_BYTES,
   PRIMARY_INITIAL_CODES: state.PRIMARY_INITIAL_CODES,
   PROCESS_ADAPTER_EVENTS: state.PROCESS_ADAPTER_EVENTS,
+  RUNNER_CLOSE_MILLISECONDS: processModule.RUNNER_CLOSE_MILLISECONDS,
+  WINDOWS_RUNNER_INPUT_FRAME_KINDS: processModule.WINDOWS_RUNNER_INPUT_FRAME_KINDS,
+  WINDOWS_RUNNER_OUTPUT_FRAME_KINDS: processModule.WINDOWS_RUNNER_OUTPUT_FRAME_KINDS,
   attestTerminalRepository: aggregationModule.attestTerminalRepository,
   buildClosedProjection,
   buildHarnessGitEnvironment,
@@ -405,19 +405,22 @@ module.exports = {
   collectControllerRuntimeClosure,
   createAuthorizationGate: proxyModule.createAuthorizationGate,
   createByteBudget: state.createByteBudget,
+  createDirectPosixFallbackAdapter: processModule.createDirectPosixFallbackAdapter,
   createFinalizationBarrier: cleanupModule.createFinalizationBarrier,
   createGitIsolationInputs,
   createHostTempChild,
   createInfrastructureAccount: state.createInfrastructureAccount,
   createLaunchState: state.createLaunchState,
   createLineDecoder: state.createLineDecoder,
+  createProductionProcessAdapter: processModule.createProductionProcessAdapter,
   createProxyServer: proxyModule.createProxyServer,
   createProxyTrace: transcriptModule.createProxyTrace,
   createSessionLatch: state.createSessionLatch,
   createTranscript: transcriptModule.createTranscript,
   createTurnSequencer: state.createTurnSequencer,
+  createWindowsJobRunnerAdapter: processModule.createWindowsJobRunnerAdapter,
   createWriteState: state.createWriteState,
-  evaluateLinuxContainment,
+  evaluateLinuxContainment: processModule.evaluateLinuxContainment,
   finalizeRunRoot: cleanupModule.finalizeRunRoot,
   infrastructureFailure: state.infrastructureFailure,
   materializeScenario,
@@ -425,4 +428,5 @@ module.exports = {
   publishEvidenceLeaf: evidenceModule.publishEvidenceLeaf,
   scenarioRootDigest,
   verifyScenarioFileSet,
+  windowsJobRunnerPath: processModule.windowsJobRunnerPath,
 }
