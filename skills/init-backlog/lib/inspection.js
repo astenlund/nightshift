@@ -10,7 +10,7 @@ const { BACKLOG_DIRECTORY_TARGETS, PLANS_DIRECTORY_TARGET, loadManifest } = requ
 const { inspectBackups } = require('./backups')
 const { InitBacklogError, failureRecord } = require('./errors')
 const { HTML_BLOCK_TYPE_SIX_TAGS, discoverControlledMarkdown, resolveGuidance } = require('./guidance')
-const { canonicalRoot, comparableMode, createInitialLock, initialLockPaths, removeInitialLock, stableOpenFile, targetPath } = require('./filesystem')
+const { canonicalRoot, comparableIdentity, comparableMode, createInitialLock, initialLockPaths, removeInitialLock, stableOpenFile, targetPath } = require('./filesystem')
 const { DIGEST_PATTERN, RECOVERY_LOCK_BASENAME, RECOVERY_LOCK_STAGE_PATTERN, RECOVERY_MARKER_BASENAME, canonicalJson, compareOrdinal, deriveProposalId, deriveSnapshotId, sameKeys, sha256 } = require('./protocol')
 const { detectGitKind, inspectGitPolicy, newlineStyle } = require('./git-policy')
 
@@ -311,7 +311,12 @@ function projectGitProblems(git) {
     const evidencePaths = git.nonPlanIgnoreMatches.flatMap((item) => [item.target, item.probe]).sort(compareOrdinal)
     problems.push({ blocking: true, code: 'git-policy', detail: 'Repository-local ignore rules match non-plan backlog paths.', evidencePaths: [...new Set(evidencePaths)], target: '.gitignore' })
   }
-  if (git.nonPlanUnignoredPaths.length > 0 && git.electionRequired) {
+  // An unignored non-plan surface is what an unmade election looks like, and
+  // also exactly what a bound `track` election produces. The blocker is the
+  // unmade choice, so it clears once the marker binds a direct one; each
+  // branch's own compatibility condition is checked by the clauses above and by
+  // the apply's completion rules, and a `deferred` marker keeps it open.
+  if (git.nonPlanUnignoredPaths.length > 0 && git.electionRequired && (git.electionMarker === 'absent' || git.electionMarker === 'deferred')) {
     problems.push({ blocking: true, code: 'git-policy', detail: 'Fresh Git scaffold requires a track, ignore, or deferred election.', evidencePaths: git.nonPlanUnignoredPaths.slice(), target: null })
   }
 
@@ -335,13 +340,41 @@ function validateElectionMarkerRecord(value, root) {
   return sameKeys(value, ['protocolVersion', 'root', 'snapshotId', 'state']) && value.protocolVersion === 1 && value.root === root && ['deferred', 'track', 'ignore'].includes(value.state) && typeof value.snapshotId === 'string' && DIGEST_PATTERN.test(value.snapshotId)
 }
 
+// The marker is durable evidence, so it is normally an ordinary unlinked file
+// and any extra hard link is a foreign claim on it. The one exception is the
+// controller's own publication window: publishing the marker links it to the
+// witness that proves who published it, and that witness has to survive until
+// the same run's verification accepts the result. A caller inside that window
+// passes the marker temporaries it reserved, and every extra link must then be
+// accounted for by one of them at the marker's own physical identity. The count
+// balances exactly, so an unowned link still fails closed, and a caller outside
+// the window passes none and keeps the strict single-link rule.
+function accountForMarkerLinks(path, opened, witnesses, options) {
+  const nlink = (options.lstatSync ?? lstatSync)(path, { bigint: true }).nlink
+  let owned = 1n
+  for (const witness of witnesses) {
+    let peer
+    try {
+      peer = (options.lstatSync ?? lstatSync)(witness, { bigint: true })
+    } catch (error) {
+      if (error?.code === 'ENOENT') continue
+
+      throw error
+    }
+    if (comparableIdentity(peer) === opened.identity) owned += 1n
+  }
+  if (nlink !== owned) throw new Error('Election marker carries a hard link the controller does not own')
+}
+
 function readElectionMarker(root, options = {}) {
   const path = join(root, RECOVERY_MARKER_BASENAME)
+  const witnesses = Array.isArray(options.electionWitnesses) ? options.electionWitnesses : []
   let metadata
   let stable = null
   try {
     if (options.lstatSync === undefined && options.readFileSync === undefined) {
-      stable = stableOpenFile(root, path, { ...options, requireSingleLink: true })
+      stable = stableOpenFile(root, path, { ...options, requireSingleLink: witnesses.length === 0 })
+      if (witnesses.length !== 0) accountForMarkerLinks(path, stable, witnesses, options)
       metadata = { mode: stable.mode }
     } else {
       metadata = (options.lstatSync ?? lstatSync)(path, { bigint: true })

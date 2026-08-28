@@ -878,9 +878,9 @@ function liveHostContext(request, root, resuming) {
   return guidanceResolvedHostContext(request, resuming && creation !== null && pathExists(targetPath(root, creation.target)))
 }
 
-function verifiedPostInspect(request, root, options, admission, outcomes, { onReadyFailure } = {}) {
+function verifiedPostInspect(request, root, options, admission, outcomes, { electionWitnesses = [], onReadyFailure } = {}) {
   try {
-    return currentInspection(request, root, options, publishedHostContext(request, admission, outcomes))
+    return currentInspection(request, root, { ...options, electionWitnesses }, publishedHostContext(request, admission, outcomes))
   } catch (error) {
     if (onReadyFailure !== undefined) onReadyFailure(error)
     if (error instanceof InitBacklogError && error.record.code === 'ready-failed' && error.record.phase === 'verify') throwEnrichedReadyFailure(error, admission.manifestId, outcomes)
@@ -1459,11 +1459,15 @@ function publishApply(request, options = {}) {
       }
       states.set(action.target, state)
     }
+    // The marker temporaries this manifest reserved are the only hard links
+    // the published marker may legitimately carry while verification runs.
+    const electionWitnesses = [fixed.electionAlias, fixed.electionNewWitness, fixed.electionOldWitness, fixed.electionTombstone]
     const firstRankTwo = allActions.findIndex((action) => action.kind !== 'ensure-directory' && action.kind !== 'unwrap-file')
     const hasUnwrapBatch = unwrapActions.length !== 0
     const unwrapEnd = hasUnwrapBatch && firstRankTwo !== -1 ? firstRankTwo : allActions.length
     publishActions(0, unwrapEnd)
     let postInspect = verifiedPostInspect(request, root, options, admission, outcomes, {
+      electionWitnesses,
       onReadyFailure: (error) => {
         if (unwrapActions.length !== 0) rollbackUnwrapAfterVerification(error)
       },
@@ -1484,12 +1488,12 @@ function publishApply(request, options = {}) {
     }
     if (hasUnwrapBatch) {
       publishActions(unwrapEnd, allActions.length)
-      postInspect = verifiedPostInspect(request, root, options, admission, outcomes, {})
+      postInspect = verifiedPostInspect(request, root, options, admission, outcomes, { electionWitnesses })
     }
     if (canonicalJson(postInspect.ready ?? null) !== canonicalJson(admission.ready ?? null)) publicationError('Predicted ready result differs after semantic publication.', { code: 'ready-delta', phase: 'verify', manifestId: admission.manifestId, outcomes })
     if (admission.electionMarker.state !== 'absent' && postInspect.git?.electionMarker !== 'absent' && request.versionControlChoice !== 'deferred' && completePostInspect(postInspect, admission, request).length === 0) {
       removeMarker(request, admission, root, publicationOptions, fixed)
-      postInspect = verifiedPostInspect(request, root, options, admission, outcomes, {})
+      postInspect = verifiedPostInspect(request, root, options, admission, outcomes, { electionWitnesses })
     }
     cleanupOwner(root, lock, options, ownedTemporaries)
 

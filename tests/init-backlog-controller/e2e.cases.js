@@ -8,7 +8,7 @@
 
 const assert = require('node:assert/strict')
 const { execFileSync, spawn } = require('node:child_process')
-const { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } = require('node:fs')
+const { existsSync, linkSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } = require('node:fs')
 const { tmpdir } = require('node:os')
 const { join } = require('node:path')
 const test = require('node:test')
@@ -129,6 +129,51 @@ function semanticEdit(target, regionId, before, after) {
 const BARE_GUIDANCE = ['# Project', '', 'Local guidance.', ''].join('\r\n')
 
 const LOCK_BASENAME = '.nightshift-init-backlog.lock'
+
+const MARKER_BASENAME = '.nightshift-init-backlog-election'
+
+function git(root, args) {
+  return execFileSync('git', ['-C', root, ...args], { stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true })
+}
+
+// `git check-ignore` exits 1 with no output when the path is not ignored, so
+// the exit status is the answer and a nonzero status is not a failure here.
+function ignoredByGit(root, target) {
+  try {
+    git(root, ['check-ignore', '-q', '--no-index', target])
+
+    return true
+  } catch (error) {
+    if (error?.status === 1) return false
+
+    throw error
+  }
+}
+
+function controllerResidue(root) {
+  return readdirSync(root).filter((name) => name.startsWith('.nightshift')).sort(compareOrdinal)
+}
+
+// A repository whose only committed content is a `.gitignore` that already
+// satisfies the unconditional plans rule, so the fresh-scaffold election is the
+// one open question the apply has to resolve.
+function makeElectionRoot(seed = '.claude/plans/\r\n') {
+  const root = makeGitRoot()
+  writeFileSync(join(root, 'CLAUDE.md'), BARE_GUIDANCE, 'utf8')
+  writeFileSync(join(root, '.gitignore'), seed, 'utf8')
+  git(root, ['add', '.gitignore'])
+  git(root, ['-c', 'user.email=nightshift@example.invalid', '-c', 'user.name=Nightshift', 'commit', '-qm', 'seed'])
+
+  return root
+}
+
+function electionApply(root, choice) {
+  const inspected = driveCli(root, inspectRequest(root, 'claude-code', claudeHostContext('included')))
+  assert.equal(inspected.exitCode, 0, inspected.stderr)
+  assert.equal(inspected.record.git.kind, 'git')
+
+  return { applied: driveCli(root, buildApplyRequest(root, inspected.record, choice)), inspection: inspected.record }
+}
 
 // Each entry names a durable state a lost response can leave behind. All of
 // them are the same approved manifest at a unique approved prefix, so
@@ -420,6 +465,67 @@ function runE2eCases() {
       assert.equal(existsSync(join(root, '.claude', 'FEATURES.md')), false, 'a blocked apply publishes nothing')
     } finally {
       owner.kill()
+      removeRoot(root)
+    }
+  })
+
+  test('a track election apply converges and leaves no marker or witness behind', () => {
+    const root = makeElectionRoot()
+    try {
+      const { applied, inspection } = electionApply(root, 'track')
+
+      assert.equal(inspection.git.electionRequired, true, 'the fixture must open the election')
+      assert.equal(inspection.git.electionMarker, 'absent')
+      assert.equal(applied.stderr, '')
+      assert.equal(applied.record.ok, true, `track apply failed: ${JSON.stringify(applied.record).slice(0, 400)}`)
+      assert.equal(applied.record.complete, true, `track apply is incomplete: ${JSON.stringify(applied.record.incompleteTargets)}`)
+      assert.equal(applied.exitCode, 0)
+      assert.equal(applied.record.postInspect.git.electionMarker, 'absent', 'a proved election retires its marker')
+      assert.deepEqual(controllerResidue(root), [], 'no marker, witness, alias, tombstone, or lock may survive')
+      assert.equal(ignoredByGit(root, '.claude/FEATURES.md'), false, 'a track election leaves the backlog unignored')
+    } finally {
+      removeRoot(root)
+    }
+  })
+
+  test('re-running the whole flow after a track election is a no-op', () => {
+    const root = makeElectionRoot()
+    try {
+      assert.equal(electionApply(root, 'track').applied.record.complete, true)
+      const ignoreBefore = readFileSync(join(root, '.gitignore'))
+
+      const repeated = electionApply(root, 'not-required')
+
+      assert.equal(repeated.inspection.git.electionRequired, false, 'a converged election never reopens')
+      assert.deepEqual(repeated.inspection.proposals, [], 'a converged scaffold proposes nothing')
+      assert.equal(repeated.applied.record.ok, true, `re-run failed: ${JSON.stringify(repeated.applied.record).slice(0, 400)}`)
+      assert.deepEqual(repeated.applied.record.outcomes, [], 'a no-op manifest publishes nothing')
+      assert.equal(repeated.applied.record.complete, true)
+      assert.deepEqual(readFileSync(join(root, '.gitignore')), ignoreBefore, 'the re-run rewrites no version-control state')
+      assert.deepEqual(controllerResidue(root), [])
+    } finally {
+      removeRoot(root)
+    }
+  })
+
+  test('a foreign hard link on a durable election marker still fails closed', () => {
+    const root = makeElectionRoot()
+    try {
+      const deferred = electionApply(root, 'deferred')
+      assert.equal(deferred.applied.record.ok, true, `deferred apply failed: ${JSON.stringify(deferred.applied.record).slice(0, 300)}`)
+      const marker = join(root, MARKER_BASENAME)
+      assert.ok(existsSync(marker), 'a deferred election keeps its marker durable')
+      const clean = driveCli(root, inspectRequest(root, 'claude-code', claudeHostContext('included')))
+      assert.equal(clean.record.ok, true, 'the unlinked marker must inspect cleanly')
+      assert.equal(clean.record.git.electionMarker, 'deferred')
+
+      linkSync(marker, join(root, 'intruder.link'))
+      const linked = driveCli(root, inspectRequest(root, 'claude-code', claudeHostContext('included')))
+
+      assert.equal(linked.record.ok, false)
+      assert.equal(linked.record.code, 'runtime-marker')
+      assert.equal(linked.record.detail, 'Election marker is invalid.')
+    } finally {
       removeRoot(root)
     }
   })
