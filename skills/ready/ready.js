@@ -1066,6 +1066,11 @@ function scanBreakoutTargets(breakoutTargets, claudeDir) {
   const notices = [];
   const structuralErrors = [];
   const wrapScanned = new Set();
+  // Each distinct resolved path is read once and its dependency-line scan
+  // parsed once per identity; every referencing entry still gets its own
+  // notice and structural error from the cached results.
+  const readCache = new Map();
+  const lineHitsCache = new Map();
   for (const rec of breakoutTargets) {
     let target;
     try {
@@ -1076,19 +1081,31 @@ function scanBreakoutTargets(breakoutTargets, claudeDir) {
       continue;
     }
     const resolved = path.resolve(claudeDir, target);
-    let contents;
-    try {
-      contents = fs.readFileSync(resolved, 'utf8');
-    } catch (error) {
-      notices.push(breakoutReadNotice(rec, error?.code ?? 'unknown'));
+    let read = readCache.get(resolved);
+    if (read === undefined) {
+      try {
+        read = { contents: fs.readFileSync(resolved, 'utf8') };
+      } catch (error) {
+        read = { errorCode: error?.code ?? 'unknown' };
+      }
+      readCache.set(resolved, read);
+    }
+    if (read.contents === undefined) {
+      notices.push(breakoutReadNotice(rec, read.errorCode));
       continue;
     }
+    const contents = read.contents;
     const identity = canonicalPath(resolved);
     if (!wrapScanned.has(identity)) {
       wrapScanned.add(identity);
       pushHardWrapNotice(notices, `breakout file ${target}`, contents);
     }
-    for (const hit of scanBreakoutLines(contents)) {
+    let lineHits = lineHitsCache.get(identity);
+    if (lineHits === undefined) {
+      lineHits = scanBreakoutLines(contents);
+      lineHitsCache.set(identity, lineHits);
+    }
+    for (const hit of lineHits) {
       structuralErrors.push({
         index: rec.index,
         title: rec.title,
