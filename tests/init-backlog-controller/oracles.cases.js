@@ -2,10 +2,11 @@
 
 const assert = require('node:assert/strict')
 const { execFileSync } = require('node:child_process')
-const { createHash } = require('node:crypto')
 const { readFileSync, readdirSync } = require('node:fs')
 const { join } = require('node:path')
 const test = require('node:test')
+
+const { canonicalJson, compareOrdinal, sha256 } = require('./helpers')
 
 const MAX_PRESENTATION_CANONICAL_BYTES = 320000
 const MAX_HOST_EVENT_FRAME_BYTES = 262144
@@ -116,29 +117,6 @@ const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/
 const WHITESPACE_CODE_POINTS = [0x0009, 0x000b, 0x000c, 0x0020, 0x00a0, 0x1680, 0x2000, 0x2001, 0x2002, 0x2003, 0x2004, 0x2005, 0x2006, 0x2007, 0x2008, 0x2009, 0x200a, 0x202f, 0x205f, 0x3000, 0xfeff, 0x000a, 0x000d, 0x2028, 0x2029]
 
 const LIST_SEPARATOR = String.fromCharCode(0)
-
-function compareOrdinal(left, right) {
-  return left < right ? -1 : left > right ? 1 : 0
-}
-
-function canonicalize(value) {
-  if (Array.isArray(value)) {
-    return value.map(canonicalize)
-  }
-  if (value !== null && typeof value === 'object') {
-    return Object.fromEntries(Object.keys(value).sort(compareOrdinal).map((key) => [key, canonicalize(value[key])]))
-  }
-
-  return value
-}
-
-function canonicalJson(value) {
-  return JSON.stringify(canonicalize(value))
-}
-
-function sha256(bytes) {
-  return createHash('sha256').update(bytes).digest('hex')
-}
 
 function utf8ByteLength(text) {
   return Buffer.byteLength(text, 'utf8')

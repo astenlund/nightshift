@@ -1,9 +1,10 @@
 'use strict'
 
 const assert = require('node:assert/strict')
-const { createHash } = require('node:crypto')
 const { existsSync, readFileSync } = require('node:fs')
 const { join } = require('node:path')
+
+const { canonicalJson, compareOrdinal, sha256 } = require('./helpers')
 
 const ASSET_ROWS = [
   ['backlog.bugs', 'bugs.md'], ['backlog.bugs-history', 'bugs-history.md'], ['backlog.features', 'features.md'], ['backlog.features-history', 'features-history.md'],
@@ -55,29 +56,6 @@ const TARGET_ROWS = [
 const FILE_HEADING_BY_ASSET = {
   'bugs.md': '.claude/BUGS.md', 'bugs-history.md': '.claude/BUGS_HISTORY.md', 'features.md': '.claude/FEATURES.md', 'features-history.md': '.claude/FEATURES_HISTORY.md',
   'patterns.md': '.claude/PATTERNS.md', 'quick-wins.md': '.claude/QUICK_WINS.md', 'quick-wins-history.md': '.claude/QUICK_WINS_HISTORY.md',
-}
-
-function compareOrdinal(left, right) {
-  return left < right ? -1 : left > right ? 1 : 0
-}
-
-function canonicalize(value) {
-  if (Array.isArray(value)) {
-    return value.map(canonicalize)
-  }
-  if (value !== null && typeof value === 'object') {
-    return Object.fromEntries(Object.keys(value).sort(compareOrdinal).map((key) => [key, canonicalize(value[key])]))
-  }
-
-  return value
-}
-
-function canonicalJson(value) {
-  return JSON.stringify(canonicalize(value))
-}
-
-function sha256(bytes) {
-  return createHash('sha256').update(bytes).digest('hex')
 }
 
 function logicalText(bytes, finalNewline, name) {

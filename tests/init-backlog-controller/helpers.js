@@ -122,4 +122,4 @@ function loadPromptBaseline(repositoryRoot, sourceCommit) {
   return { baselineManifestSha256: sha256(manifestBytes), manifest, root }
 }
 
-module.exports = { canonicalJson, fixtureFilePath, fixtureRoot, git, loadPromptBaseline, readBlob, sha256, sourceClosure }
+module.exports = { canonicalJson, compareOrdinal, fixtureFilePath, fixtureRoot, git, loadPromptBaseline, readBlob, sha256, sourceClosure }
