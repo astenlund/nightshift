@@ -4,10 +4,10 @@ const nodeFilesystem = require('node:fs')
 const { dirname, join } = require('node:path')
 const { createHash } = require('node:crypto')
 
-const { BYTE_BOUNDS } = require('./state')
+const { BYTE_BOUNDS, HOSTS } = require('./state')
 const { canonicalJson, canonicalJsonLine } = require('./transcript')
 
-const EVIDENCE_HOSTS = Object.freeze(['claude-code', 'codex'])
+const EVIDENCE_HOSTS = HOSTS
 const ENABLED_REPETITIONS = Object.freeze([1, 2, 3])
 
 function sha256(bytes) {

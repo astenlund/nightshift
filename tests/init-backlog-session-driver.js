@@ -155,19 +155,9 @@ function buildHarnessGitEnvironment({ ambientEnvironment, attributesPath, config
   return Object.freeze(environment)
 }
 
-function parseTrackedSetOutput({ exitCode, expectedTrackedPaths, stderr, stdout }) {
-  if (exitCode !== 0) {
-    throw new Error(`tracked-set query exit code is not zero: ${exitCode}`)
-  }
-  if (stderr.length !== 0) {
-    throw new Error('tracked-set query stderr is not empty')
-  }
+function parseNulTerminatedTrackedPaths(stdout) {
   if (stdout.length === 0) {
-    if (expectedTrackedPaths.length !== 0) {
-      throw new Error('tracked-set query result must equal the expected tracked array exactly')
-    }
-
-    return { trackedPaths: [] }
+    return []
   }
   if (stdout[stdout.length - 1] !== 0x00) {
     throw new Error('tracked-set query stdout is missing its terminal NUL')
@@ -192,6 +182,18 @@ function parseTrackedSetOutput({ exitCode, expectedTrackedPaths, stderr, stdout 
       throw new Error('tracked-set query fields are not in Git ordinal order')
     }
   }
+
+  return fields
+}
+
+function parseTrackedSetOutput({ exitCode, expectedTrackedPaths, stderr, stdout }) {
+  if (exitCode !== 0) {
+    throw new Error(`tracked-set query exit code is not zero: ${exitCode}`)
+  }
+  if (stderr.length !== 0) {
+    throw new Error('tracked-set query stderr is not empty')
+  }
+  const fields = parseNulTerminatedTrackedPaths(stdout)
   if (fields.length !== expectedTrackedPaths.length || fields.some((field, index) => field !== expectedTrackedPaths[index])) {
     throw new Error('tracked-set query result must equal the expected tracked array exactly')
   }
@@ -424,6 +426,7 @@ module.exports = {
   finalizeRunRoot: cleanupModule.finalizeRunRoot,
   infrastructureFailure: state.infrastructureFailure,
   materializeScenario,
+  parseNulTerminatedTrackedPaths,
   parseTrackedSetOutput,
   publishEvidenceLeaf: evidenceModule.publishEvidenceLeaf,
   scenarioRootDigest,

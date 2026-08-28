@@ -179,7 +179,7 @@ function extractFeatureEntry(features, entryHeading) {
   return normalized.slice(start, nextHeading === -1 ? normalized.length : bodyStart + nextHeading);
 }
 
-function fakeRepository(files, aliases = {}) {
+function buildFileTree(files, toBuffer) {
   const buffers = new Map();
   const directories = new Map([[projectRoot, new Set()]]);
   for (const [path, contents] of Object.entries(files)) {
@@ -196,8 +196,14 @@ function fakeRepository(files, aliases = {}) {
       }
       parent = child;
     }
-    buffers.set(`${projectRoot}/${path}`, Buffer.isBuffer(contents) ? contents : Buffer.from(contents));
+    buffers.set(`${projectRoot}/${path}`, toBuffer(contents));
   }
+
+  return { buffers, directories };
+}
+
+function fakeRepository(files, aliases = {}) {
+  const { buffers, directories } = buildFileTree(files, (contents) => (Buffer.isBuffer(contents) ? contents : Buffer.from(contents)));
 
   return {
     readFile: (path) => {
@@ -214,25 +220,8 @@ function fakeRepository(files, aliases = {}) {
 }
 
 function mutableRepository(files) {
-  const buffers = new Map();
-  const directories = new Map([[projectRoot, new Set()]]);
+  const { buffers, directories } = buildFileTree(files, (contents) => Buffer.from(contents));
   const replacements = [];
-  for (const [path, contents] of Object.entries(files)) {
-    const segments = path.split('/');
-    let parent = projectRoot;
-    for (const [index, segment] of segments.entries()) {
-      if (!directories.has(parent)) {
-        directories.set(parent, new Set());
-      }
-      directories.get(parent).add(segment);
-      const child = `${parent}/${segment}`;
-      if (index < segments.length - 1 && !directories.has(child)) {
-        directories.set(child, new Set());
-      }
-      parent = child;
-    }
-    buffers.set(`${projectRoot}/${path}`, Buffer.from(contents));
-  }
   const adapter = {
     readFile: (path) => {
       if (!buffers.has(path)) {

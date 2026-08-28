@@ -346,6 +346,7 @@ function createLineDecoder({ limit, limitName, onLine, onOverflow }) {
 module.exports = {
   BYTE_BOUNDS,
   DEADLINES,
+  HOSTS,
   INFRASTRUCTURE_DETAIL_CODES,
   INFRASTRUCTURE_PHASES,
   PRIMARY_INITIAL_CODES,

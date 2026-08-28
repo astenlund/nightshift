@@ -2,10 +2,10 @@
 
 const { createHash } = require('node:crypto')
 
+const { HOSTS } = require('./state')
 const { canonicalJson } = require('./transcript')
 const { ELECTION_MARKER_PATH, selectTerminalExpectation, validateLiveElectionMarker } = require('../init-backlog-controller/oracles.cases')
 
-const HOSTS = Object.freeze(['claude-code', 'codex'])
 const RESULT_RECORD_KEYS = Object.freeze(['deterministicDigest', 'dialogueFacts', 'lifecycleFacts', 'passed', 'semanticActionDispositions', 'semanticClassifications', 'semanticDecisionSource', 'semanticDecisions', 'semanticRepairOracles', 'structuredResult', 'terminalRepositorySha256'])
 
 function sha256(bytes) {

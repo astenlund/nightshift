@@ -25,8 +25,9 @@ const dialogue = require('./init-backlog-session-driver/dialogue')
 const evidence = require('./init-backlog-session-driver/evidence')
 const hostEvents = require('./init-backlog-session-driver/host-events')
 const oracles = require('./init-backlog-controller/oracles.cases')
+const { HOSTS } = require('./init-backlog-session-driver/state')
 
-const HOST_ORDER = Object.freeze(['claude-code', 'codex'])
+const HOST_ORDER = HOSTS
 const LOGICAL_COMMANDS = Object.freeze({ 'claude-code': 'claude', codex: 'codex' })
 const LAUNCH_BOUNDARIES = Object.freeze(['version', 'authentication', 'plugin-setup', 'import-probe', 'worker', 'session'])
 // Derived from the evidence leaf grammar's closed repetition ordinals so the
@@ -754,35 +755,6 @@ async function runVersionPreflight({ ambientEnvironment, checkoutRoot, controlle
 
 // --- Real terminal repository collector ------------------------------------
 
-function parseTrackedPaths(stdout) {
-  if (stdout.length === 0) {
-    return []
-  }
-  if (stdout[stdout.length - 1] !== 0x00) {
-    throw new Error('tracked-set query stdout is missing its terminal NUL')
-  }
-  const text = decodeStrictUtf8(stdout)
-  if (text === null) {
-    throw new Error('tracked-set query stdout is not valid UTF-8')
-  }
-  const fields = text.slice(0, -1).split(String.fromCharCode(0))
-  for (const field of fields) {
-    if (field === '') {
-      throw new Error('tracked-set query carries an empty field')
-    }
-    if (field.startsWith('/') || field.includes('\\') || field.split('/').some((segment) => segment === '' || segment === '.' || segment === '..')) {
-      throw new Error(`tracked-set query field is not confined: ${field}`)
-    }
-  }
-  for (let index = 1; index < fields.length; index += 1) {
-    if (Buffer.compare(Buffer.from(fields[index - 1], 'utf8'), Buffer.from(fields[index], 'utf8')) >= 0) {
-      throw new Error('tracked-set query fields are not in Git ordinal order')
-    }
-  }
-
-  return fields
-}
-
 function collectTerminalRepository({ filesystem = nodeFilesystem, platform, runGit = null, scenarioRoot }) {
   const entries = []
   const collectEntry = (absolutePath, relativePath) => {
@@ -834,7 +806,7 @@ function collectTerminalRepository({ filesystem = nodeFilesystem, platform, runG
     if (query.stderr.length !== 0) {
       throw new Error('tracked-set query stderr is not empty')
     }
-    git = { kind: 'git', trackedPaths: parseTrackedPaths(query.stdout) }
+    git = { kind: 'git', trackedPaths: driver.parseNulTerminatedTrackedPaths(query.stdout) }
   } else {
     git = { kind: 'non-git', trackedPaths: [] }
   }

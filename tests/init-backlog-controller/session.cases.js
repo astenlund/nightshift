@@ -185,6 +185,7 @@ function runSessionCases(repositoryRoot) {
       'finalizeRunRoot',
       'infrastructureFailure',
       'materializeScenario',
+      'parseNulTerminatedTrackedPaths',
       'parseTrackedSetOutput',
       'publishEvidenceLeaf',
       'scenarioRootDigest',
