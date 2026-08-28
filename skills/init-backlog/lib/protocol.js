@@ -24,6 +24,8 @@ const RECOVERY_DISPOSITION_ORDER = ['cleanup', 'deferred', 'track', 'ignore', 'a
 const RECOVERY_LOCK_BASENAME = '.nightshift-init-backlog.lock'
 const RECOVERY_GATE_BASENAME = '.nightshift-init-backlog.recovery-gate'
 const RECOVERY_MARKER_BASENAME = '.nightshift-init-backlog-election'
+const OWNER_BASENAME = 'owner.json'
+const OWNER_STAGE_BASENAME = 'owner.new'
 const BACKUP_STEM = 'nightshift-init-backlog-unwrap'
 const BACKUP_TRIPLE_PATTERN = '([a-f0-9]{64})-([a-f0-9]{64})-([a-f0-9]{64})'
 const BACKUP_PATTERN = new RegExp(`^\\.tmp\\/${BACKUP_STEM}-${BACKUP_TRIPLE_PATTERN}\\.bak$`)
@@ -640,7 +642,7 @@ function validateRecoveryInspection(value) {
     requireRecord(item, ['mode', 'ownerName', 'ownerRawSha256', 'ownerMode', 'ownerStageRawSha256', 'ownerStageMode', 'record', 'pidStatus'], 'recovery gate evidence')
     validateMode(item.mode)
     if (item.ownerName !== null) {
-      requireString(item.ownerName, 'owner name', { values: ['owner.json'] })
+      requireString(item.ownerName, 'owner name', { values: [OWNER_BASENAME] })
     }
     requireNullable(item.ownerRawSha256, validateDigest)
     validateMode(item.ownerMode)
@@ -709,8 +711,8 @@ function validateRecoveryInspection(value) {
   if (value.recoveryKind === 'stale-recovery-gate') {
     const empty = evidence.ownerName === null && evidence.ownerRawSha256 === null && evidence.ownerMode === null && evidence.ownerStageRawSha256 === null && evidence.ownerStageMode === null && evidence.record === null && evidence.pidStatus === null
     const stageOnly = evidence.ownerName === null && evidence.ownerRawSha256 === null && evidence.ownerMode === null && evidence.ownerStageRawSha256 !== null && evidence.ownerStageMode !== null && evidence.record === null && evidence.pidStatus === null
-    const ownerOnly = evidence.ownerName === 'owner.json' && evidence.ownerRawSha256 !== null && evidence.ownerMode !== null && evidence.ownerStageRawSha256 === null && evidence.ownerStageMode === null && evidence.record !== null && evidence.pidStatus === 'absent'
-    const ownerPair = evidence.ownerName === 'owner.json' && evidence.ownerRawSha256 !== null && evidence.ownerMode !== null && evidence.ownerStageRawSha256 !== null && evidence.ownerStageMode !== null && evidence.record !== null && evidence.pidStatus === 'absent'
+    const ownerOnly = evidence.ownerName === OWNER_BASENAME && evidence.ownerRawSha256 !== null && evidence.ownerMode !== null && evidence.ownerStageRawSha256 === null && evidence.ownerStageMode === null && evidence.record !== null && evidence.pidStatus === 'absent'
+    const ownerPair = evidence.ownerName === OWNER_BASENAME && evidence.ownerRawSha256 !== null && evidence.ownerMode !== null && evidence.ownerStageRawSha256 !== null && evidence.ownerStageMode !== null && evidence.record !== null && evidence.pidStatus === 'absent'
     if (!(empty || stageOnly || ownerOnly || ownerPair) || evidence.record !== null && (evidence.record.operation !== 'recover-apply' || evidence.record.root !== value.root)) {
       invalid('recovery-invalid', 'prevalidate', 'Recovery gate evidence is invalid.', { target: value.recoveryTarget })
     }
@@ -1223,6 +1225,8 @@ module.exports = {
   MAX_RECOVERY_RESULT_BYTES,
   NONCE_PATTERN,
   OPERATIONS,
+  OWNER_BASENAME,
+  OWNER_STAGE_BASENAME,
   PHASES,
   RECOVERY_GATE_BASENAME,
   RECOVERY_LOCK_BASENAME,

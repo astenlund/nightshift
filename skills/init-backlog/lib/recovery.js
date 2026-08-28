@@ -18,12 +18,10 @@ const {
   stableOpenFile,
   stageFile,
 } = require('./filesystem')
-const { DIGEST_PATTERN, MAX_INLINE_FILE_BYTES, MAX_RECOVERY_REQUEST_BYTES, MAX_RECOVERY_RESULT_BYTES, NONCE_PATTERN, RECOVERY_GATE_BASENAME, RECOVERY_LOCK_BASENAME: LOCK_BASENAME, RECOVERY_MARKER_BASENAME: MARKER_BASENAME, WARNING_CODES, buildRecoveryApplyRequest, canonicalBytes, canonicalJson, compareOrdinal, deriveRecoveryId, electionMarkerTemporaryNames, recoveryAllowedDispositions, sameCanonical, sameKeys, sha256, validateTarget } = require('./protocol')
+const { DIGEST_PATTERN, MAX_INLINE_FILE_BYTES, MAX_RECOVERY_REQUEST_BYTES, MAX_RECOVERY_RESULT_BYTES, NONCE_PATTERN, OWNER_BASENAME: RECOVERY_OWNER_BASENAME, OWNER_STAGE_BASENAME: RECOVERY_OWNER_STAGE_BASENAME, RECOVERY_GATE_BASENAME, RECOVERY_LOCK_BASENAME: LOCK_BASENAME, RECOVERY_MARKER_BASENAME: MARKER_BASENAME, WARNING_CODES, buildRecoveryApplyRequest, canonicalBytes, canonicalJson, compareOrdinal, deriveRecoveryId, electionMarkerTemporaryNames, recoveryAllowedDispositions, sameCanonical, sameKeys, sha256, validateTarget } = require('./protocol')
 const { collectInspection, validateElectionMarkerRecord } = require('./inspection')
 const { publishRecoveryFile, recoveryTemporaryMatches, recoveryTemporaryTarget, removeRecoveryFile } = require('./publication')
 
-const RECOVERY_OWNER_STAGE_BASENAME = 'owner.new'
-const RECOVERY_OWNER_BASENAME = 'owner.json'
 const LOCK_STAGE_PATTERN = /^\.nightshift-init-backlog\.lock\.([1-9][0-9]*)\.([a-f0-9]{32})\.new$/
 
 function failure(operation, phase, code, detail, target = null, cause = undefined, fields = {}) {

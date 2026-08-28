@@ -26,11 +26,9 @@ const { TextDecoder } = require('node:util')
 const { isAbsolute, join } = require('node:path')
 
 const { InitBacklogError } = require('./errors')
-const { DIGEST_PATTERN, MAX_APPLY_REQUEST_BYTES, NONCE_PATTERN, RECOVERY_LOCK_BASENAME, assertSafeWindowsScalar, canonicalJson, compareOrdinal, sameKeys, sha256, validateNonce } = require('./protocol')
+const { DIGEST_PATTERN, MAX_APPLY_REQUEST_BYTES, NONCE_PATTERN, OWNER_BASENAME: REQUEST_OWNER_BASENAME, OWNER_STAGE_BASENAME: REQUEST_OWNER_STAGE_BASENAME, RECOVERY_LOCK_BASENAME, assertSafeWindowsScalar, canonicalJson, compareOrdinal, sameKeys, sha256, validateNonce } = require('./protocol')
 
 const REQUEST_GATE_BASENAME = '.nightshift-init-backlog.request-gate'
-const REQUEST_OWNER_STAGE_BASENAME = 'owner.new'
-const REQUEST_OWNER_BASENAME = 'owner.json'
 const REQUEST_PAYLOAD_BASENAME = 'request.json'
 
 class RequestTransportResidueError extends Error {
