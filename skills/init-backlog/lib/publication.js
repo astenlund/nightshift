@@ -156,12 +156,24 @@ function proposalAfter(request, action) {
   return null
 }
 
+function resolveUnwrapFinding(request, action) {
+  return (request.inspection.wrapFindings ?? []).find((item) => item.target === action.target)
+}
+
+function validateUnwrapDigest(finding, action) {
+  if (finding === undefined || finding.beforeRawSha256 !== action.beforeRawSha256) throw new Error('Mechanical unwrap digest evidence is invalid')
+}
+
+function openUnwrapTarget(root, action, options) {
+  return stableOpenFile(root, targetPath(root, action.target), { ...options, requireSingleLink: true })
+}
+
 function actionAfter(request, action, root, options) {
   if (action.kind === 'unwrap-file') {
-    const finding = (request.inspection.wrapFindings ?? []).find((item) => item.target === action.target)
+    const finding = resolveUnwrapFinding(request, action)
     if (finding?.predictedContentBase64 !== null && finding?.predictedContentBase64 !== undefined) return Buffer.from(finding.predictedContentBase64, 'base64')
-    if (finding === undefined || finding.beforeRawSha256 !== action.beforeRawSha256) throw new Error('Mechanical unwrap digest evidence is invalid')
-    const opened = stableOpenFile(root, targetPath(root, action.target), { ...options, requireSingleLink: true })
+    validateUnwrapDigest(finding, action)
+    const opened = openUnwrapTarget(root, action, options)
     if (opened.rawSha256 === action.afterRawSha256) return opened.bytes
     if (opened.rawSha256 !== action.beforeRawSha256) throw new Error('Mechanical unwrap input changed before publication')
 
@@ -183,6 +195,10 @@ function allActionsComplete(request, root, options) {
     const mode = (options.platform ?? process.platform) === 'win32' ? null : action.mode ?? POSIX_DEFAULT_FILE_MODE
     if (bytes === null || !targetMatchesOutput(root, path, 'file', bytes, mode, options)) return false
   }
+  const finding = resolveUnwrapFinding(request, action)
+  validateUnwrapDigest(finding, action)
+  const opened = openUnwrapTarget(root, action, options)
+  if (opened.rawSha256 !== action.beforeRawSha256) throw new Error('Mechanical unwrap input changed before publication')
 
   return true
 }
