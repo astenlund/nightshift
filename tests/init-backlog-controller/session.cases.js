@@ -1440,6 +1440,81 @@ function runSessionCases(repositoryRoot) {
     }
   })
 
+  test('evidence verification rejects an unexpected staged inventory entry', () => {
+    const outputRoot = tempRoot()
+    try {
+      const leafPath = join(outputRoot, 'claude-code', 'existing-enriched-denied', 'disabled', '1')
+      const outcome = driver.publishEvidenceLeaf({
+        files: [{ bytes: Buffer.from('payload\n', 'utf8'), path: 'run.json' }],
+        filesystem: {
+          writeFileSync(path, bytes, options) {
+            writeFileSync(path, bytes, options)
+            if (String(path).endsWith('manifest.json')) {
+              writeFileSync(join(dirname(path), 'unexpected.bin'), Buffer.from('unexpected\n', 'utf8'))
+            }
+          },
+        },
+        host: 'claude-code',
+        mode: 'disabled',
+        outputRoot,
+        repetition: 1,
+        scenario: 'existing-enriched-denied',
+      })
+
+      assert.deepEqual(outcome, { detailCode: 'evidence-verification', ok: false })
+      assert.equal(existsSync(leafPath), false, 'an open staging inventory never reaches the final leaf')
+      assert.equal(existsSync(`${leafPath}.staging`), false, 'the owned invalid stage is removed')
+    } finally {
+      rmSync(outputRoot, { force: true, recursive: true })
+    }
+  })
+
+  test('evidence verification rejects a file identity change during its stable read', () => {
+    const outputRoot = tempRoot()
+    try {
+      const leafPath = join(outputRoot, 'claude-code', 'existing-enriched-denied', 'disabled', '1')
+      let runFileProbes = 0
+      const outcome = driver.publishEvidenceLeaf({
+        files: [{ bytes: Buffer.from('payload\n', 'utf8'), path: 'run.json' }],
+        filesystem: {
+          lstatSync(path, options) {
+            const metadata = lstatSync(path, options)
+            if (!String(path).endsWith('run.json') || !metadata.isFile()) {
+              return metadata
+            }
+            runFileProbes += 1
+            if (runFileProbes !== 2) {
+              return metadata
+            }
+
+            return new Proxy(metadata, {
+              get(target, property) {
+                if (property === 'ino') {
+                  return target.ino + 1n
+                }
+                const value = target[property]
+
+                return typeof value === 'function' ? value.bind(target) : value
+              },
+            })
+          },
+        },
+        host: 'claude-code',
+        mode: 'disabled',
+        outputRoot,
+        repetition: 1,
+        scenario: 'existing-enriched-denied',
+      })
+
+      assert.equal(runFileProbes, 2, 'the test changes the post-read identity probe')
+      assert.deepEqual(outcome, { detailCode: 'evidence-verification', ok: false })
+      assert.equal(existsSync(leafPath), false, 'a rebound file never reaches the final leaf')
+      assert.equal(existsSync(`${leafPath}.staging`), false, 'the owned invalid stage is removed')
+    } finally {
+      rmSync(outputRoot, { force: true, recursive: true })
+    }
+  })
+
   test('evidence publication refuses stale and linked staging directories without touching their contents', () => {
     const outputRoot = tempRoot()
     const externalRoot = tempRoot()
