@@ -15,7 +15,7 @@ const test = require('node:test')
 
 const { runCli } = require('../../skills/init-backlog/init-backlog')
 const { canonicalActionOrder, deriveSemanticActionId } = require('../../skills/init-backlog/lib/protocol')
-const { canonicalJson, compareOrdinal } = require('./helpers')
+const { canonicalJson, compareOrdinal, git } = require('./helpers')
 const { ELECTION_MARKER_PATH } = require('./election-oracles')
 
 function captureStreams() {
@@ -112,10 +112,6 @@ function semanticEdit(target, regionId, before, after) {
 const BARE_GUIDANCE = ['# Project', '', 'Local guidance.', ''].join('\r\n')
 
 const LOCK_BASENAME = '.nightshift-init-backlog.lock'
-
-function git(root, args) {
-  return execFileSync('git', ['-C', root, ...args], { stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true })
-}
 
 // `git check-ignore` exits 1 with no output when the path is not ignored, so
 // the exit status is the answer and a nonzero status is not a failure here.
