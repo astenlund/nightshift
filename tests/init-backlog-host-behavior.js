@@ -1729,10 +1729,15 @@ function deriveProposalCarriers(inspection) {
       return { actionId: proposal.action.id, afterRawSha256: proposal.action.afterRawSha256, beforeRawSha256: proposal.action.beforeRawSha256, kind: 'breakout-digest', target: proposal.action.target }
     }
 
+    const afterBytes = Buffer.from(proposal.afterBase64, 'base64')
+    const beforeBytes = proposal.beforeBase64 === null ? null : Buffer.from(proposal.beforeBase64, 'base64')
+
     return {
       actionId: proposal.action.id,
-      afterBytes: Buffer.from(proposal.afterBase64, 'base64'),
-      beforeBytes: proposal.beforeBase64 === null ? null : Buffer.from(proposal.beforeBase64, 'base64'),
+      afterBytes,
+      afterRawSha256: sha256(afterBytes),
+      beforeBytes,
+      beforeRawSha256: beforeBytes === null ? null : sha256(beforeBytes),
       kind: 'decoded',
       target: proposal.action.target,
     }
@@ -2053,10 +2058,24 @@ async function runLiveHostSession({ call, filesystem, platform, processAdapterFa
     }
     workerEntry.onLine = (line) => server.receiveWorkerLine(line)
   }
-  const storedInspection = () => {
+  let storedInspectionState = null
+  const loadStoredInspectionState = () => {
+    if (storedInspectionState !== null) {
+      return storedInspectionState
+    }
     const inspectionBytes = gate === null ? null : gate.storedInspectionBytes()
+    if (inspectionBytes === null) {
+      return null
+    }
+    const inspection = JSON.parse(inspectionBytes.toString('utf8'))
+    const proposalCarriers = deriveProposalCarriers(inspection)
+    const proposalCarriersByActionId = new Map(proposalCarriers.map((carrier) => [carrier.actionId, carrier]))
+    if (proposalCarriersByActionId.size !== proposalCarriers.length) {
+      throw new Error('inspection proposal action IDs must be unique')
+    }
+    storedInspectionState = { inspection, proposalCarriers, proposalCarriersByActionId }
 
-    return inspectionBytes === null ? null : JSON.parse(inspectionBytes.toString('utf8'))
+    return storedInspectionState
   }
   let expectedDisclosureItems = null
   const verifyObservedDisclosures = ({ items, proposal }) => {
@@ -2067,19 +2086,18 @@ async function runLiveHostSession({ call, filesystem, platform, processAdapterFa
       return { ok: Array.isArray(items) && ((proposal.actions ?? []).length === 0 || items.length > 0) }
     }
     if (expectedDisclosureItems === null) {
-      const inspection = storedInspection()
-      if (inspection === null) {
+      const inspectionState = loadStoredInspectionState()
+      if (inspectionState === null) {
         return { ok: false }
       }
-      const proposalCarriers = deriveProposalCarriers(inspection)
-      const proposalActionIds = new Set(proposalCarriers.map((carrier) => carrier.actionId))
+      const proposalActionIds = new Set(inspectionState.proposalCarriersByActionId.keys())
       const semanticCarriers = deriveSemanticCarriers({ manifestProposal: proposal, proposalActionIds, scenario })
       if (semanticCarriers === null) {
         return { ok: false }
       }
       const built = adjudication.buildExpectedDisclosureSequence({
         manifestProposal: proposal,
-        proposalCarriers,
+        proposalCarriers: inspectionState.proposalCarriers,
         semanticCarriers,
         semanticClassifications: latestClassificationsByTarget(turnRecords),
       })
@@ -2116,11 +2134,11 @@ async function runLiveHostSession({ call, filesystem, platform, processAdapterFa
       mode,
       onlineDisclosureCheck: controllerEnabled
         ? (item) => {
-          const inspection = storedInspection()
+          const inspectionState = loadStoredInspectionState()
 
-          return inspection === null
+          return inspectionState === null
             ? { ok: false }
-            : adjudication.verifyInspectionBoundDisclosure({ item, proposalCarriers: deriveProposalCarriers(inspection) })
+            : adjudication.verifyInspectionBoundDisclosure({ item, proposalCarriersByActionId: inspectionState.proposalCarriersByActionId })
         }
         : null,
       preApprovalTurns: conversation.preApprovalTurns,
@@ -2196,7 +2214,8 @@ async function runLiveHostSession({ call, filesystem, platform, processAdapterFa
     const applyCalls = controllerEnabled ? recorder.applyCalls : []
     const approvalFacts = adjudication.deriveApprovalFacts({ applyCalls, approvalBranch, approvalInputOrdinal })
     const electionRequired = conversation.preApprovalTurns.some((turn) => turn.gateId === 'version-control-choice')
-    const inspection = storedInspection()
+    const inspectionState = loadStoredInspectionState()
+    const inspection = inspectionState === null ? null : inspectionState.inspection
     const observedClassifications = latestClassificationsByTarget(turnRecords)
     const disabledCoverage = !controllerEnabled && (manifestProposal === null || (manifestProposal.actions ?? []).length === 0 || bufferedDisclosures.length > 0)
     const dialogueFacts = {

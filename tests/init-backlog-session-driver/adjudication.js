@@ -159,11 +159,11 @@ function verifyDisclosureSequence({ expected, observed }) {
   return { ok: true }
 }
 
-function verifyInspectionBoundDisclosure({ item, proposalCarriers }) {
-  if (!isPlainObject(item) || !Array.isArray(proposalCarriers)) {
-    throw new TypeError('online disclosure verification takes one item and the inspection proposal carriers')
+function verifyInspectionBoundDisclosure({ item, proposalCarriersByActionId }) {
+  if (!isPlainObject(item) || !(proposalCarriersByActionId instanceof Map)) {
+    throw new TypeError('online disclosure verification takes one item and the indexed inspection proposal carriers')
   }
-  const carrier = proposalCarriers.find((candidate) => candidate.actionId === item.actionId)
+  const carrier = proposalCarriersByActionId.get(item.actionId)
   if (carrier === undefined) {
     return { deferred: true, ok: true }
   }
@@ -186,7 +186,8 @@ function verifyInspectionBoundDisclosure({ item, proposalCarriers }) {
     throw new TypeError(`disclosure carrier kind is not closed: ${carrier.kind}`)
   }
   const bytes = item.image === 'before' ? carrier.beforeBytes : item.image === 'after' ? carrier.afterBytes : null
-  if (!Buffer.isBuffer(bytes) || item.rawSha256 !== sha256(bytes)) {
+  const rawSha256 = item.image === 'before' ? carrier.beforeRawSha256 : item.image === 'after' ? carrier.afterRawSha256 : null
+  if (!Buffer.isBuffer(bytes) || item.rawSha256 !== rawSha256) {
     return { ok: false, reason: 'inspection-binding' }
   }
   if (bytes.length === 0) {

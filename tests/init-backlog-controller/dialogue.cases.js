@@ -770,17 +770,18 @@ function runDialogueCases(repositoryRoot) {
     const carriers = [
       { actionId: 'dir-claude', kind: 'structural-action', target: '.claude' },
       { actionId: 'unwrap-bugs', afterRawSha256: 'b'.repeat(64), beforeRawSha256: 'a'.repeat(64), kind: 'breakout-digest', target: '.claude/BUGS.md' },
-      { actionId: 'create-features', afterBytes: decodedBytes, beforeBytes: null, kind: 'decoded', target: '.claude/FEATURES.md' },
-      { actionId: 'create-gitkeep', afterBytes: Buffer.alloc(0), beforeBytes: null, kind: 'decoded', target: '.claude/plans/.gitkeep' },
+      { actionId: 'create-features', afterBytes: decodedBytes, afterRawSha256: sha256(decodedBytes), beforeBytes: null, beforeRawSha256: null, kind: 'decoded', target: '.claude/FEATURES.md' },
+      { actionId: 'create-gitkeep', afterBytes: Buffer.alloc(0), afterRawSha256: sha256(Buffer.alloc(0)), beforeBytes: null, beforeRawSha256: null, kind: 'decoded', target: '.claude/plans/.gitkeep' },
     ]
+    const proposalCarriersByActionId = new Map(carriers.map((carrier) => [carrier.actionId, carrier]))
     const proposalBinding = { proposalDigest: 'f'.repeat(64), selection: 'condition-not-selected' }
     assert.equal(adjudication.verifyInspectionBoundDisclosure({
       item: { actionId: 'dir-claude', kind: 'structural-action', target: '.claude', ...proposalBinding },
-      proposalCarriers: carriers,
+      proposalCarriersByActionId,
     }).ok, true, 'the later manifest owns selection and proposal digest validation')
     assert.equal(adjudication.verifyInspectionBoundDisclosure({
       item: { actionId: 'dir-claude', kind: 'structural-action', target: '.claude/other', ...proposalBinding },
-      proposalCarriers: carriers,
+      proposalCarriersByActionId,
     }).ok, false)
     assert.equal(adjudication.verifyInspectionBoundDisclosure({
       item: {
@@ -793,7 +794,7 @@ function runDialogueCases(repositoryRoot) {
         target: '.claude/BUGS.md',
         ...proposalBinding,
       },
-      proposalCarriers: carriers,
+      proposalCarriersByActionId,
     }).ok, true)
     const content = {
       actionId: 'create-features',
@@ -808,15 +809,15 @@ function runDialogueCases(repositoryRoot) {
       text: decodedBytes.toString('utf8'),
       ...proposalBinding,
     }
-    assert.equal(adjudication.verifyInspectionBoundDisclosure({ item: content, proposalCarriers: carriers }).ok, true)
-    assert.equal(adjudication.verifyInspectionBoundDisclosure({ item: { ...content, text: 'HELLO\n' }, proposalCarriers: carriers }).ok, false)
+    assert.equal(adjudication.verifyInspectionBoundDisclosure({ item: content, proposalCarriersByActionId }).ok, true)
+    assert.equal(adjudication.verifyInspectionBoundDisclosure({ item: { ...content, text: 'HELLO\n' }, proposalCarriersByActionId }).ok, false)
     assert.equal(adjudication.verifyInspectionBoundDisclosure({
       item: { actionId: 'create-gitkeep', byteLength: 0, image: 'after', kind: 'decoded-empty', rawSha256: sha256(Buffer.alloc(0)), target: '.claude/plans/.gitkeep', ...proposalBinding },
-      proposalCarriers: carriers,
+      proposalCarriersByActionId,
     }).ok, true)
     assert.deepEqual(adjudication.verifyInspectionBoundDisclosure({
       item: { actionId: 'semantic-edit', kind: 'structural-action', target: '.claude/QUICK_WINS.md', ...proposalBinding },
-      proposalCarriers: carriers,
+      proposalCarriersByActionId,
     }), { deferred: true, ok: true }, 'semantic repair carriers are knowable only from the later manifest')
   })
 
