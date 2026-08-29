@@ -3,7 +3,7 @@
 const assert = require('node:assert/strict')
 const { copyFileSync, cpSync, existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } = require('node:fs')
 const { tmpdir } = require('node:os')
-const { join } = require('node:path')
+const { dirname, join } = require('node:path')
 const test = require('node:test')
 
 const {
@@ -13,6 +13,7 @@ const {
   executeCellSequence,
   assertEngineClosure,
   assertClaudeInventory,
+  assertOutsideCheckout,
   PUBLIC_SKILLS,
   buildCodexArgv,
   createMarketplace,
@@ -129,6 +130,25 @@ test('Claude source selection accepts the default root and rejects relative conf
   assert.equal(resolveExternalClaudeConfigRoot({}, '/home/test'), join('/home/test', '.claude'))
   assert.equal(resolveExternalClaudeConfigRoot({ CLAUDE_CONFIG_DIR: '/profile' }, '/home/test'), '/profile')
   assert.throws(() => resolveExternalClaudeConfigRoot({ CLAUDE_CONFIG_DIR: 'profile' }, '/home/test'), /absolute/)
+})
+
+test('outside-checkout assertion accepts the checkout parent, rejects a descendant, accepts a sibling', () => {
+  const root = createTemporaryDirectory()
+  try {
+    const checkoutRoot = join(root, 'checkout')
+    mkdirSync(checkoutRoot, { recursive: true })
+    const parentSource = dirname(checkoutRoot)
+    const descendantSource = join(checkoutRoot, 'inside.txt')
+    writeFileSync(descendantSource, 'inside\n')
+    const siblingSource = join(dirname(checkoutRoot), 'sibling.txt')
+    writeFileSync(siblingSource, 'sibling\n')
+
+    assert.doesNotThrow(() => assertOutsideCheckout(parentSource, checkoutRoot))
+    assert.throws(() => assertOutsideCheckout(descendantSource, checkoutRoot), /outside the checkout/)
+    assert.doesNotThrow(() => assertOutsideCheckout(siblingSource, checkoutRoot))
+  } finally {
+    removeTemporaryDirectory(root)
+  }
 })
 
 test('installed engine closure accepts the shared resource contract', () => {

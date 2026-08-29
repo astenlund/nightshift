@@ -61,7 +61,7 @@ function assertOutsideCheckout(filePath, checkoutRoot) {
   const resolvedFile = realpathSync(filePath)
   const resolvedCheckout = realpathSync(checkoutRoot)
   const relation = relative(resolvedCheckout, resolvedFile)
-  if (relation === '' || !relation.startsWith('..' + require('node:path').sep) && !isAbsolute(relation)) {
+  if (relation === '' || relation !== '..' && !relation.startsWith('..' + require('node:path').sep) && !isAbsolute(relation)) {
     throw new Error('Credential source must be outside the checkout')
   }
 
@@ -755,4 +755,4 @@ async function runCell({ host, mode, checkoutRoot, evidenceRoot }) {
   return row
 }
 
-module.exports = { CODEX_CATALOG_PROMPT, PUBLIC_SKILLS, RUNTIME_KEYS, assembleClaudePromptBaseline, assembleCodexPromptBaseline, assertClaudeInventory, assertEngineClosure, assertInitBacklogClosure, buildCodexArgv, classifyChildExit, createCellSequence, createMarketplace, evaluateEvidence, executeCellSequence, loadCandidateEngineResources, loadLegacyBaseline, loadPromptBaseline, parseClaudeAuthStatus, parseClaudeDetails, parseCodexAuthStatus, projectRuntimeEnvironment, resolveExternalClaudeConfigRoot, runCell, stageCandidate, validateEvidenceRow }
+module.exports = { CODEX_CATALOG_PROMPT, PUBLIC_SKILLS, RUNTIME_KEYS, assembleClaudePromptBaseline, assembleCodexPromptBaseline, assertClaudeInventory, assertEngineClosure, assertInitBacklogClosure, assertOutsideCheckout, buildCodexArgv, classifyChildExit, createCellSequence, createMarketplace, evaluateEvidence, executeCellSequence, loadCandidateEngineResources, loadLegacyBaseline, loadPromptBaseline, parseClaudeAuthStatus, parseClaudeDetails, parseCodexAuthStatus, projectRuntimeEnvironment, resolveExternalClaudeConfigRoot, runCell, stageCandidate, validateEvidenceRow }
