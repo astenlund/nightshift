@@ -314,8 +314,15 @@ function runOracleCases(repositoryRoot) {
     assert.deepEqual(proposal.properties.versionControlChoice.enum, ['track', 'ignore', 'deferred', 'not-required'])
     const resultBranches = presentation.properties.result.anyOf
     assert.equal(resultBranches[0].type, 'null')
-    assert.deepEqual(resultBranches[1].properties.reasonCode.enum, ['denied', 'deferred', 'unavailable', 'auto-denied', 'guidance-resolution'])
-    assert.deepEqual(resultBranches[1].properties.approvalBranch.enum, ['approved', 'denied', 'deferred', 'unavailable', 'auto-denied'])
+    assert.deepEqual(resultBranches[1].anyOf.map((branch) => [branch.properties.approvalBranch.const, branch.properties.reasonCode.const]), [
+      ['denied', 'denied'],
+      ['deferred', 'deferred'],
+      ['unavailable', 'unavailable'],
+      ['unavailable', 'guidance-resolution'],
+      ['auto-denied', 'auto-denied'],
+    ])
+    const finishedResultBranches = object.allOf.find((item) => item.if?.properties?.phase?.const === 'finished').then.properties.presentation.properties.result.anyOf
+    assert.deepEqual(finishedResultBranches, resultBranches.slice(1))
     assert.equal(resultBranches[2].properties.ok.const, true)
     assert.equal(resultBranches[2].properties.operation.const, 'apply')
     assert.deepEqual(resultBranches[2].properties.outcomes.items.properties.status.enum, ['created', 'edited', 'unwrapped', 'skipped-complete'])
@@ -707,6 +714,20 @@ function runOracleCases(repositoryRoot) {
       semanticClassifications: [],
     }
     validateTurnObject(finishedTurn)
+    const approvalBranches = ['approved', 'denied', 'deferred', 'unavailable', 'auto-denied']
+    const reasonCodes = ['denied', 'deferred', 'unavailable', 'auto-denied', 'guidance-resolution']
+    const allowedNoApplyPairs = new Set(['denied:denied', 'deferred:deferred', 'unavailable:unavailable', 'unavailable:guidance-resolution', 'auto-denied:auto-denied'])
+    for (const approvalBranch of approvalBranches) {
+      for (const reasonCode of reasonCodes) {
+        const candidate = JSON.parse(JSON.stringify(finishedTurn))
+        candidate.presentation.result = { approvalBranch, reasonCode }
+        if (allowedNoApplyPairs.has(`${approvalBranch}:${reasonCode}`)) {
+          validateTurnObject(candidate)
+        } else {
+          assert.throws(() => validateTurnObject(candidate), /result/)
+        }
+      }
+    }
     const mutate = (base, mutation) => {
       const clone = JSON.parse(JSON.stringify(base))
       mutation(clone)

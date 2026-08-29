@@ -19,6 +19,7 @@ const ELECTION_MARKER_PATH = '.nightshift-init-backlog-election'
 
 const HEX64_PATTERN = /^[0-9a-f]{64}$/
 const ACTION_ID_PATTERN = /^[a-z][a-z0-9-]{0,63}$/
+const NO_APPLY_RESULT_PAIRS = new Set(['auto-denied:auto-denied', 'deferred:deferred', 'denied:denied', 'unavailable:guidance-resolution', 'unavailable:unavailable'])
 
 const LIST_SEPARATOR = String.fromCharCode(0)
 
@@ -96,6 +97,12 @@ function validateTurnObject(turn) {
   }
   if (turn.phase === 'finished' && presentation.result === null) {
     throw new Error('turn result must be present under finished')
+  }
+  if (presentation.result !== null && (Object.hasOwn(presentation.result, 'approvalBranch') || Object.hasOwn(presentation.result, 'reasonCode'))) {
+    requireExactKeys(presentation.result, ['approvalBranch', 'reasonCode'], 'turn result')
+    if (!NO_APPLY_RESULT_PAIRS.has(`${presentation.result.approvalBranch}:${presentation.result.reasonCode}`)) {
+      throw new Error('turn result approval branch and reason code are inconsistent')
+    }
   }
   if (presentation.manifestProposal !== null) {
     requireExactKeys(presentation.manifestProposal, ['actions', 'proposalDispositions', 'semanticDecisions', 'versionControlChoice', 'versionControlOptions'], 'turn manifestProposal')

@@ -514,7 +514,7 @@ function runDialogueCases(repositoryRoot) {
     assert.equal(unverified.gate.admit(presentInspect).ok, false, 'an unverified present root authorizes no inspect')
     assert.equal(unverified.walk.receiveTurn(makeTurn({ gateId: 'semantic-quick-wins' })).failure.reason, 'wrong-gate')
     const stopped = presentWalk(false)
-    assert.equal(stopped.walk.receiveTurn(makeTurn({ phase: 'finished', result: { approvalBranch: 'unavailable', reasonCode: 'denied' } })).failure.reason, 'context-result')
+    assert.equal(stopped.walk.receiveTurn(makeTurn({ phase: 'finished', result: { approvalBranch: 'denied', reasonCode: 'denied' } })).failure.reason, 'context-result')
     const stoppedClean = presentWalk(false)
     assert.equal(stoppedClean.walk.receiveTurn(makeTurn({ phase: 'finished', result: { approvalBranch: 'unavailable', reasonCode: 'guidance-resolution' } })).done, true)
   })
