@@ -12,6 +12,7 @@ const GUIDANCE_SECTION = '## Backlogs and indexes'
 const CLAUDE_CANDIDATES = ['CLAUDE.md', 'CLAUDE.local.md']
 const CODEX_CANDIDATES = ['AGENTS.override.md', 'AGENTS.md']
 const MAX_IMPORT_DEPTH = 4
+const GIT_METADATA_DIRECTORY = '.git'
 
 function fail(detail, cause, target = null) {
   throwInitBacklogError({ code: 'guidance-resolution', detail, operation: 'inspect', phase: 'resolve', target }, cause)
@@ -80,6 +81,13 @@ function inspectDirectory(root, target, visitor, options = {}) {
   for (const entry of entries) {
     const child = target === '' ? entry.name : `${target}/${entry.name}`
     if (entry.metadata.isDirectory()) {
+      // Repository metadata is never user-authored guidance, and a `.git`
+      // directory at any depth (the repository's own, a submodule's, a nested
+      // checkout's) can hold an unbounded object store. Descending it would
+      // read the whole store on every inspection to discover nothing.
+      if (entry.name === GIT_METADATA_DIRECTORY) {
+        continue
+      }
       inspectDirectory(root, child, visitor, options)
     } else {
       visitor(child)

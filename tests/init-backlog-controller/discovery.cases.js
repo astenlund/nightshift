@@ -139,6 +139,28 @@ function runDiscoveryCases(repositoryRoot) {
     }
   })
 
+  test('guidance discovery skips .git metadata at every depth and still finds ordinary nested guidance', () => {
+    const root = temporaryRoot('nightshift-discovery-git-skip-')
+    try {
+      ordinaryFile(join(root, 'CLAUDE.md'), '# CLAUDE.md\n')
+      mkdirSync(join(root, 'nested'))
+      ordinaryFile(join(root, 'nested', 'CLAUDE.md'), '# nested\n')
+      mkdirSync(join(root, '.git', 'objects'), { recursive: true })
+      ordinaryFile(join(root, '.git', 'CLAUDE.md'), '# repository metadata\n')
+      ordinaryFile(join(root, '.git', 'objects', 'CLAUDE.local.md'), '# repository metadata\n')
+      mkdirSync(join(root, 'vendor', '.git'), { recursive: true })
+      ordinaryFile(join(root, 'vendor', '.git', 'CLAUDE.md'), '# submodule metadata\n')
+
+      const resolved = resolveGuidance(root, 'claude-code', { claudeRootExclusionStatus: 'included', claudeContextSource: 'host-observed' })
+
+      assert.deepEqual(resolved.candidates, ['CLAUDE.md', 'nested/CLAUDE.md'])
+      assert.deepEqual(resolved.independentPaths, ['nested/CLAUDE.md'])
+      assert.equal(resolved.graphPaths.some((target) => target.includes('.git/')), false, 'no .git path may enter the guidance graph')
+    } finally {
+      rmSync(root, { force: true, recursive: true })
+    }
+  })
+
   test('guidance resolution applies Codex fallback precedence and reports missing roots', () => {
     const root = temporaryRoot('nightshift-discovery-codex-')
     try {
