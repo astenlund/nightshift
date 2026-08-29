@@ -1839,7 +1839,7 @@ function runLivePreSessionCommand({
   })
 }
 
-function createLiveBindings({ filesystem = nodeFilesystem, platform, processAdapterFactory = driver.createProductionProcessAdapter }) {
+function createLiveBindings({ filesystem = nodeFilesystem, platform, workerProcessAdapterFactory = driver.createProductionProcessAdapter }) {
   const preSessionAdapters = new Set()
   const workerRegistry = new Map()
   const proxyRegistry = new Map()
@@ -1881,7 +1881,7 @@ function createLiveBindings({ filesystem = nodeFilesystem, platform, processAdap
       },
       onOverflow: () => workerFailure({ detailCode: 'output-capacity' }),
     })
-    const production = attemptProcessAdapterConstruction(processAdapterFactory, {
+    const production = attemptProcessAdapterConstruction(workerProcessAdapterFactory, {
       cwd: call.cwd,
       mode: 'session',
       onFailure: workerFailure,

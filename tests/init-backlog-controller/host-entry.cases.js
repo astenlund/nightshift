@@ -2327,7 +2327,7 @@ function runHostEntryCases(repositoryRoot) {
     const live = hostBehavior.createLiveBindings({
       filesystem: nodeFilesystem,
       platform: 'win32',
-      processAdapterFactory: () => {
+      workerProcessAdapterFactory: () => {
         throw new Error('synthetic worker construction failure')
       },
     })
