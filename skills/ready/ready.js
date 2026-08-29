@@ -1002,9 +1002,10 @@ function buildCycleAnalysis(registryRecords, registry) {
   return { cycles, cycleEdges, cycleMembers, nodeToRec };
 }
 
-function addQuickWins(parsed, out) {
+function addQuickWins(parsed, duplicateEntries, out) {
   if (parsed.QUICK_WINS) {
     for (const entry of parsed.QUICK_WINS.entries) {
+      if (duplicateEntries.has(entry)) continue;
       out.ready.push({
         index: 'QUICK_WINS.md',
         title: entry.title,
@@ -1114,20 +1115,21 @@ function classifyTrackedEntry(index, entry, excluded, registry, out) {
   }, registry, out);
 }
 
-function classifyTrackedEntries(parsed, registry, cycleMembers, out, breakoutTargets) {
+function classifyTrackedEntries(parsed, registry, cycleMembers, duplicateEntries, out, breakoutTargets) {
   for (const name of ['FEATURES', 'BUGS']) {
     if (!parsed[name]) continue;
     for (const entry of parsed[name].entries) {
       const index = `${name}.md`;
       const entryNode = nodeKey({ index, entry });
-      const excluded = cycleMembers.has(entryNode);
+      const duplicate = duplicateEntries.has(entry);
+      const excluded = cycleMembers.has(entryNode) || duplicate;
       // Every linked breakout is a scan candidate, including one whose entry
       // terminated in a structural error: the breakout can still drift. The
       // outcome is measured across this entry's own classify call, never by
       // scanning the finished errors by title (two indexes can share one).
       const errorsBefore = out.structuralErrors.length;
       classifyTrackedEntry(index, entry, excluded, registry, out);
-      const outcome = out.structuralErrors.length > errorsBefore ? 'structural' : excluded ? 'cycle' : null;
+      const outcome = out.structuralErrors.length > errorsBefore || duplicate ? 'structural' : excluded ? 'cycle' : null;
       addBreakoutTarget(breakoutTargets, index, entry, { outcome });
     }
   }
@@ -1182,12 +1184,13 @@ function analyze(files) {
   const parsed = parseIndexes(files, out);
   const registryRecords = prepareRegistryRecords(parsed, out);
   const registry = buildRegistry(registryRecords);
+  const duplicateEntries = new Set([...registry.pathDupes.values()].flatMap((records) => records.map((record) => record.entry)));
   const cycleAnalysis = buildCycleAnalysis(registryRecords, registry);
   const breakoutTargets = [];
 
-  addQuickWins(parsed, out);
+  addQuickWins(parsed, duplicateEntries, out);
   addExploringDrafts(parsed, out, breakoutTargets);
-  classifyTrackedEntries(parsed, registry, cycleAnalysis.cycleMembers, out, breakoutTargets);
+  classifyTrackedEntries(parsed, registry, cycleAnalysis.cycleMembers, duplicateEntries, out, breakoutTargets);
   addCycleErrors(out, cycleAnalysis);
   addDuplicatePathErrors(out, registry);
 

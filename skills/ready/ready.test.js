@@ -1822,6 +1822,24 @@ test('a duplicate self-target path is a structural error naming every claimant',
     duplicate.problem,
     'duplicate self-target "features/dup" declared by FEATURES.md "First claimant" and FEATURES.md "Second claimant"; give each entry its own breakout file',
   );
+  for (const classification of [result.ready, result.blocked, result.external]) {
+    assert.ok(!classification.some((entry) => ['First claimant', 'Second claimant'].includes(entry.title)), JSON.stringify(classification));
+  }
+  assert.deepStrictEqual(
+    result.breakoutTargets.filter((target) => ['First claimant', 'Second claimant'].includes(target.title)).map((target) => target.outcome),
+    ['structural', 'structural'],
+  );
+});
+
+test('duplicate self-target claimants across Quick Wins and Features are never ready', () => {
+  const result = analyze({
+    QUICK_WINS: '# Quick wins\n\n## Area\n\n### [Quick claimant](features/shared.md)\n',
+    FEATURES: '# Features\n\n## Area\n\n### [Feature claimant](features/shared.md)\n\n**Requires:** none.\n',
+  });
+
+  assert.ok(result.structuralErrors.some((entry) => entry.index === '[duplicate]'), JSON.stringify(result.structuralErrors));
+  assert.ok(!result.ready.some((entry) => ['Quick claimant', 'Feature claimant'].includes(entry.title)), JSON.stringify(result.ready));
+  assert.deepStrictEqual(result.breakoutTargets.find((target) => target.title === 'Feature claimant')?.outcome, 'structural');
 });
 
 test('a link to a duplicated self-target resolves to neither claimant', () => {
