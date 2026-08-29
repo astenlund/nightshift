@@ -443,17 +443,26 @@ function transcriptWithFailingAppends(failingMethods) {
 function fakeSessionAdapterFactory({ onStart } = {}) {
   const created = []
   const factory = (options) => {
-    const state = { closed: false, exitCode: null, proven: false, terminations: 0 }
+    const state = { closed: false, exitCode: null, inputs: [], proven: false, started: false, terminations: 0 }
     const adapter = {
       closeInput: () => {},
       closureProof: () => ({ proven: state.proven }),
       hostExitCode: () => state.exitCode,
-      input: () => ({ ok: true }),
+      input: (bytes) => {
+        if (!state.started) {
+          return { ok: false }
+        }
+        state.inputs.push(Buffer.from(bytes))
+
+        return { ok: true }
+      },
       runnerClosed: () => state.closed,
       start: () => {
-        if (onStart) {
-          setImmediate(() => onStart({ options, state }))
-        }
+        setImmediate(() => {
+          state.started = true
+          options.onStarted({ pid: 1234 })
+          onStart?.({ options, state })
+        })
 
         return { ok: true }
       },
@@ -538,6 +547,7 @@ function runHostEntryCases(repositoryRoot) {
       'runImportCase',
       'runImportMatrix',
       'runLiveHostSession',
+      'runLivePreSessionCommand',
       'runOutputEvaluation',
       'runVersionPreflight',
       'validateCalendarDate',
@@ -1242,8 +1252,8 @@ function runHostEntryCases(repositoryRoot) {
   test('the version preflight launches claude-code then codex from a dedicated root and cleans it up before returning versions', async () => {
     const scratch = tempRoot()
     try {
-      const preflightRunRoot = join(scratch, 'preflight-run')
       const checkoutRoot = join(scratch, 'checkout')
+      const preflightRunRoot = join(scratch, 'preflight-run')
       nodeFilesystem.mkdirSync(checkoutRoot, { recursive: true })
       const launches = []
       const descriptors = {
@@ -1356,6 +1366,128 @@ function runHostEntryCases(repositoryRoot) {
         retainedRunRoot: preflightRunRoot,
       })
       assert.equal(nodeFilesystem.existsSync(preflightRunRoot), true, 'the preflight root is retained on cleanup failure')
+    } finally {
+      nodeFilesystem.rmSync(scratch, { force: true, recursive: true })
+    }
+  })
+
+  test('a live pre-session deadline covers silent runner startup and settles only after closure proof', async () => {
+    let closed = false
+    let proven = false
+    let terminated = false
+    const completion = await hostBehavior.runLivePreSessionCommand({
+      call: {
+        argv: ['--version'],
+        boundary: 'version',
+        cwd: 'synthetic-preflight-root',
+        environment: {},
+        executable: 'synthetic-host',
+        host: 'claude-code',
+      },
+      deadlineMilliseconds: 5,
+      platform: 'win32',
+      pollMilliseconds: 1,
+      processAdapterFactory: () => ({
+        adapter: {
+          closureProof: () => ({ proven }),
+          hostExitCode: () => 0,
+          runnerClosed: () => closed,
+          start: () => ({ ok: true }),
+          terminate: () => {
+            terminated = true
+            setTimeout(() => {
+              closed = true
+              proven = true
+            }, 5)
+
+            return { ok: true }
+          },
+        },
+        ok: true,
+      }),
+    })
+
+    assert.equal(terminated, true, 'the pre-start deadline initiates termination')
+    assert.equal(closed, true, 'the promise does not settle before runner closure')
+    assert.equal(proven, true, 'the promise does not settle before process-tree proof')
+    assert.deepEqual(completion, { failure: { code: 'preflight-timeout', host: 'claude-code', ok: false, phase: 'version' } })
+  })
+
+  test('an unproven live pre-session termination reports the retained run root', async () => {
+    const runRoot = 'synthetic-unproven-preflight-root'
+    let adapterOptions = null
+    const completion = await hostBehavior.runLivePreSessionCommand({
+      call: {
+        argv: ['--version'],
+        boundary: 'version',
+        cwd: runRoot,
+        environment: {},
+        executable: 'synthetic-host',
+        host: 'claude-code',
+      },
+      deadlineMilliseconds: 5,
+      platform: 'win32',
+      pollMilliseconds: 1,
+      processAdapterFactory: (options) => {
+        adapterOptions = options
+
+        return {
+          adapter: {
+            closureProof: () => ({ proven: false }),
+            retainsRunRoot: () => true,
+            runnerClosed: () => false,
+            start: () => ({ ok: true }),
+            terminate: () => {
+              setImmediate(() => adapterOptions.onFailure({ detailCode: 'termination' }))
+
+              return { ok: true }
+            },
+          },
+          ok: true,
+        }
+      },
+    })
+
+    assert.deepEqual(completion, {
+      failure: {
+        code: 'harness-infrastructure',
+        detailCode: 'termination',
+        host: 'claude-code',
+        initialCode: null,
+        ok: false,
+        phase: 'version',
+        retainedRunRoot: runRoot,
+      },
+    })
+  })
+
+  test('version preflight retains its root when process-tree closure is unproven', async () => {
+    const scratch = tempRoot()
+    try {
+      const checkoutRoot = join(scratch, 'checkout')
+      const preflightRunRoot = join(scratch, 'preflight-run')
+      nodeFilesystem.mkdirSync(checkoutRoot, { recursive: true })
+      const failure = {
+        code: 'harness-infrastructure',
+        detailCode: 'termination',
+        host: 'claude-code',
+        initialCode: null,
+        ok: false,
+        phase: 'version',
+        retainedRunRoot: preflightRunRoot,
+      }
+      const preflight = await hostBehavior.runVersionPreflight({
+        ambientEnvironment: {},
+        checkoutRoot,
+        descriptors: { 'claude-code': { argsPrefix: [], executable: 'synthetic-host', kind: 'windows-native', logicalName: 'claude', sourcePath: 'synthetic-host' } },
+        hosts: ['claude-code'],
+        launch: async () => ({ failure }),
+        platform: process.platform,
+        preflightRunRoot,
+      })
+
+      assert.deepEqual(preflight, { result: failure })
+      assert.equal(nodeFilesystem.existsSync(preflightRunRoot), true, 'unproven process-tree closure retains the run root')
     } finally {
       nodeFilesystem.rmSync(scratch, { force: true, recursive: true })
     }

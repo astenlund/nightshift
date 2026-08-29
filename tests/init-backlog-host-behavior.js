@@ -753,6 +753,9 @@ async function runVersionPreflight({ ambientEnvironment, checkoutRoot, controlle
       stdin: 'ignore',
     })
     if (completion !== null && typeof completion === 'object' && 'failure' in completion) {
+      if (typeof completion.failure.retainedRunRoot === 'string') {
+        return { result: completion.failure }
+      }
       if (!cleanupRunRoot({ filesystem, path: preflightRunRoot }).ok) {
         return escalateCleanup(host, completion.failure.code ?? null)
       }
@@ -1691,11 +1694,15 @@ function deriveSemanticCarriers({ manifestProposal, proposalActionIds, scenario 
   return carriers
 }
 
-function createLiveBindings({ filesystem = nodeFilesystem, platform }) {
-  const workerRegistry = new Map()
-  const proxyRegistry = new Map()
-
-  const runLivePreSessionCommand = (call) => new Promise((resolve) => {
+function runLivePreSessionCommand({
+  call,
+  deadlineMilliseconds = driver.DEADLINES.PRE_SESSION_MILLISECONDS,
+  onAdapterCreated = () => {},
+  platform,
+  pollMilliseconds = LIVE_COMPLETION_POLL_MILLISECONDS,
+  processAdapterFactory = driver.createProductionProcessAdapter,
+}) {
+  return new Promise((resolve) => {
     const phase = PRE_SESSION_BOUNDARY_PHASES[call.boundary]
     if (platform !== 'win32') {
       resolve({ failure: infrastructureCarrier({ detailCode: 'containment-unavailable', host: call.host, phase }) })
@@ -1705,21 +1712,18 @@ function createLiveBindings({ filesystem = nodeFilesystem, platform }) {
     const stdoutChunks = []
     const stderrChunks = []
     let adapter = null
+    let timeoutFailure = null
     const { armDeadline, armPoll, settle } = createSettleGuard(resolve)
-    const production = driver.createProductionProcessAdapter({
+    const retainRoot = () => adapter !== null && (adapter.retainsRunRoot?.() === true || adapter.closureProof().proven !== true)
+    const production = processAdapterFactory({
       cwd: call.cwd,
       mode: 'pre-session',
       onFailure: (failure) => {
-        settle({ failure: infrastructureCarrier({ detailCode: failure.detailCode, host: call.host, phase }) })
+        settle({ failure: infrastructureCarrier({ detailCode: failure.detailCode, host: call.host, phase, retainedRunRoot: retainRoot() ? call.cwd : null }) })
       },
       onHostStderr: (bytes) => stderrChunks.push(Buffer.from(bytes)),
       onHostStdout: (bytes) => stdoutChunks.push(Buffer.from(bytes)),
-      onStarted: () => {
-        armDeadline(() => {
-          adapter.terminate()
-          settle({ failure: { code: 'preflight-timeout', host: call.host, ok: false, phase } })
-        }, driver.DEADLINES.PRE_SESSION_MILLISECONDS)
-      },
+      onStarted: () => {},
     })
     if (production.ok !== true) {
       settle({ failure: infrastructureCarrier({ detailCode: production.detailCode, host: call.host, phase }) })
@@ -1727,15 +1731,38 @@ function createLiveBindings({ filesystem = nodeFilesystem, platform }) {
       return
     }
     adapter = production.adapter
+    onAdapterCreated(adapter)
+    armDeadline(() => {
+      timeoutFailure = { code: 'preflight-timeout', host: call.host, ok: false, phase }
+      if (adapter.terminate().ok !== true) {
+        settle({ failure: infrastructureCarrier({ detailCode: 'termination', host: call.host, phase, retainedRunRoot: call.cwd }) })
+      }
+    }, deadlineMilliseconds)
     armPoll(() => {
-      if (adapter.runnerClosed() && adapter.closureProof().proven === true) {
+      if (!adapter.runnerClosed()) {
+        return
+      }
+      if (timeoutFailure !== null) {
+        settle(adapter.closureProof().proven === true
+          ? { failure: timeoutFailure }
+          : { failure: infrastructureCarrier({ detailCode: 'termination', host: call.host, phase, retainedRunRoot: call.cwd }) })
+
+        return
+      }
+      if (adapter.closureProof().proven === true) {
         settle({ exitCode: adapter.hostExitCode(), signal: null, stderrBytes: Buffer.concat(stderrChunks), stdoutBytes: Buffer.concat(stdoutChunks) })
       }
-    }, LIVE_COMPLETION_POLL_MILLISECONDS)
+    }, pollMilliseconds)
     if (adapter.start({ args: call.argv, environment: call.environment, executable: call.executable }).ok !== true) {
       settle({ failure: infrastructureCarrier({ detailCode: 'spawn', host: call.host, phase }) })
     }
   })
+}
+
+function createLiveBindings({ filesystem = nodeFilesystem, platform }) {
+  const preSessionAdapters = new Set()
+  const workerRegistry = new Map()
+  const proxyRegistry = new Map()
 
   const startLiveWorker = (call) => new Promise((resolve) => {
     if (platform !== 'win32') {
@@ -1815,11 +1842,16 @@ function createLiveBindings({ filesystem = nodeFilesystem, platform }) {
     })
   })
 
-  const launch = (call) => call.boundary === 'worker' ? startLiveWorker(call) : runLivePreSessionCommand(call)
+  const launch = (call) => call.boundary === 'worker'
+    ? startLiveWorker(call)
+    : runLivePreSessionCommand({ call, onAdapterCreated: (adapter) => preSessionAdapters.add(adapter), platform })
 
   const runSession = (call) => runLiveHostSession({ call, filesystem, platform, proxyRegistry, workerRegistry })
 
   const dispose = () => {
+    for (const adapter of preSessionAdapters) {
+      adapter.dispose?.()
+    }
     for (const entry of workerRegistry.values()) {
       entry.adapter?.dispose?.()
     }
@@ -2194,6 +2226,21 @@ async function runLiveHostSession({ call, filesystem, platform, processAdapterFa
     let adapter = null
     let conductorFailure = null
     const { armDeadline, armPoll, settle } = createSettleGuard(resolve)
+    const submitInitialInput = () => {
+      if (inputText !== null) {
+        if (!recordInput(inputText, inputKind)) {
+          settle({ failure: transcriptFailure })
+
+          return
+        }
+        if (adapter.input(Buffer.from(inputText, 'utf8')).ok !== true) {
+          settle(sessionFailure('session-input', sessionInput.phase))
+
+          return
+        }
+      }
+      adapter.closeInput()
+    }
     const decoder = driver.createLineDecoder({
       limit: driver.BYTE_BOUNDS.MAX_HOST_LINE_BYTES,
       limitName: 'MAX_HOST_LINE_BYTES',
@@ -2220,7 +2267,7 @@ async function runLiveHostSession({ call, filesystem, platform, processAdapterFa
       onFailure: (failure) => settle({ failure: recordInfrastructureFailure(failure) }),
       onHostStderr: (bytes) => stderrChunks.push(Buffer.from(bytes)),
       onHostStdout: (bytes) => decoder.push(bytes),
-      onStarted: () => {},
+      onStarted: submitInitialInput,
     })
     if (production.ok !== true) {
       settle({ failure: infrastructureCarrier({ detailCode: production.detailCode, host, phase: 'initial-turn' }) })
@@ -2245,22 +2292,7 @@ async function runLiveHostSession({ call, filesystem, platform, processAdapterFa
     }, LIVE_COMPLETION_POLL_MILLISECONDS)
     if (adapter.start({ args: commandArgv, environment, executable }).ok !== true) {
       settle(sessionFailure('session-input', sessionInput.phase))
-
-      return
     }
-    if (inputText !== null) {
-      if (!recordInput(inputText, inputKind)) {
-        settle({ failure: transcriptFailure })
-
-        return
-      }
-      if (adapter.input(Buffer.from(inputText, 'utf8')).ok !== true) {
-        settle(sessionFailure('session-input', sessionInput.phase))
-
-        return
-      }
-    }
-    adapter.closeInput()
   })
 
   if (host === 'codex') {
@@ -2400,7 +2432,7 @@ async function runLiveHostSession({ call, filesystem, platform, processAdapterFa
       onFailure: (failure) => settle({ failure: recordInfrastructureFailure(failure) }),
       onHostStderr: (bytes) => stderrChunks.push(Buffer.from(bytes)),
       onHostStdout: (bytes) => decoder.push(bytes),
-      onStarted: () => {},
+      onStarted: () => writeUserTurn(envelopeText, 'initial'),
     })
     if (production.ok !== true) {
       settle({ failure: infrastructureCarrier({ detailCode: production.detailCode, host, phase: 'initial-turn' }) })
@@ -2427,12 +2459,7 @@ async function runLiveHostSession({ call, filesystem, platform, processAdapterFa
     armTurnDeadline()
     if (adapter.start({ args: argv, environment, executable }).ok !== true) {
       settle(sessionFailure('session-input', 'initial-turn'))
-
-      return
     }
-    // stdin stays open between intermediate turns; handleTurn closes it
-    // immediately after writing the final approval or host-control turn.
-    writeUserTurn(envelopeText, 'initial')
   })
 }
 
@@ -2671,6 +2698,7 @@ module.exports = {
   runImportCase,
   runImportMatrix,
   runLiveHostSession,
+  runLivePreSessionCommand,
   runOutputEvaluation,
   runVersionPreflight,
   validateCalendarDate,
