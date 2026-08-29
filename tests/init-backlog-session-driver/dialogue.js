@@ -1,6 +1,6 @@
 'use strict'
 
-const { APPROVAL_BRANCHES, VERSION_CONTROL_OPTION_ORDER, isPlainObject, sha256 } = require('./primitives')
+const { APPROVAL_BRANCHES, HOSTS, VERSION_CONTROL_OPTION_ORDER, isPlainObject, sha256 } = require('./primitives')
 const { canonicalJson } = require('./transcript')
 const { CLAUDE_ROOT_EXCLUSION_CONFIRMATION, CODEX_HOST_CONTEXT_CONFIRMATION, HOST_CONTROL_RECORDS, validateTurnObject } = require('../init-backlog-controller/election-oracles')
 // Plan-mandated production binding: the approved apply request is built and
@@ -45,7 +45,7 @@ function buildApprovedApplyRequest({ host, hostContext, inspection, manifestProp
 
 function validateWalkConfiguration(config) {
   const { applyFault, approvalBranch, approvalResponse, claudeRootExclusion, faultSchedule, gate, host, hostContext, hostOutcome, mode, onlineDisclosureCheck, preApprovalTurns, scenarioRoot, verifyDisclosureSequence } = config
-  if (host !== 'claude-code' && host !== 'codex') {
+  if (!HOSTS.includes(host)) {
     throw new Error(`host is not a closed host name: ${host}`)
   }
   if (mode !== 'enabled' && mode !== 'disabled') {
