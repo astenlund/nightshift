@@ -26,9 +26,11 @@ const CONTROLLER_INVOCATION = '${CLAUDE_PLUGIN_ROOT}/skills/init-backlog/init-ba
 const APPROVAL_SENTENCE = 'Obtain explicit approval for the complete manifest before any `apply` request.'
 const DENIAL_SENTENCE = 'On denial, an unavailable user, or an unattended run without approval, no apply request is made and no project target changes.'
 const FINAL_APPROVAL_SCOPE_SENTENCE = 'Always obtain the explicit approval in the Process above before any project target or apply-owned durable state is written; the bounded request-spool transport and inspection-ownership writes needed to obtain the proposal are not apply authorization, and a re-run never writes project content on recognition alone.'
+const SHELL_LITERAL_SENTENCE = 'Encode every substituted command operand as one literal argument for the active shell, including the controller path, canonical root, nonce, and residue evidence digests.'
+const POWERSHELL_LITERAL_SENTENCE = 'In PowerShell, single-quote each operand and double every embedded apostrophe before inserting the value into command text.'
 const APPLY_STEP = '7. **Apply.**'
 const ORDERED_WORKFLOW_TOKENS = [
-  ['recovery inspection', '1. **Recover.**'],
+  ['request reservation and recovery', '1. **Reserve and recover.**'],
   ['deterministic inspect', 'controller\'s `inspect` operation and retain its complete result'],
   ['semantic concept classification', 'concept checklists below to every customized template-controlled semantic target'],
   ['exact repair design', 'complete before and after file bytes over exactly one manifest-controlled region'],
@@ -70,6 +72,34 @@ function assertApprovalOrder(body) {
   assert.notEqual(body.indexOf(DENIAL_SENTENCE), -1, 'init-backlog must issue no apply request on denial')
   assert.equal(countExact(body, FINAL_APPROVAL_SCOPE_SENTENCE), 1, 'init-backlog must scope its final approval rule to project and apply-owned writes')
   assert.equal(countExact(body, 'before any file is written'), 0, 'init-backlog must not prohibit its pre-approval request-spool writes')
+}
+
+function assertControllerCommandSafety(body) {
+  assert.equal(countExact(body, SHELL_LITERAL_SENTENCE), 1, 'init-backlog must require active-shell literal encoding for every command operand')
+  assert.equal(countExact(body, POWERSHELL_LITERAL_SENTENCE), 1, 'init-backlog must define PowerShell apostrophe escaping')
+  assert.equal(countExact(body, 'Never put a request record in argv'), 1, 'init-backlog must scope the argv prohibition to request records')
+  for (const command of [
+    '--reserve-request <shell-literal-canonical-root>',
+    '--consume-request <shell-literal-canonical-root> <shell-literal-nonce>',
+    '--inspect-request-residue <shell-literal-canonical-root>',
+    '--clean-request-residue <shell-literal-canonical-root> <shell-literal-nonce-or-null> <shell-literal-owner-digest-or-null> <shell-literal-stage-digest-or-null> <shell-literal-payload-digest-or-null>',
+  ]) {
+    assert.equal(countExact(body, command), 1, `init-backlog must carry the safe schematic command: ${command}`)
+  }
+  assert.equal(countExact(body, '<canonical-root>'), 0, 'init-backlog must not carry a bare canonical-root metavariable')
+}
+
+function assertReserveFirst(body) {
+  const processStart = body.indexOf('## Process')
+  const processEnd = body.indexOf('## Version control', processStart)
+  assert.notEqual(processStart, -1, 'init-backlog must retain its Process section')
+  assert.notEqual(processEnd, -1, 'init-backlog must retain the section after Process')
+  const process = body.slice(processStart, processEnd)
+  const reserve = process.indexOf('Run `--reserve-request` first')
+  const residue = process.indexOf('Only when reservation reports typed `request-residue`')
+  assert.notEqual(reserve, -1, 'init-backlog must reserve before inspecting residue')
+  assert.notEqual(residue, -1, 'init-backlog must limit residue inspection to a typed reservation collision')
+  assert.equal(reserve < residue, true, 'request reservation must precede conditional residue inspection')
 }
 
 function extractPlansBullet(name, text) {
@@ -176,7 +206,6 @@ function runActivationCases(repositoryRoot) {
     assert.notEqual(countExact(body, '--reserve-request'), 0, 'init-backlog must reserve the request spool before dispatch')
     assert.notEqual(countExact(body, '--consume-request'), 0, 'init-backlog must consume the reserved request spool')
     assert.notEqual(countExact(body, '--inspect-request-residue'), 0, 'init-backlog must inspect request-spool residue')
-    assert.equal(countExact(body, 'never through argv, shell quoting, command substitution, or an inline script'), 1, 'init-backlog must forbid non-spool controller transport')
     let previousIndex = -1
     for (const [expectation, token] of ORDERED_WORKFLOW_TOKENS) {
       const tokenIndex = body.indexOf(token, previousIndex + 1)
@@ -187,6 +216,29 @@ function runActivationCases(repositoryRoot) {
     assert.equal(countExact(body, 'deliberately withholds both prose images'), 1, 'mechanical breakout unwraps must use the digest-only disclosure carrier')
     assert.equal(countExact(body, 'Any changed bound fact outside the approved simulated states'), 1, 'unrelated drift must invalidate the carried inspection')
     assert.equal(countExact(body, 'never resubmit or hand-edit an old manifest'), 1, 'drift recovery must require a fresh inspect and fresh approval')
+  })
+
+  test('controller command examples encode every substituted operand as a shell literal', () => {
+    const body = skillBody()
+
+    assertControllerCommandSafety(body)
+    assert.throws(
+      () => assertControllerCommandSafety(body.replace(SHELL_LITERAL_SENTENCE, '')),
+      (error) => error.name === 'AssertionError' && error.message.includes('active-shell literal encoding'),
+      'removing the shell-literal contract must fail the safety assertion',
+    )
+  })
+
+  test('request reservation precedes residue inspection and cleanup', () => {
+    const body = skillBody()
+
+    assertReserveFirst(body)
+    const mutated = body.replace('Run `--reserve-request` first', 'Run reservation later').replace('Only when reservation reports typed `request-residue`', 'Only when reservation reports typed `request-residue`, run `--reserve-request` first')
+    assert.throws(
+      () => assertReserveFirst(mutated),
+      (error) => error.name === 'AssertionError' && error.message.includes('reserve'),
+      'moving residue inspection ahead of reservation must fail the ordering assertion',
+    )
   })
 
   test('approval precedes apply and denial issues no apply request', () => {
