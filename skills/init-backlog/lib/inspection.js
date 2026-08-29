@@ -722,7 +722,7 @@ function collectInspection(root, host, hostContext = {}, options = {}) {
         const output = decodeTargetText(entry.descriptor.bytes).bom ? Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), logicalOutput]) : logicalOutput
         const emptyRegion = record.editableRegions.find((item) => item.regionId.endsWith('empty-document')) ?? { endByte: 0, regionId: `${entry.target.replaceAll('/', '.')}.empty-document`, startByte: 0 }
         const before = entry.descriptor.bytes.toString('base64')
-        const action = { afterBase64: output.toString('base64'), beforeBase64: before, kind: 'exact-edit', mode: record.mode, regionId: emptyRegion.regionId, target: entry.target }
+        const action = { afterBase64: output.toString('base64'), beforeBase64: before, kind: 'exact-edit', regionId: emptyRegion.regionId, target: entry.target }
         proposals.push(proposal(entry.target === '.gitignore' ? 'plans-policy' : entry.target === guidance.resolvedTarget ? 'guidance-section' : 'empty-target', record.newline === 'crlf' || record.newline === 'lf' ? 'always' : variant.condition, action, before, output.toString('base64')))
       }
     }

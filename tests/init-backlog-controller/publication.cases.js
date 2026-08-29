@@ -7,6 +7,7 @@ const { join, relative } = require('node:path')
 const test = require('node:test')
 
 const { publishApply, temporaryPaths } = require('../../skills/init-backlog/lib/publication')
+const { effectiveActionFileMode } = require('../../skills/init-backlog/lib/actions')
 const { runPrivateDispatcher } = require('../../skills/init-backlog/init-backlog')
 const { admitApplyManifest } = require('../../skills/init-backlog/lib/apply-manifest')
 const { InitBacklogError, failureRecord } = require('../../skills/init-backlog/lib/errors')
@@ -178,6 +179,12 @@ function assertOwnerStageMutationRejected({ transition, mutate, mutateAfterWrite
 }
 
 function runPublicationCases() {
+  test('exact edits preserve the inspected file mode across publication checks', () => {
+    assert.equal(effectiveActionFileMode({ kind: 'exact-edit' }, 0o600, { platform: 'linux' }), 0o600)
+    assert.equal(effectiveActionFileMode({ kind: 'create-from-template', mode: 0o640 }, null, { platform: 'linux' }), 0o640)
+    assert.equal(effectiveActionFileMode({ kind: 'exact-edit' }, 0o600, { platform: 'win32' }), null)
+  })
+
   test('ordinary apply rejects every present recovery gate before changing project targets', () => {
     for (const shape of ['empty', 'malformed', 'owned']) {
       const fixture = unwrapBackupFailureFixture()

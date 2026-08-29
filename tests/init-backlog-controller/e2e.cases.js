@@ -208,7 +208,7 @@ const SEMANTIC_INSERTION_CASES = [
 // satisfied decision for every semantic target the inspection requires.
 function semanticDecisionsFor(inspection, status = 'satisfied') {
   return inspection.targets
-    .filter((item) => item.contentRole === 'semantic' && item.templateId !== null && !item.states.includes('exact-template'))
+    .filter((item) => item.contentRole === 'semantic' && item.templateId !== null && !item.states.includes('exact-template') && !(item.contentBase64 !== null && item.contentBase64.length === 0 && inspection.proposals.some((proposal) => proposal.action.target === item.target && proposal.reason === 'empty-target' && proposal.condition === 'always')))
     .map((item) => ({
       conceptIds: inspection.templates.find((entry) => entry.templateId === item.templateId && entry.target === item.target)?.conceptIds ?? [],
       status,
@@ -268,6 +268,28 @@ function runE2eCases() {
       for (const problem of outcome.record.problems) {
         assert.equal(problem.evidencePaths.some((item) => item.endsWith('/')), false, `problem evidence carries a trailing separator: ${problem.code}`)
       }
+    } finally {
+      removeRoot(root)
+    }
+  })
+
+  test('inspection carries an empty controlled file through the production dispatcher', () => {
+    const root = makeRoot()
+    try {
+      writeFileSync(join(root, 'CLAUDE.md'), BARE_GUIDANCE, 'utf8')
+      mkdirSync(join(root, '.claude'))
+      writeFileSync(join(root, '.claude', 'BUGS.md'), Buffer.alloc(0))
+
+      const outcome = driveCli(root, inspectRequest(root, 'claude-code', claudeHostContext('included')))
+
+      assert.equal(outcome.stderr, '', 'the empty-file proposal must remain protocol-valid')
+      assert.equal(outcome.exitCode, 0)
+      const action = outcome.record.proposals.find((proposal) => proposal.action.kind === 'exact-edit' && proposal.action.target === '.claude/BUGS.md').action
+      assert.deepEqual(Object.keys(action).sort(), ['afterBase64', 'beforeBase64', 'id', 'kind', 'regionId', 'target'])
+      const applied = driveCli(root, buildApplyRequest(root, outcome.record))
+      assert.equal(applied.exitCode, 0, canonicalJson(applied))
+      assert.equal(applied.record.ok, true)
+      assert.notEqual(readFileSync(join(root, '.claude', 'BUGS.md')).length, 0)
     } finally {
       removeRoot(root)
     }

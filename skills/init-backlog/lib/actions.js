@@ -2,7 +2,7 @@
 
 const { lstatSync } = require('node:fs')
 
-const { containedTargetPath, stableOpenFile, verifyFinalMode } = require('./filesystem')
+const { containedTargetPath, platformMode, stableOpenFile, verifyFinalMode } = require('./filesystem')
 const { canonicalJson, proposalsByCanonicalAction } = require('./protocol')
 const { unwrapText } = require('../unwrap')
 
@@ -10,6 +10,10 @@ const POSIX_DEFAULT_FILE_MODE = 0o644
 
 function targetPath(root, target) {
   return containedTargetPath(root, target, 'Publication target escapes its root')
+}
+
+function effectiveActionFileMode(action, priorMode, options) {
+  return platformMode(options, action.mode ?? priorMode ?? POSIX_DEFAULT_FILE_MODE)
 }
 
 function proposalAfter(request, action) {
@@ -88,6 +92,7 @@ module.exports = {
   POSIX_DEFAULT_FILE_MODE,
   actionAfter,
   actionBefore,
+  effectiveActionFileMode,
   targetMatchesOutput,
   targetPath,
 }

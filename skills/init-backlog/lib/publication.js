@@ -4,7 +4,7 @@ const { randomBytes } = require('node:crypto')
 const { dirname, join, relative } = require('node:path')
 const { lstatSync, mkdirSync } = require('node:fs')
 
-const { POSIX_DEFAULT_FILE_MODE, actionAfter, actionBefore, targetMatchesOutput, targetPath } = require('./actions')
+const { actionAfter, actionBefore, effectiveActionFileMode, targetMatchesOutput, targetPath } = require('./actions')
 const { admitApplyManifest } = require('./apply-manifest')
 const { BACKUP_PATTERN, backupStageTarget, backupTarget, retainedBackupPaths } = require('./backups')
 const { InitBacklogError, failureRecord, trustedSystemCode } = require('./errors')
@@ -837,6 +837,7 @@ function resumeInspectionProjection(inspection, actionTargets, markerStates, sco
 }
 
 function allActionsComplete(request, admission, root, options) {
+  const targetModes = new Map((request.inspection.targets ?? []).map((record) => [record.target, record.mode]))
   for (const action of admission.actions) {
     const path = targetPath(root, action.target)
     if (action.kind === 'ensure-directory') {
@@ -845,7 +846,7 @@ function allActionsComplete(request, admission, root, options) {
       continue
     }
     const bytes = actionAfter(request, action, root, options)
-    const mode = platformMode(options, action.mode ?? POSIX_DEFAULT_FILE_MODE)
+    const mode = effectiveActionFileMode(action, targetModes.get(action.target), options)
     if (bytes === null || !targetMatchesOutput(root, path, 'file', bytes, mode, options)) return false
   }
 
@@ -1122,7 +1123,7 @@ function publishApply(request, options = {}) {
     for (let index = 0; index < allActions.length; index += 1) {
       const action = allActions[index]
       const bytes = actionAfter(request, action, root, options)
-      expectedTemporaries.set(actionTemps[index], { bytes, destination: targetPath(root, action.target), mode: bytes === null ? null : platformMode(options, action.mode ?? POSIX_DEFAULT_FILE_MODE) })
+      expectedTemporaries.set(actionTemps[index], { bytes, destination: targetPath(root, action.target), mode: bytes === null ? null : effectiveActionFileMode(action, states.get(action.target)?.mode, options) })
     }
     if (admission.electionMarker.state !== 'absent') {
       const finalMarkerBytes = markerBytes(request, admission, root)
@@ -1185,7 +1186,7 @@ function publishApply(request, options = {}) {
         for (let chainIndex = index; chainIndex < endIndex && allActions[chainIndex].target === action.target; chainIndex += 1) chain.push(allActions[chainIndex])
         if (chain.length > 1 && action.kind !== 'ensure-directory') {
           const terminalBytes = actionAfter(request, chain[chain.length - 1], root, options)
-          const terminalMode = platformMode(options, chain[chain.length - 1].mode ?? state.mode ?? POSIX_DEFAULT_FILE_MODE)
+          const terminalMode = effectiveActionFileMode(chain[chain.length - 1], state.mode, options)
           if (terminalBytes !== null && targetMatchesOutput(root, path, 'file', terminalBytes, terminalMode, options)) {
             for (const completed of chain) outcomes.push({ actionId: completed.id, status: 'skipped-complete', target: completed.target })
             state.present = true
@@ -1207,7 +1208,7 @@ function publishApply(request, options = {}) {
           const bytes = actionAfter(request, action, root, options)
           if (bytes === null) publicationError('Approved action has no content image.', { code: 'manifest-invalid', phase: 'prevalidate', manifestId: admission.manifestId, actionId: action.id, target: action.target })
           let already = false
-          const effectiveMode = platformMode(options, action.mode ?? state.mode ?? POSIX_DEFAULT_FILE_MODE)
+          const effectiveMode = effectiveActionFileMode(action, state.mode, options)
           already = targetMatchesPublishedTemporary(root, path, bytes, effectiveMode, actionTemps[index], publicationOptions) || targetMatchesOutput(root, path, 'file', bytes, effectiveMode, options)
           const expectedContent = state.content ?? actionBefore(request, action, root, options)
           let published
