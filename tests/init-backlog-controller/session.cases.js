@@ -168,16 +168,12 @@ function runSessionCases(repositoryRoot) {
   const copyControllerRuntime = () => {
     const copyScope = tempRoot()
     const copiedEntry = join(copyScope, 'skills', 'init-backlog', 'init-backlog.js')
-    mkdirSync(dirname(copiedEntry), { recursive: true })
-    cpSync(controllerEntryPath, copiedEntry)
-    cpSync(join(repositoryRoot, 'skills', 'init-backlog', 'lib'), join(copyScope, 'skills', 'init-backlog', 'lib'), { recursive: true })
-    cpSync(join(repositoryRoot, 'skills', 'init-backlog', 'templates'), join(copyScope, 'skills', 'init-backlog', 'templates'), { recursive: true })
-    cpSync(join(repositoryRoot, 'skills', 'init-backlog', 'unwrap.js'), join(copyScope, 'skills', 'init-backlog', 'unwrap.js'))
-    cpSync(join(repositoryRoot, 'skills', 'init-backlog', 'windows-attributes.ps1'), join(copyScope, 'skills', 'init-backlog', 'windows-attributes.ps1'))
-    mkdirSync(join(copyScope, 'skills', 'ready'), { recursive: true })
-    cpSync(join(repositoryRoot, 'skills', 'ready', 'ready.js'), join(copyScope, 'skills', 'ready', 'ready.js'))
-    mkdirSync(join(copyScope, 'skills', 'spec-agreement'), { recursive: true })
-    cpSync(join(repositoryRoot, 'skills', 'spec-agreement', 'spec-agreement.js'), join(copyScope, 'skills', 'spec-agreement', 'spec-agreement.js'))
+    const closure = driver.collectControllerRuntimeClosure({ entryPath: controllerEntryPath })
+    for (const file of closure.files) {
+      const target = join(copyScope, ...file.path.split('/'))
+      mkdirSync(dirname(target), { recursive: true })
+      cpSync(join(repositoryRoot, ...file.path.split('/')), target)
+    }
 
     return { copiedEntry, copyScope }
   }

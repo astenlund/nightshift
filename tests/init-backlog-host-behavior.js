@@ -1839,7 +1839,7 @@ function runLivePreSessionCommand({
   })
 }
 
-function createLiveBindings({ filesystem = nodeFilesystem, platform }) {
+function createLiveBindings({ filesystem = nodeFilesystem, platform, processAdapterFactory = driver.createProductionProcessAdapter }) {
   const preSessionAdapters = new Set()
   const workerRegistry = new Map()
   const proxyRegistry = new Map()
@@ -1881,7 +1881,7 @@ function createLiveBindings({ filesystem = nodeFilesystem, platform }) {
       },
       onOverflow: () => workerFailure({ detailCode: 'output-capacity' }),
     })
-    const production = attemptProcessAdapterConstruction(driver.createProductionProcessAdapter, {
+    const production = attemptProcessAdapterConstruction(processAdapterFactory, {
       cwd: call.cwd,
       mode: 'session',
       onFailure: workerFailure,
@@ -2819,6 +2819,7 @@ module.exports = {
   collectQualifyingWriterCodes,
   collectTerminalRepository,
   createApplyCallRecorder,
+  createLiveBindings,
   createScenarioGitRunner,
   createTerminalRepositoryCollector,
   deriveVerifiedLoadedMemory,

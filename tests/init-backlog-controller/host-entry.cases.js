@@ -566,6 +566,7 @@ function runHostEntryCases(repositoryRoot) {
       'collectQualifyingWriterCodes',
       'collectTerminalRepository',
       'createApplyCallRecorder',
+      'createLiveBindings',
       'createScenarioGitRunner',
       'createTerminalRepositoryCollector',
       'deriveVerifiedLoadedMemory',
@@ -2279,6 +2280,40 @@ function runHostEntryCases(repositoryRoot) {
       assert.equal(nodeFilesystem.existsSync(harness.roots[2]), false, 'the pre-spawn worker root is removed after construction failure')
     } finally {
       nodeFilesystem.rmSync(scratch, { force: true, recursive: true })
+    }
+  })
+
+  test('the live worker constructor maps a thrown adapter factory to spawn failure', async () => {
+    const live = hostBehavior.createLiveBindings({
+      filesystem: nodeFilesystem,
+      platform: 'win32',
+      processAdapterFactory: () => {
+        throw new Error('synthetic worker construction failure')
+      },
+    })
+    try {
+      const completion = await live.launch({
+        argv: ['worker', 'entry.js', 'a'.repeat(64)],
+        boundary: 'worker',
+        cwd: 'C:/synthetic-run-root',
+        environment: {},
+        executable: 'node.exe',
+        host: 'codex',
+      })
+
+      assert.deepEqual(completion, {
+        failure: {
+          code: 'harness-infrastructure',
+          detailCode: 'spawn',
+          host: 'codex',
+          initialCode: null,
+          ok: false,
+          phase: 'initial-turn',
+          retainedRunRoot: null,
+        },
+      })
+    } finally {
+      live.dispose()
     }
   })
 
