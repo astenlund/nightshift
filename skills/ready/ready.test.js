@@ -1673,6 +1673,40 @@ test('a link to a duplicated self-target resolves to neither claimant', () => {
   assert.ok(!titles(result.ready).includes('Dependent'), titles(result.ready).join(' | '));
 });
 
+const HOSTILE_DUPLICATE_SELF_TARGET_FEATURES = `# Features
+
+## Area
+
+### [First hostile](../dup.md)
+
+**Requires:** none.
+
+### [Second hostile](../dup.md)
+
+**Requires:** none.
+
+### [Dependent](features/dependent.md)
+
+**Requires:** [First hostile](../dup.md).
+`;
+
+test('a link to a self-target path claimed twice outside the catalog grammar resolves to neither claimant', () => {
+  const result = analyze({ FEATURES: HOSTILE_DUPLICATE_SELF_TARGET_FEATURES });
+  const dependent = findByTitle(result.structuralErrors, 'Dependent');
+  assert.ok(dependent, JSON.stringify(result.structuralErrors));
+  assert.ok(dependent.problem.includes('ambiguous reference'), dependent.problem);
+  assert.ok(
+    !titles(result.blocked).includes('Dependent'),
+    `a hostile duplicate must not silently block on one claimant: ${titles(result.blocked).join(' | ')}`,
+  );
+  assert.ok(!titles(result.ready).includes('Dependent'), titles(result.ready).join(' | '));
+  assert.deepStrictEqual(
+    result.structuralErrors.filter((e) => e.index === '[duplicate]'),
+    [],
+    'a self-target outside the catalog grammar stays a broken-link notice, never a duplicate report',
+  );
+});
+
 test('breakoutTargets include entries whose classification terminated in a structural error', () => {
   assert.ok(gates.breakoutTargets.some((t) => t.target === 'features/kappa.md'), JSON.stringify(gates.breakoutTargets));
 });

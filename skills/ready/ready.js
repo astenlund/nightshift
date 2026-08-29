@@ -551,7 +551,10 @@ function buildRegistry(indexEntries) {
   // silently binds links to whichever entry wrote it last. Every claimant is
   // retained here instead, so the collision reports structurally and resolution
   // refuses to pick either. A self-target outside the closed catalog-reference
-  // grammar is already reported as a broken link and never joins the graph.
+  // grammar is already reported as a broken link, so it never joins the path
+  // graph at all: admitting it would reintroduce that silent shadowing on a key
+  // no duplicate report may claim. Links to such an entry still resolve through
+  // the slug and title routes, which carry their own duplicate detection.
   const pathGroups = new Map();
   for (const rec of indexEntries) {
     const titleKey = normalizeTitle(rec.entry.title);
@@ -559,8 +562,8 @@ function buildRegistry(indexEntries) {
     else byTitle.set(titleKey, rec);
     const pathKey = targetPathKey(rec.entry.selfTarget);
     if (pathKey) {
-      byPath.set(pathKey, rec);
       if (isCatalogReferenceTarget(rec.entry.selfTarget)) {
+        byPath.set(pathKey, rec);
         const group = pathGroups.get(pathKey);
         if (group === undefined) pathGroups.set(pathKey, [rec]);
         else group.push(rec);
@@ -1062,8 +1065,11 @@ function addDuplicatePathErrors(out, registry) {
   for (const [pathKey, records] of [...registry.pathDupes].sort(([left], [right]) => compareTargets(left, right))) {
     const claimants = records.map((record) => `${record.index} "${record.entry.title}"`).join(' and ');
     const evidencePaths = records.map((record) => record.index);
+    // Only catalog-reference self-targets reach the path graph, so every
+    // claimant here carries one and no traversing or absolute target can be
+    // offered as an evidence path.
     for (const record of records) {
-      if (isCatalogReferenceTarget(record.entry.selfTarget)) evidencePaths.push(record.entry.selfTarget.split('#')[0]);
+      evidencePaths.push(record.entry.selfTarget.split('#')[0]);
     }
     pushStructuralError(out, {
       index: '[duplicate]',
