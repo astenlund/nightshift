@@ -1471,7 +1471,7 @@ async function runEvaluation(options) {
           executable: nodeExecutablePath,
           host,
         })
-        if (workerCompletion !== null && typeof workerCompletion === 'object' && workerCompletion.failure?.code === 'harness-infrastructure') {
+        if (isWorkerConstructionFailure(workerCompletion?.failure, host)) {
           return finishRepetition({
             outcome: { result: workerCompletion.failure },
             phase: workerCompletion.failure.phase,
@@ -1674,6 +1674,27 @@ function infrastructureCarrier({ detailCode, host, initialCode = null, phase, re
   }
 
   return driver.infrastructureFailure({ detailCode, host, initialCode, phase, retainedRunRoot })
+}
+
+const INFRASTRUCTURE_CARRIER_KEYS = Object.freeze(['code', 'detailCode', 'host', 'initialCode', 'ok', 'phase', 'retainedRunRoot'])
+const WORKER_CONSTRUCTION_DETAIL_CODES = Object.freeze(['containment-unavailable', 'spawn'])
+
+function isWorkerConstructionFailure(failure, host) {
+  if (failure === null || typeof failure !== 'object' || Array.isArray(failure)) {
+    return false
+  }
+  const keys = Object.keys(failure).sort()
+  if (keys.length !== INFRASTRUCTURE_CARRIER_KEYS.length || keys.some((key, index) => key !== INFRASTRUCTURE_CARRIER_KEYS[index])) {
+    return false
+  }
+
+  return failure.ok === false
+    && failure.host === host
+    && failure.code === 'harness-infrastructure'
+    && failure.phase === 'initial-turn'
+    && failure.initialCode === null
+    && WORKER_CONSTRUCTION_DETAIL_CODES.includes(failure.detailCode)
+    && failure.retainedRunRoot === null
 }
 
 function latestClassificationsByTarget(turnRecords) {

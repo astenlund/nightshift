@@ -2153,6 +2153,33 @@ function runHostEntryCases(repositoryRoot) {
     }
   })
 
+  test('a partial worker infrastructure carrier retains its root through the proxy fallback', async () => {
+    const scratch = tempRoot()
+    try {
+      const harness = createEvaluationHarness(scratch, {
+        onLaunch: (call) => call.boundary === 'worker'
+          ? { failure: { code: 'harness-infrastructure', retainedRunRoot: null } }
+          : null,
+      })
+      const evaluation = await hostBehavior.runEvaluation(harness.options)
+
+      assert.equal(evaluation.exitCode, 1)
+      assert.deepEqual(evaluation.result, {
+        ok: false,
+        host: 'claude-code',
+        code: 'harness-infrastructure',
+        phase: 'initial-turn',
+        initialCode: null,
+        detailCode: 'proxy',
+        retainedRunRoot: harness.roots[2],
+      })
+      assert.deepEqual(evaluation.rows, [])
+      assert.equal(nodeFilesystem.existsSync(harness.roots[2]), true, 'an untrusted partial carrier cannot authorize root removal')
+    } finally {
+      nodeFilesystem.rmSync(scratch, { force: true, recursive: true })
+    }
+  })
+
   test('a pre-spawn worker construction failure preserves spawn identity and removes its root', async () => {
     const scratch = tempRoot()
     try {
