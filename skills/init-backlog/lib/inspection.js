@@ -12,7 +12,7 @@ const { InitBacklogError, failureRecord } = require('./errors')
 const { HTML_BLOCK_TYPE_SIX_TAGS, discoverControlledMarkdown, resolveGuidance } = require('./guidance')
 const { canonicalRoot, comparableIdentity, comparableMode, createInitialLock, initialLockPaths, removeInitialLock, stableOpenFile, targetPath } = require('./filesystem')
 const { BACKUP_DIRECTORY, DIGEST_PATTERN, RECOVERY_LOCK_BASENAME, RECOVERY_LOCK_STAGE_PATTERN, RECOVERY_MARKER_BASENAME, canonicalJson, compareOrdinal, deriveProposalId, deriveSnapshotId, sameKeys, sha256 } = require('./protocol')
-const { detectGitKind, inspectGitPolicy, newlineStyle } = require('./git-policy')
+const { PLANS_ROOT_RULE_EFFECTIVE, detectGitKind, inspectGitPolicy, newlineStyle } = require('./git-policy')
 
 function inspectError(code, detail, target = null, cause, phase = 'inspect') {
   throw new InitBacklogError(failureRecord({ code, detail, operation: 'inspect', phase, target }), cause === undefined ? undefined : { cause })
@@ -575,12 +575,6 @@ function guidanceNewlineEvidence(root, guidance, options = {}) {
   }).filter((item) => item.style === 'lf' || item.style === 'crlf')
 }
 
-function gitignoreEntryBytes(descriptors) {
-  const entry = descriptors.find((candidate) => candidate.target === '.gitignore')
-
-  return entry?.descriptor.present ? entry.descriptor.bytes.toString('utf8') : undefined
-}
-
 function collectInspection(root, host, hostContext = {}, options = {}) {
   const canonical = canonicalRoot(root)
   let guidance
@@ -685,7 +679,7 @@ function collectInspection(root, host, hostContext = {}, options = {}) {
 
       return { family, mode: item.mode, siblingStyles, target: item.target }
     })
-    gitRecord = inspectGitPolicy(canonical, { ...options, attributePaths: targetRecords.filter((item) => item.kind === 'file').map((item) => item.target), electionMarker: marker.marker, electionMarkerMode: marker.mode, electionMarkerSnapshotId: marker.snapshotId, freshScaffold: false, gitignoreText: gitignoreEntryBytes(descriptors), ignoreProbes, kind: git.kind, newlineTargets, siblingStyles: targetRecords.filter((item) => item.kind === 'file').map((item) => item.newline) })
+    gitRecord = inspectGitPolicy(canonical, { ...options, attributePaths: targetRecords.filter((item) => item.kind === 'file').map((item) => item.target), electionMarker: marker.marker, electionMarkerMode: marker.mode, electionMarkerSnapshotId: marker.snapshotId, freshScaffold: false, ignoreProbes, kind: git.kind, newlineTargets, siblingStyles: targetRecords.filter((item) => item.kind === 'file').map((item) => item.newline) })
   } catch (error) {
     inspectError('git-policy', 'Git policy inspection failed.', null, error)
   }
@@ -749,7 +743,8 @@ function collectInspection(root, host, hostContext = {}, options = {}) {
 
     return fragmentBytes.toString('utf8').split('\n').filter((line) => line.length > 0 && !present.has(line))
   }
-  if (appendableGitignore && mandatoryPlans.length > 0 && gitRecord.plansPolicy !== 'satisfied' && gitRecord.plansPolicy !== 'nested-conflict' && missingIgnoreLines(mandatoryPlans).length > 0) {
+  const rootPlansRuleEffective = gitRecord[PLANS_ROOT_RULE_EFFECTIVE] === true
+  if (appendableGitignore && mandatoryPlans.length > 0 && gitRecord.plansPolicy !== 'satisfied' && gitRecord.plansPolicy !== 'nested-conflict' && !rootPlansRuleEffective) {
     appendGitignorePolicy('plans-policy', 'always', mandatoryPlans)
   }
   // The election's ignore branch is the only selector of the elective append,

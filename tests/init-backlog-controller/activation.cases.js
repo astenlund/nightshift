@@ -309,6 +309,34 @@ function runActivationCases(repositoryRoot) {
     assert.equal(result.git.electionRequired, false, 'the mandatory append must not depend on the non-plan election')
   })
 
+  test('a later root negation requires a final positive plans rule', () => {
+    const seed = '.claude/plans/\n!.claude/plans/\n'
+    const { result } = inspectFixture({
+      gitignore: seed,
+      ignore: (probe) => probe.startsWith('.claude/plans') ? { line: '2', pattern: '!.claude/plans/', source: '.gitignore' } : null,
+    })
+
+    assert.equal(result.git.plansPolicy, 'action-required')
+    const proposals = plansPolicyProposals(result)
+    assert.equal(proposals.length, 1)
+    assert.equal(decode(proposals[0].beforeBase64), seed)
+    assert.equal(decode(proposals[0].afterBase64), `${seed}.claude/plans/\n`)
+  })
+
+  test('a tracked conflict still repairs a root rule defeated by a later negation', () => {
+    const seed = '.claude/plans/\n!.claude/plans/\n'
+    const { result } = inspectFixture({
+      gitignore: seed,
+      ignore: (probe) => probe.startsWith('.claude/plans') ? { line: '2', pattern: '!.claude/plans/', source: '.gitignore' } : null,
+      trackedPlanPaths: ['.claude/plans/example.md'],
+    })
+
+    assert.equal(result.git.plansPolicy, 'tracked-conflict')
+    const proposals = plansPolicyProposals(result)
+    assert.equal(proposals.length, 1)
+    assert.equal(decode(proposals[0].afterBase64), `${seed}.claude/plans/\n`)
+  })
+
   test('a tracked conflict stays incomplete and independently carries the required append', () => {
     const { result } = inspectFixture({ gitignore: 'node_modules/\n', ignore: () => null, trackedPlanPaths: ['.claude/plans/2026-08-25-example.md'] })
     assert.equal(result.git.plansPolicy, 'tracked-conflict')

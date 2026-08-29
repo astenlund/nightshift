@@ -273,6 +273,35 @@ function runE2eCases() {
     }
   })
 
+  test('a later plans negation is repaired through the public inspect and apply path', () => {
+    const root = makeGitRoot()
+    try {
+      writeFileSync(join(root, 'CLAUDE.md'), BARE_GUIDANCE, 'utf8')
+      mkdirSync(join(root, '.claude'), { recursive: true })
+      writeFileSync(join(root, '.claude', 'QUICK_WINS.md'), '# Quick wins\n', 'utf8')
+      const seed = '.claude/plans/\n!.claude/plans/\n!.claude/plans/**\n'
+      writeFileSync(join(root, '.gitignore'), seed, 'utf8')
+      assert.equal(ignoredByGit(root, '.claude/plans/example.md'), false, 'the fixture must expose the later negation')
+
+      const inspected = driveCli(root, inspectRequest(root, 'claude-code', claudeHostContext('included')))
+      assert.equal(inspected.exitCode, 0, inspected.stderr)
+      assert.equal(inspected.record.git.plansPolicy, 'action-required')
+      const plansProposal = inspected.record.proposals.find((proposal) => proposal.reason === 'plans-policy')
+      assert.ok(plansProposal, JSON.stringify(inspected.record.proposals))
+      assert.equal(Buffer.from(plansProposal.afterBase64, 'base64').toString('utf8'), `${seed}.claude/plans/\n`)
+
+      const applied = driveCli(root, buildApplyRequest(root, inspected.record))
+      assert.equal(applied.exitCode, 0, applied.stderr)
+      assert.equal(applied.record.ok, true, JSON.stringify(applied.record))
+      assert.equal(applied.record.complete, true, JSON.stringify(applied.record.incompleteTargets))
+      assert.equal(applied.record.postInspect.git.plansPolicy, 'satisfied')
+      assert.equal(ignoredByGit(root, '.claude/plans/example.md'), true)
+      assert.equal(readFileSync(join(root, '.gitignore'), 'utf8'), `${seed}.claude/plans/\n`)
+    } finally {
+      removeRoot(root)
+    }
+  })
+
   test('inspection over a Git repository whose backlog directories are ignored survives the CLI transport', () => {
     const root = makeGitRoot()
     try {

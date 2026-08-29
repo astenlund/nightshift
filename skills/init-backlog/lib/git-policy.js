@@ -12,6 +12,7 @@ const GIT_CANDIDATES = ['HEAD', 'objects', 'refs']
 const GIT_ATTRIBUTE_NAMES = ['text', 'eol', 'filter', 'ident', 'working-tree-encoding']
 const CONFIG_KEYS = ['core.autocrlf', 'core.eol', 'core.excludesFile']
 const [AUTOCRLF_CONFIG_KEY, EOL_CONFIG_KEY, EXCLUDES_FILE_CONFIG_KEY] = CONFIG_KEYS
+const PLANS_ROOT_RULE_EFFECTIVE = Symbol('plansRootRuleEffective')
 
 function buffers(value) {
   return Buffer.isBuffer(value) ? value : Buffer.from(value ?? '', 'utf8')
@@ -478,7 +479,7 @@ function inspectGitPolicy(root, options = {}) {
     const match = classifySource(gateResults[gateIndex])
     if (match !== null && !match.diagnostic && match.sourcePath !== '.gitignore' && match.pattern !== null) nestedConflict = true
   }
-  const rootRuleEffective = options.rootRuleEffective === true || planMatch?.sourcePath === '.gitignore' && planMatch.pattern !== null || typeof options.gitignoreText === 'string' && options.gitignoreText.replaceAll('\r\n', '\n').split('\n').includes('.claude/plans/')
+  const rootRuleEffective = options.rootRuleEffective === true || planMatch?.sourcePath === '.gitignore' && planMatch.pattern !== null
   nestedConflict = options.nestedConflict === true || nestedConflict || planMatch !== null && planMatch.pattern !== null && planMatch.sourcePath !== '.gitignore'
   const plansPolicy = classifyPlansPolicy({ git: true, rootRuleEffective, nestedConflict, trackedPlanPaths })
   const attrsByPath = new Map()
@@ -490,6 +491,7 @@ function inspectGitPolicy(root, options = {}) {
   const platformEol = options.platformEol ?? (platform === 'win32' ? 'crlf' : 'lf')
   const newlinePolicies = (options.newlineTargets ?? []).map((target) => resolveNewlinePolicy({ ...attrsByPath.get(target.target), autocrlf, eol, kind: 'git', mode: target.mode ?? null, platformEol, target: target.target }))
   const policy = normalizeGitPolicy({ kind: 'git', objectFormat: format, trackedPlanPaths, trackedBacklogPaths, nonPlanIgnoreMatches: ignoreMatches, nonPlanUnignoredPaths, newlinePolicies, electionMarker: options.electionMarker ?? 'absent', electionMarkerMode: options.electionMarkerMode ?? null, electionMarkerSnapshotId: options.electionMarkerSnapshotId ?? null, freshScaffold: options.freshScaffold === true, electionRequired: options.electionMarker && options.electionMarker !== 'absent' || options.freshScaffold === true, plansPolicy })
+  Object.defineProperty(policy, PLANS_ROOT_RULE_EFFECTIVE, { value: rootRuleEffective })
   return policy
 }
 
@@ -658,6 +660,7 @@ function normalizeElectionMarker(value) {
 module.exports = {
   CONFIG_KEYS,
   GIT_CANDIDATES,
+  PLANS_ROOT_RULE_EFFECTIVE,
   candidateSet,
   classifyCheckAttrProcess,
   classifyGitKind,
