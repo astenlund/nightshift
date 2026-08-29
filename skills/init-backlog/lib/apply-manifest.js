@@ -8,6 +8,7 @@ const { InitBacklogError, failureRecord } = require('./errors')
 const { buildReadyCatalog, inspectRegions } = require('./inspection')
 const {
   canonicalActionOrder,
+  canonicalJson,
   compareOrdinal,
   deriveManifestId,
   deriveSemanticActionId,
@@ -132,7 +133,8 @@ function selectedProposals(inspection, dispositions, choice) {
 }
 
 function proposalForAction(action, proposals) {
-  const proposal = proposals.find((item) => sameCanonical(item.action, action))
+  const canonicalAction = canonicalJson(action)
+  const proposal = proposals.find((item) => canonicalJson(item.action) === canonicalAction)
   if (proposal !== undefined) return proposal
   if (action.kind === 'exact-edit' && isSemanticActionId(action.id)) return null
   admissionError('Action is not one of the approved proposals.', { actionId: action.id, target: action.target })
@@ -407,7 +409,10 @@ function admitApplyManifest(request, options = {}) {
   for (const action of actions) {
     if (proposalForAction(action, selected) === null) authoredActionIds.add(action.id)
   }
-  for (const action of selectedActions) if (!actions.some((item) => sameCanonical(item, action))) admissionError('A selected proposal action is missing.', { actionId: action.id })
+  for (const action of selectedActions) {
+    const canonicalAction = canonicalJson(action)
+    if (!actions.some((item) => canonicalJson(item) === canonicalAction)) admissionError('A selected proposal action is missing.', { actionId: action.id })
+  }
   let ordered
   try {
     ordered = canonicalActionOrder(actions)

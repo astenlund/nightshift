@@ -147,7 +147,8 @@ function initialStates(inspection, root, options) {
 }
 
 function proposalAfter(request, action) {
-  const proposal = (request.inspection.proposals ?? []).find((item) => canonicalJson(item.action) === canonicalJson(action))
+  const canonicalAction = canonicalJson(action)
+  const proposal = (request.inspection.proposals ?? []).find((item) => canonicalJson(item.action) === canonicalAction)
   if (proposal?.afterBase64 !== null && proposal?.afterBase64 !== undefined) return Buffer.from(proposal.afterBase64, 'base64')
   if (action.afterBase64 !== null && action.afterBase64 !== undefined) return Buffer.from(action.afterBase64, 'base64')
 
