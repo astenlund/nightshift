@@ -397,13 +397,19 @@ function findLabel(bodyLines, labelRe) {
 }
 
 function findLabelInRecords(records, labelRe) {
+  return findLabelsInRecords(records, labelRe)[0] ?? null;
+}
+
+function findLabelsInRecords(records, labelRe) {
+  const labels = [];
   for (let i = 0; i < records.length; i++) {
     const line = records[i].content;
     if (records[i].outsideFence && labelRe.test(line.trim()) && !/^\s+/.test(line)) {
-      return assembleLabel(records, i, labelRe);
+      labels.push(assembleLabel(records, i, labelRe));
     }
   }
-  return null;
+
+  return labels;
 }
 
 function findRequires(bodyLines) {
@@ -465,6 +471,7 @@ function parseSlicesInRecords(records) {
         struck: Boolean(struckMatch),
         inlineRequires: null,
         inlineExternal: null,
+        dependencyProblems: [],
       });
     } else if (/^\s+\S/.test(line) && slices.length > 0) {
       const labelRe = REQUIRES_LABEL.test(t) ? REQUIRES_LABEL : EXTERNAL_LABEL.test(t) ? EXTERNAL_LABEL : null;
@@ -486,9 +493,11 @@ function parseSlicesInRecords(records) {
         }
         const slice = slices[slices.length - 1];
         if (labelRe === REQUIRES_LABEL) {
-          slice.inlineRequires = content;
+          if (slice.inlineRequires === null) slice.inlineRequires = content;
+          else addDuplicateDependencyLabelProblem(slice.dependencyProblems, 'Requires');
         } else {
-          slice.inlineExternal = content;
+          if (slice.inlineExternal === null) slice.inlineExternal = content;
+          else addDuplicateDependencyLabelProblem(slice.dependencyProblems, 'External');
         }
         i = j - 1;
       }
@@ -760,6 +769,17 @@ function linkInExternalProblem(display) {
   return `link "${display}" in **External:**; move it to **Requires:**`;
 }
 
+function duplicateDependencyLabelProblem(label) {
+  return label === 'Requires'
+    ? 'duplicate **Requires:** labels; keep exactly one line'
+    : 'duplicate **External:** labels; keep at most one line';
+}
+
+function addDuplicateDependencyLabelProblem(problems, label) {
+  const problem = duplicateDependencyLabelProblem(label);
+  if (!problems.includes(problem)) problems.push(problem);
+}
+
 // Items of one dependency line, or none when the line is absent. An empty
 // label is reported through the label's own problem text.
 function dependencyLineItems(content, emptyProblem, structural) {
@@ -779,7 +799,7 @@ function requiresLineItems(content, structural) {
 }
 
 function classifyUnit(unit, registry, out) {
-  const { index, title, excerpt, requiresContent, externalContent, missingRequires, extraBlockers } = unit;
+  const { index, title, excerpt, requiresContent, externalContent, missingRequires, extraBlockers, dependencyProblems } = unit;
 
   if (missingRequires) {
     pushStructuralError(out, {
@@ -791,7 +811,7 @@ function classifyUnit(unit, registry, out) {
 
   const blockers = [...(extraBlockers || [])];
   const externals = [];
-  const structural = [];
+  const structural = [...(dependencyProblems ?? [])];
 
   for (const item of requiresLineItems(requiresContent, structural)) {
     if (item.kind === 'none') continue;
@@ -899,15 +919,20 @@ function attachEntryMetadata(name, entry) {
     entry.requiresContent = null;
     entry.externalContent = null;
     entry.slices = null;
+    entry.dependencyProblems = [];
 
     return;
   }
 
   const records = scanBodyLines(entry.bodyLines);
-  const requires = findLabelInRecords(records, REQUIRES_LABEL);
-  const external = findLabelInRecords(records, EXTERNAL_LABEL);
-  entry.requiresContent = requires ? requires.content : null;
-  entry.externalContent = external ? external.content : null;
+  const requires = findLabelsInRecords(records, REQUIRES_LABEL);
+  const external = findLabelsInRecords(records, EXTERNAL_LABEL);
+  entry.requiresContent = requires[0]?.content ?? null;
+  entry.externalContent = external[0]?.content ?? null;
+  entry.dependencyProblems = [
+    ...(requires.length > 1 ? [duplicateDependencyLabelProblem('Requires')] : []),
+    ...(external.length > 1 ? [duplicateDependencyLabelProblem('External')] : []),
+  ];
   entry.slices = name === 'FEATURES' ? parseSlicesInRecords(records) : null;
 }
 
@@ -1013,6 +1038,11 @@ function classifySlicedEntry(index, entry, excluded, registry, out) {
 
     return;
   }
+  if (entry.dependencyProblems.length > 0) {
+    pushStructuralError(out, { index, title: entry.title, problem: entry.dependencyProblems.join('; ') }, [index]);
+
+    return;
+  }
 
   const mvp = entry.slices[0];
   const firstUnshipped = unshipped[0];
@@ -1029,6 +1059,7 @@ function classifySlicedEntry(index, entry, excluded, registry, out) {
       externalContent: slice === firstUnshipped ? entry.externalContent : slice.inlineExternal,
       missingRequires: false,
       extraBlockers,
+      dependencyProblems: slice.dependencyProblems,
       excluded,
     }, registry, out);
   }
@@ -1048,6 +1079,7 @@ function classifyTrackedEntry(index, entry, excluded, registry, out) {
     requiresContent: entry.requiresContent,
     externalContent: entry.externalContent,
     missingRequires: entry.requiresContent === null,
+    dependencyProblems: entry.dependencyProblems,
     excluded,
   }, registry, out);
 }
@@ -1613,6 +1645,7 @@ function collectEntryEdges(records, registry) {
   const edges = [];
   for (const rec of records) {
     if (rec.index === 'QUICK_WINS.md') continue;
+    if ((rec.entry.dependencyProblems ?? []).length > 0) continue;
     const content = rec.entry.requiresContent;
     if (content === null || content === undefined) continue;
     const from = nodeKey(rec);

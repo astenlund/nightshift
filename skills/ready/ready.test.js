@@ -2067,6 +2067,59 @@ test('none is exclusive across top-level and inline Requires lines and masks cyc
   assert.ok(!result.structuralErrors.some((error) => error.index === '[cycle]'), JSON.stringify(result.structuralErrors));
 });
 
+test('duplicate top-level dependency labels are structural and mask cycle edges', () => {
+  const result = analyze({ FEATURES: `## Area
+### [Alpha](features/alpha.md)
+
+**Requires:** [Beta](features/beta.md).
+
+**Requires:** none.
+
+**External:** service one.
+
+**External:** service two.
+
+### [Beta](features/beta.md)
+
+**Requires:** [Alpha](features/alpha.md).
+` });
+
+  const problem = findByTitle(result.structuralErrors, 'Alpha')?.problem ?? '';
+  assert.match(problem, /duplicate \*\*Requires:\*\* labels/i, problem);
+  assert.match(problem, /duplicate \*\*External:\*\* labels/i, problem);
+  assert.ok(!result.structuralErrors.some((error) => error.index === '[cycle]'), JSON.stringify(result.structuralErrors));
+  assert.ok(!findByTitle(result.ready, 'Alpha'), JSON.stringify(result.ready));
+  assert.ok(!findByTitle(result.blocked, 'Alpha'), JSON.stringify(result.blocked));
+  assert.ok(!findByTitle(result.external, 'Alpha'), JSON.stringify(result.external));
+});
+
+test('duplicate inline dependency labels are structural for their slice', () => {
+  const result = analyze({ FEATURES: `## Area
+### [Parent](features/parent.md)
+
+**Slices:**
+- **MVP.** Base.
+- **Continuation.** Follow-up.
+  **Requires:** none.
+  **Requires:** [Dependency](features/dependency.md).
+  **External:** service one.
+  **External:** service two.
+
+**Requires:** none.
+
+### [Dependency](features/dependency.md)
+
+**Requires:** none.
+` });
+
+  const problem = findByTitle(result.structuralErrors, '[Parent: Continuation]')?.problem ?? '';
+  assert.match(problem, /duplicate \*\*Requires:\*\* labels/i, problem);
+  assert.match(problem, /duplicate \*\*External:\*\* labels/i, problem);
+  assert.ok(!findByTitle(result.ready, '[Parent: Continuation]'), JSON.stringify(result.ready));
+  assert.ok(!findByTitle(result.blocked, '[Parent: Continuation]'), JSON.stringify(result.blocked));
+  assert.ok(!findByTitle(result.external, '[Parent: Continuation]'), JSON.stringify(result.external));
+});
+
 test('only case-insensitive HTTP URLs are excluded from breakout scanning', () => {
   const result = analyze({ FEATURES: `## Exploring
 ### [Remote](HTTPS://example.invalid/idea)
