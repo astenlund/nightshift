@@ -1,7 +1,7 @@
 'use strict'
 
 const nodeFilesystem = require('node:fs')
-const { basename, dirname, join } = require('node:path')
+const { basename, dirname, join, posix, win32 } = require('node:path')
 
 const primitives = require('./init-backlog-session-driver/primitives')
 const state = require('./init-backlog-session-driver/state')
@@ -23,6 +23,15 @@ const NEVER_COPIED_TEMP_KEYS = Object.freeze(['TEMP', 'TMP', 'TMPDIR'])
 
 function comparablePath(path, platform) {
   return platform === 'win32' ? path.toLowerCase() : path
+}
+
+function pathIsAtOrInsideRoot(root, target, pathModule) {
+  if (!pathModule.isAbsolute(root) || !pathModule.isAbsolute(target)) {
+    return false
+  }
+  const relation = pathModule.relative(root, target)
+
+  return relation === '' || (relation !== '..' && !relation.startsWith(`..${pathModule.sep}`) && !pathModule.isAbsolute(relation))
 }
 
 function gitIsolationEntries({ attributesPath, configPath, templatePath }) {
@@ -72,7 +81,7 @@ function copyEligibleAmbient(ambientEnvironment, platform) {
   return projection
 }
 
-function buildClosedProjection({ ambientEnvironment, checkoutRoot, controllerPath = null, overrides = {}, platform, proxySession = null, temporaryPath }) {
+function buildClosedProjection({ additionalPathExclusionRoots = [], ambientEnvironment, checkoutRoot, controllerPath = null, overrides = {}, platform, proxySession = null, temporaryPath }) {
   const projection = copyEligibleAmbient(ambientEnvironment, platform)
   for (const key of NEVER_COPIED_TEMP_KEYS) {
     projection[key] = temporaryPath
@@ -90,7 +99,8 @@ function buildClosedProjection({ ambientEnvironment, checkoutRoot, controllerPat
     projection.NIGHTSHIFT_INIT_BACKLOG_PROXY_PORT = String(port)
     projection.NIGHTSHIFT_INIT_BACKLOG_PROXY_TOKEN = token
   }
-  const separator = platform === 'win32' ? '\\' : '/'
+  const pathModule = platform === 'win32' ? win32 : posix
+  const separator = pathModule.sep
   const trimTrailingSeparators = (path) => {
     let trimmed = path
     while (trimmed.length > 1 && trimmed.endsWith(separator)) {
@@ -101,14 +111,14 @@ function buildClosedProjection({ ambientEnvironment, checkoutRoot, controllerPat
   }
   const comparableCheckout = comparablePath(trimTrailingSeparators(checkoutRoot), platform)
   if (typeof projection.PATH === 'string') {
-    const delimiter = platform === 'win32' ? ';' : ':'
+    const delimiter = pathModule.delimiter
+    const pathExclusionRoots = [checkoutRoot, ...additionalPathExclusionRoots]
     projection.PATH = projection.PATH.split(delimiter).filter((entry) => {
       if (entry === '') {
         return false
       }
-      const comparableEntry = comparablePath(trimTrailingSeparators(entry), platform)
 
-      return comparableEntry !== comparableCheckout && !comparableEntry.startsWith(comparableCheckout + separator)
+      return pathExclusionRoots.every((root) => !pathIsAtOrInsideRoot(root, entry, pathModule))
     }).join(delimiter)
   }
   for (const [key, value] of Object.entries(projection)) {
@@ -128,8 +138,8 @@ function buildClosedProjection({ ambientEnvironment, checkoutRoot, controllerPat
   return projection
 }
 
-function buildWorkerProjection({ ambientEnvironment, checkoutRoot, gitIsolation, platform, temporaryPath }) {
-  const projection = buildClosedProjection({ ambientEnvironment, checkoutRoot, platform, temporaryPath })
+function buildWorkerProjection({ ambientEnvironment, checkoutRoot, gitIsolation, platform, protectedRoots = [], temporaryPath }) {
+  const projection = buildClosedProjection({ additionalPathExclusionRoots: protectedRoots, ambientEnvironment, checkoutRoot, platform, temporaryPath })
   for (const key of CREDENTIAL_KEYS) {
     delete projection[key]
   }

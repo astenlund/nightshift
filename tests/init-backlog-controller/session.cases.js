@@ -567,7 +567,7 @@ function runSessionCases(repositoryRoot) {
         GIT_CONFIG_GLOBAL: '/ambient/gitconfig',
         GIT_DIR: '/ambient/gitdir',
         OPENAI_API_KEY: 'secret-c',
-        PATH: '/usr/bin',
+        PATH: '/run/output/bin:/usr/bin',
         git_template_dir: '/ambient/template',
       },
       checkoutRoot: '/checkout/nightshift',
@@ -577,6 +577,7 @@ function runSessionCases(repositoryRoot) {
         templatePath: '/run/1/git-template',
       },
       platform: 'linux',
+      protectedRoots: ['/run/output'],
       temporaryPath: '/run/1/host-temp',
     })
     const gitKeys = Object.keys(projection).filter((key) => key.toUpperCase().startsWith('GIT_')).sort()

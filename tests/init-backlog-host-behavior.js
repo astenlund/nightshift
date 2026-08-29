@@ -1369,7 +1369,7 @@ async function runEvaluation(options) {
         }
       }
       if (controllerEnabled) {
-        const workerEnvironment = driver.buildWorkerProjection({ ambientEnvironment, checkoutRoot, gitIsolation, platform, temporaryPath: hostTemp.path })
+        const workerEnvironment = driver.buildWorkerProjection({ ambientEnvironment, checkoutRoot, gitIsolation, platform, protectedRoots, temporaryPath: hostTemp.path })
         const workerCompletion = await launch({
           argv: [controllerWorkerPath, controllerEntryPath, plugin.controllerRuntimeSha256],
           boundary: 'worker',
