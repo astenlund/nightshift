@@ -3,7 +3,7 @@
 const nodeFilesystem = require('node:fs')
 const { dirname, join } = require('node:path')
 
-const { BYTE_BOUNDS, HOSTS, compareOrdinal, sha256 } = require('./state')
+const { BYTE_BOUNDS, HOSTS, compareOrdinal, sha256 } = require('./primitives')
 const { canonicalJson, canonicalJsonLine } = require('./transcript')
 
 const EVIDENCE_HOSTS = HOSTS

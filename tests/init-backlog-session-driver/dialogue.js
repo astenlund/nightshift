@@ -1,6 +1,6 @@
 'use strict'
 
-const { APPROVAL_BRANCHES, VERSION_CONTROL_OPTION_ORDER, isPlainObject, sha256 } = require('./state')
+const { APPROVAL_BRANCHES, VERSION_CONTROL_OPTION_ORDER, isPlainObject, sha256 } = require('./primitives')
 const { canonicalJson } = require('./transcript')
 const { CLAUDE_ROOT_EXCLUSION_CONFIRMATION, CODEX_HOST_CONTEXT_CONFIRMATION, HOST_CONTROL_RECORDS, validateTurnObject } = require('../init-backlog-controller/oracles.cases')
 // Plan-mandated production binding: the approved apply request is built and

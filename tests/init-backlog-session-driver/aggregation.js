@@ -1,6 +1,6 @@
 'use strict'
 
-const { HOSTS, compareOrdinal, sha256 } = require('./state')
+const { HOSTS, compareOrdinal, sha256 } = require('./primitives')
 const { canonicalJson } = require('./transcript')
 const { ELECTION_MARKER_PATH, selectTerminalExpectation, validateLiveElectionMarker, windowsRepositoryImage } = require('../init-backlog-controller/oracles.cases')
 

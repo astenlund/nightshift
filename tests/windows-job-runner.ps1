@@ -3,7 +3,7 @@ param()
 $ErrorActionPreference = 'Stop'
 
 # Mirrors the Node-side BYTE_BOUNDS.MAX_RUNNER_FRAME_BYTES in
-# tests/init-backlog-session-driver/state.js; keep the two values identical.
+# tests/init-backlog-session-driver/primitives.js; keep the two values identical.
 $script:MaxRunnerFrameBytes = 5592576
 $script:RunnerCreationFlags = [long](0x4 -bor 0x400 -bor 0x80000 -bor 0x08000000)
 

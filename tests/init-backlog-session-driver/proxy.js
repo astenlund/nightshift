@@ -1,6 +1,6 @@
 'use strict'
 
-const { BYTE_BOUNDS, DEADLINES } = require('./state')
+const { BYTE_BOUNDS, DEADLINES } = require('./primitives')
 const { canonicalJson, canonicalJsonLine, isCanonicalBase64 } = require('./transcript')
 
 const CLIENT_FRAME_MEMBERS = 'requestBase64,token'

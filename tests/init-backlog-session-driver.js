@@ -3,6 +3,7 @@
 const nodeFilesystem = require('node:fs')
 const { basename, dirname, join } = require('node:path')
 
+const primitives = require('./init-backlog-session-driver/primitives')
 const state = require('./init-backlog-session-driver/state')
 const processModule = require('./init-backlog-session-driver/process')
 const transcriptModule = require('./init-backlog-session-driver/transcript')
@@ -12,7 +13,7 @@ const cleanupModule = require('./init-backlog-session-driver/cleanup')
 const aggregationModule = require('./init-backlog-session-driver/aggregation')
 
 const { canonicalJson } = transcriptModule
-const { sha256 } = state
+const { sha256 } = primitives
 
 const ELIGIBLE_AMBIENT_KEYS = Object.freeze(['PATH', 'SystemRoot', 'ComSpec', 'PATHEXT', 'HOME', 'USERPROFILE', 'USER', 'LOGNAME', 'SHELL', 'XDG_RUNTIME_DIR', 'LANG', 'LC_ALL', 'LC_CTYPE', 'HTTP_PROXY', 'HTTPS_PROXY', 'NO_PROXY', 'http_proxy', 'https_proxy', 'no_proxy', 'SSL_CERT_FILE', 'SSL_CERT_DIR', 'NODE_EXTRA_CA_CERTS', 'ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN', 'CLAUDE_CODE_OAUTH_TOKEN', 'CODEX_API_KEY', 'OPENAI_API_KEY'])
 
@@ -379,13 +380,13 @@ function materializeScenario({ filesystem = nodeFilesystem, platform, repository
 }
 
 module.exports = {
-  BYTE_BOUNDS: state.BYTE_BOUNDS,
-  DEADLINES: state.DEADLINES,
-  INFRASTRUCTURE_DETAIL_CODES: state.INFRASTRUCTURE_DETAIL_CODES,
-  INFRASTRUCTURE_PHASES: state.INFRASTRUCTURE_PHASES,
+  BYTE_BOUNDS: primitives.BYTE_BOUNDS,
+  DEADLINES: primitives.DEADLINES,
+  INFRASTRUCTURE_DETAIL_CODES: primitives.INFRASTRUCTURE_DETAIL_CODES,
+  INFRASTRUCTURE_PHASES: primitives.INFRASTRUCTURE_PHASES,
   MAX_PROXY_CLIENT_FRAME_BYTES: proxyModule.MAX_PROXY_CLIENT_FRAME_BYTES,
-  PRIMARY_INITIAL_CODES: state.PRIMARY_INITIAL_CODES,
-  PROCESS_ADAPTER_EVENTS: state.PROCESS_ADAPTER_EVENTS,
+  PRIMARY_INITIAL_CODES: primitives.PRIMARY_INITIAL_CODES,
+  PROCESS_ADAPTER_EVENTS: primitives.PROCESS_ADAPTER_EVENTS,
   RUNNER_CLOSE_MILLISECONDS: processModule.RUNNER_CLOSE_MILLISECONDS,
   WINDOWS_RUNNER_INPUT_FRAME_KINDS: processModule.WINDOWS_RUNNER_INPUT_FRAME_KINDS,
   WINDOWS_RUNNER_OUTPUT_FRAME_KINDS: processModule.WINDOWS_RUNNER_OUTPUT_FRAME_KINDS,

@@ -25,7 +25,7 @@ const dialogue = require('./init-backlog-session-driver/dialogue')
 const evidence = require('./init-backlog-session-driver/evidence')
 const hostEvents = require('./init-backlog-session-driver/host-events')
 const oracles = require('./init-backlog-controller/oracles.cases')
-const { HOSTS } = require('./init-backlog-session-driver/state')
+const { HOSTS } = require('./init-backlog-session-driver/primitives')
 
 const HOST_ORDER = HOSTS
 const LOGICAL_COMMANDS = Object.freeze({ 'claude-code': 'claude', codex: 'codex' })

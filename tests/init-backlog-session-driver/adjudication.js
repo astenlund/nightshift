@@ -1,6 +1,6 @@
 'use strict'
 
-const { APPROVAL_BRANCHES, VERSION_CONTROL_OPTION_ORDER, compareOrdinal, isPlainObject, sha256 } = require('./state')
+const { APPROVAL_BRANCHES, VERSION_CONTROL_OPTION_ORDER, compareOrdinal, isPlainObject, sha256 } = require('./primitives')
 const { canonicalJson } = require('./transcript')
 const { BREAKOUT_DIGEST_NOTICE, buildDecodedContentDisclosures } = require('../init-backlog-controller/oracles.cases')
 

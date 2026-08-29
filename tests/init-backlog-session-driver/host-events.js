@@ -1,6 +1,6 @@
 'use strict'
 
-const { isPlainObject } = require('./state')
+const { isPlainObject } = require('./primitives')
 const { canonicalJson } = require('./transcript')
 
 const CLAUDE_PUBLIC_SKILL_INVENTORY = Object.freeze(['exploring', 'handover', 'init-backlog', 'ready', 'revise-code', 'revise-docs', 'revise-lore', 'revise-plan', 'revise-spec', 'spec-agreement'])

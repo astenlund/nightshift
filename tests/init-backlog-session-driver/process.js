@@ -3,7 +3,8 @@
 const { spawn: nodeSpawn } = require('node:child_process')
 const { join } = require('node:path')
 
-const { BYTE_BOUNDS, DEADLINES, createByteBudget, createLaunchState, createLineDecoder } = require('./state')
+const { BYTE_BOUNDS, DEADLINES } = require('./primitives')
+const { createByteBudget, createLaunchState, createLineDecoder } = require('./state')
 const { canonicalJsonLine } = require('./transcript')
 
 const RUNNER_CLOSE_MILLISECONDS = 1000

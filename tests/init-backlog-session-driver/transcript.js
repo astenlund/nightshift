@@ -1,6 +1,7 @@
 'use strict'
 
-const { BYTE_BOUNDS, compareOrdinal, createByteBudget } = require('./state')
+const { BYTE_BOUNDS, compareOrdinal } = require('./primitives')
+const { createByteBudget } = require('./state')
 
 const PROXY_TRACE_MEMBERS = Object.freeze(['exitCode', 'ordinal', 'requestBase64', 'stderrBase64', 'stdoutBase64'])
 
