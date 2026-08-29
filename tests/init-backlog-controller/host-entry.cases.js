@@ -2180,6 +2180,71 @@ function runHostEntryCases(repositoryRoot) {
     }
   })
 
+  test('a contradictory worker completion envelope retains its root through the proxy fallback', async () => {
+    const scratch = tempRoot()
+    try {
+      const harness = createEvaluationHarness(scratch, {
+        onLaunch: (call) => call.boundary === 'worker'
+          ? {
+              ready: true,
+              failure: {
+                ok: false,
+                host: call.host,
+                code: 'harness-infrastructure',
+                phase: 'initial-turn',
+                initialCode: null,
+                detailCode: 'spawn',
+                retainedRunRoot: null,
+              },
+            }
+          : null,
+      })
+      const evaluation = await hostBehavior.runEvaluation(harness.options)
+
+      assert.equal(evaluation.exitCode, 1)
+      assert.deepEqual(evaluation.result, {
+        ok: false,
+        host: 'claude-code',
+        code: 'harness-infrastructure',
+        phase: 'initial-turn',
+        initialCode: null,
+        detailCode: 'proxy',
+        retainedRunRoot: harness.roots[2],
+      })
+      assert.deepEqual(evaluation.rows, [])
+      assert.equal(harness.sessions.filter((session) => session.controllerEnabled).length, 0, 'a contradictory worker envelope cannot authorize a session launch')
+      assert.equal(nodeFilesystem.existsSync(harness.roots[2]), true, 'a contradictory worker envelope cannot authorize root removal')
+    } finally {
+      nodeFilesystem.rmSync(scratch, { force: true, recursive: true })
+    }
+  })
+
+  test('a ready worker completion with extra fields retains its root through the proxy fallback', async () => {
+    const scratch = tempRoot()
+    try {
+      const harness = createEvaluationHarness(scratch, {
+        onLaunch: (call) => call.boundary === 'worker' ? { ready: true, unexpected: true } : null,
+      })
+      const evaluation = await hostBehavior.runEvaluation(harness.options)
+
+      assert.equal(evaluation.exitCode, 1)
+      assert.deepEqual(evaluation.result, {
+        ok: false,
+        host: 'claude-code',
+        code: 'harness-infrastructure',
+        phase: 'initial-turn',
+        initialCode: null,
+        detailCode: 'proxy',
+        retainedRunRoot: harness.roots[2],
+      })
+      assert.deepEqual(evaluation.rows, [])
+      assert.equal(harness.sessions.filter((session) => session.controllerEnabled).length, 0, 'an extended ready envelope cannot authorize a session launch')
+      assert.equal(nodeFilesystem.existsSync(harness.roots[2]), true, 'an extended ready envelope cannot authorize root removal')
+    } finally {
+      nodeFilesystem.rmSync(scratch, { force: true, recursive: true })
+    }
+  })
+
   test('a pre-spawn worker construction failure preserves spawn identity and removes its root', async () => {
     const scratch = tempRoot()
     try {

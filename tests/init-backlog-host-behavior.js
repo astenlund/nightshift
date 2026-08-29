@@ -1471,14 +1471,14 @@ async function runEvaluation(options) {
           executable: nodeExecutablePath,
           host,
         })
-        if (isWorkerConstructionFailure(workerCompletion?.failure, host)) {
+        if (isWorkerConstructionCompletion(workerCompletion, host)) {
           return finishRepetition({
             outcome: { result: workerCompletion.failure },
             phase: workerCompletion.failure.phase,
             terminationProven: workerCompletion.failure.retainedRunRoot === null,
           })
         }
-        if (workerCompletion === null || typeof workerCompletion !== 'object' || workerCompletion.ready !== true) {
+        if (!isReadyWorkerCompletion(workerCompletion)) {
           return finishRepetition({
             outcome: { result: infrastructureCarrier({ detailCode: 'proxy', host, phase: 'initial-turn', retainedRunRoot: runRoot }) },
             phase: 'initial-turn',
@@ -1678,15 +1678,23 @@ function infrastructureCarrier({ detailCode, host, initialCode = null, phase, re
 
 const INFRASTRUCTURE_CARRIER_KEYS = Object.freeze(['code', 'detailCode', 'host', 'initialCode', 'ok', 'phase', 'retainedRunRoot'])
 const WORKER_CONSTRUCTION_DETAIL_CODES = Object.freeze(['containment-unavailable', 'spawn'])
+const WORKER_CONSTRUCTION_COMPLETION_KEYS = Object.freeze(['failure'])
+const WORKER_READY_COMPLETION_KEYS = Object.freeze(['ready'])
 
-function isWorkerConstructionFailure(failure, host) {
-  if (failure === null || typeof failure !== 'object' || Array.isArray(failure)) {
+function hasExactKeys(value, expectedKeys) {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
     return false
   }
-  const keys = Object.keys(failure).sort()
-  if (keys.length !== INFRASTRUCTURE_CARRIER_KEYS.length || keys.some((key, index) => key !== INFRASTRUCTURE_CARRIER_KEYS[index])) {
+  const keys = Object.keys(value).sort()
+
+  return keys.length === expectedKeys.length && keys.every((key, index) => key === expectedKeys[index])
+}
+
+function isWorkerConstructionCompletion(completion, host) {
+  if (!hasExactKeys(completion, WORKER_CONSTRUCTION_COMPLETION_KEYS) || !hasExactKeys(completion.failure, INFRASTRUCTURE_CARRIER_KEYS)) {
     return false
   }
+  const failure = completion.failure
 
   return failure.ok === false
     && failure.host === host
@@ -1695,6 +1703,10 @@ function isWorkerConstructionFailure(failure, host) {
     && failure.initialCode === null
     && WORKER_CONSTRUCTION_DETAIL_CODES.includes(failure.detailCode)
     && failure.retainedRunRoot === null
+}
+
+function isReadyWorkerCompletion(completion) {
+  return hasExactKeys(completion, WORKER_READY_COMPLETION_KEYS) && completion.ready === true
 }
 
 function latestClassificationsByTarget(turnRecords) {
