@@ -25,6 +25,7 @@ const dialogue = require('./init-backlog-session-driver/dialogue')
 const evidence = require('./init-backlog-session-driver/evidence')
 const hostEvents = require('./init-backlog-session-driver/host-events')
 const oracles = require('./init-backlog-controller/oracles.cases')
+const { CLAUDE_ROOT_EXCLUSION_CONFIRMATION } = require('./init-backlog-controller/election-oracles')
 const { HOSTS } = require('./init-backlog-session-driver/primitives')
 
 const HOST_ORDER = HOSTS
@@ -1942,7 +1943,7 @@ async function runLiveHostSession({ call, filesystem, platform, processAdapterFa
     const claudeRootExclusion = host === 'claude-code' && controllerEnabled
       ? rootClaudePresent
         ? { present: true, response: null, verifiedLoadedMemory: deriveVerifiedLoadedMemory({ initEvent, platform, scenarioRoot }) }
-        : { present: false, response: oracles.CLAUDE_ROOT_EXCLUSION_CONFIRMATION, verifiedLoadedMemory: null }
+        : { present: false, response: CLAUDE_ROOT_EXCLUSION_CONFIRMATION, verifiedLoadedMemory: null }
       : null
     walk = dialogue.createGateWalk({
       applyFault: conversation.faultSchedule === 'none' ? null : () => {

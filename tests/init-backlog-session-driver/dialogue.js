@@ -2,7 +2,7 @@
 
 const { APPROVAL_BRANCHES, VERSION_CONTROL_OPTION_ORDER, isPlainObject, sha256 } = require('./primitives')
 const { canonicalJson } = require('./transcript')
-const { CLAUDE_ROOT_EXCLUSION_CONFIRMATION, CODEX_HOST_CONTEXT_CONFIRMATION, HOST_CONTROL_RECORDS, validateTurnObject } = require('../init-backlog-controller/oracles.cases')
+const { CLAUDE_ROOT_EXCLUSION_CONFIRMATION, CODEX_HOST_CONTEXT_CONFIRMATION, HOST_CONTROL_RECORDS, validateTurnObject } = require('../init-backlog-controller/election-oracles')
 // Plan-mandated production binding: the approved apply request is built and
 // serialized through the same canonical manifest machinery production uses,
 // never hand-serialized by the harness.

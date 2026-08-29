@@ -11,7 +11,7 @@ const driver = require('../init-backlog-session-driver')
 const workerModule = require('../init-backlog-controller-worker')
 const proxyClient = require('../fixtures/init-backlog-eval/controller-proxy.js')
 const { canonicalJson, sha256 } = require('./helpers')
-const { ELECTION_MARKER_PATH } = require('./oracles.cases')
+const { ELECTION_MARKER_PATH } = require('./election-oracles')
 
 const REQUEST_GATE_BASENAME = '.nightshift-init-backlog.request-gate'
 const HEX64 = /^[a-f0-9]{64}$/

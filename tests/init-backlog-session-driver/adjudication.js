@@ -2,7 +2,7 @@
 
 const { APPROVAL_BRANCHES, VERSION_CONTROL_OPTION_ORDER, compareOrdinal, isPlainObject, sha256 } = require('./primitives')
 const { canonicalJson } = require('./transcript')
-const { BREAKOUT_DIGEST_NOTICE, buildDecodedContentDisclosures } = require('../init-backlog-controller/oracles.cases')
+const { BREAKOUT_DIGEST_NOTICE, buildDecodedContentDisclosures } = require('../init-backlog-controller/election-oracles')
 
 const NO_APPLY_BRANCHES = Object.freeze(['denied', 'deferred', 'unavailable', 'auto-denied'])
 const ELECTION_CHOICES = Object.freeze(['track', 'ignore', 'deferred'])
