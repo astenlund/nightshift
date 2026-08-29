@@ -127,7 +127,7 @@ function unsupportedHostLauncher(host) {
 function stableLstat(filesystem, path) {
   const probe = () => {
     try {
-      return { stat: filesystem.lstatSync(path) }
+      return { stat: filesystem.lstatSync(path, { bigint: true }) }
     } catch {
       return { stat: null }
     }
@@ -286,7 +286,7 @@ function resolvePosixCandidate({ candidatePath, filesystem, logicalName, platfor
   if (!finalStat.isFile() || finalStat.isSymbolicLink()) {
     return unsupported()
   }
-  if ((finalStat.mode & 0o111) === 0) {
+  if ((finalStat.mode & 0o111n) === 0n) {
     return unsupported()
   }
   if (insideProtectedRoots(currentPath, protectedRoots, platform)) {

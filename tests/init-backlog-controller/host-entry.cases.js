@@ -125,21 +125,25 @@ function fakeCommandFilesystem(spec) {
   }
 
   return {
-    lstatSync(pathKey) {
+    lstatSync(pathKey, options = {}) {
       const node = resolveNode(pathKey, lstatCounts)
       if (node === undefined || node === null) {
         throw missing(pathKey)
       }
       const kind = node.kind
       const mode = node.mode ?? (kind === 'file' ? (node.executable === false ? 0o644 : 0o755) : 0o755)
+      const bigint = options.bigint === true
+      const dev = BigInt(node.dev ?? 1)
+      const ino = BigInt(node.ino ?? inodeOf(`${pathKey}:${kind}:${mode}`))
+      const exactMode = BigInt(mode)
 
       return {
-        dev: 1,
-        ino: node.ino ?? inodeOf(`${pathKey}:${kind}:${mode}`),
+        dev: bigint ? dev : Number(dev),
+        ino: bigint ? ino : Number(ino),
         isDirectory: () => kind === 'dir',
         isFile: () => kind === 'file',
         isSymbolicLink: () => kind === 'link',
-        mode,
+        mode: bigint ? exactMode : Number(exactMode),
       }
     },
     readlinkSync(pathKey) {
@@ -1099,6 +1103,13 @@ function runHostEntryCases(repositoryRoot) {
 
     const linkedExe = fakeCommandFilesystem({ 'C:\\hosts': { kind: 'dir' }, 'C:\\hosts\\claude.exe': { kind: 'link', target: 'C:\\real\\claude.exe' }, 'C:\\real\\claude.exe': { kind: 'file' } })
     assert.equal(hostBehavior.resolveHostCommand({ ambientPath: 'C:\\hosts', filesystem: linkedExe, host: 'claude-code', platform: 'win32' }).unsupported.code, 'unsupported-host-launcher')
+
+    const unsafeIdentity = 9007199254740992n
+    const replacedExe = fakeCommandFilesystem({
+      'C:\\hosts': { kind: 'dir' },
+      'C:\\hosts\\claude.exe': { sequence: [{ ino: unsafeIdentity, kind: 'file' }, { ino: unsafeIdentity + 1n, kind: 'file' }] },
+    })
+    assert.equal(hostBehavior.resolveHostCommand({ ambientPath: 'C:\\hosts', filesystem: replacedExe, host: 'claude-code', platform: 'win32' }).unsupported.code, 'unsupported-host-launcher')
   })
 
   test('a protected Windows drive root contains every launcher below it', () => {
