@@ -1358,6 +1358,49 @@ async function runEvaluation(options) {
     const plugin = preparePluginRoot({ controllerEnabled, filesystem, host, runRoot, scenario, sessionPluginRoot })
     let codexHome = null
     let copiedCredentialPath = null
+    const releaseCopiedCredential = () => {
+      if (copiedCredentialPath === null) {
+        return true
+      }
+      try {
+        filesystem.rmSync(copiedCredentialPath, { force: true })
+        if (filesystem.existsSync(copiedCredentialPath)) {
+          return false
+        }
+        copiedCredentialPath = null
+
+        return true
+      } catch {
+        return false
+      }
+    }
+    const retainedCredentialCarrier = () => infrastructureCarrier({ detailCode: 'cleanup', host, phase: 'authentication', retainedRunRoot: runRoot })
+    const finishRepetition = ({ outcome, phase, terminationProven }) => {
+      if (!releaseCopiedCredential()) {
+        return { result: retainedCredentialCarrier() }
+      }
+      if (outcome.result !== undefined && typeof outcome.result.retainedRunRoot === 'string') {
+        return { result: { ...outcome.result, retainedRunRoot: runRoot } }
+      }
+      const finalization = driver.finalizeRunRoot({ filesystem, runRoot, terminationProven })
+      if (finalization.retainedRunRoot !== null) {
+        if (outcome.result?.code === 'harness-infrastructure') {
+          return { result: { ...outcome.result, retainedRunRoot: finalization.retainedRunRoot } }
+        }
+
+        return {
+          result: infrastructureCarrier({
+            detailCode: finalization.detailCode ?? 'termination',
+            host,
+            initialCode: outcome.result?.code ?? null,
+            phase,
+            retainedRunRoot: finalization.retainedRunRoot,
+          }),
+        }
+      }
+
+      return outcome
+    }
     if (host === 'codex') {
       codexHome = nodePath.join(runRoot, 'codex-home')
       const provisioned = await provisionAuthentication({
@@ -1379,37 +1422,15 @@ async function runEvaluation(options) {
         copiedCredentialPath = nodePath.join(codexHome, 'auth.json')
       }
       if (provisioned.precedence !== undefined) {
-        return { result: provisioned.precedence }
+        return finishRepetition({ outcome: { result: provisioned.precedence }, phase: 'authentication', terminationProven: true })
       }
       if (provisioned.status !== 'authenticated') {
-        return { result: provisioned.result }
+        return finishRepetition({ outcome: { result: provisioned.result }, phase: 'authentication', terminationProven: true })
       }
     }
-    const releaseCopiedCredential = () => {
-      if (copiedCredentialPath === null) {
-        return true
-      }
-      try {
-        filesystem.rmSync(copiedCredentialPath, { force: true })
-        if (filesystem.existsSync(copiedCredentialPath)) {
-          return false
-        }
-        copiedCredentialPath = null
-
-        return true
-      } catch {
-        return false
-      }
-    }
-    const retainedCredentialCarrier = () => infrastructureCarrier({ detailCode: 'cleanup', host, phase: 'authentication', retainedRunRoot: runRoot })
-    // Every non-continuing outcome after a credential copy removes and
-    // absence-verifies the copied credential; a result that already names a
-    // retained root keeps the sanctioned retained-root rule instead.
+    // A primary session outcome has no run-root proof to finalize here, but a
+    // copied credential still has to be removed and absence-verified.
     const stopWithCredentialRelease = (outcome) => {
-      if (outcome.result !== undefined && typeof outcome.result.retainedRunRoot === 'string') {
-        return outcome
-      }
-
       return releaseCopiedCredential() ? outcome : { result: retainedCredentialCarrier() }
     }
     try {
@@ -1425,7 +1446,11 @@ async function runEvaluation(options) {
             host,
           })
           if (completion !== null && typeof completion === 'object' && 'failure' in completion) {
-            return stopWithCredentialRelease({ result: completion.failure })
+            return finishRepetition({
+              outcome: { result: completion.failure },
+              phase: 'plugin-setup',
+              terminationProven: completion.failure.retainedRunRoot === null,
+            })
           }
           if (completion.exitCode !== 0) {
             throw new Error(`codex plugin setup command failed: ${argv.join(' ')}`)
@@ -1448,8 +1473,10 @@ async function runEvaluation(options) {
           host,
         })
         if (workerCompletion === null || typeof workerCompletion !== 'object' || workerCompletion.ready !== true) {
-          return stopWithCredentialRelease({
-            result: infrastructureCarrier({ detailCode: 'proxy', host, phase: 'initial-turn', retainedRunRoot: runRoot }),
+          return finishRepetition({
+            outcome: { result: infrastructureCarrier({ detailCode: 'proxy', host, phase: 'initial-turn', retainedRunRoot: runRoot }) },
+            phase: 'initial-turn',
+            terminationProven: false,
           })
         }
       }
@@ -1489,6 +1516,13 @@ async function runEvaluation(options) {
         turnSchemaRunPath,
       })
       if (session !== null && typeof session === 'object' && 'failure' in session) {
+        if (session.failure.code === 'harness-infrastructure' && session.failure.detailCode === 'spawn' && session.failure.retainedRunRoot === null) {
+          return finishRepetition({ outcome: { result: session.failure }, phase: session.failure.phase, terminationProven: true })
+        }
+        if (typeof session.failure.retainedRunRoot === 'string') {
+          return finishRepetition({ outcome: { result: session.failure }, phase: session.failure.phase, terminationProven: false })
+        }
+
         return stopWithCredentialRelease({ result: session.failure })
       }
       const sessionRecord = session.record
@@ -1496,9 +1530,11 @@ async function runEvaluation(options) {
       const member = scenario.oracles.terminalRepositories[modeName]
       const attestation = driver.attestTerminalRepository({ collectRepository, host, member, platform, scenarioRoot })
       if (attestation.failure) {
-        return {
-          result: infrastructureCarrier({ detailCode: 'repository-attestation', host, phase: 'post-session', retainedRunRoot: runRoot }),
-        }
+        return finishRepetition({
+          outcome: { result: infrastructureCarrier({ detailCode: 'repository-attestation', host, phase: 'post-session', retainedRunRoot: runRoot }) },
+          phase: 'post-session',
+          terminationProven: sessionRecord.terminationProven === true,
+        })
       }
       if (evidenceOutputRoot !== null) {
         const evidenceFiles = [...(session.evidence ?? []), { bytes: canonicalJsonLine(attestation.record), path: 'repository-attestation.json' }]
@@ -1513,21 +1549,16 @@ async function runEvaluation(options) {
           scenario: scenario.scenarioId,
         })
         if (published.ok !== true) {
-          return {
-            result: infrastructureCarrier({ detailCode: published.detailCode, host, phase: 'post-session', retainedRunRoot: runRoot }),
-          }
+          return finishRepetition({
+            outcome: { result: infrastructureCarrier({ detailCode: published.detailCode, host, phase: 'post-session', retainedRunRoot: runRoot }) },
+            phase: 'post-session',
+            terminationProven: sessionRecord.terminationProven === true,
+          })
         }
         evidenceRootUsedBytes += published.leafBytes
         evidenceManifests.push({ evidenceManifestSha256: published.evidenceManifestSha256, host, mode: modeName, repetition, scenario: scenario.scenarioId })
       }
-      const finalization = driver.finalizeRunRoot({ filesystem, runRoot, terminationProven: sessionRecord.terminationProven === true })
-      if (finalization.retainedRunRoot !== null) {
-        return {
-          result: infrastructureCarrier({ detailCode: finalization.detailCode ?? 'termination', host, phase: 'post-session', retainedRunRoot: finalization.retainedRunRoot }),
-        }
-      }
-
-      return {
+      return finishRepetition({ outcome: {
         record: {
           approvalBranch: scenario.oracles.approvalBranch,
           deterministicDigest: controllerEnabled ? sessionRecord.deterministicDigest : null,
@@ -1538,7 +1569,7 @@ async function runEvaluation(options) {
           scenarioRootDigest: materialized.scenarioRootDigest,
           terminalRepositorySha256: attestation.terminalRepositorySha256,
         },
-      }
+      }, phase: 'post-session', terminationProven: sessionRecord.terminationProven === true })
     } catch (error) {
       if (!releaseCopiedCredential()) {
         return { result: retainedCredentialCarrier() }
@@ -2300,7 +2331,7 @@ async function runLiveHostSession({ call, filesystem, platform, processAdapterFa
       }
     }, LIVE_COMPLETION_POLL_MILLISECONDS)
     if (adapter.start({ args: commandArgv, environment, executable }).ok !== true) {
-      settle(sessionFailure('session-input', sessionInput.phase))
+      settle({ failure: recordInfrastructureFailure({ detailCode: 'spawn', phase: sessionInput.phase }) })
     }
   })
 
@@ -2467,7 +2498,7 @@ async function runLiveHostSession({ call, filesystem, platform, processAdapterFa
     }, LIVE_COMPLETION_POLL_MILLISECONDS)
     armTurnDeadline()
     if (adapter.start({ args: argv, environment, executable }).ok !== true) {
-      settle(sessionFailure('session-input', 'initial-turn'))
+      settle({ failure: recordInfrastructureFailure({ detailCode: 'spawn', phase: 'initial-turn' }) })
     }
   })
 }

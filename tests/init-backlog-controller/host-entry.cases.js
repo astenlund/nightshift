@@ -2062,6 +2062,7 @@ function runHostEntryCases(repositoryRoot) {
       assert.deepEqual(evaluation.rows, [], 'a primary result emits no table rows')
       assert.equal(harness.launches.filter((call) => call.boundary === 'plugin-setup').length, 0)
       assert.equal(harness.sessions.filter((session) => session.host === 'codex').length, 0)
+      assert.equal(nodeFilesystem.existsSync(harness.roots[5]), false, 'the rejected repetition root is removed after pre-session closure')
     } finally {
       nodeFilesystem.rmSync(scratch, { force: true, recursive: true })
     }
@@ -2665,6 +2666,136 @@ function runHostEntryCases(repositoryRoot) {
     assert.equal(processAdapterFactory.created.length, 1)
     assert.equal(processAdapterFactory.created[0].state.terminations, 1, 'host termination starts exactly once across repeated admission failures')
     assert.equal(workerTerminations, 1, 'worker termination starts exactly once across repeated admission failures')
+  })
+
+  test('live session adapter factory failures leave no unreported repetition root', async () => {
+    for (const host of ['claude-code', 'codex']) {
+      const scratch = tempRoot()
+      try {
+        const harness = createEvaluationHarness(scratch)
+        const evaluation = await hostBehavior.runEvaluation({
+          ...harness.options,
+          hosts: [host],
+          scenarios: [sessionScenario()],
+          runSession: (call) => hostBehavior.runLiveHostSession({
+            call,
+            filesystem: nodeFilesystem,
+            platform: 'win32',
+            processAdapterFactory: () => ({ detailCode: 'spawn', ok: false }),
+            proxyRegistry: new Map(),
+            workerRegistry: new Map(),
+          }),
+        })
+
+        assert.deepEqual(evaluation.result, {
+          ok: false,
+          host,
+          code: 'harness-infrastructure',
+          phase: 'initial-turn',
+          initialCode: null,
+          detailCode: 'spawn',
+          retainedRunRoot: null,
+        }, host)
+        assert.equal(nodeFilesystem.existsSync(harness.roots[1]), false, `${host} factory failure leaves no unreported root`)
+      } finally {
+        nodeFilesystem.rmSync(scratch, { force: true, recursive: true })
+      }
+    }
+  })
+
+  test('a live session adapter factory failure keeps its first identity when run-root cleanup fails', async () => {
+    const scratch = tempRoot()
+    try {
+      const harness = createEvaluationHarness(scratch)
+      const filesystem = {
+        ...nodeFilesystem,
+        rmSync(path, options) {
+          if (String(path).includes('claude-code-synthetic-host-entry-disabled')) {
+            throw new Error('synthetic run-root cleanup failure')
+          }
+
+          return nodeFilesystem.rmSync(path, options)
+        },
+      }
+      const evaluation = await hostBehavior.runEvaluation({
+        ...harness.options,
+        filesystem,
+        hosts: ['claude-code'],
+        scenarios: [sessionScenario()],
+        runSession: (call) => hostBehavior.runLiveHostSession({
+          call,
+          filesystem,
+          platform: 'win32',
+          processAdapterFactory: () => ({ detailCode: 'spawn', ok: false }),
+          proxyRegistry: new Map(),
+          workerRegistry: new Map(),
+        }),
+      })
+
+      assert.deepEqual(evaluation.result, {
+        ok: false,
+        host: 'claude-code',
+        code: 'harness-infrastructure',
+        phase: 'initial-turn',
+        initialCode: null,
+        detailCode: 'spawn',
+        retainedRunRoot: harness.roots[1],
+      })
+      assert.equal(nodeFilesystem.existsSync(harness.roots[1]), true)
+    } finally {
+      nodeFilesystem.rmSync(scratch, { force: true, recursive: true })
+    }
+  })
+
+  test('a bare live session start failure retains the repetition root for both hosts', async () => {
+    for (const host of ['claude-code', 'codex']) {
+      const runRoot = `synthetic-${host}-start-failure-root`
+      let terminations = 0
+      const session = await hostBehavior.runLiveHostSession({
+        call: {
+          argv: ['--print'],
+          controllerEnabled: false,
+          cwd: `synthetic-${host}-scenario-root`,
+          environment: {},
+          executable: 'synthetic-host',
+          host,
+          proxySession: null,
+          runRoot,
+          scenario: sessionScenario(),
+          sessionPluginRoot: 'synthetic-plugin-root',
+          turnSchemaRunPath: 'synthetic-turn-schema-path',
+        },
+        filesystem: nodeFilesystem,
+        platform: 'win32',
+        processAdapterFactory: () => ({
+          adapter: {
+            closeInput() {},
+            closureProof: () => ({ proven: false }),
+            hostExitCode: () => null,
+            input: () => ({ ok: false }),
+            runnerClosed: () => false,
+            start: () => ({ ok: false }),
+            terminate: () => { terminations += 1 },
+          },
+          ok: true,
+        }),
+        proxyRegistry: new Map(),
+        workerRegistry: new Map(),
+      })
+
+      assert.deepEqual(session, {
+        failure: {
+          ok: false,
+          host,
+          code: 'harness-infrastructure',
+          phase: 'initial-turn',
+          initialCode: null,
+          detailCode: 'spawn',
+          retainedRunRoot: runRoot,
+        },
+      }, host)
+      assert.equal(terminations, 1, `${host} starts termination for an unproved adapter`)
+    }
   })
 
   test('live process, proxy, and post-ready worker failures preserve their infrastructure identity and publish no evidence', async () => {
