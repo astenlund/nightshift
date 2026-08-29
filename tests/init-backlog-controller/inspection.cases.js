@@ -13,6 +13,7 @@ const {
   collectInspection,
   inspectRegions,
   materializeText,
+  projectGitProblems,
   projectReadyProblems,
   composeElectionMarker,
   inspect,
@@ -764,6 +765,24 @@ function runInspectionCases(repositoryRoot) {
     assert.deepEqual(Object.keys(marker).sort(), ['classification', 'contentBase64', 'gitKind', 'mode', 'policyDigest', 'scaffoldPresent'].sort())
     assert.equal(marker.mode, 0o600)
     assert.equal(Buffer.from(marker.contentBase64, 'base64').toString('utf8'), '{"protocolVersion":1,"root":"C:\\\\checkout","snapshotId":"' + 'a'.repeat(64) + '","state":"ignore"}\n')
+  })
+
+  for (const marker of ['track', 'deferred']) {
+    test(`the ignore-match blocker fires when the election marker is bound to ${marker}`, () => {
+      const git = { kind: 'git', plansPolicy: 'satisfied', nonPlanIgnoreMatches: [{ pattern: '.claude/bugs/', probe: '.claude/bugs/probe.md', sourcePath: '.gitignore', target: '.claude/bugs' }], nonPlanUnignoredPaths: [], electionRequired: true, electionMarker: marker }
+      const problem = projectGitProblems(git).find((item) => item.detail === 'Repository-local ignore rules match non-plan backlog paths.')
+      assert.ok(problem !== undefined, `the ignore-match blocker must fire when the election marker is bound to ${marker}`)
+      assert.equal(problem.blocking, true)
+      assert.equal(problem.code, 'git-policy')
+      assert.equal(problem.target, '.gitignore')
+      assert.deepEqual(problem.evidencePaths, ['.claude/bugs', '.claude/bugs/probe.md'].sort())
+    })
+  }
+
+  test('the ignore-match blocker does not fire when the election marker is bound to ignore', () => {
+    const git = { kind: 'git', plansPolicy: 'satisfied', nonPlanIgnoreMatches: [{ pattern: '.claude/bugs/', probe: '.claude/bugs/probe.md', sourcePath: '.gitignore', target: '.claude/bugs' }], nonPlanUnignoredPaths: [], electionRequired: true, electionMarker: 'ignore' }
+    const problem = projectGitProblems(git).find((item) => item.detail === 'Repository-local ignore rules match non-plan backlog paths.')
+    assert.equal(problem, undefined, 'a marker bound to ignore must not raise the ignore-match blocker')
   })
 
   test('direct inspection collects a stable Git snapshot and removes its transient lock', () => {
