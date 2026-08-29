@@ -1,6 +1,7 @@
 'use strict';
 
 const assert = require('node:assert/strict');
+const { spawnSync } = require('node:child_process');
 const fs = require('node:fs');
 const path = require('node:path');
 const test = require('node:test');
@@ -259,6 +260,31 @@ test('collectMarkdownFiles follows contained links once and rejects links outsid
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
     fs.rmSync(external, { recursive: true, force: true });
+  }
+});
+
+test('the unwrap CLI rejects a backlog root junction outside the repository root', (t) => {
+  const root = fs.mkdtempSync(path.join(require('node:os').tmpdir(), 'unwrap-root-link-'));
+  const repoRoot = path.join(root, 'repo');
+  const claudeDir = path.join(repoRoot, '.claude');
+  const external = path.join(root, 'external');
+  const externalFeatures = path.join(external, 'FEATURES.md');
+  fs.mkdirSync(repoRoot);
+  fs.mkdirSync(external);
+  fs.writeFileSync(externalFeatures, '# Features\n\nwrapped line one\nwrapped line two\n');
+  try {
+    try {
+      fs.symlinkSync(external, claudeDir, 'junction');
+    } catch {
+      t.skip('links unavailable');
+
+      return;
+    }
+    const completion = spawnSync(process.execPath, [path.join(__dirname, 'unwrap.js'), '--write', claudeDir], { encoding: 'utf8' });
+    assert.notEqual(completion.status, 0, 'an escaping backlog root must fail closed');
+    assert.equal(fs.readFileSync(externalFeatures, 'utf8'), '# Features\n\nwrapped line one\nwrapped line two\n');
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
   }
 });
 

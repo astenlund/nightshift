@@ -21,7 +21,7 @@
 const fs = require('fs');
 const path = require('path');
 const { scanMarkdown } = require('../spec-agreement/spec-agreement.js');
-const { LABEL_AT_START, CatalogError, canonicalPath, compareTargets, detectHardWraps, collectMarkdownFiles, isContainedPath, normalizeCatalogItems } = require('../init-backlog/unwrap.js');
+const { LABEL_AT_START, CatalogError, canonicalBacklogRootIdentity, canonicalPath, compareTargets, detectHardWraps, collectMarkdownFiles, isContainedPath, normalizeCatalogItems } = require('../init-backlog/unwrap.js');
 
 const INDEX_FILE_STEMS = new Set([
   'QUICK_WINS', 'FEATURES', 'BUGS', 'PATTERNS',
@@ -1184,7 +1184,10 @@ function scanBreakoutTargetsWith(breakoutTargets, load, collectEvidence) {
 
 function scanBreakoutTargets(breakoutTargets, claudeDir) {
   const readCache = new Map();
-  const rootIdentity = canonicalPath(claudeDir);
+  const rootIdentity = canonicalBacklogRootIdentity(claudeDir);
+  if (rootIdentity === null) {
+    throw new CatalogError(`backlog root escapes its repository authority: ${claudeDir}`);
+  }
   const { notices, structuralErrors, scanned } = scanBreakoutTargetsWith(breakoutTargets, (target) => {
     const resolved = path.resolve(claudeDir, target);
     let read = readCache.get(resolved);
@@ -1473,7 +1476,15 @@ function runCli(argRoot) {
     process.exitCode = 1;
     return;
   }
-  const rootIdentity = canonicalPath(claudeDir);
+  const rootIdentity = canonicalBacklogRootIdentity(claudeDir);
+  if (rootIdentity === null) {
+    process.stdout.write(JSON.stringify({
+      error: `the .claude directory escapes its repository authority: ${claudeDir}`,
+    }, null, 2) + '\n');
+    process.exitCode = 1;
+
+    return;
+  }
   const files = {};
   for (const name of [...WORK_INDEX_NAMES, 'PATTERNS']) {
     files[name] = readFileIfPresent(path.join(claudeDir, `${name}.md`), rootIdentity);

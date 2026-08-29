@@ -8,7 +8,7 @@
 const assert = require('assert');
 const fs = require('fs');
 const path = require('path');
-const { execFileSync } = require('child_process');
+const { execFileSync, spawnSync } = require('child_process');
 const {
   analyze,
   analyzeCatalog,
@@ -1617,6 +1617,29 @@ test('the ready CLI ignores a top-level index link outside the backlog root', ()
     const output = execFileSync(process.execPath, [path.join(__dirname, 'ready.js'), tmpRoot], { encoding: 'utf8' });
     assert.ok(!output.includes('External heading'), output);
     assert.ok(!output.includes('Secret'), output);
+  } finally {
+    fs.rmSync(tmpRoot, { recursive: true, force: true });
+  }
+});
+
+test('the ready CLI rejects a backlog root junction outside the repository root', () => {
+  const tmpRoot = path.join(__dirname, '..', '..', '.tmp', `ready-linked-root-${process.pid}`);
+  const repoRoot = path.join(tmpRoot, 'repo');
+  const claudeDir = path.join(repoRoot, '.claude');
+  const outside = path.join(tmpRoot, 'outside');
+  fs.mkdirSync(repoRoot, { recursive: true });
+  fs.mkdirSync(outside, { recursive: true });
+  fs.writeFileSync(path.join(outside, 'FEATURES.md'), '# Features\n\n## External heading\n\n### Secret root link\n\n**Requires:** none.\n');
+  try {
+    try {
+      fs.symlinkSync(outside, claudeDir, 'junction');
+    } catch {
+      return;
+    }
+    const completion = spawnSync(process.execPath, [path.join(__dirname, 'ready.js'), repoRoot], { encoding: 'utf8' });
+    assert.notStrictEqual(completion.status, 0, 'an escaping backlog root must fail closed');
+    assert.ok(!completion.stdout.includes('External heading'), completion.stdout);
+    assert.ok(!completion.stdout.includes('Secret root link'), completion.stdout);
   } finally {
     fs.rmSync(tmpRoot, { recursive: true, force: true });
   }

@@ -338,6 +338,14 @@ function isContainedPath(root, target) {
   return relative === '' || (relative !== '..' && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative));
 }
 
+function canonicalBacklogRootIdentity(root) {
+  const resolved = path.resolve(root);
+  const authority = canonicalPath(path.dirname(resolved));
+  const identity = canonicalPath(resolved);
+
+  return isContainedPath(authority, identity) ? identity : null;
+}
+
 // A directory target is read as a backlog root: the seven backlog files at its
 // top level plus everything under the backlog directories, following contained
 // links once and skipping dangling or escaping ones. A file target is taken when
@@ -367,7 +375,10 @@ function collectMarkdownFiles(targets) {
     }
   };
   const visitBacklogRoot = (root) => {
-    const rootIdentity = canonicalPath(root);
+    const rootIdentity = canonicalBacklogRootIdentity(root);
+    if (rootIdentity === null) {
+      throw new CatalogError(`backlog root escapes its repository authority: ${root}`);
+    }
     for (const entry of sortedEntries(root)) {
       const child = path.join(root, entry.name);
       const stat = statOrNull(child);
@@ -408,7 +419,17 @@ function runCli(argv) {
     return;
   }
   const report = [];
-  for (const file of collectMarkdownFiles(statted)) {
+  let files;
+  try {
+    files = collectMarkdownFiles(statted);
+  } catch (error) {
+    if (!(error instanceof CatalogError)) throw error;
+    process.stderr.write(`unwrap.js: ${error.message}\n`);
+    process.exitCode = 2;
+
+    return;
+  }
+  for (const file of files) {
     let text;
     try {
       text = fs.readFileSync(file, 'utf8');
@@ -429,7 +450,7 @@ function runCli(argv) {
   process.exitCode = unreadable || (report.length > 0 && !write) ? 1 : 0;
 }
 
-module.exports = { LABEL_AT_START, CatalogError, canonicalPath, compareTargets, detectHardWraps, unwrapText, collectMarkdownFiles, isContainedPath, normalizeCatalogItems, analyzeUnwrapCatalog };
+module.exports = { LABEL_AT_START, CatalogError, canonicalBacklogRootIdentity, canonicalPath, compareTargets, detectHardWraps, unwrapText, collectMarkdownFiles, isContainedPath, normalizeCatalogItems, analyzeUnwrapCatalog };
 
 if (require.main === module) {
   runCli(process.argv.slice(2));
