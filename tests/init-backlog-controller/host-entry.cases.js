@@ -3750,6 +3750,53 @@ function runHostEntryCases(repositoryRoot) {
     assert.equal(processAdapterFactory.created[0].state.terminations, 1)
   })
 
+  test('live host line overflow records output-capacity infrastructure for both hosts', async () => {
+    for (const host of ['claude-code', 'codex']) {
+      const runRoot = `synthetic-${host}-overflow-run-root`
+      const processAdapterFactory = fakeSessionAdapterFactory({
+        onStart: ({ options, state }) => {
+          options.onHostStdout(Buffer.alloc(driver.BYTE_BOUNDS.MAX_HOST_LINE_BYTES + 1, 0x61))
+          state.closed = true
+          state.exitCode = 0
+          state.proven = true
+        },
+      })
+      const session = await hostBehavior.runLiveHostSession({
+        call: {
+          argv: host === 'claude-code' ? ['--print'] : ['exec'],
+          controllerEnabled: false,
+          cwd: 'synthetic-scenario-root',
+          environment: {},
+          executable: `${host}-executable`,
+          host,
+          proxySession: null,
+          runRoot,
+          scenario: sessionScenario(),
+          sessionPluginRoot: 'synthetic-disabled-plugin-root',
+          turnSchemaRunPath: 'synthetic-turn-schema-path',
+        },
+        filesystem: nodeFilesystem,
+        platform: 'win32',
+        processAdapterFactory,
+        proxyRegistry: new Map(),
+        workerRegistry: new Map(),
+      })
+
+      assert.deepEqual(session, {
+        failure: {
+          ok: false,
+          host,
+          code: 'harness-infrastructure',
+          phase: 'initial-turn',
+          initialCode: null,
+          detailCode: 'output-capacity',
+          retainedRunRoot: runRoot,
+        },
+      })
+      assert.equal(processAdapterFactory.created[0].state.terminations, 1)
+    }
+  })
+
   test('a codex turn whose structured-output append fails stops the session with the output-capacity carrier', async () => {
     const scratch = tempRoot()
     try {

@@ -2394,8 +2394,7 @@ async function runLiveHostSession({ call, filesystem, platform, processAdapterFa
         }
       },
       onOverflow: () => {
-        conductorFailure = { reason: 'output-capacity' }
-        adapter.terminate()
+        settle({ failure: recordSessionInfrastructureFailure({ detailCode: 'output-capacity', phase: sessionInput.phase }) })
       },
     })
     const production = attemptProcessAdapterConstruction(processAdapterFactory, {
@@ -2562,7 +2561,7 @@ async function runLiveHostSession({ call, filesystem, platform, processAdapterFa
         }
       },
       onOverflow: () => {
-        primaryFailure = primaryFailure ?? claimPrimaryFailure('session-input', activePhase)
+        settle({ failure: recordSessionInfrastructureFailure({ detailCode: 'output-capacity', phase: activePhase }) })
       },
     })
     const production = attemptProcessAdapterConstruction(processAdapterFactory, {
