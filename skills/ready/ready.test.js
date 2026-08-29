@@ -25,6 +25,7 @@ const {
   buildRegistry,
   EXCLUDED_SECTIONS,
   collectEntryEdges,
+  createBreakoutLoader,
   scanBreakoutLines,
   scanBreakoutTargets,
 } = require('./ready.js');
@@ -1542,6 +1543,23 @@ test('scanBreakoutLines finds Requires and External labels at any indentation, o
 
 test('scanBreakoutLines returns an empty array for a clean breakout', () => {
   assert.deepStrictEqual(scanBreakoutLines('# Title\n\n## Requirements\n\n- Needs a parser.\n'), []);
+});
+
+test('breakout loading reuses one full read across canonical path aliases', () => {
+  const reads = [];
+  const load = createBreakoutLoader('/repo/.claude', '/repo/.claude', {
+    canonicalize: (target) => target.toLowerCase(),
+    contains: () => true,
+    readFile: (target) => { reads.push(target); return '# Breakout\n'; },
+    resolvePath: (root, target) => `${root}/${target}`,
+  });
+
+  const first = load('features/Case.md');
+  const second = load('features/case.md');
+
+  assert.strictEqual(reads.length, 1);
+  assert.strictEqual(first, second);
+  assert.strictEqual(first.identity, '/repo/.claude/features/case.md');
 });
 
 test('scanBreakoutTargets classifies a missing file, a directory, and a dependency line without a pre-read existence probe', () => {

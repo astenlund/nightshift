@@ -1245,29 +1245,51 @@ function scanBreakoutTargetsWith(breakoutTargets, load, collectEvidence) {
   return { notices, structuralErrors, scanned: new Set(lineHitsCache.keys()), evidence };
 }
 
+function createBreakoutLoader(claudeDir, rootIdentity, options = {}) {
+  const canonicalize = options.canonicalize ?? canonicalPath;
+  const contains = options.contains ?? isContainedPath;
+  const readFile = options.readFile ?? fs.readFileSync;
+  const resolvePath = options.resolvePath ?? path.resolve;
+  const readsByIdentity = new Map();
+  const failuresWithoutIdentity = new Map();
+
+  return (target) => {
+    const resolved = resolvePath(claudeDir, target);
+    const priorFailure = failuresWithoutIdentity.get(resolved);
+    if (priorFailure !== undefined) return priorFailure;
+    let identity;
+    try {
+      identity = canonicalize(resolved);
+    } catch (error) {
+      const failure = { errorCode: error?.code ?? 'unknown' };
+      failuresWithoutIdentity.set(resolved, failure);
+
+      return failure;
+    }
+    let read = readsByIdentity.get(identity);
+    if (read === undefined) {
+      if (!contains(rootIdentity, identity)) {
+        read = { errorCode: 'ENOENT' };
+      } else {
+        try {
+          read = { contents: readFile(resolved, 'utf8'), identity };
+        } catch (error) {
+          read = { errorCode: error?.code ?? 'unknown' };
+        }
+      }
+      readsByIdentity.set(identity, read);
+    }
+
+    return read;
+  };
+}
+
 function scanBreakoutTargets(breakoutTargets, claudeDir) {
-  const readCache = new Map();
   const rootIdentity = canonicalBacklogRootIdentity(claudeDir);
   if (rootIdentity === null) {
     throw new CatalogError(`backlog root escapes its repository authority: ${claudeDir}`);
   }
-  const { notices, structuralErrors, scanned } = scanBreakoutTargetsWith(breakoutTargets, (target) => {
-    const resolved = path.resolve(claudeDir, target);
-    let read = readCache.get(resolved);
-    if (read === undefined) {
-      try {
-        const identity = canonicalPath(resolved);
-        read = isContainedPath(rootIdentity, identity)
-          ? { contents: fs.readFileSync(resolved, 'utf8'), identity }
-          : { errorCode: 'ENOENT' };
-      } catch (error) {
-        read = { errorCode: error?.code ?? 'unknown' };
-      }
-      readCache.set(resolved, read);
-    }
-
-    return read;
-  }, false);
+  const { notices, structuralErrors, scanned } = scanBreakoutTargetsWith(breakoutTargets, createBreakoutLoader(claudeDir, rootIdentity), false);
 
   return { notices, structuralErrors, scannedFiles: scanned };
 }
@@ -1726,6 +1748,7 @@ module.exports = {
   buildRegistry,
   EXCLUDED_SECTIONS,
   collectEntryEdges,
+  createBreakoutLoader,
   nodeKey,
   findCycles,
   groupCycleEdges,
