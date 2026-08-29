@@ -1471,6 +1471,13 @@ async function runEvaluation(options) {
           executable: nodeExecutablePath,
           host,
         })
+        if (workerCompletion !== null && typeof workerCompletion === 'object' && workerCompletion.failure?.code === 'harness-infrastructure') {
+          return finishRepetition({
+            outcome: { result: workerCompletion.failure },
+            phase: workerCompletion.failure.phase,
+            terminationProven: workerCompletion.failure.retainedRunRoot === null,
+          })
+        }
         if (workerCompletion === null || typeof workerCompletion !== 'object' || workerCompletion.ready !== true) {
           return finishRepetition({
             outcome: { result: infrastructureCarrier({ detailCode: 'proxy', host, phase: 'initial-turn', retainedRunRoot: runRoot }) },

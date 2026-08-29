@@ -2153,6 +2153,43 @@ function runHostEntryCases(repositoryRoot) {
     }
   })
 
+  test('a pre-spawn worker construction failure preserves spawn identity and removes its root', async () => {
+    const scratch = tempRoot()
+    try {
+      const harness = createEvaluationHarness(scratch, {
+        onLaunch: (call) => call.boundary === 'worker'
+          ? {
+              failure: {
+                ok: false,
+                host: call.host,
+                code: 'harness-infrastructure',
+                phase: 'initial-turn',
+                initialCode: null,
+                detailCode: 'spawn',
+                retainedRunRoot: null,
+              },
+            }
+          : null,
+      })
+      const evaluation = await hostBehavior.runEvaluation(harness.options)
+
+      assert.equal(evaluation.exitCode, 1)
+      assert.deepEqual(evaluation.result, {
+        ok: false,
+        host: 'claude-code',
+        code: 'harness-infrastructure',
+        phase: 'initial-turn',
+        initialCode: null,
+        detailCode: 'spawn',
+        retainedRunRoot: null,
+      })
+      assert.deepEqual(evaluation.rows, [])
+      assert.equal(nodeFilesystem.existsSync(harness.roots[2]), false, 'the pre-spawn worker root is removed after construction failure')
+    } finally {
+      nodeFilesystem.rmSync(scratch, { force: true, recursive: true })
+    }
+  })
+
   test('pre-spawn scenario revalidation rejects drift injected after plugin setup with zero codex sessions', async () => {
     const scratch = tempRoot()
     try {
