@@ -161,6 +161,26 @@ function runDiscoveryCases(repositoryRoot) {
     }
   })
 
+  test('overlapping Claude traversals emit each import edge once', () => {
+    const root = temporaryRoot('nightshift-discovery-overlap-')
+    try {
+      ordinaryFile(join(root, 'CLAUDE.md'), '# root\n\n@nested/CLAUDE.md\n')
+      mkdirSync(join(root, 'nested'))
+      ordinaryFile(join(root, 'nested', 'CLAUDE.md'), '# nested\n\n@child.md\n')
+      ordinaryFile(join(root, 'nested', 'child.md'), '# child\n')
+
+      const resolved = resolveGuidance(root, 'claude-code', { claudeRootExclusionStatus: 'included', claudeContextSource: 'host-observed' })
+
+      assert.deepEqual(resolved.independentPaths, ['nested/CLAUDE.md', 'nested/child.md'])
+      assert.deepEqual(resolved.imports, [
+        { adapterCandidate: true, source: 'CLAUDE.md', target: 'nested/CLAUDE.md' },
+        { adapterCandidate: false, source: 'nested/CLAUDE.md', target: 'nested/child.md' },
+      ])
+    } finally {
+      rmSync(root, { force: true, recursive: true })
+    }
+  })
+
   test('guidance resolution applies Codex fallback precedence and reports missing roots', () => {
     const root = temporaryRoot('nightshift-discovery-codex-')
     try {

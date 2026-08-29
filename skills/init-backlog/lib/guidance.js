@@ -405,6 +405,18 @@ function findClaudePotential(root, options, candidateReader) {
   return [...paths].sort(compareOrdinal)
 }
 
+function uniqueGuidanceImports(imports) {
+  const importsByEdge = new Map()
+  for (const item of imports) {
+    const edge = JSON.stringify([item.source, item.target])
+    if (!importsByEdge.has(edge)) {
+      importsByEdge.set(edge, item)
+    }
+  }
+
+  return [...importsByEdge.values()].sort((a, b) => compareOrdinal(`${a.source}\0${a.target}`, `${b.source}\0${b.target}`))
+}
+
 function resolveClaude(root, hostContext, options = {}) {
   const candidateReader = createGuidanceCandidateReader(root, options)
   const rootFile = candidateReader('CLAUDE.md')
@@ -422,7 +434,7 @@ function resolveClaude(root, hostContext, options = {}) {
   const base = starts.length === 0 ? { graph: new Map(), imports: [] } : scanClaudeGraph(root, starts, candidateReader)
   const independentGraph = independent.length === 0 ? { graph: new Map(), imports: [] } : scanClaudeGraph(root, independent, candidateReader)
   const graph = new Map([...base.graph, ...independentGraph.graph])
-  const allImports = [...base.imports, ...independentGraph.imports]
+  const allImports = uniqueGuidanceImports([...base.imports, ...independentGraph.imports])
   const delegatedTargets = [...new Set(base.imports.filter((item) => item.adapterCandidate).map((item) => item.target))].sort(compareOrdinal)
   if (delegatedTargets.length > 1) {
     fail('Multiple recognized Claude adapter candidates were found.', undefined, delegatedTargets[0])
@@ -439,7 +451,7 @@ function resolveClaude(root, hostContext, options = {}) {
     }
   }
 
-  return { baseAdapter: 'CLAUDE.md', candidates: [...new Set(['CLAUDE.md', ...potential])].sort(compareOrdinal), graphPaths, independentPaths, imports: allImports.sort((a, b) => compareOrdinal(`${a.source}\0${a.target}`, `${b.source}\0${b.target}`)), resolvedTarget }
+  return { baseAdapter: 'CLAUDE.md', candidates: [...new Set(['CLAUDE.md', ...potential])].sort(compareOrdinal), graphPaths, independentPaths, imports: allImports, resolvedTarget }
 }
 
 function resolveCodex(root, hostContext, options = {}) {
