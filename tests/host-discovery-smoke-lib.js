@@ -10,6 +10,7 @@ const { PUBLIC_SKILLS } = require('./entry-contract')
 const CODEX_CATALOG_PROMPT = 'Return a JSON object whose skills array contains only the plugin-qualified Nightshift skill identifiers visible in the injected Skills catalog.'
 const RUNTIME_KEYS = Object.freeze(['PATH', 'PATHEXT', 'SystemRoot', 'WINDIR', 'ComSpec', 'TEMP', 'TMP', 'TMPDIR', 'HOME', 'USERPROFILE', 'HOMEDRIVE', 'HOMEPATH', 'APPDATA', 'LOCALAPPDATA', 'LANG', 'LC_ALL', 'TERM'])
 const MAX_CAPTURE_BYTES = 1048576
+const MAX_EVIDENCE_ROW_BYTES = 1048576
 const TIMEOUT_MS = 300000
 const ENGINE_RESOURCE_KEYS = Object.freeze(['code', 'plan', 'rigor', 'spec', 'workflow'])
 
@@ -433,6 +434,7 @@ function assertEvidenceDirectoriesStable(snapshot) {
 function stableEvidenceFile(root, filePath) {
   const before = lstatSync(filePath, { bigint: true })
   assertion(before.isFile() && !before.isSymbolicLink() && before.nlink === 1n, 'Evidence row must be a direct single-link file')
+  assertion(before.size <= BigInt(MAX_EVIDENCE_ROW_BYTES), `Evidence row exceeds ${MAX_EVIDENCE_ROW_BYTES}-byte limit`)
   const canonicalRoot = realpathSync.native(root)
   const canonicalFile = realpathSync.native(filePath)
   assertion(isContained(canonicalRoot, canonicalFile), 'Evidence row escapes its root')
@@ -449,11 +451,12 @@ function expectedPublicSkillNames() {
 
 function writeEvidence({ checkoutRoot, evidenceRoot, row }) {
   validateEvidenceRow(row)
+  const bytes = Buffer.from(JSON.stringify(row) + '\n', 'utf8')
+  assertion(bytes.length <= MAX_EVIDENCE_ROW_BYTES, `Evidence row exceeds ${MAX_EVIDENCE_ROW_BYTES}-byte limit`)
   const snapshot = inspectEvidenceDirectoryChain(checkoutRoot, evidenceRoot, true)
   const basename = row.host + '-' + row.mode + '.json'
   const destination = join(snapshot.root, basename)
   const stage = join(snapshot.root, '.' + basename + '.' + randomBytes(16).toString('hex') + '.new')
-  const bytes = Buffer.from(JSON.stringify(row) + '\n', 'utf8')
   let stagePresent = false
   try {
     writeFileSync(stage, bytes, { flag: 'wx', mode: 0o600 })

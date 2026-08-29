@@ -1,7 +1,7 @@
 'use strict'
 
 const assert = require('node:assert/strict')
-const { copyFileSync, cpSync, existsSync, linkSync, lstatSync, mkdtempSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } = require('node:fs')
+const { copyFileSync, cpSync, existsSync, linkSync, lstatSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } = require('node:fs')
 const { tmpdir } = require('node:os')
 const { basename, dirname, join } = require('node:path')
 const test = require('node:test')
@@ -402,6 +402,37 @@ test('evidence publication is exclusive and leaves one direct single-link row', 
     assert.deepEqual(readFileSync(rowPath), bytes, 'a repeated cell cannot replace its prior evidence')
   } finally {
     removeTemporaryDirectory(checkoutRoot)
+  }
+})
+
+test('evidence row bytes are bounded before publication staging and reading', () => {
+  const evidenceRowByteLimit = 1048576
+  const publicationRoot = createTemporaryDirectory()
+  const readRoot = createTemporaryDirectory()
+  try {
+    const publicationEvidenceRoot = join(publicationRoot, '.tmp', 'evidence')
+    const exactRow = validEvidenceRow({ diagnostic: 'x', status: 'fail' })
+    const initialByteLength = Buffer.byteLength(JSON.stringify(exactRow) + '\n', 'utf8')
+    exactRow.diagnostic += 'x'.repeat(evidenceRowByteLimit - initialByteLength)
+    assert.equal(Buffer.byteLength(JSON.stringify(exactRow) + '\n', 'utf8'), evidenceRowByteLimit)
+    writeEvidence({ checkoutRoot: publicationRoot, evidenceRoot: publicationEvidenceRoot, row: exactRow })
+    assert.equal(lstatSync(join(publicationEvidenceRoot, 'claude-clean.json')).size, evidenceRowByteLimit)
+
+    const oversizedRow = { ...exactRow, diagnostic: exactRow.diagnostic + 'x', host: 'codex', mode: 'repeat' }
+    assert.throws(() => writeEvidence({ checkoutRoot: publicationRoot, evidenceRoot: publicationEvidenceRoot, row: oversizedRow }), /byte limit/)
+    assert.deepEqual(readdirSync(publicationEvidenceRoot), ['claude-clean.json'])
+
+    const readEvidenceRoot = join(readRoot, 'evidence')
+    mkdirSync(readEvidenceRoot)
+    for (const filename of ['claude-clean.json', 'claude-repeat.json', 'codex-clean.json', 'codex-repeat.json']) {
+      writeFileSync(join(readEvidenceRoot, filename), filename === 'claude-clean.json' ? Buffer.alloc(evidenceRowByteLimit, 0x78) : '{}\n')
+    }
+    assert.throws(() => evaluateEvidence({ checkoutRoot: readRoot, evidenceRoot: readEvidenceRoot, release: false }), SyntaxError)
+    writeFileSync(join(readEvidenceRoot, 'claude-clean.json'), Buffer.alloc(evidenceRowByteLimit + 1, 0x78))
+    assert.throws(() => evaluateEvidence({ checkoutRoot: readRoot, evidenceRoot: readEvidenceRoot, release: false }), /byte limit/)
+  } finally {
+    removeTemporaryDirectory(publicationRoot)
+    removeTemporaryDirectory(readRoot)
   }
 })
 
