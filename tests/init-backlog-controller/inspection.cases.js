@@ -20,6 +20,7 @@ const {
   creationMode,
   discoverInitialLockStages,
   maskedRecords,
+  newlineTargetEvidence,
   readElectionMarker,
   targetRecord,
 } = require('../../skills/init-backlog/lib/inspection')
@@ -310,6 +311,35 @@ function runInspectionCases(repositoryRoot) {
       platformEol: 'lf',
     })
     assert.deepEqual(result.newlinePolicies.map((item) => item.style), ['lf', 'crlf'])
+  })
+
+  test('newline target evidence reads records linearly and retains compact styles', () => {
+    let recordReads = 0
+    const records = Array.from({ length: 200 }, (_, index) => {
+      const values = { newline: index % 2 === 0 ? 'lf' : 'crlf', target: `.claude/features/item-${index}.md` }
+
+      return {
+        kind: 'file',
+        mode: null,
+        get newline() {
+          recordReads += 1
+
+          return values.newline
+        },
+        get target() {
+          recordReads += 1
+
+          return values.target
+        },
+      }
+    })
+    const nonGit = newlineTargetEvidence(records, 'AGENTS.md', [], 'non-git')
+
+    assert.ok(recordReads <= records.length * 8, `record fields were read ${recordReads} times`)
+    assert.equal(nonGit.every((item) => item.siblingStyles.length === 2), true)
+    assert.equal(nonGit.every((item) => item.siblingStyles.length <= 2), true)
+    const git = newlineTargetEvidence(records, 'AGENTS.md', [], 'git')
+    assert.equal(git.every((item) => !Object.hasOwn(item, 'siblingStyles')), true)
   })
 
   test('non-Git guidance conflicts expose paired newline alternatives', () => {

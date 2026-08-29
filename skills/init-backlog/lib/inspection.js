@@ -579,6 +579,39 @@ function guidanceNewlineEvidence(root, guidance, options = {}) {
   }).filter((item) => item.style === 'lf' || item.style === 'crlf')
 }
 
+function newlineTargetEvidence(targetRecords, resolvedGuidance, guidanceStyles, gitKind) {
+  const files = targetRecords.filter((item) => item.kind === 'file').map((item) => {
+    const target = item.target
+
+    return { family: newlineFamily(target, resolvedGuidance), mode: item.mode, newline: item.newline, target }
+  })
+  if (gitKind === 'git') return files.map(({ family, mode, target }) => ({ family, mode, target }))
+  const countsByFamily = new Map()
+  const countsByTarget = new Map()
+  const add = (counts, key, style) => {
+    if (style !== 'lf' && style !== 'crlf') return
+    if (!counts.has(key)) counts.set(key, { crlf: 0, lf: 0 })
+    counts.get(key)[style] += 1
+  }
+  for (const item of files) {
+    if (item.family === 'guidance') continue
+    add(countsByFamily, item.family, item.newline)
+    add(countsByTarget, item.target, item.newline)
+  }
+  for (const item of guidanceStyles) {
+    add(countsByFamily, 'guidance', item.style)
+    add(countsByTarget, item.target, item.style)
+  }
+
+  return files.map(({ family, mode, target }) => {
+    const familyCounts = countsByFamily.get(family) ?? { crlf: 0, lf: 0 }
+    const targetCounts = countsByTarget.get(target) ?? { crlf: 0, lf: 0 }
+    const siblingStyles = ['lf', 'crlf'].filter((style) => familyCounts[style] > targetCounts[style])
+
+    return { family, mode, siblingStyles, target }
+  })
+}
+
 function collectInspection(root, host, hostContext = {}, options = {}) {
   const canonical = canonicalRoot(root)
   let guidance
@@ -659,9 +692,8 @@ function collectInspection(root, host, hostContext = {}, options = {}) {
     ready = analyzeCatalog(buildReadyCatalog(catalog))
     const overlayCatalog = catalog.map((item) => {
       const physicalTarget = item.target.startsWith('.claude/') ? item.target : `.claude/${item.target}`
-      const finding = wrapFindings.find((candidate) => candidate.target === physicalTarget)
       const predicted = predictedCatalogContents.get(physicalTarget)
-      if (predicted === undefined || finding === undefined) return item
+      if (predicted === undefined) return item
 
       return { ...item, contents: predicted }
     })
@@ -670,20 +702,14 @@ function collectInspection(root, host, hostContext = {}, options = {}) {
   } catch (error) {
     inspectError('ready-failed', 'Ready parser conversion failed.', null, error)
   }
-  const targetRecords = descriptors.map((entry) => targetRecord(entry.target, entry.descriptor, { ...entry.declaration, contentRole: entry.declaration.contentRole ?? 'semantic' }, entry.template, { ...options, decode: decodeTargetText, gitKind: git.kind, unwrapFindings: wrapFindings }))
+  const targetRecords = descriptors.map((entry) => targetRecord(entry.target, entry.descriptor, { ...entry.declaration, contentRole: entry.declaration.contentRole ?? 'semantic' }, entry.template, { ...options, decode: decodeTargetText, gitKind: git.kind }))
   let gitRecord
   try {
     const ignoreProbes = options.ignoreProbes ?? buildIgnoreProbes(canonical, descriptors)
-    const guidanceStyles = guidanceNewlineEvidence(canonical, guidance, options)
-    const newlineTargets = targetRecords.filter((item) => item.kind === 'file').map((item) => {
-      const family = newlineFamily(item.target, guidance.resolvedTarget)
-      const siblingStyles = family === 'guidance'
-        ? guidanceStyles.filter((candidate) => candidate.target !== item.target).map((candidate) => candidate.style)
-        : targetRecords.filter((candidate) => candidate.kind === 'file' && candidate.target !== item.target && newlineFamily(candidate.target, guidance.resolvedTarget) === family && candidate.newline !== null).map((candidate) => candidate.newline)
-
-      return { family, mode: item.mode, siblingStyles, target: item.target }
-    })
-    gitRecord = inspectGitPolicy(canonical, { ...options, attributePaths: targetRecords.filter((item) => item.kind === 'file').map((item) => item.target), electionMarker: marker.marker, electionMarkerMode: marker.mode, electionMarkerSnapshotId: marker.snapshotId, freshScaffold: false, ignoreProbes, kind: git.kind, newlineTargets, siblingStyles: targetRecords.filter((item) => item.kind === 'file').map((item) => item.newline) })
+    const fileRecords = targetRecords.filter((item) => item.kind === 'file')
+    const guidanceStyles = git.kind === 'git' ? [] : guidanceNewlineEvidence(canonical, guidance, options)
+    const newlineTargets = newlineTargetEvidence(fileRecords, guidance.resolvedTarget, guidanceStyles, git.kind)
+    gitRecord = inspectGitPolicy(canonical, { ...options, attributePaths: fileRecords.map((item) => item.target), electionMarker: marker.marker, electionMarkerMode: marker.mode, electionMarkerSnapshotId: marker.snapshotId, freshScaffold: false, ignoreProbes, kind: git.kind, newlineTargets })
   } catch (error) {
     inspectError('git-policy', 'Git policy inspection failed.', null, error)
   }
@@ -826,4 +852,4 @@ function inspect(root, host, hostContext = {}, options = {}) {
   }
 }
 
-module.exports = { buildIgnoreProbes, buildReadyCatalog, collectInspection, composeElectionMarker, composeElectionRecord, creationMode, decodeText, discoverInitialLockStages, inspect, inspectRegions, isReadyCatalogTarget, lineRecords, materializeText, maskedRecords, projectGitProblems, projectReadyProblems, proposal, readElectionMarker, targetRecord, targetState, validateElectionMarkerRecord }
+module.exports = { buildIgnoreProbes, buildReadyCatalog, collectInspection, composeElectionMarker, composeElectionRecord, creationMode, decodeText, discoverInitialLockStages, inspect, inspectRegions, isReadyCatalogTarget, lineRecords, materializeText, maskedRecords, newlineTargetEvidence, projectGitProblems, projectReadyProblems, proposal, readElectionMarker, targetRecord, targetState, validateElectionMarkerRecord }
