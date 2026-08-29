@@ -240,10 +240,10 @@ function runActivationCases(repositoryRoot) {
     const body = skillBody()
 
     assertReserveFirst(body)
-    const mutated = body.replace('Run `--reserve-request` first', 'Run reservation later').replace('Only when reservation reports typed `request-residue`', 'Only when reservation reports typed `request-residue`, run `--reserve-request` first')
+    const mutated = body.replace('Run `--reserve-request` first', 'Run reservation later').replace('Only when reservation reports typed `request-residue`', 'Only when reservation reports typed `request-residue`, Run `--reserve-request` first')
     assert.throws(
       () => assertReserveFirst(mutated),
-      (error) => error.name === 'AssertionError' && error.message.includes('reserve'),
+      (error) => error.name === 'AssertionError' && error.message.includes('request reservation must precede conditional residue inspection'),
       'moving residue inspection ahead of reservation must fail the ordering assertion',
     )
   })
