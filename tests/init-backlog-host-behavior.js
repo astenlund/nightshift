@@ -1562,6 +1562,46 @@ const PRE_SESSION_BOUNDARY_PHASES = Object.freeze({ authentication: 'authenticat
 const LIVE_COMPLETION_POLL_MILLISECONDS = 50
 const DRIFT_FAULT_BYTES = Buffer.from('drift\n', 'utf8')
 
+// Shared settle-once guard for the live-process promises below. It owns the
+// deadline and poll handles so the first `settle` clears the deadline, then the
+// poll, then resolves exactly once; every later call is inert.
+function createSettleGuard(resolve) {
+  let deadlineHandle = null
+  let pollHandle = null
+  let settled = false
+
+  return {
+    armDeadline(callback, milliseconds) {
+      if (deadlineHandle !== null) {
+        clearTimeout(deadlineHandle)
+      }
+      deadlineHandle = setTimeout(callback, milliseconds)
+    },
+    armPoll(callback, milliseconds) {
+      pollHandle = setInterval(callback, milliseconds)
+    },
+    clearPoll() {
+      if (pollHandle !== null) {
+        clearInterval(pollHandle)
+        pollHandle = null
+      }
+    },
+    settle(value) {
+      if (settled) {
+        return
+      }
+      settled = true
+      if (deadlineHandle !== null) {
+        clearTimeout(deadlineHandle)
+      }
+      if (pollHandle !== null) {
+        clearInterval(pollHandle)
+      }
+      resolve(value)
+    },
+  }
+}
+
 function infrastructureCarrier({ detailCode, host, initialCode = null, phase, retainedRunRoot = null }) {
   if (detailCode === 'cleanup' && phase !== 'post-session') {
     // Pre-session cleanup carriers stay locally constructed: the driver
@@ -1639,22 +1679,7 @@ function createLiveBindings({ ambientEnvironment, checkoutRoot, controllerEntryP
     const stdoutChunks = []
     const stderrChunks = []
     let adapter = null
-    let deadlineHandle = null
-    let pollHandle = null
-    let settled = false
-    const settle = (value) => {
-      if (settled) {
-        return
-      }
-      settled = true
-      if (deadlineHandle !== null) {
-        clearTimeout(deadlineHandle)
-      }
-      if (pollHandle !== null) {
-        clearInterval(pollHandle)
-      }
-      resolve(value)
-    }
+    const { armDeadline, armPoll, settle } = createSettleGuard(resolve)
     const production = driver.createProductionProcessAdapter({
       cwd: call.cwd,
       mode: 'pre-session',
@@ -1664,7 +1689,7 @@ function createLiveBindings({ ambientEnvironment, checkoutRoot, controllerEntryP
       onHostStderr: (bytes) => stderrChunks.push(Buffer.from(bytes)),
       onHostStdout: (bytes) => stdoutChunks.push(Buffer.from(bytes)),
       onStarted: () => {
-        deadlineHandle = setTimeout(() => {
+        armDeadline(() => {
           adapter.terminate()
           settle({ failure: { code: 'preflight-timeout', host: call.host, ok: false, phase } })
         }, driver.DEADLINES.PRE_SESSION_MILLISECONDS)
@@ -1676,7 +1701,7 @@ function createLiveBindings({ ambientEnvironment, checkoutRoot, controllerEntryP
       return
     }
     adapter = production.adapter
-    pollHandle = setInterval(() => {
+    armPoll(() => {
       if (adapter.runnerClosed() && adapter.closureProof().proven === true) {
         settle({ exitCode: adapter.hostExitCode(), signal: null, stderrBytes: Buffer.concat(stderrChunks), stdoutBytes: Buffer.concat(stdoutChunks) })
       }
@@ -1692,24 +1717,9 @@ function createLiveBindings({ ambientEnvironment, checkoutRoot, controllerEntryP
 
       return
     }
-    const entry = { adapter: null, failure: null, onFailure: null, onLine: null, ready: false }
+    const entry = { adapter: null, onLine: null, ready: false }
     const { armDeadline, settle } = createSettleGuard(resolve)
     const startupFailure = () => settle({ failure: infrastructureCarrier({ detailCode: 'proxy', host: call.host, phase: 'initial-turn', retainedRunRoot: call.cwd }) })
-    const workerFailure = (failure) => {
-      if (!entry.ready) {
-        startupFailure()
-
-        return
-      }
-      if (entry.onFailure === null) {
-        if (entry.failure === null) {
-          entry.failure = failure
-        }
-
-        return
-      }
-      entry.onFailure(failure)
-    }
     const decoder = driver.createLineDecoder({
       limit: driver.BYTE_BOUNDS.MAX_RUNNER_FRAME_BYTES,
       limitName: 'MAX_RUNNER_FRAME_BYTES',
@@ -1753,7 +1763,7 @@ function createLiveBindings({ ambientEnvironment, checkoutRoot, controllerEntryP
     }
     entry.adapter = production.adapter
     workerRegistry.set(call.cwd, entry)
-    deadlineHandle = setTimeout(startupFailure, driver.DEADLINES.WORKER_STARTUP_MILLISECONDS)
+    armDeadline(startupFailure, driver.DEADLINES.WORKER_STARTUP_MILLISECONDS)
     if (entry.adapter.start({ args: call.argv, environment: call.environment, executable: call.executable }).ok !== true) {
       startupFailure()
     }
@@ -2158,23 +2168,8 @@ async function runLiveHostSession({ call, filesystem, platform, processAdapterFa
   const runTurnProcess = ({ commandArgv, conductor, inputText, inputKind, sessionInput }) => new Promise((resolve) => {
     const stderrChunks = []
     let adapter = null
-    let deadlineHandle = null
-    let pollHandle = null
-    let settled = false
     let conductorFailure = null
-    const settle = (value) => {
-      if (settled) {
-        return
-      }
-      settled = true
-      if (deadlineHandle !== null) {
-        clearTimeout(deadlineHandle)
-      }
-      if (pollHandle !== null) {
-        clearInterval(pollHandle)
-      }
-      resolve(value)
-    }
+    const { armDeadline, armPoll, settle } = createSettleGuard(resolve)
     const decoder = driver.createLineDecoder({
       limit: driver.BYTE_BOUNDS.MAX_HOST_LINE_BYTES,
       limitName: 'MAX_HOST_LINE_BYTES',
@@ -2210,11 +2205,11 @@ async function runLiveHostSession({ call, filesystem, platform, processAdapterFa
     }
     adapter = production.adapter
     sessionAdapters.push(adapter)
-    deadlineHandle = setTimeout(() => {
+    armDeadline(() => {
       adapter.terminate()
       settle(sessionFailure('session-timeout', sessionInput.phase))
     }, Number(driver.DEADLINES.TURN_NANOSECONDS / 1000000n))
-    pollHandle = setInterval(() => {
+    armPoll(() => {
       if (adapter.runnerClosed()) {
         settle({
           closureProven: adapter.closureProof().proven === true,
@@ -2300,29 +2295,11 @@ async function runLiveHostSession({ call, filesystem, platform, processAdapterFa
     const stderrChunks = []
     const conductor = hostEvents.createClaudeSessionConductor({ sessionPluginRoot })
     let adapter = null
-    let deadlineHandle = null
-    let pollHandle = null
-    let settled = false
     let stdinClosed = false
     let walkDone = false
-    const settle = (value) => {
-      if (settled) {
-        return
-      }
-      settled = true
-      if (deadlineHandle !== null) {
-        clearTimeout(deadlineHandle)
-      }
-      if (pollHandle !== null) {
-        clearInterval(pollHandle)
-      }
-      resolve(value)
-    }
+    const { armDeadline, armPoll, clearPoll, settle } = createSettleGuard(resolve)
     const armTurnDeadline = () => {
-      if (deadlineHandle !== null) {
-        clearTimeout(deadlineHandle)
-      }
-      deadlineHandle = setTimeout(() => {
+      armDeadline(() => {
         adapter.terminate()
         settle(sessionFailure('session-timeout', activePhase))
       }, Number(driver.DEADLINES.TURN_NANOSECONDS / 1000000n))
@@ -2410,15 +2387,14 @@ async function runLiveHostSession({ call, filesystem, platform, processAdapterFa
     }
     adapter = production.adapter
     sessionAdapters.push(adapter)
-    pollHandle = setInterval(() => {
+    armPoll(() => {
       if (!adapter.runnerClosed()) {
         return
       }
       // First entry only: a slow worker keeps settleEnabledClosure in flight
       // past the next tick, and a re-entered finish would call the
       // exactly-once proxy close a second time.
-      clearInterval(pollHandle)
-      pollHandle = null
+      clearPoll()
       const finish = async () => {
         const closureProven = adapter.closureProof().proven === true && adapter.hostExitCode() === 0 && stderrChunks.length === 0
         const enabledClosure = await settleEnabledClosure()
