@@ -190,18 +190,17 @@ function insideProtectedRoots(targetPath, protectedRoots, platform) {
   return false
 }
 
-function canonicalizeStableDirectory({ entry, filesystem, platform, protectedRoots }) {
-  const pathApi = pathApiFor(platform)
-  let currentPath = pathApi.normalize(entry)
-  let probed = stableLstat(filesystem, currentPath)
-  if (probed.absent) {
-    return { skip: true }
-  }
-  if (probed.unstable) {
-    return { unstable: true }
-  }
+// Walks a symlink chain to its terminal entry, double-reading every link and
+// re-probing every hop so a racing filesystem is rejected rather than followed.
+// `rejectProtectedRootHops` selects whether a hop landing inside a protected
+// root is rejected mid-walk; callers that clear the terminal path lexically
+// afterwards leave it off. The single `{ unstable: true }` rejection is mapped
+// to each caller's own refusal value, so rejection semantics stay per-site.
+function walkStableSymlinkChain({ filesystem, pathApi, platform, probed, protectedRoots, rejectProtectedRootHops, startPath }) {
+  let currentPath = startPath
+  let current = probed
   let traversedLinks = 0
-  while (probed.stat.isSymbolicLink()) {
+  while (current.stat.isSymbolicLink()) {
     traversedLinks += 1
     if (traversedLinks > MAX_SYMLINK_CHAIN_LINKS) {
       return { unstable: true }
@@ -218,12 +217,12 @@ function canonicalizeStableDirectory({ entry, filesystem, platform, protectedRoo
       return { unstable: true }
     }
     const resolved = pathApi.normalize(pathApi.isAbsolute(firstTarget) ? firstTarget : pathApi.join(pathApi.dirname(currentPath), firstTarget))
-    if (!pathApi.isAbsolute(resolved)) {
+    if (!pathApi.isAbsolute(resolved) || (rejectProtectedRootHops && insideProtectedRoots(resolved, protectedRoots, platform))) {
       return { unstable: true }
     }
     currentPath = resolved
-    probed = stableLstat(filesystem, currentPath)
-    if (probed.absent || probed.unstable) {
+    current = stableLstat(filesystem, currentPath)
+    if (current.absent || current.unstable) {
       return { unstable: true }
     }
   }
@@ -245,16 +244,8 @@ function canonicalizeStableDirectory({ entry, filesystem, platform, protectedRoo
   if (walked.unstable) {
     return { unstable: true }
   }
-  const canonical = stableRealpath(filesystem, walked.currentPath, pathApi, platform)
-  if (canonical.unstable) {
-    return { unstable: true }
-  }
-  const currentPath = canonical.canonicalPath
-  const canonicalProbe = stableLstat(filesystem, currentPath)
-  if (canonicalProbe.absent || canonicalProbe.unstable || !sameFilesystemIdentity(walked.stat, canonicalProbe.stat)) {
-    return { unstable: true }
-  }
-  if (!canonicalProbe.stat.isDirectory()) {
+  const currentPath = walked.currentPath
+  if (!walked.stat.isDirectory()) {
     return { skip: true }
   }
   if (insideProtectedRoots(currentPath, protectedRoots, platform)) {
@@ -282,39 +273,16 @@ function canonicalizeStableProtectedRoots({ entries, filesystem, platform }) {
 function resolvePosixCandidate({ candidatePath, filesystem, logicalName, platform, protectedRoots }) {
   const pathApi = pathApiFor(platform)
   const unsupported = () => ({ unsupported: true })
-  let currentPath = candidatePath
-  let probed = stableLstat(filesystem, currentPath)
+  const probed = stableLstat(filesystem, candidatePath)
   if (probed.unstable) {
     return unsupported()
   }
-  let traversedLinks = 0
-  while (probed.stat.isSymbolicLink()) {
-    traversedLinks += 1
-    if (traversedLinks > MAX_SYMLINK_CHAIN_LINKS) {
-      return unsupported()
-    }
-    let firstTarget
-    let secondTarget
-    try {
-      firstTarget = filesystem.readlinkSync(currentPath)
-      secondTarget = filesystem.readlinkSync(currentPath)
-    } catch {
-      return unsupported()
-    }
-    if (firstTarget !== secondTarget) {
-      return unsupported()
-    }
-    const resolved = pathApi.normalize(pathApi.isAbsolute(firstTarget) ? firstTarget : pathApi.join(pathApi.dirname(currentPath), firstTarget))
-    if (!pathApi.isAbsolute(resolved) || insideProtectedRoots(resolved, protectedRoots, platform)) {
-      return unsupported()
-    }
-    currentPath = resolved
-    probed = stableLstat(filesystem, currentPath)
-    if (probed.absent || probed.unstable) {
-      return unsupported()
-    }
+  const walked = walkStableSymlinkChain({ filesystem, pathApi, platform, probed, protectedRoots, rejectProtectedRootHops: true, startPath: candidatePath })
+  if (walked.unstable) {
+    return unsupported()
   }
-  const finalStat = probed.stat
+  const currentPath = walked.currentPath
+  const finalStat = walked.stat
   if (!finalStat.isFile() || finalStat.isSymbolicLink()) {
     return unsupported()
   }
