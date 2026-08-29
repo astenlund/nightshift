@@ -612,6 +612,31 @@ function runInspectionCases(repositoryRoot) {
     }
   })
 
+  test('delegated guidance inside controlled directories remains one semantic target', () => {
+    for (const directory of ['bugs', 'features', 'patterns']) {
+      const root = mkdtempSync(join(tmpdir(), `nightshift-guidance-${directory}-`))
+      const target = `.claude/${directory}/CLAUDE.md`
+      try {
+        mkdirSync(join(root, '.claude', directory), { recursive: true })
+        writeFileSync(join(root, 'CLAUDE.md'), `@${target}\n`)
+        writeFileSync(join(root, '.claude', directory, 'CLAUDE.md'), '# Delegated guidance\n')
+
+        const result = collectInspection(root, 'claude-code', { claudeContextSource: 'host-observed', claudeRootExclusionStatus: 'included' }, { candidates: [] })
+        const records = result.targets.filter((item) => item.target === target)
+        const templates = result.templates.filter((item) => item.target === target)
+
+        assert.equal(result.guidance.resolvedTarget, target)
+        assert.equal(records.length, 1)
+        assert.equal(records[0].contentRole, 'semantic')
+        assert.equal(records[0].templateId, 'guidance.claude')
+        assert.equal(templates.length, 1)
+        assert.equal(templates[0].templateId, 'guidance.claude')
+      } finally {
+        rmSync(root, { force: true, recursive: true })
+      }
+    }
+  })
+
   test('a discovered breakout inspects as a present mechanical target', () => {
     inspectDiscoveredBreakout('nightshift-breakout-present-', '# Issue\n\nOne unwrapped paragraph on one physical line.\n', (result) => {
       const record = result.targets.find((item) => item.target === '.claude/bugs/issue.md')

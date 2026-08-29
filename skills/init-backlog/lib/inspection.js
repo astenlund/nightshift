@@ -643,7 +643,10 @@ function collectInspection(root, host, hostContext = {}, options = {}) {
     const templateId = declaration.targetSelector === '@resolved-guidance' ? host === 'codex' ? 'guidance.codex' : 'guidance.claude' : declaration.templateRule
     descriptors.push({ declaration: { ...declaration, contentRole: target === '.gitignore' ? 'mechanical' : 'semantic' }, descriptor, target, template: templateId ? bundle.templates.get(templateId) : null })
   }
-  for (const item of discoverControlledMarkdown(canonical, undefined, { ...options, maxBytes: MAX_MECHANICAL_FILE_BYTES })) descriptors.push({ declaration: { contentRole: 'mechanical', kind: 'file', regions: [] }, descriptor: item, target: item.target, template: null })
+  const declaredTargets = new Set(descriptors.map((entry) => entry.target))
+  for (const item of discoverControlledMarkdown(canonical, undefined, { ...options, maxBytes: MAX_MECHANICAL_FILE_BYTES })) {
+    if (!declaredTargets.has(item.target)) descriptors.push({ declaration: { contentRole: 'mechanical', kind: 'file', regions: [] }, descriptor: item, target: item.target, template: null })
+  }
   // Decode and unwrap results are pure per byte buffer; the memos below let
   // the catalog scan, the target records, and the proposal loop share one
   // computation per target instead of re-decoding the same bytes.
