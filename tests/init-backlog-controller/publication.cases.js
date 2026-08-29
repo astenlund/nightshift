@@ -8,12 +8,13 @@ const test = require('node:test')
 
 const { publishApply, temporaryPaths } = require('../../skills/init-backlog/lib/publication')
 const { effectiveActionFileMode } = require('../../skills/init-backlog/lib/actions')
+const { buildApprovedApplyRequest } = require('../../skills/init-backlog/lib/apply-request')
 const { runPrivateDispatcher } = require('../../skills/init-backlog/init-backlog')
 const { admitApplyManifest } = require('../../skills/init-backlog/lib/apply-manifest')
 const { InitBacklogError, failureRecord } = require('../../skills/init-backlog/lib/errors')
-const { canonicalJson, deriveSnapshotId, sha256, validateResultRecord } = require('../../skills/init-backlog/lib/protocol')
+const { collectInspection, composeElectionMarker } = require('../../skills/init-backlog/lib/inspection')
+const { canonicalActionOrder, canonicalJson, deriveSemanticActionId, deriveSnapshotId, sha256, validateResultRecord } = require('../../skills/init-backlog/lib/protocol')
 const { createInitialLock } = require('../../skills/init-backlog/lib/filesystem')
-const { composeElectionMarker } = require('../../skills/init-backlog/lib/inspection')
 const { analyzeCatalog } = require('../../skills/ready/ready')
 const { applyRecovery, inspectRecovery } = require('../../skills/init-backlog/lib/recovery')
 const { ELECTION_MARKER_PATH } = require('./election-oracles')
@@ -183,6 +184,52 @@ function runPublicationCases() {
     assert.equal(effectiveActionFileMode({ kind: 'exact-edit' }, 0o600, { platform: 'linux' }), 0o600)
     assert.equal(effectiveActionFileMode({ kind: 'create-from-template', mode: 0o640 }, null, { platform: 'linux' }), 0o640)
     assert.equal(effectiveActionFileMode({ kind: 'exact-edit' }, 0o600, { platform: 'win32' }), null)
+  })
+
+  test('production mechanical inspection bytes publish through the approved request', () => {
+    const root = fixtureRoot()
+    const wrapped = '# Issue\n\nThis paragraph is deliberately hard wrapped across\ntwo physical lines so the detector fires.\n'
+    const unwrapped = '# Issue\n\nThis paragraph is deliberately hard wrapped across two physical lines so the detector fires.\n'
+    try {
+      const context = { claudeContextSource: null, claudeRootExclusionStatus: null, codexContextSource: 'user-confirmed', codexInvocationDirectory: '.', codexProjectDocMaxBytes: 1048576, codexProjectInstructions: [] }
+      const approvedRequest = (carried) => {
+        const selected = (proposal) => proposal.condition === 'always' || proposal.condition === 'newline-lf'
+        const semanticDecisions = carried.targets
+          .filter((target) => target.contentRole === 'semantic' && target.templateId !== null && !target.states.includes('exact-template'))
+          .map((target) => ({ conceptIds: carried.templates.find((template) => template.target === target.target && template.templateId === target.templateId).conceptIds, status: 'satisfied', target: target.target }))
+        const manifestProposal = {
+          actions: canonicalActionOrder(carried.proposals.filter(selected).map((proposal) => proposal.action)),
+          proposalDispositions: carried.proposals.map((proposal) => ({ disposition: selected(proposal) ? 'selected' : 'condition-not-selected', proposalId: proposal.proposalId })),
+          semanticDecisions,
+          versionControlChoice: 'not-required',
+          versionControlOptions: ['track', 'ignore', 'deferred', 'not-required'],
+        }
+
+        return JSON.parse(buildApprovedApplyRequest({ host: 'codex', hostContext: context, inspection: carried, manifestProposal, root }))
+      }
+      const scaffoldInspection = collectInspection(root, 'codex', context, { candidates: [] })
+      publishApply(approvedRequest(scaffoldInspection), { currentInspection: scaffoldInspection })
+      mkdirSync(join(root, '.claude', 'bugs'), { recursive: true })
+      writeFileSync(join(root, '.claude', 'bugs', 'issue.md'), wrapped)
+      const carried = collectInspection(root, 'codex', context, { candidates: [] })
+      const applyRequest = approvedRequest(carried)
+
+      const result = publishApply(applyRequest, { currentInspection: carried })
+
+      assert.equal(result.ok, true)
+      assert.equal(result.outcomes.find((outcome) => outcome.target === '.claude/bugs/issue.md').status, 'unwrapped')
+      assert.equal(readFileSync(join(root, '.claude', 'bugs', 'issue.md'), 'utf8'), unwrapped)
+
+      writeFileSync(join(root, '.claude', 'bugs', 'issue.md'), wrapped)
+      const driftInspection = collectInspection(root, 'codex', context, { candidates: [] })
+      const driftRequest = approvedRequest(driftInspection)
+      const replacement = '# Issue\n\nConcurrent replacement.\n'
+      writeFileSync(join(root, '.claude', 'bugs', 'issue.md'), replacement)
+      assert.throws(() => publishApply(driftRequest, { currentInspection: driftInspection }), (error) => error.record?.code === 'filesystem' && /Mechanical unwrap input changed/.test(error.cause?.message ?? ''))
+      assert.equal(readFileSync(join(root, '.claude', 'bugs', 'issue.md'), 'utf8'), replacement)
+    } finally {
+      rmSync(root, { force: true, recursive: true })
+    }
   })
 
   test('ordinary apply rejects every present recovery gate before changing project targets', () => {

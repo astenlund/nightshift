@@ -28,7 +28,7 @@ const {
 } = require('./filesystem')
 const { collectInspection, composeElectionMarker } = require('./inspection')
 const { approvedProgress, detectResume, liveHostContext, publishedHostContext, resumeProjectionScope } = require('./resume')
-const { BACKUP_DIRECTORY, DIGEST_PATTERN, NONCE_PATTERN, OWNER_RECORD_KEYS, RECOVERY_GATE_BASENAME, RECOVERY_LOCK_BASENAME: LOCK_BASENAME, RECOVERY_MARKER_BASENAME: ELECTION_BASENAME, canonicalJson, compareOrdinal, electionMarkerTemporaryNames, sameKeys, sha256 } = require('./protocol')
+const { BACKUP_DIRECTORY, DIGEST_PATTERN, MAX_MECHANICAL_FILE_BYTES, NONCE_PATTERN, OWNER_RECORD_KEYS, RECOVERY_GATE_BASENAME, RECOVERY_LOCK_BASENAME: LOCK_BASENAME, RECOVERY_MARKER_BASENAME: ELECTION_BASENAME, canonicalJson, compareOrdinal, electionMarkerTemporaryNames, sameKeys, sha256 } = require('./protocol')
 
 const POSIX_DEFAULT_DIRECTORY_MODE = 0o755
 
@@ -150,6 +150,24 @@ function initialStates(inspection, root, options) {
     mode: record.mode,
     present: !(record.states ?? []).includes('missing'),
   }]))
+}
+
+function hydrateUnwrapStates(request, actions, states, root, options, backupTargets, existing, resume) {
+  const existingInventory = new Set(existing?.record.temporaryPaths ?? [])
+  for (const [index, action] of actions.entries()) {
+    const state = states.get(action.target)
+    if (state?.present !== true) throw new Error('Unwrap backup source is unavailable')
+    try {
+      state.content = actionBefore(request, action, root, options)
+    } catch (error) {
+      const backupTargetValue = backupTargets[index]
+      if (resume !== true || error?.message !== 'Mechanical unwrap input changed before publication' || !existingInventory.has(backupTargetValue)) throw error
+      const opened = stableOpenFile(root, targetPath(root, backupTargetValue), { ...options, maxBytes: Math.min(options.maxBytes ?? MAX_MECHANICAL_FILE_BYTES, MAX_MECHANICAL_FILE_BYTES), requireSingleLink: true })
+      if (opened.rawSha256 !== action.beforeRawSha256 || state.mode !== null && opened.mode !== state.mode) throw new Error('Owned unwrap backup changed before resume')
+      state.content = opened.bytes
+    }
+    states.set(action.target, state)
+  }
 }
 
 function stableTarget(root, path, expected, options) {
@@ -1042,7 +1060,8 @@ function publishApply(request, options = {}) {
   }
   const states = initialStates(request.inspection, root, options)
   try {
-    const existing = lockHint
+    states = initialStates(request.inspection, root, options)
+    hydrateUnwrapStates(request, unwrapActions, states, root, options, backupTargets, existing, resume)
     if (existing !== null) {
       if (existing.record.root !== root || (existing.record.manifestId !== null && existing.record.manifestId !== admission.manifestId)) publicationError('Existing publication lock does not match the approved manifest.', { code: 'runtime-lock', phase: 'lock', manifestId: admission.manifestId, target: LOCK_BASENAME })
       ownerNonce = existing.record.ownerNonce

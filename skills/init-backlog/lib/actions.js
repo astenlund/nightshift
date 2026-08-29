@@ -3,7 +3,7 @@
 const { lstatSync } = require('node:fs')
 
 const { containedTargetPath, platformMode, stableOpenFile, verifyFinalMode } = require('./filesystem')
-const { canonicalJson, proposalsByCanonicalAction } = require('./protocol')
+const { MAX_MECHANICAL_FILE_BYTES, canonicalJson, proposalsByCanonicalAction } = require('./protocol')
 const { unwrapText } = require('../unwrap')
 
 const POSIX_DEFAULT_FILE_MODE = 0o644
@@ -34,7 +34,7 @@ function validateUnwrapDigest(finding, action) {
 }
 
 function openUnwrapTarget(root, action, options) {
-  return stableOpenFile(root, targetPath(root, action.target), { ...options, requireSingleLink: true })
+  return stableOpenFile(root, targetPath(root, action.target), { ...options, maxBytes: Math.min(options.maxBytes ?? MAX_MECHANICAL_FILE_BYTES, MAX_MECHANICAL_FILE_BYTES), requireSingleLink: true })
 }
 
 function actionAfter(request, action, root, options) {
