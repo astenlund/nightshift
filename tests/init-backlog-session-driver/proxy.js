@@ -145,7 +145,6 @@ function createAuthorizationGate({ host, hostContext, scenarioRoot }) {
 function createProxyServer({ callDeadlineMilliseconds = DEADLINES.WORKER_CALL_MILLISECONDS, clock, gate, onFailure, termination, token, trace, worker }) {
   let admissionOpen = true
   let closeRequested = false
-  let closeCallbackFired = false
   let proxyFailureRecorded = false
   let hostTerminationStarted = false
   let workerTerminationStarted = false
@@ -210,7 +209,6 @@ function createProxyServer({ callDeadlineMilliseconds = DEADLINES.WORKER_CALL_MI
       }
       closeRequested = true
       admissionOpen = false
-      closeCallbackFired = true
       callback()
     },
     connectionDrained(connection) {
@@ -368,7 +366,7 @@ function createProxyServer({ callDeadlineMilliseconds = DEADLINES.WORKER_CALL_MI
       activeCall = null
     },
     verifiedClosure() {
-      return closeCallbackFired && activeCall === null && completedCalls.every((call) => call.traceFlushed && call.replyFlushed)
+      return closeRequested && activeCall === null && completedCalls.every((call) => call.traceFlushed && call.replyFlushed)
     },
     workerDisconnected() {
       if (closeRequested && activeCall === null) {

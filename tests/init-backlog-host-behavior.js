@@ -1691,7 +1691,7 @@ function deriveSemanticCarriers({ manifestProposal, proposalActionIds, scenario 
   return carriers
 }
 
-function createLiveBindings({ ambientEnvironment, checkoutRoot, controllerEntryPath, filesystem = nodeFilesystem, platform }) {
+function createLiveBindings({ filesystem = nodeFilesystem, platform }) {
   const workerRegistry = new Map()
   const proxyRegistry = new Map()
 
@@ -1798,7 +1798,7 @@ function createLiveBindings({ ambientEnvironment, checkoutRoot, controllerEntryP
   const proxySessionFactory = () => new Promise((resolve, reject) => {
     const token = randomBytes(32).toString('hex')
     const tcpServer = nodeNet.createServer()
-    const entry = { server: null, tcpServer, token }
+    const entry = { server: null, tcpServer }
     tcpServer.on('connection', (socket) => {
       if (entry.server === null) {
         socket.destroy()
@@ -1817,7 +1817,7 @@ function createLiveBindings({ ambientEnvironment, checkoutRoot, controllerEntryP
 
   const launch = (call) => call.boundary === 'worker' ? startLiveWorker(call) : runLivePreSessionCommand(call)
 
-  const runSession = (call) => runLiveHostSession({ call, checkoutRoot, controllerEntryPath, filesystem, platform, proxyRegistry, workerRegistry })
+  const runSession = (call) => runLiveHostSession({ call, filesystem, platform, proxyRegistry, workerRegistry })
 
   const dispose = () => {
     for (const entry of workerRegistry.values()) {
@@ -2495,7 +2495,7 @@ async function runOutputEvaluation({ outputRoot, overrides = {}, stdout = proces
   }
   const live = overrides.launch !== undefined && overrides.runSession !== undefined
     ? null
-    : createLiveBindings({ ambientEnvironment, checkoutRoot, controllerEntryPath, filesystem, platform })
+    : createLiveBindings({ filesystem, platform })
   const launch = overrides.launch ?? live.launch
   const runSession = overrides.runSession ?? live.runSession
   const proxySessionFactory = overrides.proxySessionFactory ?? live?.proxySessionFactory ?? null
