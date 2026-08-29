@@ -16,6 +16,10 @@ const { stableOpenFile } = require('../../skills/init-backlog/lib/filesystem')
 const { discoverInitialLockStages, inspect } = require('../../skills/init-backlog/lib/inspection')
 const { unwrapText } = require('../../skills/init-backlog/unwrap')
 
+// Independent oracle pin: the recovery gate basename is spelled out here on purpose
+// and is deliberately not imported from the production constant it verifies.
+const RECOVERY_GATE = '.nightshift-init-backlog.recovery-gate'
+
 function fixtureRoot() {
   return mkdtempSync(join(tmpdir(), 'nightshift-init-backlog-recovery-'))
 }
@@ -174,7 +178,7 @@ function runRecoveryCases() {
     for (const makeCase of cases) {
       const item = makeCase()
       try {
-        mkdirSync(join(item.root, '.nightshift-init-backlog.recovery-gate'), { mode: 0o700 })
+        mkdirSync(join(item.root, RECOVERY_GATE), { mode: 0o700 })
         assert.throws(() => inspectRecovery(item.request, item.options), /lock|coordination|runtime|gate/i)
       } finally {
         rmSync(item.root, { force: true, recursive: true })
@@ -224,10 +228,10 @@ function runRecoveryCases() {
     for (const createGateResidue of gateFixtures) {
       const gateRoot = fixtureRoot()
       try {
-        const gate = join(gateRoot, '.nightshift-init-backlog.recovery-gate')
+        const gate = join(gateRoot, RECOVERY_GATE)
         mkdirSync(gate, { mode: 0o700 })
         createGateResidue(gate)
-        assert.throws(() => inspectRecovery(request(gateRoot, 'stale-recovery-gate', '.nightshift-init-backlog.recovery-gate'), { killProcess: absentPid() }), (error) => error.record?.code === 'runtime-lock' && error.record.phase === 'lock' && error.record.target === '.nightshift-init-backlog.recovery-gate' && error.record.operation === 'recover-inspect')
+        assert.throws(() => inspectRecovery(request(gateRoot, 'stale-recovery-gate', RECOVERY_GATE), { killProcess: absentPid() }), (error) => error.record?.code === 'runtime-lock' && error.record.phase === 'lock' && error.record.target === RECOVERY_GATE && error.record.operation === 'recover-inspect')
       } finally {
         rmSync(gateRoot, { force: true, recursive: true })
       }
@@ -362,7 +366,7 @@ function runRecoveryCases() {
       )
       assert.equal(existsSync(join(root, recorded)), true)
       assert.equal(existsSync(join(root, forged)), true)
-      assert.equal(existsSync(join(root, '.nightshift-init-backlog.recovery-gate')), false)
+      assert.equal(existsSync(join(root, RECOVERY_GATE)), false)
     } finally {
       rmSync(root, { force: true, recursive: true })
     }
@@ -405,7 +409,7 @@ function runRecoveryCases() {
         (error) => error.record?.code === 'snapshot-drift',
       )
       assert.equal(existsSync(join(root, target)), true)
-      assert.equal(existsSync(join(root, '.nightshift-init-backlog.recovery-gate')), false)
+      assert.equal(existsSync(join(root, RECOVERY_GATE)), false)
     } finally {
       rmSync(root, { force: true, recursive: true })
     }
@@ -448,7 +452,7 @@ function runRecoveryCases() {
       try {
         const { lock } = ownerFixture(root)
         const inspected = inspectRecovery(request(root, 'stale-owner', '.nightshift-init-backlog.lock'), { killProcess: absentPid() })
-        const gate = join(root, '.nightshift-init-backlog.recovery-gate')
+        const gate = join(root, RECOVERY_GATE)
         mkdirSync(gate, { mode: 0o700 })
         if (state === 'lock-removed' || state === 'owner-removed') writeCanonical(join(gate, 'owner.json'), { ...gateOwner(root), recoveryId: inspected.recoveryId })
         if (state !== 'gate-removed') rmSync(join(root, '.nightshift-init-backlog.lock'), { force: true })
@@ -470,7 +474,7 @@ function runRecoveryCases() {
     try {
       ownerFixture(root)
       const inspection = inspectRecovery(request(root, 'stale-owner', '.nightshift-init-backlog.lock'), { killProcess: absentPid() })
-      const gate = join(root, '.nightshift-init-backlog.recovery-gate')
+      const gate = join(root, RECOVERY_GATE)
       mkdirSync(gate, { mode: 0o700 })
       writeCanonical(join(gate, 'owner.json'), { ...gateOwner(root), recoveryId: inspection.recoveryId })
       const applyRequest = recoveryApplyEnvelope(request(root, 'stale-owner', '.nightshift-init-backlog.lock'), inspection, 'cleanup')
@@ -507,13 +511,13 @@ function runRecoveryCases() {
   test('stale recovery gate cleanup removes stage before owner and gate', () => {
     const root = fixtureRoot()
     try {
-      const gate = join(root, '.nightshift-init-backlog.recovery-gate')
+      const gate = join(root, RECOVERY_GATE)
       mkdirSync(gate, { mode: 0o700 })
       if (process.platform !== 'win32') chmodSync(gate, 0o700)
       writeFileSync(join(gate, 'owner.new'), Buffer.from('partial', 'utf8'), { mode: 0o600 })
-      const inspected = inspectRecovery(request(root, 'stale-recovery-gate', '.nightshift-init-backlog.recovery-gate'), { killProcess: absentPid() })
+      const inspected = inspectRecovery(request(root, 'stale-recovery-gate', RECOVERY_GATE), { killProcess: absentPid() })
       assert.deepEqual(inspected.allowedDispositions, ['cleanup'])
-      const applied = applyRecovery({ ...request(root, 'stale-recovery-gate', '.nightshift-init-backlog.recovery-gate'), operation: 'recover-apply', recoveryInspection: inspected, disposition: 'cleanup' }, { killProcess: absentPid() })
+      const applied = applyRecovery({ ...request(root, 'stale-recovery-gate', RECOVERY_GATE), operation: 'recover-apply', recoveryInspection: inspected, disposition: 'cleanup' }, { killProcess: absentPid() })
 
       assert.equal(applied.status, 'completed')
       assert.equal(statSync(root).isDirectory(), true)
@@ -525,12 +529,12 @@ function runRecoveryCases() {
   test('stale recovery gate rejects a rogue child without removing any gate state', () => {
     const root = fixtureRoot()
     try {
-      const gate = join(root, '.nightshift-init-backlog.recovery-gate')
+      const gate = join(root, RECOVERY_GATE)
       mkdirSync(gate, { mode: 0o700 })
-      const inspected = inspectRecovery(request(root, 'stale-recovery-gate', '.nightshift-init-backlog.recovery-gate'), { killProcess: absentPid() })
+      const inspected = inspectRecovery(request(root, 'stale-recovery-gate', RECOVERY_GATE), { killProcess: absentPid() })
       const rogue = join(gate, 'rogue')
       writeFileSync(rogue, Buffer.from('rogue', 'utf8'), { mode: 0o600 })
-      const applyRequest = recoveryApplyEnvelope(request(root, 'stale-recovery-gate', '.nightshift-init-backlog.recovery-gate'), inspected, 'cleanup')
+      const applyRequest = recoveryApplyEnvelope(request(root, 'stale-recovery-gate', RECOVERY_GATE), inspected, 'cleanup')
       assert.throws(() => applyRecovery(applyRequest, { killProcess: absentPid() }), (error) => error.record?.code === 'snapshot-drift' && error.record.phase === 'prevalidate')
       assert.equal(existsSync(rogue), true)
       const dispatched = runPrivateDispatcher(Buffer.from(`${canonicalJson(applyRequest)}\n`, 'utf8'), { 'recover-apply': (value) => applyRecovery(value, { killProcess: absentPid() }) })
@@ -548,14 +552,14 @@ function runRecoveryCases() {
     if (process.platform === 'win32') return
     const root = fixtureRoot()
     try {
-      const gate = join(root, '.nightshift-init-backlog.recovery-gate')
+      const gate = join(root, RECOVERY_GATE)
       const owner = join(gate, 'owner.json')
       const stage = join(gate, 'owner.new')
       mkdirSync(gate, { mode: 0o700 })
       writeCanonical(owner, gateOwner(root))
-      const inspected = inspectRecovery(request(root, 'stale-recovery-gate', '.nightshift-init-backlog.recovery-gate'), { killProcess: absentPid(), platform: 'linux' })
+      const inspected = inspectRecovery(request(root, 'stale-recovery-gate', RECOVERY_GATE), { killProcess: absentPid(), platform: 'linux' })
       linkSync(owner, stage)
-      const applyRequest = recoveryApplyEnvelope(request(root, 'stale-recovery-gate', '.nightshift-init-backlog.recovery-gate'), inspected, 'cleanup')
+      const applyRequest = recoveryApplyEnvelope(request(root, 'stale-recovery-gate', RECOVERY_GATE), inspected, 'cleanup')
       assert.throws(() => applyRecovery(applyRequest, { killProcess: absentPid(), platform: 'linux' }), (error) => error.record?.code === 'snapshot-drift' && error.record.phase === 'prevalidate')
       assert.equal(existsSync(owner), true)
       assert.equal(existsSync(stage), true)
@@ -575,12 +579,12 @@ function runRecoveryCases() {
     for (const removed of ['owner.new', 'owner.json', 'gate']) {
       const root = fixtureRoot()
       try {
-        const gate = join(root, '.nightshift-init-backlog.recovery-gate')
+        const gate = join(root, RECOVERY_GATE)
         mkdirSync(gate, { mode: 0o700 })
         const stage = join(gate, 'owner.new')
         writeCanonical(stage, gateOwner(root))
         linkSync(stage, join(gate, 'owner.json'))
-        const target = '.nightshift-init-backlog.recovery-gate'
+        const target = RECOVERY_GATE
         const inspected = inspectRecovery(request(root, 'stale-recovery-gate', target), { killProcess: absentPid() })
         if (removed === 'owner.new') rmSync(stage)
         if (removed === 'owner.json') rmSync(join(gate, 'owner.json'))
@@ -597,7 +601,7 @@ function runRecoveryCases() {
     for (const shape of ['stage-only', 'owner-only', 'pair']) {
       const root = fixtureRoot()
       try {
-        const gate = join(root, '.nightshift-init-backlog.recovery-gate')
+        const gate = join(root, RECOVERY_GATE)
         mkdirSync(gate, { mode: 0o700 })
         const stage = join(gate, 'owner.new')
         const owner = join(gate, 'owner.json')
@@ -606,14 +610,14 @@ function runRecoveryCases() {
         if (shape === 'stage-only') {
           const extra = join(root, 'extra-stage-link')
           linkSync(stage, extra)
-          assert.throws(() => inspectRecovery(request(root, 'stale-recovery-gate', '.nightshift-init-backlog.recovery-gate'), { killProcess: absentPid() }), /link|identity|extra|inspection failed/i)
+          assert.throws(() => inspectRecovery(request(root, 'stale-recovery-gate', RECOVERY_GATE), { killProcess: absentPid() }), /link|identity|extra|inspection failed/i)
           rmSync(extra)
         } else if (shape === 'owner-only') {
           rmSync(stage)
           writeCanonical(owner, gateOwner(root))
           const extra = join(root, 'extra-owner-link')
           linkSync(owner, extra)
-          assert.throws(() => inspectRecovery(request(root, 'stale-recovery-gate', '.nightshift-init-backlog.recovery-gate'), { killProcess: absentPid() }), /link|identity|inspection failed/i)
+          assert.throws(() => inspectRecovery(request(root, 'stale-recovery-gate', RECOVERY_GATE), { killProcess: absentPid() }), /link|identity|inspection failed/i)
           rmSync(extra)
         } else {
           assert.equal(statSync(stage).nlink, 2)
@@ -629,14 +633,14 @@ function runRecoveryCases() {
   test('stale recovery gate cleanup accepts stage-only evidence becoming its exact same-inode owner pair', () => {
     const root = fixtureRoot()
     try {
-      const gate = join(root, '.nightshift-init-backlog.recovery-gate')
+      const gate = join(root, RECOVERY_GATE)
       const stage = join(gate, 'owner.new')
       const owner = join(gate, 'owner.json')
       mkdirSync(gate, { mode: 0o700 })
       writeCanonical(stage, gateOwner(root))
-      const inspected = inspectRecovery(request(root, 'stale-recovery-gate', '.nightshift-init-backlog.recovery-gate'), { killProcess: absentPid() })
+      const inspected = inspectRecovery(request(root, 'stale-recovery-gate', RECOVERY_GATE), { killProcess: absentPid() })
       linkSync(stage, owner)
-      const applied = applyRecovery({ ...request(root, 'stale-recovery-gate', '.nightshift-init-backlog.recovery-gate'), operation: 'recover-apply', recoveryInspection: inspected, disposition: 'cleanup' }, { killProcess: absentPid() })
+      const applied = applyRecovery({ ...request(root, 'stale-recovery-gate', RECOVERY_GATE), operation: 'recover-apply', recoveryInspection: inspected, disposition: 'cleanup' }, { killProcess: absentPid() })
       assert.equal(applied.status, 'completed')
       assert.equal(existsSync(stage), false)
       assert.equal(existsSync(owner), false)
@@ -647,13 +651,13 @@ function runRecoveryCases() {
 
     const successorRoot = fixtureRoot()
     try {
-      const gate = join(successorRoot, '.nightshift-init-backlog.recovery-gate')
+      const gate = join(successorRoot, RECOVERY_GATE)
       const stage = join(gate, 'owner.new')
       mkdirSync(gate, { mode: 0o700 })
       writeCanonical(stage, gateOwner(successorRoot))
-      const inspected = inspectRecovery(request(successorRoot, 'stale-recovery-gate', '.nightshift-init-backlog.recovery-gate'), { killProcess: absentPid() })
+      const inspected = inspectRecovery(request(successorRoot, 'stale-recovery-gate', RECOVERY_GATE), { killProcess: absentPid() })
       writeCanonical(stage, { ...gateOwner(successorRoot), ownerNonce: 'e'.repeat(32) })
-      assert.throws(() => applyRecovery({ ...request(successorRoot, 'stale-recovery-gate', '.nightshift-init-backlog.recovery-gate'), operation: 'recover-apply', recoveryInspection: inspected, disposition: 'cleanup' }, { killProcess: absentPid() }), (error) => error.record?.code === 'snapshot-drift' && error.record.phase === 'prevalidate')
+      assert.throws(() => applyRecovery({ ...request(successorRoot, 'stale-recovery-gate', RECOVERY_GATE), operation: 'recover-apply', recoveryInspection: inspected, disposition: 'cleanup' }, { killProcess: absentPid() }), (error) => error.record?.code === 'snapshot-drift' && error.record.phase === 'prevalidate')
       assert.equal(existsSync(stage), true)
       assert.equal(existsSync(join(gate, 'owner.json')), false)
       assert.equal(existsSync(gate), true)
@@ -678,7 +682,7 @@ function runRecoveryCases() {
           assert.throws(() => applyRecovery({ ...request(root, 'stale-owner', '.nightshift-init-backlog.lock'), operation: 'recover-apply', recoveryInspection: inspected, disposition: 'cleanup' }, { killProcess: absentPid() }), /changed|snapshot|filesystem|publication failed/i)
           assert.deepEqual(readFileSync(join(root, target)), Buffer.from('successor', 'utf8'))
         } else {
-          const gate = join(root, '.nightshift-init-backlog.recovery-gate')
+          const gate = join(root, RECOVERY_GATE)
           mkdirSync(gate, { mode: 0o700 })
           if (kind === 'lock') {
             ownerFixture(root)
@@ -690,9 +694,9 @@ function runRecoveryCases() {
             const stage = join(gate, 'owner.new')
             writeCanonical(stage, gateOwner(root))
             linkSync(stage, join(gate, 'owner.json'))
-            inspected = inspectRecovery(request(root, 'stale-recovery-gate', '.nightshift-init-backlog.recovery-gate'), { killProcess: absentPid() })
+            inspected = inspectRecovery(request(root, 'stale-recovery-gate', RECOVERY_GATE), { killProcess: absentPid() })
             writeCanonical(join(gate, kind), { ...gateOwner(root), ownerNonce: 'e'.repeat(32) })
-            assert.throws(() => applyRecovery({ ...request(root, 'stale-recovery-gate', '.nightshift-init-backlog.recovery-gate'), operation: 'recover-apply', recoveryInspection: inspected, disposition: 'cleanup' }, { killProcess: absentPid() }), /changed|snapshot|filesystem|publication failed/i)
+            assert.throws(() => applyRecovery({ ...request(root, 'stale-recovery-gate', RECOVERY_GATE), operation: 'recover-apply', recoveryInspection: inspected, disposition: 'cleanup' }, { killProcess: absentPid() }), /changed|snapshot|filesystem|publication failed/i)
             assert.equal(JSON.parse(readFileSync(join(gate, kind), 'utf8')).ownerNonce, 'e'.repeat(32))
           }
         }
@@ -1272,21 +1276,21 @@ function runRecoveryCases() {
     const backup = backupFixture()
     try {
       if (process.platform !== 'win32') {
-        mkdirSync(join(emptyRoot, '.nightshift-init-backlog.recovery-gate'), { mode: 0o700 })
-        assert.deepEqual(inspectRecovery(request(emptyRoot, 'stale-recovery-gate', '.nightshift-init-backlog.recovery-gate'), { killProcess: absentPid(), platform: 'linux' }).evidence.recoveryGate, { mode: 448, ownerName: null, ownerRawSha256: null, ownerMode: null, ownerStageRawSha256: null, ownerStageMode: null, record: null, pidStatus: null })
+        mkdirSync(join(emptyRoot, RECOVERY_GATE), { mode: 0o700 })
+        assert.deepEqual(inspectRecovery(request(emptyRoot, 'stale-recovery-gate', RECOVERY_GATE), { killProcess: absentPid(), platform: 'linux' }).evidence.recoveryGate, { mode: 448, ownerName: null, ownerRawSha256: null, ownerMode: null, ownerStageRawSha256: null, ownerStageMode: null, record: null, pidStatus: null })
 
-        const stageGate = join(stageRoot, '.nightshift-init-backlog.recovery-gate')
+        const stageGate = join(stageRoot, RECOVERY_GATE)
         mkdirSync(stageGate, { mode: 0o700 })
         const stageBytes = Buffer.from('partial\n', 'utf8')
         writeFileSync(join(stageGate, 'owner.new'), stageBytes, { mode: 0o600 })
-        assert.deepEqual(inspectRecovery(request(stageRoot, 'stale-recovery-gate', '.nightshift-init-backlog.recovery-gate'), { killProcess: absentPid(), platform: 'linux' }).evidence.recoveryGate, { mode: 448, ownerName: null, ownerRawSha256: sha256(stageBytes), ownerMode: null, ownerStageRawSha256: sha256(stageBytes), ownerStageMode: 384, record: null, pidStatus: null })
+        assert.deepEqual(inspectRecovery(request(stageRoot, 'stale-recovery-gate', RECOVERY_GATE), { killProcess: absentPid(), platform: 'linux' }).evidence.recoveryGate, { mode: 448, ownerName: null, ownerRawSha256: sha256(stageBytes), ownerMode: null, ownerStageRawSha256: sha256(stageBytes), ownerStageMode: 384, record: null, pidStatus: null })
 
-        const ownerGate = join(ownerRoot, '.nightshift-init-backlog.recovery-gate')
+        const ownerGate = join(ownerRoot, RECOVERY_GATE)
         mkdirSync(ownerGate, { mode: 0o700 })
         const owner = gateOwner(ownerRoot)
         writeCanonical(join(ownerGate, 'owner.json'), owner)
         const ownerBytes = Buffer.from(`${canonicalJson(owner)}\n`, 'utf8')
-        assert.deepEqual(inspectRecovery(request(ownerRoot, 'stale-recovery-gate', '.nightshift-init-backlog.recovery-gate'), { killProcess: absentPid(), platform: 'linux' }).evidence.recoveryGate, { mode: 448, ownerName: 'owner.json', ownerRawSha256: sha256(ownerBytes), ownerMode: 384, ownerStageRawSha256: null, ownerStageMode: null, record: owner, pidStatus: 'absent' })
+        assert.deepEqual(inspectRecovery(request(ownerRoot, 'stale-recovery-gate', RECOVERY_GATE), { killProcess: absentPid(), platform: 'linux' }).evidence.recoveryGate, { mode: 448, ownerName: 'owner.json', ownerRawSha256: sha256(ownerBytes), ownerMode: 384, ownerStageRawSha256: null, ownerStageMode: null, record: owner, pidStatus: 'absent' })
       }
 
       rmSync(join(backup.root, backup.target))
@@ -1415,8 +1419,8 @@ function runRecoveryCases() {
   test('empty recovery gate is recoverable', () => {
     const root = fixtureRoot()
     try {
-      mkdirSync(join(root, '.nightshift-init-backlog.recovery-gate'), { mode: 0o700 })
-      const result = inspectRecovery(request(root, 'stale-recovery-gate', '.nightshift-init-backlog.recovery-gate'), { killProcess: absentPid() })
+      mkdirSync(join(root, RECOVERY_GATE), { mode: 0o700 })
+      const result = inspectRecovery(request(root, 'stale-recovery-gate', RECOVERY_GATE), { killProcess: absentPid() })
       assert.equal(result.evidence.recoveryGate.ownerName, null)
     } finally { rmSync(root, { force: true, recursive: true }) }
   })
@@ -1424,12 +1428,12 @@ function runRecoveryCases() {
   test('published recovery owner pair is recoverable', () => {
     const root = fixtureRoot()
     try {
-      const gate = join(root, '.nightshift-init-backlog.recovery-gate')
+      const gate = join(root, RECOVERY_GATE)
       mkdirSync(gate, { mode: 0o700 })
       const owner = gateOwner(root)
       writeCanonical(join(gate, 'owner.new'), owner)
       linkSync(join(gate, 'owner.new'), join(gate, 'owner.json'))
-      const result = inspectRecovery(request(root, 'stale-recovery-gate', '.nightshift-init-backlog.recovery-gate'), { killProcess: absentPid() })
+      const result = inspectRecovery(request(root, 'stale-recovery-gate', RECOVERY_GATE), { killProcess: absentPid() })
       assert.equal(result.evidence.recoveryGate.pidStatus, 'absent')
     } finally { rmSync(root, { force: true, recursive: true }) }
   })
@@ -1437,13 +1441,13 @@ function runRecoveryCases() {
   test('recovery gate cleanup replay is already complete', () => {
     const root = fixtureRoot()
     try {
-      const gate = join(root, '.nightshift-init-backlog.recovery-gate')
+      const gate = join(root, RECOVERY_GATE)
       mkdirSync(gate, { mode: 0o700 })
       const owner = gateOwner(root)
       writeCanonical(join(gate, 'owner.new'), owner)
       linkSync(join(gate, 'owner.new'), join(gate, 'owner.json'))
-      const inspected = inspectRecovery(request(root, 'stale-recovery-gate', '.nightshift-init-backlog.recovery-gate'), { killProcess: absentPid() })
-      const applyRequest = { ...request(root, 'stale-recovery-gate', '.nightshift-init-backlog.recovery-gate'), operation: 'recover-apply', recoveryInspection: inspected, disposition: 'cleanup' }
+      const inspected = inspectRecovery(request(root, 'stale-recovery-gate', RECOVERY_GATE), { killProcess: absentPid() })
+      const applyRequest = { ...request(root, 'stale-recovery-gate', RECOVERY_GATE), operation: 'recover-apply', recoveryInspection: inspected, disposition: 'cleanup' }
       assert.equal(applyRecovery(applyRequest, { killProcess: absentPid() }).status, 'completed')
       assert.equal(applyRecovery(applyRequest, { killProcess: absentPid() }).status, 'already-complete')
     } finally { rmSync(root, { force: true, recursive: true }) }
@@ -1531,10 +1535,10 @@ function runRecoveryCases() {
   test('partial recovery owner stage is recoverable', () => {
     const root = fixtureRoot()
     try {
-      const gate = join(root, '.nightshift-init-backlog.recovery-gate')
+      const gate = join(root, RECOVERY_GATE)
       mkdirSync(gate, { mode: 0o700 })
       writeCanonical(join(gate, 'owner.new'), gateOwner(root))
-      const result = inspectRecovery(request(root, 'stale-recovery-gate', '.nightshift-init-backlog.recovery-gate'), { killProcess: absentPid() })
+      const result = inspectRecovery(request(root, 'stale-recovery-gate', RECOVERY_GATE), { killProcess: absentPid() })
       assert.equal(result.evidence.recoveryGate.ownerName, null)
       assert.match(result.evidence.recoveryGate.ownerStageRawSha256, /^[a-f0-9]{64}$/)
     } finally { rmSync(root, { force: true, recursive: true }) }
@@ -1543,10 +1547,10 @@ function runRecoveryCases() {
   test('published recovery owner without stage is recoverable', () => {
     const root = fixtureRoot()
     try {
-      const gate = join(root, '.nightshift-init-backlog.recovery-gate')
+      const gate = join(root, RECOVERY_GATE)
       mkdirSync(gate, { mode: 0o700 })
       writeCanonical(join(gate, 'owner.json'), gateOwner(root))
-      const result = inspectRecovery(request(root, 'stale-recovery-gate', '.nightshift-init-backlog.recovery-gate'), { killProcess: absentPid() })
+      const result = inspectRecovery(request(root, 'stale-recovery-gate', RECOVERY_GATE), { killProcess: absentPid() })
       assert.equal(result.evidence.recoveryGate.ownerName, 'owner.json')
     } finally { rmSync(root, { force: true, recursive: true }) }
   })
@@ -1590,8 +1594,8 @@ function runRecoveryCases() {
       assert.equal(ownerEvidence.mode, null)
       assert.equal(ownerEvidence.temporaryStates[0].mode, null)
 
-      mkdirSync(join(gateRoot, '.nightshift-init-backlog.recovery-gate'), { mode: 0o700 })
-      const gateEvidence = inspectRecovery(request(gateRoot, 'stale-recovery-gate', '.nightshift-init-backlog.recovery-gate'), { killProcess: absentPid(), platform: injectedPlatform }).evidence.recoveryGate
+      mkdirSync(join(gateRoot, RECOVERY_GATE), { mode: 0o700 })
+      const gateEvidence = inspectRecovery(request(gateRoot, 'stale-recovery-gate', RECOVERY_GATE), { killProcess: absentPid(), platform: injectedPlatform }).evidence.recoveryGate
       assert.equal(gateEvidence.mode, null)
     } finally {
       rmSync(ownerRoot, { force: true, recursive: true })
@@ -1727,12 +1731,12 @@ function runRecoveryCases() {
       const applyRequest = { ...request(root, 'stale-owner', '.nightshift-init-backlog.lock'), operation: 'recover-apply', recoveryInspection: inspected, disposition: 'cleanup' }
       let gateObserved = false
       const remove = (path, options) => {
-        if (path.endsWith('.nightshift-init-backlog.lock')) gateObserved = existsSync(join(root, '.nightshift-init-backlog.recovery-gate'))
+        if (path.endsWith('.nightshift-init-backlog.lock')) gateObserved = existsSync(join(root, RECOVERY_GATE))
         return require('../../skills/init-backlog/lib/filesystem').removeAndVerify(path, options)
       }
       assert.equal(applyRecovery(applyRequest, { killProcess: absentPid(), removeAndVerify: remove }).status, 'completed')
       assert.equal(gateObserved, true)
-      assert.equal(existsSync(join(root, '.nightshift-init-backlog.recovery-gate')), false)
+      assert.equal(existsSync(join(root, RECOVERY_GATE)), false)
     } finally { rmSync(root, { force: true, recursive: true }) }
   })
 
@@ -1755,20 +1759,20 @@ function runRecoveryCases() {
   test('published recovery owner requires one complete same-inode two-link owner pair', () => {
     const root = fixtureRoot()
     try {
-      const gate = join(root, '.nightshift-init-backlog.recovery-gate')
+      const gate = join(root, RECOVERY_GATE)
       mkdirSync(gate, { mode: 0o700 })
       const owner = gateOwner(root)
       writeCanonical(join(gate, 'owner.new'), owner)
       linkSync(join(gate, 'owner.new'), join(gate, 'owner.json'))
 
-      const result = inspectRecovery(request(root, 'stale-recovery-gate', '.nightshift-init-backlog.recovery-gate'), { killProcess: absentPid() })
+      const result = inspectRecovery(request(root, 'stale-recovery-gate', RECOVERY_GATE), { killProcess: absentPid() })
       assert.equal(result.evidence.recoveryGate.ownerName, 'owner.json')
       assert.equal(result.evidence.recoveryGate.record.operation, 'recover-apply')
       rmSync(gate, { force: true, recursive: true })
       mkdirSync(gate, { mode: 0o700 })
       writeCanonical(join(gate, 'owner.new'), { operation: 'recover-apply' })
       linkSync(join(gate, 'owner.new'), join(gate, 'owner.json'))
-      assert.throws(() => inspectRecovery(request(root, 'stale-recovery-gate', '.nightshift-init-backlog.recovery-gate'), { killProcess: absentPid() }), /malformed|owner|schema|inspection failed/i)
+      assert.throws(() => inspectRecovery(request(root, 'stale-recovery-gate', RECOVERY_GATE), { killProcess: absentPid() }), /malformed|owner|schema|inspection failed/i)
     } finally {
       rmSync(root, { force: true, recursive: true })
     }
@@ -2099,7 +2103,7 @@ function runRecoveryCases() {
     try {
       ownerFixture(root)
       const inspected = inspectRecovery(request(root, 'stale-owner', '.nightshift-init-backlog.lock'), { killProcess: absentPid() })
-      mkdirSync(join(root, '.nightshift-init-backlog.recovery-gate'), { mode: 0o700 })
+      mkdirSync(join(root, RECOVERY_GATE), { mode: 0o700 })
       assert.throws(() => applyRecovery({ ...request(root, 'stale-owner', '.nightshift-init-backlog.lock'), operation: 'recover-apply', recoveryInspection: inspected, disposition: 'cleanup' }, { killProcess: absentPid() }), (error) => error.record?.code === 'runtime-lock' && error.record.phase === 'lock')
     } finally {
       rmSync(root, { force: true, recursive: true })
@@ -2112,7 +2116,7 @@ function runRecoveryCases() {
       ownerFixture(root)
       const inspected = inspectRecovery(request(root, 'stale-owner', '.nightshift-init-backlog.lock'), { killProcess: absentPid() })
       assert.throws(() => applyRecovery({ ...request(root, 'stale-owner', '.nightshift-init-backlog.lock'), operation: 'recover-apply', recoveryInspection: inspected, disposition: 'cleanup' }, { killProcess: absentPid(), onTransition: (point) => { if (point === 'after-recovery-gate-owner-publish') throw new Error('stop') } }), /filesystem|publication|stop/i)
-      const owner = JSON.parse(readFileSync(join(root, '.nightshift-init-backlog.recovery-gate', 'owner.json'), 'utf8'))
+      const owner = JSON.parse(readFileSync(join(root, RECOVERY_GATE, 'owner.json'), 'utf8'))
       assert.notEqual(owner.ownerNonce, '0'.repeat(32))
     } finally {
       rmSync(root, { force: true, recursive: true })
@@ -2122,12 +2126,12 @@ function runRecoveryCases() {
   test('invalid recovery gate owner records fail closed before evidence succeeds', () => {
     const root = fixtureRoot()
     try {
-      const gate = join(root, '.nightshift-init-backlog.recovery-gate')
+      const gate = join(root, RECOVERY_GATE)
       const stage = join(gate, 'owner.new')
       mkdirSync(gate, { mode: 0o700 })
       writeCanonical(stage, { ...gateOwner(root), extra: true })
       linkSync(stage, join(gate, 'owner.json'))
-      assert.throws(() => inspectRecovery(request(root, 'stale-recovery-gate', '.nightshift-init-backlog.recovery-gate'), { killProcess: absentPid() }), (error) => error.record?.code === 'runtime-lock' && error.record.phase === 'lock' && error.record.target === '.nightshift-init-backlog.recovery-gate')
+      assert.throws(() => inspectRecovery(request(root, 'stale-recovery-gate', RECOVERY_GATE), { killProcess: absentPid() }), (error) => error.record?.code === 'runtime-lock' && error.record.phase === 'lock' && error.record.target === RECOVERY_GATE)
     } finally {
       rmSync(root, { force: true, recursive: true })
     }
@@ -2177,7 +2181,7 @@ function runRecoveryCases() {
     const root = fixtureRoot()
     try {
       const target = stageFixture(root)
-      assert.throws(() => inspectRecovery(request(root, 'orphan-lock-stage', target), { killProcess: absentPid(), onPublished: () => mkdirSync(join(root, '.nightshift-init-backlog.recovery-gate'), { mode: 0o700 }) }), (error) => error.record?.code === 'runtime-lock' && error.record.phase === 'lock')
+      assert.throws(() => inspectRecovery(request(root, 'orphan-lock-stage', target), { killProcess: absentPid(), onPublished: () => mkdirSync(join(root, RECOVERY_GATE), { mode: 0o700 }) }), (error) => error.record?.code === 'runtime-lock' && error.record.phase === 'lock')
     } finally {
       rmSync(root, { force: true, recursive: true })
     }
@@ -2188,7 +2192,7 @@ function runRecoveryCases() {
     try {
       ownerFixture(root)
       const inspected = inspectRecovery(request(root, 'stale-owner', '.nightshift-init-backlog.lock'), { killProcess: absentPid() })
-      const gate = join(root, '.nightshift-init-backlog.recovery-gate')
+      const gate = join(root, RECOVERY_GATE)
       mkdirSync(gate, { mode: 0o700 })
       writeCanonical(join(gate, 'owner.json'), { ...gateOwner(root, 322), recoveryId: inspected.recoveryId })
       const applyRequest = { ...request(root, 'stale-owner', '.nightshift-init-backlog.lock'), operation: 'recover-apply', recoveryInspection: inspected, disposition: 'cleanup' }
@@ -2212,7 +2216,7 @@ function runRecoveryCases() {
       assert.throws(() => applyRecovery(applyRequest, { killProcess: absentPid(), onTransition: (point) => { if (point === 'after-recovery-gate-owner-publish') writeCanonical(join(root, '.nightshift-init-backlog.lock'), successor) } }), (error) => error.record?.code === 'snapshot-drift' && error.record.phase === 'prevalidate')
       assert.equal(JSON.parse(readFileSync(join(root, '.nightshift-init-backlog.lock'), 'utf8')).ownerNonce, 'e'.repeat(32))
       assert.equal(existsSync(join(root, temporary)), true)
-      assert.equal(existsSync(join(root, '.nightshift-init-backlog.recovery-gate', 'owner.json')), true)
+      assert.equal(existsSync(join(root, RECOVERY_GATE, 'owner.json')), true)
     } finally {
       rmSync(root, { force: true, recursive: true })
     }
@@ -2252,11 +2256,11 @@ function runRecoveryCases() {
       const lockBytes = readFileSync(join(root, '.nightshift-init-backlog.lock'))
       const temporaryBytes = readFileSync(join(root, temporary))
       const applyRequest = { ...request(root, 'stale-owner', '.nightshift-init-backlog.lock'), operation: 'recover-apply', recoveryInspection: inspected, disposition: 'cleanup' }
-      assert.throws(() => applyRecovery(applyRequest, { killProcess: absentPid(), onTransition: (point) => { if (point === 'after-recovery-gate-owner-publish') writeFileSync(join(root, '.nightshift-init-backlog.recovery-gate', 'rogue'), Buffer.from('rogue', 'utf8'), { mode: 0o600 }) } }), (error) => error.record?.code === 'snapshot-drift' && error.record.phase === 'prevalidate')
+      assert.throws(() => applyRecovery(applyRequest, { killProcess: absentPid(), onTransition: (point) => { if (point === 'after-recovery-gate-owner-publish') writeFileSync(join(root, RECOVERY_GATE, 'rogue'), Buffer.from('rogue', 'utf8'), { mode: 0o600 }) } }), (error) => error.record?.code === 'snapshot-drift' && error.record.phase === 'prevalidate')
       assert.deepEqual(readFileSync(join(root, '.nightshift-init-backlog.lock')), lockBytes)
       assert.deepEqual(readFileSync(join(root, temporary)), temporaryBytes)
-      assert.deepEqual(readFileSync(join(root, '.nightshift-init-backlog.recovery-gate', 'rogue')), Buffer.from('rogue', 'utf8'))
-      assert.ok(existsSync(join(root, '.nightshift-init-backlog.recovery-gate', 'owner.json')))
+      assert.deepEqual(readFileSync(join(root, RECOVERY_GATE, 'rogue')), Buffer.from('rogue', 'utf8'))
+      assert.ok(existsSync(join(root, RECOVERY_GATE, 'owner.json')))
     } finally {
       rmSync(root, { force: true, recursive: true })
     }
@@ -2265,12 +2269,12 @@ function runRecoveryCases() {
   test('empty recovery gate rejects stage-only residue appearing before apply', () => {
     const root = fixtureRoot()
     try {
-      const gate = join(root, '.nightshift-init-backlog.recovery-gate')
+      const gate = join(root, RECOVERY_GATE)
       mkdirSync(gate, { mode: 0o700 })
-      const inspected = inspectRecovery(request(root, 'stale-recovery-gate', '.nightshift-init-backlog.recovery-gate'), { killProcess: absentPid() })
+      const inspected = inspectRecovery(request(root, 'stale-recovery-gate', RECOVERY_GATE), { killProcess: absentPid() })
       const stageBytes = Buffer.from('successor stage', 'utf8')
       writeFileSync(join(gate, 'owner.new'), stageBytes, { mode: 0o600 })
-      assert.throws(() => applyRecovery({ ...request(root, 'stale-recovery-gate', '.nightshift-init-backlog.recovery-gate'), operation: 'recover-apply', recoveryInspection: inspected, disposition: 'cleanup' }, { killProcess: absentPid() }), (error) => error.record?.code === 'snapshot-drift' && error.record.phase === 'prevalidate')
+      assert.throws(() => applyRecovery({ ...request(root, 'stale-recovery-gate', RECOVERY_GATE), operation: 'recover-apply', recoveryInspection: inspected, disposition: 'cleanup' }, { killProcess: absentPid() }), (error) => error.record?.code === 'snapshot-drift' && error.record.phase === 'prevalidate')
       assert.deepEqual(readFileSync(join(gate, 'owner.new')), stageBytes)
       assert.equal(existsSync(join(gate, 'owner.json')), false)
       assert.deepEqual(require('node:fs').readdirSync(gate), ['owner.new'])
@@ -2287,8 +2291,8 @@ function runRecoveryCases() {
       chmodSync(ownerRoot, 0o2775)
       const inspected = inspectRecovery(request(ownerRoot, 'stale-owner', '.nightshift-init-backlog.lock'), { killProcess: absentPid() })
       assert.throws(() => applyRecovery({ ...request(ownerRoot, 'stale-owner', '.nightshift-init-backlog.lock'), operation: 'recover-apply', recoveryInspection: inspected, disposition: 'cleanup' }, { killProcess: absentPid() }), /mode|gate|cleanup/i)
-      assert.equal(existsSync(join(ownerRoot, '.nightshift-init-backlog.recovery-gate')), false)
-      assert.equal(existsSync(join(ownerRoot, '.nightshift-init-backlog.recovery-gate', 'owner.new')), false)
+      assert.equal(existsSync(join(ownerRoot, RECOVERY_GATE)), false)
+      assert.equal(existsSync(join(ownerRoot, RECOVERY_GATE, 'owner.new')), false)
     } finally {
       chmodSync(ownerRoot, 0o700)
       rmSync(ownerRoot, { force: true, recursive: true })
@@ -2490,11 +2494,11 @@ function runRecoveryCases() {
 
     const gateRoot = fixtureRoot()
     try {
-      const gate = join(gateRoot, '.nightshift-init-backlog.recovery-gate')
+      const gate = join(gateRoot, RECOVERY_GATE)
       mkdirSync(gate, { mode: 0o700 })
       writeFileSync(join(gate, 'owner.new'), Buffer.from('partial\n', 'utf8'), { mode: 0o600 })
-      const inspected = inspectRecovery(request(gateRoot, 'stale-recovery-gate', '.nightshift-init-backlog.recovery-gate'), { killProcess: absentPid() })
-      assertCleanupFailure(() => applyRecovery({ ...request(gateRoot, 'stale-recovery-gate', '.nightshift-init-backlog.recovery-gate'), operation: 'recover-apply', recoveryInspection: inspected, disposition: 'cleanup' }, { killProcess: absentPid(), removeAndVerify: failingRemove }), [])
+      const inspected = inspectRecovery(request(gateRoot, 'stale-recovery-gate', RECOVERY_GATE), { killProcess: absentPid() })
+      assertCleanupFailure(() => applyRecovery({ ...request(gateRoot, 'stale-recovery-gate', RECOVERY_GATE), operation: 'recover-apply', recoveryInspection: inspected, disposition: 'cleanup' }, { killProcess: absentPid(), removeAndVerify: failingRemove }), [])
     } finally { rmSync(gateRoot, { force: true, recursive: true }) }
 
     const stageRoot = fixtureRoot()
@@ -2522,7 +2526,7 @@ function runRecoveryCases() {
         const applyRequest = { ...request(root, 'stale-owner', '.nightshift-init-backlog.lock'), operation: 'recover-apply', recoveryInspection: inspected, disposition: 'cleanup' }
 
         assert.throws(() => applyRecovery(applyRequest, { killProcess: absentPid(), ...options }), (error) => error.record?.code === 'runtime-lock' && error.record.phase === 'lock')
-        assert.equal(existsSync(join(root, '.nightshift-init-backlog.recovery-gate')), false)
+        assert.equal(existsSync(join(root, RECOVERY_GATE)), false)
       } finally { rmSync(root, { force: true, recursive: true }) }
     }
   })
@@ -2540,7 +2544,7 @@ function runRecoveryCases() {
       const applyRequest = { ...request(root, 'stale-owner', '.nightshift-init-backlog.lock'), operation: 'recover-apply', recoveryInspection: inflated, disposition: 'cleanup' }
 
       assert.throws(() => applyRecovery(applyRequest, { killProcess: absentPid() }), (error) => error.record?.code === 'payload-too-large' && error.record.phase === 'prevalidate')
-      assert.equal(existsSync(join(root, '.nightshift-init-backlog.recovery-gate')), false)
+      assert.equal(existsSync(join(root, RECOVERY_GATE)), false)
       assert.equal(existsSync(join(root, '.nightshift-init-backlog.lock')), true)
     } finally { rmSync(root, { force: true, recursive: true }) }
   })
@@ -2625,13 +2629,13 @@ function runRecoveryCases() {
       writeCanonical(join(root, '.nightshift-init-backlog.lock'), owner)
       const inspected = inspectRecovery(request(root, 'stale-owner', '.nightshift-init-backlog.lock'), { killProcess: absentPid() })
       unlinkSync(join(root, '.nightshift-init-backlog.lock'))
-      mkdirSync(join(root, '.nightshift-init-backlog.recovery-gate'), { mode: 0o700 })
+      mkdirSync(join(root, RECOVERY_GATE), { mode: 0o700 })
 
       const applied = applyRecovery(recoveryApplyEnvelope(request(root, 'stale-owner', '.nightshift-init-backlog.lock'), inspected, 'cleanup'), { killProcess: absentPid() })
 
       assert.equal(applied.status, 'already-complete')
       assert.deepEqual(applied.retainedPaths, [backupTarget])
-      assert.equal(existsSync(join(root, '.nightshift-init-backlog.recovery-gate')), false)
+      assert.equal(existsSync(join(root, RECOVERY_GATE)), false)
       assert.equal(existsSync(join(root, ...backupTarget.split('/'))), true)
     } finally {
       rmSync(root, { force: true, recursive: true })

@@ -16,6 +16,10 @@ const { composeElectionMarker } = require('../../skills/init-backlog/lib/inspect
 const { analyzeCatalog } = require('../../skills/ready/ready')
 const { applyRecovery, inspectRecovery } = require('../../skills/init-backlog/lib/recovery')
 
+// Independent oracle pin: the recovery gate basename is spelled out here on purpose
+// and is deliberately not imported from the production constant it verifies.
+const RECOVERY_GATE = '.nightshift-init-backlog.recovery-gate'
+
 function fixtureRoot() {
   return mkdtempSync(join(tmpdir(), 'nightshift-init-backlog-publication-'))
 }
@@ -176,7 +180,7 @@ function runPublicationCases() {
   test('ordinary apply rejects every present recovery gate before changing project targets', () => {
     for (const shape of ['empty', 'malformed', 'owned']) {
       const fixture = unwrapBackupFailureFixture()
-      const gate = join(fixture.root, '.nightshift-init-backlog.recovery-gate')
+      const gate = join(fixture.root, RECOVERY_GATE)
       try {
         mkdirSync(gate, { mode: 0o700 })
         if (shape === 'malformed') writeFileSync(join(gate, 'owner.new'), Buffer.from('malformed\n', 'utf8'), { mode: 0o600 })
@@ -187,7 +191,7 @@ function runPublicationCases() {
         const before = readFileSync(join(fixture.root, fixture.target))
         const dispatchRequest = request(fixture.root)
         const applyBytes = Buffer.from(`${canonicalJson(dispatchRequest)}\n`, 'utf8')
-        const expected = (error) => error.record?.code === 'runtime-lock' && error.record.phase === 'lock' && error.record.target === '.nightshift-init-backlog.recovery-gate'
+        const expected = (error) => error.record?.code === 'runtime-lock' && error.record.phase === 'lock' && error.record.target === RECOVERY_GATE
 
         assert.throws(() => publishApply(fixture.applyRequest, { currentInspection: fixture.applyRequest.inspection, collectInspection: () => fixture.applyRequest.inspection }), expected, shape)
         const dispatched = runPrivateDispatcher(applyBytes, { apply: (value) => publishApply(value, { currentInspection: dispatchRequest.inspection }) })
@@ -195,7 +199,7 @@ function runPublicationCases() {
         const record = JSON.parse(dispatched.stdout.toString('utf8'))
         assert.equal(record.code, 'runtime-lock', shape)
         assert.equal(record.phase, 'lock', shape)
-        assert.equal(record.target, '.nightshift-init-backlog.recovery-gate', shape)
+        assert.equal(record.target, RECOVERY_GATE, shape)
         assert.deepEqual(readFileSync(join(fixture.root, fixture.target)), before, shape)
       } finally {
         rmSync(fixture.root, { force: true, recursive: true })
@@ -206,13 +210,13 @@ function runPublicationCases() {
   test('ordinary apply rejects a recovery gate created at each admission boundary', () => {
     for (const boundary of ['after-owner-publish', 'after-inspection']) {
       const fixture = unwrapBackupFailureFixture()
-      const gate = join(fixture.root, '.nightshift-init-backlog.recovery-gate')
+      const gate = join(fixture.root, RECOVERY_GATE)
       try {
         const before = readFileSync(join(fixture.root, fixture.target))
         const options = boundary === 'after-owner-publish'
           ? { onPublished: (destination) => { if (destination.endsWith('.nightshift-init-backlog.lock')) mkdirSync(gate, { mode: 0o700 }) } }
           : { collectInspection: () => { mkdirSync(gate, { mode: 0o700 }); return fixture.applyRequest.inspection } }
-        assert.throws(() => publishApply(fixture.applyRequest, options), (error) => error.record?.code === 'runtime-lock' && error.record.phase === 'lock' && error.record.target === '.nightshift-init-backlog.recovery-gate', boundary)
+        assert.throws(() => publishApply(fixture.applyRequest, options), (error) => error.record?.code === 'runtime-lock' && error.record.phase === 'lock' && error.record.target === RECOVERY_GATE, boundary)
         assert.deepEqual(readFileSync(join(fixture.root, fixture.target)), before, boundary)
         assert.equal(existsSync(join(fixture.root, '.nightshift-init-backlog.lock')), false, boundary)
       } finally {
@@ -223,10 +227,10 @@ function runPublicationCases() {
 
   test('ordinary apply rejects a recovery gate created before the first project effect', () => {
     const fixture = unwrapBackupFailureFixture()
-    const gate = join(fixture.root, '.nightshift-init-backlog.recovery-gate')
+    const gate = join(fixture.root, RECOVERY_GATE)
     try {
       const before = readFileSync(join(fixture.root, fixture.target))
-      assert.throws(() => publishApply(fixture.applyRequest, { currentInspection: fixture.applyRequest.inspection, collectInspection: () => fixture.applyRequest.inspection, onTransition: (point) => { if (point === 'after-lock-upgrade') mkdirSync(gate, { mode: 0o700 }) } }), (error) => error.record?.code === 'runtime-lock' && error.record.phase === 'lock' && error.record.target === '.nightshift-init-backlog.recovery-gate')
+      assert.throws(() => publishApply(fixture.applyRequest, { currentInspection: fixture.applyRequest.inspection, collectInspection: () => fixture.applyRequest.inspection, onTransition: (point) => { if (point === 'after-lock-upgrade') mkdirSync(gate, { mode: 0o700 }) } }), (error) => error.record?.code === 'runtime-lock' && error.record.phase === 'lock' && error.record.target === RECOVERY_GATE)
       assert.deepEqual(readFileSync(join(fixture.root, fixture.target)), before)
       assert.equal(existsSync(join(fixture.root, '.nightshift-init-backlog.lock')), false)
     } finally {
