@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 'use strict'
 
-const { InitBacklogError } = require('./lib/errors')
+const { InitBacklogError, throwInitBacklogError } = require('./lib/errors')
 const { buildApprovedApplyRequest } = require('./lib/apply-request')
 const { DIGEST_PATTERN, NONCE_PATTERN, canonicalJson, decodeRequest, encodeResult } = require('./lib/protocol')
 const {
@@ -46,10 +46,13 @@ function encodedCompletion(record) {
   }
 }
 
-function runPrivateDispatcher(requestBytes, handlers = {}) {
+function runPrivateDispatcher(requestBytes, handlers = {}, transportRoot = null) {
   let request
   try {
     request = decodeRequest(requestBytes)
+    if (transportRoot !== null && request.root !== transportRoot) {
+      throwInitBacklogError({ code: 'invalid-request', detail: 'Request root does not match its transport root.', phase: 'decode' })
+    }
   } catch (error) {
     return error instanceof InitBacklogError ? encodedCompletion(error.record) : internalFailureCompletion()
   }
@@ -112,7 +115,7 @@ function runCli(options = {}) {
         payloadRawSha256: argv[5] === 'null' ? null : argv[5],
       }, options.filesystemOptions)
     } else {
-      const dispatch = options.dispatch ?? ((bytes) => runPrivateDispatcher(bytes, { inspect, apply: (request) => publishApply(request, options.filesystemOptions ?? {}), 'recover-inspect': (request) => inspectRecovery(request, { ...options.filesystemOptions, collectInspection }), 'recover-apply': (request) => applyRecovery(request, { ...options.filesystemOptions, collectInspection }), ...(options.handlers ?? {}) }))
+      const dispatch = options.dispatch ?? ((bytes, transportRoot) => runPrivateDispatcher(bytes, { inspect, apply: (request) => publishApply(request, options.filesystemOptions ?? {}), 'recover-inspect': (request) => inspectRecovery(request, { ...options.filesystemOptions, collectInspection }), 'recover-apply': (request) => applyRecovery(request, { ...options.filesystemOptions, collectInspection }), ...(options.handlers ?? {}) }, transportRoot))
       const dispatched = consumeRequest(argv[1], argv[2], dispatch, options.filesystemOptions)
       stdout.write(dispatched.stdout)
       if (dispatched.stderr.length !== 0) {

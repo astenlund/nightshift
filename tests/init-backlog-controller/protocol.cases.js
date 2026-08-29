@@ -1009,6 +1009,39 @@ function runProtocolCases(repositoryRoot) {
     }
   })
 
+  test('public request consumption rejects a payload rooted outside its request gate', () => {
+    const gateRoot = makeTemporaryRoot()
+    const payloadRoot = makeTemporaryRoot()
+    try {
+      reserveRequest(gateRoot, { nonce: NONCE_A })
+      putPayload(gateRoot, inspectRequest(payloadRoot))
+      const streams = captureStreams()
+      let dispatched = false
+
+      const exitCode = runCli({
+        argv: ['--consume-request', gateRoot, NONCE_A],
+        handlers: {
+          inspect: () => {
+            dispatched = true
+
+            return inspectResult(payloadRoot)
+          },
+        },
+        stderr: streams.stderr,
+        stdout: streams.stdout,
+      })
+
+      assert.equal(exitCode, 2)
+      assert.equal(dispatched, false)
+      assert.equal(streams.stderrBytes().length, 0)
+      assert.equal(JSON.parse(streams.stdoutBytes().toString('utf8')).code, 'invalid-request')
+      assert.equal(existsSync(requestPaths(gateRoot).requestDirectory), false)
+    } finally {
+      removeTemporaryRoot(gateRoot)
+      removeTemporaryRoot(payloadRoot)
+    }
+  })
+
   test('owner records that are not plain objects raise the schema error on residue and consume paths', () => {
     const schemaInvalid = (error) => error instanceof InitBacklogError && error.record.code === 'request-filesystem' && !(error.cause instanceof TypeError) && error.cause?.message === 'Published request owner schema is invalid'
     for (const stored of ['null\n', '[]\n', '"reserved"\n']) {

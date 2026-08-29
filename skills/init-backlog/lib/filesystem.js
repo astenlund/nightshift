@@ -1034,7 +1034,7 @@ function consumeRequest(root, nonce, dispatch, options = {}) {
     throw new RequestTransportResidueError(error)
   }
 
-  return dispatch(payload.bytes)
+  return dispatch(payload.bytes, canonical)
 }
 
 module.exports = {
