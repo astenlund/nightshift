@@ -88,6 +88,11 @@ function assetPath(root, relativePath) {
 const BASELINE_PROMPT_PATH = ['tests', 'fixtures', 'init-backlog-prompt-baseline', 'skills', 'init-backlog', 'SKILL.md']
 const PLANS_BULLET_BASELINE = '- `.claude/plans/<date>-<slug>.md`: implementation plans produced by the writing-plans workflow. **Ephemeral**: a plan exists while the implementation is in flight and is deleted once the work lands. The code, tests, and commits are the durable record. Plans are purely mechanical step-by-step instructions for the agent doing the work. There is no "implemented plans" archive.'
 const PLANS_BULLET_ACTIVATED = `${PLANS_BULLET_BASELINE} Plans are never committed: in a Git repository, \`.claude/plans/\` is git-ignored by the repository-local \`.gitignore\`, independent of any track-or-ignore election for the durable backlog files.`
+// The baseline prompt hard-wrapped the fenced entry-shape example across two
+// physical lines, contradicting the line-discipline rule the same template
+// states. The shipped asset joins them; the baseline fixture stays frozen.
+const ENTRY_EXAMPLE_BASELINE = '**Requires:** [other-feature](features/other-feature.md), [shared\nhelper extraction](../QUICK_WINS.md#shared-helper-extraction).'
+const ENTRY_EXAMPLE_UNWRAPPED = ENTRY_EXAMPLE_BASELINE.replace('[shared\nhelper', '[shared helper')
 
 function readBaselinePrompt(root) {
   return readFileSync(join(root, ...BASELINE_PROMPT_PATH), 'utf8').replace(/\r\n/g, '\n')
@@ -155,6 +160,15 @@ function expectedPlansPolicyAssets(expected) {
   return result
 }
 
+function expectedUnwrappedExampleAssets(expected) {
+  const result = new Map(expected)
+  const features = result.get('features.md')
+  assert.equal(features.split(ENTRY_EXAMPLE_BASELINE).length - 1, 1, 'features.md must contain one hard-wrapped entry-shape example to unwrap')
+  result.set('features.md', features.replace(ENTRY_EXAMPLE_BASELINE, ENTRY_EXAMPLE_UNWRAPPED))
+
+  return result
+}
+
 function validateManifest(root, manifest, { readAsset = (relativePath) => readFileSync(assetPath(root, relativePath)) } = {}) {
   exactKeys(manifest, ['protocolVersion', 'assets', 'templates', 'targets'], 'manifest')
   assert.equal(manifest.protocolVersion, 1)
@@ -208,7 +222,7 @@ function runAssetCases(repositoryRoot) {
   const manifest = JSON.parse(readFileSync(join(templatesRoot, 'manifest.json'), 'utf8'))
   validateManifest(templatesRoot, manifest)
   const prompt = readBaselinePrompt(repositoryRoot)
-  const expected = expectedPlansPolicyAssets(expectedQuickWinReplacementAssets(prompt, expectedPromptAssets(repositoryRoot)))
+  const expected = expectedUnwrappedExampleAssets(expectedPlansPolicyAssets(expectedQuickWinReplacementAssets(prompt, expectedPromptAssets(repositoryRoot))))
   const assets = new Map(manifest.assets.map((entry) => [entry.path, logicalText(readFileSync(assetPath(templatesRoot, entry.path)), entry.finalNewline, entry.assetId)]))
   for (const [fileName, expectedBytes] of expected) {
     assert.equal(assets.get(fileName), expectedBytes, `${fileName} drifted from its pinned baseline-derived body`)
