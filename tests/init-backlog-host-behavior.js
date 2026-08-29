@@ -9,7 +9,7 @@
 // executed against installed hosts by CI.
 
 const { spawnSync } = require('node:child_process')
-const { createHash, randomBytes } = require('node:crypto')
+const { randomBytes } = require('node:crypto')
 const nodeFilesystem = require('node:fs')
 const nodeNet = require('node:net')
 const { homedir } = require('node:os')
@@ -26,7 +26,7 @@ const evidence = require('./init-backlog-session-driver/evidence')
 const hostEvents = require('./init-backlog-session-driver/host-events')
 const oracles = require('./init-backlog-controller/oracles.cases')
 const { CLAUDE_ROOT_EXCLUSION_CONFIRMATION } = require('./init-backlog-controller/election-oracles')
-const { HOSTS } = require('./init-backlog-session-driver/primitives')
+const { HOSTS, compareOrdinal, sha256 } = require('./init-backlog-session-driver/primitives')
 
 const HOST_ORDER = HOSTS
 const LOGICAL_COMMANDS = Object.freeze({ 'claude-code': 'claude', codex: 'codex' })
@@ -85,10 +85,6 @@ const VERSION_DETAILS = Object.freeze({
   wroteStderr: 'Version command wrote stderr.',
 })
 
-function sha256(bytes) {
-  return createHash('sha256').update(bytes).digest('hex')
-}
-
 function pathApiFor(platform) {
   return platform === 'win32' ? nodePath.win32 : nodePath.posix
 }
@@ -108,10 +104,6 @@ function ambientPathValue(ambientEnvironment, platform) {
   }
 
   return ''
-}
-
-function compareOrdinal(left, right) {
-  return left < right ? -1 : left > right ? 1 : 0
 }
 
 function formatResultLine(result) {
