@@ -2,6 +2,7 @@
 'use strict'
 
 const { InitBacklogError } = require('./lib/errors')
+const { buildApprovedApplyRequest } = require('./lib/apply-request')
 const { DIGEST_PATTERN, NONCE_PATTERN, canonicalJson, decodeRequest, encodeResult } = require('./lib/protocol')
 const {
   RequestTransportResidueError,
@@ -148,4 +149,4 @@ if (require.main === module) {
   main()
 }
 
-module.exports = { admitApplyManifest, applyRecovery, discoverControlledMarkdown, inspect, inspectRecovery, main, publishApply, resolveGuidance, runCli, runPrivateDispatcher }
+module.exports = { admitApplyManifest, applyRecovery, buildApprovedApplyRequest, discoverControlledMarkdown, inspect, inspectRecovery, main, publishApply, resolveGuidance, runCli, runPrivateDispatcher }

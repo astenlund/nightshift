@@ -1,46 +1,18 @@
 'use strict'
 
-const { APPROVAL_BRANCHES, HOSTS, VERSION_CONTROL_OPTION_ORDER, isPlainObject, sha256 } = require('./primitives')
+const { APPROVAL_BRANCHES, HOSTS, isPlainObject, sha256 } = require('./primitives')
 const { canonicalJson } = require('./transcript')
 const { CLAUDE_ROOT_EXCLUSION_CONFIRMATION, CODEX_HOST_CONTEXT_CONFIRMATION, HOST_CONTROL_RECORDS, validateTurnObject } = require('../init-backlog-controller/election-oracles')
-// Plan-mandated production binding: the approved apply request is built and
-// serialized through the same canonical manifest machinery production uses,
-// never hand-serialized by the harness.
-const { canonicalActionOrder, canonicalBytes, validateRequestRecord } = require('../../skills/init-backlog/lib/protocol')
+const { buildApprovedApplyRequest } = require('../../skills/init-backlog/lib/apply-request')
 
 const SCRIPTED_BRANCHES = Object.freeze(['approved', 'denied', 'deferred'])
 const HOST_OUTCOMES = Object.freeze(['none', 'unavailable', 'auto-denied'])
 const FAULT_SCHEDULES = Object.freeze(['none', 'after-approval-create-features'])
 const RESERVED_GATE_IDS = Object.freeze(['host-context-confirmation', 'claude-root-exclusion-confirmation', 'action-disclosure', 'manifest-approval'])
-const MANIFEST_PROPOSAL_MEMBERS = 'actions,proposalDispositions,semanticDecisions,versionControlChoice,versionControlOptions'
 const CONTEXT_STOP_RESULT_JSON = canonicalJson({ approvalBranch: 'unavailable', reasonCode: 'guidance-resolution' })
 
 function isNonblankString(value) {
   return typeof value === 'string' && value.trim() !== ''
-}
-
-function buildApprovedApplyRequest({ host, hostContext, inspection, manifestProposal, root }) {
-  if (!isPlainObject(manifestProposal) || Object.keys(manifestProposal).sort().join(',') !== MANIFEST_PROPOSAL_MEMBERS) {
-    throw new Error('the manifest proposal must carry exactly the closed proposal members')
-  }
-  if (!Array.isArray(manifestProposal.versionControlOptions) || manifestProposal.versionControlOptions.join(',') !== VERSION_CONTROL_OPTION_ORDER.join(',')) {
-    throw new Error('the manifest proposal version-control options must use the fixed order')
-  }
-  const request = {
-    actions: canonicalActionOrder(manifestProposal.actions),
-    host,
-    hostContext,
-    inspection,
-    operation: 'apply',
-    proposalDispositions: manifestProposal.proposalDispositions,
-    protocolVersion: 1,
-    root,
-    semanticDecisions: manifestProposal.semanticDecisions,
-    versionControlChoice: manifestProposal.versionControlChoice,
-  }
-  validateRequestRecord(request)
-
-  return Buffer.concat([canonicalBytes(request), Buffer.from('\n', 'ascii')])
 }
 
 function validateWalkConfiguration(config) {

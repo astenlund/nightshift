@@ -2,6 +2,8 @@
 
 const { createHash } = require('node:crypto')
 
+const { VERSION_CONTROL_OPTION_ORDER } = require('../../skills/init-backlog/lib/apply-request')
+
 const BYTE_BOUNDS = Object.freeze({
   MAX_EVIDENCE_LEAF_BYTES: 201326592,
   MAX_EVIDENCE_ROOT_BYTES: 1073741824,
@@ -36,8 +38,6 @@ const SESSION_FAILURE_CODES = Object.freeze(['session-input', 'session-timeout']
 const HOSTS = Object.freeze(['claude-code', 'codex'])
 
 const APPROVAL_BRANCHES = Object.freeze(['approved', 'denied', 'deferred', 'unavailable', 'auto-denied'])
-
-const VERSION_CONTROL_OPTION_ORDER = Object.freeze(['track', 'ignore', 'deferred', 'not-required'])
 
 function sha256(bytes) {
   return createHash('sha256').update(bytes).digest('hex')

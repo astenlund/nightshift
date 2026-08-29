@@ -829,6 +829,7 @@ function runSessionCases(repositoryRoot) {
     assert.ok(closure.files.length > 5)
     const paths = closure.files.map((file) => file.path)
     assert.deepEqual(paths, [...paths].sort(), 'the inventory is ordinal path sorted')
+    assert.ok(paths.includes('skills/init-backlog/lib/apply-request.js'), 'the shipped apply-request builder is part of the runtime closure')
     assert.ok(paths.includes('skills/init-backlog/templates/manifest.json'), 'the request-time template manifest is part of the runtime closure')
     assert.ok(paths.some((path) => path.startsWith('skills/init-backlog/templates/') && path.endsWith('.md')), 'request-time template assets are part of the runtime closure')
     assert.ok(paths.includes('skills/init-backlog/unwrap.js'), 'the shared unwrapper is part of the runtime closure')

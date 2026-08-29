@@ -367,6 +367,16 @@ test('the shipped-behavior classifier covers the init-backlog controller and its
   assert.deepEqual(classifyShippedBehavior(controllerPaths, base, base), controllerPaths, 'every controller file and normalized template asset must classify as shipped behavior')
 })
 
+test('init-backlog ships the documented non-writing apply-request builder', () => {
+  const controller = require('../skills/init-backlog/init-backlog')
+  const applyRequest = require('../skills/init-backlog/lib/apply-request')
+  const skill = readRepositoryFile('skills/init-backlog/SKILL.md')
+
+  assert.equal(typeof applyRequest.buildApprovedApplyRequest, 'function', 'the bundled builder must be callable')
+  assert.equal(controller.buildApprovedApplyRequest, applyRequest.buildApprovedApplyRequest, 'the controller facade must expose the bundled builder')
+  assert.equal(countExact(skill, '`buildApprovedApplyRequest` from `${CLAUDE_PLUGIN_ROOT}/skills/init-backlog/lib/apply-request.js`'), 1, 'the public procedure must name the callable builder exactly once')
+})
+
 // The prompt baseline replays a historical prompt-only install for evaluation
 // runs; it lives under tests/fixtures and must never count as shipped input.
 test('the prompt baseline is test input, not shipped production input', () => {

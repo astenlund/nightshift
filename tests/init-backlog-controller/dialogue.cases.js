@@ -10,6 +10,7 @@ const hostEvents = require('../init-backlog-session-driver/host-events')
 const dialogue = require('../init-backlog-session-driver/dialogue')
 const adjudication = require('../init-backlog-session-driver/adjudication')
 const driver = require('../init-backlog-session-driver')
+const applyRequest = require('../../skills/init-backlog/lib/apply-request')
 const protocol = require('../../skills/init-backlog/lib/protocol')
 const { inspect } = require('../../skills/init-backlog/init-backlog')
 const { CLAUDE_ROOT_EXCLUSION_CONFIRMATION, CODEX_HOST_CONTEXT_CONFIRMATION, HOST_CONTROL_RECORDS } = require('./election-oracles')
@@ -130,6 +131,7 @@ function runDialogueCases(repositoryRoot) {
   void repositoryRoot
 
   test('the dialogue engine modules export exactly their closed surfaces', () => {
+    assert.deepEqual(Object.keys(applyRequest).sort(), ['VERSION_CONTROL_OPTION_ORDER', 'buildApprovedApplyRequest'])
     assert.deepEqual(Object.keys(hostEvents).sort(), [
       'CLAUDE_PUBLIC_SKILL_INVENTORY',
       'createClaudeSessionConductor',
@@ -142,6 +144,7 @@ function runDialogueCases(repositoryRoot) {
       'verifyTurnOutputEquality',
     ])
     assert.deepEqual(Object.keys(dialogue).sort(), ['buildApprovedApplyRequest', 'createGateWalk'])
+    assert.equal(dialogue.buildApprovedApplyRequest, applyRequest.buildApprovedApplyRequest, 'the harness delegates approved apply-request construction to the shipped builder')
     assert.deepEqual(Object.keys(adjudication).sort(), [
       'buildExpectedDisclosureSequence',
       'compareSemanticClassifications',
