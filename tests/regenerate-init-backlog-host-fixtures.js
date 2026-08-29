@@ -6,7 +6,7 @@ const { join } = require('node:path')
 const { canonicalJson, sha256 } = require('./init-backlog-controller/helpers')
 const { windowsRepositoryImage } = require('./init-backlog-controller/election-oracles')
 const { SCENARIO_IDS } = require('./init-backlog-controller/host-fixture-oracles')
-const { buildExpectedScenarios } = require('./init-backlog-controller/oracles.cases')
+const { buildExpectedScenarios } = require('./init-backlog-controller/host-fixture-recipes')
 
 const repositoryRoot = join(__dirname, '..')
 const fixtureRoot = join(repositoryRoot, 'tests', 'fixtures', 'init-backlog-host')
