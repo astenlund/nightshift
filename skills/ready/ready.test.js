@@ -1707,6 +1707,41 @@ test('a link to a self-target path claimed twice outside the catalog grammar res
   );
 });
 
+const HOSTILE_SLUG_COLLISION_FEATURES = `# Features
+
+## Area
+
+### [Valid claimant](features/dup.md)
+
+**Requires:** none.
+
+### [Hostile claimant](../dup.md)
+
+**Requires:** none.
+
+### [Dependent](features/dependent.md)
+
+**Requires:** [Hostile claimant](../dup.md).
+`;
+
+test('a link to a lone hostile self-target sharing a basename is ambiguous, and the valid entry still classifies', () => {
+  const result = analyze({ FEATURES: HOSTILE_SLUG_COLLISION_FEATURES });
+  const dependent = findByTitle(result.structuralErrors, 'Dependent');
+  assert.ok(dependent, JSON.stringify(result.structuralErrors));
+  assert.ok(dependent.problem.includes('several active entries share the file slug "dup"'), dependent.problem);
+  assert.ok(
+    !titles(result.blocked).includes('Dependent'),
+    `the link must not silently resolve to either claimant: ${titles(result.blocked).join(' | ')}`,
+  );
+  assert.ok(!titles(result.ready).includes('Dependent'), titles(result.ready).join(' | '));
+  assert.ok(titles(result.ready).includes('Valid claimant'), titles(result.ready).join(' | '));
+  assert.deepStrictEqual(
+    result.structuralErrors.filter((e) => e.index === '[duplicate]'),
+    [],
+    'one catalog-grammar claimant and one hostile claimant are not a duplicate self-target',
+  );
+});
+
 test('breakoutTargets include entries whose classification terminated in a structural error', () => {
   assert.ok(gates.breakoutTargets.some((t) => t.target === 'features/kappa.md'), JSON.stringify(gates.breakoutTargets));
 });
