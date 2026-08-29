@@ -22,7 +22,10 @@ const {
 } = require('./filesystem')
 const { DIGEST_PATTERN, MAX_INLINE_FILE_BYTES, MAX_RECOVERY_REQUEST_BYTES, MAX_RECOVERY_RESULT_BYTES, NONCE_PATTERN, OWNER_BASENAME: RECOVERY_OWNER_BASENAME, OWNER_RECORD_KEYS, OWNER_STAGE_BASENAME: RECOVERY_OWNER_STAGE_BASENAME, RECOVERY_GATE_BASENAME, RECOVERY_LOCK_BASENAME: LOCK_BASENAME, RECOVERY_LOCK_STAGE_PATTERN: LOCK_STAGE_PATTERN, RECOVERY_MARKER_BASENAME: MARKER_BASENAME, WARNING_CODES, buildRecoveryApplyRequest, canonicalBytes, canonicalJson, compareOrdinal, deriveRecoveryId, electionMarkerTemporaryNames, recoveryAllowedDispositions, sameCanonical, sameKeys, sha256, validateTarget } = require('./protocol')
 const { collectInspection, validateElectionMarkerRecord } = require('./inspection')
+const { createOwnerInventoryIndex, validateOwnerInventoryStates } = require('./owner-inventory')
 const { publishRecoveryFile, recoveryTemporaryMatches, recoveryTemporaryTarget, relativeArtifact, removeRecoveryFile } = require('./publication')
+
+const MARKER_TARGET_HASH = sha256(Buffer.from(MARKER_BASENAME, 'utf8'))
 
 function failure(operation, phase, code, detail, target = null, cause = undefined, fields = {}) {
   throw new InitBacklogError(failureRecord({ ...fields, code, detail, operation, phase, target, systemCode: trustedSystemCode(cause) }), { cause })
@@ -52,24 +55,12 @@ function recoveryTemporaryParts(target, recoveryId) {
   return { directory: targetDirectory(target), targetHash: basename.slice(prefix.length, -4) }
 }
 
-function validRecoveryTemporaryTarget(target, record) {
+function validRecoveryTemporaryTarget(target, record, inventory) {
   const parts = recoveryTemporaryParts(target, record.recoveryId ?? record.manifestId)
   if (parts === null) return false
-  const markerHash = sha256(Buffer.from(MARKER_BASENAME, 'utf8'))
-  if (parts.directory === '' && parts.targetHash === markerHash) return true
+  if (parts.directory === '' && parts.targetHash === MARKER_TARGET_HASH) return true
 
-  return record.temporaryPaths.some((item) => {
-    const backup = backupParts(item)
-
-    return backup !== null && backup.targetHash === parts.targetHash
-  })
-}
-
-function exactBackupPair(stageTarget, finalTarget) {
-  const stage = backupParts(stageTarget)
-  const final = backupParts(finalTarget)
-
-  return stage?.kind === 'stage' && final?.kind === 'final' && stage.directory === final.directory && stage.snapshotId === final.snapshotId && stage.manifestId === final.manifestId && stage.targetHash === final.targetHash
+  return inventory.backupTargetHashes.has(parts.targetHash)
 }
 
 function readArtifact(root, target, options = {}, requireSingleLink = true) {
@@ -148,15 +139,14 @@ function ownerRecordValid(record, root) {
   return sameKeys(record, OWNER_RECORD_KEYS) && Number.isSafeInteger(record.createdAtUnixMs) && record.createdAtUnixMs >= 0 && record.protocolVersion === 1 && record.operation === 'recover-apply' && record.root === root && Number.isSafeInteger(record.pid) && record.pid > 0 && typeof record.ownerNonce === 'string' && NONCE_PATTERN.test(record.ownerNonce) && record.manifestId === null && typeof record.recoveryId === 'string' && DIGEST_PATTERN.test(record.recoveryId) && Array.isArray(record.temporaryPaths) && record.temporaryPaths.length === 0 && Array.isArray(record.unfinalizedDirectories) && record.unfinalizedDirectories.length === 0
 }
 
-function markerTopology(root, target, record) {
+function markerTopology(root, target, record, inventory) {
   if (record.manifestId === null) return null
   const markerPrefix = `${MARKER_BASENAME}.${record.manifestId}`
   const paths = {
     ...electionMarkerTemporaryNames(markerPrefix),
     marker: MARKER_BASENAME,
   }
-  const temporary = new Set(record.temporaryPaths)
-  const present = (candidate) => temporary.has(candidate) && pathExists(artifactPath(root, candidate))
+  const present = (candidate) => inventory.temporaryTargets.has(candidate) && pathExists(artifactPath(root, candidate))
   const markerPresent = pathExists(artifactPath(root, paths.marker))
   const peers = []
 
@@ -182,7 +172,7 @@ function markerTopology(root, target, record) {
   return { expectedLinkCount: peers.length + 1, peers, valid: true }
 }
 
-function hardLinkTopology(root, target, record) {
+function hardLinkTopology(root, target, record, inventory) {
   const initial = `${LOCK_BASENAME}.${record.pid}.${record.ownerNonce}.new`
   if (target === LOCK_BASENAME || target === initial) {
     const peer = target === LOCK_BASENAME ? initial : LOCK_BASENAME
@@ -192,28 +182,23 @@ function hardLinkTopology(root, target, record) {
   }
   const parts = backupParts(target)
   if (parts !== null) {
-    const peer = record.temporaryPaths.find((candidate) => {
-      const candidateParts = backupParts(candidate)
-
-      return candidateParts !== null && candidateParts.kind !== parts.kind && (parts.kind === 'stage' ? exactBackupPair(target, candidate) : exactBackupPair(candidate, target))
-    })
-
+    const peer = inventory.backupPeerByTarget.get(target)
     const peerPresent = peer !== undefined && pathExists(artifactPath(root, peer))
 
     return { expectedLinkCount: peerPresent ? 2 : 1, peers: peerPresent ? [peer] : [], valid: true }
   }
-  const marker = markerTopology(root, target, record)
+  const marker = markerTopology(root, target, record, inventory)
   if (marker !== null) return marker
 
   return { expectedLinkCount: 1, peers: [], valid: true }
 }
 
-function validateHardLinkTopology(root, target, opened, options, record) {
+function validateHardLinkTopology(root, target, opened, options, record, inventory) {
   const path = artifactPath(root, target)
   const before = lstatSync(path, { bigint: true })
   const after = lstatSync(path, { bigint: true })
   if (before.nlink !== after.nlink) throw new Error('Recovery artifact link count changed')
-  const topology = hardLinkTopology(root, target, record)
+  const topology = hardLinkTopology(root, target, record, inventory)
   if (!topology.valid || after.nlink !== BigInt(topology.expectedLinkCount)) throw new Error('Recovery artifact has an unexpected hard-link topology')
   if (topology.peers.length === 0) {
     if (after.nlink !== 1n) throw new Error('Recovery artifact has an unexpected hard-link topology')
@@ -236,11 +221,11 @@ function validateHardLinkTopology(root, target, opened, options, record) {
   return opened
 }
 
-function readOwnerArtifact(root, target, options, record) {
+function readOwnerArtifact(root, target, options, record, inventory) {
   try {
     const opened = stableOpenFile(root, artifactPath(root, target), { ...options, requireSingleLink: false })
 
-    return validateHardLinkTopology(root, target, opened, options, record)
+    return validateHardLinkTopology(root, target, opened, options, record, inventory)
   } catch (error) {
     if (error?.code === 'ENOENT') return null
 
@@ -248,7 +233,7 @@ function readOwnerArtifact(root, target, options, record) {
   }
 }
 
-function validOwnerTemporary(root, target, record) {
+function validOwnerTemporary(root, target, record, inventory) {
   if (typeof target !== 'string') return false
   try {
     validateTarget(target)
@@ -261,11 +246,11 @@ function validOwnerTemporary(root, target, record) {
   if (target === initial) return true
   if (record.operation === 'apply' && target === next) return true
   if (record.operation === 'recover-apply') {
-    if (validRecoveryTemporaryTarget(target, record)) return true
+    if (validRecoveryTemporaryTarget(target, record, inventory)) return true
     return backupParts(target) !== null
   }
   if (record.operation !== 'apply' || record.manifestId === null) return false
-  if (validRecoveryTemporaryTarget(target, { ...record, recoveryId: record.manifestId })) return true
+  if (validRecoveryTemporaryTarget(target, { ...record, recoveryId: record.manifestId }, inventory)) return true
   const backup = backupParts(target)
   if (backup !== null) return backup.manifestId === record.manifestId
   const basename = target.slice(target.lastIndexOf('/') + 1)
@@ -279,14 +264,14 @@ function validOwnerTemporary(root, target, record) {
   return markerNames.includes(target)
 }
 
-function validOwnerRecord(record, root, opened, platform = process.platform) {
-  return validOwnerRecordShape(record, root) && (platform === 'win32' || opened.mode === 0o600)
+function validOwnerRecord(record, root, opened, inventory, platform = process.platform) {
+  return validOwnerRecordShape(record, root, inventory) && (platform === 'win32' || opened.mode === 0o600)
 }
 
-function validOwnerRecordShape(record, root) {
+function validOwnerRecordShape(record, root, inventory) {
   const operationFieldsValid = record?.operation === 'apply' && record.recoveryId === null || ['inspect', 'recover-inspect'].includes(record?.operation) && record.manifestId === null && record.recoveryId === null || record?.operation === 'recover-apply' && record.manifestId === null && typeof record.recoveryId === 'string' && DIGEST_PATTERN.test(record.recoveryId)
 
-  return sameKeys(record, OWNER_RECORD_KEYS) && record.root === root && ['inspect', 'apply', 'recover-inspect', 'recover-apply'].includes(record.operation) && operationFieldsValid && record.protocolVersion === 1 && Number.isSafeInteger(record.pid) && record.pid > 0 && NONCE_PATTERN.test(record.ownerNonce) && Number.isSafeInteger(record.createdAtUnixMs) && record.createdAtUnixMs >= 0 && (record.manifestId === null || DIGEST_PATTERN.test(record.manifestId)) && (record.recoveryId === null || DIGEST_PATTERN.test(record.recoveryId)) && Array.isArray(record.temporaryPaths) && new Set(record.temporaryPaths).size === record.temporaryPaths.length && !record.temporaryPaths.some((item, index) => !validOwnerTemporary(root, item, record) || index > 0 && compareOrdinal(record.temporaryPaths[index - 1], item) >= 0) && Array.isArray(record.unfinalizedDirectories) && new Set(record.unfinalizedDirectories.map((item) => item?.target)).size === record.unfinalizedDirectories.length && !record.unfinalizedDirectories.some((item, index) => !sameKeys(item, ['mode', 'target']) || typeof item.target !== 'string' || !Number.isSafeInteger(item.mode) && item.mode !== null || item.mode !== null && (item.mode < 0 || item.mode > 4095) || index > 0 && compareOrdinal(record.unfinalizedDirectories[index - 1].target, item.target) >= 0)
+  return sameKeys(record, OWNER_RECORD_KEYS) && record.root === root && ['inspect', 'apply', 'recover-inspect', 'recover-apply'].includes(record.operation) && operationFieldsValid && record.protocolVersion === 1 && Number.isSafeInteger(record.pid) && record.pid > 0 && NONCE_PATTERN.test(record.ownerNonce) && Number.isSafeInteger(record.createdAtUnixMs) && record.createdAtUnixMs >= 0 && (record.manifestId === null || DIGEST_PATTERN.test(record.manifestId)) && (record.recoveryId === null || DIGEST_PATTERN.test(record.recoveryId)) && Array.isArray(record.temporaryPaths) && inventory.temporaryTargets.size === record.temporaryPaths.length && !record.temporaryPaths.some((item, index) => !validOwnerTemporary(root, item, record, inventory) || index > 0 && compareOrdinal(record.temporaryPaths[index - 1], item) >= 0) && Array.isArray(record.unfinalizedDirectories) && new Set(record.unfinalizedDirectories.map((item) => item?.target)).size === record.unfinalizedDirectories.length && !record.unfinalizedDirectories.some((item, index) => !sameKeys(item, ['mode', 'target']) || typeof item.target !== 'string' || !Number.isSafeInteger(item.mode) && item.mode !== null || item.mode !== null && (item.mode < 0 || item.mode > 4095) || index > 0 && compareOrdinal(record.unfinalizedDirectories[index - 1].target, item.target) >= 0)
 }
 
 function ownerEvidence(root, options = {}) {
@@ -294,12 +279,13 @@ function ownerEvidence(root, options = {}) {
   const openFile = options.stableOpenFile ?? stableOpenFile
   const opened = openFile(root, lock, { ...options, maxBytes: MAX_RECOVERY_REQUEST_BYTES, requireSingleLink: false })
   const record = parseCanonicalRecord(opened)
-  if (!validOwnerRecord(record, root, opened, options.platform)) throw new Error('Publication lock record is malformed')
-  validateHardLinkTopology(root, LOCK_BASENAME, opened, options, record)
+  const inventory = Array.isArray(record?.temporaryPaths) ? createOwnerInventoryIndex(record.temporaryPaths) : null
+  if (inventory === null || !validOwnerRecord(record, root, opened, inventory, options.platform)) throw new Error('Publication lock record is malformed')
+  validateHardLinkTopology(root, LOCK_BASENAME, opened, options, record, inventory)
   const pidStatus = pidEvidence(record.pid, options)
   if (pidStatus !== 'absent') throw new Error('Publication lock owner is live or indeterminate')
   const temporaryStates = record.temporaryPaths.map((target) => {
-    const current = readOwnerArtifact(root, target, options, record)
+    const current = readOwnerArtifact(root, target, options, record, inventory)
     return { mode: current === null ? null : modeFor(current, options.platform), present: current !== null, rawSha256: current?.rawSha256 ?? null, target }
   })
   const directoryStates = record.unfinalizedDirectories.map((item) => {
@@ -318,18 +304,7 @@ function ownerEvidence(root, options = {}) {
     }
   })
 
-  for (const [index, item] of temporaryStates.entries()) {
-    const backup = backupParts(item.target)
-    if (backup?.kind !== 'stage') continue
-    const laterBackups = temporaryStates.slice(index + 1).map((state) => state.target).filter((target) => backupParts(target)?.kind === 'final')
-    if (laterBackups.length !== 0 && !laterBackups.some((target) => exactBackupPair(item.target, target))) throw new Error('Owner backup stage/final tuple differs')
-  }
-
-  for (const states of [temporaryStates, directoryStates]) {
-    const initialLockStage = `${LOCK_BASENAME}.${record.pid}.${record.ownerNonce}.new`
-    const nextLockStage = `${LOCK_BASENAME}.${record.ownerNonce}.next`
-    if (states.some((item, index) => !item.present && states.slice(index + 1).some((later) => later.present && !exactBackupPair(item.target, later.target) && !validRecoveryTemporaryTarget(item.target, record) && !(item.target === nextLockStage && later.target === initialLockStage) && !(backupParts(later.target)?.manifestId === record.manifestId) && !(item.target === initialLockStage && (backupParts(later.target) !== null || validRecoveryTemporaryTarget(later.target, record)))))) throw new Error('Owner inventory is not a contiguous cleanup prefix')
-  }
+  validateOwnerInventoryStates(record, inventory, temporaryStates, directoryStates, (target) => validRecoveryTemporaryTarget(target, record, inventory))
 
   return { mode: modeFor(opened, options.platform), pidStatus, rawSha256: opened.rawSha256, record, temporaryStates, directoryStates, retainedBackups: temporaryStates.filter((item) => item.present && BACKUP_PATTERN.test(item.target)).map((item) => item.target).sort(compareOrdinal) }
 }
@@ -352,7 +327,8 @@ function stageEvidence(root, target, options = {}) {
   if (pidStatus !== 'absent') failure('recover-inspect', 'lock', 'runtime-lock', 'Lock stage owner is live or indeterminate.', target)
   const parsedRecord = parseCanonicalRecord(opened)
   if (parsedRecord !== null && (parsedRecord.pid !== pid || parsedRecord.ownerNonce !== ownerNonce)) failure('recover-inspect', 'inspect', 'runtime-lock', 'Lock stage identity differs from its basename.', target)
-  const record = parsedRecord !== null && validOwnerRecord(parsedRecord, root, opened, options.platform) ? parsedRecord : null
+  const inventory = Array.isArray(parsedRecord?.temporaryPaths) ? createOwnerInventoryIndex(parsedRecord.temporaryPaths) : null
+  const record = parsedRecord !== null && inventory !== null && validOwnerRecord(parsedRecord, root, opened, inventory, options.platform) ? parsedRecord : null
 
   return { pid, ownerNonce, pidStatus, rawSha256: opened.rawSha256, mode: modeFor(opened, options.platform), record }
 }
@@ -630,8 +606,8 @@ function recoveryGateTransition(expected, current) {
   return null
 }
 
-function validateStaleOwnerReplay(root, owner, options) {
-  const recordValid = validOwnerRecordShape(owner.record, root)
+function validateStaleOwnerReplay(root, owner, options, inventory) {
+  const recordValid = validOwnerRecordShape(owner.record, root, inventory)
   const rawValid = sha256(Buffer.from(`${canonicalJson(owner.record)}\n`, 'utf8')) === owner.rawSha256
   const modeValid = (options.platform ?? process.platform) === 'win32' || owner.mode === 0o600
   if (!recordValid || !rawValid || !modeValid) throw new Error(`Stale owner record is not a valid inventory authority (${recordValid},${rawValid},${modeValid})`)
@@ -643,7 +619,7 @@ function validateStaleOwnerReplay(root, owner, options) {
   let presentObserved = false
   const retainedBackups = []
   for (const item of owner.temporaryStates) {
-    const current = readOwnerArtifact(root, item.target, options, owner.record)
+    const current = readOwnerArtifact(root, item.target, options, owner.record, inventory)
     if (!item.present) {
       if (current !== null) throw new Error('Stale owner temporary appeared after inspection')
       continue
@@ -674,8 +650,8 @@ function validateStaleOwnerReplay(root, owner, options) {
   }
 }
 
-function validateStaleOwnerLock(root, owner, options) {
-  const current = readOwnerArtifact(root, LOCK_BASENAME, options, owner.record)
+function validateStaleOwnerLock(root, owner, options, inventory) {
+  const current = readOwnerArtifact(root, LOCK_BASENAME, options, owner.record, inventory)
   if (current === null) return
   if (current.rawSha256 !== owner.rawSha256 || modeFor(current, options.platform) !== owner.mode) throw new Error('Stale owner lock changed before cleanup')
 }
@@ -692,10 +668,10 @@ function removeArtifact(root, target, expected, options = {}, requireSingleLink 
   return true
 }
 
-function removeOwnerArtifact(root, target, expected, options, record) {
+function removeOwnerArtifact(root, target, expected, options, record, inventory) {
   const path = artifactPath(root, target)
   if (!pathExists(path)) return false
-  const current = readOwnerArtifact(root, target, options, record)
+  const current = readOwnerArtifact(root, target, options, record, inventory)
   if (current === null || expected !== null && (current.rawSha256 !== expected.rawSha256 || expected.mode !== null && current.mode !== expected.mode || expected.identity !== undefined && current.identity !== expected.identity)) throw new Error('Recovery artifact changed before removal')
   const remove = options.removeAndVerify ?? removeAndVerify
   options.verifyLock?.()
@@ -1050,7 +1026,8 @@ function applyRecovery(request, options = {}) {
     const lockAbsentStaleOwner = inspection.recoveryKind === 'stale-owner' && !pathExists(join(root, LOCK_BASENAME))
     if (lockAbsentStaleOwner) {
       try {
-        validateStaleOwnerReplay(root, inspection.evidence.owner, options)
+        const inventory = createOwnerInventoryIndex(inspection.evidence.owner.record.temporaryPaths)
+        validateStaleOwnerReplay(root, inspection.evidence.owner, options, inventory)
       } catch (error) {
         failure('recover-apply', 'prevalidate', 'snapshot-drift', 'Recovery evidence changed before publication.', inspection.recoveryTarget, error)
       }
@@ -1129,16 +1106,17 @@ function applyRecovery(request, options = {}) {
         }
       }
       let claim
+      const inventory = createOwnerInventoryIndex(owner.record.temporaryPaths)
       try {
         claim = claimRecoveryGate(root, inspection, options)
-        validateStaleOwnerLock(root, owner, options)
-        validateStaleOwnerReplay(root, owner, options)
+        validateStaleOwnerLock(root, owner, options, inventory)
+        validateStaleOwnerReplay(root, owner, options, inventory)
       } catch (error) {
         if (error instanceof InitBacklogError) throw error
 
         failure('recover-apply', 'prevalidate', 'snapshot-drift', 'Recovery evidence changed before publication.', inspection.recoveryTarget, error)
       }
-      for (const item of owner.temporaryStates) if (item.present && !BACKUP_PATTERN.test(item.target) && removeOwnerArtifact(root, item.target, item, { ...options, removeAndVerify: remove }, owner.record)) mutated = true
+      for (const item of owner.temporaryStates) if (item.present && !BACKUP_PATTERN.test(item.target) && removeOwnerArtifact(root, item.target, item, { ...options, removeAndVerify: remove }, owner.record, inventory)) mutated = true
       if (existsSync(join(root, LOCK_BASENAME))) { removeArtifact(root, LOCK_BASENAME, { mode: owner.mode, rawSha256: owner.rawSha256 }, options); mutated = true }
       releaseRecoveryGate(claim, options)
       changed = [LOCK_BASENAME, ...owner.temporaryStates.filter((item) => item.present && !BACKUP_PATTERN.test(item.target)).map((item) => item.target)]

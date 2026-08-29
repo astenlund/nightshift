@@ -8,10 +8,11 @@ const test = require('node:test')
 
 const { publishApply, publishRecoveryFile, recoveryTemporaryTarget } = require('../../skills/init-backlog/lib/publication')
 const { applyRecovery, inspectRecovery } = require('../../skills/init-backlog/lib/recovery')
+const { createOwnerInventoryIndex, validateOwnerInventoryStates } = require('../../skills/init-backlog/lib/owner-inventory')
 const { admitApplyManifest } = require('../../skills/init-backlog/lib/apply-manifest')
 const { InitBacklogError, failureRecord } = require('../../skills/init-backlog/lib/errors')
 const { runPrivateDispatcher } = require('../../skills/init-backlog/init-backlog')
-const { MAX_INLINE_FILE_BYTES, MAX_RECOVERY_REQUEST_BYTES, canonicalBytes, canonicalJson, compareOrdinal, deriveRecoveryId, deriveSnapshotId, encodeResult, sha256, validateResultRecord } = require('../../skills/init-backlog/lib/protocol')
+const { MAX_INLINE_FILE_BYTES, MAX_RECOVERY_REQUEST_BYTES, backupFileNames, canonicalBytes, canonicalJson, compareOrdinal, deriveRecoveryId, deriveSnapshotId, encodeResult, sha256, validateResultRecord } = require('../../skills/init-backlog/lib/protocol')
 const { stableOpenFile } = require('../../skills/init-backlog/lib/filesystem')
 const { discoverInitialLockStages, inspect } = require('../../skills/init-backlog/lib/inspection')
 const { unwrapText } = require('../../skills/init-backlog/unwrap')
@@ -132,6 +133,31 @@ function runRecoveryCases() {
   test('evidence-first recovery exports the two recovery operations', () => {
     assert.equal(typeof inspectRecovery, 'function')
     assert.equal(typeof applyRecovery, 'function')
+  })
+
+  test('owner inventory indexing and state validation visit inventory linearly', () => {
+    const pairCount = 256
+    const manifestId = 'a'.repeat(64)
+    const snapshotId = 'b'.repeat(64)
+    const paths = []
+    for (let index = 0; index < pairCount; index += 1) {
+      const names = backupFileNames(snapshotId, manifestId, index.toString(16).padStart(64, '0'))
+      paths.push(names.stage, names.final)
+    }
+    let indexedReads = 0
+    const countReads = (items) => new Proxy(items, {
+      get(target, property, receiver) {
+        if (typeof property === 'string' && /^(0|[1-9][0-9]*)$/.test(property)) indexedReads += 1
+
+        return Reflect.get(target, property, receiver)
+      },
+    })
+    const inventory = createOwnerInventoryIndex(countReads(paths))
+    const states = countReads(paths.map((target) => ({ present: true, target })))
+
+    validateOwnerInventoryStates({ manifestId, ownerNonce: 'c'.repeat(32), pid: 321 }, inventory, states, [], () => false)
+
+    assert.ok(indexedReads <= paths.length * 4, `expected at most ${paths.length * 4} indexed reads, received ${indexedReads}`)
   })
 
   test('unwrap publication rejects a symlinked root temporary directory before any outside write', () => {
