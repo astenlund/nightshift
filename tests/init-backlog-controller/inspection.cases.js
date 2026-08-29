@@ -213,7 +213,7 @@ function runInspectionCases(repositoryRoot) {
       input: Buffer.from('payload', 'utf8'),
     })
     assert.equal(observed.executable, 'C:/trusted/git.exe')
-    assert.deepEqual(observed.args, ['status'])
+    assert.deepEqual(observed.args, ['-c', 'core.fsmonitor=', 'status'])
     assert.equal(observed.options.shell, false)
     assert.equal(observed.options.killSignal, 'SIGKILL')
     assert.equal(observed.options.env.GIT_OPTIONAL_LOCKS, '0')
@@ -244,7 +244,12 @@ function runInspectionCases(repositoryRoot) {
       ignoreProbes: [{ probe: 'ignored.md', target: 'ignored.md' }],
       kind: 'git',
       privateExcludePath,
-      spawnSync: (executable, args) => ({ status: args[0] === 'config' ? 1 : 0, stdout: stdoutFor(args), stderr: Buffer.alloc(0), signal: null }),
+      spawnSync: (executable, args) => {
+        assert.deepEqual(args.slice(0, 2), ['-c', 'core.fsmonitor='])
+        const commandArgs = args.slice(2)
+
+        return { status: commandArgs[0] === 'config' ? 1 : 0, stdout: stdoutFor(commandArgs), stderr: Buffer.alloc(0), signal: null }
+      },
       trustedGitPath: 'C:/trusted/git.exe',
     })
 

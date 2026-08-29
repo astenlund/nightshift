@@ -236,7 +236,8 @@ function runGit(root, args, options = {}) {
   const env = { ...ambient, GIT_OPTIONAL_LOCKS: '0', GIT_PAGER: 'cat', GIT_TERMINAL_PROMPT: '0' }
   const input = options.input === undefined ? undefined : buffers(options.input)
   if (input !== undefined && input.length > 1048576) throw new Error('Git input exceeds its byte limit')
-  const result = spawn(executable, args, {
+  const safeArgs = ['-c', 'core.fsmonitor=', ...args]
+  const result = spawn(executable, safeArgs, {
     cwd: root,
     encoding: null,
     maxBuffer: 1048576,
