@@ -1,9 +1,9 @@
 'use strict'
 
 const assert = require('node:assert/strict')
-const { copyFileSync, cpSync, existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } = require('node:fs')
+const { copyFileSync, cpSync, existsSync, linkSync, lstatSync, mkdtempSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } = require('node:fs')
 const { tmpdir } = require('node:os')
-const { dirname, join } = require('node:path')
+const { basename, dirname, join } = require('node:path')
 const test = require('node:test')
 
 const {
@@ -27,6 +27,7 @@ const {
   resolveExternalClaudeConfigRoot,
   stageCandidate,
   validateEvidenceRow,
+  writeEvidence,
 } = require('./host-discovery-smoke-lib')
 const { REVISE_ENGINE_RESOURCES } = require('./entry-contract')
 
@@ -65,6 +66,21 @@ function writeCandidateContract(candidateRoot, resources) {
   const testsRoot = join(candidateRoot, 'tests')
   mkdirSync(testsRoot, { recursive: true })
   writeFileSync(join(testsRoot, 'entry-contract.js'), "'use strict'\nmodule.exports = { REVISE_ENGINE_RESOURCES: " + JSON.stringify(resources) + ' }\n')
+}
+
+function validEvidenceRow(overrides = {}) {
+  return {
+    candidateDigest: 'a'.repeat(64),
+    candidateVersion: '2.6.14',
+    diagnostic: null,
+    host: 'claude',
+    legacyCommands: [],
+    legacySkillPresent: false,
+    mode: 'clean',
+    publicSkills: [...PUBLIC_SKILLS],
+    status: 'pass',
+    ...overrides,
+  }
 }
 
 test('runtime projection copies only nonempty permitted values with original spelling', () => {
@@ -369,14 +385,63 @@ test('evidence rows reject malformed values without smoke sentinels', () => {
   assert.throws(() => validateEvidenceRow({ ...row, obsolete: true }), /exactly/)
 })
 
+test('evidence publication is exclusive and leaves one direct single-link row', () => {
+  const checkoutRoot = createTemporaryDirectory()
+  try {
+    const evidenceRoot = join(checkoutRoot, '.tmp', 'evidence')
+    const row = validEvidenceRow()
+    writeEvidence({ checkoutRoot, evidenceRoot, row })
+    const rowPath = join(evidenceRoot, 'claude-clean.json')
+    const bytes = readFileSync(rowPath)
+    const metadata = lstatSync(rowPath, { bigint: true })
+
+    assert.equal(metadata.isFile() && !metadata.isSymbolicLink() && metadata.nlink === 1n, true)
+    assert.deepEqual(bytes, Buffer.from(JSON.stringify(row) + '\n', 'utf8'))
+    assert.throws(() => writeEvidence({ checkoutRoot, evidenceRoot, row }), /already exists/)
+    assert.deepEqual(readFileSync(rowPath), bytes, 'a repeated cell cannot replace its prior evidence')
+  } finally {
+    removeTemporaryDirectory(checkoutRoot)
+  }
+})
+
+test('evidence publication rejects directory aliases and linked row destinations', () => {
+  const checkoutRoot = createTemporaryDirectory()
+  const outsideRoot = createTemporaryDirectory()
+  try {
+    const row = validEvidenceRow()
+    symlinkSync(outsideRoot, join(checkoutRoot, '.tmp'), 'junction')
+    assert.throws(() => writeEvidence({ checkoutRoot, evidenceRoot: join(checkoutRoot, '.tmp', 'evidence'), row }), /directory.*alias|ordinary direct directory/i)
+    rmSync(join(checkoutRoot, '.tmp'), { force: true, recursive: true })
+
+    mkdirSync(join(checkoutRoot, '.tmp'))
+    symlinkSync(outsideRoot, join(checkoutRoot, '.tmp', 'evidence'), 'junction')
+    assert.throws(() => writeEvidence({ checkoutRoot, evidenceRoot: join(checkoutRoot, '.tmp', 'evidence'), row }), /directory.*alias|ordinary direct directory/i)
+    rmSync(join(checkoutRoot, '.tmp', 'evidence'), { force: true, recursive: true })
+    mkdirSync(join(checkoutRoot, '.tmp', 'evidence'))
+    const rowPath = join(checkoutRoot, '.tmp', 'evidence', 'claude-clean.json')
+    const outsideFile = join(outsideRoot, 'outside.json')
+    writeFileSync(outsideFile, 'outside\n')
+    symlinkSync(outsideFile, rowPath, 'file')
+    assert.throws(() => writeEvidence({ checkoutRoot, evidenceRoot: join(checkoutRoot, '.tmp', 'evidence'), row }), /already exists/)
+    assert.equal(readFileSync(outsideFile, 'utf8'), 'outside\n')
+    rmSync(rowPath, { force: true })
+
+    linkSync(outsideFile, rowPath)
+    assert.throws(() => writeEvidence({ checkoutRoot, evidenceRoot: join(checkoutRoot, '.tmp', 'evidence'), row }), /already exists/)
+    assert.equal(readFileSync(outsideFile, 'utf8'), 'outside\n')
+  } finally {
+    removeTemporaryDirectory(checkoutRoot)
+    removeTemporaryDirectory(outsideRoot)
+  }
+})
+
 test('local evidence accepts absent-host provisional rows', () => {
   const root = createTemporaryDirectory()
+  const checkoutRoot = join(__dirname, '..')
+  const evidenceRoot = mkdtempSync(join(checkoutRoot, '.tmp', 'nightshift-evidence-test-'))
   try {
-    const checkoutRoot = join(__dirname, '..')
     const treeId = require('node:child_process').execFileSync('git', ['-C', checkoutRoot, 'write-tree'], { encoding: 'utf8' }).trim()
     const candidate = stageCandidate({ checkoutRoot, destinationRoot: join(root, 'candidate'), treeId })
-    const evidenceRoot = join(root, 'evidence')
-    mkdirSync(evidenceRoot)
     for (const host of ['claude', 'codex']) {
       for (const mode of ['clean', 'repeat']) {
         const provisional = host === 'codex'
@@ -396,16 +461,24 @@ test('local evidence accepts absent-host provisional rows', () => {
     }
 
     assert.doesNotThrow(() => evaluateEvidence({ checkoutRoot, evidenceRoot, release: false }))
+    const evidenceHardlink = join(dirname(evidenceRoot), '.' + basename(evidenceRoot) + '-row-hardlink.json')
+    try {
+      linkSync(join(evidenceRoot, 'claude-clean.json'), evidenceHardlink)
+      assert.throws(() => evaluateEvidence({ checkoutRoot, evidenceRoot, release: false }), /direct single-link file/)
+    } finally {
+      rmSync(evidenceHardlink, { force: true })
+    }
     assert.throws(() => evaluateEvidence({ checkoutRoot, evidenceRoot, release: true }), /status/)
-  const invalid = JSON.parse(require('node:fs').readFileSync(join(evidenceRoot, 'codex-clean.json'), 'utf8'))
-  invalid.publicSkills = invalid.publicSkills.slice(0, -1)
-  writeFileSync(join(evidenceRoot, 'codex-clean.json'), JSON.stringify(invalid) + '\n')
-  assert.throws(() => evaluateEvidence({ checkoutRoot, evidenceRoot, release: false }), /public skills/)
-  invalid.publicSkills = PUBLIC_SKILLS.map((name) => 'nightshift:' + name)
-  invalid.status = 'fail'
-  writeFileSync(join(evidenceRoot, 'codex-clean.json'), JSON.stringify(invalid) + '\n')
+    const invalid = JSON.parse(require('node:fs').readFileSync(join(evidenceRoot, 'codex-clean.json'), 'utf8'))
+    invalid.publicSkills = invalid.publicSkills.slice(0, -1)
+    writeFileSync(join(evidenceRoot, 'codex-clean.json'), JSON.stringify(invalid) + '\n')
+    assert.throws(() => evaluateEvidence({ checkoutRoot, evidenceRoot, release: false }), /public skills/)
+    invalid.publicSkills = PUBLIC_SKILLS.map((name) => 'nightshift:' + name)
+    invalid.status = 'fail'
+    writeFileSync(join(evidenceRoot, 'codex-clean.json'), JSON.stringify(invalid) + '\n')
     assert.throws(() => evaluateEvidence({ checkoutRoot, evidenceRoot, release: false }), /status/)
   } finally {
+    removeTemporaryDirectory(evidenceRoot)
     removeTemporaryDirectory(root)
   }
 })

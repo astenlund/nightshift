@@ -1,9 +1,9 @@
 'use strict'
 
-const { createHash } = require('node:crypto')
-const { copyFileSync, cpSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } = require('node:fs')
+const { createHash, randomBytes } = require('node:crypto')
+const { copyFileSync, cpSync, existsSync, linkSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, unlinkSync, writeFileSync } = require('node:fs')
 const { tmpdir } = require('node:os')
-const { dirname, isAbsolute, join, relative } = require('node:path')
+const { dirname, isAbsolute, join, relative, resolve, sep } = require('node:path')
 const { execFileSync, spawn } = require('node:child_process')
 const { PUBLIC_SKILLS } = require('./entry-contract')
 
@@ -373,18 +373,102 @@ function validateEvidenceRow(row) {
   assertion(typeof row.legacySkillPresent === 'boolean', 'Evidence legacy skill value is invalid')
 }
 
+function filesystemIdentity(metadata) {
+  return `${metadata.dev.toString()}:${metadata.ino.toString()}`
+}
+
+function inspectEvidenceDirectoryChain(checkoutRoot, evidenceRoot, create) {
+  const checkoutMetadata = lstatSync(checkoutRoot, { bigint: true })
+  assertion(checkoutMetadata.isDirectory() && !checkoutMetadata.isSymbolicLink(), 'Evidence authority must be an ordinary direct directory')
+  const authority = realpathSync.native(checkoutRoot)
+  const target = resolve(evidenceRoot)
+  assertion(isContained(authority, target), 'Evidence root must be contained by the checkout')
+  const paths = [authority]
+  let current = authority
+  for (const segment of relative(authority, target).split(sep)) {
+    current = join(current, segment)
+    if (create) {
+      try {
+        mkdirSync(current, { mode: 0o700 })
+      } catch (error) {
+        if (error?.code !== 'EEXIST') {
+          throw error
+        }
+      }
+    }
+    const metadata = lstatSync(current, { bigint: true })
+    assertion(metadata.isDirectory() && !metadata.isSymbolicLink() && realpathSync.native(current) === current, 'Evidence path must be an ordinary direct directory without aliases')
+    paths.push(current)
+  }
+
+  return {
+    directories: paths.map((path) => ({ identity: filesystemIdentity(lstatSync(path, { bigint: true })), path })),
+    root: target,
+  }
+}
+
+function assertEvidenceDirectoriesStable(snapshot) {
+  for (const directory of snapshot.directories) {
+    const metadata = lstatSync(directory.path, { bigint: true })
+    assertion(metadata.isDirectory() && !metadata.isSymbolicLink() && filesystemIdentity(metadata) === directory.identity && realpathSync.native(directory.path) === directory.path, 'Evidence directory identity changed')
+  }
+}
+
+function stableEvidenceFile(root, filePath) {
+  const before = lstatSync(filePath, { bigint: true })
+  assertion(before.isFile() && !before.isSymbolicLink() && before.nlink === 1n, 'Evidence row must be a direct single-link file')
+  const canonicalRoot = realpathSync.native(root)
+  const canonicalFile = realpathSync.native(filePath)
+  assertion(isContained(canonicalRoot, canonicalFile), 'Evidence row escapes its root')
+  const bytes = readFileSync(filePath)
+  const after = lstatSync(filePath, { bigint: true })
+  assertion(after.isFile() && !after.isSymbolicLink() && after.nlink === 1n && filesystemIdentity(after) === filesystemIdentity(before) && after.size === before.size && after.mtimeNs === before.mtimeNs && realpathSync.native(filePath) === canonicalFile, 'Evidence row changed during verification')
+
+  return { bytes, identity: filesystemIdentity(before) }
+}
+
 function expectedPublicSkillNames() {
   return PUBLIC_SKILLS.map((name) => 'nightshift:' + name).sort(compareOrdinal)
 }
 
-function writeEvidence(evidenceRoot, row) {
+function writeEvidence({ checkoutRoot, evidenceRoot, row }) {
   validateEvidenceRow(row)
-  mkdirSync(evidenceRoot, { recursive: true })
-  writeFileSync(join(evidenceRoot, row.host + '-' + row.mode + '.json'), JSON.stringify(row) + '\n')
+  const snapshot = inspectEvidenceDirectoryChain(checkoutRoot, evidenceRoot, true)
+  const basename = row.host + '-' + row.mode + '.json'
+  const destination = join(snapshot.root, basename)
+  const stage = join(snapshot.root, '.' + basename + '.' + randomBytes(16).toString('hex') + '.new')
+  const bytes = Buffer.from(JSON.stringify(row) + '\n', 'utf8')
+  let stagePresent = false
+  try {
+    writeFileSync(stage, bytes, { flag: 'wx', mode: 0o600 })
+    stagePresent = true
+    const staged = stableEvidenceFile(snapshot.root, stage)
+    try {
+      linkSync(stage, destination)
+    } catch (error) {
+      if (error?.code === 'EEXIST') {
+        throw new Error('Evidence row already exists', { cause: error })
+      }
+      throw new Error('Evidence row exclusive publication failed', { cause: error })
+    }
+    unlinkSync(stage)
+    stagePresent = false
+    const published = stableEvidenceFile(snapshot.root, destination)
+    assertion(published.identity === staged.identity && published.bytes.equals(bytes), 'Published evidence row differs from its staged bytes')
+    assertEvidenceDirectoriesStable(snapshot)
+  } finally {
+    if (stagePresent) {
+      try {
+        unlinkSync(stage)
+      } catch {
+        // The surviving random stage makes later evaluation fail closed.
+      }
+    }
+  }
 }
 
 function readEvidence(evidenceRoot, host, mode) {
-  return JSON.parse(readFileSync(join(evidenceRoot, host + '-' + mode + '.json'), 'utf8'))
+  return JSON.parse(stableEvidenceFile(evidenceRoot, join(evidenceRoot, host + '-' + mode + '.json')).bytes.toString('utf8'))
 }
 
 function candidateDigestForIndex(checkoutRoot) {
@@ -397,15 +481,21 @@ function candidateDigestForIndex(checkoutRoot) {
 }
 
 function evaluateEvidence({ checkoutRoot, evidenceRoot, release }) {
-  const digest = candidateDigestForIndex(checkoutRoot)
-  const rows = ['claude', 'codex'].flatMap((host) => ['clean', 'repeat'].map((mode) => readEvidence(evidenceRoot, host, mode)))
+  const snapshot = inspectEvidenceDirectoryChain(checkoutRoot, evidenceRoot, false)
+  const expectedRows = ['claude-clean.json', 'claude-repeat.json', 'codex-clean.json', 'codex-repeat.json']
+  assertion(readdirSync(snapshot.root).sort(compareOrdinal).join(',') === expectedRows.join(','), 'Evidence root must contain exactly the four row files')
+  const rows = ['claude', 'codex'].flatMap((host) => ['clean', 'repeat'].map((mode) => readEvidence(snapshot.root, host, mode)))
   for (const row of rows) {
     validateEvidenceRow(row)
-    assertion(row.candidateDigest === digest, 'Evidence candidate digest is stale or mixed')
     assertion(row.publicSkills.join(',') === expectedPublicSkillNames().join(','), 'Evidence public skills are unexpected')
     assertion(row.legacyCommands.length === 0 && row.legacySkillPresent === false, 'Evidence exposes legacy entry points')
     assertion(row.status === 'pass' || !release && row.status === 'provisional' && row.diagnostic === 'host executable absent', 'Evidence status is not accepted')
   }
+  const digest = candidateDigestForIndex(checkoutRoot)
+  for (const row of rows) {
+    assertion(row.candidateDigest === digest, 'Evidence candidate digest is stale or mixed')
+  }
+  assertEvidenceDirectoriesStable(snapshot)
 
   return { digest, rows }
 }
@@ -749,10 +839,10 @@ async function runCell({ host, mode, checkoutRoot, evidenceRoot }) {
       row.status = 'fail'
       row.diagnostic = 'generated temporary root cleanup failed'
     }
-    writeEvidence(evidenceRoot, row)
+    writeEvidence({ checkoutRoot, evidenceRoot, row })
   }
 
   return row
 }
 
-module.exports = { CODEX_CATALOG_PROMPT, PUBLIC_SKILLS, RUNTIME_KEYS, assembleClaudePromptBaseline, assembleCodexPromptBaseline, assertClaudeInventory, assertEngineClosure, assertInitBacklogClosure, assertOutsideCheckout, buildCodexArgv, classifyChildExit, createCellSequence, createMarketplace, evaluateEvidence, executeCellSequence, loadCandidateEngineResources, loadLegacyBaseline, loadPromptBaseline, parseClaudeAuthStatus, parseClaudeDetails, parseCodexAuthStatus, projectRuntimeEnvironment, resolveExternalClaudeConfigRoot, runCell, stageCandidate, validateEvidenceRow }
+module.exports = { CODEX_CATALOG_PROMPT, PUBLIC_SKILLS, RUNTIME_KEYS, assembleClaudePromptBaseline, assembleCodexPromptBaseline, assertClaudeInventory, assertEngineClosure, assertInitBacklogClosure, assertOutsideCheckout, buildCodexArgv, classifyChildExit, createCellSequence, createMarketplace, evaluateEvidence, executeCellSequence, loadCandidateEngineResources, loadLegacyBaseline, loadPromptBaseline, parseClaudeAuthStatus, parseClaudeDetails, parseCodexAuthStatus, projectRuntimeEnvironment, resolveExternalClaudeConfigRoot, runCell, stageCandidate, validateEvidenceRow, writeEvidence }
