@@ -46,7 +46,7 @@ function fakeClock() {
 function fakeChild({ pid = 4321, stdin = true } = {}) {
   const accessLog = []
   const listeners = { close: [], error: [], spawn: [] }
-  const streamListeners = { stderrData: [], stdoutData: [], stdoutEnd: [] }
+  const streamListeners = { stderrData: [], stdinError: [], stdoutData: [], stdoutEnd: [] }
   const stdinWrites = []
   const kills = []
   const child = {
@@ -78,6 +78,14 @@ function fakeChild({ pid = 4321, stdin = true } = {}) {
     stdin: stdin ? {
       end() {
         stdinWrites.push(null)
+      },
+      on(name, fn) {
+        accessLog.push(`stdin:on:${name}`)
+        if (name === 'error') {
+          streamListeners.stdinError.push(fn)
+        }
+
+        return this
       },
       write(bytes) {
         stdinWrites.push(Buffer.from(bytes))
@@ -115,6 +123,11 @@ function fakeChild({ pid = 4321, stdin = true } = {}) {
     emitSpawn() {
       for (const fn of listeners.spawn) {
         fn()
+      }
+    },
+    emitStdinError(error) {
+      for (const fn of streamListeners.stdinError) {
+        fn(error)
       }
     },
     endStdout() {
@@ -449,13 +462,14 @@ function runProcessCases(repositoryRoot) {
     assert.equal(options.windowsHide, true)
     assert.deepEqual(options.stdio, ['pipe', 'pipe', 'pipe'])
     const firstPidAccess = harness.runner.accessLog.indexOf('pid')
-    for (const name of ['on:error', 'on:spawn', 'on:close']) {
+    for (const name of ['stdin:on:error', 'on:error', 'on:spawn', 'on:close']) {
       const listenerIndex = harness.runner.accessLog.indexOf(name)
       assert.notEqual(listenerIndex, -1)
       if (firstPidAccess !== -1) {
         assert.ok(listenerIndex < firstPidAccess, `${name} must be installed before pid access`)
       }
     }
+    assert.ok(harness.runner.accessLog.indexOf('stdin:on:error') < harness.runner.accessLog.indexOf('on:spawn'), 'stdin errors must be observed before the spawn callback can write')
     assert.deepEqual(harness.runner.stdinWrites, [], 'no start frame is written before spawn confirmation')
     harness.runner.emitSpawn()
     assert.equal(harness.runner.stdinWrites.length, 1)
@@ -749,6 +763,18 @@ function runProcessCases(repositoryRoot) {
     harness.runner.emitClose(7)
     assert.deepEqual(harness.events.failures, [{ detailCode: 'termination' }])
     assert.ok(harness.adapter.accounting().length >= 1, 'later failures are recorded as accounting')
+  })
+
+  test('asynchronous runner stdin failures terminate containment and remain once-only', () => {
+    const harness = startedWindowsHarness()
+    harness.runner.emitStdinError(new Error('EOF'))
+    assert.deepEqual(harness.events.failures, [{ detailCode: 'termination' }])
+    assert.equal(harness.clock.timers.length, 1)
+    harness.runner.emitStdinError(new Error('EPIPE'))
+    assert.deepEqual(harness.events.failures, [{ detailCode: 'termination' }])
+    assert.ok(harness.adapter.accounting().some((entry) => entry.detailCode === 'termination'))
+    harness.clock.fire()
+    assert.deepEqual(harness.runner.kills, ['SIGTERM'])
   })
 
   if (onWindows) {

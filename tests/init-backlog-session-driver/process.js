@@ -578,6 +578,9 @@ function createWindowsJobRunnerAdapter({
         return { ok: false }
       }
       child = spawned
+      child.stdin.on('error', () => {
+        protocolFailure()
+      })
       child.on('error', () => {
         const classification = launch.classifyError()
         if (classification.accounting === true) {
