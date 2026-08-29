@@ -1584,6 +1584,44 @@ test('scanBreakoutTargets treats traversal, absolute, and backslash targets as b
   }
 });
 
+test('scanBreakoutTargets treats a breakout through an external directory link as broken and never reads it', () => {
+  const tmpRoot = path.join(__dirname, '..', '..', '.tmp', `ready-linked-breakout-${process.pid}`);
+  const claudeDir = path.join(tmpRoot, '.claude');
+  const outside = path.join(tmpRoot, 'outside');
+  fs.mkdirSync(claudeDir, { recursive: true });
+  fs.mkdirSync(outside, { recursive: true });
+  fs.writeFileSync(path.join(outside, 'leak.md'), '# Leak\n\n**Requires:** none.\n');
+  fs.symlinkSync(outside, path.join(claudeDir, 'bugs'), 'junction');
+  try {
+    const scanned = scanBreakoutTargets([
+      { index: 'BUGS.md', title: 'Leak', target: 'bugs/leak.md', draft: false },
+    ], claudeDir);
+    assert.deepStrictEqual(scanned.notices, [
+      'BUGS.md entry "Leak" links to bugs/leak.md, which does not exist; remove the broken link or create the file (its Requires line still resolves normally)',
+    ]);
+    assert.deepStrictEqual(scanned.structuralErrors, [], 'the external file dependency line must never be scanned');
+    assert.deepStrictEqual([...scanned.scannedFiles], [], 'the external file must never enter the scanned identity set');
+  } finally {
+    fs.rmSync(tmpRoot, { recursive: true, force: true });
+  }
+});
+
+test('the ready CLI ignores a top-level index link outside the backlog root', () => {
+  const tmpRoot = path.join(__dirname, '..', '..', '.tmp', `ready-linked-index-${process.pid}`);
+  const claudeDir = path.join(tmpRoot, '.claude');
+  const outside = path.join(tmpRoot, 'outside-features.md');
+  fs.mkdirSync(claudeDir, { recursive: true });
+  fs.writeFileSync(outside, '# Features\n\n## External heading\n\n### Secret\n\n**Requires:** none.\n');
+  fs.symlinkSync(outside, path.join(claudeDir, 'FEATURES.md'), 'file');
+  try {
+    const output = execFileSync(process.execPath, [path.join(__dirname, 'ready.js'), tmpRoot], { encoding: 'utf8' });
+    assert.ok(!output.includes('External heading'), output);
+    assert.ok(!output.includes('Secret'), output);
+  } finally {
+    fs.rmSync(tmpRoot, { recursive: true, force: true });
+  }
+});
+
 test('analyzeCatalog treats traversal, absolute, and backslash breakout links as broken links and never throws', () => {
   const features = `# Features
 

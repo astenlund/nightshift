@@ -21,7 +21,7 @@
 const fs = require('fs');
 const path = require('path');
 const { scanMarkdown } = require('../spec-agreement/spec-agreement.js');
-const { LABEL_AT_START, CatalogError, canonicalPath, compareTargets, detectHardWraps, collectMarkdownFiles, normalizeCatalogItems } = require('../init-backlog/unwrap.js');
+const { LABEL_AT_START, CatalogError, canonicalPath, compareTargets, detectHardWraps, collectMarkdownFiles, isContainedPath, normalizeCatalogItems } = require('../init-backlog/unwrap.js');
 
 const INDEX_FILE_STEMS = new Set([
   'QUICK_WINS', 'FEATURES', 'BUGS', 'PATTERNS',
@@ -1184,12 +1184,16 @@ function scanBreakoutTargetsWith(breakoutTargets, load, collectEvidence) {
 
 function scanBreakoutTargets(breakoutTargets, claudeDir) {
   const readCache = new Map();
+  const rootIdentity = canonicalPath(claudeDir);
   const { notices, structuralErrors, scanned } = scanBreakoutTargetsWith(breakoutTargets, (target) => {
     const resolved = path.resolve(claudeDir, target);
     let read = readCache.get(resolved);
     if (read === undefined) {
       try {
-        read = { contents: fs.readFileSync(resolved, 'utf8'), identity: canonicalPath(resolved) };
+        const identity = canonicalPath(resolved);
+        read = isContainedPath(rootIdentity, identity)
+          ? { contents: fs.readFileSync(resolved, 'utf8'), identity }
+          : { errorCode: 'ENOENT' };
       } catch (error) {
         read = { errorCode: error?.code ?? 'unknown' };
       }
@@ -1446,10 +1450,12 @@ function analyzeCatalog(items) {
   return result;
 }
 
-// Direct read with the missing-file case folded into the result, so there is
-// no check-then-read window; any error other than absence still throws.
-function readFileIfPresent(p) {
+// Canonical containment is established immediately before the direct read.
+// Absence is folded into the result; every other read error still throws.
+function readFileIfPresent(p, rootIdentity) {
   try {
+    if (!isContainedPath(rootIdentity, canonicalPath(p))) return undefined;
+
     return fs.readFileSync(p, 'utf8');
   } catch (error) {
     if (error?.code === 'ENOENT') return undefined;
@@ -1467,9 +1473,10 @@ function runCli(argRoot) {
     process.exitCode = 1;
     return;
   }
+  const rootIdentity = canonicalPath(claudeDir);
   const files = {};
   for (const name of [...WORK_INDEX_NAMES, 'PATTERNS']) {
-    files[name] = readFileIfPresent(path.join(claudeDir, `${name}.md`));
+    files[name] = readFileIfPresent(path.join(claudeDir, `${name}.md`), rootIdentity);
   }
   const result = analyze(files);
 
