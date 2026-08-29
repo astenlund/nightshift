@@ -37,6 +37,7 @@ const {
 const { createInitialLock, initialLockPaths, publishNoReplace, removeInitialLock } = require('../../skills/init-backlog/lib/filesystem')
 const { canonicalJson, sha256, validateProposalDispositions } = require('../../skills/init-backlog/lib/protocol')
 const { analyzeCatalog } = require('../../skills/ready/ready')
+const { ELECTION_MARKER_PATH } = require('./election-oracles')
 
 // Fresh valid Codex host context for direct inspect/collect calls; every
 // caller may mutate its copy freely.
@@ -409,7 +410,7 @@ function runInspectionCases(repositoryRoot) {
     }
     const markerRoot = fixture()
     try {
-      writeFileSync(join(markerRoot, '.nightshift-init-backlog-election'), `${canonicalJson(composeElectionRecord('track', markerRoot, 'e'.repeat(64)))}\n`, { mode: 0o600 })
+      writeFileSync(join(markerRoot, ELECTION_MARKER_PATH), `${canonicalJson(composeElectionRecord('track', markerRoot, 'e'.repeat(64)))}\n`, { mode: 0o600 })
       assert.throws(() => inspect(markerRoot, 'codex', context, { candidates: [] }), (error) => error.record?.code === 'runtime-marker' && error.record?.phase === 'inspect')
     } finally {
       rmSync(markerRoot, { force: true, recursive: true })
@@ -664,7 +665,7 @@ function runInspectionCases(repositoryRoot) {
       assert.equal(readElectionMarker(root).marker, 'absent')
       const stale = 'd'.repeat(64)
       for (const state of ['deferred', 'track', 'ignore']) {
-        writeFileSync(join(root, '.nightshift-init-backlog-election'), `${canonicalJson(composeElectionRecord(state, root, stale))}\n`, { mode: 0o600 })
+        writeFileSync(join(root, ELECTION_MARKER_PATH), `${canonicalJson(composeElectionRecord(state, root, stale))}\n`, { mode: 0o600 })
         const marker = readElectionMarker(root)
         assert.deepEqual({ marker: marker.marker, snapshotId: marker.snapshotId }, { marker: state, snapshotId: stale })
       }
@@ -682,7 +683,7 @@ function runInspectionCases(repositoryRoot) {
   test('election marker link accounting admits owned witnesses and rejects foreign links', () => {
     const root = mkdtempSync(join(tmpdir(), 'nightshift-marker-links-'))
     try {
-      const markerPath = join(root, '.nightshift-init-backlog-election')
+      const markerPath = join(root, ELECTION_MARKER_PATH)
       const snapshotId = 'e'.repeat(64)
       writeFileSync(markerPath, `${canonicalJson(composeElectionRecord('deferred', root, snapshotId))}\n`, { mode: 0o600 })
       const witness = join(root, '.nightshift-init-backlog.election.witness')
@@ -727,7 +728,7 @@ function runInspectionCases(repositoryRoot) {
   test('valid stale election markers remain readable and carry their snapshot', () => {
     const root = mkdtempSync(join(tmpdir(), 'nightshift-marker-'))
     const snapshotId = 'c'.repeat(64)
-    writeFileSync(join(root, '.nightshift-init-backlog-election'), `${canonicalJson(composeElectionRecord('track', root, snapshotId))}\n`, { mode: 0o600 })
+    writeFileSync(join(root, ELECTION_MARKER_PATH), `${canonicalJson(composeElectionRecord('track', root, snapshotId))}\n`, { mode: 0o600 })
     const marker = readElectionMarker(root)
     assert.equal(marker.marker, 'track')
     assert.equal(marker.snapshotId, snapshotId)

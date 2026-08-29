@@ -16,6 +16,7 @@ const test = require('node:test')
 const { runCli } = require('../../skills/init-backlog/init-backlog')
 const { canonicalActionOrder, deriveSemanticActionId } = require('../../skills/init-backlog/lib/protocol')
 const { canonicalJson, compareOrdinal } = require('./helpers')
+const { ELECTION_MARKER_PATH } = require('./election-oracles')
 
 function captureStreams() {
   const stdout = []
@@ -111,8 +112,6 @@ function semanticEdit(target, regionId, before, after) {
 const BARE_GUIDANCE = ['# Project', '', 'Local guidance.', ''].join('\r\n')
 
 const LOCK_BASENAME = '.nightshift-init-backlog.lock'
-
-const MARKER_BASENAME = '.nightshift-init-backlog-election'
 
 function git(root, args) {
   return execFileSync('git', ['-C', root, ...args], { stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true })
@@ -525,7 +524,7 @@ function runE2eCases() {
     try {
       const deferred = electionApply(root, 'deferred')
       assert.equal(deferred.applied.record.ok, true, `deferred apply failed: ${JSON.stringify(deferred.applied.record).slice(0, 300)}`)
-      const marker = join(root, MARKER_BASENAME)
+      const marker = join(root, ELECTION_MARKER_PATH)
       assert.ok(existsSync(marker), 'a deferred election keeps its marker durable')
       const clean = driveCli(root, inspectRequest(root, 'claude-code', claudeHostContext('included')))
       assert.equal(clean.record.ok, true, 'the unlinked marker must inspect cleanly')
