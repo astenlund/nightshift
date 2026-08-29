@@ -1,7 +1,7 @@
 'use strict'
 
 const assert = require('node:assert/strict')
-const { copyFileSync, cpSync, existsSync, linkSync, lstatSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } = require('node:fs')
+const { copyFileSync, cpSync, existsSync, linkSync, lstatSync, mkdtempSync, mkdirSync, openSync, readFileSync, readSync, readdirSync, rmSync, symlinkSync, writeFileSync } = require('node:fs')
 const { tmpdir } = require('node:os')
 const { basename, dirname, join } = require('node:path')
 const test = require('node:test')
@@ -26,6 +26,7 @@ const {
   parseClaudeDetails,
   parseCodexAuthStatus,
   resolveExternalClaudeConfigRoot,
+  stableEvidenceFile,
   stageCandidate,
   validateEvidenceRow,
   writeEvidence,
@@ -433,6 +434,52 @@ test('evidence row bytes are bounded before publication staging and reading', ()
   } finally {
     removeTemporaryDirectory(publicationRoot)
     removeTemporaryDirectory(readRoot)
+  }
+})
+
+test('stable evidence reads reject injected growth and path substitution', () => {
+  const evidenceRowByteLimit = 1048576
+  const root = createTemporaryDirectory()
+  const rowPath = join(root, 'row.json')
+  try {
+    writeFileSync(rowPath, '{}\n')
+    let largestRead = 0
+    let grew = false
+    assert.throws(() => stableEvidenceFile(root, rowPath, {
+      readSync: (...args) => {
+        largestRead = Math.max(largestRead, args[3])
+        if (!grew) {
+          grew = true
+          writeFileSync(rowPath, Buffer.alloc(evidenceRowByteLimit + 1, 0x78))
+        }
+
+        return readSync(...args)
+      },
+    }), /byte limit|changed during verification/)
+    assert.equal(largestRead, evidenceRowByteLimit + 1)
+
+    writeFileSync(rowPath, '{}\n')
+    let reads = 0
+    let substituted = false
+    assert.throws(() => stableEvidenceFile(root, rowPath, {
+      openSync: (...args) => {
+        if (!substituted) {
+          substituted = true
+          rmSync(rowPath)
+          writeFileSync(rowPath, '{"replacement":true}\n')
+        }
+
+        return openSync(...args)
+      },
+      readSync: (...args) => {
+        reads += 1
+
+        return readSync(...args)
+      },
+    }), /changed during verification/)
+    assert.equal(reads, 0)
+  } finally {
+    removeTemporaryDirectory(root)
   }
 })
 

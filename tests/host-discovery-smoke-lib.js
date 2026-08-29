@@ -1,7 +1,7 @@
 'use strict'
 
 const { createHash, randomBytes } = require('node:crypto')
-const { copyFileSync, cpSync, existsSync, linkSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, unlinkSync, writeFileSync } = require('node:fs')
+const { closeSync, copyFileSync, cpSync, existsSync, fstatSync, linkSync, lstatSync, mkdirSync, mkdtempSync, openSync, readFileSync, readSync, readdirSync, realpathSync, rmSync, unlinkSync, writeFileSync } = require('node:fs')
 const { tmpdir } = require('node:os')
 const { dirname, isAbsolute, join, relative, resolve, sep } = require('node:path')
 const { execFileSync, spawn } = require('node:child_process')
@@ -431,16 +431,41 @@ function assertEvidenceDirectoriesStable(snapshot) {
   }
 }
 
-function stableEvidenceFile(root, filePath) {
-  const before = lstatSync(filePath, { bigint: true })
+function stableEvidenceFile(root, filePath, options = {}) {
+  const statPath = options.lstatSync ?? lstatSync
+  const statDescriptor = options.fstatSync ?? fstatSync
+  const openFile = options.openSync ?? openSync
+  const readFile = options.readSync ?? readSync
+  const closeFile = options.closeSync ?? closeSync
+  const before = statPath(filePath, { bigint: true })
   assertion(before.isFile() && !before.isSymbolicLink() && before.nlink === 1n, 'Evidence row must be a direct single-link file')
   assertion(before.size <= BigInt(MAX_EVIDENCE_ROW_BYTES), `Evidence row exceeds ${MAX_EVIDENCE_ROW_BYTES}-byte limit`)
   const canonicalRoot = realpathSync.native(root)
   const canonicalFile = realpathSync.native(filePath)
   assertion(isContained(canonicalRoot, canonicalFile), 'Evidence row escapes its root')
-  const bytes = readFileSync(filePath)
-  const after = lstatSync(filePath, { bigint: true })
-  assertion(after.isFile() && !after.isSymbolicLink() && after.nlink === 1n && filesystemIdentity(after) === filesystemIdentity(before) && after.size === before.size && after.mtimeNs === before.mtimeNs && realpathSync.native(filePath) === canonicalFile, 'Evidence row changed during verification')
+  const descriptor = openFile(filePath, 'r')
+  let descriptorBefore
+  let descriptorAfter
+  let bytes
+  try {
+    descriptorBefore = statDescriptor(descriptor, { bigint: true })
+    assertion(descriptorBefore.isFile() && descriptorBefore.nlink === 1n && filesystemIdentity(descriptorBefore) === filesystemIdentity(before) && descriptorBefore.size === before.size && descriptorBefore.mtimeNs === before.mtimeNs, 'Evidence row changed during verification')
+    const bounded = Buffer.alloc(MAX_EVIDENCE_ROW_BYTES + 1)
+    let length = 0
+    while (length < bounded.length) {
+      const count = readFile(descriptor, bounded, length, bounded.length - length, length)
+      if (count === 0) break
+      length += count
+    }
+    bytes = bounded.subarray(0, length)
+    descriptorAfter = statDescriptor(descriptor, { bigint: true })
+  } finally {
+    closeFile(descriptor)
+  }
+  assertion(bytes.length <= MAX_EVIDENCE_ROW_BYTES, `Evidence row exceeds ${MAX_EVIDENCE_ROW_BYTES}-byte limit`)
+  const after = statPath(filePath, { bigint: true })
+  assertion(descriptorAfter.isFile() && descriptorAfter.nlink === 1n && filesystemIdentity(descriptorAfter) === filesystemIdentity(descriptorBefore) && descriptorAfter.size === descriptorBefore.size && descriptorAfter.mtimeNs === descriptorBefore.mtimeNs && BigInt(bytes.length) === descriptorAfter.size, 'Evidence row changed during verification')
+  assertion(after.isFile() && !after.isSymbolicLink() && after.nlink === 1n && filesystemIdentity(after) === filesystemIdentity(descriptorAfter) && after.size === descriptorAfter.size && after.mtimeNs === descriptorAfter.mtimeNs && realpathSync.native(filePath) === canonicalFile, 'Evidence row changed during verification')
 
   return { bytes, identity: filesystemIdentity(before) }
 }
@@ -859,4 +884,4 @@ async function runCell({ host, mode, checkoutRoot, evidenceRoot }) {
   return row
 }
 
-module.exports = { CODEX_CATALOG_PROMPT, PUBLIC_SKILLS, RUNTIME_KEYS, assembleClaudePromptBaseline, assembleCodexPromptBaseline, assertClaudeInventory, assertEngineClosure, assertInitBacklogClosure, assertOutsideCheckout, buildCodexArgv, candidateFactsForIndex, classifyChildExit, createCellSequence, createMarketplace, evaluateEvidence, executeCellSequence, loadCandidateEngineResources, loadLegacyBaseline, loadPromptBaseline, parseClaudeAuthStatus, parseClaudeDetails, parseCodexAuthStatus, projectRuntimeEnvironment, resolveExternalClaudeConfigRoot, runCell, stageCandidate, validateEvidenceRow, writeEvidence }
+module.exports = { CODEX_CATALOG_PROMPT, PUBLIC_SKILLS, RUNTIME_KEYS, assembleClaudePromptBaseline, assembleCodexPromptBaseline, assertClaudeInventory, assertEngineClosure, assertInitBacklogClosure, assertOutsideCheckout, buildCodexArgv, candidateFactsForIndex, classifyChildExit, createCellSequence, createMarketplace, evaluateEvidence, executeCellSequence, loadCandidateEngineResources, loadLegacyBaseline, loadPromptBaseline, parseClaudeAuthStatus, parseClaudeDetails, parseCodexAuthStatus, projectRuntimeEnvironment, resolveExternalClaudeConfigRoot, runCell, stableEvidenceFile, stageCandidate, validateEvidenceRow, writeEvidence }
