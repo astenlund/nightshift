@@ -152,7 +152,6 @@ function createProxyServer({ callDeadlineMilliseconds = DEADLINES.WORKER_CALL_MI
   let nextOrdinal = 1
   let activeCall = null
   const completedCalls = []
-  const accountingFailures = []
   const connections = new Map()
 
   const clearCallDeadline = (call) => {
@@ -173,11 +172,9 @@ function createProxyServer({ callDeadlineMilliseconds = DEADLINES.WORKER_CALL_MI
     }
   }
 
-  const serverFailure = (detailCode, context) => {
+  const serverFailure = (detailCode) => {
     clearCallDeadline(activeCall)
     if (proxyFailureRecorded) {
-      accountingFailures.push({ context, detailCode })
-
       return
     }
     proxyFailureRecorded = true
@@ -186,13 +183,13 @@ function createProxyServer({ callDeadlineMilliseconds = DEADLINES.WORKER_CALL_MI
     startTerminations()
   }
 
-  const proxyFailure = (context) => {
-    serverFailure('proxy', context)
+  const proxyFailure = () => {
+    serverFailure('proxy')
   }
 
-  const clientFrameCapacityFailure = (connection, context) => {
+  const clientFrameCapacityFailure = (connection) => {
     connection.end()
-    serverFailure('output-capacity', context)
+    serverFailure('output-capacity')
   }
 
   const rejectAuthorization = (connection) => {
@@ -248,14 +245,14 @@ function createProxyServer({ callDeadlineMilliseconds = DEADLINES.WORKER_CALL_MI
       if (terminator === -1) {
         if (record.buffered.length > MAX_PROXY_CLIENT_FRAME_BYTES) {
           record.buffered = Buffer.alloc(0)
-          clientFrameCapacityFailure(connection, 'client-frame-unterminated')
+          clientFrameCapacityFailure(connection)
         }
 
         return
       }
       if (terminator > MAX_PROXY_CLIENT_FRAME_BYTES) {
         record.buffered = Buffer.alloc(0)
-        clientFrameCapacityFailure(connection, 'client-frame')
+        clientFrameCapacityFailure(connection)
 
         return
       }
@@ -302,19 +299,19 @@ function createProxyServer({ callDeadlineMilliseconds = DEADLINES.WORKER_CALL_MI
         worker.send(canonicalJsonLine({ ordinal, requestBase64: frame.requestBase64 }))
       } catch {
         activeCall = null
-        proxyFailure('worker-send')
+        proxyFailure()
 
         return
       }
       call.deadlineHandle = clock.setTimeout(() => {
         call.deadlineHandle = null
         activeCall = null
-        proxyFailure('call-deadline')
+        proxyFailure()
       }, callDeadlineMilliseconds)
     },
     receiveWorkerLine(lineBytes) {
       if (activeCall === null) {
-        proxyFailure('unexpected-worker-frame')
+        proxyFailure()
 
         return
       }
@@ -322,7 +319,7 @@ function createProxyServer({ callDeadlineMilliseconds = DEADLINES.WORKER_CALL_MI
       if (lineBytes.length > BYTE_BOUNDS.MAX_RUNNER_FRAME_BYTES) {
         clearCallDeadline(call)
         activeCall = null
-        proxyFailure('worker-frame-capacity')
+        proxyFailure()
 
         return
       }
@@ -330,7 +327,7 @@ function createProxyServer({ callDeadlineMilliseconds = DEADLINES.WORKER_CALL_MI
       if (frame === null || frame.ordinal !== call.ordinal || !isCanonicalBase64(frame.stdoutBase64) || !isCanonicalBase64(frame.stderrBase64) || !Number.isSafeInteger(frame.exitCode)) {
         clearCallDeadline(call)
         activeCall = null
-        proxyFailure('worker-frame')
+        proxyFailure()
 
         return
       }
@@ -340,7 +337,7 @@ function createProxyServer({ callDeadlineMilliseconds = DEADLINES.WORKER_CALL_MI
       } catch {
         clearCallDeadline(call)
         activeCall = null
-        proxyFailure('trace-append')
+        proxyFailure()
 
         return
       }
@@ -351,7 +348,7 @@ function createProxyServer({ callDeadlineMilliseconds = DEADLINES.WORKER_CALL_MI
       } catch {
         clearCallDeadline(call)
         activeCall = null
-        proxyFailure('reply-write')
+        proxyFailure()
 
         return
       }
@@ -375,14 +372,12 @@ function createProxyServer({ callDeadlineMilliseconds = DEADLINES.WORKER_CALL_MI
     },
     workerDisconnected() {
       if (closeRequested && activeCall === null) {
-        accountingFailures.push({ context: 'worker-close-after-closure', detailCode: 'proxy' })
-
         return
       }
       const interrupted = activeCall
       clearCallDeadline(interrupted)
       activeCall = null
-      proxyFailure(interrupted === null ? 'worker-disconnect' : 'worker-disconnect-active')
+      proxyFailure()
     },
   }
 }

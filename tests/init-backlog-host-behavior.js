@@ -1812,7 +1812,6 @@ async function runLiveHostSession({ call, filesystem, platform, processAdapterFa
   const mode = controllerEnabled ? 'enabled' : 'disabled'
   const transcript = transcriptFactory()
   const turnRecords = []
-  const inputRecords = []
   let approvalInputOrdinal = null
   let inspectWatermark = 0
   let manifestProposal = null
@@ -2009,7 +2008,6 @@ async function runLiveHostSession({ call, filesystem, platform, processAdapterFa
 
       return false
     }
-    inputRecords.push({ kind, ordinal: appended.ordinal })
     if (kind === 'approval') {
       approvalInputOrdinal = appended.ordinal
     }
@@ -2292,7 +2290,6 @@ async function runLiveHostSession({ call, filesystem, platform, processAdapterFa
     const stderrChunks = []
     const conductor = hostEvents.createClaudeSessionConductor({ sessionPluginRoot })
     let adapter = null
-    let stdinClosed = false
     let walkDone = false
     const { armDeadline, armPoll, clearPoll, settle } = createSettleGuard(resolve)
     const armTurnDeadline = () => {
@@ -2340,7 +2337,6 @@ async function runLiveHostSession({ call, filesystem, platform, processAdapterFa
       armTurnDeadline()
       const written = writeUserTurn(walkOutcome.response, walkOutcome.kind === 'approval' ? 'approval' : walkOutcome.kind)
       if (written && (ensureWalk(conductor.initEvent()).state() === 'await-result' || ensureWalk(conductor.initEvent()).state() === 'context-stopped')) {
-        stdinClosed = true
         adapter.closeInput()
       }
     }
