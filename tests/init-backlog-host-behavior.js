@@ -2453,7 +2453,7 @@ async function runOutputEvaluation({ outputRoot, overrides = {}, stdout = proces
       platform,
     })
     const matrixReport = canonicalJsonLine({ passed: matrix.passed === true, verdicts: matrix.verdicts })
-    filesystem.writeFileSync(nodePath.join(resolvedOutputRoot, 'import-matrix.json'), matrixReport)
+    driver.publishOutputFile({ bytes: matrixReport, filename: 'import-matrix.json', filesystem, outputRoot: resolvedOutputRoot })
     if (matrix.failure !== undefined) {
       stdout.write(formatResultLine(matrix.failure))
 
@@ -2515,7 +2515,7 @@ async function runOutputEvaluation({ outputRoot, overrides = {}, stdout = proces
 
       return 1
     }
-    filesystem.writeFileSync(nodePath.join(resolvedOutputRoot, 'summary.json'), canonicalJsonLine(evaluation.summary))
+    driver.publishOutputFile({ bytes: canonicalJsonLine(evaluation.summary), filename: 'summary.json', filesystem, outputRoot: resolvedOutputRoot })
     stdout.write(canonicalJsonLine(evaluation.rows))
 
     return evaluation.exitCode

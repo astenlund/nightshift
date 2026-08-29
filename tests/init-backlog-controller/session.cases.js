@@ -2,7 +2,7 @@
 
 const assert = require('node:assert/strict')
 const { execFileSync } = require('node:child_process')
-const { cpSync, existsSync, linkSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } = require('node:fs')
+const { cpSync, existsSync, linkSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, symlinkSync, unlinkSync, writeFileSync } = require('node:fs')
 const { tmpdir } = require('node:os')
 const { dirname, join } = require('node:path')
 const test = require('node:test')
@@ -204,6 +204,7 @@ function runSessionCases(repositoryRoot) {
       'parseNulTerminatedTrackedPaths',
       'parseTrackedSetOutput',
       'publishEvidenceLeaf',
+      'publishOutputFile',
       'scenarioRootDigest',
       'verifyScenarioFileSet',
       'windowsJobRunnerPath',
@@ -1360,6 +1361,67 @@ function runSessionCases(repositoryRoot) {
       assert.equal(existsSync(join(outputRoot, 'claude-code')), false, 'a failed verification publishes no final leaf')
     } finally {
       rmSync(outputRoot, { force: true, recursive: true })
+    }
+  })
+
+  test('evidence publication refuses stale and linked staging directories without touching their contents', () => {
+    const outputRoot = tempRoot()
+    const externalRoot = tempRoot()
+    try {
+      const base = {
+        files: [{ bytes: Buffer.from('payload\n', 'utf8'), path: 'run.json' }],
+        host: 'claude-code',
+        mode: 'disabled',
+        outputRoot,
+        repetition: 1,
+        scenario: 'existing-enriched-denied',
+      }
+      const leafPath = join(outputRoot, 'claude-code', 'existing-enriched-denied', 'disabled', '1')
+      const stagingPath = `${leafPath}.staging`
+      mkdirSync(stagingPath, { recursive: true })
+      writeFileSync(join(stagingPath, 'stale.txt'), 'stale\n')
+
+      const stale = driver.publishEvidenceLeaf(base)
+
+      assert.deepEqual(stale, { detailCode: 'evidence-copy', ok: false })
+      assert.equal(readFileSync(join(stagingPath, 'stale.txt'), 'utf8'), 'stale\n', 'foreign staging inventory is retained untouched')
+      assert.equal(existsSync(leafPath), false)
+      rmSync(stagingPath, { force: true, recursive: true })
+      symlinkSync(externalRoot, stagingPath, process.platform === 'win32' ? 'junction' : 'dir')
+
+      const linked = driver.publishEvidenceLeaf(base)
+
+      assert.deepEqual(linked, { detailCode: 'evidence-copy', ok: false })
+      assert.deepEqual(readdirSync(externalRoot), [], 'linked staging never receives evidence bytes')
+      assert.equal(existsSync(stagingPath), true, 'a foreign staging alias is not removed')
+      assert.equal(existsSync(leafPath), false)
+    } finally {
+      rmSync(outputRoot, { force: true, recursive: true })
+      rmSync(externalRoot, { force: true, recursive: true })
+    }
+  })
+
+  test('root report publication is exclusive and never writes through a hard-link alias', () => {
+    const outputRoot = tempRoot()
+    const externalRoot = tempRoot()
+    try {
+      const externalPath = join(externalRoot, 'external.json')
+      const reportPath = join(outputRoot, 'import-matrix.json')
+      writeFileSync(externalPath, 'external\n')
+      linkSync(externalPath, reportPath)
+
+      assert.throws(() => driver.publishOutputFile({ bytes: Buffer.from('report\n'), filename: 'import-matrix.json', outputRoot }), /already exists/)
+      assert.equal(readFileSync(externalPath, 'utf8'), 'external\n')
+      unlinkSync(reportPath)
+
+      const summaryBytes = Buffer.from('summary\n')
+      const summaryPath = driver.publishOutputFile({ bytes: summaryBytes, filename: 'summary.json', outputRoot })
+      assert.equal(summaryPath, join(outputRoot, 'summary.json'))
+      assert.deepEqual(readFileSync(summaryPath), summaryBytes)
+      assert.equal(existsSync(`${summaryPath}.staging`), false)
+    } finally {
+      rmSync(outputRoot, { force: true, recursive: true })
+      rmSync(externalRoot, { force: true, recursive: true })
     }
   })
 

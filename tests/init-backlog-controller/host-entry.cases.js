@@ -3006,6 +3006,39 @@ function runHostEntryCases(repositoryRoot) {
     }
   })
 
+  test('output mode refuses a pre-existing report hard link without changing its external bytes', async () => {
+    const scratch = tempRoot()
+    try {
+      const checkoutRoot = join(scratch, 'checkout')
+      const outputRoot = join(scratch, 'evidence')
+      const externalPath = join(scratch, 'external.json')
+      nodeFilesystem.mkdirSync(checkoutRoot)
+      nodeFilesystem.mkdirSync(outputRoot)
+      nodeFilesystem.writeFileSync(externalPath, 'external\n')
+      nodeFilesystem.linkSync(externalPath, join(outputRoot, 'import-matrix.json'))
+
+      await assert.rejects(hostBehavior.runOutputEvaluation({
+        outputRoot,
+        overrides: {
+          ambientEnvironment: { PATH: '' },
+          checkoutRoot,
+          descriptors: { 'claude-code': { descriptor: {} }, codex: { descriptor: {} } },
+          fixtures: {
+            baselineManifestSha256: 'a'.repeat(64),
+            importCases: [],
+            scenarioManifestSha256: 'b'.repeat(64),
+            scenarios: [],
+          },
+          launch: () => { throw new Error('report publication did not stop evaluation') },
+        },
+        stdout: { write() {} },
+      }), /already exists/)
+      assert.equal(nodeFilesystem.readFileSync(externalPath, 'utf8'), 'external\n')
+    } finally {
+      nodeFilesystem.rmSync(scratch, { force: true, recursive: true })
+    }
+  })
+
   test('the CLI output mode exits 1 with the primary result line or the failed import report and no table', async () => {
     const versionScratch = tempRoot()
     try {

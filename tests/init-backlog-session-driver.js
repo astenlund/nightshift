@@ -441,6 +441,7 @@ module.exports = {
   parseNulTerminatedTrackedPaths,
   parseTrackedSetOutput,
   publishEvidenceLeaf: evidenceModule.publishEvidenceLeaf,
+  publishOutputFile: evidenceModule.publishOutputFile,
   scenarioRootDigest,
   verifyScenarioFileSet,
   windowsJobRunnerPath: processModule.windowsJobRunnerPath,

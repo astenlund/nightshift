@@ -1,14 +1,207 @@
 'use strict'
 
 const nodeFilesystem = require('node:fs')
-const { dirname, join } = require('node:path')
+const { dirname, isAbsolute, join, relative, resolve, sep } = require('node:path')
 
 const { BYTE_BOUNDS, HOSTS, compareOrdinal, sha256 } = require('./primitives')
 const { canonicalJson, canonicalJsonLine } = require('./transcript')
 
 const EVIDENCE_HOSTS = HOSTS
 const ENABLED_REPETITIONS = Object.freeze([1, 2, 3])
+const ROOT_REPORT_FILENAMES = Object.freeze(['import-matrix.json', 'summary.json'])
 
+function filesystemOperation(filesystem, name) {
+  const operation = filesystem[name] ?? nodeFilesystem[name]
+
+  return operation.bind(filesystem[name] === undefined ? nodeFilesystem : filesystem)
+}
+
+function realpathOperation(filesystem) {
+  if (typeof filesystem.realpathSync?.native === 'function') {
+    return filesystem.realpathSync.native.bind(filesystem.realpathSync)
+  }
+  if (typeof filesystem.realpathSync === 'function') {
+    return filesystem.realpathSync.bind(filesystem)
+  }
+
+  return nodeFilesystem.realpathSync.native.bind(nodeFilesystem.realpathSync)
+}
+
+function pathIsAtOrInside(root, target) {
+  const relation = relative(root, target)
+
+  return relation === '' || (relation !== '..' && !relation.startsWith(`..${sep}`) && !isAbsolute(relation))
+}
+
+function metadataIdentity(metadata) {
+  return `${metadata.dev.toString()}:${metadata.ino.toString()}`
+}
+
+function canonicalOutputRoot(outputRoot, filesystem) {
+  const realpath = realpathOperation(filesystem)
+  const lstat = filesystemOperation(filesystem, 'lstatSync')
+  const firstCanonical = realpath(outputRoot)
+  const first = lstat(firstCanonical, { bigint: true })
+  const canonical = realpath(outputRoot)
+  const second = lstat(canonical, { bigint: true })
+  if (firstCanonical !== canonical || !first.isDirectory() || first.isSymbolicLink() || !second.isDirectory() || second.isSymbolicLink() || metadataIdentity(first) !== metadataIdentity(second)) {
+    throw new Error('Evidence output root is not an ordinary directory')
+  }
+
+  return canonical
+}
+
+function verifyContainedDirectory({ canonicalRoot, filesystem, path }) {
+  const lstat = filesystemOperation(filesystem, 'lstatSync')
+  const realpath = realpathOperation(filesystem)
+  const before = lstat(path, { bigint: true })
+  const beforeRealpath = realpath(path)
+  const after = lstat(path, { bigint: true })
+  const afterRealpath = realpath(path)
+  if (!before.isDirectory() || before.isSymbolicLink() || !after.isDirectory() || after.isSymbolicLink() || metadataIdentity(before) !== metadataIdentity(after) || beforeRealpath !== afterRealpath || !pathIsAtOrInside(canonicalRoot, afterRealpath)) {
+    throw new Error('Evidence directory is not stably confined')
+  }
+
+  return { canonicalPath: afterRealpath, identity: metadataIdentity(after) }
+}
+
+function verifyContainedFile({ bytes, canonicalRoot, expectedLinks = 1n, filesystem, path }) {
+  const lstat = filesystemOperation(filesystem, 'lstatSync')
+  const readFile = filesystemOperation(filesystem, 'readFileSync')
+  const realpath = realpathOperation(filesystem)
+  const before = lstat(path, { bigint: true })
+  const beforeRealpath = realpath(path)
+  const observed = Buffer.from(readFile(path))
+  const after = lstat(path, { bigint: true })
+  const afterRealpath = realpath(path)
+  if (!before.isFile() || before.isSymbolicLink() || before.nlink !== expectedLinks || !after.isFile() || after.isSymbolicLink() || after.nlink !== expectedLinks || metadataIdentity(before) !== metadataIdentity(after) || beforeRealpath !== afterRealpath || !pathIsAtOrInside(canonicalRoot, afterRealpath) || !observed.equals(bytes)) {
+    throw new Error('Evidence file is not stably confined')
+  }
+
+  return { canonicalPath: afterRealpath, identity: metadataIdentity(after) }
+}
+
+function ensureContainedDirectory({ allowBoundaryAlias = false, boundaryPath, canonicalRoot, createdDirectories, filesystem, path }) {
+  const exists = filesystemOperation(filesystem, 'existsSync')
+  const mkdir = filesystemOperation(filesystem, 'mkdirSync')
+  if (resolve(path) === resolve(boundaryPath)) {
+    if (allowBoundaryAlias) {
+      const realpath = realpathOperation(filesystem)
+      const first = realpath(path)
+      const second = realpath(path)
+      if (first !== canonicalRoot || second !== canonicalRoot) {
+        throw new Error('Evidence output root identity changed')
+      }
+
+      return { canonicalPath: canonicalRoot }
+    }
+
+    return verifyContainedDirectory({ canonicalRoot, filesystem, path })
+  }
+  if (exists(path)) {
+    return verifyContainedDirectory({ canonicalRoot, filesystem, path })
+  }
+  ensureContainedDirectory({ allowBoundaryAlias, boundaryPath, canonicalRoot, createdDirectories, filesystem, path: dirname(path) })
+  mkdir(path)
+  createdDirectories.push(path)
+
+  return verifyContainedDirectory({ canonicalRoot, filesystem, path })
+}
+
+function validateEvidencePath(path) {
+  const segments = typeof path === 'string' ? path.split('/') : []
+  if (segments.length === 0 || segments.some((segment) => segment === '' || segment === '.' || segment === '..' || segment.includes('\\')) || path === 'manifest.json') {
+    throw new Error('Evidence file path is not closed')
+  }
+}
+
+function collectInventory(root, filesystem) {
+  const lstat = filesystemOperation(filesystem, 'lstatSync')
+  const readdir = filesystemOperation(filesystem, 'readdirSync')
+  const paths = []
+  const walk = (directory, prefix) => {
+    for (const entry of readdir(directory, { withFileTypes: true })) {
+      const entryPath = join(directory, entry.name)
+      const relativePath = prefix === '' ? entry.name : `${prefix}/${entry.name}`
+      const metadata = lstat(entryPath, { bigint: true })
+      if (metadata.isSymbolicLink()) {
+        throw new Error('Evidence inventory contains a link')
+      }
+      if (metadata.isDirectory()) {
+        walk(entryPath, relativePath)
+      } else if (metadata.isFile()) {
+        paths.push(relativePath)
+      } else {
+        throw new Error('Evidence inventory contains a special object')
+      }
+    }
+  }
+  walk(root, '')
+
+  return paths.sort(compareOrdinal)
+}
+
+function removeOwnedStaging({ canonicalRoot, filesystem, identity, path }) {
+  const exists = filesystemOperation(filesystem, 'existsSync')
+  const rm = filesystemOperation(filesystem, 'rmSync')
+  if (!exists(path)) {
+    return
+  }
+  const current = verifyContainedDirectory({ canonicalRoot, filesystem, path })
+  if (current.identity === identity) {
+    rm(path, { force: true, recursive: true })
+  }
+}
+
+function publishOutputFile({ bytes, filename, filesystem = nodeFilesystem, outputRoot }) {
+  if (!ROOT_REPORT_FILENAMES.includes(filename)) {
+    throw new Error('Output report filename is not closed')
+  }
+  const canonicalRoot = canonicalOutputRoot(outputRoot, filesystem)
+  const targetPath = join(outputRoot, filename)
+  const stagingPath = `${targetPath}.staging`
+  const exists = filesystemOperation(filesystem, 'existsSync')
+  const link = filesystemOperation(filesystem, 'linkSync')
+  const unlink = filesystemOperation(filesystem, 'unlinkSync')
+  const writeFile = filesystemOperation(filesystem, 'writeFileSync')
+  if (exists(targetPath)) {
+    throw new Error(`Output report already exists: ${filename}`)
+  }
+  let staged = false
+  let stagedIdentity = null
+  try {
+    writeFile(stagingPath, bytes, { flag: 'wx', mode: 0o600 })
+    staged = true
+    const stagedFile = verifyContainedFile({ bytes, canonicalRoot, filesystem, path: stagingPath })
+    stagedIdentity = stagedFile.identity
+    if (exists(targetPath)) {
+      throw new Error(`Output report already exists: ${filename}`)
+    }
+    link(stagingPath, targetPath)
+    const published = verifyContainedFile({ bytes, canonicalRoot, expectedLinks: 2n, filesystem, path: targetPath })
+    if (published.identity !== stagedFile.identity) {
+      throw new Error('Published output report differs from its stage')
+    }
+    unlink(stagingPath)
+    staged = false
+    verifyContainedFile({ bytes, canonicalRoot, filesystem, path: targetPath })
+
+    return targetPath
+  } catch (error) {
+    if (staged && stagedIdentity !== null && exists(stagingPath)) {
+      try {
+        const lstat = filesystemOperation(filesystem, 'lstatSync')
+        const current = lstat(stagingPath, { bigint: true })
+        if (current.isFile() && !current.isSymbolicLink() && metadataIdentity(current) === stagedIdentity) {
+          unlink(stagingPath)
+        }
+      } catch {
+        // Preserve the publication error and leave an unowned or changed stage untouched.
+      }
+    }
+    throw error
+  }
+}
 
 function buildLeafPath({ host, mode, repetition, scenario }) {
   if (!EVIDENCE_HOSTS.includes(host)) {
@@ -40,6 +233,7 @@ function buildEvidenceManifest(files) {
 
 function publishEvidenceLeaf({ files, filesystem = nodeFilesystem, host, leafLimit = BYTE_BOUNDS.MAX_EVIDENCE_LEAF_BYTES, mode, outputRoot, repetition, rootLimit = BYTE_BOUNDS.MAX_EVIDENCE_ROOT_BYTES, rootUsedBytes = 0, scenario }) {
   const sorted = [...files].sort((left, right) => compareOrdinal(left.path, right.path))
+  sorted.forEach((file) => validateEvidencePath(file.path))
   const manifest = buildEvidenceManifest(sorted)
   const manifestBytes = canonicalJsonLine(manifest)
   const leafBytes = sorted.reduce((total, file) => total + file.bytes.length, 0) + manifestBytes.length
@@ -54,31 +248,34 @@ function publishEvidenceLeaf({ files, filesystem = nodeFilesystem, host, leafLim
   const stagingPath = `${leafPath}.staging`
   const publish = [...sorted.map((file) => ({ bytes: file.bytes, path: file.path })), { bytes: manifestBytes, path: 'manifest.json' }]
   const createdDirectories = []
-  const ensureDirectory = (path) => {
-    if (path === outputRoot || filesystem.existsSync(path)) {
-      return
-    }
-    ensureDirectory(dirname(path))
-    filesystem.mkdirSync(path)
-    createdDirectories.push(path)
-  }
+  let canonicalRoot
+  let canonicalStagingRoot
+  let stagingIdentity = null
   const cleanupStaging = () => {
     try {
-      filesystem.rmSync(stagingPath, { force: true, recursive: true })
+      if (stagingIdentity !== null) {
+        removeOwnedStaging({ canonicalRoot, filesystem, identity: stagingIdentity, path: stagingPath })
+      }
+      const rmdir = filesystemOperation(filesystem, 'rmdirSync')
       for (const created of [...createdDirectories].reverse()) {
-        filesystem.rmSync(created, { force: true, recursive: true })
+        if (filesystemOperation(filesystem, 'existsSync')(created)) {
+          rmdir(created)
+        }
       }
     } catch {
-      // The staging sibling is best-effort debris removal; the failure result already stands.
+      // Best-effort cleanup never removes a staging path that this call did not create.
     }
   }
   try {
-    ensureDirectory(dirname(stagingPath))
-    filesystem.mkdirSync(stagingPath, { recursive: true })
+    canonicalRoot = canonicalOutputRoot(outputRoot, filesystem)
+    ensureContainedDirectory({ allowBoundaryAlias: true, boundaryPath: outputRoot, canonicalRoot, createdDirectories, filesystem, path: dirname(stagingPath) })
+    filesystemOperation(filesystem, 'mkdirSync')(stagingPath)
+    stagingIdentity = verifyContainedDirectory({ canonicalRoot, filesystem, path: stagingPath }).identity
+    canonicalStagingRoot = realpathOperation(filesystem)(stagingPath)
     for (const file of publish) {
       const target = join(stagingPath, ...file.path.split('/'))
-      filesystem.mkdirSync(dirname(target), { recursive: true })
-      filesystem.writeFileSync(target, file.bytes)
+      ensureContainedDirectory({ boundaryPath: stagingPath, canonicalRoot: canonicalStagingRoot, createdDirectories: [], filesystem, path: dirname(target) })
+      filesystemOperation(filesystem, 'writeFileSync')(target, file.bytes, { flag: 'wx', mode: 0o600 })
     }
   } catch {
     cleanupStaging()
@@ -88,10 +285,11 @@ function publishEvidenceLeaf({ files, filesystem = nodeFilesystem, host, leafLim
   try {
     for (const file of publish) {
       const target = join(stagingPath, ...file.path.split('/'))
-      const staged = filesystem.readFileSync(target)
-      if (!Buffer.from(staged).equals(file.bytes)) {
-        throw new Error(`staged evidence bytes differ: ${file.path}`)
-      }
+      verifyContainedFile({ bytes: file.bytes, canonicalRoot: canonicalStagingRoot, filesystem, path: target })
+    }
+    const expectedInventory = publish.map((file) => file.path).sort(compareOrdinal)
+    if (collectInventory(stagingPath, filesystem).join('\0') !== expectedInventory.join('\0')) {
+      throw new Error('Staged evidence inventory is not closed')
     }
   } catch {
     cleanupStaging()
@@ -99,10 +297,21 @@ function publishEvidenceLeaf({ files, filesystem = nodeFilesystem, host, leafLim
     return { detailCode: 'evidence-verification', ok: false }
   }
   try {
-    filesystem.mkdirSync(dirname(leafPath), { recursive: true })
-    filesystem.renameSync(stagingPath, leafPath)
-    if (filesystem.existsSync(stagingPath) || !filesystem.existsSync(leafPath)) {
+    const exists = filesystemOperation(filesystem, 'existsSync')
+    if (exists(leafPath)) {
+      throw new Error('Final evidence leaf already exists')
+    }
+    filesystemOperation(filesystem, 'renameSync')(stagingPath, leafPath)
+    stagingIdentity = null
+    if (exists(stagingPath) || !exists(leafPath)) {
       throw new Error('atomic evidence publication left an inconsistent leaf')
+    }
+    const publishedLeaf = verifyContainedDirectory({ canonicalRoot, filesystem, path: leafPath })
+    if (collectInventory(leafPath, filesystem).join('\0') !== publish.map((file) => file.path).sort(compareOrdinal).join('\0')) {
+      throw new Error('Published evidence inventory is not closed')
+    }
+    for (const file of publish) {
+      verifyContainedFile({ bytes: file.bytes, canonicalRoot: publishedLeaf.canonicalPath, filesystem, path: join(leafPath, ...file.path.split('/')) })
     }
   } catch {
     cleanupStaging()
@@ -113,4 +322,4 @@ function publishEvidenceLeaf({ files, filesystem = nodeFilesystem, host, leafLim
   return { evidenceManifestSha256: manifest.evidenceManifestSha256, leafBytes, leafPath, ok: true }
 }
 
-module.exports = { ENABLED_REPETITIONS, buildEvidenceManifest, buildLeafPath, publishEvidenceLeaf }
+module.exports = { ENABLED_REPETITIONS, buildEvidenceManifest, buildLeafPath, publishEvidenceLeaf, publishOutputFile }
