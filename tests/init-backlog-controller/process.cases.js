@@ -816,6 +816,13 @@ function runProcessCases(repositoryRoot) {
       assert.equal(blocks['block-exact'].ok, true, 'a block exactly at 32767 code units including terminators is accepted')
     })
 
+    test('the runner rejects faulted and canceled stream tasks instead of reporting EOF', () => {
+      const taskCounts = Object.fromEntries(report().taskCounts.map((entry) => [entry.id, entry]))
+      assert.deepEqual(taskCounts.completed, { errorType: null, id: 'completed', ok: true, value: 0 })
+      assert.deepEqual(taskCounts.faulted, { errorType: 'System.IO.IOException', id: 'faulted', ok: false, value: null })
+      assert.deepEqual(taskCounts.canceled, { errorType: 'System.Threading.Tasks.TaskCanceledException', id: 'canceled', ok: false, value: null })
+    })
+
     test('the runner creates and configures the kill-on-close Job Object before process creation and assigns before resume', () => {
       const scenario = report().scenarios.find((entry) => entry.id === 'success')
       assert.ok(scenario)
@@ -1034,6 +1041,14 @@ function buildDeterministicDriverSource() {
     '    return New-Object psobject -Property @{ Name = $Name; Value = $Value }',
     '}',
     '',
+    'function Invoke-TaskCountCase([string]$Id, $Task) {',
+    '    try {',
+    '        return @{ errorType = $null; id = $Id; ok = $true; value = (Read-RunnerTaskCount $Task) }',
+    '    } catch {',
+    '        return @{ errorType = $_.Exception.GetType().FullName; id = $Id; ok = $false; value = $null }',
+    '    }',
+    '}',
+    '',
     'function New-FakeInterop([string[]]$Failures) {',
     '    $interop = New-Object psobject',
     '    Add-Member -InputObject $interop -MemberType NoteProperty -Name Calls -Value (New-Object System.Collections.ArrayList)',
@@ -1173,6 +1188,17 @@ function buildDeterministicDriverSource() {
     "$environmentCases += Invoke-EnvironmentCase 'block-exact' @((New-EnvironmentPair 'N' ('v' * 32763)))",
     "$environmentCases += Invoke-EnvironmentCase 'block-over' @((New-EnvironmentPair 'N' ('v' * 32764)))",
     '',
+    "$completedTask = New-Object 'System.Threading.Tasks.TaskCompletionSource[int]'",
+    '$completedTask.SetResult(0)',
+    "$faultedTask = New-Object 'System.Threading.Tasks.TaskCompletionSource[int]'",
+    "$faultedTask.SetException((New-Object System.IO.IOException -ArgumentList 'stream failed'))",
+    "$canceledTask = New-Object 'System.Threading.Tasks.TaskCompletionSource[int]'",
+    '$canceledTask.SetCanceled()',
+    '$taskCountCases = @()',
+    "$taskCountCases += Invoke-TaskCountCase 'completed' $completedTask.Task",
+    "$taskCountCases += Invoke-TaskCountCase 'faulted' $faultedTask.Task",
+    "$taskCountCases += Invoke-TaskCountCase 'canceled' $canceledTask.Task",
+    '',
     '$scenarios = @()',
     "$scenarios += Invoke-Scenario 'success' @()",
     "$scenarios += Invoke-Scenario 'create-failed' @('CreateSuspendedProcess')",
@@ -1182,7 +1208,7 @@ function buildDeterministicDriverSource() {
     "$scenarios += Invoke-Scenario 'wait-unproven' @('AssignToJob', 'WaitForProcess')",
     "$scenarios += Invoke-Scenario 'resume-failed' @('Resume')",
     '',
-    '$reportDocument = @{ commandLine = $commandLineCases; environmentBlock = $environmentCases; scenarios = $scenarios }',
+    '$reportDocument = @{ commandLine = $commandLineCases; environmentBlock = $environmentCases; scenarios = $scenarios; taskCounts = $taskCountCases }',
     '[Console]::Out.Write((ConvertTo-Json -InputObject $reportDocument -Depth 8 -Compress))',
     '',
   ]

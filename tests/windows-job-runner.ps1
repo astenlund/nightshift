@@ -626,11 +626,14 @@ function Send-RunnerFrame([string]$Json) {
 }
 
 function Read-RunnerTaskCount($Task) {
-    try {
-        return [int]$Task.Result
-    } catch {
-        return -1
+    if ($Task.IsCanceled) {
+        throw (New-Object System.Threading.Tasks.TaskCanceledException -ArgumentList 'Runner stream read task was canceled')
     }
+    if ($Task.IsFaulted) {
+        throw $Task.Exception.GetBaseException()
+    }
+
+    return [int]$Task.Result
 }
 
 function Update-RunnerInputReader($Reader, $Stream, [long]$MaxBytes) {
