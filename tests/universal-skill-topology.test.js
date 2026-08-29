@@ -13,6 +13,8 @@ const ENGINE_ROOT = join(REPOSITORY_ROOT, 'internal', 'revise')
 const ENGINE_PATH = '../../internal/revise/SKILL.md'
 const FIXTURE_ROOT = join(__dirname, 'fixtures', 'legacy-plugin-2.4.5')
 const PUBLIC_SKILLS_ROOT = join(REPOSITORY_ROOT, 'skills')
+const INIT_BACKLOG_APPROVAL_SENTENCE = 'Obtain explicit approval for the complete manifest before any `apply` request.'
+const INIT_BACKLOG_WRITER_DISCLOSURE_SENTENCE = 'Before asking for approval, disclose the `external-writer-window`: project targets remain writable by external processes during controller publication, so a concurrent change can make a later action fail with `snapshot-drift` after earlier actions have landed; only an unwrap batch has byte-exact aggregate restoration.'
 
 function readRequiredFile(filePath) {
   return readFileSync(filePath, 'utf8')
@@ -75,7 +77,7 @@ function assertInitBacklogScaffoldInventory(body) {
   }
   assert.match(inventorySection, /archives \(single files, top-level under `\.claude\/`\)/, 'init-backlog must classify the history archives as top-level files')
 
-  const approvalStep = '6. **Approve.** Obtain explicit approval for the complete manifest before any `apply` request.'
+  const approvalStep = `6. **Approve.** ${INIT_BACKLOG_WRITER_DISCLOSURE_SENTENCE} ${INIT_BACKLOG_APPROVAL_SENTENCE}`
   const applyStep = '7. **Apply.**'
   const approvalIndex = body.indexOf(approvalStep)
   const applyIndex = body.indexOf(applyStep)
@@ -229,7 +231,8 @@ test('init-backlog scaffold contract rejects missing targets and confirmation', 
     ['QUICK_WINS_HISTORY.md', 'init-backlog must target .claude/QUICK_WINS_HISTORY.md as a top-level archive'],
     ['FEATURES_HISTORY.md', 'init-backlog must target .claude/FEATURES_HISTORY.md as a top-level archive'],
     ['BUGS_HISTORY.md', 'init-backlog must target .claude/BUGS_HISTORY.md as a top-level archive'],
-    ['6. **Approve.** Obtain explicit approval for the complete manifest before any `apply` request.', 'init-backlog must require explicit approval before writes exactly once'],
+    [INIT_BACKLOG_WRITER_DISCLOSURE_SENTENCE, 'init-backlog must require explicit approval before writes exactly once'],
+    [INIT_BACKLOG_APPROVAL_SENTENCE, 'init-backlog must require explicit approval before writes exactly once'],
   ]
 
   for (const [removedText, expectedMessage] of mutations) {

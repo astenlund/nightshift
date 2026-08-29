@@ -24,6 +24,7 @@ const RETIRED_TRACKED_PLAN_PHRASES = [
 ]
 const CONTROLLER_INVOCATION = '${CLAUDE_PLUGIN_ROOT}/skills/init-backlog/init-backlog.js'
 const APPROVAL_SENTENCE = 'Obtain explicit approval for the complete manifest before any `apply` request.'
+const EXTERNAL_WRITER_DISCLOSURE_SENTENCE = 'Before asking for approval, disclose the `external-writer-window`: project targets remain writable by external processes during controller publication, so a concurrent change can make a later action fail with `snapshot-drift` after earlier actions have landed; only an unwrap batch has byte-exact aggregate restoration.'
 const DENIAL_SENTENCE = 'On denial, an unavailable user, or an unattended run without approval, no apply request is made and no project target changes.'
 const FINAL_APPROVAL_SCOPE_SENTENCE = 'Always obtain the explicit approval in the Process above before any project target or apply-owned durable state is written; the bounded request-spool transport and inspection-ownership writes needed to obtain the proposal are not apply authorization, and a re-run never writes project content on recognition alone.'
 const SHELL_LITERAL_SENTENCE = 'Encode every substituted command operand as one literal argument for the active shell, including the controller path, canonical root, nonce, and residue evidence digests.'
@@ -35,6 +36,7 @@ const ORDERED_WORKFLOW_TOKENS = [
   ['semantic concept classification', 'concept checklists below to every customized template-controlled semantic target'],
   ['exact repair design', 'complete before and after file bytes over exactly one manifest-controlled region'],
   ['complete proposal presentation', 'Present every target, state, and exact proposed action payload'],
+  ['external writer disclosure', EXTERNAL_WRITER_DISCLOSURE_SENTENCE],
   ['explicit approval and election', APPROVAL_SENTENCE],
   ['approved manifest apply', 'submit exactly the approved manifest through the request spool'],
   ['structured result presentation', '8. **Report.**'],
@@ -66,6 +68,9 @@ function assertPhraseRetired(name, text, phrase) {
 function assertApprovalOrder(body) {
   const approvalIndex = body.indexOf(APPROVAL_SENTENCE)
   assert.notEqual(approvalIndex, -1, 'init-backlog must require explicit approval of the complete manifest before apply')
+  const writerDisclosureIndex = body.indexOf(EXTERNAL_WRITER_DISCLOSURE_SENTENCE)
+  assert.notEqual(writerDisclosureIndex, -1, 'init-backlog must disclose the external writer window before approval')
+  assert.equal(writerDisclosureIndex < approvalIndex, true, 'the external writer window must be disclosed before approval is requested')
   const applyIndex = body.indexOf(APPLY_STEP)
   assert.notEqual(applyIndex, -1, 'init-backlog must retain its manifest apply step')
   assert.equal(approvalIndex < applyIndex, true, 'init-backlog must obtain approval before the apply step')
