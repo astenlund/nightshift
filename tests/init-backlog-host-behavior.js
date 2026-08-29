@@ -1720,6 +1720,14 @@ function deriveSemanticCarriers({ manifestProposal, proposalActionIds, scenario 
   return carriers
 }
 
+function attemptProcessAdapterConstruction(processAdapterFactory, options) {
+  try {
+    return processAdapterFactory(options)
+  } catch {
+    return { detailCode: 'spawn', ok: false }
+  }
+}
+
 function runLivePreSessionCommand({
   call,
   deadlineMilliseconds = driver.DEADLINES.PRE_SESSION_MILLISECONDS,
@@ -1742,7 +1750,7 @@ function runLivePreSessionCommand({
     const { armDeadline, armPoll, settle } = createSettleGuard(resolve)
     const completed = () => ({ exitCode: adapter.hostExitCode(), signal: null, stderrBytes: Buffer.concat(stderrChunks), stdoutBytes: Buffer.concat(stdoutChunks) })
     const retainRoot = () => adapter !== null && (adapter.retainsRunRoot?.() === true || adapter.closureProof().proven !== true)
-    const production = processAdapterFactory({
+    const production = attemptProcessAdapterConstruction(processAdapterFactory, {
       cwd: call.cwd,
       mode: 'pre-session',
       onFailure: (failure) => {
@@ -1833,7 +1841,7 @@ function createLiveBindings({ filesystem = nodeFilesystem, platform }) {
       },
       onOverflow: () => workerFailure({ detailCode: 'output-capacity' }),
     })
-    const production = driver.createProductionProcessAdapter({
+    const production = attemptProcessAdapterConstruction(driver.createProductionProcessAdapter, {
       cwd: call.cwd,
       mode: 'session',
       onFailure: workerFailure,
@@ -2124,6 +2132,9 @@ async function runLiveHostSession({ call, filesystem, platform, processAdapterFa
     turnSchema: turnSchemaRunPath,
   })
   const sessionFailure = (code, phase) => ({ failure: { ok: false, host, code, phase } })
+  const sessionAdapterFailure = (production, phase) => controllerEnabled
+    ? recordSessionInfrastructureFailure({ detailCode: production.detailCode ?? 'spawn', phase })
+    : infrastructureCarrier({ detailCode: production.detailCode ?? 'spawn', host, phase })
   const claimPrimaryFailure = (code, phase) => {
     selectedPrimaryFailure = selectedPrimaryFailure ?? sessionFailure(code, phase).failure
     if (server !== null && server.admissionOpen()) {
@@ -2326,7 +2337,7 @@ async function runLiveHostSession({ call, filesystem, platform, processAdapterFa
         adapter.terminate()
       },
     })
-    const production = processAdapterFactory({
+    const production = attemptProcessAdapterConstruction(processAdapterFactory, {
       cwd: scenarioRoot,
       mode: 'session',
       onFailure: (failure) => settle({ failure: recordSessionInfrastructureFailure(failure) }),
@@ -2335,7 +2346,7 @@ async function runLiveHostSession({ call, filesystem, platform, processAdapterFa
       onStarted: submitInitialInput,
     })
     if (production.ok !== true) {
-      settle({ failure: infrastructureCarrier({ detailCode: production.detailCode, host, phase: 'initial-turn' }) })
+      settle({ failure: sessionAdapterFailure(production, sessionInput.phase) })
 
       return
     }
@@ -2493,7 +2504,7 @@ async function runLiveHostSession({ call, filesystem, platform, processAdapterFa
         primaryFailure = primaryFailure ?? claimPrimaryFailure('session-input', activePhase)
       },
     })
-    const production = processAdapterFactory({
+    const production = attemptProcessAdapterConstruction(processAdapterFactory, {
       cwd: scenarioRoot,
       mode: 'session',
       onFailure: (failure) => settle({ failure: recordSessionInfrastructureFailure(failure) }),
@@ -2502,7 +2513,7 @@ async function runLiveHostSession({ call, filesystem, platform, processAdapterFa
       onStarted: () => writeUserTurn(envelopeText, 'initial'),
     })
     if (production.ok !== true) {
-      settle({ failure: infrastructureCarrier({ detailCode: production.detailCode, host, phase: 'initial-turn' }) })
+      settle({ failure: sessionAdapterFailure(production, activePhase) })
 
       return
     }

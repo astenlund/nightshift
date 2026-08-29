@@ -479,6 +479,39 @@ function fakeSessionAdapterFactory({ onStart } = {}) {
   return factory
 }
 
+function rejectingAdapterFactory(failureMode) {
+  return () => {
+    if (failureMode === 'throw') {
+      throw new Error('synthetic adapter construction failure')
+    }
+
+    return { detailCode: 'spawn', ok: false }
+  }
+}
+
+function openWorkerEntry() {
+  const state = { closed: false, terminations: 0 }
+  const entry = {
+    adapter: {
+      closeInput() {},
+      closureProof: () => ({ proven: state.closed }),
+      hostExitCode: () => 0,
+      input: () => ({ ok: true }),
+      runnerClosed: () => state.closed,
+      terminate: () => {
+        state.terminations += 1
+        state.closed = true
+
+        return { ok: true }
+      },
+    },
+    onLine: null,
+    ready: true,
+  }
+
+  return { entry, state }
+}
+
 function closedWorkerAdapter({ exitCode = 0, onTerminate = () => {} } = {}) {
   return {
     closeInput: () => {},
@@ -1411,6 +1444,33 @@ function runHostEntryCases(repositoryRoot) {
     assert.equal(closed, true, 'the promise does not settle before runner closure')
     assert.equal(proven, true, 'the promise does not settle before process-tree proof')
     assert.deepEqual(completion, { failure: { code: 'preflight-timeout', host: 'claude-code', ok: false, phase: 'version' } })
+  })
+
+  test('a thrown live pre-session adapter factory is classified as spawn infrastructure', async () => {
+    const completion = await hostBehavior.runLivePreSessionCommand({
+      call: {
+        argv: ['--version'],
+        boundary: 'version',
+        cwd: 'synthetic-preflight-root',
+        environment: {},
+        executable: 'synthetic-host',
+        host: 'claude-code',
+      },
+      platform: 'win32',
+      processAdapterFactory: rejectingAdapterFactory('throw'),
+    })
+
+    assert.deepEqual(completion, {
+      failure: {
+        ok: false,
+        host: 'claude-code',
+        code: 'harness-infrastructure',
+        phase: 'version',
+        initialCode: null,
+        detailCode: 'spawn',
+        retainedRunRoot: null,
+      },
+    })
   })
 
   test('a live pre-session deadline accepts natural closure before its first completion poll', async () => {
@@ -2703,38 +2763,154 @@ function runHostEntryCases(repositoryRoot) {
     assert.equal(workerTerminations, 1, 'worker termination starts exactly once across repeated admission failures')
   })
 
-  test('live session adapter factory failures leave no unreported repetition root', async () => {
-    for (const host of ['claude-code', 'codex']) {
-      const scratch = tempRoot()
-      try {
-        const harness = createEvaluationHarness(scratch)
-        const evaluation = await hostBehavior.runEvaluation({
-          ...harness.options,
-          hosts: [host],
-          scenarios: [sessionScenario()],
-          runSession: (call) => hostBehavior.runLiveHostSession({
-            call,
-            filesystem: nodeFilesystem,
-            platform: 'win32',
-            processAdapterFactory: () => ({ detailCode: 'spawn', ok: false }),
-            proxyRegistry: new Map(),
-            workerRegistry: new Map(),
-          }),
+  test('disabled live session adapter factory failures leave no unreported repetition root', async () => {
+    for (const failureMode of ['return', 'throw']) {
+      for (const host of ['claude-code', 'codex']) {
+        const scratch = tempRoot()
+        try {
+          const harness = createEvaluationHarness(scratch)
+          const evaluation = await hostBehavior.runEvaluation({
+            ...harness.options,
+            hosts: [host],
+            scenarios: [sessionScenario()],
+            runSession: (call) => hostBehavior.runLiveHostSession({
+              call,
+              filesystem: nodeFilesystem,
+              platform: 'win32',
+              processAdapterFactory: rejectingAdapterFactory(failureMode),
+              proxyRegistry: new Map(),
+              workerRegistry: new Map(),
+            }),
+          })
+
+          assert.deepEqual(evaluation.result, {
+            ok: false,
+            host,
+            code: 'harness-infrastructure',
+            phase: 'initial-turn',
+            initialCode: null,
+            detailCode: 'spawn',
+            retainedRunRoot: null,
+          }, `${host} ${failureMode}`)
+          assert.equal(nodeFilesystem.existsSync(harness.roots[1]), false, `${host} ${failureMode} factory failure leaves no unreported root`)
+        } finally {
+          nodeFilesystem.rmSync(scratch, { force: true, recursive: true })
+        }
+      }
+    }
+  })
+
+  test('enabled session adapter factory failures stop proxy and worker before retaining the root', async () => {
+    for (const failureMode of ['return', 'throw']) {
+      for (const host of ['claude-code', 'codex']) {
+        const runRoot = `synthetic-${host}-${failureMode}-enabled-factory-root`
+        const token = (host === 'claude-code' ? '5' : '6').repeat(64)
+        const worker = openWorkerEntry()
+        const proxyEntry = { server: null, tcpServer: null, token }
+        const session = await hostBehavior.runLiveHostSession({
+          call: {
+            argv: ['--print'],
+            controllerEnabled: true,
+            cwd: `synthetic-${host}-scenario-root`,
+            environment: {},
+            executable: 'synthetic-host',
+            host,
+            proxySession: { port: 40200, token },
+            runRoot,
+            scenario: sessionScenario(),
+            sessionPluginRoot: 'synthetic-plugin-root',
+            turnSchemaRunPath: 'synthetic-turn-schema-path',
+          },
+          filesystem: nodeFilesystem,
+          platform: 'win32',
+          processAdapterFactory: rejectingAdapterFactory(failureMode),
+          proxyRegistry: new Map([[token, proxyEntry]]),
+          workerRegistry: new Map([[runRoot, worker.entry]]),
         })
 
-        assert.deepEqual(evaluation.result, {
+        assert.deepEqual(session, {
+          failure: {
+            ok: false,
+            host,
+            code: 'harness-infrastructure',
+            phase: 'initial-turn',
+            initialCode: null,
+            detailCode: 'spawn',
+            retainedRunRoot: runRoot,
+          },
+        }, `${host} ${failureMode}`)
+        assert.equal(proxyEntry.server.admissionOpen(), false, `${host} ${failureMode} closes proxy admission`)
+        assert.equal(worker.state.terminations, 1, `${host} ${failureMode} terminates the worker once`)
+        assert.equal(worker.state.closed, true, `${host} ${failureMode} closes the worker`)
+      }
+    }
+  })
+
+  test('a codex resume adapter factory failure keeps the interaction-turn phase', async () => {
+    const scratch = tempRoot()
+    try {
+      const runRoot = join(scratch, 'run-root')
+      const token = '4'.repeat(64)
+      nodeFilesystem.mkdirSync(runRoot, { recursive: true })
+      const turn = {
+        gateId: 'host-context-confirmation',
+        phase: 'awaiting-response',
+        presentation: { actionDisclosures: [], ambiguityIds: [], disclosureCodes: [], manifestProposal: null, result: null },
+        semanticClassifications: [],
+      }
+      nodeFilesystem.writeFileSync(join(runRoot, 'turn-output.json'), Buffer.from(canonicalJson(turn), 'utf8'))
+      const initialFactory = fakeSessionAdapterFactory({
+        onStart: ({ options, state }) => {
+          options.onHostStdout(Buffer.concat([
+            hostEventLine({ thread_id: 'thread-1', type: 'thread.started' }),
+            hostEventLine({ item: { text: JSON.stringify(turn), type: 'agent_message' }, type: 'item.completed' }),
+          ]))
+          state.closed = true
+          state.exitCode = 0
+          state.proven = true
+        },
+      })
+      const worker = openWorkerEntry()
+      const proxyEntry = { server: null, tcpServer: null, token }
+      const session = await hostBehavior.runLiveHostSession({
+        call: {
+          argv: ['exec', '--json'],
+          controllerEnabled: true,
+          cwd: join(scratch, 'scenario'),
+          environment: {},
+          executable: 'codex-executable',
+          host: 'codex',
+          proxySession: { port: 40201, token },
+          runRoot,
+          scenario: sessionScenario(),
+          sessionPluginRoot: 'synthetic-plugin-root',
+          turnSchemaRunPath: 'synthetic-turn-schema-path',
+        },
+        filesystem: nodeFilesystem,
+        platform: 'win32',
+        processAdapterFactory: (options) => initialFactory.created.length === 0
+          ? initialFactory(options)
+          : { detailCode: 'spawn', ok: false },
+        proxyRegistry: new Map([[token, proxyEntry]]),
+        workerRegistry: new Map([[runRoot, worker.entry]]),
+      })
+
+      assert.equal(initialFactory.created.length, 1, 'the first turn reaches a Codex resume launch')
+      assert.deepEqual(session, {
+        failure: {
           ok: false,
-          host,
+          host: 'codex',
           code: 'harness-infrastructure',
-          phase: 'initial-turn',
+          phase: 'interaction-turn',
           initialCode: null,
           detailCode: 'spawn',
-          retainedRunRoot: null,
-        }, host)
-        assert.equal(nodeFilesystem.existsSync(harness.roots[1]), false, `${host} factory failure leaves no unreported root`)
-      } finally {
-        nodeFilesystem.rmSync(scratch, { force: true, recursive: true })
-      }
+          retainedRunRoot: runRoot,
+        },
+      })
+      assert.equal(proxyEntry.server.admissionOpen(), false)
+      assert.equal(worker.state.closed, true)
+    } finally {
+      nodeFilesystem.rmSync(scratch, { force: true, recursive: true })
     }
   })
 
