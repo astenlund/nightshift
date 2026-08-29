@@ -33,16 +33,19 @@ function validateUnwrapDigest(finding, action) {
   if (finding === undefined || finding.beforeRawSha256 !== action.beforeRawSha256) throw new Error('Mechanical unwrap digest evidence is invalid')
 }
 
-function openUnwrapTarget(root, action, options) {
+function openUnwrapTarget(root, action, options, openedTarget = undefined) {
+  if (openedTarget === null) throw new Error('Mechanical unwrap target is not an ordinary file')
+  if (openedTarget !== undefined) return openedTarget
+
   return stableOpenFile(root, targetPath(root, action.target), boundedOpenOptions(options, MAX_MECHANICAL_FILE_BYTES, { requireSingleLink: true }))
 }
 
-function actionAfter(request, action, root, options) {
+function actionAfter(request, action, root, options, openedTarget = undefined) {
   if (action.kind === 'unwrap-file') {
     const finding = resolveUnwrapFinding(request, action)
     if (finding?.predictedContentBase64 !== null && finding?.predictedContentBase64 !== undefined) return Buffer.from(finding.predictedContentBase64, 'base64')
     validateUnwrapDigest(finding, action)
-    const opened = openUnwrapTarget(root, action, options)
+    const opened = openUnwrapTarget(root, action, options, openedTarget)
     if (opened.rawSha256 === action.afterRawSha256) return opened.bytes
     if (opened.rawSha256 !== action.beforeRawSha256) throw new Error('Mechanical unwrap input changed before publication')
 
@@ -52,7 +55,7 @@ function actionAfter(request, action, root, options) {
   return proposalAfter(request, action)
 }
 
-function actionBefore(request, action, root, options) {
+function actionBefore(request, action, root, options, openedTarget = undefined) {
   if (action.kind !== 'unwrap-file') {
     if (action.beforeBase64 === null || action.beforeBase64 === undefined) return null
 
@@ -60,7 +63,7 @@ function actionBefore(request, action, root, options) {
   }
   const finding = resolveUnwrapFinding(request, action)
   validateUnwrapDigest(finding, action)
-  const opened = openUnwrapTarget(root, action, options)
+  const opened = openUnwrapTarget(root, action, options, openedTarget)
   if (opened.rawSha256 !== action.beforeRawSha256) throw new Error('Mechanical unwrap input changed before publication')
 
   return opened.bytes

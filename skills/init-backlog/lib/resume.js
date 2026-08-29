@@ -2,9 +2,10 @@
 
 const { lstatSync } = require('node:fs')
 
-const { POSIX_DEFAULT_FILE_MODE, actionAfter, actionBefore, targetMatchesOutput, targetPath } = require('./actions')
+const { POSIX_DEFAULT_FILE_MODE, actionAfter, actionBefore, targetPath } = require('./actions')
 const { deriveRequestManifestId } = require('./apply-manifest')
-const { boundedOpenOptions, classifyPid, pathExists, platformMode, stableOpenFile } = require('./filesystem')
+const { boundedOpenOptions, classifyPid, comparableMode, pathExists, platformMode, stableOpenFile } = require('./filesystem')
+const { MAX_MECHANICAL_FILE_BYTES } = require('./protocol')
 
 function approvedGuidanceCreation(request) {
   const rootGuidance = request.inspection?.guidance?.baseAdapter
@@ -60,59 +61,53 @@ function approvedImage(read) {
   }
 }
 
-function matchesApprovedDirectory(root, path, mode, options) {
-  try {
-    return targetMatchesOutput(root, path, 'directory', null, mode, options)
-  } catch {
-    return false
-  }
-}
-
 // A response-loss prefix can leave a published target still hard-linked to the
-// controller temporary that produced it, which is a recognized intermediate
-// state rather than drift. Classification therefore compares bytes and mode
-// only; publication stays the authority on link identity and still refuses a
-// link it cannot prove it owns.
-function matchesApprovedFile(root, path, bytes, mode, options) {
+// controller temporary that produced it. Resume classification snapshots that
+// intermediate with link-count enforcement disabled and compares only its
+// bytes and mode. Publication remains responsible for proving link ownership.
+function targetSnapshot(root, target, options) {
+  const path = targetPath(root, target)
   try {
     const metadata = lstatSync(path, { bigint: true })
-    if (metadata.isSymbolicLink() || !metadata.isFile()) return false
-    const opened = stableOpenFile(root, path, boundedOpenOptions(options, bytes.length, { requireSingleLink: false }))
-    if (!opened.bytes.equals(bytes)) return false
+    if (metadata.isSymbolicLink()) return { kind: 'invalid' }
+    if (metadata.isDirectory()) return { kind: 'directory', mode: comparableMode(metadata, options.platform) }
+    if (!metadata.isFile()) return { kind: 'invalid' }
+    const openFile = options.stableOpenFile ?? stableOpenFile
+    const opened = openFile(root, path, boundedOpenOptions(options, MAX_MECHANICAL_FILE_BYTES, { requireSingleLink: false }))
 
-    return mode === null || opened.mode === mode
-  } catch {
-    return false
+    return { kind: 'file', opened }
+  } catch (error) {
+    return { kind: error?.code === 'ENOENT' ? 'missing' : 'invalid' }
   }
 }
 
-function matchesApprovedInitial(request, action, root, options) {
-  const path = targetPath(root, action.target)
-  if (action.kind === 'ensure-directory') {
-    return !pathExists(path)
-  }
-  if (action.kind === 'create-from-template') return !pathExists(path)
-  const before = approvedImage(() => actionBefore(request, action, root, options))
-
-  return before !== undefined && before !== null && matchesApprovedFile(root, path, before, platformMode(options, action.mode ?? POSIX_DEFAULT_FILE_MODE), options)
+function matchesApprovedFile(snapshot, bytes, mode) {
+  return snapshot.kind === 'file' && snapshot.opened.bytes.equals(bytes) && (mode === null || snapshot.opened.mode === mode)
 }
 
-function matchesApprovedFinal(request, action, root, options) {
-  const path = targetPath(root, action.target)
-  if (action.kind === 'ensure-directory') return matchesApprovedDirectory(root, path, platformMode(options, action.mode), options)
-  const after = approvedImage(() => actionAfter(request, action, root, options))
+function matchesApprovedInitial(request, action, root, options, snapshot) {
+  if (action.kind === 'ensure-directory' || action.kind === 'create-from-template') return snapshot.kind === 'missing'
+  const before = approvedImage(() => actionBefore(request, action, root, options, snapshot.kind === 'file' ? snapshot.opened : null))
 
-  return after !== undefined && after !== null && matchesApprovedFile(root, path, after, platformMode(options, action.mode ?? POSIX_DEFAULT_FILE_MODE), options)
+  return before !== undefined && before !== null && matchesApprovedFile(snapshot, before, platformMode(options, action.mode ?? POSIX_DEFAULT_FILE_MODE))
+}
+
+function matchesApprovedFinal(request, action, root, options, snapshot) {
+  if (action.kind === 'ensure-directory') return snapshot.kind === 'directory' && snapshot.mode === platformMode(options, action.mode)
+  const after = approvedImage(() => actionAfter(request, action, root, options, snapshot.kind === 'file' ? snapshot.opened : null))
+
+  return after !== undefined && after !== null && matchesApprovedFile(snapshot, after, platformMode(options, action.mode ?? POSIX_DEFAULT_FILE_MODE))
 }
 
 // One durable target image represents exactly one boundary of its approved
 // action chain: the initial image, or the image after one of its actions. A
 // repeated or unknown boundary is ambiguous and therefore cannot prove resume.
 function approvedChainProgress(request, actions, root, options) {
+  const snapshot = targetSnapshot(root, actions[0].target, options)
   const matches = []
-  if (matchesApprovedInitial(request, actions[0], root, options)) matches.push(0)
+  if (matchesApprovedInitial(request, actions[0], root, options, snapshot)) matches.push(0)
   for (let index = 0; index < actions.length; index += 1) {
-    if (matchesApprovedFinal(request, actions[index], root, options)) matches.push(index + 1)
+    if (matchesApprovedFinal(request, actions[index], root, options, snapshot)) matches.push(index + 1)
   }
 
   return matches.length === 1 ? matches[0] : null

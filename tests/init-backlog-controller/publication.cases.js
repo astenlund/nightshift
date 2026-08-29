@@ -18,6 +18,7 @@ const { createInitialLock, stableOpenFile } = require('../../skills/init-backlog
 const { analyzeCatalog } = require('../../skills/ready/ready')
 const { applyRecovery, inspectRecovery } = require('../../skills/init-backlog/lib/recovery')
 const { approvedProgress } = require('../../skills/init-backlog/lib/resume')
+const { unwrapText } = require('../../skills/init-backlog/unwrap')
 const { ELECTION_MARKER_PATH } = require('./election-oracles')
 
 // Independent oracle pin: the recovery gate basename is spelled out here on purpose
@@ -1329,11 +1330,12 @@ function runPublicationCases() {
       const second = { afterBase64: after.toString('base64'), beforeBase64: middle.toString('base64'), id: 'p-chain-progress-second', kind: 'exact-edit', regionId: 'features.next-region', target }
       const applyRequest = { actions: [first, second], inspection: { proposals: [] } }
       mkdirSync(join(root, '.claude'), { recursive: true })
+      let opens = 0
 
       const boundaries = [before, middle, after].map((bytes) => {
         writeFileSync(join(root, target), bytes)
 
-        return approvedProgress(applyRequest, root, {})
+        return approvedProgress(applyRequest, root, { stableOpenFile: (...args) => { opens += 1; return stableOpenFile(...args) } })
       })
 
       assert.deepEqual(boundaries, [
@@ -1341,6 +1343,37 @@ function runPublicationCases() {
         { applied: 1, recognized: true },
         { applied: 2, recognized: true },
       ])
+      assert.equal(opens, boundaries.length)
+    } finally {
+      rmSync(root, { force: true, recursive: true })
+    }
+  })
+
+  test('classifies an unwrap and semantic chain from one target snapshot', () => {
+    const root = fixtureRoot()
+    try {
+      const target = '.claude/FEATURES.md'
+      const before = Buffer.from('# Features\n\nA paragraph split across\ntwo physical lines for repair.\n', 'utf8')
+      const middle = Buffer.from(unwrapText(before.toString('utf8')), 'utf8')
+      const after = Buffer.from(`${middle.toString('utf8')}final\n`, 'utf8')
+      const first = { afterRawSha256: sha256(middle), beforeRawSha256: sha256(before), id: 'p-chain-unwrap-first', kind: 'unwrap-file', mode: process.platform === 'win32' ? null : 420, target }
+      const second = { afterBase64: after.toString('base64'), beforeBase64: middle.toString('base64'), id: 'p-chain-unwrap-second', kind: 'exact-edit', regionId: 'features.document-preamble', target }
+      const applyRequest = { actions: [first, second], inspection: { proposals: [], wrapFindings: [{ beforeRawSha256: first.beforeRawSha256, predictedContentBase64: null, predictedRawSha256: first.afterRawSha256, target }] } }
+      mkdirSync(join(root, '.claude'), { recursive: true })
+      let opens = 0
+
+      const boundaries = [before, middle, after].map((bytes) => {
+        writeFileSync(join(root, target), bytes)
+
+        return approvedProgress(applyRequest, root, { stableOpenFile: (...args) => { opens += 1; return stableOpenFile(...args) } })
+      })
+
+      assert.deepEqual(boundaries, [
+        { applied: 0, recognized: true },
+        { applied: 1, recognized: true },
+        { applied: 2, recognized: true },
+      ])
+      assert.equal(opens, boundaries.length)
     } finally {
       rmSync(root, { force: true, recursive: true })
     }
