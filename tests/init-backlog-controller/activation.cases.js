@@ -11,6 +11,7 @@ const { SOURCE_COMMIT } = require('./baseline.cases')
 const { validateManifest } = require('./assets.cases')
 const { fixtureFilePath, git, sha256 } = require('./helpers')
 const { collectInspection } = require('../../skills/init-backlog/lib/inspection')
+const gitPolicy = require('../../skills/init-backlog/lib/git-policy')
 
 const PRE_ACTIVATION_GUIDANCE_DIGEST = '7bb8af909add4f6a44947b4ba666e2dc81ba881f79ce209e567003cb40379198'
 const PRE_ACTIVATION_MANIFEST_SHA256 = 'f27c321e36a7b4b3ec5f6bc12ba9bd82f3be3bca7d137b4a08095281fe867c80'
@@ -344,6 +345,12 @@ function runActivationCases(repositoryRoot) {
     assert.equal(countExact(body, 'The election covers only the durable backlog files'), 1, 'the skill election must cover only the durable backlog files')
     assert.equal(countExact(body, '`.claude/plans/` is git-ignored in every Git repository'), 1, 'the skill must state the unconditional plans policy')
     assert.equal(countExact(body, 'never a user preference'), 1, 'the skill must state that the plans policy is not an election')
+  })
+
+  test('plans rule metadata stays behind the Git-policy semantic accessor', () => {
+    assert.equal(gitPolicy.PLANS_ROOT_RULE_EFFECTIVE, undefined)
+    assert.equal(typeof gitPolicy.plansRootRuleEffective, 'function')
+    assert.equal(gitPolicy.plansRootRuleEffective({ plansPolicy: 'action-required' }), false)
   })
 
   test('a satisfied plans policy carries no policy action', () => {

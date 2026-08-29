@@ -12,7 +12,7 @@ const { InitBacklogError, failureRecord } = require('./errors')
 const { HTML_BLOCK_TYPE_SIX_TAGS, discoverControlledMarkdown, resolveGuidance } = require('./guidance')
 const { canonicalRoot, comparableIdentity, comparableMode, createInitialLock, initialLockPaths, removeInitialLock, stableOpenFile, targetPath } = require('./filesystem')
 const { BACKUP_DIRECTORY, DIGEST_PATTERN, MAX_INLINE_FILE_BYTES, MAX_MECHANICAL_FILE_BYTES, RECOVERY_LOCK_BASENAME, RECOVERY_LOCK_STAGE_PATTERN, RECOVERY_MARKER_BASENAME, canonicalJson, compareOrdinal, deriveProposalId, deriveSnapshotId, sameKeys, sha256 } = require('./protocol')
-const { PLANS_ROOT_RULE_EFFECTIVE, detectGitKind, inspectGitPolicy, newlineStyle } = require('./git-policy')
+const { detectGitKind, inspectGitPolicy, newlineStyle, plansRootRuleEffective } = require('./git-policy')
 
 function inspectError(code, detail, target = null, cause, phase = 'inspect') {
   throw new InitBacklogError(failureRecord({ code, detail, operation: 'inspect', phase, target }), cause === undefined ? undefined : { cause })
@@ -747,7 +747,7 @@ function collectInspection(root, host, hostContext = {}, options = {}) {
 
     return fragmentBytes.toString('utf8').split('\n').filter((line) => line.length > 0 && !present.has(line))
   }
-  const rootPlansRuleEffective = gitRecord[PLANS_ROOT_RULE_EFFECTIVE] === true
+  const rootPlansRuleEffective = plansRootRuleEffective(gitRecord)
   if (appendableGitignore && mandatoryPlans.length > 0 && gitRecord.plansPolicy !== 'satisfied' && gitRecord.plansPolicy !== 'nested-conflict' && !rootPlansRuleEffective) {
     appendGitignorePolicy('plans-policy', 'always', mandatoryPlans)
   }

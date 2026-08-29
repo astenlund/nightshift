@@ -5,7 +5,7 @@ const { TextDecoder } = require('node:util')
 const { existsSync, lstatSync, realpathSync } = require('node:fs')
 const { isAbsolute, join, relative, resolve, win32 } = require('node:path')
 
-const { DIGEST_PATTERN, canonicalJson, compareOrdinal, sameKeys, sha256 } = require('./protocol')
+const { DIGEST_PATTERN, compareOrdinal, sameKeys } = require('./protocol')
 const { resolveTrustedExecutable } = require('./filesystem')
 
 const GIT_CANDIDATES = ['HEAD', 'objects', 'refs']
@@ -624,7 +624,7 @@ function normalizeGitPolicy(policy = {}) {
 
     return { mode: item.mode, source: item.source, style: item.style, target: item.target }
   })
-  const value = {
+  return {
     kind,
     objectFormat,
     freshScaffold: policy.freshScaffold === true,
@@ -639,8 +639,6 @@ function normalizeGitPolicy(policy = {}) {
     electionMarkerMode,
     newlinePolicies: newlinePolicies.sort((a, b) => compareOrdinal(a.target, b.target)),
   }
-
-  return value
 }
 
 function classifyPlansPolicy({ git = true, rootRuleEffective = false, nestedConflict = false, trackedPlanPaths = [] } = {}) {
@@ -649,6 +647,10 @@ function classifyPlansPolicy({ git = true, rootRuleEffective = false, nestedConf
   if (trackedPlanPaths.length > 0) return 'tracked-conflict'
 
   return rootRuleEffective ? 'satisfied' : 'action-required'
+}
+
+function plansRootRuleEffective(policy) {
+  return policy?.[PLANS_ROOT_RULE_EFFECTIVE] === true
 }
 
 function normalizeElectionMarker(value) {
@@ -661,7 +663,6 @@ function normalizeElectionMarker(value) {
 module.exports = {
   CONFIG_KEYS,
   GIT_CANDIDATES,
-  PLANS_ROOT_RULE_EFFECTIVE,
   candidateSet,
   classifyCheckAttrProcess,
   classifyGitKind,
@@ -669,6 +670,7 @@ module.exports = {
   newlineStyle,
   normalizeGitPolicy,
   normalizeConfigValue,
+  plansRootRuleEffective,
   classifyPlansPolicy,
   normalizeIgnorePattern,
   normalizeElectionMarker,
