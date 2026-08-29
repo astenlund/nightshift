@@ -5,6 +5,10 @@ const { createByteBudget } = require('./state')
 
 const PROXY_TRACE_MEMBERS = Object.freeze(['exitCode', 'ordinal', 'requestBase64', 'stderrBase64', 'stdoutBase64'])
 
+// Well-formed base64 spelling only. Canonicity (no over-long final group) is a
+// strictly stronger check and is layered on top by `isCanonicalBase64`.
+const BASE64_PATTERN = /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/
+
 function canonicalize(value) {
   if (Array.isArray(value)) {
     return value.map(canonicalize)
@@ -25,7 +29,7 @@ function canonicalJsonLine(value) {
 }
 
 function isCanonicalBase64(value) {
-  if (typeof value !== 'string' || !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(value)) {
+  if (typeof value !== 'string' || !BASE64_PATTERN.test(value)) {
     return false
   }
 
@@ -98,4 +102,4 @@ function createProxyTrace({ flush, limit = BYTE_BOUNDS.MAX_PROXY_TRACE_BYTES } =
   }
 }
 
-module.exports = { canonicalJson, canonicalJsonLine, createProxyTrace, createTranscript, isCanonicalBase64 }
+module.exports = { BASE64_PATTERN, canonicalJson, canonicalJsonLine, createProxyTrace, createTranscript, isCanonicalBase64 }

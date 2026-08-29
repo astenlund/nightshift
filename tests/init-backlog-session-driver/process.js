@@ -5,7 +5,7 @@ const { join } = require('node:path')
 
 const { BYTE_BOUNDS, DEADLINES } = require('./primitives')
 const { createByteBudget, createLaunchState, createLineDecoder } = require('./state')
-const { canonicalJsonLine } = require('./transcript')
+const { BASE64_PATTERN, canonicalJsonLine } = require('./transcript')
 
 const RUNNER_CLOSE_MILLISECONDS = 1000
 
@@ -26,8 +26,6 @@ const OUTPUT_FRAME_MEMBERS = Object.freeze({
 })
 
 const ADAPTER_MODES = Object.freeze(['session', 'pre-session'])
-
-const BASE64_PATTERN = /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/
 
 function realClock() {
   return {
