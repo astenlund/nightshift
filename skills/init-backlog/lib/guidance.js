@@ -12,10 +12,17 @@ const GUIDANCE_SECTION = '## Backlogs and indexes'
 const CLAUDE_CANDIDATES = ['CLAUDE.md', 'CLAUDE.local.md']
 const CODEX_CANDIDATES = ['AGENTS.override.md', 'AGENTS.md']
 const MAX_IMPORT_DEPTH = 4
+const MAX_GUIDANCE_FILE_BYTES = 65536
+const MAX_GUIDANCE_RETAINED_BYTES = 1048576
+const MAX_GUIDANCE_CANDIDATES = 256
 const GIT_METADATA_DIRECTORY = '.git'
 
 function fail(detail, cause, target = null) {
   throwInitBacklogError({ code: 'guidance-resolution', detail, operation: 'inspect', phase: 'resolve', target }, cause)
+}
+
+function failCandidateSize(target, cause) {
+  throwInitBacklogError({ code: 'payload-too-large', detail: 'Guidance candidate exceeds its maximum size.', operation: 'inspect', phase: 'inspect', target }, cause)
 }
 
 function relativeTarget(root, target) {
@@ -48,6 +55,9 @@ function readCandidate(root, target, options = {}) {
     if (error !== null && typeof error === 'object' && error.code === 'ENOENT') {
       return null
     }
+    if (error !== null && typeof error === 'object' && error.code === 'file-too-large') {
+      failCandidateSize(target, error)
+    }
     fail('Guidance candidate is not an ordinary readable file.', error, target)
   }
 
@@ -65,6 +75,39 @@ function readCandidate(root, target, options = {}) {
   }
 
   return { ...opened, path: target, text }
+}
+
+function createGuidanceCandidateReader(root, options = {}, requestedMaxBytes = MAX_GUIDANCE_FILE_BYTES) {
+  const candidateReader = options.readCandidate ?? readCandidate
+  const candidateOptions = { ...options, maxBytes: Math.min(requestedMaxBytes, MAX_GUIDANCE_FILE_BYTES) }
+  delete candidateOptions.readCandidate
+  const candidateFiles = new Map()
+  let retainedBytes = 0
+
+  return (target) => {
+    if (candidateFiles.has(target)) {
+      return candidateFiles.get(target)
+    }
+    if (candidateFiles.size >= MAX_GUIDANCE_CANDIDATES) {
+      fail('Guidance candidate count exceeds the controller limit.', undefined, target)
+    }
+    const file = candidateReader(root, target, candidateOptions)
+    if (file !== null) {
+      if (typeof file !== 'object' || !Buffer.isBuffer(file.bytes) || typeof file.text !== 'string') {
+        fail('Guidance candidate reader returned an invalid record.', undefined, target)
+      }
+      if (file.bytes.length > candidateOptions.maxBytes) {
+        failCandidateSize(target)
+      }
+      retainedBytes += file.bytes.length
+      if (retainedBytes > MAX_GUIDANCE_RETAINED_BYTES) {
+        fail('Guidance candidates exceed the controller retained-byte limit.', undefined, target)
+      }
+    }
+    candidateFiles.set(target, file)
+
+    return file
+  }
 }
 
 function inspectDirectory(root, target, visitor, options = {}) {
@@ -307,12 +350,12 @@ function validCodexInvocationDirectory(root, invocation, options) {
   }
 }
 
-function scanClaudeGraph(root, startTargets, options = {}) {
+function scanClaudeGraph(root, startTargets, candidateReader) {
   const graph = new Map()
   const imports = []
   const visiting = new Set()
   const visited = new Set()
-  function visit(target, depth, adapterCandidate) {
+  function visit(target, depth) {
     if (visiting.has(target)) {
       fail('Guidance import cycle detected.', undefined, target)
     }
@@ -322,7 +365,7 @@ function scanClaudeGraph(root, startTargets, options = {}) {
     if (depth > MAX_IMPORT_DEPTH) {
       fail('Guidance import depth exceeds the supported limit.', undefined, target)
     }
-    const file = readCandidate(root, target)
+    const file = candidateReader(target)
     if (file === null) {
       fail('Guidance import target is missing.', undefined, target)
     }
@@ -332,21 +375,21 @@ function scanClaudeGraph(root, startTargets, options = {}) {
     for (const token of guidanceImports(file.text)) {
       const child = canonicalImport(root, target, token)
       imports.push({ adapterCandidate: isRecognizedAdapter(child), source: target, target: child })
-      visit(child, depth + 1, adapterCandidate || isRecognizedAdapter(child))
+      visit(child, depth + 1)
     }
     visiting.delete(target)
   }
   for (const target of startTargets) {
-    visit(target, 0, options.adapterCandidate === true)
+    visit(target, 0)
   }
 
   return { graph, imports }
 }
 
-function findClaudePotential(root, options = {}) {
+function findClaudePotential(root, options, candidateReader) {
   const paths = new Set()
   for (const target of CLAUDE_CANDIDATES) {
-    if (readCandidate(root, target) !== null) {
+    if (candidateReader(target) !== null) {
       paths.add(target)
     }
   }
@@ -363,7 +406,8 @@ function findClaudePotential(root, options = {}) {
 }
 
 function resolveClaude(root, hostContext, options = {}) {
-  const rootFile = readCandidate(root, 'CLAUDE.md')
+  const candidateReader = createGuidanceCandidateReader(root, options)
+  const rootFile = candidateReader('CLAUDE.md')
   const status = hostContext.claudeRootExclusionStatus
   const source = hostContext.claudeContextSource
   const validContext = rootFile === null
@@ -373,10 +417,10 @@ function resolveClaude(root, hostContext, options = {}) {
     fail('Claude root guidance context does not match the filesystem.', undefined, 'CLAUDE.md')
   }
   const starts = rootFile === null ? [] : ['CLAUDE.md']
-  const potential = findClaudePotential(root, options)
+  const potential = findClaudePotential(root, options, candidateReader)
   const independent = potential.filter((target) => target !== 'CLAUDE.md')
-  const base = starts.length === 0 ? { graph: new Map(), imports: [] } : scanClaudeGraph(root, starts)
-  const independentGraph = independent.length === 0 ? { graph: new Map(), imports: [] } : scanClaudeGraph(root, independent)
+  const base = starts.length === 0 ? { graph: new Map(), imports: [] } : scanClaudeGraph(root, starts, candidateReader)
+  const independentGraph = independent.length === 0 ? { graph: new Map(), imports: [] } : scanClaudeGraph(root, independent, candidateReader)
   const graph = new Map([...base.graph, ...independentGraph.graph])
   const allImports = [...base.imports, ...independentGraph.imports]
   const delegatedTargets = [...new Set(base.imports.filter((item) => item.adapterCandidate).map((item) => item.target))].sort(compareOrdinal)
@@ -399,17 +443,6 @@ function resolveClaude(root, hostContext, options = {}) {
 }
 
 function resolveCodex(root, hostContext, options = {}) {
-  const candidateReader = options.readCandidate ?? readCandidate
-  const candidateOptions = { ...options, maxBytes: hostContext.codexProjectDocMaxBytes }
-  delete candidateOptions.readCandidate
-  const candidateFiles = new Map()
-  const boundCandidate = (target) => {
-    if (!candidateFiles.has(target)) {
-      candidateFiles.set(target, candidateReader(root, target, candidateOptions))
-    }
-
-    return candidateFiles.get(target)
-  }
   const invocation = hostContext.codexInvocationDirectory
   const parts = invocation === '.' ? [] : typeof invocation === 'string' ? invocation.split('/') : []
   const levels = ['']
@@ -422,6 +455,7 @@ function resolveCodex(root, hostContext, options = {}) {
   if (hostContext.claudeContextSource !== null || hostContext.claudeRootExclusionStatus !== null || hostContext.codexContextSource !== 'user-confirmed' || !Number.isSafeInteger(hostContext.codexProjectDocMaxBytes) || hostContext.codexProjectDocMaxBytes <= 0 || !validFallbacks || new Set(fallback).size !== fallback.length || !validCodexInvocationDirectory(root, invocation, options)) {
     fail('Codex guidance context is invalid.')
   }
+  const boundCandidate = createGuidanceCandidateReader(root, options, hostContext.codexProjectDocMaxBytes)
   const graph = []
   const candidates = []
   let rootAdapter = null
@@ -548,4 +582,4 @@ function discoverControlledMarkdown(root, directories = ['.claude/bugs', '.claud
   return discovered.sort((left, right) => compareOrdinal(left.target, right.target))
 }
 
-module.exports = { GUIDANCE_SECTION, HTML_BLOCK_TYPE_SIX_TAGS, discoverControlledMarkdown, guidanceImports, resolveClaude, resolveCodex, resolveGuidance }
+module.exports = { GUIDANCE_SECTION, HTML_BLOCK_TYPE_SIX_TAGS, MAX_GUIDANCE_CANDIDATES, MAX_GUIDANCE_FILE_BYTES, MAX_GUIDANCE_RETAINED_BYTES, discoverControlledMarkdown, guidanceImports, resolveClaude, resolveCodex, resolveGuidance }

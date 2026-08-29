@@ -7,7 +7,7 @@ const { tmpdir } = require('node:os')
 const { join, resolve } = require('node:path')
 const test = require('node:test')
 
-const { discoverControlledMarkdown, guidanceImports, resolveClaude, resolveCodex, resolveGuidance } = require('../../skills/init-backlog/lib/guidance')
+const { MAX_GUIDANCE_CANDIDATES, MAX_GUIDANCE_FILE_BYTES, MAX_GUIDANCE_RETAINED_BYTES, discoverControlledMarkdown, guidanceImports, resolveClaude, resolveCodex, resolveGuidance } = require('../../skills/init-backlog/lib/guidance')
 const {
   enumerateDirectory,
   probeWindowsAttributes,
@@ -204,6 +204,100 @@ function runDiscoveryCases(repositoryRoot) {
     assert.deepEqual(calls.map((item) => item.target), ['AGENTS.override.md', 'AGENTS.md', 'PROJECT.md'])
     assert.equal(calls.every((item) => item.maximumBytes === maximumBytes), true)
     assert.equal(new Set(calls.map((item) => item.target)).size, calls.length, 'each candidate is read once even when selection, total-size, and section checks consume it')
+  })
+
+  test('guidance resolution owns closed candidate resource budgets', () => {
+    assert.equal(MAX_GUIDANCE_FILE_BYTES, 65536)
+    assert.equal(MAX_GUIDANCE_RETAINED_BYTES, 1048576)
+    assert.equal(MAX_GUIDANCE_CANDIDATES, 256)
+  })
+
+  test('Claude guidance rejects an oversized imported candidate before decoding it', () => {
+    const root = temporaryRoot('nightshift-discovery-claude-file-budget-')
+    try {
+      ordinaryFile(join(root, 'CLAUDE.md'), '@large.md\n')
+      ordinaryFile(join(root, 'large.md'), Buffer.alloc(MAX_GUIDANCE_FILE_BYTES + 1, 0x61))
+
+      assert.throws(() => resolveClaude(root, {
+        claudeRootExclusionStatus: 'included',
+        claudeContextSource: 'host-observed',
+      }, { platform: 'linux' }), (error) => error.record?.code === 'payload-too-large' && error.record?.phase === 'inspect' && error.record?.target === 'large.md')
+    } finally {
+      rmSync(root, { force: true, recursive: true })
+    }
+  })
+
+  test('Claude guidance rejects a graph that exceeds the retained-byte budget', () => {
+    const root = temporaryRoot('nightshift-discovery-claude-retained-budget-')
+    try {
+      const importDirectory = join(root, 'imports')
+      mkdirSync(importDirectory)
+      const importNames = Array.from({ length: (MAX_GUIDANCE_RETAINED_BYTES / MAX_GUIDANCE_FILE_BYTES) }, (_, index) => `imports/file-${index}.md`)
+      ordinaryFile(join(root, 'CLAUDE.md'), `${importNames.map((target) => `@${target}`).join('\n')}\n`)
+      for (const target of importNames) {
+        ordinaryFile(join(root, target), Buffer.alloc(MAX_GUIDANCE_FILE_BYTES, 0x61))
+      }
+
+      assert.throws(() => resolveClaude(root, {
+        claudeRootExclusionStatus: 'included',
+        claudeContextSource: 'host-observed',
+      }, { platform: 'linux' }), (error) => error.record?.code === 'guidance-resolution')
+    } finally {
+      rmSync(root, { force: true, recursive: true })
+    }
+  })
+
+  test('Codex guidance clamps the confirmed per-file limit to the controller ceiling', () => {
+    const observedLimits = []
+    resolveCodex('C:\\synthetic-root', {
+      claudeContextSource: null,
+      claudeRootExclusionStatus: null,
+      codexContextSource: 'user-confirmed',
+      codexInvocationDirectory: '.',
+      codexProjectDocMaxBytes: MAX_GUIDANCE_FILE_BYTES * 2,
+      codexProjectInstructions: [],
+    }, {
+      readCandidate: (root, target, options) => {
+        observedLimits.push(options.maxBytes)
+
+        return target === 'AGENTS.md' ? { bytes: Buffer.from('guidance\n'), text: 'guidance\n' } : null
+      },
+    })
+
+    assert.equal(observedLimits.every((maximumBytes) => maximumBytes === MAX_GUIDANCE_FILE_BYTES), true)
+  })
+
+  test('Codex guidance accepts the retained-byte boundary and rejects its next candidate', () => {
+    const invoke = (candidateCount) => resolveCodex('C:\\synthetic-root', {
+      claudeContextSource: null,
+      claudeRootExclusionStatus: null,
+      codexContextSource: 'user-confirmed',
+      codexInvocationDirectory: '.',
+      codexProjectDocMaxBytes: MAX_GUIDANCE_RETAINED_BYTES * 2,
+      codexProjectInstructions: Array.from({ length: candidateCount - 2 }, (_, index) => `PROJECT-${index}.md`),
+    }, {
+      readCandidate: () => ({ bytes: Buffer.alloc(MAX_GUIDANCE_FILE_BYTES, 0x61), text: 'guidance' }),
+    })
+    const boundaryCount = MAX_GUIDANCE_RETAINED_BYTES / MAX_GUIDANCE_FILE_BYTES
+
+    assert.doesNotThrow(() => invoke(boundaryCount))
+    assert.throws(() => invoke(boundaryCount + 1), (error) => error.record?.code === 'guidance-resolution')
+  })
+
+  test('Codex guidance accepts the candidate-count boundary and rejects its next probe', () => {
+    const invoke = (candidateCount) => resolveCodex('C:\\synthetic-root', {
+      claudeContextSource: null,
+      claudeRootExclusionStatus: null,
+      codexContextSource: 'user-confirmed',
+      codexInvocationDirectory: '.',
+      codexProjectDocMaxBytes: MAX_GUIDANCE_RETAINED_BYTES,
+      codexProjectInstructions: Array.from({ length: candidateCount - 2 }, (_, index) => `PROJECT-${index}.md`),
+    }, {
+      readCandidate: () => null,
+    })
+
+    assert.doesNotThrow(() => invoke(MAX_GUIDANCE_CANDIDATES))
+    assert.throws(() => invoke(MAX_GUIDANCE_CANDIDATES + 1), (error) => error.record?.code === 'guidance-resolution')
   })
 
   test('Claude guidance requires the exact root provenance pair for present and missing roots', () => {
