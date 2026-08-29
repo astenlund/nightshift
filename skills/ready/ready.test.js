@@ -1604,6 +1604,50 @@ test('analyzeCatalog treats traversal, absolute, and backslash breakout links as
   assert.deepStrictEqual(result.structuralErrors, [], 'a broken link is a notice, not a structural error');
 });
 
+const DUPLICATE_SELF_TARGET_FEATURES = `# Features
+
+## Area
+
+### [First claimant](features/dup.md)
+
+**Requires:** none.
+
+### [Second claimant](features/dup.md)
+
+**Requires:** none.
+
+### [Dependent](features/dependent.md)
+
+**Requires:** [First claimant](features/dup.md).
+`;
+
+test('a duplicate self-target path is a structural error naming every claimant', () => {
+  const result = analyze({ FEATURES: DUPLICATE_SELF_TARGET_FEATURES });
+  const duplicate = result.structuralErrors.find((e) => e.index === '[duplicate]');
+  assert.ok(duplicate, JSON.stringify(result.structuralErrors));
+  assert.strictEqual(duplicate.title, 'features/dup');
+  assert.strictEqual(
+    duplicate.problem,
+    'duplicate self-target "features/dup" declared by FEATURES.md "First claimant" and FEATURES.md "Second claimant"; give each entry its own breakout file',
+  );
+});
+
+test('a link to a duplicated self-target resolves to neither claimant', () => {
+  const result = analyze({ FEATURES: DUPLICATE_SELF_TARGET_FEATURES });
+  const dependent = findByTitle(result.structuralErrors, 'Dependent');
+  assert.ok(dependent, JSON.stringify(result.structuralErrors));
+  assert.ok(
+    dependent.problem.includes('several active entries declare the self-target path "features/dup"'),
+    dependent.problem,
+  );
+  assert.ok(dependent.problem.includes('give each entry its own breakout file'), dependent.problem);
+  assert.ok(
+    !titles(result.blocked).includes('Dependent'),
+    `an ambiguous link must not silently block on one claimant: ${titles(result.blocked).join(' | ')}`,
+  );
+  assert.ok(!titles(result.ready).includes('Dependent'), titles(result.ready).join(' | '));
+});
+
 test('breakoutTargets include entries whose classification terminated in a structural error', () => {
   assert.ok(gates.breakoutTargets.some((t) => t.target === 'features/kappa.md'), JSON.stringify(gates.breakoutTargets));
 });

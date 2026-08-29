@@ -524,6 +524,21 @@ function isRepoRelativeTarget(target) {
   return Boolean(target) && !target.startsWith('http');
 }
 
+// True when a self-target names a real place inside the backlog: repo-relative
+// and inside the closed catalog-reference grammar. Traversing, absolute, and
+// backslashed targets fail it and stay broken-link notices.
+function isCatalogReferenceTarget(target) {
+  if (!isRepoRelativeTarget(target)) return false;
+  try {
+    requireCatalogReferenceTarget(target);
+  } catch {
+    // The grammar itself is the answer, and its refusal is not an error here.
+    return false;
+  }
+
+  return true;
+}
+
 function buildRegistry(indexEntries) {
   // indexEntries: [{ index, entry }]
   const byTitle = new Map();
@@ -531,6 +546,13 @@ function buildRegistry(indexEntries) {
   const bySlug = new Map();
   const slugDupes = new Set();
   const byPath = new Map();
+  // A self-target path is a node identity, so two entries claiming one are
+  // indistinguishable to every consumer of the graph and byPath's single slot
+  // silently binds links to whichever entry wrote it last. Every claimant is
+  // retained here instead, so the collision reports structurally and resolution
+  // refuses to pick either. A self-target outside the closed catalog-reference
+  // grammar is already reported as a broken link and never joins the graph.
+  const pathGroups = new Map();
   for (const rec of indexEntries) {
     const titleKey = normalizeTitle(rec.entry.title);
     if (byTitle.has(titleKey)) titleDupes.add(titleKey);
@@ -538,21 +560,32 @@ function buildRegistry(indexEntries) {
     const pathKey = targetPathKey(rec.entry.selfTarget);
     if (pathKey) {
       byPath.set(pathKey, rec);
+      if (isCatalogReferenceTarget(rec.entry.selfTarget)) {
+        const group = pathGroups.get(pathKey);
+        if (group === undefined) pathGroups.set(pathKey, [rec]);
+        else group.push(rec);
+      }
       const slug = targetSlug(rec.entry.selfTarget).toLowerCase();
       if (bySlug.has(slug)) slugDupes.add(slug);
       else bySlug.set(slug, rec);
     }
   }
-  return { byTitle, titleDupes, bySlug, slugDupes, byPath };
+  const pathDupes = new Map([...pathGroups].filter(([, records]) => records.length > 1));
+  return { byTitle, titleDupes, bySlug, slugDupes, byPath, pathDupes };
 }
 
 // Look up an entry by link target (directory-qualified path first, then
 // bare basename, then display text). Returns { rec, via } on a unique
-// match, { ambiguous } when several active entries share the matched key,
-// or {} on no match. Path-first ordering makes features/foo.md and
+// match, { ambiguous, remedy? } when several active entries share the matched
+// key, or {} on no match. Path-first ordering makes features/foo.md and
 // bugs/foo.md resolve correctly instead of colliding on the basename.
 function lookupEntry(registry, display, target) {
   const pathKey = targetPathKey(target);
+  if (pathKey && registry.pathDupes.has(pathKey)) {
+    // Qualifying the link cannot disambiguate a path both entries claim, so
+    // this ambiguity carries its own remedy instead of the shared one.
+    return { ambiguous: `several active entries declare the self-target path "${pathKey}"`, remedy: 'give each entry its own breakout file' };
+  }
   if (pathKey && registry.byPath.has(pathKey)) {
     return { rec: registry.byPath.get(pathKey), via: 'path' };
   }
@@ -578,6 +611,8 @@ function lookupEntry(registry, display, target) {
   return {};
 }
 
+const AMBIGUOUS_LINK_REMEDY = 'qualify the link target with its directory';
+
 // Resolve one Requires link item against the registry. Returns one of:
 //   { kind: 'blocked', label }         in-backlog reference, currently blocking
 //   { kind: 'structural', problem }    stale/broken/typo/ambiguous reference
@@ -588,7 +623,7 @@ function resolveLink(item, registry) {
   if (whole.ambiguous) {
     return {
       kind: 'structural',
-      problem: `ambiguous reference "[${display}](${item.target})": ${whole.ambiguous}; qualify the link target with its directory`,
+      problem: `ambiguous reference "[${display}](${item.target})": ${whole.ambiguous}; ${whole.remedy ?? AMBIGUOUS_LINK_REMEDY}`,
     };
   }
 
@@ -603,7 +638,7 @@ function resolveLink(item, registry) {
     if (pre.ambiguous) {
       return {
         kind: 'structural',
-        problem: `ambiguous reference "[${display}](${item.target})": ${pre.ambiguous}; qualify the link target with its directory`,
+        problem: `ambiguous reference "[${display}](${item.target})": ${pre.ambiguous}; ${pre.remedy ?? AMBIGUOUS_LINK_REMEDY}`,
       };
     }
     const wholeIsExactTitle = whole.rec && normalizeTitle(display) === normalizeTitle(whole.rec.entry.title);
@@ -1016,6 +1051,25 @@ function addCycleErrors(out, cycleAnalysis) {
   }
 }
 
+// Two entries claiming one self-target path collide on the node identity the
+// whole graph is keyed by, so the collision is reported once per path and names
+// every claimant. Reporting it here, rather than only when something links to
+// the path, means an unreferenced duplicate still surfaces.
+function addDuplicatePathErrors(out, registry) {
+  for (const [pathKey, records] of [...registry.pathDupes].sort(([left], [right]) => compareTargets(left, right))) {
+    const claimants = records.map((record) => `${record.index} "${record.entry.title}"`).join(' and ');
+    const evidencePaths = records.map((record) => record.index);
+    for (const record of records) {
+      if (isRepoRelativeTarget(record.entry.selfTarget)) evidencePaths.push(record.entry.selfTarget.split('#')[0]);
+    }
+    pushStructuralError(out, {
+      index: '[duplicate]',
+      title: pathKey,
+      problem: `duplicate self-target "${pathKey}" declared by ${claimants}; give each entry its own breakout file`,
+    }, evidencePaths);
+  }
+}
+
 function analyze(files) {
   // files: { QUICK_WINS?, FEATURES?, BUGS? } raw markdown strings.
   const out = createAnalysisOutput();
@@ -1029,6 +1083,7 @@ function analyze(files) {
   addExploringDrafts(parsed, out, breakoutTargets);
   classifyTrackedEntries(parsed, registry, cycleAnalysis.cycleMembers, out, breakoutTargets);
   addCycleErrors(out, cycleAnalysis);
+  addDuplicatePathErrors(out, registry);
 
   out.breakoutTargets = breakoutTargets;
   return out;
