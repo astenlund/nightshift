@@ -461,6 +461,14 @@ test('local evidence accepts absent-host provisional rows', () => {
     }
 
     assert.doesNotThrow(() => evaluateEvidence({ checkoutRoot, evidenceRoot, release: false }))
+    const copiedRowPath = join(evidenceRoot, 'codex-repeat.json')
+    const copiedRowOriginal = readFileSync(copiedRowPath)
+    try {
+      writeFileSync(copiedRowPath, readFileSync(join(evidenceRoot, 'claude-clean.json')))
+      assert.throws(() => evaluateEvidence({ checkoutRoot, evidenceRoot, release: false }), /identity.*filename/i)
+    } finally {
+      writeFileSync(copiedRowPath, copiedRowOriginal)
+    }
     const evidenceHardlink = join(dirname(evidenceRoot), '.' + basename(evidenceRoot) + '-row-hardlink.json')
     try {
       linkSync(join(evidenceRoot, 'claude-clean.json'), evidenceHardlink)

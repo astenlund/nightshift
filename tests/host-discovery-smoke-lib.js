@@ -484,13 +484,15 @@ function evaluateEvidence({ checkoutRoot, evidenceRoot, release }) {
   const snapshot = inspectEvidenceDirectoryChain(checkoutRoot, evidenceRoot, false)
   const expectedRows = ['claude-clean.json', 'claude-repeat.json', 'codex-clean.json', 'codex-repeat.json']
   assertion(readdirSync(snapshot.root).sort(compareOrdinal).join(',') === expectedRows.join(','), 'Evidence root must contain exactly the four row files')
-  const rows = ['claude', 'codex'].flatMap((host) => ['clean', 'repeat'].map((mode) => readEvidence(snapshot.root, host, mode)))
-  for (const row of rows) {
+  const cells = ['claude', 'codex'].flatMap((host) => ['clean', 'repeat'].map((mode) => ({ host, mode, row: readEvidence(snapshot.root, host, mode) })))
+  for (const { host, mode, row } of cells) {
     validateEvidenceRow(row)
+    assertion(row.host === host && row.mode === mode, 'Evidence row identity differs from its filename')
     assertion(row.publicSkills.join(',') === expectedPublicSkillNames().join(','), 'Evidence public skills are unexpected')
     assertion(row.legacyCommands.length === 0 && row.legacySkillPresent === false, 'Evidence exposes legacy entry points')
     assertion(row.status === 'pass' || !release && row.status === 'provisional' && row.diagnostic === 'host executable absent', 'Evidence status is not accepted')
   }
+  const rows = cells.map((cell) => cell.row)
   const digest = candidateDigestForIndex(checkoutRoot)
   for (const row of rows) {
     assertion(row.candidateDigest === digest, 'Evidence candidate digest is stale or mixed')
