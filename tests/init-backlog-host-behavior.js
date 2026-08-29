@@ -1714,6 +1714,7 @@ function runLivePreSessionCommand({
     let adapter = null
     let timeoutFailure = null
     const { armDeadline, armPoll, settle } = createSettleGuard(resolve)
+    const completed = () => ({ exitCode: adapter.hostExitCode(), signal: null, stderrBytes: Buffer.concat(stderrChunks), stdoutBytes: Buffer.concat(stdoutChunks) })
     const retainRoot = () => adapter !== null && (adapter.retainsRunRoot?.() === true || adapter.closureProof().proven !== true)
     const production = processAdapterFactory({
       cwd: call.cwd,
@@ -1733,6 +1734,11 @@ function runLivePreSessionCommand({
     adapter = production.adapter
     onAdapterCreated(adapter)
     armDeadline(() => {
+      if (adapter.runnerClosed() && adapter.closureProof().proven === true) {
+        settle(completed())
+
+        return
+      }
       timeoutFailure = { code: 'preflight-timeout', host: call.host, ok: false, phase }
       if (adapter.terminate().ok !== true) {
         settle({ failure: infrastructureCarrier({ detailCode: 'termination', host: call.host, phase, retainedRunRoot: call.cwd }) })
@@ -1750,7 +1756,7 @@ function runLivePreSessionCommand({
         return
       }
       if (adapter.closureProof().proven === true) {
-        settle({ exitCode: adapter.hostExitCode(), signal: null, stderrBytes: Buffer.concat(stderrChunks), stdoutBytes: Buffer.concat(stdoutChunks) })
+        settle(completed())
       }
     }, pollMilliseconds)
     if (adapter.start({ args: call.argv, environment: call.environment, executable: call.executable }).ok !== true) {

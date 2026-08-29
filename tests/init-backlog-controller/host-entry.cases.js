@@ -1413,6 +1413,40 @@ function runHostEntryCases(repositoryRoot) {
     assert.deepEqual(completion, { failure: { code: 'preflight-timeout', host: 'claude-code', ok: false, phase: 'version' } })
   })
 
+  test('a live pre-session deadline accepts natural closure before its first completion poll', async () => {
+    let terminated = false
+    const completion = await hostBehavior.runLivePreSessionCommand({
+      call: {
+        argv: ['--version'],
+        boundary: 'version',
+        cwd: 'synthetic-preflight-root',
+        environment: {},
+        executable: 'synthetic-host',
+        host: 'claude-code',
+      },
+      deadlineMilliseconds: 5,
+      platform: 'win32',
+      pollMilliseconds: 100,
+      processAdapterFactory: () => ({
+        adapter: {
+          closureProof: () => ({ proven: true }),
+          hostExitCode: () => 0,
+          runnerClosed: () => true,
+          start: () => ({ ok: true }),
+          terminate: () => {
+            terminated = true
+
+            return { ok: false }
+          },
+        },
+        ok: true,
+      }),
+    })
+
+    assert.equal(terminated, false, 'proven natural closure does not request termination')
+    assert.deepEqual(completion, { exitCode: 0, signal: null, stderrBytes: Buffer.alloc(0), stdoutBytes: Buffer.alloc(0) })
+  })
+
   test('an unproven live pre-session termination reports the retained run root', async () => {
     const runRoot = 'synthetic-unproven-preflight-root'
     let adapterOptions = null
