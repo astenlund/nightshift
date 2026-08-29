@@ -87,7 +87,7 @@ function validRecoveryTemporaryTarget(target, record, inventory) {
 function readArtifact(root, target, options = {}, requireSingleLink = true) {
   const path = artifactPath(root, target)
   try {
-    return stableOpenFile(root, path, { ...options, requireSingleLink })
+    return stableOpenFile(root, path, boundedOpenOptions(options, recoveryArtifactByteLimit(target), { requireSingleLink }))
   } catch (error) {
     if (error?.code === 'ENOENT') return null
 
@@ -395,9 +395,9 @@ function backupEvidence(root, target, options = {}) {
   if (match === null) failure('recover-inspect', 'inspect', 'filesystem', 'Backup basename is invalid.', null)
   let backup
   try {
-    backup = readArtifact(root, target, { ...options, maxBytes: MAX_INLINE_FILE_BYTES }, true)
+    backup = readArtifact(root, target, boundedOpenOptions(options, MAX_MECHANICAL_FILE_BYTES), true)
   } catch (error) {
-    if (error?.message?.includes('byte limit')) failure('recover-inspect', 'inspect', 'payload-too-large', 'Backup exceeds the maximum inline size.', target, error)
+    if (error?.message?.includes('byte limit')) failure('recover-inspect', 'inspect', 'payload-too-large', 'Backup exceeds the maximum mechanical size.', target, error)
 
     throw error
   }
@@ -407,9 +407,9 @@ function backupEvidence(root, target, options = {}) {
   const candidateTarget = candidate?.target ?? null
   let current
   try {
-    current = candidateTarget === null ? null : readArtifact(root, candidateTarget, { ...options, maxBytes: MAX_INLINE_FILE_BYTES }, true)
+    current = candidateTarget === null ? null : readArtifact(root, candidateTarget, boundedOpenOptions(options, MAX_MECHANICAL_FILE_BYTES), true)
   } catch (error) {
-    if (error?.message?.includes('byte limit')) failure('recover-inspect', 'inspect', 'payload-too-large', 'Current recovery target exceeds the maximum inline size.', candidateTarget, error)
+    if (error?.message?.includes('byte limit')) failure('recover-inspect', 'inspect', 'payload-too-large', 'Current recovery target exceeds the maximum mechanical size.', candidateTarget, error)
 
     throw error
   }
@@ -854,7 +854,7 @@ function applyBackup(root, inspection, disposition, options = {}) {
   const evidence = inspection.evidence.backup
   const remove = options.removeAndVerify ?? removeAndVerify
   const backupPath = artifactPath(root, inspection.recoveryTarget)
-  const backup = stableOpenFile(root, backupPath, { ...options, requireSingleLink: true })
+  const backup = stableOpenFile(root, backupPath, boundedOpenOptions(options, MAX_MECHANICAL_FILE_BYTES, { requireSingleLink: true }))
   if (backup.rawSha256 !== evidence.backupRawSha256 || modeFor(backup, options.platform) !== evidence.backupMode) throw new Error('Backup evidence changed')
   if (disposition === 'remove' || disposition === 'accept') {
     if (disposition === 'accept' && evidence.currentTarget !== null) {
@@ -1165,8 +1165,9 @@ function applyRecovery(request, options = {}) {
         const state = request.disposition
         const valid = invalidatedMarkerRecord(root, marker, state)
         if (existsSync(temporary)) {
-          const staged = stableOpenFile(root, temporary, { ...options, requireSingleLink: true })
-          if (!staged.bytes.equals(Buffer.from(`${canonicalJson(valid)}\n`, 'utf8')) || marker.mode !== null && staged.mode !== marker.mode) throw new Error('Marker recovery temporary changed')
+          const validBytes = Buffer.from(`${canonicalJson(valid)}\n`, 'utf8')
+          const staged = stableOpenFile(root, temporary, boundedOpenOptions(options, validBytes.length, { requireSingleLink: true }))
+          if (!staged.bytes.equals(validBytes) || marker.mode !== null && staged.mode !== marker.mode) throw new Error('Marker recovery temporary changed')
           removeAndVerify(temporary, options)
         }
         try {

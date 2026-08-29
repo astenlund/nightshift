@@ -2,7 +2,7 @@
 
 const { lstatSync } = require('node:fs')
 
-const { containedTargetPath, platformMode, stableOpenFile, verifyFinalMode } = require('./filesystem')
+const { boundedOpenOptions, containedTargetPath, platformMode, stableOpenFile, verifyFinalMode } = require('./filesystem')
 const { MAX_MECHANICAL_FILE_BYTES, canonicalJson, proposalsByCanonicalAction } = require('./protocol')
 const { unwrapText } = require('../unwrap')
 
@@ -34,7 +34,7 @@ function validateUnwrapDigest(finding, action) {
 }
 
 function openUnwrapTarget(root, action, options) {
-  return stableOpenFile(root, targetPath(root, action.target), { ...options, maxBytes: Math.min(options.maxBytes ?? MAX_MECHANICAL_FILE_BYTES, MAX_MECHANICAL_FILE_BYTES), requireSingleLink: true })
+  return stableOpenFile(root, targetPath(root, action.target), boundedOpenOptions(options, MAX_MECHANICAL_FILE_BYTES, { requireSingleLink: true }))
 }
 
 function actionAfter(request, action, root, options) {
@@ -77,7 +77,8 @@ function targetMatchesOutput(root, path, kind, bytes, mode, options) {
       return true
     }
     if (!metadata.isFile()) throw new Error('Publication target kind changed')
-    const opened = stableOpenFile(root, path, { ...options, requireSingleLink: true })
+    if (metadata.size !== BigInt(bytes.length)) return false
+    const opened = stableOpenFile(root, path, boundedOpenOptions(options, bytes.length, { requireSingleLink: true }))
     if (!opened.bytes.equals(bytes)) return false
     if (mode !== null && opened.mode !== mode) throw new Error('Publication target mode changed')
 

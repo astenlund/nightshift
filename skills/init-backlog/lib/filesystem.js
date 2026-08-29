@@ -12,7 +12,6 @@ const {
   lstatSync,
   mkdirSync,
   openSync,
-  readFileSync,
   readSync,
   realpathSync,
   readdirSync,
@@ -23,7 +22,7 @@ const {
 } = require('node:fs')
 const { spawnSync } = require('node:child_process')
 const { TextDecoder } = require('node:util')
-const { isAbsolute, join } = require('node:path')
+const { dirname, isAbsolute, join } = require('node:path')
 
 const { InitBacklogError } = require('./errors')
 const { DIGEST_PATTERN, MAX_APPLY_REQUEST_BYTES, MAX_INSPECT_REQUEST_BYTES, MAX_RECOVERY_REQUEST_BYTES, NONCE_PATTERN, OWNER_BASENAME: REQUEST_OWNER_BASENAME, OWNER_STAGE_BASENAME: REQUEST_OWNER_STAGE_BASENAME, RECOVERY_LOCK_BASENAME, assertSafeWindowsScalar, canonicalJson, compareOrdinal, sameKeys, sha256, validateNonce } = require('./protocol')
@@ -165,6 +164,15 @@ function stableOpenFile(root, target, options = {}) {
 
 function boundedOpenOptions(options, maxBytes, overrides = {}) {
   return { ...options, ...overrides, maxBytes: Math.min(options.maxBytes ?? maxBytes, maxBytes) }
+}
+
+function readExactFile(path, expectedBytes, options = {}, requireSingleLink = true) {
+  const actual = options.readFileSync === undefined
+    ? stableOpenFile(dirname(path), path, boundedOpenOptions(options, expectedBytes.length, { requireSingleLink })).bytes
+    : options.readFileSync(path)
+  if (!actual.equals(expectedBytes)) throw new Error('Staged file readback differs')
+
+  return actual
 }
 
 function decodeDirectoryName(name, platform = process.platform) {
@@ -454,7 +462,6 @@ function stageBytes(path, bytes, options = {}) {
   const stat = options.fstatSync ?? fstatSync
   const write = options.writeSync ?? writeSync
   const flush = options.fsyncSync ?? fsyncSync
-  const read = options.readFileSync ?? readFileSync
   const descriptor = open(path, constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY, 0o600)
   let closed = false
   try {
@@ -483,9 +490,11 @@ function stageBytes(path, bytes, options = {}) {
       close(descriptor)
     }
   }
-  const readback = read(path)
-  if (!readback.equals(bytes)) {
-    throw new Error('Request stage readback differs')
+  try {
+    readExactFile(path, bytes, options)
+  } catch (error) {
+    if (error.message === 'Staged file readback differs') throw new Error('Request stage readback differs', { cause: error })
+    throw error
   }
 }
 
@@ -493,16 +502,11 @@ function writeFlushedFile(path, bytes, options = {}) {
   const value = Buffer.isBuffer(bytes) ? bytes : Buffer.from(bytes)
   stageBytes(path, value, { ...options, onTransition: options.onTransition })
 
-  return readFileSync(path)
+  return Buffer.from(value)
 }
 
 function readBackExact(path, expectedBytes, options = {}) {
-  const actual = (options.readFileSync ?? readFileSync)(path)
-  if (!actual.equals(expectedBytes)) {
-    throw new Error('Staged file readback differs')
-  }
-
-  return actual
+  return readExactFile(path, expectedBytes, options)
 }
 
 function assignAndVerifyMode(path, mode, options = {}) {
@@ -545,9 +549,11 @@ function renameVerified(source, destination, expectedBytes, options = {}) {
   if ((options.pathExists ?? pathExists)(source)) {
     throw new Error('Publication source remains after rename')
   }
-  const bytes = (options.readFileSync ?? readFileSync)(destination)
-  if (!bytes.equals(expectedBytes)) {
-    throw new Error('Renamed publication readback differs')
+  try {
+    readExactFile(destination, expectedBytes, options, false)
+  } catch (error) {
+    if (error.message === 'Staged file readback differs') throw new Error('Renamed publication readback differs', { cause: error })
+    throw error
   }
   options.onRenamed?.(destination)
 

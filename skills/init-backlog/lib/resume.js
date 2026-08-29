@@ -4,7 +4,7 @@ const { lstatSync } = require('node:fs')
 
 const { POSIX_DEFAULT_FILE_MODE, actionAfter, actionBefore, targetMatchesOutput, targetPath } = require('./actions')
 const { deriveRequestManifestId } = require('./apply-manifest')
-const { classifyPid, pathExists, platformMode, stableOpenFile } = require('./filesystem')
+const { boundedOpenOptions, classifyPid, pathExists, platformMode, stableOpenFile } = require('./filesystem')
 
 function approvedGuidanceCreation(request) {
   const rootGuidance = request.inspection?.guidance?.baseAdapter
@@ -77,7 +77,7 @@ function matchesApprovedFile(root, path, bytes, mode, options) {
   try {
     const metadata = lstatSync(path, { bigint: true })
     if (metadata.isSymbolicLink() || !metadata.isFile()) return false
-    const opened = stableOpenFile(root, path, { ...options, requireSingleLink: false })
+    const opened = stableOpenFile(root, path, boundedOpenOptions(options, bytes.length, { requireSingleLink: false }))
     if (!opened.bytes.equals(bytes)) return false
 
     return mode === null || opened.mode === mode

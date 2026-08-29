@@ -9,7 +9,7 @@ const { analyzeCatalog } = require('../../ready/ready')
 const { BACKLOG_DIRECTORY_TARGETS, PLANS_DIRECTORY_TARGET, loadManifest } = require('./assets')
 const { inspectBackups } = require('./backups')
 const { InitBacklogError, failureRecord } = require('./errors')
-const { HTML_BLOCK_TYPE_SIX_TAGS, discoverControlledMarkdown, resolveGuidance } = require('./guidance')
+const { HTML_BLOCK_TYPE_SIX_TAGS, MAX_GUIDANCE_FILE_BYTES, discoverControlledMarkdown, resolveGuidance } = require('./guidance')
 const { boundedOpenOptions, canonicalRoot, comparableIdentity, comparableMode, createInitialLock, initialLockPaths, removeInitialLock, stableOpenFile, targetPath } = require('./filesystem')
 const { BACKUP_DIRECTORY, DIGEST_PATTERN, MAX_INLINE_FILE_BYTES, MAX_MECHANICAL_FILE_BYTES, MAX_RECOVERY_REQUEST_BYTES, RECOVERY_LOCK_BASENAME, RECOVERY_LOCK_STAGE_PATTERN, RECOVERY_MARKER_BASENAME, canonicalJson, compareOrdinal, deriveProposalId, deriveSnapshotId, sameKeys, sha256 } = require('./protocol')
 const { detectGitKind, inspectGitPolicy, newlineStyle, plansRootRuleEffective } = require('./git-policy')
@@ -573,7 +573,7 @@ function newlineFamily(target, resolvedGuidance) {
 function guidanceNewlineEvidence(root, guidance, options = {}) {
   const paths = [...new Set([...(guidance.graphPaths ?? []), ...(guidance.independentPaths ?? [])])]
   return paths.filter((target) => target.endsWith('.md')).map((target) => {
-    const opened = stableOpenFile(root, join(root, ...target.split('/')), { ...options, requireSingleLink: false })
+    const opened = stableOpenFile(root, join(root, ...target.split('/')), boundedOpenOptions(options, MAX_GUIDANCE_FILE_BYTES, { requireSingleLink: false }))
 
     return { style: newlineStyle(opened.bytes), target }
   }).filter((item) => item.style === 'lf' || item.style === 'crlf')

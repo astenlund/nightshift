@@ -784,6 +784,35 @@ function runInspectionCases(repositoryRoot) {
     }
   })
 
+  test('guidance newline evidence preserves the guidance byte ceiling after initial resolution', () => {
+    for (const extraBytes of [0, 1]) {
+      const root = mkdtempSync(join(tmpdir(), 'nightshift-guidance-reopen-bound-'))
+      try {
+        const path = join(root, 'CLAUDE.md')
+        writeFileSync(path, '# Initial\n')
+        const options = { candidates: [] }
+        Object.defineProperty(options, 'ignoreProbes', {
+          get() {
+            writeFileSync(path, sizedMarkdown('# Instructions', MAX_INLINE_FILE_BYTES + extraBytes))
+
+            return []
+          },
+        })
+
+        if (extraBytes === 0) {
+          assert.equal(collectInspection(root, 'claude-code', { claudeContextSource: 'host-observed', claudeRootExclusionStatus: 'included' }, options).ok, true)
+        } else {
+          assert.throws(
+            () => collectInspection(root, 'claude-code', { claudeContextSource: 'host-observed', claudeRootExclusionStatus: 'included' }, options),
+            (error) => error.record?.code === 'git-policy' && error.cause?.code === 'file-too-large',
+          )
+        }
+      } finally {
+        rmSync(root, { force: true, recursive: true })
+      }
+    }
+  })
+
   test('orphan lock-stage discovery validates an ordinary stable candidate before surfacing it', () => {
     const root = mkdtempSync(join(tmpdir(), 'nightshift-stage-'))
     const name = `.nightshift-init-backlog.lock.1234.${'b'.repeat(32)}.new`

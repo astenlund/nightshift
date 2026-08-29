@@ -3,8 +3,8 @@
 const { lstatSync } = require('node:fs')
 const { join } = require('node:path')
 
-const { enumerateDirectory, stableMetadata, stableOpenFile, withAttributeProbe } = require('./filesystem')
-const { BACKUP_DIRECTORY, BACKUP_PATTERN, BACKUP_STAGE_PATTERN, backupFileNames, compareOrdinal, sha256 } = require('./protocol')
+const { boundedOpenOptions, enumerateDirectory, stableMetadata, stableOpenFile, withAttributeProbe } = require('./filesystem')
+const { BACKUP_DIRECTORY, BACKUP_PATTERN, BACKUP_STAGE_PATTERN, MAX_MECHANICAL_FILE_BYTES, backupFileNames, compareOrdinal, sha256 } = require('./protocol')
 
 function backupParts(target) {
   const stage = BACKUP_STAGE_PATTERN.exec(target)
@@ -52,12 +52,12 @@ function inspectBackups(root, targets, options = {}) {
     const parts = backupParts(target)
     if (parts === null || parts.kind !== 'final') continue
     const path = join(root, ...target.split('/'))
-    const backup = stableOpenFile(root, path, { ...options, requireSingleLink: true })
+    const backup = stableOpenFile(root, path, boundedOpenOptions(options, MAX_MECHANICAL_FILE_BYTES, { requireSingleLink: true }))
     const currentTarget = targetByHash.get(parts.targetHash)
     let current = null
     if (currentTarget !== undefined) {
       try {
-        current = stableOpenFile(root, join(root, ...currentTarget.split('/')), { ...options, requireSingleLink: true })
+        current = stableOpenFile(root, join(root, ...currentTarget.split('/')), boundedOpenOptions(options, MAX_MECHANICAL_FILE_BYTES, { requireSingleLink: true }))
       } catch (error) {
         if (error?.code !== 'ENOENT') throw error
       }

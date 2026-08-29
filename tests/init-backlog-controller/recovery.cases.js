@@ -50,6 +50,14 @@ function writeCanonical(path, value, mode = 0o600) {
   writeFileSync(path, Buffer.from(`${canonicalJson(value)}\n`, 'utf8'), { mode })
 }
 
+function causeChainHasCode(error, code) {
+  for (let current = error; current !== undefined; current = current.cause) {
+    if (current?.code === code) return true
+  }
+
+  return false
+}
+
 function backupFixture(target = 'FEATURES.md', backupByte = 'backup\n', currentByte = 'current\n') {
   const root = fixtureRoot()
   mkdirSync(join(root, '.tmp'), { mode: 0o700 })
@@ -1871,8 +1879,8 @@ function runRecoveryCases() {
     }
   })
 
-  test('oversized backup fails with typed payload-too-large recovery record before embedding', () => {
-    const fixture = backupFixture('FEATURES.md', 'b'.repeat(65537), 'current\n')
+  test('oversized mechanical backup fails with typed payload-too-large recovery record before embedding', () => {
+    const fixture = backupFixture('FEATURES.md', 'b'.repeat(MAX_MECHANICAL_FILE_BYTES + 1), 'current\n')
     try {
       assert.throws(() => inspectRecovery(request(fixture.root, 'abandoned-backup', fixture.backupTarget), { currentInspection: { targets: [{ target: fixture.target }] } }), (error) => error.record?.code === 'payload-too-large' && error.record.phase === 'inspect')
     } finally {
@@ -1880,17 +1888,17 @@ function runRecoveryCases() {
     }
   })
 
-  test('matched backup current target is bounded independently at the inline limit', () => {
-    const exact = backupFixture('FEATURES.md', 'backup\n', 'c'.repeat(MAX_INLINE_FILE_BYTES))
+  test('matched backup current target is bounded independently at the mechanical limit', () => {
+    const exact = backupFixture('FEATURES.md', 'backup\n', 'c'.repeat(MAX_MECHANICAL_FILE_BYTES))
     try {
       const inspected = backupInspection(exact)
-      assert.equal(Buffer.from(inspected.evidence.backup.currentContentBase64, 'base64').length, MAX_INLINE_FILE_BYTES)
+      assert.equal(Buffer.from(inspected.evidence.backup.currentContentBase64, 'base64').length, MAX_MECHANICAL_FILE_BYTES)
       const dispatched = runPrivateDispatcher(Buffer.from(`${canonicalJson(request(exact.root, 'abandoned-backup', exact.backupTarget))}\n`, 'utf8'), { 'recover-inspect': (value) => inspectRecovery(value, { currentInspection: { targets: [{ target: exact.target }] } }) })
       assert.equal(dispatched.exitCode, 0)
       assert.equal(JSON.parse(dispatched.stdout.toString('utf8')).ok, true)
     } finally { rmSync(exact.root, { force: true, recursive: true }) }
 
-    const oversized = backupFixture('FEATURES.md', 'backup\n', 'd'.repeat(MAX_INLINE_FILE_BYTES + 1))
+    const oversized = backupFixture('FEATURES.md', 'backup\n', 'd'.repeat(MAX_MECHANICAL_FILE_BYTES + 1))
     try {
       const dispatched = runPrivateDispatcher(Buffer.from(`${canonicalJson(request(oversized.root, 'abandoned-backup', oversized.backupTarget))}\n`, 'utf8'), { 'recover-inspect': (value) => inspectRecovery(value, { currentInspection: { targets: [{ target: oversized.target }] } }) })
       assert.equal(dispatched.exitCode, 1)
@@ -1899,6 +1907,23 @@ function runRecoveryCases() {
       assert.equal(result.operation, 'recover-inspect')
       assert.equal(result.phase, 'inspect')
     } finally { rmSync(oversized.root, { force: true, recursive: true }) }
+  })
+
+  test('recovery apply preserves the mechanical byte ceiling after inspection', () => {
+    for (const extraBytes of [0, 1]) {
+      const fixture = backupFixture()
+      try {
+        const inspected = backupInspection(fixture)
+        writeFileSync(join(fixture.root, fixture.target), Buffer.alloc(MAX_MECHANICAL_FILE_BYTES + extraBytes, 0x61), { mode: 0o644 })
+
+        assert.throws(
+          () => applyRecovery({ ...request(fixture.root, 'abandoned-backup', fixture.backupTarget), operation: 'recover-apply', recoveryInspection: inspected, disposition: 'accept' }),
+          (error) => extraBytes === 0 ? !causeChainHasCode(error, 'file-too-large') : causeChainHasCode(error, 'file-too-large'),
+        )
+      } finally {
+        rmSync(fixture.root, { force: true, recursive: true })
+      }
+    }
   })
 
   test('restore failure returns typed recovery status, retained backups, and manual cleanup warning', () => {

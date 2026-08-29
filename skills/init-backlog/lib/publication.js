@@ -29,7 +29,7 @@ const {
 } = require('./filesystem')
 const { collectInspection, composeElectionMarker } = require('./inspection')
 const { approvedProgress, detectResume, liveHostContext, publishedHostContext, resumeProjectionScope } = require('./resume')
-const { BACKUP_DIRECTORY, DIGEST_PATTERN, MAX_MECHANICAL_FILE_BYTES, MAX_RECOVERY_REQUEST_BYTES, NONCE_PATTERN, OWNER_RECORD_KEYS, RECOVERY_GATE_BASENAME, RECOVERY_LOCK_BASENAME: LOCK_BASENAME, RECOVERY_MARKER_BASENAME: ELECTION_BASENAME, canonicalJson, compareOrdinal, electionMarkerTemporaryNames, sameKeys, sha256 } = require('./protocol')
+const { BACKUP_DIRECTORY, DIGEST_PATTERN, MAX_INLINE_FILE_BYTES, MAX_MECHANICAL_FILE_BYTES, MAX_RECOVERY_REQUEST_BYTES, NONCE_PATTERN, OWNER_RECORD_KEYS, RECOVERY_GATE_BASENAME, RECOVERY_LOCK_BASENAME: LOCK_BASENAME, RECOVERY_MARKER_BASENAME: ELECTION_BASENAME, canonicalJson, compareOrdinal, electionMarkerTemporaryNames, sameKeys, sha256 } = require('./protocol')
 
 const POSIX_DEFAULT_DIRECTORY_MODE = 0o755
 
@@ -77,9 +77,9 @@ function restoreUnwrapBatch(root, actions, manifestId, snapshotId, options = {})
   for (const action of [...actions].reverse()) {
     const backup = backupTarget(action.target, snapshotId, manifestId)
     const backupPath = targetPath(root, backup)
-    const opened = stableOpenFile(root, backupPath, { ...options, requireSingleLink: true })
+    const opened = stableOpenFile(root, backupPath, boundedOpenOptions(options, MAX_MECHANICAL_FILE_BYTES, { requireSingleLink: true }))
     const targetPathValue = targetPath(root, action.target)
-    const current = stableOpenFile(root, targetPathValue, { ...options, requireSingleLink: true })
+    const current = stableOpenFile(root, targetPathValue, boundedOpenOptions(options, MAX_MECHANICAL_FILE_BYTES, { requireSingleLink: true }))
     const approvedMode = platformMode(options, action.mode)
     publishRecoveryFile(root, targetPathValue, opened.bytes, opened.mode, { ...options, expected: { identity: current.identity, mode: approvedMode, rawSha256: action.afterRawSha256 }, recoveryId: manifestId, temporary: targetPath(root, recoveryTemporaryTarget(action.target, manifestId)) })
   }
@@ -141,16 +141,20 @@ function readRecordBytes(record) {
   return Buffer.from(record.contentBase64, 'base64')
 }
 
+function inspectionRecordByteLimit(record) {
+  return record.contentRole === 'mechanical' ? MAX_MECHANICAL_FILE_BYTES : MAX_INLINE_FILE_BYTES
+}
+
 function initialStates(inspection, root, options) {
-  return new Map((inspection.targets ?? []).map((record) => [record.target, {
-    content: readRecordBytes(record),
-    identity: record.kind === 'file' && !(record.states ?? []).includes('missing') ? (() => {
-      try { return stableOpenFile(root, targetPath(root, record.target), options).identity } catch (error) { if (error?.code === 'ENOENT') return null; throw error }
-    })() : null,
-    kind: record.kind,
-    mode: record.mode,
-    present: !(record.states ?? []).includes('missing'),
-  }]))
+  return new Map((inspection.targets ?? []).map((record) => {
+    const content = readRecordBytes(record)
+    const present = !(record.states ?? []).includes('missing')
+    const identity = record.kind === 'file' && present ? (() => {
+      try { return stableOpenFile(root, targetPath(root, record.target), boundedOpenOptions(options, inspectionRecordByteLimit(record))).identity } catch (error) { if (error?.code === 'ENOENT') return null; throw error }
+    })() : null
+
+    return [record.target, { content, identity, kind: record.kind, mode: record.mode, present }]
+  }))
 }
 
 function hydrateUnwrapStates(request, actions, states, root, options, backupTargets, existing, resume) {
@@ -163,7 +167,7 @@ function hydrateUnwrapStates(request, actions, states, root, options, backupTarg
     } catch (error) {
       const backupTargetValue = backupTargets[index]
       if (resume !== true || error?.message !== 'Mechanical unwrap input changed before publication' || !existingInventory.has(backupTargetValue)) throw error
-      const opened = stableOpenFile(root, targetPath(root, backupTargetValue), { ...options, maxBytes: Math.min(options.maxBytes ?? MAX_MECHANICAL_FILE_BYTES, MAX_MECHANICAL_FILE_BYTES), requireSingleLink: true })
+      const opened = stableOpenFile(root, targetPath(root, backupTargetValue), boundedOpenOptions(options, MAX_MECHANICAL_FILE_BYTES, { requireSingleLink: true }))
       if (opened.rawSha256 !== action.beforeRawSha256 || state.mode !== null && opened.mode !== state.mode) throw new Error('Owned unwrap backup changed before resume')
       state.content = opened.bytes
     }
@@ -188,7 +192,7 @@ function stableTarget(root, path, expected, options) {
 
     return { present: true, kind: 'directory', mode: expected.mode }
   }
-  const opened = stableOpenFile(root, path, { ...options, requireSingleLink: true })
+  const opened = stableOpenFile(root, path, boundedOpenOptions(options, expected.content?.length ?? MAX_MECHANICAL_FILE_BYTES, { requireSingleLink: true }))
   if (expected.content !== null && !opened.bytes.equals(expected.content)) throw new Error('Target bytes changed before publication')
   if (expected.mode !== null && opened.mode !== expected.mode) throw new Error('Target mode changed before publication')
   if (expected.identity !== null && opened.identity !== expected.identity) throw new Error('Target identity changed before publication')
@@ -207,15 +211,23 @@ function notifyWrite(options, path) {
   options.writeSpy?.(path)
 }
 
-function registerTemporary(root, ownedTemporaries, path, bytes, options, requireSingleLink = true) {
-  const opened = stableOpenFile(root, path, { ...options, requireSingleLink })
+function registerTemporary(root, ownedTemporaries, path, bytes, options, requireSingleLink = true, mode = null) {
+  const opened = stableOpenFile(root, path, boundedOpenOptions(options, bytes.length, { requireSingleLink }))
   if (!opened.bytes.equals(bytes)) throw new Error('Staged temporary bytes changed')
   ownedTemporaries.set(path, { bytes: Buffer.from(bytes), identity: opened.identity, requireSingleLink })
 }
 
 function verifyOwnedTemporary(root, path, owned, options, requireSingleLink = owned.requireSingleLink) {
-  const current = stableOpenFile(root, path, { ...options, requireSingleLink })
+  const current = stableOpenFile(root, path, boundedOpenOptions(options, owned.bytes.length, { requireSingleLink }))
   if (current.identity !== owned.identity || !current.bytes.equals(owned.bytes) || owned.mode !== null && current.mode !== owned.mode) throw new Error('Reserved temporary changed before publication')
+  if (owned.linkCount !== undefined) {
+    const metadata = lstatSync(path, { bigint: true })
+    if (metadata.nlink !== BigInt(owned.linkCount)) throw new Error('Reserved temporary link count changed')
+    for (const peer of owned.peers ?? []) {
+      const peerFile = stableOpenFile(root, peer, boundedOpenOptions(options, owned.bytes.length, { requireSingleLink: false }))
+      if (peerFile.identity !== owned.identity || !peerFile.bytes.equals(owned.bytes) || owned.mode !== null && peerFile.mode !== owned.mode) throw new Error('Reserved temporary link identity changed')
+    }
+  }
 
   return current
 }
@@ -236,7 +248,7 @@ function verifyOwnedPublishedLink(root, path, owned, options) {
   if (owned.destination === null) return
   const temporaryMetadata = lstatSync(path, { bigint: true })
   const destinationMetadata = lstatSync(owned.destination, { bigint: true })
-  const destination = stableOpenFile(root, owned.destination, { ...options, requireSingleLink: false })
+  const destination = stableOpenFile(root, owned.destination, boundedOpenOptions(options, owned.bytes.length, { requireSingleLink: false }))
   if (temporaryMetadata.nlink !== 2n || destinationMetadata.nlink !== 2n || destination.identity !== owned.identity || !destination.bytes.equals(owned.bytes) || owned.mode !== null && destination.mode !== owned.mode) throw new Error('Published target shares an unexpected temporary identity')
 }
 
@@ -273,7 +285,7 @@ function publishContent(root, path, bytes, mode, temp, options, replace, expecte
     if (error?.code !== 'ENOENT') throw error
     options.onTemporaryRemoved?.(temp)
   }
-  const final = stableOpenFile(root, path, { ...options, requireSingleLink: true })
+  const final = stableOpenFile(root, path, boundedOpenOptions(options, bytes.length, { requireSingleLink: true }))
   if (!final.bytes.equals(bytes) || (mode !== null && final.mode !== mode)) throw new Error('Published target verification failed')
   transition(options, 'after-final-verification')
   transition(options, 'after-temporary-cleanup')
@@ -286,7 +298,7 @@ function targetMatchesPublishedTemporary(root, path, bytes, mode, temporary, opt
   if (owned?.destination !== path) return false
   verifyOwnedTemporary(root, temporary, owned, options, false)
   const metadata = lstatSync(path, { bigint: true })
-  const destination = stableOpenFile(root, path, { ...options, requireSingleLink: false })
+  const destination = stableOpenFile(root, path, boundedOpenOptions(options, bytes.length, { requireSingleLink: false }))
   if (metadata.nlink !== 2n || destination.identity !== owned.identity || !destination.bytes.equals(bytes) || mode !== null && destination.mode !== mode) throw new Error('Published target shares an unexpected temporary identity')
 
   return true
@@ -323,12 +335,12 @@ function publishRecoveryFile(root, path, bytes, mode, options = {}) {
     verifyPublishedIdentity(root, temporary, path, bytes)
   } else {
     options.onBeforeRename?.(path)
-    const current = stableOpenFile(root, path, { ...options, requireSingleLink: true })
+    const current = stableOpenFile(root, path, boundedOpenOptions(options, MAX_MECHANICAL_FILE_BYTES, { requireSingleLink: true }))
     if (expected.identity !== undefined && current.identity !== expected.identity || expected.rawSha256 !== undefined && current.rawSha256 !== expected.rawSha256 || expected.mode !== undefined && expected.mode !== null && current.mode !== expected.mode) throw new Error('Recovery publication target changed before rename')
     options.verifyLock?.()
     renameVerified(temporary, path, bytes, options)
   }
-  const final = stableOpenFile(root, path, { ...options, requireSingleLink: expected === null ? false : true })
+  const final = stableOpenFile(root, path, boundedOpenOptions(options, bytes.length, { requireSingleLink: expected === null ? false : true }))
   if (!final.bytes.equals(bytes) || mode !== null && final.mode !== mode) throw new Error('Recovery publication verification failed')
   if (expected === null) {
     removeAndVerify(temporary, options)
@@ -338,10 +350,10 @@ function publishRecoveryFile(root, path, bytes, mode, options = {}) {
 }
 
 function removeRecoveryFile(root, path, expected, options = {}) {
-  const current = stableOpenFile(root, path, { ...options, requireSingleLink: true })
+  const current = stableOpenFile(root, path, boundedOpenOptions(options, MAX_MECHANICAL_FILE_BYTES, { requireSingleLink: true }))
   if (expected !== undefined && (current.rawSha256 !== expected.rawSha256 || expected.mode !== null && current.mode !== expected.mode || expected.identity !== undefined && current.identity !== expected.identity)) throw new Error('Recovery removal evidence changed')
   options.onBeforeRemove?.(path)
-  const rebound = stableOpenFile(root, path, { ...options, requireSingleLink: true })
+  const rebound = stableOpenFile(root, path, boundedOpenOptions(options, MAX_MECHANICAL_FILE_BYTES, { requireSingleLink: true }))
   if (expected !== undefined && (rebound.rawSha256 !== expected.rawSha256 || expected.mode !== null && rebound.mode !== expected.mode || expected.identity !== undefined && rebound.identity !== expected.identity)) throw new Error('Recovery removal evidence changed')
   options.verifyLock?.()
   const remove = options.removeAndVerify ?? removeAndVerify
@@ -487,11 +499,12 @@ function markerBytes(request, admission, root) {
 }
 
 function markerOwnership(root, path, bytes, mode, options, linkCount, peers = []) {
-  const opened = stableOpenFile(root, path, { ...options, requireSingleLink: false })
+  const openOptions = boundedOpenOptions(options, bytes.length, { requireSingleLink: false })
+  const opened = stableOpenFile(root, path, openOptions)
   const metadata = lstatSync(path, { bigint: true })
   if (!opened.bytes.equals(bytes) || mode !== null && opened.mode !== mode || metadata.nlink !== BigInt(linkCount)) throw new Error('Election marker temporary differs from its approved image')
   for (const peer of peers) {
-    const peerOpened = stableOpenFile(root, peer, { ...options, requireSingleLink: false })
+    const peerOpened = stableOpenFile(root, peer, openOptions)
     if (peerOpened.identity !== opened.identity || !peerOpened.bytes.equals(bytes) || mode !== null && peerOpened.mode !== mode) throw new Error('Election marker temporary identity differs from its approved image')
   }
   options.ownedTemporaries?.set(path, { bytes: Buffer.from(bytes), destination: null, identity: opened.identity, linkCount, mode, peers, requireSingleLink: false })
@@ -535,8 +548,9 @@ function markerOldBytes(request, root) {
 
 function adoptMarkerTemporaries(root, existing, paths, finalBytes, finalMode, oldBytes, oldMode, options) {
   if (existing === null) return
+  const markerByteLimit = Math.max(finalBytes.length, oldBytes?.length ?? 0)
   const read = (path) => {
-    try { return stableOpenFile(root, path, { ...options, requireSingleLink: false }) } catch (error) { if (error?.code === 'ENOENT') return null; throw error }
+    try { return stableOpenFile(root, path, boundedOpenOptions(options, markerByteLimit, { requireSingleLink: false })) } catch (error) { if (error?.code === 'ENOENT') return null; throw error }
   }
   const alias = read(paths.electionAlias)
   const oldWitness = read(paths.electionOldWitness)
@@ -599,7 +613,7 @@ function adoptMarkerTemporaries(root, existing, paths, finalBytes, finalMode, ol
 }
 
 function adoptBootstrapStage(root, path, existingRecord, options, ownedTemporaries) {
-  const opened = stableOpenFile(root, path, { ...options, requireSingleLink: true })
+  const opened = stableOpenFile(root, path, boundedOpenOptions(options, MAX_RECOVERY_REQUEST_BYTES, { requireSingleLink: true }))
   let record
   try { record = JSON.parse(opened.bytes.toString('utf8')) } catch (error) { throw new Error('Bootstrap stage record is invalid', { cause: error }) }
   const next = join(root, `${LOCK_BASENAME}.${existingRecord.ownerNonce}.next`)
@@ -611,7 +625,7 @@ function adoptBootstrapStage(root, path, existingRecord, options, ownedTemporari
 function adoptPendingLockUpgrade(root, existing, expectedRecord, path, options, ownedTemporaries) {
   if (existing === null || existing.record.manifestId !== null) return { bytes: Buffer.from(`${canonicalJson(expectedRecord)}\n`, 'utf8'), record: expectedRecord }
   try {
-    const opened = stableOpenFile(root, path, { ...options, requireSingleLink: true })
+    const opened = stableOpenFile(root, path, boundedOpenOptions(options, MAX_RECOVERY_REQUEST_BYTES, { requireSingleLink: true }))
     const record = JSON.parse(opened.bytes.toString('utf8'))
     const expected = { ...expectedRecord, createdAtUnixMs: record?.createdAtUnixMs }
     if (record === null || typeof record !== 'object' || Array.isArray(record) || !Number.isSafeInteger(record.createdAtUnixMs) || record.createdAtUnixMs < 0 || canonicalJson(record) !== canonicalJson(expected) || (options.platform ?? process.platform) !== 'win32' && opened.mode !== 0o600) throw new Error('Pending lock upgrade differs from the approved manifest')
@@ -644,22 +658,23 @@ function adoptResumeTemporaries(root, existing, expectedTemporaries, options, ow
       try {
         let opened
         let requireSingleLink = true
+        const openOptions = boundedOpenOptions(options, expected.bytes.length)
         try {
-          opened = stableOpenFile(root, path, { ...options, requireSingleLink: true })
+          opened = stableOpenFile(root, path, { ...openOptions, requireSingleLink: true })
         } catch (error) {
           const metadata = lstatSync(path, { bigint: true })
           if (metadata.nlink !== 2n) throw error
           if (expected.destination === null) {
             const stagedPeer = [...expectedTemporaries.entries()].find(([candidate, value]) => value.destination === path && candidate !== path)
             if (stagedPeer === undefined) throw error
-            const peer = stableOpenFile(root, stagedPeer[0], { ...options, requireSingleLink: false })
-            const final = stableOpenFile(root, path, { ...options, requireSingleLink: false })
+            const peer = stableOpenFile(root, stagedPeer[0], { ...openOptions, requireSingleLink: false })
+            const final = stableOpenFile(root, path, { ...openOptions, requireSingleLink: false })
             if (peer.identity !== final.identity || !peer.bytes.equals(expected.bytes) || !final.bytes.equals(expected.bytes) || expected.mode !== null && final.mode !== expected.mode) throw error
             removeAndVerify(stagedPeer[0], options)
             opened = final
           } else {
-            opened = stableOpenFile(root, path, { ...options, requireSingleLink: false })
-            const destination = stableOpenFile(root, expected.destination, { ...options, requireSingleLink: false })
+            opened = stableOpenFile(root, path, { ...openOptions, requireSingleLink: false })
+            const destination = stableOpenFile(root, expected.destination, { ...openOptions, requireSingleLink: false })
             if (destination.identity !== opened.identity || !destination.bytes.equals(expected.bytes) || expected.mode !== null && destination.mode !== expected.mode) throw error
             requireSingleLink = false
           }
@@ -689,13 +704,14 @@ function publishMarker(request, admission, root, manifestId, ownerMode, options)
   const carriedGit = request.inspection.git ?? {}
   const carriedState = carriedGit.electionMarker
   const oldBytes = markerOldBytes(request, root)
+  const markerByteLimit = Math.max(bytes.length, oldBytes?.length ?? 0)
   const oldMode = platformMode(options, carriedGit.electionMarkerMode ?? 0o600)
   let mode = platformMode(options, ownerMode)
   const markerPresent = pathExists(path)
   const tombstonePresent = pathExists(paths.electionTombstone)
   if (tombstonePresent && !markerPresent && !pathExists(paths.electionAlias)) return false
   if (markerPresent) {
-    const current = stableOpenFile(root, path, { ...options, requireSingleLink: false })
+    const current = stableOpenFile(root, path, boundedOpenOptions(options, markerByteLimit, { requireSingleLink: false }))
     if (current.bytes.equals(bytes) && (mode === null || current.mode === mode)) {
       if (pathExists(paths.electionNewWitness)) {
         if (pathExists(paths.electionAlias)) {
@@ -717,9 +733,9 @@ function publishMarker(request, admission, root, manifestId, ownerMode, options)
   if (!pathExists(paths.electionAlias)) stageMarkerAlias(root, paths.electionAlias, bytes, mode, options)
   if (!pathExists(paths.electionNewWitness)) linkMarkerPath(root, paths.electionAlias, paths.electionNewWitness, bytes, mode, options, 'after-marker-new-witness')
   if (pathExists(path)) {
-    const current = stableOpenFile(root, path, { ...options, requireSingleLink: false })
+    const current = stableOpenFile(root, path, boundedOpenOptions(options, markerByteLimit, { requireSingleLink: false }))
     if (oldBytes === null || !current.bytes.equals(oldBytes) || oldMode !== null && current.mode !== oldMode) throw new Error('Election marker differs from the approved carried marker')
-    const replacementTarget = stableOpenFile(root, path, { ...options, requireSingleLink: false })
+    const replacementTarget = stableOpenFile(root, path, boundedOpenOptions(options, markerByteLimit, { requireSingleLink: false }))
     if (!replacementTarget.bytes.equals(oldBytes) || replacementTarget.identity !== current.identity || oldMode !== null && replacementTarget.mode !== oldMode) throw new Error('Election marker changed before replacement')
     options.verifyLock?.()
     renameVerified(paths.electionAlias, path, bytes, { ...options, onTransition: (point) => transition(options, point) })
@@ -750,7 +766,7 @@ function removeMarker(request, admission, root, options) {
   const mode = platformMode(options, request.inspection.git?.electionMarkerMode ?? 0o600)
   options.verifyLock?.()
   if (pathExists(path)) {
-    const current = stableOpenFile(root, path, { ...options, requireSingleLink: false })
+    const current = stableOpenFile(root, path, boundedOpenOptions(options, expected.length, { requireSingleLink: false }))
     if (!current.bytes.equals(expected) || mode !== null && current.mode !== mode) throw new Error('Election marker changed before cleanup')
     const witness = options.ownedTemporaries?.get(paths.electionNewWitness)
     if (witness !== undefined && witness.identity !== current.identity) throw new Error(request.inspection.git?.electionMarker === 'absent' ? 'Published target shares an unexpected temporary identity' : 'Election marker changed before cleanup')
@@ -894,11 +910,12 @@ function hasTerminalMarkerEvidence(request, admission, root, existing, paths, ex
   if (present(join(root, ELECTION_BASENAME)) || present(paths.electionAlias) || present(paths.electionOldWitness)) return false
   if (!present(paths.electionTombstone) && !present(paths.electionNewWitness)) return allActionsComplete(request, admission, root, options)
   try {
-    const tombstone = stableOpenFile(root, paths.electionTombstone, { ...options, requireSingleLink: false })
+    const markerOptions = boundedOpenOptions(options, expectedBytes.length, { requireSingleLink: false })
+    const tombstone = stableOpenFile(root, paths.electionTombstone, markerOptions)
     if (!tombstone.bytes.equals(expectedBytes) || expectedMode !== null && tombstone.mode !== expectedMode) return false
     const tombstoneMetadata = lstatSync(paths.electionTombstone, { bigint: true })
     if (!present(paths.electionNewWitness)) return tombstoneMetadata.nlink === 1n
-    const witness = stableOpenFile(root, paths.electionNewWitness, { ...options, requireSingleLink: false })
+    const witness = stableOpenFile(root, paths.electionNewWitness, markerOptions)
     const witnessMetadata = lstatSync(paths.electionNewWitness, { bigint: true })
 
     return tombstoneMetadata.nlink === 2n && witnessMetadata.nlink === 2n && witness.identity === tombstone.identity && witness.bytes.equals(expectedBytes) && (expectedMode === null || witness.mode === expectedMode)
@@ -1249,10 +1266,23 @@ function publishApply(request, options = {}) {
           let published
           if (!already) published = publishContent(root, path, bytes, effectiveMode, actionTemps[index], publicationOptions, state.present, { content: expectedContent, identity: state.identity, mode: state.mode })
           state.present = true
-          state.content = terminalBytes
-          states.set(action.target, state)
-          index += chain.length - 1
-          continue
+          state.content = bytes
+          if (published !== undefined) {
+            state.identity = published.final.identity
+            state.mode = published.final.mode
+          } else if (already) {
+            const adopted = publicationOptions.ownedTemporaries?.get(actionTemps[index])
+            if (adopted?.destination === path) {
+              state.identity = adopted.identity
+              state.mode = adopted.mode
+            } else {
+              const current = stableOpenFile(root, path, boundedOpenOptions(options, bytes.length, { requireSingleLink: true }))
+              state.identity = current.identity
+              state.mode = current.mode
+            }
+          }
+          const status = already ? 'skipped-complete' : action.kind === 'unwrap-file' ? 'unwrapped' : action.kind === 'create-from-template' ? 'created' : 'edited'
+          outcomes.push({ actionId: action.id, status, target: action.target })
         }
       }
       if (action.kind === 'ensure-directory') {

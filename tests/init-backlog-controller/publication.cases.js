@@ -6,7 +6,7 @@ const { tmpdir } = require('node:os')
 const { join, relative } = require('node:path')
 const test = require('node:test')
 
-const { publishApply, temporaryPaths } = require('../../skills/init-backlog/lib/publication')
+const { publishApply, publishRecoveryFile, temporaryPaths } = require('../../skills/init-backlog/lib/publication')
 const { effectiveActionFileMode } = require('../../skills/init-backlog/lib/actions')
 const { buildApprovedApplyRequest } = require('../../skills/init-backlog/lib/apply-request')
 const { runPrivateDispatcher } = require('../../skills/init-backlog/init-backlog')
@@ -14,7 +14,7 @@ const { admitApplyManifest } = require('../../skills/init-backlog/lib/apply-mani
 const { InitBacklogError, failureRecord } = require('../../skills/init-backlog/lib/errors')
 const { collectInspection, composeElectionMarker } = require('../../skills/init-backlog/lib/inspection')
 const { MAX_RECOVERY_REQUEST_BYTES, canonicalActionOrder, canonicalJson, deriveSemanticActionId, deriveSnapshotId, sha256, validateResultRecord } = require('../../skills/init-backlog/lib/protocol')
-const { createInitialLock } = require('../../skills/init-backlog/lib/filesystem')
+const { createInitialLock, stableOpenFile } = require('../../skills/init-backlog/lib/filesystem')
 const { analyzeCatalog } = require('../../skills/ready/ready')
 const { applyRecovery, inspectRecovery } = require('../../skills/init-backlog/lib/recovery')
 const { ELECTION_MARKER_PATH } = require('./election-oracles')
@@ -1384,6 +1384,33 @@ function runPublicationCases() {
         assert.throws(
           () => publishApply(request(root), { currentInspection: inspection(root), resume: true }),
           (error) => error.record?.code === 'runtime-lock' && (extraBytes === 0 ? error.cause?.code !== 'file-too-large' : error.cause?.code === 'file-too-large'),
+        )
+      } finally {
+        rmSync(root, { force: true, recursive: true })
+      }
+    }
+  })
+
+  test('renamed publication readback stops at the expected byte length', () => {
+    for (const extraBytes of [0, 1]) {
+      const root = fixtureRoot()
+      try {
+        const path = join(root, 'FEATURES.md')
+        const before = Buffer.from('before\n', 'utf8')
+        const desired = Buffer.from('desired\n', 'utf8')
+        writeFileSync(path, before, { mode: 0o644 })
+        const expected = stableOpenFile(root, path, { requireSingleLink: true })
+
+        assert.throws(
+          () => publishRecoveryFile(root, path, desired, expected.mode, {
+            expected,
+            recoveryId: 'a'.repeat(64),
+            renameSync: (source, destination) => {
+              renameSync(source, destination)
+              writeFileSync(destination, Buffer.alloc(desired.length + extraBytes, 0x61), { mode: 0o644 })
+            },
+          }),
+          (error) => extraBytes === 0 ? error.code !== 'file-too-large' : error.code === 'file-too-large',
         )
       } finally {
         rmSync(root, { force: true, recursive: true })

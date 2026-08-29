@@ -696,11 +696,11 @@ function validateRecoveryInspection(value) {
     requireString(item.classification, 'backup classification', { values: ['divergent', 'orphan', 'redundant'] })
     validateDigest(item.backupRawSha256)
     validateMode(item.backupMode)
-    validateBase64(item.backupContentBase64)
+    validateBase64(item.backupContentBase64, MAX_MECHANICAL_FILE_BYTES)
     requireNullable(item.currentTarget, validateTarget)
     requireNullable(item.currentRawSha256, validateDigest)
     validateMode(item.currentMode)
-    requireNullable(item.currentContentBase64, validateBase64)
+    requireNullable(item.currentContentBase64, (content) => validateBase64(content, MAX_MECHANICAL_FILE_BYTES))
   }
   requireArray(value.allowedDispositions, 'allowed dispositions', (item) => requireString(item, 'disposition', { values: RECOVERY_DISPOSITION_ORDER }), { uniqueBy: (item) => item })
   let last = -1
