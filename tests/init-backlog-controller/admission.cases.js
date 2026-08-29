@@ -3,7 +3,7 @@
 const assert = require('node:assert/strict')
 const test = require('node:test')
 
-const { admitApplyManifest, simulateReady } = require('../../skills/init-backlog/lib/apply-manifest')
+const { admitApplyManifest, buildAdmissionIndexes, simulateReady } = require('../../skills/init-backlog/lib/apply-manifest')
 const { analyzeCatalog } = require('../../skills/ready/ready')
 const { deriveManifestId, deriveSemanticActionId, deriveSnapshotId, validateResultRecord } = require('../../skills/init-backlog/lib/protocol')
 
@@ -102,6 +102,36 @@ function expectManifestError(callback, code = 'manifest-invalid') {
 }
 
 function runAdmissionCases() {
+  test('builds reusable admission indexes with linear proposal reads', () => {
+    let targetReads = 0
+    const proposals = Array.from({ length: 200 }, (_, index) => {
+      const targetName = `.claude/features/item-${index}.md`
+      const beforeBase64 = Buffer.from(`before-${index}\n`, 'utf8').toString('base64')
+      const afterBase64 = Buffer.from(`after-${index}\n`, 'utf8').toString('base64')
+      const action = { afterBase64, beforeBase64, id: `p-index-${index}`, kind: 'exact-edit', regionId: 'features.document-preamble' }
+      Object.defineProperty(action, 'target', { enumerable: true, get() {
+        targetReads += 1
+
+        return targetName
+      } })
+
+      return { action, afterBase64, beforeBase64, condition: 'always', proposalId: action.id, reason: 'guidance-section' }
+    })
+    const recordsByTarget = new Map(proposals.map((item) => [item.action.target, {}]))
+    const templates = proposals.map((item, index) => ({ target: item.action.target, templateId: `template-${index}` }))
+    const wrapFindings = proposals.map((item) => ({ target: item.action.target }))
+    targetReads = 0
+    const indexes = buildAdmissionIndexes({ proposals, templates, wrapFindings }, recordsByTarget)
+
+    assert.ok(targetReads <= proposals.length * 4, `proposal targets were read ${targetReads} times`)
+    assert.equal(indexes.chainHeadByTarget.size, proposals.length)
+    assert.equal(indexes.proposalByActionId.size, proposals.length)
+    assert.equal(indexes.proposalsByTarget.size, proposals.length)
+    assert.equal(indexes.recordsByTarget, recordsByTarget)
+    assert.equal(indexes.templateByTarget.size, proposals.length)
+    assert.equal(indexes.wrapByTarget.size, proposals.length)
+  })
+
   test('seeds a chained mechanical target from the chain head in either proposal order', () => {
     const first = Buffer.from('seed\n', 'utf8')
     const middle = Buffer.from('seed\nmandatory\n', 'utf8')

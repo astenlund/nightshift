@@ -47,6 +47,35 @@ function targetMap(inspection) {
   return result
 }
 
+function buildAdmissionIndexes(inspection, recordsByTarget = null) {
+  const proposalsByTarget = new Map()
+  const proposalByActionId = new Map()
+  const emptyRepairTargets = new Set()
+  for (const proposal of inspection.proposals ?? []) {
+    const target = proposal.action.target
+    if (!proposalsByTarget.has(target)) proposalsByTarget.set(target, [])
+    proposalsByTarget.get(target).push(proposal)
+    if (!proposalByActionId.has(proposal.action.id)) proposalByActionId.set(proposal.action.id, proposal)
+    if (proposal.reason === 'empty-target' && proposal.condition === 'always') emptyRepairTargets.add(target)
+  }
+  const chainHeadByTarget = new Map()
+  for (const [target, proposals] of proposalsByTarget) {
+    const produced = new Set(proposals.map((item) => item.afterBase64).filter((value) => value !== null && value !== undefined))
+    const heads = proposals.filter((item) => item.beforeBase64 !== null && item.beforeBase64 !== undefined && !produced.has(item.beforeBase64))
+    chainHeadByTarget.set(target, heads.length === 1 ? heads[0] : undefined)
+  }
+  const templateByTarget = new Map()
+  for (const item of inspection.templates ?? []) {
+    if (!templateByTarget.has(item.target)) templateByTarget.set(item.target, item)
+  }
+  const wrapByTarget = new Map()
+  for (const item of inspection.wrapFindings ?? []) {
+    if (!wrapByTarget.has(item.target)) wrapByTarget.set(item.target, item)
+  }
+
+  return { chainHeadByTarget, emptyRepairTargets, proposalByActionId, proposalsByTarget, recordsByTarget, templateByTarget, wrapByTarget }
+}
+
 function validateInspectionIdentity(inspection, currentInspection) {
   if (!inspection || inspection.ok !== true || inspection.operation !== 'inspect') admissionError('Carried inspection is invalid.')
   let expected
@@ -80,12 +109,12 @@ function validateChoice(inspection, choice) {
   if (git.plansPolicy === 'action-required' && choice === 'ignore' && inspection.proposals.every((item) => item.reason !== 'elective-ignore')) admissionError('Ignore requires its inspected elective policy action.')
 }
 
-function validateSemanticDecisions(inspection, decisions, targets) {
+function validateSemanticDecisions(inspection, decisions, targets, indexes) {
   if (!Array.isArray(decisions)) admissionError('Semantic decisions are not an array.')
   const required = new Map()
   for (const item of targets.values()) {
     if (item.contentRole !== 'semantic' || item.templateId === null || item.states.includes('exact-template')) continue
-    const emptyRepair = item.contentBase64 !== null && item.contentBase64.length === 0 && inspection.proposals.some((proposal) => proposal.action.target === item.target && proposal.reason === 'empty-target' && proposal.condition === 'always')
+    const emptyRepair = item.contentBase64 !== null && item.contentBase64.length === 0 && indexes.emptyRepairTargets.has(item.target)
     if (!emptyRepair) required.set(item.target, item)
   }
   const seen = new Set()
@@ -100,8 +129,8 @@ function validateSemanticDecisions(inspection, decisions, targets) {
     const target = required.get(decision.target)
     const concepts = Array.isArray(decision.conceptIds) ? decision.conceptIds : []
     if (concepts.some((id) => typeof id !== 'string')) admissionError('Semantic decision concepts are invalid.', { target: decision.target })
-    const template = Array.isArray(inspection.templates) ? inspection.templates.find((item) => item.templateId === target.templateId && item.target === target.target) : undefined
-    const expected = template?.conceptIds ?? []
+    const template = indexes.templateByTarget.get(target.target)
+    const expected = template?.templateId === target.templateId ? template.conceptIds : []
     if (!['deferred', 'satisfied'].includes(decision.status)) admissionError('Semantic decision status is invalid.', { target: decision.target })
     const orderedConcepts = [...concepts].sort(compareOrdinal)
     if (!sameCanonical(concepts, orderedConcepts)) admissionError('Semantic decision concepts must be ordinal sorted.', { target: decision.target })
@@ -133,8 +162,8 @@ function selectedProposals(inspection, dispositions, choice) {
   return selected
 }
 
-function proposalForAction(action, proposals) {
-  const proposal = proposalsByCanonicalAction(proposals).get(canonicalJson(action))
+function proposalForAction(action, proposalsByAction) {
+  const proposal = proposalsByAction.get(canonicalJson(action))
   if (proposal !== undefined) return proposal
   if (action.kind === 'exact-edit' && isSemanticActionId(action.id)) return null
   admissionError('Action is not one of the approved proposals.', { actionId: action.id, target: action.target })
@@ -144,26 +173,13 @@ function targetBytes(record) {
   return record.contentBase64 === null ? null : validateBase64(record.contentBase64)
 }
 
-// A target can carry a chain of predicted-intermediate exact edits, and the
-// carried proposals are ordinal by proposal identity, which is a content
-// digest and says nothing about chain order. The starting content is the
-// chain head: the one candidate whose input no sibling proposal produces.
-// Taking whichever candidate sorts first would seed a mechanical target with a
-// mid-chain intermediate whenever the digests happened to fall that way.
-function chainHeadProposal(inspection, target) {
-  const siblings = (inspection.proposals ?? []).filter((item) => item.action.target === target)
-  const produced = new Set(siblings.map((item) => item.afterBase64).filter((value) => value !== null && value !== undefined))
-  const heads = siblings.filter((item) => item.beforeBase64 !== null && item.beforeBase64 !== undefined && !produced.has(item.beforeBase64))
-
-  // No unique head means the chain is ambiguous, so the caller seeds nothing
-  // and the edit's own input check refuses the manifest.
-  return heads.length === 1 ? heads[0] : undefined
-}
-
-function initialState(record, inspection) {
+// A mechanical target can withhold its bytes while carrying a chain of
+// predicted edits. Its indexed chain head is the unique input no sibling
+// proposal produces; ambiguity seeds nothing and the edit check fails closed.
+function initialState(record, indexes) {
   let content = targetBytes(record)
   if (content === null && record.kind === 'file') {
-    const proposal = chainHeadProposal(inspection, record.target)
+    const proposal = indexes.chainHeadByTarget.get(record.target)
     content = proposal === undefined ? null : validateBase64(proposal.beforeBase64)
   }
 
@@ -231,11 +247,11 @@ function createRegionDeclarationsResolver(inspection, options) {
   }
 }
 
-function validateSemanticAction(action, record, inspection, declarationsFor) {
+function validateSemanticAction(action, record, indexes, declarationsFor) {
   if (!isSemanticActionId(action.id)) return
   if (record.contentRole !== 'semantic' || record.templateId === null || typeof record.templateId !== 'string') admissionError('Semantic action requires an authorized inspected template.', { actionId: action.id, target: action.target })
-  const template = Array.isArray(inspection.templates) ? inspection.templates.find((item) => item.templateId === record.templateId && item.target === record.target) : undefined
-  if (template === undefined || template.logicalSha256 !== record.templateSha256 || !Array.isArray(template.conceptIds) || template.conceptIds.length === 0) admissionError('Semantic action requires a nonempty inspected concept set.', { actionId: action.id, target: action.target })
+  const template = indexes.templateByTarget.get(record.target)
+  if (template === undefined || template.templateId !== record.templateId || template.logicalSha256 !== record.templateSha256 || !Array.isArray(template.conceptIds) || template.conceptIds.length === 0) admissionError('Semantic action requires a nonempty inspected concept set.', { actionId: action.id, target: action.target })
   const declarations = declarationsFor(action.target)
   const declaration = declarations?.find((item) => item.regionId === action.regionId)
   if (declaration === undefined || declaration.semantic !== true) admissionError('Semantic action region is not authorized by the inspected metadata.', { actionId: action.id, target: action.target })
@@ -262,7 +278,7 @@ function rescanRegions(action, after, inspection, options, declarationsFor) {
   return validateRescannedRegions(regions, after.length, action, declarationsFor(action.target))
 }
 
-function simulateAction(action, state, inspection, targets, options, declarationsFor) {
+function simulateAction(action, state, inspection, targets, indexes, options, declarationsFor) {
   if (!ACTION_KINDS.has(action.kind)) admissionError('Action kind is not supported.', { actionId: action.id })
   const record = targets.get(action.target)
   if (record === undefined) admissionError('Action target is outside the inspected closed surface.', { actionId: action.id, target: action.target })
@@ -283,7 +299,7 @@ function simulateAction(action, state, inspection, targets, options, declaration
     if (parent !== null && !targets.has(parent)) admissionError('Template action parent is outside the inspected surface.', { actionId: action.id, target: action.target })
     state.present = true
     state.kind = 'file'
-    const proposal = inspection.proposals.find((item) => item.action.id === action.id)
+    const proposal = indexes.proposalByActionId.get(action.id)
     state.content = proposal?.afterBase64 === null || proposal?.afterBase64 === undefined ? Buffer.alloc(0) : validateBase64(proposal.afterBase64)
     state.rawSha256 = sha256(state.content)
     state.regions = action.target === '.gitignore' ? [{ endByte: state.content.length, regionId: 'gitignore-append', startByte: state.content.length }] : state.regions
@@ -294,7 +310,7 @@ function simulateAction(action, state, inspection, targets, options, declaration
   if (action.kind === 'unwrap-file') {
     if (state.rawSha256 !== action.beforeRawSha256 || action.mode !== record.mode) admissionError('Unwrap input or mode differs from inspection.', { actionId: action.id, target: action.target })
     state.rawSha256 = action.afterRawSha256
-    const finding = inspection.wrapFindings?.find((item) => item.target === action.target)
+    const finding = indexes.wrapByTarget.get(action.target)
     if (finding?.predictedContentBase64 !== null && finding?.predictedContentBase64 !== undefined) {
       state.content = validateBase64(finding.predictedContentBase64)
       state.regions = finding.predictedEditableRegions
@@ -322,7 +338,7 @@ function simulateAction(action, state, inspection, targets, options, declaration
   state.regions = rescanRegions(action, after, inspection, options, declarationsFor)
 }
 
-function simulateReady(inspection, actions, states, options = {}) {
+function simulateReady(inspection, actions, states, options = {}, recordsByTarget = null) {
   const unwrap = actions.filter((action) => action.kind === 'unwrap-file')
   const semanticChanges = actions.some((action) => isSemanticActionId(action.id) && action.beforeBase64 !== action.afterBase64)
   if (unwrap.length > 0 && !Array.isArray(options.readyCatalog)) {
@@ -340,9 +356,10 @@ function simulateReady(inspection, actions, states, options = {}) {
 
   const contentsByTarget = new Map(catalogEntries.map((item) => [item.target.startsWith('.claude/') ? item.target.slice('.claude/'.length) : item.target, item.contents]))
   const unwrapTargets = new Set(unwrap.map((action) => action.target))
+  const targetIndex = recordsByTarget ?? targetMap(inspection)
   for (const [physicalTarget, state] of states ?? []) {
     if (!physicalTarget.startsWith('.claude/') || state.kind !== 'file' || state.content === null) continue
-    const record = (inspection.targets ?? []).find((item) => item.target === physicalTarget)
+    const record = targetIndex.get(physicalTarget)
     const logicalTarget = physicalTarget.slice('.claude/'.length)
     if (record?.contentRole === 'mechanical' && unwrapTargets.has(physicalTarget) && contentsByTarget.has(logicalTarget)) continue
     contentsByTarget.set(logicalTarget, Buffer.from(state.content).toString('utf8'))
@@ -388,9 +405,11 @@ function admitApplyManifest(request, options = {}) {
   validateInspectionIdentity(inspection, options.currentInspection ?? request?.currentInspection)
   validateChoice(inspection, choice)
   const targets = targetMap(inspection)
-  validateSemanticDecisions(inspection, request?.semanticDecisions ?? [], targets)
+  const indexes = buildAdmissionIndexes(inspection, targets)
+  validateSemanticDecisions(inspection, request?.semanticDecisions ?? [], targets, indexes)
   const selected = selectedProposals(inspection, dispositions, choice)
   const selectedActions = selected.map((item) => item.action)
+  const selectedByAction = proposalsByCanonicalAction(selected)
   const declarationsFor = createRegionDeclarationsResolver(inspection, options)
   const actionIds = new Set()
   for (const action of actions) {
@@ -401,13 +420,13 @@ function admitApplyManifest(request, options = {}) {
     }
     validateAction(action, 'manifest-invalid', 'prevalidate')
     const record = targets.get(action.target)
-    if (record !== undefined) validateSemanticAction(action, record, inspection, declarationsFor)
+    if (record !== undefined) validateSemanticAction(action, record, indexes, declarationsFor)
     if (actionIds.has(action.id)) admissionError('Action IDs must be unique.', { actionId: action.id })
     actionIds.add(action.id)
   }
   const authoredActionIds = new Set()
   for (const action of actions) {
-    if (proposalForAction(action, selected) === null) authoredActionIds.add(action.id)
+    if (proposalForAction(action, selectedByAction) === null) authoredActionIds.add(action.id)
   }
   const canonicalActions = new Set(actions.map((item) => canonicalJson(item)))
   for (const action of selectedActions) {
@@ -422,18 +441,18 @@ function admitApplyManifest(request, options = {}) {
   if (!sameCanonical(ordered, actions)) admissionError('Actions are not in stable dependency order.')
   const deferredTargets = new Set((request?.semanticDecisions ?? []).filter((item) => item.status === 'deferred').map((item) => item.target))
   const simulateStates = (transition) => {
-    const simulated = new Map([...targets].map(([target, record]) => [target, initialState(record, inspection)]))
+    const simulated = new Map([...targets].map(([target, record]) => [target, initialState(record, indexes)]))
     for (const action of transition) {
       if (deferredTargets.has(action.target)) admissionError('Deferred semantic targets cannot receive an action.', { actionId: action.id, target: action.target })
       const parent = parentTarget(action.target)
       if (parent !== null && simulated.has(parent) && !simulated.get(parent).present) admissionError('Action prerequisite parent is not present.', { actionId: action.id, target: action.target })
-      simulateAction(action, simulated.get(action.target), inspection, targets, options, declarationsFor)
+      simulateAction(action, simulated.get(action.target), inspection, targets, indexes, options, declarationsFor)
     }
 
     return simulated
   }
   const states = simulateStates(actions)
-  const ready = simulateReady(inspection, actions, states, options)
+  const ready = simulateReady(inspection, actions, states, options, targets)
   // The inspected transition is the manifest restricted to approved proposals:
   // every one of those effects, creations included, is predicted by inspection
   // itself, so comparing against the untouched baseline would reject the very
@@ -441,7 +460,7 @@ function admitApplyManifest(request, options = {}) {
   // request-authored semantic edits to the inspected prediction, which is the
   // only part of the manifest inspection did not compute.
   const inspectedTransition = actions.filter((action) => !authoredActionIds.has(action.id))
-  const expectedReady = inspectedTransition.length === actions.length ? ready : simulateReady(inspection, inspectedTransition, simulateStates(inspectedTransition), options)
+  const expectedReady = inspectedTransition.length === actions.length ? ready : simulateReady(inspection, inspectedTransition, simulateStates(inspectedTransition), options, targets)
   if (!sameCanonical(ready, expectedReady)) admissionError('Simulated ready result differs from the inspected prediction.', { code: 'manifest-invalid' })
   const projection = manifestProjection(request)
   const manifestId = deriveManifestId(projection)
@@ -452,4 +471,4 @@ function admitApplyManifest(request, options = {}) {
   return { actions, electionMarker: projection.electionMarker, manifestId, ready, snapshotId: inspection.snapshotId, states: [...states.entries()].map(([target, state]) => ({ ...state, target })) }
 }
 
-module.exports = { admitApplyManifest, deriveRequestManifestId, simulateReady }
+module.exports = { admitApplyManifest, buildAdmissionIndexes, deriveRequestManifestId, simulateReady }
