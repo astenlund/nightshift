@@ -12,6 +12,7 @@ const {
   lstatSync,
   mkdirSync,
   openSync,
+  opendirSync,
   readSync,
   realpathSync,
   readdirSync,
@@ -203,11 +204,40 @@ function decodeDirectoryName(name, platform = process.platform) {
 
 function enumerateDirectory(directory, options = {}) {
   const platform = options.platform ?? process.platform
-  const readDirectory = options.readdirSync ?? options.readdir ?? readdirSync
+  const injectedReadDirectory = options.readdirSync ?? options.readdir
+  const readDirectory = injectedReadDirectory ?? readdirSync
   if (platform === 'win32' && typeof options.attributeProbe !== 'function') {
     throw new Error('Windows directory enumeration requires an attribute probe')
   }
-  const names = readDirectory(directory, platform === 'win32' ? { encoding: 'utf8' } : { encoding: 'buffer' })
+  let names
+  if (options.maxEntries === undefined) {
+    names = readDirectory(directory, platform === 'win32' ? { encoding: 'utf8' } : { encoding: 'buffer' })
+  } else {
+    if (!Number.isSafeInteger(options.maxEntries) || options.maxEntries < 0) {
+      throw new TypeError('Directory entry limit must be a nonnegative safe integer')
+    }
+    if (injectedReadDirectory) {
+      names = readDirectory(directory, platform === 'win32' ? { encoding: 'utf8' } : { encoding: 'buffer' })
+    } else {
+      const openDirectory = options.opendirSync ?? opendirSync
+      const handle = openDirectory(directory, platform === 'win32' ? { encoding: 'utf8' } : { encoding: 'buffer' })
+      names = []
+      try {
+        while (names.length <= options.maxEntries) {
+          const entry = handle.readSync()
+          if (entry === null) break
+          names.push(entry.name)
+        }
+      } finally {
+        handle.closeSync()
+      }
+    }
+    if (names.length > options.maxEntries) {
+      const error = new Error('Directory exceeds its entry limit')
+      error.code = 'directory-too-large'
+      throw error
+    }
+  }
   const entries = names.map((rawName) => {
     const name = decodeDirectoryName(rawName, platform)
     assertSafeWindowsScalar(name, platform)

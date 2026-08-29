@@ -17,6 +17,7 @@ const MAX_GUIDANCE_RETAINED_BYTES = 1048576
 const MAX_GUIDANCE_CANDIDATES = 256
 const MAX_CONTROLLED_MARKDOWN_FILES = 256
 const MAX_CONTROLLED_MARKDOWN_RETAINED_BYTES = 1048576
+const MAX_CONTROLLED_DISCOVERY_ENTRIES = 1024
 const GIT_METADATA_DIRECTORY = '.git'
 
 function fail(detail, cause, target = null) {
@@ -540,20 +541,31 @@ function discoverControlledMarkdown(root, directories = ['.claude/bugs', '.claud
   const discovered = []
   const identities = new Set()
   let retainedBytes = 0
+  let visitedEntries = 0
   const resolvedOptions = withAttributeProbe(options)
-  function walk(directory) {
+  function boundedEntries(directory) {
     let entries
     try {
-      entries = enumerateDirectory(directory, resolvedOptions)
+      entries = enumerateDirectory(directory, { ...resolvedOptions, maxEntries: MAX_CONTROLLED_DISCOVERY_ENTRIES - visitedEntries })
     } catch (error) {
-      throwInitBacklogError({ code: error?.code === 'invalid-directory-name' ? 'invalid-target' : 'filesystem', detail: 'Controlled directory discovery failed.', operation: 'inspect', phase: 'inspect', target: error?.code === 'invalid-directory-name' ? null : undefined }, error)
+      const code = error?.code === 'directory-too-large' ? 'payload-too-large' : error?.code === 'invalid-directory-name' ? 'invalid-target' : 'filesystem'
+      const detail = code === 'payload-too-large' ? 'Controlled directory entries exceed the controller limit.' : 'Controlled directory discovery failed.'
+      throwInitBacklogError({ code, detail, operation: 'inspect', phase: 'inspect', target: code === 'invalid-target' ? null : relativeTarget(canonical, directory) }, error)
     }
-    for (const entry of entries) {
+    visitedEntries += entries.length
+
+    return entries
+  }
+  function walk(directory) {
+    const pending = [...boundedEntries(directory)].reverse()
+    while (pending.length > 0) {
+      const entry = pending.pop()
       if (entry.name.includes('\\')) {
         throwInitBacklogError({ code: 'invalid-target', detail: 'Controlled target cannot contain a backslash.', operation: 'inspect', phase: 'inspect' })
       }
       if (entry.metadata.isDirectory()) {
-        walk(entry.path)
+        const children = boundedEntries(entry.path)
+        for (let index = children.length - 1; index >= 0; index -= 1) pending.push(children[index])
         continue
       }
       if (!entry.name.endsWith('.md')) {
@@ -604,4 +616,4 @@ function discoverControlledMarkdown(root, directories = ['.claude/bugs', '.claud
   return discovered.sort((left, right) => compareOrdinal(left.target, right.target))
 }
 
-module.exports = { GUIDANCE_SECTION, HTML_BLOCK_TYPE_SIX_TAGS, MAX_CONTROLLED_MARKDOWN_FILES, MAX_CONTROLLED_MARKDOWN_RETAINED_BYTES, MAX_GUIDANCE_CANDIDATES, MAX_GUIDANCE_FILE_BYTES, MAX_GUIDANCE_RETAINED_BYTES, discoverControlledMarkdown, guidanceImports, resolveClaude, resolveCodex, resolveGuidance }
+module.exports = { GUIDANCE_SECTION, HTML_BLOCK_TYPE_SIX_TAGS, MAX_CONTROLLED_DISCOVERY_ENTRIES, MAX_CONTROLLED_MARKDOWN_FILES, MAX_CONTROLLED_MARKDOWN_RETAINED_BYTES, MAX_GUIDANCE_CANDIDATES, MAX_GUIDANCE_FILE_BYTES, MAX_GUIDANCE_RETAINED_BYTES, discoverControlledMarkdown, guidanceImports, resolveClaude, resolveCodex, resolveGuidance }

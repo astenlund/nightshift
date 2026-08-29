@@ -7,7 +7,7 @@ const { tmpdir } = require('node:os')
 const { join, resolve } = require('node:path')
 const test = require('node:test')
 
-const { MAX_CONTROLLED_MARKDOWN_FILES, MAX_CONTROLLED_MARKDOWN_RETAINED_BYTES, MAX_GUIDANCE_CANDIDATES, MAX_GUIDANCE_FILE_BYTES, MAX_GUIDANCE_RETAINED_BYTES, discoverControlledMarkdown, guidanceImports, resolveClaude, resolveCodex, resolveGuidance } = require('../../skills/init-backlog/lib/guidance')
+const { MAX_CONTROLLED_DISCOVERY_ENTRIES, MAX_CONTROLLED_MARKDOWN_FILES, MAX_CONTROLLED_MARKDOWN_RETAINED_BYTES, MAX_GUIDANCE_CANDIDATES, MAX_GUIDANCE_FILE_BYTES, MAX_GUIDANCE_RETAINED_BYTES, discoverControlledMarkdown, guidanceImports, resolveClaude, resolveCodex, resolveGuidance } = require('../../skills/init-backlog/lib/guidance')
 const { MAX_MECHANICAL_FILE_BYTES } = require('../../skills/init-backlog/lib/protocol')
 const {
   enumerateDirectory,
@@ -125,6 +125,44 @@ function runDiscoveryCases(repositoryRoot) {
       } finally {
         rmSync(root, { force: true, recursive: true })
       }
+    }
+  })
+
+  test('controlled Markdown discovery bounds aggregate entries before metadata probes', () => {
+    assert.equal(MAX_CONTROLLED_DISCOVERY_ENTRIES, 1024)
+    const root = temporaryRoot('nightshift-discovery-entry-bound-')
+    const directory = join(root, '.claude', 'bugs')
+    const nested = join(directory, 'nested')
+    let closes = 0
+    let opens = 0
+    let probes = 0
+    try {
+      mkdirSync(nested, { recursive: true })
+      const opendirSync = () => {
+        const names = opens === 0 ? ['nested'] : Array.from({ length: MAX_CONTROLLED_DISCOVERY_ENTRIES }, (_, index) => `ignored-${index}.txt`)
+        let index = 0
+        opens += 1
+
+        return {
+          closeSync: () => { closes += 1 },
+          readSync: () => index < names.length ? { name: names[index++] } : null,
+        }
+      }
+      const attributeProbe = (paths) => {
+        probes += 1
+
+        return windowsAttributeProbe(paths)
+      }
+
+      assert.throws(
+        () => discoverControlledMarkdown(root, ['.claude/bugs'], { attributeProbe, maxBytes: MAX_MECHANICAL_FILE_BYTES, opendirSync, platform: 'win32' }),
+        (error) => error.record?.code === 'payload-too-large' && error.record?.phase === 'inspect',
+      )
+      assert.equal(opens, 2)
+      assert.equal(closes, 2)
+      assert.equal(probes, 2)
+    } finally {
+      rmSync(root, { force: true, recursive: true })
     }
   })
 
