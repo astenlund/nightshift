@@ -92,11 +92,57 @@ function git(args) {
   return execFileSync('git', args, { cwd: repositoryRoot, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
 }
 
-// No fallback: the manifest exists at every revision in range, and a failed
-// `git show` must surface as a red test rather than a default that passes.
-function manifestAt(revision) {
-  return JSON.parse(git(['show', `${revision}:${MANIFEST_PATH}`]))
+function readManifestBatch(specs) {
+  return execFileSync('git', ['cat-file', '--batch'], { cwd: repositoryRoot, encoding: null, input: Buffer.from(`${specs.join('\n')}\n`, 'utf8'), stdio: ['pipe', 'pipe', 'pipe'] })
 }
+
+function manifestsAt(revisions, readBatch = readManifestBatch) {
+  const specs = revisions.map((revision) => `${revision}:${MANIFEST_PATH}`)
+  const response = readBatch(specs)
+  assert.equal(Buffer.isBuffer(response), true, 'manifest batch reader must return bytes')
+  const manifests = []
+  let offset = 0
+  for (const spec of specs) {
+    const headerEnd = response.indexOf(0x0a, offset)
+    assert.notEqual(headerEnd, -1, `manifest batch header is missing for ${spec}`)
+    const header = response.subarray(offset, headerEnd).toString('utf8').split(' ')
+    assert.equal(header.length, 3, `manifest batch header is malformed for ${spec}`)
+    const [objectId, type, sizeText] = header
+    assert.match(objectId, /^[0-9a-f]+$/, `manifest batch object identity is malformed for ${spec}`)
+    assert.equal(type, 'blob', `manifest batch object is not a blob for ${spec}`)
+    assert.match(sizeText, /^(?:0|[1-9][0-9]*)$/, `manifest batch size is malformed for ${spec}`)
+    const size = Number(sizeText)
+    assert.equal(Number.isSafeInteger(size), true, `manifest batch size is unsafe for ${spec}`)
+    const contentStart = headerEnd + 1
+    const contentEnd = contentStart + size
+    assert.equal(contentEnd < response.length && response[contentEnd] === 0x0a, true, `manifest batch content is truncated for ${spec}`)
+    manifests.push(JSON.parse(response.subarray(contentStart, contentEnd).toString('utf8')))
+    offset = contentEnd + 1
+  }
+  assert.equal(offset, response.length, 'manifest batch carries an unexpected trailing record')
+
+  return manifests
+}
+
+test('manifest history batching preserves requested revision order in one read', () => {
+  const expected = [{ name: 'nightshift', version: '2.6.13' }, { name: 'nightshift', version: '2.6.14' }]
+  const response = Buffer.concat(expected.flatMap((manifest, index) => {
+    const bytes = Buffer.from(JSON.stringify(manifest), 'utf8')
+
+    return [Buffer.from(`${String(index + 1).repeat(40)} blob ${bytes.length}\n`, 'utf8'), bytes, Buffer.from('\n')]
+  }))
+  let reads = 0
+
+  const actual = manifestsAt(['first', 'second'], (specs) => {
+    reads += 1
+    assert.deepEqual(specs, [`first:${MANIFEST_PATH}`, `second:${MANIFEST_PATH}`])
+
+    return response
+  })
+
+  assert.deepEqual(actual, expected)
+  assert.equal(reads, 1)
+})
 
 test('CI runs every suite exactly once and runs no undeclared suite', () => {
   const ci = readRepositoryFile('.github/workflows/ci.yml')
@@ -285,7 +331,7 @@ test('the unpushed range carries a monotonic version increase when shipped behav
   }
   const changedPaths = git(['diff', '--no-renames', '--name-only', `${base}..HEAD`]).split(/\r?\n/).filter((line) => line !== '')
   const commits = git(['rev-list', '--topo-order', '--reverse', `${base}..HEAD`]).split(/\r?\n/).filter((line) => line !== '')
-  const manifests = [base, ...commits].map(manifestAt)
+  const manifests = manifestsAt([base, ...commits])
   const versions = manifests.map((manifest) => manifest.version)
   const verdict = evaluateReleaseGate({ changedPaths, baseManifest: manifests[0], headManifest: manifests[manifests.length - 1], versions })
 
