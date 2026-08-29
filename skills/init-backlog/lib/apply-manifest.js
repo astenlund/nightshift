@@ -231,7 +231,7 @@ function createRegionDeclarationsResolver(inspection, options) {
   }
 }
 
-function validateSemanticAction(action, record, inspection, options, declarationsFor) {
+function validateSemanticAction(action, record, inspection, declarationsFor) {
   if (!isSemanticActionId(action.id)) return
   if (record.contentRole !== 'semantic' || record.templateId === null || typeof record.templateId !== 'string') admissionError('Semantic action requires an authorized inspected template.', { actionId: action.id, target: action.target })
   const template = Array.isArray(inspection.templates) ? inspection.templates.find((item) => item.templateId === record.templateId && item.target === record.target) : undefined
@@ -401,7 +401,7 @@ function admitApplyManifest(request, options = {}) {
     }
     validateAction(action, 'manifest-invalid', 'prevalidate')
     const record = targets.get(action.target)
-    if (record !== undefined) validateSemanticAction(action, record, inspection, options, declarationsFor)
+    if (record !== undefined) validateSemanticAction(action, record, inspection, declarationsFor)
     if (actionIds.has(action.id)) admissionError('Action IDs must be unique.', { actionId: action.id })
     actionIds.add(action.id)
   }
