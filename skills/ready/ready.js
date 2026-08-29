@@ -119,8 +119,11 @@ function stripStable(s) {
 // "Slice 2 - "), then stable strip again, then case-fold.
 function normalizeSliceName(s) {
   let cur = stripStable(s);
-  // The separator may be a spaced em-dash, en-dash, or plain hyphen.
-  cur = cur.replace(/^\S+(?: \S+)* [\u2014\u2013-] /, '');
+  // The separator may be a spaced em-dash, en-dash, or plain hyphen. The token
+  // quantifier is lazy so the FIRST separator ends the prefix: a slice name
+  // that itself contains a spaced dash keeps everything after that first one,
+  // instead of losing every phrase up to its last separator.
+  cur = cur.replace(/^\S+(?: \S+)*? [\u2014\u2013-] /, '');
   cur = stripStable(cur);
   return cur.toLowerCase().replace(/\s+/g, ' ');
 }

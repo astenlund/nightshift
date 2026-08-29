@@ -642,6 +642,14 @@ test('normalizeSliceName accepts hyphen and en-dash prefix separators', () => {
   assert.strictEqual(normalizeSliceName('floating-reference core'), 'floating-reference core');
 });
 
+test('normalizeSliceName drops only the leading marker, never an internal dash phrase', () => {
+  assert.strictEqual(normalizeSliceName('MVP - collector - phase one'), 'collector - phase one');
+  assert.strictEqual(normalizeSliceName('Slice 2 \u2014 alpha \u2014 beta.'), 'alpha \u2014 beta');
+  assert.strictEqual(normalizeSliceName('Continuation \u2013 parser \u2013 second pass'), 'parser \u2013 second pass');
+  assert.strictEqual(normalizeSliceName('MVP - base layer'), 'base layer');
+  assert.strictEqual(normalizeSliceName('~~MVP \u2014 floating-reference core.~~'), 'floating-reference core');
+});
+
 test('splitTopLevelCommas ignores commas inside links', () => {
   const items = splitTopLevelCommas('a, [b, c](x), d');
   assert.deepStrictEqual(items, ['a', '[b, c](x)', 'd']);
