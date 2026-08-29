@@ -347,6 +347,9 @@ function collectMarkdownFiles(targets) {
   const files = [];
   const visitedDirectories = new Set();
   const isMarkdown = (name) => path.extname(name).toLowerCase() === '.md';
+  const addMarkdown = (rootIdentity, target, name) => {
+    if (isMarkdown(name) && isContainedPath(rootIdentity, canonicalPath(target))) files.push(target);
+  };
   const visitAll = (directory, rootIdentity) => {
     const identity = canonicalPath(directory);
     if (!isContainedPath(rootIdentity, identity)) return;
@@ -358,8 +361,8 @@ function collectMarkdownFiles(targets) {
       if (stat === null) continue;
       if (stat.isDirectory()) {
         visitAll(child, rootIdentity);
-      } else if (isMarkdown(entry.name)) {
-        files.push(child);
+      } else {
+        addMarkdown(rootIdentity, child, entry.name);
       }
     }
   };
@@ -372,7 +375,7 @@ function collectMarkdownFiles(targets) {
       if (stat.isDirectory() && BACKLOG_DIRECTORIES.includes(entry.name)) {
         visitAll(child, rootIdentity);
       } else if (stat.isFile() && BACKLOG_FILES.includes(entry.name)) {
-        files.push(child);
+        addMarkdown(rootIdentity, child, entry.name);
       }
     }
   };
@@ -381,8 +384,8 @@ function collectMarkdownFiles(targets) {
     const stat = typeof target === 'string' ? fs.statSync(resolved) : target.stat;
     if (stat.isDirectory()) {
       visitBacklogRoot(resolved);
-    } else if (isMarkdown(resolved)) {
-      files.push(resolved);
+    } else {
+      addMarkdown(canonicalPath(path.dirname(resolved)), resolved, resolved);
     }
   }
 

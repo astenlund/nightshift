@@ -237,10 +237,13 @@ test('collectMarkdownFiles follows contained links once and rejects links outsid
   try {
     fs.mkdirSync(path.join(root, 'real'));
     fs.writeFileSync(path.join(root, 'real', 'a.md'), '# A\n');
-    fs.writeFileSync(path.join(external, 'outside.md'), 'outside\ncontinuation\n');
+    fs.writeFileSync(path.join(external, 'nested.md'), 'nested\ncontinuation\n');
+    fs.writeFileSync(path.join(external, 'top.md'), 'top\ncontinuation\n');
     try {
       fs.symlinkSync(path.join(root, 'real'), path.join(root, 'features'), 'junction');
       fs.symlinkSync(external, path.join(root, 'patterns'), 'junction');
+      fs.symlinkSync(path.join(external, 'nested.md'), path.join(root, 'real', 'escape.md'), 'file');
+      fs.symlinkSync(path.join(external, 'top.md'), path.join(root, 'FEATURES.md'), 'file');
       fs.symlinkSync(path.join(root, 'real', 'missing.md'), path.join(root, 'real', 'dangling.md'), 'file');
       fs.symlinkSync(path.join(root, 'real'), path.join(root, 'real', 'loop'), 'junction');
     } catch {
@@ -250,7 +253,9 @@ test('collectMarkdownFiles follows contained links once and rejects links outsid
       return;
     }
     assert.deepEqual(collectMarkdownFiles([root]).map((file) => path.relative(root, file).replace(/\\/g, '/')), ['features/a.md']);
-    assert.equal(fs.readFileSync(path.join(external, 'outside.md'), 'utf8'), 'outside\ncontinuation\n');
+    assert.deepEqual(collectMarkdownFiles([path.join(root, 'FEATURES.md')]), []);
+    assert.equal(fs.readFileSync(path.join(external, 'nested.md'), 'utf8'), 'nested\ncontinuation\n');
+    assert.equal(fs.readFileSync(path.join(external, 'top.md'), 'utf8'), 'top\ncontinuation\n');
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
     fs.rmSync(external, { recursive: true, force: true });

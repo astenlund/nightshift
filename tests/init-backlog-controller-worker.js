@@ -13,8 +13,14 @@ class WorkerProtocolError extends Error {
   }
 }
 
-function createWorkerRuntime({ entryPath, loadModule = require }) {
+function createWorkerRuntime({ entryPath, expectedControllerRuntimeSha256, loadModule = require }) {
   const closure = collectControllerRuntimeClosure({ entryPath })
+  if (!/^[0-9a-f]{64}$/.test(expectedControllerRuntimeSha256 ?? '')) {
+    throw new WorkerProtocolError('worker expected controller runtime digest is malformed')
+  }
+  if (closure.controllerRuntimeSha256 !== expectedControllerRuntimeSha256) {
+    throw new WorkerProtocolError('worker runtime closure differs from the pre-launch snapshot')
+  }
   const facade = loadModule(entryPath)
   const { collectInspection } = loadModule(join(dirname(entryPath), 'lib', 'inspection'))
   const handlers = {
@@ -39,6 +45,10 @@ function createWorkerRuntime({ entryPath, loadModule = require }) {
       if (!Number.isSafeInteger(frame.ordinal) || frame.ordinal < 1 || !isCanonicalBase64(frame.requestBase64)) {
         throw new WorkerProtocolError('worker request frame fields are malformed')
       }
+      const currentClosure = collectControllerRuntimeClosure({ entryPath })
+      if (currentClosure.controllerRuntimeSha256 !== expectedControllerRuntimeSha256) {
+        throw new WorkerProtocolError('worker runtime closure changed after worker startup')
+      }
       const result = facade.runPrivateDispatcher(Buffer.from(frame.requestBase64, 'base64'), handlers)
 
       return canonicalJsonLine({
@@ -56,7 +66,8 @@ function createWorkerRuntime({ entryPath, loadModule = require }) {
 
 function main() {
   const entryPath = process.argv[2]
-  const runtime = createWorkerRuntime({ entryPath })
+  const expectedControllerRuntimeSha256 = process.argv[3]
+  const runtime = createWorkerRuntime({ entryPath, expectedControllerRuntimeSha256 })
   process.stdout.write(runtime.readyFrameBytes())
   const decoder = createLineDecoder({
     limit: BYTE_BOUNDS.MAX_RUNNER_FRAME_BYTES,

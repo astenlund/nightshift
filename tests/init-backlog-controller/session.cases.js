@@ -140,6 +140,22 @@ function workerReplyLine(overrides = {}) {
 
 function runSessionCases(repositoryRoot) {
   const controllerEntryPath = join(repositoryRoot, 'skills', 'init-backlog', 'init-backlog.js')
+  const copyControllerRuntime = () => {
+    const copyScope = tempRoot()
+    const copiedEntry = join(copyScope, 'skills', 'init-backlog', 'init-backlog.js')
+    mkdirSync(dirname(copiedEntry), { recursive: true })
+    cpSync(controllerEntryPath, copiedEntry)
+    cpSync(join(repositoryRoot, 'skills', 'init-backlog', 'lib'), join(copyScope, 'skills', 'init-backlog', 'lib'), { recursive: true })
+    cpSync(join(repositoryRoot, 'skills', 'init-backlog', 'templates'), join(copyScope, 'skills', 'init-backlog', 'templates'), { recursive: true })
+    cpSync(join(repositoryRoot, 'skills', 'init-backlog', 'unwrap.js'), join(copyScope, 'skills', 'init-backlog', 'unwrap.js'))
+    cpSync(join(repositoryRoot, 'skills', 'init-backlog', 'windows-attributes.ps1'), join(copyScope, 'skills', 'init-backlog', 'windows-attributes.ps1'))
+    mkdirSync(join(copyScope, 'skills', 'ready'), { recursive: true })
+    cpSync(join(repositoryRoot, 'skills', 'ready', 'ready.js'), join(copyScope, 'skills', 'ready', 'ready.js'))
+    mkdirSync(join(copyScope, 'skills', 'spec-agreement'), { recursive: true })
+    cpSync(join(repositoryRoot, 'skills', 'spec-agreement', 'spec-agreement.js'), join(copyScope, 'skills', 'spec-agreement', 'spec-agreement.js'))
+
+    return { copiedEntry, copyScope }
+  }
 
   test('the session driver package is closed to its eleven private modules and pins the process adapter events', () => {
     const privateModules = readdirSync(join(repositoryRoot, 'tests', 'init-backlog-session-driver')).sort()
@@ -786,25 +802,42 @@ function runSessionCases(repositoryRoot) {
   test('the controller runtime closure inventory is ordinal, digest-stable, and byte-sensitive', () => {
     const closure = driver.collectControllerRuntimeClosure({ entryPath: controllerEntryPath })
     assert.match(closure.controllerRuntimeSha256, HEX64)
-    assert.equal(closure.files[0].path, 'init-backlog.js')
+    assert.equal(closure.files[0].path, 'skills/init-backlog/init-backlog.js')
     assert.ok(closure.files.length > 5)
     const paths = closure.files.map((file) => file.path)
     assert.deepEqual(paths, [...paths].sort(), 'the inventory is ordinal path sorted')
-    assert.ok(paths.slice(1).every((path) => path.startsWith('lib/')))
+    assert.ok(paths.includes('skills/init-backlog/templates/manifest.json'), 'the request-time template manifest is part of the runtime closure')
+    assert.ok(paths.some((path) => path.startsWith('skills/init-backlog/templates/') && path.endsWith('.md')), 'request-time template assets are part of the runtime closure')
+    assert.ok(paths.includes('skills/init-backlog/unwrap.js'), 'the shared unwrapper is part of the runtime closure')
+    assert.ok(paths.includes('skills/init-backlog/windows-attributes.ps1'), 'the Windows attribute helper is part of the runtime closure')
+    assert.ok(paths.includes('skills/ready/ready.js'), 'the ready parser is part of the runtime closure')
+    assert.ok(paths.includes('skills/spec-agreement/spec-agreement.js'), 'the ready parser scanner dependency is part of the runtime closure')
+    assert.ok(paths.every((path) => path.startsWith('skills/')))
     const again = driver.collectControllerRuntimeClosure({ entryPath: controllerEntryPath })
     assert.equal(again.controllerRuntimeSha256, closure.controllerRuntimeSha256, 'stable revalidation returns the identical digest')
-    const copyRoot = tempRoot()
+    const { copiedEntry, copyScope } = copyControllerRuntime()
     try {
-      const copiedEntry = join(copyRoot, 'init-backlog.js')
-      cpSync(controllerEntryPath, copiedEntry)
-      cpSync(join(dirname(controllerEntryPath), 'lib'), join(copyRoot, 'lib'), { recursive: true })
       const copied = driver.collectControllerRuntimeClosure({ entryPath: copiedEntry })
       assert.equal(copied.controllerRuntimeSha256, closure.controllerRuntimeSha256)
-      writeFileSync(join(copyRoot, 'lib', 'errors.js'), readFileSync(join(copyRoot, 'lib', 'errors.js')) + '\n')
+      const copiedTemplatePath = join(copyScope, 'skills', 'init-backlog', 'templates', 'features.md')
+      const copiedTemplateBytes = readFileSync(copiedTemplatePath)
+      writeFileSync(copiedTemplatePath, Buffer.concat([copiedTemplateBytes, Buffer.from('\n')]))
+      const templateMutated = driver.collectControllerRuntimeClosure({ entryPath: copiedEntry })
+      assert.notEqual(templateMutated.controllerRuntimeSha256, closure.controllerRuntimeSha256, 'a request-time template byte change changes the digest')
+      writeFileSync(copiedTemplatePath, copiedTemplateBytes)
+      writeFileSync(join(copyScope, 'skills', 'init-backlog', 'lib', 'errors.js'), readFileSync(join(copyScope, 'skills', 'init-backlog', 'lib', 'errors.js')) + '\n')
       const mutated = driver.collectControllerRuntimeClosure({ entryPath: copiedEntry })
       assert.notEqual(mutated.controllerRuntimeSha256, closure.controllerRuntimeSha256, 'a closure-member byte change changes the digest')
+      for (const relativePath of ['skills/init-backlog/unwrap.js', 'skills/init-backlog/windows-attributes.ps1', 'skills/ready/ready.js', 'skills/spec-agreement/spec-agreement.js']) {
+        const dependencyPath = join(copyScope, ...relativePath.split('/'))
+        const originalBytes = readFileSync(dependencyPath)
+        writeFileSync(dependencyPath, Buffer.concat([originalBytes, Buffer.from('\n')]))
+        const dependencyMutated = driver.collectControllerRuntimeClosure({ entryPath: copiedEntry })
+        assert.notEqual(dependencyMutated.controllerRuntimeSha256, copied.controllerRuntimeSha256, `${relativePath} byte changes alter the runtime digest`)
+        writeFileSync(dependencyPath, originalBytes)
+      }
     } finally {
-      rmSync(copyRoot, { force: true, recursive: true })
+      rmSync(copyScope, { force: true, recursive: true })
     }
   })
 
@@ -1097,14 +1130,47 @@ function runSessionCases(repositoryRoot) {
   })
 
   test('the checked-in worker loads the production closure and emits the exact ready frame', () => {
-    const runtime = workerModule.createWorkerRuntime({ entryPath: controllerEntryPath })
     const expected = driver.collectControllerRuntimeClosure({ entryPath: controllerEntryPath })
+    const runtime = workerModule.createWorkerRuntime({ entryPath: controllerEntryPath, expectedControllerRuntimeSha256: expected.controllerRuntimeSha256 })
     const readyLine = runtime.readyFrameBytes().toString('utf8')
     assert.equal(readyLine, canonicalJson({ controllerRuntimeSha256: expected.controllerRuntimeSha256, ready: true }) + '\n')
+    assert.throws(
+      () => workerModule.createWorkerRuntime({ entryPath: controllerEntryPath, expectedControllerRuntimeSha256: '0'.repeat(64) }),
+      /runtime closure differs from the pre-launch snapshot/,
+    )
+  })
+
+  test('the worker revalidates every runtime dependency before dispatch', () => {
+    const { copiedEntry, copyScope } = copyControllerRuntime()
+    try {
+      const expected = driver.collectControllerRuntimeClosure({ entryPath: copiedEntry })
+      const facade = {
+        applyRecovery() {},
+        inspect() {},
+        inspectRecovery() {},
+        publishApply() {},
+        runPrivateDispatcher() { return { exitCode: 0, stderr: '', stdout: '{}' } },
+      }
+      const runtime = workerModule.createWorkerRuntime({
+        entryPath: copiedEntry,
+        expectedControllerRuntimeSha256: expected.controllerRuntimeSha256,
+        loadModule: (path) => path === copiedEntry ? facade : { collectInspection() {} },
+      })
+      const copiedHelperPath = join(copyScope, 'skills', 'init-backlog', 'windows-attributes.ps1')
+      writeFileSync(copiedHelperPath, Buffer.concat([readFileSync(copiedHelperPath), Buffer.from('\n')]))
+
+      assert.throws(
+        () => runtime.handleFrameLine(canonicalLine({ ordinal: 1, requestBase64: Buffer.from('{}', 'utf8').toString('base64') }).subarray(0, -1)),
+        /runtime closure changed after worker startup/,
+      )
+    } finally {
+      rmSync(copyScope, { force: true, recursive: true })
+    }
   })
 
   test('the worker answers an exact request frame with the exact four-member result frame', () => {
-    const runtime = workerModule.createWorkerRuntime({ entryPath: controllerEntryPath })
+    const expected = driver.collectControllerRuntimeClosure({ entryPath: controllerEntryPath })
+    const runtime = workerModule.createWorkerRuntime({ entryPath: controllerEntryPath, expectedControllerRuntimeSha256: expected.controllerRuntimeSha256 })
     const requestBase64 = Buffer.from('definitely not json', 'utf8').toString('base64')
     const reply = runtime.handleFrameLine(canonicalLine({ ordinal: 7, requestBase64 }).subarray(0, -1))
     const replyText = reply.toString('utf8')
@@ -1121,7 +1187,8 @@ function runSessionCases(repositoryRoot) {
   })
 
   test('the worker rejects malformed input frames', () => {
-    const runtime = workerModule.createWorkerRuntime({ entryPath: controllerEntryPath })
+    const expected = driver.collectControllerRuntimeClosure({ entryPath: controllerEntryPath })
+    const runtime = workerModule.createWorkerRuntime({ entryPath: controllerEntryPath, expectedControllerRuntimeSha256: expected.controllerRuntimeSha256 })
     assert.throws(() => runtime.handleFrameLine(Buffer.from('not json', 'utf8')), /frame/i)
     assert.throws(() => runtime.handleFrameLine(canonicalLine({ ordinal: 0, requestBase64: 'aGk=' }).subarray(0, -1)), /frame/i)
     assert.throws(() => runtime.handleFrameLine(canonicalLine({ ordinal: 1, requestBase64: 'not*base64' }).subarray(0, -1)), /frame/i)

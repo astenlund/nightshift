@@ -256,6 +256,8 @@ function createGitIsolationInputs({ filesystem = nodeFilesystem, runRoot }) {
 
 function collectControllerRuntimeClosure({ entryPath, filesystem = nodeFilesystem }) {
   const root = dirname(entryPath)
+  const skillsRoot = dirname(root)
+  const initBacklogPrefix = `skills/${basename(root)}`
   const entryName = basename(entryPath)
   const inventory = []
   const readClosureFile = (absolutePath, relativePath) => {
@@ -265,19 +267,26 @@ function collectControllerRuntimeClosure({ entryPath, filesystem = nodeFilesyste
     }
     inventory.push({ path: relativePath, sha256: sha256(filesystem.readFileSync(absolutePath)) })
   }
-  readClosureFile(entryPath, entryName)
-  const walk = (directory, prefix) => {
+  readClosureFile(entryPath, `${initBacklogPrefix}/${entryName}`)
+  const walk = (directory, prefix, includeFile) => {
     for (const entry of filesystem.readdirSync(directory, { withFileTypes: true }).sort((left, right) => left.name < right.name ? -1 : 1)) {
       const absolutePath = join(directory, entry.name)
       const relativePath = `${prefix}/${entry.name}`
       if (entry.isDirectory()) {
-        walk(absolutePath, relativePath)
-      } else if (entry.name.endsWith('.js')) {
+        walk(absolutePath, relativePath, includeFile)
+      } else if (entry.isFile() && includeFile(entry.name)) {
         readClosureFile(absolutePath, relativePath)
+      } else if (includeFile(entry.name)) {
+        throw new Error(`controller closure member is not an ordinary nonlinked file: ${relativePath}`)
       }
     }
   }
-  walk(join(root, 'lib'), 'lib')
+  walk(join(root, 'lib'), `${initBacklogPrefix}/lib`, (name) => name.endsWith('.js'))
+  walk(join(root, 'templates'), `${initBacklogPrefix}/templates`, () => true)
+  readClosureFile(join(root, 'unwrap.js'), `${initBacklogPrefix}/unwrap.js`)
+  readClosureFile(join(root, 'windows-attributes.ps1'), `${initBacklogPrefix}/windows-attributes.ps1`)
+  readClosureFile(join(skillsRoot, 'ready', 'ready.js'), 'skills/ready/ready.js')
+  readClosureFile(join(skillsRoot, 'spec-agreement', 'spec-agreement.js'), 'skills/spec-agreement/spec-agreement.js')
   inventory.sort((left, right) => left.path < right.path ? -1 : 1)
 
   return { controllerRuntimeSha256: sha256(Buffer.from(canonicalJson(inventory), 'utf8')), entryPath, files: inventory }

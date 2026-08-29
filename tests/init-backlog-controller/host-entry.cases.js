@@ -396,7 +396,7 @@ function createEvaluationHarness(scratch, overrides = {}) {
     preparePluginRoot: ({ controllerEnabled, sessionPluginRoot }) => {
       nodeFilesystem.writeFileSync(join(sessionPluginRoot, 'placeholder.txt'), 'installed plugin placeholder\n')
 
-      return { runPluginRootDigest: controllerEnabled ? 'c'.repeat(64) : null }
+      return { controllerRuntimeSha256: controllerEnabled ? '4'.repeat(64) : null, runPluginRootDigest: controllerEnabled ? 'c'.repeat(64) : null }
     },
     proxySessionFactory: ({ repetition }) => ({ port: 40000 + repetition, token: 'e'.repeat(64) }),
     runSession,
@@ -1786,7 +1786,7 @@ function runHostEntryCases(repositoryRoot) {
       assert.equal(workerLaunches.length, 6, 'exactly one worker per enabled repetition and none for disabled runs')
       for (const call of workerLaunches) {
         assert.equal(call.executable, harness.options.nodeExecutablePath)
-        assert.deepEqual(call.argv, [harness.options.controllerWorkerPath, harness.options.controllerEntryPath])
+        assert.deepEqual(call.argv, [harness.options.controllerWorkerPath, harness.options.controllerEntryPath, '4'.repeat(64)])
         assert.equal('ANTHROPIC_API_KEY' in call.environment, false, 'the worker projection carries no credentials')
         assert.equal('CODEX_API_KEY' in call.environment, false)
         assert.equal(call.environment.GIT_TERMINAL_PROMPT, '0', 'the worker projection carries the hermetic Git environment')
@@ -2242,6 +2242,8 @@ function runHostEntryCases(repositoryRoot) {
       write('.claude-plugin/marketplace.json', '{}\n')
       write('skills/init-backlog/init-backlog.js', 'production controller entry\n')
       write('skills/init-backlog/lib/util.js', 'library module\n')
+      write('skills/init-backlog/templates/features.md', 'feature template\n')
+      write('skills/init-backlog/templates/manifest.json', '{}\n')
       write('internal/notes.md', 'internal file\n')
       write('hooks/hook.js', 'hook file\n')
       const proxyClientPath = join(scratch, 'controller-proxy.js')

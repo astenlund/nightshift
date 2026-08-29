@@ -1371,7 +1371,7 @@ async function runEvaluation(options) {
       if (controllerEnabled) {
         const workerEnvironment = driver.buildWorkerProjection({ ambientEnvironment, checkoutRoot, gitIsolation, platform, temporaryPath: hostTemp.path })
         const workerCompletion = await launch({
-          argv: [controllerWorkerPath, controllerEntryPath],
+          argv: [controllerWorkerPath, controllerEntryPath, plugin.controllerRuntimeSha256],
           boundary: 'worker',
           cwd: runRoot,
           environment: workerEnvironment,
@@ -1697,8 +1697,8 @@ function createLiveBindings({ ambientEnvironment, checkoutRoot, controllerEntryP
         } catch {
           frame = null
         }
-        const expectedDigest = driver.collectControllerRuntimeClosure({ entryPath: call.argv[1], filesystem }).controllerRuntimeSha256
-        if (frame === null || frame.ready !== true || frame.controllerRuntimeSha256 !== expectedDigest) {
+        const expectedDigest = call.argv[2]
+        if (!/^[0-9a-f]{64}$/.test(expectedDigest ?? '') || frame === null || frame.ready !== true || frame.controllerRuntimeSha256 !== expectedDigest) {
           startupFailure()
 
           return
