@@ -62,6 +62,16 @@ function listFilesNamed(root, basename) {
   return found
 }
 
+function sumFileBytes(root) {
+  let total = 0
+  for (const entry of nodeFilesystem.readdirSync(root, { withFileTypes: true })) {
+    const target = join(root, entry.name)
+    total += entry.isDirectory() ? sumFileBytes(target) : nodeFilesystem.lstatSync(target).size
+  }
+
+  return total
+}
+
 function completedTuple({ exitCode = 0, signal = null, stderr = '', stdout = '' } = {}) {
   return {
     exitCode,
@@ -4234,6 +4244,73 @@ function runHostEntryCases(repositoryRoot) {
     } finally {
       nodeFilesystem.rmSync(scratch, { force: true, recursive: true })
     }
+  })
+
+  test('summary publication counts against the evidence root byte limit', async () => {
+    const runAtLimit = async (evidenceRootLimit) => {
+      const scratch = tempRoot()
+      try {
+        const harness = createEvaluationHarness(scratch)
+        const outputRoot = join(scratch, 'evidence')
+        const stdoutWrites = []
+        const overrides = {
+          ambientEnvironment: harness.options.ambientEnvironment,
+          checkoutRoot: harness.options.checkoutRoot,
+          controllerEntryPath: harness.options.controllerEntryPath,
+          controllerWorkerPath: harness.options.controllerWorkerPath,
+          descriptors: harness.options.descriptors,
+          evidenceRootLimit,
+          fixtures: {
+            baselineManifestSha256: harness.options.baselineManifestSha256,
+            importCases: [],
+            scenarioManifestSha256: harness.options.scenarioManifestSha256,
+            scenarios: harness.options.scenarios,
+          },
+          homeDirectory: harness.options.homeDirectory,
+          launch: harness.options.launch,
+          preparePluginRoot: harness.options.preparePluginRoot,
+          proxySessionFactory: harness.options.proxySessionFactory,
+          runGitFactory: harness.options.runGitFactory,
+          runSession: harness.options.runSession,
+          turnSchemaJson: harness.options.turnSchemaJson,
+        }
+        const exitCode = await hostBehavior.main(['--output', outputRoot], {
+          evaluationOverrides: overrides,
+          stderr: { write() {} },
+          stdout: { write: (text) => stdoutWrites.push(String(text)) },
+        })
+        const summaryPath = join(outputRoot, 'summary.json')
+        const leafBytes = ['claude-code', 'codex'].reduce((total, host) => total + sumFileBytes(join(outputRoot, host)), 0)
+
+        return {
+          exitCode,
+          leafBytes,
+          resultLine: stdoutWrites.at(-1),
+          summaryBytes: nodeFilesystem.existsSync(summaryPath) ? nodeFilesystem.readFileSync(summaryPath).length : null,
+        }
+      } finally {
+        nodeFilesystem.rmSync(scratch, { force: true, recursive: true })
+      }
+    }
+
+    const baseline = await runAtLimit(undefined)
+    assert.equal(baseline.exitCode, 0)
+    const exactLimit = baseline.leafBytes + baseline.summaryBytes
+    const exact = await runAtLimit(exactLimit)
+    assert.equal(exact.exitCode, 0)
+    assert.equal(exact.leafBytes + exact.summaryBytes, exactLimit)
+    const refused = await runAtLimit(exactLimit - 1)
+    assert.equal(refused.exitCode, 1)
+    assert.equal(refused.summaryBytes, null)
+    assert.deepEqual(JSON.parse(refused.resultLine), {
+      ok: false,
+      host: 'codex',
+      code: 'harness-infrastructure',
+      phase: 'post-session',
+      initialCode: null,
+      detailCode: 'output-capacity',
+      retainedRunRoot: null,
+    })
   })
 
   test('output-root aliases protect executables in their physical targets from PATH resolution', async (t) => {

@@ -1266,6 +1266,7 @@ async function runEvaluation(options) {
     createRoot,
     descriptors,
     evidenceOutputRoot = null,
+    evidenceRootLimit = driver.BYTE_BOUNDS.MAX_EVIDENCE_ROOT_BYTES,
     filesystem = nodeFilesystem,
     homeDirectory = homedir(),
     hosts = HOST_ORDER,
@@ -1547,6 +1548,7 @@ async function runEvaluation(options) {
           mode: modeName,
           outputRoot: evidenceOutputRoot,
           repetition,
+          rootLimit: evidenceRootLimit,
           rootUsedBytes: evidenceRootUsedBytes,
           scenario: scenario.scenarioId,
         })
@@ -1610,6 +1612,10 @@ async function runEvaluation(options) {
   // results; a completed table exits 0 and each row carries its own passed
   // verdict (disclosed aggregate-exit choice).
   const summary = driver.buildSummary({ evidenceManifests, rows, scenarioIds: scenarios.map((scenario) => scenario.scenarioId) })
+  const summaryBytes = canonicalJsonLine(summary)
+  if (evidenceOutputRoot !== null && evidenceRootUsedBytes + summaryBytes.length > evidenceRootLimit) {
+    return stopWith(infrastructureCarrier({ detailCode: 'output-capacity', host: hosts[hosts.length - 1], phase: 'post-session' }))
+  }
 
   return { evidenceManifests, exitCode: 0, result: null, resultLine: null, rows, summary, trustedGitExecutable, versions: preflight.versions }
 }
@@ -2728,6 +2734,7 @@ async function runOutputEvaluation({ outputRoot, overrides = {}, stdout = proces
       createRoot,
       descriptors,
       evidenceOutputRoot: resolvedOutputRoot,
+      evidenceRootLimit: overrides.evidenceRootLimit,
       filesystem,
       homeDirectory: overrides.homeDirectory ?? homedir(),
       launch,
