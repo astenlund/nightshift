@@ -155,10 +155,35 @@ function splitTopLevelCommas(s) {
 
 // One item of a Requires or External line: a link, the word none, or bare
 // text. Which kinds a label accepts is the caller's rule, not the parser's.
+function parseInlineLink(raw, allowTrailingPeriod = false) {
+  const opening = /^\[([^\]]*)\]\(/.exec(raw);
+  if (opening === null) return null;
+  const targetStart = opening[0].length;
+  let depth = 1;
+  for (let index = targetStart; index < raw.length; index++) {
+    if (raw[index] === '(') {
+      depth++;
+      continue;
+    }
+    if (raw[index] !== ')') continue;
+    depth--;
+    if (depth !== 0) continue;
+    const suffix = raw.slice(index + 1);
+    if (suffix !== '' && !(allowTrailingPeriod && suffix === '.')) return null;
+
+    return {
+      display: opening[1].trim(),
+      target: raw.slice(targetStart, index).trim(),
+    };
+  }
+
+  return null;
+}
+
 function parseDependencyItem(raw) {
-  const linkMatch = raw.match(/^\[([^\]]*)\]\(([^)]*)\)\.?$/);
-  if (linkMatch) {
-    return { kind: 'link', display: linkMatch[1].trim(), target: linkMatch[2].trim() };
+  const link = parseInlineLink(raw, true);
+  if (link !== null) {
+    return { kind: 'link', display: link.display, target: link.target };
   }
   if (/^none\.?$/i.test(raw)) {
     return { kind: 'none' };
@@ -226,12 +251,12 @@ function openSection(rawTitle, excludedSections, collectSections) {
 
 function createHeadingEntry(rawHeading, sectionTitle) {
   const heading = rawHeading.trim();
-  const link = heading.match(/^\[([^\]]*)\]\(([^)]*)\)$/);
+  const link = parseInlineLink(heading);
 
   return {
     kind: 'h3',
-    title: link ? link[1].trim() : heading,
-    selfTarget: link ? link[2].trim() : null,
+    title: link ? link.display : heading,
+    selfTarget: link ? link.target : null,
     section: sectionTitle,
     bodyLines: [],
   };
@@ -521,7 +546,7 @@ function targetPathKey(target) {
 // A breakout link is filesystem-checkable only when it is repo-relative;
 // absolute http(s) targets are skipped.
 function isRepoRelativeTarget(target) {
-  return Boolean(target) && !target.startsWith('http');
+  return Boolean(target) && !/^https?:\/\//i.test(target);
 }
 
 // True when a self-target names a real place inside the backlog: repo-relative
@@ -744,6 +769,15 @@ function dependencyLineItems(content, emptyProblem, structural) {
   return splitTopLevelCommas(content).map(parseDependencyItem);
 }
 
+function requiresLineItems(content, structural) {
+  const items = dependencyLineItems(content, EMPTY_REQUIRES_PROBLEM, structural);
+  if (items.length > 1 && items.some((item) => item.kind === 'none')) {
+    structural.push('none. must be the only item in **Requires:**');
+  }
+
+  return items;
+}
+
 function classifyUnit(unit, registry, out) {
   const { index, title, excerpt, requiresContent, externalContent, missingRequires, extraBlockers } = unit;
 
@@ -759,7 +793,7 @@ function classifyUnit(unit, registry, out) {
   const externals = [];
   const structural = [];
 
-  for (const item of dependencyLineItems(requiresContent, EMPTY_REQUIRES_PROBLEM, structural)) {
+  for (const item of requiresLineItems(requiresContent, structural)) {
     if (item.kind === 'none') continue;
     if (item.kind === 'text') {
       structural.push(bareTextProblem(item.text));
@@ -1134,7 +1168,6 @@ function scanBreakoutLines(contents) {
 function scanBreakoutTargetsWith(breakoutTargets, load, collectEvidence) {
   const notices = [];
   const structuralErrors = [];
-  const scanned = new Set();
   const lineHitsCache = new Map();
   const evidence = collectEvidence ? { notices: [], structuralErrors: [] } : null;
   const pushReadNotice = (rec, code) => {
@@ -1156,19 +1189,15 @@ function scanBreakoutTargetsWith(breakoutTargets, load, collectEvidence) {
       continue;
     }
     const { contents, identity } = read;
-    if (!scanned.has(identity)) {
-      scanned.add(identity);
+    if (!lineHitsCache.has(identity)) {
       const notice = hardWrapNotice(`breakout file ${target}`, contents);
       if (notice !== null) {
         notices.push(notice);
         if (evidence !== null) evidence.notices.push([target]);
       }
+      lineHitsCache.set(identity, scanBreakoutLines(contents));
     }
-    let lineHits = lineHitsCache.get(identity);
-    if (lineHits === undefined) {
-      lineHits = scanBreakoutLines(contents);
-      lineHitsCache.set(identity, lineHits);
-    }
+    const lineHits = lineHitsCache.get(identity);
     for (const hit of lineHits) {
       structuralErrors.push({
         index: rec.index,
@@ -1179,7 +1208,7 @@ function scanBreakoutTargetsWith(breakoutTargets, load, collectEvidence) {
     }
   }
 
-  return { notices, structuralErrors, scanned, evidence };
+  return { notices, structuralErrors, scanned: new Set(lineHitsCache.keys()), evidence };
 }
 
 function scanBreakoutTargets(breakoutTargets, claudeDir) {
@@ -1343,8 +1372,24 @@ function commonMarkHeadings(contents) {
     let title = match[2].trim();
     title = title.replace(/[ \t]+#+[ \t]*$/, '').trim();
 
-    return [{ index, level: match[1].length, title, rawStart: record.rawStart, rawEnd: record.rawEnd }];
+    return [{ level: match[1].length, title, rawStart: record.rawStart, rawEnd: record.rawEnd }];
   });
+}
+
+function hasPopulatedLegacySection(contents, headings, expectedTitle) {
+  const bytes = Buffer.from(contents, 'utf8');
+  let bodyStart = null;
+  for (const heading of headings) {
+    if (bodyStart !== null && heading.level <= 2) {
+      if (/\S/.test(bytes.subarray(bodyStart, heading.rawStart).toString('utf8'))) return true;
+      bodyStart = null;
+    }
+    if (heading.level === 2 && heading.title === expectedTitle) {
+      bodyStart = heading.rawEnd;
+    }
+  }
+
+  return bodyStart !== null && /\S/.test(bytes.subarray(bodyStart).toString('utf8'));
 }
 
 function legacyHistoryFactsFromCatalog(catalog) {
@@ -1357,14 +1402,7 @@ function legacyHistoryFactsFromCatalog(catalog) {
     const parent = catalog.get(index);
     if (parent === undefined || catalog.has(history)) return [];
     const headings = commonMarkHeadings(parent.contents);
-    const matches = headings.filter((item) => item.level === 2 && item.title.replace(/[ \t]+#+[ \t]*$/, '').trim() === heading);
-    const bytes = Buffer.from(parent.contents, 'utf8');
-    const populated = matches.some((match) => {
-      const boundary = headings.find((item) => item.rawStart > match.rawStart && item.level <= match.level);
-      const end = boundary === undefined ? bytes.length : boundary.rawStart;
-      return /\S/.test(bytes.subarray(match.rawEnd, end).toString('utf8'));
-    });
-    if (!populated) return [];
+    if (!hasPopulatedLegacySection(parent.contents, headings, heading)) return [];
 
     return [{ indexPath: `.claude/${index}`, historyPath: `.claude/${history}` }];
   }).sort((left, right) => compareTargets(`${left.indexPath}\0${left.historyPath}`, `${right.indexPath}\0${right.historyPath}`));
@@ -1579,9 +1617,10 @@ function collectEntryEdges(records, registry) {
     if (content === null || content === undefined) continue;
     const from = nodeKey(rec);
     const pending = [];
-    let structural = false;
-    for (const raw of splitTopLevelCommas(content)) {
-      const item = parseDependencyItem(raw);
+    const structuralProblems = [];
+    const items = requiresLineItems(content, structuralProblems);
+    let structural = structuralProblems.length > 0;
+    for (const item of items) {
       if (item.kind === 'none') continue;
       if (item.kind === 'text') {
         structural = true;

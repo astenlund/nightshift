@@ -2009,6 +2009,95 @@ test('CLI reads a .claude dir and emits the same JSON shape', () => {
   }
 });
 
+test('balanced parentheses in catalog links resolve through headings and Requires lines', () => {
+  const result = analyzeCatalog([
+    { target: 'FEATURES.md', contents: `## Area
+### [Parent](features/parent(v2).md)
+
+**Requires:** none.
+
+### [Child](features/child.md)
+
+**Requires:** [Parent](features/parent(v2).md).
+` },
+    { target: 'features/parent(v2).md', contents: '# Parent\n' },
+    { target: 'features/child.md', contents: '# Child\n' },
+  ]);
+
+  assert.ok(findByTitle(result.ready, 'Parent'), JSON.stringify(result));
+  assert.deepStrictEqual(findByTitle(result.blocked, 'Child').blockers, ['Parent']);
+  assert.deepStrictEqual(result.structuralErrors, []);
+  assert.deepStrictEqual(result.notices, []);
+});
+
+test('none is exclusive across top-level and inline Requires lines and masks cycle edges', () => {
+  const result = analyze({ FEATURES: `## Area
+### [Parent](features/parent.md)
+
+**Requires:** none.
+
+**Slices:**
+- **MVP - Base.**
+- **Continuation - Follow-up.**
+  **Requires:** none., [Dependency](features/dependency.md).
+
+### [Dependency](features/dependency.md)
+
+**Requires:** none.
+
+### [Mixed first](features/mixed-first.md)
+
+**Requires:** none., [Cycle peer](features/cycle-peer.md).
+
+### [Mixed last](features/mixed-last.md)
+
+**Requires:** [Dependency](features/dependency.md), none.
+
+### [Cycle peer](features/cycle-peer.md)
+
+**Requires:** [Mixed first](features/mixed-first.md).
+` });
+
+  const inlineProblem = result.structuralErrors.find((error) => error.title.startsWith('[Parent:'))?.problem ?? '';
+  assert.match(inlineProblem, /none\. must be the only item in \*\*Requires:\*\*/i, inlineProblem);
+  for (const title of ['Mixed first', 'Mixed last']) {
+    const problem = findByTitle(result.structuralErrors, title)?.problem ?? '';
+    assert.match(problem, /none\. must be the only item in \*\*Requires:\*\*/i, `${title}: ${problem}`);
+  }
+  assert.ok(!result.structuralErrors.some((error) => error.index === '[cycle]'), JSON.stringify(result.structuralErrors));
+});
+
+test('only case-insensitive HTTP URLs are excluded from breakout scanning', () => {
+  const result = analyze({ FEATURES: `## Exploring
+### [Remote](HTTPS://example.invalid/idea)
+
+### [Local](features/http-local.md)
+` });
+
+  assert.strictEqual(findByTitle(result.exploring, 'Remote').link, 'HTTPS://example.invalid/idea');
+  assert.strictEqual(findByTitle(result.exploring, 'Local').link, 'features/http-local.md');
+  assert.deepStrictEqual(result.breakoutTargets.map((target) => target.target), ['features/http-local.md']);
+});
+
+test('legacy history detection handles repeated empty and populated sections', () => {
+  const result = analyzeCatalog([
+    { target: 'FEATURES.md', contents: `## Implemented
+
+## Area
+
+## Implemented
+
+### Shipped item
+
+## Later
+` },
+  ]);
+
+  assert.deepStrictEqual(result.evidence.legacyHistory, [
+    { indexPath: '.claude/FEATURES.md', historyPath: '.claude/FEATURES_HISTORY.md' },
+  ]);
+});
+
 // ---------- summary ----------
 
 console.log(`\n${passed} passed, ${failures.length} failed`);
