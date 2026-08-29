@@ -3009,6 +3009,60 @@ function runHostEntryCases(repositoryRoot) {
     }
   })
 
+  test('output mode rejects a linked runs root before creating or launching a run', async (t) => {
+    if (process.platform !== 'win32') {
+      t.skip('junction confinement is a Windows-only live boundary')
+
+      return
+    }
+    const scratch = tempRoot()
+    const outputRoot = join(scratch, 'output')
+    const runsRoot = join(outputRoot, 'runs')
+    const externalRuns = join(scratch, 'external-runs')
+    const checkoutRoot = join(scratch, 'checkout')
+    nodeFilesystem.mkdirSync(outputRoot)
+    nodeFilesystem.mkdirSync(externalRuns)
+    nodeFilesystem.mkdirSync(checkoutRoot)
+    nodeFilesystem.symlinkSync(externalRuns, runsRoot, 'junction')
+    const launches = []
+    const stdoutWrites = []
+    try {
+      const exitCode = await hostBehavior.runOutputEvaluation({
+        outputRoot,
+        overrides: {
+          ambientEnvironment: { PATH: '' },
+          checkoutRoot,
+          descriptors: {
+            'claude-code': { descriptor: { argsPrefix: [], executable: 'synthetic-claude' } },
+            codex: { descriptor: { argsPrefix: [], executable: 'synthetic-codex' } },
+          },
+          fixtures: {
+            baselineManifestSha256: 'a'.repeat(64),
+            importCases: [],
+            scenarioManifestSha256: 'b'.repeat(64),
+            scenarios: [],
+          },
+          launch: (call) => {
+            launches.push(call)
+
+            return completedTuple({ exitCode: 1 })
+          },
+          runGitFactory: () => { throw new Error('no scenario Git runner is expected') },
+          runSession: async () => { throw new Error('a linked runs root must fail before a session starts') },
+        },
+        stdout: { write: (text) => stdoutWrites.push(String(text)) },
+      })
+
+      assert.equal(exitCode, 1)
+      assert.deepEqual(launches, [], 'a linked runs root fails before any host launch')
+      assert.deepEqual(nodeFilesystem.readdirSync(externalRuns), [], 'no physical run child is created through the junction')
+      assert.equal(JSON.parse(stdoutWrites[0]).code, 'unsupported-host-launcher')
+    } finally {
+      nodeFilesystem.rmSync(runsRoot, { force: true })
+      nodeFilesystem.rmSync(scratch, { force: true, recursive: true })
+    }
+  })
+
   test('output mode refuses a pre-existing report hard link without changing its external bytes', async () => {
     const scratch = tempRoot()
     try {

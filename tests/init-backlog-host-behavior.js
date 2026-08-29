@@ -678,10 +678,39 @@ function validateVersionOutput({ exitCode, signal = null, stderrBytes, stdoutByt
 }
 
 function createFreshRunRoot({ filesystem, path }) {
+  const before = stableLstat(filesystem, path)
+  if (before.unstable || (!before.absent && (before.stat.isSymbolicLink() || !before.stat.isDirectory()))) {
+    throw new Error(`a fresh run root must start empty and link-free: ${path}`)
+  }
   filesystem.mkdirSync(path, { recursive: true })
+  const after = stableLstat(filesystem, path)
+  if (after.absent || after.unstable || after.stat.isSymbolicLink() || !after.stat.isDirectory()) {
+    throw new Error(`a fresh run root must start empty and link-free: ${path}`)
+  }
   if (filesystem.readdirSync(path).length !== 0) {
     throw new Error(`a fresh run root must start empty: ${path}`)
   }
+}
+
+function prepareRunsRoot({ filesystem, outputRoot, platform, runsRoot }) {
+  let probed = stableLstat(filesystem, runsRoot)
+  if (probed.absent) {
+    try {
+      filesystem.mkdirSync(runsRoot)
+    } catch {
+      return { unstable: true }
+    }
+    probed = stableLstat(filesystem, runsRoot)
+  }
+  if (probed.absent || probed.unstable || probed.stat.isSymbolicLink() || !probed.stat.isDirectory()) {
+    return { unstable: true }
+  }
+  const canonical = canonicalizeStableDirectory({ entry: runsRoot, filesystem, platform, protectedRoots: [] })
+  if (canonical.skip || canonical.unstable || !insideProtectedRoots(canonical.canonicalPath, [outputRoot], platform)) {
+    return { unstable: true }
+  }
+
+  return { root: canonical.canonicalPath }
 }
 
 function cleanupRunRoot({ filesystem, path }) {
@@ -2427,7 +2456,16 @@ async function runOutputEvaluation({ outputRoot, overrides = {}, stdout = proces
   const checkoutRoot = overrides.checkoutRoot ?? nodePath.resolve(__dirname, '..')
   const resolvedOutputRoot = nodePath.resolve(outputRoot)
   filesystem.mkdirSync(resolvedOutputRoot, { recursive: true })
-  const runsRoot = nodePath.join(resolvedOutputRoot, 'runs')
+  const outputIdentity = canonicalizeStableDirectory({ entry: resolvedOutputRoot, filesystem, platform, protectedRoots: [] })
+  const runs = outputIdentity.skip || outputIdentity.unstable
+    ? { unstable: true }
+    : prepareRunsRoot({ filesystem, outputRoot: outputIdentity.canonicalPath, platform, runsRoot: nodePath.join(resolvedOutputRoot, 'runs') })
+  if (runs.unstable) {
+    stdout.write(formatResultLine(unsupportedHostLauncher('claude-code')))
+
+    return 1
+  }
+  const runsRoot = runs.root
   let rootOrdinal = 0
   const createRoot = overrides.createRoot ?? ((name) => nodePath.join(runsRoot, `${(rootOrdinal += 1)}-${name}`))
   const protectedRootResult = canonicalizeStableProtectedRoots({ entries: overrides.protectedRoots ?? [checkoutRoot, resolvedOutputRoot], filesystem, platform })
