@@ -1,9 +1,8 @@
 'use strict'
 
+const { PUBLIC_SKILLS: CLAUDE_PUBLIC_SKILL_INVENTORY } = require('../entry-contract')
 const { isPlainObject } = require('./primitives')
 const { canonicalJson } = require('./transcript')
-
-const CLAUDE_PUBLIC_SKILL_INVENTORY = Object.freeze(['exploring', 'handover', 'init-backlog', 'ready', 'revise-code', 'revise-docs', 'revise-lore', 'revise-plan', 'revise-spec', 'spec-agreement'])
 
 const CLAUDE_PLUGIN_NAME = 'nightshift'
 const NIGHTSHIFT_NAMESPACE = `${CLAUDE_PLUGIN_NAME}:`
