@@ -15,6 +15,7 @@ const { MAX_INLINE_FILE_BYTES, MAX_RECOVERY_REQUEST_BYTES, canonicalBytes, canon
 const { stableOpenFile } = require('../../skills/init-backlog/lib/filesystem')
 const { discoverInitialLockStages, inspect } = require('../../skills/init-backlog/lib/inspection')
 const { unwrapText } = require('../../skills/init-backlog/unwrap')
+const { ELECTION_MARKER_PATH } = require('./election-oracles')
 
 // Independent oracle pin: the recovery gate basename is spelled out here on purpose
 // and is deliberately not imported from the production constant it verifies.
@@ -72,7 +73,7 @@ function rekeyRecoveryInspection(inspection, overrides) {
 
 function markerFixture() {
   const root = fixtureRoot()
-  const marker = '.nightshift-init-backlog-election'
+  const marker = ELECTION_MARKER_PATH
   writeCanonical(join(root, marker), { invalid: true })
 
   return { marker, root }
@@ -167,8 +168,8 @@ function runRecoveryCases() {
       },
       () => {
         const root = fixtureRoot()
-        writeFileSync(join(root, '.nightshift-init-backlog-election'), Buffer.from('partial\n', 'utf8'), { mode: 0o600 })
-        return { request: request(root, 'election-marker', '.nightshift-init-backlog-election'), options: { currentInspection: { git: { kind: 'git' } } }, root }
+        writeFileSync(join(root, ELECTION_MARKER_PATH), Buffer.from('partial\n', 'utf8'), { mode: 0o600 })
+        return { request: request(root, 'election-marker', ELECTION_MARKER_PATH), options: { currentInspection: { git: { kind: 'git' } } }, root }
       },
       () => {
         const fixture = backupFixture()
@@ -271,10 +272,10 @@ function runRecoveryCases() {
       `.nightshift-init-backlog.${manifestId}.1.tmp`,
       `.claude/.nightshift-init-backlog.${manifestId}.2.tmp`,
       `.claude/.nightshift-init-backlog.${manifestId}.${targetHash}.tmp`,
-      `.nightshift-init-backlog-election.${manifestId}.tmp`,
-      `.nightshift-init-backlog-election.${manifestId}.new.tmp`,
-      `.nightshift-init-backlog-election.${manifestId}.old.tmp`,
-      `.nightshift-init-backlog-election.${manifestId}.tombstone.tmp`,
+      `${ELECTION_MARKER_PATH}.${manifestId}.tmp`,
+      `${ELECTION_MARKER_PATH}.${manifestId}.new.tmp`,
+      `${ELECTION_MARKER_PATH}.${manifestId}.old.tmp`,
+      `${ELECTION_MARKER_PATH}.${manifestId}.tombstone.tmp`,
       `.tmp/.nightshift-init-backlog-unwrap-${snapshotId}-${manifestId}-${targetHash}.tmp`,
       `.tmp/nightshift-init-backlog-unwrap-${snapshotId}-${manifestId}-${targetHash}.bak`,
     ].sort(compareOrdinal)
@@ -1159,8 +1160,8 @@ function runRecoveryCases() {
   test('election residue exposes only legal dispositions', () => {
     const root = fixtureRoot()
     try {
-      writeCanonical(join(root, '.nightshift-init-backlog-election'), { invalid: true })
-      const inspected = inspectRecovery(request(root, 'election-marker', '.nightshift-init-backlog-election'), { currentInspection: { git: { kind: 'git', freshScaffold: true } } })
+      writeCanonical(join(root, ELECTION_MARKER_PATH), { invalid: true })
+      const inspected = inspectRecovery(request(root, 'election-marker', ELECTION_MARKER_PATH), { currentInspection: { git: { kind: 'git', freshScaffold: true } } })
       assert.deepEqual(inspected.allowedDispositions, ['deferred', 'track', 'ignore', 'abandon'])
     } finally {
       rmSync(root, { force: true, recursive: true })
@@ -1169,16 +1170,16 @@ function runRecoveryCases() {
 
   test('malformed non-JSON election marker supports an approved replacement disposition', () => {
     const root = fixtureRoot()
-    const markerPath = join(root, '.nightshift-init-backlog-election')
+    const markerPath = join(root, ELECTION_MARKER_PATH)
     const malformed = Buffer.from('not-json\n', 'utf8')
     try {
       writeFileSync(markerPath, malformed, { mode: 0o600 })
       const currentInspection = { git: { kind: 'git', freshScaffold: true } }
-      const inspected = inspectRecovery(request(root, 'election-marker', '.nightshift-init-backlog-election'), { currentInspection })
+      const inspected = inspectRecovery(request(root, 'election-marker', ELECTION_MARKER_PATH), { currentInspection })
       assert.equal(inspected.evidence.marker.classification, 'invalid')
       assert.equal(inspected.evidence.marker.rawSha256, sha256(malformed))
 
-      const applied = applyRecovery({ ...request(root, 'election-marker', '.nightshift-init-backlog-election'), operation: 'recover-apply', recoveryInspection: inspected, disposition: 'deferred' }, { currentInspection })
+      const applied = applyRecovery({ ...request(root, 'election-marker', ELECTION_MARKER_PATH), operation: 'recover-apply', recoveryInspection: inspected, disposition: 'deferred' }, { currentInspection })
 
       assert.equal(applied.status, 'completed')
       assert.deepEqual(JSON.parse(readFileSync(markerPath, 'utf8')), { protocolVersion: 1, root, snapshotId: sha256(Buffer.from(canonicalJson({ invalidMarkerSha256: sha256(malformed), protocolVersion: 1, root, state: 'deferred' }), 'utf8')), state: 'deferred' })
@@ -1189,14 +1190,14 @@ function runRecoveryCases() {
 
   test('same-mode election marker replacement after inspection fails without mutation', () => {
     const root = fixtureRoot()
-    const markerPath = join(root, '.nightshift-init-backlog-election')
+    const markerPath = join(root, ELECTION_MARKER_PATH)
     try {
       writeFileSync(markerPath, Buffer.from('not-json\n', 'utf8'), { mode: 0o600 })
       const currentInspection = { git: { kind: 'git', freshScaffold: true } }
-      const inspected = inspectRecovery(request(root, 'election-marker', '.nightshift-init-backlog-election'), { currentInspection })
+      const inspected = inspectRecovery(request(root, 'election-marker', ELECTION_MARKER_PATH), { currentInspection })
       const replacement = Buffer.from('writer-replacement\n', 'utf8')
       assert.throws(
-        () => applyRecovery({ ...request(root, 'election-marker', '.nightshift-init-backlog-election'), operation: 'recover-apply', recoveryInspection: inspected, disposition: 'deferred' }, { currentInspection, onBeforeRename: () => { rmSync(markerPath); writeFileSync(markerPath, replacement, { mode: 0o600 }) } }),
+        () => applyRecovery({ ...request(root, 'election-marker', ELECTION_MARKER_PATH), operation: 'recover-apply', recoveryInspection: inspected, disposition: 'deferred' }, { currentInspection, onBeforeRename: () => { rmSync(markerPath); writeFileSync(markerPath, replacement, { mode: 0o600 }) } }),
         (error) => error.record?.code === 'snapshot-drift',
       )
       assert.deepEqual(readFileSync(markerPath), replacement)
@@ -1209,10 +1210,10 @@ function runRecoveryCases() {
     const root = fixtureRoot()
     const target = 'arbitrary-marker-label'
     try {
-      writeCanonical(join(root, '.nightshift-init-backlog-election'), { invalid: true })
+      writeCanonical(join(root, ELECTION_MARKER_PATH), { invalid: true })
       const inspected = inspectRecovery(request(root, 'election-marker', target), { currentInspection: { git: { kind: 'git', freshScaffold: true } } })
       assert.throws(() => applyRecovery({ ...request(root, 'election-marker', target), operation: 'recover-apply', recoveryInspection: inspected, disposition: 'abandon' }), /target|recovery|invalid/i)
-      assert.equal(existsSync(join(root, '.nightshift-init-backlog-election')), true)
+      assert.equal(existsSync(join(root, ELECTION_MARKER_PATH)), true)
     } finally {
       rmSync(root, { force: true, recursive: true })
     }
@@ -1796,8 +1797,8 @@ function runRecoveryCases() {
   test('oversized marker fails with typed payload-too-large recovery record before embedding', () => {
     const root = fixtureRoot()
     try {
-      writeFileSync(join(root, '.nightshift-init-backlog-election'), Buffer.alloc(65537, 0x61), { mode: 0o600 })
-      assert.throws(() => inspectRecovery(request(root, 'election-marker', '.nightshift-init-backlog-election'), { currentInspection: { git: { kind: 'git' } } }), (error) => error.record?.code === 'payload-too-large' && error.record.phase === 'inspect')
+      writeFileSync(join(root, ELECTION_MARKER_PATH), Buffer.alloc(65537, 0x61), { mode: 0o600 })
+      assert.throws(() => inspectRecovery(request(root, 'election-marker', ELECTION_MARKER_PATH), { currentInspection: { git: { kind: 'git' } } }), (error) => error.record?.code === 'payload-too-large' && error.record.phase === 'inspect')
     } finally {
       rmSync(root, { force: true, recursive: true })
     }
@@ -2358,7 +2359,7 @@ function runRecoveryCases() {
     const wrongDirectoryRoot = fixtureRoot()
     const recoveryId = 'd'.repeat(64)
     const ownerNonce = 'c'.repeat(32)
-    const markerHash = sha256(Buffer.from('.nightshift-init-backlog-election', 'utf8'))
+    const markerHash = sha256(Buffer.from(ELECTION_MARKER_PATH, 'utf8'))
     const backupTargetHash = sha256(Buffer.from('FEATURES.md', 'utf8'))
     const backup = `.tmp/nightshift-init-backlog-unwrap-${'a'.repeat(64)}-${'b'.repeat(64)}-${backupTargetHash}.bak`
     const markerTemporary = `.nightshift-init-backlog.${recoveryId}.${markerHash}.tmp`
@@ -2510,7 +2511,7 @@ function runRecoveryCases() {
 
     const markerRoot = fixtureRoot()
     try {
-      const marker = '.nightshift-init-backlog-election'
+      const marker = ELECTION_MARKER_PATH
       writeCanonical(join(markerRoot, marker), { invalid: true })
       const inspected = inspectRecovery(request(markerRoot, 'election-marker', marker), { currentInspection: { git: { kind: 'git', freshScaffold: true } } })
       assertCleanupFailure(() => applyRecovery({ ...request(markerRoot, 'election-marker', marker), operation: 'recover-apply', recoveryInspection: inspected, disposition: 'abandon' }, { unlinkSync: failingRemove }), [])
@@ -2554,8 +2555,8 @@ function runRecoveryCases() {
     const validRoot = fixtureRoot()
     try {
       const invalidMarker = { protocolVersion: 1, root: invalidRoot, snapshotId: 'a'.repeat(64), state: 'unknown' }
-      writeCanonical(join(invalidRoot, '.nightshift-init-backlog-election'), invalidMarker)
-      const invalidRequest = request(invalidRoot, 'election-marker', '.nightshift-init-backlog-election')
+      writeCanonical(join(invalidRoot, ELECTION_MARKER_PATH), invalidMarker)
+      const invalidRequest = request(invalidRoot, 'election-marker', ELECTION_MARKER_PATH)
       const invalidDispatch = runPrivateDispatcher(Buffer.from(`${canonicalJson(invalidRequest)}\n`, 'utf8'), {
         'recover-inspect': (value) => inspectRecovery(value, { currentInspection: { git: { kind: 'non-git', freshScaffold: false } } }),
       })
@@ -2567,8 +2568,8 @@ function runRecoveryCases() {
       assert.deepEqual(invalidResult.allowedDispositions, ['abandon'])
 
       const validMarker = { protocolVersion: 1, root: validRoot, snapshotId: 'b'.repeat(64), state: 'deferred' }
-      writeCanonical(join(validRoot, '.nightshift-init-backlog-election'), validMarker)
-      const validRequest = request(validRoot, 'election-marker', '.nightshift-init-backlog-election')
+      writeCanonical(join(validRoot, ELECTION_MARKER_PATH), validMarker)
+      const validRequest = request(validRoot, 'election-marker', ELECTION_MARKER_PATH)
       const validDispatch = runPrivateDispatcher(Buffer.from(`${canonicalJson(validRequest)}\n`, 'utf8'), {
         'recover-inspect': (value) => inspectRecovery(value, { currentInspection: { git: { kind: 'git', freshScaffold: false } } }),
       })
@@ -2594,7 +2595,7 @@ function runRecoveryCases() {
       const pid = 321
       const ownerNonce = 'c'.repeat(32)
       const stage = `.nightshift-init-backlog.lock.${pid}.${ownerNonce}.new`
-      const recoveryHash = item.operation === 'recover-apply' ? sha256(Buffer.from('.nightshift-init-backlog-election', 'utf8')) : 'd'.repeat(64)
+      const recoveryHash = item.operation === 'recover-apply' ? sha256(Buffer.from(ELECTION_MARKER_PATH, 'utf8')) : 'd'.repeat(64)
       const recoveryTemporary = `.nightshift-init-backlog.${item.recoveryId}.${recoveryHash}.tmp`
       const temporaryPaths = item.operation === 'recover-apply' ? [recoveryTemporary, stage].sort(compareOrdinal) : [stage]
       const record = { createdAtUnixMs: 0, manifestId: item.manifestId, operation: item.operation, ownerNonce, pid, protocolVersion: 1, recoveryId: item.recoveryId, root: ownerRoot, temporaryPaths, unfinalizedDirectories: [] }
@@ -2655,7 +2656,7 @@ function runRecoveryCases() {
       const pid = 321
       const ownerNonce = 'c'.repeat(32)
       const stage = `.nightshift-init-backlog.lock.${pid}.${ownerNonce}.new`
-      const recoveryHash = item.operation === 'recover-apply' ? sha256(Buffer.from('.nightshift-init-backlog-election', 'utf8')) : 'd'.repeat(64)
+      const recoveryHash = item.operation === 'recover-apply' ? sha256(Buffer.from(ELECTION_MARKER_PATH, 'utf8')) : 'd'.repeat(64)
       const recoveryTemporary = `.nightshift-init-backlog.${item.recoveryId}.${recoveryHash}.tmp`
       const temporaryPaths = item.operation === 'recover-apply' ? [recoveryTemporary, stage].sort(compareOrdinal) : [stage]
       const record = { createdAtUnixMs: 0, manifestId: item.manifestId, operation: item.operation, ownerNonce, pid, protocolVersion: 1, recoveryId: item.recoveryId, root: ownerRoot, temporaryPaths, unfinalizedDirectories: [] }
@@ -2730,7 +2731,7 @@ function runRecoveryCases() {
       assert.throws(() => publishApply(applyRequest, { currentInspection: carried, crash: true, ownerNonce: 'b'.repeat(32), failAt: 'after-marker-alias-removal' }), /Injected publication failure at after-marker-alias-removal/)
       const lock = JSON.parse(readFileSync(join(fixture.root, '.nightshift-init-backlog.lock'), 'utf8'))
       const witness = lock.temporaryPaths.find((target) => target.endsWith('.new.tmp'))
-      assert.equal(statSync(join(fixture.root, '.nightshift-init-backlog-election')).nlink, 2)
+      assert.equal(statSync(join(fixture.root, ELECTION_MARKER_PATH)).nlink, 2)
       assert.equal(statSync(join(fixture.root, witness)).nlink, 2)
 
       const inspected = inspectRecovery(request(fixture.root, 'stale-owner', '.nightshift-init-backlog.lock'), { killProcess: absentPid() })
@@ -2739,7 +2740,7 @@ function runRecoveryCases() {
       assert.equal(applied.status, 'completed')
       assert.equal(existsSync(join(fixture.root, '.nightshift-init-backlog.lock')), false)
       assert.equal(existsSync(join(fixture.root, witness)), false)
-      assert.equal(existsSync(join(fixture.root, '.nightshift-init-backlog-election')), true)
+      assert.equal(existsSync(join(fixture.root, ELECTION_MARKER_PATH)), true)
     } finally {
       rmSync(fixture.root, { force: true, recursive: true })
     }
