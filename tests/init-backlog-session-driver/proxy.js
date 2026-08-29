@@ -1,5 +1,7 @@
 'use strict'
 
+const { timingSafeEqual } = require('node:crypto')
+
 const { BYTE_BOUNDS, DEADLINES } = require('./primitives')
 const { canonicalJson, canonicalJsonLine, isCanonicalBase64 } = require('./transcript')
 
@@ -29,6 +31,23 @@ function parseCanonicalObject(bytes, expectedMemberKey) {
   }
 
   return parsed
+}
+
+// Compares a client-supplied token against the per-run token without leaking
+// the matching prefix length through comparison timing. timingSafeEqual throws
+// on unequal lengths, so a non-string or differently sized candidate is
+// rejected before it reaches the constant-time compare.
+function tokenMatches(candidate, expected) {
+  if (typeof candidate !== 'string') {
+    return false
+  }
+  const candidateBytes = Buffer.from(candidate, 'utf8')
+  const expectedBytes = Buffer.from(expected, 'utf8')
+  if (candidateBytes.length !== expectedBytes.length) {
+    return false
+  }
+
+  return timingSafeEqual(candidateBytes, expectedBytes)
 }
 
 function createAuthorizationGate({ host, hostContext, scenarioRoot }) {
@@ -250,7 +269,7 @@ function createProxyServer({ callDeadlineMilliseconds = DEADLINES.WORKER_CALL_MI
       }
       record.framed = true
       const frame = parseCanonicalObject(lineBytes, CLIENT_FRAME_MEMBERS)
-      if (frame === null || frame.token !== token || !isCanonicalBase64(frame.requestBase64)) {
+      if (frame === null || !tokenMatches(frame.token, token) || !isCanonicalBase64(frame.requestBase64)) {
         rejectAuthorization(connection)
 
         return
