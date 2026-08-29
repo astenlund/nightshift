@@ -368,6 +368,39 @@ function resolveTrustedGit({ ambientPath, filesystem = nodeFilesystem, platform,
   return { executable: resolution.descriptor.executable }
 }
 
+function buildWorkerAmbientEnvironment({ ambientEnvironment, filesystem, platform, protectedRoots }) {
+  const pathApi = pathApiFor(platform)
+  const delimiter = pathApi.delimiter
+  const canonicalEntries = []
+  const seen = new Set()
+  for (const entry of String(ambientPathValue(ambientEnvironment, platform) ?? '').split(delimiter)) {
+    if (entry === '' || !pathApi.isAbsolute(entry)) {
+      continue
+    }
+    const resolved = canonicalizeStableDirectory({ entry, filesystem, platform, protectedRoots })
+    if (resolved.unstable) {
+      return { unstable: true }
+    }
+    if (resolved.skip) {
+      continue
+    }
+    const key = comparablePath(resolved.canonicalPath, platform)
+    if (!seen.has(key)) {
+      seen.add(key)
+      canonicalEntries.push(resolved.canonicalPath)
+    }
+  }
+  const environment = {}
+  for (const [key, value] of Object.entries(ambientEnvironment)) {
+    if (comparablePath(key, platform) !== 'path') {
+      environment[key] = value
+    }
+  }
+  environment.PATH = canonicalEntries.join(delimiter)
+
+  return { environment }
+}
+
 // --- Closed environment projection per launch boundary --------------------
 
 function buildLaunchProjection({ ambientEnvironment, boundary, checkoutRoot, controllerPath = null, overrides = {}, platform, proxySession = null, temporaryPaths }) {
@@ -1256,6 +1289,10 @@ async function runEvaluation(options) {
       scenarioRoot,
     })
   }
+  const workerAmbient = buildWorkerAmbientEnvironment({ ambientEnvironment, filesystem: commandFilesystem ?? filesystem, platform, protectedRoots })
+  if (workerAmbient.unstable) {
+    return stopWith(infrastructureCarrier({ detailCode: 'containment-unavailable', host: hosts[0], phase: 'version' }))
+  }
   const evidenceManifests = []
   let evidenceRootUsedBytes = 0
   const preflight = await runVersionPreflight({
@@ -1369,7 +1406,7 @@ async function runEvaluation(options) {
         }
       }
       if (controllerEnabled) {
-        const workerEnvironment = driver.buildWorkerProjection({ ambientEnvironment, checkoutRoot, gitIsolation, platform, protectedRoots, temporaryPath: hostTemp.path })
+        const workerEnvironment = driver.buildWorkerProjection({ ambientEnvironment: workerAmbient.environment, checkoutRoot, gitIsolation, platform, protectedRoots, temporaryPath: hostTemp.path })
         const workerCompletion = await launch({
           argv: [controllerWorkerPath, controllerEntryPath, plugin.controllerRuntimeSha256],
           boundary: 'worker',

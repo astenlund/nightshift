@@ -2384,11 +2384,13 @@ function runHostEntryCases(repositoryRoot) {
     const acceptedScratch = tempRoot()
     try {
       const protectedGitDirectory = join(acceptedScratch, 'protected-output', 'git-bin')
+      const protectedGitAlias = join(acceptedScratch, 'protected-git-alias')
       const harness = createEvaluationHarness(acceptedScratch, {
         options: {
           commandFilesystem: fakeCommandFilesystem({
             [outsideDirectory]: { kind: 'dir' },
             [outsideGit]: { kind: 'file' },
+            [protectedGitAlias]: { kind: 'link', target: protectedGitDirectory },
             [protectedGitDirectory]: { kind: 'dir' },
             [join(protectedGitDirectory, `git${suffix}`)]: { kind: 'file' },
           }),
@@ -2396,13 +2398,14 @@ function runHostEntryCases(repositoryRoot) {
           runGitFactory: null,
         },
       })
-      harness.options.ambientEnvironment.PATH = harness.options.ambientEnvironment.PATH + delimiter + protectedGitDirectory + delimiter + outsideDirectory
+      harness.options.ambientEnvironment.PATH = harness.options.ambientEnvironment.PATH + delimiter + protectedGitAlias + delimiter + protectedGitDirectory + delimiter + outsideDirectory
       const evaluation = await hostBehavior.runEvaluation(harness.options)
 
       assert.equal(evaluation.result, null)
       assert.equal(evaluation.trustedGitExecutable, outsideGit, 'the resolved trusted git is retained for every scenario git runner')
       for (const call of harness.launches.filter((launch) => launch.boundary === 'worker')) {
         assert.equal(call.environment.PATH.split(delimiter).includes(protectedGitDirectory), false, 'the worker cannot re-resolve git below a protected root')
+        assert.equal(call.environment.PATH.split(delimiter).includes(protectedGitAlias), false, 'the worker cannot retain an alias into a protected root')
       }
     } finally {
       nodeFilesystem.rmSync(acceptedScratch, { force: true, recursive: true })
