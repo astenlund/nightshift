@@ -123,23 +123,39 @@ function writeDigestRecord(hash, entryPath, content) {
   hash.update(content)
 }
 
+function collectCandidateTree({ checkoutRoot, treeId, visitEntry = () => {} }) {
+  const hash = createHash('sha256')
+  let manifestBytes = null
+  for (const entry of listedTreeEntries(checkoutRoot, treeId)) {
+    const content = git(checkoutRoot, ['cat-file', 'blob', entry.objectId], 'buffer')
+    visitEntry(entry, content)
+    if (entry.entryPath === '.claude-plugin/plugin.json') {
+      manifestBytes = content
+    }
+    writeDigestRecord(hash, entry.entryPath, content)
+  }
+  const manifest = manifestBytes === null ? null : JSON.parse(manifestBytes.toString('utf8'))
+  if (typeof manifest?.version !== 'string' || manifest.version === '') {
+    throw new Error('Candidate has no version')
+  }
+
+  return { version: manifest.version, digest: hash.digest('hex') }
+}
+
 function stageCandidate({ checkoutRoot, destinationRoot, treeId }) {
   const root = join(destinationRoot, 'snapshot')
   mkdirSync(root, { recursive: true })
-  const hash = createHash('sha256')
-  for (const entry of listedTreeEntries(checkoutRoot, treeId)) {
-    const content = git(checkoutRoot, ['cat-file', 'blob', entry.objectId], 'buffer')
-    const target = join(root, ...entry.entryPath.split('/'))
-    mkdirSync(require('node:path').dirname(target), { recursive: true })
-    writeFileSync(target, content, { mode: entry.mode === '100755' ? 0o755 : 0o644 })
-    writeDigestRecord(hash, entry.entryPath, content)
-  }
-  const manifest = JSON.parse(readFileSync(join(root, '.claude-plugin', 'plugin.json'), 'utf8'))
-  if (typeof manifest.version !== 'string' || manifest.version === '') {
-    throw new Error('Staged candidate has no version')
-  }
+  const facts = collectCandidateTree({
+    checkoutRoot,
+    treeId,
+    visitEntry(entry, content) {
+      const target = join(root, ...entry.entryPath.split('/'))
+      mkdirSync(require('node:path').dirname(target), { recursive: true })
+      writeFileSync(target, content, { mode: entry.mode === '100755' ? 0o755 : 0o644 })
+    },
+  })
 
-  return { root, version: manifest.version, digest: hash.digest('hex') }
+  return { root, ...facts }
 }
 
 function loadLegacyBaseline(candidateRoot) {
@@ -471,13 +487,8 @@ function readEvidence(evidenceRoot, host, mode) {
   return JSON.parse(stableEvidenceFile(evidenceRoot, join(evidenceRoot, host + '-' + mode + '.json')).bytes.toString('utf8'))
 }
 
-function candidateDigestForIndex(checkoutRoot) {
-  const tempRoot = mkdtempSync(join(tmpdir(), 'nightshift-host-smoke-'))
-  try {
-    return stageCandidate({ checkoutRoot, destinationRoot: tempRoot, treeId: git(checkoutRoot, ['write-tree']).trim() }).digest
-  } finally {
-    rmSync(tempRoot, { force: true, recursive: true })
-  }
+function candidateFactsForIndex(checkoutRoot) {
+  return collectCandidateTree({ checkoutRoot, treeId: git(checkoutRoot, ['write-tree']).trim() })
 }
 
 function evaluateEvidence({ checkoutRoot, evidenceRoot, release }) {
@@ -493,7 +504,7 @@ function evaluateEvidence({ checkoutRoot, evidenceRoot, release }) {
     assertion(row.status === 'pass' || !release && row.status === 'provisional' && row.diagnostic === 'host executable absent', 'Evidence status is not accepted')
   }
   const rows = cells.map((cell) => cell.row)
-  const digest = candidateDigestForIndex(checkoutRoot)
+  const digest = candidateFactsForIndex(checkoutRoot).digest
   for (const row of rows) {
     assertion(row.candidateDigest === digest, 'Evidence candidate digest is stale or mixed')
   }
@@ -847,4 +858,4 @@ async function runCell({ host, mode, checkoutRoot, evidenceRoot }) {
   return row
 }
 
-module.exports = { CODEX_CATALOG_PROMPT, PUBLIC_SKILLS, RUNTIME_KEYS, assembleClaudePromptBaseline, assembleCodexPromptBaseline, assertClaudeInventory, assertEngineClosure, assertInitBacklogClosure, assertOutsideCheckout, buildCodexArgv, classifyChildExit, createCellSequence, createMarketplace, evaluateEvidence, executeCellSequence, loadCandidateEngineResources, loadLegacyBaseline, loadPromptBaseline, parseClaudeAuthStatus, parseClaudeDetails, parseCodexAuthStatus, projectRuntimeEnvironment, resolveExternalClaudeConfigRoot, runCell, stageCandidate, validateEvidenceRow, writeEvidence }
+module.exports = { CODEX_CATALOG_PROMPT, PUBLIC_SKILLS, RUNTIME_KEYS, assembleClaudePromptBaseline, assembleCodexPromptBaseline, assertClaudeInventory, assertEngineClosure, assertInitBacklogClosure, assertOutsideCheckout, buildCodexArgv, candidateFactsForIndex, classifyChildExit, createCellSequence, createMarketplace, evaluateEvidence, executeCellSequence, loadCandidateEngineResources, loadLegacyBaseline, loadPromptBaseline, parseClaudeAuthStatus, parseClaudeDetails, parseCodexAuthStatus, projectRuntimeEnvironment, resolveExternalClaudeConfigRoot, runCell, stageCandidate, validateEvidenceRow, writeEvidence }

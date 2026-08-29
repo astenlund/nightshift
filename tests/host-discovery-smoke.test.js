@@ -16,6 +16,7 @@ const {
   assertOutsideCheckout,
   PUBLIC_SKILLS,
   buildCodexArgv,
+  candidateFactsForIndex,
   createMarketplace,
   evaluateEvidence,
   loadLegacyBaseline,
@@ -351,16 +352,16 @@ test('candidate marketplace contains only the nightshift plugin from plugin', ()
   }
 })
 
-test('staging the same indexed candidate is stable and excludes the ephemeral plan tree', () => {
+test('indexed candidate facts match one staged snapshot and exclude the ephemeral plan tree', () => {
   const root = createTemporaryDirectory()
   try {
     const checkoutRoot = join(__dirname, '..')
     const treeId = require('node:child_process').execFileSync('git', ['-C', checkoutRoot, 'write-tree'], { encoding: 'utf8' }).trim()
-    const first = stageCandidate({ checkoutRoot, destinationRoot: join(root, 'first'), treeId })
-    const second = stageCandidate({ checkoutRoot, destinationRoot: join(root, 'second'), treeId })
+    const staged = stageCandidate({ checkoutRoot, destinationRoot: join(root, 'staged'), treeId })
+    const indexed = candidateFactsForIndex(checkoutRoot)
 
-    assert.equal(first.digest, second.digest)
-    assert.equal(require('node:fs').existsSync(join(first.root, '.claude', 'plans')), false)
+    assert.deepEqual(indexed, { digest: staged.digest, version: staged.version })
+    assert.equal(require('node:fs').existsSync(join(staged.root, '.claude', 'plans')), false)
   } finally {
     removeTemporaryDirectory(root)
   }
