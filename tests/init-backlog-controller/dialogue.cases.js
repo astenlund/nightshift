@@ -13,7 +13,7 @@ const driver = require('../init-backlog-session-driver')
 const protocol = require('../../skills/init-backlog/lib/protocol')
 const { inspect } = require('../../skills/init-backlog/init-backlog')
 const { CLAUDE_ROOT_EXCLUSION_CONFIRMATION, CODEX_HOST_CONTEXT_CONFIRMATION, HOST_CONTROL_RECORDS } = require('./election-oracles')
-const { HOST_CONTEXTS, buildExpectedImportCases } = require('./oracles.cases')
+const { HOST_CONTEXTS, buildExpectedImportCases } = require('./host-fixture-oracles')
 const { canonicalJson, sha256 } = require('./helpers')
 
 const FIXED_OPTIONS = ['track', 'ignore', 'deferred', 'not-required']

@@ -24,7 +24,7 @@ const adjudication = require('./init-backlog-session-driver/adjudication')
 const dialogue = require('./init-backlog-session-driver/dialogue')
 const evidence = require('./init-backlog-session-driver/evidence')
 const hostEvents = require('./init-backlog-session-driver/host-events')
-const oracles = require('./init-backlog-controller/oracles.cases')
+const oracles = require('./init-backlog-controller/host-fixture-oracles')
 const { CLAUDE_ROOT_EXCLUSION_CONFIRMATION } = require('./init-backlog-controller/election-oracles')
 const { HOSTS, compareOrdinal, sha256 } = require('./init-backlog-session-driver/primitives')
 
