@@ -368,7 +368,7 @@ function resolveTrustedGit({ ambientPath, filesystem = nodeFilesystem, platform,
   return { executable: resolution.descriptor.executable }
 }
 
-function buildWorkerAmbientEnvironment({ ambientEnvironment, filesystem, platform, protectedRoots }) {
+function buildContainedAmbientEnvironment({ ambientEnvironment, filesystem, platform, protectedRoots }) {
   const pathApi = pathApiFor(platform)
   const delimiter = pathApi.delimiter
   const canonicalEntries = []
@@ -1321,7 +1321,7 @@ async function runEvaluation(options) {
       scenarioRoot,
     })
   }
-  const workerAmbient = buildWorkerAmbientEnvironment({ ambientEnvironment, filesystem: commandFilesystem ?? filesystem, platform, protectedRoots })
+  const workerAmbient = buildContainedAmbientEnvironment({ ambientEnvironment, filesystem: commandFilesystem ?? filesystem, platform, protectedRoots })
   if (workerAmbient.unstable) {
     return stopWith(infrastructureCarrier({ detailCode: 'containment-unavailable', host: hosts[0], phase: 'version' }))
   }
@@ -2506,6 +2506,13 @@ async function runOutputEvaluation({ outputRoot, overrides = {}, stdout = proces
   }
   const protectedRoots = protectedRootResult.roots
   const commandFilesystem = overrides.commandFilesystem ?? filesystem
+  const containedAmbient = buildContainedAmbientEnvironment({ ambientEnvironment, filesystem: commandFilesystem, platform, protectedRoots })
+  if (containedAmbient.unstable) {
+    stdout.write(formatResultLine(unsupportedHostLauncher('claude-code')))
+
+    return 1
+  }
+  const launchEnvironment = containedAmbient.environment
   const controllerEntryPath = overrides.controllerEntryPath ?? nodePath.join(checkoutRoot, ...CONTROLLER_ENTRY_RELATIVE_PATH.split('/'))
   const controllerWorkerPath = overrides.controllerWorkerPath ?? nodePath.join(__dirname, 'init-backlog-controller-worker.js')
   const proxyClientPath = overrides.proxyClientPath ?? nodePath.join(__dirname, 'fixtures', 'init-backlog-eval', 'controller-proxy.js')
@@ -2544,7 +2551,7 @@ async function runOutputEvaluation({ outputRoot, overrides = {}, stdout = proces
     // The import matrix runs before the behavioral matrix, per the probe
     // slice's ordering.
     const matrix = await runImportMatrix({
-      ambientEnvironment,
+      ambientEnvironment: launchEnvironment,
       checkoutRoot,
       createRoot,
       descriptor: claudeResolution.descriptor,
@@ -2566,7 +2573,7 @@ async function runOutputEvaluation({ outputRoot, overrides = {}, stdout = proces
       return 1
     }
     const evaluation = await runEvaluation({
-      ambientEnvironment,
+      ambientEnvironment: launchEnvironment,
       baselineManifestSha256: fixtures.baselineManifestSha256,
       checkoutRoot,
       commandFilesystem,

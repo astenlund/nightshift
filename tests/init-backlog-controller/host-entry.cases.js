@@ -2536,6 +2536,7 @@ function runHostEntryCases(repositoryRoot) {
       assert.equal(evaluation.result, null)
       assert.equal(evaluation.trustedGitExecutable, outsideGit, 'the resolved trusted git is retained for every scenario git runner')
       for (const call of harness.launches.filter((launch) => launch.boundary === 'worker')) {
+        assert.equal(call.environment.PATH.split(delimiter).includes(outsideDirectory), true, 'the worker retains the safe canonical PATH entry')
         assert.equal(call.environment.PATH.split(delimiter).includes(protectedGitDirectory), false, 'the worker cannot re-resolve git below a protected root')
         assert.equal(call.environment.PATH.split(delimiter).includes(protectedGitAlias), false, 'the worker cannot retain an alias into a protected root')
       }
@@ -3137,6 +3138,62 @@ function runHostEntryCases(repositoryRoot) {
         assert.equal(JSON.parse(stdoutWrites[0]).code, 'unsupported-host-launcher', aliasKind)
       }
     } finally {
+      nodeFilesystem.rmSync(scratch, { force: true, recursive: true })
+    }
+  })
+
+  test('output mode removes direct and aliased output-root helpers from every host PATH', async (t) => {
+    if (process.platform !== 'win32') {
+      t.skip('junction containment is a Windows-only live boundary')
+
+      return
+    }
+    const scratch = tempRoot()
+    const outputBinAlias = join(scratch, 'output-bin-alias')
+    try {
+      const checkoutRoot = join(scratch, 'checkout')
+      const outputRoot = join(scratch, 'output')
+      const outputBin = join(outputRoot, 'bin')
+      const safeHostBin = join(scratch, 'safe-host-bin')
+      nodeFilesystem.mkdirSync(checkoutRoot)
+      nodeFilesystem.mkdirSync(outputBin, { recursive: true })
+      nodeFilesystem.mkdirSync(safeHostBin)
+      nodeFilesystem.writeFileSync(join(outputBin, 'node.exe'), '')
+      nodeFilesystem.writeFileSync(join(safeHostBin, 'claude.exe'), '')
+      nodeFilesystem.writeFileSync(join(safeHostBin, 'codex.exe'), '')
+      nodeFilesystem.symlinkSync(outputBin, outputBinAlias, 'junction')
+      const launches = []
+      const exitCode = await hostBehavior.runOutputEvaluation({
+        outputRoot,
+        overrides: {
+          ambientEnvironment: { PATH: [safeHostBin, outputBinAlias, outputBin].join(';') },
+          checkoutRoot,
+          fixtures: {
+            baselineManifestSha256: 'a'.repeat(64),
+            importCases: [{ adapterBase64: Buffer.from('# CLAUDE.md\n', 'utf8').toString('base64'), caseId: 'contained-host-path', expectedSentinel: null, files: [] }],
+            scenarioManifestSha256: 'b'.repeat(64),
+            scenarios: [],
+          },
+          launch: (call) => {
+            launches.push(call)
+
+            return call.boundary === 'import-probe'
+              ? completedTuple({ stdout: importProbeStream(null) })
+              : completedTuple({ exitCode: 1 })
+          },
+          runGitFactory: () => { throw new Error('no scenario Git runner is expected') },
+          runSession: async () => { throw new Error('version failure stops before any session') },
+        },
+        stdout: { write() {} },
+      })
+
+      assert.equal(exitCode, 1, 'the synthetic version failure ends the probe after PATH capture')
+      assert.equal(launches.length, 2, 'the import probe and first version command both use the contained projection')
+      for (const call of launches) {
+        assert.equal(call.environment.PATH, safeHostBin, call.boundary)
+      }
+    } finally {
+      nodeFilesystem.rmSync(outputBinAlias, { force: true })
       nodeFilesystem.rmSync(scratch, { force: true, recursive: true })
     }
   })
