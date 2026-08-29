@@ -674,6 +674,46 @@ function runInspectionCases(repositoryRoot) {
     }
   })
 
+  // The publication window is the only caller that tolerates an extra marker
+  // link, and it tolerates exactly the witnesses it reserved. These three cases
+  // pin the whole accounting: a link the caller owns passes, a link nobody
+  // claims fails inside the window, and the strict single-link rule still holds
+  // outside it.
+  test('election marker link accounting admits owned witnesses and rejects foreign links', () => {
+    const root = mkdtempSync(join(tmpdir(), 'nightshift-marker-links-'))
+    try {
+      const markerPath = join(root, '.nightshift-init-backlog-election')
+      const snapshotId = 'e'.repeat(64)
+      writeFileSync(markerPath, `${canonicalJson(composeElectionRecord('deferred', root, snapshotId))}\n`, { mode: 0o600 })
+      const witness = join(root, '.nightshift-init-backlog.election.witness')
+      linkSync(markerPath, witness)
+
+      const accounted = readElectionMarker(root, { electionWitnesses: [witness] })
+      assert.deepEqual({ marker: accounted.marker, snapshotId: accounted.snapshotId }, { marker: 'deferred', snapshotId }, 'a witness sharing the marker identity accounts for its own link')
+
+      assert.throws(
+        () => readElectionMarker(root, { electionWitnesses: [] }),
+        (error) => error.message === 'Election marker metadata failed' && error.cause?.message !== undefined,
+        'outside the publication window the marker must still be strictly single-linked',
+      )
+
+      const intruder = join(root, 'intruder.link')
+      linkSync(markerPath, intruder)
+      assert.throws(
+        () => readElectionMarker(root, { electionWitnesses: [witness] }),
+        (error) => error.message === 'Election marker metadata failed' && error.cause?.message === 'Election marker carries a hard link the controller does not own',
+        'a link no reserved witness claims must fail closed even inside the publication window',
+      )
+      assert.throws(
+        () => collectInspection(root, 'codex', codexHostContext(), { candidates: [], electionWitnesses: [witness] }),
+        (error) => error.record?.code === 'runtime-marker' && error.record?.phase === 'inspect' && error.record?.detail === 'Election marker is invalid.',
+        'the foreign link must surface as runtime-marker through the inspection flow',
+      )
+    } finally {
+      rmSync(root, { force: true, recursive: true })
+    }
+  })
+
   test('orphan lock-stage discovery validates an ordinary stable candidate before surfacing it', () => {
     const root = mkdtempSync(join(tmpdir(), 'nightshift-stage-'))
     const name = `.nightshift-init-backlog.lock.1234.${'b'.repeat(32)}.new`
