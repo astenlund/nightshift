@@ -1731,14 +1731,19 @@ const HOSTILE_CYCLE_FEATURES = `# Features
 **Requires:** [Alpha](../outside.md).
 `;
 
-test('a cycle whose members carry hostile self-targets is a structural error, never a throw', () => {
+test('hostile qualified dependencies are structural and never form cycle edges', () => {
   const result = analyzeCatalog([{ target: 'FEATURES.md', contents: HOSTILE_CYCLE_FEATURES }]);
-  const cycle = result.structuralErrors.find((e) => e.index === '[cycle]');
-  assert.ok(cycle, JSON.stringify(result.structuralErrors));
-  assert.strictEqual(cycle.title, '2-node cycle');
+  assert.ok(!result.structuralErrors.some((e) => e.index === '[cycle]'), JSON.stringify(result.structuralErrors));
+  for (const title of ['Alpha', 'Beta']) {
+    const problem = findByTitle(result.structuralErrors, title)?.problem ?? '';
+    assert.match(problem, /does not resolve to any active backlog entry/, `${title}: ${problem}`);
+  }
   assert.deepStrictEqual(
     result.evidence.structuralErrors,
-    [{ kind: 'structuralErrors', ordinal: 0, evidencePaths: ['FEATURES.md'] }],
+    [
+      { kind: 'structuralErrors', ordinal: 0, evidencePaths: ['FEATURES.md'] },
+      { kind: 'structuralErrors', ordinal: 1, evidencePaths: ['FEATURES.md'] },
+    ],
     'a traversing or absolute self-target is never offered as an evidence path',
   );
 });
@@ -1804,11 +1809,11 @@ const HOSTILE_DUPLICATE_SELF_TARGET_FEATURES = `# Features
 **Requires:** [First hostile](../dup.md).
 `;
 
-test('a link to a self-target path claimed twice outside the catalog grammar resolves to neither claimant', () => {
+test('a qualified link outside the catalog grammar resolves to neither hostile claimant', () => {
   const result = analyze({ FEATURES: HOSTILE_DUPLICATE_SELF_TARGET_FEATURES });
   const dependent = findByTitle(result.structuralErrors, 'Dependent');
   assert.ok(dependent, JSON.stringify(result.structuralErrors));
-  assert.ok(dependent.problem.includes('ambiguous reference'), dependent.problem);
+  assert.ok(dependent.problem.includes('does not resolve to any active backlog entry'), dependent.problem);
   assert.ok(
     !titles(result.blocked).includes('Dependent'),
     `a hostile duplicate must not silently block on one claimant: ${titles(result.blocked).join(' | ')}`,
@@ -1838,11 +1843,11 @@ const HOSTILE_SLUG_COLLISION_FEATURES = `# Features
 **Requires:** [Hostile claimant](../dup.md).
 `;
 
-test('a link to a lone hostile self-target sharing a basename is ambiguous, and the valid entry still classifies', () => {
+test('a qualified hostile link does not fall back to a valid entry sharing its basename', () => {
   const result = analyze({ FEATURES: HOSTILE_SLUG_COLLISION_FEATURES });
   const dependent = findByTitle(result.structuralErrors, 'Dependent');
   assert.ok(dependent, JSON.stringify(result.structuralErrors));
-  assert.ok(dependent.problem.includes('several active entries share the file slug "dup"'), dependent.problem);
+  assert.ok(dependent.problem.includes('does not resolve to any active backlog entry'), dependent.problem);
   assert.ok(
     !titles(result.blocked).includes('Dependent'),
     `the link must not silently resolve to either claimant: ${titles(result.blocked).join(' | ')}`,
@@ -2172,6 +2177,46 @@ test('only case-insensitive HTTP URLs are excluded from breakout scanning', () =
   assert.strictEqual(findByTitle(result.exploring, 'Remote').link, 'HTTPS://example.invalid/idea');
   assert.strictEqual(findByTitle(result.exploring, 'Local').link, 'features/http-local.md');
   assert.deepStrictEqual(result.breakoutTargets.map((target) => target.target), ['features/http-local.md']);
+});
+
+test('dependency lookup rejects invalid and mismatched qualified targets without weaker fallback', () => {
+  const result = analyze({ FEATURES: `## Area
+### [Parent](features/parent.md)
+
+**Requires:** none.
+
+### [Wrong path](features/wrong-path.md)
+
+**Requires:** [Parent](features/typo.md).
+
+### [Traversal](features/traversal.md)
+
+**Requires:** [Parent](../features/parent.md).
+
+### [Remote](features/remote.md)
+
+**Requires:** [Parent](https://example.invalid/parent.md).
+
+### [Empty](features/empty.md)
+
+**Requires:** [Parent]().
+
+### [Bare basename](features/bare.md)
+
+**Requires:** [Parent](parent.md).
+
+### [Index anchor](features/index-anchor.md)
+
+**Requires:** [Parent](FEATURES.md#parent).
+` });
+
+  for (const title of ['Wrong path', 'Traversal', 'Remote', 'Empty']) {
+    const problem = findByTitle(result.structuralErrors, title)?.problem ?? '';
+    assert.match(problem, /does not resolve to any active backlog entry/, `${title}: ${problem}`);
+    assert.ok(!findByTitle(result.blocked, title), `${title} must not acquire a fallback blocker`);
+  }
+  assert.deepStrictEqual(findByTitle(result.blocked, 'Bare basename').blockers, ['Parent']);
+  assert.deepStrictEqual(findByTitle(result.blocked, 'Index anchor').blockers, ['Parent']);
 });
 
 test('legacy history detection handles repeated empty and populated sections', () => {

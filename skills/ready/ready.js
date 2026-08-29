@@ -587,21 +587,19 @@ function buildRegistry(indexEntries) {
   // refuses to pick either. A self-target outside the closed catalog-reference
   // grammar is already reported as a broken link, so it never joins the path
   // graph at all: admitting it would reintroduce that silent shadowing on a key
-  // no duplicate report may claim. Links to such an entry still resolve through
-  // the slug and title routes, which carry their own duplicate detection.
+  // no duplicate report may claim. Dependency links to such targets remain
+  // structural instead of falling through to a weaker identity route.
   const pathGroups = new Map();
   for (const rec of indexEntries) {
     const titleKey = normalizeTitle(rec.entry.title);
     if (byTitle.has(titleKey)) titleDupes.add(titleKey);
     else byTitle.set(titleKey, rec);
     const pathKey = targetPathKey(rec.entry.selfTarget);
-    if (pathKey) {
-      if (isCatalogReferenceTarget(rec.entry.selfTarget)) {
-        byPath.set(pathKey, rec);
-        const group = pathGroups.get(pathKey);
-        if (group === undefined) pathGroups.set(pathKey, [rec]);
-        else group.push(rec);
-      }
+    if (pathKey && isCatalogReferenceTarget(rec.entry.selfTarget)) {
+      byPath.set(pathKey, rec);
+      const group = pathGroups.get(pathKey);
+      if (group === undefined) pathGroups.set(pathKey, [rec]);
+      else group.push(rec);
       const slug = targetSlug(rec.entry.selfTarget).toLowerCase();
       if (bySlug.has(slug)) slugDupes.add(slug);
       else bySlug.set(slug, rec);
@@ -611,32 +609,48 @@ function buildRegistry(indexEntries) {
   return { byTitle, titleDupes, bySlug, slugDupes, byPath, pathDupes };
 }
 
-// Look up an entry by link target (directory-qualified path first, then
-// bare basename, then display text). Returns { rec, via } on a unique
-// match, { ambiguous, remedy? } when several active entries share the matched
-// key, or {} on no match. Path-first ordering makes features/foo.md and
-// bugs/foo.md resolve correctly instead of colliding on the basename.
+function dependencyLookupRoute(target) {
+  if (typeof target !== 'string' || target === '' || target.startsWith('/') || target.includes('\\') || /^[A-Za-z]:/.test(target) || /^https?:\/\//i.test(target)) {
+    return { kind: 'invalid' };
+  }
+  const hashIndex = target.indexOf('#');
+  const fileTarget = hashIndex < 0 ? target : target.slice(0, hashIndex);
+  const anchor = hashIndex < 0 ? '' : target.slice(hashIndex + 1);
+  const slug = targetSlug(fileTarget);
+  if (!slug) return { kind: 'invalid' };
+  if (INDEX_FILE_STEMS.has(slug)) {
+    return anchor === '' ? { kind: 'invalid' } : { kind: 'title' };
+  }
+  if (fileTarget.includes('/')) {
+    if (!isCatalogReferenceTarget(target)) return { kind: 'invalid' };
+
+    return { kind: 'path', key: targetPathKey(fileTarget) };
+  }
+
+  return { kind: 'slug', key: slug.toLowerCase() };
+}
+
+// Look up an entry by the identity route selected by the target grammar.
+// Directory-qualified paths use exact path identity, bare basenames use slug
+// identity, and index anchors use display-title identity. A supplied strong
+// form never falls through to a weaker match after it misses.
 function lookupEntry(registry, display, target) {
-  const pathKey = targetPathKey(target);
-  if (pathKey && registry.pathDupes.has(pathKey)) {
+  const route = dependencyLookupRoute(target);
+  if (route.kind === 'path' && registry.pathDupes.has(route.key)) {
     // Qualifying the link cannot disambiguate a path both entries claim, so
     // this ambiguity carries its own remedy instead of the shared one.
-    return { ambiguous: `several active entries declare the self-target path "${pathKey}"`, remedy: 'give each entry its own breakout file' };
+    return { ambiguous: `several active entries declare the self-target path "${route.key}"`, remedy: 'give each entry its own breakout file' };
   }
-  if (pathKey && registry.byPath.has(pathKey)) {
-    return { rec: registry.byPath.get(pathKey), via: 'path' };
+  if (route.kind === 'path') {
+    return registry.byPath.has(route.key) ? { rec: registry.byPath.get(route.key), via: 'path' } : {};
   }
-  const slug = targetSlug(target);
-  const slugKey = slug && !INDEX_FILE_STEMS.has(slug) ? slug.toLowerCase() : null;
-  if (slugKey) {
-    if (registry.slugDupes.has(slugKey)) {
-      return { ambiguous: `several active entries share the file slug "${slugKey}"` };
+  if (route.kind === 'slug') {
+    if (registry.slugDupes.has(route.key)) {
+      return { ambiguous: `several active entries share the file slug "${route.key}"` };
     }
-    if (registry.bySlug.has(slugKey)) {
-      return { rec: registry.bySlug.get(slugKey), via: 'slug' };
-    }
+    return registry.bySlug.has(route.key) ? { rec: registry.bySlug.get(route.key), via: 'slug' } : {};
   }
-  if (display) {
+  if (route.kind === 'title' && display) {
     const titleKey = normalizeTitle(display);
     if (registry.titleDupes.has(titleKey)) {
       return { ambiguous: `several active entries share the title "${display}"` };
