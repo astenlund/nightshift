@@ -129,22 +129,42 @@ function runAdmissionCases() {
 
   test('refuses a chained mechanical target whose proposals expose no unique head', () => {
     const first = Buffer.from('seed\n', 'utf8')
-    const other = Buffer.from('other\n', 'utf8')
     const edit = (id, before, after) => ({ afterBase64: after.toString('base64'), beforeBase64: before.toString('base64'), id, kind: 'exact-edit', regionId: 'gitignore.policy-append', target: '.gitignore' })
-    // Two candidate heads, so the starting bytes are ambiguous and admission
-    // must refuse rather than pick one.
     const left = edit('p-chain-left', first, Buffer.from('seed\nleft\n', 'utf8'))
-    const right = edit('p-chain-right', other, Buffer.from('other\nright\n', 'utf8'))
-    const inspection = baseInspection()
-    inspection.targets = [target('.claude', 'directory', 'present'), { ...target('.gitignore', 'file', 'present'), contentBase64: null, contentRole: 'mechanical', editableRegions: [{ endByte: first.length, regionId: 'gitignore.policy-append', startByte: first.length }], templateId: null, templateSha256: null }]
-    inspection.proposals = [left, right].map((action) => ({ action, afterBase64: action.afterBase64, beforeBase64: action.beforeBase64, condition: 'always', proposalId: action.id, reason: 'plans-policy' }))
-    inspection.snapshotId = deriveSnapshotId({ ...inspection, snapshotId: null })
+    // Chain-head candidacy is a property of every carried sibling, selected or
+    // not, so the ambiguity is built from an unselected second proposal. Two
+    // selected same-target edits would be refused earlier, by the transition
+    // graph, and would never reach the chain-head decision.
+    const rightEditFor = (before) => edit('p-chain-right', before, Buffer.concat([before, Buffer.from('right\n', 'utf8')]))
+    const inspectionFor = (right) => {
+      const inspection = baseInspection()
+      inspection.targets = [target('.claude', 'directory', 'present'), { ...target('.gitignore', 'file', 'present'), contentBase64: null, contentRole: 'mechanical', editableRegions: [{ endByte: first.length, regionId: 'gitignore.policy-append', startByte: first.length }], templateId: null, templateSha256: null }]
+      inspection.proposals = [
+        { action: left, afterBase64: left.afterBase64, beforeBase64: left.beforeBase64, condition: 'always', proposalId: left.id, reason: 'plans-policy' },
+        { action: right, afterBase64: right.afterBase64, beforeBase64: right.beforeBase64, condition: 'version-control-ignore', proposalId: right.id, reason: 'plans-policy' },
+      ]
+      inspection.snapshotId = deriveSnapshotId({ ...inspection, snapshotId: null })
 
-    expectManifestError(() => admitApplyManifest(request({
+      return inspection
+    }
+    const admit = (inspection) => admitApplyManifest(request({
       actions: [left],
       inspection,
-      proposalDispositions: inspection.proposals.map((item) => ({ disposition: item.proposalId === left.id ? 'selected' : 'condition-not-selected', proposalId: item.proposalId })),
-    })))
+      // `not-required` leaves the version-control-ignore sibling unselected.
+      proposalDispositions: [{ disposition: 'selected', proposalId: left.id }, { disposition: 'condition-not-selected', proposalId: 'p-chain-right' }],
+    }), { rescanRegions: ({ content }) => [{ endByte: content.length, regionId: 'gitignore.policy-append', startByte: content.length }] })
+
+    // Two candidate heads, so the starting bytes are ambiguous, admission seeds
+    // nothing, and the edit's own input check refuses the manifest.
+    assert.throws(
+      () => admit(inspectionFor(rightEditFor(Buffer.from('other\n', 'utf8')))),
+      (error) => error?.record?.code === 'manifest-invalid' && error?.record?.detail === 'Exact edit input differs from inspection or prior action.',
+    )
+
+    // Control: the same shape with the sibling chained onto the left output
+    // exposes one head, seeds the target, and admits.
+    const seeded = admit(inspectionFor(rightEditFor(Buffer.from('seed\nleft\n', 'utf8'))))
+    assert.equal(seeded.states.find((item) => item.target === '.gitignore').content.toString('utf8'), 'seed\nleft\n')
   })
 
   test('admits an empty direct manifest and returns a stable identity', () => {
