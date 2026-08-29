@@ -12,7 +12,7 @@ const { createOwnerInventoryIndex, validateOwnerInventoryStates } = require('../
 const { admitApplyManifest } = require('../../skills/init-backlog/lib/apply-manifest')
 const { InitBacklogError, failureRecord } = require('../../skills/init-backlog/lib/errors')
 const { runPrivateDispatcher } = require('../../skills/init-backlog/init-backlog')
-const { MAX_INLINE_FILE_BYTES, MAX_RECOVERY_REQUEST_BYTES, backupFileNames, canonicalBytes, canonicalJson, compareOrdinal, deriveRecoveryId, deriveSnapshotId, encodeResult, sha256, validateResultRecord } = require('../../skills/init-backlog/lib/protocol')
+const { MAX_INLINE_FILE_BYTES, MAX_MECHANICAL_FILE_BYTES, MAX_RECOVERY_REQUEST_BYTES, backupFileNames, canonicalBytes, canonicalJson, compareOrdinal, deriveRecoveryId, deriveSnapshotId, encodeResult, sha256, validateResultRecord } = require('../../skills/init-backlog/lib/protocol')
 const { stableOpenFile } = require('../../skills/init-backlog/lib/filesystem')
 const { discoverInitialLockStages, inspect } = require('../../skills/init-backlog/lib/inspection')
 const { unwrapText } = require('../../skills/init-backlog/unwrap')
@@ -282,6 +282,27 @@ function runRecoveryCases() {
       assert.equal(observedMaxBytes, MAX_RECOVERY_REQUEST_BYTES)
     } finally {
       rmSync(root, { force: true, recursive: true })
+    }
+  })
+
+  test('stale owner bounds inventoried file bytes at the mechanical ceiling', () => {
+    for (const extraBytes of [0, 1]) {
+      const root = fixtureRoot()
+      const manifestId = 'a'.repeat(64)
+      const target = `.nightshift-init-backlog.${manifestId}.1.tmp`
+      try {
+        writeCanonical(join(root, '.nightshift-init-backlog.lock'), { createdAtUnixMs: 0, manifestId, operation: 'apply', ownerNonce: 'b'.repeat(32), pid: 321, protocolVersion: 1, recoveryId: null, root, temporaryPaths: [target], unfinalizedDirectories: [] })
+        writeFileSync(join(root, target), Buffer.alloc(MAX_MECHANICAL_FILE_BYTES + extraBytes, 0x61), { mode: 0o600 })
+
+        if (extraBytes === 0) {
+          const inspected = inspectRecovery(request(root, 'stale-owner', '.nightshift-init-backlog.lock'), { killProcess: absentPid() })
+          assert.equal(inspected.evidence.owner.temporaryStates[0].present, true)
+        } else {
+          assert.throws(() => inspectRecovery(request(root, 'stale-owner', '.nightshift-init-backlog.lock'), { killProcess: absentPid() }), (error) => error.record?.code === 'runtime-lock')
+        }
+      } finally {
+        rmSync(root, { force: true, recursive: true })
+      }
     }
   })
 

@@ -20,7 +20,7 @@ const {
   stableOpenFile,
   stageFile,
 } = require('./filesystem')
-const { DIGEST_PATTERN, MAX_INLINE_FILE_BYTES, MAX_RECOVERY_REQUEST_BYTES, MAX_RECOVERY_RESULT_BYTES, NONCE_PATTERN, OWNER_BASENAME: RECOVERY_OWNER_BASENAME, OWNER_RECORD_KEYS, OWNER_STAGE_BASENAME: RECOVERY_OWNER_STAGE_BASENAME, RECOVERY_GATE_BASENAME, RECOVERY_LOCK_BASENAME: LOCK_BASENAME, RECOVERY_LOCK_STAGE_PATTERN: LOCK_STAGE_PATTERN, RECOVERY_MARKER_BASENAME: MARKER_BASENAME, WARNING_CODES, buildRecoveryApplyRequest, canonicalBytes, canonicalJson, compareOrdinal, deriveRecoveryId, electionMarkerTemporaryNames, recoveryAllowedDispositions, sameCanonical, sameKeys, sha256, validateTarget } = require('./protocol')
+const { DIGEST_PATTERN, MAX_INLINE_FILE_BYTES, MAX_MECHANICAL_FILE_BYTES, MAX_RECOVERY_REQUEST_BYTES, MAX_RECOVERY_RESULT_BYTES, NONCE_PATTERN, OWNER_BASENAME: RECOVERY_OWNER_BASENAME, OWNER_RECORD_KEYS, OWNER_STAGE_BASENAME: RECOVERY_OWNER_STAGE_BASENAME, RECOVERY_GATE_BASENAME, RECOVERY_LOCK_BASENAME: LOCK_BASENAME, RECOVERY_LOCK_STAGE_PATTERN: LOCK_STAGE_PATTERN, RECOVERY_MARKER_BASENAME: MARKER_BASENAME, WARNING_CODES, buildRecoveryApplyRequest, canonicalBytes, canonicalJson, compareOrdinal, deriveRecoveryId, electionMarkerTemporaryNames, recoveryAllowedDispositions, sameCanonical, sameKeys, sha256, validateTarget } = require('./protocol')
 const { collectInspection, validateElectionMarkerRecord } = require('./inspection')
 const { createOwnerInventoryIndex, validateOwnerInventoryStates } = require('./owner-inventory')
 const { publishRecoveryFile, recoveryTemporaryMatches, recoveryTemporaryTarget, relativeArtifact, removeRecoveryFile } = require('./publication')
@@ -45,6 +45,19 @@ function targetDirectory(target) {
   const separator = target.lastIndexOf('/')
 
   return separator === -1 ? '' : target.slice(0, separator)
+}
+
+function ownerArtifactByteLimit(target, record) {
+  const initialLockStage = `${LOCK_BASENAME}.${record.pid}.${record.ownerNonce}.new`
+  const nextLockStage = `${LOCK_BASENAME}.${record.ownerNonce}.next`
+
+  return target === LOCK_BASENAME || target === initialLockStage || target === nextLockStage ? MAX_RECOVERY_REQUEST_BYTES : MAX_MECHANICAL_FILE_BYTES
+}
+
+function ownerArtifactOpenOptions(target, record, options, requireSingleLink) {
+  const limit = ownerArtifactByteLimit(target, record)
+
+  return { ...options, maxBytes: Math.min(options.maxBytes ?? limit, limit), requireSingleLink }
 }
 
 function recoveryTemporaryParts(target, recoveryId) {
@@ -214,7 +227,7 @@ function validateHardLinkTopology(root, target, opened, options, record, invento
 
       throw error
     }
-    const peer = stableOpenFile(root, artifactPath(root, peerTarget), { ...options, requireSingleLink: false })
+    const peer = stableOpenFile(root, artifactPath(root, peerTarget), ownerArtifactOpenOptions(peerTarget, record, options, false))
     if (peerMetadata.nlink !== BigInt(topology.expectedLinkCount) || peer.identity !== opened.identity || !peer.bytes.equals(opened.bytes) || peer.mode !== opened.mode) throw new Error('Recovery artifact hard-link identity differs')
   }
 
@@ -223,7 +236,7 @@ function validateHardLinkTopology(root, target, opened, options, record, invento
 
 function readOwnerArtifact(root, target, options, record, inventory) {
   try {
-    const opened = stableOpenFile(root, artifactPath(root, target), { ...options, requireSingleLink: false })
+    const opened = stableOpenFile(root, artifactPath(root, target), ownerArtifactOpenOptions(target, record, options, false))
 
     return validateHardLinkTopology(root, target, opened, options, record, inventory)
   } catch (error) {
