@@ -62,11 +62,34 @@ function fakeClock() {
 }
 
 function fakeConnection() {
+  const listeners = new Map()
+
   return {
+    destroy() {
+      this.destroyed = true
+      this.emit('close')
+    },
+    destroyed: false,
+    emit(name, ...args) {
+      for (const listener of listeners.get(name) ?? []) {
+        listener(...args)
+      }
+    },
     end() {
+      if (this.ended) {
+        return
+      }
       this.ended = true
+      this.emit('close')
     },
     ended: false,
+    on(name, listener) {
+      const registered = listeners.get(name) ?? []
+      registered.push(listener)
+      listeners.set(name, registered)
+
+      return this
+    },
     write(bytes) {
       this.written.push(Buffer.from(bytes))
 
@@ -86,6 +109,8 @@ function buildServerHarness(overrides = {}) {
   const failures = []
   const termination = { host: 0, worker: 0 }
   const server = driver.createProxyServer({
+    connectionDeadlineMilliseconds: overrides.connectionDeadlineMilliseconds,
+    connectionLimit: overrides.connectionLimit,
     clock,
     gate,
     onFailure(failure) {
@@ -1074,7 +1099,58 @@ function runSessionCases(repositoryRoot) {
     assert.equal(closed, true)
     assert.equal(harness.server.verifiedClosure(), false, 'an unflushed result reply blocks verified closure')
     harness.server.connectionDrained(connection)
+    harness.server.connectionClosed(connection)
     assert.equal(harness.server.verifiedClosure(), true)
+  })
+
+  test('live socket events forward data and drain accounting before releasing the connection', () => {
+    const harness = buildServerHarness()
+    harness.gate.authorizeInspect()
+    const connection = fakeConnection()
+    connection.writeReturn = false
+    const request = inspectRequestBytes(harness.scenarioRoot)
+
+    harness.server.handleConnection(connection)
+    connection.emit('data', canonicalLine({ requestBase64: request.toString('base64'), token: 'a'.repeat(64) }))
+    harness.server.receiveWorkerLine(workerReplyLine())
+    harness.server.close(() => {})
+    assert.equal(harness.server.verifiedClosure(), false, 'the backpressured reply and open socket both block closure')
+    connection.emit('drain')
+    assert.equal(harness.server.verifiedClosure(), false, 'the open socket still blocks physical closure after drain')
+    connection.emit('close')
+    assert.equal(harness.server.verifiedClosure(), true, 'drain plus physical socket closure completes verification')
+  })
+
+  test('proxy admission limits and expires unauthenticated idle connections', () => {
+    const harness = buildServerHarness({ connectionDeadlineMilliseconds: 10, connectionLimit: 1 })
+    const idle = fakeConnection()
+    const excess = fakeConnection()
+
+    assert.deepEqual(harness.server.handleConnection(idle), { admitted: true })
+    assert.equal(harness.server.connectionCount(), 1)
+    assert.equal(harness.clock.timers.length, 1)
+    assert.equal(harness.clock.timers[0].milliseconds, 10)
+    assert.deepEqual(harness.server.handleConnection(excess), { admitted: false })
+    assert.equal(excess.ended, true, 'the over-limit socket is rejected before buffering')
+    harness.clock.fire()
+    assert.equal(idle.destroyed, true, 'an idle unauthenticated socket is destroyed at its deadline')
+    assert.equal(harness.server.connectionCount(), 0)
+    assert.deepEqual(harness.failures, [], 'idle local noise is dropped without failing the evaluation')
+  })
+
+  test('proxy disposal destroys every retained socket and closes admission', () => {
+    const harness = buildServerHarness()
+    const first = fakeConnection()
+    const second = fakeConnection()
+    harness.server.handleConnection(first)
+    harness.server.handleConnection(second)
+
+    harness.server.dispose()
+
+    assert.equal(first.destroyed, true)
+    assert.equal(second.destroyed, true)
+    assert.equal(harness.server.connectionCount(), 0)
+    assert.equal(harness.server.admissionOpen(), false)
   })
 
   test('closed admission refuses later connections and cannot mutate trace evidence', () => {

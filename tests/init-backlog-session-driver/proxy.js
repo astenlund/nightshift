@@ -15,6 +15,7 @@ const MAX_APPLY_REQUEST_BYTES = 16777216
 // around the Base64 request payload in one client frame.
 const PROXY_CLIENT_FRAME_ENVELOPE_ALLOWANCE_BYTES = 1024
 const MAX_PROXY_CLIENT_FRAME_BYTES = 4 * Math.ceil(MAX_APPLY_REQUEST_BYTES / 3) + PROXY_CLIENT_FRAME_ENVELOPE_ALLOWANCE_BYTES
+const MAX_PROXY_CONNECTIONS = 4
 
 function parseCanonicalObject(bytes, expectedMemberKey) {
   let parsed
@@ -142,7 +143,21 @@ function createAuthorizationGate({ host, hostContext, scenarioRoot }) {
   }
 }
 
-function createProxyServer({ callDeadlineMilliseconds = DEADLINES.WORKER_CALL_MILLISECONDS, clock, gate, onFailure, termination, token, trace, worker }) {
+function createProxyServer({
+  callDeadlineMilliseconds = DEADLINES.WORKER_CALL_MILLISECONDS,
+  clock,
+  connectionDeadlineMilliseconds = DEADLINES.WORKER_STARTUP_MILLISECONDS,
+  connectionLimit = MAX_PROXY_CONNECTIONS,
+  gate,
+  onFailure,
+  termination,
+  token,
+  trace,
+  worker,
+}) {
+  if (!Number.isSafeInteger(connectionDeadlineMilliseconds) || connectionDeadlineMilliseconds <= 0 || !Number.isSafeInteger(connectionLimit) || connectionLimit <= 0) {
+    throw new Error('proxy connection bounds must be positive safe integers')
+  }
   let admissionOpen = true
   let closeRequested = false
   let proxyFailureRecorded = false
@@ -152,6 +167,36 @@ function createProxyServer({ callDeadlineMilliseconds = DEADLINES.WORKER_CALL_MI
   let activeCall = null
   const completedCalls = []
   const connections = new Map()
+
+  const clearConnectionDeadline = (record) => {
+    if (record !== undefined && record.deadlineHandle !== null) {
+      clock.clearTimeout(record.deadlineHandle)
+      record.deadlineHandle = null
+    }
+  }
+
+  const releaseConnection = (connection) => {
+    const record = connections.get(connection)
+    if (record === undefined) {
+      return undefined
+    }
+    clearConnectionDeadline(record)
+    connections.delete(connection)
+
+    return record
+  }
+
+  const destroyConnection = (connection) => {
+    try {
+      if (typeof connection.destroy === 'function') {
+        connection.destroy()
+      } else {
+        connection.end()
+      }
+    } catch {
+      // The connection is already unusable, which is the required state.
+    }
+  }
 
   const clearCallDeadline = (call) => {
     if (call !== null && call.deadlineHandle !== null) {
@@ -187,16 +232,18 @@ function createProxyServer({ callDeadlineMilliseconds = DEADLINES.WORKER_CALL_MI
   }
 
   const clientFrameCapacityFailure = (connection) => {
+    releaseConnection(connection)
     connection.end()
     serverFailure('output-capacity')
   }
 
   const rejectAuthorization = (connection) => {
+    releaseConnection(connection)
     onFailure({ detailCode: 'proxy-authorization' })
     connection.end()
   }
 
-  return {
+  const server = {
     activeOrdinal() {
       return activeCall === null ? null : activeCall.ordinal
     },
@@ -209,7 +256,34 @@ function createProxyServer({ callDeadlineMilliseconds = DEADLINES.WORKER_CALL_MI
       }
       closeRequested = true
       admissionOpen = false
+      for (const [connection, record] of connections) {
+        if (!record.authenticated || (activeCall?.connection !== connection && record.pendingDrainOrdinal === null)) {
+          connection.end()
+        }
+      }
       callback()
+    },
+    connectionClosed(connection) {
+      const record = releaseConnection(connection)
+      if (record === undefined) {
+        return
+      }
+      if (activeCall?.connection === connection) {
+        clearCallDeadline(activeCall)
+        activeCall = null
+        proxyFailure()
+
+        return
+      }
+      if (record.pendingDrainOrdinal !== null) {
+        proxyFailure()
+      }
+    },
+    connectionCount() {
+      return connections.size
+    },
+    connectionLimit() {
+      return connectionLimit
     },
     connectionDrained(connection) {
       const record = connections.get(connection)
@@ -222,12 +296,23 @@ function createProxyServer({ callDeadlineMilliseconds = DEADLINES.WORKER_CALL_MI
       }
     },
     handleConnection(connection) {
-      if (!admissionOpen) {
+      if (!admissionOpen || connections.size >= connectionLimit) {
         connection.end()
 
         return { admitted: false }
       }
-      connections.set(connection, { buffered: Buffer.alloc(0), framed: false, pendingDrainOrdinal: null })
+      const record = { authenticated: false, buffered: Buffer.alloc(0), deadlineHandle: null, framed: false, pendingDrainOrdinal: null }
+      connections.set(connection, record)
+      record.deadlineHandle = clock.setTimeout(() => {
+        releaseConnection(connection)
+        destroyConnection(connection)
+      }, connectionDeadlineMilliseconds)
+      if (typeof connection.on === 'function') {
+        connection.on('data', (chunk) => server.receiveData(connection, chunk))
+        connection.on('drain', () => server.connectionDrained(connection))
+        connection.on('close', () => server.connectionClosed(connection))
+        connection.on('error', () => server.connectionClosed(connection))
+      }
 
       return { admitted: true }
     },
@@ -269,6 +354,8 @@ function createProxyServer({ callDeadlineMilliseconds = DEADLINES.WORKER_CALL_MI
 
         return
       }
+      record.authenticated = true
+      clearConnectionDeadline(record)
       if (activeCall !== null) {
         rejectAuthorization(connection)
 
@@ -365,8 +452,17 @@ function createProxyServer({ callDeadlineMilliseconds = DEADLINES.WORKER_CALL_MI
       completedCalls.push(call)
       activeCall = null
     },
+    dispose() {
+      admissionOpen = false
+      clearCallDeadline(activeCall)
+      activeCall = null
+      for (const connection of [...connections.keys()]) {
+        releaseConnection(connection)
+        destroyConnection(connection)
+      }
+    },
     verifiedClosure() {
-      return closeRequested && activeCall === null && completedCalls.every((call) => call.traceFlushed && call.replyFlushed)
+      return closeRequested && activeCall === null && connections.size === 0 && completedCalls.every((call) => call.traceFlushed && call.replyFlushed)
     },
     workerDisconnected() {
       if (closeRequested && activeCall === null) {
@@ -378,6 +474,8 @@ function createProxyServer({ callDeadlineMilliseconds = DEADLINES.WORKER_CALL_MI
       proxyFailure()
     },
   }
+
+  return server
 }
 
 module.exports = { MAX_PROXY_CLIENT_FRAME_BYTES, PROXY_CLIENT_FRAME_ENVELOPE_ALLOWANCE_BYTES, createAuthorizationGate, createProxyServer }

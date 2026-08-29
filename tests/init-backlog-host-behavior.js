@@ -1833,7 +1833,6 @@ function createLiveBindings({ filesystem = nodeFilesystem, platform }) {
         return
       }
       entry.server.handleConnection(socket)
-      socket.on('data', (chunk) => entry.server.receiveData(socket, chunk))
     })
     tcpServer.on('error', reject)
     tcpServer.listen({ exclusive: true, host: '127.0.0.1', port: 0 }, () => {
@@ -1856,6 +1855,7 @@ function createLiveBindings({ filesystem = nodeFilesystem, platform }) {
       entry.adapter?.dispose?.()
     }
     for (const entry of proxyRegistry.values()) {
+      entry.server?.dispose()
       entry.tcpServer.close()
     }
   }
@@ -1962,6 +1962,9 @@ async function runLiveHostSession({ call, filesystem, platform, processAdapterFa
       worker: { send: (bytes) => workerEntry.adapter.input(bytes) },
     })
     proxyEntry.server = server
+    if (proxyEntry.tcpServer !== null) {
+      proxyEntry.tcpServer.maxConnections = server.connectionLimit()
+    }
     workerEntry.onLine = (line) => server.receiveWorkerLine(line)
   }
   const storedInspection = () => {
