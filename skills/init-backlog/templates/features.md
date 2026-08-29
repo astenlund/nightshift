@@ -32,7 +32,7 @@ Concrete entry shape inside the index. The example shows a feature link, a quick
 
 <Short paragraph summary.>
 
-**Requires:** [other-feature](features/other-feature.md), [shared helper extraction](../QUICK_WINS.md#shared-helper-extraction).
+**Requires:** [other-feature](features/other-feature.md), [shared helper extraction](QUICK_WINS.md#shared-helper-extraction).
 **External:** some external primitive.
 ```
 

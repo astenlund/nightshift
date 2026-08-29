@@ -462,7 +462,7 @@ Core engine for the thing.
 Depends on alpha, an external, and a quick win.
 
 **Requires:** [Alpha](features/alpha.md),
-[shared helper extraction](../QUICK_WINS.md#shared-helper-extraction).
+[shared helper extraction](QUICK_WINS.md#shared-helper-extraction).
 **External:** vendor SDK
 support for streaming.
 
