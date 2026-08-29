@@ -779,7 +779,6 @@ async function runCell({ host, mode, checkoutRoot, evidenceRoot }) {
       environment.CLAUDE_CONFIG_DIR = profile
       await execute('claude', ['auth', 'status', '--json']).then((output) => parseClaudeAuthStatus(output.stdout))
       await execute('claude', ['plugin', 'marketplace', 'add', '--scope', 'user', marketplace])
-      let installedRoot = null
       const install = async () => execute('claude', ['plugin', 'install', '--scope', 'user', 'nightshift@astenlund'])
       const update = async () => {
         await execute('claude', ['plugin', 'marketplace', 'update', 'astenlund'])
@@ -795,7 +794,7 @@ async function runCell({ host, mode, checkoutRoot, evidenceRoot }) {
         },
         'update-candidate': update,
         'verify-candidate': async () => {
-          installedRoot = await verifyInstalled({ host, execute, candidate, tempRoot, row })
+          await verifyInstalled({ host, execute, candidate, tempRoot, row })
         },
       })
     } else {
@@ -819,7 +818,6 @@ async function runCell({ host, mode, checkoutRoot, evidenceRoot }) {
         await execute('codex', ['plugin', 'remove', 'nightshift@astenlund', '--json'])
         await execute('codex', ['plugin', 'marketplace', 'remove', 'astenlund', '--json'])
       }
-      let installedRoot = null
       await executeCellSequence(sequence, {
         'install-baseline': install,
         'install-candidate': install,
@@ -831,7 +829,7 @@ async function runCell({ host, mode, checkoutRoot, evidenceRoot }) {
           cpSync(candidate.root, join(marketplace, 'plugin'), { recursive: true })
         },
         'verify-candidate': async () => {
-          installedRoot = await verifyInstalled({ host, execute, candidate, tempRoot, row })
+          await verifyInstalled({ host, execute, candidate, tempRoot, row })
         },
       })
     }
