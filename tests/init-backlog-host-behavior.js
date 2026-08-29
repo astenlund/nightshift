@@ -1377,6 +1377,10 @@ async function runEvaluation(options) {
     const retainedCredentialCarrier = () => infrastructureCarrier({ detailCode: 'cleanup', host, phase: 'authentication', retainedRunRoot: runRoot })
     const finishRepetition = ({ outcome, phase, terminationProven }) => {
       if (!releaseCopiedCredential()) {
+        if (outcome.result?.code === 'harness-infrastructure') {
+          return { result: { ...outcome.result, retainedRunRoot: runRoot } }
+        }
+
         return { result: retainedCredentialCarrier() }
       }
       if (outcome.result !== undefined && typeof outcome.result.retainedRunRoot === 'string') {

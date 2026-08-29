@@ -2747,6 +2747,56 @@ function runHostEntryCases(repositoryRoot) {
     }
   })
 
+  test('a copied-credential cleanup failure keeps an earlier adapter factory failure identity', async () => {
+    const scratch = tempRoot()
+    try {
+      const harness = createEvaluationHarness(scratch)
+      const filesystem = {
+        ...nodeFilesystem,
+        rmSync(path, options) {
+          if (String(path).endsWith('auth.json')) {
+            throw new Error('synthetic credential cleanup failure')
+          }
+
+          return nodeFilesystem.rmSync(path, options)
+        },
+      }
+      const evaluation = await hostBehavior.runEvaluation({
+        ...harness.options,
+        filesystem,
+        hosts: ['codex'],
+        provisionAuthentication: async ({ isolatedCodexHome }) => {
+          nodeFilesystem.mkdirSync(isolatedCodexHome, { recursive: true })
+          nodeFilesystem.writeFileSync(join(isolatedCodexHome, 'auth.json'), '{"synthetic":"credential"}\n')
+
+          return { copiedCredential: true, status: 'authenticated' }
+        },
+        scenarios: [sessionScenario()],
+        runSession: (call) => hostBehavior.runLiveHostSession({
+          call,
+          filesystem,
+          platform: 'win32',
+          processAdapterFactory: () => ({ detailCode: 'spawn', ok: false }),
+          proxyRegistry: new Map(),
+          workerRegistry: new Map(),
+        }),
+      })
+
+      assert.deepEqual(evaluation.result, {
+        ok: false,
+        host: 'codex',
+        code: 'harness-infrastructure',
+        phase: 'initial-turn',
+        initialCode: null,
+        detailCode: 'spawn',
+        retainedRunRoot: harness.roots[1],
+      })
+      assert.equal(nodeFilesystem.existsSync(join(harness.roots[1], 'codex-home', 'auth.json')), true, 'the failed removal leaves the complete root retained')
+    } finally {
+      nodeFilesystem.rmSync(scratch, { force: true, recursive: true })
+    }
+  })
+
   test('a bare live session start failure retains the repetition root for both hosts', async () => {
     for (const host of ['claude-code', 'codex']) {
       const runRoot = `synthetic-${host}-start-failure-root`
