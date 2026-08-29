@@ -123,24 +123,26 @@ function fakeGitSpawn(canonical, scenario) {
     if (executable !== TRUSTED_GIT) {
       return spawnSync(executable, args, options)
     }
+    assert.deepEqual(args.slice(0, 2), ['-c', 'core.fsmonitor='], 'every production Git call must disable inherited fsmonitor helpers')
+    const gitArgs = args.slice(2)
     const ok = (stdout, status = 0) => ({ status, stdout, stderr: Buffer.alloc(0), signal: null })
-    if (args[0] === 'rev-parse' && args[1] === '--is-inside-work-tree') return ok(Buffer.from('true\n', 'utf8'))
-    if (args[0] === 'rev-parse' && (args[1] === '--is-inside-git-dir' || args[1] === '--is-bare-repository')) return ok(Buffer.from('false\n', 'utf8'))
-    if (args[0] === 'rev-parse' && args[1] === '--show-toplevel') return ok(Buffer.from(`${canonical}\n`, 'utf8'))
-    if (args[0] === 'rev-parse' && args[1] === '--show-object-format=storage') return ok(Buffer.from('sha1\n', 'utf8'))
-    if (args[0] === 'config') return ok(Buffer.alloc(0), 1)
-    if (args[0] === 'ls-files') {
-      const domain = args[args.indexOf('--') + 1]
+    if (gitArgs[0] === 'rev-parse' && gitArgs[1] === '--is-inside-work-tree') return ok(Buffer.from('true\n', 'utf8'))
+    if (gitArgs[0] === 'rev-parse' && (gitArgs[1] === '--is-inside-git-dir' || gitArgs[1] === '--is-bare-repository')) return ok(Buffer.from('false\n', 'utf8'))
+    if (gitArgs[0] === 'rev-parse' && gitArgs[1] === '--show-toplevel') return ok(Buffer.from(`${canonical}\n`, 'utf8'))
+    if (gitArgs[0] === 'rev-parse' && gitArgs[1] === '--show-object-format=storage') return ok(Buffer.from('sha1\n', 'utf8'))
+    if (gitArgs[0] === 'config') return ok(Buffer.alloc(0), 1)
+    if (gitArgs[0] === 'ls-files') {
+      const domain = gitArgs[gitArgs.indexOf('--') + 1]
 
       return ok(domain === '.claude/plans' ? nulRecords(scenario.trackedPlanPaths ?? []) : Buffer.alloc(0))
     }
-    if (args[0] === 'check-attr') {
-      const paths = args.slice(args.indexOf('--') + 1)
-      const attributes = args.slice(2, args.indexOf('--'))
+    if (gitArgs[0] === 'check-attr') {
+      const paths = gitArgs.slice(gitArgs.indexOf('--') + 1)
+      const attributes = gitArgs.slice(2, gitArgs.indexOf('--'))
 
       return ok(nulRecords(paths.flatMap((path) => attributes.flatMap((attribute) => [path, attribute, 'unspecified']))))
     }
-    if (args[0] === 'check-ignore') {
+    if (gitArgs[0] === 'check-ignore') {
       const probes = options.input.toString('utf8').split('\0').filter((probe) => probe !== '')
       const records = []
       let matched = false
@@ -157,7 +159,7 @@ function fakeGitSpawn(canonical, scenario) {
       return ok(nulRecords(records), matched ? 0 : 1)
     }
 
-    throw new Error(`Unexpected Git invocation: ${args.join(' ')}`)
+    throw new Error(`Unexpected Git invocation: ${gitArgs.join(' ')}`)
   }
 }
 
