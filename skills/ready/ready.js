@@ -242,9 +242,13 @@ function createSectionState(title = null, excluded = false, collected = false) {
   };
 }
 
+function normalizeSectionKey(rawTitle) {
+  return rawTitle.trim().toLowerCase().replace(/\.$/, '');
+}
+
 function openSection(rawTitle, excludedSections, collectSections) {
   const title = rawTitle.trim();
-  const key = title.toLowerCase().replace(/\.$/, '');
+  const key = normalizeSectionKey(title);
 
   return createSectionState(title, excludedSections.has(key), collectSections.has(key));
 }
@@ -1448,13 +1452,14 @@ function commonMarkHeadings(contents) {
 
 function hasPopulatedLegacySection(contents, headings, expectedTitle) {
   const bytes = Buffer.from(contents, 'utf8');
+  const expectedKey = normalizeSectionKey(expectedTitle);
   let bodyStart = null;
   for (const heading of headings) {
     if (bodyStart !== null && heading.level <= 2) {
       if (/\S/.test(bytes.subarray(bodyStart, heading.rawStart).toString('utf8'))) return true;
       bodyStart = null;
     }
-    if (heading.level === 2 && heading.title === expectedTitle) {
+    if (heading.level === 2 && normalizeSectionKey(heading.title) === expectedKey) {
       bodyStart = heading.rawEnd;
     }
   }

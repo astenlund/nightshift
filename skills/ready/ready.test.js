@@ -284,6 +284,18 @@ test('analyzeCatalog reports only populated unmasked legacy sections when histor
   ]);
 });
 
+test('legacy history evidence shares excluded-section case and period normalization', () => {
+  const result = analyzeCatalog([
+    { target: 'FEATURES.md', contents: '## implemented.\n\n### Shipped feature\n' },
+    { target: 'BUGS.md', contents: '## FIXED.\n\n### Fixed bug\n' },
+  ]);
+
+  assert.deepStrictEqual(result.evidence.legacyHistory, [
+    { indexPath: '.claude/BUGS.md', historyPath: '.claude/BUGS_HISTORY.md' },
+    { indexPath: '.claude/FEATURES.md', historyPath: '.claude/FEATURES_HISTORY.md' },
+  ]);
+});
+
 test('analyzeCatalog ignores bare, whitespace-only, wrong-pairing, and masked legacy headings', () => {
   const result = analyzeCatalog([
     { target: 'QUICK_WINS.md', contents: '## Implemented\n\n## Area\n' },
