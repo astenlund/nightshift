@@ -2183,11 +2183,42 @@ function runHostEntryCases(repositoryRoot) {
       })
       const evaluation = await hostBehavior.runEvaluation(harness.options)
 
-      assert.deepEqual(evaluation.result, sessionFailure)
+      assert.deepEqual(evaluation.result, {
+        ok: false,
+        host: 'codex',
+        code: 'harness-infrastructure',
+        phase: 'initial-turn',
+        initialCode: 'session-input',
+        detailCode: 'termination',
+        retainedRunRoot: harness.roots[5],
+      })
       assert.deepEqual(evaluation.rows, [])
       assert.deepEqual(listFilesNamed(failureScratch, 'auth.json'), [], 'a primary-result stop path removes the copied credential')
+      assert.equal(nodeFilesystem.existsSync(harness.roots[5]), true, 'an unproved primary failure reports and retains its repetition root')
     } finally {
       nodeFilesystem.rmSync(failureScratch, { force: true, recursive: true })
+    }
+  })
+
+  test('a proven primary session failure removes its repetition root and preserves the primary result', async () => {
+    for (const host of ['claude-code', 'codex']) {
+      const scratch = tempRoot()
+      try {
+        const primary = { ok: false, host, code: 'session-input', phase: 'initial-turn' }
+        const harness = createEvaluationHarness(scratch, {
+          options: {
+            hosts: [host],
+            scenarios: [sessionScenario()],
+          },
+          onSession: () => ({ failure: primary, terminationProven: true }),
+        })
+        const evaluation = await hostBehavior.runEvaluation(harness.options)
+
+        assert.deepEqual(evaluation.result, primary, host)
+        assert.equal(nodeFilesystem.existsSync(harness.roots[1]), false, `${host} proven primary failure removes its repetition root`)
+      } finally {
+        nodeFilesystem.rmSync(scratch, { force: true, recursive: true })
+      }
     }
   })
 
@@ -2846,6 +2877,286 @@ function runHostEntryCases(repositoryRoot) {
       }, host)
       assert.equal(terminations, 1, `${host} starts termination for an unproved adapter`)
     }
+  })
+
+  test('live primary input and timeout failures wait for proven closure for both hosts', async () => {
+    for (const failureCode of ['session-input', 'session-timeout']) {
+      for (const host of ['claude-code', 'codex']) {
+        const runRoot = `synthetic-${host}-${failureCode}-root`
+        let terminations = 0
+        const session = await hostBehavior.runLiveHostSession({
+          call: {
+            argv: ['--print'],
+            controllerEnabled: false,
+            cwd: `synthetic-${host}-scenario-root`,
+            environment: {},
+            executable: 'synthetic-host',
+            host,
+            proxySession: null,
+            runRoot,
+            scenario: sessionScenario(),
+            sessionPluginRoot: 'synthetic-plugin-root',
+            turnSchemaRunPath: 'synthetic-turn-schema-path',
+          },
+          filesystem: nodeFilesystem,
+          platform: 'win32',
+          processAdapterFactory: (options) => {
+            let closed = false
+            let proven = false
+
+            return {
+              adapter: {
+                closeInput() {},
+                closureProof: () => ({ proven }),
+                hostExitCode: () => 1,
+                input: () => ({ ok: failureCode !== 'session-input' }),
+                runnerClosed: () => closed,
+                start: () => {
+                  options.onStarted({ pid: 1234 })
+
+                  return { ok: true }
+                },
+                terminate: () => {
+                  terminations += 1
+                  closed = true
+                  proven = true
+
+                  return { ok: true }
+                },
+              },
+              ok: true,
+            }
+          },
+          proxyRegistry: new Map(),
+          turnDeadlineMilliseconds: 5,
+          workerRegistry: new Map(),
+        })
+
+        assert.deepEqual(session, {
+          failure: { ok: false, host, code: failureCode, phase: 'initial-turn' },
+          terminationProven: true,
+        }, `${host} ${failureCode}`)
+        assert.equal(terminations, 1, `${host} ${failureCode} starts termination exactly once`)
+      }
+    }
+  })
+
+  test('a failed live primary termination preserves its code in the infrastructure carrier', async () => {
+    for (const host of ['claude-code', 'codex']) {
+      const runRoot = `synthetic-${host}-unproved-primary-root`
+      let adapterOptions = null
+      const session = await hostBehavior.runLiveHostSession({
+        call: {
+          argv: ['--print'],
+          controllerEnabled: false,
+          cwd: `synthetic-${host}-scenario-root`,
+          environment: {},
+          executable: 'synthetic-host',
+          host,
+          proxySession: null,
+          runRoot,
+          scenario: sessionScenario(),
+          sessionPluginRoot: 'synthetic-plugin-root',
+          turnSchemaRunPath: 'synthetic-turn-schema-path',
+        },
+        filesystem: nodeFilesystem,
+        platform: 'win32',
+        processAdapterFactory: (options) => {
+          adapterOptions = options
+
+          return {
+            adapter: {
+              closeInput() {},
+              closureProof: () => ({ proven: false }),
+              hostExitCode: () => null,
+              input: () => ({ ok: false }),
+              runnerClosed: () => false,
+              start: () => {
+                options.onStarted({ pid: 1234 })
+
+                return { ok: true }
+              },
+              terminate: () => {
+                setImmediate(() => adapterOptions.onFailure({ detailCode: 'termination' }))
+
+                return { ok: true }
+              },
+            },
+            ok: true,
+          }
+        },
+        proxyRegistry: new Map(),
+        workerRegistry: new Map(),
+      })
+
+      assert.deepEqual(session, {
+        failure: {
+          ok: false,
+          host,
+          code: 'harness-infrastructure',
+          phase: 'initial-turn',
+          initialCode: 'session-input',
+          detailCode: 'termination',
+          retainedRunRoot: runRoot,
+        },
+      }, host)
+    }
+  })
+
+  test('an enabled primary input failure proves host, proxy, and worker closure before returning', async () => {
+    for (const host of ['claude-code', 'codex']) {
+      const token = host === 'claude-code' ? '8'.repeat(64) : '9'.repeat(64)
+      const runRoot = `synthetic-${host}-enabled-primary-root`
+      let hostClosed = false
+      let workerClosed = false
+      let hostTerminations = 0
+      let workerTerminations = 0
+      const workerEntry = {
+        adapter: {
+          closeInput() {},
+          closureProof: () => ({ proven: workerClosed }),
+          hostExitCode: () => 0,
+          input: () => ({ ok: true }),
+          runnerClosed: () => workerClosed,
+          terminate: () => {
+            workerTerminations += 1
+            workerClosed = true
+
+            return { ok: true }
+          },
+        },
+        onLine: null,
+        ready: true,
+      }
+      const proxyEntry = { server: null, tcpServer: null, token }
+      const session = await hostBehavior.runLiveHostSession({
+        call: {
+          argv: ['--print'],
+          controllerEnabled: true,
+          cwd: `synthetic-${host}-scenario-root`,
+          environment: {},
+          executable: 'synthetic-host',
+          host,
+          proxySession: { port: 40400, token },
+          runRoot,
+          scenario: sessionScenario(),
+          sessionPluginRoot: 'synthetic-plugin-root',
+          turnSchemaRunPath: 'synthetic-turn-schema-path',
+        },
+        filesystem: nodeFilesystem,
+        platform: 'win32',
+        processAdapterFactory: (options) => ({
+          adapter: {
+            closeInput() {},
+            closureProof: () => ({ proven: hostClosed }),
+            hostExitCode: () => 1,
+            input: () => ({ ok: false }),
+            runnerClosed: () => hostClosed,
+            start: () => {
+              options.onStarted({ pid: 1234 })
+
+              return { ok: true }
+            },
+            terminate: () => {
+              hostTerminations += 1
+              hostClosed = true
+
+              return { ok: true }
+            },
+          },
+          ok: true,
+        }),
+        proxyRegistry: new Map([[token, proxyEntry]]),
+        workerRegistry: new Map([[runRoot, workerEntry]]),
+      })
+
+      assert.deepEqual(session, {
+        failure: { ok: false, host, code: 'session-input', phase: 'initial-turn' },
+        terminationProven: true,
+      }, host)
+      assert.equal(proxyEntry.server.verifiedClosure(), true, `${host} proxy admission and connections are closed`)
+      assert.equal(hostClosed, true, `${host} host closure is proven`)
+      assert.equal(workerClosed, true, `${host} worker closure is proven`)
+      assert.equal(hostTerminations, 1, `${host} host termination starts once`)
+      assert.equal(workerTerminations, 1, `${host} worker termination starts once`)
+    }
+  })
+
+  test('a worker failure during primary termination preserves the selected primary code', async () => {
+    const token = '7'.repeat(64)
+    const runRoot = 'synthetic-worker-primary-failure-root'
+    let hostClosed = false
+    let workerClosed = false
+    const workerEntry = {
+      adapter: {
+        closeInput() {},
+        closureProof: () => ({ proven: false }),
+        hostExitCode: () => 0,
+        input: () => ({ ok: true }),
+        runnerClosed: () => workerClosed,
+        terminate: () => {
+          workerClosed = true
+          workerEntry.onFailure?.({ detailCode: 'termination' })
+
+          return { ok: true }
+        },
+      },
+      onLine: null,
+      ready: true,
+    }
+    const proxyEntry = { server: null, tcpServer: null, token }
+    const session = await hostBehavior.runLiveHostSession({
+      call: {
+        argv: ['--print'],
+        controllerEnabled: true,
+        cwd: 'synthetic-worker-primary-failure-scenario-root',
+        environment: {},
+        executable: 'synthetic-host',
+        host: 'claude-code',
+        proxySession: { port: 40401, token },
+        runRoot,
+        scenario: sessionScenario(),
+        sessionPluginRoot: 'synthetic-plugin-root',
+        turnSchemaRunPath: 'synthetic-turn-schema-path',
+      },
+      filesystem: nodeFilesystem,
+      platform: 'win32',
+      processAdapterFactory: (options) => ({
+        adapter: {
+          closeInput() {},
+          closureProof: () => ({ proven: hostClosed }),
+          hostExitCode: () => 1,
+          input: () => ({ ok: false }),
+          runnerClosed: () => hostClosed,
+          start: () => {
+            options.onStarted({ pid: 1234 })
+
+            return { ok: true }
+          },
+          terminate: () => {
+            hostClosed = true
+
+            return { ok: true }
+          },
+        },
+        ok: true,
+      }),
+      proxyRegistry: new Map([[token, proxyEntry]]),
+      workerRegistry: new Map([[runRoot, workerEntry]]),
+    })
+
+    assert.deepEqual(session, {
+      failure: {
+        ok: false,
+        host: 'claude-code',
+        code: 'harness-infrastructure',
+        phase: 'initial-turn',
+        initialCode: 'session-input',
+        detailCode: 'termination',
+        retainedRunRoot: runRoot,
+      },
+      terminationProven: false,
+    })
   })
 
   test('live process, proxy, and post-ready worker failures preserve their infrastructure identity and publish no evidence', async () => {

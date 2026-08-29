@@ -1432,11 +1432,6 @@ async function runEvaluation(options) {
         return finishRepetition({ outcome: { result: provisioned.result }, phase: 'authentication', terminationProven: true })
       }
     }
-    // A primary session outcome has no run-root proof to finalize here, but a
-    // copied credential still has to be removed and absence-verified.
-    const stopWithCredentialRelease = (outcome) => {
-      return releaseCopiedCredential() ? outcome : { result: retainedCredentialCarrier() }
-    }
     try {
       if (host === 'codex') {
         let pluginListStdout = null
@@ -1523,11 +1518,7 @@ async function runEvaluation(options) {
         if (session.failure.code === 'harness-infrastructure' && session.failure.detailCode === 'spawn' && session.failure.retainedRunRoot === null) {
           return finishRepetition({ outcome: { result: session.failure }, phase: session.failure.phase, terminationProven: true })
         }
-        if (typeof session.failure.retainedRunRoot === 'string') {
-          return finishRepetition({ outcome: { result: session.failure }, phase: session.failure.phase, terminationProven: false })
-        }
-
-        return stopWithCredentialRelease({ result: session.failure })
+        return finishRepetition({ outcome: { result: session.failure }, phase: session.failure.phase, terminationProven: session.terminationProven === true })
       }
       const sessionRecord = session.record
       const collectRepository = collectRepositoryFactory({ filesystem, platform, runGit, scenarioRoot })
@@ -1904,7 +1895,7 @@ function createLiveBindings({ filesystem = nodeFilesystem, platform }) {
   return { dispose, launch, proxySessionFactory, runSession }
 }
 
-async function runLiveHostSession({ call, filesystem, platform, processAdapterFactory = driver.createProductionProcessAdapter, proxyRegistry, transcriptFactory = driver.createTranscript, workerRegistry }) {
+async function runLiveHostSession({ call, filesystem, platform, processAdapterFactory = driver.createProductionProcessAdapter, proxyRegistry, transcriptFactory = driver.createTranscript, turnDeadlineMilliseconds = Number(driver.DEADLINES.TURN_NANOSECONDS / 1000000n), workerRegistry }) {
   const { argv, controllerEnabled, cwd: scenarioRoot, environment, executable, host, proxySession, runRoot, scenario, sessionPluginRoot, turnSchemaRunPath } = call
   if (platform !== 'win32') {
     return { failure: infrastructureCarrier({ detailCode: 'containment-unavailable', host, phase: 'initial-turn' }) }
@@ -1931,6 +1922,7 @@ async function runLiveHostSession({ call, filesystem, platform, processAdapterFa
   const proxyEntry = controllerEnabled ? proxyRegistry.get(proxySession.token) : null
   const sessionAdapters = []
   let activePhase = 'initial-turn'
+  let selectedPrimaryFailure = null
   let hostTerminationStarted = false
   let workerTerminationStarted = false
   const startHostTermination = () => {
@@ -1967,8 +1959,13 @@ async function runLiveHostSession({ call, filesystem, platform, processAdapterFa
 
     return infrastructureFailureAccount.result()
   }
+  const recordSessionInfrastructureFailure = (failure) => recordInfrastructureFailure({
+    ...failure,
+    initialCode: selectedPrimaryFailure?.code ?? failure.initialCode ?? null,
+    phase: failure.phase ?? selectedPrimaryFailure?.phase ?? activePhase,
+  })
   const recordTranscriptFailure = () => {
-    transcriptFailure = recordInfrastructureFailure({ detailCode: 'output-capacity' })
+    transcriptFailure = recordSessionInfrastructureFailure({ detailCode: 'output-capacity' })
 
     return transcriptFailure
   }
@@ -1976,9 +1973,9 @@ async function runLiveHostSession({ call, filesystem, platform, processAdapterFa
     if (workerEntry === undefined || proxyEntry === undefined) {
       return { failure: infrastructureCarrier({ detailCode: 'proxy', host, phase: 'initial-turn', retainedRunRoot: runRoot }) }
     }
-    workerEntry.onFailure = recordInfrastructureFailure
+    workerEntry.onFailure = recordSessionInfrastructureFailure
     if (workerEntry.failure !== null && workerEntry.failure !== undefined) {
-      return { failure: recordInfrastructureFailure(workerEntry.failure) }
+      return { failure: recordSessionInfrastructureFailure(workerEntry.failure) }
     }
     gate = driver.createAuthorizationGate({ host, hostContext, scenarioRoot })
     recorder = createApplyCallRecorder({ gate, transcriptOrdinal: () => transcript.lineCount() })
@@ -1993,7 +1990,7 @@ async function runLiveHostSession({ call, filesystem, platform, processAdapterFa
     server = driver.createProxyServer({
       clock: { clearTimeout: (handle) => clearTimeout(handle), setTimeout: (fn, milliseconds) => setTimeout(fn, milliseconds) },
       gate: serverGate,
-      onFailure: recordInfrastructureFailure,
+      onFailure: recordSessionInfrastructureFailure,
       termination: {
         startHost: startHostTermination,
         startWorker: startWorkerTermination,
@@ -2127,6 +2124,16 @@ async function runLiveHostSession({ call, filesystem, platform, processAdapterFa
     turnSchema: turnSchemaRunPath,
   })
   const sessionFailure = (code, phase) => ({ failure: { ok: false, host, code, phase } })
+  const claimPrimaryFailure = (code, phase) => {
+    selectedPrimaryFailure = selectedPrimaryFailure ?? sessionFailure(code, phase).failure
+    if (server !== null && server.admissionOpen()) {
+      server.close(() => {})
+    }
+    startHostTermination()
+    startWorkerTermination()
+
+    return selectedPrimaryFailure
+  }
 
   const finishSessionRecord = ({ closureProven, walkDone }) => {
     if (infrastructureFailureAccount.hasFailure()) {
@@ -2233,7 +2240,7 @@ async function runLiveHostSession({ call, filesystem, platform, processAdapterFa
     }
   }
 
-  const settleEnabledClosure = async () => {
+  const settleEnabledClosure = async ({ initialCode = null } = {}) => {
     if (!controllerEnabled) {
       return true
     }
@@ -2244,13 +2251,14 @@ async function runLiveHostSession({ call, filesystem, platform, processAdapterFa
     const workerClosedCleanly = () => workerEntry.adapter.runnerClosed()
       && workerEntry.adapter.closureProof().proven === true
       && workerEntry.adapter.hostExitCode() === 0
+    const activeInitialCode = () => initialCode ?? selectedPrimaryFailure?.code ?? null
     const deadline = Date.now() + driver.DEADLINES.NATURAL_CLOSURE_MILLISECONDS
     while (Date.now() < deadline) {
       if (server.verifiedClosure() && workerEntry.adapter.runnerClosed()) {
         if (workerClosedCleanly()) {
           return true
         }
-        recordInfrastructureFailure({ detailCode: workerEntry.adapter.hostExitCode() === 0 ? 'stream-closure' : 'child-process' })
+        recordInfrastructureFailure({ detailCode: workerEntry.adapter.hostExitCode() === 0 ? 'stream-closure' : 'child-process', initialCode: activeInitialCode() })
 
         return false
       }
@@ -2260,15 +2268,28 @@ async function runLiveHostSession({ call, filesystem, platform, processAdapterFa
     if (server.verifiedClosure() && workerClosedCleanly()) {
       return true
     }
-    recordInfrastructureFailure({ detailCode: 'termination' })
+    recordInfrastructureFailure({ detailCode: 'termination', initialCode: activeInitialCode() })
 
     return false
+  }
+
+  const finishPrimaryFailure = async ({ enabledClosure, failure, hostClosureProven }) => {
+    const resolvedEnabledClosure = enabledClosure ?? await settleEnabledClosure({ initialCode: failure.code })
+    if (hostClosureProven && resolvedEnabledClosure && !infrastructureFailureAccount.hasFailure()) {
+      return { failure, terminationProven: true }
+    }
+    if (!infrastructureFailureAccount.hasFailure()) {
+      recordInfrastructureFailure({ detailCode: 'termination', initialCode: failure.code, phase: failure.phase })
+    }
+
+    return { failure: infrastructureFailureAccount.result(), terminationProven: false }
   }
 
   const runTurnProcess = ({ commandArgv, conductor, inputText, inputKind, sessionInput }) => new Promise((resolve) => {
     const stderrChunks = []
     let adapter = null
     let conductorFailure = null
+    let primaryFailure = null
     const { armDeadline, armPoll, settle } = createSettleGuard(resolve)
     const submitInitialInput = () => {
       if (inputText !== null) {
@@ -2278,7 +2299,7 @@ async function runLiveHostSession({ call, filesystem, platform, processAdapterFa
           return
         }
         if (adapter.input(Buffer.from(inputText, 'utf8')).ok !== true) {
-          settle(sessionFailure('session-input', sessionInput.phase))
+          primaryFailure = primaryFailure ?? claimPrimaryFailure('session-input', sessionInput.phase)
 
           return
         }
@@ -2308,7 +2329,7 @@ async function runLiveHostSession({ call, filesystem, platform, processAdapterFa
     const production = processAdapterFactory({
       cwd: scenarioRoot,
       mode: 'session',
-      onFailure: (failure) => settle({ failure: recordInfrastructureFailure(failure) }),
+      onFailure: (failure) => settle({ failure: recordSessionInfrastructureFailure(failure) }),
       onHostStderr: (bytes) => stderrChunks.push(Buffer.from(bytes)),
       onHostStdout: (bytes) => decoder.push(bytes),
       onStarted: submitInitialInput,
@@ -2321,21 +2342,21 @@ async function runLiveHostSession({ call, filesystem, platform, processAdapterFa
     adapter = production.adapter
     sessionAdapters.push(adapter)
     armDeadline(() => {
-      adapter.terminate()
-      settle(sessionFailure('session-timeout', sessionInput.phase))
-    }, Number(driver.DEADLINES.TURN_NANOSECONDS / 1000000n))
+      primaryFailure = primaryFailure ?? claimPrimaryFailure('session-timeout', sessionInput.phase)
+    }, turnDeadlineMilliseconds)
     armPoll(() => {
       if (adapter.runnerClosed()) {
         settle({
           closureProven: adapter.closureProof().proven === true,
           conductorFailure,
           exitCode: adapter.hostExitCode(),
+          primaryFailure,
           stderrBytes: Buffer.concat(stderrChunks),
         })
       }
     }, LIVE_COMPLETION_POLL_MILLISECONDS)
     if (adapter.start({ args: commandArgv, environment, executable }).ok !== true) {
-      settle({ failure: recordInfrastructureFailure({ detailCode: 'spawn', phase: sessionInput.phase }) })
+      settle({ failure: recordSessionInfrastructureFailure({ detailCode: 'spawn', phase: sessionInput.phase }) })
     }
   })
 
@@ -2359,14 +2380,17 @@ async function runLiveHostSession({ call, filesystem, platform, processAdapterFa
         return completion
       }
       closureProven = closureProven && completion.closureProven === true
+      if (completion.primaryFailure !== null) {
+        return finishPrimaryFailure({ failure: completion.primaryFailure, hostClosureProven: closureProven })
+      }
       const finished = conductor.finish()
       if (completion.conductorFailure !== null || completion.exitCode !== 0 || completion.stderrBytes.length !== 0 || finished.ok !== true) {
-        return sessionFailure('session-input', phase)
+        return finishPrimaryFailure({ failure: claimPrimaryFailure('session-input', phase), hostClosureProven: closureProven })
       }
       threadId = finished.threadId
       const turnOutputBytes = filesystem.existsSync(turnOutputPath) ? filesystem.readFileSync(turnOutputPath) : Buffer.alloc(0)
       if (hostEvents.verifyTurnOutputEquality({ structuredResult: finished.structuredResult, turnOutputBytes }).ok !== true) {
-        return sessionFailure('session-input', phase)
+        return finishPrimaryFailure({ failure: claimPrimaryFailure('session-input', phase), hostClosureProven: closureProven })
       }
       const turn = finished.structuredResult
       if (recordTurn(turn) === null) {
@@ -2374,7 +2398,7 @@ async function runLiveHostSession({ call, filesystem, platform, processAdapterFa
       }
       const walkOutcome = ensureWalk(null).receiveTurn(turn)
       if (walkOutcome.failure !== undefined) {
-        return sessionFailure('session-input', phase)
+        return finishPrimaryFailure({ failure: claimPrimaryFailure('session-input', phase), hostClosureProven: closureProven })
       }
       if (walkOutcome.done === true) {
         structuredResult = walkOutcome.result
@@ -2396,14 +2420,17 @@ async function runLiveHostSession({ call, filesystem, platform, processAdapterFa
     const conductor = hostEvents.createClaudeSessionConductor({ sessionPluginRoot })
     let adapter = null
     let walkDone = false
+    let primaryFailure = null
     const { armDeadline, armPoll, clearPoll, settle } = createSettleGuard(resolve)
     const armTurnDeadline = () => {
       armDeadline(() => {
-        adapter.terminate()
-        settle(sessionFailure('session-timeout', activePhase))
-      }, Number(driver.DEADLINES.TURN_NANOSECONDS / 1000000n))
+        primaryFailure = primaryFailure ?? claimPrimaryFailure('session-timeout', activePhase)
+      }, turnDeadlineMilliseconds)
     }
     const writeUserTurn = (text, kind) => {
+      if (primaryFailure !== null) {
+        return false
+      }
       const payload = canonicalJson({ message: { content: [{ text, type: 'text' }], role: 'user' }, type: 'user' }) + '\n'
       if (!recordInput(text, kind)) {
         settle({ failure: transcriptFailure })
@@ -2411,8 +2438,7 @@ async function runLiveHostSession({ call, filesystem, platform, processAdapterFa
         return false
       }
       if (adapter.input(Buffer.from(payload, 'utf8')).ok !== true) {
-        adapter.terminate()
-        settle(sessionFailure('session-input', activePhase))
+        primaryFailure = claimPrimaryFailure('session-input', activePhase)
 
         return false
       }
@@ -2427,8 +2453,7 @@ async function runLiveHostSession({ call, filesystem, platform, processAdapterFa
       }
       const walkOutcome = ensureWalk(conductor.initEvent()).receiveTurn(turn)
       if (walkOutcome.failure !== undefined) {
-        adapter.terminate()
-        settle(sessionFailure('session-input', activePhase))
+        primaryFailure = primaryFailure ?? claimPrimaryFailure('session-input', activePhase)
 
         return
       }
@@ -2456,8 +2481,7 @@ async function runLiveHostSession({ call, filesystem, platform, processAdapterFa
         }
         const outcome = conductor.acceptLine(Buffer.from(line))
         if (outcome.failure !== undefined) {
-          adapter.terminate()
-          settle(sessionFailure('session-input', activePhase))
+          primaryFailure = primaryFailure ?? claimPrimaryFailure('session-input', activePhase)
 
           return
         }
@@ -2466,14 +2490,13 @@ async function runLiveHostSession({ call, filesystem, platform, processAdapterFa
         }
       },
       onOverflow: () => {
-        adapter.terminate()
-        settle(sessionFailure('session-input', activePhase))
+        primaryFailure = primaryFailure ?? claimPrimaryFailure('session-input', activePhase)
       },
     })
     const production = processAdapterFactory({
       cwd: scenarioRoot,
       mode: 'session',
-      onFailure: (failure) => settle({ failure: recordInfrastructureFailure(failure) }),
+      onFailure: (failure) => settle({ failure: recordSessionInfrastructureFailure(failure) }),
       onHostStderr: (bytes) => stderrChunks.push(Buffer.from(bytes)),
       onHostStdout: (bytes) => decoder.push(bytes),
       onStarted: () => writeUserTurn(envelopeText, 'initial'),
@@ -2494,15 +2517,25 @@ async function runLiveHostSession({ call, filesystem, platform, processAdapterFa
       // exactly-once proxy close a second time.
       clearPoll()
       const finish = async () => {
+        if (primaryFailure !== null) {
+          settle(await finishPrimaryFailure({ failure: primaryFailure, hostClosureProven: adapter.closureProof().proven === true }))
+
+          return
+        }
         const closureProven = adapter.closureProof().proven === true && adapter.hostExitCode() === 0 && stderrChunks.length === 0
         const enabledClosure = await settleEnabledClosure()
+        if (primaryFailure !== null) {
+          settle(await finishPrimaryFailure({ enabledClosure, failure: primaryFailure, hostClosureProven: adapter.closureProof().proven === true }))
+
+          return
+        }
         settle(finishSessionRecord({ closureProven: closureProven && enabledClosure, walkDone }))
       }
       finish()
     }, LIVE_COMPLETION_POLL_MILLISECONDS)
     armTurnDeadline()
     if (adapter.start({ args: argv, environment, executable }).ok !== true) {
-      settle({ failure: recordInfrastructureFailure({ detailCode: 'spawn', phase: 'initial-turn' }) })
+      settle({ failure: recordSessionInfrastructureFailure({ detailCode: 'spawn', phase: 'initial-turn' }) })
     }
   })
 }
