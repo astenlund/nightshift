@@ -307,6 +307,17 @@ test('analyzeCatalog rejects duplicate, out-of-scope, and non-portable catalog t
   assert.throws(() => analyzeCatalog([{ target: 'features/CON.md', contents }]), TypeError);
 });
 
+test('analyzeCatalog rejects control characters, trailing dot/space components, and malformed item shapes with TypeError', () => {
+  const contents = '# Features\n';
+
+  assert.throws(() => analyzeCatalog([{ target: `features/foo${String.fromCharCode(1)}bar.md`, contents }]), TypeError);
+  assert.throws(() => analyzeCatalog([{ target: 'features/sub./file.md', contents }]), TypeError);
+  assert.throws(() => analyzeCatalog([{ target: 'features/sub /file.md', contents }]), TypeError);
+  assert.throws(() => analyzeCatalog('FEATURES.md'), TypeError);
+  assert.throws(() => analyzeCatalog([{ target: 'FEATURES.md', contents, extra: 1 }]), TypeError);
+  assert.throws(() => analyzeCatalog([{ target: 'FEATURES.md', contents: 123 }]), TypeError);
+});
+
 test('ready structural parsing ignores fenced lookalikes and unclosed fences', () => {
   const fenced = `## Area
 ### [Parent](features/parent.md)
