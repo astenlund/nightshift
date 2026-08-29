@@ -299,6 +299,11 @@ test('handover preserves lifecycle behavior behind the agreement gate', () => {
     previousIndex = tokenIndex
   }
 
+  const singleValidityRule = 'The mandatory validation above is not repeated because no governing artifact or repository baseline changes between it and this decision.'
+  assert.equal(countExact(body, singleValidityRule), 1, 'handover must reuse the mandatory repository-currency validation at the staleness decision')
+  assert.equal(countExact(body, 'fresh agent'), 1, 'handover must dispatch exactly one fresh repository-currency validator before queue construction')
+  assert.equal(countExact(body, 'quick validity check'), 0, 'handover must not offer a duplicate subset of its mandatory validation')
+
   const orderedLadderTokens = [
     '1. **Late-stage tail already ran this session**',
     'no-op; say so.',
