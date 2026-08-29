@@ -876,21 +876,25 @@ function hasTerminalMarkerEvidence(request, admission, root, existing, paths, ex
   }
 }
 
-function validateResumeInspection(request, liveInspection, admission, terminalMarkerEvidence = false, root = null, options = {}) {
+// `progressRoot` is the root to classify durable target progress against, or
+// null when the caller supplied the live inspection itself and no tree is
+// available to classify; the null case also keeps the carried host context
+// rather than resolving guidance against the live tree.
+function validateResumeInspection(request, liveInspection, admission, { options, progressRoot, terminalMarkerEvidence }) {
   const actionTargets = new Set(admission.actions.map((action) => action.target))
   const carriedGit = request.inspection.git ?? {}
   const markerStates = { carried: carriedGit.electionMarker, mode: carriedGit.electionMarkerMode, snapshotId: carriedGit.electionMarkerSnapshotId, values: new Set([carriedGit.electionMarker, admission.electionMarker.state]) }
   if (liveInspection.git?.electionMarker !== undefined && !markerStates.values.has(liveInspection.git.electionMarker)) publicationError('Live election marker differs from the approved resume state.', { code: 'snapshot-drift', phase: 'prevalidate', manifestId: admission.manifestId })
-  if (root !== null) {
+  if (progressRoot !== null) {
     let progress
     try {
-      progress = approvedProgress(request, root, options)
+      progress = approvedProgress(request, progressRoot, options)
     } catch (error) {
       publicationError('Durable target state could not be classified against the approved manifest.', { code: 'snapshot-drift', phase: 'prevalidate', manifestId: admission.manifestId }, error)
     }
     if (!progress.recognized) publicationError('Durable target state is not a unique approved prefix of the manifest.', { code: 'snapshot-drift', phase: 'prevalidate', manifestId: admission.manifestId })
   }
-  const scope = resumeProjectionScope(request, actionTargets, root === null ? request.hostContext : liveHostContext(request, root, true))
+  const scope = resumeProjectionScope(request, actionTargets, progressRoot === null ? request.hostContext : liveHostContext(request, progressRoot, true))
   if (canonicalJson(resumeInspectionProjection(request.inspection, actionTargets, markerStates, scope)) !== canonicalJson(resumeInspectionProjection(liveInspection, actionTargets, markerStates, scope))) {
     publicationError('Live repository differs from the approved resume state.', { code: 'snapshot-drift', phase: 'prevalidate', manifestId: admission.manifestId })
   }
@@ -1010,7 +1014,7 @@ function publishApply(request, options = {}) {
   if (resume === true) {
     terminalMarkerEvidence = admission.electionMarker.state !== 'absent' && hasTerminalMarkerEvidence(request, admission, root, existing, fixed, markerBytes(request, admission, root), finalMarkerMode, options)
     terminalMarkerComplete = terminalMarkerEvidence && !pathExists(fixed.electionTombstone) && !pathExists(fixed.electionNewWitness)
-    validateResumeInspection(request, liveInspection, admission, terminalMarkerEvidence, options.currentInspection === undefined ? root : null, options)
+    validateResumeInspection(request, liveInspection, admission, { options, progressRoot: options.currentInspection === undefined ? root : null, terminalMarkerEvidence })
   }
   try {
     verifyRecoveryGateAbsent(root)
