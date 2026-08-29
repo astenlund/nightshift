@@ -584,6 +584,7 @@ function buildRegistry(indexEntries) {
   const bySlug = new Map();
   const slugDupes = new Set();
   const byPath = new Map();
+  const slicesByRecord = new Map();
   // A self-target path is a node identity, so two entries claiming one are
   // indistinguishable to every consumer of the graph and byPath's single slot
   // silently binds links to whichever entry wrote it last. Every claimant is
@@ -608,9 +609,19 @@ function buildRegistry(indexEntries) {
       if (bySlug.has(slug)) slugDupes.add(slug);
       else bySlug.set(slug, rec);
     }
+    if (rec.entry.slices && rec.entry.slices.length > 0) {
+      const byNormalizedName = new Map();
+      for (const slice of rec.entry.slices) {
+        const normalizedName = slice.name;
+        const matches = byNormalizedName.get(normalizedName);
+        if (matches === undefined) byNormalizedName.set(normalizedName, [slice]);
+        else matches.push(slice);
+      }
+      slicesByRecord.set(rec, byNormalizedName);
+    }
   }
   const pathDupes = new Map([...pathGroups].filter(([, records]) => records.length > 1));
-  return { byTitle, titleDupes, bySlug, slugDupes, byPath, pathDupes };
+  return { byTitle, titleDupes, bySlug, slugDupes, byPath, pathDupes, slicesByRecord };
 }
 
 function dependencyLookupRoute(target) {
@@ -725,7 +736,7 @@ function resolveLink(item, registry) {
 
   const slices = parent.entry.slices;
   if (sliceName !== null) {
-    const matches = findSlicesByNormalizedName(slices, sliceName);
+    const matches = registry.slicesByRecord.get(parent)?.get(normalizeSliceName(sliceName)) ?? [];
     if (matches.length === 0) {
       return {
         kind: 'structural',

@@ -421,6 +421,42 @@ test('colliding slice dependency suffix is structural ambiguity', () => {
   assert.match(findByTitle(result.structuralErrors, 'Child').problem, /matches multiple bullets/);
 });
 
+test('registry indexes each parent slice name once across qualified references', () => {
+  const sliceCount = 100;
+  let nameReads = 0;
+  const slices = Array.from({ length: sliceCount }, (_, index) => {
+    const slice = { displayName: `Slice ${index}`, struck: false };
+    Object.defineProperty(slice, 'name', {
+      enumerable: true,
+      get() {
+        nameReads += 1;
+
+        return `slice ${index}`;
+      },
+    });
+
+    return slice;
+  });
+  const records = [
+    { index: 'FEATURES.md', entry: { dependencyProblems: [], requiresContent: 'none.', selfTarget: 'features/parent.md', slices, title: 'Parent' } },
+    {
+      index: 'FEATURES.md',
+      entry: {
+        dependencyProblems: [],
+        requiresContent: Array.from({ length: sliceCount }, (_, index) => `[Parent: Slice ${index}](features/parent.md)`).join(', '),
+        selfTarget: 'features/dependent.md',
+        slices: [],
+        title: 'Dependent',
+      },
+    },
+  ];
+  const registry = buildRegistry(records);
+  const edges = collectEntryEdges(records, registry);
+
+  assert.strictEqual(nameReads, sliceCount);
+  assert.strictEqual(edges.length, sliceCount);
+});
+
 // ---------- fixtures ----------
 
 const QUICK_WINS = `# Quick wins
