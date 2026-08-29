@@ -958,6 +958,7 @@ function buildCycleAnalysis(registryRecords, registry) {
   const featureAndBugRecords = registryRecords.filter((record) => record.index !== 'QUICK_WINS.md');
   const depEdges = collectEntryEdges(featureAndBugRecords, registry);
   const cycles = findCycles(depEdges);
+  const cycleEdges = groupCycleEdges(cycles, depEdges);
   const cycleMembers = new Set();
   for (const cycle of cycles) {
     for (const member of cycle.members) {
@@ -969,7 +970,7 @@ function buildCycleAnalysis(registryRecords, registry) {
     nodeToRec.set(nodeKey(record), record);
   }
 
-  return { depEdges, cycles, cycleMembers, nodeToRec };
+  return { cycles, cycleEdges, cycleMembers, nodeToRec };
 }
 
 function addQuickWins(parsed, out) {
@@ -1104,7 +1105,8 @@ function classifyTrackedEntries(parsed, registry, cycleMembers, out, breakoutTar
 }
 
 function addCycleErrors(out, cycleAnalysis) {
-  for (const cycle of cycleAnalysis.cycles) {
+  for (let cycleIndex = 0; cycleIndex < cycleAnalysis.cycles.length; cycleIndex++) {
+    const cycle = cycleAnalysis.cycles[cycleIndex];
     const evidencePaths = [];
     for (const member of cycle.members) {
       const record = cycleAnalysis.nodeToRec.get(member);
@@ -1118,7 +1120,7 @@ function addCycleErrors(out, cycleAnalysis) {
     pushStructuralError(out, {
       index: '[cycle]',
       title: `${cycle.members.length}-node cycle`,
-      problem: formatCycle(cycle, cycleAnalysis.depEdges, cycleAnalysis.nodeToRec),
+      problem: formatCycle(cycle, cycleAnalysis.cycleEdges[cycleIndex], cycleAnalysis.nodeToRec),
     }, evidencePaths);
   }
 }
@@ -1634,6 +1636,20 @@ function findCycles(edges) {
   return components.sort((a, b) => compareTargets(a.members[0], b.members[0]));
 }
 
+function groupCycleEdges(cycles, edges) {
+  const cycleByNode = new Map();
+  const grouped = cycles.map(() => []);
+  for (let cycleIndex = 0; cycleIndex < cycles.length; cycleIndex++) {
+    for (const member of cycles[cycleIndex].members) cycleByNode.set(member, cycleIndex);
+  }
+  for (const edge of edges) {
+    const cycleIndex = cycleByNode.get(edge.from);
+    if (cycleIndex !== undefined && cycleIndex === cycleByNode.get(edge.to)) grouped[cycleIndex].push(edge);
+  }
+
+  return grouped;
+}
+
 // Resolve each entry's top-level **Requires:** line to directed blocked
 // edges for cycle detection. Only the entry's top-level line sources edges;
 // continuation inline Requires do not participate. A structural problem on
@@ -1678,12 +1694,10 @@ function nodeLabel(rec) {
 // Deterministic per-cycle problem text: members in sorted nodeKey order,
 // then in-cycle edges sorted by from-then-to (duplicates collapsed, since a
 // top-level line may repeat the same Requires link).
-function formatCycle(cycle, edges, nodeToRec) {
+function formatCycle(cycle, cycleEdges, nodeToRec) {
   const members = [...cycle.members];
-  const inCycle = new Set(members);
   const seen = new Set();
-  const cycleEdges = edges
-    .filter((e) => inCycle.has(e.from) && inCycle.has(e.to))
+  const uniqueEdges = cycleEdges
     .filter((e) => {
       const key = `${e.from}::${e.to}`;
       if (seen.has(key)) return false;
@@ -1692,7 +1706,7 @@ function formatCycle(cycle, edges, nodeToRec) {
     })
     .sort((a, b) => compareTargets(a.from + '::' + a.to, b.from + '::' + b.to));
   const memberLabels = members.map((n) => nodeLabel(nodeToRec.get(n)));
-  const edgeLabels = cycleEdges.map((e) => `${nodeLabel(nodeToRec.get(e.from))} -> ${nodeLabel(nodeToRec.get(e.to))}`);
+  const edgeLabels = uniqueEdges.map((e) => `${nodeLabel(nodeToRec.get(e.from))} -> ${nodeLabel(nodeToRec.get(e.to))}`);
   return `members: ${memberLabels.join(', ')}${edgeLabels.length ? `; edges: ${edgeLabels.join(', ')}` : ''}`;
 }
 
@@ -1714,6 +1728,7 @@ module.exports = {
   collectEntryEdges,
   nodeKey,
   findCycles,
+  groupCycleEdges,
   analyzeCatalog,
 };
 

@@ -17,6 +17,7 @@ const {
   splitTopLevelCommas,
   nodeKey,
   findCycles,
+  groupCycleEdges,
   extractEntries,
   findRequires,
   parseSlices,
@@ -685,6 +686,29 @@ test('findCycles reports only >=2-node components, deterministically', () => {
     findCycles([{ from: 'a', to: 'b' }, { from: 'b', to: 'c' }, { from: 'c', to: 'a' }])[0].members.join(','),
     'a,b,c',
   );
+});
+
+test('groupCycleEdges reads each dependency edge only once per endpoint', () => {
+  const cycles = [];
+  const edges = [];
+  let endpointReads = 0;
+  for (let index = 0; index < 1000; index++) {
+    const left = `left-${index}`;
+    const right = `right-${index}`;
+    cycles.push({ members: [left, right] });
+    for (const [from, to] of [[left, right], [right, left]]) {
+      edges.push({
+        get from() { endpointReads += 1; return from; },
+        get to() { endpointReads += 1; return to; },
+      });
+    }
+  }
+
+  const grouped = groupCycleEdges(cycles, edges);
+
+  assert.strictEqual(endpointReads, edges.length * 2);
+  assert.strictEqual(grouped.length, cycles.length);
+  assert.ok(grouped.every((cycleEdges) => cycleEdges.length === 2));
 });
 
 test('collectEntryEdges sources edges only from top-level Requires, drops intra-entry, masks structural', () => {
