@@ -1604,6 +1604,31 @@ test('analyzeCatalog treats traversal, absolute, and backslash breakout links as
   assert.deepStrictEqual(result.structuralErrors, [], 'a broken link is a notice, not a structural error');
 });
 
+const HOSTILE_CYCLE_FEATURES = `# Features
+
+## Area
+
+### [Alpha](../outside.md)
+
+**Requires:** [Beta](/elsewhere.md).
+
+### [Beta](/elsewhere.md)
+
+**Requires:** [Alpha](../outside.md).
+`;
+
+test('a cycle whose members carry hostile self-targets is a structural error, never a throw', () => {
+  const result = analyzeCatalog([{ target: 'FEATURES.md', contents: HOSTILE_CYCLE_FEATURES }]);
+  const cycle = result.structuralErrors.find((e) => e.index === '[cycle]');
+  assert.ok(cycle, JSON.stringify(result.structuralErrors));
+  assert.strictEqual(cycle.title, '2-node cycle');
+  assert.deepStrictEqual(
+    result.evidence.structuralErrors,
+    [{ kind: 'structuralErrors', ordinal: 0, evidencePaths: ['FEATURES.md'] }],
+    'a traversing or absolute self-target is never offered as an evidence path',
+  );
+});
+
 const DUPLICATE_SELF_TARGET_FEATURES = `# Features
 
 ## Area

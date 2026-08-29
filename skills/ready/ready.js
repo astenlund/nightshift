@@ -1041,7 +1041,10 @@ function addCycleErrors(out, cycleAnalysis) {
       const record = cycleAnalysis.nodeToRec.get(member);
       if (record === undefined) continue;
       evidencePaths.push(record.index);
-      if (isRepoRelativeTarget(record.entry.selfTarget)) evidencePaths.push(record.entry.selfTarget.split('#')[0]);
+      // Evidence paths are catalog references, so a traversing, absolute, or
+      // backslashed self-target cannot be one. The index alone stands as this
+      // member's evidence; the hostile link keeps its own broken-link notice.
+      if (isCatalogReferenceTarget(record.entry.selfTarget)) evidencePaths.push(record.entry.selfTarget.split('#')[0]);
     }
     pushStructuralError(out, {
       index: '[cycle]',
@@ -1060,7 +1063,7 @@ function addDuplicatePathErrors(out, registry) {
     const claimants = records.map((record) => `${record.index} "${record.entry.title}"`).join(' and ');
     const evidencePaths = records.map((record) => record.index);
     for (const record of records) {
-      if (isRepoRelativeTarget(record.entry.selfTarget)) evidencePaths.push(record.entry.selfTarget.split('#')[0]);
+      if (isCatalogReferenceTarget(record.entry.selfTarget)) evidencePaths.push(record.entry.selfTarget.split('#')[0]);
     }
     pushStructuralError(out, {
       index: '[duplicate]',
