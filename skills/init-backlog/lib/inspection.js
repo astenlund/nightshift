@@ -10,8 +10,8 @@ const { BACKLOG_DIRECTORY_TARGETS, PLANS_DIRECTORY_TARGET, loadManifest } = requ
 const { inspectBackups } = require('./backups')
 const { InitBacklogError, failureRecord } = require('./errors')
 const { HTML_BLOCK_TYPE_SIX_TAGS, discoverControlledMarkdown, resolveGuidance } = require('./guidance')
-const { canonicalRoot, comparableIdentity, comparableMode, createInitialLock, initialLockPaths, removeInitialLock, stableOpenFile, targetPath } = require('./filesystem')
-const { BACKUP_DIRECTORY, DIGEST_PATTERN, MAX_INLINE_FILE_BYTES, MAX_MECHANICAL_FILE_BYTES, RECOVERY_LOCK_BASENAME, RECOVERY_LOCK_STAGE_PATTERN, RECOVERY_MARKER_BASENAME, canonicalJson, compareOrdinal, deriveProposalId, deriveSnapshotId, sameKeys, sha256 } = require('./protocol')
+const { boundedOpenOptions, canonicalRoot, comparableIdentity, comparableMode, createInitialLock, initialLockPaths, removeInitialLock, stableOpenFile, targetPath } = require('./filesystem')
+const { BACKUP_DIRECTORY, DIGEST_PATTERN, MAX_INLINE_FILE_BYTES, MAX_MECHANICAL_FILE_BYTES, MAX_RECOVERY_REQUEST_BYTES, RECOVERY_LOCK_BASENAME, RECOVERY_LOCK_STAGE_PATTERN, RECOVERY_MARKER_BASENAME, canonicalJson, compareOrdinal, deriveProposalId, deriveSnapshotId, sameKeys, sha256 } = require('./protocol')
 const { detectGitKind, inspectGitPolicy, newlineStyle, plansRootRuleEffective } = require('./git-policy')
 
 function inspectError(code, detail, target = null, cause, phase = 'inspect') {
@@ -386,7 +386,7 @@ function readElectionMarker(root, options = {}) {
   let stable = null
   try {
     if (options.lstatSync === undefined && options.readFileSync === undefined) {
-      stable = stableOpenFile(root, path, { ...options, requireSingleLink: witnesses.length === 0 })
+      stable = stableOpenFile(root, path, boundedOpenOptions(options, MAX_INLINE_FILE_BYTES, { requireSingleLink: witnesses.length === 0 }))
       if (witnesses.length !== 0) accountForMarkerLinks(path, stable, witnesses, options)
       metadata = { mode: stable.mode }
     } else {
@@ -425,7 +425,7 @@ function discoverInitialLockStages(root, options = {}) {
   return candidates.map((name) => {
     const path = join(root, name)
     try {
-      const opened = stableOpenFile(root, path, { ...options, requireSingleLink: true })
+      const opened = stableOpenFile(root, path, boundedOpenOptions(options, MAX_RECOVERY_REQUEST_BYTES, { requireSingleLink: true }))
 
       return { name, opened, path }
     } catch (error) {

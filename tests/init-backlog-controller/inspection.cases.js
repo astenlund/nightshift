@@ -768,6 +768,22 @@ function runInspectionCases(repositoryRoot) {
     }
   })
 
+  test('election marker reads stop at the inline-file ceiling', () => {
+    for (const extraBytes of [0, 1]) {
+      const root = mkdtempSync(join(tmpdir(), 'nightshift-marker-bound-'))
+      try {
+        writeFileSync(join(root, ELECTION_MARKER_PATH), Buffer.alloc(MAX_INLINE_FILE_BYTES + extraBytes, 0x61), { mode: 0o600 })
+
+        assert.throws(
+          () => readElectionMarker(root),
+          (error) => extraBytes === 0 ? error.cause?.code !== 'file-too-large' : error.cause?.code === 'file-too-large',
+        )
+      } finally {
+        rmSync(root, { force: true, recursive: true })
+      }
+    }
+  })
+
   test('orphan lock-stage discovery validates an ordinary stable candidate before surfacing it', () => {
     const root = mkdtempSync(join(tmpdir(), 'nightshift-stage-'))
     const name = `.nightshift-init-backlog.lock.1234.${'b'.repeat(32)}.new`

@@ -10,6 +10,7 @@ const { BACKUP_PATTERN, backupStageTarget, backupTarget, retainedBackupPaths } =
 const { InitBacklogError, failureRecord, trustedSystemCode } = require('./errors')
 const {
   assignAndVerifyMode,
+  boundedOpenOptions,
   canonicalRoot,
   createInitialLock,
   initialLockPaths,
@@ -28,7 +29,7 @@ const {
 } = require('./filesystem')
 const { collectInspection, composeElectionMarker } = require('./inspection')
 const { approvedProgress, detectResume, liveHostContext, publishedHostContext, resumeProjectionScope } = require('./resume')
-const { BACKUP_DIRECTORY, DIGEST_PATTERN, MAX_MECHANICAL_FILE_BYTES, NONCE_PATTERN, OWNER_RECORD_KEYS, RECOVERY_GATE_BASENAME, RECOVERY_LOCK_BASENAME: LOCK_BASENAME, RECOVERY_MARKER_BASENAME: ELECTION_BASENAME, canonicalJson, compareOrdinal, electionMarkerTemporaryNames, sameKeys, sha256 } = require('./protocol')
+const { BACKUP_DIRECTORY, DIGEST_PATTERN, MAX_MECHANICAL_FILE_BYTES, MAX_RECOVERY_REQUEST_BYTES, NONCE_PATTERN, OWNER_RECORD_KEYS, RECOVERY_GATE_BASENAME, RECOVERY_LOCK_BASENAME: LOCK_BASENAME, RECOVERY_MARKER_BASENAME: ELECTION_BASENAME, canonicalJson, compareOrdinal, electionMarkerTemporaryNames, sameKeys, sha256 } = require('./protocol')
 
 const POSIX_DEFAULT_DIRECTORY_MODE = 0o755
 
@@ -431,7 +432,7 @@ function requireReservedTemporariesAbsent(root, temporarySet) {
 function verifyLockState(root, lock, options) {
   if (lock === null) return
   if (options.skipRecoveryGateCheck !== true) verifyRecoveryGateAbsent(root)
-  const current = stableOpenFile(root, lock.paths.lock, { ...options, requireSingleLink: true })
+  const current = stableOpenFile(root, lock.paths.lock, boundedOpenOptions(options, lock.bytes?.length ?? MAX_RECOVERY_REQUEST_BYTES, { requireSingleLink: true }))
   if (lock.bytes !== undefined && !current.bytes.equals(lock.bytes) || lock.identity !== undefined && current.identity !== lock.identity || (options.platform ?? process.platform) !== 'win32' && lock.mode !== undefined && current.mode !== lock.mode) throw new Error('Publication lock changed before effect')
 }
 
@@ -933,7 +934,7 @@ function validateResumeInspection(request, liveInspection, admission, { options,
 
 function readExistingLock(root, path, options) {
   try {
-    const opened = stableOpenFile(root, path, options)
+    const opened = stableOpenFile(root, path, boundedOpenOptions(options, MAX_RECOVERY_REQUEST_BYTES))
     const record = JSON.parse(opened.bytes.toString('utf8'))
     if (!sameKeys(record, OWNER_RECORD_KEYS) || record.protocolVersion !== 1 || record.operation !== 'apply' || record.root !== root || !Number.isSafeInteger(record.pid) || record.pid <= 0 || !NONCE_PATTERN.test(record.ownerNonce) || !Number.isSafeInteger(record.createdAtUnixMs) || record.createdAtUnixMs < 0 || record.manifestId !== null && !DIGEST_PATTERN.test(record.manifestId) || record.recoveryId !== null || !Array.isArray(record.temporaryPaths) || !Array.isArray(record.unfinalizedDirectories)) throw new Error('Publication lock schema is invalid')
     if (!Buffer.from(`${canonicalJson(record)}\n`, 'utf8').equals(opened.bytes)) throw new Error('Publication lock bytes are not canonical')
@@ -945,7 +946,7 @@ function readExistingLock(root, path, options) {
     const bootstrapStage = initialLockPaths(root, record.pid, record.ownerNonce).stage
     if (record.manifestId === null) {
       let stage
-      try { stage = stableOpenFile(root, bootstrapStage, options) } catch (error) { if (error?.code !== 'ENOENT') throw error }
+      try { stage = stableOpenFile(root, bootstrapStage, boundedOpenOptions(options, MAX_RECOVERY_REQUEST_BYTES)) } catch (error) { if (error?.code !== 'ENOENT') throw error }
       if (lockMetadata.nlink !== 1n && lockMetadata.nlink !== 2n || lockMetadata.nlink === 2n && (stage === undefined || stage.identity !== opened.identity || !stage.bytes.equals(opened.bytes))) throw new Error('Bootstrap lock identity is invalid')
       if (lockMetadata.nlink === 1n && stage !== undefined) throw new Error('Bootstrap lock stage is not linked to its owner')
     } else if (lockMetadata.nlink !== 1n) {
@@ -993,7 +994,7 @@ function publishApply(request, options = {}) {
         if (error?.code !== 'ENOENT') throw error
       }
       const initial = createInitialLock(root, bootstrap, { ...options, beforePublish: () => verifyRecoveryGateAbsent(root), ownerNonce, pid, onTransition: (point) => transition(options, point) })
-      const initialReadback = stableOpenFile(root, bootstrapPaths.lock, { ...options, requireSingleLink: true })
+      const initialReadback = stableOpenFile(root, bootstrapPaths.lock, boundedOpenOptions(options, initial.bytes.length, { requireSingleLink: true }))
       lock = { bytes: initial.bytes, identity: initialReadback.identity, manifestId: null, mode: platformMode(options, initialReadback.mode), ownerNonce, paths: bootstrapPaths, pid, record: bootstrap, temporaryPaths: bootstrap.temporaryPaths }
       verifyRecoveryGateAbsent(root)
     }
@@ -1087,7 +1088,7 @@ function publishApply(request, options = {}) {
     } else {
       notifyWrite(options, fixed.lockStage)
       lock = createInitialLock(root, bootstrap, { ...options, beforePublish: () => verifyRecoveryGateAbsent(root), ownerNonce, pid, onTransition: (point) => transition(options, point) })
-      const initialReadback = stableOpenFile(root, bootstrapPaths.lock, { ...options, requireSingleLink: true })
+      const initialReadback = stableOpenFile(root, bootstrapPaths.lock, boundedOpenOptions(options, lock.bytes.length, { requireSingleLink: true }))
       lock.identity = initialReadback.identity
       lock.mode = platformMode(options, initialReadback.mode)
     }
@@ -1107,7 +1108,8 @@ function publishApply(request, options = {}) {
         assignAndVerifyMode(fixed.lockNext, 0o600, options)
         registerTemporary(root, ownedTemporaries, fixed.lockNext, upgradedBytes, options, true, platformMode(options, 0o600))
       }
-      const currentLock = stableOpenFile(root, fixed.lock, { ...options, requireSingleLink: lock.record?.manifestId !== null })
+      const expectedUpgradeIdentity = ownedTemporaries.get(fixed.lockNext)?.identity
+      const currentLock = stableOpenFile(root, fixed.lock, boundedOpenOptions(options, lock.bytes.length, { requireSingleLink: lock.record?.manifestId !== null }))
       const currentLockMetadata = lstatSync(fixed.lock, { bigint: true })
       if (lock.record?.manifestId !== null && currentLockMetadata.nlink !== 1n || lock.record?.manifestId === null && currentLockMetadata.nlink !== 1n && currentLockMetadata.nlink !== 2n || currentLock.identity !== lock.identity || !currentLock.bytes.equals(lock.bytes) || (options.platform ?? process.platform) !== 'win32' && currentLock.mode !== lock.mode) throw new Error('Publication lock changed before upgrade')
       if (lock.record?.manifestId === null && currentLockMetadata.nlink === 2n) {
@@ -1118,8 +1120,22 @@ function publishApply(request, options = {}) {
       }
       verifyRecoveryGateAbsent(root)
       renameVerified(fixed.lockNext, fixed.lock, upgradedBytes, options)
-      const upgradedReadback = stableOpenFile(root, fixed.lock, { ...options, requireSingleLink: true })
-      if (!upgradedReadback.bytes.equals(upgradedBytes)) throw new Error('Upgraded publication lock differs')
+      try {
+        lstatSync(fixed.lockNext)
+        throw new Error('Publication lock upgrade temporary was recreated')
+      } catch (error) {
+        if (error?.code !== 'ENOENT') throw error
+      }
+      if (lock.record?.manifestId === null) {
+        const stage = ownedTemporaries.get(fixed.lockStage)
+        if (stage !== undefined) {
+          stage.linkCount = 1
+          stage.peers = []
+          stage.requireSingleLink = true
+        }
+      }
+      const upgradedReadback = stableOpenFile(root, fixed.lock, boundedOpenOptions(options, upgradedBytes.length, { requireSingleLink: true }))
+      if (!upgradedReadback.bytes.equals(upgradedBytes) || expectedUpgradeIdentity !== undefined && upgradedReadback.identity !== expectedUpgradeIdentity) throw new Error('Upgraded publication lock identity differs')
       lock.bytes = upgradedBytes
       lock.identity = upgradedReadback.identity
       lock.manifestId = admission.manifestId

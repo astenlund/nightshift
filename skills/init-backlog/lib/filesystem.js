@@ -26,7 +26,7 @@ const { TextDecoder } = require('node:util')
 const { isAbsolute, join } = require('node:path')
 
 const { InitBacklogError } = require('./errors')
-const { DIGEST_PATTERN, MAX_APPLY_REQUEST_BYTES, NONCE_PATTERN, OWNER_BASENAME: REQUEST_OWNER_BASENAME, OWNER_STAGE_BASENAME: REQUEST_OWNER_STAGE_BASENAME, RECOVERY_LOCK_BASENAME, assertSafeWindowsScalar, canonicalJson, compareOrdinal, sameKeys, sha256, validateNonce } = require('./protocol')
+const { DIGEST_PATTERN, MAX_APPLY_REQUEST_BYTES, MAX_INSPECT_REQUEST_BYTES, MAX_RECOVERY_REQUEST_BYTES, NONCE_PATTERN, OWNER_BASENAME: REQUEST_OWNER_BASENAME, OWNER_STAGE_BASENAME: REQUEST_OWNER_STAGE_BASENAME, RECOVERY_LOCK_BASENAME, assertSafeWindowsScalar, canonicalJson, compareOrdinal, sameKeys, sha256, validateNonce } = require('./protocol')
 
 const REQUEST_GATE_BASENAME = '.nightshift-init-backlog.request-gate'
 const REQUEST_PAYLOAD_BASENAME = 'request.json'
@@ -161,6 +161,10 @@ function stableOpenFile(root, target, options = {}) {
   } finally {
     closeSync(descriptor)
   }
+}
+
+function boundedOpenOptions(options, maxBytes, overrides = {}) {
+  return { ...options, ...overrides, maxBytes: Math.min(options.maxBytes ?? maxBytes, maxBytes) }
 }
 
 function decodeDirectoryName(name, platform = process.platform) {
@@ -568,8 +572,9 @@ function publishNoReplace(source, destination, options = {}) {
 }
 
 function verifyPublishedIdentity(root, source, destination, expectedBytes, expectedIdentity, expectedMode) {
-  const sourceFile = stableOpenFile(root, source)
-  const destinationFile = stableOpenFile(root, destination)
+  const openOptions = boundedOpenOptions({}, expectedBytes.length)
+  const sourceFile = stableOpenFile(root, source, openOptions)
+  const destinationFile = stableOpenFile(root, destination, openOptions)
   const sourceLinks = lstatSync(source, { bigint: true }).nlink
   const destinationLinks = lstatSync(destination, { bigint: true }).nlink
   const platform = process.platform
@@ -614,7 +619,7 @@ function createInitialLock(root, record, options = {}) {
     stageBytes(paths.stage, bytes, {
       ...options,
       onTransition: (point) => {
-        if (point === 'after-owner-stage-create') stagedIdentity = stableOpenFile(root, paths.stage, { ...options, requireSingleLink: true }).identity
+        if (point === 'after-owner-stage-create') stagedIdentity = stableOpenFile(root, paths.stage, boundedOpenOptions(options, bytes.length, { requireSingleLink: true })).identity
         if (point === 'after-owner-stage-write') stageWriteFinished = true
         options.onTransition?.(point)
       },
@@ -626,7 +631,7 @@ function createInitialLock(root, record, options = {}) {
       },
     })
     readBackExact(paths.stage, bytes, options)
-    const preparedStage = stableOpenFile(root, paths.stage, { ...options, requireSingleLink: true })
+    const preparedStage = stableOpenFile(root, paths.stage, boundedOpenOptions(options, bytes.length, { requireSingleLink: true }))
     const stageModeMatches = (options.platform ?? process.platform) === 'win32' || preparedStage.mode === 0o600
     if (preparedStage.identity !== stagedIdentity || !preparedStage.bytes.equals(bytes) || !stageModeMatches) throw new Error('Initial lock stage changed before publication')
     options.beforePublish?.()
@@ -635,12 +640,29 @@ function createInitialLock(root, record, options = {}) {
     options.onPublished?.(paths.lock)
     verifyPublishedIdentity(root, paths.stage, paths.lock, bytes, stagedIdentity, 0o600)
     removeAndVerify(paths.stage, options)
-    const finalLock = stableOpenFile(root, paths.lock, { ...options, requireSingleLink: true })
+    const finalLock = stableOpenFile(root, paths.lock, boundedOpenOptions(options, bytes.length, { requireSingleLink: true }))
     const finalLockModeMatches = (options.platform ?? process.platform) === 'win32' || finalLock.mode === 0o600
     if (finalLock.identity !== stagedIdentity || !finalLock.bytes.equals(bytes) || !finalLockModeMatches) throw new Error('Initial lock changed after stage removal')
   } catch (error) {
-    if (exists(paths.stage) && !(options.crashAfterOwnerPublish === true && exists(paths.lock)) && !(options.crashBeforeOwnerPublish === true && !exists(paths.lock))) {
-      try { removeAndVerify(paths.stage, options) } catch { /* Preserve the original failure when cleanup itself fails. */ }
+    if (exists(paths.stage) && stagedIdentity !== undefined && !(options.crashAfterOwnerPublish === true && exists(paths.lock)) && !(options.crashBeforeOwnerPublish === true && !exists(paths.lock))) {
+      try {
+        let currentStage
+        try {
+          currentStage = stableOpenFile(root, paths.stage, boundedOpenOptions(options, bytes.length, { requireSingleLink: true }))
+        } catch (error) {
+          if (!stageWriteFinished || !exists(paths.lock)) throw error
+          currentStage = stableOpenFile(root, paths.stage, boundedOpenOptions(options, bytes.length, { requireSingleLink: false }))
+          const currentLock = stableOpenFile(root, paths.lock, boundedOpenOptions(options, bytes.length, { requireSingleLink: false }))
+          const stageLinks = (options.lstatSync ?? lstatSync)(paths.stage, { bigint: true }).nlink
+          const lockLinks = (options.lstatSync ?? lstatSync)(paths.lock, { bigint: true }).nlink
+          if (stageLinks !== 2n || lockLinks !== 2n || currentStage.identity !== stagedIdentity || currentLock.identity !== stagedIdentity || !currentLock.bytes.equals(bytes)) throw error
+        }
+        const modeMatches = (options.platform ?? process.platform) === 'win32' || currentStage.mode === 0o600
+        const expectedBytes = stageWriteFinished || stageWriteProgress ? bytes : Buffer.alloc(0)
+        if (currentStage.identity === stagedIdentity && currentStage.bytes.equals(expectedBytes) && modeMatches) removeAndVerify(paths.stage, options)
+      } catch {
+        /* Preserve the original failure and retain any stage whose ownership changed. */
+      }
     }
     throw error
   }
@@ -650,7 +672,7 @@ function createInitialLock(root, record, options = {}) {
 
 function removeInitialLock(root, paths, expectedBytes, options = {}) {
   const open = options.stableOpenFile ?? stableOpenFile
-  const opened = open(root, paths.lock)
+  const opened = open(root, paths.lock, boundedOpenOptions(options, expectedBytes?.length ?? MAX_RECOVERY_REQUEST_BYTES))
   if (expectedBytes !== undefined && !opened.bytes.equals(expectedBytes)) throw new Error('Initial lock changed before removal')
   const remove = options.removeAndVerify ?? removeAndVerify
   remove(paths.lock, options)
@@ -658,8 +680,9 @@ function removeInitialLock(root, paths, expectedBytes, options = {}) {
 
 function publishOwnerStage(root, paths, expectedBytes, options = {}) {
   linkSync(paths.ownerStage, paths.owner)
-  const stage = stableOpenFile(root, paths.ownerStage)
-  const owner = stableOpenFile(root, paths.owner)
+  const openOptions = boundedOpenOptions(options, expectedBytes.length)
+  const stage = stableOpenFile(root, paths.ownerStage, openOptions)
+  const owner = stableOpenFile(root, paths.owner, openOptions)
   verifyRuntimeFile(stage)
   verifyRuntimeFile(owner)
   if (stage.identity !== owner.identity || !stage.bytes.equals(expectedBytes) || !owner.bytes.equals(expectedBytes)) {
@@ -724,8 +747,8 @@ function collectRequestResidue(root, options = {}) {
       transportError('request-invalid-state', 'Request gate has an extra entry.')
     }
 
-    const ownerStage = entries.includes(REQUEST_OWNER_STAGE_BASENAME) ? stableOpenFile(canonical, paths.ownerStage) : null
-    const owner = entries.includes(REQUEST_OWNER_BASENAME) ? stableOpenFile(canonical, paths.owner) : null
+    const ownerStage = entries.includes(REQUEST_OWNER_STAGE_BASENAME) ? stableOpenFile(canonical, paths.ownerStage, boundedOpenOptions(options, MAX_INSPECT_REQUEST_BYTES)) : null
+    const owner = entries.includes(REQUEST_OWNER_BASENAME) ? stableOpenFile(canonical, paths.owner, boundedOpenOptions(options, MAX_INSPECT_REQUEST_BYTES)) : null
     const payloadPresent = entries.includes(REQUEST_PAYLOAD_BASENAME)
     if (ownerStage !== null) {
       verifyRuntimeFile(ownerStage)
@@ -837,7 +860,7 @@ function cleanupPath(root, path, transition, options, state, expected) {
     if (expected === null || expected === undefined) {
       throw new Error('Request cleanup found an unexpected artifact')
     }
-    const current = stableOpenFile(root, path)
+    const current = stableOpenFile(root, path, boundedOpenOptions(options, expected.bytes.length))
     if (current.identity !== expected.identity || current.rawSha256 !== expected.rawSha256) {
       throw new Error('Request cleanup artifact changed before removal')
     }
@@ -960,7 +983,7 @@ function consumeRequest(root, nonce, dispatch, options = {}) {
   if (inspection.state !== 'reserved-payload' || inspection.nonce !== nonce) {
     transportError('request-evidence-mismatch', 'Request payload is not reserved by this nonce.')
   }
-  const owner = stableOpenFile(canonical, paths.owner)
+  const owner = stableOpenFile(canonical, paths.owner, boundedOpenOptions(options, MAX_INSPECT_REQUEST_BYTES))
   const payload = stableOpenFile(canonical, paths.payload, { maxBytes: MAX_APPLY_REQUEST_BYTES })
   const reservedRecord = parseOwner(owner.bytes, canonical)
   if (reservedRecord.state !== 'reserved' || reservedRecord.nonce !== nonce || owner.rawSha256 !== inspection.ownerRawSha256 || payload.rawSha256 !== inspection.payloadRawSha256) {
@@ -980,7 +1003,7 @@ function consumeRequest(root, nonce, dispatch, options = {}) {
   }
   stageBytes(paths.ownerStage, consumingBytes, stageOptions)
   renameSync(paths.ownerStage, paths.owner)
-  const consumingOwner = stableOpenFile(canonical, paths.owner)
+  const consumingOwner = stableOpenFile(canonical, paths.owner, boundedOpenOptions(options, consumingBytes.length))
   verifyRuntimeFile(consumingOwner)
   if (!consumingOwner.bytes.equals(consumingBytes)) {
     throw new Error('Consuming owner differs after atomic rename')
@@ -997,7 +1020,7 @@ function consumeRequest(root, nonce, dispatch, options = {}) {
           options.onTransition?.('after-gate-remove')
         }
       },
-    }, { owner: stableOpenFile(canonical, paths.owner), ownerStage: null, payload })
+    }, { owner: stableOpenFile(canonical, paths.owner, boundedOpenOptions(options, consumingBytes.length)), ownerStage: null, payload })
   } catch (error) {
     if (error instanceof RequestTransportResidueError) {
       throw error
@@ -1014,6 +1037,7 @@ module.exports = {
   REQUEST_OWNER_STAGE_BASENAME,
   REQUEST_PAYLOAD_BASENAME,
   RequestTransportResidueError,
+  boundedOpenOptions,
   canonicalRoot,
   classifyPid,
   cleanRequestResidue,

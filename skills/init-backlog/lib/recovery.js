@@ -7,6 +7,7 @@ const { existsSync, linkSync, lstatSync, mkdirSync, readdirSync, rmdirSync, unli
 const { InitBacklogError, failureRecord, trustedSystemCode } = require('./errors')
 const { BACKUP_PATTERN, backupParts, classifyBackup } = require('./backups')
 const {
+  boundedOpenOptions,
   canonicalRoot,
   classifyPid,
   comparableIdentity,
@@ -57,7 +58,14 @@ function ownerArtifactByteLimit(target, record) {
 function ownerArtifactOpenOptions(target, record, options, requireSingleLink) {
   const limit = ownerArtifactByteLimit(target, record)
 
-  return { ...options, maxBytes: Math.min(options.maxBytes ?? limit, limit), requireSingleLink }
+  return boundedOpenOptions(options, limit, { requireSingleLink })
+}
+
+function recoveryArtifactByteLimit(target) {
+  if (target === LOCK_BASENAME || target.startsWith(`${RECOVERY_GATE_BASENAME}/`) || LOCK_STAGE_PATTERN.test(target)) return MAX_RECOVERY_REQUEST_BYTES
+  if (target === MARKER_BASENAME) return MAX_INLINE_FILE_BYTES
+
+  return MAX_MECHANICAL_FILE_BYTES
 }
 
 function recoveryTemporaryParts(target, recoveryId) {
@@ -120,8 +128,8 @@ function gateEvidence(root, options = {}) {
   if ((options.platform ?? process.platform) !== 'win32' && (metadata.mode & 0o7777n) !== 0o700n) throw new Error('Recovery gate mode is invalid')
   const entries = readdirSync(gate).sort()
   if (entries.some((entry) => ![RECOVERY_OWNER_STAGE_BASENAME, RECOVERY_OWNER_BASENAME].includes(entry))) throw new Error('Recovery gate has an extra entry')
-  const stage = entries.includes(RECOVERY_OWNER_STAGE_BASENAME) ? stableOpenFile(root, join(gate, RECOVERY_OWNER_STAGE_BASENAME), { ...options, maxBytes: MAX_RECOVERY_REQUEST_BYTES, requireSingleLink: false }) : null
-  const owner = entries.includes(RECOVERY_OWNER_BASENAME) ? stableOpenFile(root, join(gate, RECOVERY_OWNER_BASENAME), { ...options, maxBytes: MAX_RECOVERY_REQUEST_BYTES, requireSingleLink: false }) : null
+  const stage = entries.includes(RECOVERY_OWNER_STAGE_BASENAME) ? stableOpenFile(root, join(gate, RECOVERY_OWNER_STAGE_BASENAME), boundedOpenOptions(options, MAX_RECOVERY_REQUEST_BYTES, { requireSingleLink: false })) : null
+  const owner = entries.includes(RECOVERY_OWNER_BASENAME) ? stableOpenFile(root, join(gate, RECOVERY_OWNER_BASENAME), boundedOpenOptions(options, MAX_RECOVERY_REQUEST_BYTES, { requireSingleLink: false })) : null
   const stageLinks = stage === null ? null : lstatSync(join(gate, RECOVERY_OWNER_STAGE_BASENAME), { bigint: true }).nlink
   const ownerLinks = owner === null ? null : lstatSync(join(gate, RECOVERY_OWNER_BASENAME), { bigint: true }).nlink
   if (stage !== null && owner === null && stageLinks !== 1n || stage === null && owner !== null && ownerLinks !== 1n) throw new Error('Recovery owner singleton link count is invalid')
@@ -440,7 +448,7 @@ function withTransientRecoveryLock(root, request, options, callback, lockContext
   let callbackResult
   try {
     acquired = createInitialLock(root, record, { ...lockCleanupOptions, ownerNonce, pid })
-    acquiredIdentity = stableOpenFile(root, acquired.paths.lock, { ...lockCleanupOptions, requireSingleLink: true }).identity
+    acquiredIdentity = stableOpenFile(root, acquired.paths.lock, boundedOpenOptions(lockCleanupOptions, acquired.bytes.length, { requireSingleLink: true })).identity
     if (pathExists(gate)) {
       removeInitialLock(root, acquired.paths, acquired.bytes, lockCleanupOptions)
       acquired = undefined
@@ -450,7 +458,7 @@ function withTransientRecoveryLock(root, request, options, callback, lockContext
     try {
       const verifyLock = () => {
         try {
-          const current = stableOpenFile(root, acquired.paths.lock, { ...lockCleanupOptions, requireSingleLink: true })
+          const current = stableOpenFile(root, acquired.paths.lock, boundedOpenOptions(lockCleanupOptions, acquired.bytes.length, { requireSingleLink: true }))
           if (current.identity !== acquiredIdentity || !current.bytes.equals(acquired.bytes) || (lockCleanupOptions.platform ?? process.platform) !== 'win32' && current.mode !== 0o600) throw new Error('Transient recovery lock changed before subject mutation')
         } catch (error) {
           failure(request.operation, 'prevalidate', 'snapshot-drift', 'Recovery lock changed before subject mutation.', request.recoveryTarget, error)
@@ -672,7 +680,7 @@ function validateStaleOwnerLock(root, owner, options, inventory) {
 function removeArtifact(root, target, expected, options = {}, requireSingleLink = true) {
   const path = artifactPath(root, target)
   if (!pathExists(path)) return false
-  const current = stableOpenFile(root, path, { ...options, requireSingleLink })
+  const current = stableOpenFile(root, path, boundedOpenOptions(options, recoveryArtifactByteLimit(target), { requireSingleLink }))
   if (expected !== null && (current.rawSha256 !== expected.rawSha256 || expected.mode !== null && current.mode !== expected.mode || expected.identity !== undefined && current.identity !== expected.identity || expected.recoveryId !== undefined && parseCanonicalRecord(current)?.recoveryId !== expected.recoveryId)) throw new Error('Recovery artifact changed before removal')
   const remove = options.removeAndVerify ?? removeAndVerify
   options.verifyLock?.()
@@ -727,7 +735,7 @@ function removeOwnedRecoveryGate(path, expectedIdentity) {
 
 function writeRecoveryGateStage(root, stage, bytes, options) {
   stageFile(stage, bytes, { ...options, onTransition: undefined })
-  const opened = stableOpenFile(root, stage, { ...options, requireSingleLink: true })
+  const opened = stableOpenFile(root, stage, boundedOpenOptions(options, bytes.length, { requireSingleLink: true }))
   if (!opened.bytes.equals(bytes) || (options.platform ?? process.platform) !== 'win32' && opened.mode !== 0o600) throw new Error('Recovery gate stage readback differs')
 
   return opened
@@ -755,14 +763,14 @@ function claimRecoveryGate(root, inspection, options = {}) {
       if (existing === null || existing.record === null || existing.record.recoveryId !== inspection.recoveryId || existing.ownerRawSha256 === null || existing.pidStatus !== 'absent') failure('recover-apply', 'lock', 'runtime-lock', 'Recovery gate is owned by another operation.', RECOVERY_GATE_BASENAME)
       if (existing.ownerStageRawSha256 !== null) failure('recover-apply', 'lock', 'runtime-lock', 'Recovery gate is owned by another operation.', RECOVERY_GATE_BASENAME)
 
-      const existingOwner = stableOpenFile(root, owner, { ...options, requireSingleLink: false })
+      const existingOwner = stableOpenFile(root, owner, boundedOpenOptions(options, MAX_RECOVERY_REQUEST_BYTES, { requireSingleLink: false }))
       const gateIdentity = directoryIdentity(gate)
       try {
         linkSync(owner, stage)
       } catch (error) {
         failure('recover-apply', 'lock', 'runtime-lock', 'Recovery gate is owned by another operation.', RECOVERY_GATE_BASENAME, error)
       }
-      const existingStage = stableOpenFile(root, stage, { ...options, requireSingleLink: false })
+      const existingStage = stableOpenFile(root, stage, boundedOpenOptions(options, existingOwner.bytes.length, { requireSingleLink: false }))
       const stageMetadata = lstatSync(stage, { bigint: true })
       const ownerMetadata = lstatSync(owner, { bigint: true })
       if (stageMetadata.nlink !== 2n || ownerMetadata.nlink !== 2n || existingStage.identity !== existingOwner.identity || !existingStage.bytes.equals(existingOwner.bytes) || modeFor(existingStage, options.platform) !== modeFor(existingOwner, options.platform)) throw new Error('Recovery gate owner identity differs from its stage')
@@ -776,7 +784,7 @@ function claimRecoveryGate(root, inspection, options = {}) {
     verifyRecoveryGateDirectory(gate, options, createdIdentity)
     const staged = writeRecoveryGateStage(root, stage, bytes, options)
     linkSync(stage, owner)
-    const published = stableOpenFile(root, owner, { ...options, requireSingleLink: false })
+    const published = stableOpenFile(root, owner, boundedOpenOptions(options, bytes.length, { requireSingleLink: false }))
     const stageMetadata = lstatSync(stage, { bigint: true })
     const ownerMetadata = lstatSync(owner, { bigint: true })
     if (stageMetadata.nlink !== 2n || ownerMetadata.nlink !== 2n || published.identity !== staged.identity || !published.bytes.equals(bytes)) throw new Error('Recovery gate owner identity differs from its stage')
@@ -790,7 +798,7 @@ function claimRecoveryGate(root, inspection, options = {}) {
     throw new Error('Recovery gate ownership could not be claimed', { cause: error })
   }
 
-  const finalOwner = stableOpenFile(root, owner, { ...options, requireSingleLink: false })
+  const finalOwner = stableOpenFile(root, owner, boundedOpenOptions(options, bytes.length, { requireSingleLink: false }))
   const claim = { bytes, gate, gateIdentity: directoryIdentity(gate), owner, ownerIdentity: finalOwner.identity, ownerMode: finalOwner.mode, recoveryId: inspection.recoveryId, stage: null, stageBytes: null, stageIdentity: null, stageMode: null }
   verifyClaimedRecoveryGate(root, claim, options)
 
@@ -802,10 +810,10 @@ function verifyClaimedRecoveryGate(root, claim, options) {
   const entries = readdirSync(claim.gate).sort(compareOrdinal)
   const expectedEntries = claim.stage === null ? [RECOVERY_OWNER_BASENAME] : [RECOVERY_OWNER_BASENAME, RECOVERY_OWNER_STAGE_BASENAME]
   if (entries.length !== expectedEntries.length || entries.some((entry, index) => entry !== expectedEntries[index])) throw new Error('Recovery gate ownership has unexpected entries')
-  const owner = stableOpenFile(root, claim.owner, { ...options, requireSingleLink: false })
+  const owner = stableOpenFile(root, claim.owner, boundedOpenOptions(options, claim.bytes.length, { requireSingleLink: false }))
   if (owner.identity !== claim.ownerIdentity || !owner.bytes.equals(claim.bytes)) throw new Error('Recovery gate owner changed after ownership claim')
   if (claim.stage !== null) {
-    const stage = stableOpenFile(root, claim.stage, { ...options, requireSingleLink: false })
+    const stage = stableOpenFile(root, claim.stage, boundedOpenOptions(options, claim.stageBytes.length, { requireSingleLink: false }))
     const stageMetadata = lstatSync(claim.stage, { bigint: true })
     const ownerMetadata = lstatSync(claim.owner, { bigint: true })
     if (stage.identity !== claim.stageIdentity || !stage.bytes.equals(claim.stageBytes) || stage.identity !== owner.identity || stageMetadata.nlink !== 2n || ownerMetadata.nlink !== 2n || modeFor(owner, options.platform) !== claim.ownerMode || modeFor(stage, options.platform) !== claim.stageMode) throw new Error('Recovery gate owner pair changed after ownership claim')
@@ -819,15 +827,15 @@ function releaseRecoveryGate(claim, options = {}) {
     if (claim.stage !== null) {
       const entries = readdirSync(claim.gate).sort(compareOrdinal)
       if (entries.length !== 2 || entries[0] !== RECOVERY_OWNER_BASENAME || entries[1] !== RECOVERY_OWNER_STAGE_BASENAME) throw new Error('Recovery gate owner pair changed before cleanup')
-      const stage = stableOpenFile(claim.gate, claim.stage, { ...options, requireSingleLink: false })
-      const owner = stableOpenFile(claim.gate, claim.owner, { ...options, requireSingleLink: false })
+      const stage = stableOpenFile(claim.gate, claim.stage, boundedOpenOptions(options, claim.stageBytes.length, { requireSingleLink: false }))
+      const owner = stableOpenFile(claim.gate, claim.owner, boundedOpenOptions(options, claim.bytes.length, { requireSingleLink: false }))
       const stageMetadata = lstatSync(claim.stage, { bigint: true })
       const ownerMetadata = lstatSync(claim.owner, { bigint: true })
       if (stage.identity !== claim.stageIdentity || owner.identity !== claim.ownerIdentity || !stage.bytes.equals(claim.stageBytes) || !owner.bytes.equals(claim.bytes) || stage.identity !== owner.identity || stageMetadata.nlink !== 2n || ownerMetadata.nlink !== 2n || modeFor(owner, options.platform) !== claim.ownerMode || modeFor(stage, options.platform) !== claim.stageMode) throw new Error('Recovery gate owner pair changed before cleanup')
     }
     for (const artifact of [{ bytes: claim.stageBytes, identity: claim.stageIdentity, mode: claim.stageMode, path: claim.stage }, { bytes: claim.bytes, identity: claim.ownerIdentity, mode: claim.ownerMode, path: claim.owner }]) {
       if (artifact.path === null || !existsSync(artifact.path)) continue
-      const current = stableOpenFile(claim.gate, artifact.path, { ...options, requireSingleLink: false })
+      const current = stableOpenFile(claim.gate, artifact.path, boundedOpenOptions(options, artifact.bytes.length, { requireSingleLink: false }))
       const record = parseCanonicalRecord(current)
       if (artifact.identity !== null && current.identity !== artifact.identity || artifact.bytes !== null && !current.bytes.equals(artifact.bytes) || artifact.mode !== null && current.mode !== artifact.mode || record === null || record.recoveryId !== claim.recoveryId) throw new Error('Recovery gate owner changed before cleanup')
       unlinkSync(artifact.path)

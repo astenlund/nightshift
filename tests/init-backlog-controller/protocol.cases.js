@@ -905,6 +905,23 @@ function runProtocolCases(repositoryRoot) {
     }
   })
 
+  test('request residue bounds owner records at the inspect-request ceiling', () => {
+    for (const extraBytes of [0, 1]) {
+      const root = makeTemporaryRoot()
+      try {
+        reserveRequest(root, { nonce: NONCE_A })
+        writeFileSync(requestPaths(root).owner, Buffer.alloc(MAX_INSPECT_REQUEST_BYTES + extraBytes, 0x61))
+
+        assert.throws(
+          () => inspectRequestResidue(root),
+          (error) => error instanceof InitBacklogError && error.record.code === 'request-filesystem' && (extraBytes === 0 ? error.cause?.code !== 'file-too-large' : error.cause?.code === 'file-too-large'),
+        )
+      } finally {
+        removeTemporaryRoot(root)
+      }
+    }
+  })
+
   test('PID classification is total and fail-closed', () => {
     assert.equal(classifyPid(9, () => undefined), 'live')
     assert.equal(classifyPid(9, () => { throw Object.assign(new Error('gone'), { code: 'ESRCH' }) }), 'absent')

@@ -13,7 +13,7 @@ const { runPrivateDispatcher } = require('../../skills/init-backlog/init-backlog
 const { admitApplyManifest } = require('../../skills/init-backlog/lib/apply-manifest')
 const { InitBacklogError, failureRecord } = require('../../skills/init-backlog/lib/errors')
 const { collectInspection, composeElectionMarker } = require('../../skills/init-backlog/lib/inspection')
-const { canonicalActionOrder, canonicalJson, deriveSemanticActionId, deriveSnapshotId, sha256, validateResultRecord } = require('../../skills/init-backlog/lib/protocol')
+const { MAX_RECOVERY_REQUEST_BYTES, canonicalActionOrder, canonicalJson, deriveSemanticActionId, deriveSnapshotId, sha256, validateResultRecord } = require('../../skills/init-backlog/lib/protocol')
 const { createInitialLock } = require('../../skills/init-backlog/lib/filesystem')
 const { analyzeCatalog } = require('../../skills/ready/ready')
 const { applyRecovery, inspectRecovery } = require('../../skills/init-backlog/lib/recovery')
@@ -1372,6 +1372,22 @@ function runPublicationCases() {
       }
     } finally {
       rmSync(root, { force: true, recursive: true })
+    }
+  })
+
+  test('existing publication lock reads stop at the recovery-request ceiling', () => {
+    for (const extraBytes of [0, 1]) {
+      const root = fixtureRoot()
+      try {
+        writeFileSync(join(root, '.nightshift-init-backlog.lock'), Buffer.alloc(MAX_RECOVERY_REQUEST_BYTES + extraBytes, 0x61), { mode: 0o600 })
+
+        assert.throws(
+          () => publishApply(request(root), { currentInspection: inspection(root), resume: true }),
+          (error) => error.record?.code === 'runtime-lock' && (extraBytes === 0 ? error.cause?.code !== 'file-too-large' : error.cause?.code === 'file-too-large'),
+        )
+      } finally {
+        rmSync(root, { force: true, recursive: true })
+      }
     }
   })
 
