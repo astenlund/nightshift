@@ -2,7 +2,7 @@
 
 const { createHash } = require('node:crypto')
 const { lstatSync, readFileSync, readdirSync } = require('node:fs')
-const { join, relative, resolve } = require('node:path')
+const { isAbsolute, join, relative, resolve, sep } = require('node:path')
 const { execFileSync } = require('node:child_process')
 
 function compareOrdinal(left, right) {
@@ -38,7 +38,7 @@ function fixtureRoot(repositoryRoot) {
 
 function isContained(root, target) {
   const relation = relative(root, target)
-  return relation !== '' && relation !== '..' && !relation.startsWith('..' + require('node:path').sep) && !require('node:path').isAbsolute(relation)
+  return relation !== '' && relation !== '..' && !relation.startsWith('..' + sep) && !isAbsolute(relation)
 }
 
 function fixtureFilePath(repositoryRoot, entryPath) {
@@ -122,4 +122,4 @@ function loadPromptBaseline(repositoryRoot, sourceCommit) {
   return { baselineManifestSha256: sha256(manifestBytes), manifest, root }
 }
 
-module.exports = { canonicalJson, compareOrdinal, fixtureFilePath, fixtureRoot, git, loadPromptBaseline, readBlob, sha256, sourceClosure }
+module.exports = { canonicalJson, compareOrdinal, fixtureFilePath, fixtureRoot, git, isContained, loadPromptBaseline, readBlob, sha256, sourceClosure }

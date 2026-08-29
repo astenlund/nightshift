@@ -22,19 +22,10 @@ const { runProcessCases } = require('./init-backlog-controller/process.cases')
 const { runHostEntryCases } = require('./init-backlog-controller/host-entry.cases')
 const { runDialogueCases } = require('./init-backlog-controller/dialogue.cases')
 const { runE2eCases } = require('./init-backlog-controller/e2e.cases')
-const { canonicalJson, fixtureRoot, git, loadPromptBaseline, sha256, sourceClosure } = require('./init-backlog-controller/helpers')
+const { canonicalJson, compareOrdinal, fixtureRoot, git, isContained, loadPromptBaseline, sha256, sourceClosure } = require('./init-backlog-controller/helpers')
 const { assembleClaudePromptBaseline, assembleCodexPromptBaseline, loadPromptBaseline: loadHostPromptBaseline, stageCandidate } = require('./host-discovery-smoke-lib')
 
 const REPOSITORY_ROOT = join(__dirname, '..')
-
-function compareOrdinal(left, right) {
-  return left < right ? -1 : left > right ? 1 : 0
-}
-
-function isContained(root, target) {
-  const relation = require('node:path').relative(root, target)
-  return relation !== '' && relation !== '..' && !relation.startsWith('..' + require('node:path').sep) && !require('node:path').isAbsolute(relation)
-}
 
 function listFiles(root, prefix = '') {
   return readdirSync(root, { withFileTypes: true }).flatMap((entry) => {
