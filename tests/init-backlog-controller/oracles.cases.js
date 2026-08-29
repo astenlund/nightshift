@@ -9,6 +9,7 @@ const test = require('node:test')
 const { canonicalJson, compareOrdinal, sha256 } = require('./helpers')
 const { BREAKOUT_DIGEST_NOTICE, CLAUDE_ROOT_EXCLUSION_CONFIRMATION, CODEX_HOST_CONTEXT_CONFIRMATION, ELECTION_MARKER_PATH, HEX64_PATTERN, HOST_CONTROL_RECORDS, LIST_SEPARATOR, MAX_PRESENTATION_CANONICAL_BYTES, buildDecodedContentDisclosures, disclosureTurnByteLength, requireExactKeys, selectTerminalExpectation, validateLiveElectionMarker, validateTurnObject, windowsRepositoryImage } = require('./election-oracles')
 
+// Independent oracle pins: the driver's BYTE_BOUNDS host framing values are spelled out here on purpose and are deliberately not imported from the constants they verify.
 const MAX_HOST_EVENT_FRAME_BYTES = 262144
 const MAX_HOST_LINE_BYTES = 4194304
 
