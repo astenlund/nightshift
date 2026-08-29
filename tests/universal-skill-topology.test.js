@@ -248,7 +248,7 @@ test('init-backlog topology requires the controller, its libraries, and normaliz
   for (const fileName of ['SKILL.md', 'init-backlog.js', 'unwrap.js', 'windows-attributes.ps1']) {
     requireRegularFile(join(controllerRoot, fileName))
   }
-  for (const libraryName of ['apply-manifest.js', 'assets.js', 'backups.js', 'errors.js', 'filesystem.js', 'git-policy.js', 'guidance.js', 'inspection.js', 'protocol.js', 'publication.js', 'recovery.js']) {
+  for (const libraryName of ['apply-manifest.js', 'assets.js', 'backups.js', 'errors.js', 'filesystem.js', 'git-policy.js', 'guidance.js', 'inspection.js', 'protocol.js', 'publication.js', 'recovery.js', 'resume.js']) {
     requireRegularFile(join(controllerRoot, 'lib', libraryName))
   }
   const manifestPath = join(controllerRoot, 'templates', 'manifest.json')
