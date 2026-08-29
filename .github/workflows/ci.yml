@@ -24,5 +24,16 @@ jobs:
       - run: node internal/revise/orchestration.test.js
       - run: node --test tests/universal-skill-topology.test.js
       - run: node tests/host-discovery-smoke.test.js
-      - run: node tests/init-backlog-controller.test.js
       - run: node tests/release-surface.test.js
+  # The init-backlog controller suite runs for roughly seventy minutes, so it
+  # gets its own job and runs beside the other nine rather than after them.
+  controller:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+      - run: node tests/init-backlog-controller.test.js

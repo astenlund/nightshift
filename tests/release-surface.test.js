@@ -107,10 +107,17 @@ test('CI runs every suite exactly once and runs no undeclared suite', () => {
     assert.equal(countExact(ci, `      - run: ${command}\n`), 1, `CI must run ${command} exactly once`)
   }
   // The version-increase gate resolves its range against origin/main, which a
-  // pull-request checkout only has at full depth. Pinning the checkout input
-  // keeps a later workflow edit from regressing the gate to its skip branch,
-  // which passes green and would hide the loss.
-  assert.equal(countExact(ci, '      - uses: actions/checkout@v5\n        with:\n          fetch-depth: 0\n'), 1, 'the checkout step must carry fetch-depth: 0')
+  // pull-request checkout only has at full depth. Pinning the checkout input on
+  // every job keeps a later workflow edit from regressing the gate to its skip
+  // branch, which passes green and would hide the loss. Counted against the
+  // checkout steps the workflow actually has, so splitting the suites across
+  // more jobs cannot exempt one of them.
+  const checkoutSteps = countExact(ci, '      - uses: actions/checkout@v5\n')
+  assert.ok(checkoutSteps > 0, 'CI must check out the repository')
+  assert.equal(countExact(ci, '      - uses: actions/checkout@v5\n        with:\n          fetch-depth: 0\n'), checkoutSteps, 'every checkout step must carry fetch-depth: 0')
+  // Every job runs the same Node, so a suite never passes on a runtime the
+  // others never see.
+  assert.equal(countExact(ci, '      - uses: actions/setup-node@v5\n        with:\n          node-version: 22\n'), checkoutSteps, 'every job must set up Node 22')
 })
 
 test('AGENTS states the literal suite count CI actually runs', () => {
