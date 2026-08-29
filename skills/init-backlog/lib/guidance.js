@@ -399,6 +399,17 @@ function resolveClaude(root, hostContext, options = {}) {
 }
 
 function resolveCodex(root, hostContext, options = {}) {
+  const candidateReader = options.readCandidate ?? readCandidate
+  const candidateOptions = { ...options, maxBytes: hostContext.codexProjectDocMaxBytes }
+  delete candidateOptions.readCandidate
+  const candidateFiles = new Map()
+  const boundCandidate = (target) => {
+    if (!candidateFiles.has(target)) {
+      candidateFiles.set(target, candidateReader(root, target, candidateOptions))
+    }
+
+    return candidateFiles.get(target)
+  }
   const invocation = hostContext.codexInvocationDirectory
   const parts = invocation === '.' ? [] : typeof invocation === 'string' ? invocation.split('/') : []
   const levels = ['']
@@ -419,7 +430,7 @@ function resolveCodex(root, hostContext, options = {}) {
     let selected = null
     for (const name of names) {
       const target = level === '' ? name : `${level}/${name}`
-      const file = readCandidate(root, target, { ...options, maxBytes: hostContext.codexProjectDocMaxBytes })
+      const file = boundCandidate(target)
       candidates.push(target)
       if (file !== null && file.bytes.length > 0 && selected === null) {
         selected = { file, target }
@@ -433,15 +444,15 @@ function resolveCodex(root, hostContext, options = {}) {
     }
   }
   if (rootAdapter === null) {
-    rootAdapter = readCandidate(root, CODEX_CANDIDATES[0]) !== null ? CODEX_CANDIDATES[0] : CODEX_CANDIDATES[CODEX_CANDIDATES.length - 1]
+    rootAdapter = boundCandidate(CODEX_CANDIDATES[0]) !== null ? CODEX_CANDIDATES[0] : CODEX_CANDIDATES[CODEX_CANDIDATES.length - 1]
   }
   const graphPaths = [...new Set(graph)].sort(compareOrdinal)
-  const totalBytes = graphPaths.reduce((total, target) => total + readCandidate(root, target).bytes.length, 0)
+  const totalBytes = graphPaths.reduce((total, target) => total + boundCandidate(target).bytes.length, 0)
   if (totalBytes > hostContext.codexProjectDocMaxBytes) {
     fail('Codex guidance exceeds its confirmed byte limit.')
   }
   for (const target of graphPaths.filter((item) => item !== rootAdapter)) {
-    if (readCandidate(root, target)?.text.includes(GUIDANCE_SECTION)) {
+    if (boundCandidate(target)?.text.includes(GUIDANCE_SECTION)) {
       fail('A non-root Codex guidance source owns the controlled section.', undefined, target)
     }
   }
@@ -504,7 +515,9 @@ function discoverControlledMarkdown(root, directories = ['.claude/bugs', '.claud
       try {
         opened = stableOpenFile(canonical, entry.path, { ...resolvedOptions, requireSingleLink: true })
       } catch (error) {
-        throwInitBacklogError({ code: 'filesystem', detail: 'Controlled target cannot be stably read.', operation: 'inspect', phase: 'inspect', target }, error)
+        const code = error?.code === 'file-too-large' ? 'payload-too-large' : 'filesystem'
+        const detail = code === 'payload-too-large' ? 'Controlled mechanical target exceeds its maximum size.' : 'Controlled target cannot be stably read.'
+        throwInitBacklogError({ code, detail, operation: 'inspect', phase: 'inspect', target }, error)
       }
       if (identities.has(opened.identity)) {
         throwInitBacklogError({ code: 'filesystem', detail: 'Controlled targets share a physical identity.', operation: 'inspect', phase: 'inspect', target })

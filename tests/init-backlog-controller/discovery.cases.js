@@ -7,7 +7,7 @@ const { tmpdir } = require('node:os')
 const { join, resolve } = require('node:path')
 const test = require('node:test')
 
-const { discoverControlledMarkdown, guidanceImports, resolveClaude, resolveGuidance } = require('../../skills/init-backlog/lib/guidance')
+const { discoverControlledMarkdown, guidanceImports, resolveClaude, resolveCodex, resolveGuidance } = require('../../skills/init-backlog/lib/guidance')
 const {
   enumerateDirectory,
   probeWindowsAttributes,
@@ -180,6 +180,30 @@ function runDiscoveryCases(repositoryRoot) {
     } finally {
       rmSync(root, { force: true, recursive: true })
     }
+  })
+
+  test('Codex guidance caches each candidate under the confirmed byte bound', () => {
+    const calls = []
+    const maximumBytes = 8192
+    const resolved = resolveCodex('C:\\synthetic-root', {
+      claudeContextSource: null,
+      claudeRootExclusionStatus: null,
+      codexContextSource: 'user-confirmed',
+      codexInvocationDirectory: '.',
+      codexProjectDocMaxBytes: maximumBytes,
+      codexProjectInstructions: ['PROJECT.md'],
+    }, {
+      readCandidate: (root, target, options) => {
+        calls.push({ maximumBytes: options.maxBytes, root, target })
+
+        return target === 'AGENTS.md' ? { bytes: Buffer.from('guidance\n'), text: 'guidance\n' } : null
+      },
+    })
+
+    assert.equal(resolved.resolvedTarget, 'AGENTS.md')
+    assert.deepEqual(calls.map((item) => item.target), ['AGENTS.override.md', 'AGENTS.md', 'PROJECT.md'])
+    assert.equal(calls.every((item) => item.maximumBytes === maximumBytes), true)
+    assert.equal(new Set(calls.map((item) => item.target)).size, calls.length, 'each candidate is read once even when selection, total-size, and section checks consume it')
   })
 
   test('Claude guidance requires the exact root provenance pair for present and missing roots', () => {

@@ -36,7 +36,7 @@ const {
   inspectGitPolicy,
 } = require('../../skills/init-backlog/lib/git-policy')
 const { createInitialLock, initialLockPaths, publishNoReplace, removeInitialLock } = require('../../skills/init-backlog/lib/filesystem')
-const { canonicalJson, sha256, validateProposalDispositions } = require('../../skills/init-backlog/lib/protocol')
+const { MAX_INLINE_FILE_BYTES, MAX_MECHANICAL_FILE_BYTES, canonicalJson, sha256, validateProposalDispositions } = require('../../skills/init-backlog/lib/protocol')
 const { analyzeCatalog } = require('../../skills/ready/ready')
 const { ELECTION_MARKER_PATH } = require('./election-oracles')
 
@@ -61,6 +61,28 @@ function inspectDiscoveredBreakout(prefix, breakoutContents, run) {
   } finally {
     rmSync(root, { force: true, recursive: true })
   }
+}
+
+function inspectSemanticGuidance(prefix, guidanceContents, run) {
+  const root = mkdtempSync(join(tmpdir(), prefix))
+  try {
+    writeFileSync(join(root, 'CLAUDE.md'), guidanceContents)
+    run(collectInspection(root, 'claude-code', { claudeContextSource: 'host-observed', claudeRootExclusionStatus: 'included' }, { candidates: [] }))
+  } finally {
+    rmSync(root, { force: true, recursive: true })
+  }
+}
+
+function sizedMarkdown(heading, size) {
+  const bytes = Buffer.alloc(size, 0x0a)
+  const prefix = Buffer.from(`${heading}\n\n`, 'utf8')
+  const padding = Buffer.from('<!-- padding -->\n', 'utf8')
+  prefix.copy(bytes)
+  for (let offset = prefix.length; offset + padding.length <= bytes.length; offset += padding.length) {
+    padding.copy(bytes, offset)
+  }
+
+  return bytes
 }
 
 function runInspectionCases(repositoryRoot) {
@@ -545,6 +567,31 @@ function runInspectionCases(repositoryRoot) {
       assert.equal(result.ready.notices.some((notice) => notice.includes('bugs/issue.md')), false)
       assert.deepEqual(result.ready.structuralErrors, [])
     })
+  })
+
+  test('semantic controlled files accept the inline boundary and reject its next byte', () => {
+    const exact = sizedMarkdown('# Guidance', MAX_INLINE_FILE_BYTES)
+    inspectSemanticGuidance('nightshift-semantic-boundary-', exact, (result) => {
+      const record = result.targets.find((item) => item.target === 'CLAUDE.md')
+      assert.equal(Buffer.from(record.contentBase64, 'base64').length, MAX_INLINE_FILE_BYTES)
+    })
+    assert.throws(
+      () => inspectSemanticGuidance('nightshift-semantic-overflow-', Buffer.concat([exact, Buffer.from('x')]), () => {}),
+      (error) => error.record?.code === 'payload-too-large' && error.record?.phase === 'inspect' && error.record?.target === 'CLAUDE.md',
+    )
+  })
+
+  test('mechanical breakout files accept their governed boundary and reject its next byte', () => {
+    const exact = sizedMarkdown('# Issue', MAX_MECHANICAL_FILE_BYTES)
+    inspectDiscoveredBreakout('nightshift-mechanical-boundary-', exact, (result) => {
+      const record = result.targets.find((item) => item.target === '.claude/bugs/issue.md')
+      assert.equal(record.contentBase64, null)
+      assert.equal(record.rawSha256, sha256(exact))
+    })
+    assert.throws(
+      () => inspectDiscoveredBreakout('nightshift-mechanical-overflow-', Buffer.concat([exact, Buffer.from('x')]), () => {}),
+      (error) => error.record?.code === 'payload-too-large' && error.record?.phase === 'inspect' && error.record?.target === '.claude/bugs/issue.md',
+    )
   })
 
   test('a hard-wrapped discovered breakout yields a mechanical unwrap proposal', () => {

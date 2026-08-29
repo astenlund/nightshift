@@ -11,7 +11,7 @@ const { inspectBackups } = require('./backups')
 const { InitBacklogError, failureRecord } = require('./errors')
 const { HTML_BLOCK_TYPE_SIX_TAGS, discoverControlledMarkdown, resolveGuidance } = require('./guidance')
 const { canonicalRoot, comparableIdentity, comparableMode, createInitialLock, initialLockPaths, removeInitialLock, stableOpenFile, targetPath } = require('./filesystem')
-const { BACKUP_DIRECTORY, DIGEST_PATTERN, RECOVERY_LOCK_BASENAME, RECOVERY_LOCK_STAGE_PATTERN, RECOVERY_MARKER_BASENAME, canonicalJson, compareOrdinal, deriveProposalId, deriveSnapshotId, sameKeys, sha256 } = require('./protocol')
+const { BACKUP_DIRECTORY, DIGEST_PATTERN, MAX_INLINE_FILE_BYTES, MAX_MECHANICAL_FILE_BYTES, RECOVERY_LOCK_BASENAME, RECOVERY_LOCK_STAGE_PATTERN, RECOVERY_MARKER_BASENAME, canonicalJson, compareOrdinal, deriveProposalId, deriveSnapshotId, sameKeys, sha256 } = require('./protocol')
 const { PLANS_ROOT_RULE_EFFECTIVE, detectGitKind, inspectGitPolicy, newlineStyle } = require('./git-policy')
 
 function inspectError(code, detail, target = null, cause, phase = 'inspect') {
@@ -464,6 +464,7 @@ function targetState(target, root, options = {}) {
   try {
     return { ...stableOpenFile(root, absolute, { ...options, requireSingleLink: true }), kind: 'file', metadata, path: absolute, present: true }
   } catch (error) {
+    if (error?.code === 'file-too-large') inspectError('payload-too-large', 'Controlled target exceeds its maximum inline size.', target, error)
     inspectError('filesystem', 'Inspected target cannot be stably read.', target, error)
   }
 }
@@ -506,6 +507,9 @@ function targetRecord(target, descriptor, declaration, template, options = {}) {
 }
 
 function proposal(reason, condition, action, beforeBase64, afterBase64) {
+  if ([beforeBase64, afterBase64].some((value) => value !== null && Buffer.from(value, 'base64').length > MAX_INLINE_FILE_BYTES)) {
+    inspectError('payload-too-large', 'Proposal image exceeds the maximum inline size.', action.target)
+  }
   const actionWithoutId = { ...action }
   delete actionWithoutId.id
   const proposalId = deriveProposalId({ actionWithoutId, afterBase64, beforeBase64, condition, reason })
@@ -602,11 +606,11 @@ function collectInspection(root, host, hostContext = {}, options = {}) {
   const descriptors = []
   for (const declaration of fixed) {
     const target = declaration.targetSelector === '@resolved-guidance' ? guidance.resolvedTarget : declaration.targetSelector
-    const descriptor = targetState(target, canonical, { ...options, expectedKind: declaration.kind })
+    const descriptor = targetState(target, canonical, { ...options, expectedKind: declaration.kind, maxBytes: declaration.kind === 'file' ? MAX_INLINE_FILE_BYTES : undefined })
     const templateId = declaration.targetSelector === '@resolved-guidance' ? host === 'codex' ? 'guidance.codex' : 'guidance.claude' : declaration.templateRule
     descriptors.push({ declaration: { ...declaration, contentRole: target === '.gitignore' ? 'mechanical' : 'semantic' }, descriptor, target, template: templateId ? bundle.templates.get(templateId) : null })
   }
-  for (const item of discoverControlledMarkdown(canonical, undefined, options)) descriptors.push({ declaration: { contentRole: 'mechanical', kind: 'file', regions: [] }, descriptor: item, target: item.target, template: null })
+  for (const item of discoverControlledMarkdown(canonical, undefined, { ...options, maxBytes: MAX_MECHANICAL_FILE_BYTES })) descriptors.push({ declaration: { contentRole: 'mechanical', kind: 'file', regions: [] }, descriptor: item, target: item.target, template: null })
   // Decode and unwrap results are pure per byte buffer; the memos below let
   // the catalog scan, the target records, and the proposal loop share one
   // computation per target instead of re-decoding the same bytes.
