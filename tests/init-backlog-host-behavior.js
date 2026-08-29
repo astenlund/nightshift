@@ -2115,10 +2115,12 @@ async function runLiveHostSession({ call, filesystem, platform, processAdapterFa
       hostOutcome: conversation.hostOutcome,
       mode,
       onlineDisclosureCheck: controllerEnabled
-        ? (item, index) => {
-          const verification = verifyObservedDisclosures({ items: bufferedDisclosures.concat([item]), proposal: manifestProposal ?? { actions: [] } })
+        ? (item) => {
+          const inspection = storedInspection()
 
-          return { ok: verification.ok === true || expectedDisclosureItems !== null && canonicalJson(expectedDisclosureItems[index] ?? null) === canonicalJson(item) }
+          return inspection === null
+            ? { ok: false }
+            : adjudication.verifyInspectionBoundDisclosure({ item, proposalCarriers: deriveProposalCarriers(inspection) })
         }
         : null,
       preApprovalTurns: conversation.preApprovalTurns,

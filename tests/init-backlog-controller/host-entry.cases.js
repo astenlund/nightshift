@@ -13,6 +13,7 @@ const driver = require('../init-backlog-session-driver')
 // way the dialogue cases do.
 const hostEvents = require('../init-backlog-session-driver/host-events')
 const { canonicalJson, sha256 } = require('./helpers')
+const { HOST_CONTEXTS } = require('./host-fixture-oracles')
 
 const { join } = nodePath
 const HEX64 = /^[a-f0-9]{64}$/
@@ -477,6 +478,44 @@ function fakeSessionAdapterFactory({ onStart } = {}) {
   factory.created = created
 
   return factory
+}
+
+function fakeProxyConnection() {
+  const listeners = new Map()
+
+  return {
+    destroy() {
+      this.destroyed = true
+      this.emit('close')
+    },
+    destroyed: false,
+    emit(name, ...args) {
+      for (const listener of listeners.get(name) ?? []) {
+        listener(...args)
+      }
+    },
+    end() {
+      if (this.ended) {
+        return
+      }
+      this.ended = true
+      this.emit('close')
+    },
+    ended: false,
+    on(name, listener) {
+      const registered = listeners.get(name) ?? []
+      registered.push(listener)
+      listeners.set(name, registered)
+
+      return this
+    },
+    write(bytes) {
+      this.written.push(Buffer.from(bytes))
+
+      return true
+    },
+    written: [],
+  }
 }
 
 function rejectingAdapterFactory(failureMode) {
@@ -3801,6 +3840,160 @@ function runHostEntryCases(repositoryRoot) {
     assert.equal(proxyEntry.server.verifiedClosure(), true, 'the callback-bearing close marks verified proxy closure')
     assert.deepEqual(session.evidence.map((file) => file.path), ['transcript.jsonl', 'proxy-trace.jsonl'])
     assert.equal(processAdapterFactory.created[0].state.terminations, 0, 'a natural closure starts no termination')
+  })
+
+  test('an enabled live session accepts a nonempty disclosure before its manifest proposal', { timeout: 30000 }, async () => {
+    const scratch = tempRoot()
+    try {
+      const token = 'c'.repeat(64)
+      const runRoot = join(scratch, 'run')
+      const scenarioRoot = join(scratch, 'scenario')
+      const sessionPluginRoot = join(scratch, 'plugin')
+      nodeFilesystem.mkdirSync(runRoot, { recursive: true })
+      nodeFilesystem.mkdirSync(scenarioRoot, { recursive: true })
+      const action = { id: 'ensure-claude', kind: 'ensure-directory', target: '.claude' }
+      const proposalId = `p-${'a'.repeat(62)}`
+      const inspection = { proposals: [{ action, id: proposalId }], targets: [] }
+      const manifestProposal = {
+        actions: [action],
+        proposalDispositions: [{ disposition: 'selected', proposalId }],
+        semanticDecisions: [],
+        versionControlChoice: 'not-required',
+        versionControlOptions: ['track', 'ignore', 'deferred', 'not-required'],
+      }
+      const proposalDigest = sha256(Buffer.from(canonicalJson(manifestProposal), 'utf8'))
+      const disclosure = { actionId: action.id, kind: 'structural-action', proposalDigest, selection: 'selected', target: action.target }
+      const scenario = sessionScenario()
+      scenario.oracles = { ...scenario.oracles, semanticClassifications: [], semanticRepairOracles: [] }
+      const proxyEntry = { server: null, tcpServer: null }
+      let inspectConnection = null
+      const workerEntry = {
+        adapter: {
+          closeInput: () => {},
+          closureProof: () => ({ proven: true }),
+          hostExitCode: () => 0,
+          input: (bytes) => {
+            const frame = JSON.parse(Buffer.from(bytes).toString('utf8'))
+            setImmediate(() => {
+              workerEntry.onLine(Buffer.from(canonicalJson({
+                exitCode: 0,
+                ordinal: frame.ordinal,
+                stderrBase64: '',
+                stdoutBase64: Buffer.from(canonicalJson(inspection), 'utf8').toString('base64'),
+              }) + '\n', 'utf8'))
+            })
+
+            return { ok: true }
+          },
+          runnerClosed: () => true,
+          terminate: () => ({ ok: true }),
+        },
+        onLine: null,
+        ready: true,
+      }
+      const turns = [
+        {
+          gateId: 'claude-root-exclusion-confirmation',
+          phase: 'awaiting-response',
+          presentation: { actionDisclosures: [], ambiguityIds: [], disclosureCodes: [], manifestProposal: null, result: null },
+          semanticClassifications: [],
+        },
+        {
+          gateId: 'action-disclosure',
+          phase: 'awaiting-response',
+          presentation: { actionDisclosures: [disclosure], ambiguityIds: [], disclosureCodes: [], manifestProposal: null, result: null },
+          semanticClassifications: [],
+        },
+        {
+          gateId: 'manifest-approval',
+          phase: 'awaiting-response',
+          presentation: { actionDisclosures: [], ambiguityIds: [], disclosureCodes: [], manifestProposal, result: null },
+          semanticClassifications: [],
+        },
+        {
+          gateId: null,
+          phase: 'finished',
+          presentation: { actionDisclosures: [], ambiguityIds: [], disclosureCodes: [], manifestProposal: null, result: { approvalBranch: 'denied', reasonCode: 'denied' } },
+          semanticClassifications: [],
+        },
+      ]
+      let inputIndex = 0
+      const processState = { closed: false, exitCode: null, proven: false }
+      const processAdapterFactory = (options) => ({
+        adapter: {
+          closeInput: () => {},
+          closureProof: () => ({ proven: processState.proven }),
+          hostExitCode: () => processState.exitCode,
+          input: () => {
+            const currentIndex = inputIndex
+            inputIndex += 1
+            setImmediate(() => {
+              if (currentIndex === 0) {
+                options.onHostStdout(hostEventLine(claudeInitEvent(sessionPluginRoot)))
+              }
+              if (currentIndex === 1) {
+                const inspectRequest = Buffer.from(canonicalJson({ host: 'claude-code', hostContext: HOST_CONTEXTS.claudeMissingRoot, operation: 'inspect', protocolVersion: 1, root: scenarioRoot }), 'utf8')
+                inspectConnection = fakeProxyConnection()
+                proxyEntry.server.handleConnection(inspectConnection)
+                inspectConnection.emit('data', Buffer.from(canonicalJson({ requestBase64: inspectRequest.toString('base64'), token }) + '\n', 'utf8'))
+                setImmediate(() => {
+                  inspectConnection.end()
+                  options.onHostStdout(hostEventLine({ structured_output: turns[currentIndex], subtype: 'success', type: 'result' }))
+                })
+
+                return
+              }
+              options.onHostStdout(hostEventLine({ structured_output: turns[currentIndex], subtype: 'success', type: 'result' }))
+              if (currentIndex === turns.length - 1) {
+                processState.closed = true
+                processState.exitCode = 0
+                processState.proven = true
+              }
+            })
+
+            return { ok: true }
+          },
+          runnerClosed: () => processState.closed,
+          start: () => {
+            options.onStarted({ pid: 1234 })
+
+            return { ok: true }
+          },
+          terminate: () => {
+            processState.closed = true
+            processState.exitCode = 0
+            processState.proven = true
+          },
+        },
+        ok: true,
+      })
+      const session = await hostBehavior.runLiveHostSession({
+        call: {
+          argv: ['--print'],
+          controllerEnabled: true,
+          cwd: scenarioRoot,
+          environment: {},
+          executable: 'claude-executable',
+          host: 'claude-code',
+          proxySession: { port: 40400, token },
+          runRoot,
+          scenario,
+          sessionPluginRoot,
+          turnSchemaRunPath: join(runRoot, 'turn-schema.json'),
+        },
+        filesystem: nodeFilesystem,
+        platform: 'win32',
+        processAdapterFactory,
+        proxyRegistry: new Map([[token, proxyEntry]]),
+        workerRegistry: new Map([[runRoot, workerEntry]]),
+      })
+
+      assert.equal(session.failure, undefined, 'the disclosure remains pending until the later manifest binds its selection and digest')
+      assert.equal(session.record.dialogueFacts.allActionsDisclosed, true)
+      assert.equal(inspectConnection.written.length, 1, 'the live path obtains its inspection through the authorization proxy')
+    } finally {
+      nodeFilesystem.rmSync(scratch, { force: true, recursive: true })
+    }
   })
 
   test('a slow-closing worker never re-enters the exactly-once proxy close on the natural-closure path', { timeout: 30000 }, async () => {

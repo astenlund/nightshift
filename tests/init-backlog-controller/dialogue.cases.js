@@ -158,6 +158,7 @@ function runDialogueCases(repositoryRoot) {
       'verifyDisabledSemanticOwnership',
       'verifyDisclosureSequence',
       'verifyEnabledSemanticOwnership',
+      'verifyInspectionBoundDisclosure',
     ])
     assert.deepEqual(hostEvents.CLAUDE_PUBLIC_SKILL_INVENTORY, TEN_SKILLS)
   })
@@ -762,6 +763,61 @@ function runDialogueCases(repositoryRoot) {
     assert.equal(adjudication.verifyDisclosureSequence({ expected: built.items, observed: mutated }).ok, false)
     assert.equal(adjudication.deriveAllActionsDisclosed({ expected: built.items, observed: built.items }), true)
     assert.equal(adjudication.deriveAllActionsDisclosed({ expected: built.items, observed: mutated }), false)
+  })
+
+  test('online disclosure checks bind only facts available from inspection', () => {
+    const decodedBytes = Buffer.from('hello\n', 'utf8')
+    const carriers = [
+      { actionId: 'dir-claude', kind: 'structural-action', target: '.claude' },
+      { actionId: 'unwrap-bugs', afterRawSha256: 'b'.repeat(64), beforeRawSha256: 'a'.repeat(64), kind: 'breakout-digest', target: '.claude/BUGS.md' },
+      { actionId: 'create-features', afterBytes: decodedBytes, beforeBytes: null, kind: 'decoded', target: '.claude/FEATURES.md' },
+      { actionId: 'create-gitkeep', afterBytes: Buffer.alloc(0), beforeBytes: null, kind: 'decoded', target: '.claude/plans/.gitkeep' },
+    ]
+    const proposalBinding = { proposalDigest: 'f'.repeat(64), selection: 'condition-not-selected' }
+    assert.equal(adjudication.verifyInspectionBoundDisclosure({
+      item: { actionId: 'dir-claude', kind: 'structural-action', target: '.claude', ...proposalBinding },
+      proposalCarriers: carriers,
+    }).ok, true, 'the later manifest owns selection and proposal digest validation')
+    assert.equal(adjudication.verifyInspectionBoundDisclosure({
+      item: { actionId: 'dir-claude', kind: 'structural-action', target: '.claude/other', ...proposalBinding },
+      proposalCarriers: carriers,
+    }).ok, false)
+    assert.equal(adjudication.verifyInspectionBoundDisclosure({
+      item: {
+        actionId: 'unwrap-bugs',
+        afterRawSha256: 'b'.repeat(64),
+        beforeRawSha256: 'a'.repeat(64),
+        extent: 'complete-file',
+        kind: 'breakout-digest',
+        notice: 'Decoded before and after images are withheld for mechanical breakout unwrap.',
+        target: '.claude/BUGS.md',
+        ...proposalBinding,
+      },
+      proposalCarriers: carriers,
+    }).ok, true)
+    const content = {
+      actionId: 'create-features',
+      chunkCount: 1,
+      chunkIndex: 0,
+      endByte: decodedBytes.length,
+      image: 'after',
+      kind: 'decoded-content',
+      rawSha256: sha256(decodedBytes),
+      startByte: 0,
+      target: '.claude/FEATURES.md',
+      text: decodedBytes.toString('utf8'),
+      ...proposalBinding,
+    }
+    assert.equal(adjudication.verifyInspectionBoundDisclosure({ item: content, proposalCarriers: carriers }).ok, true)
+    assert.equal(adjudication.verifyInspectionBoundDisclosure({ item: { ...content, text: 'HELLO\n' }, proposalCarriers: carriers }).ok, false)
+    assert.equal(adjudication.verifyInspectionBoundDisclosure({
+      item: { actionId: 'create-gitkeep', byteLength: 0, image: 'after', kind: 'decoded-empty', rawSha256: sha256(Buffer.alloc(0)), target: '.claude/plans/.gitkeep', ...proposalBinding },
+      proposalCarriers: carriers,
+    }).ok, true)
+    assert.deepEqual(adjudication.verifyInspectionBoundDisclosure({
+      item: { actionId: 'semantic-edit', kind: 'structural-action', target: '.claude/QUICK_WINS.md', ...proposalBinding },
+      proposalCarriers: carriers,
+    }), { deferred: true, ok: true }, 'semantic repair carriers are knowable only from the later manifest')
   })
 
   test('semantic ownership evidence distinguishes enabled and disabled modes', () => {

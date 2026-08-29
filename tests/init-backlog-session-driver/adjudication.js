@@ -159,6 +159,51 @@ function verifyDisclosureSequence({ expected, observed }) {
   return { ok: true }
 }
 
+function verifyInspectionBoundDisclosure({ item, proposalCarriers }) {
+  if (!isPlainObject(item) || !Array.isArray(proposalCarriers)) {
+    throw new TypeError('online disclosure verification takes one item and the inspection proposal carriers')
+  }
+  const carrier = proposalCarriers.find((candidate) => candidate.actionId === item.actionId)
+  if (carrier === undefined) {
+    return { deferred: true, ok: true }
+  }
+  if (item.target !== carrier.target) {
+    return { ok: false, reason: 'inspection-binding' }
+  }
+  if (carrier.kind === 'structural-action') {
+    return { ok: item.kind === 'structural-action' }
+  }
+  if (carrier.kind === 'breakout-digest') {
+    return {
+      ok: item.kind === 'breakout-digest'
+        && item.afterRawSha256 === carrier.afterRawSha256
+        && item.beforeRawSha256 === carrier.beforeRawSha256
+        && item.extent === 'complete-file'
+        && item.notice === BREAKOUT_DIGEST_NOTICE,
+    }
+  }
+  if (carrier.kind !== 'decoded') {
+    throw new TypeError(`disclosure carrier kind is not closed: ${carrier.kind}`)
+  }
+  const bytes = item.image === 'before' ? carrier.beforeBytes : item.image === 'after' ? carrier.afterBytes : null
+  if (!Buffer.isBuffer(bytes) || item.rawSha256 !== sha256(bytes)) {
+    return { ok: false, reason: 'inspection-binding' }
+  }
+  if (bytes.length === 0) {
+    return { ok: item.kind === 'decoded-empty' && item.byteLength === 0 }
+  }
+  if (item.kind !== 'decoded-content'
+    || !Number.isSafeInteger(item.chunkCount) || item.chunkCount < 1
+    || !Number.isSafeInteger(item.chunkIndex) || item.chunkIndex < 0 || item.chunkIndex >= item.chunkCount
+    || !Number.isSafeInteger(item.startByte) || item.startByte < 0
+    || !Number.isSafeInteger(item.endByte) || item.endByte <= item.startByte || item.endByte > bytes.length) {
+    return { ok: false, reason: 'inspection-binding' }
+  }
+  const observedBytes = Buffer.from(item.text, 'utf8')
+
+  return { ok: observedBytes.length === item.endByte - item.startByte && observedBytes.equals(bytes.subarray(item.startByte, item.endByte)) }
+}
+
 function deriveAllActionsDisclosed({ expected, observed }) {
   return verifyDisclosureSequence({ expected, observed }).ok === true
 }
@@ -318,4 +363,5 @@ module.exports = {
   verifyDisabledSemanticOwnership,
   verifyDisclosureSequence,
   verifyEnabledSemanticOwnership,
+  verifyInspectionBoundDisclosure,
 }
