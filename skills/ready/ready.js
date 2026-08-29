@@ -1483,9 +1483,15 @@ function runCli(argRoot) {
 
 // Stable identity for a backlog entry as a graph node. Path-qualified self
 // link when present (e.g. "features/foo"), else the index plus normalized
-// title; unique within an index.
+// title; unique within an index. The path route is gated on the same closed
+// catalog-reference grammar the path registry uses, so a traversing, absolute,
+// or backslashed self-target keys by index and title exactly like an entry
+// carrying no self-target at all. Admitting it here would let two hostile
+// entries sharing a basename collapse into one graph node, conflating their
+// cycle membership and their nodeToRec labels on a key the path registry
+// deliberately refuses to hold.
 function nodeKey(rec) {
-  const pk = targetPathKey(rec.entry.selfTarget);
+  const pk = isCatalogReferenceTarget(rec.entry.selfTarget) ? targetPathKey(rec.entry.selfTarget) : null;
   return pk || `${rec.index}::${normalizeTitle(rec.entry.title)}`;
 }
 

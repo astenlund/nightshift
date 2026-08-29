@@ -1742,6 +1742,39 @@ test('a link to a lone hostile self-target sharing a basename is ambiguous, and 
   );
 });
 
+const HOSTILE_CYCLE_NODE_IDENTITY_FEATURES = `# Features
+
+## Area
+
+### [Alpha](../dup.md)
+
+**Requires:** [Beta](FEATURES.md#beta).
+
+### [Beta](/other.md)
+
+**Requires:** [Alpha](FEATURES.md#alpha).
+
+### [Gamma](/dup.md)
+
+**Requires:** none.
+`;
+
+test('two hostile self-targets sharing a path are distinct cycle nodes', () => {
+  const result = analyze({ FEATURES: HOSTILE_CYCLE_NODE_IDENTITY_FEATURES });
+  const cycle = result.structuralErrors.find((e) => e.index === '[cycle]');
+  assert.ok(cycle, JSON.stringify(result.structuralErrors));
+  assert.strictEqual(cycle.title, '2-node cycle');
+  assert.ok(
+    cycle.problem.includes('FEATURES.md/Alpha') && cycle.problem.includes('FEATURES.md/Beta'),
+    `the cycle must name its own members, not a same-path bystander: ${cycle.problem}`,
+  );
+  assert.ok(!cycle.problem.includes('FEATURES.md/Gamma'), cycle.problem);
+  assert.ok(
+    titles(result.ready).includes('Gamma'),
+    `a bystander sharing a hostile self-target path must not inherit the cycle exclusion: ${titles(result.ready).join(' | ')}`,
+  );
+});
+
 test('breakoutTargets include entries whose classification terminated in a structural error', () => {
   assert.ok(gates.breakoutTargets.some((t) => t.target === 'features/kappa.md'), JSON.stringify(gates.breakoutTargets));
 });
