@@ -4,6 +4,7 @@ const { randomBytes } = require('node:crypto')
 const { dirname, join, relative } = require('node:path')
 const { lstatSync, mkdirSync } = require('node:fs')
 
+const { POSIX_DEFAULT_FILE_MODE, actionAfter, actionBefore, targetMatchesOutput, targetPath } = require('./actions')
 const { admitApplyManifest } = require('./apply-manifest')
 const { BACKUP_PATTERN, backupStageTarget, backupTarget, retainedBackupPaths } = require('./backups')
 const { InitBacklogError, failureRecord, trustedSystemCode } = require('./errors')
@@ -26,7 +27,7 @@ const {
   verifyPublishedIdentity,
 } = require('./filesystem')
 const { collectInspection, composeElectionMarker } = require('./inspection')
-const { POSIX_DEFAULT_FILE_MODE, actionAfter, actionBefore, approvedProgress, detectResume, liveHostContext, publishedHostContext, resumeProjectionScope, targetMatchesOutput, targetPath } = require('./resume')
+const { approvedProgress, detectResume, liveHostContext, publishedHostContext, resumeProjectionScope } = require('./resume')
 const { BACKUP_DIRECTORY, DIGEST_PATTERN, NONCE_PATTERN, OWNER_RECORD_KEYS, RECOVERY_GATE_BASENAME, RECOVERY_LOCK_BASENAME: LOCK_BASENAME, RECOVERY_MARKER_BASENAME: ELECTION_BASENAME, canonicalJson, compareOrdinal, electionMarkerTemporaryNames, sameKeys, sha256 } = require('./protocol')
 
 const POSIX_DEFAULT_DIRECTORY_MODE = 0o755
