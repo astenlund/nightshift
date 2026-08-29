@@ -154,6 +154,26 @@ function sameCanonical(left, right) {
   return canonicalJson(left) === canonicalJson(right)
 }
 
+// Canonical action spelling to the first proposal carrying it, matching the
+// first-match semantics of a linear `find`. Membership scans over a proposal
+// list run once per action, so canonicalizing the whole list on every scan is
+// quadratic; the index is memoized on the list itself, which is never mutated
+// while an admission or a publication is in flight.
+const proposalIndexes = new WeakMap()
+
+function proposalsByCanonicalAction(proposals) {
+  const cached = proposalIndexes.get(proposals)
+  if (cached !== undefined) return cached
+  const index = new Map()
+  for (const item of proposals) {
+    const key = canonicalJson(item.action)
+    if (!index.has(key)) index.set(key, item)
+  }
+  proposalIndexes.set(proposals, index)
+
+  return index
+}
+
 function buildRecoveryApplyRequest(request, recoveryInspection, disposition) {
   return { disposition, host: request.host, hostContext: request.hostContext, operation: 'recover-apply', protocolVersion: 1, recoveryInspection, root: request.root }
 }
@@ -1254,6 +1274,7 @@ module.exports = {
   electionMarkerTemporaryNames,
   encodeResult,
   isSemanticActionId,
+  proposalsByCanonicalAction,
   recoveryAllowedDispositions,
   recoveryTargetMatches,
   sameCanonical,

@@ -14,6 +14,7 @@ const {
   deriveSemanticActionId,
   deriveSnapshotId,
   isSemanticActionId,
+  proposalsByCanonicalAction,
   sameCanonical,
   sameKeys,
   sha256,
@@ -133,8 +134,7 @@ function selectedProposals(inspection, dispositions, choice) {
 }
 
 function proposalForAction(action, proposals) {
-  const canonicalAction = canonicalJson(action)
-  const proposal = proposals.find((item) => canonicalJson(item.action) === canonicalAction)
+  const proposal = proposalsByCanonicalAction(proposals).get(canonicalJson(action))
   if (proposal !== undefined) return proposal
   if (action.kind === 'exact-edit' && isSemanticActionId(action.id)) return null
   admissionError('Action is not one of the approved proposals.', { actionId: action.id, target: action.target })
@@ -409,9 +409,9 @@ function admitApplyManifest(request, options = {}) {
   for (const action of actions) {
     if (proposalForAction(action, selected) === null) authoredActionIds.add(action.id)
   }
+  const canonicalActions = new Set(actions.map((item) => canonicalJson(item)))
   for (const action of selectedActions) {
-    const canonicalAction = canonicalJson(action)
-    if (!actions.some((item) => canonicalJson(item) === canonicalAction)) admissionError('A selected proposal action is missing.', { actionId: action.id })
+    if (!canonicalActions.has(canonicalJson(action))) admissionError('A selected proposal action is missing.', { actionId: action.id })
   }
   let ordered
   try {

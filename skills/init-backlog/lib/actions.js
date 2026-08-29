@@ -3,7 +3,7 @@
 const { lstatSync } = require('node:fs')
 
 const { containedTargetPath, stableOpenFile, verifyFinalMode } = require('./filesystem')
-const { canonicalJson } = require('./protocol')
+const { canonicalJson, proposalsByCanonicalAction } = require('./protocol')
 const { unwrapText } = require('../unwrap')
 
 const POSIX_DEFAULT_FILE_MODE = 0o644
@@ -13,8 +13,8 @@ function targetPath(root, target) {
 }
 
 function proposalAfter(request, action) {
-  const canonicalAction = canonicalJson(action)
-  const proposal = (request.inspection.proposals ?? []).find((item) => canonicalJson(item.action) === canonicalAction)
+  const proposals = request.inspection.proposals ?? []
+  const proposal = proposals.length === 0 ? undefined : proposalsByCanonicalAction(proposals).get(canonicalJson(action))
   if (proposal?.afterBase64 !== null && proposal?.afterBase64 !== undefined) return Buffer.from(proposal.afterBase64, 'base64')
   if (action.afterBase64 !== null && action.afterBase64 !== undefined) return Buffer.from(action.afterBase64, 'base64')
 
