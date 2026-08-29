@@ -872,20 +872,9 @@ function resumeInspectionProjection(inspection, actionTargets, markerStates, sco
 }
 
 function allActionsComplete(request, admission, root, options) {
-  const targetModes = new Map((request.inspection.targets ?? []).map((record) => [record.target, record.mode]))
-  for (const action of admission.actions) {
-    const path = targetPath(root, action.target)
-    if (action.kind === 'ensure-directory') {
-      const mode = platformMode(options, action.mode)
-      if (!targetMatchesOutput(root, path, 'directory', null, mode, options)) return false
-      continue
-    }
-    const bytes = actionAfter(request, action, root, options)
-    const mode = effectiveActionFileMode(action, targetModes.get(action.target), options)
-    if (bytes === null || !targetMatchesOutput(root, path, 'file', bytes, mode, options)) return false
-  }
+  const progress = approvedProgress(request, root, options)
 
-  return true
+  return progress.recognized && progress.applied === admission.actions.length
 }
 
 function hasTerminalMarkerEvidence(request, admission, root, existing, paths, expectedBytes, expectedMode, options) {

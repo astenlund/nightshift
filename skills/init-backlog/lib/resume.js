@@ -86,23 +86,36 @@ function matchesApprovedFile(root, path, bytes, mode, options) {
   }
 }
 
-// Classifies one approved action's durable target state as its approved after
-// image (`final`), its approved before image (`initial`), or neither.
-function approvedActionState(request, action, root, options) {
+function matchesApprovedInitial(request, action, root, options) {
   const path = targetPath(root, action.target)
   if (action.kind === 'ensure-directory') {
-    if (!pathExists(path)) return 'initial'
-
-    return matchesApprovedDirectory(root, path, platformMode(options, action.mode), options) ? 'final' : 'unrecognized'
+    return !pathExists(path)
   }
-  const mode = platformMode(options, action.mode ?? POSIX_DEFAULT_FILE_MODE)
-  const after = approvedImage(() => actionAfter(request, action, root, options))
-  if (after !== undefined && after !== null && matchesApprovedFile(root, path, after, mode, options)) return 'final'
-  if (action.kind === 'create-from-template') return pathExists(path) ? 'unrecognized' : 'initial'
+  if (action.kind === 'create-from-template') return !pathExists(path)
   const before = approvedImage(() => actionBefore(request, action, root, options))
-  if (before !== undefined && before !== null && matchesApprovedFile(root, path, before, mode, options)) return 'initial'
 
-  return 'unrecognized'
+  return before !== undefined && before !== null && matchesApprovedFile(root, path, before, platformMode(options, action.mode ?? POSIX_DEFAULT_FILE_MODE), options)
+}
+
+function matchesApprovedFinal(request, action, root, options) {
+  const path = targetPath(root, action.target)
+  if (action.kind === 'ensure-directory') return matchesApprovedDirectory(root, path, platformMode(options, action.mode), options)
+  const after = approvedImage(() => actionAfter(request, action, root, options))
+
+  return after !== undefined && after !== null && matchesApprovedFile(root, path, after, platformMode(options, action.mode ?? POSIX_DEFAULT_FILE_MODE), options)
+}
+
+// One durable target image represents exactly one boundary of its approved
+// action chain: the initial image, or the image after one of its actions. A
+// repeated or unknown boundary is ambiguous and therefore cannot prove resume.
+function approvedChainProgress(request, actions, root, options) {
+  const matches = []
+  if (matchesApprovedInitial(request, actions[0], root, options)) matches.push(0)
+  for (let index = 0; index < actions.length; index += 1) {
+    if (matchesApprovedFinal(request, actions[index], root, options)) matches.push(index + 1)
+  }
+
+  return matches.length === 1 ? matches[0] : null
 }
 
 // Durable target state is the progress authority: a resubmitted manifest is
@@ -111,12 +124,27 @@ function approvedActionState(request, action, root, options) {
 // action past it still sits at its approved before image. Anything else is
 // ambiguous drift and fails closed.
 function approvedProgress(request, root, options) {
+  const actions = request.actions ?? []
+  const chains = new Map()
+  for (const action of actions) {
+    if (!chains.has(action.target)) chains.set(action.target, [])
+    chains.get(action.target).push(action)
+  }
+  const targetProgress = new Map()
+  for (const [target, chain] of chains) {
+    const progress = approvedChainProgress(request, chain, root, options)
+    if (progress === null) return { applied: 0, recognized: false }
+    targetProgress.set(target, progress)
+  }
   let applied = 0
   let pending = false
-  for (const action of request.actions ?? []) {
-    const state = approvedActionState(request, action, root, options)
-    if (state === 'unrecognized' || state === 'final' && pending) return { applied: 0, recognized: false }
-    if (state === 'final') {
+  const visited = new Map()
+  for (const action of actions) {
+    const position = (visited.get(action.target) ?? 0) + 1
+    visited.set(action.target, position)
+    const complete = position <= targetProgress.get(action.target)
+    if (complete && pending) return { applied: 0, recognized: false }
+    if (complete) {
       applied += 1
     } else {
       pending = true

@@ -17,6 +17,7 @@ const { MAX_RECOVERY_REQUEST_BYTES, canonicalActionOrder, canonicalJson, deriveS
 const { createInitialLock, stableOpenFile } = require('../../skills/init-backlog/lib/filesystem')
 const { analyzeCatalog } = require('../../skills/ready/ready')
 const { applyRecovery, inspectRecovery } = require('../../skills/init-backlog/lib/recovery')
+const { approvedProgress } = require('../../skills/init-backlog/lib/resume')
 const { ELECTION_MARKER_PATH } = require('./election-oracles')
 
 // Independent oracle pin: the recovery gate basename is spelled out here on purpose
@@ -1312,6 +1313,34 @@ function runPublicationCases() {
         writeFileSync(lockPath, lockBytes, { mode: 0o600 })
       } }), 'cleanup-failed')
       assert.equal(existsSync(join(root, '.nightshift-init-backlog.lock')), true)
+    } finally {
+      rmSync(root, { force: true, recursive: true })
+    }
+  })
+
+  test('classifies every same-target chain boundary as one approved prefix', () => {
+    const root = fixtureRoot()
+    try {
+      const target = '.claude/FEATURES.md'
+      const before = Buffer.from('# Features\n', 'utf8')
+      const middle = Buffer.from('# Features\nexpanded\n', 'utf8')
+      const after = Buffer.from('# Features\nexpanded\nfinal\n', 'utf8')
+      const first = { afterBase64: middle.toString('base64'), beforeBase64: before.toString('base64'), id: 'p-chain-progress-first', kind: 'exact-edit', regionId: 'features.document-preamble', target }
+      const second = { afterBase64: after.toString('base64'), beforeBase64: middle.toString('base64'), id: 'p-chain-progress-second', kind: 'exact-edit', regionId: 'features.next-region', target }
+      const applyRequest = { actions: [first, second], inspection: { proposals: [] } }
+      mkdirSync(join(root, '.claude'), { recursive: true })
+
+      const boundaries = [before, middle, after].map((bytes) => {
+        writeFileSync(join(root, target), bytes)
+
+        return approvedProgress(applyRequest, root, {})
+      })
+
+      assert.deepEqual(boundaries, [
+        { applied: 0, recognized: true },
+        { applied: 1, recognized: true },
+        { applied: 2, recognized: true },
+      ])
     } finally {
       rmSync(root, { force: true, recursive: true })
     }
