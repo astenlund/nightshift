@@ -7,7 +7,8 @@ const { tmpdir } = require('node:os')
 const { join, resolve } = require('node:path')
 const test = require('node:test')
 
-const { MAX_GUIDANCE_CANDIDATES, MAX_GUIDANCE_FILE_BYTES, MAX_GUIDANCE_RETAINED_BYTES, discoverControlledMarkdown, guidanceImports, resolveClaude, resolveCodex, resolveGuidance } = require('../../skills/init-backlog/lib/guidance')
+const { MAX_CONTROLLED_MARKDOWN_FILES, MAX_CONTROLLED_MARKDOWN_RETAINED_BYTES, MAX_GUIDANCE_CANDIDATES, MAX_GUIDANCE_FILE_BYTES, MAX_GUIDANCE_RETAINED_BYTES, discoverControlledMarkdown, guidanceImports, resolveClaude, resolveCodex, resolveGuidance } = require('../../skills/init-backlog/lib/guidance')
+const { MAX_MECHANICAL_FILE_BYTES } = require('../../skills/init-backlog/lib/protocol')
 const {
   enumerateDirectory,
   probeWindowsAttributes,
@@ -87,6 +88,43 @@ function runDiscoveryCases(repositoryRoot) {
       assert.throws(() => enumerateDirectory(root, { attributeProbe: (paths) => windowsAttributeProbe(paths) }))
     } finally {
       rmSync(root, { force: true, recursive: true })
+    }
+  })
+
+  test('controlled Markdown discovery enforces aggregate count and byte boundaries', () => {
+    for (const extraFiles of [0, 1]) {
+      const root = temporaryRoot('nightshift-discovery-count-bound-')
+      const directory = join(root, '.claude', 'bugs')
+      try {
+        mkdirSync(directory, { recursive: true })
+        for (let index = 0; index < MAX_CONTROLLED_MARKDOWN_FILES + extraFiles; index += 1) ordinaryFile(join(directory, `item-${index.toString().padStart(3, '0')}.md`), '')
+
+        if (extraFiles === 0) {
+          assert.equal(discoverControlledMarkdown(root, ['.claude/bugs'], { maxBytes: MAX_MECHANICAL_FILE_BYTES }).length, MAX_CONTROLLED_MARKDOWN_FILES)
+        } else {
+          assert.throws(() => discoverControlledMarkdown(root, ['.claude/bugs'], { maxBytes: MAX_MECHANICAL_FILE_BYTES }), (error) => error.record?.code === 'payload-too-large' && error.record?.phase === 'inspect')
+        }
+      } finally {
+        rmSync(root, { force: true, recursive: true })
+      }
+    }
+    for (const extraBytes of [0, 1]) {
+      const root = temporaryRoot('nightshift-discovery-byte-bound-')
+      const directory = join(root, '.claude', 'features')
+      try {
+        mkdirSync(directory, { recursive: true })
+        const fullFiles = MAX_CONTROLLED_MARKDOWN_RETAINED_BYTES / MAX_MECHANICAL_FILE_BYTES
+        for (let index = 0; index < fullFiles; index += 1) ordinaryFile(join(directory, `item-${index}.md`), Buffer.alloc(MAX_MECHANICAL_FILE_BYTES, 0x61))
+        if (extraBytes !== 0) ordinaryFile(join(directory, 'overflow.md'), Buffer.alloc(extraBytes, 0x62))
+
+        if (extraBytes === 0) {
+          assert.equal(discoverControlledMarkdown(root, ['.claude/features'], { maxBytes: MAX_MECHANICAL_FILE_BYTES }).length, fullFiles)
+        } else {
+          assert.throws(() => discoverControlledMarkdown(root, ['.claude/features'], { maxBytes: MAX_MECHANICAL_FILE_BYTES }), (error) => error.record?.code === 'payload-too-large' && error.record?.phase === 'inspect')
+        }
+      } finally {
+        rmSync(root, { force: true, recursive: true })
+      }
     }
   })
 

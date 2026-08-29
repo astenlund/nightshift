@@ -11,7 +11,7 @@ const { inspectBackups } = require('./backups')
 const { InitBacklogError, failureRecord } = require('./errors')
 const { HTML_BLOCK_TYPE_SIX_TAGS, MAX_GUIDANCE_FILE_BYTES, discoverControlledMarkdown, resolveGuidance } = require('./guidance')
 const { boundedOpenOptions, canonicalRoot, comparableIdentity, comparableMode, createInitialLock, initialLockPaths, removeInitialLock, stableOpenFile, targetPath } = require('./filesystem')
-const { BACKUP_DIRECTORY, DIGEST_PATTERN, MAX_INLINE_FILE_BYTES, MAX_MECHANICAL_FILE_BYTES, MAX_RECOVERY_REQUEST_BYTES, RECOVERY_LOCK_BASENAME, RECOVERY_LOCK_STAGE_PATTERN, RECOVERY_MARKER_BASENAME, canonicalJson, compareOrdinal, deriveProposalId, deriveSnapshotId, sameKeys, sha256 } = require('./protocol')
+const { BACKUP_DIRECTORY, DIGEST_PATTERN, MAX_INLINE_FILE_BYTES, MAX_MECHANICAL_FILE_BYTES, MAX_RECOVERY_REQUEST_BYTES, RECOVERY_LOCK_BASENAME, RECOVERY_LOCK_STAGE_PATTERN, RECOVERY_MARKER_BASENAME, canonicalJson, compareOrdinal, deriveProposalId, deriveSnapshotId, encodeResult, sameKeys, sha256 } = require('./protocol')
 const { detectGitKind, inspectGitPolicy, newlineStyle, plansRootRuleEffective } = require('./git-policy')
 
 function inspectError(code, detail, target = null, cause, phase = 'inspect') {
@@ -833,9 +833,11 @@ function inspect(root, host, hostContext = {}, options = {}) {
     inspectError(code === 'EEXIST' ? 'runtime-lock' : 'filesystem', 'Inspection lock could not be acquired.', RECOVERY_LOCK_BASENAME, error, 'lock')
   }
   try {
-    const first = collectInspection(canonical, host, hostContext, options)
+    const collect = options.collectInspection ?? collectInspection
+    const first = collect(canonical, host, hostContext, options)
+    encodeResult(first)
     options.onCollection?.(1, first)
-    const second = collectInspection(canonical, host, hostContext, options)
+    const second = collect(canonical, host, hostContext, options)
     options.onCollection?.(2, second)
     const firstProjection = canonicalJson({ ...first, snapshotId: null })
     const secondProjection = canonicalJson({ ...second, snapshotId: null })

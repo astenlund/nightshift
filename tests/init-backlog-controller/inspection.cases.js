@@ -37,7 +37,7 @@ const {
   inspectGitPolicy,
 } = require('../../skills/init-backlog/lib/git-policy')
 const { createInitialLock, initialLockPaths, publishNoReplace, removeInitialLock } = require('../../skills/init-backlog/lib/filesystem')
-const { MAX_INLINE_FILE_BYTES, MAX_MECHANICAL_FILE_BYTES, canonicalJson, sha256, validateProposalDispositions } = require('../../skills/init-backlog/lib/protocol')
+const { MAX_INLINE_FILE_BYTES, MAX_INSPECT_RESULT_BYTES, MAX_MECHANICAL_FILE_BYTES, canonicalJson, sha256, validateProposalDispositions } = require('../../skills/init-backlog/lib/protocol')
 const { analyzeCatalog } = require('../../skills/ready/ready')
 const { ELECTION_MARKER_PATH } = require('./election-oracles')
 
@@ -410,6 +410,27 @@ function runInspectionCases(repositoryRoot) {
       }), (error) => error.record?.code === 'snapshot-drift')
       assert.equal(require('node:fs').existsSync(join(root, '.nightshift-init-backlog.lock')), false)
       assert.equal(collections, 2)
+    } finally {
+      rmSync(root, { force: true, recursive: true })
+    }
+  })
+
+  test('direct inspection rejects first-result overflow before a second collection', () => {
+    const root = mkdtempSync(join(tmpdir(), 'nightshift-inspect-result-bound-'))
+    let collections = 0
+    try {
+      writeFileSync(join(root, 'AGENTS.md'), '# Instructions\n')
+      const collect = (...args) => {
+        collections += 1
+        const result = collectInspection(...args)
+        result.ready = { detail: 'x'.repeat(MAX_INSPECT_RESULT_BYTES) }
+
+        return result
+      }
+
+      assert.throws(() => inspect(root, 'codex', codexHostContext(), { candidates: [], collectInspection: collect, ownerNonce: '9'.repeat(32) }), (error) => error.record?.code === 'payload-too-large' && error.record?.phase === 'inspect')
+      assert.equal(collections, 1)
+      assert.equal(existsSync(join(root, '.nightshift-init-backlog.lock')), false)
     } finally {
       rmSync(root, { force: true, recursive: true })
     }

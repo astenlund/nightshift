@@ -15,6 +15,8 @@ const MAX_IMPORT_DEPTH = 4
 const MAX_GUIDANCE_FILE_BYTES = 65536
 const MAX_GUIDANCE_RETAINED_BYTES = 1048576
 const MAX_GUIDANCE_CANDIDATES = 256
+const MAX_CONTROLLED_MARKDOWN_FILES = 256
+const MAX_CONTROLLED_MARKDOWN_RETAINED_BYTES = 1048576
 const GIT_METADATA_DIRECTORY = '.git'
 
 function fail(detail, cause, target = null) {
@@ -537,6 +539,7 @@ function discoverControlledMarkdown(root, directories = ['.claude/bugs', '.claud
   }
   const discovered = []
   const identities = new Set()
+  let retainedBytes = 0
   const resolvedOptions = withAttributeProbe(options)
   function walk(directory) {
     let entries
@@ -557,6 +560,9 @@ function discoverControlledMarkdown(root, directories = ['.claude/bugs', '.claud
         continue
       }
       const target = relativeTarget(canonical, entry.path)
+      if (discovered.length >= MAX_CONTROLLED_MARKDOWN_FILES) {
+        throwInitBacklogError({ code: 'payload-too-large', detail: 'Controlled Markdown count exceeds the controller limit.', operation: 'inspect', phase: 'inspect', target })
+      }
       let opened
       try {
         opened = stableOpenFile(canonical, entry.path, { ...resolvedOptions, requireSingleLink: true })
@@ -567,6 +573,10 @@ function discoverControlledMarkdown(root, directories = ['.claude/bugs', '.claud
       }
       if (identities.has(opened.identity)) {
         throwInitBacklogError({ code: 'filesystem', detail: 'Controlled targets share a physical identity.', operation: 'inspect', phase: 'inspect', target })
+      }
+      retainedBytes += opened.bytes.length
+      if (retainedBytes > MAX_CONTROLLED_MARKDOWN_RETAINED_BYTES) {
+        throwInitBacklogError({ code: 'payload-too-large', detail: 'Controlled Markdown files exceed the controller retained-byte limit.', operation: 'inspect', phase: 'inspect', target })
       }
       identities.add(opened.identity)
       discovered.push({ applicability: 'always', conceptIds: [], identity: opened.identity, kind: 'file', mode: opened.mode, path: entry.path, present: true, regions: [], target, templateRule: null, bytes: opened.bytes, rawSha256: opened.rawSha256 })
@@ -594,4 +604,4 @@ function discoverControlledMarkdown(root, directories = ['.claude/bugs', '.claud
   return discovered.sort((left, right) => compareOrdinal(left.target, right.target))
 }
 
-module.exports = { GUIDANCE_SECTION, HTML_BLOCK_TYPE_SIX_TAGS, MAX_GUIDANCE_CANDIDATES, MAX_GUIDANCE_FILE_BYTES, MAX_GUIDANCE_RETAINED_BYTES, discoverControlledMarkdown, guidanceImports, resolveClaude, resolveCodex, resolveGuidance }
+module.exports = { GUIDANCE_SECTION, HTML_BLOCK_TYPE_SIX_TAGS, MAX_CONTROLLED_MARKDOWN_FILES, MAX_CONTROLLED_MARKDOWN_RETAINED_BYTES, MAX_GUIDANCE_CANDIDATES, MAX_GUIDANCE_FILE_BYTES, MAX_GUIDANCE_RETAINED_BYTES, discoverControlledMarkdown, guidanceImports, resolveClaude, resolveCodex, resolveGuidance }
