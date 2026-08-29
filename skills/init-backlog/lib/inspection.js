@@ -699,8 +699,8 @@ function collectInspection(root, host, hostContext = {}, options = {}) {
   const gitignoreEntry = descriptors.find((entry) => entry.target === '.gitignore')
   const mandatoryPlans = plansTemplate?.logicalBytes ?? Buffer.alloc(0)
   const electiveBacklog = bundle.templates.get('gitignore.backlog')?.logicalBytes ?? Buffer.alloc(0)
-  for (const entry of descriptors) {
-    const record = targetRecords.find((item) => item.target === entry.target)
+  for (const [index, entry] of descriptors.entries()) {
+    const record = targetRecords[index]
     if (record === undefined) continue
     if (record.states[0] === 'missing' && record.kind === 'directory') {
       proposals.push(proposal('missing-target', 'always', { kind: 'ensure-directory', mode: record.mode, target: entry.target }, null, null))
