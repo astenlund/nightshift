@@ -291,7 +291,8 @@ function validOwnerRecordShape(record, root) {
 
 function ownerEvidence(root, options = {}) {
   const lock = join(root, LOCK_BASENAME)
-  const opened = stableOpenFile(root, lock, { ...options, requireSingleLink: false })
+  const openFile = options.stableOpenFile ?? stableOpenFile
+  const opened = openFile(root, lock, { ...options, maxBytes: MAX_RECOVERY_REQUEST_BYTES, requireSingleLink: false })
   const record = parseCanonicalRecord(opened)
   if (!validOwnerRecord(record, root, opened, options.platform)) throw new Error('Publication lock record is malformed')
   validateHardLinkTopology(root, LOCK_BASENAME, opened, options, record)

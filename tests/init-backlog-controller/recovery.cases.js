@@ -239,6 +239,26 @@ function runRecoveryCases() {
     }
   })
 
+  test('stale owner bounds the publication lock before reading its bytes', () => {
+    const root = fixtureRoot()
+    let observedMaxBytes = null
+    try {
+      writeFileSync(join(root, '.nightshift-init-backlog.lock'), Buffer.alloc(MAX_RECOVERY_REQUEST_BYTES + 1, 0x61), { mode: 0o600 })
+
+      assert.throws(() => inspectRecovery(request(root, 'stale-owner', '.nightshift-init-backlog.lock'), {
+        killProcess: absentPid(),
+        stableOpenFile: (candidateRoot, target, options) => {
+          observedMaxBytes = options.maxBytes
+
+          return stableOpenFile(candidateRoot, target, options)
+        },
+      }), (error) => error.record?.code === 'runtime-lock' && error.record.phase === 'lock' && error.record.target === '.nightshift-init-backlog.lock')
+      assert.equal(observedMaxBytes, MAX_RECOVERY_REQUEST_BYTES)
+    } finally {
+      rmSync(root, { force: true, recursive: true })
+    }
+  })
+
   test('stale owner inspection carries inventory and cleanup removes only unchanged residue', () => {
     const root = fixtureRoot()
     try {
