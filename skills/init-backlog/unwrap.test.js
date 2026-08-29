@@ -231,13 +231,16 @@ test('fences, headings, HTML, and breaks nested under a list item are measured f
   assert.equal(unwrapText(text), text);
 });
 
-test('collectMarkdownFiles follows links once, skips dangling ones, and survives a link loop', (t) => {
+test('collectMarkdownFiles follows contained links once and rejects links outside the requested root', (t) => {
   const root = fs.mkdtempSync(path.join(require('node:os').tmpdir(), 'unwrap-'));
+  const external = fs.mkdtempSync(path.join(require('node:os').tmpdir(), 'unwrap-external-'));
   try {
     fs.mkdirSync(path.join(root, 'real'));
     fs.writeFileSync(path.join(root, 'real', 'a.md'), '# A\n');
+    fs.writeFileSync(path.join(external, 'outside.md'), 'outside\ncontinuation\n');
     try {
       fs.symlinkSync(path.join(root, 'real'), path.join(root, 'features'), 'junction');
+      fs.symlinkSync(external, path.join(root, 'patterns'), 'junction');
       fs.symlinkSync(path.join(root, 'real', 'missing.md'), path.join(root, 'real', 'dangling.md'), 'file');
       fs.symlinkSync(path.join(root, 'real'), path.join(root, 'real', 'loop'), 'junction');
     } catch {
@@ -247,8 +250,10 @@ test('collectMarkdownFiles follows links once, skips dangling ones, and survives
       return;
     }
     assert.deepEqual(collectMarkdownFiles([root]).map((file) => path.relative(root, file).replace(/\\/g, '/')), ['features/a.md']);
+    assert.equal(fs.readFileSync(path.join(external, 'outside.md'), 'utf8'), 'outside\ncontinuation\n');
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
+    fs.rmSync(external, { recursive: true, force: true });
   }
 });
 

@@ -332,17 +332,24 @@ function statOrNull(target) {
   }
 }
 
+function isContainedPath(root, target) {
+  const relative = path.relative(root, target);
+
+  return relative === '' || (relative !== '..' && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative));
+}
+
 // A directory target is read as a backlog root: the seven backlog files at its
-// top level plus everything under the backlog directories, following links
-// (each directory once) and skipping dangling ones. A file target is taken
-// when it is markdown. A target is a path string (statted here, throwing when
+// top level plus everything under the backlog directories, following contained
+// links once and skipping dangling or escaping ones. A file target is taken when
+// it is markdown. A target is a path string (statted here, throwing when
 // unreachable) or a { path, stat } pair carrying an already-obtained stat.
 function collectMarkdownFiles(targets) {
   const files = [];
   const visitedDirectories = new Set();
   const isMarkdown = (name) => path.extname(name).toLowerCase() === '.md';
-  const visitAll = (directory) => {
+  const visitAll = (directory, rootIdentity) => {
     const identity = canonicalPath(directory);
+    if (!isContainedPath(rootIdentity, identity)) return;
     if (visitedDirectories.has(identity)) return;
     visitedDirectories.add(identity);
     for (const entry of sortedEntries(directory)) {
@@ -350,19 +357,20 @@ function collectMarkdownFiles(targets) {
       const stat = statOrNull(child);
       if (stat === null) continue;
       if (stat.isDirectory()) {
-        visitAll(child);
+        visitAll(child, rootIdentity);
       } else if (isMarkdown(entry.name)) {
         files.push(child);
       }
     }
   };
   const visitBacklogRoot = (root) => {
+    const rootIdentity = canonicalPath(root);
     for (const entry of sortedEntries(root)) {
       const child = path.join(root, entry.name);
       const stat = statOrNull(child);
       if (stat === null) continue;
       if (stat.isDirectory() && BACKLOG_DIRECTORIES.includes(entry.name)) {
-        visitAll(child);
+        visitAll(child, rootIdentity);
       } else if (stat.isFile() && BACKLOG_FILES.includes(entry.name)) {
         files.push(child);
       }
