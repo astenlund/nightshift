@@ -2282,9 +2282,9 @@ async function runLiveHostSession({ call, filesystem, platform, processAdapterFa
       && Object.values(lifecycleFacts).every((fact) => fact === true)
       && ownership.ok === true
       && (!controllerEnabled || deterministicDigest !== null)
-    const evidence = [{ bytes: Buffer.concat(transcript.lines()), path: 'transcript.jsonl' }]
+    const evidence = [{ bytes: transcript.toBuffer(), path: 'transcript.jsonl' }]
     if (controllerEnabled) {
-      evidence.push({ bytes: Buffer.concat(trace.lines()), path: 'proxy-trace.jsonl' })
+      evidence.push({ bytes: trace.toBuffer(), path: 'proxy-trace.jsonl' })
     }
 
     return {

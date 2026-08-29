@@ -438,6 +438,7 @@ function transcriptWithFailingAppends(failingMethods) {
     appendStructuredOutput: admit('appendStructuredOutput'),
     byteLength: () => real.byteLength(),
     lines: () => real.lines(),
+    toBuffer: () => real.toBuffer(),
   }
 }
 

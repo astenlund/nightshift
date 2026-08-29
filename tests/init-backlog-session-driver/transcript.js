@@ -36,6 +36,10 @@ function isCanonicalBase64(value) {
   return Buffer.from(value, 'base64').toString('base64') === value
 }
 
+function aggregateLines(lines) {
+  return Buffer.concat(lines)
+}
+
 function createTranscript({ limit = BYTE_BOUNDS.MAX_TRANSCRIPT_BYTES } = {}) {
   const budget = createByteBudget({ limit, limitName: 'MAX_TRANSCRIPT_BYTES' })
   const lines = []
@@ -73,6 +77,9 @@ function createTranscript({ limit = BYTE_BOUNDS.MAX_TRANSCRIPT_BYTES } = {}) {
     lines() {
       return lines.map((line) => Buffer.from(line))
     },
+    toBuffer() {
+      return aggregateLines(lines)
+    },
   }
 }
 
@@ -98,6 +105,9 @@ function createProxyTrace({ flush, limit = BYTE_BOUNDS.MAX_PROXY_TRACE_BYTES } =
     },
     lines() {
       return lines.map((line) => Buffer.from(line))
+    },
+    toBuffer() {
+      return aggregateLines(lines)
     },
   }
 }
