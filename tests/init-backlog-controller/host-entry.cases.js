@@ -9,6 +9,7 @@ const test = require('node:test')
 
 const hostBehavior = require('../init-backlog-host-behavior')
 const driver = require('../init-backlog-session-driver')
+const adjudication = require('../init-backlog-session-driver/adjudication')
 // Driver-internal module (not a facade export), required directly the same
 // way the dialogue cases do.
 const hostEvents = require('../init-backlog-session-driver/host-events')
@@ -4060,29 +4061,42 @@ function runHostEntryCases(repositoryRoot) {
         },
         ok: true,
       })
-      const session = await hostBehavior.runLiveHostSession({
-        call: {
-          argv: ['--print'],
-          controllerEnabled: true,
-          cwd: scenarioRoot,
-          environment: {},
-          executable: 'claude-executable',
-          host: 'claude-code',
-          proxySession: { port: 40400, token },
-          runRoot,
-          scenario,
-          sessionPluginRoot,
-          turnSchemaRunPath: join(runRoot, 'turn-schema.json'),
-        },
-        filesystem: nodeFilesystem,
-        platform: 'win32',
-        processAdapterFactory,
-        proxyRegistry: new Map([[token, proxyEntry]]),
-        workerRegistry: new Map([[runRoot, workerEntry]]),
-      })
+      const originalDeriveAllActionsDisclosed = adjudication.deriveAllActionsDisclosed
+      let finalDisclosureDerivations = 0
+      adjudication.deriveAllActionsDisclosed = (input) => {
+        finalDisclosureDerivations += 1
+
+        return originalDeriveAllActionsDisclosed(input)
+      }
+      let session
+      try {
+        session = await hostBehavior.runLiveHostSession({
+          call: {
+            argv: ['--print'],
+            controllerEnabled: true,
+            cwd: scenarioRoot,
+            environment: {},
+            executable: 'claude-executable',
+            host: 'claude-code',
+            proxySession: { port: 40400, token },
+            runRoot,
+            scenario,
+            sessionPluginRoot,
+            turnSchemaRunPath: join(runRoot, 'turn-schema.json'),
+          },
+          filesystem: nodeFilesystem,
+          platform: 'win32',
+          processAdapterFactory,
+          proxyRegistry: new Map([[token, proxyEntry]]),
+          workerRegistry: new Map([[runRoot, workerEntry]]),
+        })
+      } finally {
+        adjudication.deriveAllActionsDisclosed = originalDeriveAllActionsDisclosed
+      }
 
       assert.equal(session.failure, undefined, 'the disclosure remains pending until the later manifest binds its selection and digest')
       assert.equal(session.record.dialogueFacts.allActionsDisclosed, true)
+      assert.equal(finalDisclosureDerivations, 0, 'finalization consumes the approval-time disclosure verdict without comparing the sequence again')
       assert.equal(inspectConnection.written.length, 1, 'the live path obtains its inspection through the authorization proxy')
     } finally {
       nodeFilesystem.rmSync(scratch, { force: true, recursive: true })

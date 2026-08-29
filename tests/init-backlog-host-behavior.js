@@ -1970,7 +1970,7 @@ async function runLiveHostSession({ call, filesystem, platform, processAdapterFa
   let firstProposalTurnOrdinal = null
   let firstClassifiedTurnOrdinal = null
   let structuredResult = null
-  const bufferedDisclosures = []
+  const disabledBufferedDisclosures = []
   const rootClaudePresent = scenario.repository.entries.some((entry) => entry.kind === 'file' && entry.path === 'CLAUDE.md')
   const hostContext = host === 'codex' ? oracles.HOST_CONTEXTS.codex : rootClaudePresent ? oracles.HOST_CONTEXTS.claudePresentRoot : oracles.HOST_CONTEXTS.claudeMissingRoot
   let gate = null
@@ -2084,6 +2084,7 @@ async function runLiveHostSession({ call, filesystem, platform, processAdapterFa
     return storedInspectionState
   }
   let expectedDisclosureItems = null
+  let disclosureSequenceVerified = false
   const verifyObservedDisclosures = ({ items, proposal }) => {
     if (!controllerEnabled) {
       // The disabled expected sequence is proposal-owned; the structural
@@ -2113,7 +2114,13 @@ async function runLiveHostSession({ call, filesystem, platform, processAdapterFa
       expectedDisclosureItems = built.items
     }
 
-    return adjudication.verifyDisclosureSequence({ expected: expectedDisclosureItems, observed: items })
+    const verification = adjudication.verifyDisclosureSequence({ expected: expectedDisclosureItems, observed: items })
+    if (verification.ok === true) {
+      disclosureSequenceVerified = true
+      expectedDisclosureItems = null
+    }
+
+    return verification
   }
   let walk = null
   const ensureWalk = (initEvent) => {
@@ -2170,8 +2177,8 @@ async function runLiveHostSession({ call, filesystem, platform, processAdapterFa
       if (turn.semanticClassifications.length > 0 && firstClassifiedTurnOrdinal === null) {
         firstClassifiedTurnOrdinal = appended.ordinal
       }
-      if (turn.gateId === 'action-disclosure') {
-        bufferedDisclosures.push(...turn.presentation.actionDisclosures)
+      if (!controllerEnabled && turn.gateId === 'action-disclosure') {
+        disabledBufferedDisclosures.push(...turn.presentation.actionDisclosures)
       }
     }
 
@@ -2223,10 +2230,10 @@ async function runLiveHostSession({ call, filesystem, platform, processAdapterFa
     const inspectionState = loadStoredInspectionState()
     const inspection = inspectionState === null ? null : inspectionState.inspection
     const observedClassifications = latestClassificationsByTarget(turnRecords)
-    const disabledCoverage = !controllerEnabled && (manifestProposal === null || (manifestProposal.actions ?? []).length === 0 || bufferedDisclosures.length > 0)
+    const disabledCoverage = !controllerEnabled && (manifestProposal === null || (manifestProposal.actions ?? []).length === 0 || disabledBufferedDisclosures.length > 0)
     const dialogueFacts = {
       allActionsDisclosed: controllerEnabled
-        ? expectedDisclosureItems !== null && adjudication.deriveAllActionsDisclosed({ expected: expectedDisclosureItems, observed: bufferedDisclosures })
+        ? disclosureSequenceVerified
         : disabledCoverage,
       ambiguitiesAsked: adjudication.deriveAmbiguityCoverage({
         ambiguityIdSequences: awaiting.map((record) => record.turn.presentation.ambiguityIds),
