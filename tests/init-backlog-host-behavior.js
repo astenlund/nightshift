@@ -1873,12 +1873,12 @@ async function runLiveHostSession({ call, filesystem, platform, processAdapterFa
       return { failure: recordInfrastructureFailure(workerEntry.failure) }
     }
     gate = driver.createAuthorizationGate({ host, hostContext, scenarioRoot })
-    recorder = createApplyCallRecorder({ gate, transcriptOrdinal: () => transcript.lines().length })
+    recorder = createApplyCallRecorder({ gate, transcriptOrdinal: () => transcript.lineCount() })
     trace = driver.createProxyTrace({ flush: () => {} })
     const serverGate = {
       ...recorder.gate,
       recordInspectSuccess(resultBytes) {
-        inspectWatermark = transcript.lines().length
+        inspectWatermark = transcript.lineCount()
         recorder.gate.recordInspectSuccess(resultBytes)
       },
     }

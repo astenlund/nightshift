@@ -63,6 +63,9 @@ function createTranscript({ limit = BYTE_BOUNDS.MAX_TRANSCRIPT_BYTES } = {}) {
     byteLength() {
       return budget.count()
     },
+    lineCount() {
+      return lines.length
+    },
     lines() {
       return lines.map((line) => Buffer.from(line))
     },
