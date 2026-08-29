@@ -15,25 +15,7 @@ const test = require('node:test')
 
 const { runCli } = require('../../skills/init-backlog/init-backlog')
 const { canonicalActionOrder, deriveSemanticActionId } = require('../../skills/init-backlog/lib/protocol')
-
-function compareOrdinal(left, right) {
-  return left < right ? -1 : left > right ? 1 : 0
-}
-
-function canonicalize(value) {
-  if (Array.isArray(value)) {
-    return value.map(canonicalize)
-  }
-  if (value !== null && typeof value === 'object') {
-    return Object.fromEntries(Object.keys(value).sort(compareOrdinal).map((key) => [key, canonicalize(value[key])]))
-  }
-
-  return value
-}
-
-function canonicalJson(value) {
-  return JSON.stringify(canonicalize(value))
-}
+const { canonicalJson, compareOrdinal } = require('./helpers')
 
 function captureStreams() {
   const stdout = []
