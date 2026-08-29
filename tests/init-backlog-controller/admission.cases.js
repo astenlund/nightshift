@@ -93,6 +93,10 @@ function request(overrides = {}) {
   }
 }
 
+function edit(id, before, after) {
+  return { afterBase64: after.toString('base64'), beforeBase64: before.toString('base64'), id, kind: 'exact-edit', regionId: 'gitignore.policy-append', target: '.gitignore' }
+}
+
 function expectManifestError(callback, code = 'manifest-invalid') {
   assert.throws(callback, (error) => error?.record?.code === code || error?.code === code)
 }
@@ -102,7 +106,6 @@ function runAdmissionCases() {
     const first = Buffer.from('seed\n', 'utf8')
     const middle = Buffer.from('seed\nmandatory\n', 'utf8')
     const last = Buffer.from('seed\nmandatory\nelective\n', 'utf8')
-    const edit = (id, before, after) => ({ afterBase64: after.toString('base64'), beforeBase64: before.toString('base64'), id, kind: 'exact-edit', regionId: 'gitignore.policy-append', target: '.gitignore' })
     const head = edit('p-chain-head', first, middle)
     const tail = edit('p-chain-tail', middle, last)
     const asProposal = (action) => ({ action, afterBase64: action.afterBase64, beforeBase64: action.beforeBase64, condition: 'always', proposalId: action.id, reason: 'plans-policy' })
@@ -129,7 +132,6 @@ function runAdmissionCases() {
 
   test('refuses a chained mechanical target whose proposals expose no unique head', () => {
     const first = Buffer.from('seed\n', 'utf8')
-    const edit = (id, before, after) => ({ afterBase64: after.toString('base64'), beforeBase64: before.toString('base64'), id, kind: 'exact-edit', regionId: 'gitignore.policy-append', target: '.gitignore' })
     const left = edit('p-chain-left', first, Buffer.from('seed\nleft\n', 'utf8'))
     // Chain-head candidacy is a property of every carried sibling, selected or
     // not, so the ambiguity is built from an unselected second proposal. Two
