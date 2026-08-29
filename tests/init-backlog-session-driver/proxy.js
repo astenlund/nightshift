@@ -34,6 +34,16 @@ function parseCanonicalObject(bytes, expectedMemberKey) {
   return parsed
 }
 
+function isValidWorkerReply(frame, expectedOrdinal) {
+  return frame !== null
+    && frame.ordinal === expectedOrdinal
+    && isCanonicalBase64(frame.stdoutBase64)
+    && isCanonicalBase64(frame.stderrBase64)
+    && Number.isSafeInteger(frame.exitCode)
+    && frame.exitCode >= 0
+    && frame.exitCode <= 255
+}
+
 // Compares a client-supplied token against the per-run token without leaking
 // the matching prefix length through comparison timing. timingSafeEqual throws
 // on unequal lengths, so a non-string or differently sized candidate is
@@ -409,7 +419,7 @@ function createProxyServer({
         return
       }
       const frame = parseCanonicalObject(lineBytes, WORKER_REPLY_MEMBERS)
-      if (frame === null || frame.ordinal !== call.ordinal || !isCanonicalBase64(frame.stdoutBase64) || !isCanonicalBase64(frame.stderrBase64) || !Number.isSafeInteger(frame.exitCode)) {
+      if (!isValidWorkerReply(frame, call.ordinal)) {
         clearCallDeadline(call)
         activeCall = null
         proxyFailure()

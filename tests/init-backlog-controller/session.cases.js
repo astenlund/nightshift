@@ -1037,12 +1037,22 @@ function runSessionCases(repositoryRoot) {
     assert.equal(harness.termination.worker, 1)
   })
 
+  test('the worker reply protocol accepts the largest process exit code', () => {
+    const harness = buildServerHarness()
+    admitInspectCall(harness)
+    harness.server.receiveWorkerLine(workerReplyLine({ exitCode: 255 }))
+    assert.deepEqual(harness.failures, [])
+    assert.equal(harness.traceLines[0].exitCode, 255)
+  })
+
   test('a malformed, mismatched-ordinal, or oversized worker frame is the proxy failure path', () => {
     for (const mutate of [
       () => Buffer.from('not json\n', 'utf8'),
       () => workerReplyLine({ ordinal: 2 }),
       () => workerReplyLine({ stdoutBase64: 'not*base64' }),
       () => workerReplyLine({ exitCode: 1.5 }),
+      () => workerReplyLine({ exitCode: -1 }),
+      () => workerReplyLine({ exitCode: 256 }),
       (request) => canonicalLine({ ...JSON.parse(workerReplyLine().subarray(0, -1).toString('utf8')), requestBase64: request.toString('base64') }),
       () => Buffer.concat([Buffer.alloc(driver.BYTE_BOUNDS.MAX_RUNNER_FRAME_BYTES, 0x61), Buffer.from('\n')]),
     ]) {
