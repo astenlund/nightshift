@@ -130,6 +130,11 @@ function fakeCommandFilesystem(spec) {
       if (node === undefined || node === null) {
         throw missing(pathKey)
       }
+      if (node.errorCode !== undefined) {
+        const error = new Error(`${node.errorCode}: ${pathKey}`)
+        error.code = node.errorCode
+        throw error
+      }
       const kind = node.kind
       const mode = node.mode ?? (kind === 'file' ? (node.executable === false ? 0o644 : 0o755) : 0o755)
       const bigint = options.bigint === true
@@ -1110,6 +1115,25 @@ function runHostEntryCases(repositoryRoot) {
       'C:\\hosts\\claude.exe': { sequence: [{ ino: unsafeIdentity, kind: 'file' }, { ino: unsafeIdentity + 1n, kind: 'file' }] },
     })
     assert.equal(hostBehavior.resolveHostCommand({ ambientPath: 'C:\\hosts', filesystem: replacedExe, host: 'claude-code', platform: 'win32' }).unsupported.code, 'unsupported-host-launcher')
+  })
+
+  test('the Windows resolver fails closed on indeterminate directories and candidates', () => {
+    for (const errorCode of ['EACCES', 'EPERM', 'EIO']) {
+      const deniedDirectory = fakeCommandFilesystem({
+        'C:\\denied': { errorCode },
+        'C:\\safe': { kind: 'dir' },
+        'C:\\safe\\claude.exe': { kind: 'file' },
+      })
+      assert.equal(hostBehavior.resolveHostCommand({ ambientPath: 'C:\\denied;C:\\safe', filesystem: deniedDirectory, host: 'claude-code', platform: 'win32' }).unsupported.code, 'unsupported-host-launcher')
+
+      const deniedCandidate = fakeCommandFilesystem({
+        'C:\\first': { kind: 'dir' },
+        'C:\\first\\claude.exe': { errorCode },
+        'C:\\safe': { kind: 'dir' },
+        'C:\\safe\\claude.exe': { kind: 'file' },
+      })
+      assert.equal(hostBehavior.resolveHostCommand({ ambientPath: 'C:\\first;C:\\safe', filesystem: deniedCandidate, host: 'claude-code', platform: 'win32' }).unsupported.code, 'unsupported-host-launcher')
+    }
   })
 
   test('a protected Windows drive root contains every launcher below it', () => {

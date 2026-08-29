@@ -127,17 +127,17 @@ function unsupportedHostLauncher(host) {
 function stableLstat(filesystem, path) {
   const probe = () => {
     try {
-      return { stat: filesystem.lstatSync(path, { bigint: true }) }
-    } catch {
-      return { stat: null }
+      return { ok: true, stat: filesystem.lstatSync(path, { bigint: true }) }
+    } catch (error) {
+      return { error, ok: false }
     }
   }
   const first = probe()
   const second = probe()
-  if (first.stat === null && second.stat === null) {
+  if (!first.ok && !second.ok && first.error?.code === 'ENOENT' && second.error?.code === 'ENOENT') {
     return { absent: true }
   }
-  if (first.stat === null || second.stat === null) {
+  if (!first.ok || !second.ok) {
     return { unstable: true }
   }
   if (!sameFilesystemIdentity(first.stat, second.stat)) {
