@@ -739,7 +739,7 @@ function runPublicationCases() {
       carried.snapshotId = deriveSnapshotId({ ...carried, snapshotId: null })
       const applyRequest = request(root, { actions: [action], inspection: carried, proposalDispositions: [{ disposition: 'selected', proposalId: action.id }], semanticDecisions: [{ conceptIds: [], status: 'satisfied', target: action.target }] })
       const manifestId = admitApplyManifest(applyRequest).manifestId
-      const temporary = temporaryPaths(root, manifestId, 1, 'e'.repeat(32), carried.snapshotId).action
+      const temporary = temporaryPaths(root, manifestId, 1, 'e'.repeat(32), carried.snapshotId, process.pid, action.target).action
 
       assert.throws(() => publishApply(applyRequest, { currentInspection: carried, crash: true, failAt: 'after-mode-assignment', ownerNonce: 'e'.repeat(32) }), /Injected publication failure at after-mode-assignment/)
       assert.equal(existsSync(temporary), true)
@@ -856,7 +856,7 @@ function runPublicationCases() {
       carried.snapshotId = deriveSnapshotId({ ...carried, snapshotId: null })
       const applyRequest = request(root, { actions: [action], inspection: carried, proposalDispositions: [{ disposition: 'selected', proposalId: action.id }], semanticDecisions: [{ conceptIds: [], status: 'satisfied', target: action.target }] })
       const manifestId = admitApplyManifest(applyRequest).manifestId
-      const temporary = temporaryPaths(root, manifestId, 1, 'd'.repeat(32), carried.snapshotId).action
+      const temporary = temporaryPaths(root, manifestId, 1, 'd'.repeat(32), carried.snapshotId, process.pid, action.target).action
       const external = Buffer.from('external\n', 'utf8')
 
       expectCode(() => publishApply(applyRequest, { currentInspection: carried, ownerNonce: 'd'.repeat(32), onTransition: (point) => { if (point === 'after-mode-assignment') { rmSync(temporary, { force: true }); writeFileSync(temporary, external) } } }), 'cleanup-failed')
@@ -875,7 +875,7 @@ function runPublicationCases() {
       carried.snapshotId = deriveSnapshotId({ ...carried, snapshotId: null })
       const applyRequest = request(root, { actions: [action], inspection: carried, proposalDispositions: [{ disposition: 'selected', proposalId: action.id }], semanticDecisions: [{ conceptIds: [], status: 'satisfied', target: action.target }] })
       const manifestId = admitApplyManifest(applyRequest).manifestId
-      const temporary = temporaryPaths(root, manifestId, 1, '9'.repeat(32), carried.snapshotId).action
+      const temporary = temporaryPaths(root, manifestId, 1, '9'.repeat(32), carried.snapshotId, process.pid, action.target).action
       const external = join(root, 'external-temporary-link')
 
       if (process.platform !== 'win32') {
@@ -918,7 +918,7 @@ function runPublicationCases() {
       carried.snapshotId = deriveSnapshotId({ ...carried, snapshotId: null })
       const applyRequest = request(root, { actions: [action], inspection: carried, proposalDispositions: [{ disposition: 'selected', proposalId: action.id }], semanticDecisions: [{ conceptIds: [], status: 'satisfied', target: action.target }] })
       const manifestId = admitApplyManifest(applyRequest).manifestId
-      const collision = temporaryPaths(root, manifestId, 1, 'b'.repeat(32), carried.snapshotId).action
+      const collision = temporaryPaths(root, manifestId, 1, 'b'.repeat(32), carried.snapshotId, process.pid, action.target).action
       writeFileSync(collision, Buffer.from('external\n', 'utf8'))
       let writes = 0
 

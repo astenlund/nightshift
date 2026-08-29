@@ -84,7 +84,18 @@ function restoreUnwrapBatch(root, actions, manifestId, snapshotId, options = {})
   }
 }
 
-function temporaryPaths(root, manifestId, actionOrdinal = 1, ownerNonce = randomBytes(16).toString('hex'), snapshotId = '0'.repeat(64), pid = process.pid) {
+// Root-level stand-in for callers that want the shape of an action temporary
+// without naming a target; any root-level target yields the same directory.
+const UNTARGETED_ACTION_TARGET = '.nightshift-init-backlog.untargeted'
+
+// Sole computation of an action's staging temporary. The temporary lives in the
+// target's own directory so a nested target stages beside itself rather than at
+// the root; targetPath validates root containment before the name is derived.
+function actionTemporaryPath(root, manifestId, actionOrdinal, target) {
+  return targetPath(root, target) && join(root, target.includes('/') ? target.slice(0, target.lastIndexOf('/')) : '.', `.nightshift-init-backlog.${manifestId}.${actionOrdinal}.tmp`)
+}
+
+function temporaryPaths(root, manifestId, actionOrdinal = 1, ownerNonce = randomBytes(16).toString('hex'), snapshotId = '0'.repeat(64), pid = process.pid, actionTarget = UNTARGETED_ACTION_TARGET) {
   if (!Number.isSafeInteger(pid) || pid <= 0 || !NONCE_PATTERN.test(ownerNonce) || !DIGEST_PATTERN.test(manifestId) || !DIGEST_PATTERN.test(snapshotId) || !Number.isSafeInteger(actionOrdinal) || actionOrdinal <= 0) {
     throw new TypeError('Temporary identity is invalid')
   }
@@ -93,7 +104,7 @@ function temporaryPaths(root, manifestId, actionOrdinal = 1, ownerNonce = random
   const electionAlias = join(root, markerNames.alias)
 
   return {
-    action: join(root, `.nightshift-init-backlog.${manifestId}.${actionOrdinal}.tmp`),
+    action: actionTemporaryPath(root, manifestId, actionOrdinal, actionTarget),
     election: electionAlias,
     electionAlias,
     electionNewWitness: join(root, markerNames.newWitness),
@@ -997,7 +1008,7 @@ function publishApply(request, options = {}) {
   }
   const allActions = request.actions ?? []
   const fixed = temporaryPaths(root, admission.manifestId, 1, ownerNonce, request.inspection.snapshotId, pid)
-  const actionTemps = allActions.map((action, index) => targetPath(root, action.target) && join(root, action.target.includes('/') ? action.target.slice(0, action.target.lastIndexOf('/')) : '.', `.nightshift-init-backlog.${admission.manifestId}.${index + 1}.tmp`))
+  const actionTemps = allActions.map((action, index) => actionTemporaryPath(root, admission.manifestId, index + 1, action.target))
   const unwrapActions = allActions.filter((action) => action.kind === 'unwrap-file')
   const backupTargets = unwrapActions.map((action) => backupTarget(action.target, request.inspection.snapshotId, admission.manifestId))
   backupCandidates = backupTargets
