@@ -28,6 +28,7 @@ function Test-CanonicalAbsolutePath([string]$value) {
     }
 }
 
+# Mirrors Test-RunnerExactKeys in tests/windows-job-runner.ps1; keep both in step.
 function Test-ExactKeys($value, [string[]]$expected) {
     if ($null -eq $value) {
         return $false
@@ -124,13 +125,13 @@ try {
     if (-not (Test-CanonicalAbsolutePath $systemDirectory)) {
         throw 'invalid system directory'
     }
-    $items = @()
+    $items = [System.Collections.Generic.List[string]]::new()
     for ($index = 0; $index -lt $paths.Count; $index++) {
         try {
             $attributes = [System.IO.File]::GetAttributes($paths[$index])
             $number = [int64]$attributes
             $reparsePoint = (($number -band 0x400) -ne 0)
-            $items += ConvertTo-JsonAttributeItem $number $paths[$index] $reparsePoint
+            $items.Add((ConvertTo-JsonAttributeItem $number $paths[$index] $reparsePoint))
         } catch {
             $failure = ConvertTo-JsonAttributeFailure $index
             [Console]::Out.Write($failure + "`n")

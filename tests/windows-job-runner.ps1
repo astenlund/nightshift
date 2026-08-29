@@ -476,6 +476,7 @@ function ConvertTo-RunnerEnvironmentBlock($Pairs) {
     return $builder.ToString()
 }
 
+# Mirrors Test-ExactKeys in skills/init-backlog/windows-attributes.ps1; keep both in step.
 function Test-RunnerExactKeys($Value, [string[]]$Expected) {
     if ($null -eq $Value -or $Value -isnot [System.Management.Automation.PSCustomObject]) {
         return $false
