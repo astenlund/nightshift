@@ -312,7 +312,7 @@ function runChild(command, args, options) {
     child.stdout.on('data', (chunk) => {
       stdoutBytes += chunk.length
       if (stdoutBytes > MAX_CAPTURE_BYTES) {
-        terminate('stdout exceeded 1048576-byte limit')
+        terminate(`stdout exceeded ${MAX_CAPTURE_BYTES}-byte limit`)
       } else {
         stdout.push(chunk)
       }
@@ -320,7 +320,7 @@ function runChild(command, args, options) {
     child.stderr.on('data', (chunk) => {
       stderrBytes += chunk.length
       if (stderrBytes > MAX_CAPTURE_BYTES) {
-        terminate('stderr exceeded 1048576-byte limit')
+        terminate(`stderr exceeded ${MAX_CAPTURE_BYTES}-byte limit`)
       } else {
         stderr.push(chunk)
       }
