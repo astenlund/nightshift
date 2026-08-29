@@ -27,7 +27,7 @@ const path = require('node:path');
 
 const BOM = String.fromCharCode(0xfeff);
 const LIST_MARKER = /^\s*(?:[-*+]|\d+[.)])\s+/;
-const FENCE = /^\s{0,3}(`{3,}|~{3,})/;
+const FENCE = /^\s{0,3}(`{3,}|~{3,})(.*)$/;
 const HEADING = /^ {0,3}#{1,6}\s/;
 const SETEXT_UNDERLINE = /^\s{0,3}(?:=+|-+)\s*$/;
 const TABLE_ROW = /^\s*\|/;
@@ -115,7 +115,12 @@ function createBlockTracker() {
       return true;
     }
     const fenceMatch = FENCE.exec(probe);
-    if (fence === null && fenceMatch) {
+    // CommonMark forbids a backtick anywhere in a backtick fence's info
+    // string, so such a line opens no fence. This mirrors fenceOpener in
+    // skills/spec-agreement/spec-agreement.js, the shared markdown scanner
+    // that ready.js reads through scanMarkdown; without the rule the two
+    // parsers classify the same lines differently around such a line.
+    if (fence === null && fenceMatch && !(fenceMatch[1][0] === '`' && fenceMatch[2].includes('`'))) {
       fence = { char: fenceMatch[1][0], length: fenceMatch[1].length };
 
       return true;

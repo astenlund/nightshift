@@ -6,6 +6,7 @@ const path = require('node:path');
 const test = require('node:test');
 
 const { canonicalPath, detectHardWraps, unwrapText, collectMarkdownFiles, analyzeUnwrapCatalog } = require('./unwrap.js');
+const { scanMarkdown } = require('../spec-agreement/spec-agreement.js');
 
 const CRLF = String.fromCharCode(13, 10);
 
@@ -178,6 +179,20 @@ test('a fence closer shorter than its opener stays inside the fence', () => {
   const text = '````\ncode\n```\na\nb\n````\nc\nd\n';
   assert.deepEqual(detectHardWraps(text), [{ line: 8, kind: 'paragraph' }]);
   assert.equal(unwrapText(text), '````\ncode\n```\na\nb\n````\nc d\n');
+});
+
+// ready.js reads a backlog through both parsers, so a fence one of them opens
+// and the other does not would split entry parsing from wrap detection.
+test('a backtick fence line whose info string carries a backtick opens no fence, as the shared scanner reads it', () => {
+  const text = '# Title\n\n``` js `x`\nwrapped prose one\ncontinues here\n';
+  assert.deepEqual(detectHardWraps(text), [
+    { line: 4, kind: 'paragraph' },
+    { line: 5, kind: 'paragraph' },
+  ]);
+  assert.equal(unwrapText(text), '# Title\n\n``` js `x` wrapped prose one continues here\n');
+  const scanned = scanMarkdown(Buffer.from(text, 'utf8'));
+  assert.deepEqual(scanned.lines.map((line) => line.outsideFence), [true, true, true, true, true]);
+  assert.equal(scanned.unclosedFence, false);
 });
 
 test('an ATX heading indented up to three spaces and a spaced thematic break each end a paragraph', () => {
