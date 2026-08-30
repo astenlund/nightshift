@@ -4,7 +4,7 @@ const nodeFilesystem = require('node:fs')
 const { constants: filesystemConstants } = require('node:fs')
 const nodePath = require('node:path')
 
-const { resolveTrustedExecutable } = require('./filesystem-primitives')
+const { pathIsContained, resolveTrustedExecutable } = require('./filesystem-primitives')
 const { runGit } = require('./git-runner')
 const { prepareProvenanceWrite, productionBindingAdapter, productionFsAdapter, writeBoundProvenanceStamp } = require('../skills/spec-agreement/spec-agreement')
 
@@ -56,15 +56,6 @@ function hasExactKeys(value, expected) {
 
 function pathsMatchExactly(left, right) {
   return nodePath.normalize(left) === nodePath.normalize(right)
-}
-
-function pathIsContained(root, target, platform = process.platform) {
-  const pathApi = platform === 'win32' ? nodePath.win32 : nodePath
-  const comparableRoot = platform === 'win32' ? pathApi.normalize(root).toLowerCase() : pathApi.normalize(root)
-  const comparableTarget = platform === 'win32' ? pathApi.normalize(target).toLowerCase() : pathApi.normalize(target)
-  const relation = pathApi.relative(comparableRoot, comparableTarget)
-
-  return relation !== '' && relation !== '..' && !relation.startsWith(`..${pathApi.sep}`) && !pathApi.isAbsolute(relation)
 }
 
 function canonicalDirectory(path, filesystem, allowMissing = false) {
