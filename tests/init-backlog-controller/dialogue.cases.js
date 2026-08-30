@@ -15,7 +15,8 @@ const protocol = require('../../skills/init-backlog/lib/protocol')
 const { inspect } = require('../../skills/init-backlog/init-backlog')
 const { CLAUDE_ROOT_EXCLUSION_CONFIRMATION, CODEX_HOST_CONTEXT_CONFIRMATION, HOST_CONTROL_RECORDS } = require('./election-oracles')
 const { HOST_CONTEXTS, buildExpectedImportCases } = require('./host-fixture-oracles')
-const { canonicalJson, sha256 } = require('./helpers')
+const { canonicalJson, nestedJsonText, sha256 } = require('./helpers')
+const { MAX_PARSED_JSON_DEPTH, parseJsonWithDepthLimit } = require('../init-backlog-session-driver/transcript')
 
 const FIXED_OPTIONS = ['track', 'ignore', 'deferred', 'not-required']
 const TEN_SKILLS = ['exploring', 'handover', 'init-backlog', 'ready', 'revise-code', 'revise-docs', 'revise-lore', 'revise-plan', 'revise-spec', 'spec-agreement']
@@ -237,6 +238,28 @@ function runDialogueCases(repositoryRoot) {
     assert.deepEqual(hostEvents.verifyTurnOutputEquality({ structuredResult, turnOutputBytes: Buffer.from('{"phase":"finished","gateId":null}', 'utf8') }), { ok: true })
     assert.equal(hostEvents.verifyTurnOutputEquality({ structuredResult, turnOutputBytes: Buffer.from('{"phase":"finished","gateId":"g"}', 'utf8') }).reason, 'output-file-disagreement')
     assert.equal(hostEvents.verifyTurnOutputEquality({ structuredResult, turnOutputBytes: Buffer.from('not json', 'utf8') }).reason, 'output-file-disagreement')
+  })
+
+  test('every host JSON boundary rejects nesting beyond the fixed iterative depth limit', () => {
+    const atLimit = nestedJsonText(MAX_PARSED_JSON_DEPTH)
+    const overLimit = nestedJsonText(MAX_PARSED_JSON_DEPTH + 1)
+    assert.equal(parseJsonWithDepthLimit(atLimit).ok, true)
+    assert.deepEqual(parseJsonWithDepthLimit(overLimit), { ok: false })
+
+    const outerEvent = Buffer.from(`{"payload":${overLimit},"type":"status"}`, 'utf8')
+    assert.equal(hostEvents.parseHostEventLine(outerEvent).failure.reason, 'unparseable-event')
+
+    const codex = hostEvents.createCodexTurnConductor({ expectedThreadId: 't-1' })
+    const codexResult = codex.acceptLine(eventLine({ item: { text: overLimit, type: 'agent_message' }, type: 'item.completed' }))
+    assert.equal(codexResult.failure.reason, 'structured-result-invalid')
+
+    assert.equal(hostEvents.verifyTurnOutputEquality({ structuredResult: {}, turnOutputBytes: Buffer.from(overLimit, 'utf8') }).reason, 'output-file-disagreement')
+
+    const importStream = Buffer.concat([
+      eventLine(probeInit()), Buffer.from('\n'),
+      Buffer.from(`{"structured_output":${overLimit},"type":"result"}\n`, 'utf8'),
+    ])
+    assert.equal(hostEvents.validateImportProbeSession({ expectedSentinel: null, exitCode: 0, stderrBytes: Buffer.alloc(0), stdoutBytes: importStream }).reason, 'unparseable-event')
   })
 
   test('a conforming import-probe stream passes its case verdict for sentinel and null cases', () => {

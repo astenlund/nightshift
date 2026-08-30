@@ -13,7 +13,7 @@ const adjudication = require('../init-backlog-session-driver/adjudication')
 // Driver-internal module (not a facade export), required directly the same
 // way the dialogue cases do.
 const hostEvents = require('../init-backlog-session-driver/host-events')
-const { canonicalJson, sha256 } = require('./helpers')
+const { canonicalJson, nestedJsonText, sha256 } = require('./helpers')
 const { HOST_CONTEXTS } = require('./host-fixture-oracles')
 
 const { join } = nodePath
@@ -1758,6 +1758,11 @@ function runHostEntryCases(repositoryRoot) {
         afterPath: writeRecord('after-no-lf.json', null, canonicalJson(afterRecord)),
         beforePath,
       }), /canonical/)
+      const deeplyNestedValue = nestedJsonText(10000)
+      assert.throws(() => hostBehavior.verifyCompatibilityTransition({
+        afterPath,
+        beforePath: writeRecord('before-deep.json', null, `{"claudeVersion":null,"extra":${deeplyNestedValue},"host":"claude-code","probedOn":null,"scenario":"fresh-empty-track-approved","schemaVersion":1}\n`),
+      }), /valid JSON/)
     } finally {
       nodeFilesystem.rmSync(scratch, { force: true, recursive: true })
     }

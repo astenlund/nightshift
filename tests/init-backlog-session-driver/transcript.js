@@ -4,6 +4,7 @@ const { BYTE_BOUNDS, compareOrdinal } = require('./primitives')
 const { createByteBudget } = require('./state')
 
 const PROXY_TRACE_MEMBERS = Object.freeze(['exitCode', 'ordinal', 'requestBase64', 'stderrBase64', 'stdoutBase64'])
+const MAX_PARSED_JSON_DEPTH = 64
 
 // Well-formed base64 spelling only. Canonicity (no over-long final group) is a
 // strictly stronger check and is layered on top by `isCanonicalBase64`.
@@ -26,6 +27,33 @@ function canonicalJson(value) {
 
 function canonicalJsonLine(value) {
   return Buffer.from(canonicalJson(value) + '\n', 'utf8')
+}
+
+function parseJsonWithDepthLimit(text) {
+  let value
+  try {
+    value = JSON.parse(text)
+  } catch {
+    return { ok: false }
+  }
+  const pending = [{ depth: 0, value }]
+  while (pending.length > 0) {
+    const current = pending.pop()
+    if (current.value === null || typeof current.value !== 'object') {
+      continue
+    }
+    const depth = current.depth + 1
+    if (depth > MAX_PARSED_JSON_DEPTH) {
+      return { ok: false }
+    }
+    for (const child of Array.isArray(current.value) ? current.value : Object.values(current.value)) {
+      if (child !== null && typeof child === 'object') {
+        pending.push({ depth, value: child })
+      }
+    }
+  }
+
+  return { ok: true, value }
 }
 
 function isCanonicalBase64(value) {
@@ -112,4 +140,4 @@ function createProxyTrace({ flush, limit = BYTE_BOUNDS.MAX_PROXY_TRACE_BYTES } =
   }
 }
 
-module.exports = { BASE64_PATTERN, canonicalJson, canonicalJsonLine, createProxyTrace, createTranscript, isCanonicalBase64 }
+module.exports = { BASE64_PATTERN, MAX_PARSED_JSON_DEPTH, canonicalJson, canonicalJsonLine, createProxyTrace, createTranscript, isCanonicalBase64, parseJsonWithDepthLimit }

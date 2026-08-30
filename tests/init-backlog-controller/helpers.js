@@ -24,6 +24,14 @@ function canonicalJson(value) {
   return JSON.stringify(canonicalize(value))
 }
 
+function nestedJsonText(depth) {
+  if (!Number.isSafeInteger(depth) || depth < 0) {
+    throw new Error('JSON nesting depth must be a nonnegative safe integer')
+  }
+
+  return '{"value":'.repeat(depth) + 'null' + '}'.repeat(depth)
+}
+
 function sha256(bytes) {
   return createHash('sha256').update(bytes).digest('hex')
 }
@@ -122,4 +130,4 @@ function loadPromptBaseline(repositoryRoot, sourceCommit) {
   return { baselineManifestSha256: sha256(manifestBytes), manifest, root }
 }
 
-module.exports = { canonicalJson, compareOrdinal, fixtureFilePath, fixtureRoot, git, isContained, loadPromptBaseline, readBlob, sha256, sourceClosure }
+module.exports = { canonicalJson, compareOrdinal, fixtureFilePath, fixtureRoot, git, isContained, loadPromptBaseline, nestedJsonText, readBlob, sha256, sourceClosure }

@@ -2,7 +2,7 @@
 
 const { PUBLIC_SKILLS: CLAUDE_PUBLIC_SKILL_INVENTORY } = require('../entry-contract')
 const { isPlainObject } = require('./primitives')
-const { canonicalJson } = require('./transcript')
+const { canonicalJson, parseJsonWithDepthLimit } = require('./transcript')
 
 const CLAUDE_PLUGIN_NAME = 'nightshift'
 const NIGHTSHIFT_NAMESPACE = `${CLAUDE_PLUGIN_NAME}:`
@@ -21,12 +21,11 @@ function parseHostEventLine(lineBytes) {
   if (text === null) {
     return { failure: { reason: 'unparseable-event' } }
   }
-  let event
-  try {
-    event = JSON.parse(text)
-  } catch {
+  const parsed = parseJsonWithDepthLimit(text)
+  if (parsed.ok !== true) {
     return { failure: { reason: 'unparseable-event' } }
   }
+  const event = parsed.value
   if (event === null || typeof event !== 'object' || Array.isArray(event) || typeof event.type !== 'string' || event.type === '') {
     return { failure: { reason: 'unparseable-event' } }
   }
@@ -174,14 +173,8 @@ function createCodexTurnConductor({ expectedThreadId = null } = {}) {
         if (structuredResult !== null) {
           return { failure: { reason: 'duplicate-structured-result' } }
         }
-        let value = null
-        if (typeof event.item.text === 'string') {
-          try {
-            value = JSON.parse(event.item.text)
-          } catch {
-            value = null
-          }
-        }
+        const parsedResult = typeof event.item.text === 'string' ? parseJsonWithDepthLimit(event.item.text) : { ok: false }
+        const value = parsedResult.ok === true ? parsedResult.value : null
         if (!isPlainObject(value)) {
           return { failure: { reason: 'structured-result-invalid' } }
         }
@@ -210,12 +203,11 @@ function verifyTurnOutputEquality({ structuredResult, turnOutputBytes }) {
   if (text === null) {
     return { ok: false, reason: 'output-file-disagreement' }
   }
-  let value
-  try {
-    value = JSON.parse(text)
-  } catch {
+  const parsed = parseJsonWithDepthLimit(text)
+  if (parsed.ok !== true) {
     return { ok: false, reason: 'output-file-disagreement' }
   }
+  const value = parsed.value
   if (!isPlainObject(value) || canonicalJson(value) !== canonicalJson(structuredResult)) {
     return { ok: false, reason: 'output-file-disagreement' }
   }

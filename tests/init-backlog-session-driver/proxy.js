@@ -3,7 +3,7 @@
 const { timingSafeEqual } = require('node:crypto')
 
 const { BYTE_BOUNDS, DEADLINES } = require('./primitives')
-const { canonicalJson, canonicalJsonLine, isCanonicalBase64 } = require('./transcript')
+const { canonicalJson, canonicalJsonLine, isCanonicalBase64, parseJsonWithDepthLimit } = require('./transcript')
 
 const CLIENT_FRAME_MEMBERS = 'requestBase64,token'
 const WORKER_REPLY_MEMBERS = 'exitCode,ordinal,stderrBase64,stdoutBase64'
@@ -18,12 +18,11 @@ const MAX_PROXY_CLIENT_FRAME_BYTES = 4 * Math.ceil(MAX_APPLY_REQUEST_BYTES / 3) 
 const MAX_PROXY_CONNECTIONS = 4
 
 function parseCanonicalObject(bytes, expectedMemberKey) {
-  let parsed
-  try {
-    parsed = JSON.parse(bytes.toString('utf8'))
-  } catch {
+  const result = parseJsonWithDepthLimit(bytes.toString('utf8'))
+  if (result.ok !== true) {
     return null
   }
+  const parsed = result.value
   if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
     return null
   }
@@ -71,12 +70,11 @@ function createAuthorizationGate({ host, hostContext, scenarioRoot }) {
 
   return {
     admit(requestBytes) {
-      let request
-      try {
-        request = JSON.parse(Buffer.from(requestBytes).toString('utf8'))
-      } catch {
+      const parsed = parseJsonWithDepthLimit(Buffer.from(requestBytes).toString('utf8'))
+      if (parsed.ok !== true) {
         return { ok: false, reason: 'field' }
       }
+      const request = parsed.value
       if (request === null || typeof request !== 'object' || Array.isArray(request)) {
         return { ok: false, reason: 'field' }
       }

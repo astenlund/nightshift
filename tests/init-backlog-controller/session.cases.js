@@ -10,7 +10,7 @@ const test = require('node:test')
 const driver = require('../init-backlog-session-driver')
 const workerModule = require('../init-backlog-controller-worker')
 const proxyClient = require('../fixtures/init-backlog-eval/controller-proxy.js')
-const { canonicalJson, sha256 } = require('./helpers')
+const { canonicalJson, nestedJsonText, sha256 } = require('./helpers')
 const { ELECTION_MARKER_PATH } = require('./election-oracles')
 
 const REQUEST_GATE_BASENAME = '.nightshift-init-backlog.request-gate'
@@ -965,6 +965,16 @@ function runSessionCases(repositoryRoot) {
     gate.installApplyAuthorization(applyBytes)
     assert.deepEqual(gate.admit(Buffer.concat([applyBytes, Buffer.from(' ')])), { ok: false, reason: 'request-byte' })
     assert.deepEqual(gate.admit(applyBytes), { ok: true, operation: 'apply' })
+  })
+
+  test('the authorization gate rejects over-deep proxy request JSON without recursive failure', () => {
+    const scenarioRoot = '/eval/run/repo'
+    const gate = driver.createAuthorizationGate({ host: 'codex', hostContext: FIXTURE_HOST_CONTEXT, scenarioRoot })
+    gate.authorizeInspect()
+    const deeplyNestedHostContext = nestedJsonText(10000)
+    const requestBytes = Buffer.from(`{"host":"codex","hostContext":${deeplyNestedHostContext},"operation":"inspect","protocolVersion":1,"root":"${scenarioRoot}"}`, 'utf8')
+
+    assert.deepEqual(gate.admit(requestBytes), { ok: false, reason: 'field' })
   })
 
   test('a non-approved branch permanently authorizes no apply', () => {

@@ -16,7 +16,7 @@ const { homedir } = require('node:os')
 const nodePath = require('node:path')
 
 const driver = require('./init-backlog-session-driver')
-const { canonicalJson, canonicalJsonLine } = require('./init-backlog-session-driver/transcript')
+const { canonicalJson, canonicalJsonLine, parseJsonWithDepthLimit } = require('./init-backlog-session-driver/transcript')
 // The dialogue, host-event, and adjudication seams are driver-internal modules
 // (not facade exports); the live entry requires them directly, the same way
 // the dialogue cases do.
@@ -890,12 +890,11 @@ function stableReadCanonicalObject(filesystem, path) {
   if (text === null) {
     throw new Error(`compatibility record is not valid UTF-8: ${path}`)
   }
-  let parsed
-  try {
-    parsed = JSON.parse(text)
-  } catch {
+  const parsedResult = parseJsonWithDepthLimit(text)
+  if (parsedResult.ok !== true) {
     throw new Error(`compatibility record is not valid JSON: ${path}`)
   }
+  const parsed = parsedResult.value
   if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
     throw new Error(`compatibility record is not a JSON object: ${path}`)
   }
