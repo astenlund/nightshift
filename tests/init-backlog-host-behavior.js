@@ -2113,13 +2113,13 @@ function createLiveBindings({ filesystem = nodeFilesystem, platform, workerProce
 
             return
           }
-          entry.onLine(Buffer.from(line))
+          entry.onLine(line)
 
           return
         }
         let frame = null
         try {
-          frame = JSON.parse(Buffer.from(line).toString('utf8'))
+          frame = JSON.parse(line.toString('utf8'))
         } catch {
           frame = null
         }
@@ -2131,7 +2131,7 @@ function createLiveBindings({ filesystem = nodeFilesystem, platform, workerProce
           && Object.keys(frame).sort().join(',') === 'controllerRuntimeSha256,ready'
           && frame.ready === true
           && frame.controllerRuntimeSha256 === expectedDigest
-          && Buffer.from(line).equals(Buffer.from(canonicalJson(readyFrame), 'utf8'))
+          && line.equals(Buffer.from(canonicalJson(readyFrame), 'utf8'))
         if (!/^[0-9a-f]{64}$/.test(expectedDigest ?? '') || !exactReadyFrame) {
           startupFailure()
 
@@ -2700,13 +2700,12 @@ async function runLiveHostSession({ call, filesystem, platform, processAdapterFa
       limit: driver.BYTE_BOUNDS.MAX_HOST_LINE_BYTES,
       limitName: 'MAX_HOST_LINE_BYTES',
       onLine: (line) => {
-        const lineBytes = Buffer.from(line)
-        if (transcript.appendHostEvent(lineBytes).ordinal === undefined) {
+        if (transcript.appendHostEvent(line).ordinal === undefined) {
           settle({ failure: recordTranscriptFailure() })
 
           return
         }
-        const outcome = conductor.acceptLine(lineBytes)
+        const outcome = conductor.acceptLine(line)
         if (outcome.failure !== undefined) {
           conductorFailure = outcome.failure
           adapter.terminate()
@@ -2868,13 +2867,12 @@ async function runLiveHostSession({ call, filesystem, platform, processAdapterFa
       limit: driver.BYTE_BOUNDS.MAX_HOST_LINE_BYTES,
       limitName: 'MAX_HOST_LINE_BYTES',
       onLine: (line) => {
-        const lineBytes = Buffer.from(line)
-        if (transcript.appendHostEvent(lineBytes).ordinal === undefined) {
+        if (transcript.appendHostEvent(line).ordinal === undefined) {
           settle({ failure: recordTranscriptFailure() })
 
           return
         }
-        const outcome = conductor.acceptLine(lineBytes)
+        const outcome = conductor.acceptLine(line)
         if (outcome.failure !== undefined) {
           primaryFailure = primaryFailure ?? claimPrimaryFailure('session-input', activePhase)
 
