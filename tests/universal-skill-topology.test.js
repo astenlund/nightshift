@@ -6,6 +6,7 @@ const { join, relative } = require('node:path')
 const test = require('node:test')
 
 const { PROCEDURE_REPLACEMENTS, PUBLIC_SKILLS, REVISE_ENGINE_RESOURCES, REVISE_WRAPPERS } = require('./entry-contract')
+const { advanceQueue, createQueue, resumeQueue } = require('../skills/handover/handover-queue')
 
 const REPOSITORY_ROOT = join(__dirname, '..')
 const AGREEMENT_PATH = '../spec-agreement/SKILL.md'
@@ -134,6 +135,7 @@ test('public topology exposes only the ten public skills and no legacy command t
   }
 
   for (const bundledPath of [
+    join(PUBLIC_SKILLS_ROOT, 'handover', 'handover-queue.js'),
     join(PUBLIC_SKILLS_ROOT, 'spec-agreement', 'spec-agreement.js'),
     join(PUBLIC_SKILLS_ROOT, 'spec-agreement', 'spec-agreement.test.js'),
     join(PUBLIC_SKILLS_ROOT, 'spec-agreement', 'fixtures', 'fingerprint-v1.json'),
@@ -164,22 +166,103 @@ test('handover pins the durable queue lifecycle contract', () => {
 
   for (const [contractTerm, expectation] of [
     ['`.tmp/handover-queue.md` in the project root', 'name the durable queue path'],
+    ['bundled `handover-queue.js` controller', 'name the deterministic queue owner'],
     ['`- [ ] <step number>. <step name>`', 'pin the queued step line form'],
     ['`- [x]` is the sole completion mark', 'pin a single completion mark a resuming session can recognize'],
     ['an absent file is the ordinary fresh-run case', 'state the absent-file branch'],
     ['idempotent write', 'state that re-marking a completed step is idempotent'],
-    ['its unmarked steps are the remaining work', 'derive remaining work from unmarked steps on resume'],
+    ['repository-local ordinary single-link file that is ignored and untracked', 'bind the queue to a safe physical file'],
+    ['stable two-read identity check', 'require stable queue capture'],
   ]) {
     assert.equal(countExact(scopeSection, contractTerm), 1, `handover scope must ${expectation} exactly once`)
   }
 
-  const resumeTiebreak = 'the queue wins: its marks record what a prior session finished, while the ladder only infers it'
-  const rebuildGuard = 'keep that queue and continue from its first unmarked step'
-  assert.equal(countExact(body, rebuildGuard), 1, 'handover must keep a live queue instead of rebuilding it on resume')
-  assert.equal(countExact(body, resumeTiebreak), 1, 'handover must resolve a ladder-versus-queue disagreement in the queue\'s favor')
-  assert.equal(countExact(body, 'Mark step 12 completed only once its whole tail'), 1, 'handover must defer the step-12 mark until its tail completes, so a mid-tail crash does not read as dead state')
+  const rebuildGuard = 'scratch state can never skip a lifecycle gate'
+  assert.equal(countExact(body, rebuildGuard), 1, 'handover must restart at the ladder when queue marks would skip a gate')
+  assert.equal(countExact(body, 'a queue may resume earlier than or at the detected ladder step, never later'), 1, 'handover must treat the ladder as the latest safe resume bound')
+  assert.equal(countExact(body, 'completing step 12 marks steps 10 and 12 together'), 1, 'handover must model the coupled step-10 and step-12 tail marks')
   assert.equal(body.indexOf(rebuildGuard) > agreementStart, true, 'the resume branch must live in the agreement and stage entry procedure')
   assert.equal(body.includes('sub-step resume is deliberately not tracked'), false, 'handover must not deny the cross-session step resume the queue now provides')
+})
+
+test('handover queue rejects malformed authority and cannot outrun the ladder', () => {
+  const authority = { artifactPath: '.claude/features/example.md', planFingerprint: `sha256:${'a'.repeat(64)}`, targetScope: 'whole file' }
+  const evidence = { ignored: true, ordinary: true, singleLink: true, stable: true, tracked: false }
+  const sourceBuffer = createQueue({ authority, entryStep: 4 })
+  const text = sourceBuffer.toString('utf8')
+  const lines = text.trimEnd().split('\n')
+
+  assert.deepEqual(resumeQueue({ detectedEntryStep: 4, evidence, expectedAuthority: authority, sourceBuffer }), { kind: 'live', nextStep: 4, sourceBuffer })
+  for (const malformed of [
+    Buffer.from([...lines.slice(0, 2), ...lines.slice(3)].join('\n') + '\n'),
+    Buffer.from([...lines, lines[1]].join('\n') + '\n'),
+    Buffer.from([lines[0], lines[2], lines[1], ...lines.slice(3)].join('\n') + '\n'),
+    Buffer.from(text.replace('4. Implement the plan', '4. Skip the plan')),
+    Buffer.from([lines[0], lines[1], lines.at(-1)].join('\n') + '\n'),
+    Buffer.from(text.replace('- [ ] 5.', '- [x] 5.')),
+  ]) {
+    assert.throws(() => resumeQueue({ detectedEntryStep: 4, evidence, expectedAuthority: authority, sourceBuffer: malformed }))
+  }
+
+  let advanced = sourceBuffer
+  for (const completedStep of [4, 5, 6, 7, 8, 9, 11]) {
+    advanced = advanceQueue({ completedStep, currentAuthority: authority, evidence, nextAuthority: authority, sourceBuffer: advanced }).sourceBuffer
+  }
+  const restarted = resumeQueue({ detectedEntryStep: 5, evidence, expectedAuthority: authority, sourceBuffer: advanced })
+
+  assert.equal(restarted.kind, 'restart')
+  assert.equal(restarted.nextStep, 5)
+  assert.match(restarted.sourceBuffer.toString('utf8'), /- \[ \] 5\. Revise code/)
+  assert.equal(restarted.sourceBuffer.toString('utf8').includes('- [x]'), false)
+})
+
+test('handover queue models coupled tail completion and rejects untrusted files', () => {
+  const authority = { artifactPath: '.claude/features/example.md', planFingerprint: 'none', targetScope: 'sections: Delivery' }
+  const evidence = { ignored: true, ordinary: true, singleLink: true, stable: true, tracked: false }
+  let sourceBuffer = createQueue({ authority, entryStep: 5 })
+  for (const completedStep of [5, 6, 7, 8, 9]) {
+    sourceBuffer = advanceQueue({ completedStep, currentAuthority: authority, evidence, nextAuthority: authority, sourceBuffer }).sourceBuffer
+  }
+
+  assert.throws(() => advanceQueue({ completedStep: 10, currentAuthority: authority, evidence, nextAuthority: authority, sourceBuffer }))
+  const beforeReport = advanceQueue({ completedStep: 11, currentAuthority: authority, evidence, nextAuthority: authority, sourceBuffer })
+  sourceBuffer = beforeReport.sourceBuffer
+  assert.equal(beforeReport.nextStep, 12)
+  const completed = advanceQueue({ completedStep: 12, currentAuthority: authority, evidence, nextAuthority: authority, sourceBuffer })
+
+  assert.equal(completed.complete, true)
+  for (const override of [
+    { ignored: false },
+    { ordinary: false },
+    { singleLink: false },
+    { stable: false },
+    { tracked: true },
+  ]) {
+    assert.throws(() => resumeQueue({ detectedEntryStep: 5, evidence: { ...evidence, ...override }, expectedAuthority: authority, sourceBuffer }))
+  }
+  for (const override of [
+    { artifactPath: '.claude/features/other.md' },
+    { planFingerprint: `sha256:${'b'.repeat(64)}` },
+    { targetScope: 'whole file' },
+  ]) {
+    assert.throws(() => resumeQueue({ detectedEntryStep: 5, evidence, expectedAuthority: { ...authority, ...override }, sourceBuffer }))
+  }
+})
+
+test('handover queue rebinds plan authority and makes durable marks idempotent', () => {
+  const initialAuthority = { artifactPath: '.claude/features/example.md', planFingerprint: 'none', targetScope: 'whole file' }
+  const planAuthority = { ...initialAuthority, planFingerprint: `sha256:${'c'.repeat(64)}` }
+  const evidence = { ignored: true, ordinary: true, singleLink: true, stable: true, tracked: false }
+  const sourceBuffer = createQueue({ authority: initialAuthority, entryStep: 2 })
+  const advanced = advanceQueue({ completedStep: 2, currentAuthority: initialAuthority, evidence, nextAuthority: planAuthority, sourceBuffer })
+
+  assert.equal(resumeQueue({ detectedEntryStep: 3, evidence, expectedAuthority: planAuthority, sourceBuffer: advanced.sourceBuffer }).nextStep, 3)
+  assert.deepEqual(
+    advanceQueue({ completedStep: 2, currentAuthority: planAuthority, evidence, nextAuthority: planAuthority, sourceBuffer: advanced.sourceBuffer }),
+    advanced,
+  )
+  assert.throws(() => createQueue({ authority: initialAuthority, entryStep: 6 }))
+  assert.throws(() => resumeQueue({ detectedEntryStep: 12, evidence, expectedAuthority: planAuthority, sourceBuffer: advanced.sourceBuffer }))
 })
 
 test('init-backlog preserves scaffolding behavior over the controller and normalized assets', () => {
