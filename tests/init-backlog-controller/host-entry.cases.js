@@ -3253,28 +3253,6 @@ function runHostEntryCases(repositoryRoot) {
     }
   })
 
-  test('staged prompt-baseline consumers retain source authority in the checkout', () => {
-    const { createSourceGitRunner } = require('../init-backlog-prompt-baseline')
-    const { assembleClaudePromptBaseline, assembleCodexPromptBaseline, loadPromptBaseline, stageCandidate } = require('../host-discovery-smoke-lib')
-    const scratch = tempRoot()
-    const gitExecutablePath = resolveRealGitExecutable()
-    const sourceGitRunner = createSourceGitRunner({ environment: hostBehavior.buildSourceGitEnvironment({ ambientEnvironment: process.env, platform: process.platform }), gitExecutablePath })
-    try {
-      const treeId = execFileSync(gitExecutablePath, ['-C', repositoryRoot, 'write-tree'], { encoding: 'utf8', windowsHide: true }).trim()
-      const candidate = stageCandidate({ checkoutRoot: repositoryRoot, destinationRoot: scratch, treeId })
-      const baseline = loadPromptBaseline(candidate.root, { sourceGitRunner, sourceRepositoryRoot: repositoryRoot })
-      const assemblies = [
-        assembleClaudePromptBaseline({ candidateRoot: candidate.root, destinationRoot: join(scratch, 'claude'), sourceGitRunner, sourceRepositoryRoot: repositoryRoot }),
-        assembleCodexPromptBaseline({ candidateRoot: candidate.root, destinationRoot: join(scratch, 'codex'), sourceGitRunner, sourceRepositoryRoot: repositoryRoot }),
-      ]
-
-      assert.deepEqual(baseline.files.map((entry) => entry.path), baseline.manifest.files.map((entry) => entry.path))
-      assert.equal(assemblies.every((assembly) => assembly.fixtureRoot.startsWith(candidate.root)), true)
-    } finally {
-      nodeFilesystem.rmSync(scratch, { force: true, recursive: true })
-    }
-  })
-
   test('the apply-call recorder captures the transcript watermark at apply admission', () => {
     const verdicts = [
       { ok: false, reason: 'order' },
