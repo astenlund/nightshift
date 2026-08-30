@@ -3869,6 +3869,9 @@ function runHostEntryCases(repositoryRoot) {
       write('skills/init-backlog/windows-attributes.ps1', 'attribute helper\n')
       write('skills/ready/ready.js', 'ready parser\n')
       write('skills/spec-agreement/spec-agreement.js', 'agreement controller\n')
+      write('internal/backlog-catalog.js', 'backlog catalog\n')
+      write('internal/filesystem-primitives.js', 'filesystem primitives\n')
+      write('internal/git-runner.js', 'git runner\n')
       write('internal/notes.md', 'internal file\n')
       write('hooks/hook.js', 'hook file\n')
       const proxyClientPath = join(scratch, 'controller-proxy.js')
@@ -3892,6 +3895,9 @@ function runHostEntryCases(repositoryRoot) {
       assert.equal(manifest.schemaVersion, 1)
       const paths = manifest.files.map((file) => file.path)
       assert.deepEqual(paths, [...paths].sort(), 'manifest file paths are ordinal sorted')
+      assert.equal(paths.includes('internal/backlog-catalog.js'), true)
+      assert.equal(paths.includes('internal/filesystem-primitives.js'), true)
+      assert.equal(paths.includes('internal/git-runner.js'), true)
       const entryItem = manifest.files.find((file) => file.path === 'skills/init-backlog/init-backlog.js')
       assert.equal(entryItem.role, 'controller-proxy')
       assert.equal(entryItem.sourceSha256, sha256(Buffer.from('production controller entry\n', 'utf8')))
@@ -3927,6 +3933,11 @@ function runHostEntryCases(repositoryRoot) {
       write(root, 'ready/ready.js', 'ready parser\n')
       write(root, 'spec-agreement/spec-agreement.js', 'agreement controller\n')
     }
+    const populateInternal = (root) => {
+      write(root, 'backlog-catalog.js', 'backlog catalog\n')
+      write(root, 'filesystem-primitives.js', 'filesystem primitives\n')
+      write(root, 'git-runner.js', 'git runner\n')
+    }
 
     for (const linkedRoot of ['checkout', '.claude-plugin', 'hooks', 'internal', 'skills']) {
       const scratch = tempRoot()
@@ -3936,6 +3947,7 @@ function runHostEntryCases(repositoryRoot) {
         if (linkedRoot === 'checkout') {
           populateManifests(join(externalRoot, '.claude-plugin'))
           populateSkills(join(externalRoot, 'skills'))
+          populateInternal(join(externalRoot, 'internal'))
           nodeFilesystem.symlinkSync(externalRoot, checkoutRoot, linkType)
         } else {
           nodeFilesystem.mkdirSync(checkoutRoot)
@@ -3948,6 +3960,11 @@ function runHostEntryCases(repositoryRoot) {
             populateSkills(externalRoot)
           } else {
             populateSkills(join(checkoutRoot, 'skills'))
+          }
+          if (linkedRoot === 'internal') {
+            populateInternal(externalRoot)
+          } else {
+            populateInternal(join(checkoutRoot, 'internal'))
           }
           if (linkedRoot === 'hooks' || linkedRoot === 'internal') {
             write(externalRoot, 'external.js', 'external runtime file\n')
@@ -4000,6 +4017,9 @@ function runHostEntryCases(repositoryRoot) {
       write('skills/init-backlog/windows-attributes.ps1', 'attribute helper\n')
       write('skills/ready/ready.js', 'ready parser\n')
       write('skills/spec-agreement/spec-agreement.js', 'agreement controller\n')
+      write('internal/backlog-catalog.js', 'backlog catalog\n')
+      write('internal/filesystem-primitives.js', 'filesystem primitives\n')
+      write('internal/git-runner.js', 'git runner\n')
       nodeFilesystem.mkdirSync(join(checkoutRoot, 'hooks'))
       const probeFailure = new Error('synthetic optional-root probe failure')
       probeFailure.code = 'EACCES'
@@ -4032,7 +4052,7 @@ function runHostEntryCases(repositoryRoot) {
         proxyClientPath,
         runPluginRoot,
       })
-      assert.equal(builtWithoutOptionalRoots.manifest.files.some((file) => file.path.startsWith('hooks/') || file.path.startsWith('internal/')), false)
+      assert.equal(builtWithoutOptionalRoots.manifest.files.some((file) => file.path.startsWith('hooks/')), false)
     } finally {
       nodeFilesystem.rmSync(scratch, { force: true, recursive: true })
     }
