@@ -41,6 +41,9 @@ const MAX_SYMLINK_CHAIN_LINKS = 32
 // Exact terminal evidence holds two stable collections and one canonical image
 // concurrently, so this admission bound also caps the attestation memory peak.
 const MAX_TERMINAL_REPOSITORY_CONTENT_BYTES = 67108864
+const MAX_SCENARIO_GIT_STDERR_BYTES = 65536
+const MAX_SCENARIO_GIT_STDOUT_BYTES = 1048576
+const SCENARIO_GIT_TIMEOUT_MILLISECONDS = 30000
 const MAX_VERSION_LINE_BYTES = 256
 const TERMINAL_REPOSITORY_LIMITS = Object.freeze({
   aggregateBytes: MAX_TERMINAL_REPOSITORY_CONTENT_BYTES,
@@ -878,20 +881,57 @@ function createTerminalRepositoryCollector(options) {
   return () => collectTerminalRepository(options)
 }
 
-function createScenarioGitRunner({ environment, gitExecutablePath, scenarioRoot }) {
+class ScenarioGitCommandError extends Error {
+  constructor(detailCode) {
+    super(`bounded scenario Git ${detailCode} failed`)
+    this.detailCode = detailCode
+    this.name = 'ScenarioGitCommandError'
+  }
+}
+
+function createScenarioGitRunner({ environment, gitExecutablePath, scenarioRoot, spawnSync: run = spawnSync }) {
   if (typeof gitExecutablePath !== 'string' || !nodePath.isAbsolute(gitExecutablePath)) {
     throw new Error('the scenario Git runner requires a retained absolute trusted git executable path')
   }
+  if (typeof scenarioRoot !== 'string' || !nodePath.isAbsolute(scenarioRoot)) {
+    throw new Error('the scenario Git runner requires an absolute scenario root')
+  }
 
   return (argv) => {
+    if (!Array.isArray(argv) || argv.some((argument) => typeof argument !== 'string')) {
+      throw new Error('the scenario Git runner requires a string argv array')
+    }
     // Spawning by the retained absolute path means neither a scenario-cwd
     // sentinel nor an untrusted PATH entry can change which git is launched.
-    const completion = spawnSync(gitExecutablePath, ['-C', scenarioRoot, ...argv], { env: environment, windowsHide: true })
-    if (completion.error) {
-      throw new Error('trusted Git invocation failed to spawn', { cause: completion.error })
+    const completion = run(gitExecutablePath, argv, {
+      cwd: scenarioRoot,
+      encoding: null,
+      env: environment,
+      killSignal: 'SIGKILL',
+      maxBuffer: MAX_SCENARIO_GIT_STDOUT_BYTES,
+      shell: false,
+      timeout: SCENARIO_GIT_TIMEOUT_MILLISECONDS,
+      windowsHide: true,
+    })
+    const stdout = completion?.stdout
+    const stderr = completion?.stderr
+    const outputOverflow = completion?.error?.code === 'ENOBUFS'
+      || Buffer.isBuffer(stdout) && stdout.length > MAX_SCENARIO_GIT_STDOUT_BYTES
+      || Buffer.isBuffer(stderr) && stderr.length > MAX_SCENARIO_GIT_STDERR_BYTES
+    if (outputOverflow) {
+      throw new ScenarioGitCommandError('output-capacity')
+    }
+    if (completion?.error?.code === 'ETIMEDOUT' || completion?.signal !== null && completion?.signal !== undefined) {
+      throw new ScenarioGitCommandError('termination')
+    }
+    if (completion?.error) {
+      throw new ScenarioGitCommandError('spawn')
+    }
+    if (!Number.isSafeInteger(completion.status) || !Buffer.isBuffer(stdout) || !Buffer.isBuffer(stderr)) {
+      throw new ScenarioGitCommandError('child-process')
     }
 
-    return { exitCode: completion.status ?? 1, stderr: completion.stderr, stdout: completion.stdout }
+    return { exitCode: completion.status, stderr, stdout }
   }
 }
 
@@ -1431,8 +1471,26 @@ async function runEvaluation(options) {
     const temporaryPaths = { run: hostTemp.path }
     const scenarioRoot = nodePath.join(runRoot, 'scenario')
     const gitIsolation = driver.createGitIsolationInputs({ filesystem, runRoot })
-    const runGit = scenario.repository.git.kind === 'git' ? effectiveRunGitFactory({ gitIsolation, runRoot, scenarioRoot }) : null
-    const materialized = driver.materializeScenario({ filesystem, platform, repository: scenario.repository, runGit, scenarioRoot })
+    const failScenarioSetup = (detailCode) => {
+      const result = infrastructureCarrier({ detailCode, host, phase: 'initial-turn' })
+      const finalization = driver.finalizeRunRoot({ filesystem, runRoot, terminationProven: true })
+
+      return { result: finalization.retainedRunRoot === null ? result : { ...result, retainedRunRoot: finalization.retainedRunRoot } }
+    }
+    let runGit
+    try {
+      runGit = scenario.repository.git.kind === 'git' ? effectiveRunGitFactory({ gitIsolation, runRoot, scenarioRoot }) : null
+    } catch {
+      return failScenarioSetup('spawn')
+    }
+    let materialized
+    try {
+      materialized = driver.materializeScenario({ filesystem, platform, repository: scenario.repository, runGit, scenarioRoot })
+    } catch (error) {
+      const detailCode = error instanceof ScenarioGitCommandError ? error.detailCode : 'child-process'
+
+      return failScenarioSetup(detailCode)
+    }
     const sessionPluginRoot = nodePath.join(runRoot, controllerEnabled ? 'enabled-plugin' : 'disabled-plugin')
     filesystem.mkdirSync(sessionPluginRoot)
     const plugin = preparePluginRoot({ controllerEnabled, filesystem, host, runRoot, scenario, sessionPluginRoot })

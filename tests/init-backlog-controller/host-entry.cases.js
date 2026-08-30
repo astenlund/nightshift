@@ -1932,6 +1932,73 @@ function runHostEntryCases(repositoryRoot) {
     }
   })
 
+  test('the scenario git runner applies the accepted synchronous deadline and output bounds', () => {
+    const scratch = tempRoot()
+    try {
+      const scenarioRoot = join(scratch, 'scenario')
+      const gitExecutablePath = join(scratch, process.platform === 'win32' ? 'git.exe' : 'git')
+      const environment = { GIT_OPTIONAL_LOCKS: '0', PATH: join(scratch, 'bin') }
+      const calls = []
+      const spawnSync = (executable, argv, options) => {
+        calls.push({ argv, executable, options })
+
+        return { error: undefined, signal: null, status: 0, stderr: Buffer.alloc(0), stdout: Buffer.from('git version bounded\n', 'utf8') }
+      }
+      const runner = hostBehavior.createScenarioGitRunner({ environment, gitExecutablePath, scenarioRoot, spawnSync })
+      const completion = runner(['--version'])
+
+      assert.deepEqual(completion, { exitCode: 0, stderr: Buffer.alloc(0), stdout: Buffer.from('git version bounded\n', 'utf8') })
+      assert.equal(calls.length, 1)
+      assert.equal(calls[0].executable, gitExecutablePath)
+      assert.deepEqual(calls[0].argv, ['--version'])
+      assert.equal(calls[0].options.cwd, scenarioRoot)
+      assert.equal(calls[0].options.encoding, null)
+      assert.equal(calls[0].options.env, environment)
+      assert.equal(calls[0].options.killSignal, 'SIGKILL')
+      assert.equal(calls[0].options.maxBuffer, 1048576)
+      assert.equal(calls[0].options.shell, false)
+      assert.equal(calls[0].options.timeout, 30000)
+      assert.equal(calls[0].options.windowsHide, true)
+    } finally {
+      nodeFilesystem.rmSync(scratch, { force: true, recursive: true })
+    }
+  })
+
+  test('the scenario git runner rejects timeout and stream overflow without process text', () => {
+    const scratch = tempRoot()
+    try {
+      const scenarioRoot = join(scratch, 'scenario')
+      const gitExecutablePath = join(scratch, process.platform === 'win32' ? 'git.exe' : 'git')
+      const environment = { GIT_OPTIONAL_LOCKS: '0' }
+      const run = (result) => hostBehavior.createScenarioGitRunner({ environment, gitExecutablePath, scenarioRoot, spawnSync: () => result })(['status'])
+      const assertFailure = (result, detailCode) => assert.throws(() => run(result), (error) => {
+        assert.equal(error.message, `bounded scenario Git ${detailCode} failed`)
+        assert.equal(error.detailCode, detailCode)
+        assert.doesNotMatch(error.message, /secret/)
+
+        return true
+      })
+
+      assertFailure({
+        error: Object.assign(new Error('secret timeout text'), { code: 'ETIMEDOUT' }),
+        signal: 'SIGKILL',
+        status: null,
+        stderr: Buffer.alloc(0),
+        stdout: Buffer.alloc(0),
+      }, 'termination')
+      assertFailure({
+        error: Object.assign(new Error('secret overflow text'), { code: 'ENOBUFS' }),
+        signal: null,
+        status: null,
+        stderr: Buffer.alloc(0),
+        stdout: Buffer.alloc(1048577),
+      }, 'output-capacity')
+      assertFailure({ error: undefined, signal: null, status: 0, stderr: Buffer.alloc(65537), stdout: Buffer.alloc(0) }, 'output-capacity')
+    } finally {
+      nodeFilesystem.rmSync(scratch, { force: true, recursive: true })
+    }
+  })
+
   test('the collector rejects malformed tracked-set output and unsupported entries', () => {
     const scratch = tempRoot()
     try {
@@ -2101,6 +2168,51 @@ function runHostEntryCases(repositoryRoot) {
         phase: 'post-session',
         retainedRunRoot: harness.roots[1],
       })
+    } finally {
+      nodeFilesystem.rmSync(scratch, { force: true, recursive: true })
+    }
+  })
+
+  test('scenario Git setup failures return typed infrastructure and remove the proved-closed run root', async () => {
+    const scratch = tempRoot()
+    try {
+      const cases = [
+        {
+          detailCode: 'spawn',
+          runGitFactory: () => {
+            throw new Error('bounded scenario Git spawn failed')
+          },
+        },
+        {
+          detailCode: 'child-process',
+          runGitFactory: () => () => ({ exitCode: 1, stderr: Buffer.alloc(0), stdout: Buffer.alloc(0) }),
+        },
+      ]
+      for (const scenarioCase of cases) {
+        const harness = createEvaluationHarness(join(scratch, scenarioCase.detailCode))
+        const repository = { ...harness.scenario.repository, git: { kind: 'git', trackedPaths: [] } }
+        const member = { base: repository, hostEntries: { 'claude-code': [], codex: [] }, marker: null }
+        const scenario = {
+          ...harness.scenario,
+          oracles: { ...harness.scenario.oracles, terminalRepositories: { disabled: member, enabled: member } },
+          repository,
+        }
+        harness.options.scenarios = [scenario]
+        harness.options.runGitFactory = scenarioCase.runGitFactory
+
+        const evaluation = await hostBehavior.runEvaluation(harness.options)
+
+        assert.deepEqual(evaluation.result, {
+          code: 'harness-infrastructure',
+          detailCode: scenarioCase.detailCode,
+          host: 'claude-code',
+          initialCode: null,
+          ok: false,
+          phase: 'initial-turn',
+          retainedRunRoot: null,
+        })
+        assert.equal(nodeFilesystem.existsSync(harness.roots[1]), false)
+      }
     } finally {
       nodeFilesystem.rmSync(scratch, { force: true, recursive: true })
     }
