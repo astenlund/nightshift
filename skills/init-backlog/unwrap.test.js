@@ -219,6 +219,14 @@ test('same-line type 1 closure resumes prose scanning immediately', () => {
   assert.equal(unwrapText(text), '<script>inline</script>\nAfter continued\n');
 });
 
+test('type-six HTML openers keep CommonMark indentation semantics', () => {
+  const accepted = '   <div>\ninside\n\nAfter\ncontinued\n';
+  const indentedCode = '    <div>\ninside\n\nAfter\ncontinued\n';
+
+  assert.deepEqual(detectHardWraps(accepted), [{ line: 5, kind: 'paragraph' }]);
+  assert.deepEqual(detectHardWraps(indentedCode), [{ line: 5, kind: 'paragraph' }]);
+});
+
 test('unterminated raw HTML blocks suppress wrap detection through EOF when required', () => {
   const cases = [
     '<script>\ninside\nAfter\ncontinued\n',

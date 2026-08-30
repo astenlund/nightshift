@@ -61,6 +61,7 @@ const BACKLOG_FILES = ['QUICK_WINS.md', 'FEATURES.md', 'BUGS.md', 'PATTERNS.md',
 const BACKLOG_DIRECTORIES = ['features', 'bugs', 'patterns'];
 const STRICT_UTF8_DECODER = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true });
 const HTML_BLOCK_TAG_CLOSERS = new Map(['script', 'pre', 'style', 'textarea'].map((tag) => [tag, new RegExp(`</${tag}\\s*>`, 'i')]));
+const HTML_BLOCK_TYPE_SIX_MATCHER = new RegExp(`^</?(?:${HTML_BLOCK_TYPE_ONE_OR_SIX_TAGS.join('|')})(?:\\s|/?>|$)`, 'i');
 const RAW_HTML_MASK_CACHE = new WeakMap();
 
 function rawHtmlBlockStart(line) {
@@ -71,7 +72,7 @@ function rawHtmlBlockStart(line) {
   if (/^<![A-Z]/.test(trimmed)) return { type: 4, terminator: '>' };
   const rawTag = trimmed.match(/^<(script|pre|style|textarea)(?:\s|>|$)/i);
   if (rawTag) return { type: 1, closer: HTML_BLOCK_TAG_CLOSERS.get(rawTag[1].toLowerCase()) };
-  if (new RegExp(`^</?(?:${HTML_BLOCK_TYPE_ONE_OR_SIX_TAGS.join('|')})(?:\s|/?>|$)`, 'i').test(trimmed)) return { type: 6 };
+  if (HTML_BLOCK_TYPE_SIX_MATCHER.test(trimmed)) return { type: 6 };
   if (COMPLETE_HTML_TAG.test(line)) return { type: 7 };
 
   return null;
