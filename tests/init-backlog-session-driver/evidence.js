@@ -17,6 +17,26 @@ function containsCredential(bytes, credentials) {
   return credentials.some((credential) => bytes.indexOf(credential) !== -1)
 }
 
+function createCredentialSequenceScanner(credentials) {
+  const tails = credentials.map(() => Buffer.alloc(0))
+
+  return {
+    push(bytes) {
+      for (let index = 0; index < credentials.length; index += 1) {
+        const credential = credentials[index]
+        const candidate = tails[index].length === 0 ? bytes : Buffer.concat([tails[index], bytes])
+        if (candidate.indexOf(credential) !== -1) {
+          return true
+        }
+        const retainedLength = Math.min(credential.length - 1, candidate.length)
+        tails[index] = Buffer.from(candidate.subarray(candidate.length - retainedLength))
+      }
+
+      return false
+    },
+  }
+}
+
 function decodeCanonicalBase64(value) {
   if (!isCanonicalBase64(value)) {
     return null
@@ -25,7 +45,7 @@ function decodeCanonicalBase64(value) {
   return Buffer.from(value, 'base64')
 }
 
-function nestedCarrierContainsCredential(bytes, credentials, budget, depth = 0) {
+function nestedCarrierContainsCredential(bytes, credentials, budget, sequences, depth = 0) {
   if (containsCredential(bytes, credentials)) {
     return true
   }
@@ -39,15 +59,21 @@ function nestedCarrierContainsCredential(bytes, credentials, budget, depth = 0) 
   if (parsed.ok !== true) {
     return false
   }
-  const pending = [parsed.value]
-  while (pending.length > 0) {
-    const value = pending.pop()
+  function inspectValue(value) {
     if (value === null || typeof value !== 'object') {
-      continue
+      return false
     }
     for (const [key, child] of Object.entries(value)) {
       if (!CREDENTIAL_CARRIER_KEYS.has(key)) {
-        if (child !== null && typeof child === 'object') pending.push(child)
+        if (typeof child === 'string' && sequences.primitives.push(Buffer.from(child, 'utf8'))) {
+          return true
+        }
+        if (child !== null && typeof child === 'object') {
+          const contaminated = inspectValue(child)
+          if (contaminated !== false) {
+            return contaminated
+          }
+        }
         continue
       }
       if (child === null) {
@@ -61,17 +87,22 @@ function nestedCarrierContainsCredential(bytes, credentials, budget, depth = 0) 
       if (budget.decodedBytes > MAX_CREDENTIAL_DECODED_BYTES) {
         return null
       }
-      const contaminated = nestedCarrierContainsCredential(decoded, credentials, budget, depth + 1)
+      if (sequences.carriers.push(decoded)) {
+        return true
+      }
+      const contaminated = nestedCarrierContainsCredential(decoded, credentials, budget, sequences, depth + 1)
       if (contaminated !== false) {
         return contaminated
       }
     }
+
+    return false
   }
 
-  return false
+  return inspectValue(parsed.value)
 }
 
-function transcriptContainsCredential(bytes, credentials) {
+function transcriptContainsCredential(bytes, credentials, sequences) {
   const budget = { decodedBytes: 0 }
   let offset = 0
   while (offset < bytes.length) {
@@ -91,7 +122,10 @@ function transcriptContainsCredential(bytes, credentials) {
     if (budget.decodedBytes > MAX_CREDENTIAL_DECODED_BYTES) {
       return null
     }
-    const contaminated = nestedCarrierContainsCredential(payload, credentials, budget)
+    if (sequences.carriers.push(payload)) {
+      return true
+    }
+    const contaminated = nestedCarrierContainsCredential(payload, credentials, budget, sequences)
     if (contaminated !== false) {
       return contaminated
     }
@@ -101,7 +135,7 @@ function transcriptContainsCredential(bytes, credentials) {
   return false
 }
 
-function repositoryContainsCredential(bytes, credentials) {
+function repositoryContainsCredential(bytes, credentials, sequences) {
   const budget = { decodedBytes: 0 }
   const parsed = parseJsonWithDepthLimit(bytes.toString('utf8').trimEnd())
   if (parsed.ok !== true || parsed.value === null || typeof parsed.value !== 'object' || Array.isArray(parsed.value) || !Array.isArray(parsed.value.observed?.entries)) {
@@ -122,7 +156,10 @@ function repositoryContainsCredential(bytes, credentials) {
     if (budget.decodedBytes > MAX_CREDENTIAL_DECODED_BYTES) {
       return null
     }
-    const contaminated = nestedCarrierContainsCredential(content, credentials, budget)
+    if (sequences.carriers.push(content)) {
+      return true
+    }
+    const contaminated = nestedCarrierContainsCredential(content, credentials, budget, sequences)
     if (contaminated !== false) {
       return contaminated
     }
@@ -131,7 +168,7 @@ function repositoryContainsCredential(bytes, credentials) {
   return false
 }
 
-function proxyTraceContainsCredential(bytes, credentials) {
+function proxyTraceContainsCredential(bytes, credentials, sequences) {
   const budget = { decodedBytes: 0 }
   let offset = 0
   while (offset < bytes.length) {
@@ -164,7 +201,10 @@ function proxyTraceContainsCredential(bytes, credentials) {
       if (budget.decodedBytes > MAX_CREDENTIAL_DECODED_BYTES) {
         return null
       }
-      const contaminated = nestedCarrierContainsCredential(decoded, credentials, budget)
+      if (sequences.carriers.push(decoded)) {
+        return true
+      }
+      const contaminated = nestedCarrierContainsCredential(decoded, credentials, budget, sequences)
       if (contaminated !== false) {
         return contaminated
       }
@@ -183,17 +223,21 @@ function verifyCredentialFreeEvidence({ credentialValues, files }) {
   if (credentials.length === 0) {
     return true
   }
+  const sequences = {
+    carriers: createCredentialSequenceScanner(credentials),
+    primitives: createCredentialSequenceScanner(credentials),
+  }
   for (const file of files) {
     if (file === null || typeof file !== 'object' || typeof file.path !== 'string' || !Buffer.isBuffer(file.bytes) || containsCredential(file.bytes, credentials)) {
       return false
     }
     let carrierContaminated = false
     if (file.path === 'transcript.jsonl') {
-      carrierContaminated = transcriptContainsCredential(file.bytes, credentials)
+      carrierContaminated = transcriptContainsCredential(file.bytes, credentials, sequences)
     } else if (file.path === 'proxy-trace.jsonl') {
-      carrierContaminated = proxyTraceContainsCredential(file.bytes, credentials)
+      carrierContaminated = proxyTraceContainsCredential(file.bytes, credentials, sequences)
     } else if (file.path === 'repository-attestation.json') {
-      carrierContaminated = repositoryContainsCredential(file.bytes, credentials)
+      carrierContaminated = repositoryContainsCredential(file.bytes, credentials, sequences)
     }
     if (carrierContaminated !== false) {
       return false

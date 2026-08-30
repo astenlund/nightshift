@@ -1687,6 +1687,15 @@ function runSessionCases(repositoryRoot) {
     }
     const nestedTranscript = canonicalLine({ kind: 'host-event', ordinal: 1, payloadBase64: canonicalLine({ contentBase64: Buffer.from(token, 'utf8').toString('base64') }).toString('base64') })
     assert.equal(driver.verifyCredentialFreeEvidence({ credentialValues, files: files(nestedTranscript, cleanProxy, repositoryEvidence('clean repository file')) }), false, 'nested transcript carrier')
+    const tokenBoundary = Math.floor(token.length / 2)
+    const splitTranscript = Buffer.concat([
+      canonicalLine({ kind: 'host-event', ordinal: 1, payloadBase64: Buffer.from(token.slice(0, tokenBoundary), 'utf8').toString('base64') }),
+      canonicalLine({ kind: 'host-event', ordinal: 2, payloadBase64: Buffer.from(token.slice(tokenBoundary), 'utf8').toString('base64') }),
+    ])
+    assert.equal(driver.verifyCredentialFreeEvidence({ credentialValues, files: files(splitTranscript, cleanProxy, repositoryEvidence('clean repository file')) }), false, 'ordered transcript carriers reconstruct the credential')
+    const splitFields = canonicalLine({ first: token.slice(0, tokenBoundary), second: token.slice(tokenBoundary) })
+    const structuredTranscript = canonicalLine({ kind: 'host-event', ordinal: 1, payloadBase64: splitFields.toString('base64') })
+    assert.equal(driver.verifyCredentialFreeEvidence({ credentialValues, files: files(structuredTranscript, cleanProxy, repositoryEvidence('clean repository file')) }), false, 'ordered structured fields reconstruct the credential')
     assert.equal(driver.verifyCredentialFreeEvidence({ credentialValues, files: files(cleanTranscript, proxyEvidence({ stdout: canonicalLine({ contentBase64: 'not-canonical!' }) }), repositoryEvidence('clean repository file')) }), false, 'malformed nested carrier fails closed')
     assert.equal(driver.verifyCredentialFreeEvidence({ credentialValues: [null], files: [] }), false, 'a malformed credential list fails closed')
   })
