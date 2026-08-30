@@ -2336,6 +2336,35 @@ test('legacy history detection handles repeated empty and populated sections', (
   ]);
 });
 
+test('legacy history detection masks type-one raw HTML opened at end of line', () => {
+  const result = analyzeCatalog([
+    { target: 'FEATURES.md', contents: `<script
+## Implemented
+
+### Not backlog history
+</script>
+
+## Area
+` },
+  ]);
+
+  assert.deepStrictEqual(result.evidence.legacyHistory, []);
+});
+
+test('legacy history detection masks type-six raw HTML opened at end of line', () => {
+  const result = analyzeCatalog([
+    { target: 'FEATURES.md', contents: `<div
+## Implemented
+
+### Not backlog history
+
+## Area
+` },
+  ]);
+
+  assert.deepStrictEqual(result.evidence.legacyHistory, []);
+});
+
 test('malformed long HTML tag candidates remain bounded and preserve later entries', () => {
   const contents = `# Features
 

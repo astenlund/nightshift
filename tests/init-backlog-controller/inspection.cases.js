@@ -301,6 +301,20 @@ function runInspectionCases(repositoryRoot) {
     assert.equal(region.startByte, Buffer.byteLength('<script>inline</script>\n', 'utf8'))
   })
 
+  test('raw HTML type-one blocks opened at end of line mask through their closing tag', () => {
+    for (const tag of ['script', 'pre', 'style', 'textarea']) {
+      const source = Buffer.from(`<${tag}\n## Hidden\n</${tag}>\n## Visible\n`, 'utf8')
+
+      assert.deepEqual([...maskedRecords(source).masked], [0, 1, 2], `inspection scanner must mask an end-of-line <${tag} block`)
+    }
+  })
+
+  test('raw HTML type-six blocks opened at end of line mask through the first blank line', () => {
+    const source = Buffer.from('<div\n## Hidden\n\n## Visible\n', 'utf8')
+
+    assert.deepEqual([...maskedRecords(source).masked], [0, 1])
+  })
+
   test('non-Git newline evidence stays within each target family', () => {
     const result = inspectGitPolicy(repositoryRoot, {
       kind: 'non-git',

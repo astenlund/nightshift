@@ -35,7 +35,7 @@ function lineRecords(bytes) {
   return { bomLength, records }
 }
 
-const HTML_BLOCK_TYPE_SIX_START = new RegExp(`^<(?:${HTML_BLOCK_TYPE_SIX_TAGS.join('|')})(?:\\s|>)`, 'i')
+const HTML_BLOCK_TYPE_SIX_START = new RegExp(`^<(?:${HTML_BLOCK_TYPE_SIX_TAGS.join('|')})(?:\\s|>|$)`, 'i')
 
 function htmlBlockStart(line) {
   const match = line.match(/^ {0,3}(.*)$/)
@@ -45,7 +45,7 @@ function htmlBlockStart(line) {
   if (trimmed.startsWith('<?')) return { terminator: '?>' }
   if (trimmed.startsWith('<![CDATA[')) return { terminator: ']]>' }
   if (/^<![A-Z]/.test(trimmed)) return { terminator: '>' }
-  const typeOne = trimmed.match(/^<(script|pre|style|textarea)(?:\s|>)/i)
+  const typeOne = trimmed.match(/^<(script|pre|style|textarea)(?:\s|>|$)/i)
   if (typeOne) return { terminator: '</', tag: typeOne[1] }
   if (HTML_BLOCK_TYPE_SIX_START.test(trimmed)) return { blank: true }
   if (/^<\/?[A-Za-z][A-Za-z0-9-]*(?:\s+[^<>]*)?\s*\/?>/.test(trimmed)) return { blank: true }

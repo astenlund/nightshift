@@ -1421,9 +1421,9 @@ function htmlBlockStart(line) {
   if (trimmed.startsWith('<?')) return { terminator: '?>' };
   if (trimmed.startsWith('<![CDATA[')) return { terminator: ']]>' };
   if (/^<![A-Z]/.test(trimmed)) return { terminator: '>' };
-  const rawTag = trimmed.match(/^<(script|pre|style|textarea)(?:\s|>)/i);
+  const rawTag = trimmed.match(/^<(script|pre|style|textarea)(?:\s|>|$)/i);
   if (rawTag) return { terminator: '</', tag: rawTag[1] };
-  if (/^<(?:address|article|aside|base|blockquote|body|caption|center|col|colgroup|dd|details|dialog|dir|div|dl|dt|fieldset|figcaption|figure|footer|form|h[1-6]|head|header|hr|html|iframe|legend|li|link|main|menu|menuitem|nav|ol|p|param|search|section|summary|table|tbody|td|tfoot|th|thead|title|tr|track|ul)(?:\s|>)/i.test(trimmed)) return { blank: true };
+  if (/^<(?:address|article|aside|base|blockquote|body|caption|center|col|colgroup|dd|details|dialog|dir|div|dl|dt|fieldset|figcaption|figure|footer|form|h[1-6]|head|header|hr|html|iframe|legend|li|link|main|menu|menuitem|nav|ol|p|param|search|section|summary|table|tbody|td|tfoot|th|thead|title|tr|track|ul)(?:\s|>|$)/i.test(trimmed)) return { blank: true };
   if (/^<\/?[A-Za-z][A-Za-z0-9-]*(?:\s[^<>]*)?\/?>/.test(trimmed)) return { blank: true };
 
   return null;
