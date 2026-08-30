@@ -865,12 +865,10 @@ function projectedWarnings(warnings, problems, retainedBackups) {
 // projection covers everything else, so that a third-party change anywhere
 // outside the approved transition is still snapshot-drift.
 //
-// The elided fields are exactly the ones this pair of proofs already
-// determines: every one of them is a pure function of the controlled target
-// bytes, the guidance graph, the Git index, and the election marker, and each
-// of those inputs is either compared strictly below or pinned byte-exact by
-// `approvedProgress`. Nothing is elided that an unapproved edit could move on
-// its own.
+// The elided fields are limited to transition outputs this pair of proofs
+// already determines from controlled target bytes, the guidance graph, the
+// Git index, and the election marker. Inputs that can drift independently,
+// including Git newline policy inputs, remain strict comparison evidence.
 function resumeInspectionProjection(inspection, actionTargets, markerStates, scope) {
   const git = { ...inspection.git }
   if (git.electionMarker !== undefined && markerStates.values.has(git.electionMarker)) {
@@ -882,8 +880,8 @@ function resumeInspectionProjection(inspection, actionTargets, markerStates, sco
   // and the election requirement that follows from it.
   git.electionRequired = null
   git.freshScaffold = null
-  // One newline policy per controlled file, derived from that file's own bytes.
-  git.newlinePolicies = (git.newlinePolicies ?? []).filter((policy) => !actionTargets.has(policy.target))
+  // Repository attributes and Git configuration can change a controlled
+  // target's newline policy without changing that target's bytes.
   const nestedIgnoreEvidence = (git.nonPlanIgnoreMatches ?? []).filter((match) => match.sourcePath !== '.gitignore')
   if (scope.gitignorePublished) {
     // A completed root action can move root-sourced matches and their derived

@@ -982,6 +982,30 @@ function runPublicationCases() {
     }
   })
 
+  for (const scenario of [
+    { name: '.gitattributes', mutate: (root) => writeFileSync(join(root, '.gitattributes'), '*.md -text\n') },
+    { name: 'core.autocrlf', mutate: (root) => git(root, ['config', '--local', 'core.autocrlf', 'input']) },
+    { name: 'core.eol', mutate: (root) => git(root, ['config', '--local', 'core.eol', 'lf']) },
+  ]) {
+    test(`resume rejects ${scenario.name} newline policy drift`, () => {
+      const root = fixtureRoot()
+      try {
+        const { applyRequest, carried, collect } = realGitScaffoldFixture(root)
+        const actionTargets = new Set(applyRequest.actions.map((action) => action.target))
+        const actionPolicies = (inspection) => inspection.git.newlinePolicies.filter((policy) => actionTargets.has(policy.target))
+
+        assert.throws(() => publishApply(applyRequest, { crash: true, currentInspection: carried, failAt: 'after-lock-upgrade' }), /Injected publication failure at after-lock-upgrade/)
+        scenario.mutate(root)
+        const live = collect()
+        assert.notDeepEqual(actionPolicies(live), actionPolicies(carried), scenario.name)
+
+        expectCode(() => publishApply(applyRequest, { collectInspection: () => live, resume: true }), 'snapshot-drift')
+      } finally {
+        rmSync(root, { force: true, recursive: true })
+      }
+    })
+  }
+
   test('resume rejects nested ignore drift before root gitignore publication', () => {
     const root = fixtureRoot()
     try {
