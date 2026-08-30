@@ -45,7 +45,7 @@ function decodeCanonicalBase64(value) {
   return Buffer.from(value, 'base64')
 }
 
-function nestedCarrierContainsCredential(bytes, credentials, budget, sequences, depth = 0) {
+function nestedCarrierContainsCredential(bytes, credentials, budget, sequences, depth = 0, streamPrimitives = true) {
   if (containsCredential(bytes, credentials)) {
     return true
   }
@@ -68,29 +68,49 @@ function nestedCarrierContainsCredential(bytes, credentials, budget, sequences, 
     if (budget.decodedBytes > MAX_CREDENTIAL_DECODED_BYTES) {
       return null
     }
-    if (sequences.carriers.push(decoded)) {
+    if ((streamPrimitives ? sequences.carriers.push(decoded) : containsCredential(decoded, credentials))) {
       return true
     }
 
-    return nestedCarrierContainsCredential(decoded, credentials, budget, sequences, depth + 1)
+    return nestedCarrierContainsCredential(decoded, credentials, budget, sequences, depth + 1, streamPrimitives)
+  }
+  function inspectScalar(value) {
+    if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+      const bytes = Buffer.from(String(value), 'utf8')
+
+      return streamPrimitives ? sequences.primitives.push(bytes) : containsCredential(bytes, credentials)
+    }
+
+    return false
   }
   function inspectValue(value) {
-    if (value === null || typeof value !== 'object') {
+    if (value === null) {
+      return false
+    }
+    if (typeof value !== 'object') {
+      return inspectScalar(value)
+    }
+    if (Array.isArray(value)) {
+      for (const child of value) {
+        const contaminated = inspectValue(child)
+        if (contaminated !== false) {
+          return contaminated
+        }
+      }
+
       return false
     }
     for (const [key, child] of Object.entries(value)) {
+      if (containsCredential(Buffer.from(key, 'utf8'), credentials)) {
+        return true
+      }
       if (!CREDENTIAL_CARRIER_KEYS.has(key)) {
-        if (typeof child === 'string') {
-          if (sequences.primitives.push(Buffer.from(child, 'utf8'))) {
-            return true
-          }
-          const contaminated = inspectDecodedString(child, false)
-          if (contaminated !== false) {
-            return contaminated
-          }
+        const contaminated = inspectValue(child)
+        if (contaminated !== false) {
+          return contaminated
         }
-        if (child !== null && typeof child === 'object') {
-          const contaminated = inspectValue(child)
+        if (typeof child === 'string') {
+          const contaminated = inspectDecodedString(child, false)
           if (contaminated !== false) {
             return contaminated
           }
@@ -99,6 +119,9 @@ function nestedCarrierContainsCredential(bytes, credentials, budget, sequences, 
       }
       if (child === null) {
         continue
+      }
+      if (inspectScalar(child)) {
+        return true
       }
       const contaminated = inspectDecodedString(child, true)
       if (contaminated !== false) {
@@ -155,6 +178,12 @@ function repositoryContainsCredential(bytes, credentials, sequences) {
     if (entry === null || typeof entry !== 'object' || Array.isArray(entry)) {
       return null
     }
+  }
+  const metadataContaminated = nestedCarrierContainsCredential(bytes, credentials, { decodedBytes: 0 }, sequences, 0, false)
+  if (metadataContaminated !== false) {
+    return metadataContaminated
+  }
+  for (const entry of parsed.value.observed.entries) {
     if (entry.contentBase64 === null) {
       continue
     }

@@ -1709,11 +1709,11 @@ function runSessionCases(repositoryRoot) {
     const credentialValues = driver.credentialValuesFromProjection({ ANTHROPIC_API_KEY: token, HTTPS_PROXY: proxyUrl, NIGHTSHIFT_INIT_BACKLOG_PROXY_TOKEN: proxyToken, OPENAI_API_KEY: '', PATH: '/usr/bin' })
     const cleanTranscript = canonicalLine({ kind: 'host-event', ordinal: 1, payloadBase64: Buffer.from('clean host event', 'utf8').toString('base64') })
     const contaminatedTranscript = canonicalLine({ kind: 'host-event', ordinal: 1, payloadBase64: Buffer.from(`event:${token}`, 'utf8').toString('base64') })
-    const repositoryEvidence = (content) => canonicalLine({
+    const repositoryEvidence = (content, { entry = {}, trackedPaths = [] } = {}) => canonicalLine({
       expectedSha256: 'a'.repeat(64),
       observed: {
-        entries: [{ contentBase64: Buffer.from(content, 'utf8').toString('base64'), kind: 'file', mode: 420, path: 'result.txt' }],
-        git: { kind: 'non-git', trackedPaths: [] },
+        entries: [{ contentBase64: Buffer.from(content, 'utf8').toString('base64'), kind: 'file', mode: 420, path: 'result.txt', ...entry }],
+        git: { kind: 'non-git', trackedPaths },
       },
       observedSha256: 'b'.repeat(64),
     })
@@ -1766,6 +1766,17 @@ function runSessionCases(repositoryRoot) {
       payloadBase64: canonicalLine({ arbitraryBlob: Buffer.from(token, 'utf8').toString('base64'), type: 'progress' }).toString('base64'),
     })
     assert.equal(driver.verifyCredentialFreeEvidence({ credentialValues, files: files(arbitraryCarrierTranscript, cleanProxy, repositoryEvidence('clean repository file')) }), false, 'canonical Base64 under an arbitrary host-event field is credential evidence')
+    const escapedCredential = 'credential-"key-' + 'e'.repeat(48)
+    const escapedKeyCarrier = canonicalLine({ [escapedCredential]: 'clean nested value' })
+    const escapedKeyTranscript = canonicalLine({ kind: 'host-event', ordinal: 1, payloadBase64: escapedKeyCarrier.toString('base64') })
+    assert.equal(escapedKeyCarrier.includes(Buffer.from(escapedCredential, 'utf8')), false, 'the nested JSON key escapes the credential quote')
+    assert.equal(driver.verifyCredentialFreeEvidence({ credentialValues: [escapedCredential], files: files(escapedKeyTranscript, cleanProxy, repositoryEvidence('clean repository file')) }), false, 'transcript nested key')
+    assert.equal(driver.verifyCredentialFreeEvidence({ credentialValues: [escapedCredential], files: files(cleanTranscript, proxyEvidence({ stdout: escapedKeyCarrier }), repositoryEvidence('clean repository file')) }), false, 'proxy trace nested key')
+    assert.equal(driver.verifyCredentialFreeEvidence({ credentialValues: [escapedCredential], files: files(cleanTranscript, cleanProxy, repositoryEvidence(escapedKeyCarrier.toString('utf8'))) }), false, 'repository content nested key')
+    for (const entry of [{ path: escapedCredential }, { kind: escapedCredential }, { mode: escapedCredential }]) {
+      assert.equal(driver.verifyCredentialFreeEvidence({ credentialValues: [escapedCredential], files: files(cleanTranscript, cleanProxy, repositoryEvidence('clean repository file', { entry })) }), false, `repository entry metadata ${Object.keys(entry)[0]}`)
+    }
+    assert.equal(driver.verifyCredentialFreeEvidence({ credentialValues: [escapedCredential], files: files(cleanTranscript, cleanProxy, repositoryEvidence('clean repository file', { trackedPaths: [escapedCredential] })) }), false, 'repository tracked path metadata')
     const evidenceOrderToken = 'SYNTHETIC-PREFIX-SUFFIX'
     const callerOrderedFiles = [
       { bytes: canonicalLine({ kind: 'host-event', ordinal: 1, payloadBase64: Buffer.from('SUFFIX', 'utf8').toString('base64') }), path: 'transcript.jsonl' },
