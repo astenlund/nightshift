@@ -2336,6 +2336,25 @@ test('legacy history detection handles repeated empty and populated sections', (
   ]);
 });
 
+test('malformed long HTML tag candidates remain bounded and preserve later entries', () => {
+  const contents = `# Features
+
+<x ${' '.repeat(3000)}<
+
+## Area
+
+### [Ready](features/ready.md)
+
+**Requires:** none.
+`;
+  const startedAt = process.hrtime.bigint();
+  const result = analyzeCatalog([{ target: 'FEATURES.md', contents }]);
+  const elapsedMs = Number(process.hrtime.bigint() - startedAt) / 1e6;
+
+  assert.ok(elapsedMs < 2000, `malformed HTML probing took ${elapsedMs.toFixed(1)}ms`);
+  assert.ok(findByTitle(result.ready, 'Ready'), JSON.stringify(result));
+});
+
 // ---------- summary ----------
 
 console.log(`\n${passed} passed, ${failures.length} failed`);
