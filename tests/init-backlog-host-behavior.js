@@ -1174,7 +1174,18 @@ async function runImportMatrix({ ambientEnvironment, checkoutRoot, controllerPat
       platform,
     })
     if (probe.completion !== null && typeof probe.completion === 'object' && 'failure' in probe.completion) {
-      return { failure: probe.completion.failure, verdicts }
+      const failure = probe.completion.failure
+      if (typeof failure.retainedRunRoot === 'string') {
+        return { failure, verdicts }
+      }
+      if (!cleanupRunRoot({ filesystem, path: caseRoot }).ok) {
+        return {
+          failure: infrastructureCarrier({ detailCode: 'cleanup', host: 'claude-code', initialCode: failure.code ?? null, phase: 'import-probe', retainedRunRoot: caseRoot }),
+          verdicts,
+        }
+      }
+
+      return { failure, verdicts }
     }
     const verdict = hostEvents.validateImportProbeSession({
       expectedSentinel: importCase.expectedSentinel,

@@ -3369,6 +3369,71 @@ function runHostEntryCases(repositoryRoot) {
     }
   })
 
+  test('an import launch failure without retained containment cleans its case root before returning', async () => {
+    const scratch = tempRoot()
+    try {
+      const caseRoot = join(scratch, 'import-launch-failure')
+      const failure = { code: 'preflight-timeout', host: 'claude-code', ok: false, phase: 'import-probe', retainedRunRoot: null }
+      const result = await hostBehavior.runImportMatrix({
+        ambientEnvironment: {},
+        checkoutRoot: join(scratch, 'checkout'),
+        createRoot: () => caseRoot,
+        descriptor: { argsPrefix: [], executable: join(scratch, 'bin', 'claude'), kind: 'posix-executable', logicalName: 'claude', sourcePath: join(scratch, 'bin', 'claude') },
+        importCases: [{ adapterBase64: null, caseId: 'launch-failure', expectedSentinel: null, files: [] }],
+        launch: async () => ({ failure }),
+        platform: process.platform,
+      })
+
+      assert.deepEqual(result, { failure, verdicts: [] })
+      assert.equal(nodeFilesystem.existsSync(caseRoot), false, 'a launch failure with no retained process tree leaves no case-root residue')
+    } finally {
+      nodeFilesystem.rmSync(scratch, { force: true, recursive: true })
+    }
+  })
+
+  test('an import launch failure escalates failed case-root cleanup with the original identity', async () => {
+    const scratch = tempRoot()
+    try {
+      const caseRoot = join(scratch, 'import-cleanup-failure')
+      const filesystem = {
+        ...nodeFilesystem,
+        rmSync(path, options) {
+          if (path === caseRoot) {
+            throw new Error('synthetic import cleanup failure')
+          }
+
+          return nodeFilesystem.rmSync(path, options)
+        },
+      }
+      const result = await hostBehavior.runImportMatrix({
+        ambientEnvironment: {},
+        checkoutRoot: join(scratch, 'checkout'),
+        createRoot: () => caseRoot,
+        descriptor: { argsPrefix: [], executable: join(scratch, 'bin', 'claude'), kind: 'posix-executable', logicalName: 'claude', sourcePath: join(scratch, 'bin', 'claude') },
+        filesystem,
+        importCases: [{ adapterBase64: null, caseId: 'cleanup-failure', expectedSentinel: null, files: [] }],
+        launch: async () => ({ failure: { code: 'preflight-timeout', host: 'claude-code', ok: false, phase: 'import-probe', retainedRunRoot: null } }),
+        platform: process.platform,
+      })
+
+      assert.deepEqual(result, {
+        failure: {
+          ok: false,
+          host: 'claude-code',
+          code: 'harness-infrastructure',
+          phase: 'import-probe',
+          initialCode: 'preflight-timeout',
+          detailCode: 'cleanup',
+          retainedRunRoot: caseRoot,
+        },
+        verdicts: [],
+      })
+      assert.equal(nodeFilesystem.existsSync(caseRoot), true, 'the cleanup carrier reports the retained import case root')
+    } finally {
+      nodeFilesystem.rmSync(scratch, { force: true, recursive: true })
+    }
+  })
+
   test('the enabled plugin root replaces the controller entry with the proxy client and digests its manifest', () => {
     const scratch = tempRoot()
     try {
