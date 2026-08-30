@@ -307,6 +307,7 @@ function createGitIsolationInputs({ filesystem = nodeFilesystem, runRoot }) {
 function collectControllerRuntimeClosure({ entryPath, filesystem = nodeFilesystem }) {
   const root = dirname(entryPath)
   const skillsRoot = dirname(root)
+  const repositoryRoot = dirname(skillsRoot)
   const initBacklogPrefix = `skills/${basename(root)}`
   const entryName = basename(entryPath)
   const inventory = []
@@ -337,6 +338,9 @@ function collectControllerRuntimeClosure({ entryPath, filesystem = nodeFilesyste
   readClosureFile(join(root, 'windows-attributes.ps1'), `${initBacklogPrefix}/windows-attributes.ps1`)
   readClosureFile(join(skillsRoot, 'ready', 'ready.js'), 'skills/ready/ready.js')
   readClosureFile(join(skillsRoot, 'spec-agreement', 'spec-agreement.js'), 'skills/spec-agreement/spec-agreement.js')
+  for (const fileName of ['backlog-catalog.js', 'filesystem-primitives.js', 'git-runner.js']) {
+    readClosureFile(join(repositoryRoot, 'internal', fileName), `internal/${fileName}`)
+  }
   inventory.sort((left, right) => left.path < right.path ? -1 : 1)
 
   return { controllerRuntimeSha256: sha256(Buffer.from(canonicalJson(inventory), 'utf8')), files: inventory }

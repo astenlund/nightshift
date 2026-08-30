@@ -475,8 +475,11 @@ test('init-backlog scaffold contract rejects missing targets and confirmation', 
   }
 })
 
-test('init-backlog topology requires the controller, its libraries, and normalized assets as regular files', () => {
+test('init-backlog topology requires the controller, shared internals, libraries, and normalized assets as regular files', () => {
   const controllerRoot = join(PUBLIC_SKILLS_ROOT, 'init-backlog')
+  for (const fileName of ['backlog-catalog.js', 'filesystem-primitives.js', 'git-runner.js']) {
+    requireRegularFile(join(REPOSITORY_ROOT, 'internal', fileName))
+  }
   for (const fileName of ['SKILL.md', 'init-backlog.js', 'unwrap.js', 'windows-attributes.ps1']) {
     requireRegularFile(join(controllerRoot, fileName))
   }

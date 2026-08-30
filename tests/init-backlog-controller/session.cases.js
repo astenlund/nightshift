@@ -16,6 +16,11 @@ const { ELECTION_MARKER_PATH } = require('./election-oracles')
 
 const REQUEST_GATE_BASENAME = '.nightshift-init-backlog.request-gate'
 const HEX64 = /^[a-f0-9]{64}$/
+const CONTROLLER_INTERNAL_RUNTIME_PATHS = Object.freeze([
+  'internal/backlog-catalog.js',
+  'internal/filesystem-primitives.js',
+  'internal/git-runner.js',
+])
 
 const FIXTURE_HOST_CONTEXT = {
   claudeContextSource: 'host-observed',
@@ -162,6 +167,16 @@ function workerReplyLine(overrides = {}) {
     stdoutBase64: Buffer.from('{"ok":true}', 'utf8').toString('base64'),
     ...overrides,
   })
+}
+
+function fakeControllerFacade() {
+  return {
+    applyRecovery() {},
+    inspect() {},
+    inspectRecovery() {},
+    publishApply() {},
+    runPrivateDispatcher() { return { exitCode: 0, stderr: '', stdout: '{}' } },
+  }
 }
 
 function runSessionCases(repositoryRoot) {
@@ -853,10 +868,10 @@ function runSessionCases(repositoryRoot) {
     const closure = driver.collectControllerRuntimeClosure({ entryPath: controllerEntryPath })
     assert.deepEqual(Object.keys(closure).sort(), ['controllerRuntimeSha256', 'files'])
     assert.match(closure.controllerRuntimeSha256, HEX64)
-    assert.equal(closure.files[0].path, 'skills/init-backlog/init-backlog.js')
     assert.ok(closure.files.length > 5)
     const paths = closure.files.map((file) => file.path)
     assert.deepEqual(paths, [...paths].sort(), 'the inventory is ordinal path sorted')
+    assert.ok(paths.includes('skills/init-backlog/init-backlog.js'), 'the controller entry is part of the runtime closure')
     assert.ok(paths.includes('skills/init-backlog/lib/apply-request.js'), 'the shipped apply-request builder is part of the runtime closure')
     assert.ok(paths.includes('skills/init-backlog/templates/manifest.json'), 'the request-time template manifest is part of the runtime closure')
     assert.ok(paths.some((path) => path.startsWith('skills/init-backlog/templates/') && path.endsWith('.md')), 'request-time template assets are part of the runtime closure')
@@ -864,7 +879,9 @@ function runSessionCases(repositoryRoot) {
     assert.ok(paths.includes('skills/init-backlog/windows-attributes.ps1'), 'the Windows attribute helper is part of the runtime closure')
     assert.ok(paths.includes('skills/ready/ready.js'), 'the ready parser is part of the runtime closure')
     assert.ok(paths.includes('skills/spec-agreement/spec-agreement.js'), 'the ready parser scanner dependency is part of the runtime closure')
-    assert.ok(paths.every((path) => path.startsWith('skills/')))
+    for (const relativePath of CONTROLLER_INTERNAL_RUNTIME_PATHS) {
+      assert.ok(paths.includes(relativePath), `${relativePath} is part of the runtime closure`)
+    }
     const again = driver.collectControllerRuntimeClosure({ entryPath: controllerEntryPath })
     assert.equal(again.controllerRuntimeSha256, closure.controllerRuntimeSha256, 'stable revalidation returns the identical digest')
     const { copiedEntry, copyScope } = copyControllerRuntime()
@@ -880,7 +897,13 @@ function runSessionCases(repositoryRoot) {
       writeFileSync(join(copyScope, 'skills', 'init-backlog', 'lib', 'errors.js'), readFileSync(join(copyScope, 'skills', 'init-backlog', 'lib', 'errors.js')) + '\n')
       const mutated = driver.collectControllerRuntimeClosure({ entryPath: copiedEntry })
       assert.notEqual(mutated.controllerRuntimeSha256, closure.controllerRuntimeSha256, 'a closure-member byte change changes the digest')
-      for (const relativePath of ['skills/init-backlog/unwrap.js', 'skills/init-backlog/windows-attributes.ps1', 'skills/ready/ready.js', 'skills/spec-agreement/spec-agreement.js']) {
+      for (const relativePath of [
+        ...CONTROLLER_INTERNAL_RUNTIME_PATHS,
+        'skills/init-backlog/unwrap.js',
+        'skills/init-backlog/windows-attributes.ps1',
+        'skills/ready/ready.js',
+        'skills/spec-agreement/spec-agreement.js',
+      ]) {
         const dependencyPath = join(copyScope, ...relativePath.split('/'))
         const originalBytes = readFileSync(dependencyPath)
         writeFileSync(dependencyPath, Buffer.concat([originalBytes, Buffer.from('\n')]))
@@ -1288,29 +1311,62 @@ function runSessionCases(repositoryRoot) {
     assert.match(failure.stderr.toString('ascii'), /unterminated/)
   })
 
+  test('the worker startup rejects every mutated internal runtime module before loading the controller', () => {
+    const { copiedEntry, copyScope } = copyControllerRuntime()
+    try {
+      const expected = driver.collectControllerRuntimeClosure({ entryPath: copiedEntry })
+      for (const relativePath of CONTROLLER_INTERNAL_RUNTIME_PATHS) {
+        const dependencyPath = join(copyScope, ...relativePath.split('/'))
+        const originalBytes = readFileSync(dependencyPath)
+        writeFileSync(dependencyPath, Buffer.concat([originalBytes, Buffer.from('\n')]))
+        let loads = 0
+
+        assert.throws(
+          () => workerModule.createWorkerRuntime({
+            entryPath: copiedEntry,
+            expectedControllerRuntimeSha256: expected.controllerRuntimeSha256,
+            loadModule: () => {
+              loads += 1
+
+              return fakeControllerFacade()
+            },
+          }),
+          /runtime closure differs from the pre-launch snapshot/,
+          relativePath,
+        )
+        assert.equal(loads, 0, `${relativePath} drift fails before loadModule(entryPath)`)
+        writeFileSync(dependencyPath, originalBytes)
+      }
+    } finally {
+      rmSync(copyScope, { force: true, recursive: true })
+    }
+  })
+
   test('the worker revalidates every runtime dependency before dispatch', () => {
     const { copiedEntry, copyScope } = copyControllerRuntime()
     try {
       const expected = driver.collectControllerRuntimeClosure({ entryPath: copiedEntry })
-      const facade = {
-        applyRecovery() {},
-        inspect() {},
-        inspectRecovery() {},
-        publishApply() {},
-        runPrivateDispatcher() { return { exitCode: 0, stderr: '', stdout: '{}' } },
-      }
+      const facade = fakeControllerFacade()
       const runtime = workerModule.createWorkerRuntime({
         entryPath: copiedEntry,
         expectedControllerRuntimeSha256: expected.controllerRuntimeSha256,
         loadModule: (path) => path === copiedEntry ? facade : { collectInspection() {} },
       })
-      const copiedHelperPath = join(copyScope, 'skills', 'init-backlog', 'windows-attributes.ps1')
-      writeFileSync(copiedHelperPath, Buffer.concat([readFileSync(copiedHelperPath), Buffer.from('\n')]))
+      for (const relativePath of [
+        ...CONTROLLER_INTERNAL_RUNTIME_PATHS,
+        'skills/init-backlog/windows-attributes.ps1',
+      ]) {
+        const dependencyPath = join(copyScope, ...relativePath.split('/'))
+        const originalBytes = readFileSync(dependencyPath)
+        writeFileSync(dependencyPath, Buffer.concat([originalBytes, Buffer.from('\n')]))
 
-      assert.throws(
-        () => runtime.handleFrameLine(canonicalLine({ ordinal: 1, requestBase64: Buffer.from('{}', 'utf8').toString('base64') }).subarray(0, -1)),
-        /runtime closure changed after worker startup/,
-      )
+        assert.throws(
+          () => runtime.handleFrameLine(canonicalLine({ ordinal: 1, requestBase64: Buffer.from('{}', 'utf8').toString('base64') }).subarray(0, -1)),
+          /runtime closure changed after worker startup/,
+          relativePath,
+        )
+        writeFileSync(dependencyPath, originalBytes)
+      }
     } finally {
       rmSync(copyScope, { force: true, recursive: true })
     }
