@@ -61,6 +61,56 @@ const BACKLOG_FILES = ['QUICK_WINS.md', 'FEATURES.md', 'BUGS.md', 'PATTERNS.md',
 const BACKLOG_DIRECTORIES = ['features', 'bugs', 'patterns'];
 const STRICT_UTF8_DECODER = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true });
 
+function rawHtmlBlockStart(line) {
+  const trimmed = line.replace(/^ {0,3}/, '');
+  if (trimmed.startsWith('<!--')) return { type: 2, terminator: '-->' };
+  if (trimmed.startsWith('<?')) return { type: 3, terminator: '?>' };
+  if (trimmed.startsWith('<![CDATA[')) return { type: 5, terminator: ']]>' };
+  if (/^<![A-Z]/.test(trimmed)) return { type: 4, terminator: '>' };
+  const rawTag = trimmed.match(/^<(script|pre|style|textarea)(?:\s|>|$)/i);
+  if (rawTag) return { type: 1, tag: rawTag[1] };
+  if (new RegExp(`^</?(?:${HTML_BLOCK_TYPE_ONE_OR_SIX_TAGS.join('|')})(?:\s|/?>|$)`, 'i').test(trimmed)) return { type: 6 };
+  if (COMPLETE_HTML_TAG.test(line)) return { type: 7 };
+
+  return null;
+}
+
+function rawHtmlBlockTerminated(block, line) {
+  if (block.type === 1) return new RegExp(`</${block.tag}\s*>`, 'i').test(line);
+  if (block.type >= 2 && block.type <= 5) return line.includes(block.terminator);
+
+  return false;
+}
+
+function maskRawHtmlBlocks(records) {
+  const masked = new Set();
+  let html = null;
+  records.forEach((record) => {
+    if (record.opensFence || !record.outsideFence) {
+      masked.add(record);
+
+      return;
+    }
+    if (html !== null) {
+      if (html.type >= 6) {
+        if (record.content.trim() === '') html = null;
+        else masked.add(record);
+        return;
+      }
+      masked.add(record);
+      if (rawHtmlBlockTerminated(html, record.content)) html = null;
+      return;
+    }
+    const block = rawHtmlBlockStart(record.content);
+    if (block === null) return;
+    masked.add(record);
+    if (!rawHtmlBlockTerminated(block, record.content) && block.type <= 5) html = block;
+    else if (block.type >= 6) html = block;
+  });
+
+  return masked;
+}
+
 function splitLines(text) {
   const bom = text.startsWith(BOM) ? BOM : '';
   const raw = text.slice(bom.length).split('\n');
@@ -97,20 +147,21 @@ function classify(line, probe) {
 // table header sits there). Returns true while the line belongs to one of them.
 function createBlockTracker() {
   let fence = null;
-  let inHtml = false;
-  let inComment = false;
+  let html = null;
   let inIndentedCode = false;
   let inTable = false;
 
   return (line, previous, probe, lastLine) => {
     const blank = line.trim() === '';
-    if (inComment) {
-      inComment = !HTML_COMMENT_CLOSE.test(line);
-
-      return true;
+    if (html !== null) {
+      if (html.type >= 6 && blank) {
+        html = null;
+      } else {
+        if (html.type <= 5 && rawHtmlBlockTerminated(html, line)) html = null;
+        return true;
+      }
     }
-    if (inHtml || inTable) {
-      inHtml = inHtml && !blank;
+    if (inTable) {
       inTable = inTable && !blank;
 
       return !blank;
@@ -143,14 +194,9 @@ function createBlockTracker() {
 
       return true;
     }
-    if (HTML_COMMENT_OPEN.test(probe)) {
-      inComment = !HTML_COMMENT_CLOSE.test(line);
-
-      return true;
-    }
-    if (INTERRUPTING_HTML_BLOCK_START.test(probe) || SPECIAL_HTML_BLOCK_START.test(probe) || (previous === null && COMPLETE_HTML_TAG.test(probe))) {
-      inHtml = true;
-
+    const htmlStart = rawHtmlBlockStart(probe);
+    if (htmlStart !== null) {
+      html = htmlStart.type >= 6 || !rawHtmlBlockTerminated(htmlStart, probe) ? htmlStart : null;
       return true;
     }
     if (TABLE_DELIMITER.test(line) && lastLine !== null && lastLine.includes('|')) {
@@ -576,4 +622,4 @@ function runCli(argv, options = {}) {
   process.exitCode = unreadable || (report.length > 0 && !write) ? 1 : 0;
 }
 
-module.exports = { LABEL_AT_START, CatalogError, canonicalBacklogRootIdentity, canonicalPath, compareTargets, decodeUtf8, detectHardWraps, unwrapText, collectMarkdownFiles, isContainedPath, normalizeCatalogItems, analyzeText, joinContinuations, analyzeUnwrapCatalog, runCli };
+module.exports = { LABEL_AT_START, CatalogError, canonicalBacklogRootIdentity, canonicalPath, compareTargets, decodeUtf8, detectHardWraps, unwrapText, collectMarkdownFiles, isContainedPath, maskRawHtmlBlocks, normalizeCatalogItems, analyzeText, joinContinuations, analyzeUnwrapCatalog, runCli };

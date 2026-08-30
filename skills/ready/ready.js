@@ -22,7 +22,7 @@ const fs = require('fs');
 const path = require('path');
 const { stableOpenFile } = require('../../internal/filesystem-primitives.js');
 const { scanMarkdown } = require('../spec-agreement/spec-agreement.js');
-const { LABEL_AT_START, CatalogError, canonicalBacklogRootIdentity, canonicalPath, compareTargets, decodeUtf8, detectHardWraps, collectMarkdownFiles, isContainedPath, normalizeCatalogItems } = require('../../internal/backlog-catalog.js');
+const { LABEL_AT_START, CatalogError, canonicalBacklogRootIdentity, canonicalPath, compareTargets, decodeUtf8, detectHardWraps, collectMarkdownFiles, isContainedPath, maskRawHtmlBlocks: sharedMaskRawHtmlBlocks, normalizeCatalogItems } = require('../../internal/backlog-catalog.js');
 
 const INDEX_FILE_STEMS = new Set([
   'QUICK_WINS', 'FEATURES', 'BUGS', 'PATTERNS',
@@ -321,7 +321,7 @@ function recordProseOnlySection(section, opts, proseOnlySections) {
 
 function extractEntries(content, excludedSectionTitles, opts = {}) {
   const records = scanMarkdown(Buffer.from(content, 'utf8')).lines;
-  const rawHtml = maskRawHtmlBlocks(records);
+  const rawHtml = sharedMaskRawHtmlBlocks(records);
   const excluded = new Set(excludedSectionTitles.map((t) => t.toLowerCase()));
   const collectSections = new Set((opts.collectSections || []).map((t) => t.toLowerCase()));
   const entries = [];
@@ -430,7 +430,7 @@ function findLabelInRecords(records, labelRe) {
 
 function findLabelsInRecords(records, labelRe) {
   const labels = [];
-  const rawHtml = maskRawHtmlBlocks(records);
+  const rawHtml = sharedMaskRawHtmlBlocks(records);
   for (let i = 0; i < records.length; i++) {
     const line = records[i].content;
     if (records[i].outsideFence && !rawHtml.has(records[i]) && labelRe.test(line.trim()) && !/^\s+/.test(line)) {
@@ -454,7 +454,7 @@ function parseSlices(bodyLines) {
 
 function findSlicesInRecords(records) {
   const labels = [];
-  const rawHtml = maskRawHtmlBlocks(records);
+  const rawHtml = sharedMaskRawHtmlBlocks(records);
   for (let i = 0; i < records.length; i++) {
     const line = records[i].content;
     if (records[i].outsideFence && !rawHtml.has(records[i]) && SLICES_LABEL.test(line.trim()) && !/^\s+/.test(line)) labels.push(i);
@@ -467,7 +467,7 @@ function parseSlicesInRecords(records) {
   const start = findSlicesInRecords(records)[0] ?? -1;
   if (start === -1) return null;
 
-  const rawHtml = maskRawHtmlBlocks(records);
+  const rawHtml = sharedMaskRawHtmlBlocks(records);
   const slices = [];
   let i = start + 1;
   let sawBullet = false;
@@ -1244,7 +1244,7 @@ function analyze(files) {
 // Inline backticked mentions in prose start with a backtick and never match.
 function scanBreakoutLines(contents) {
   const records = scanMarkdown(Buffer.from(contents, 'utf8')).lines;
-  const rawHtml = maskRawHtmlBlocks(records);
+  const rawHtml = sharedMaskRawHtmlBlocks(records);
   const hits = [];
   records.forEach((record, i) => {
     if (record.opensFence || !record.outsideFence || rawHtml.has(record)) return;
@@ -1473,12 +1473,6 @@ function scanUnlinkedCatalogItems(catalog, alreadyScanned) {
 
 function htmlBlockStart(line) {
   const trimmed = line.replace(/^ {0,3}/, '');
-  if (trimmed.startsWith('<!--')) return { terminator: '-->' };
-  if (trimmed.startsWith('<?')) return { terminator: '?>' };
-  if (trimmed.startsWith('<![CDATA[')) return { terminator: ']]>' };
-  if (/^<![A-Z]/.test(trimmed)) return { terminator: '>' };
-  const rawTag = trimmed.match(/^<(script|pre|style|textarea)(?:\s|>|$)/i);
-  if (rawTag) return { terminator: '</', tag: rawTag[1] };
   if (/^<(?:address|article|aside|base|basefont|blockquote|body|caption|center|col|colgroup|dd|details|dialog|dir|div|dl|dt|fieldset|figcaption|figure|footer|form|frame|frameset|h[1-6]|head|header|hr|html|iframe|legend|li|link|main|menu|menuitem|nav|noframes|ol|optgroup|option|p|param|search|section|summary|table|tbody|td|tfoot|th|thead|title|tr|track|ul)(?:\s|>|$)/i.test(trimmed)) return { blank: true };
   if (/^<\/?[A-Za-z][A-Za-z0-9-]*(?:\s[^<>]*)?\/?>/.test(trimmed)) return { blank: true };
 
@@ -1524,7 +1518,7 @@ function maskRawHtmlBlocks(records) {
 
 function commonMarkHeadings(contents) {
   const parsed = scanMarkdown(Buffer.from(contents, 'utf8'));
-  const masked = maskRawHtmlBlocks(parsed.lines);
+  const masked = sharedMaskRawHtmlBlocks(parsed.lines);
 
   return parsed.lines.flatMap((record) => {
     if (masked.has(record)) return [];

@@ -195,6 +195,48 @@ test('inline HTML followed by prose remains in its paragraph', () => {
   assert.equal(unwrapText(text), 'Intro <span>hello continues\n');
 });
 
+test('all CommonMark raw HTML block types terminate according to their block rules', () => {
+  const cases = [
+    ['type 1', '<script>\ninside\n</script>\nAfter\ncontinued\n'],
+    ['type 2', '<!--\ninside\n-->\nAfter\ncontinued\n'],
+    ['type 3', '<?xml\ninside\n?>\nAfter\ncontinued\n'],
+    ['type 4', '<!DOCTYPE html\ninside\n>\nAfter\ncontinued\n'],
+    ['type 5', '<![CDATA[\ninside\n]]>\nAfter\ncontinued\n'],
+    ['type 6', '<div>\ninside\n\nAfter\ncontinued\n'],
+    ['type 7', '<custom>\ninside\n\nAfter\ncontinued\n'],
+  ];
+
+  for (const [name, text] of cases) {
+    assert.deepEqual(detectHardWraps(text), [{ line: 5, kind: 'paragraph' }], name);
+    assert.equal(unwrapText(text), text.replace('After\ncontinued', 'After continued'), name);
+  }
+});
+
+test('same-line type 1 closure resumes prose scanning immediately', () => {
+  const text = '<script>inline</script>\nAfter\ncontinued\n';
+
+  assert.deepEqual(detectHardWraps(text), [{ line: 3, kind: 'paragraph' }]);
+  assert.equal(unwrapText(text), '<script>inline</script>\nAfter continued\n');
+});
+
+test('unterminated raw HTML blocks suppress wrap detection through EOF when required', () => {
+  const cases = [
+    '<script>\ninside\nAfter\ncontinued\n',
+    '<!--\ninside\nAfter\ncontinued\n',
+    '<?xml\ninside\nAfter\ncontinued\n',
+    '<!DOCTYPE html\ninside\nAfter\ncontinued\n',
+    '<![CDATA[\ninside\nAfter\ncontinued\n',
+    '<div>\ninside\n\nAfter\ncontinued\n',
+    '<custom>\ninside\n\nAfter\ncontinued\n',
+  ];
+
+  for (const [index, text] of cases.entries()) {
+    const wraps = index < 5 ? [] : [{ line: 5, kind: 'paragraph' }];
+    assert.deepEqual(detectHardWraps(text), wraps, text.split('\n', 1)[0]);
+    assert.equal(unwrapText(text), index < 5 ? text : text.replace('After\ncontinued', 'After continued'));
+  }
+});
+
 test('a leading byte-order mark survives and still shields the frontmatter', () => {
   const bom = String.fromCharCode(0xfeff);
   const text = `${bom}---\nname: x\ndescription: a\n  b\n---\n\nPara\nwrapped\n`;
@@ -599,6 +641,22 @@ test('analyzeUnwrapCatalog returns target-sorted wraps and predicted contents wi
     { target: 'features/a.md', wraps: [{ line: 2, kind: 'list-item' }], contents: '- item continued\n' },
     { target: 'features/z.md', wraps: [{ line: 2, kind: 'paragraph' }], contents: 'First line continued\n' },
   ]);
+});
+
+test('analyzeUnwrapCatalog applies the same raw HTML block boundaries as unwrapText', () => {
+  const cases = [
+    ['script', '<script>\ninside\n</script>\nAfter\ncontinued\n'],
+    ['comment', '<!--\ninside\n-->\nAfter\ncontinued\n'],
+    ['processing', '<?xml\ninside\n?>\nAfter\ncontinued\n'],
+    ['declaration', '<!DOCTYPE html\ninside\n>\nAfter\ncontinued\n'],
+    ['cdata', '<![CDATA[\ninside\n]]>\nAfter\ncontinued\n'],
+    ['div', '<div>\ninside\n\nAfter\ncontinued\n'],
+    ['custom', '<custom>\ninside\n\nAfter\ncontinued\n'],
+  ];
+  const items = cases.map(([name, contents]) => ({ target: `features/${name}.md`, contents }));
+
+  const expectedNames = ['cdata', 'comment', 'custom', 'declaration', 'div', 'processing', 'script'];
+  assert.deepEqual(analyzeUnwrapCatalog(items).map(({ target, wraps }) => ({ target, wraps })), expectedNames.map((name) => ({ target: `features/${name}.md`, wraps: [{ line: 5, kind: 'paragraph' }] })));
 });
 
 test('targetRecord consumes a cached wrap analysis instead of rescanning decoded text', () => {
