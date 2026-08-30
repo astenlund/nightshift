@@ -26,7 +26,7 @@ const evidence = require('./init-backlog-session-driver/evidence')
 const hostEvents = require('./init-backlog-session-driver/host-events')
 const oracles = require('./init-backlog-controller/host-fixture-oracles')
 const { SourceGitCommandError, createSourceGitRunner, loadPromptBaseline } = require('./init-backlog-prompt-baseline')
-const { CLAUDE_ROOT_EXCLUSION_CONFIRMATION } = require('./init-backlog-controller/election-oracles')
+const { CLAUDE_ROOT_EXCLUSION_CONFIRMATION, validateTurnObject } = require('./init-backlog-controller/election-oracles')
 const { HOSTS, OutputCapacityError, compareOrdinal, sha256 } = require('./init-backlog-session-driver/primitives')
 
 const HOST_ORDER = HOSTS
@@ -2524,6 +2524,15 @@ async function runLiveHostSession({ call, filesystem, platform, processAdapterFa
 
     return appended.ordinal
   }
+  const validateStructuredTurn = (turn) => {
+    try {
+      validateTurnObject(turn)
+    } catch {
+      return { kind: 'schema-failure' }
+    }
+
+    return { kind: 'turn', turn }
+  }
   const recordInput = (text, kind) => {
     const appended = transcript.appendInput(Buffer.from(text, 'utf8'))
     if (appended.ordinal === undefined) {
@@ -2820,7 +2829,11 @@ async function runLiveHostSession({ call, filesystem, platform, processAdapterFa
       if (hostEvents.verifyTurnOutputEquality({ structuredResult: finished.structuredResult, turnOutputBytes }).ok !== true) {
         return finishPrimaryFailure({ failure: claimPrimaryFailure('session-input', phase), hostClosureProven: closureProven })
       }
-      const turn = finished.structuredResult
+      const validatedTurn = validateStructuredTurn(finished.structuredResult)
+      if (validatedTurn.kind === 'schema-failure') {
+        return finishPrimaryFailure({ failure: claimPrimaryFailure('session-input', phase), hostClosureProven: closureProven })
+      }
+      const turn = validatedTurn.turn
       if (recordTurn(turn) === null) {
         return { failure: transcriptFailure }
       }
@@ -2874,12 +2887,18 @@ async function runLiveHostSession({ call, filesystem, platform, processAdapterFa
       return true
     }
     const handleTurn = (turn) => {
-      if (recordTurn(turn) === null) {
+      const validatedTurn = validateStructuredTurn(turn)
+      if (validatedTurn.kind === 'schema-failure') {
+        primaryFailure = primaryFailure ?? claimPrimaryFailure('session-input', activePhase)
+
+        return
+      }
+      if (recordTurn(validatedTurn.turn) === null) {
         settle({ failure: transcriptFailure })
 
         return
       }
-      const walkOutcome = ensureWalk(conductor.initEvent()).receiveTurn(turn)
+      const walkOutcome = ensureWalk(conductor.initEvent()).receiveTurn(validatedTurn.turn)
       if (walkOutcome.failure !== undefined) {
         primaryFailure = primaryFailure ?? claimPrimaryFailure('session-input', activePhase)
 

@@ -598,6 +598,78 @@ function claudeInitEvent(sessionPluginRoot) {
   }
 }
 
+async function runMalformedStructuredTurn({ host, hostClosureProven }) {
+  const scratch = tempRoot('nightshift-malformed-turn-')
+  const runRoot = join(scratch, `${host}-run`)
+  const sessionPluginRoot = 'synthetic-plugin-root'
+  const token = host === 'claude-code' ? 'a'.repeat(64) : 'b'.repeat(64)
+  let hostClosed = false
+  let hostTerminations = 0
+  const worker = openWorkerEntry()
+  const proxyEntry = { server: null, tcpServer: null, token }
+  nodeFilesystem.mkdirSync(runRoot, { recursive: true })
+  if (host === 'codex') {
+    nodeFilesystem.writeFileSync(join(runRoot, 'turn-output.json'), Buffer.from(canonicalJson({}), 'utf8'))
+  }
+  const hostOutput = host === 'claude-code'
+    ? Buffer.concat([
+      hostEventLine(claudeInitEvent(sessionPluginRoot)),
+      hostEventLine({ structured_output: {}, subtype: 'success', type: 'result' }),
+    ])
+    : Buffer.concat([
+      hostEventLine({ thread_id: 'thread-1', type: 'thread.started' }),
+      hostEventLine({ item: { text: '{}', type: 'agent_message' }, type: 'item.completed' }),
+    ])
+  try {
+    const session = await hostBehavior.runLiveHostSession({
+      call: {
+        argv: host === 'claude-code' ? ['--print'] : ['exec', '--json'],
+        controllerEnabled: true,
+        cwd: join(scratch, 'scenario'),
+        environment: {},
+        executable: 'synthetic-host',
+        host,
+        proxySession: { port: 40410, token },
+        runRoot,
+        scenario: sessionScenario(),
+        sessionPluginRoot,
+        turnSchemaRunPath: 'synthetic-turn-schema-path',
+      },
+      filesystem: nodeFilesystem,
+      platform: 'win32',
+      processAdapterFactory: (options) => ({
+        adapter: {
+          closeInput() {},
+          closureProof: () => ({ proven: hostClosed && hostClosureProven }),
+          hostExitCode: () => 0,
+          input: () => ({ ok: true }),
+          runnerClosed: () => hostClosed,
+          start: () => {
+            options.onStarted({ pid: 1234 })
+            options.onHostStdout(hostOutput)
+            hostClosed = true
+
+            return { ok: true }
+          },
+          terminate: () => {
+            hostTerminations += 1
+            hostClosed = true
+
+            return { ok: true }
+          },
+        },
+        ok: true,
+      }),
+      proxyRegistry: new Map([[token, proxyEntry]]),
+      workerRegistry: new Map([[runRoot, worker.entry]]),
+    })
+
+    return { hostTerminations, proxyEntry, runRoot, session, worker }
+  } finally {
+    nodeFilesystem.rmSync(scratch, { force: true, recursive: true })
+  }
+}
+
 function runHostEntryCases(repositoryRoot) {
   test('the host-behavior live entry pins its closed surface and delegates to the driver package', () => {
     assert.equal(hostBehavior.driverSurface, driver, 'the live entry must delegate to the exact session-driver package instance')
@@ -4440,6 +4512,42 @@ function runHostEntryCases(repositoryRoot) {
     }
   })
 
+  for (const host of ['claude-code', 'codex']) {
+    test(`${host} rejects a malformed structured turn as typed session input after proven enabled closure`, async () => {
+      const outcome = await runMalformedStructuredTurn({ host, hostClosureProven: true })
+
+      assert.deepEqual(outcome.session, {
+        failure: { ok: false, host, code: 'session-input', phase: 'initial-turn' },
+        terminationProven: true,
+      })
+      assert.equal(outcome.proxyEntry.server.verifiedClosure(), true, 'proxy admission and connections are closed')
+      assert.equal(outcome.hostTerminations, 1, 'host termination starts exactly once')
+      assert.equal(outcome.worker.state.terminations, 1, 'worker termination starts exactly once')
+      assert.equal(outcome.worker.state.closed, true, 'worker closure is proven')
+    })
+
+    test(`${host} retains the run root when malformed-turn closure is unproven`, async () => {
+      const outcome = await runMalformedStructuredTurn({ host, hostClosureProven: false })
+
+      assert.deepEqual(outcome.session, {
+        failure: {
+          ok: false,
+          host,
+          code: 'harness-infrastructure',
+          phase: 'initial-turn',
+          initialCode: 'session-input',
+          detailCode: 'termination',
+          retainedRunRoot: outcome.runRoot,
+        },
+        terminationProven: false,
+      })
+      assert.equal(outcome.proxyEntry.server.verifiedClosure(), true, 'proxy admission and connections are closed')
+      assert.equal(outcome.hostTerminations, 1, 'host termination starts exactly once')
+      assert.equal(outcome.worker.state.terminations, 1, 'worker termination starts exactly once')
+      assert.equal(outcome.worker.state.closed, true, 'worker closure is proven')
+    })
+  }
+
   test('a worker failure during primary termination preserves the selected primary code', async () => {
     const token = '7'.repeat(64)
     const runRoot = 'synthetic-worker-primary-failure-root'
@@ -4641,7 +4749,7 @@ function runHostEntryCases(repositoryRoot) {
     const turn = {
       gateId: 'action-disclosure',
       phase: 'awaiting-response',
-      presentation: { actionDisclosures: [], ambiguityIds: [], disclosureCodes: ['external-writer-window'], manifestProposal: null },
+      presentation: { actionDisclosures: [], ambiguityIds: [], disclosureCodes: ['external-writer-window'], manifestProposal: null, result: null },
       semanticClassifications: [],
     }
     const processAdapterFactory = fakeSessionAdapterFactory({
@@ -4744,7 +4852,7 @@ function runHostEntryCases(repositoryRoot) {
       const turn = {
         gateId: 'host-context-confirmation',
         phase: 'awaiting-response',
-        presentation: { actionDisclosures: [], ambiguityIds: [], disclosureCodes: [], manifestProposal: null },
+        presentation: { actionDisclosures: [], ambiguityIds: [], disclosureCodes: [], manifestProposal: null, result: null },
         semanticClassifications: [],
       }
       nodeFilesystem.writeFileSync(join(runRoot, 'turn-output.json'), Buffer.from(canonicalJson(turn), 'utf8'))
