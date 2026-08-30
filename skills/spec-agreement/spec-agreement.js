@@ -1443,7 +1443,8 @@ function frontmatterIsExploring(sourceBuffer) {
   if (!normalized.startsWith('---\n')) {
     return false;
   }
-  const end = normalized.indexOf('\n---\n', 4);
+  const closing = /\n---(?:\n|$)/.exec(normalized.slice(4));
+  const end = closing === null ? -1 : closing.index + 4;
   if (end < 0) {
     return false;
   }

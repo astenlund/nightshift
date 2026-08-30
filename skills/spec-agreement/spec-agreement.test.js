@@ -3144,6 +3144,18 @@ test('bare-CR Exploring frontmatter routes to brainstorming before agreement', (
   assert.deepEqual(result.unfinished.artifacts, [{ path, signals: ['frontmatter'] }]);
 });
 
+test('Exploring frontmatter closes at EOF after LF and CRLF normalization', () => {
+  const path = '.claude/patterns/draft.md';
+  const target = scope('whole-file', path);
+  for (const ending of ['\n', '\r\n']) {
+    const source = Buffer.from(`---${ending}status: exploring${ending}---`);
+    const result = resolve(request({ target, seeds: [target] }), fakeRepository({ [path]: source }));
+
+    assert.equal(result.kind, 'brainstorming-required', ending === '\n' ? 'LF' : 'CRLF');
+    assert.deepEqual(result.unfinished.artifacts, [{ path, signals: ['frontmatter'] }], ending === '\n' ? 'LF' : 'CRLF');
+  }
+});
+
 test('Exploring resolution retains the physical baseline so legacy cleanup runs first', () => {
   const entryHeading = '### [Draft](features/draft.md)';
   const marker = Buffer.from('Status: signed off\n');
