@@ -117,6 +117,18 @@ function extractHandoverProcedureTitles(body) {
   })
 }
 
+function assertHandoverCompletionStampPolicy(body) {
+  const morningReportStart = body.indexOf('12. **Morning report.**')
+  assert.notEqual(morningReportStart, -1, 'handover must retain the morning report step')
+  const morningReport = body.slice(morningReportStart)
+  const dedicated = 'For a dedicated spec file or backlog breakout file, invoke `writeProvenanceStamp`'
+  const indexOnly = 'For an index-only backlog entry, do not invoke `writeProvenanceStamp`; emit a one-line note that the completion stamp was skipped and rely on the completed walk-and-remove archive move as the durable completion record.'
+
+  assert.equal(countExact(morningReport, dedicated), 1, 'handover completion must stamp dedicated artifacts exactly once')
+  assert.equal(countExact(morningReport, indexOnly), 1, 'handover completion must skip index-only stamps exactly once')
+  assert.equal(morningReport.indexOf(dedicated) < morningReport.indexOf(indexOnly), true, 'handover completion must state the dedicated and index-only branches in order')
+}
+
 function countExact(text, value) {
   return text.split(value).length - 1
 }
@@ -627,7 +639,7 @@ test('handover preserves lifecycle behavior behind the agreement gate', () => {
   assert.equal(body.includes('a project-established custom repository-local location must carry an applicable ignore rule'), true, 'handover must pin the custom repository-local plan policy')
   assert.equal(body.includes('Global and external plans remain outside the current repository\'s Git policy'), true, 'handover must state the complementary global and external plan branch')
   assert.equal(body.includes('Plans are never committed: `.claude/plans/` is git-ignored.'), false, 'handover must not state a universal repository Git policy for plans')
-  assert.equal(countExact(body, '`writeProvenanceStamp`'), 2, 'handover must use the shared provenance writer for refresh and completion')
+  assert.equal(countExact(body, '`writeProvenanceStamp`'), 3, 'handover must name the shared provenance writer for refresh and both completion branches')
   for (const lifecycleContract of [
     '5. `/nightshift:revise-code`',
     'Valid-but-deferred findings flow into the follow-up items list across all rounds',
@@ -654,7 +666,7 @@ test('handover preserves lifecycle behavior behind the agreement gate', () => {
     '**retrospective outcomes**',
     'one item per message',
     'record the user\'s disposition for each in the marker itself',
-    'write it BEFORE the next offer',
+    'Write the dedicated-artifact completion stamp BEFORE the next offer',
     'then offer to remove the plan file',
     'Invalidate volatile agreement state on completion before returning.',
   ]) {
@@ -662,6 +674,18 @@ test('handover preserves lifecycle behavior behind the agreement gate', () => {
   }
   assert.equal(body.includes('Status:'), false, 'handover must not create or trust Status markers')
   assert.equal(body.toLowerCase().includes('signed off'), false, 'handover must not retain signed-off stage logic')
+})
+
+test('handover completion stamp policy distinguishes dedicated and index-only artifacts', () => {
+  const handoverPath = join(PUBLIC_SKILLS_ROOT, 'handover', 'SKILL.md')
+  const { body } = parseFrontmatter(handoverPath)
+
+  assertHandoverCompletionStampPolicy(body)
+  const skipRule = 'For an index-only backlog entry, do not invoke `writeProvenanceStamp`'
+  assert.equal(countExact(body, skipRule), 1, 'handover completion mutation target must be unique')
+  const mutatedBody = body.replace(skipRule, 'For an index-only backlog entry, invoke `writeProvenanceStamp`')
+  assert.notEqual(mutatedBody, body, 'handover completion mutation target must exist')
+  assert.throws(() => assertHandoverCompletionStampPolicy(mutatedBody), assert.AssertionError)
 })
 
 test('plan workflows share one physical binding and consume revalidated bytes', () => {
