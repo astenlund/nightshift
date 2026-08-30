@@ -88,8 +88,9 @@ test('both host prompt assemblers install only the staged copied baseline fixtur
         const installedPath = join(assembly.installedRoot, ...entry.path.split('/'))
 
         assert.ok(existsSync(installedPath), `Installed fixture file is missing: ${entry.path}`)
-        assert.equal(sha256(readFileSync(installedPath)), entry.sha256, `Installed fixture digest differs: ${entry.path}`)
-        assert.deepEqual(readFileSync(installedPath), readFileSync(fixturePath), `Installed fixture bytes differ: ${entry.path}`)
+        const installedBytes = readFileSync(installedPath)
+        assert.equal(sha256(installedBytes), entry.sha256, `Installed fixture digest differs: ${entry.path}`)
+        assert.deepEqual(installedBytes, readFileSync(fixturePath), `Installed fixture bytes differ: ${entry.path}`)
       }
     }
   } finally {
