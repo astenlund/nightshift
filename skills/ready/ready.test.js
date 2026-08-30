@@ -2215,6 +2215,29 @@ test('duplicate top-level dependency labels are structural and mask cycle edges'
   assert.ok(!findByTitle(result.external, 'Alpha'), JSON.stringify(result.external));
 });
 
+test('duplicate External labels remain structural without masking valid cycle edges', () => {
+  const result = analyze({ FEATURES: `## Area
+### [Alpha](features/alpha.md)
+
+**Requires:** [Beta](features/beta.md).
+
+**External:** service one.
+
+**External:** service two.
+
+### [Beta](features/beta.md)
+
+**Requires:** [Alpha](features/alpha.md).
+` });
+
+  const problem = findByTitle(result.structuralErrors, 'Alpha')?.problem ?? '';
+  assert.match(problem, /duplicate \*\*External:\*\* labels/i, problem);
+  assert.ok(findByTitle(result.structuralErrors, '2-node cycle'), JSON.stringify(result.structuralErrors));
+  assert.ok(!findByTitle(result.ready, 'Alpha'), JSON.stringify(result.ready));
+  assert.ok(!findByTitle(result.blocked, 'Alpha'), JSON.stringify(result.blocked));
+  assert.ok(!findByTitle(result.external, 'Alpha'), JSON.stringify(result.external));
+});
+
 test('duplicate inline dependency labels are structural for their slice', () => {
   const result = analyze({ FEATURES: `## Area
 ### [Parent](features/parent.md)

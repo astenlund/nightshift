@@ -948,6 +948,7 @@ function attachEntryMetadata(name, entry) {
     entry.requiresContent = null;
     entry.externalContent = null;
     entry.slices = null;
+    entry.requiresProblems = [];
     entry.dependencyProblems = [];
 
     return;
@@ -958,8 +959,9 @@ function attachEntryMetadata(name, entry) {
   const external = findLabelsInRecords(records, EXTERNAL_LABEL);
   entry.requiresContent = requires[0]?.content ?? null;
   entry.externalContent = external[0]?.content ?? null;
+  entry.requiresProblems = requires.length > 1 ? [duplicateDependencyLabelProblem('Requires')] : [];
   entry.dependencyProblems = [
-    ...(requires.length > 1 ? [duplicateDependencyLabelProblem('Requires')] : []),
+    ...entry.requiresProblems,
     ...(external.length > 1 ? [duplicateDependencyLabelProblem('External')] : []),
   ];
   entry.slices = name === 'FEATURES' ? parseSlicesInRecords(records) : null;
@@ -1732,7 +1734,7 @@ function collectEntryEdges(records, registry) {
   const edges = [];
   for (const rec of records) {
     if (rec.index === 'QUICK_WINS.md') continue;
-    if ((rec.entry.dependencyProblems ?? []).length > 0) continue;
+    if ((rec.entry.requiresProblems ?? []).length > 0) continue;
     const content = rec.entry.requiresContent;
     if (content === null || content === undefined) continue;
     const from = nodeKey(rec);
