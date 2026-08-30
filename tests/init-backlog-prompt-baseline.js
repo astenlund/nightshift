@@ -127,7 +127,7 @@ class SourceGitCommandError extends Error {
 }
 
 function defaultSourceGitRunner(repositoryRoot, args, maxBuffer, input = null) {
-  return execFileSync('git', ['-C', repositoryRoot, ...args], { encoding: 'buffer', input, maxBuffer, shell: false, timeout: SOURCE_GIT_TIMEOUT_MS, windowsHide: true })
+  return execFileSync('git', ['--no-replace-objects', '-C', repositoryRoot, ...args], { encoding: 'buffer', input, maxBuffer, shell: false, timeout: SOURCE_GIT_TIMEOUT_MS, windowsHide: true })
 }
 
 function createSourceGitRunner({ environment, gitExecutablePath, spawnSync: run = spawnSync }) {
@@ -139,7 +139,7 @@ function createSourceGitRunner({ environment, gitExecutablePath, spawnSync: run 
   }
 
   return (repositoryRoot, args, maxBuffer, input = null) => {
-    const completion = run(gitExecutablePath, ['-C', repositoryRoot, ...args], {
+    const completion = run(gitExecutablePath, ['--no-replace-objects', '-C', repositoryRoot, ...args], {
       encoding: null,
       env: environment,
       input,

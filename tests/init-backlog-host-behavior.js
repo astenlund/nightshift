@@ -412,6 +412,7 @@ function buildSourceGitEnvironment({ ambientEnvironment, platform }) {
     GIT_CONFIG_KEY_0: 'core.attributesFile',
     GIT_CONFIG_NOSYSTEM: '1',
     GIT_CONFIG_VALUE_0: nullDevice,
+    GIT_NO_REPLACE_OBJECTS: '1',
     GIT_OPTIONAL_LOCKS: '0',
     GIT_PAGER: '',
     GIT_TERMINAL_PROMPT: '0',
