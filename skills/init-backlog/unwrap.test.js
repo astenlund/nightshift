@@ -166,6 +166,16 @@ test('indented code, HTML blocks and comments, setext headings, and pipe-less ta
   assert.equal(unwrapText(text), text.replace('Prose after the comment\nwrapped prose', 'Prose after the comment wrapped prose'));
 });
 
+test('inline HTML followed by prose remains in its paragraph', () => {
+  const text = 'Intro\n<span>hello\ncontinues\n';
+
+  assert.deepEqual(detectHardWraps(text), [
+    { line: 2, kind: 'paragraph' },
+    { line: 3, kind: 'paragraph' },
+  ]);
+  assert.equal(unwrapText(text), 'Intro <span>hello continues\n');
+});
+
 test('a leading byte-order mark survives and still shields the frontmatter', () => {
   const bom = String.fromCharCode(0xfeff);
   const text = `${bom}---\nname: x\ndescription: a\n  b\n---\n\nPara\nwrapped\n`;

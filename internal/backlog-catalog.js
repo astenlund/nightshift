@@ -39,7 +39,16 @@ const THEMATIC_BREAK = /^ {0,3}(?:(?:-\s*){3,}|(?:\*\s*){3,}|(?:_\s*){3,})$/;
 const INDENTED_CODE = /^(?: {4}|\t)/;
 const HTML_COMMENT_OPEN = /^\s{0,3}<!--/;
 const HTML_COMMENT_CLOSE = /-->/;
-const HTML_BLOCK_START = /^\s{0,3}<(?:\/?[a-zA-Z][\w-]*(?:\s|\/?>|$)|[?!])/;
+const HTML_BLOCK_TYPE_ONE_OR_SIX_TAGS = Object.freeze([
+  'address', 'article', 'aside', 'base', 'basefont', 'blockquote', 'body', 'caption', 'center', 'col', 'colgroup', 'dd',
+  'details', 'dialog', 'dir', 'div', 'dl', 'dt', 'fieldset', 'figcaption', 'figure', 'footer', 'form', 'frame', 'frameset',
+  'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'head', 'header', 'hr', 'html', 'iframe', 'legend', 'li', 'link', 'main', 'menu',
+  'menuitem', 'nav', 'noframes', 'ol', 'optgroup', 'option', 'p', 'param', 'pre', 'script', 'search', 'section', 'style',
+  'summary', 'table', 'tbody', 'td', 'textarea', 'tfoot', 'th', 'thead', 'title', 'tr', 'track', 'ul',
+]);
+const INTERRUPTING_HTML_BLOCK_START = new RegExp(`^\\s{0,3}</?(?:${HTML_BLOCK_TYPE_ONE_OR_SIX_TAGS.join('|')})(?:\\s|/?>|$)`, 'i');
+const SPECIAL_HTML_BLOCK_START = /^\s{0,3}(?:<\?|<!\[CDATA\[|<![A-Z])/;
+const COMPLETE_HTML_TAG = /^\s{0,3}<\/?[A-Za-z][A-Za-z0-9-]*\b[^>]*>\s*$/;
 const HARD_BREAK = /(?: {2,}|\\)$/;
 // A **Label:** line starts a new block, so **Requires:** and **External:**
 // keep their own lines; the ready parser imports this as its label terminator.
@@ -138,7 +147,7 @@ function createBlockTracker() {
 
       return true;
     }
-    if (HTML_BLOCK_START.test(probe)) {
+    if (INTERRUPTING_HTML_BLOCK_START.test(probe) || SPECIAL_HTML_BLOCK_START.test(probe) || (previous === null && COMPLETE_HTML_TAG.test(probe))) {
       inHtml = true;
 
       return true;
