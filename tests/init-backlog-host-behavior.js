@@ -25,6 +25,7 @@ const dialogue = require('./init-backlog-session-driver/dialogue')
 const evidence = require('./init-backlog-session-driver/evidence')
 const hostEvents = require('./init-backlog-session-driver/host-events')
 const oracles = require('./init-backlog-controller/host-fixture-oracles')
+const { loadPromptBaseline } = require('./init-backlog-prompt-baseline')
 const { CLAUDE_ROOT_EXCLUSION_CONFIRMATION } = require('./init-backlog-controller/election-oracles')
 const { HOSTS, OutputCapacityError, compareOrdinal, sha256 } = require('./init-backlog-session-driver/primitives')
 
@@ -1182,19 +1183,65 @@ function buildEnabledPluginRoot({ checkoutRoot, controllerEntryPath, filesystem 
   return { controllerRuntimeSha256: closure.controllerRuntimeSha256, manifest, runPluginRootDigest: sha256(Buffer.from(canonicalJson(manifest), 'utf8')) }
 }
 
-function buildDisabledPluginRoot({ baselineManifest, baselineRoot, disabledRunPluginRoot, filesystem = nodeFilesystem, manifestPath }) {
-  const files = []
-  for (const entry of baselineManifest.files) {
+function buildDisabledPluginRoot({ baselineFiles = null, baselineManifest = null, baselineRoot = null, disabledRunPluginRoot, filesystem = nodeFilesystem, manifestPath }) {
+  if ((baselineFiles === null) === (baselineManifest === null)) {
+    throw new Error('the disabled plugin root requires exactly one baseline file authority')
+  }
+  const containedPath = (root, relativePath) => {
+    if (typeof relativePath !== 'string' || relativePath === '' || nodePath.isAbsolute(relativePath) || relativePath.includes('\\') || relativePath.split('/').some((segment) => segment === '' || segment === '.' || segment === '..')) {
+      throw new Error(`disabled baseline path is not contained: ${relativePath}`)
+    }
+    const resolvedRoot = nodePath.resolve(root)
+    const target = nodePath.resolve(resolvedRoot, ...relativePath.split('/'))
+    const relation = nodePath.relative(resolvedRoot, target)
+    if (relation === '' || relation === '..' || relation.startsWith(`..${nodePath.sep}`) || nodePath.isAbsolute(relation)) {
+      throw new Error(`disabled baseline path is not contained: ${relativePath}`)
+    }
+
+    return target
+  }
+  const sourceEntries = baselineFiles ?? baselineManifest.files
+  if (!Array.isArray(sourceEntries)) {
+    throw new Error('the disabled baseline file authority must be an array')
+  }
+  if (sourceEntries.some((entry) => entry === null || typeof entry !== 'object' || Array.isArray(entry) || typeof entry.path !== 'string' || typeof entry.sha256 !== 'string')) {
+    throw new Error('every disabled baseline entry requires a path and digest')
+  }
+  const paths = sourceEntries.map((entry) => entry.path)
+  if (paths.join('\0') !== [...paths].sort(compareOrdinal).join('\0') || new Set(paths).size !== paths.length) {
+    throw new Error('the disabled baseline paths must be unique and ordinal sorted')
+  }
+  for (const entry of sourceEntries) {
     if (entry.path === CONTROLLER_ENTRY_RELATIVE_PATH) {
       throw new Error('the disabled baseline must not carry the controller entry point')
     }
-    const bytes = filesystem.readFileSync(nodePath.join(baselineRoot, ...entry.path.split('/')))
+    if (!/^[a-f0-9]{64}$/.test(entry.sha256)) {
+      throw new Error(`disabled baseline digest is invalid: ${entry.path}`)
+    }
+    containedPath(disabledRunPluginRoot, entry.path)
+    if (baselineFiles === null) {
+      containedPath(baselineRoot, entry.path)
+    }
+  }
+  const preparedEntries = sourceEntries.map((entry) => {
+    const bytes = baselineFiles === null ? filesystem.readFileSync(containedPath(baselineRoot, entry.path)) : entry.bytes
+    if (!Buffer.isBuffer(bytes)) {
+      throw new Error(`disabled baseline bytes are missing: ${entry.path}`)
+    }
     if (sha256(bytes) !== entry.sha256) {
       throw new Error(`disabled baseline bytes differ from the manifest digest: ${entry.path}`)
     }
-    const target = nodePath.join(disabledRunPluginRoot, ...entry.path.split('/'))
+
+    return { bytes, path: entry.path, sha256: entry.sha256 }
+  })
+  const files = []
+  for (const entry of preparedEntries) {
+    const target = containedPath(disabledRunPluginRoot, entry.path)
     filesystem.mkdirSync(nodePath.dirname(target), { recursive: true })
-    filesystem.writeFileSync(target, bytes)
+    filesystem.writeFileSync(target, entry.bytes)
+    if (!filesystem.readFileSync(target).equals(entry.bytes)) {
+      throw new Error(`disabled plugin root bytes changed during copying: ${entry.path}`)
+    }
     files.push({ path: entry.path, sha256: entry.sha256 })
   }
   if (filesystem.existsSync(nodePath.join(disabledRunPluginRoot, ...CONTROLLER_ENTRY_RELATIVE_PATH.split('/')))) {
@@ -2738,11 +2785,12 @@ async function runOutputEvaluation({ outputRoot, overrides = {}, stdout = proces
   try {
     const fixtures = overrides.fixtures ?? (() => {
       const tree = oracles.loadHostFixtureTree(checkoutRoot)
-      const baselineManifestBytes = filesystem.readFileSync(nodePath.join(__dirname, 'fixtures', 'init-backlog-prompt-baseline', 'manifest.json'))
+      const promptBaseline = loadPromptBaseline(nodePath.resolve(__dirname, '..'), { filesystem })
 
       return {
-        baselineManifestSha256: sha256(baselineManifestBytes),
+        baselineManifestSha256: promptBaseline.baselineManifestSha256,
         importCases: oracles.buildExpectedImportCases(),
+        promptBaseline,
         scenarioManifestSha256: tree.scenarioManifestSha256,
         scenarios: [...tree.scenarios.values()].map((entry) => entry.object),
       }
@@ -2798,12 +2846,8 @@ async function runOutputEvaluation({ outputRoot, overrides = {}, stdout = proces
             runPluginRoot: sessionPluginRoot,
           })
         }
-        const baselineRoot = nodePath.join(__dirname, 'fixtures', 'init-backlog-prompt-baseline')
-        const baselineManifest = JSON.parse(filesystem.readFileSync(nodePath.join(baselineRoot, 'manifest.json')).toString('utf8'))
-
         return buildDisabledPluginRoot({
-          baselineManifest,
-          baselineRoot,
+          baselineFiles: fixtures.promptBaseline.files,
           disabledRunPluginRoot: sessionPluginRoot,
           filesystem,
           manifestPath: nodePath.join(runRoot, 'disabled-plugin-manifest.json'),

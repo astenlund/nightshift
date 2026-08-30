@@ -6,6 +6,7 @@ const { tmpdir } = require('node:os')
 const { dirname, isAbsolute, join, relative, resolve, sep } = require('node:path')
 const { execFileSync, spawn } = require('node:child_process')
 const { PUBLIC_SKILLS } = require('./entry-contract')
+const { loadPromptBaseline: loadValidatedPromptBaseline } = require('./init-backlog-prompt-baseline')
 
 const CODEX_CATALOG_PROMPT = 'Return a JSON object whose skills array contains only the plugin-qualified Nightshift skill identifiers visible in the injected Skills catalog.'
 const RUNTIME_KEYS = Object.freeze(['PATH', 'PATHEXT', 'SystemRoot', 'WINDIR', 'ComSpec', 'TEMP', 'TMP', 'TMPDIR', 'HOME', 'USERPROFILE', 'HOMEDRIVE', 'HOMEPATH', 'APPDATA', 'LOCALAPPDATA', 'LANG', 'LC_ALL', 'TERM'])
@@ -181,29 +182,17 @@ function loadLegacyBaseline(candidateRoot) {
 }
 
 function loadPromptBaseline(candidateRoot) {
-  const root = join(candidateRoot, 'tests', 'fixtures', 'init-backlog-prompt-baseline')
-  const manifestPath = join(root, 'manifest.json')
-  const manifestMetadata = lstatSync(manifestPath)
-  assertion(manifestMetadata.isSymbolicLink() === false && manifestMetadata.isFile(), 'Prompt baseline manifest is not a regular file')
-  assertion(isContained(realpathSync(candidateRoot), realpathSync(manifestPath)), 'Prompt baseline manifest escapes the copied candidate root')
-  const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'))
-  assertion(manifest && manifest.schemaVersion === 1 && typeof manifest.sourceCommit === 'string' && Array.isArray(manifest.files), 'Prompt baseline manifest is invalid')
-
-  return { manifest, root }
+  return loadValidatedPromptBaseline(candidateRoot)
 }
 
 function assemblePromptBaseline({ candidateRoot, destinationRoot }) {
   const baseline = loadPromptBaseline(candidateRoot)
   const fixtureRoot = realpathSync(baseline.root)
   const installedRoot = join(destinationRoot, 'plugin')
-  for (const entry of baseline.manifest.files) {
-    assertion(entry && typeof entry.path === 'string' && /^[a-zA-Z0-9._/-]+$/.test(entry.path) && !entry.path.split('/').includes('..'), 'Prompt baseline file entry is invalid')
-    const source = join(fixtureRoot, ...entry.path.split('/'))
+  for (const entry of baseline.files) {
     const target = join(installedRoot, ...entry.path.split('/'))
-    const metadata = lstatSync(source)
-    assertion(metadata.isSymbolicLink() === false && metadata.isFile() && isContained(fixtureRoot, realpathSync(source)), 'Prompt baseline source file is invalid')
     mkdirSync(dirname(target), { recursive: true })
-    copyFileSync(source, target)
+    writeFileSync(target, entry.bytes)
   }
 
   return { fixtureRoot, installedRoot: realpathSync(installedRoot) }

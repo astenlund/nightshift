@@ -2918,6 +2918,62 @@ function runHostEntryCases(repositoryRoot) {
         disabledRunPluginRoot: join(scratch, 'other-disabled'),
         manifestPath: join(scratch, 'other-manifest.json'),
       }), /controller entry/)
+      const outsideSource = join(scratch, 'outside.md')
+      nodeFilesystem.writeFileSync(outsideSource, bytes)
+      const writes = []
+      const filesystem = Object.create(nodeFilesystem)
+      filesystem.writeFileSync = (path, content) => {
+        writes.push(path)
+        nodeFilesystem.writeFileSync(path, content)
+      }
+      assert.throws(() => hostBehavior.buildDisabledPluginRoot({
+        baselineManifest: { files: [{ path: '../outside.md', sha256: sha256(bytes) }], schemaVersion: 1, sourceCommit: 'f'.repeat(40) },
+        baselineRoot,
+        disabledRunPluginRoot: join(scratch, 'escaping-disabled'),
+        filesystem,
+        manifestPath: join(scratch, 'escaping-manifest.json'),
+      }), /contained/)
+      assert.deepEqual(writes, [], 'an escaping baseline path is rejected before any destination write')
+    } finally {
+      nodeFilesystem.rmSync(scratch, { force: true, recursive: true })
+    }
+  })
+
+  test('the shared prompt-baseline loader validates one canonical manifest read and the closed fixture tree', () => {
+    const { SOURCE_PATHS } = require('./baseline.cases')
+    const { loadPromptBaseline } = require('../init-backlog-prompt-baseline')
+    const manifestPath = join(repositoryRoot, 'tests', 'fixtures', 'init-backlog-prompt-baseline', 'manifest.json')
+    const reads = []
+    const filesystem = Object.create(nodeFilesystem)
+    filesystem.readFileSync = (path) => {
+      reads.push(path)
+
+      return nodeFilesystem.readFileSync(path)
+    }
+    const baseline = loadPromptBaseline(repositoryRoot, { filesystem })
+
+    assert.equal(reads.filter((path) => path === manifestPath).length, 1, 'manifest identity comes from one stable read')
+    assert.deepEqual(baseline.files.map((entry) => entry.path), SOURCE_PATHS)
+    assert.deepEqual(baseline.manifest.files.map((entry) => entry.path), SOURCE_PATHS)
+    assert.equal(baseline.baselineManifestSha256, sha256(nodeFilesystem.readFileSync(manifestPath)))
+
+    const scratch = tempRoot()
+    try {
+      const copiedRoot = join(scratch, 'repository')
+      const copiedFixture = join(copiedRoot, 'tests', 'fixtures', 'init-backlog-prompt-baseline')
+      nodeFilesystem.mkdirSync(nodePath.dirname(copiedFixture), { recursive: true })
+      nodeFilesystem.cpSync(nodePath.dirname(manifestPath), copiedFixture, { recursive: true })
+      const copiedManifestPath = join(copiedFixture, 'manifest.json')
+      const originalManifest = JSON.parse(nodeFilesystem.readFileSync(copiedManifestPath, 'utf8'))
+      const escapingManifest = structuredClone(originalManifest)
+      escapingManifest.files[0].path = '../escape.json'
+      nodeFilesystem.writeFileSync(copiedManifestPath, canonicalJson(escapingManifest) + '\n')
+      assert.throws(() => loadPromptBaseline(copiedRoot), /path|closure/)
+
+      const incompleteManifest = structuredClone(originalManifest)
+      incompleteManifest.files.pop()
+      nodeFilesystem.writeFileSync(copiedManifestPath, canonicalJson(incompleteManifest) + '\n')
+      assert.throws(() => loadPromptBaseline(copiedRoot), /closure/)
     } finally {
       nodeFilesystem.rmSync(scratch, { force: true, recursive: true })
     }
