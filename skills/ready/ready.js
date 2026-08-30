@@ -56,12 +56,14 @@ const PLACEHOLDER_LINES = new Set([
 // holds bare-text external primitives only. Both share one grammar.
 const REQUIRES_LABEL = /^\*\*Requires:\*\*/i;
 const EXTERNAL_LABEL = /^\*\*External:\*\*/i;
+const SLICES_LABEL = /^\*\*Slices:\*\*\s*$/i;
 const BREAKOUT_LINE_LABELS = [['Requires', REQUIRES_LABEL], ['External', EXTERNAL_LABEL]];
 // Every grammar error names its remedy: these messages are the upgrade
 // path for backlogs written under the old single-field grammar.
 const EMPTY_REQUIRES_PROBLEM = 'empty **Requires:** label; write none. when there are no upstream gates';
 const EMPTY_EXTERNAL_PROBLEM = 'empty **External:** label; delete the line (absence is the only empty form)';
 const NONE_IN_EXTERNAL_PROBLEM = 'none. in **External:**; delete the line (absence is the only empty form)';
+const DUPLICATE_SLICES_PROBLEM = 'duplicate **Slices:** labels; keep all work units in one block';
 const HEADING = /^#{2,3} /;
 const BULLET = /^- /;
 const ANALYSIS_EVIDENCE = Symbol('analysisEvidence');
@@ -442,15 +444,18 @@ function parseSlices(bodyLines) {
   return parseSlicesInRecords(scanBodyLines(bodyLines));
 }
 
-function parseSlicesInRecords(records) {
-  let start = -1;
+function findSlicesInRecords(records) {
+  const labels = [];
   for (let i = 0; i < records.length; i++) {
     const line = records[i].content;
-    if (records[i].outsideFence && /^\*\*Slices:\*\*\s*$/i.test(line.trim()) && !/^\s+/.test(line)) {
-      start = i;
-      break;
-    }
+    if (records[i].outsideFence && SLICES_LABEL.test(line.trim()) && !/^\s+/.test(line)) labels.push(i);
   }
+
+  return labels;
+}
+
+function parseSlicesInRecords(records) {
+  const start = findSlicesInRecords(records)[0] ?? -1;
   if (start === -1) return null;
 
   const slices = [];
@@ -978,12 +983,14 @@ function attachEntryMetadata(name, entry) {
   const records = scanBodyLines(entry.bodyLines);
   const requires = findLabelsInRecords(records, REQUIRES_LABEL);
   const external = findLabelsInRecords(records, EXTERNAL_LABEL);
+  const slices = name === 'FEATURES' ? findSlicesInRecords(records) : [];
   entry.requiresContent = requires[0]?.content ?? null;
   entry.externalContent = external[0]?.content ?? null;
   entry.requiresProblems = requires.length > 1 ? [duplicateDependencyLabelProblem('Requires')] : [];
   entry.dependencyProblems = [
     ...entry.requiresProblems,
     ...(external.length > 1 ? [duplicateDependencyLabelProblem('External')] : []),
+    ...(slices.length > 1 ? [DUPLICATE_SLICES_PROBLEM] : []),
   ];
   entry.slices = name === 'FEATURES' ? parseSlicesInRecords(records) : null;
 }
