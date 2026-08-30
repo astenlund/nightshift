@@ -4,8 +4,8 @@ const nodeFilesystem = require('node:fs')
 const { constants: filesystemConstants } = require('node:fs')
 const nodePath = require('node:path')
 
-const { resolveTrustedExecutable } = require('../skills/init-backlog/lib/filesystem')
-const { runGit } = require('../skills/init-backlog/lib/git-policy')
+const { resolveTrustedExecutable } = require('./filesystem-primitives')
+const { runGit } = require('./git-runner')
 const { prepareProvenanceWrite, productionBindingAdapter, productionFsAdapter, writeBoundProvenanceStamp } = require('../skills/spec-agreement/spec-agreement')
 
 const MAX_PLAN_BYTES = 2_097_152

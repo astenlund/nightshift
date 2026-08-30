@@ -20,9 +20,9 @@
 
 const fs = require('fs');
 const path = require('path');
-const { stableOpenFile } = require('../init-backlog/lib/filesystem.js');
+const { stableOpenFile } = require('../../internal/filesystem-primitives.js');
 const { scanMarkdown } = require('../spec-agreement/spec-agreement.js');
-const { LABEL_AT_START, CatalogError, canonicalBacklogRootIdentity, canonicalPath, compareTargets, detectHardWraps, collectMarkdownFiles, isContainedPath, normalizeCatalogItems } = require('../init-backlog/unwrap.js');
+const { LABEL_AT_START, CatalogError, canonicalBacklogRootIdentity, canonicalPath, compareTargets, detectHardWraps, collectMarkdownFiles, isContainedPath, normalizeCatalogItems } = require('../../internal/backlog-catalog.js');
 
 const INDEX_FILE_STEMS = new Set([
   'QUICK_WINS', 'FEATURES', 'BUGS', 'PATTERNS',

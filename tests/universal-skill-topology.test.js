@@ -4,6 +4,7 @@ const assert = require('node:assert/strict')
 const { execFileSync } = require('node:child_process')
 const { createHash } = require('node:crypto')
 const { existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } = require('node:fs')
+const Module = require('node:module')
 const { tmpdir } = require('node:os')
 const { dirname, join, relative } = require('node:path')
 const test = require('node:test')
@@ -63,6 +64,31 @@ function assertContainedByEngine(filePath) {
 
 function requireAbsent(filePath) {
   assert.equal(existsSync(filePath), false, `${filePath} must be absent`)
+}
+
+function runtimeModuleClosure(entryPath) {
+  const cacheSnapshot = new Map(Object.entries(require.cache))
+  const originalLoad = Module._load
+  const closure = new Set()
+  for (const cachedPath of cacheSnapshot.keys()) {
+    if (relative(REPOSITORY_ROOT, cachedPath).split(/[\\/]/)[0] !== '..' && cachedPath !== __filename) delete require.cache[cachedPath]
+  }
+  Module._load = function tracedLoad(request, parent, isMain) {
+    const resolved = Module._resolveFilename(request, parent, isMain)
+    const loaded = originalLoad.apply(this, arguments)
+    if (typeof resolved === 'string' && relative(REPOSITORY_ROOT, resolved).split(/[\\/]/)[0] !== '..') closure.add(resolved)
+
+    return loaded
+  }
+  try {
+    require(entryPath)
+  } finally {
+    Module._load = originalLoad
+    for (const cachedPath of Object.keys(require.cache)) delete require.cache[cachedPath]
+    for (const [cachedPath, cachedModule] of cacheSnapshot) require.cache[cachedPath] = cachedModule
+  }
+
+  return [...closure]
 }
 
 function removeProcedureEnvelope(text) {
@@ -155,6 +181,43 @@ test('public topology exposes only the ten public skills and no legacy command t
     join(PUBLIC_SKILLS_ROOT, 'spec-agreement', 'fixtures', 'fingerprint-v1.json'),
   ]) {
     requireRegularFile(bundledPath)
+  }
+})
+
+test('ready and plan binding runtime closures exclude init-backlog infrastructure', () => {
+  const forbiddenRoot = join(PUBLIC_SKILLS_ROOT, 'init-backlog')
+  for (const entryPath of [join(PUBLIC_SKILLS_ROOT, 'ready', 'ready.js'), join(REPOSITORY_ROOT, 'internal', 'plan-binding.js')]) {
+    const forbidden = runtimeModuleClosure(entryPath).filter((loadedPath) => {
+      const relation = relative(forbiddenRoot, loadedPath)
+
+      return relation === '' || relation.split(/[\\/]/)[0] !== '..'
+    })
+    assert.deepEqual(forbidden, [], `${entryPath} must not load init-backlog infrastructure`)
+  }
+})
+
+test('neutral runtime primitive closures contain no skill modules', () => {
+  for (const fileName of ['backlog-catalog.js', 'filesystem-primitives.js', 'git-runner.js']) {
+    const entryPath = join(REPOSITORY_ROOT, 'internal', fileName)
+    requireRegularFile(entryPath)
+    const skills = runtimeModuleClosure(entryPath).filter((loadedPath) => {
+      const relation = relative(PUBLIC_SKILLS_ROOT, loadedPath)
+
+      return relation === '' || relation.split(/[\\/]/)[0] !== '..'
+    })
+    assert.deepEqual(skills, [], `${entryPath} must not load skill infrastructure`)
+  }
+})
+
+test('neutral stable open keeps Windows scalar validation bound to the actual host', { skip: process.platform !== 'win32' }, () => {
+  const root = mkdtempSync(join(tmpdir(), 'nightshift-stable-open-scalar-'))
+  try {
+    const { stableOpenFile } = require('../internal/filesystem-primitives')
+    const unsafeTarget = join(root, String.fromCodePoint(0x10ffff))
+
+    assert.throws(() => stableOpenFile(root, unsafeTarget, { platform: 'linux' }), TypeError)
+  } finally {
+    rmSync(root, { force: true, recursive: true })
   }
 })
 
