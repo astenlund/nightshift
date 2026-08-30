@@ -1,7 +1,7 @@
 'use strict'
 
 const assert = require('node:assert/strict')
-const { chmodSync, existsSync, linkSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, statSync, symlinkSync, unlinkSync, writeFileSync } = require('node:fs')
+const { chmodSync, existsSync, linkSync, mkdirSync, mkdtempSync, openSync, readFileSync, readdirSync, renameSync, rmSync, statSync, symlinkSync, unlinkSync, writeFileSync } = require('node:fs')
 const { tmpdir } = require('node:os')
 const { join } = require('node:path')
 const test = require('node:test')
@@ -138,6 +138,37 @@ function unwrapFixture(count = 1) {
 }
 
 function runRecoveryCases() {
+  test('staging-parent substitution after precheck writes no content and leaves no external residue', () => {
+    const root = fixtureRoot()
+    const external = fixtureRoot()
+    const parent = join(root, 'nested')
+    mkdirSync(parent, { mode: 0o700 })
+    let chmods = 0
+    let writes = 0
+    try {
+      const target = join(parent, 'FEATURES.md')
+      const temporary = join(parent, '.recovery.tmp')
+      assert.throws(() => publishRecoveryFile(root, target, Buffer.from('content\n', 'utf8'), process.platform === 'win32' ? null : 0o600, {
+        fchmodSync: () => { chmods += 1 },
+        openSync: (path, flags, mode) => {
+          rmSync(parent, { force: true, recursive: true })
+          symlinkSync(external, parent, process.platform === 'win32' ? 'junction' : 'dir')
+
+          return openSync(path, flags, mode)
+        },
+        recoveryId: 'a'.repeat(64),
+        temporary,
+        writeSync: () => { writes += 1; throw new Error('staging write reached') },
+      }), /parent|ordinary|canonical|confined|staging write reached/i)
+      assert.equal(chmods, 0)
+      assert.equal(writes, 0)
+      assert.deepEqual(readdirSync(external), [])
+    } finally {
+      rmSync(root, { force: true, recursive: true })
+      rmSync(external, { force: true, recursive: true })
+    }
+  })
+
   test('evidence-first recovery exports the two recovery operations', () => {
     assert.equal(typeof inspectRecovery, 'function')
     assert.equal(typeof applyRecovery, 'function')

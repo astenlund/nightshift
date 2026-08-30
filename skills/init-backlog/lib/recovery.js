@@ -755,7 +755,7 @@ function removeOwnedRecoveryGate(path, expectedIdentity, options = {}) {
 }
 
 function writeRecoveryGateStage(root, stage, bytes, options) {
-  stageFile(stage, bytes, { ...options, onTransition: undefined })
+  stageFile(stage, bytes, { ...options, root, onTransition: undefined })
   const opened = stableOpenFile(root, stage, boundedOpenOptions(options, bytes.length, { requireSingleLink: true }))
   if (!opened.bytes.equals(bytes) || (options.platform ?? process.platform) !== 'win32' && opened.mode !== 0o600) throw new Error('Recovery gate stage readback differs')
 

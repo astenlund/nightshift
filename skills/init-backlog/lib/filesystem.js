@@ -400,16 +400,67 @@ function verifyRuntimeFile(opened) {
   }
 }
 
-function stageBytes(path, bytes, options = {}) {
+function validateStageParent(root, stagePath, expectedIdentity = null) {
+  const canonical = canonicalRoot(root)
+  if (typeof stagePath !== 'string' || !isAbsolute(stagePath) || !pathIsContained(canonical, stagePath)) throw new Error('Staging path is not confined to its root')
+  const parent = dirname(stagePath)
+  const metadata = lstatSync(parent, { bigint: true })
+  if (!metadata.isDirectory() || metadata.isSymbolicLink()) throw new Error('Staging parent is not an ordinary directory')
+  const resolved = realpathSync.native(parent)
+  if (resolved !== parent || resolved !== canonical && !pathIsContained(canonical, resolved)) throw new Error('Staging parent is not canonically confined')
+  const identity = comparableIdentity(metadata)
+  if (expectedIdentity !== null && identity !== expectedIdentity) throw new Error('Staging parent identity changed before write')
+
+  return { identity, root: canonical }
+}
+
+function validateOpenedStage(root, stagePath, descriptorMetadata, parentIdentity) {
+  validateStageParent(root, stagePath, parentIdentity)
+  const pathMetadata = lstatSync(stagePath, { bigint: true })
+  const resolved = realpathSync.native(stagePath)
+  if (!descriptorMetadata.isFile() || !pathMetadata.isFile() || pathMetadata.isSymbolicLink() || descriptorMetadata.nlink !== 1n || pathMetadata.nlink !== 1n || comparableIdentity(descriptorMetadata) !== comparableIdentity(pathMetadata) || resolved !== stagePath || !pathIsContained(root, resolved)) {
+    throw new Error('Staging descriptor identity is invalid')
+  }
+}
+
+function removeUnwrittenStage(stagePath, descriptorIdentity, options) {
+  let metadata
+  try {
+    metadata = lstatSync(stagePath, { bigint: true })
+  } catch (error) {
+    if (error?.code === 'ENOENT') return
+    throw error
+  }
+  if (!metadata.isFile() || metadata.isSymbolicLink() || comparableIdentity(metadata) !== descriptorIdentity) throw new Error('Unwritten staging artifact identity changed before cleanup')
+  const remove = options.unlinkSync ?? unlinkSync
+  remove(stagePath)
+  if ((options.pathExists ?? pathExists)(stagePath)) throw new Error('Unwritten staging artifact remains after cleanup')
+}
+
+function stageBytes(stagePath, bytes, options = {}) {
+  const parent = validateStageParent(options.root ?? dirname(stagePath), stagePath)
   const open = options.openSync ?? openSync
   const close = options.closeSync ?? closeSync
   const chmod = options.fchmodSync ?? fchmodSync
   const stat = options.fstatSync ?? fstatSync
   const write = options.writeSync ?? writeSync
   const flush = options.fsyncSync ?? fsyncSync
-  const descriptor = open(path, constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY, 0o600)
+  const descriptor = open(stagePath, constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY, 0o600)
   let closed = false
   try {
+    const descriptorMetadata = stat(descriptor, { bigint: true })
+    try {
+      validateOpenedStage(parent.root, stagePath, descriptorMetadata, parent.identity)
+    } catch (error) {
+      close(descriptor)
+      closed = true
+      try {
+        removeUnwrittenStage(stagePath, comparableIdentity(descriptorMetadata), options)
+      } catch (cleanupError) {
+        throw new Error('Unwritten staging artifact cleanup failed', { cause: new AggregateError([error, cleanupError]) })
+      }
+      throw error
+    }
     if ((options.platform ?? process.platform) !== 'win32') {
       chmod(descriptor, 0o600)
       const metadata = stat(descriptor, { bigint: true })
@@ -436,7 +487,7 @@ function stageBytes(path, bytes, options = {}) {
     }
   }
   try {
-    readExactFile(path, bytes, options)
+    readExactFile(stagePath, bytes, options)
   } catch (error) {
     if (error.message === 'Staged file readback differs') throw new Error('Request stage readback differs', { cause: error })
     throw error
@@ -569,6 +620,7 @@ function createInitialLock(root, record, options = {}) {
   try {
     stageBytes(paths.stage, bytes, {
       ...options,
+      root,
       onTransition: (point) => {
         if (point === 'after-owner-stage-create') stagedIdentity = stableOpenFile(root, paths.stage, boundedOpenOptions(options, bytes.length, { requireSingleLink: true })).identity
         if (point === 'after-owner-stage-write') stageWriteFinished = true
@@ -793,7 +845,7 @@ function reserveRequest(root, options = {}) {
   verifyDirectory(paths.requestDirectory)
   options.onTransition?.('after-gate-create')
   const ownerBytes = Buffer.from(canonicalJson({ nonce, protocolVersion: 1, root: canonical, state: 'reserved' }) + '\n', 'utf8')
-  stageBytes(paths.ownerStage, ownerBytes, options)
+  stageBytes(paths.ownerStage, ownerBytes, { ...options, root: canonical })
   publishOwnerStage(canonical, paths, ownerBytes, options)
 
   return {
@@ -942,6 +994,7 @@ function consumeRequest(root, nonce, dispatch, options = {}) {
   const pid = options.pid ?? process.pid
   const consumingBytes = Buffer.from(canonicalJson({ nonce, pid, protocolVersion: 1, root: canonical, state: 'consuming' }) + '\n', 'utf8')
   const stageOptions = {
+    root: canonical,
     onTransition: (point) => {
       if (point === 'after-owner-stage-create') {
         options.onTransition?.('after-consuming-stage-create')

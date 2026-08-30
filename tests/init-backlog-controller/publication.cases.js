@@ -1,7 +1,7 @@
 'use strict'
 
 const assert = require('node:assert/strict')
-const { chmodSync, existsSync, linkSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } = require('node:fs')
+const { chmodSync, existsSync, linkSync, mkdirSync, mkdtempSync, openSync, readFileSync, readdirSync, renameSync, rmSync, statSync, symlinkSync, unlinkSync, writeFileSync, writeSync } = require('node:fs')
 const { tmpdir } = require('node:os')
 const { join, relative } = require('node:path')
 const test = require('node:test')
@@ -230,6 +230,23 @@ function assertOwnerStageMutationRejected({ transition, mutate, mutateAfterWrite
 }
 
 function runPublicationCases() {
+  test('persistent linked staging parents create no external publication artifact', () => {
+    const root = fixtureRoot()
+    const external = fixtureRoot()
+    const parent = join(root, 'nested')
+    try {
+      symlinkSync(external, parent, process.platform === 'win32' ? 'junction' : 'dir')
+      const target = join(parent, 'FEATURES.md')
+      const temporary = join(parent, '.publication.tmp')
+
+      assert.throws(() => publishRecoveryFile(root, target, Buffer.from('content\n', 'utf8'), process.platform === 'win32' ? null : 0o600, { recoveryId: 'a'.repeat(64), temporary }))
+      assert.deepEqual(readdirSync(external), [])
+    } finally {
+      rmSync(root, { force: true, recursive: true })
+      rmSync(external, { force: true, recursive: true })
+    }
+  })
+
   test('exact edits preserve the inspected file mode across publication checks', () => {
     assert.equal(effectiveActionFileMode({ kind: 'exact-edit' }, 0o600, { platform: 'linux' }), 0o600)
     assert.equal(effectiveActionFileMode({ kind: 'create-from-template', mode: 0o640 }, null, { platform: 'linux' }), 0o640)

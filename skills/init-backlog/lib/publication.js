@@ -258,7 +258,7 @@ function publishContent(root, path, bytes, mode, temp, options, replace, expecte
   const fileOptions = { ...options, onTransition: (point) => transition(options, point) }
   const adopted = options.ownedTemporaries?.get(temp)
   if (adopted === undefined) {
-    stageFile(temp, bytes, fileOptions)
+    stageFile(temp, bytes, { ...fileOptions, root })
     readBackExact(temp, bytes, fileOptions)
     assignAndVerifyMode(temp, mode, fileOptions)
     verifyFinalMode(temp, mode, fileOptions)
@@ -323,7 +323,7 @@ function publishRecoveryFile(root, path, bytes, mode, options = {}) {
   const temporary = options.temporary ?? targetPath(root, recoveryTemporaryTarget(target, options.recoveryId ?? '0'.repeat(64)))
   const expected = options.expected ?? null
   if (dirname(temporary) !== dirname(path)) throw new Error('Recovery temporary must be in the target directory')
-  stageFile(temporary, bytes, options)
+  stageFile(temporary, bytes, { ...options, root })
   readBackExact(temporary, bytes, options)
   assignAndVerifyMode(temporary, mode, options)
   verifyFinalMode(temporary, mode, options)
@@ -521,7 +521,7 @@ function markerLinkState(root, first, second, bytes, mode, options) {
 
 function stageMarkerAlias(root, path, bytes, mode, options) {
   options.verifyLock?.()
-  stageFile(path, bytes, { ...options, onTransition: (point) => transition(options, point) })
+  stageFile(path, bytes, { ...options, root, onTransition: (point) => transition(options, point) })
   readBackExact(path, bytes, options)
   assignAndVerifyMode(path, mode, options)
   verifyFinalMode(path, mode, options)
@@ -1158,7 +1158,7 @@ function publishApply(request, options = {}) {
       } else {
         verifyRecoveryGateAbsent(root)
         notifyWrite(options, fixed.lockNext)
-        stageFile(fixed.lockNext, upgradedBytes, { ...options, onTransition: (point) => transition(options, point) })
+        stageFile(fixed.lockNext, upgradedBytes, { ...options, root, onTransition: (point) => transition(options, point) })
         readBackExact(fixed.lockNext, upgradedBytes, options)
         assignAndVerifyMode(fixed.lockNext, 0o600, options)
         registerTemporary(root, ownedTemporaries, fixed.lockNext, upgradedBytes, options, true, platformMode(options, 0o600))
