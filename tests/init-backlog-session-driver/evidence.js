@@ -219,6 +219,19 @@ function verifyCredentialFreeEvidence({ credentialValues, files }) {
   if (!Array.isArray(credentialValues) || credentialValues.some((value) => typeof value !== 'string') || !Array.isArray(files)) {
     return false
   }
+  const sorted = [...files].sort((left, right) => compareOrdinal(left?.path ?? '', right?.path ?? ''))
+  const paths = new Set()
+  for (const file of sorted) {
+    if (file === null || typeof file !== 'object' || typeof file.path !== 'string' || !Buffer.isBuffer(file.bytes) || paths.has(file.path)) {
+      return false
+    }
+    try {
+      validateEvidencePath(file.path)
+    } catch {
+      return false
+    }
+    paths.add(file.path)
+  }
   const credentials = [...new Set(credentialValues)].filter((value) => value !== '').map((value) => Buffer.from(value, 'utf8'))
   if (credentials.length === 0) {
     return true
@@ -227,8 +240,8 @@ function verifyCredentialFreeEvidence({ credentialValues, files }) {
     carriers: createCredentialSequenceScanner(credentials),
     primitives: createCredentialSequenceScanner(credentials),
   }
-  for (const file of files) {
-    if (file === null || typeof file !== 'object' || typeof file.path !== 'string' || !Buffer.isBuffer(file.bytes) || containsCredential(file.bytes, credentials)) {
+  for (const file of sorted) {
+    if (containsCredential(file.bytes, credentials)) {
       return false
     }
     let carrierContaminated = false

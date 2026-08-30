@@ -1700,6 +1700,14 @@ function runSessionCases(repositoryRoot) {
     const splitFields = canonicalLine({ first: token.slice(0, tokenBoundary), second: token.slice(tokenBoundary) })
     const structuredTranscript = canonicalLine({ kind: 'host-event', ordinal: 1, payloadBase64: splitFields.toString('base64') })
     assert.equal(driver.verifyCredentialFreeEvidence({ credentialValues, files: files(structuredTranscript, cleanProxy, repositoryEvidence('clean repository file')) }), false, 'ordered structured fields reconstruct the credential')
+    const evidenceOrderToken = 'SYNTHETIC-PREFIX-SUFFIX'
+    const callerOrderedFiles = [
+      { bytes: canonicalLine({ kind: 'host-event', ordinal: 1, payloadBase64: Buffer.from('SUFFIX', 'utf8').toString('base64') }), path: 'transcript.jsonl' },
+      { bytes: cleanProxy, path: 'proxy-trace.jsonl' },
+      { bytes: repositoryEvidence('SYNTHETIC-PREFIX-'), path: 'repository-attestation.json' },
+    ]
+    assert.equal(driver.verifyCredentialFreeEvidence({ credentialValues: [evidenceOrderToken], files: callerOrderedFiles }), false, 'verification scans the same ordinal evidence order that publication writes')
+    assert.equal(driver.verifyCredentialFreeEvidence({ credentialValues: [], files: [...callerOrderedFiles, callerOrderedFiles[0]] }), false, 'duplicate evidence paths fail before an empty credential inventory can bypass validation')
     assert.equal(driver.verifyCredentialFreeEvidence({ credentialValues, files: files(cleanTranscript, proxyEvidence({ stdout: canonicalLine({ contentBase64: 'not-canonical!' }) }), repositoryEvidence('clean repository file')) }), false, 'malformed nested carrier fails closed')
     assert.equal(driver.verifyCredentialFreeEvidence({ credentialValues: [null], files: [] }), false, 'a malformed credential list fails closed')
   })
