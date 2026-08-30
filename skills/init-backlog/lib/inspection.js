@@ -2,7 +2,7 @@
 
 const { randomBytes } = require('node:crypto')
 const { TextDecoder } = require('node:util')
-const { lstatSync, readFileSync, readdirSync } = require('node:fs')
+const { lstatSync, readFileSync } = require('node:fs')
 const { join } = require('node:path')
 const { detectHardWraps, unwrapText } = require('../unwrap')
 const { analyzeCatalog } = require('../../ready/ready')
@@ -10,7 +10,7 @@ const { BACKLOG_DIRECTORY_TARGETS, PLANS_DIRECTORY_TARGET, loadManifest } = requ
 const { inspectBackups } = require('./backups')
 const { InitBacklogError, failureRecord } = require('./errors')
 const { HTML_BLOCK_TYPE_SIX_TAGS, MAX_GUIDANCE_FILE_BYTES, discoverControlledMarkdown, resolveGuidance } = require('./guidance')
-const { boundedOpenOptions, canonicalRoot, comparableIdentity, comparableMode, createInitialLock, initialLockPaths, removeInitialLock, stableOpenFile, targetPath } = require('./filesystem')
+const { boundedOpenOptions, canonicalRoot, comparableIdentity, comparableMode, createInitialLock, initialLockPaths, readDirectoryNames, removeInitialLock, stableOpenFile, targetPath } = require('./filesystem')
 const { BACKUP_DIRECTORY, DIGEST_PATTERN, MAX_INLINE_FILE_BYTES, MAX_MECHANICAL_FILE_BYTES, MAX_RECOVERY_REQUEST_BYTES, RECOVERY_LOCK_BASENAME, RECOVERY_LOCK_STAGE_PATTERN, RECOVERY_MARKER_BASENAME, canonicalJson, compareOrdinal, deriveProposalId, deriveSnapshotId, encodeResult, sameKeys, sha256 } = require('./protocol')
 const { detectGitKind, inspectGitPolicy, newlineStyle, plansRootRuleEffective } = require('./git-policy')
 
@@ -417,12 +417,11 @@ function readElectionMarker(root, options = {}) {
 function discoverInitialLockStages(root, options = {}) {
   let names
   try {
-    names = (options.readdirSync ?? readdirSync)(root, { encoding: 'utf8' })
+    names = readDirectoryNames(root, { ...options, includeName: (name) => RECOVERY_LOCK_STAGE_PATTERN.test(name), maxSelectedEntries: 64 })
   } catch (error) {
     inspectError('runtime-lock', 'Inspection lock residue cannot be enumerated.', null, error, 'lock')
   }
-  const candidates = names.filter((name) => RECOVERY_LOCK_STAGE_PATTERN.test(name)).sort(compareOrdinal)
-  return candidates.map((name) => {
+  return names.map((name) => {
     const path = join(root, name)
     try {
       const opened = stableOpenFile(root, path, boundedOpenOptions(options, MAX_RECOVERY_REQUEST_BYTES, { requireSingleLink: true }))

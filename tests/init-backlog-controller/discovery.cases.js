@@ -12,6 +12,7 @@ const { MAX_MECHANICAL_FILE_BYTES } = require('../../skills/init-backlog/lib/pro
 const {
   enumerateDirectory,
   probeWindowsAttributes,
+  readDirectoryNames,
   resolveTrustedExecutable,
   stableOpenFile,
   trustedWindowsPowerShellPath,
@@ -104,6 +105,26 @@ function runDiscoveryCases(repositoryRoot) {
         includeName: () => false,
       }), [])
       assert.equal(emptyProbeCalls, 0)
+    } finally {
+      rmSync(root, { force: true, recursive: true })
+    }
+  })
+
+  test('directory name streaming retains only selected names and bounds the selected set', () => {
+    const root = temporaryRoot('nightshift-discovery-name-stream-')
+    const names = [...Array.from({ length: 100 }, (_, index) => Buffer.from(`unrelated-${index}`, 'utf8')), Buffer.from('b.md', 'utf8'), Buffer.from('a.md', 'utf8')]
+    const openDirectory = (entries) => () => {
+      let index = 0
+
+      return {
+        closeSync: () => {},
+        readSync: () => index < entries.length ? { name: entries[index++] } : null,
+      }
+    }
+    try {
+      assert.deepEqual(readDirectoryNames(root, { includeName: (name) => name.endsWith('.md'), maxSelectedEntries: 2, opendirSync: openDirectory(names), platform: 'linux' }), ['a.md', 'b.md'])
+      const overflow = [...names, Buffer.from('c.md', 'utf8')]
+      assert.throws(() => readDirectoryNames(root, { includeName: (name) => name.endsWith('.md'), maxSelectedEntries: 2, opendirSync: openDirectory(overflow), platform: 'linux' }), (error) => error.code === 'directory-too-large')
     } finally {
       rmSync(root, { force: true, recursive: true })
     }

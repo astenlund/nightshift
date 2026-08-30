@@ -15,7 +15,6 @@ const {
   opendirSync,
   readSync,
   realpathSync,
-  readdirSync,
   renameSync,
   rmdirSync,
   unlinkSync,
@@ -202,53 +201,62 @@ function decodeDirectoryName(name, platform = process.platform) {
   return decoded
 }
 
-function enumerateDirectory(directory, options = {}) {
+function readDirectoryNames(directory, options = {}) {
   const platform = options.platform ?? process.platform
   const injectedReadDirectory = options.readdirSync ?? options.readdir
-  const readDirectory = injectedReadDirectory ?? readdirSync
   if (options.includeName !== undefined && typeof options.includeName !== 'function') {
     throw new TypeError('Directory name filter must be a function')
   }
-  if (platform === 'win32' && typeof options.attributeProbe !== 'function') {
-    throw new Error('Windows directory enumeration requires an attribute probe')
+  for (const [name, value] of [['maxEntries', options.maxEntries], ['maxSelectedEntries', options.maxSelectedEntries]]) {
+    if (value !== undefined && (!Number.isSafeInteger(value) || value < 0)) {
+      throw new TypeError(`${name} must be a nonnegative safe integer`)
+    }
   }
-  let names
-  if (options.maxEntries === undefined) {
-    names = readDirectory(directory, platform === 'win32' ? { encoding: 'utf8' } : { encoding: 'buffer' })
-  } else {
-    if (!Number.isSafeInteger(options.maxEntries) || options.maxEntries < 0) {
-      throw new TypeError('Directory entry limit must be a nonnegative safe integer')
-    }
-    if (injectedReadDirectory) {
-      names = readDirectory(directory, platform === 'win32' ? { encoding: 'utf8' } : { encoding: 'buffer' })
-    } else {
-      const openDirectory = options.opendirSync ?? opendirSync
-      const handle = openDirectory(directory, platform === 'win32' ? { encoding: 'utf8' } : { encoding: 'buffer' })
-      names = []
-      try {
-        while (names.length <= options.maxEntries) {
-          const entry = handle.readSync()
-          if (entry === null) break
-          names.push(entry.name)
-        }
-      } finally {
-        handle.closeSync()
-      }
-    }
-    if (names.length > options.maxEntries) {
+  const selected = []
+  let entryCount = 0
+  const accept = (rawName) => {
+    entryCount += 1
+    if (options.maxEntries !== undefined && entryCount > options.maxEntries) {
       const error = new Error('Directory exceeds its entry limit')
       error.code = 'directory-too-large'
       throw error
     }
-  }
-  const namesAreBuffers = platform !== 'win32' && Buffer.isBuffer(names[0])
-  const selectedNames = names.map((rawName) => {
     const name = decodeDirectoryName(rawName, platform)
     assertSafeWindowsScalar(name, platform)
+    if (options.includeName !== undefined && !options.includeName(name)) return
+    if (options.maxSelectedEntries !== undefined && selected.length >= options.maxSelectedEntries) {
+      const error = new Error('Directory exceeds its selected entry limit')
+      error.code = 'directory-too-large'
+      throw error
+    }
+    selected.push(name)
+  }
+  if (injectedReadDirectory) {
+    for (const rawName of injectedReadDirectory(directory, platform === 'win32' ? { encoding: 'utf8' } : { encoding: 'buffer' })) accept(rawName)
+  } else {
+    const openDirectory = options.opendirSync ?? opendirSync
+    const handle = openDirectory(directory, platform === 'win32' ? { encoding: 'utf8' } : { encoding: 'buffer' })
+    try {
+      while (true) {
+        const entry = handle.readSync()
+        if (entry === null) break
+        accept(entry.name)
+      }
+    } finally {
+      handle.closeSync()
+    }
+  }
+  selected.sort(platform === 'win32' ? compareOrdinal : (left, right) => Buffer.from(left, 'utf8').compare(Buffer.from(right, 'utf8')))
 
-    return name
-  }).filter((name) => options.includeName === undefined || options.includeName(name))
-  const entries = selectedNames.map((name) => {
+  return selected
+}
+
+function enumerateDirectory(directory, options = {}) {
+  const platform = options.platform ?? process.platform
+  if (platform === 'win32' && typeof options.attributeProbe !== 'function') {
+    throw new Error('Windows directory enumeration requires an attribute probe')
+  }
+  const entries = readDirectoryNames(directory, options).map((name) => {
     const target = join(directory, name)
     const metadata = lstatSync(target, { bigint: true })
     if (metadata.isSymbolicLink() || (!metadata.isFile() && !metadata.isDirectory())) {
@@ -258,13 +266,6 @@ function enumerateDirectory(directory, options = {}) {
     return { metadata, name, path: target }
   })
 
-  entries.sort((left, right) => {
-    if (namesAreBuffers) {
-      return Buffer.from(left.name, 'utf8').compare(Buffer.from(right.name, 'utf8'))
-    }
-
-    return compareOrdinal(left.name, right.name)
-  })
   if (platform === 'win32' && entries.length > 0) {
     const paths = entries.map((entry) => entry.path)
     const before = options.attributeProbe(paths)
@@ -785,11 +786,12 @@ function collectRequestResidue(root, options = {}) {
       transportError('request-invalid-state', 'Request gate is absent.')
     }
     verifyDirectory(paths.requestDirectory)
-    const entries = readdirSync(paths.requestDirectory).sort()
     const allowed = new Set([REQUEST_OWNER_STAGE_BASENAME, REQUEST_OWNER_BASENAME, REQUEST_PAYLOAD_BASENAME])
-    if (entries.some((entry) => !allowed.has(entry))) {
-      transportError('request-invalid-state', 'Request gate has an extra entry.')
-    }
+    const entries = readDirectoryNames(paths.requestDirectory, { ...options, includeName: (entry) => {
+      if (!allowed.has(entry)) transportError('request-invalid-state', 'Request gate has an extra entry.')
+
+      return true
+    }, maxSelectedEntries: allowed.size })
 
     const ownerStage = entries.includes(REQUEST_OWNER_STAGE_BASENAME) ? stableOpenFile(canonical, paths.ownerStage, boundedOpenOptions(options, MAX_INSPECT_REQUEST_BYTES)) : null
     const owner = entries.includes(REQUEST_OWNER_BASENAME) ? stableOpenFile(canonical, paths.owner, boundedOpenOptions(options, MAX_INSPECT_REQUEST_BYTES)) : null
@@ -930,10 +932,7 @@ function cleanupGate(root, paths, options, expected, initialMutated = false) {
   cleanupPath(root, paths.payload, 'after-payload-remove', options, state, expected.payload)
   cleanupPath(root, paths.owner, 'after-owner-remove', options, state, expected.owner)
   try {
-    const entries = readdirSync(paths.requestDirectory)
-    if (entries.length !== 0) {
-      throw new Error('Request gate is not empty')
-    }
+    readDirectoryNames(paths.requestDirectory, { ...options, maxSelectedEntries: 0 })
     rmdirSync(paths.requestDirectory)
     if (pathExists(paths.requestDirectory)) {
       throw new Error('Request gate is still present')
@@ -1098,6 +1097,7 @@ module.exports = {
   pathIsContained,
   platformMode,
   probeWindowsAttributes,
+  readDirectoryNames,
   publishNoReplace,
   readBackExact,
   assignAndVerifyMode,

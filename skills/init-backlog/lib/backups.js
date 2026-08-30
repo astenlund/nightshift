@@ -6,6 +6,8 @@ const { join } = require('node:path')
 const { boundedOpenOptions, enumerateDirectory, stableMetadata, stableOpenFile, withAttributeProbe } = require('./filesystem')
 const { BACKUP_DIRECTORY, BACKUP_PATTERN, BACKUP_STAGE_PATTERN, MAX_MECHANICAL_FILE_BYTES, backupFileNames, compareOrdinal, sha256 } = require('./protocol')
 
+const MAX_RETAINED_BACKUP_ENTRIES = 1024
+
 function backupParts(target) {
   const stage = BACKUP_STAGE_PATTERN.exec(target)
   if (stage !== null) return { directory: BACKUP_DIRECTORY, kind: 'stage', manifestId: stage[2], snapshotId: stage[1], targetHash: stage[3] }
@@ -42,7 +44,7 @@ function inspectBackups(root, targets, options = {}) {
     throw error
   }
   const enumerationOptions = withAttributeProbe(options)
-  const entries = enumerateDirectory(directory, { ...enumerationOptions, includeName: (name) => backupParts(`${BACKUP_DIRECTORY}/${name}`) !== null })
+  const entries = enumerateDirectory(directory, { ...enumerationOptions, includeName: (name) => backupParts(`${BACKUP_DIRECTORY}/${name}`) !== null, maxSelectedEntries: MAX_RETAINED_BACKUP_ENTRIES })
   const targetByHash = new Map((targets ?? []).map((item) => [sha256(Buffer.from(item.target, 'utf8')), item.target]))
   const backups = []
   const problems = []

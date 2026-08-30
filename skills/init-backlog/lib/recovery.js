@@ -2,7 +2,7 @@
 
 const { join } = require('node:path')
 const { randomBytes } = require('node:crypto')
-const { existsSync, linkSync, lstatSync, mkdirSync, readdirSync, rmdirSync, unlinkSync } = require('node:fs')
+const { existsSync, linkSync, lstatSync, mkdirSync, rmdirSync, unlinkSync } = require('node:fs')
 
 const { InitBacklogError, failureRecord, trustedSystemCode } = require('./errors')
 const { BACKUP_PATTERN, backupParts, classifyBackup } = require('./backups')
@@ -16,6 +16,7 @@ const {
   initialLockPaths,
   pathExists,
   platformMode,
+  readDirectoryNames,
   removeAndVerify,
   removeInitialLock,
   stableOpenFile,
@@ -27,6 +28,28 @@ const { createOwnerInventoryIndex, validateOwnerInventoryStates } = require('./o
 const { publishRecoveryFile, recoveryTemporaryMatches, recoveryTemporaryTarget, relativeArtifact, removeRecoveryFile } = require('./publication')
 
 const MARKER_TARGET_HASH = sha256(Buffer.from(MARKER_BASENAME, 'utf8'))
+
+function recoveryGateEntries(gate, options = {}) {
+  const allowed = new Set([RECOVERY_OWNER_STAGE_BASENAME, RECOVERY_OWNER_BASENAME])
+
+  return readDirectoryNames(gate, { ...options, includeName: (entry) => {
+    if (!allowed.has(entry)) throw new Error('Recovery gate has an extra entry')
+
+    return true
+  }, maxSelectedEntries: allowed.size })
+}
+
+function directoryIsEmpty(path, options = {}) {
+  try {
+    readDirectoryNames(path, { ...options, maxSelectedEntries: 0 })
+
+    return true
+  } catch (error) {
+    if (error?.code === 'directory-too-large') return false
+
+    throw error
+  }
+}
 
 function failure(operation, phase, code, detail, target = null, cause = undefined, fields = {}) {
   throw new InitBacklogError(failureRecord({ ...fields, code, detail, operation, phase, target, systemCode: trustedSystemCode(cause) }), { cause })
@@ -127,8 +150,7 @@ function gateEvidence(root, options = {}) {
   }
   if (!metadata.isDirectory() || metadata.isSymbolicLink()) throw new Error('Recovery gate is not an ordinary directory')
   if ((options.platform ?? process.platform) !== 'win32' && (metadata.mode & 0o7777n) !== 0o700n) throw new Error('Recovery gate mode is invalid')
-  const entries = readdirSync(gate).sort()
-  if (entries.some((entry) => ![RECOVERY_OWNER_STAGE_BASENAME, RECOVERY_OWNER_BASENAME].includes(entry))) throw new Error('Recovery gate has an extra entry')
+  const entries = recoveryGateEntries(gate, options)
   const stage = entries.includes(RECOVERY_OWNER_STAGE_BASENAME) ? stableOpenFile(root, join(gate, RECOVERY_OWNER_STAGE_BASENAME), boundedOpenOptions(options, MAX_RECOVERY_REQUEST_BYTES, { requireSingleLink: false })) : null
   const owner = entries.includes(RECOVERY_OWNER_BASENAME) ? stableOpenFile(root, join(gate, RECOVERY_OWNER_BASENAME), boundedOpenOptions(options, MAX_RECOVERY_REQUEST_BYTES, { requireSingleLink: false })) : null
   const stageLinks = stage === null ? null : lstatSync(join(gate, RECOVERY_OWNER_STAGE_BASENAME), { bigint: true }).nlink
@@ -722,11 +744,11 @@ function verifyRecoveryGateDirectory(path, options, expectedIdentity = null) {
   return identity
 }
 
-function removeOwnedRecoveryGate(path, expectedIdentity) {
+function removeOwnedRecoveryGate(path, expectedIdentity, options = {}) {
   try {
     const metadata = lstatSync(path, { bigint: true })
     const identity = comparableIdentity(metadata)
-    if (!metadata.isDirectory() || metadata.isSymbolicLink() || identity !== expectedIdentity || readdirSync(path).length !== 0) return
+    if (!metadata.isDirectory() || metadata.isSymbolicLink() || identity !== expectedIdentity || !directoryIsEmpty(path, options)) return
 
     rmdirSync(path)
   } catch {
@@ -793,7 +815,7 @@ function claimRecoveryGate(root, inspection, options = {}) {
     if (pathExists(stage)) throw new Error('Recovery gate owner stage was not removed')
     options.onTransition?.('after-recovery-gate-owner-publish')
   } catch (error) {
-    if (created && createdIdentity !== null) removeOwnedRecoveryGate(gate, createdIdentity)
+    if (created && createdIdentity !== null) removeOwnedRecoveryGate(gate, createdIdentity, options)
     if (error instanceof InitBacklogError) throw error
 
     throw new Error('Recovery gate ownership could not be claimed', { cause: error })
@@ -808,8 +830,8 @@ function claimRecoveryGate(root, inspection, options = {}) {
 
 function verifyClaimedRecoveryGate(root, claim, options) {
   if (claim.gateIdentity !== directoryIdentity(claim.gate)) throw new Error('Recovery gate identity changed after ownership claim')
-  const entries = readdirSync(claim.gate).sort(compareOrdinal)
   const expectedEntries = claim.stage === null ? [RECOVERY_OWNER_BASENAME] : [RECOVERY_OWNER_BASENAME, RECOVERY_OWNER_STAGE_BASENAME]
+  const entries = readDirectoryNames(claim.gate, { ...options, maxSelectedEntries: expectedEntries.length + 1 })
   if (entries.length !== expectedEntries.length || entries.some((entry, index) => entry !== expectedEntries[index])) throw new Error('Recovery gate ownership has unexpected entries')
   const owner = stableOpenFile(root, claim.owner, boundedOpenOptions(options, claim.bytes.length, { requireSingleLink: false }))
   if (owner.identity !== claim.ownerIdentity || !owner.bytes.equals(claim.bytes)) throw new Error('Recovery gate owner changed after ownership claim')
@@ -826,7 +848,7 @@ function releaseRecoveryGate(claim, options = {}) {
     if (!existsSync(claim.gate)) return
     if (claim.gateIdentity !== directoryIdentity(claim.gate)) throw new Error('Recovery gate identity changed before cleanup')
     if (claim.stage !== null) {
-      const entries = readdirSync(claim.gate).sort(compareOrdinal)
+      const entries = readDirectoryNames(claim.gate, { ...options, maxSelectedEntries: 3 })
       if (entries.length !== 2 || entries[0] !== RECOVERY_OWNER_BASENAME || entries[1] !== RECOVERY_OWNER_STAGE_BASENAME) throw new Error('Recovery gate owner pair changed before cleanup')
       const stage = stableOpenFile(claim.gate, claim.stage, boundedOpenOptions(options, claim.stageBytes.length, { requireSingleLink: false }))
       const owner = stableOpenFile(claim.gate, claim.owner, boundedOpenOptions(options, claim.bytes.length, { requireSingleLink: false }))
@@ -842,7 +864,7 @@ function releaseRecoveryGate(claim, options = {}) {
       unlinkSync(artifact.path)
       if (existsSync(artifact.path)) throw new Error('Recovery gate owner remains after cleanup')
     }
-    if (readdirSync(claim.gate).length !== 0) throw new Error('Recovery gate is not empty')
+    if (!directoryIsEmpty(claim.gate, options)) throw new Error('Recovery gate is not empty')
     rmdirSync(claim.gate)
     if (existsSync(claim.gate)) throw new Error('Recovery gate remains after cleanup')
   } catch {
@@ -1109,7 +1131,7 @@ function applyRecovery(request, options = {}) {
       const recoveryId = expectedGate.record?.recoveryId ?? currentGate.record?.recoveryId
       if (currentGate.ownerStageRawSha256 !== null) { removeArtifact(root, `${RECOVERY_GATE_BASENAME}/${RECOVERY_OWNER_STAGE_BASENAME}`, { mode: currentGate.ownerStageMode, rawSha256: currentGate.ownerStageRawSha256, recoveryId }, options, false); mutated = true }
       if (currentGate.ownerRawSha256 !== null) { removeArtifact(root, `${RECOVERY_GATE_BASENAME}/${RECOVERY_OWNER_BASENAME}`, { mode: currentGate.ownerMode, rawSha256: currentGate.ownerRawSha256, recoveryId }, options, false); mutated = true }
-      if (readdirSync(gate).length === 0) {
+      if (directoryIsEmpty(gate, options)) {
         rmdirSync(gate)
         mutated = true
       }
