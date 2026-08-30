@@ -7,6 +7,7 @@ const { join } = require('node:path')
 const test = require('node:test')
 
 const {
+  MAX_IGNORE_PROBE_ATTEMPTS,
   buildReadyCatalog,
   buildIgnoreProbes,
   composeElectionRecord,
@@ -262,6 +263,29 @@ function runInspectionCases(repositoryRoot) {
     const probes = buildIgnoreProbes(repositoryRoot, [])
     assert.ok(probes.some((item) => item.gate === true && item.probe === '.claude/plans' && item.target === '.claude/plans'))
     assert.equal(probes.some((item) => item.target.endsWith('/')), false, 'recorded probe targets must be confined protocol targets')
+  })
+
+  test('ignore probe selection bounds occupied candidate scans', () => {
+    assert.equal(MAX_IGNORE_PROBE_ATTEMPTS, 32)
+    let attempts = 0
+    let planAttempts = 0
+
+    assert.throws(() => buildIgnoreProbes(repositoryRoot, [], {
+      lstatSync: (path) => {
+        attempts += 1
+        if (!path.includes(join('.claude', 'plans'))) {
+          const missing = new Error('missing')
+          missing.code = 'ENOENT'
+
+          throw missing
+        }
+        planAttempts += 1
+
+        return { isFile: () => true }
+      },
+    }), /No free Git ignore probe/)
+    assert.equal(planAttempts, MAX_IGNORE_PROBE_ATTEMPTS)
+    assert.equal(attempts, MAX_IGNORE_PROBE_ATTEMPTS + 3)
   })
 
   test('non-Git inspection skips automatic ignore-probe discovery', () => {

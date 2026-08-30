@@ -520,9 +520,12 @@ function newlineVariants(policy) {
   return [{ condition: 'always', style: policy?.style === 'crlf' ? 'crlf' : 'lf' }]
 }
 
-function buildIgnoreProbes(root, descriptors) {
+const MAX_IGNORE_PROBE_ATTEMPTS = 32
+
+function buildIgnoreProbes(root, descriptors, options = {}) {
   const probes = []
   const seen = new Set()
+  const inspectMetadata = options.lstatSync ?? lstatSync
   const add = (probe, target, plan = false, gate = false) => {
     if (seen.has(probe)) return
     seen.add(probe)
@@ -539,11 +542,11 @@ function buildIgnoreProbes(root, descriptors) {
   for (const directory of BACKLOG_DIRECTORY_TARGETS) {
     const plan = directory === PLANS_DIRECTORY_TARGET
     let selected = null
-    for (let index = 0; index <= 65535; index += 1) {
+    for (let index = 0; index < MAX_IGNORE_PROBE_ATTEMPTS; index += 1) {
       const suffix = index === 0 ? '' : `-${index}`
       const candidate = `${directory}/.nightshift-probe${suffix}.md`
       try {
-        lstatSync(join(root, ...candidate.split('/')), { bigint: true })
+        inspectMetadata(join(root, ...candidate.split('/')), { bigint: true })
       } catch (error) {
         if (error?.code === 'ENOENT') {
           selected = candidate
@@ -719,7 +722,7 @@ function collectInspection(root, host, hostContext = {}, options = {}) {
   const targetRecords = descriptors.map((entry) => targetRecord(entry.target, entry.descriptor, { ...entry.declaration, contentRole: entry.declaration.contentRole ?? 'semantic' }, entry.template, { ...options, decode: decodeTargetText, gitKind: git.kind }))
   let gitRecord
   try {
-    const ignoreProbes = ignoreProbesForGitKind(git.kind, options.ignoreProbes, () => buildIgnoreProbes(canonical, descriptors))
+    const ignoreProbes = ignoreProbesForGitKind(git.kind, options.ignoreProbes, () => buildIgnoreProbes(canonical, descriptors, options))
     const fileRecords = targetRecords.filter((item) => item.kind === 'file')
     const guidanceStyles = git.kind === 'git' ? [] : guidanceNewlineEvidence(canonical, guidance, options)
     const newlineTargets = newlineTargetEvidence(fileRecords, guidance.resolvedTarget, guidanceStyles, git.kind)
@@ -868,4 +871,4 @@ function inspect(root, host, hostContext = {}, options = {}) {
   }
 }
 
-module.exports = { buildIgnoreProbes, buildReadyCatalog, collectInspection, composeElectionMarker, composeElectionRecord, creationMode, decodeText, discoverInitialLockStage, ignoreProbesForGitKind, inspect, inspectRegions, isReadyCatalogTarget, lineRecords, materializeText, maskedRecords, newlineTargetEvidence, projectGitProblems, projectReadyProblems, proposal, readElectionMarker, targetRecord, targetState, validateElectionMarkerRecord }
+module.exports = { MAX_IGNORE_PROBE_ATTEMPTS, buildIgnoreProbes, buildReadyCatalog, collectInspection, composeElectionMarker, composeElectionRecord, creationMode, decodeText, discoverInitialLockStage, ignoreProbesForGitKind, inspect, inspectRegions, isReadyCatalogTarget, lineRecords, materializeText, maskedRecords, newlineTargetEvidence, projectGitProblems, projectReadyProblems, proposal, readElectionMarker, targetRecord, targetState, validateElectionMarkerRecord }
