@@ -8,7 +8,7 @@ const { dirname, isAbsolute, join, relative, resolve, sep } = require('node:path
 const { execFileSync, spawn } = require('node:child_process')
 const { PUBLIC_SKILLS } = require('./entry-contract')
 const { buildContainedAmbientEnvironment, resolveHostCommand, resolveTrustedGit } = require('./init-backlog-host-behavior')
-const { loadPromptBaseline: loadValidatedPromptBaseline } = require('./init-backlog-prompt-baseline')
+const { loadPromptBaseline: loadValidatedPromptBaseline, MAX_SOURCE_BATCH_RESPONSE_BYTES, parseSourceBlobBatch } = require('./init-backlog-prompt-baseline')
 
 const CODEX_CATALOG_PROMPT = 'Return a JSON object whose skills array contains only the plugin-qualified Nightshift skill identifiers visible in the injected Skills catalog.'
 const RUNTIME_KEYS = Object.freeze(['PATH', 'PATHEXT', 'SystemRoot', 'WINDIR', 'ComSpec', 'TEMP', 'TMP', 'TMPDIR', 'HOME', 'USERPROFILE', 'HOMEDRIVE', 'HOMEPATH', 'APPDATA', 'LOCALAPPDATA', 'LANG', 'LC_ALL', 'TERM'])
@@ -53,7 +53,7 @@ function createTrustedSmokeRuntime({ checkoutRoot, evidenceRoot, filesystem = no
     }
     hostExecutable = resolution.descriptor.executable
   }
-  const gitRunner = (root, args, encoding = 'utf8') => git(root, args, encoding, { environment, executable: gitExecutable })
+  const gitRunner = (root, args, encoding = 'utf8', options = {}) => git(root, args, encoding, { ...options, environment, executable: gitExecutable })
 
   return { environment, gitExecutable, gitRunner, hostExecutable }
 }
@@ -107,7 +107,9 @@ function copyCredential({ checkoutRoot, sourceRoot, sourceName, profileRoot }) {
 }
 
 function git(checkoutRoot, args, encoding = 'utf8', options = {}) {
-  return execFileSync(options.executable ?? 'git', ['-C', checkoutRoot, ...args], { encoding, env: options.environment, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true })
+  const standardInput = options.input === undefined ? 'ignore' : 'pipe'
+
+  return execFileSync(options.executable ?? 'git', ['-C', checkoutRoot, ...args], { encoding, env: options.environment, input: options.input, maxBuffer: options.maxBuffer, stdio: [standardInput, 'pipe', 'pipe'], windowsHide: true })
 }
 
 function listedTreeEntries(checkoutRoot, treeId, gitRunner = git) {
@@ -153,8 +155,12 @@ function writeDigestRecord(hash, entryPath, content) {
 function collectCandidateTree({ checkoutRoot, gitRunner = git, treeId, visitEntry = () => {} }) {
   const hash = createHash('sha256')
   let manifestBytes = null
-  for (const entry of listedTreeEntries(checkoutRoot, treeId, gitRunner)) {
-    const content = gitRunner(checkoutRoot, ['cat-file', 'blob', entry.objectId], 'buffer')
+  const entries = listedTreeEntries(checkoutRoot, treeId, gitRunner)
+  const batchInput = Buffer.from(entries.map((entry) => `${entry.objectId}\n`).join(''), 'ascii')
+  const batchOutput = gitRunner(checkoutRoot, ['cat-file', '--batch'], 'buffer', { input: batchInput, maxBuffer: MAX_SOURCE_BATCH_RESPONSE_BYTES })
+  const sourceFiles = parseSourceBlobBatch(batchOutput, entries.map(({ entryPath, objectId }) => ({ objectId, path: entryPath })))
+  for (const entry of entries) {
+    const content = sourceFiles.get(entry.entryPath)
     visitEntry(entry, content)
     if (entry.entryPath === '.claude-plugin/plugin.json') {
       manifestBytes = content
@@ -934,4 +940,4 @@ async function runCell({ host, mode, checkoutRoot, evidenceRoot }) {
   return row
 }
 
-module.exports = { CODEX_CATALOG_PROMPT, PUBLIC_SKILLS, RUNTIME_KEYS, assembleClaudePromptBaseline, assembleCodexPromptBaseline, assertClaudeInventory, assertEngineClosure, assertInitBacklogClosure, assertInstalledBaseline, assertInstalledCandidate, assertOutsideCheckout, buildCodexArgv, candidateFactsForIndex, classifyChildExit, createCellSequence, createMarketplace, createTrustedSmokeRuntime, evaluateEvidence, executeCellSequence, loadCandidateEngineResources, loadLegacyBaseline, loadPromptBaseline, parseClaudeAuthStatus, parseClaudeDetails, parseCodexAuthStatus, projectRuntimeEnvironment, resolveExternalClaudeConfigRoot, runCell, stableEvidenceFile, stageCandidate, validateEvidenceRow, writeEvidence }
+module.exports = { CODEX_CATALOG_PROMPT, PUBLIC_SKILLS, RUNTIME_KEYS, assembleClaudePromptBaseline, assembleCodexPromptBaseline, assertClaudeInventory, assertEngineClosure, assertInitBacklogClosure, assertInstalledBaseline, assertInstalledCandidate, assertOutsideCheckout, buildCodexArgv, candidateFactsForIndex, classifyChildExit, collectCandidateTree, createCellSequence, createMarketplace, createTrustedSmokeRuntime, evaluateEvidence, executeCellSequence, loadCandidateEngineResources, loadLegacyBaseline, loadPromptBaseline, parseClaudeAuthStatus, parseClaudeDetails, parseCodexAuthStatus, projectRuntimeEnvironment, resolveExternalClaudeConfigRoot, runCell, stableEvidenceFile, stageCandidate, validateEvidenceRow, writeEvidence }

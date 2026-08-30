@@ -169,17 +169,22 @@ function parseSourceBlobBatch(bytes, paths) {
   const sourceFiles = new Map()
   let offset = 0
   let totalBytes = 0
-  for (const path of paths) {
+  for (const item of paths) {
+    const path = typeof item === 'string' ? item : item.path
+    const expectedObjectId = typeof item === 'string' ? null : item.objectId
     const headerEnd = bytes.indexOf(0x0a, offset)
     if (headerEnd === -1) {
       throw new Error('Prompt baseline source batch is missing an object header')
     }
     const header = bytes.subarray(offset, headerEnd).toString('ascii')
-    const matched = /^[a-f0-9]{40,64} blob ([0-9]+)$/.exec(header)
+    const matched = /^([a-f0-9]{40,64}) blob ([0-9]+)$/.exec(header)
     if (matched === null) {
       throw new Error(`Prompt baseline source batch returned an invalid object header: ${path}`)
     }
-    const size = Number(matched[1])
+    if (expectedObjectId !== null && matched[1] !== expectedObjectId) {
+      throw new Error(`Prompt baseline source batch returned an unexpected object ID: ${path}`)
+    }
+    const size = Number(matched[2])
     if (!Number.isSafeInteger(size) || size > MAX_FIXTURE_FILE_BYTES) {
       throw new Error('Prompt baseline source blobs exceed their byte limit')
     }
@@ -298,4 +303,4 @@ function loadPromptBaseline(repositoryRoot, { filesystem = nodeFilesystem, sourc
   return Object.freeze({ baselineManifestSha256: sha256(manifestBytes), files: Object.freeze(files), manifest: Object.freeze(manifest), root })
 }
 
-module.exports = { SOURCE_COMMIT, SOURCE_PATHS, SourceGitCommandError, createSourceGitRunner, loadPromptBaseline }
+module.exports = { MAX_SOURCE_BATCH_RESPONSE_BYTES, SOURCE_COMMIT, SOURCE_PATHS, SourceGitCommandError, createSourceGitRunner, loadPromptBaseline, parseSourceBlobBatch }

@@ -1,6 +1,7 @@
 'use strict'
 
 const assert = require('node:assert/strict')
+const { createHash } = require('node:crypto')
 const { chmodSync, copyFileSync, cpSync, existsSync, linkSync, lstatSync, mkdtempSync, mkdirSync, openSync, readFileSync, readSync, readdirSync, rmSync, symlinkSync, writeFileSync } = require('node:fs')
 const { tmpdir } = require('node:os')
 const { basename, delimiter, dirname, join } = require('node:path')
@@ -19,6 +20,7 @@ const {
   PUBLIC_SKILLS,
   buildCodexArgv,
   candidateFactsForIndex,
+  collectCandidateTree,
   createMarketplace,
   createTrustedSmokeRuntime,
   evaluateEvidence,
@@ -35,6 +37,7 @@ const {
   writeEvidence,
 } = require('./host-discovery-smoke-lib')
 const { REVISE_ENGINE_RESOURCES } = require('./entry-contract')
+const { MAX_SOURCE_BATCH_RESPONSE_BYTES, parseSourceBlobBatch } = require('./init-backlog-prompt-baseline')
 
 const TEMP_PREFIX = 'nightshift-host-smoke-test-'
 const TEN_PUBLIC_SKILLS = Object.freeze([
@@ -464,6 +467,46 @@ test('indexed candidate facts match one staged snapshot and exclude the ephemera
   } finally {
     removeTemporaryDirectory(root)
   }
+})
+
+test('candidate tree reads one ordered binary cat-file batch within a bound', () => {
+  const entries = [
+    { entryPath: '.claude-plugin/plugin.json', mode: '100644', objectId: 'a'.repeat(40), content: Buffer.from('{"version":"9.9.9"}\n', 'utf8') },
+    { entryPath: 'binary.dat', mode: '100644', objectId: 'b'.repeat(40), content: Buffer.from([0, 255, 10, 1]) },
+  ]
+  const calls = []
+  const observed = []
+  const gitRunner = (root, args, encoding, options = {}) => {
+    calls.push({ args, encoding, options })
+    if (args[0] === 'ls-tree') {
+      return Buffer.from(entries.map(({ entryPath, mode, objectId }) => `${mode} blob ${objectId}\t${entryPath}\0`).join(''), 'utf8')
+    }
+    assert.deepEqual(args, ['cat-file', '--batch'])
+    assert.equal(encoding, 'buffer')
+    assert.equal(options.maxBuffer, MAX_SOURCE_BATCH_RESPONSE_BYTES)
+    assert.deepEqual(options.input, Buffer.from(entries.map(({ objectId }) => `${objectId}\n`).join(''), 'ascii'))
+
+    return Buffer.concat(entries.map(({ objectId, content }) => Buffer.concat([Buffer.from(`${objectId} blob ${content.length}\n`, 'ascii'), content, Buffer.from('\n', 'ascii')])))
+  }
+  const facts = collectCandidateTree({ checkoutRoot: '/checkout', gitRunner, treeId: 'tree', visitEntry: (entry, content) => observed.push({ content, path: entry.entryPath }) })
+
+  assert.equal(calls.filter(({ args }) => args[0] === 'cat-file').length, 1)
+  assert.deepEqual(observed, entries.map(({ content, entryPath }) => ({ content, path: entryPath })))
+  assert.equal(facts.version, '9.9.9')
+  assert.match(facts.digest, /^[a-f0-9]{64}$/)
+})
+
+test('candidate blob batches reject missing, non-blob, truncated, trailing, and mismatched responses', () => {
+  const objectId = 'a'.repeat(40)
+  const item = { objectId, path: 'file.bin' }
+  const valid = Buffer.from(`${objectId} blob 2\n\0\xff\n`, 'binary')
+
+  assert.deepEqual(parseSourceBlobBatch(valid, [item]).get('file.bin'), Buffer.from([0, 255]))
+  assert.throws(() => parseSourceBlobBatch(Buffer.from('missing\n', 'ascii'), [item]), /invalid object header/)
+  assert.throws(() => parseSourceBlobBatch(Buffer.from(`${objectId} tree 2\n\0\xff\n`, 'binary'), [item]), /invalid object header/)
+  assert.throws(() => parseSourceBlobBatch(Buffer.from(`${objectId} blob 2\n\0`, 'binary'), [item]), /truncated object bytes/)
+  assert.throws(() => parseSourceBlobBatch(Buffer.concat([valid, Buffer.from('trailing', 'ascii')]), [item]), /trailing output/)
+  assert.throws(() => parseSourceBlobBatch(valid, [{ objectId: 'b'.repeat(40), path: 'file.bin' }]), /unexpected object ID/)
 })
 
 test('Codex catalog adapter builds its literal isolated-workspace-safe argv', () => {
