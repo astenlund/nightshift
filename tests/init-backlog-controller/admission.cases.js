@@ -117,17 +117,15 @@ function runAdmissionCases() {
 
       return { action, afterBase64, beforeBase64, condition: 'always', proposalId: action.id, reason: 'guidance-section' }
     })
-    const recordsByTarget = new Map(proposals.map((item) => [item.action.target, {}]))
     const templates = proposals.map((item, index) => ({ target: item.action.target, templateId: `template-${index}` }))
     const wrapFindings = proposals.map((item) => ({ target: item.action.target }))
     targetReads = 0
-    const indexes = buildAdmissionIndexes({ proposals, templates, wrapFindings }, recordsByTarget)
+    const indexes = buildAdmissionIndexes({ proposals, templates, wrapFindings })
 
     assert.ok(targetReads <= proposals.length * 4, `proposal targets were read ${targetReads} times`)
+    assert.deepEqual(Object.keys(indexes).sort(), ['chainHeadByTarget', 'emptyRepairTargets', 'proposalByActionId', 'templateByTarget', 'wrapByTarget'])
     assert.equal(indexes.chainHeadByTarget.size, proposals.length)
     assert.equal(indexes.proposalByActionId.size, proposals.length)
-    assert.equal(indexes.proposalsByTarget.size, proposals.length)
-    assert.equal(indexes.recordsByTarget, recordsByTarget)
     assert.equal(indexes.templateByTarget.size, proposals.length)
     assert.equal(indexes.wrapByTarget.size, proposals.length)
   })

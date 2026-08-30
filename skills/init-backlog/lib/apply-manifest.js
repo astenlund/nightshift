@@ -46,7 +46,7 @@ function targetMap(inspection) {
   return result
 }
 
-function buildAdmissionIndexes(inspection, recordsByTarget = null) {
+function buildAdmissionIndexes(inspection) {
   const proposalsByTarget = new Map()
   const proposalByActionId = new Map()
   const emptyRepairTargets = new Set()
@@ -72,7 +72,7 @@ function buildAdmissionIndexes(inspection, recordsByTarget = null) {
     if (!wrapByTarget.has(item.target)) wrapByTarget.set(item.target, item)
   }
 
-  return { chainHeadByTarget, emptyRepairTargets, proposalByActionId, proposalsByTarget, recordsByTarget, templateByTarget, wrapByTarget }
+  return { chainHeadByTarget, emptyRepairTargets, proposalByActionId, templateByTarget, wrapByTarget }
 }
 
 function validateInspectionIdentity(inspection, currentInspection) {
@@ -404,7 +404,7 @@ function admitApplyManifest(request, options = {}) {
   validateInspectionIdentity(inspection, options.currentInspection ?? request?.currentInspection)
   validateChoice(inspection, choice)
   const targets = targetMap(inspection)
-  const indexes = buildAdmissionIndexes(inspection, targets)
+  const indexes = buildAdmissionIndexes(inspection)
   validateSemanticDecisions(inspection, request?.semanticDecisions ?? [], targets, indexes)
   const selected = selectedProposals(inspection, dispositions, choice)
   const selectedActions = selected.map((item) => item.action)
