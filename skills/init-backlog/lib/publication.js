@@ -1090,6 +1090,7 @@ function publishApply(request, options = {}) {
   const markerTemporaries = admission.electionMarker.state === 'absent' ? [] : [fixed.electionAlias, fixed.electionNewWitness, ...(request.inspection.git?.electionMarker !== undefined && request.inspection.git?.electionMarker !== 'absent' ? [fixed.electionOldWitness] : []), fixed.electionTombstone]
   const tempSet = [...actionTemps, ...backupPaths, ...backupStagingPaths, ...rollbackTemporaryPaths, fixed.lockStage, fixed.lockNext, ...markerTemporaries]
   const targets = allActions.map((action) => targetPath(root, action.target))
+  const targetSet = new Set(targets)
   const existing = lockHint
   const finalMarkerMode = platformMode(options, request.inspection.git?.electionMarkerMode ?? 0o600)
   let terminalMarkerEvidence = false
@@ -1101,7 +1102,7 @@ function publishApply(request, options = {}) {
   }
   try {
     verifyRecoveryGateAbsent(root)
-    if (new Set(tempSet).size !== tempSet.length || tempSet.some((path) => targets.includes(path))) publicationError('Derived publication temporary collides with a target.', { code: 'manifest-invalid', phase: 'prevalidate', manifestId: admission.manifestId })
+    if (new Set(tempSet).size !== tempSet.length || tempSet.some((path) => targetSet.has(path))) publicationError('Derived publication temporary collides with a target.', { code: 'manifest-invalid', phase: 'prevalidate', manifestId: admission.manifestId })
     if (resume !== true || lockHint === null) {
       requireReservedTemporariesAbsent(root, tempSet)
     } else if (lockHint.record.manifestId === null) {

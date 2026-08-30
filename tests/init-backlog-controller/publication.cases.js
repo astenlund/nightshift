@@ -773,6 +773,21 @@ function runPublicationCases() {
     }
   })
 
+  test('rejects a derived temporary path that collides with an action target', () => {
+    const root = fixtureRoot()
+    const ownerNonce = 'a'.repeat(32)
+    let writes = 0
+    try {
+      const action = { id: 'p-temporary-target-collision', kind: 'ensure-directory', mode: process.platform === 'win32' ? null : 493, target: `.nightshift-init-backlog.${ownerNonce}.lock.next` }
+
+      expectCode(() => publishApply(request(root, { actions: [action] }), { currentInspection: inspection(root), ownerNonce, writeSpy: () => { writes += 1 } }), 'manifest-invalid')
+      assert.equal(writes, 0)
+      assert.equal(existsSync(join(root, '.nightshift-init-backlog.lock')), false)
+    } finally {
+      rmSync(root, { force: true, recursive: true })
+    }
+  })
+
   test('preserves an existing election marker mode when rebinding', () => {
     const root = fixtureRoot()
     try {
