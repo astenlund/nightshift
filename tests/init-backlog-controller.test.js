@@ -6,7 +6,7 @@ const { tmpdir } = require('node:os')
 const { join } = require('node:path')
 const test = require('node:test')
 
-const { SOURCE_COMMIT, SOURCE_PATHS } = require('./init-backlog-controller/baseline.cases')
+const { SOURCE_COMMIT, SOURCE_PATHS } = require('./init-backlog-prompt-baseline')
 const { runAssetCases } = require('./init-backlog-controller/assets.cases')
 const { runAdapterCases } = require('./init-backlog-controller/adapters.cases')
 const { runDiscoveryCases } = require('./init-backlog-controller/discovery.cases')

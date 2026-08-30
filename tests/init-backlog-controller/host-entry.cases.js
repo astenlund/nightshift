@@ -3135,8 +3135,7 @@ function runHostEntryCases(repositoryRoot) {
   })
 
   test('the shared prompt-baseline loader validates one canonical manifest read and the closed fixture tree', () => {
-    const { SOURCE_PATHS } = require('./baseline.cases')
-    const { loadPromptBaseline } = require('../init-backlog-prompt-baseline')
+    const { SOURCE_PATHS, loadPromptBaseline } = require('../init-backlog-prompt-baseline')
     const manifestPath = join(repositoryRoot, 'tests', 'fixtures', 'init-backlog-prompt-baseline', 'manifest.json')
     const reads = []
     const filesystem = Object.create(nodeFilesystem)
@@ -3163,12 +3162,21 @@ function runHostEntryCases(repositoryRoot) {
       const escapingManifest = structuredClone(originalManifest)
       escapingManifest.files[0].path = '../escape.json'
       nodeFilesystem.writeFileSync(copiedManifestPath, canonicalJson(escapingManifest) + '\n')
-      assert.throws(() => loadPromptBaseline(copiedRoot), /path|closure/)
+      assert.throws(() => loadPromptBaseline(copiedRoot, { sourceRepositoryRoot: repositoryRoot }), /path|closure/)
 
       const incompleteManifest = structuredClone(originalManifest)
       incompleteManifest.files.pop()
       nodeFilesystem.writeFileSync(copiedManifestPath, canonicalJson(incompleteManifest) + '\n')
-      assert.throws(() => loadPromptBaseline(copiedRoot), /closure/)
+      assert.throws(() => loadPromptBaseline(copiedRoot, { sourceRepositoryRoot: repositoryRoot }), /closure/)
+
+      const driftedManifest = structuredClone(originalManifest)
+      const driftedEntry = driftedManifest.files[0]
+      const driftedPath = join(copiedFixture, ...driftedEntry.path.split('/'))
+      const driftedBytes = Buffer.concat([nodeFilesystem.readFileSync(driftedPath), Buffer.from('\npaired drift', 'utf8')])
+      nodeFilesystem.writeFileSync(driftedPath, driftedBytes)
+      driftedEntry.sha256 = sha256(driftedBytes)
+      nodeFilesystem.writeFileSync(copiedManifestPath, canonicalJson(driftedManifest) + '\n')
+      assert.throws(() => loadPromptBaseline(copiedRoot, { sourceRepositoryRoot: repositoryRoot }), /source blob/)
     } finally {
       nodeFilesystem.rmSync(scratch, { force: true, recursive: true })
     }

@@ -7,7 +7,7 @@ const { tmpdir } = require('node:os')
 const { join } = require('node:path')
 const test = require('node:test')
 
-const { SOURCE_COMMIT } = require('./baseline.cases')
+const { SOURCE_COMMIT } = require('../init-backlog-prompt-baseline')
 const { validateManifest } = require('./assets.cases')
 const { fixtureFilePath, git, sha256 } = require('./helpers')
 const { collectInspection } = require('../../skills/init-backlog/lib/inspection')

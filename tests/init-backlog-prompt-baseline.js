@@ -2,15 +2,48 @@
 
 const nodeFilesystem = require('node:fs')
 const nodePath = require('node:path')
+const { execFileSync } = require('node:child_process')
 
-const { SOURCE_COMMIT, SOURCE_PATHS } = require('./init-backlog-controller/baseline.cases')
 const { sha256 } = require('./init-backlog-session-driver/primitives')
 const { canonicalJson, parseJsonWithDepthLimit } = require('./init-backlog-session-driver/transcript')
 
+const SOURCE_COMMIT = '2f3f8187b4b6f5c3bb9da72284e277018f726643'
+const SOURCE_PATHS = Object.freeze([
+  '.claude-plugin/marketplace.json',
+  '.claude-plugin/plugin.json',
+  'internal/revise/SKILL.md',
+  'internal/revise/code.md',
+  'internal/revise/orchestration.js',
+  'internal/revise/orchestration.test.js',
+  'internal/revise/plan.md',
+  'internal/revise/revise-round.test.js',
+  'internal/revise/revise-round.workflow.js',
+  'internal/revise/rigor.js',
+  'internal/revise/rigor.test.js',
+  'internal/revise/spec.md',
+  'skills/exploring/SKILL.md',
+  'skills/handover/SKILL.md',
+  'skills/init-backlog/SKILL.md',
+  'skills/init-backlog/unwrap.js',
+  'skills/init-backlog/unwrap.test.js',
+  'skills/ready/SKILL.md',
+  'skills/ready/ready.js',
+  'skills/ready/ready.test.js',
+  'skills/revise-code/SKILL.md',
+  'skills/revise-docs/SKILL.md',
+  'skills/revise-lore/SKILL.md',
+  'skills/revise-plan/SKILL.md',
+  'skills/revise-spec/SKILL.md',
+  'skills/spec-agreement/SKILL.md',
+  'skills/spec-agreement/fixtures/fingerprint-v1.json',
+  'skills/spec-agreement/spec-agreement.js',
+  'skills/spec-agreement/spec-agreement.test.js',
+])
 const MAX_FIXTURE_ENTRIES = 256
 const MAX_FIXTURE_FILE_BYTES = 16777216
 const MAX_FIXTURE_TOTAL_BYTES = 67108864
 const MAX_MANIFEST_BYTES = 1048576
+const SOURCE_GIT_TIMEOUT_MS = 30000
 
 function isContained(root, target) {
   const relation = nodePath.relative(root, target)
@@ -84,7 +117,34 @@ function listFixtureFiles({ filesystem, root, physicalRoot }) {
   return files.sort()
 }
 
-function loadPromptBaseline(repositoryRoot, { filesystem = nodeFilesystem } = {}) {
+function runSourceGit(repositoryRoot, args, maxBuffer) {
+  return execFileSync('git', ['-C', repositoryRoot, ...args], { encoding: 'buffer', maxBuffer, shell: false, timeout: SOURCE_GIT_TIMEOUT_MS, windowsHide: true })
+}
+
+function loadSourceAuthority(repositoryRoot) {
+  const closureBytes = runSourceGit(repositoryRoot, ['ls-tree', '-rz', '--name-only', SOURCE_COMMIT, '--', '.claude-plugin/plugin.json', '.claude-plugin/marketplace.json', 'skills/', 'internal/', 'hooks/'], MAX_MANIFEST_BYTES)
+  const paths = closureBytes.toString('utf8').split('\0').filter(Boolean).sort()
+  if (paths.join('\0') !== SOURCE_PATHS.join('\0')) {
+    throw new Error('Prompt baseline source closure differs from the frozen path authority')
+  }
+  let totalBytes = 0
+  const sourceFiles = new Map()
+  const files = paths.map((path) => {
+    const bytes = runSourceGit(repositoryRoot, ['cat-file', 'blob', `${SOURCE_COMMIT}:${path}`], MAX_FIXTURE_FILE_BYTES + 1)
+    totalBytes += bytes.length
+    if (bytes.length > MAX_FIXTURE_FILE_BYTES || totalBytes > MAX_FIXTURE_TOTAL_BYTES) {
+      throw new Error('Prompt baseline source blobs exceed their byte limit')
+    }
+    sourceFiles.set(path, bytes)
+
+    return { path, sha256: sha256(bytes) }
+  })
+  const manifestBytes = Buffer.from(`${canonicalJson({ files, schemaVersion: 1, sourceCommit: SOURCE_COMMIT })}\n`, 'utf8')
+
+  return { manifestBytes, sourceFiles }
+}
+
+function loadPromptBaseline(repositoryRoot, { filesystem = nodeFilesystem, sourceRepositoryRoot = repositoryRoot } = {}) {
   const logicalRepositoryRoot = nodePath.resolve(repositoryRoot)
   const physicalRepositoryRoot = filesystem.realpathSync.native(logicalRepositoryRoot)
   const root = nodePath.join(logicalRepositoryRoot, 'tests', 'fixtures', 'init-backlog-prompt-baseline')
@@ -120,6 +180,10 @@ function loadPromptBaseline(repositoryRoot, { filesystem = nodeFilesystem } = {}
   if (paths.join('\0') !== SOURCE_PATHS.join('\0')) {
     throw new Error('Prompt baseline manifest file set differs from the frozen source closure')
   }
+  const sourceAuthority = loadSourceAuthority(nodePath.resolve(sourceRepositoryRoot))
+  if (!manifestBytes.equals(sourceAuthority.manifestBytes)) {
+    throw new Error('Prompt baseline manifest differs from the source blobs')
+  }
   const fixtureFiles = listFixtureFiles({ filesystem, physicalRoot, root })
   const expectedFixtureFiles = ['manifest.json', ...SOURCE_PATHS].sort()
   if (fixtureFiles.join('\0') !== expectedFixtureFiles.join('\0')) {
@@ -139,6 +203,9 @@ function loadPromptBaseline(repositoryRoot, { filesystem = nodeFilesystem } = {}
     if (sha256(bytes) !== entry.sha256) {
       throw new Error(`Prompt baseline bytes differ from the manifest digest: ${entry.path}`)
     }
+    if (!bytes.equals(sourceAuthority.sourceFiles.get(entry.path))) {
+      throw new Error(`Prompt baseline bytes differ from the source blob: ${entry.path}`)
+    }
 
     return Object.freeze({ bytes, path: entry.path, sha256: entry.sha256 })
   })
@@ -154,4 +221,4 @@ function loadPromptBaseline(repositoryRoot, { filesystem = nodeFilesystem } = {}
   return Object.freeze({ baselineManifestSha256: sha256(manifestBytes), files: Object.freeze(files), manifest: Object.freeze(manifest), root })
 }
 
-module.exports = { loadPromptBaseline }
+module.exports = { SOURCE_COMMIT, SOURCE_PATHS, loadPromptBaseline }
