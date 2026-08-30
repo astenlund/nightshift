@@ -3798,6 +3798,16 @@ test('legacy preview rejects complete-file drift before calculating a replacemen
   }
 });
 
+test('legacy preview default scanner reuses one scan for detection and deletion validation', () => {
+  const sourceBuffer = Buffer.from('Status: signed off\n# Design\n');
+  const matches = detectLegacyMarkers({ artifacts: [{ path: 'docs/spec.md', selectorKind: 'design-before-hardening', selectors: [], sourceBuffer }] }).matches;
+  const scanCount = countMarkdownScans(sourceBuffer);
+
+  previewLegacyMarkerDeletion({ sourceBuffer, baselineHash: fullHash(sourceBuffer), matches });
+
+  assert.equal(scanCount(), 1);
+});
+
 test('legacy derivation validates each stable artifact hash once without calling public preview', () => {
   const source = readRepositoryFile('skills/spec-agreement/spec-agreement.js');
   const start = source.indexOf('function deriveLegacyDeletions(');

@@ -636,7 +636,7 @@ function detectLegacyMarkers(input, scan = scanMarkdown) {
   return { matches };
 }
 
-function previewLegacyMarkerDeletion(input, scan = scanMarkdown) {
+function previewLegacyMarkerDeletion(input, scan = createMarkdownScanner()) {
   if (!exactOrderedKeys(input, ['sourceBuffer', 'baselineHash', 'matches']) || !Buffer.isBuffer(input.sourceBuffer) || !Array.isArray(input.matches)) {
     hardeningGrammar('Legacy preview input must use the closed shape.');
   }
