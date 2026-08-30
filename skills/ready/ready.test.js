@@ -737,6 +737,15 @@ test('findCycles reports only >=2-node components, deterministically', () => {
   );
 });
 
+test('findCycles handles a deep acyclic graph without call-stack recursion', () => {
+  const edges = [];
+  for (let index = 0; index < 20000; index++) {
+    edges.push({ from: `node-${String(index).padStart(5, '0')}`, to: `node-${String(index + 1).padStart(5, '0')}` });
+  }
+
+  assert.deepStrictEqual(findCycles(edges), []);
+});
+
 test('groupCycleEdges reads each dependency edge only once per endpoint', () => {
   const cycles = [];
   const edges = [];

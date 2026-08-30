@@ -1656,38 +1656,54 @@ function findCycles(edges) {
   for (const n of sortedNodes) {
     if (!adj.has(n)) adj.set(n, new Set());
   }
+  const sortedAdjacency = new Map(sortedNodes.map((node) => [node, [...adj.get(node)].sort()]));
   let counter = 0;
   const index = new Map();
   const lowlink = new Map();
   const onStack = new Set();
-  const stack = [];
+  const componentStack = [];
   const components = [];
-  const strongconnect = (v) => {
-    index.set(v, counter);
-    lowlink.set(v, counter);
-    counter++;
-    stack.push(v);
-    onStack.add(v);
-    for (const w of [...adj.get(v)].sort()) {
-      if (!index.has(w)) {
-        strongconnect(w);
-        lowlink.set(v, Math.min(lowlink.get(v), lowlink.get(w)));
-      } else if (onStack.has(w)) {
-        lowlink.set(v, Math.min(lowlink.get(v), index.get(w)));
+  const beginNode = (node, parent) => {
+    index.set(node, counter);
+    lowlink.set(node, counter);
+    counter += 1;
+    componentStack.push(node);
+    onStack.add(node);
+
+    return { neighborIndex: 0, neighbors: sortedAdjacency.get(node), node, parent };
+  };
+  for (const start of sortedNodes) {
+    if (index.has(start)) continue;
+    const traversalStack = [beginNode(start, null)];
+    while (traversalStack.length > 0) {
+      const frame = traversalStack[traversalStack.length - 1];
+      if (frame.neighborIndex < frame.neighbors.length) {
+        const neighbor = frame.neighbors[frame.neighborIndex];
+        frame.neighborIndex += 1;
+        if (!index.has(neighbor)) {
+          traversalStack.push(beginNode(neighbor, frame.node));
+        } else if (onStack.has(neighbor)) {
+          lowlink.set(frame.node, Math.min(lowlink.get(frame.node), index.get(neighbor)));
+        }
+        continue;
+      }
+
+      traversalStack.pop();
+      if (frame.parent !== null) {
+        lowlink.set(frame.parent, Math.min(lowlink.get(frame.parent), lowlink.get(frame.node)));
+      }
+      if (lowlink.get(frame.node) === index.get(frame.node)) {
+        const component = [];
+        let member;
+        do {
+          member = componentStack.pop();
+          onStack.delete(member);
+          component.push(member);
+        } while (member !== frame.node);
+        if (component.length >= 2) components.push({ members: component.sort() });
       }
     }
-    if (lowlink.get(v) === index.get(v)) {
-      const comp = [];
-      let w;
-      do {
-        w = stack.pop();
-        onStack.delete(w);
-        comp.push(w);
-      } while (w !== v);
-      if (comp.length >= 2) components.push({ members: comp.sort() });
-    }
-  };
-  for (const v of sortedNodes) strongconnect(v);
+  }
   return components.sort((a, b) => compareTargets(a.members[0], b.members[0]));
 }
 
