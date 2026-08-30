@@ -2,6 +2,12 @@
 
 This resource is the sole owner of plan-path classification, containment, link safety, repository Git policy, and binding revalidation for every Nightshift workflow that treats an implementation plan as authority. A caller owns only its local read, mutation, dispatch, and deletion sites.
 
+## Bind candidate evidence before inferred selection
+
+A plan path selected solely from an exact user or system supplied path, or from conversation context that needs no candidate filesystem metadata or content, may proceed directly to Establish the binding. Before modification time or content can influence inferred selection, enumerate candidate logical names without reading candidate metadata or content outside this procedure. Record that name set, establish a binding and perform the stable two-read capture for every candidate, then enumerate the names again and require a stable candidate set. A candidate that cannot be bound or captured stops selection with its path and the failure reason; silently excluding it could change the winner.
+
+Perform recency comparison only from each binding's `mtimeNs`, and perform content matching only from that binding's captured bytes. Select from this frozen evidence. Once a candidate wins, retain that candidate's existing binding, discard the other candidate bindings, and revalidate the retained binding before its first authoritative use. Never reopen the winning logical path merely to establish a second binding.
+
 ## Establish the binding
 
 Before the first authoritative plan read, establish a stable physical plan binding that records the logical path, declared boundary, resolved physical path, stable file identity, link count, file size, stable content metadata, plan classification, and whether the user supplied the exact path. The stable content metadata is the file's nanosecond modification and change times. For calls into the shared provenance helper, retain the canonical binding fields `ctimeNs`, `dev`, `ino`, `mode`, `mtimeNs`, `nlink`, `realPath`, and `size` in that order; every numeric value is a nonnegative decimal string, `nlink` is `1`, `mode` identifies an ordinary file, and `realPath` is the resolved physical path.

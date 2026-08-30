@@ -8,18 +8,18 @@ Here, "plan" is an implementation plan: a file describing the steps required to 
 
 If the scope is empty, determine it automatically. Prefer (in order):
 1. The plan file path shown in the plan-mode system message, if the session is currently in plan mode.
-2. The most recently modified file under `.claude/plans/` (repo-local) or `~/.claude/plans/` (global), whichever the current working directory makes more natural.
-3. Recently touched plan-shaped files in `git status` and `git diff --stat`; `git status` reports tracked changes and ordinary untracked files, while `git diff --stat` reports tracked differences; ignored `.claude/plans/` files appear in neither normal output, so fall back to file modification time.
+2. A plan named or implied by conversation context when that reference resolves without reading candidate metadata or content.
+3. Eligible candidates from the project-established plan location, `.claude/plans/`, or `~/.claude/plans/`, matched by captured content and then modification time under the shared candidate-evidence procedure.
 
 Only ask the user if genuinely ambiguous.
 
 If a scope is provided, interpret it based on what it looks like:
 - **File path** (e.g., `.claude/plans/2026-05-15-foo.md` or an absolute path): review the whole file.
-- **Natural language** (e.g., "the plan we just wrote", "the rewrite plan"): resolve from conversation context and the filesystem; identify the file by recent modification time and content match.
+- **Natural language** (e.g., "the plan we just wrote", "the rewrite plan"): resolve from conversation context and, when context alone is insufficient, the shared candidate evidence; identify the file by captured content match and then captured modification time.
 
 Git-diff scope shapes (`staged`, `unstaged`, `main..HEAD`) that the code artifact accepts are not supported here; a plan is a single document, not a multi-file changeset, so a file path (or natural-language pointer at one) is the only meaningful scope.
 
-Load `${CLAUDE_PLUGIN_ROOT}/internal/plan-binding.md` and execute its shared procedure immediately after selecting the plan. That resource solely owns plan classification, containment, link safety, repository Git policy, binding refresh, and revalidation. Retain its binding throughout the review. Revise-plan consumes the captured plan bytes returned by revalidation at every local authority boundary and revalidates before each reviewer or skeptic dispatch. Provide the captured bytes as the artifact content; never ask the agent to reopen the plan pathname. Reviewer fix batches and the hardening-stamp write remain revise-plan's local mutation sites and execute the shared procedure immediately before mutation.
+Load `${CLAUDE_PLUGIN_ROOT}/internal/plan-binding.md` before plan selection. Run the shared candidate-evidence procedure before modification time or content influences selection under the automatic or natural-language routes. Select only from its frozen candidate evidence and retain the winning binding. A plan-mode path, exact supplied path, or conversation-context choice that uses no candidate metadata or content instead proceeds directly through the shared establishment procedure after selection. That resource solely owns plan classification, containment, link safety, repository Git policy, candidate evidence, binding refresh, and revalidation. Retain the resulting binding throughout the review. Revise-plan consumes the captured plan bytes returned by revalidation at every local authority boundary and revalidates before each reviewer or skeptic dispatch. Provide the captured bytes as the artifact content; never ask the agent to reopen the plan pathname. Reviewer fix batches and the hardening-stamp write remain revise-plan's local mutation sites and execute the shared procedure immediately before mutation.
 
 ## Setup
 

@@ -407,6 +407,11 @@ test('plan workflows share one physical binding and consume revalidated bytes', 
     'actual repository-relative path is ignored and untracked',
     'link count is available and exactly one',
     'file size, stable content metadata',
+    'Before modification time or content can influence inferred selection',
+    'stable candidate set',
+    "each binding's `mtimeNs`",
+    "that binding's captured bytes",
+    "retain that candidate's existing binding",
     'Global and external plans are outside the current repository\'s ignore policy',
     'immediately before every authoritative plan read, plan mutation, plan-derived dispatch, or deletion',
     'returns the plan bytes read from the revalidated file identity',
@@ -436,8 +441,12 @@ test('plan workflows share one physical binding and consume revalidated bytes', 
   }
 
   assert.equal(handoverBody.includes('before each plan-derived implementation dispatch'), true, 'handover must revalidate each implementation dispatch')
+  assert.equal(handoverBody.includes('shared candidate-evidence procedure before modification time or content influences selection'), true, 'handover must bind candidate evidence before inferred selection')
+  assert.equal(handoverBody.includes('git status` recency'), false, 'handover must not select from tracked plan evidence rejected by the shared binding')
   assert.equal(handoverBody.includes('must not reread `PLAN_FILE`'), true, 'handover task dispatch must not reopen the plan pathname')
   assert.equal(planBody.includes('before each reviewer or skeptic dispatch'), true, 'revise-plan must revalidate each review dispatch')
+  assert.equal(planBody.includes('shared candidate-evidence procedure before modification time or content influences selection'), true, 'revise-plan must bind candidate evidence before inferred selection')
+  assert.equal(planBody.includes('Recently touched plan-shaped files in `git status`'), false, 'revise-plan must not select from tracked plan evidence rejected by the shared binding')
   assert.equal(planBody.includes('writeBoundProvenanceStamp'), true, 'revise-plan must stamp through the retained physical binding')
   assert.equal(codeBody.includes('before each reviewer or skeptic dispatch'), true, 'revise-code must revalidate each review dispatch when a plan is active')
   assert.equal(codeBody.includes('parsePlanContract'), true, 'revise-code must parse captured plan authority')
