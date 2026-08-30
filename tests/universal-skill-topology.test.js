@@ -498,6 +498,23 @@ test('handover procedure titles match the ordered queue inventory', () => {
   assert.throws(() => assert.deepEqual(extractHandoverProcedureTitles(mutatedBody), QUEUE_STEPS), assert.AssertionError)
 })
 
+test('handover queue fails closed when named tail steps drift', () => {
+  const queuePath = join(REPOSITORY_ROOT, 'skills', 'handover', 'handover-queue.js')
+  const source = readRequiredFile(queuePath)
+  const loadMutatedQueue = (mutatedSource) => {
+    const module = { exports: {} }
+    new Function('require', 'module', 'exports', mutatedSource)(require, module, module.exports)
+  }
+
+  for (const mutation of [
+    ["  'Revise lore',", "  'Renamed lore',"],
+    ["  'Morning report',", "  'Revise lore',"],
+  ]) {
+    assert.equal(source.split(mutation[0]).length, 2, `queue mutation target must be unique: ${mutation[0]}`)
+    assert.throws(() => loadMutatedQueue(source.replace(mutation[0], mutation[1])), /Queue step name is not unique/)
+  }
+})
+
 test('plan binding delegates containment to the shared filesystem primitive', () => {
   const source = readRequiredFile(join(REPOSITORY_ROOT, 'internal', 'plan-binding.js'))
 

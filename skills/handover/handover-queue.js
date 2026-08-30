@@ -39,6 +39,28 @@ function fail(message) {
   throw new HandoverQueueError(message)
 }
 
+function queueStepNumber(name) {
+  const matches = QUEUE_STEPS.reduce((indices, stepName, index) => {
+    if (stepName === name) {
+      indices.push(index + 1)
+    }
+
+    return indices
+  }, [])
+  if (matches.length !== 1) {
+    fail(`Queue step name is not unique: ${name}`)
+  }
+
+  return matches[0]
+}
+
+const QUEUE_TAIL_STEPS = Object.freeze({
+  fullTestSuite: queueStepNumber('Full test suite'),
+  morningReport: queueStepNumber('Morning report'),
+  persistWorkflowEdits: queueStepNumber('Persist workflow edits'),
+  reviseLore: queueStepNumber('Revise lore'),
+})
+
 function validText(value, maximumLength) {
   return typeof value === 'string' && value.length > 0 && value.length <= maximumLength && !/[\u0000-\u001f\u007f]/.test(value)
 }
@@ -157,10 +179,10 @@ function queueState(parsed) {
   if (allSteps.every((step) => completed.has(step))) {
     return { complete: true, nextStep: null }
   }
-  if (completed.has(10) || completed.has(12)) {
+  if (completed.has(QUEUE_TAIL_STEPS.persistWorkflowEdits) || completed.has(QUEUE_TAIL_STEPS.morningReport)) {
     fail('Queue tail marks are not coupled')
   }
-  const beforeTail = allSteps.filter((step) => step <= 9)
+  const beforeTail = allSteps.filter((step) => step <= QUEUE_TAIL_STEPS.reviseLore)
   let frontier = parsed.entryStep
   for (const step of beforeTail) {
     if (!completed.has(step)) {
@@ -172,19 +194,23 @@ function queueState(parsed) {
   if (beforeTail.some((step) => step >= frontier && completed.has(step))) {
     fail('Queue completion marks do not form a frontier')
   }
-  if (frontier <= 9) {
-    if (completed.has(11)) {
+  if (frontier <= QUEUE_TAIL_STEPS.reviseLore) {
+    if (completed.has(QUEUE_TAIL_STEPS.fullTestSuite)) {
       fail('Queue completion marks do not form a frontier')
     }
 
     return { complete: false, nextStep: frontier }
   }
-  const unexpected = parsed.completedSteps.filter((step) => step !== 11 && step <= 12 && step > 9)
+  const unexpected = parsed.completedSteps.filter((step) => step !== QUEUE_TAIL_STEPS.fullTestSuite
+    && step <= QUEUE_TAIL_STEPS.morningReport
+    && step >= QUEUE_TAIL_STEPS.persistWorkflowEdits)
   if (unexpected.length > 0) {
     fail('Queue tail marks are invalid')
   }
 
-  return { complete: false, nextStep: completed.has(11) ? 12 : 11 }
+  return { complete: false, nextStep: completed.has(QUEUE_TAIL_STEPS.fullTestSuite)
+    ? QUEUE_TAIL_STEPS.morningReport
+    : QUEUE_TAIL_STEPS.fullTestSuite }
 }
 
 function sameAuthority(left, right) {
@@ -234,12 +260,12 @@ function advanceQueue(input) {
 
     return { complete: state.complete, nextStep: state.nextStep, sourceBuffer: input.sourceBuffer }
   }
-  if (state.complete || input.completedStep !== state.nextStep || input.completedStep === 10) {
+  if (state.complete || input.completedStep !== state.nextStep || input.completedStep === QUEUE_TAIL_STEPS.persistWorkflowEdits) {
     fail('Queue update does not complete the next actionable step')
   }
   const completedSteps = [...parsed.completedSteps, input.completedStep]
-  if (input.completedStep === 12) {
-    completedSteps.push(10)
+  if (input.completedStep === QUEUE_TAIL_STEPS.morningReport) {
+    completedSteps.push(QUEUE_TAIL_STEPS.persistWorkflowEdits)
   }
   completedSteps.sort((left, right) => left - right)
   const sourceBuffer = serializeQueue(input.nextAuthority, parsed.entryStep, completedSteps)
