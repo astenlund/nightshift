@@ -2174,8 +2174,9 @@ function runHostEntryCases(repositoryRoot) {
     }
   })
 
-  test('credential-bearing transcript and repository carriers publish no evidence leaf', async () => {
-    for (const source of ['host-event', 'repository-file']) {
+  test('credential-bearing transcript, proxy, and repository carriers publish no evidence leaf', async () => {
+    const line = (value) => Buffer.from(canonicalJson(value) + '\n', 'utf8')
+    for (const source of ['host-event', 'proxy-trace', 'repository-file']) {
       const scratch = tempRoot()
       try {
         const evidenceOutputRoot = join(scratch, 'evidence')
@@ -2188,6 +2189,16 @@ function runHostEntryCases(repositoryRoot) {
               const transcript = driver.createTranscript()
               transcript.appendHostEvent(Buffer.from(`event:${token}`, 'utf8'))
               evidence.push({ bytes: transcript.toBuffer(), path: 'transcript.jsonl' })
+            } else if (source === 'proxy-trace') {
+              const trace = driver.createProxyTrace({ flush: () => {} })
+              trace.append({
+                exitCode: 0,
+                ordinal: 1,
+                requestBase64: line({ operation: 'inspect' }).toString('base64'),
+                stderrBase64: '',
+                stdoutBase64: line({ contentBase64: Buffer.from(`trace:${token}`, 'utf8').toString('base64') }).toString('base64'),
+              })
+              evidence.push({ bytes: trace.toBuffer(), path: 'proxy-trace.jsonl' })
             } else {
               nodeFilesystem.writeFileSync(join(call.cwd, 'credential-leak.txt'), `file:${token}`)
             }

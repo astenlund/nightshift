@@ -1641,7 +1641,7 @@ function runSessionCases(repositoryRoot) {
     }
   })
 
-  test('credential isolation decodes transcript payloads and repository contents', () => {
+  test('credential isolation decodes transcript, proxy, and repository carriers', () => {
     const token = 'credential-value-' + 'c'.repeat(48)
     const credentialValues = driver.credentialValuesFromProjection({ ANTHROPIC_API_KEY: token, OPENAI_API_KEY: '', PATH: '/usr/bin' })
     const cleanTranscript = canonicalLine({ kind: 'host-event', ordinal: 1, payloadBase64: Buffer.from('clean host event', 'utf8').toString('base64') })
@@ -1654,17 +1654,36 @@ function runSessionCases(repositoryRoot) {
       },
       observedSha256: 'b'.repeat(64),
     })
-    const files = (transcript, repository) => [
+    const proxyEvidence = ({ request = canonicalLine({ operation: 'inspect' }), stderr = Buffer.alloc(0), stdout = canonicalLine({ ok: true }) } = {}) => canonicalLine({
+      exitCode: 0,
+      ordinal: 1,
+      requestBase64: request.toString('base64'),
+      stderrBase64: stderr.toString('base64'),
+      stdoutBase64: stdout.toString('base64'),
+    })
+    const files = (transcript, proxy, repository) => [
+      { bytes: proxy, path: 'proxy-trace.jsonl' },
       { bytes: repository, path: 'repository-attestation.json' },
       { bytes: transcript, path: 'transcript.jsonl' },
     ]
+    const cleanProxy = proxyEvidence()
 
     assert.deepEqual(credentialValues, [token])
     assert.equal(contaminatedTranscript.includes(token), false, 'the transcript carrier hides the credential behind Base64')
     assert.equal(repositoryEvidence(token).includes(token), false, 'the repository carrier hides the credential behind Base64')
-    assert.equal(driver.verifyCredentialFreeEvidence({ credentialValues, files: files(cleanTranscript, repositoryEvidence('clean repository file')) }), true)
-    assert.equal(driver.verifyCredentialFreeEvidence({ credentialValues, files: files(contaminatedTranscript, repositoryEvidence('clean repository file')) }), false)
-    assert.equal(driver.verifyCredentialFreeEvidence({ credentialValues, files: files(cleanTranscript, repositoryEvidence(`file:${token}`)) }), false)
+    assert.equal(driver.verifyCredentialFreeEvidence({ credentialValues, files: files(cleanTranscript, cleanProxy, repositoryEvidence('clean repository file')) }), true)
+    assert.equal(driver.verifyCredentialFreeEvidence({ credentialValues, files: files(contaminatedTranscript, cleanProxy, repositoryEvidence('clean repository file')) }), false)
+    assert.equal(driver.verifyCredentialFreeEvidence({ credentialValues, files: files(cleanTranscript, cleanProxy, repositoryEvidence(`file:${token}`)) }), false)
+    for (const outer of ['request', 'stderr', 'stdout']) {
+      assert.equal(driver.verifyCredentialFreeEvidence({ credentialValues, files: files(cleanTranscript, proxyEvidence({ [outer]: Buffer.from(`outer:${token}`, 'utf8') }), repositoryEvidence('clean repository file')) }), false, outer)
+    }
+    for (const carrier of ['contentBase64', 'beforeBase64', 'afterBase64']) {
+      const nested = canonicalLine({ [carrier]: Buffer.from(`nested:${token}`, 'utf8').toString('base64') })
+      assert.equal(driver.verifyCredentialFreeEvidence({ credentialValues, files: files(cleanTranscript, proxyEvidence({ stdout: nested }), repositoryEvidence('clean repository file')) }), false, carrier)
+    }
+    const nestedTranscript = canonicalLine({ kind: 'host-event', ordinal: 1, payloadBase64: canonicalLine({ contentBase64: Buffer.from(token, 'utf8').toString('base64') }).toString('base64') })
+    assert.equal(driver.verifyCredentialFreeEvidence({ credentialValues, files: files(nestedTranscript, cleanProxy, repositoryEvidence('clean repository file')) }), false, 'nested transcript carrier')
+    assert.equal(driver.verifyCredentialFreeEvidence({ credentialValues, files: files(cleanTranscript, proxyEvidence({ stdout: canonicalLine({ contentBase64: 'not-canonical!' }) }), repositoryEvidence('clean repository file')) }), false, 'malformed nested carrier fails closed')
     assert.equal(driver.verifyCredentialFreeEvidence({ credentialValues: [null], files: [] }), false, 'a malformed credential list fails closed')
   })
 
