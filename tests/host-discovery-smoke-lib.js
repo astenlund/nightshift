@@ -547,13 +547,14 @@ function evaluateEvidence({ checkoutRoot, evidenceRoot, gitRunner = git, release
     assertion(row.status === 'pass' || !release && row.status === 'provisional' && row.diagnostic === 'host executable absent', 'Evidence status is not accepted')
   }
   const rows = cells.map((cell) => cell.row)
-  const digest = candidateFactsForIndex(checkoutRoot, gitRunner).digest
+  const indexed = candidateFactsForIndex(checkoutRoot, gitRunner)
   for (const row of rows) {
-    assertion(row.candidateDigest === digest, 'Evidence candidate digest is stale or mixed')
+    assertion(row.candidateVersion === indexed.version, 'Evidence candidate version mismatch')
+    assertion(row.candidateDigest === indexed.digest, 'Evidence candidate digest is stale or mixed')
   }
   assertEvidenceDirectoriesStable(snapshot)
 
-  return { digest, rows }
+  return { digest: indexed.digest, rows }
 }
 
 function isContained(root, target) {

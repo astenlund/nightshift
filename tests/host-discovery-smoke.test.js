@@ -581,6 +581,13 @@ test('local evidence accepts absent-host provisional rows', () => {
     }
 
     assert.doesNotThrow(() => evaluateEvidence({ checkoutRoot, evidenceRoot, release: false }))
+    const versionMutatedRowPath = join(evidenceRoot, 'codex-repeat.json')
+    const versionMutatedRow = JSON.parse(readFileSync(versionMutatedRowPath, 'utf8'))
+    versionMutatedRow.candidateVersion = candidate.version + '.mutated'
+    writeFileSync(versionMutatedRowPath, JSON.stringify(versionMutatedRow) + '\n')
+    assert.throws(() => evaluateEvidence({ checkoutRoot, evidenceRoot, release: false }), /version mismatch/)
+    const versionMutatedRowBytes = JSON.stringify({ ...versionMutatedRow, candidateVersion: candidate.version }) + '\n'
+    writeFileSync(versionMutatedRowPath, versionMutatedRowBytes)
     const copiedRowPath = join(evidenceRoot, 'codex-repeat.json')
     const copiedRowOriginal = readFileSync(copiedRowPath)
     try {
