@@ -40,10 +40,13 @@ const {
   inspectIgnoreProbes,
   inspectGitPolicy,
 } = require('../../skills/init-backlog/lib/git-policy')
-const { createInitialLock, initialLockPaths, publishNoReplace, removeInitialLock } = require('../../skills/init-backlog/lib/filesystem')
+const filesystem = require('../../skills/init-backlog/lib/filesystem')
+const { createInitialLock, initialLockPaths, publishNoReplace, removeInitialLock } = filesystem
 const { MAX_INLINE_FILE_BYTES, MAX_INSPECT_RESULT_BYTES, MAX_MECHANICAL_FILE_BYTES, canonicalJson, sha256, validateProposalDispositions } = require('../../skills/init-backlog/lib/protocol')
 const { analyzeCatalog } = require('../../skills/ready/ready')
 const { ELECTION_MARKER_PATH } = require('./election-oracles')
+
+const BACKUPS_MODULE_PATH = require.resolve('../../skills/init-backlog/lib/backups')
 
 // Fresh valid Codex host context for direct inspect/collect calls; every
 // caller may mutate its copy freely.
@@ -88,6 +91,25 @@ function sizedMarkdown(heading, size) {
   }
 
   return bytes
+}
+
+function withRecordedBackupStableOpens(run) {
+  const originalStableOpenFile = filesystem.stableOpenFile
+  const openedTargets = []
+  try {
+    filesystem.stableOpenFile = (...args) => {
+      openedTargets.push(args[1])
+
+      return originalStableOpenFile(...args)
+    }
+    delete require.cache[BACKUPS_MODULE_PATH]
+
+    return run(require(BACKUPS_MODULE_PATH), openedTargets)
+  } finally {
+    filesystem.stableOpenFile = originalStableOpenFile
+    delete require.cache[BACKUPS_MODULE_PATH]
+    require(BACKUPS_MODULE_PATH)
+  }
 }
 
 function runInspectionCases(repositoryRoot) {
@@ -1134,6 +1156,80 @@ function runInspectionCases(repositoryRoot) {
       assert.equal(problem.blocking, true)
       assert.deepEqual(problem.evidencePaths, [divergent, target].sort())
       assert.equal(problem.target, target)
+    } finally {
+      rmSync(root, { force: true, recursive: true })
+    }
+  })
+
+  test('backup inspection stable-opens a shared current target once per call', () => {
+    const root = mkdtempSync(join(tmpdir(), 'nightshift-inspect-shared-backup-target-'))
+    const target = '.claude/FEATURES.md'
+    const targetPath = join(root, ...target.split('/'))
+    try {
+      mkdirSync(join(root, '.claude'), { recursive: true })
+      mkdirSync(join(root, '.tmp'))
+      writeFileSync(targetPath, Buffer.from('current\n', 'utf8'), { mode: 0o600 })
+      const targetHash = sha256(Buffer.from(target, 'utf8'))
+      const backups = [
+        `.tmp/nightshift-init-backlog-unwrap-${'1'.repeat(64)}-${'2'.repeat(64)}-${targetHash}.bak`,
+        `.tmp/nightshift-init-backlog-unwrap-${'3'.repeat(64)}-${'4'.repeat(64)}-${targetHash}.bak`,
+      ]
+      for (const backup of backups) writeFileSync(join(root, ...backup.split('/')), Buffer.from('backup\n', 'utf8'), { mode: 0o600 })
+
+      withRecordedBackupStableOpens(({ inspectBackups }, openedTargets) => {
+        const first = inspectBackups(root, [{ target }])
+        const second = inspectBackups(root, [{ target }])
+
+        assert.deepEqual(first.backups, backups)
+        assert.deepEqual(second.backups, backups)
+        assert.equal(openedTargets.filter((openedTarget) => openedTarget === targetPath).length, 2)
+      })
+    } finally {
+      rmSync(root, { force: true, recursive: true })
+    }
+  })
+
+  test('backup inspection caches a missing shared current target once per call', () => {
+    const root = mkdtempSync(join(tmpdir(), 'nightshift-inspect-missing-backup-target-'))
+    const target = '.claude/MISSING.md'
+    const targetPath = join(root, ...target.split('/'))
+    try {
+      mkdirSync(join(root, '.tmp'))
+      const targetHash = sha256(Buffer.from(target, 'utf8'))
+      const backups = [
+        `.tmp/nightshift-init-backlog-unwrap-${'5'.repeat(64)}-${'6'.repeat(64)}-${targetHash}.bak`,
+        `.tmp/nightshift-init-backlog-unwrap-${'7'.repeat(64)}-${'8'.repeat(64)}-${targetHash}.bak`,
+      ]
+      for (const backup of backups) writeFileSync(join(root, ...backup.split('/')), Buffer.from('backup\n', 'utf8'), { mode: 0o600 })
+
+      withRecordedBackupStableOpens(({ inspectBackups }, openedTargets) => {
+        const result = inspectBackups(root, [{ target }])
+
+        assert.deepEqual(result.backups, backups)
+        assert.deepEqual(result.problems, [])
+        assert.equal(openedTargets.filter((openedTarget) => openedTarget === targetPath).length, 1)
+      })
+    } finally {
+      rmSync(root, { force: true, recursive: true })
+    }
+  })
+
+  test('backup inspection fails closed when a shared current target is invalid', () => {
+    const root = mkdtempSync(join(tmpdir(), 'nightshift-inspect-invalid-backup-target-'))
+    const target = '.claude/FEATURES.md'
+    try {
+      mkdirSync(join(root, ...target.split('/')), { recursive: true })
+      mkdirSync(join(root, '.tmp'))
+      const targetHash = sha256(Buffer.from(target, 'utf8'))
+      const backups = [
+        `.tmp/nightshift-init-backlog-unwrap-${'9'.repeat(64)}-${'a'.repeat(64)}-${targetHash}.bak`,
+        `.tmp/nightshift-init-backlog-unwrap-${'b'.repeat(64)}-${'c'.repeat(64)}-${targetHash}.bak`,
+      ]
+      for (const backup of backups) writeFileSync(join(root, ...backup.split('/')), Buffer.from('backup\n', 'utf8'), { mode: 0o600 })
+
+      const { inspectBackups } = require(BACKUPS_MODULE_PATH)
+
+      assert.throws(() => inspectBackups(root, [{ target }]), /ordinary nonlinked file/)
     } finally {
       rmSync(root, { force: true, recursive: true })
     }

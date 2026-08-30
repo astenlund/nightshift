@@ -46,6 +46,7 @@ function inspectBackups(root, targets, options = {}) {
   const enumerationOptions = withAttributeProbe(options)
   const entries = enumerateDirectory(directory, { ...enumerationOptions, includeName: (name) => backupParts(`${BACKUP_DIRECTORY}/${name}`) !== null, maxSelectedEntries: MAX_RETAINED_BACKUP_ENTRIES })
   const targetByHash = new Map((targets ?? []).map((item) => [sha256(Buffer.from(item.target, 'utf8')), item.target]))
+  const currentByTarget = new Map()
   const backups = []
   const problems = []
   for (const entry of entries) {
@@ -58,10 +59,15 @@ function inspectBackups(root, targets, options = {}) {
     const currentTarget = targetByHash.get(parts.targetHash)
     let current = null
     if (currentTarget !== undefined) {
-      try {
-        current = stableOpenFile(root, join(root, ...currentTarget.split('/')), boundedOpenOptions(options, MAX_MECHANICAL_FILE_BYTES, { requireSingleLink: true }))
-      } catch (error) {
-        if (error?.code !== 'ENOENT') throw error
+      if (currentByTarget.has(currentTarget)) {
+        current = currentByTarget.get(currentTarget)
+      } else {
+        try {
+          current = stableOpenFile(root, join(root, ...currentTarget.split('/')), boundedOpenOptions(options, MAX_MECHANICAL_FILE_BYTES, { requireSingleLink: true }))
+        } catch (error) {
+          if (error?.code !== 'ENOENT') throw error
+        }
+        currentByTarget.set(currentTarget, current)
       }
     }
     backups.push(target)
