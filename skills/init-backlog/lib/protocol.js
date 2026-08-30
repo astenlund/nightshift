@@ -788,6 +788,16 @@ function validateOwnerRecord(value) {
   }, { ordinalBy: (item) => item.target, uniqueBy: (item) => item.target })
 }
 
+function validOwnerRecordSchema(value) {
+  try {
+    validateOwnerRecord(value)
+
+    return true
+  } catch {
+    return false
+  }
+}
+
 function validateFailure(value) {
   requireRecord(value, ['ok', 'protocolVersion', 'operation', 'phase', 'actionId', 'target', 'code', 'systemCode', 'detail', 'manifestId', 'outcomes', 'recovery'], 'failure result')
   if (value.ok !== false || value.protocolVersion !== 1) {
@@ -1252,7 +1262,6 @@ module.exports = {
   NONCE_PATTERN,
   OPERATIONS,
   OWNER_BASENAME,
-  OWNER_RECORD_KEYS,
   OWNER_STAGE_BASENAME,
   PHASES,
   RECOVERY_GATE_BASENAME,
@@ -1294,4 +1303,5 @@ module.exports = {
   validateResultRecord,
   validateSelector,
   validateTarget,
+  validOwnerRecordSchema,
 }

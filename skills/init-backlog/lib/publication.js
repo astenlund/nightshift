@@ -29,7 +29,7 @@ const {
 } = require('./filesystem')
 const { collectInspection, composeElectionMarker } = require('./inspection')
 const { approvedProgress, detectResume, liveHostContext, publishedHostContext, resumeProjectionScope } = require('./resume')
-const { BACKUP_DIRECTORY, DIGEST_PATTERN, MAX_INLINE_FILE_BYTES, MAX_MECHANICAL_FILE_BYTES, MAX_RECOVERY_REQUEST_BYTES, NONCE_PATTERN, OWNER_RECORD_KEYS, RECOVERY_GATE_BASENAME, RECOVERY_LOCK_BASENAME: LOCK_BASENAME, RECOVERY_MARKER_BASENAME: ELECTION_BASENAME, canonicalJson, compareOrdinal, electionMarkerTemporaryNames, sameKeys, sha256 } = require('./protocol')
+const { BACKUP_DIRECTORY, DIGEST_PATTERN, MAX_INLINE_FILE_BYTES, MAX_MECHANICAL_FILE_BYTES, MAX_RECOVERY_REQUEST_BYTES, NONCE_PATTERN, RECOVERY_GATE_BASENAME, RECOVERY_LOCK_BASENAME: LOCK_BASENAME, RECOVERY_MARKER_BASENAME: ELECTION_BASENAME, canonicalJson, compareOrdinal, electionMarkerTemporaryNames, sha256, validOwnerRecordSchema } = require('./protocol')
 
 const POSIX_DEFAULT_DIRECTORY_MODE = 0o755
 
@@ -618,7 +618,7 @@ function adoptBootstrapStage(root, path, existingRecord, options, ownedTemporari
   try { record = JSON.parse(opened.bytes.toString('utf8')) } catch (error) { throw new Error('Bootstrap stage record is invalid', { cause: error }) }
   const next = join(root, `${LOCK_BASENAME}.${existingRecord.ownerNonce}.next`)
   const expectedPaths = [relativeArtifact(root, path), relativeArtifact(root, next)].sort(compareOrdinal)
-  if (!sameKeys(record, OWNER_RECORD_KEYS) || record.createdAtUnixMs < 0 || !Number.isSafeInteger(record.createdAtUnixMs) || record.manifestId !== null || record.operation !== 'apply' || record.ownerNonce !== existingRecord.ownerNonce || record.pid !== existingRecord.pid || record.protocolVersion !== 1 || record.recoveryId !== null || record.root !== root || canonicalJson(record.temporaryPaths) !== canonicalJson(expectedPaths) || canonicalJson(record.unfinalizedDirectories) !== '[]' || !Buffer.from(`${canonicalJson(record)}\n`, 'utf8').equals(opened.bytes) || (options.platform ?? process.platform) !== 'win32' && opened.mode !== 0o600) throw new Error('Bootstrap stage record is invalid')
+  if (!validOwnerRecordSchema(record) || record.manifestId !== null || record.operation !== 'apply' || record.ownerNonce !== existingRecord.ownerNonce || record.pid !== existingRecord.pid || record.root !== root || canonicalJson(record.temporaryPaths) !== canonicalJson(expectedPaths) || record.unfinalizedDirectories.length !== 0 || !Buffer.from(`${canonicalJson(record)}\n`, 'utf8').equals(opened.bytes) || (options.platform ?? process.platform) !== 'win32' && opened.mode !== 0o600) throw new Error('Bootstrap stage record is invalid')
   ownedTemporaries.set(path, { bytes: Buffer.from(opened.bytes), destination: null, identity: opened.identity, mode: platformMode(options, 0o600), requireSingleLink: true })
 }
 
@@ -987,12 +987,12 @@ function readExistingLock(root, path, options) {
   try {
     const opened = stableOpenFile(root, path, boundedOpenOptions(options, MAX_RECOVERY_REQUEST_BYTES))
     const record = JSON.parse(opened.bytes.toString('utf8'))
-    if (!sameKeys(record, OWNER_RECORD_KEYS) || record.protocolVersion !== 1 || record.operation !== 'apply' || record.root !== root || !Number.isSafeInteger(record.pid) || record.pid <= 0 || !NONCE_PATTERN.test(record.ownerNonce) || !Number.isSafeInteger(record.createdAtUnixMs) || record.createdAtUnixMs < 0 || record.manifestId !== null && !DIGEST_PATTERN.test(record.manifestId) || record.recoveryId !== null || !Array.isArray(record.temporaryPaths) || !Array.isArray(record.unfinalizedDirectories)) throw new Error('Publication lock schema is invalid')
+    if (!validOwnerRecordSchema(record) || record.operation !== 'apply' || record.root !== root) throw new Error('Publication lock schema is invalid')
     if (!Buffer.from(`${canonicalJson(record)}\n`, 'utf8').equals(opened.bytes)) throw new Error('Publication lock bytes are not canonical')
     if ((options.platform ?? process.platform) !== 'win32' && opened.mode !== 0o600) throw new Error('Publication lock mode is invalid')
     const temporaryPathsValue = [...record.temporaryPaths]
-    if (temporaryPathsValue.some((item) => typeof item !== 'string' || !pathIsContained(root, targetPath(root, item))) || new Set(temporaryPathsValue).size !== temporaryPathsValue.length || temporaryPathsValue.some((item, index) => index > 0 && compareOrdinal(temporaryPathsValue[index - 1], item) >= 0)) throw new Error('Publication lock temporary inventory is invalid')
-    if (record.unfinalizedDirectories.some((item) => !sameKeys(item, ['mode', 'target']) || typeof item.target !== 'string' || !Number.isSafeInteger(item.mode) && item.mode !== null || item.mode !== null && (item.mode < 0 || item.mode > 4095) || !pathIsContained(root, targetPath(root, item.target))) || record.unfinalizedDirectories.some((item, index) => index > 0 && compareOrdinal(record.unfinalizedDirectories[index - 1].target, item.target) >= 0)) throw new Error('Publication lock directory inventory is invalid')
+    if (temporaryPathsValue.some((item) => !pathIsContained(root, targetPath(root, item)))) throw new Error('Publication lock temporary inventory is invalid')
+    if (record.unfinalizedDirectories.some((item) => !pathIsContained(root, targetPath(root, item.target)))) throw new Error('Publication lock directory inventory is invalid')
     const lockMetadata = lstatSync(path, { bigint: true })
     const bootstrapStage = initialLockPaths(root, record.pid, record.ownerNonce).stage
     if (record.manifestId === null) {

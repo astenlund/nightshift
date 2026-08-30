@@ -51,6 +51,7 @@ const {
   validateRequestRecord,
   validateResultRecord,
   validateTarget,
+  validOwnerRecordSchema,
 } = require('../../skills/init-backlog/lib/protocol')
 const { composeTemplate, loadManifest, normalizeLogicalAsset, validateManifest } = require('../../skills/init-backlog/lib/assets')
 const {
@@ -374,6 +375,25 @@ function runProtocolCases(repositoryRoot) {
 
     const unsafe = `safe${String.fromCodePoint(0x10ffff)}tail`
     assert.throws(() => validateTarget(unsafe, { platform: 'win32' }))
+  })
+
+  test('owner-record schema validation rejects coercible non-string identities', () => {
+    const record = {
+      createdAtUnixMs: 0,
+      manifestId: null,
+      operation: 'apply',
+      ownerNonce: NONCE_A,
+      pid: 1,
+      protocolVersion: 1,
+      recoveryId: null,
+      root: canonicalRoot(repositoryRoot),
+      temporaryPaths: [],
+      unfinalizedDirectories: [],
+    }
+
+    assert.equal(validOwnerRecordSchema(record), true)
+    assert.equal(validOwnerRecordSchema({ ...record, ownerNonce: { toString: () => NONCE_A } }), false)
+    assert.equal(validOwnerRecordSchema({ ...record, manifestId: { toString: () => DIGEST_A } }), false)
   })
 
   test('canonical serialization uses code-point key order and rejects non-data values', () => {
