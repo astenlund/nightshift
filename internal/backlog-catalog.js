@@ -60,6 +60,8 @@ const LABEL_AT_START = /^\*\*[^*]+?:\*\*/;
 const BACKLOG_FILES = ['QUICK_WINS.md', 'FEATURES.md', 'BUGS.md', 'PATTERNS.md', 'QUICK_WINS_HISTORY.md', 'FEATURES_HISTORY.md', 'BUGS_HISTORY.md'];
 const BACKLOG_DIRECTORIES = ['features', 'bugs', 'patterns'];
 const STRICT_UTF8_DECODER = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true });
+const HTML_BLOCK_TAG_CLOSERS = new Map(['script', 'pre', 'style', 'textarea'].map((tag) => [tag, new RegExp(`</${tag}\\s*>`, 'i')]));
+const RAW_HTML_MASK_CACHE = new WeakMap();
 
 function rawHtmlBlockStart(line) {
   const trimmed = line.replace(/^ {0,3}/, '');
@@ -68,7 +70,7 @@ function rawHtmlBlockStart(line) {
   if (trimmed.startsWith('<![CDATA[')) return { type: 5, terminator: ']]>' };
   if (/^<![A-Z]/.test(trimmed)) return { type: 4, terminator: '>' };
   const rawTag = trimmed.match(/^<(script|pre|style|textarea)(?:\s|>|$)/i);
-  if (rawTag) return { type: 1, tag: rawTag[1] };
+  if (rawTag) return { type: 1, closer: HTML_BLOCK_TAG_CLOSERS.get(rawTag[1].toLowerCase()) };
   if (new RegExp(`^</?(?:${HTML_BLOCK_TYPE_ONE_OR_SIX_TAGS.join('|')})(?:\s|/?>|$)`, 'i').test(trimmed)) return { type: 6 };
   if (COMPLETE_HTML_TAG.test(line)) return { type: 7 };
 
@@ -76,13 +78,15 @@ function rawHtmlBlockStart(line) {
 }
 
 function rawHtmlBlockTerminated(block, line) {
-  if (block.type === 1) return new RegExp(`</${block.tag}\s*>`, 'i').test(line);
+  if (block.type === 1) return block.closer.test(line);
   if (block.type >= 2 && block.type <= 5) return line.includes(block.terminator);
 
   return false;
 }
 
 function maskRawHtmlBlocks(records) {
+  const cached = RAW_HTML_MASK_CACHE.get(records);
+  if (cached !== undefined) return cached;
   const masked = new Set();
   let html = null;
   records.forEach((record) => {
@@ -107,6 +111,8 @@ function maskRawHtmlBlocks(records) {
     if (!rawHtmlBlockTerminated(block, record.content) && block.type <= 5) html = block;
     else if (block.type >= 6) html = block;
   });
+
+  RAW_HTML_MASK_CACHE.set(records, masked);
 
   return masked;
 }

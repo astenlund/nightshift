@@ -7,7 +7,7 @@ const path = require('node:path');
 const test = require('node:test');
 
 const { CatalogError, canonicalPath, detectHardWraps, unwrapText, collectMarkdownFiles, analyzeUnwrapCatalog } = require('./unwrap.js');
-const { runCli } = require('../../internal/backlog-catalog.js');
+const { maskRawHtmlBlocks, runCli } = require('../../internal/backlog-catalog.js');
 const { targetRecord } = require('./lib/inspection.js');
 const { scanMarkdown } = require('../spec-agreement/spec-agreement.js');
 
@@ -657,6 +657,16 @@ test('analyzeUnwrapCatalog applies the same raw HTML block boundaries as unwrapT
 
   const expectedNames = ['cdata', 'comment', 'custom', 'declaration', 'div', 'processing', 'script'];
   assert.deepEqual(analyzeUnwrapCatalog(items).map(({ target, wraps }) => ({ target, wraps })), expectedNames.map((name) => ({ target: `features/${name}.md`, wraps: [{ line: 5, kind: 'paragraph' }] })));
+});
+
+test('raw HTML mask analysis is memoized per records array without changing records', () => {
+  const records = scanMarkdown(Buffer.from('<script>\ninside\n</script>\nAfter\n', 'utf8')).lines;
+  const before = records.map((record) => ({ ...record }));
+  const first = maskRawHtmlBlocks(records);
+  const second = maskRawHtmlBlocks(records);
+
+  assert.strictEqual(second, first);
+  assert.deepEqual(records, before);
 });
 
 test('targetRecord consumes a cached wrap analysis instead of rescanning decoded text', () => {
