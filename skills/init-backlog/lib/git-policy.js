@@ -105,14 +105,28 @@ function classifyGitKind(candidates) {
   return { kind: 'git', present: present.map((candidate) => candidate.name).sort(compareOrdinal) }
 }
 
+function gitCandidate(name, path, metadata) {
+  return { kind: metadata.isFile() ? 'file' : metadata.isDirectory() ? 'directory' : 'special', link: metadata.isSymbolicLink(), name, path, present: true }
+}
+
 function candidateSet(root, options = {}) {
   const stat = options.lstatSync ?? lstatSync
+  const markerPath = join(root, '.git')
+  let marker
+  try {
+    marker = gitCandidate('.git', markerPath, stat(markerPath, { bigint: true }))
+  } catch (error) {
+    if (error?.code === 'ENOENT') return []
+
+    return [{ accessible: false, name: '.git', path: markerPath, present: true }]
+  }
+  if (marker.link || marker.kind === 'special') return [marker]
+  if (marker.kind === 'file') return [marker]
+
   return GIT_CANDIDATES.map((name) => {
     const path = join(root, '.git', name)
     try {
-      const metadata = stat(path, { bigint: true })
-
-      return { kind: metadata.isFile() ? 'file' : metadata.isDirectory() ? 'directory' : 'special', link: metadata.isSymbolicLink(), name, path, present: true }
+      return gitCandidate(name, path, stat(path, { bigint: true }))
     } catch (error) {
       if (error?.code === 'ENOENT') {
         return { kind: null, name, path, present: false }
@@ -331,13 +345,18 @@ function inspectIgnoreProbe(root, probe, options = {}) {
   return inspectIgnoreProbes(root, [{ probe, target: probe }], options)[0]
 }
 
-function inspectIgnoreProbes(root, probes, options = {}) {
+function validateIgnoreProbes(probes) {
   if (!Array.isArray(probes) || probes.some((item) => item === null || typeof item !== 'object' || typeof item.probe !== 'string')) throw new Error('Git ignore probes are invalid')
-  if (probes.length === 0) return []
-  const ordered = [...probes]
-  for (let index = 1; index < ordered.length; index += 1) {
-    if (compareOrdinal(ordered[index - 1].probe, ordered[index].probe) >= 0) throw new Error('Git ignore probes are not ordinally ordered')
+  for (let index = 1; index < probes.length; index += 1) {
+    if (compareOrdinal(probes[index - 1].probe, probes[index].probe) >= 0) throw new Error('Git ignore probes are not ordinally ordered')
   }
+
+  return probes
+}
+
+function inspectIgnoreProbes(root, probes, options = {}) {
+  const ordered = validateIgnoreProbes(probes)
+  if (ordered.length === 0) return []
   const input = Buffer.from(ordered.map((item) => item.probe).join('\0') + '\0', 'utf8')
   const result = runGit(root, ['check-ignore', '-z', '-v', '-n', '--no-index', '--stdin'], { ...options, input })
   const stdout = buffers(result.stdout)
@@ -451,11 +470,19 @@ function inspectGitPolicy(root, options = {}) {
   const declaredProbes = options.ignoreProbes ?? []
   const regularProbes = declaredProbes.filter((item) => item?.gate !== true)
   const gateProbes = declaredProbes.filter((item) => item?.gate === true)
-  const probeResults = inspectIgnoreProbes(root, regularProbes, gitOptions)
-  const gateResults = inspectIgnoreProbes(root, gateProbes, gitOptions)
-  for (const [probeIndex, item] of regularProbes.entries()) {
+  validateIgnoreProbes(regularProbes)
+  validateIgnoreProbes(gateProbes)
+  const collectionProbes = [...new Map(declaredProbes.map((item) => [item.probe, item])).values()].sort((left, right) => compareOrdinal(left.probe, right.probe))
+  const collectionResults = inspectIgnoreProbes(root, collectionProbes, gitOptions)
+  const resultsByProbe = new Map(collectionProbes.map((item, index) => [item.probe, collectionResults[index]]))
+  const resultFor = (item) => {
+    const result = resultsByProbe.get(item.probe)
+
+    return result === null ? null : { ...result, target: item.target }
+  }
+  for (const item of regularProbes) {
     if (typeof item !== 'object' || typeof item.probe !== 'string' || typeof item.target !== 'string') throw new Error('Git ignore probe declaration is invalid')
-    const match = classifySource(probeResults[probeIndex])
+    const match = classifySource(resultFor(item))
     if (match !== null) {
       if (match.diagnostic) {
         if (item.plan) {
@@ -475,9 +502,9 @@ function inspectGitPolicy(root, options = {}) {
       ignoreMatches.push({ pattern: match.pattern, probe: item.probe, sourcePath: match.sourcePath, target: item.target })
     }
   }
-  for (const [gateIndex, item] of gateProbes.entries()) {
+  for (const item of gateProbes) {
     if (typeof item !== 'object' || typeof item.probe !== 'string' || typeof item.target !== 'string') throw new Error('Git ignore gate declaration is invalid')
-    const match = classifySource(gateResults[gateIndex])
+    const match = classifySource(resultFor(item))
     if (match !== null && !match.diagnostic && match.sourcePath !== '.gitignore' && match.pattern !== null) nestedConflict = true
   }
   const rootRuleEffective = options.rootRuleEffective === true || planMatch?.sourcePath === '.gitignore' && planMatch.pattern !== null

@@ -30,12 +30,14 @@ const { HTML_BLOCK_TYPE_SIX_TAGS, guidanceImports } = require('../../skills/init
 const {
   classifyCheckAttrProcess,
   classifyGitKind,
+  detectGitKind,
   normalizeConfigValue,
   resolveGitExcludesFile,
   resolveNewlinePolicy,
   parseNulPaths,
   resolveDefaultGlobalIgnoreFile,
   runGit,
+  inspectIgnoreProbes,
   inspectGitPolicy,
 } = require('../../skills/init-backlog/lib/git-policy')
 const { createInitialLock, initialLockPaths, publishNoReplace, removeInitialLock } = require('../../skills/init-backlog/lib/filesystem')
@@ -118,6 +120,42 @@ function runInspectionCases(repositoryRoot) {
     assert.equal(classifyGitKind([]).kind, 'non-git')
     assert.equal(classifyGitKind([{ name: 'HEAD', kind: 'file' }]).kind, 'git')
     assert.throws(() => classifyGitKind([{ name: 'HEAD', kind: 'link' }]))
+  })
+
+  test('linked-worktree gitfiles enter trusted Git validation while linked or special markers fail closed', () => {
+    const root = mkdtempSync(join(tmpdir(), 'nightshift-linked-worktree-gitfile-'))
+    const administrationRoot = join(root, 'main.git', 'worktrees', 'linked')
+    const linkedRoot = join(root, 'linked')
+    try {
+      mkdirSync(administrationRoot, { recursive: true })
+      mkdirSync(linkedRoot)
+      writeFileSync(join(linkedRoot, '.git'), `gitdir: ${administrationRoot}\n`)
+
+      const detected = detectGitKind(linkedRoot)
+      const commands = []
+      assert.deepEqual(detected, { kind: 'git', present: ['.git'] })
+      assert.throws(() => inspectGitPolicy(linkedRoot, {
+        kind: detected.kind,
+        spawnSync: (executable, args) => {
+          commands.push(args.slice(2))
+
+          return { status: 1, stdout: Buffer.alloc(0), stderr: Buffer.alloc(0), signal: null }
+        },
+        trustedGitPath: 'C:/trusted/git.exe',
+      }), /work-tree probe/)
+      assert.deepEqual(commands, [['rev-parse', '--is-inside-work-tree']])
+
+      for (const marker of [
+        { isDirectory: () => false, isFile: () => true, isSymbolicLink: () => true },
+        { isDirectory: () => false, isFile: () => false, isSymbolicLink: () => false },
+      ]) {
+        const visited = []
+        assert.throws(() => detectGitKind(linkedRoot, { lstatSync: (path) => { visited.push(path); return marker } }))
+        assert.deepEqual(visited, [join(linkedRoot, '.git')])
+      }
+    } finally {
+      rmSync(root, { force: true, recursive: true })
+    }
   })
 
   test('inspection catalog contains only ready-owned Markdown targets', () => {
@@ -257,6 +295,51 @@ function runInspectionCases(repositoryRoot) {
     })
 
     assert.deepEqual(policy.nonPlanUnignoredPaths, ['ignored.md'])
+  })
+
+  test('mixed regular and gate ignore probes use one Git process', () => {
+    const privateExcludePath = join(repositoryRoot, '.git', 'info', 'exclude')
+    let checkIgnoreCalls = 0
+    let checkIgnoreInput = null
+    const stdoutFor = (args) => {
+      if (args[0] === 'rev-parse' && args[1] === '--is-inside-work-tree') return Buffer.from('true\n', 'utf8')
+      if (args[0] === 'rev-parse' && args[1] === '--is-inside-git-dir') return Buffer.from('false\n', 'utf8')
+      if (args[0] === 'rev-parse' && args[1] === '--is-bare-repository') return Buffer.from('false\n', 'utf8')
+      if (args[0] === 'rev-parse' && args[1] === '--show-toplevel') return Buffer.from(`${repositoryRoot}\n`, 'utf8')
+      if (args[0] === 'rev-parse' && args[1] === '--show-object-format=storage') return Buffer.from('sha1\n', 'utf8')
+      return Buffer.alloc(0)
+    }
+    const policy = inspectGitPolicy(repositoryRoot, {
+      eol: null,
+      globalExcludePath: null,
+      ignoreProbes: [{ probe: 'a.md', target: 'a.md' }, { gate: true, probe: 'b.md', target: 'b.md' }],
+      kind: 'git',
+      privateExcludePath,
+      spawnSync: (executable, args, options) => {
+        const commandArgs = args.slice(2)
+        if (commandArgs[0] === 'check-ignore') {
+          checkIgnoreCalls += 1
+          checkIgnoreInput = options.input
+          const probes = options.input.toString('utf8').slice(0, -1).split('\0')
+
+          return { status: 0, stdout: Buffer.from(`${probes.map((probe) => `\0\0\0${probe}`).join('\0')}\0`, 'utf8'), stderr: Buffer.alloc(0), signal: null }
+        }
+
+        return { status: commandArgs[0] === 'config' ? 1 : 0, stdout: stdoutFor(commandArgs), stderr: Buffer.alloc(0), signal: null }
+      },
+      trustedGitPath: 'C:/trusted/git.exe',
+    })
+
+    assert.equal(checkIgnoreCalls, 1)
+    assert.deepEqual(checkIgnoreInput, Buffer.from('a.md\0b.md\0', 'utf8'))
+    assert.deepEqual(policy.nonPlanUnignoredPaths, ['a.md'])
+  })
+
+  test('empty ignore probe batches launch no Git process', () => {
+    let launches = 0
+
+    assert.deepEqual(inspectIgnoreProbes(repositoryRoot, [], { spawnSync: () => { launches += 1 } }), [])
+    assert.equal(launches, 0)
   })
 
   test('plans policy builds a separate directory gate probe', () => {
