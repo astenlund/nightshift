@@ -69,7 +69,7 @@ After any complete handover-controlled batch that can change a governing artifac
 
 ## Provenance stamps
 
-Completed spec and plan review runs append hardening stamps (see the post-loop steps in the revise skill's `spec.md` / `plan.md`); the persisted stamp token remains `graduated`, and handover writes the completion stamp at step 12. All stamps live under a `## Hardening` section at the end of the artifact, created if absent:
+Completed spec and plan review runs append hardening stamps (see the post-loop steps in the revise skill's `spec.md` / `plan.md`). The persisted stamp token remains `graduated`; at step 12, handover writes a completion stamp only to a dedicated spec or backlog breakout artifact. All stamps live under a `## Hardening` section at the end of the artifact, created if absent:
 
 ```
 - revise-spec graduated 2026-07-05 14:32 at a1b2c3d, scope: sections 3-5, content: 9f3a2b1c
