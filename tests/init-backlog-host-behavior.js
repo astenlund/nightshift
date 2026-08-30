@@ -38,11 +38,14 @@ const ENABLED_REPETITIONS = evidence.ENABLED_REPETITIONS.length
 const DISABLED_REPETITIONS = 1
 const CODEX_PLUGIN_ID = 'nightshift@astenlund'
 const MAX_SYMLINK_CHAIN_LINKS = 32
+// Exact terminal evidence holds two stable collections and one canonical image
+// concurrently, so this admission bound also caps the attestation memory peak.
+const MAX_TERMINAL_REPOSITORY_CONTENT_BYTES = 67108864
 const MAX_VERSION_LINE_BYTES = 256
 const TERMINAL_REPOSITORY_LIMITS = Object.freeze({
-  aggregateBytes: 134217728,
+  aggregateBytes: MAX_TERMINAL_REPOSITORY_CONTENT_BYTES,
   entries: 65536,
-  fileBytes: 134217728,
+  fileBytes: MAX_TERMINAL_REPOSITORY_CONTENT_BYTES,
   pathBytes: 4194304,
 })
 const UNSUPPORTED_HOST_LAUNCHER_DETAIL = 'The first PATH host launcher is not a supported native executable.'
@@ -1616,7 +1619,7 @@ async function runEvaluation(options) {
         })
       }
       if (evidenceOutputRoot !== null) {
-        const evidenceFiles = [...(session.evidence ?? []), { bytes: canonicalJsonLine(attestation.record), path: 'repository-attestation.json' }]
+        const evidenceFiles = [...(session.evidence ?? []), { bytes: attestation.evidenceBytes, path: 'repository-attestation.json' }]
         const published = driver.publishEvidenceLeaf({
           files: evidenceFiles,
           filesystem,

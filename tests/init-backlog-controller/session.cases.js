@@ -1682,12 +1682,15 @@ function runSessionCases(repositoryRoot) {
       scenarioRoot,
     })
     assert.equal(outcome.passed, true)
-    assert.deepEqual(Object.keys(outcome.record).sort(), ['expectedSha256', 'observed', 'observedSha256'])
-    assert.deepEqual(outcome.record.observed, observed)
-    assert.equal(outcome.record.observedSha256, sha256(Buffer.from(canonicalJson(observed), 'utf8')))
-    assert.equal(outcome.terminalRepositorySha256, outcome.record.observedSha256)
+    assert.equal('record' in outcome, false, 'the complete repository image must have one retained evidence representation')
+    const evidenceRecord = JSON.parse(outcome.evidenceBytes.toString('utf8'))
+    assert.deepEqual(Object.keys(evidenceRecord).sort(), ['expectedSha256', 'observed', 'observedSha256'])
+    assert.deepEqual(evidenceRecord.observed, observed)
+    assert.deepEqual(outcome.evidenceBytes, canonicalLine(evidenceRecord))
+    assert.equal(evidenceRecord.observedSha256, sha256(Buffer.from(canonicalJson(observed), 'utf8')))
+    assert.equal(outcome.terminalRepositorySha256, evidenceRecord.observedSha256)
     const expectedImage = { entries: [...baseEntries, guidanceEntry].sort((left, right) => left.path < right.path ? -1 : 1), git }
-    assert.equal(outcome.record.expectedSha256, sha256(Buffer.from(canonicalJson(expectedImage), 'utf8')), 'the expected digest excludes the marker and covers the merged host image')
+    assert.equal(evidenceRecord.expectedSha256, sha256(Buffer.from(canonicalJson(expectedImage), 'utf8')), 'the expected digest excludes the marker and covers the merged host image')
     const disabledMember = { base: { entries: baseEntries, git }, hostEntries: { 'claude-code': [], codex: [] }, marker: null }
     const disabledOutcome = driver.attestTerminalRepository({
       collectRepository: () => ({ entries: [...baseEntries], git }),
@@ -1736,7 +1739,8 @@ function runSessionCases(repositoryRoot) {
         scenarioRoot,
       })
       assert.equal(outcome.passed, false, `mismatch must publish passed false: ${canonicalJson(observed)}`)
-      assert.equal(outcome.record.observedSha256, sha256(Buffer.from(canonicalJson(observed), 'utf8')), 'the false row still carries the attestation evidence')
+      const evidenceRecord = JSON.parse(outcome.evidenceBytes.toString('utf8'))
+      assert.equal(evidenceRecord.observedSha256, sha256(Buffer.from(canonicalJson(observed), 'utf8')), 'the false row still carries the attestation evidence')
     }
     const markerWhenNoneExpected = driver.attestTerminalRepository({
       collectRepository: () => ({

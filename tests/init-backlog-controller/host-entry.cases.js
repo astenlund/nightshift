@@ -1999,6 +1999,89 @@ function runHostEntryCases(repositoryRoot) {
     }
   })
 
+  test('the default terminal repository collector rejects a file above 64 MiB before reading it', () => {
+    const scratch = tempRoot()
+    try {
+      const scenarioRoot = join(scratch, 'scenario')
+      const filePath = join(scenarioRoot, 'oversized.bin')
+      nodeFilesystem.mkdirSync(scenarioRoot, { recursive: true })
+      nodeFilesystem.writeFileSync(filePath, '')
+      let readCount = 0
+      const filesystem = Object.create(nodeFilesystem)
+      filesystem.lstatSync = (path, options) => {
+        const metadata = nodeFilesystem.lstatSync(path, options)
+        if (path !== filePath) {
+          return metadata
+        }
+
+        return {
+          dev: metadata.dev,
+          ino: metadata.ino,
+          isDirectory: () => false,
+          isFile: () => true,
+          isSymbolicLink: () => false,
+          mode: metadata.mode,
+          size: 67108865n,
+        }
+      }
+      filesystem.readFileSync = () => {
+        readCount += 1
+
+        return Buffer.alloc(0)
+      }
+
+      assert.throws(
+        () => hostBehavior.collectTerminalRepository({ filesystem, platform: process.platform, scenarioRoot }),
+        /MAX_TERMINAL_REPOSITORY_FILE_BYTES/,
+      )
+      assert.equal(readCount, 0)
+    } finally {
+      nodeFilesystem.rmSync(scratch, { force: true, recursive: true })
+    }
+  })
+
+  test('the default terminal repository collector rejects aggregate content above 64 MiB before the overflowing read', () => {
+    const scratch = tempRoot()
+    try {
+      const scenarioRoot = join(scratch, 'scenario')
+      const secondPath = join(scenarioRoot, 'b.bin')
+      nodeFilesystem.mkdirSync(scenarioRoot, { recursive: true })
+      nodeFilesystem.writeFileSync(join(scenarioRoot, 'a.bin'), 'a')
+      nodeFilesystem.writeFileSync(secondPath, '')
+      const readPaths = []
+      const filesystem = Object.create(nodeFilesystem)
+      filesystem.lstatSync = (path, options) => {
+        const metadata = nodeFilesystem.lstatSync(path, options)
+        if (path !== secondPath) {
+          return metadata
+        }
+
+        return {
+          dev: metadata.dev,
+          ino: metadata.ino,
+          isDirectory: () => false,
+          isFile: () => true,
+          isSymbolicLink: () => false,
+          mode: metadata.mode,
+          size: 67108864n,
+        }
+      }
+      filesystem.readFileSync = (path) => {
+        readPaths.push(path)
+
+        return nodeFilesystem.readFileSync(path)
+      }
+
+      assert.throws(
+        () => hostBehavior.collectTerminalRepository({ filesystem, platform: process.platform, scenarioRoot }),
+        /MAX_TERMINAL_REPOSITORY_AGGREGATE_BYTES/,
+      )
+      assert.deepEqual(readPaths, [join(scenarioRoot, 'a.bin')])
+    } finally {
+      nodeFilesystem.rmSync(scratch, { force: true, recursive: true })
+    }
+  })
+
   test('terminal repository capacity failures retain output-capacity through assembled evaluation', async () => {
     const scratch = tempRoot()
     try {

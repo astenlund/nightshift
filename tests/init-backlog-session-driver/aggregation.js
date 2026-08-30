@@ -1,5 +1,7 @@
 'use strict'
 
+const { isDeepStrictEqual } = require('node:util')
+
 const { HOSTS, OutputCapacityError, compareOrdinal, sha256 } = require('./primitives')
 const { canonicalJson } = require('./transcript')
 const { ELECTION_MARKER_PATH, selectTerminalExpectation, validateLiveElectionMarker, windowsRepositoryImage } = require('../init-backlog-controller/election-oracles')
@@ -10,14 +12,26 @@ function normalizePlatformModes(repository, platform) {
   return platform === 'win32' ? windowsRepositoryImage(repository) : repository
 }
 
+function buildAttestationEvidence(expectedSha256, observedJson, observedSha256) {
+  const prefix = `{"expectedSha256":${JSON.stringify(expectedSha256)},"observed":`
+  const suffix = `,"observedSha256":${JSON.stringify(observedSha256)}}\n`
+  const bytes = Buffer.allocUnsafe(Buffer.byteLength(prefix) + Buffer.byteLength(observedJson) + Buffer.byteLength(suffix))
+  let offset = bytes.write(prefix, 0, 'utf8')
+  offset += bytes.write(observedJson, offset, 'utf8')
+  offset += bytes.write(suffix, offset, 'utf8')
+  if (offset !== bytes.length) {
+    throw new Error('repository attestation evidence length changed during encoding')
+  }
+
+  return bytes
+}
+
 function attestTerminalRepository({ collectRepository, host, member, platform, scenarioRoot }) {
-  let firstSha256
+  let first
   let observed
-  let observedJson
   try {
-    firstSha256 = sha256(Buffer.from(canonicalJson(collectRepository()), 'utf8'))
+    first = collectRepository()
     observed = collectRepository()
-    observedJson = canonicalJson(observed)
   } catch (error) {
     if (error instanceof OutputCapacityError) {
       return { failure: { detailCode: error.detailCode, initialCode: null, phase: 'post-session' } }
@@ -25,15 +39,16 @@ function attestTerminalRepository({ collectRepository, host, member, platform, s
 
     return { failure: { detailCode: 'repository-attestation', initialCode: null, phase: 'post-session' } }
   }
-  const observedSha256 = sha256(Buffer.from(observedJson, 'utf8'))
-  if (firstSha256 !== observedSha256) {
+  const stable = isDeepStrictEqual(first, observed)
+  first = null
+  if (!stable) {
     return { failure: { detailCode: 'repository-attestation', initialCode: null, phase: 'post-session' } }
   }
   const expected = normalizePlatformModes(selectTerminalExpectation(member, host), platform)
-  const expectedJson = canonicalJson(expected)
+  const expectedSha256 = sha256(canonicalJson(expected))
   const observedMarkers = observed.entries.filter((entry) => entry.path === ELECTION_MARKER_PATH)
   const observedWithoutMarker = { entries: observed.entries.filter((entry) => entry.path !== ELECTION_MARKER_PATH), git: observed.git }
-  let passed = canonicalJson(observedWithoutMarker) === expectedJson
+  let passed = isDeepStrictEqual(observedWithoutMarker, expected)
   if (member.marker === null) {
     passed = passed && observedMarkers.length === 0
   } else if (observedMarkers.length !== 1) {
@@ -51,13 +66,12 @@ function attestTerminalRepository({ collectRepository, host, member, platform, s
       passed = false
     }
   }
+  const observedJson = canonicalJson(observed)
+  const observedSha256 = sha256(observedJson)
+
   return {
+    evidenceBytes: buildAttestationEvidence(expectedSha256, observedJson, observedSha256),
     passed,
-    record: {
-      expectedSha256: sha256(Buffer.from(expectedJson, 'utf8')),
-      observed,
-      observedSha256,
-    },
     terminalRepositorySha256: observedSha256,
   }
 }
