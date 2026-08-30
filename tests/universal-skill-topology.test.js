@@ -395,6 +395,7 @@ test('handover preserves lifecycle behavior behind the agreement gate', () => {
 test('plan workflows share one physical binding and consume revalidated bytes', () => {
   const handoverBody = parseFrontmatter(join(PUBLIC_SKILLS_ROOT, 'handover', 'SKILL.md')).body
   const planBody = readRequiredFile(join(ENGINE_ROOT, 'plan.md'))
+  const codeBody = readRequiredFile(join(ENGINE_ROOT, 'code.md'))
   const bindingPath = join(REPOSITORY_ROOT, 'internal', 'plan-binding.md')
   const bindingBody = readRequiredFile(bindingPath)
 
@@ -409,12 +410,15 @@ test('plan workflows share one physical binding and consume revalidated bytes', 
     'immediately before every authoritative plan read, plan mutation, plan-derived dispatch, or deletion',
     'returns the plan bytes read from the revalidated file identity',
     'never rereads the logical pathname between revalidation and use',
+    'captured bytes and stable content metadata agree across both reads',
+    'Immediately before replacement, repeat the stable two-read capture',
+    'still has the captured baseline bytes',
     'failure stops the run before any read, write, dispatch, or deletion',
   ]) {
     assert.equal(bindingBody.includes(contract), true, `shared plan binding must preserve contract: ${contract}`)
   }
 
-  for (const [body, owner] of [[handoverBody, 'handover'], [planBody, 'revise-plan']]) {
+  for (const [body, owner] of [[handoverBody, 'handover'], [planBody, 'revise-plan'], [codeBody, 'revise-code']]) {
     assert.equal(body.includes('${CLAUDE_PLUGIN_ROOT}/internal/plan-binding.md'), true, `${owner} must load the shared plan binding procedure`)
     assert.equal(body.includes('captured plan bytes'), true, `${owner} must consume plan bytes returned by revalidation`)
     for (const sharedOnlyContract of [
@@ -431,6 +435,8 @@ test('plan workflows share one physical binding and consume revalidated bytes', 
   assert.equal(handoverBody.includes('before each plan-derived implementation dispatch'), true, 'handover must revalidate each implementation dispatch')
   assert.equal(handoverBody.includes('must not reread `PLAN_FILE`'), true, 'handover task dispatch must not reopen the plan pathname')
   assert.equal(planBody.includes('before each reviewer or skeptic dispatch'), true, 'revise-plan must revalidate each review dispatch')
+  assert.equal(codeBody.includes('before each reviewer or skeptic dispatch'), true, 'revise-code must revalidate each review dispatch when a plan is active')
+  assert.equal(codeBody.includes('parsePlanContract'), true, 'revise-code must parse captured plan authority')
 })
 
 test('production procedures contain no smoke-only probe branch', () => {
