@@ -99,6 +99,24 @@ function request(root, overrides = {}) {
   }
 }
 
+function resumableCreateFixture(root, target = 'FEATURES.md') {
+  const bytes = Buffer.from('approved\n', 'utf8')
+  const mode = process.platform === 'win32' ? null : 420
+  const action = { id: target === 'AGENTS.md' ? 'p-resume-guidance' : 'p-resume-diagnostics', kind: 'create-from-template', mode, newline: 'lf', target, templateId: 'backlog.features' }
+  const targetBefore = { bom: null, cleanTextSha256: null, contentBase64: null, contentRole: 'semantic', editableRegions: [], finalNewline: null, kind: 'file', mode, newline: null, rawSha256: null, states: ['missing'], target, templateId: action.templateId, templateSha256: 'a'.repeat(64) }
+  const carried = inspection(root, {
+    proposals: [{ action, afterBase64: bytes.toString('base64'), beforeBase64: null, condition: 'always', proposalId: action.id, reason: 'missing-target' }],
+    targets: [targetBefore],
+    templates: [{ conceptIds: [], logicalSha256: 'a'.repeat(64), target, templateId: action.templateId }],
+  })
+  carried.snapshotId = deriveSnapshotId({ ...carried, snapshotId: null })
+  const applyRequest = request(root, { actions: [action], inspection: carried, proposalDispositions: [{ disposition: 'selected', proposalId: action.id }], semanticDecisions: [{ conceptIds: [], status: 'satisfied', target }] })
+  writeFileSync(join(root, target), bytes)
+  const live = inspection(root, { proposals: carried.proposals, ready: carried.ready, targets: [{ ...targetBefore, contentBase64: bytes.toString('base64'), rawSha256: sha256(bytes), states: ['present'] }], templates: carried.templates })
+
+  return { applyRequest, carried, live }
+}
+
 function expectCode(callback, code) {
   assert.throws(callback, (error) => error?.record?.code === code || error?.code === code)
 }
@@ -694,6 +712,71 @@ function runPublicationCases() {
       assert.equal(existsSync(join(root, '.nightshift-init-backlog.lock')), false)
     } finally {
       rmSync(root, { force: true, recursive: true })
+    }
+  })
+
+  test('resume comparison preserves unrelated diagnostic and warning drift', () => {
+    const root = fixtureRoot()
+    try {
+      const fixture = resumableCreateFixture(root)
+      const live = inspection(root, {
+        ...fixture.live,
+        problems: [{ blocking: false, code: 'ready-notice', detail: 'Unrelated notice changed.', evidencePaths: ['OTHER.md'], target: 'OTHER.md' }],
+        warnings: [{ code: 'nonblocking-ready-notice', detail: '1 ready notice remains.', target: 'OTHER.md' }],
+      })
+
+      expectCode(() => publishApply(fixture.applyRequest, { collectInspection: () => live, resume: true }), 'snapshot-drift')
+      assert.equal(existsSync(join(root, '.nightshift-init-backlog.lock')), false)
+      const controlled = inspection(root, {
+        ...fixture.live,
+        problems: [{ blocking: false, code: 'ready-notice', detail: 'Controlled notice changed.', evidencePaths: ['FEATURES.md'], target: 'FEATURES.md' }],
+        warnings: [{ code: 'nonblocking-ready-notice', detail: '1 ready notice remains.', target: 'FEATURES.md' }],
+      })
+      assert.equal(publishApply(fixture.applyRequest, { collectInspection: () => controlled, resume: true }).ok, true, 'diagnostics owned by the approved target remain resumable')
+    } finally {
+      rmSync(root, { force: true, recursive: true })
+    }
+  })
+
+  test('resume comparison preserves unrelated guidance graph drift', () => {
+    const root = fixtureRoot()
+    try {
+      const fixture = resumableCreateFixture(root, 'AGENTS.md')
+      const live = inspection(root, {
+        ...fixture.live,
+        guidance: { ...fixture.carried.guidance, candidates: ['AGENTS.md', 'OTHER.md'], graphPaths: ['AGENTS.md', 'OTHER.md'], independentPaths: ['OTHER.md'] },
+      })
+
+      expectCode(() => publishApply(fixture.applyRequest, { collectInspection: () => live, resume: true }), 'snapshot-drift')
+      assert.equal(existsSync(join(root, '.nightshift-init-backlog.lock')), false)
+      const controlled = inspection(root, { ...fixture.live, guidance: { ...fixture.carried.guidance, candidates: ['AGENTS.md'], graphPaths: ['AGENTS.md'] } })
+      assert.equal(publishApply(fixture.applyRequest, { collectInspection: () => controlled, resume: true }).ok, true, 'guidance records owned by the approved target remain resumable')
+    } finally {
+      rmSync(root, { force: true, recursive: true })
+    }
+  })
+
+  test('resume comparison preserves unrelated retained-backup drift during unwrap', () => {
+    const fixture = unwrapBackupFailureFixture()
+    try {
+      const carried = fixture.applyRequest.inspection
+      writeFileSync(join(fixture.root, fixture.target), fixture.unwrapped)
+      const unrelatedBackup = `.tmp/nightshift-init-backlog-unwrap-${'a'.repeat(64)}-${'b'.repeat(64)}-${'c'.repeat(64)}.bak`
+      const live = inspection(fixture.root, {
+        proposals: carried.proposals,
+        ready: carried.unwrapReady.after,
+        retainedBackups: [unrelatedBackup],
+        targets: [{ ...carried.targets[0], contentBase64: fixture.unwrapped.toString('base64'), rawSha256: sha256(fixture.unwrapped), states: ['present'] }],
+        templates: carried.templates,
+        unwrapReady: { after: carried.unwrapReady.after, targets: [] },
+        warnings: [{ code: 'manual-cleanup', detail: 'One retained unwrap backup requires manual cleanup.', target: unrelatedBackup }],
+        wrapFindings: [],
+      })
+
+      expectCode(() => publishApply(fixture.applyRequest, { collectInspection: () => live, resume: true }), 'snapshot-drift')
+      assert.equal(existsSync(join(fixture.root, '.nightshift-init-backlog.lock')), false)
+    } finally {
+      rmSync(fixture.root, { force: true, recursive: true })
     }
   })
 

@@ -817,6 +817,50 @@ function verifiedPostInspect(request, root, options, admission, outcomes, { elec
   }
 }
 
+function projectedGuidance(guidance, ownedTargets) {
+  if (ownedTargets.size === 0) return guidance
+  const retainedPath = (target) => typeof target !== 'string' || !ownedTargets.has(target)
+
+  return {
+    ...guidance,
+    baseAdapter: retainedPath(guidance.baseAdapter) ? guidance.baseAdapter : null,
+    candidates: (guidance.candidates ?? []).filter(retainedPath),
+    graphPaths: (guidance.graphPaths ?? []).filter(retainedPath),
+    imports: (guidance.imports ?? []).filter((item) => retainedPath(item.source) && retainedPath(item.target)),
+    independentPaths: (guidance.independentPaths ?? []).filter(retainedPath),
+    resolvedTarget: retainedPath(guidance.resolvedTarget) ? guidance.resolvedTarget : null,
+  }
+}
+
+function ownedBackup(path, targetHashes) {
+  const parts = BACKUP_PATTERN.exec(path)
+
+  return parts !== null && targetHashes.has(parts[3])
+}
+
+function ownedProblem(problem, actionTargets, unwrapTargetHashes) {
+  if (problem.code === 'git-policy') return true
+  const evidencePaths = problem.evidencePaths ?? []
+  const ownedPath = (path) => actionTargets.has(path) || ownedBackup(path, unwrapTargetHashes)
+  if (evidencePaths.some((path) => !ownedPath(path))) return false
+  if (problem.target !== null) return ownedPath(problem.target)
+
+  return evidencePaths.length > 0
+}
+
+function projectedWarnings(warnings, problems, retainedBackups) {
+  const projected = (warnings ?? []).filter((warning) => warning.code !== 'manual-cleanup' && warning.code !== 'nonblocking-ready-notice')
+  const notices = problems.filter((problem) => problem.code === 'ready-notice')
+  if (notices.length > 0) {
+    projected.push({ code: 'nonblocking-ready-notice', detail: notices.length === 1 ? '1 ready notice remains.' : `${notices.length} ready notices remain.`, target: notices.length === 1 ? notices[0].target : null })
+  }
+  if (retainedBackups.length > 0) {
+    projected.push({ code: 'manual-cleanup', detail: retainedBackups.length === 1 ? 'One retained unwrap backup requires manual cleanup.' : `${retainedBackups.length} retained unwrap backups require manual cleanup.`, target: retainedBackups.length === 1 ? retainedBackups[0] : null })
+  }
+
+  return projected.sort((left, right) => compareOrdinal(left.code, right.code))
+}
+
 // A resumed apply compares two inspections of the same tree at two points of
 // one approved transition. The action targets themselves are not compared here
 // because `approvedProgress` proves each of them byte-exact against its own
@@ -849,24 +893,26 @@ function resumeInspectionProjection(inspection, actionTargets, markerStates, sco
     git.nonPlanUnignoredPaths = null
     git.plansPolicy = null
   }
+  const problems = (inspection.problems ?? []).filter((problem) => !ownedProblem(problem, actionTargets, scope.unwrapTargetHashes))
+  const retainedBackups = (inspection.retainedBackups ?? []).filter((path) => !ownedBackup(path, scope.unwrapTargetHashes))
 
   return {
     ...inspection,
     git,
-    guidance: scope.guidance ? null : inspection.guidance,
+    guidance: projectedGuidance(inspection.guidance, scope.guidanceTargets),
     // Both sides are normalized to the one context the resumed inspection
     // resolves guidance under, which the approved manifest and durable
     // presence determine; the two inspections are otherwise incomparable
     // across the guidance file the manifest itself creates.
     hostContext: scope.hostContext,
-    problems: null,
+    problems,
     proposals: null,
     ready: null,
-    retainedBackups: scope.unwrap ? null : inspection.retainedBackups,
+    retainedBackups,
     snapshotId: null,
     targets: (inspection.targets ?? []).map((record) => actionTargets.has(record.target) ? { target: record.target, kind: record.kind, mode: record.mode } : record),
     unwrapReady: null,
-    warnings: null,
+    warnings: projectedWarnings(inspection.warnings, problems, retainedBackups),
     wrapFindings: null,
   }
 }

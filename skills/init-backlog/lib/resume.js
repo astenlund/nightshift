@@ -5,7 +5,7 @@ const { lstatSync } = require('node:fs')
 const { POSIX_DEFAULT_FILE_MODE, actionAfter, actionBefore, targetPath } = require('./actions')
 const { deriveRequestManifestId } = require('./apply-manifest')
 const { boundedOpenOptions, classifyPid, comparableMode, pathExists, platformMode, stableOpenFile } = require('./filesystem')
-const { MAX_MECHANICAL_FILE_BYTES } = require('./protocol')
+const { MAX_MECHANICAL_FILE_BYTES, sha256 } = require('./protocol')
 
 function approvedGuidanceCreation(request) {
   const rootGuidance = request.inspection?.guidance?.baseAdapter
@@ -43,12 +43,14 @@ function liveHostContext(request, root, resuming) {
 
 function resumeProjectionScope(request, actionTargets, hostContext) {
   const guidance = request.inspection?.guidance ?? {}
+  const guidanceTargets = new Set([guidance.resolvedTarget, guidance.baseAdapter].filter((target) => typeof target === 'string' && actionTargets.has(target)))
+  const unwrapTargetHashes = new Set((request.actions ?? []).filter((action) => action.kind === 'unwrap-file').map((action) => sha256(Buffer.from(action.target, 'utf8'))))
 
   return {
     gitignore: actionTargets.has('.gitignore'),
-    guidance: [guidance.resolvedTarget, guidance.baseAdapter].some((target) => typeof target === 'string' && actionTargets.has(target)),
+    guidanceTargets,
     hostContext,
-    unwrap: (request.actions ?? []).some((action) => action.kind === 'unwrap-file'),
+    unwrapTargetHashes,
   }
 }
 
