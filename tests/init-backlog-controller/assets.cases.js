@@ -94,6 +94,8 @@ const PLANS_BULLET_ACTIVATED = `${PLANS_BULLET_BASELINE} Plans are never committ
 const ENTRY_EXAMPLE_BASELINE = '**Requires:** [other-feature](features/other-feature.md), [shared\nhelper extraction](../QUICK_WINS.md#shared-helper-extraction).'
 const ENTRY_EXAMPLE_UNWRAPPED = ENTRY_EXAMPLE_BASELINE.replace('[shared\nhelper', '[shared helper')
 const ENTRY_EXAMPLE_ACTIVATED = ENTRY_EXAMPLE_UNWRAPPED.replace('../QUICK_WINS.md', 'QUICK_WINS.md')
+const QUICK_WIN_INTRO_BASELINE = 'Refactors ready to land when time allows; not blocking any feature, but would improve the codebase meaningfully.'
+const QUICK_WIN_INTRO_ACTIVATED = 'Refactors ready to land when time allows. A quick win is always ready for its own pickup, but features and bugs may still list it as a prerequisite.'
 
 function readBaselinePrompt(root) {
   return readFileSync(join(root, ...BASELINE_PROMPT_PATH), 'utf8').replace(/\r\n/g, '\n')
@@ -161,6 +163,15 @@ function expectedPlansPolicyAssets(expected) {
   return result
 }
 
+function expectedQuickWinDependencyAssets(expected) {
+  const result = new Map(expected)
+  const quickWins = result.get('quick-wins.md')
+  assert.equal(quickWins.split(QUICK_WIN_INTRO_BASELINE).length - 1, 1, 'quick-wins.md must contain one baseline dependency statement to clarify')
+  result.set('quick-wins.md', quickWins.replace(QUICK_WIN_INTRO_BASELINE, QUICK_WIN_INTRO_ACTIVATED))
+
+  return result
+}
+
 function expectedActivatedExampleAssets(expected) {
   const result = new Map(expected)
   const features = result.get('features.md')
@@ -223,8 +234,11 @@ function runAssetCases(repositoryRoot) {
   const manifest = JSON.parse(readFileSync(join(templatesRoot, 'manifest.json'), 'utf8'))
   validateManifest(templatesRoot, manifest)
   const prompt = readBaselinePrompt(repositoryRoot)
-  const expected = expectedActivatedExampleAssets(expectedPlansPolicyAssets(expectedQuickWinReplacementAssets(prompt, expectedPromptAssets(repositoryRoot))))
+  const expected = expectedActivatedExampleAssets(expectedPlansPolicyAssets(expectedQuickWinDependencyAssets(expectedQuickWinReplacementAssets(prompt, expectedPromptAssets(repositoryRoot)))))
   const assets = new Map(manifest.assets.map((entry) => [entry.path, logicalText(readFileSync(assetPath(templatesRoot, entry.path)), entry.finalNewline, entry.assetId)]))
+  const quickWins = assets.get('quick-wins.md')
+  assert.equal(quickWins.includes('A quick win is always ready for its own pickup, but features and bugs may still list it as a prerequisite.'), true, 'quick-win readiness must remain distinct from downstream dependency blocking')
+  assert.equal(quickWins.includes('not blocking any feature'), false, 'quick-win guidance must not deny supported dependency edges')
   for (const [fileName, expectedBytes] of expected) {
     assert.equal(assets.get(fileName), expectedBytes, `${fileName} drifted from its pinned baseline-derived body`)
   }

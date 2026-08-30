@@ -1,6 +1,6 @@
 # Quick wins
 
-Refactors ready to land when time allows; not blocking any feature, but would improve the codebase meaningfully.
+Refactors ready to land when time allows. A quick win is always ready for its own pickup, but features and bugs may still list it as a prerequisite.
 
 This file is **one of four repo-local indexes** agents consult on demand when relevant (alongside `FEATURES.md`, `BUGS.md`, `PATTERNS.md`). Active entries are kept inline, organized under thematic `##` sections you invent as work emerges. When a quick win lands, append a shipped-note entry to [`QUICK_WINS_HISTORY.md`](QUICK_WINS_HISTORY.md); do not move it within this file. Negative-knowledge findings (approaches attempted and reverted) are first-class promotion candidates from the history to the relevant `.claude/patterns/<slug>.md` Cautionary tales sections.
 

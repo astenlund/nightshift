@@ -16,6 +16,7 @@ const gitPolicy = require('../../skills/init-backlog/lib/git-policy')
 const PRE_ACTIVATION_GUIDANCE_DIGEST = '7bb8af909add4f6a44947b4ba666e2dc81ba881f79ce209e567003cb40379198'
 const PRE_ACTIVATION_MANIFEST_SHA256 = 'f27c321e36a7b4b3ec5f6bc12ba9bd82f3be3bca7d137b4a08095281fe867c80'
 const PRE_UNWRAP_FEATURES_DIGEST = '8e9a3e6e85901a085c65806b63a5df2efb6b7fc9832b8f4d7be92d64153d5e5f'
+const PRE_QUICK_WIN_DEPENDENCY_DIGEST = 'ee6c2f7161ad3ebf74ae0bc0babd09935eee6933c7e94108bd2623368a505408'
 const PLANS_POLICY_SENTENCE = 'Plans are never committed: in a Git repository, `.claude/plans/` is git-ignored by the repository-local `.gitignore`, independent of any track-or-ignore election for the durable backlog files.'
 const PLANS_BULLET_PREFIX = '- `.claude/plans/<date>-<slug>.md`:'
 const RETIRED_TRACKED_PLAN_PHRASES = [
@@ -312,16 +313,21 @@ function runActivationCases(repositoryRoot) {
     const logical = readFileSync(join(templatesRoot, 'root-guidance.md')).toString('utf8').replace(/\r\n/g, '\n')
     assert.equal(entry.logicalSha256, sha256(Buffer.from(logical, 'utf8')), 'manifest guidance.section digest must match the normalized asset bytes')
     assert.notEqual(entry.logicalSha256, PRE_ACTIVATION_GUIDANCE_DIGEST, 'the activation policy edit must refresh the guidance.section digest')
-    // Two deliberate refreshes have moved a manifest digest since the pinned
+    // Three deliberate refreshes have moved a manifest digest since the pinned
     // image: the activation policy edit (guidance.section) and the entry-shape
-    // example unwrap (backlog.features). Reverting exactly those two must
-    // restore the pinned bytes, so any third drift still fails here.
+    // example unwrap (backlog.features), plus the quick-win dependency wording
+    // (backlog.quick-wins). Reverting exactly those three must restore the
+    // pinned bytes, so any fourth drift still fails here.
     const featuresEntry = manifest.assets.find((item) => item.assetId === 'backlog.features')
     const featuresLogical = readFileSync(join(templatesRoot, 'features.md')).toString('utf8').replace(/\r\n/g, '\n')
     assert.equal(featuresEntry.logicalSha256, sha256(Buffer.from(featuresLogical, 'utf8')), 'manifest backlog.features digest must match the normalized asset bytes')
     assert.notEqual(featuresEntry.logicalSha256, PRE_UNWRAP_FEATURES_DIGEST, 'the entry-shape example unwrap must refresh the backlog.features digest')
-    const restoredManifest = manifestBytes.toString('utf8').split(entry.logicalSha256).join(PRE_ACTIVATION_GUIDANCE_DIGEST).split(featuresEntry.logicalSha256).join(PRE_UNWRAP_FEATURES_DIGEST)
-    assert.equal(sha256(Buffer.from(restoredManifest, 'utf8')), PRE_ACTIVATION_MANIFEST_SHA256, 'every manifest byte other than the two refreshed asset digests must remain unchanged')
+    const quickWinsEntry = manifest.assets.find((item) => item.assetId === 'backlog.quick-wins')
+    const quickWinsLogical = readFileSync(join(templatesRoot, 'quick-wins.md')).toString('utf8').replace(/\r\n/g, '\n')
+    assert.equal(quickWinsEntry.logicalSha256, sha256(Buffer.from(quickWinsLogical, 'utf8')), 'manifest backlog.quick-wins digest must match the normalized asset bytes')
+    assert.notEqual(quickWinsEntry.logicalSha256, PRE_QUICK_WIN_DEPENDENCY_DIGEST, 'the quick-win dependency clarification must refresh the backlog.quick-wins digest')
+    const restoredManifest = manifestBytes.toString('utf8').split(entry.logicalSha256).join(PRE_ACTIVATION_GUIDANCE_DIGEST).split(featuresEntry.logicalSha256).join(PRE_UNWRAP_FEATURES_DIGEST).split(quickWinsEntry.logicalSha256).join(PRE_QUICK_WIN_DEPENDENCY_DIGEST)
+    assert.equal(sha256(Buffer.from(restoredManifest, 'utf8')), PRE_ACTIVATION_MANIFEST_SHA256, 'every manifest byte other than the three refreshed asset digests must remain unchanged')
     assert.throws(
       () => validateManifest(templatesRoot, manifest, { readAsset: (relativePath) => relativePath === entry.path ? Buffer.from(`${logical}Unrefreshed mutation line.\n`, 'utf8') : readFileSync(join(templatesRoot, relativePath)) }),
       /guidance\.section\.logicalSha256/,
