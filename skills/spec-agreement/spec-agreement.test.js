@@ -803,7 +803,7 @@ function parseCliResult(result) {
   return envelope;
 }
 
-test('CLI dispatches every allowlisted operation through closed JSON records', () => {
+test('CLI dispatches independent allowlisted operations through closed JSON records', () => {
   const artifact = mutableArtifact(Buffer.from('# Spec\n'));
   const base = candidateFixture();
   const changed = candidateFixture([{ path: 'docs/spec.md', text: '# Spec\r\n' }]);
@@ -825,7 +825,6 @@ test('CLI dispatches every allowlisted operation through closed JSON records', (
   const plan = `**Spec:** [docs/spec.md](docs/spec.md)\n\n## Governing specs\n\n- Spec JSON: ${JSON.stringify(base.candidate.target)}\n\n## Work\n\nbody\n`;
   const legacyBytes = Buffer.from('Status: signed off\n\n# Spec\n');
   const legacyLine = Buffer.from('Status: signed off\n');
-  let cliBinding = null;
   const resolvedValue = {
     kind: 'resolved',
     target: base.candidate.target,
@@ -885,27 +884,39 @@ test('CLI dispatches every allowlisted operation through closed JSON records', (
       stamp: '- revise-spec graduated 2026-08-19 04:00 at abcdef0, scope: whole file, content: 1234abcd',
       baselineHash: fullHash(Buffer.from('# Spec\n')),
     }, (value) => assert.equal(value.alreadyApplied, false)],
-    ['provenance-bind', { projectRoot, path: 'docs/spec.md' }, (value) => {
-      cliBinding = value;
-      assert.deepEqual(Object.keys(value), ['ctimeNs', 'dev', 'ino', 'mode', 'mtimeNs', 'nlink', 'realPath', 'size']);
-    }],
-    ['provenance-write-bound', () => ({
-      projectRoot,
-      path: 'docs/spec.md',
-      stamp: '- revise-spec refreshed 2026-08-19 04:01 at abcdef0, scope: whole file, content: 2345bcde (bound CLI test)',
-      baselineHash: fullHash(artifact.bytes()),
-      binding: cliBinding,
-    }), (value) => assert.equal(value.alreadyApplied, false)],
   ];
 
   for (const [operation, input, assertValue] of cases) {
-    const resolvedInput = typeof input === 'function' ? input() : input;
-    const result = runCli({ requestText: JSON.stringify({ operation, input: resolvedInput }) }, { fsAdapter: artifact.adapter, bindingAdapter: artifact.bindingAdapter, readyParser, environment: {} });
+    const result = runCli({ requestText: JSON.stringify({ operation, input }) }, { fsAdapter: artifact.adapter, bindingAdapter: artifact.bindingAdapter, readyParser, environment: {} });
     assert.equal(result.exitCode, 0, operation);
     const envelope = parseCliResult(result);
     assert.equal(envelope.ok, true, operation);
     assertValue(envelope.value);
   }
+});
+
+test('CLI dispatches bound provenance operations as an isolated round trip', () => {
+  const artifact = mutableArtifact(Buffer.from('# Spec\n'));
+  const options = { fsAdapter: artifact.adapter, bindingAdapter: artifact.bindingAdapter, readyParser, environment: {} };
+  const bound = runCli({ requestText: JSON.stringify({ operation: 'provenance-bind', input: { projectRoot, path: 'docs/spec.md' } }) }, options);
+
+  assert.equal(bound.exitCode, 0);
+  const binding = parseCliResult(bound).value;
+  assert.deepEqual(Object.keys(binding), ['ctimeNs', 'dev', 'ino', 'mode', 'mtimeNs', 'nlink', 'realPath', 'size']);
+
+  const written = runCli({ requestText: JSON.stringify({
+    operation: 'provenance-write-bound',
+    input: {
+      projectRoot,
+      path: 'docs/spec.md',
+      stamp: '- revise-spec graduated 2026-08-19 04:01 at abcdef0, scope: whole file, content: 2345bcde',
+      baselineHash: fullHash(artifact.bytes()),
+      binding,
+    },
+  }) }, options);
+
+  assert.equal(written.exitCode, 0, written.outputText);
+  assert.equal(parseCliResult(written).value.alreadyApplied, false);
 });
 
 test('CLI locate reads the line-link format from the injected environment, defaulting to the process environment', () => {
