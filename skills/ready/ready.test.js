@@ -2108,6 +2108,29 @@ test('CLI rejects malformed UTF-8 in indexes and linked breakouts without changi
   }
 });
 
+test('CLI preserves valid UTF-8, byte-order marks, and line endings', () => {
+  const tmpRoot = path.join(__dirname, '..', '..', '.tmp', `ready-valid-utf8-${process.pid}`);
+  const claudeDir = path.join(tmpRoot, '.claude');
+  const title = `Caf${String.fromCharCode(0xe9)}`;
+  const featuresBytes = Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), Buffer.from('# Features\r\n')]);
+  const quickWinsBytes = Buffer.from(`# Quick wins\n\n## Active\n\n- **${title}**: preserve valid bytes.\n`);
+  fs.mkdirSync(claudeDir, { recursive: true });
+  fs.writeFileSync(path.join(claudeDir, 'FEATURES.md'), featuresBytes);
+  fs.writeFileSync(path.join(claudeDir, 'QUICK_WINS.md'), quickWinsBytes);
+  try {
+    const completion = spawnSync(process.execPath, [path.join(__dirname, 'ready.js'), tmpRoot], { encoding: 'utf8' });
+    const result = JSON.parse(completion.stdout);
+
+    assert.equal(completion.status, 0);
+    assert.equal(completion.stderr, '');
+    assert.equal(result.ready.some((entry) => entry.title.includes(title)), true);
+    assert.deepEqual(fs.readFileSync(path.join(claudeDir, 'FEATURES.md')), featuresBytes);
+    assert.deepEqual(fs.readFileSync(path.join(claudeDir, 'QUICK_WINS.md')), quickWinsBytes);
+  } finally {
+    fs.rmSync(tmpRoot, { recursive: true, force: true });
+  }
+});
+
 test('CLI acquires a missing backlog root without an existence precheck or later traversal', () => {
   const tmpRoot = path.join(__dirname, '..', '..', '.tmp', `ready-missing-${process.pid}`);
   const claudeDir = path.join(tmpRoot, '.claude');

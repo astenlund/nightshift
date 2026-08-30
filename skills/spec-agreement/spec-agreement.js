@@ -69,7 +69,7 @@ function readyBacklogBulletText(line) {
   return line.outsideFence && /^- /.test(line.content) ? line.content.slice(2).trim() : null;
 }
 
-function scanMarkdown(sourceBuffer) {
+function scanMarkdownUncached(sourceBuffer) {
   requireUtf8(sourceBuffer);
   const bomLength = sourceBuffer.subarray(0, 3).equals(Buffer.from([0xef, 0xbb, 0xbf])) ? 3 : 0;
   const lines = [];
@@ -119,6 +119,24 @@ function scanMarkdown(sourceBuffer) {
   }
 
   return { sourceBuffer, bomLength, lines, unclosedFence: fence !== null };
+}
+
+function scanMarkdown(sourceBuffer) {
+  return scanMarkdownUncached(sourceBuffer);
+}
+
+function createMarkdownScanner() {
+  const scans = new WeakMap();
+
+  return (sourceBuffer) => {
+    let scanned = scans.get(sourceBuffer);
+    if (scanned === undefined) {
+      scanned = scanMarkdownUncached(sourceBuffer);
+      scans.set(sourceBuffer, scanned);
+    }
+
+    return scanned;
+  };
 }
 
 function exactKeys(value, keys) {
@@ -320,10 +338,10 @@ function resolveReadyEntry(lines, selectorKind, selector) {
   return { parent, bullet, bulletIndex: lines.indexOf(bullet) };
 }
 
-function selectArtifact({ path, selectorKind, selectors, sourceBuffer }) {
+function selectArtifact({ path, selectorKind, selectors, sourceBuffer }, scan = scanMarkdown) {
   requireUtf8(sourceBuffer);
   validateSelectors(selectorKind, selectors);
-  const scanned = scanMarkdown(sourceBuffer);
+  const scanned = scan(sourceBuffer);
   const { lines } = scanned;
   if (selectorKind === 'sections') {
     validateSectionSelectorOrder(lines, selectors);
@@ -387,11 +405,12 @@ function locateSelection(input) {
   }
   requireRelativePathShape(input.path, { shape: 'locate-input', escape: 'locate-input' });
   const { projectRoot, path, selectorKind, selectors, sourceBuffer, linkFormat } = input;
-  const selected = selectArtifact({ path, selectorKind, selectors, sourceBuffer });
+  const scan = createMarkdownScanner();
+  const selected = selectArtifact({ path, selectorKind, selectors, sourceBuffer }, scan);
   let line = null;
   if (selectorKind !== 'design-before-hardening') {
     const entryStart = selected.sourceRanges[selected.sourceRanges.length - 1].start;
-    line = scanMarkdown(sourceBuffer).lines.findIndex((record) => record.rawStart === entryStart) + 1;
+    line = scan(sourceBuffer).lines.findIndex((record) => record.rawStart === entryStart) + 1;
   }
 
   return { path, line, ...renderLineLink(projectRoot, path, line, linkFormat) };
@@ -1049,8 +1068,8 @@ function singleScopeHeader(path) {
   return `**Spec:** [${markdownPathLabel(path)}](${markdownPathDestination(path)})`;
 }
 
-function selectorMatches(scope, sourceBuffer) {
-  const { lines } = scanMarkdown(sourceBuffer);
+function selectorMatches(scope, sourceBuffer, scan = scanMarkdown) {
+  const { lines } = scan(sourceBuffer);
   if (scope.kind === 'whole-file') {
     return true;
   }
@@ -1069,8 +1088,8 @@ function selectorMatches(scope, sourceBuffer) {
   }
 }
 
-function ensureSelectorMatches(scope, sourceBuffer) {
-  if (!selectorMatches(scope, sourceBuffer)) {
+function ensureSelectorMatches(scope, sourceBuffer, scan = scanMarkdown) {
+  if (!selectorMatches(scope, sourceBuffer, scan)) {
     scopeStructural('Scope selector does not resolve.', 'selector-absence');
   }
 }
@@ -1083,9 +1102,9 @@ function registerRealTarget(registry, canonical) {
   registry.set(canonical.realPath, canonical.path);
 }
 
-function validateScopeAgainstFile(scope, sourceBuffer, evidenceKind) {
+function validateScopeAgainstFile(scope, sourceBuffer, evidenceKind, scan = scanMarkdown) {
   try {
-    ensureSelectorMatches(scope, sourceBuffer);
+    ensureSelectorMatches(scope, sourceBuffer, scan);
   } catch (error) {
     if (error instanceof AgreementError && ['selector-absence', 'selector-ambiguity'].includes(error.evidence.kind) && evidenceKind === 'plan-contract-grammar') {
       planStructural('Governing scope selector does not resolve exactly.');
@@ -1268,12 +1287,12 @@ function validateReadyParser(readyParser, fail) {
   }
 }
 
-function resolveWorkUnit(scope, sourceBuffer, request, readyParser, declarationScope = scope) {
+function resolveWorkUnit(scope, sourceBuffer, request, readyParser, declarationScope = scope, scan = scanMarkdown) {
   if (scope.workUnit === null) {
     return scope;
   }
   const declarationBuffer = ['index-entry', 'bullet-entry'].includes(declarationScope.kind)
-    ? selectArtifact({ path: declarationScope.path, selectorKind: declarationScope.kind, selectors: declarationScope.selectors, sourceBuffer }).selectedBytes
+    ? selectArtifact({ path: declarationScope.path, selectorKind: declarationScope.kind, selectors: declarationScope.selectors, sourceBuffer }, scan).selectedBytes
     : sourceBuffer;
   const bodyLines = decode(declarationBuffer).split(/\r\n|\r|\n/);
   const slices = readyCall(readyParser, 'parseSlices', bodyLines);
@@ -1338,7 +1357,7 @@ function artifactSelectorsForScope(scope) {
   return ['whole-file', 'sections'].includes(scope.kind) ? [] : scope.selectors;
 }
 
-function companionFor(scope, snapshot) {
+function companionFor(scope, snapshot, scan = scanMarkdown) {
   const match = /^\.claude\/(features|bugs)\/[^/]+\.md$/.exec(scope.path);
   if (!match || !['whole-file', 'sections'].includes(scope.kind)) {
     return null;
@@ -1346,7 +1365,7 @@ function companionFor(scope, snapshot) {
   const indexPath = match[1] === 'features' ? '.claude/FEATURES.md' : '.claude/BUGS.md';
   const canonical = snapshot.canonicalize(indexPath);
   const sourceBuffer = snapshot.read(canonical);
-  const lines = scanMarkdown(sourceBuffer).lines;
+  const lines = scan(sourceBuffer).lines;
   let parentHeading = null;
   const matches = [];
   for (const line of lines) {
@@ -1427,12 +1446,12 @@ function archiveDeclarationForLine(archivePath, line, plainFeatureTitle = null) 
   return match ? { declaration: line.content, label: match[1] } : null;
 }
 
-function completionFor(target, request, readyParser, snapshot) {
+function completionFor(target, request, readyParser, snapshot, scan = scanMarkdown) {
   if (request.mode !== 'handover' || !request.allowCompletedNoOp || !['index-entry', 'bullet-entry'].includes(target.kind)) {
     return null;
   }
   const activeBuffer = snapshot.read(snapshot.canonicalize(target.path));
-  if (selectorMatches(target, activeBuffer)) {
+  if (selectorMatches(target, activeBuffer, scan)) {
     return null;
   }
   const archivePath = archivePathFor(target.path);
@@ -1443,7 +1462,7 @@ function completionFor(target, request, readyParser, snapshot) {
   const archiveBuffer = snapshot.read(canonicalArchive);
   const title = titleForScope(target);
   const plainFeatureTitle = target.workUnit === null ? title : null;
-  const declarations = scanMarkdown(archiveBuffer).lines.map((line) => archiveDeclarationForLine(archivePath, line, plainFeatureTitle)).filter((entry) => entry !== null);
+  const declarations = scan(archiveBuffer).lines.map((line) => archiveDeclarationForLine(archivePath, line, plainFeatureTitle)).filter((entry) => entry !== null);
   if (target.workUnit === null) {
     const matches = declarations.filter((entry) => entry.label === title);
 
@@ -1500,6 +1519,7 @@ function resolveGoverningSet(request, options) {
   validateAgreementRequest(request, scopeStructural);
   validateFsAdapter(fsAdapter, scopeStructural);
   validateReadyParser(readyParser, scopeStructural);
+  const scan = createMarkdownScanner();
   let planSeeds = [];
   let primarySeeds = request.seeds.slice(0, 1);
   let coGoverningSeeds = request.seeds.slice(1);
@@ -1530,7 +1550,7 @@ function resolveGoverningSet(request, options) {
   };
   const getCompanion = (governingScope) => {
     if (!companionCache.has(governingScope.path)) {
-      companionCache.set(governingScope.path, companionFor(governingScope, snapshot));
+      companionCache.set(governingScope.path, companionFor(governingScope, snapshot, scan));
     }
 
     return companionCache.get(governingScope.path);
@@ -1542,8 +1562,8 @@ function resolveGoverningSet(request, options) {
     const companion = getCompanion(governingScope);
 
     return companion === null
-      ? resolveWorkUnit(governingScope, sourceBuffer, request, readyParser)
-      : resolveWorkUnit(governingScope, companion.sourceBuffer, request, readyParser, companion.scope);
+      ? resolveWorkUnit(governingScope, sourceBuffer, request, readyParser, governingScope, scan)
+      : resolveWorkUnit(governingScope, companion.sourceBuffer, request, readyParser, companion.scope, scan);
   };
   const resolvedScopeCache = new Map();
   const resolveCanonicalRecord = (record) => {
@@ -1551,9 +1571,9 @@ function resolveGoverningSet(request, options) {
     if (!resolvedScopeCache.has(key)) {
       const sourceBuffer = snapshot.read(record.canonical);
       if (record.evidenceKind === 'plan-contract-grammar') {
-        validateScopeAgainstFile(record.scope, sourceBuffer, record.evidenceKind);
+        validateScopeAgainstFile(record.scope, sourceBuffer, record.evidenceKind, scan);
       } else {
-        ensureSelectorMatches(record.scope, sourceBuffer);
+        ensureSelectorMatches(record.scope, sourceBuffer, scan);
       }
       resolvedScopeCache.set(key, resolveScopeWorkUnit(record.scope, sourceBuffer));
     }
@@ -1565,7 +1585,7 @@ function resolveGoverningSet(request, options) {
   if (request.target !== null) {
     targetRecord = { ...canonicalizeScope(request.target), evidenceKind: 'selector-shape' };
     canonicalTarget = targetRecord.scope;
-    const completion = completionFor(canonicalTarget, request, readyParser, snapshot);
+    const completion = completionFor(canonicalTarget, request, readyParser, snapshot, scan);
     if (completion !== null) {
       return { kind: 'completed-no-op', evidence: completion };
     }
@@ -1625,7 +1645,7 @@ function resolveGoverningSet(request, options) {
       return;
     }
     const sourceBuffer = sourceProvider();
-    ensureSelectorMatches(artifactScope, sourceBuffer);
+    ensureSelectorMatches(artifactScope, sourceBuffer, scan);
     artifactKeys.add(key);
     artifacts.push({ path: artifactScope.path, selectorKind, selectors, sourceBuffer });
   };

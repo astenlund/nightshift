@@ -247,6 +247,20 @@ function countingRepository(files, aliases = {}) {
   return { adapter, counts };
 }
 
+function countMarkdownScans(sourceBuffer) {
+  const subarray = sourceBuffer.subarray;
+  let count = 0;
+  sourceBuffer.subarray = function trackedSubarray(start, end) {
+    if (start === 0 && end === 3) {
+      count += 1;
+    }
+
+    return subarray.call(this, start, end);
+  };
+
+  return () => count;
+}
+
 function mutableRepository(files) {
   const { buffers, directories } = buildFileTree(files, (contents) => Buffer.from(contents));
   const replacements = [];
@@ -2809,6 +2823,26 @@ test('resolveGoverningSet reuses canonical artifacts within one invocation only'
   assert.deepEqual(counted.counts, { readFile: 2, readDirectory: 2, realpath: 4, replaceFileAtomically: 0 });
 });
 
+test('resolveGoverningSet scans each stable artifact buffer once per invocation', () => {
+  const entryHeading = '### [Feature A](features/a.md)';
+  const declaration = '- **MVP - Core**';
+  const sourceBuffer = Buffer.from(`# Features\n\n## Active\n\n${entryHeading}\n\n**Slices:**\n${declaration}\n`);
+  const scanCount = countMarkdownScans(sourceBuffer);
+  const target = scope('index-entry', '.claude/FEATURES.md', [{ parentHeading: '## Active', entryHeading }], { normalizedKey: 'core', declaration, state: 'unshipped' });
+  const fsAdapter = fakeRepository({ '.claude/FEATURES.md': sourceBuffer });
+
+  const first = resolve(request({ target, seeds: [target] }), fsAdapter);
+
+  assert.equal(first.kind, 'resolved');
+  assert.equal(first.artifacts.length, 1);
+  assert.equal(scanCount(), 1, 'selector validation, work-unit selection, and artifact addition must share one scan');
+
+  const second = resolve(request({ target, seeds: [target] }), fsAdapter);
+
+  assert.equal(second.kind, 'resolved');
+  assert.equal(scanCount(), 2, 'a later resolver invocation must own a fresh memo');
+});
+
 test('governing nomination limits reject oversized requests before filesystem access', () => {
   assert.equal(MAX_GOVERNING_NOMINATIONS, 128);
   const target = scope('whole-file', 'README.md');
@@ -3409,6 +3443,18 @@ test('locateSelection reports the one-based line where the selected entry starts
   assert.deepEqual(locate({ path: 'a.md', sourceBuffer: design, selectorKind: 'design-before-hardening', selectors: [] }), { path: 'a.md', line: null, linkText: 'a.md', linkTarget: 'C:/repo/a.md' });
 
   expectStructural(() => locate({ path: 'a.md', sourceBuffer: bulletSource, selectorKind: 'bullet-entry', selectors: [{ parentHeading: '## Parent', entryTitle: 'Missing' }] }));
+});
+
+test('locateSelection scans one stable source buffer once per invocation', () => {
+  const sourceBuffer = Buffer.from('## Parent\n- Task\n');
+  const scanCount = countMarkdownScans(sourceBuffer);
+  const input = { projectRoot: 'C:\\repo', path: 'a.md', selectorKind: 'bullet-entry', selectors: [{ parentHeading: '## Parent', entryTitle: 'Task' }], sourceBuffer, linkFormat: null };
+
+  assert.deepEqual(locateSelection(input), { path: 'a.md', line: 2, linkText: 'a.md:2', linkTarget: 'C:/repo/a.md' });
+  assert.equal(scanCount(), 1, 'selection and line lookup must share one scan');
+
+  assert.deepEqual(locateSelection(input), { path: 'a.md', line: 2, linkText: 'a.md:2', linkTarget: 'C:/repo/a.md' });
+  assert.equal(scanCount(), 2, 'a later locate invocation must own a fresh memo');
 });
 
 test('canonicalizePath keeps its exact kind and message for every pre-filesystem rejection', () => {

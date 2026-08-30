@@ -483,4 +483,4 @@ function runCli(argv) {
   process.exitCode = unreadable || (report.length > 0 && !write) ? 1 : 0;
 }
 
-module.exports = { LABEL_AT_START, CatalogError, canonicalBacklogRootIdentity, canonicalPath, compareTargets, decodeUtf8, detectHardWraps, unwrapText, collectMarkdownFiles, isContainedPath, normalizeCatalogItems, analyzeUnwrapCatalog, runCli };
+module.exports = { LABEL_AT_START, CatalogError, canonicalBacklogRootIdentity, canonicalPath, compareTargets, decodeUtf8, detectHardWraps, unwrapText, collectMarkdownFiles, isContainedPath, normalizeCatalogItems, analyzeText, joinContinuations, analyzeUnwrapCatalog, runCli };

@@ -4,7 +4,7 @@ const { randomBytes } = require('node:crypto')
 const { TextDecoder } = require('node:util')
 const { lstatSync, readFileSync } = require('node:fs')
 const { join } = require('node:path')
-const { detectHardWraps, unwrapText } = require('../unwrap')
+const { analyzeText, joinContinuations } = require('../../../internal/backlog-catalog')
 const { analyzeCatalog } = require('../../ready/ready')
 const { BACKLOG_DIRECTORY_TARGETS, PLANS_DIRECTORY_TARGET, loadManifest } = require('./assets')
 const { inspectBackups } = require('./backups')
@@ -494,7 +494,7 @@ function targetRecord(target, descriptor, declaration, template, options = {}) {
   const hasForbiddenMissing = decoded.logicalBytes.length !== 0 && declaration.regions.some((item) => item.missingPlacement === 'forbidden' && item.syntax !== 'empty-document' && !editableRegions.some((region) => region.regionId === item.regionId))
   const states = ['present']
   if (template && decoded.logicalBytes.equals(template.logicalBytes)) states.push('exact-template')
-  if (isLineDisciplineTarget(target) && detectHardWraps(decoded.text).length > 0) states.push('wrapped')
+  if (isLineDisciplineTarget(target) && (options.wraps ?? analyzeText(decoded.text).wraps).length > 0) states.push('wrapped')
   if (hasForbiddenMissing || boundaryInvalid) {
     states.push('structurally-invalid')
     editableRegions = []
@@ -674,15 +674,16 @@ function collectInspection(root, host, hostContext = {}, options = {}) {
 
     return decoded
   }
-  const unwrappedByBytes = new Map()
-  const unwrapTargetText = (bytes) => {
-    let unwrapped = unwrappedByBytes.get(bytes)
-    if (unwrapped === undefined) {
-      unwrapped = unwrapText(decodeTargetText(bytes).text)
-      unwrappedByBytes.set(bytes, unwrapped)
+  const wrapAnalysisByBytes = new Map()
+  const analyzeTargetWraps = (bytes) => {
+    let analysis = wrapAnalysisByBytes.get(bytes)
+    if (analysis === undefined) {
+      const scanned = analyzeText(decodeTargetText(bytes).text)
+      analysis = { unwrapped: joinContinuations(scanned), wraps: scanned.wraps }
+      wrapAnalysisByBytes.set(bytes, analysis)
     }
 
-    return unwrapped
+    return analysis
   }
   const catalog = []
   const wrapFindings = []
@@ -693,8 +694,7 @@ function collectInspection(root, host, hostContext = {}, options = {}) {
     if (!isReadyCatalogTarget(target)) continue
     const decoded = decodeTargetText(entry.descriptor.bytes)
     catalog.push({ contents: decoded.text, target })
-    const unwrapped = unwrapTargetText(entry.descriptor.bytes)
-    const wraps = detectHardWraps(decoded.text)
+    const { unwrapped, wraps } = analyzeTargetWraps(entry.descriptor.bytes)
     if (wraps.length > 0) {
       predictedCatalogContents.set(entry.target, unwrapped)
       let predictedEditableRegions = []
@@ -719,7 +719,13 @@ function collectInspection(root, host, hostContext = {}, options = {}) {
   } catch (error) {
     inspectError('ready-failed', 'Ready parser conversion failed.', null, error)
   }
-  const targetRecords = descriptors.map((entry) => targetRecord(entry.target, entry.descriptor, { ...entry.declaration, contentRole: entry.declaration.contentRole ?? 'semantic' }, entry.template, { ...options, decode: decodeTargetText, gitKind: git.kind }))
+  const targetRecords = descriptors.map((entry) => {
+    const wraps = entry.descriptor.present && entry.descriptor.kind === 'file' && isLineDisciplineTarget(entry.target)
+      ? analyzeTargetWraps(entry.descriptor.bytes).wraps
+      : undefined
+
+    return targetRecord(entry.target, entry.descriptor, { ...entry.declaration, contentRole: entry.declaration.contentRole ?? 'semantic' }, entry.template, { ...options, decode: decodeTargetText, gitKind: git.kind, wraps })
+  })
   let gitRecord
   try {
     const ignoreProbes = ignoreProbesForGitKind(git.kind, options.ignoreProbes, () => buildIgnoreProbes(canonical, descriptors, options))
@@ -753,7 +759,7 @@ function collectInspection(root, host, hostContext = {}, options = {}) {
         proposals.push(proposal(entry.target === '.gitignore' ? 'plans-policy' : 'missing-target', record.newline === 'crlf' || record.newline === 'lf' ? 'always' : variant.condition, { kind: 'create-from-template', mode: record.mode, newline, target: entry.target, templateId: entry.template.templateId }, null, output.toString('base64')))
       }
     } else if (record.kind === 'file' && record.states.includes('wrapped')) {
-      const predicted = unwrapTargetText(entry.descriptor.bytes)
+      const predicted = analyzeTargetWraps(entry.descriptor.bytes).unwrapped
       const action = { afterRawSha256: sha256(Buffer.from(predicted, 'utf8')), beforeRawSha256: entry.descriptor.rawSha256, kind: 'unwrap-file', mode: record.mode, target: entry.target }
       proposals.push(proposal('hard-wrap', 'always', action, record.contentRole === 'semantic' ? record.contentBase64 : null, record.contentRole === 'semantic' ? Buffer.from(predicted, 'utf8').toString('base64') : null))
     } else if (record.kind === 'file' && entry.template && decodeTargetText(entry.descriptor.bytes).logicalBytes.length === 0) {

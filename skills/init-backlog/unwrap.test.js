@@ -7,6 +7,7 @@ const path = require('node:path');
 const test = require('node:test');
 
 const { CatalogError, canonicalPath, detectHardWraps, unwrapText, collectMarkdownFiles, analyzeUnwrapCatalog } = require('./unwrap.js');
+const { targetRecord } = require('./lib/inspection.js');
 const { scanMarkdown } = require('../spec-agreement/spec-agreement.js');
 
 const CRLF = String.fromCharCode(13, 10);
@@ -336,6 +337,31 @@ test('the unwrap CLI rejects malformed UTF-8 in check and write modes without ch
   }
 });
 
+test('the unwrap CLI preserves valid UTF-8, byte-order marks, and line endings', () => {
+  const root = fs.mkdtempSync(path.join(require('node:os').tmpdir(), 'unwrap-valid-utf8-'));
+  const word = `Caf${String.fromCharCode(0xe9)}`;
+  const bom = Buffer.from([0xef, 0xbb, 0xbf]);
+  const cases = [
+    { name: 'lf.md', before: Buffer.from(`${word}\ncontinued\n`), after: Buffer.from(`${word} continued\n`) },
+    { name: 'bom-crlf.md', before: Buffer.concat([bom, Buffer.from(`${word}${CRLF}continued${CRLF}`)]), after: Buffer.concat([bom, Buffer.from(`${word} continued${CRLF}`)]) },
+  ];
+  try {
+    for (const fixture of cases) {
+      const target = path.join(root, fixture.name);
+      fs.writeFileSync(target, fixture.before);
+
+      const completion = spawnSync(process.execPath, [path.join(__dirname, 'unwrap.js'), '--write', target], { encoding: 'utf8' });
+
+      assert.equal(completion.status, 0);
+      assert.equal(completion.stderr, '');
+      assert.deepEqual(JSON.parse(completion.stdout), [{ file: target, wraps: 1, firstLine: 2, rewritten: true }]);
+      assert.deepEqual(fs.readFileSync(target), fixture.after);
+    }
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('canonicalPath gives one identity to every spelling of a file and never throws', (t) => {
   const root = fs.mkdtempSync(path.join(require('node:os').tmpdir(), 'unwrap-'));
   try {
@@ -383,4 +409,22 @@ test('analyzeUnwrapCatalog returns target-sorted wraps and predicted contents wi
     { target: 'features/a.md', wraps: [{ line: 2, kind: 'list-item' }], contents: '- item continued\n' },
     { target: 'features/z.md', wraps: [{ line: 2, kind: 'paragraph' }], contents: 'First line continued\n' },
   ]);
+});
+
+test('targetRecord consumes a cached wrap analysis instead of rescanning decoded text', () => {
+  const declaration = { contentRole: 'semantic', kind: 'file', regions: [] };
+  const record = (text, wraps) => {
+    const bytes = Buffer.from(text);
+
+    return targetRecord(
+      '.claude/FEATURES.md',
+      { bytes, kind: 'file', mode: 0o644, present: true, rawSha256: 'a'.repeat(64) },
+      declaration,
+      null,
+      { gitKind: 'non-git', platform: process.platform, wraps },
+    );
+  };
+
+  assert.equal(record('# Features\n', [{ kind: 'paragraph', line: 2 }]).states.includes('wrapped'), true);
+  assert.equal(record('First line\ncontinued\n', []).states.includes('wrapped'), false);
 });
