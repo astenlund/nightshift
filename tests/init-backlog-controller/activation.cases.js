@@ -288,10 +288,12 @@ function runActivationCases(repositoryRoot) {
         )
       }
     }
-    assert.equal(countExact(liveHandover, 'Plans are outside the election: `.claude/plans/` is git-ignored unconditionally'), 1, 'handover must place plans outside the version-control election')
+    assert.equal(countExact(liveHandover, 'Plans are outside that election.'), 1, 'handover must place plans outside the version-control election')
+    assert.equal(countExact(liveHandover, '`.claude/plans/` is git-ignored unconditionally as the standard repository location'), 1, 'handover must retain the unconditional standard plan policy')
     assert.equal(countExact(liveHandover, 'Plans are never committed: `.claude/plans/` is git-ignored'), 1, 'handover must state that plans are never committed')
-    assert.equal(countExact(liveHandover, 'Before trusting or writing a plan hardening stamp, verify that the selected plan is ignored and untracked.'), 1, 'handover must verify the plans policy before stamping')
-    assert.equal(countExact(liveHandover, 'A tracked plan is a blocking legacy conflict: stop before stamping, implementation, or deletion and require manual resolution.'), 1, 'handover must stop on a tracked plan')
+    assert.equal(countExact(liveHandover, 'Before trusting or writing a repository-local plan hardening stamp, verify that its actual repository-relative path is ignored and untracked.'), 1, 'handover must verify the selected repository plan path before stamping')
+    assert.equal(countExact(liveHandover, 'An explicit unignore, an uncovered custom path, or a tracked plan is a blocking policy conflict: stop before stamping, implementation, or deletion and require the user to add an applicable ignore rule or resolve tracking as appropriate.'), 1, 'handover must stop on every repository-local plan policy conflict')
+    assert.equal(countExact(liveHandover, 'Global and external plans are outside the current repository\'s ignore policy and receive no project Git check.'), 1, 'handover must not apply project ignore policy to non-repository plans')
     assert.equal(countExact(liveHandover, 'git rm -f'), 0, 'handover must not prescribe git removal of a plan file')
     assert.equal(countExact(livePlan, '`git status` reports tracked changes and ordinary untracked files, while `git diff --stat` reports tracked differences; ignored `.claude/plans/` files appear in neither normal output, so fall back to file modification time.'), 1, 'revise-plan must explain why ignored plan files require the modification-time fallback')
   })

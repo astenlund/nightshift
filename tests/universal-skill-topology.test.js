@@ -399,12 +399,16 @@ test('plan workflows bind every mutation to a physically contained file', () => 
   for (const [body, owner] of [[handoverBody, 'handover'], [planBody, 'revise-plan']]) {
     assert.equal(body.includes('stable physical plan binding'), true, `${owner} must retain a stable physical plan binding`)
     assert.equal(body.includes('symbolic link, junction, or other reparse point'), true, `${owner} must reject linked plan paths`)
+    assert.equal(body.includes('project-established custom location, inference, or an exact user-supplied path'), true, `${owner} must classify every physically contained plan as repository-local`)
+    assert.equal(body.includes('actual repository-relative path is ignored and untracked'), true, `${owner} must verify custom repository plan policy at the selected path`)
+    assert.equal(body.includes('link count is available and exactly one'), true, `${owner} must reject hard-linked plan leaves`)
+    assert.equal(body.includes('Global and external plans are outside the current repository\'s ignore policy'), true, `${owner} must exclude non-repository plans from project ignore checks`)
     assert.equal(body.includes('immediately before every plan mutation or deletion'), true, `${owner} must revalidate before each plan write or removal`)
     assert.equal(body.includes('failure stops the run before any write'), true, `${owner} must fail closed on plan-path drift`)
   }
 
   assert.equal(handoverBody.includes('repository-local plan remains physically inside the repository root'), true, 'handover must keep repository plans inside the repository boundary')
-  assert.equal(planBody.includes('explicitly named plan outside the standard roots'), true, 'revise-plan must define the boundary for an explicit external plan')
+  assert.equal(planBody.includes('external plan is accepted only when the user supplied that exact path'), true, 'revise-plan must define the boundary for an explicit external plan')
 })
 
 test('production procedures contain no smoke-only probe branch', () => {
