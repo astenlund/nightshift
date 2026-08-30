@@ -112,6 +112,27 @@ function withRecordedBackupStableOpens(run) {
   }
 }
 
+function streamedDirectory(names) {
+  const state = { closed: false, reads: 0 }
+
+  return {
+    open: () => {
+      let index = 0
+
+      return {
+        closeSync: () => { state.closed = true },
+        readSync: () => {
+          if (index >= names.length) return null
+          state.reads += 1
+
+          return { name: names[index++] }
+        },
+      }
+    },
+    state,
+  }
+}
+
 function runInspectionCases(repositoryRoot) {
   test('inspection module recognizes controlled Markdown regions outside code and HTML', () => {
     const source = Buffer.from('\ufeff# Title\n\n```\n## Section\n```\n<!--\n## Section\n-->\n## Section\nbody\n## Tail\n', 'utf8')
@@ -1143,7 +1164,11 @@ function runInspectionCases(repositoryRoot) {
 
   test('direct inspection collects a stable Git snapshot and removes its transient lock', () => {
     const context = codexHostContext()
-    const result = inspect(repositoryRoot, 'codex', context, { trustedGitPath: 'C:/Program Files/Git/cmd/git.exe', ownerNonce: 'f'.repeat(32) })
+    const result = inspect(repositoryRoot, 'codex', context, {
+      ownerNonce: 'f'.repeat(32),
+      readdirSync: (directory, options) => directory === join(repositoryRoot, '.tmp') ? [] : readdirSync(directory, options),
+      trustedGitPath: 'C:/Program Files/Git/cmd/git.exe',
+    })
     assert.equal(result.ok, true)
     assert.equal(result.operation, 'inspect')
     assert.equal(result.git.kind, 'git')
@@ -1253,6 +1278,42 @@ function runInspectionCases(repositoryRoot) {
       const { inspectBackups } = require(BACKUPS_MODULE_PATH)
 
       assert.throws(() => inspectBackups(root, [{ target }]), /ordinary nonlinked file/)
+    } finally {
+      rmSync(root, { force: true, recursive: true })
+    }
+  })
+
+  test('backup inspection bounds every streamed directory entry and closes the handle on overflow', () => {
+    const root = mkdtempSync(join(tmpdir(), 'nightshift-inspect-backup-entry-bound-'))
+    const stream = streamedDirectory(Array.from({ length: 1025 }, (_, index) => Buffer.from(`unmatched-${index}`, 'utf8')))
+    try {
+      mkdirSync(join(root, '.tmp'))
+      const { inspectBackups } = require(BACKUPS_MODULE_PATH)
+
+      assert.throws(() => inspectBackups(root, [], { opendirSync: stream.open, platform: 'linux' }), (error) => error.code === 'directory-too-large')
+      assert.equal(stream.state.reads, 1025)
+      assert.equal(stream.state.closed, true)
+    } finally {
+      rmSync(root, { force: true, recursive: true })
+    }
+  })
+
+  test('backup inspection admits a matching entry within a mixed directory at the total bound', () => {
+    const root = mkdtempSync(join(tmpdir(), 'nightshift-inspect-backup-entry-boundary-'))
+    const backup = `.tmp/nightshift-init-backlog-unwrap-${'d'.repeat(64)}-${'e'.repeat(64)}-${'f'.repeat(64)}.bak`
+    const names = [...Array.from({ length: 1023 }, (_, index) => Buffer.from(`unmatched-${index}`, 'utf8')), Buffer.from(backup.slice('.tmp/'.length), 'utf8')]
+    const stream = streamedDirectory(names)
+    try {
+      mkdirSync(join(root, '.tmp'))
+      writeFileSync(join(root, ...backup.split('/')), Buffer.from('backup\n', 'utf8'), { mode: 0o600 })
+      const { inspectBackups } = require(BACKUPS_MODULE_PATH)
+
+      const result = inspectBackups(root, [], { opendirSync: stream.open, platform: 'linux' })
+
+      assert.deepEqual(result.backups, [backup])
+      assert.deepEqual(result.problems, [])
+      assert.equal(stream.state.reads, 1024)
+      assert.equal(stream.state.closed, true)
     } finally {
       rmSync(root, { force: true, recursive: true })
     }
