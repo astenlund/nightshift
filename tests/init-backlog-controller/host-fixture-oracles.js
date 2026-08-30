@@ -7,8 +7,8 @@
 // cases module that would otherwise double as a library.
 
 const assert = require('node:assert/strict')
-const { readFileSync, readdirSync } = require('node:fs')
-const { join } = require('node:path')
+const { lstatSync, readFileSync, readdirSync, realpathSync } = require('node:fs')
+const { dirname, isAbsolute, join, relative, resolve, sep } = require('node:path')
 
 const { canonicalJson, compareOrdinal, sha256 } = require('./helpers')
 const { ELECTION_MARKER_PATH, HEX64_PATTERN, LIST_SEPARATOR, requireExactKeys, selectTerminalExpectation, windowsRepositoryImage } = require('./election-oracles')
@@ -83,8 +83,55 @@ function isOrdinalSortedUnique(values) {
   return values.every((value, index) => index === 0 || compareOrdinal(values[index - 1], value) < 0)
 }
 
-function readCanonicalFixture(absolutePath) {
+function isPathAtOrInside(root, target) {
+  const relation = relative(root, target)
+
+  return relation === '' || relation !== '..' && !relation.startsWith(`..${sep}`) && !isAbsolute(relation)
+}
+
+function fixtureFailure(kind, absolutePath) {
+  throw new Error(`Fixture ${kind} is not an ordinary canonical confined entry: ${absolutePath}`)
+}
+
+function inspectFixtureEntry(root, absolutePath, expectedKind) {
+  let metadata
+  try {
+    metadata = lstatSync(absolutePath, { bigint: true })
+  } catch {
+    fixtureFailure(expectedKind, absolutePath)
+  }
+  if (metadata.isSymbolicLink() || expectedKind === 'directory' && !metadata.isDirectory() || expectedKind === 'file' && !metadata.isFile()) {
+    fixtureFailure(expectedKind, absolutePath)
+  }
+  let canonicalPath
+  try {
+    canonicalPath = realpathSync.native(absolutePath)
+  } catch {
+    fixtureFailure(expectedKind, absolutePath)
+  }
+  if (canonicalPath !== absolutePath || !isPathAtOrInside(root, canonicalPath)) {
+    fixtureFailure(expectedKind, absolutePath)
+  }
+
+  return metadata
+}
+
+function sameFixtureIdentity(left, right) {
+  return left.dev === right.dev && left.ino === right.ino && left.size === right.size && left.mtimeNs === right.mtimeNs && left.ctimeNs === right.ctimeNs
+}
+
+function readStableFixtureFile(root, absolutePath) {
+  const before = inspectFixtureEntry(root, absolutePath, 'file')
   const bytes = readFileSync(absolutePath)
+  const after = inspectFixtureEntry(root, absolutePath, 'file')
+  if (!sameFixtureIdentity(before, after)) {
+    throw new Error(`Fixture file changed during read: ${absolutePath}`)
+  }
+
+  return bytes
+}
+
+function parseCanonicalFixture(bytes, absolutePath) {
   if (bytes.length === 0 || bytes[bytes.length - 1] !== 0x0a) {
     throw new Error(`Fixture must end with one LF: ${absolutePath}`)
   }
@@ -103,6 +150,12 @@ function readCanonicalFixture(absolutePath) {
   }
 
   return { bytes, object }
+}
+
+function readCanonicalFixture(absolutePath) {
+  const root = dirname(absolutePath)
+
+  return parseCanonicalFixture(readStableFixtureFile(root, absolutePath), absolutePath)
 }
 
 function validateRepositoryObject(repository, label) {
@@ -350,18 +403,58 @@ function validateScenarioObject(object, scenarioId) {
   }
 }
 
-function listTree(root, prefix = '') {
+function validateHostFixtureRoot(repositoryRoot) {
+  const canonicalRepositoryRoot = resolve(repositoryRoot)
+  if (!isAbsolute(canonicalRepositoryRoot)) {
+    fixtureFailure('directory', repositoryRoot)
+  }
+  inspectFixtureEntry(canonicalRepositoryRoot, canonicalRepositoryRoot, 'directory')
+  let root = canonicalRepositoryRoot
+  for (const segment of HOST_FIXTURE_DIRECTORY.split('/')) {
+    root = join(root, segment)
+    inspectFixtureEntry(canonicalRepositoryRoot, root, 'directory')
+  }
+
+  return root
+}
+
+function fixtureFilePath(root, relativePath) {
+  if (typeof relativePath !== 'string' || relativePath === '' || relativePath.startsWith('/') || relativePath.includes('\\') || relativePath.split('/').some((segment) => segment === '' || segment === '.' || segment === '..')) {
+    fixtureFailure('file', relativePath)
+  }
+  inspectFixtureEntry(root, root, 'directory')
+  const segments = relativePath.split('/')
+  let absolutePath = root
+  for (const [index, segment] of segments.entries()) {
+    absolutePath = join(absolutePath, segment)
+    inspectFixtureEntry(root, absolutePath, index === segments.length - 1 ? 'file' : 'directory')
+  }
+
+  return absolutePath
+}
+
+function readHostFixture(root, relativePath) {
+  const absolutePath = fixtureFilePath(root, relativePath)
+  const bytes = readStableFixtureFile(root, absolutePath)
+
+  return parseCanonicalFixture(bytes, absolutePath)
+}
+
+function listTree(root, prefix = '', fixtureRoot = root) {
+  inspectFixtureEntry(fixtureRoot, root, 'directory')
   return readdirSync(root, { withFileTypes: true }).flatMap((entry) => {
     const entryPath = prefix === '' ? entry.name : `${prefix}/${entry.name}`
+    const absolutePath = join(root, entry.name)
+    const metadata = inspectFixtureEntry(fixtureRoot, absolutePath, entry.isDirectory() ? 'directory' : 'file')
 
-    return entry.isDirectory() ? listTree(join(root, entry.name), entryPath) : [entryPath]
+    return metadata.isDirectory() ? listTree(absolutePath, entryPath, fixtureRoot) : [entryPath]
   }).sort(compareOrdinal)
 }
 
 function loadHostFixtureTree(repositoryRoot, overrides = {}) {
-  const root = join(repositoryRoot, ...HOST_FIXTURE_DIRECTORY.split('/'))
+  const root = validateHostFixtureRoot(repositoryRoot)
   const list = overrides.list ?? (() => listTree(root))
-  const read = overrides.read ?? ((relativePath) => readCanonicalFixture(join(root, ...relativePath.split('/'))))
+  const read = overrides.read ?? ((relativePath) => readHostFixture(root, relativePath))
   const expectedFiles = ['manifest.json', ...SCENARIO_IDS.map((scenarioId) => `scenarios/${scenarioId}.json`)].sort(compareOrdinal)
   const actualFiles = list()
   if (actualFiles.join(LIST_SEPARATOR) !== expectedFiles.join(LIST_SEPARATOR)) {

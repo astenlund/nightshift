@@ -2,8 +2,9 @@
 
 const assert = require('node:assert/strict')
 const { execFileSync } = require('node:child_process')
-const { readFileSync } = require('node:fs')
-const { join } = require('node:path')
+const { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync } = require('node:fs')
+const { tmpdir } = require('node:os')
+const { dirname, join } = require('node:path')
 const test = require('node:test')
 
 const { canonicalJson, compareOrdinal, sha256 } = require('./helpers')
@@ -284,6 +285,31 @@ function checkAttributes(repositoryRoot, paths) {
   return result
 }
 
+function copiedHostFixture(repositoryRoot) {
+  const root = mkdtempSync(join(tmpdir(), 'nightshift-host-fixture-oracle-'))
+  const copiedRepositoryRoot = join(root, 'repository')
+  const copiedFixtureRoot = join(copiedRepositoryRoot, ...HOST_FIXTURE_DIRECTORY.split('/'))
+  mkdirSync(dirname(copiedFixtureRoot), { recursive: true })
+  cpSync(join(repositoryRoot, ...HOST_FIXTURE_DIRECTORY.split('/')), copiedFixtureRoot, { recursive: true })
+
+  return { copiedFixtureRoot, copiedRepositoryRoot, root }
+}
+
+function createFixtureLink(testContext, target, path, type) {
+  try {
+    symlinkSync(target, path, type)
+  } catch (error) {
+    if (process.platform === 'win32' && ['EACCES', 'EPERM', 'UNKNOWN'].includes(error.code)) {
+      testContext.skip(`Windows ${type} fixture link creation is unavailable: ${error.code}`)
+
+      return false
+    }
+    throw error
+  }
+
+  return true
+}
+
 function runOracleCases(repositoryRoot) {
   const fixturePath = (relativePath) => join(repositoryRoot, ...relativePath.split('/'))
 
@@ -370,6 +396,63 @@ function runOracleCases(repositoryRoot) {
     const tree = loadHostFixtureTree(repositoryRoot)
     assert.deepEqual([...tree.scenarios.keys()], SCENARIO_IDS)
     assert.match(tree.scenarioManifestSha256, HEX64_PATTERN)
+  })
+
+  test('the host fixture loader rejects a linked expected scenario even when an override lists the closed inventory', (testContext) => {
+    const fixture = copiedHostFixture(repositoryRoot)
+    try {
+      const scenario = join(fixture.copiedFixtureRoot, 'scenarios', `${SCENARIO_IDS[0]}.json`)
+      const externalScenario = join(fixture.root, 'external-scenario.json')
+      cpSync(scenario, externalScenario)
+      rmSync(scenario)
+      if (!createFixtureLink(testContext, externalScenario, scenario, 'file')) return
+      const expectedFiles = ['manifest.json', ...SCENARIO_IDS.map((scenarioId) => `scenarios/${scenarioId}.json`)].sort(compareOrdinal)
+
+      assert.throws(() => loadHostFixtureTree(fixture.copiedRepositoryRoot, { list: () => expectedFiles }), /fixture.*(?:link|canonical|ordinary|confined)/i)
+    } finally {
+      rmSync(fixture.root, { force: true, recursive: true })
+    }
+  })
+
+  test('the host fixture loader rejects linked fixture root and scenarios directories', (testContext) => {
+    const fixture = copiedHostFixture(repositoryRoot)
+    try {
+      const externalRoot = join(fixture.root, 'external-root')
+      cpSync(fixture.copiedFixtureRoot, externalRoot, { recursive: true })
+      rmSync(fixture.copiedFixtureRoot, { force: true, recursive: true })
+      if (!createFixtureLink(testContext, externalRoot, fixture.copiedFixtureRoot, process.platform === 'win32' ? 'junction' : 'dir')) return
+
+      assert.throws(() => loadHostFixtureTree(fixture.copiedRepositoryRoot), /fixture.*(?:link|canonical|ordinary|confined)/i)
+    } finally {
+      rmSync(fixture.root, { force: true, recursive: true })
+    }
+
+    const scenariosFixture = copiedHostFixture(repositoryRoot)
+    try {
+      const scenarios = join(scenariosFixture.copiedFixtureRoot, 'scenarios')
+      const externalScenarios = join(scenariosFixture.root, 'external-scenarios')
+      cpSync(scenarios, externalScenarios, { recursive: true })
+      rmSync(scenarios, { force: true, recursive: true })
+      if (!createFixtureLink(testContext, externalScenarios, scenarios, process.platform === 'win32' ? 'junction' : 'dir')) return
+
+      assert.throws(() => loadHostFixtureTree(scenariosFixture.copiedRepositoryRoot), /fixture.*(?:link|canonical|ordinary|confined)/i)
+    } finally {
+      rmSync(scenariosFixture.root, { force: true, recursive: true })
+    }
+  })
+
+  test('the host fixture loader rejects a directory at an expected fixture-file path before reading it', () => {
+    const fixture = copiedHostFixture(repositoryRoot)
+    try {
+      const scenario = join(fixture.copiedFixtureRoot, 'scenarios', `${SCENARIO_IDS[0]}.json`)
+      rmSync(scenario)
+      mkdirSync(scenario)
+      const expectedFiles = ['manifest.json', ...SCENARIO_IDS.map((scenarioId) => `scenarios/${scenarioId}.json`)].sort(compareOrdinal)
+
+      assert.throws(() => loadHostFixtureTree(fixture.copiedRepositoryRoot, { list: () => expectedFiles }), /Fixture file is not an ordinary canonical confined entry/)
+    } finally {
+      rmSync(fixture.root, { force: true, recursive: true })
+    }
   })
 
   test('fixture regeneration depends on the recipe seam instead of the cases registrar', () => {
