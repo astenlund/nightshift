@@ -1,12 +1,23 @@
 'use strict'
 
 const assert = require('node:assert/strict')
-const { existsSync, lstatSync, readdirSync, readFileSync } = require('node:fs')
-const { join, relative } = require('node:path')
+const { execFileSync } = require('node:child_process')
+const { existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } = require('node:fs')
+const { tmpdir } = require('node:os')
+const { dirname, join, relative } = require('node:path')
 const test = require('node:test')
 
 const { PROCEDURE_REPLACEMENTS, PUBLIC_SKILLS, REVISE_ENGINE_RESOURCES, REVISE_WRAPPERS } = require('./entry-contract')
 const { advanceQueue, createQueue, resumeQueue } = require('../skills/handover/handover-queue')
+const {
+  MAX_PLAN_BYTES,
+  MAX_PLAN_CANDIDATE_BYTES,
+  MAX_PLAN_CANDIDATES,
+  capturePlanCandidateEvidence,
+  establishPlanBinding,
+  refreshPlanBinding,
+  revalidatePlanBinding,
+} = require('../internal/plan-binding')
 
 const REPOSITORY_ROOT = join(__dirname, '..')
 const AGREEMENT_PATH = '../spec-agreement/SKILL.md'
@@ -480,9 +491,11 @@ test('plan workflows share one physical binding and consume revalidated bytes', 
   const planBody = readRequiredFile(join(ENGINE_ROOT, 'plan.md'))
   const codeBody = readRequiredFile(join(ENGINE_ROOT, 'code.md'))
   const bindingPath = join(REPOSITORY_ROOT, 'internal', 'plan-binding.md')
+  const bindingServicePath = join(REPOSITORY_ROOT, 'internal', 'plan-binding.js')
   const bindingBody = readRequiredFile(bindingPath)
 
   requireRegularFile(bindingPath)
+  requireRegularFile(bindingServicePath)
   for (const contract of [
     'stable physical plan binding',
     'symbolic link, junction, or other reparse point',
@@ -534,6 +547,108 @@ test('plan workflows share one physical binding and consume revalidated bytes', 
   assert.equal(planBody.includes('writeBoundProvenanceStamp'), true, 'revise-plan must stamp through the retained physical binding')
   assert.equal(codeBody.includes('before each reviewer or skeptic dispatch'), true, 'revise-code must revalidate each review dispatch when a plan is active')
   assert.equal(codeBody.includes('parsePlanContract'), true, 'revise-code must parse captured plan authority')
+})
+
+test('plan binding service preserves authority across classification and mutation', () => {
+  const root = mkdtempSync(join(tmpdir(), 'nightshift-plan-binding-'))
+  try {
+    const repositoryRoot = join(root, 'repository')
+    const globalPlansRoot = join(root, 'global-plans')
+    const repositoryPlan = join(repositoryRoot, '.claude', 'plans', 'repository.md')
+    const globalPlan = join(globalPlansRoot, 'global.md')
+    const externalPlan = join(root, 'external', 'external.md')
+    for (const path of [repositoryPlan, globalPlan, externalPlan]) {
+      mkdirSync(dirname(path), { recursive: true })
+      writeFileSync(path, '# Plan\n')
+    }
+    const gitChecks = []
+    const gitPolicy = (request) => gitChecks.push(request)
+    const common = { globalPlansRoot, repositoryRoot }
+    const repository = establishPlanBinding({ ...common, exactUserPath: false, logicalPath: repositoryPlan }, { gitPolicy })
+    const global = establishPlanBinding({ ...common, exactUserPath: false, logicalPath: globalPlan }, { gitPolicy })
+
+    assert.equal(repository.binding.classification, 'repository')
+    assert.equal(repository.binding.repositoryRelativePath, '.claude/plans/repository.md')
+    assert.equal(global.binding.classification, 'global')
+    assert.equal(global.binding.repositoryRelativePath, null)
+    assert.equal(gitChecks.length, 1)
+    assert.throws(() => establishPlanBinding({ ...common, exactUserPath: false, logicalPath: externalPlan }, { gitPolicy }), /exact user path/)
+    assert.equal(establishPlanBinding({ ...common, exactUserPath: true, logicalPath: externalPlan }, { gitPolicy }).binding.classification, 'external')
+
+    const replacement = Buffer.from('# Plan\n\nChanged.\n')
+    writeFileSync(repositoryPlan, replacement)
+    assert.throws(() => revalidatePlanBinding(repository.binding, { gitPolicy }), /stale/)
+    const refreshed = refreshPlanBinding({ binding: repository.binding, expectedBytes: replacement }, { gitPolicy })
+
+    assert.equal(refreshed.binding.logicalPath, repository.binding.logicalPath)
+    assert.equal(refreshed.binding.declaredBoundary, repository.binding.declaredBoundary)
+    assert.equal(refreshed.bytes.equals(replacement), true)
+    assert.equal(revalidatePlanBinding(refreshed.binding, { gitPolicy }).bytes.equals(replacement), true)
+  } finally {
+    rmSync(root, { force: true, recursive: true })
+  }
+})
+
+test('plan binding service bounds individual and inferred candidate evidence', () => {
+  const root = mkdtempSync(join(tmpdir(), 'nightshift-plan-bounds-'))
+  try {
+    const repositoryRoot = join(root, 'repository')
+    const globalPlansRoot = join(root, 'global-plans')
+    mkdirSync(repositoryRoot)
+    mkdirSync(globalPlansRoot)
+    const common = { globalPlansRoot, repositoryRoot }
+    const gitPolicy = () => {}
+    const boundaryPlan = join(globalPlansRoot, 'boundary.md')
+    const oversizedPlan = join(globalPlansRoot, 'oversized.md')
+    writeFileSync(boundaryPlan, Buffer.alloc(MAX_PLAN_BYTES, 0x61))
+    writeFileSync(oversizedPlan, Buffer.alloc(MAX_PLAN_BYTES + 1, 0x61))
+
+    assert.equal(establishPlanBinding({ ...common, exactUserPath: false, logicalPath: boundaryPlan }, { gitPolicy }).bytes.length, MAX_PLAN_BYTES)
+    assert.throws(() => establishPlanBinding({ ...common, exactUserPath: false, logicalPath: oversizedPlan }, { gitPolicy }), /plan-too-large/)
+
+    const tooMany = Array.from({ length: MAX_PLAN_CANDIDATES + 1 }, (_, index) => ({ exactUserPath: false, logicalPath: join(globalPlansRoot, `missing-${index}.md`) }))
+    assert.throws(() => capturePlanCandidateEvidence({ ...common, enumerateCandidates: () => tooMany }, { gitPolicy }), /candidate-count/)
+
+    const aggregate = []
+    const candidateSize = Math.floor(MAX_PLAN_CANDIDATE_BYTES / 8)
+    for (let index = 0; index < 9; index += 1) {
+      const logicalPath = join(globalPlansRoot, `aggregate-${index}.md`)
+      writeFileSync(logicalPath, Buffer.alloc(candidateSize, 0x62))
+      aggregate.push({ exactUserPath: false, logicalPath })
+    }
+    assert.throws(() => capturePlanCandidateEvidence({ ...common, enumerateCandidates: () => aggregate }, { gitPolicy }), /aggregate-bytes/)
+
+    let enumeration = aggregate.slice(0, 1)
+    assert.throws(() => capturePlanCandidateEvidence({ ...common, enumerateCandidates: () => {
+      const result = enumeration
+      enumeration = aggregate.slice(0, 2)
+
+      return result
+    } }, { gitPolicy }), /candidate set changed/)
+  } finally {
+    rmSync(root, { force: true, recursive: true })
+  }
+})
+
+test('plan binding service enforces repository ignore and tracking policy', () => {
+  const root = mkdtempSync(join(tmpdir(), 'nightshift-plan-git-policy-'))
+  try {
+    const repositoryRoot = join(root, 'repository')
+    const globalPlansRoot = join(root, 'global-plans')
+    const plan = join(repositoryRoot, '.claude', 'plans', 'repository.md')
+    mkdirSync(dirname(plan), { recursive: true })
+    mkdirSync(globalPlansRoot)
+    execFileSync('git', ['init', '--quiet', repositoryRoot], { windowsHide: true })
+    writeFileSync(join(repositoryRoot, '.gitignore'), '.claude/plans/\n')
+    writeFileSync(plan, '# Plan\n')
+    const input = { exactUserPath: false, globalPlansRoot, logicalPath: plan, repositoryRoot }
+
+    assert.equal(establishPlanBinding(input).binding.classification, 'repository')
+    execFileSync('git', ['-C', repositoryRoot, 'add', '--force', '--', '.claude/plans/repository.md'], { windowsHide: true })
+    assert.throws(() => establishPlanBinding(input), /must be untracked/)
+  } finally {
+    rmSync(root, { force: true, recursive: true })
+  }
 })
 
 test('production procedures contain no smoke-only probe branch', () => {
