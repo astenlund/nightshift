@@ -707,8 +707,8 @@ function previewLegacyMarkerDeletionValidated(input, scan = scanMarkdown) {
   return { replacementBytes: Buffer.concat(spans), deletions };
 }
 
-function parseHardeningForWrite(sourceBuffer) {
-  const scanned = scanMarkdown(sourceBuffer);
+function parseHardeningForWrite(sourceBuffer, scan = scanMarkdown) {
+  const scanned = scan(sourceBuffer);
   if (scanned.unclosedFence) {
     throw new AgreementError('unclosed-fence-prevents-hardening-provenance', 'An unclosed fence prevents Hardening provenance.', {});
   }
@@ -733,12 +733,12 @@ function appendBytes(sourceBuffer, addition) {
   return Buffer.concat([sourceBuffer, ...addition]);
 }
 
-function buildProvenanceBytes(sourceBuffer, stamp) {
+function buildProvenanceBytes(sourceBuffer, stamp, scan = scanMarkdown) {
   const stampKind = provenanceKind(stamp);
   if (stampKind === null) {
     hardeningGrammar('Provenance stamp does not match a closed form.');
   }
-  const parsed = parseHardeningForWrite(sourceBuffer);
+  const parsed = parseHardeningForWrite(sourceBuffer, scan);
   const terminator = preferredTerminator(parsed.scanned.lines);
   const sourceHasTerminal = parsed.scanned.lines.length > 0 && parsed.scanned.lines.at(-1).terminator.length > 0;
   const terminalStamp = sourceHasTerminal ? terminator : Buffer.alloc(0);
@@ -825,10 +825,10 @@ function retryPreimages(sourceBuffer, stamp, parsed) {
   return candidates;
 }
 
-function isAppliedRetry(sourceBuffer, stamp, baselineHash) {
+function isAppliedRetry(sourceBuffer, stamp, baselineHash, scan = scanMarkdown) {
   let parsed;
   try {
-    parsed = parseHardeningForWrite(sourceBuffer);
+    parsed = parseHardeningForWrite(sourceBuffer, scan);
   } catch (error) {
     if (error instanceof AgreementError) {
       return false;
@@ -842,7 +842,7 @@ function isAppliedRetry(sourceBuffer, stamp, baselineHash) {
   if (occurrences.length !== 1 || parsed.state.bodyLines.at(-1) !== occurrences[0]) {
     return false;
   }
-  return retryPreimages(sourceBuffer, stamp, parsed).some((candidate) => completeFileHash(candidate) === baselineHash && buildProvenanceBytes(candidate, stamp).equals(sourceBuffer));
+  return retryPreimages(sourceBuffer, stamp, parsed).some((candidate) => completeFileHash(candidate) === baselineHash && buildProvenanceBytes(candidate, stamp, scan).equals(sourceBuffer));
 }
 
 function replaceFile(fsAdapter, path, bytes) {
@@ -916,7 +916,8 @@ function captureProvenanceBinding(input, options) {
 
 function prepareProvenanceWrite(currentBytes, stamp, baselineHash) {
   requireUtf8(currentBytes);
-  if (isAppliedRetry(currentBytes, stamp, baselineHash)) {
+  const scan = createMarkdownScanner();
+  if (isAppliedRetry(currentBytes, stamp, baselineHash, scan)) {
     return { alreadyApplied: true, nextBytes: Buffer.from(currentBytes) };
   }
   const currentHash = completeFileHash(currentBytes);
@@ -924,7 +925,7 @@ function prepareProvenanceWrite(currentBytes, stamp, baselineHash) {
     staleBaseline(baselineHash, currentHash);
   }
 
-  return { alreadyApplied: false, nextBytes: buildProvenanceBytes(currentBytes, stamp) };
+  return { alreadyApplied: false, nextBytes: buildProvenanceBytes(currentBytes, stamp, scan) };
 }
 
 function readProvenanceReplacement(fsAdapter, realPath, nextBytes) {

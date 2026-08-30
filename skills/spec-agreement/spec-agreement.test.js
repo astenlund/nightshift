@@ -26,6 +26,7 @@ const {
   invalidateAgreementState,
   locateSelection,
   parsePlanContract,
+  prepareProvenanceWrite,
   previewLegacyMarkerDeletion,
   refreshCompatibleState,
   replaceAgreementState,
@@ -3998,6 +3999,57 @@ test('provenance writes first graduation into missing empty and placeholder Hard
     assert.equal(artifact.replacements().length, 1, name);
     assert.equal(artifact.replacements()[0].path, `${projectRoot}/docs/spec.md`, name);
   }
+});
+
+test('prepareProvenanceWrite scans the current buffer once', () => {
+  const currentBytes = Buffer.from('# Design\n');
+  const stamp = '- revise-spec graduated 2026-08-19 04:00 at 9ebd097, scope: whole file, content: 74092a52';
+  const scanCount = countMarkdownScans(currentBytes);
+
+  prepareProvenanceWrite(currentBytes, stamp, fullHash(currentBytes));
+
+  assert.equal(scanCount(), 1);
+});
+
+test('unbound provenance writer scans the current buffer once', () => {
+  const currentBytes = Buffer.from('# Design\n');
+  const stamp = '- revise-spec graduated 2026-08-19 04:00 at 9ebd097, scope: whole file, content: 74092a52';
+  const scanCount = countMarkdownScans(currentBytes);
+  let storedBytes = currentBytes;
+  const adapter = {
+    readFile: () => storedBytes,
+    readDirectory: (directory) => directory === projectRoot ? ['docs'] : ['spec.md'],
+    realpath: (path) => path,
+    replaceFileAtomically: (path, nextBytes) => { storedBytes = nextBytes; },
+  };
+
+  writeProvenanceStamp({ projectRoot, path: 'docs/spec.md', stamp, baselineHash: fullHash(currentBytes) }, { fsAdapter: adapter });
+
+  assert.equal(scanCount(), 1);
+});
+
+test('bound provenance writer scans the current buffer once', () => {
+  const currentBytes = Buffer.from('# Design\n');
+  const stamp = '- revise-spec graduated 2026-08-19 04:00 at 9ebd097, scope: whole file, content: 74092a52';
+  const artifact = mutableArtifact(currentBytes);
+  const binding = captureProvenanceBinding({ projectRoot, path: 'docs/spec.md' }, { fsAdapter: artifact.adapter, bindingAdapter: artifact.bindingAdapter });
+  const sourceBuffer = Buffer.from(currentBytes);
+  const scanCount = countMarkdownScans(sourceBuffer);
+  const readFile = artifact.adapter.readFile;
+  let currentRead = true;
+  artifact.adapter.readFile = (path) => {
+    if (currentRead) {
+      currentRead = false;
+
+      return sourceBuffer;
+    }
+
+    return readFile(path);
+  };
+
+  writeBoundProvenanceStamp({ projectRoot, path: 'docs/spec.md', stamp, baselineHash: fullHash(sourceBuffer), binding }, { fsAdapter: artifact.adapter, bindingAdapter: artifact.bindingAdapter });
+
+  assert.equal(scanCount(), 1);
 });
 
 test('bound provenance refuses same-byte identity and metadata replacement', () => {
