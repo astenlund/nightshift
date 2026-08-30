@@ -1186,6 +1186,26 @@ function runPublicationCases() {
     }
   })
 
+  test('rejects a colliding reserved temporary during automatic durable-progress resume', () => {
+    const root = fixtureRoot()
+    try {
+      const fixture = resumableCreateFixture(root)
+      const ownerNonce = '3'.repeat(32)
+      const manifestId = admitApplyManifest(fixture.applyRequest).manifestId
+      const collision = temporaryPaths(root, manifestId, 1, ownerNonce, fixture.carried.snapshotId, process.pid, fixture.applyRequest.actions[0].target).action
+      const external = Buffer.from('approved\n', 'utf8')
+      writeFileSync(collision, external, { mode: 0o644 })
+      let writes = 0
+
+      expectCode(() => publishApply(fixture.applyRequest, { collectInspection: () => fixture.live, ownerNonce, writeSpy: () => { writes += 1 } }), 'runtime-lock')
+      assert.equal(writes, 0)
+      assert.equal(existsSync(join(root, '.nightshift-init-backlog.lock')), false)
+      assert.deepEqual(readFileSync(collision), external)
+    } finally {
+      rmSync(root, { force: true, recursive: true })
+    }
+  })
+
   test('rejects a colliding marker witness before any publication write', () => {
     const root = fixtureRoot()
     try {

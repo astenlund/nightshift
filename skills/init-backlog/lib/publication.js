@@ -1102,8 +1102,11 @@ function publishApply(request, options = {}) {
   try {
     verifyRecoveryGateAbsent(root)
     if (new Set(tempSet).size !== tempSet.length || tempSet.some((path) => targets.includes(path))) publicationError('Derived publication temporary collides with a target.', { code: 'manifest-invalid', phase: 'prevalidate', manifestId: admission.manifestId })
-    if (resume !== true) requireReservedTemporariesAbsent(root, tempSet)
-    if (resume === true && lockHint?.record.manifestId === null) requireReservedTemporariesAbsent(root, tempSet, new Set([fixed.lockStage, fixed.lockNext]))
+    if (resume !== true || lockHint === null) {
+      requireReservedTemporariesAbsent(root, tempSet)
+    } else if (lockHint.record.manifestId === null) {
+      requireReservedTemporariesAbsent(root, tempSet, new Set([fixed.lockStage, fixed.lockNext]))
+    }
   } catch (error) {
     if (lock !== null && options.crash !== true && options.preserveLockOnError !== true) {
       try { cleanupOwner(root, lock, options, ownedTemporaries) } catch (cleanupError) { throw cleanupError }
