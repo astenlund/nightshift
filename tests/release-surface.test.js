@@ -80,6 +80,16 @@ function extractSection(source, heading) {
   return nextHeading === -1 ? normalized.slice(bodyStart) : normalized.slice(bodyStart, nextHeading)
 }
 
+function extractDelimited(source, startMarker, endMarker, label) {
+  const start = source.indexOf(startMarker)
+  assert.notEqual(start, -1, `missing ${label} start`)
+  const bodyStart = start + startMarker.length
+  const end = source.indexOf(endMarker, bodyStart)
+  assert.notEqual(end, -1, `missing ${label} end`)
+
+  return source.slice(bodyStart, end)
+}
+
 function assertRepositoryCommandList(source, path, heading) {
   const section = extractSection(source, heading)
   for (const command of DOCUMENTED_SUITE_COMMANDS) {
@@ -350,6 +360,46 @@ test('README lists exactly the public skills, one row each', () => {
   assert.equal(new Set(rowNames).size, rowNames.length, 'README must not list a public skill twice')
   assert.ok(NUMBER_WORDS[PUBLIC_SKILLS.length], `NUMBER_WORDS must spell ${PUBLIC_SKILLS.length}`)
   assert.equal(countExact(agents, PUBLIC_SURFACE_PHRASE), 1, `AGENTS must state: ${PUBLIC_SURFACE_PHRASE}`)
+})
+
+test('README ready excerpt agrees with the production parser for its named examples', () => {
+  const readmeSection = extractSection(readRepositoryFile('README.md'), '## What it looks like')
+  const example = extractDelimited(readmeSection, '```\n/nightshift:ready\n\n', '\n```', 'README ready example')
+  const readySection = extractDelimited(example, 'Ready\n', '\n\nBlocked\n', 'README Ready section')
+  const blockedSection = extractDelimited(example, 'Blocked\n', '\n\nRecommended\n', 'README Blocked section')
+  const recommendedSection = example.slice(example.indexOf('Recommended\n') + 'Recommended\n'.length)
+  const recommendedTitles = [...recommendedSection.matchAll(/^  [0-9]+\. `([^`]+)`/gm)].map((match) => match[1])
+  const recommendationCount = (recommendedSection.match(/^  [0-9]+\./gm) ?? []).length
+  const report = JSON.parse(execFileSync(
+    process.execPath,
+    [join(repositoryRoot, 'skills', 'ready', 'ready.js'), repositoryRoot],
+    { cwd: repositoryRoot, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] },
+  ))
+  const readyExamples = [
+    { index: 'QUICK_WINS.md', title: 'Tell implementation subagents where their scratch files go' },
+    { index: 'FEATURES.md', title: 'Content fingerprint helper' },
+  ]
+  const blockedExamples = [
+    { title: 'Durable scope anchor', blockers: ['Pick-time breakouts'] },
+    { title: '[Agent-host-agnostic Nightshift: Portable resource and fingerprint contract]', blockers: ['Content fingerprint helper'] },
+  ]
+
+  for (const expected of readyExamples) {
+    assert.equal(countExact(readySection, `- ${expected.title}`), 1, `${expected.title} must appear once in the README Ready excerpt`)
+    const parsed = report.ready.find(({ title }) => title === expected.title)
+    assert.equal(parsed?.index, expected.index, `${expected.title} must remain Ready in the production parser`)
+  }
+  for (const expected of blockedExamples) {
+    const blockerLabel = expected.blockers.join('`, `')
+    assert.equal(countExact(blockedSection, `On \`${blockerLabel}\`:\n    - ${expected.title}`), 1, `${expected.title} must appear under its exact README blocker set`)
+    const parsed = report.blocked.find(({ title }) => title === expected.title)
+    assert.deepEqual(parsed?.blockers, expected.blockers, `${expected.title} must retain the README blocker set in the production parser`)
+  }
+  assert.equal(recommendedTitles.length, recommendationCount, 'every README recommendation must delimit its title')
+  assert.deepEqual([...recommendedTitles].sort(), readyExamples.map(({ title }) => title).sort(), 'README must recommend exactly its named Ready examples')
+  for (const title of recommendedTitles) {
+    assert.equal(report.ready.some((entry) => entry.title === title), true, `${title} must be Ready before README recommends it`)
+  }
 })
 
 test('every checked-in suite is declared to CI', () => {

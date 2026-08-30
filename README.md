@@ -28,26 +28,23 @@ Ask what to work on, and you get the dependency graph resolved rather than a lis
 
 Ready
   Quick Wins
-    - Replace handover's TaskCreate queue with a durable scratch file
-      (the current instruction references a tool that no longer exists)
+    - Tell implementation subagents where their scratch files go
+      (a small handover instruction repair)
   Features
-    - Durable scope anchor            root of a chain of four
-    - Content fingerprint helper      root of the host-adapter tree
+    - Content fingerprint helper
+      (shared selector and hashing machinery)
 
 Blocked
-  On `Durable scope anchor`:
-    Contract-calibrated revise admission
-  On `Contract-calibrated revise admission`:
-    Second-opinion gates, Adversarial repair dialogue,
-    Fix-scoped follow-up rounds
+  On `Pick-time breakouts`:
+    - Durable scope anchor
   On `Content fingerprint helper`:
-    [Agent-host-agnostic Nightshift: Portable resource and fingerprint contract]
+    - [Agent-host-agnostic Nightshift: Portable resource and fingerprint contract]
 
 Recommended
-  1. Durable scope anchor. Four entries are waiting behind it,
-     the longest chain in the backlog.
-  2. Replace handover's TaskCreate queue, for a short session.
-     Self-contained, and it fixes an instruction that cannot run.
+  1. `Content fingerprint helper`. It unblocks the portable resource and
+     fingerprint contract.
+  2. `Tell implementation subagents where their scratch files go`. It is a
+     self-contained Quick Win for a short session.
 ```
 
 The classification is not the model's opinion. A bundled parser reads each entry's declared `**Requires:**` and `**External:**` lines and resolves the graph deterministically, with fixture tests covering the grammar. If the report looks wrong, that is a parser bug with a reproducible test case, not a prompt to reword.
