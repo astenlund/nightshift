@@ -278,15 +278,31 @@ function createByteBudget({ limit, limitName }) {
   }
 }
 
-function createLineDecoder({ limit, limitName, onLine, onOverflow }) {
+function createLineDecoder({ limit, limitName, onLine, onOverflow, onUnterminated = () => {} }) {
   let buffered = Buffer.alloc(0)
+  let ended = false
   let overflowed = false
 
   return {
     bufferedBytes() {
       return buffered.length
     },
+    end() {
+      if (ended) {
+        return
+      }
+      ended = true
+      const observedBytes = buffered.length
+      buffered = Buffer.alloc(0)
+      if (!overflowed && observedBytes > 0) {
+        overflowed = true
+        onUnterminated({ limitName, observedBytes })
+      }
+    },
     push(chunk) {
+      if (ended) {
+        throw new Error('line decoder is finalized')
+      }
       if (overflowed) {
         return
       }

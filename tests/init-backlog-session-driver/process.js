@@ -215,6 +215,7 @@ function createWindowsJobRunnerAdapter({
   onFailure = () => {},
   onHostStderr = () => {},
   onHostStdout = () => {},
+  onHostStdoutEnd = () => {},
   onInputAccepted = () => {},
   onStarted = () => {},
   powerShellPath,
@@ -426,6 +427,7 @@ function createWindowsJobRunnerAdapter({
           return
         }
         hostExitCode = frame.exitCode
+        onHostStdoutEnd()
 
         return
       }
@@ -459,6 +461,7 @@ function createWindowsJobRunnerAdapter({
       recordFailure({ detailCode: 'output-capacity' })
       startTermination()
     },
+    onUnterminated: protocolFailure,
   })
 
   return {
@@ -625,6 +628,7 @@ function createWindowsJobRunnerAdapter({
         decoder.push(chunk)
       })
       child.stdout.on('end', () => {
+        decoder.end()
         runnerStdoutEof = true
         maybeSettleStreamClosure()
       })
@@ -668,6 +672,7 @@ function createProductionProcessAdapter(options = {}) {
     onFailure: options.onFailure,
     onHostStderr: options.onHostStderr,
     onHostStdout: options.onHostStdout,
+    onHostStdoutEnd: options.onHostStdoutEnd,
     onInputAccepted: options.onInputAccepted,
     onStarted: options.onStarted,
     powerShellPath,

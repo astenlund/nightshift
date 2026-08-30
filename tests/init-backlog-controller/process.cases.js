@@ -614,6 +614,15 @@ function runProcessCases(repositoryRoot) {
     assert.deepEqual(harness.events.failures, [{ detailCode: 'termination' }])
   })
 
+  test('runner stdout rejects a residual frame at clean EOF', () => {
+    const harness = startedWindowsHarness()
+    harness.runner.pushStdout(Buffer.from('{"kind":"host-exit"', 'utf8'))
+    harness.runner.endStdout()
+
+    assert.deepEqual(harness.events.failures, [{ detailCode: 'termination' }])
+    assert.equal(harness.adapter.closureProof().proven, false)
+  })
+
   test('natural completion is the exact conjunction and any missing conjunct fails closed', () => {
     const complete = startedWindowsHarness()
     complete.runner.pushStdout(canonicalLine({ dataBase64: Buffer.from('bytes').toString('base64'), kind: 'host-stdout', ordinal: 1 }))

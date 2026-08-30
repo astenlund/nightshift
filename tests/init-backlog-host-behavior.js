@@ -1891,6 +1891,7 @@ function createLiveBindings({ filesystem = nodeFilesystem, platform, workerProce
         settle({ ready: true })
       },
       onOverflow: () => workerFailure({ detailCode: 'output-capacity' }),
+      onUnterminated: () => workerFailure({ detailCode: 'proxy' }),
     })
     const production = attemptProcessAdapterConstruction(workerProcessAdapterFactory, {
       cwd: call.cwd,
@@ -1898,6 +1899,7 @@ function createLiveBindings({ filesystem = nodeFilesystem, platform, workerProce
       onFailure: workerFailure,
       onHostStderr: () => {},
       onHostStdout: (bytes) => decoder.push(bytes),
+      onHostStdoutEnd: () => decoder.end(),
       onStarted: () => {},
     })
     if (production.ok !== true) {
@@ -2409,6 +2411,9 @@ async function runLiveHostSession({ call, filesystem, platform, processAdapterFa
       onOverflow: () => {
         settle({ failure: recordSessionInfrastructureFailure({ detailCode: 'output-capacity', phase: sessionInput.phase }) })
       },
+      onUnterminated: () => {
+        settle({ failure: recordSessionInfrastructureFailure({ detailCode: 'termination', phase: sessionInput.phase }) })
+      },
     })
     const production = attemptProcessAdapterConstruction(processAdapterFactory, {
       cwd: scenarioRoot,
@@ -2416,6 +2421,7 @@ async function runLiveHostSession({ call, filesystem, platform, processAdapterFa
       onFailure: (failure) => settle({ failure: recordSessionInfrastructureFailure(failure) }),
       onHostStderr: (bytes) => stderrChunks.push(Buffer.from(bytes)),
       onHostStdout: (bytes) => decoder.push(bytes),
+      onHostStdoutEnd: () => decoder.end(),
       onStarted: submitInitialInput,
     })
     if (production.ok !== true) {
@@ -2576,6 +2582,9 @@ async function runLiveHostSession({ call, filesystem, platform, processAdapterFa
       onOverflow: () => {
         settle({ failure: recordSessionInfrastructureFailure({ detailCode: 'output-capacity', phase: activePhase }) })
       },
+      onUnterminated: () => {
+        settle({ failure: recordSessionInfrastructureFailure({ detailCode: 'termination', phase: activePhase }) })
+      },
     })
     const production = attemptProcessAdapterConstruction(processAdapterFactory, {
       cwd: scenarioRoot,
@@ -2583,6 +2592,7 @@ async function runLiveHostSession({ call, filesystem, platform, processAdapterFa
       onFailure: (failure) => settle({ failure: recordSessionInfrastructureFailure(failure) }),
       onHostStderr: (bytes) => stderrChunks.push(Buffer.from(bytes)),
       onHostStdout: (bytes) => decoder.push(bytes),
+      onHostStdoutEnd: () => decoder.end(),
       onStarted: () => writeUserTurn(envelopeText, 'initial'),
     })
     if (production.ok !== true) {

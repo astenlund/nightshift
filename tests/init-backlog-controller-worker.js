@@ -79,6 +79,10 @@ function main() {
       process.stderr.write(Buffer.from(`worker frame capacity exceeded: ${overflow.limitName} at ${overflow.observedBytes}\n`, 'ascii'))
       process.exit(1)
     },
+    onUnterminated() {
+      process.stderr.write(Buffer.from('worker request frame is unterminated\n', 'ascii'))
+      process.exitCode = 1
+    },
   })
   process.stdin.on('data', (chunk) => {
     try {
@@ -88,6 +92,7 @@ function main() {
       process.exit(1)
     }
   })
+  process.stdin.on('end', () => decoder.end())
 }
 
 if (require.main === module) {

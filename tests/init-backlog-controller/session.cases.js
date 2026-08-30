@@ -290,6 +290,30 @@ function runSessionCases(repositoryRoot) {
     assert.equal(lines.length, 1, 'no line is delivered after the first overflow')
   })
 
+  test('the line decoder rejects residual bytes exactly once at end of input', () => {
+    const residuals = []
+    const decoder = driver.createLineDecoder({
+      limit: 8,
+      limitName: 'MAX_HOST_LINE_BYTES',
+      onLine() {
+        throw new Error('an unterminated line must not be delivered')
+      },
+      onOverflow() {
+        throw new Error('an in-bound residual is not a capacity overflow')
+      },
+      onUnterminated(residual) {
+        residuals.push(residual)
+      },
+    })
+    decoder.push(Buffer.from('partial', 'utf8'))
+    decoder.end()
+    decoder.end()
+
+    assert.deepEqual(residuals, [{ limitName: 'MAX_HOST_LINE_BYTES', observedBytes: 7 }])
+    assert.equal(decoder.bufferedBytes(), 0)
+    assert.throws(() => decoder.push(Buffer.from('late\n', 'utf8')), /finalized/)
+  })
+
   test('a rapid valid-event flood is delivered completely and in order', () => {
     const lines = []
     const decoder = driver.createLineDecoder({
@@ -1232,6 +1256,19 @@ function runSessionCases(repositoryRoot) {
       () => workerModule.createWorkerRuntime({ entryPath: controllerEntryPath, expectedControllerRuntimeSha256: '0'.repeat(64) }),
       /runtime closure differs from the pre-launch snapshot/,
     )
+  })
+
+  test('the checked-in worker rejects an unterminated stdin frame at EOF', () => {
+    const expected = driver.collectControllerRuntimeClosure({ entryPath: controllerEntryPath })
+    let failure
+    try {
+      execFileSync(process.execPath, [join(repositoryRoot, 'tests', 'init-backlog-controller-worker.js'), controllerEntryPath, expected.controllerRuntimeSha256], { input: Buffer.from('{', 'utf8'), encoding: null })
+    } catch (error) {
+      failure = error
+    }
+
+    assert.equal(failure?.status, 1)
+    assert.match(failure.stderr.toString('ascii'), /unterminated/)
   })
 
   test('the worker revalidates every runtime dependency before dispatch', () => {
