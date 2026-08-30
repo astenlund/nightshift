@@ -317,7 +317,7 @@ function runActivationCases(repositoryRoot) {
       }
     }
     assert.equal(countExact(liveHandover, 'Plans are outside that election.'), 1, 'handover must place plans outside the version-control election')
-    assert.equal(countExact(liveHandover, 'For repository-local `.claude/plans/` plans, plans are never committed: `.claude/plans/` is git-ignored.'), 1, 'handover must scope the never-committed policy to repository-local plans')
+    assert.equal(countExact(liveHandover, 'Repository-local plans are never committed and remain untracked: the standard `.claude/plans/` directory is unconditionally ignored, while a project-established custom repository-local location must carry an applicable ignore rule.'), 1, 'handover must scope the never-committed policy to repository-local plans')
     assert.equal(countExact(liveHandover, 'Global and external plans remain outside the current repository\'s Git policy; their storage and lifecycle do not depend on this repository\'s ignore or untracked rules.'), 1, 'handover must state the complementary global and external plan branch')
     assert.equal(countExact(liveHandover, 'Plans are never committed: `.claude/plans/` is git-ignored.'), 0, 'handover must not retain the old universal plan policy')
     assert.equal(countExact(liveBinding, 'Before accepting a repository-local plan as authority, verify that its actual repository-relative path is ignored and untracked.'), 1, 'the shared owner must verify the selected repository plan path')
