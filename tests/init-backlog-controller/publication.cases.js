@@ -14,12 +14,13 @@ const { admitApplyManifest } = require('../../skills/init-backlog/lib/apply-mani
 const { InitBacklogError, failureRecord } = require('../../skills/init-backlog/lib/errors')
 const { collectInspection, composeElectionMarker } = require('../../skills/init-backlog/lib/inspection')
 const { MAX_RECOVERY_REQUEST_BYTES, canonicalActionOrder, canonicalJson, deriveSemanticActionId, deriveSnapshotId, sha256, validateResultRecord } = require('../../skills/init-backlog/lib/protocol')
-const { createInitialLock, stableOpenFile } = require('../../skills/init-backlog/lib/filesystem')
+const { createInitialLock, resolveTrustedExecutable, stableOpenFile } = require('../../skills/init-backlog/lib/filesystem')
 const { analyzeCatalog } = require('../../skills/ready/ready')
 const { applyRecovery, inspectRecovery } = require('../../skills/init-backlog/lib/recovery')
 const { approvedProgress } = require('../../skills/init-backlog/lib/resume')
 const { unwrapText } = require('../../skills/init-backlog/unwrap')
 const { ELECTION_MARKER_PATH } = require('./election-oracles')
+const { git } = require('./helpers')
 
 // Independent oracle pin: the recovery gate basename is spelled out here on purpose
 // and is deliberately not imported from the production constant it verifies.
@@ -97,6 +98,35 @@ function request(root, overrides = {}) {
     versionControlChoice: 'not-required',
     ...overrides,
   }
+}
+
+function approvedScaffoldRequest(root, context, carried, versionControlChoice) {
+  const selected = (proposal) => proposal.condition === 'always' || proposal.condition === 'newline-lf'
+  const semanticDecisions = carried.targets
+    .filter((target) => target.contentRole === 'semantic' && target.templateId !== null && !target.states.includes('exact-template'))
+    .map((target) => ({ conceptIds: carried.templates.find((template) => template.target === target.target && template.templateId === target.templateId).conceptIds, status: 'satisfied', target: target.target }))
+  const manifestProposal = {
+    actions: canonicalActionOrder(carried.proposals.filter(selected).map((proposal) => proposal.action)),
+    proposalDispositions: carried.proposals.map((proposal) => ({ disposition: selected(proposal) ? 'selected' : 'condition-not-selected', proposalId: proposal.proposalId })),
+    semanticDecisions,
+    versionControlChoice,
+    versionControlOptions: ['track', 'ignore', 'deferred', 'not-required'],
+  }
+  const applyRequest = JSON.parse(buildApprovedApplyRequest({ host: 'codex', hostContext: context, inspection: carried, manifestProposal, root }))
+  assert.ok(applyRequest.actions.some((action) => action.target === '.gitignore'), 'the approved transition must carry the root ignore action whose resume allowance is under test')
+
+  return applyRequest
+}
+
+function realGitScaffoldFixture(root) {
+  git(root, ['init', '--quiet'])
+  mkdirSync(join(root, '.claude'), { recursive: true })
+  const context = { claudeContextSource: null, claudeRootExclusionStatus: null, codexContextSource: 'user-confirmed', codexInvocationDirectory: '.', codexProjectDocMaxBytes: 1048576, codexProjectInstructions: [] }
+  const trustedGitPath = resolveTrustedExecutable({ root })
+  const collect = (inspectionRoot = root, host = 'codex', hostContext = context, options = {}) => collectInspection(inspectionRoot, host, hostContext, { ...options, trustedGitPath })
+  const carried = collect()
+
+  return { applyRequest: approvedScaffoldRequest(root, context, carried, 'track'), carried, collect, context }
 }
 
 function resumableCreateFixture(root, target = 'FEATURES.md') {
@@ -733,6 +763,64 @@ function runPublicationCases() {
         warnings: [{ code: 'nonblocking-ready-notice', detail: '1 ready notice remains.', target: 'FEATURES.md' }],
       })
       assert.equal(publishApply(fixture.applyRequest, { collectInspection: () => controlled, resume: true }).ok, true, 'diagnostics owned by the approved target remain resumable')
+    } finally {
+      rmSync(root, { force: true, recursive: true })
+    }
+  })
+
+  test('resume rejects nested ignore drift before root gitignore publication', () => {
+    const root = fixtureRoot()
+    try {
+      const { applyRequest, carried, collect } = realGitScaffoldFixture(root)
+
+      assert.throws(() => publishApply(applyRequest, { crash: true, currentInspection: carried, failAt: 'after-lock-upgrade' }), /Injected publication failure at after-lock-upgrade/)
+      const nestedIgnore = Buffer.from('plans/\n', 'utf8')
+      writeFileSync(join(root, '.claude', '.gitignore'), nestedIgnore)
+
+      assert.throws(
+        () => publishApply(applyRequest, { collectInspection: collect, resume: true }),
+        (error) => {
+          assert.equal(error?.record?.code, 'snapshot-drift', canonicalJson(error?.record ?? {}))
+
+          return true
+        },
+      )
+      assert.equal(existsSync(join(root, '.claude', 'FEATURES.md')), false, 'resume drift must stop before the first approved project action')
+      assert.deepEqual(readFileSync(join(root, '.claude', '.gitignore')), nestedIgnore)
+    } finally {
+      rmSync(root, { force: true, recursive: true })
+    }
+  })
+
+  test('resume preserves nested ignore evidence after root gitignore publication', () => {
+    const root = fixtureRoot()
+    try {
+      const initial = realGitScaffoldFixture(root)
+      assert.equal(publishApply(initial.applyRequest, { collectInspection: initial.collect }).ok, true)
+      rmSync(join(root, '.gitignore'))
+      const carried = initial.collect()
+      const applyRequest = approvedScaffoldRequest(root, initial.context, carried, 'not-required')
+      let rootIgnorePublished = false
+      assert.throws(() => publishApply(applyRequest, {
+        crash: true,
+        currentInspection: carried,
+        onPublished: (path) => { rootIgnorePublished = path === join(root, '.gitignore') || rootIgnorePublished },
+        onTransition: (point) => { if (rootIgnorePublished && point === 'after-temporary-cleanup') throw new Error('crash after root ignore publication') },
+      }), /crash after root ignore publication/)
+      assert.equal(existsSync(join(root, '.gitignore')), true)
+      assert.equal(existsSync(join(root, ELECTION_MARKER_PATH)), false, 'the crash must precede election marker publication')
+      const nestedIgnore = Buffer.from('plans/\n', 'utf8')
+      writeFileSync(join(root, '.claude', '.gitignore'), nestedIgnore)
+
+      assert.throws(
+        () => publishApply(applyRequest, { collectInspection: initial.collect, resume: true }),
+        (error) => {
+          assert.equal(error?.record?.code, 'snapshot-drift', canonicalJson(error?.record ?? {}))
+
+          return true
+        },
+      )
+      assert.deepEqual(readFileSync(join(root, '.claude', '.gitignore')), nestedIgnore)
     } finally {
       rmSync(root, { force: true, recursive: true })
     }

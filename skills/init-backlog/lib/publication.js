@@ -887,13 +887,16 @@ function resumeInspectionProjection(inspection, actionTargets, markerStates, sco
   git.freshScaffold = null
   // One newline policy per controlled file, derived from that file's own bytes.
   git.newlinePolicies = (git.newlinePolicies ?? []).filter((policy) => !actionTargets.has(policy.target))
-  if (scope.gitignore) {
-    // Only an approved `.gitignore` action can move the rules these three read.
-    git.nonPlanIgnoreMatches = null
+  const nestedIgnoreEvidence = (git.nonPlanIgnoreMatches ?? []).filter((match) => match.sourcePath !== '.gitignore')
+  if (scope.gitignorePublished) {
+    // A completed root action can move root-sourced matches and their derived
+    // unignored paths. Nested sources remain strict resume evidence.
+    git.nonPlanIgnoreMatches = nestedIgnoreEvidence
     git.nonPlanUnignoredPaths = null
-    git.plansPolicy = null
+    git.plansPolicy = git.plansPolicy === 'nested-conflict' ? 'nested-conflict' : null
   }
-  const problems = (inspection.problems ?? []).filter((problem) => !ownedProblem(problem, actionTargets, scope.unwrapTargetHashes))
+  const hasNestedIgnoreEvidence = nestedIgnoreEvidence.length > 0 || inspection.git?.plansPolicy === 'nested-conflict'
+  const problems = (inspection.problems ?? []).filter((problem) => (problem.code === 'git-policy' && hasNestedIgnoreEvidence) || !ownedProblem(problem, actionTargets, scope.unwrapTargetHashes))
   const retainedBackups = (inspection.retainedBackups ?? []).filter((path) => !ownedBackup(path, scope.unwrapTargetHashes))
 
   return {
@@ -969,8 +972,8 @@ function validateResumeInspection(request, liveInspection, admission, { options,
   const carriedGit = request.inspection.git ?? {}
   const markerStates = { carried: carriedGit.electionMarker, mode: carriedGit.electionMarkerMode, snapshotId: carriedGit.electionMarkerSnapshotId, values: new Set([carriedGit.electionMarker, admission.electionMarker.state]) }
   if (liveInspection.git?.electionMarker !== undefined && !markerStates.values.has(liveInspection.git.electionMarker)) publicationError('Live election marker differs from the approved resume state.', { code: 'snapshot-drift', phase: 'prevalidate', manifestId: admission.manifestId })
+  let progress = null
   if (progressRoot !== null) {
-    let progress
     try {
       progress = approvedProgress(request, progressRoot, options)
     } catch (error) {
@@ -978,7 +981,8 @@ function validateResumeInspection(request, liveInspection, admission, { options,
     }
     if (!progress.recognized) publicationError('Durable target state is not a unique approved prefix of the manifest.', { code: 'snapshot-drift', phase: 'prevalidate', manifestId: admission.manifestId })
   }
-  const scope = resumeProjectionScope(request, actionTargets, progressRoot === null ? request.hostContext : liveHostContext(request, progressRoot, true))
+  const completedActionTargets = new Set(progress === null ? [] : (request.actions ?? []).slice(0, progress.applied).map((action) => action.target))
+  const scope = resumeProjectionScope(request, actionTargets, progressRoot === null ? request.hostContext : liveHostContext(request, progressRoot, true), completedActionTargets)
   if (canonicalJson(resumeInspectionProjection(request.inspection, actionTargets, markerStates, scope)) !== canonicalJson(resumeInspectionProjection(liveInspection, actionTargets, markerStates, scope))) {
     publicationError('Live repository differs from the approved resume state.', { code: 'snapshot-drift', phase: 'prevalidate', manifestId: admission.manifestId })
   }

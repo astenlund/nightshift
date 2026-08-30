@@ -41,13 +41,13 @@ function liveHostContext(request, root, resuming) {
   return guidanceResolvedHostContext(request, resuming && creation !== null && pathExists(targetPath(root, creation.target)))
 }
 
-function resumeProjectionScope(request, actionTargets, hostContext) {
+function resumeProjectionScope(request, actionTargets, hostContext, completedActionTargets = new Set()) {
   const guidance = request.inspection?.guidance ?? {}
   const guidanceTargets = new Set([guidance.resolvedTarget, guidance.baseAdapter].filter((target) => typeof target === 'string' && actionTargets.has(target)))
   const unwrapTargetHashes = new Set((request.actions ?? []).filter((action) => action.kind === 'unwrap-file').map((action) => sha256(Buffer.from(action.target, 'utf8'))))
 
   return {
-    gitignore: actionTargets.has('.gitignore'),
+    gitignorePublished: completedActionTargets.has('.gitignore'),
     guidanceTargets,
     hostContext,
     unwrapTargetHashes,
