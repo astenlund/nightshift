@@ -926,8 +926,7 @@ function runInspectionCases(repositoryRoot) {
     const name = `.nightshift-init-backlog.lock.1234.${'b'.repeat(32)}.new`
     writeFileSync(join(root, name), '{"protocolVersion":1}\n', { mode: 0o600 })
     const stage = discoverInitialLockStage(root)
-    assert.notEqual(stage, null)
-    assert.equal(stage.name, name)
+    assert.equal(stage, name)
     rmSync(root, { recursive: true, force: true })
   })
 

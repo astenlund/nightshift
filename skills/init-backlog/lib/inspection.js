@@ -422,11 +422,10 @@ function discoverInitialLockStage(root, options = {}) {
     inspectError('runtime-lock', 'Inspection lock residue cannot be enumerated.', null, error, 'lock')
   }
   if (name === null) return null
-  const path = join(root, name)
   try {
-    const opened = stableOpenFile(root, path, boundedOpenOptions(options, MAX_RECOVERY_REQUEST_BYTES, { requireSingleLink: true }))
+    stableOpenFile(root, join(root, name), boundedOpenOptions(options, MAX_RECOVERY_REQUEST_BYTES, { requireSingleLink: true }))
 
-    return { name, opened, path }
+    return name
   } catch (error) {
     inspectError('runtime-lock', 'Orphan initial lock stage cannot be trusted.', name, error, 'lock')
   }
@@ -823,7 +822,7 @@ function inspect(root, host, hostContext = {}, options = {}) {
   const canonical = canonicalRoot(root)
   const lockPath = join(canonical, RECOVERY_LOCK_BASENAME)
   const stage = discoverInitialLockStage(canonical, options)
-  if (stage !== null) inspectError('runtime-lock', 'Orphan initial lock stage requires recovery.', stage.name, undefined, 'lock')
+  if (stage !== null) inspectError('runtime-lock', 'Orphan initial lock stage requires recovery.', stage, undefined, 'lock')
   try {
     lstatSync(lockPath, { bigint: true })
     inspectError('runtime-lock', 'Inspection lock already exists.', RECOVERY_LOCK_BASENAME, undefined, 'lock')
