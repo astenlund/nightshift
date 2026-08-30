@@ -617,6 +617,7 @@ function runHostEntryCases(repositoryRoot) {
       'buildCodexInitialSessionArgv',
       'buildCodexPluginSetupArgvs',
       'buildCodexResumeSessionArgv',
+      'buildContainedAmbientEnvironment',
       'buildDisabledPluginRoot',
       'buildEnabledPluginRoot',
       'buildImportProbeArgv',
