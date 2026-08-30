@@ -10,6 +10,7 @@ const { isDeepStrictEqual } = require('node:util');
 const {
   AgreementError,
   AGREEMENT_VERSION,
+  MAX_GOVERNING_NOMINATIONS,
   buildCandidate,
   buildDerivedDiff,
   candidateToken,
@@ -214,6 +215,35 @@ function fakeRepository(files, aliases = {}) {
     realpath: (path) => aliases[path] ?? path,
     replaceFileAtomically: () => {},
   };
+}
+
+function countingRepository(files, aliases = {}) {
+  const repository = fakeRepository(files, aliases);
+  const counts = { readFile: 0, readDirectory: 0, realpath: 0, replaceFileAtomically: 0 };
+  const adapter = {
+    readFile: (...args) => {
+      counts.readFile += 1;
+
+      return repository.readFile(...args);
+    },
+    readDirectory: (...args) => {
+      counts.readDirectory += 1;
+
+      return repository.readDirectory(...args);
+    },
+    realpath: (...args) => {
+      counts.realpath += 1;
+
+      return repository.realpath(...args);
+    },
+    replaceFileAtomically: (...args) => {
+      counts.replaceFileAtomically += 1;
+
+      return repository.replaceFileAtomically(...args);
+    },
+  };
+
+  return { adapter, counts };
 }
 
 function mutableRepository(files) {
@@ -2752,11 +2782,53 @@ test('resolveGoverningSet preserves declaration order, inserts companions, sorts
   const entryBase = ['index-entry', '.claude/FEATURES.md', [{ parentHeading: '## Active', entryHeading: featureEntry }]];
   const firstScope = scope(...entryBase, firstUnit);
   const secondScope = scope(...entryBase, secondUnit);
-  const distinct = resolve(request({ mode: 'revise-code', target: firstScope, seeds: [firstScope, firstScope, secondScope] }), fsAdapter);
+  const counted = countingRepository(files);
+  const distinct = resolve(request({ mode: 'revise-code', target: firstScope, seeds: [firstScope, firstScope, secondScope] }), counted.adapter);
 
   assert.equal(distinct.governingScopes.length, 2);
   assert.deepEqual(distinct.governingScopes.map((item) => item.workUnit.declaration), [firstSlice, secondSlice]);
   assert.equal(distinct.artifacts.length, 1);
+  assert.deepEqual(counted.counts, { readFile: 1, readDirectory: 2, realpath: 2, replaceFileAtomically: 0 });
+});
+
+test('resolveGoverningSet reuses canonical artifacts within one invocation only', () => {
+  const target = scope('whole-file', 'README.md');
+  const counted = countingRepository({ 'README.md': '# Readme\n' });
+  const resolverRequest = request({ target, seeds: Array.from({ length: 5 }, () => target) });
+  const first = resolve(resolverRequest, counted.adapter);
+
+  assert.equal(first.governingScopes.length, 1);
+  assert.equal(first.artifacts.length, 1);
+  assert.deepEqual(counted.counts, { readFile: 1, readDirectory: 1, realpath: 2, replaceFileAtomically: 0 });
+
+  const second = resolve(resolverRequest, counted.adapter);
+
+  assert.equal(second.governingScopes.length, 1);
+  assert.equal(second.artifacts.length, 1);
+  assert.deepEqual(counted.counts, { readFile: 2, readDirectory: 2, realpath: 4, replaceFileAtomically: 0 });
+});
+
+test('governing nomination limits reject oversized requests before filesystem access', () => {
+  assert.equal(MAX_GOVERNING_NOMINATIONS, 128);
+  const target = scope('whole-file', 'README.md');
+  const tooManySeeds = countingRepository({ 'README.md': '# Readme\n' });
+
+  expectStructural(
+    () => resolve(request({ seeds: Array.from({ length: MAX_GOVERNING_NOMINATIONS + 1 }, () => target) }), tooManySeeds.adapter),
+    'selector-shape',
+  );
+  assert.deepEqual(tooManySeeds.counts, { readFile: 0, readDirectory: 0, realpath: 0, replaceFileAtomically: 0 });
+
+  const planCount = Math.floor(MAX_GOVERNING_NOMINATIONS / 2);
+  const explicitCount = MAX_GOVERNING_NOMINATIONS - planCount + 1;
+  const planBuffer = Buffer.from(`# Plan\n\n**Spec:** multiple (see Governing specs)\n\n## Governing specs\n\n${Array.from({ length: planCount }, () => `- Spec JSON: ${JSON.stringify(target)}`).join('\n')}\n`);
+  const combined = countingRepository({ 'README.md': '# Readme\n' });
+
+  expectStructural(
+    () => resolve(request({ mode: 'revise-code', seeds: Array.from({ length: explicitCount }, () => target), planBuffer }), combined.adapter),
+    'selector-shape',
+  );
+  assert.deepEqual(combined.counts, { readFile: 0, readDirectory: 0, realpath: 0, replaceFileAtomically: 0 });
 });
 
 test('governing ordering ignores work units and places revise-code plan declarations before sorted explicit tails', () => {
@@ -3165,6 +3237,15 @@ test('parsePlanContract enforces exact declaration and visible-header grammar', 
 
   const fencedLookalike = Buffer.from(`# Plan\n\n\`\`\`\n**Spec:** none\n## Governing specs\n- None.\n\`\`\`\n\n${validHeader}\n\n## Governing specs\n\n- Spec JSON: ${json}\n`);
   assert.deepEqual(parsePlanContract({ planBuffer: fencedLookalike, projectRoot }, { fsAdapter }).governingScopes, [canonicalScope]);
+});
+
+test('parsePlanContract rejects excessive declarations before filesystem access', () => {
+  const governingScope = scope('whole-file', 'docs/spec.md');
+  const planBuffer = Buffer.from(`# Plan\n\n**Spec:** multiple (see Governing specs)\n\n## Governing specs\n\n${Array.from({ length: MAX_GOVERNING_NOMINATIONS + 1 }, () => `- Spec JSON: ${JSON.stringify(governingScope)}`).join('\n')}\n`);
+  const counted = countingRepository({ 'docs/spec.md': '# Spec\n' });
+
+  expectStructural(() => parsePlanContract({ planBuffer, projectRoot }, { fsAdapter: counted.adapter }), 'plan-contract-grammar');
+  assert.deepEqual(counted.counts, { readFile: 0, readDirectory: 0, realpath: 0, replaceFileAtomically: 0 });
 });
 
 test('serializePlanContract round trips zero, one, and multiple scopes without interpreting prose or fenced lookalikes', () => {

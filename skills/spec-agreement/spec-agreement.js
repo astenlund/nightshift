@@ -1058,13 +1058,33 @@ function validateFsAdapter(fsAdapter, fail) {
   }
 }
 
-function parsePlanContract(input, options) {
-  if (!exactOrderedKeys(input, ['planBuffer', 'projectRoot']) || !exactOrderedKeys(options, ['fsAdapter'])) {
-    planStructural('Plan parser input must use the closed ordered shape.');
-  }
-  const { planBuffer, projectRoot } = input;
-  const { fsAdapter } = options;
-  validateFsAdapter(fsAdapter, planStructural);
+const MAX_GOVERNING_NOMINATIONS = 128;
+
+function createArtifactSnapshot(projectRoot, fsAdapter, realTargets = new Map()) {
+  const canonicalByPath = new Map();
+  const sourceByRealPath = new Map();
+
+  return {
+    canonicalize: (path) => {
+      if (!canonicalByPath.has(path)) {
+        const canonical = canonicalizePath(projectRoot, path, fsAdapter);
+        registerRealTarget(realTargets, canonical);
+        canonicalByPath.set(path, canonical);
+      }
+
+      return canonicalByPath.get(path);
+    },
+    read: (canonical) => {
+      if (!sourceByRealPath.has(canonical.realPath)) {
+        sourceByRealPath.set(canonical.realPath, adapterCall(fsAdapter, 'readFile', canonical.realPath));
+      }
+
+      return sourceByRealPath.get(canonical.realPath);
+    },
+  };
+}
+
+function parsePlanContractSyntax(planBuffer) {
   const { lines } = scanMarkdown(planBuffer);
   const governingSections = lines.filter((line) => line.outsideFence && line.heading?.level === 2 && line.heading.exactLine === '## Governing specs');
   if (governingSections.length !== 1) {
@@ -1089,7 +1109,10 @@ function parsePlanContract(input, options) {
     if (declarations.length === 0 || declarations.some((line) => !line.content.startsWith('- Spec JSON: '))) {
       planStructural('Governing-spec declarations must be canonical physical lines.');
     }
-    const canonicalRecords = declarations.map((line) => {
+    if (declarations.length > MAX_GOVERNING_NOMINATIONS) {
+      planStructural('Plan contains too many governing-spec declarations.');
+    }
+    governingScopes = declarations.map((line) => {
       const rawJson = line.content.slice('- Spec JSON: '.length);
       let parsed;
       try {
@@ -1101,20 +1124,9 @@ function parsePlanContract(input, options) {
       if (JSON.stringify(parsed) !== rawJson) {
         planStructural('Governing-spec declaration JSON is not compact and canonical.');
       }
-      const canonical = canonicalizePath(projectRoot, parsed.path, fsAdapter);
-      if (canonical.path !== parsed.path) {
-        planStructural('Governing-spec path is not canonical.');
-      }
-      const sourceBuffer = adapterCall(fsAdapter, 'readFile', canonical.realPath);
-      validateScopeAgainstFile(parsed, sourceBuffer, 'plan-contract-grammar');
 
-      return { scope: { kind: parsed.kind, path: canonical.path, selectors: parsed.selectors, workUnit: parsed.workUnit }, canonical };
+      return parsed;
     });
-    governingScopes = canonicalRecords.map((record) => record.scope);
-    const realTargets = new Map();
-    for (const record of canonicalRecords) {
-      registerRealTarget(realTargets, record.canonical);
-    }
   }
 
   const expectedHeader = governingScopes.length === 0
@@ -1129,6 +1141,31 @@ function parsePlanContract(input, options) {
   return { header: headers[0].content, governingScopes };
 }
 
+function validatePlanContractArtifacts(contract, snapshot) {
+  for (const governingScope of contract.governingScopes) {
+    const canonical = snapshot.canonicalize(governingScope.path);
+    if (canonical.path !== governingScope.path) {
+      planStructural('Governing-spec path is not canonical.');
+    }
+    validateScopeAgainstFile(governingScope, snapshot.read(canonical), 'plan-contract-grammar');
+  }
+
+  return contract;
+}
+
+function parsePlanContract(input, options) {
+  if (!exactOrderedKeys(input, ['planBuffer', 'projectRoot']) || !exactOrderedKeys(options, ['fsAdapter'])) {
+    planStructural('Plan parser input must use the closed ordered shape.');
+  }
+  const { planBuffer, projectRoot } = input;
+  const { fsAdapter } = options;
+  validateFsAdapter(fsAdapter, planStructural);
+  const contract = parsePlanContractSyntax(planBuffer);
+  const snapshot = createArtifactSnapshot(projectRoot, fsAdapter);
+
+  return validatePlanContractArtifacts(contract, snapshot);
+}
+
 function serializePlanContract(input) {
   if (!exactOrderedKeys(input, ['planBody', 'governingScopes'])) {
     planStructural('Plan serialization input must use the closed ordered shape.');
@@ -1136,6 +1173,9 @@ function serializePlanContract(input) {
   const { planBody, governingScopes } = input;
   if (!Buffer.isBuffer(planBody) || !Array.isArray(governingScopes)) {
     planStructural('Plan serialization input must use the closed shape.');
+  }
+  if (governingScopes.length > MAX_GOVERNING_NOMINATIONS) {
+    planStructural('Plan contains too many governing-spec declarations.');
   }
   const { lines } = scanMarkdown(planBody);
   if (lines.some((line) => line.outsideFence && ((line.heading?.level === 2 && line.heading.exactLine === '## Governing specs') || /^\*\*Spec:\*\*/.test(line.content)))) {
@@ -1256,15 +1296,14 @@ function artifactSelectorsForScope(scope) {
   return ['whole-file', 'sections'].includes(scope.kind) ? [] : scope.selectors;
 }
 
-function companionFor(scope, projectRoot, fsAdapter, realTargets) {
+function companionFor(scope, snapshot) {
   const match = /^\.claude\/(features|bugs)\/[^/]+\.md$/.exec(scope.path);
   if (!match || !['whole-file', 'sections'].includes(scope.kind)) {
     return null;
   }
   const indexPath = match[1] === 'features' ? '.claude/FEATURES.md' : '.claude/BUGS.md';
-  const canonical = canonicalizePath(projectRoot, indexPath, fsAdapter);
-  registerRealTarget(realTargets, canonical);
-  const sourceBuffer = adapterCall(fsAdapter, 'readFile', canonical.realPath);
+  const canonical = snapshot.canonicalize(indexPath);
+  const sourceBuffer = snapshot.read(canonical);
   const lines = scanMarkdown(sourceBuffer).lines;
   let parentHeading = null;
   const matches = [];
@@ -1345,11 +1384,11 @@ function archiveDeclarationForLine(archivePath, line, plainFeatureTitle = null) 
   return match ? { declaration: line.content, label: match[1] } : null;
 }
 
-function completionFor(target, activeRealPath, request, fsAdapter, readyParser) {
+function completionFor(target, request, readyParser, snapshot) {
   if (request.mode !== 'handover' || !request.allowCompletedNoOp || !['index-entry', 'bullet-entry'].includes(target.kind)) {
     return null;
   }
-  const activeBuffer = adapterCall(fsAdapter, 'readFile', activeRealPath);
+  const activeBuffer = snapshot.read(snapshot.canonicalize(target.path));
   if (selectorMatches(target, activeBuffer)) {
     return null;
   }
@@ -1357,8 +1396,8 @@ function completionFor(target, activeRealPath, request, fsAdapter, readyParser) 
   if (archivePath === null) {
     return null;
   }
-  const canonicalArchive = canonicalizePath(request.projectRoot, archivePath, fsAdapter);
-  const archiveBuffer = adapterCall(fsAdapter, 'readFile', canonicalArchive.realPath);
+  const canonicalArchive = snapshot.canonicalize(archivePath);
+  const archiveBuffer = snapshot.read(canonicalArchive);
   const title = titleForScope(target);
   const plainFeatureTitle = target.workUnit === null ? title : null;
   const declarations = scanMarkdown(archiveBuffer).lines.map((line) => archiveDeclarationForLine(archivePath, line, plainFeatureTitle)).filter((entry) => entry !== null);
@@ -1399,6 +1438,9 @@ function validateAgreementRequest(request, fail) {
   if (request.allowCompletedNoOp && request.mode !== 'handover') {
     fail('Only handover may request the completion no-op.');
   }
+  if (request.seeds.length > MAX_GOVERNING_NOMINATIONS) {
+    fail('Agreement request contains too many governing nominations.');
+  }
   if (request.target !== null) {
     validateScopeRecord(request.target, 'selector-shape');
   }
@@ -1415,19 +1457,37 @@ function resolveGoverningSet(request, options) {
   validateAgreementRequest(request, scopeStructural);
   validateFsAdapter(fsAdapter, scopeStructural);
   validateReadyParser(readyParser, scopeStructural);
-  const realTargets = new Map();
-  const realPathByPath = new Map();
+  let planSeeds = [];
+  let primarySeeds = request.seeds.slice(0, 1);
+  let coGoverningSeeds = request.seeds.slice(1);
+  if (request.mode === 'revise-plan') {
+    if (request.planBuffer === null) {
+      planStructural('revise-plan requires the actual plan bytes.');
+    }
+    planSeeds = parsePlanContractSyntax(request.planBuffer).governingScopes;
+    primarySeeds = [];
+    coGoverningSeeds = request.seeds.slice();
+  } else if (request.mode === 'revise-code' && request.planBuffer !== null) {
+    planSeeds = parsePlanContractSyntax(request.planBuffer).governingScopes;
+  }
+  const nominations = [
+    ...primarySeeds.map((scope) => ({ scope, evidenceKind: 'selector-shape' })),
+    ...planSeeds.map((scope) => ({ scope, evidenceKind: 'plan-contract-grammar' })),
+    ...coGoverningSeeds.sort(ordinalCompare).map((scope) => ({ scope, evidenceKind: 'selector-shape' })),
+  ];
+  if (nominations.length > MAX_GOVERNING_NOMINATIONS) {
+    scopeStructural('Combined governing nominations exceed the supported limit.');
+  }
+  const snapshot = createArtifactSnapshot(request.projectRoot, fsAdapter);
   const companionCache = new Map();
   const canonicalizeScope = (nominatedScope) => {
-    const canonical = canonicalizePath(request.projectRoot, nominatedScope.path, fsAdapter);
-    registerRealTarget(realTargets, canonical);
-    realPathByPath.set(canonical.path, canonical.realPath);
+    const canonical = snapshot.canonicalize(nominatedScope.path);
 
     return { scope: { kind: nominatedScope.kind, path: canonical.path, selectors: nominatedScope.selectors, workUnit: nominatedScope.workUnit }, canonical };
   };
   const getCompanion = (governingScope) => {
     if (!companionCache.has(governingScope.path)) {
-      companionCache.set(governingScope.path, companionFor(governingScope, request.projectRoot, fsAdapter, realTargets));
+      companionCache.set(governingScope.path, companionFor(governingScope, snapshot));
     }
 
     return companionCache.get(governingScope.path);
@@ -1442,45 +1502,58 @@ function resolveGoverningSet(request, options) {
       ? resolveWorkUnit(governingScope, sourceBuffer, request, readyParser)
       : resolveWorkUnit(governingScope, companion.sourceBuffer, request, readyParser, companion.scope);
   };
+  const resolvedScopeCache = new Map();
+  const resolveCanonicalRecord = (record) => {
+    const key = JSON.stringify(record.scope);
+    if (!resolvedScopeCache.has(key)) {
+      const sourceBuffer = snapshot.read(record.canonical);
+      if (record.evidenceKind === 'plan-contract-grammar') {
+        validateScopeAgainstFile(record.scope, sourceBuffer, record.evidenceKind);
+      } else {
+        ensureSelectorMatches(record.scope, sourceBuffer);
+      }
+      resolvedScopeCache.set(key, resolveScopeWorkUnit(record.scope, sourceBuffer));
+    }
+
+    return resolvedScopeCache.get(key);
+  };
   let canonicalTarget = null;
+  let targetRecord = null;
   if (request.target !== null) {
-    const targetRecord = canonicalizeScope(request.target);
+    targetRecord = { ...canonicalizeScope(request.target), evidenceKind: 'selector-shape' };
     canonicalTarget = targetRecord.scope;
-    const completion = completionFor(canonicalTarget, targetRecord.canonical.realPath, request, fsAdapter, readyParser);
+    const completion = completionFor(canonicalTarget, request, readyParser, snapshot);
     if (completion !== null) {
       return { kind: 'completed-no-op', evidence: completion };
     }
   }
-  let planSeeds = [];
-  let primarySeeds = request.seeds.slice(0, 1);
-  let coGoverningSeeds = request.seeds.slice(1);
-  if (request.mode === 'revise-plan') {
-    if (request.planBuffer === null) {
-      planStructural('revise-plan requires the actual plan bytes.');
-    }
-    planSeeds = parsePlanContract({ planBuffer: request.planBuffer, projectRoot: request.projectRoot }, { fsAdapter }).governingScopes;
-    primarySeeds = [];
-    coGoverningSeeds = request.seeds.slice();
-  } else if (request.mode === 'revise-code' && request.planBuffer !== null) {
-    planSeeds = parsePlanContract({ planBuffer: request.planBuffer, projectRoot: request.projectRoot }, { fsAdapter }).governingScopes;
-  }
-  const nominatedSeeds = [...primarySeeds, ...planSeeds, ...coGoverningSeeds.sort(ordinalCompare)];
-  if (nominatedSeeds.length === 0) {
+  if (nominations.length === 0) {
     return request.allowSpecLess
       ? { kind: 'not-applicable', target: null, governingScopes: [], artifacts: [] }
       : { kind: 'brainstorming-required', artifacts: [], unfinished: { artifacts: [] } };
   }
   const resolvedScopes = [];
-  const canonicalSeedRecords = nominatedSeeds.map((nominatedScope) => {
-    validateScopeRecord(nominatedScope, 'selector-shape');
-
-    return canonicalizeScope(nominatedScope);
-  });
+  const canonicalSeedRecords = [];
+  const canonicalRecordByScope = new Map();
+  for (const nomination of nominations) {
+    validateScopeRecord(nomination.scope, nomination.evidenceKind);
+    const canonicalRecord = { ...canonicalizeScope(nomination.scope), evidenceKind: nomination.evidenceKind };
+    if (nomination.evidenceKind === 'plan-contract-grammar' && canonicalRecord.canonical.path !== nomination.scope.path) {
+      planStructural('Governing-spec path is not canonical.');
+    }
+    const key = JSON.stringify(canonicalRecord.scope);
+    const prior = canonicalRecordByScope.get(key);
+    if (prior !== undefined) {
+      if (nomination.evidenceKind === 'plan-contract-grammar') {
+        prior.evidenceKind = nomination.evidenceKind;
+      }
+      continue;
+    }
+    canonicalRecordByScope.set(key, canonicalRecord);
+    canonicalSeedRecords.push(canonicalRecord);
+  }
   for (const canonicalRecord of canonicalSeedRecords) {
-    const canonicalScope = canonicalRecord.scope;
-    const sourceBuffer = adapterCall(fsAdapter, 'readFile', canonicalRecord.canonical.realPath);
-    ensureSelectorMatches(canonicalScope, sourceBuffer);
-    const resolved = resolveScopeWorkUnit(canonicalScope, sourceBuffer);
+    const resolved = resolveCanonicalRecord(canonicalRecord);
     if (resolved.kind === 'slice-selection-required') {
       return resolved;
     }
@@ -1488,9 +1561,7 @@ function resolveGoverningSet(request, options) {
   }
   const governingScopes = deduplicateScopes(resolvedScopes);
   if (canonicalTarget !== null) {
-    const targetBuffer = adapterCall(fsAdapter, 'readFile', realPathByPath.get(canonicalTarget.path));
-    ensureSelectorMatches(canonicalTarget, targetBuffer);
-    const resolvedTarget = resolveScopeWorkUnit(canonicalTarget, targetBuffer);
+    const resolvedTarget = resolveCanonicalRecord(targetRecord);
     if (resolvedTarget.kind === 'slice-selection-required') {
       return resolvedTarget;
     }
@@ -1503,23 +1574,23 @@ function resolveGoverningSet(request, options) {
   }
   const artifacts = [];
   const artifactKeys = new Set();
-  const addArtifact = (artifactScope, sourceBuffer) => {
-    ensureSelectorMatches(artifactScope, sourceBuffer);
+  const addArtifact = (artifactScope, sourceProvider) => {
     const selectorKind = selectorKindForScope(artifactScope);
     const selectors = artifactSelectorsForScope(artifactScope);
     const key = JSON.stringify([artifactScope.path, selectorKind, selectors]);
     if (artifactKeys.has(key)) {
       return;
     }
+    const sourceBuffer = sourceProvider();
+    ensureSelectorMatches(artifactScope, sourceBuffer);
     artifactKeys.add(key);
     artifacts.push({ path: artifactScope.path, selectorKind, selectors, sourceBuffer });
   };
   for (const governingScope of governingScopes) {
-    const sourceBuffer = adapterCall(fsAdapter, 'readFile', realPathByPath.get(governingScope.path));
-    addArtifact(governingScope, sourceBuffer);
+    addArtifact(governingScope, () => snapshot.read(snapshot.canonicalize(governingScope.path)));
     const companion = getCompanion(governingScope);
     if (companion !== null) {
-      addArtifact(companion.scope, companion.sourceBuffer);
+      addArtifact(companion.scope, () => companion.sourceBuffer);
     }
   }
   const unfinishedByPath = new Map();
@@ -3013,6 +3084,7 @@ function runCli(input, options = {}) {
 module.exports = {
   AgreementError,
   AGREEMENT_VERSION,
+  MAX_GOVERNING_NOMINATIONS,
   canonicalizePath,
   canonicalScopePath,
   captureProvenanceBinding,
