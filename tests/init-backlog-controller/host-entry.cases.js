@@ -549,6 +549,35 @@ function rejectingAdapterFactory(failureMode) {
   }
 }
 
+function runUnprovedNonretainingPreSessionCommand(call) {
+  let adapterOptions = null
+
+  return hostBehavior.runLivePreSessionCommand({
+    call,
+    deadlineMilliseconds: 5,
+    platform: 'win32',
+    pollMilliseconds: 1,
+    processAdapterFactory: (options) => {
+      adapterOptions = options
+
+      return {
+        adapter: {
+          closureProof: () => ({ proven: false }),
+          retainsRunRoot: () => false,
+          runnerClosed: () => false,
+          start: () => ({ ok: true }),
+          terminate: () => {
+            setImmediate(() => adapterOptions.onFailure({ detailCode: 'termination' }))
+
+            return { ok: true }
+          },
+        },
+        ok: true,
+      }
+    },
+  })
+}
+
 function openWorkerEntry() {
   const state = { closed: false, terminations: 0 }
   const entry = {
@@ -1520,6 +1549,7 @@ function runHostEntryCases(repositoryRoot) {
         assert.deepEqual(call.argv, ['--version'])
         assert.equal(call.boundary, 'version')
         assert.equal(call.cwd, checkoutRoot)
+        assert.equal(call.retainedRunRoot, preflightRunRoot)
         assert.equal(call.executable, descriptors[call.host].executable)
         assert.equal(call.environment.TEMP, join(preflightRunRoot, 'host-temp'))
         assert.equal(call.environment.TMP, join(preflightRunRoot, 'host-temp'))
@@ -1666,6 +1696,7 @@ function runHostEntryCases(repositoryRoot) {
       },
       platform: 'win32',
       processAdapterFactory: rejectingAdapterFactory('throw'),
+      retainedRunRoot: 'synthetic-owned-preflight-root',
     })
 
     assert.deepEqual(completion, {
@@ -1709,20 +1740,22 @@ function runHostEntryCases(repositoryRoot) {
         },
         ok: true,
       }),
+      retainedRunRoot: 'synthetic-owned-preflight-root',
     })
 
     assert.equal(terminated, false, 'proven natural closure does not request termination')
     assert.deepEqual(completion, { exitCode: 0, signal: null, stderrBytes: Buffer.alloc(0), stdoutBytes: Buffer.alloc(0) })
   })
 
-  test('an unproven live pre-session termination reports the retained run root', async () => {
-    const runRoot = 'synthetic-unproven-preflight-root'
+  test('an unproven live pre-session termination reports the supplied retained run root', async () => {
+    const checkoutRoot = 'synthetic-checkout-root'
+    const preflightRunRoot = 'synthetic-unproven-preflight-root'
     let adapterOptions = null
     const completion = await hostBehavior.runLivePreSessionCommand({
       call: {
         argv: ['--version'],
         boundary: 'version',
-        cwd: runRoot,
+        cwd: checkoutRoot,
         environment: {},
         executable: 'synthetic-host',
         host: 'claude-code',
@@ -1736,7 +1769,6 @@ function runHostEntryCases(repositoryRoot) {
         return {
           adapter: {
             closureProof: () => ({ proven: false }),
-            retainsRunRoot: () => true,
             runnerClosed: () => false,
             start: () => ({ ok: true }),
             terminate: () => {
@@ -1748,6 +1780,7 @@ function runHostEntryCases(repositoryRoot) {
           ok: true,
         }
       },
+      retainedRunRoot: preflightRunRoot,
     })
 
     assert.deepEqual(completion, {
@@ -1758,7 +1791,71 @@ function runHostEntryCases(repositoryRoot) {
         initialCode: null,
         ok: false,
         phase: 'version',
-        retainedRunRoot: runRoot,
+        retainedRunRoot: preflightRunRoot,
+      },
+    })
+  })
+
+  test('a failed live pre-session termination reports the supplied retained run root', async () => {
+    const checkoutRoot = 'synthetic-checkout-root'
+    const preflightRunRoot = 'synthetic-termination-failure-root'
+    const completion = await hostBehavior.runLivePreSessionCommand({
+      call: {
+        argv: ['--version'],
+        boundary: 'version',
+        cwd: checkoutRoot,
+        environment: {},
+        executable: 'synthetic-host',
+        host: 'claude-code',
+      },
+      deadlineMilliseconds: 5,
+      platform: 'win32',
+      pollMilliseconds: 1,
+      processAdapterFactory: () => ({
+        adapter: {
+          closureProof: () => ({ proven: false }),
+          retainsRunRoot: () => true,
+          runnerClosed: () => false,
+          start: () => ({ ok: true }),
+          terminate: () => ({ ok: false }),
+        },
+        ok: true,
+      }),
+      retainedRunRoot: preflightRunRoot,
+    })
+
+    assert.deepEqual(completion, {
+      failure: {
+        code: 'harness-infrastructure',
+        detailCode: 'termination',
+        host: 'claude-code',
+        initialCode: null,
+        ok: false,
+        phase: 'version',
+        retainedRunRoot: preflightRunRoot,
+      },
+    })
+  })
+
+  test('an explicit nonretaining adapter result overrides an unproved closure fallback', async () => {
+    const completion = await runUnprovedNonretainingPreSessionCommand({
+      argv: ['--version'],
+      boundary: 'version',
+      cwd: 'synthetic-preflight-root',
+      environment: {},
+      executable: 'synthetic-host',
+      host: 'claude-code',
+    })
+
+    assert.deepEqual(completion, {
+      failure: {
+        code: 'harness-infrastructure',
+        detailCode: 'termination',
+        host: 'claude-code',
+        initialCode: null,
+        ok: false,
+        phase: 'version',
+        retainedRunRoot: null,
       },
     })
   })
@@ -2649,6 +2746,32 @@ function runHostEntryCases(repositoryRoot) {
     }
   })
 
+  test('a nonretaining authentication failure cleans the repetition root despite unproved closure', async () => {
+    const scratch = tempRoot()
+    try {
+      const harness = createEvaluationHarness(scratch)
+      const evaluation = await hostBehavior.runEvaluation({
+        ...harness.options,
+        launch: (call) => call.boundary === 'authentication'
+          ? runUnprovedNonretainingPreSessionCommand(call)
+          : harness.options.launch(call),
+      })
+
+      assert.deepEqual(evaluation.result, {
+        code: 'harness-infrastructure',
+        detailCode: 'termination',
+        host: 'codex',
+        initialCode: null,
+        ok: false,
+        phase: 'authentication',
+        retainedRunRoot: null,
+      })
+      assert.equal(nodeFilesystem.existsSync(harness.roots[5]), false, 'the nonretaining adapter permits repetition-root cleanup')
+    } finally {
+      nodeFilesystem.rmSync(scratch, { force: true, recursive: true })
+    }
+  })
+
   test('a worker startup failure produces the infrastructure carrier before any host session', async () => {
     const scratch = tempRoot()
     try {
@@ -3467,18 +3590,28 @@ function runHostEntryCases(repositoryRoot) {
     const scratch = tempRoot()
     try {
       const caseRoot = join(scratch, 'import-launch-failure')
-      const failure = { code: 'preflight-timeout', host: 'claude-code', ok: false, phase: 'import-probe', retainedRunRoot: null }
       const result = await hostBehavior.runImportMatrix({
         ambientEnvironment: {},
         checkoutRoot: join(scratch, 'checkout'),
         createRoot: () => caseRoot,
         descriptor: { argsPrefix: [], executable: join(scratch, 'bin', 'claude'), kind: 'posix-executable', logicalName: 'claude', sourcePath: join(scratch, 'bin', 'claude') },
         importCases: [{ adapterBase64: null, caseId: 'launch-failure', expectedSentinel: null, files: [] }],
-        launch: async () => ({ failure }),
+        launch: runUnprovedNonretainingPreSessionCommand,
         platform: process.platform,
       })
 
-      assert.deepEqual(result, { failure, verdicts: [] })
+      assert.deepEqual(result, {
+        failure: {
+          code: 'harness-infrastructure',
+          detailCode: 'termination',
+          host: 'claude-code',
+          initialCode: null,
+          ok: false,
+          phase: 'import-probe',
+          retainedRunRoot: null,
+        },
+        verdicts: [],
+      })
       assert.equal(nodeFilesystem.existsSync(caseRoot), false, 'a launch failure with no retained process tree leaves no case-root residue')
     } finally {
       nodeFilesystem.rmSync(scratch, { force: true, recursive: true })

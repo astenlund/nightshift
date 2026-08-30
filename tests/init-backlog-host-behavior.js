@@ -802,6 +802,7 @@ async function runVersionPreflight({ ambientEnvironment, checkoutRoot, controlle
       environment,
       executable: descriptor.executable,
       host,
+      retainedRunRoot: preflightRunRoot,
       stdin: 'ignore',
     })
     if (completion !== null && typeof completion === 'object' && 'failure' in completion) {
@@ -2060,6 +2061,7 @@ function runLivePreSessionCommand({
   platform,
   pollMilliseconds = LIVE_COMPLETION_POLL_MILLISECONDS,
   processAdapterFactory = driver.createProductionProcessAdapter,
+  retainedRunRoot = call.cwd,
 }) {
   return new Promise((resolve) => {
     const phase = PRE_SESSION_BOUNDARY_PHASES[call.boundary]
@@ -2074,12 +2076,14 @@ function runLivePreSessionCommand({
     let timeoutFailure = null
     const { armDeadline, armPoll, settle } = createSettleGuard(resolve)
     const completed = () => ({ exitCode: adapter.hostExitCode(), signal: null, stderrBytes: Buffer.concat(stderrChunks), stdoutBytes: Buffer.concat(stdoutChunks) })
-    const retainRoot = () => adapter !== null && (adapter.retainsRunRoot?.() === true || adapter.closureProof().proven !== true)
+    const retainRoot = () => adapter !== null && (typeof adapter.retainsRunRoot === 'function'
+      ? adapter.retainsRunRoot() === true
+      : adapter.closureProof().proven !== true)
     const production = attemptProcessAdapterConstruction(processAdapterFactory, {
       cwd: call.cwd,
       mode: 'pre-session',
       onFailure: (failure) => {
-        settle({ failure: infrastructureCarrier({ detailCode: failure.detailCode, host: call.host, phase, retainedRunRoot: retainRoot() ? call.cwd : null }) })
+        settle({ failure: infrastructureCarrier({ detailCode: failure.detailCode, host: call.host, phase, retainedRunRoot: retainRoot() ? retainedRunRoot : null }) })
       },
       onHostStderr: (bytes) => stderrChunks.push(Buffer.from(bytes)),
       onHostStdout: (bytes) => stdoutChunks.push(Buffer.from(bytes)),
@@ -2100,7 +2104,7 @@ function runLivePreSessionCommand({
       }
       timeoutFailure = { code: 'preflight-timeout', host: call.host, ok: false, phase }
       if (adapter.terminate().ok !== true) {
-        settle({ failure: infrastructureCarrier({ detailCode: 'termination', host: call.host, phase, retainedRunRoot: call.cwd }) })
+        settle({ failure: infrastructureCarrier({ detailCode: 'termination', host: call.host, phase, retainedRunRoot }) })
       }
     }, deadlineMilliseconds)
     armPoll(() => {
@@ -2110,7 +2114,7 @@ function runLivePreSessionCommand({
       if (timeoutFailure !== null) {
         settle(adapter.closureProof().proven === true
           ? { failure: timeoutFailure }
-          : { failure: infrastructureCarrier({ detailCode: 'termination', host: call.host, phase, retainedRunRoot: call.cwd }) })
+          : { failure: infrastructureCarrier({ detailCode: 'termination', host: call.host, phase, retainedRunRoot }) })
 
         return
       }
@@ -2274,7 +2278,7 @@ function createLiveBindings({ filesystem = nodeFilesystem, platform, workerProce
 
   const launch = (call) => call.boundary === 'worker'
     ? startLiveWorker(call)
-    : runLivePreSessionCommand({ call, onAdapterCreated: (adapter) => preSessionAdapters.add(adapter), platform })
+    : runLivePreSessionCommand({ call, onAdapterCreated: (adapter) => preSessionAdapters.add(adapter), platform, retainedRunRoot: call.retainedRunRoot })
 
   const runSession = (call) => runLiveHostSession({ call, filesystem, platform, proxyRegistry, workerRegistry })
 
