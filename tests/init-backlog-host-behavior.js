@@ -8,6 +8,7 @@
 // tests/init-backlog-controller/host-entry.cases.js, and this entry is never
 // executed against installed hosts by CI.
 
+const { isUtf8 } = require('node:buffer')
 const { spawnSync } = require('node:child_process')
 const { randomBytes } = require('node:crypto')
 const nodeFilesystem = require('node:fs')
@@ -41,6 +42,8 @@ const MAX_SYMLINK_CHAIN_LINKS = 32
 // Exact terminal evidence holds two stable collections and one canonical image
 // concurrently, so this admission bound also caps the attestation memory peak.
 const MAX_TERMINAL_REPOSITORY_CONTENT_BYTES = 67108864
+const MAX_COPIED_AUTH_JSON_BYTES = 1048576
+const MAX_COPIED_AUTH_STRING_LEAVES = 256
 const MAX_SCENARIO_GIT_STDERR_BYTES = 65536
 const MAX_SCENARIO_GIT_STDOUT_BYTES = 1048576
 const SCENARIO_GIT_TIMEOUT_MILLISECONDS = 30000
@@ -531,6 +534,69 @@ function verifyMode(filesystem, path, expectedMode) {
   const stat = filesystem.lstatSync(path, { bigint: true })
 
   return Number(stat.mode & 0o7777n) === expectedMode
+}
+
+function copiedAuthCredentialValues(bytes) {
+  if (!Buffer.isBuffer(bytes) || bytes.length === 0 || bytes.length > MAX_COPIED_AUTH_JSON_BYTES || !isUtf8(bytes)) {
+    return null
+  }
+  const parsed = parseJsonWithDepthLimit(bytes.toString('utf8'))
+  if (parsed.ok !== true) {
+    return null
+  }
+  const pending = [parsed.value]
+  const seen = new Set()
+  const values = []
+  let stringLeaves = 0
+  while (pending.length > 0) {
+    const value = pending.pop()
+    if (typeof value === 'string') {
+      if (value === '') {
+        continue
+      }
+      stringLeaves += 1
+      if (stringLeaves > MAX_COPIED_AUTH_STRING_LEAVES) {
+        return null
+      }
+      if (!seen.has(value)) {
+        seen.add(value)
+        values.push(value)
+      }
+      continue
+    }
+    if (value === null || typeof value !== 'object') {
+      continue
+    }
+    const children = Array.isArray(value) ? value : Object.values(value)
+    for (let index = children.length - 1; index >= 0; index -= 1) {
+      pending.push(children[index])
+    }
+  }
+
+  return values
+}
+
+function readCopiedAuthCredentialValues({ filesystem, path }) {
+  try {
+    const before = filesystem.lstatSync(path, { bigint: true })
+    if (!before.isFile() || before.isSymbolicLink() || before.size < 1n || before.size > BigInt(MAX_COPIED_AUTH_JSON_BYTES)) {
+      return null
+    }
+    const bytes = filesystem.readFileSync(path)
+    const after = filesystem.lstatSync(path, { bigint: true })
+    if (!after.isFile()
+      || after.isSymbolicLink()
+      || before.dev !== after.dev
+      || before.ino !== after.ino
+      || before.size !== BigInt(bytes.length)
+      || after.size !== BigInt(bytes.length)) {
+      return null
+    }
+
+    return copiedAuthCredentialValues(bytes)
+  } catch {
+    return null
+  }
 }
 
 async function provisionCodexAuthentication({ ambientEnvironment, filesystem = nodeFilesystem, homeDirectory = homedir(), isolatedCodexHome, platform, probeLoginStatus }) {
@@ -1589,6 +1655,7 @@ async function runEvaluation(options) {
     const plugin = preparePluginRoot({ controllerEnabled, filesystem, host, runRoot, scenario, sessionPluginRoot })
     let codexHome = null
     let copiedCredentialPath = null
+    let copiedCredentialValues = []
     const releaseCopiedCredential = () => {
       if (copiedCredentialPath === null) {
         return true
@@ -1599,6 +1666,7 @@ async function runEvaluation(options) {
           return false
         }
         copiedCredentialPath = null
+        copiedCredentialValues = []
 
         return true
       } catch {
@@ -1660,6 +1728,11 @@ async function runEvaluation(options) {
       })
       if (provisioned.copiedCredential === true) {
         copiedCredentialPath = nodePath.join(codexHome, 'auth.json')
+        const inventory = readCopiedAuthCredentialValues({ filesystem, path: copiedCredentialPath })
+        if (inventory === null) {
+          return finishRepetition({ outcome: { result: CODEX_AUTHENTICATION_UNAVAILABLE_RESULT }, phase: 'authentication', terminationProven: true })
+        }
+        copiedCredentialValues = inventory
       }
       if (provisioned.precedence !== undefined) {
         return finishRepetition({ outcome: { result: provisioned.precedence }, phase: 'authentication', terminationProven: true })
@@ -1761,7 +1834,7 @@ async function runEvaluation(options) {
         proxySession,
         temporaryPaths,
       })
-      const credentialValues = driver.credentialValuesFromProjection(environment)
+      const credentialValues = [...driver.credentialValuesFromProjection(environment), ...copiedCredentialValues]
       const session = await runSession({
         argv,
         controllerEnabled,

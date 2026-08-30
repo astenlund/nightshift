@@ -2456,6 +2456,134 @@ function runHostEntryCases(repositoryRoot) {
     }
   })
 
+  test('copied Codex auth values block transcript and proxy leakage while clean evidence remains publishable', async () => {
+    const authSecret = 'copied-auth-secret-' + 'a'.repeat(48)
+    const nestedSecret = 'nested-auth-secret-' + 'b'.repeat(48)
+    const line = (value) => Buffer.from(canonicalJson(value) + '\n', 'utf8')
+    for (const source of ['transcript', 'proxy-trace', 'clean']) {
+      const scratch = tempRoot()
+      try {
+        const evidenceOutputRoot = join(scratch, 'evidence')
+        nodeFilesystem.mkdirSync(evidenceOutputRoot, { recursive: true })
+        const provisionAuthentication = async ({ isolatedCodexHome }) => {
+          nodeFilesystem.mkdirSync(isolatedCodexHome, { mode: 0o700, recursive: true })
+          nodeFilesystem.writeFileSync(join(isolatedCodexHome, 'auth.json'), canonicalJson({
+            account: { empty: '', refreshToken: nestedSecret },
+            accessToken: authSecret,
+            duplicate: [authSecret, null, 7, true],
+          }) + '\n', { mode: 0o600 })
+
+          return { copiedCredential: true, status: 'authenticated' }
+        }
+        const harness = createEvaluationHarness(scratch, {
+          onSession: () => {
+            if (source === 'transcript') {
+              const transcript = driver.createTranscript()
+              transcript.appendHostEvent(Buffer.from(`event:${nestedSecret}`, 'utf8'))
+
+              return { evidence: [{ bytes: transcript.toBuffer(), path: 'transcript.jsonl' }], record: { deterministicDigest: 'd'.repeat(64), dialogueFacts: { ...DIALOGUE_FACTS_TRUE }, lifecycleFacts: { ...LIFECYCLE_FACTS_TRUE }, passed: true, terminationProven: true } }
+            }
+            if (source === 'proxy-trace') {
+              const trace = driver.createProxyTrace({ flush: () => {} })
+              trace.append({
+                exitCode: 0,
+                ordinal: 1,
+                requestBase64: line({ operation: 'inspect' }).toString('base64'),
+                stderrBase64: '',
+                stdoutBase64: line({ contentBase64: Buffer.from(`trace:${authSecret}`, 'utf8').toString('base64') }).toString('base64'),
+              })
+
+              return { evidence: [{ bytes: trace.toBuffer(), path: 'proxy-trace.jsonl' }], record: { deterministicDigest: 'd'.repeat(64), dialogueFacts: { ...DIALOGUE_FACTS_TRUE }, lifecycleFacts: { ...LIFECYCLE_FACTS_TRUE }, passed: true, terminationProven: true } }
+            }
+
+            return null
+          },
+          options: { evidenceOutputRoot, hosts: ['codex'], provisionAuthentication, scenarios: [sessionScenario()] },
+        })
+        const evaluation = await hostBehavior.runEvaluation(harness.options)
+
+        if (source === 'clean') {
+          assert.equal(evaluation.result, null)
+          assert.equal(evaluation.evidenceManifests.length, 4)
+        } else {
+          assert.deepEqual(evaluation.result, {
+            code: 'harness-infrastructure',
+            detailCode: 'evidence-verification',
+            host: 'codex',
+            initialCode: null,
+            ok: false,
+            phase: 'post-session',
+            retainedRunRoot: harness.roots[1],
+          }, source)
+          assert.deepEqual(evaluation.evidenceManifests, [], source)
+        }
+        assert.deepEqual(listFilesNamed(scratch, 'auth.json'), [], `${source} removes every copied credential`)
+      } finally {
+        nodeFilesystem.rmSync(scratch, { force: true, recursive: true })
+      }
+    }
+  })
+
+  test('copied Codex auth inventory failures stop at the authentication boundary', async () => {
+    let overDepth = 'deep-secret'
+    for (let depth = 0; depth < 65; depth += 1) {
+      overDepth = [overDepth]
+    }
+    const cases = [
+      ['absent', null, false],
+      ['malformed JSON', Buffer.from('{', 'utf8'), false],
+      ['invalid UTF-8', Buffer.from([0x7b, 0x22, 0x74, 0x6f, 0x6b, 0x65, 0x6e, 0x22, 0x3a, 0x22, 0x80, 0x22, 0x7d]), false],
+      ['over-depth JSON', Buffer.from(JSON.stringify(overDepth), 'utf8'), false],
+      ['too many string leaves', Buffer.from(JSON.stringify({ tokens: Array.from({ length: 257 }, (_, index) => `token-${index}`) }), 'utf8'), false],
+      ['oversized JSON', Buffer.from(JSON.stringify({ token: 'x'.repeat(1048576) }), 'utf8'), false],
+      ['unstable read', Buffer.from('{"token":"stable-secret"}', 'utf8'), true],
+    ]
+    for (const [label, authBytes, unstableRead] of cases) {
+      const scratch = tempRoot()
+      try {
+        const provisionAuthentication = async ({ isolatedCodexHome }) => {
+          nodeFilesystem.mkdirSync(isolatedCodexHome, { mode: 0o700, recursive: true })
+          if (authBytes !== null) {
+            nodeFilesystem.writeFileSync(join(isolatedCodexHome, 'auth.json'), authBytes, { mode: 0o600 })
+          }
+
+          return { copiedCredential: true, status: 'authenticated' }
+        }
+        let authStats = 0
+        const filesystem = Object.create(nodeFilesystem)
+        filesystem.lstatSync = (path, options) => {
+          const metadata = nodeFilesystem.lstatSync(path, options)
+          if (!unstableRead || !String(path).endsWith('auth.json')) {
+            return metadata
+          }
+          authStats += 1
+          if (authStats !== 1) {
+            return metadata
+          }
+
+          return {
+            dev: metadata.dev,
+            ino: metadata.ino,
+            isFile: () => metadata.isFile(),
+            isSymbolicLink: () => metadata.isSymbolicLink(),
+            size: metadata.size - 1n,
+          }
+        }
+        const harness = createEvaluationHarness(scratch, {
+          options: { filesystem, hosts: ['codex'], provisionAuthentication, scenarios: [sessionScenario()] },
+        })
+        const evaluation = await hostBehavior.runEvaluation(harness.options)
+
+        assert.deepEqual(evaluation.result, hostBehavior.CODEX_AUTHENTICATION_UNAVAILABLE_RESULT, label)
+        assert.equal(harness.sessions.length, 0, label)
+        assert.deepEqual(listFilesNamed(scratch, 'auth.json'), [], `${label} removes the invalid copied credential`)
+        assert.equal(nodeFilesystem.existsSync(harness.roots[1]), false, `${label} finalizes its repetition root`)
+      } finally {
+        nodeFilesystem.rmSync(scratch, { force: true, recursive: true })
+      }
+    }
+  })
+
   test('scenario Git setup failures return typed infrastructure and remove the proved-closed run root', async () => {
     const scratch = tempRoot()
     try {
