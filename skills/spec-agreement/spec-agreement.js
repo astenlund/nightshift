@@ -1146,8 +1146,8 @@ function createArtifactSnapshot(projectRoot, fsAdapter, realTargets = new Map())
   };
 }
 
-function parsePlanContractSyntax(planBuffer) {
-  const { lines } = scanMarkdown(planBuffer);
+function parsePlanContractSyntax(planBuffer, scan = scanMarkdown) {
+  const { lines } = scan(planBuffer);
   const governingSections = lines.filter((line) => line.outsideFence && line.heading?.level === 2 && line.heading.exactLine === '## Governing specs');
   if (governingSections.length !== 1) {
     planStructural('Plan must contain exactly one governing-spec declaration section.');
@@ -1203,13 +1203,13 @@ function parsePlanContractSyntax(planBuffer) {
   return { header: headers[0].content, governingScopes };
 }
 
-function validatePlanContractArtifacts(contract, snapshot) {
+function validatePlanContractArtifacts(contract, snapshot, scan = scanMarkdown) {
   for (const governingScope of contract.governingScopes) {
     const canonical = snapshot.canonicalize(governingScope.path);
     if (canonical.path !== governingScope.path) {
       planStructural('Governing-spec path is not canonical.');
     }
-    validateScopeAgainstFile(governingScope, snapshot.read(canonical), 'plan-contract-grammar');
+    validateScopeAgainstFile(governingScope, snapshot.read(canonical), 'plan-contract-grammar', scan);
   }
 
   return contract;
@@ -1222,10 +1222,11 @@ function parsePlanContract(input, options) {
   const { planBuffer, projectRoot } = input;
   const { fsAdapter } = options;
   validateFsAdapter(fsAdapter, planStructural);
-  const contract = parsePlanContractSyntax(planBuffer);
+  const scan = createMarkdownScanner();
+  const contract = parsePlanContractSyntax(planBuffer, scan);
   const snapshot = createArtifactSnapshot(projectRoot, fsAdapter);
 
-  return validatePlanContractArtifacts(contract, snapshot);
+  return validatePlanContractArtifacts(contract, snapshot, scan);
 }
 
 function serializePlanContract(input) {
@@ -1527,11 +1528,11 @@ function resolveGoverningSet(request, options) {
     if (request.planBuffer === null) {
       planStructural('revise-plan requires the actual plan bytes.');
     }
-    planSeeds = parsePlanContractSyntax(request.planBuffer).governingScopes;
+    planSeeds = parsePlanContractSyntax(request.planBuffer, scan).governingScopes;
     primarySeeds = [];
     coGoverningSeeds = request.seeds.slice();
   } else if (request.mode === 'revise-code' && request.planBuffer !== null) {
-    planSeeds = parsePlanContractSyntax(request.planBuffer).governingScopes;
+    planSeeds = parsePlanContractSyntax(request.planBuffer, scan).governingScopes;
   }
   const nominations = [
     ...primarySeeds.map((scope) => ({ scope, evidenceKind: 'selector-shape' })),

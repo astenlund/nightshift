@@ -2656,6 +2656,33 @@ test('parsePlanContract returns the canonical scope from a valid one-scope plan'
   assert.deepEqual(result.governingScopes, [scope]);
 });
 
+test('parsePlanContract reuses one scanner per invocation and resets it for later invocations', () => {
+  const path = '.claude/features/example.md';
+  const scope = { kind: 'whole-file', path, selectors: [], workUnit: null };
+  const declaration = `- Spec JSON: ${JSON.stringify(scope)}`;
+  const planBuffer = Buffer.from(`# Plan\n\n**Spec:** multiple (see Governing specs)\n\n## Governing specs\n\n${declaration}\n${declaration}\n`);
+  const directories = new Map([
+    ['C:/repo', ['.claude']],
+    ['C:/repo/.claude', ['features']],
+    ['C:/repo/.claude/features', ['example.md']],
+  ]);
+  const artifactSourceBuffer = Buffer.from('# Example\n');
+  const planScanCount = countMarkdownScans(planBuffer);
+  const artifactScanCount = countMarkdownScans(artifactSourceBuffer);
+  const fsAdapter = {
+    readFile: () => artifactSourceBuffer,
+    readDirectory: (directory) => directories.get(directory) ?? [],
+    realpath: (nominatedPath) => nominatedPath,
+    replaceFileAtomically: () => {},
+  };
+  assert.deepEqual(parsePlanContract({ planBuffer, projectRoot: 'C:/repo' }, { fsAdapter }).governingScopes, [scope, scope]);
+  assert.equal(planScanCount(), 1);
+  assert.equal(artifactScanCount(), 1);
+  assert.deepEqual(parsePlanContract({ planBuffer, projectRoot: 'C:/repo' }, { fsAdapter }).governingScopes, [scope, scope]);
+  assert.equal(planScanCount(), 2);
+  assert.equal(artifactScanCount(), 2);
+});
+
 test('public boundaries reject reordered and extra closed-record fields before destructuring', () => {
   const path = 'docs/spec.md';
   const governingScope = scope('whole-file', path);
