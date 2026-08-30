@@ -20,6 +20,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const { stableOpenFile } = require('../init-backlog/lib/filesystem.js');
 const { scanMarkdown } = require('../spec-agreement/spec-agreement.js');
 const { LABEL_AT_START, CatalogError, canonicalBacklogRootIdentity, canonicalPath, compareTargets, detectHardWraps, collectMarkdownFiles, isContainedPath, normalizeCatalogItems } = require('../init-backlog/unwrap.js');
 
@@ -63,6 +64,19 @@ const NONE_IN_EXTERNAL_PROBLEM = 'none. in **External:**; delete the line (absen
 const HEADING = /^#{2,3} /;
 const BULLET = /^- /;
 const ANALYSIS_EVIDENCE = Symbol('analysisEvidence');
+
+function readCanonicalText(rootIdentity, target) {
+  try {
+    return stableOpenFile(rootIdentity, target, { requireSingleLink: false }).bytes.toString('utf8');
+  } catch (error) {
+    try {
+      if (fs.lstatSync(target).isDirectory()) error.code = 'EISDIR';
+    } catch {
+      // Preserve the deciding stable-open failure when the classification probe also fails.
+    }
+    throw error;
+  }
+}
 
 function sidecarItem(kind, ordinal, evidencePaths) {
   return {
@@ -1282,7 +1296,7 @@ function scanBreakoutTargetsWith(breakoutTargets, load, collectEvidence) {
 function createBreakoutLoader(claudeDir, rootIdentity, options = {}) {
   const canonicalize = options.canonicalize ?? canonicalPath;
   const contains = options.contains ?? isContainedPath;
-  const readFile = options.readFile ?? fs.readFileSync;
+  const readFile = options.readFile ?? ((target) => readCanonicalText(rootIdentity, target));
   const resolvePath = options.resolvePath ?? path.resolve;
   const readsByIdentity = new Map();
   const failuresWithoutIdentity = new Map();
@@ -1306,7 +1320,7 @@ function createBreakoutLoader(claudeDir, rootIdentity, options = {}) {
         read = { errorCode: 'ENOENT' };
       } else {
         try {
-          read = { contents: readFile(resolved, 'utf8'), identity };
+          read = { contents: readFile(identity), identity };
         } catch (error) {
           read = { errorCode: error?.code ?? 'unknown' };
         }
@@ -1356,19 +1370,28 @@ function scanUnlinkedWith(entries, alreadyScanned, indexKeys, collectEvidence) {
   return notices;
 }
 
-function scanUnlinkedBacklogFiles(claudeDir, alreadyScanned) {
-  const indexFiles = new Set([...WORK_INDEX_NAMES, 'PATTERNS'].map((name) => canonicalPath(path.resolve(claudeDir, `${name}.md`))));
-  const entries = collectMarkdownFiles([claudeDir]).map((file) => ({
-    identity: canonicalPath(file),
-    label: path.relative(claudeDir, file).replace(/\\/g, '/'),
-    load: () => {
-      try {
-        return { contents: fs.readFileSync(file, 'utf8') };
-      } catch (error) {
-        return { errorCode: error?.code ?? 'unknown' };
-      }
-    },
-  }));
+function scanUnlinkedBacklogFiles(claudeDir, alreadyScanned, options = {}) {
+  const canonicalize = options.canonicalize ?? canonicalPath;
+  const collectFiles = options.collectFiles ?? collectMarkdownFiles;
+  const rootIdentity = options.rootIdentity ?? canonicalBacklogRootIdentity(claudeDir);
+  if (rootIdentity === null) throw new CatalogError(`backlog root escapes its repository authority: ${claudeDir}`);
+  const readFile = options.readFile ?? ((target) => readCanonicalText(rootIdentity, target));
+  const indexFiles = new Set([...WORK_INDEX_NAMES, 'PATTERNS'].map((name) => canonicalize(path.resolve(claudeDir, `${name}.md`))));
+  const entries = collectFiles([claudeDir]).map((file) => {
+    const identity = canonicalize(file);
+
+    return {
+      identity,
+      label: path.relative(claudeDir, file).replace(/\\/g, '/'),
+      load: () => {
+        try {
+          return { contents: readFile(identity) };
+        } catch (error) {
+          return { errorCode: error?.code ?? 'unknown' };
+        }
+      },
+    };
+  });
 
   return scanUnlinkedWith(entries, alreadyScanned, indexFiles, false);
 }
@@ -1584,11 +1607,15 @@ function analyzeCatalog(items) {
 
 // Canonical containment is established immediately before the direct read.
 // Absence is folded into the result; every other read error still throws.
-function readFileIfPresent(p, rootIdentity) {
+function readFileIfPresent(p, rootIdentity, options = {}) {
+  const canonicalize = options.canonicalize ?? canonicalPath;
+  const contains = options.contains ?? isContainedPath;
+  const readFile = options.readFile ?? ((target) => readCanonicalText(rootIdentity, target));
   try {
-    if (!isContainedPath(rootIdentity, canonicalPath(p))) return undefined;
+    const identity = canonicalize(p);
+    if (!contains(rootIdentity, identity)) return undefined;
 
-    return fs.readFileSync(p, 'utf8');
+    return readFile(identity);
   } catch (error) {
     if (error?.code === 'ENOENT') return undefined;
     throw error;
@@ -1621,7 +1648,7 @@ function runCli(argRoot) {
   const result = analyze(files);
 
   const scanned = scanBreakoutTargets(result.breakoutTargets, claudeDir);
-  result.notices.push(...scanned.notices, ...scanUnlinkedBacklogFiles(claudeDir, scanned.scannedFiles));
+  result.notices.push(...scanned.notices, ...scanUnlinkedBacklogFiles(claudeDir, scanned.scannedFiles, { rootIdentity }));
   result.structuralErrors.push(...scanned.structuralErrors);
   delete result.breakoutTargets;
 
@@ -1800,6 +1827,8 @@ module.exports = {
   EXCLUDED_SECTIONS,
   collectEntryEdges,
   createBreakoutLoader,
+  readFileIfPresent,
+  scanUnlinkedBacklogFiles,
   nodeKey,
   findCycles,
   groupCycleEdges,

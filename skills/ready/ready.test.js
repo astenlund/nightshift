@@ -26,6 +26,8 @@ const {
   EXCLUDED_SECTIONS,
   collectEntryEdges,
   createBreakoutLoader,
+  readFileIfPresent,
+  scanUnlinkedBacklogFiles,
   scanBreakoutLines,
   scanBreakoutTargets,
 } = require('./ready.js');
@@ -1615,8 +1617,33 @@ test('breakout loading reuses one full read across canonical path aliases', () =
   const second = load('features/case.md');
 
   assert.strictEqual(reads.length, 1);
+  assert.strictEqual(reads[0], '/repo/.claude/features/case.md');
   assert.strictEqual(first, second);
   assert.strictEqual(first.identity, '/repo/.claude/features/case.md');
+});
+
+test('top-level index loading reads only the canonical contained identity', () => {
+  const reads = [];
+  const contents = readFileIfPresent('/repo/.claude/FEATURES.md', '/repo/.claude', {
+    canonicalize: () => '/repo/.claude/canonical/features.md',
+    contains: () => true,
+    readFile: (target) => { reads.push(target); return '# Features\n'; },
+  });
+
+  assert.strictEqual(contents, '# Features\n');
+  assert.deepStrictEqual(reads, ['/repo/.claude/canonical/features.md']);
+});
+
+test('unlinked backlog loading reads only collected canonical identities', () => {
+  const reads = [];
+  const notices = scanUnlinkedBacklogFiles('/repo/.claude', new Set(), {
+    canonicalize: (target) => target.toLowerCase(),
+    collectFiles: () => ['/repo/.claude/features/Case.md'],
+    readFile: (target) => { reads.push(target); return '# Clean\n'; },
+  });
+
+  assert.deepStrictEqual(notices, []);
+  assert.deepStrictEqual(reads, ['/repo/.claude/features/case.md']);
 });
 
 test('scanBreakoutTargets classifies a missing file, a directory, and a dependency line without a pre-read existence probe', () => {
