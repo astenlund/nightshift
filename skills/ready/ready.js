@@ -1298,6 +1298,7 @@ function createBreakoutLoader(claudeDir, rootIdentity, options = {}) {
   const contains = options.contains ?? isContainedPath;
   const readFile = options.readFile ?? ((target) => readCanonicalText(rootIdentity, target));
   const resolvePath = options.resolvePath ?? path.resolve;
+  const identitiesByResolved = new Map();
   const readsByIdentity = new Map();
   const failuresWithoutIdentity = new Map();
 
@@ -1306,13 +1307,18 @@ function createBreakoutLoader(claudeDir, rootIdentity, options = {}) {
     const priorFailure = failuresWithoutIdentity.get(resolved);
     if (priorFailure !== undefined) return priorFailure;
     let identity;
-    try {
-      identity = canonicalize(resolved);
-    } catch (error) {
-      const failure = { errorCode: error?.code ?? 'unknown' };
-      failuresWithoutIdentity.set(resolved, failure);
+    if (identitiesByResolved.has(resolved)) {
+      identity = identitiesByResolved.get(resolved);
+    } else {
+      try {
+        identity = canonicalize(resolved);
+        identitiesByResolved.set(resolved, identity);
+      } catch (error) {
+        const failure = { errorCode: error?.code ?? 'unknown' };
+        failuresWithoutIdentity.set(resolved, failure);
 
-      return failure;
+        return failure;
+      }
     }
     let read = readsByIdentity.get(identity);
     if (read === undefined) {

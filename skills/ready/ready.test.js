@@ -1606,20 +1606,24 @@ test('scanBreakoutLines returns an empty array for a clean breakout', () => {
 });
 
 test('breakout loading reuses one full read across canonical path aliases', () => {
+  let canonicalizations = 0;
   const reads = [];
   const load = createBreakoutLoader('/repo/.claude', '/repo/.claude', {
-    canonicalize: (target) => target.toLowerCase(),
+    canonicalize: (target) => { canonicalizations += 1; return target.toLowerCase(); },
     contains: () => true,
     readFile: (target) => { reads.push(target); return '# Breakout\n'; },
     resolvePath: (root, target) => `${root}/${target}`,
   });
 
   const first = load('features/Case.md');
+  const repeated = load('features/Case.md');
   const second = load('features/case.md');
 
+  assert.strictEqual(canonicalizations, 2);
   assert.strictEqual(reads.length, 1);
   assert.strictEqual(reads[0], '/repo/.claude/features/case.md');
   assert.strictEqual(first, second);
+  assert.strictEqual(first, repeated);
   assert.strictEqual(first.identity, '/repo/.claude/features/case.md');
 });
 
