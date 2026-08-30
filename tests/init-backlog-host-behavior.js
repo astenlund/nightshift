@@ -1213,6 +1213,32 @@ const PLUGIN_RUNTIME_DIRECTORIES = Object.freeze(['hooks', 'internal', 'skills']
 
 function listPluginRuntimeFiles({ checkoutRoot, filesystem }) {
   const relativePaths = []
+  const preflightDirectory = ({ absolutePath, optional, relativePath }) => {
+    let metadata
+    try {
+      metadata = filesystem.lstatSync(absolutePath)
+    } catch (error) {
+      if (optional && error?.code === 'ENOENT') {
+        return null
+      }
+
+      throw error
+    }
+    if (!metadata.isDirectory() || metadata.isSymbolicLink()) {
+      throw new Error(`a plugin root is not an ordinary nonlinked directory: ${relativePath}`)
+    }
+
+    return { absoluteDirectory: absolutePath, relativeDirectory: relativePath }
+  }
+  preflightDirectory({ absolutePath: checkoutRoot, optional: false, relativePath: 'checkout' })
+  preflightDirectory({ absolutePath: nodePath.join(checkoutRoot, '.claude-plugin'), optional: false, relativePath: '.claude-plugin' })
+  const runtimeDirectories = []
+  for (const runtimeDirectory of PLUGIN_RUNTIME_DIRECTORIES) {
+    const preflight = preflightDirectory({ absolutePath: nodePath.join(checkoutRoot, runtimeDirectory), optional: true, relativePath: runtimeDirectory })
+    if (preflight !== null) {
+      runtimeDirectories.push(preflight)
+    }
+  }
   for (const requiredPath of PLUGIN_REQUIRED_MANIFEST_FILES) {
     const metadata = filesystem.lstatSync(nodePath.join(checkoutRoot, ...requiredPath.split('/')))
     if (!metadata.isFile() || metadata.isSymbolicLink()) {
@@ -1237,11 +1263,8 @@ function listPluginRuntimeFiles({ checkoutRoot, filesystem }) {
       }
     }
   }
-  for (const runtimeDirectory of PLUGIN_RUNTIME_DIRECTORIES) {
-    const absoluteDirectory = nodePath.join(checkoutRoot, runtimeDirectory)
-    if (filesystem.existsSync(absoluteDirectory)) {
-      walk(absoluteDirectory, runtimeDirectory)
-    }
+  for (const { absoluteDirectory, relativeDirectory } of runtimeDirectories) {
+    walk(absoluteDirectory, relativeDirectory)
   }
   const sorted = [...relativePaths].sort(compareOrdinal)
   if (new Set(sorted).size !== sorted.length) {
@@ -1252,10 +1275,11 @@ function listPluginRuntimeFiles({ checkoutRoot, filesystem }) {
 }
 
 function buildEnabledPluginRoot({ checkoutRoot, controllerEntryPath, filesystem = nodeFilesystem, manifestPath, proxyClientPath, runPluginRoot }) {
+  const runtimeFiles = listPluginRuntimeFiles({ checkoutRoot, filesystem })
   const closure = driver.collectControllerRuntimeClosure({ entryPath: controllerEntryPath, filesystem })
   const proxyClientBytes = filesystem.readFileSync(proxyClientPath)
   const files = []
-  for (const relativePath of listPluginRuntimeFiles({ checkoutRoot, filesystem })) {
+  for (const relativePath of runtimeFiles) {
     const sourceBytes = filesystem.readFileSync(nodePath.join(checkoutRoot, ...relativePath.split('/')))
     const role = relativePath === CONTROLLER_ENTRY_RELATIVE_PATH ? 'controller-proxy' : 'exact'
     const installedBytes = role === 'controller-proxy' ? proxyClientBytes : sourceBytes

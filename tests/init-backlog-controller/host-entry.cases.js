@@ -3491,6 +3491,137 @@ function runHostEntryCases(repositoryRoot) {
     }
   })
 
+  test('enabled plugin roots reject linked checkout and runtime directories before reading or copying files', () => {
+    const linkType = process.platform === 'win32' ? 'junction' : 'dir'
+    const write = (root, relativePath, text) => {
+      const target = join(root, ...relativePath.split('/'))
+      nodeFilesystem.mkdirSync(nodePath.dirname(target), { recursive: true })
+      nodeFilesystem.writeFileSync(target, text)
+    }
+    const populateManifests = (root) => {
+      write(root, 'marketplace.json', '{}\n')
+      write(root, 'plugin.json', '{"name":"nightshift","version":"0.0.0"}\n')
+    }
+    const populateSkills = (root) => {
+      write(root, 'init-backlog/init-backlog.js', 'production controller entry\n')
+      write(root, 'init-backlog/lib/util.js', 'library module\n')
+      write(root, 'init-backlog/templates/features.md', 'feature template\n')
+      write(root, 'init-backlog/unwrap.js', 'unwrap helper\n')
+      write(root, 'init-backlog/windows-attributes.ps1', 'attribute helper\n')
+      write(root, 'ready/ready.js', 'ready parser\n')
+      write(root, 'spec-agreement/spec-agreement.js', 'agreement controller\n')
+    }
+
+    for (const linkedRoot of ['checkout', '.claude-plugin', 'hooks', 'internal', 'skills']) {
+      const scratch = tempRoot()
+      try {
+        const checkoutRoot = join(scratch, 'checkout')
+        const externalRoot = join(scratch, `external-${linkedRoot.replace('.', 'dot-')}`)
+        if (linkedRoot === 'checkout') {
+          populateManifests(join(externalRoot, '.claude-plugin'))
+          populateSkills(join(externalRoot, 'skills'))
+          nodeFilesystem.symlinkSync(externalRoot, checkoutRoot, linkType)
+        } else {
+          nodeFilesystem.mkdirSync(checkoutRoot)
+          if (linkedRoot === '.claude-plugin') {
+            populateManifests(externalRoot)
+          } else {
+            populateManifests(join(checkoutRoot, '.claude-plugin'))
+          }
+          if (linkedRoot === 'skills') {
+            populateSkills(externalRoot)
+          } else {
+            populateSkills(join(checkoutRoot, 'skills'))
+          }
+          if (linkedRoot === 'hooks' || linkedRoot === 'internal') {
+            write(externalRoot, 'external.js', 'external runtime file\n')
+          }
+          nodeFilesystem.symlinkSync(externalRoot, join(checkoutRoot, linkedRoot), linkType)
+        }
+        const proxyClientPath = join(scratch, 'controller-proxy.js')
+        nodeFilesystem.writeFileSync(proxyClientPath, 'fixed proxy client\n')
+        const runPluginRoot = join(scratch, 'enabled-plugin')
+        nodeFilesystem.mkdirSync(runPluginRoot)
+        const reads = []
+        const filesystem = Object.create(nodeFilesystem)
+        filesystem.readFileSync = (path, ...args) => {
+          reads.push(path)
+
+          return nodeFilesystem.readFileSync(path, ...args)
+        }
+
+        assert.throws(() => hostBehavior.buildEnabledPluginRoot({
+          checkoutRoot,
+          controllerEntryPath: join(checkoutRoot, 'skills', 'init-backlog', 'init-backlog.js'),
+          filesystem,
+          manifestPath: join(scratch, 'run-plugin-manifest.json'),
+          proxyClientPath,
+          runPluginRoot,
+        }), /ordinary nonlinked directory/, linkedRoot)
+        assert.deepEqual(reads, [], `${linkedRoot} is rejected before any file read, including controller-closure reads`)
+        assert.deepEqual(nodeFilesystem.readdirSync(runPluginRoot), [], `${linkedRoot} copies no linked external file`)
+      } finally {
+        nodeFilesystem.rmSync(scratch, { force: true, recursive: true })
+      }
+    }
+  })
+
+  test('optional plugin runtime directory probes propagate every error except absence', () => {
+    const scratch = tempRoot()
+    try {
+      const checkoutRoot = join(scratch, 'checkout')
+      const write = (relativePath, text) => {
+        const target = join(checkoutRoot, ...relativePath.split('/'))
+        nodeFilesystem.mkdirSync(nodePath.dirname(target), { recursive: true })
+        nodeFilesystem.writeFileSync(target, text)
+      }
+      write('.claude-plugin/plugin.json', '{"name":"nightshift","version":"0.0.0"}\n')
+      write('.claude-plugin/marketplace.json', '{}\n')
+      write('skills/init-backlog/init-backlog.js', 'production controller entry\n')
+      write('skills/init-backlog/lib/util.js', 'library module\n')
+      write('skills/init-backlog/templates/features.md', 'feature template\n')
+      write('skills/init-backlog/unwrap.js', 'unwrap helper\n')
+      write('skills/init-backlog/windows-attributes.ps1', 'attribute helper\n')
+      write('skills/ready/ready.js', 'ready parser\n')
+      write('skills/spec-agreement/spec-agreement.js', 'agreement controller\n')
+      nodeFilesystem.mkdirSync(join(checkoutRoot, 'hooks'))
+      const probeFailure = new Error('synthetic optional-root probe failure')
+      probeFailure.code = 'EACCES'
+      const filesystem = Object.create(nodeFilesystem)
+      filesystem.lstatSync = (path, ...args) => {
+        if (path === join(checkoutRoot, 'hooks')) {
+          throw probeFailure
+        }
+
+        return nodeFilesystem.lstatSync(path, ...args)
+      }
+      const runPluginRoot = join(scratch, 'enabled-plugin')
+      nodeFilesystem.mkdirSync(runPluginRoot)
+      const proxyClientPath = join(scratch, 'controller-proxy.js')
+      nodeFilesystem.writeFileSync(proxyClientPath, 'fixed proxy client\n')
+
+      assert.throws(() => hostBehavior.buildEnabledPluginRoot({
+        checkoutRoot,
+        controllerEntryPath: join(checkoutRoot, 'skills', 'init-backlog', 'init-backlog.js'),
+        filesystem,
+        manifestPath: join(scratch, 'run-plugin-manifest.json'),
+        proxyClientPath,
+        runPluginRoot,
+      }), (error) => error === probeFailure)
+      nodeFilesystem.rmSync(join(checkoutRoot, 'hooks'), { recursive: true })
+      const builtWithoutOptionalRoots = hostBehavior.buildEnabledPluginRoot({
+        checkoutRoot,
+        controllerEntryPath: join(checkoutRoot, 'skills', 'init-backlog', 'init-backlog.js'),
+        manifestPath: join(scratch, 'run-plugin-manifest.json'),
+        proxyClientPath,
+        runPluginRoot,
+      })
+      assert.equal(builtWithoutOptionalRoots.manifest.files.some((file) => file.path.startsWith('hooks/') || file.path.startsWith('internal/')), false)
+    } finally {
+      nodeFilesystem.rmSync(scratch, { force: true, recursive: true })
+    }
+  })
+
   test('the disabled plugin root copies only the baseline manifest files and refuses a controller entry', () => {
     const scratch = tempRoot()
     try {
