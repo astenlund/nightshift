@@ -218,7 +218,7 @@ function parseDependencyItem(raw) {
 // Assemble a wrapped label line starting at records[start]. Joins
 // continuation lines until a terminator: blank line, ##/### heading,
 // "- " bullet, or a **Label:** line at line start.
-function assembleLabel(records, start, labelRe) {
+function assembleLabel(records, start, labelRe, rawHtml) {
   const first = records[start].content.trim();
   let content = first.replace(labelRe, '').trim();
   let i = start + 1;
@@ -226,9 +226,8 @@ function assembleLabel(records, start, labelRe) {
     const record = records[i];
     const line = record.content;
     const t = line.trim();
-    if (record.opensFence || !record.outsideFence) {
-      i++;
-      continue;
+    if (rawHtml.has(record) || record.opensFence || !record.outsideFence) {
+      break;
     }
     if (
       t === '' || HEADING.test(line) || BULLET.test(t) ||
@@ -322,6 +321,7 @@ function recordProseOnlySection(section, opts, proseOnlySections) {
 
 function extractEntries(content, excludedSectionTitles, opts = {}) {
   const records = scanMarkdown(Buffer.from(content, 'utf8')).lines;
+  const rawHtml = maskRawHtmlBlocks(records);
   const excluded = new Set(excludedSectionTitles.map((t) => t.toLowerCase()));
   const collectSections = new Set((opts.collectSections || []).map((t) => t.toLowerCase()));
   const entries = [];
@@ -333,7 +333,7 @@ function extractEntries(content, excludedSectionTitles, opts = {}) {
 
   for (const record of records) {
     const line = record.content;
-    if (record.opensFence || !record.outsideFence) {
+    if (rawHtml.has(record) || record.opensFence || !record.outsideFence) {
       if (current && current.kind === 'h3') {
         current.bodyLines.push(line);
       } else if (current && current.kind === 'bullet') {
@@ -430,10 +430,11 @@ function findLabelInRecords(records, labelRe) {
 
 function findLabelsInRecords(records, labelRe) {
   const labels = [];
+  const rawHtml = maskRawHtmlBlocks(records);
   for (let i = 0; i < records.length; i++) {
     const line = records[i].content;
-    if (records[i].outsideFence && labelRe.test(line.trim()) && !/^\s+/.test(line)) {
-      labels.push(assembleLabel(records, i, labelRe));
+    if (records[i].outsideFence && !rawHtml.has(records[i]) && labelRe.test(line.trim()) && !/^\s+/.test(line)) {
+      labels.push(assembleLabel(records, i, labelRe, rawHtml));
     }
   }
 
@@ -453,9 +454,10 @@ function parseSlices(bodyLines) {
 
 function findSlicesInRecords(records) {
   const labels = [];
+  const rawHtml = maskRawHtmlBlocks(records);
   for (let i = 0; i < records.length; i++) {
     const line = records[i].content;
-    if (records[i].outsideFence && SLICES_LABEL.test(line.trim()) && !/^\s+/.test(line)) labels.push(i);
+    if (records[i].outsideFence && !rawHtml.has(records[i]) && SLICES_LABEL.test(line.trim()) && !/^\s+/.test(line)) labels.push(i);
   }
 
   return labels;
@@ -465,6 +467,7 @@ function parseSlicesInRecords(records) {
   const start = findSlicesInRecords(records)[0] ?? -1;
   if (start === -1) return null;
 
+  const rawHtml = maskRawHtmlBlocks(records);
   const slices = [];
   let i = start + 1;
   let sawBullet = false;
@@ -472,14 +475,14 @@ function parseSlicesInRecords(records) {
     const record = records[i];
     const line = record.content;
     const t = line.trim();
-    if (record.opensFence || !record.outsideFence) {
+    if (rawHtml.has(record) || record.opensFence || !record.outsideFence) {
       continue;
     }
     if (t === '') {
       if (sawBullet) {
         // A blank line followed by a non-bullet, non-indented line ends
         // the block; peek ahead.
-        const next = nextFenceEligibleRecord(records, i + 1);
+        const next = nextFenceEligibleRecord(records, i + 1, rawHtml);
         if (next === undefined) break;
         if (!BULLET.test(next.content.trim()) && !/^\s+\S/.test(next.content)) break;
       }
@@ -514,7 +517,7 @@ function parseSlicesInRecords(records) {
         while (j < records.length) {
           const cont = records[j];
           const ct = cont.content.trim();
-          if (cont.opensFence || !cont.outsideFence) {
+          if (rawHtml.has(cont) || cont.opensFence || !cont.outsideFence) {
             j++;
             continue;
           }
@@ -542,9 +545,9 @@ function parseSlicesInRecords(records) {
   return slices;
 }
 
-function nextFenceEligibleRecord(records, start) {
+function nextFenceEligibleRecord(records, start, rawHtml = new Set()) {
   for (let i = start; i < records.length; i++) {
-    if (!records[i].opensFence && records[i].outsideFence) {
+    if (!rawHtml.has(records[i]) && !records[i].opensFence && records[i].outsideFence) {
       return records[i];
     }
   }
@@ -1241,9 +1244,10 @@ function analyze(files) {
 // Inline backticked mentions in prose start with a backtick and never match.
 function scanBreakoutLines(contents) {
   const records = scanMarkdown(Buffer.from(contents, 'utf8')).lines;
+  const rawHtml = maskRawHtmlBlocks(records);
   const hits = [];
   records.forEach((record, i) => {
-    if (record.opensFence || !record.outsideFence) return;
+    if (record.opensFence || !record.outsideFence || rawHtml.has(record)) return;
     const t = record.content.trim();
     for (const [label, labelRe] of BREAKOUT_LINE_LABELS) {
       if (labelRe.test(t)) hits.push({ label, line: i + 1 });
@@ -1475,19 +1479,19 @@ function htmlBlockStart(line) {
   if (/^<![A-Z]/.test(trimmed)) return { terminator: '>' };
   const rawTag = trimmed.match(/^<(script|pre|style|textarea)(?:\s|>|$)/i);
   if (rawTag) return { terminator: '</', tag: rawTag[1] };
-  if (/^<(?:address|article|aside|base|blockquote|body|caption|center|col|colgroup|dd|details|dialog|dir|div|dl|dt|fieldset|figcaption|figure|footer|form|h[1-6]|head|header|hr|html|iframe|legend|li|link|main|menu|menuitem|nav|ol|p|param|search|section|summary|table|tbody|td|tfoot|th|thead|title|tr|track|ul)(?:\s|>|$)/i.test(trimmed)) return { blank: true };
+  if (/^<(?:address|article|aside|base|basefont|blockquote|body|caption|center|col|colgroup|dd|details|dialog|dir|div|dl|dt|fieldset|figcaption|figure|footer|form|frame|frameset|h[1-6]|head|header|hr|html|iframe|legend|li|link|main|menu|menuitem|nav|noframes|ol|optgroup|option|p|param|search|section|summary|table|tbody|td|tfoot|th|thead|title|tr|track|ul)(?:\s|>|$)/i.test(trimmed)) return { blank: true };
   if (/^<\/?[A-Za-z][A-Za-z0-9-]*(?:\s[^<>]*)?\/?>/.test(trimmed)) return { blank: true };
 
   return null;
 }
 
-function commonMarkHeadings(contents) {
-  const parsed = scanMarkdown(Buffer.from(contents, 'utf8'));
+function maskRawHtmlBlocks(records) {
   const masked = new Set();
   let html = null;
-  parsed.lines.forEach((record, index) => {
+  records.forEach((record) => {
     if (record.opensFence || !record.outsideFence) {
-      masked.add(index);
+      masked.add(record);
+
       return;
     }
     if (html !== null) {
@@ -1495,20 +1499,35 @@ function commonMarkHeadings(contents) {
         html = null;
         return;
       }
-      masked.add(index);
-      if (html.terminator === '</' ? new RegExp(`</${html.tag}\\s*>`, 'i').test(record.content) : record.content.includes(html.terminator)) html = null;
+      masked.add(record);
+      if (html.terminator === '</' ? new RegExp(`</${html.tag}\\s*>`, 'i').test(record.content) : record.content.includes(html.terminator)) {
+        html = null;
+      }
       return;
     }
     const block = htmlBlockStart(record.content);
-    if (block === null) return;
-    masked.add(index);
-    if (block.terminator === '</' && !new RegExp(`</${block.tag}\\s*>`, 'i').test(record.content)) html = block;
-    else if (block.terminator && !record.content.includes(block.terminator)) html = block;
-    else if (block.blank && record.content.trim() !== '') html = block;
+    if (block === null) {
+      return;
+    }
+    masked.add(record);
+    if (block.terminator === '</' && !new RegExp(`</${block.tag}\\s*>`, 'i').test(record.content)) {
+      html = block;
+    } else if (block.terminator && !record.content.includes(block.terminator)) {
+      html = block;
+    } else if (block.blank && record.content.trim() !== '') {
+      html = block;
+    }
   });
 
-  return parsed.lines.flatMap((record, index) => {
-    if (masked.has(index)) return [];
+  return masked;
+}
+
+function commonMarkHeadings(contents) {
+  const parsed = scanMarkdown(Buffer.from(contents, 'utf8'));
+  const masked = maskRawHtmlBlocks(parsed.lines);
+
+  return parsed.lines.flatMap((record) => {
+    if (masked.has(record)) return [];
     const match = /^ {0,3}(#{1,6})(?:[ \t]+|$)(.*)$/.exec(record.content);
     if (match === null) return [];
     let title = match[2].trim();

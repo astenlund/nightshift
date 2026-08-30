@@ -105,6 +105,77 @@ test('extractEntries closes an active section at an outside-fence column-zero le
   assert.deepStrictEqual(quickWins.entries.map((entry) => entry.title), ['Real entry continuation']);
 });
 
+test('extractEntries ignores headings, Requires, and Slices labels inside every raw HTML block type', () => {
+  const blocks = [
+    '<script>\n# Phantom\n</script>',
+    '<!--\n# Phantom\n-->',
+    '<?\n# Phantom\n?>',
+    '<!DOCTYPE\n# Phantom\n>',
+    '<![CDATA[\n# Phantom\n]]>',
+    '<div>\n# Phantom\n\n**Requires:** [Ghost](ghost.md)\n**Slices:**\n- Ghost\n',
+    '<custom-tag>\n# Phantom\n\n**Requires:** [Ghost](ghost.md)\n**Slices:**\n- Ghost\n',
+  ];
+
+  for (const block of blocks) {
+    const parsed = extractEntries(`## Active\n${block}\n### Real\nBody.\n`, [], { bullets: false, noticeProse: false });
+
+    assert.deepEqual(parsed.entries.map((entry) => entry.title), ['Real']);
+    assert.deepEqual(parsed.entries[0].bodyLines, ['Body.']);
+  }
+});
+
+test('extractEntries resumes after blank-terminated HTML and keeps same-line closes local', () => {
+  const parsed = extractEntries('## Active\n<div>\n# Phantom\n\n### Real\nBody.\n<script># Same line</script>\n### Later\nBody.\n', [], { bullets: false, noticeProse: false });
+
+  assert.deepEqual(parsed.entries.map((entry) => entry.title), ['Real', 'Later']);
+});
+
+test('extractEntries does not mask inline HTML in ordinary entry text', () => {
+  const parsed = extractEntries('## Active\n### Real\nText <span>inline</span>.\n', [], { bullets: false, noticeProse: false });
+
+  assert.deepEqual(parsed.entries.map((entry) => entry.title), ['Real']);
+  assert.deepEqual(parsed.entries[0].bodyLines, ['Text <span>inline</span>.']);
+});
+
+test('extractEntries preserves fenced and raw HTML body text while hiding structural labels', () => {
+  const parsed = extractEntries('## Active\n### Real\n<div>\n**Requires:** [Ghost](ghost.md)\n**Slices:**\n- Ghost\n\n```md\n**Requires:** [Fenced](fenced.md)\n**Slices:**\n- Fenced\n```\nVisible body.\n', [], { bullets: false, noticeProse: false });
+
+  assert.deepEqual(parsed.entries[0].bodyLines, [
+    '<div>',
+    '**Requires:** [Ghost](ghost.md)',
+    '**Slices:**',
+    '- Ghost',
+    '',
+    '```md',
+    '**Requires:** [Fenced](fenced.md)',
+    '**Slices:**',
+    '- Fenced',
+    '```',
+    'Visible body.',
+  ]);
+  const result = analyze({ FEATURES: '## Active\n### Real\n<div>\n**Requires:** [Ghost](ghost.md)\n**Slices:**\n- Ghost\n\n```md\n**Requires:** [Fenced](fenced.md)\n**Slices:**\n- Fenced\n```\nVisible body.\n' });
+  assert.equal(findByTitle(result.structuralErrors, 'Real')?.problem, 'missing **Requires:** line (silence is not the same as `none.`; the dependency review has not been done)');
+  assert.ok(!result.ready.some((entry) => entry.title.includes('Real:')));
+});
+
+test('raw HTML and fenced prose still trigger a prose-only notice', () => {
+  const parsed = extractEntries('## Area\n<div>\nprose in HTML\n\n```md\nprose in fence\n```\n', [], { bullets: false, noticeProse: true });
+
+  assert.deepEqual(parsed.proseOnlySections, ['Area']);
+});
+
+test('Requires none stops before a following raw HTML block', () => {
+  const result = analyze({ FEATURES: '## Active\n### [Ready](features/ready.md)\n**Requires:** none.\n<script>\nnot a dependency\n</script>\nLater prose.\n' });
+
+  assert.ok(findByTitle(result.ready, 'Ready'));
+});
+
+test('Requires none stops before a following fenced block', () => {
+  const result = analyze({ FEATURES: '## Active\n### [Ready](features/ready.md)\n**Requires:** none.\n```md\nnot a dependency\n```\nLater prose.\n' });
+
+  assert.ok(findByTitle(result.ready, 'Ready'));
+});
+
 test('analyze keeps unambiguous fixture JSON byte-for-byte stable', () => {
   const output = JSON.stringify(analyze({ FEATURES: `## Area
 ### [Real](features/real.md)
@@ -1605,6 +1676,30 @@ test('scanBreakoutLines returns an empty array for a clean breakout', () => {
   assert.deepStrictEqual(scanBreakoutLines('# Title\n\n## Requirements\n\n- Needs a parser.\n'), []);
 });
 
+test('scanBreakoutLines ignores dependency labels inside every raw HTML block type', () => {
+  const blocks = [
+    '<script>\n**Requires:** [Ghost](ghost.md)\n</script>',
+    '<!--\n**Requires:** [Ghost](ghost.md)\n-->',
+    '<?\n**Requires:** [Ghost](ghost.md)\n?>',
+    '<!DOCTYPE\n**Requires:** [Ghost](ghost.md)\n>',
+    '<![CDATA[\n**Requires:** [Ghost](ghost.md)\n]]>',
+    '<div>\n**Requires:** [Ghost](ghost.md)\n\n',
+    '<custom-tag>\n**Requires:** [Ghost](ghost.md)\n\n',
+  ];
+
+  for (const block of blocks) {
+    assert.deepStrictEqual(scanBreakoutLines(`${block}\n**External:** [Real](real.md)\n`), [
+      { label: 'External', line: block.split('\n').length + 1 },
+    ]);
+  }
+});
+
+test('scanBreakoutLines does not mask inline HTML', () => {
+  assert.deepStrictEqual(scanBreakoutLines('Text <span>inline</span>.\n**Requires:** [Real](real.md)\n'), [
+    { label: 'Requires', line: 2 },
+  ]);
+});
+
 test('breakout loading reuses one full read across canonical path aliases', () => {
   let canonicalizations = 0;
   const reads = [];
@@ -2771,6 +2866,16 @@ test('legacy history detection masks type-six raw HTML opened at end of line', (
   ]);
 
   assert.deepStrictEqual(result.evidence.legacyHistory, []);
+});
+
+test('legacy history detection masks every type-six block tag', () => {
+  const tags = ['basefont', 'frame', 'frameset', 'noframes', 'optgroup', 'option'];
+
+  for (const tag of tags) {
+    const result = analyzeCatalog([{ target: 'FEATURES.md', contents: `<${tag}\n## Implemented\n\n### Not backlog history\n\n## Area\n` }]);
+
+    assert.deepStrictEqual(result.evidence.legacyHistory, [], tag);
+  }
 });
 
 test('malformed long HTML tag candidates remain bounded and preserve later entries', () => {
