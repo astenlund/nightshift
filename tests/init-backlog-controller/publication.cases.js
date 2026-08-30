@@ -7,7 +7,7 @@ const { join, relative } = require('node:path')
 const test = require('node:test')
 
 const { publishApply, publishRecoveryFile, temporaryPaths } = require('../../skills/init-backlog/lib/publication')
-const { effectiveActionFileMode } = require('../../skills/init-backlog/lib/actions')
+const { actionAfter, effectiveActionFileMode } = require('../../skills/init-backlog/lib/actions')
 const { buildApprovedApplyRequest } = require('../../skills/init-backlog/lib/apply-request')
 const { runPrivateDispatcher } = require('../../skills/init-backlog/init-backlog')
 const { admitApplyManifest } = require('../../skills/init-backlog/lib/apply-manifest')
@@ -176,6 +176,25 @@ function unwrapBackupFailureFixture() {
   return { applyRequest, backupTarget, root, target, unwrapped, wrapped }
 }
 
+function hiddenUnwrapFixture() {
+  const fixture = unwrapBackupFailureFixture()
+  const inspection = fixture.applyRequest.inspection
+  fixture.wrapped = Buffer.from('# Issue\n\nThis paragraph is deliberately hard wrapped across\ntwo physical lines so the detector fires.\n', 'utf8')
+  fixture.unwrapped = Buffer.from('# Issue\n\nThis paragraph is deliberately hard wrapped across two physical lines so the detector fires.\n', 'utf8')
+  const action = { ...fixture.applyRequest.actions[0], afterRawSha256: sha256(fixture.unwrapped), beforeRawSha256: sha256(fixture.wrapped) }
+  inspection.ready = analyzeCatalog([{ contents: fixture.wrapped.toString('utf8'), target: 'FEATURES.md' }])
+  inspection.targets = inspection.targets.map((record) => ({ ...record, contentBase64: null, contentRole: 'mechanical', editableRegions: [], rawSha256: action.beforeRawSha256, templateId: null, templateSha256: null }))
+  inspection.templates = []
+  inspection.proposals = inspection.proposals.map((proposal) => ({ ...proposal, action, afterBase64: null, beforeBase64: fixture.wrapped.toString('base64') }))
+  inspection.unwrapReady = { after: analyzeCatalog([{ contents: fixture.unwrapped.toString('utf8'), target: 'FEATURES.md' }]), targets: [fixture.target] }
+  inspection.wrapFindings = inspection.wrapFindings.map((finding) => ({ ...finding, beforeRawSha256: action.beforeRawSha256, predictedContentBase64: null, predictedEditableRegions: [], predictedRawSha256: action.afterRawSha256 }))
+  inspection.snapshotId = deriveSnapshotId({ ...inspection, snapshotId: null })
+  fixture.applyRequest = request(fixture.root, { actions: [action], inspection, proposalDispositions: fixture.applyRequest.proposalDispositions })
+  writeFileSync(join(fixture.root, fixture.target), fixture.wrapped, { mode: 0o644 })
+
+  return fixture
+}
+
 function assertOwnerStageMutationRejected({ transition, mutate, mutateAfterWrite, expectedBytes, expectedMode, expectedLinks = 1 }) {
   const root = fixtureRoot()
   const ownerNonce = '2'.repeat(32)
@@ -230,6 +249,77 @@ function assertOwnerStageMutationRejected({ transition, mutate, mutateAfterWrite
 }
 
 function runPublicationCases() {
+  test('actionAfter accepts valid visible and hidden unwrap predictions', () => {
+    for (const fixture of [unwrapBackupFailureFixture(), hiddenUnwrapFixture()]) {
+      try {
+        assert.deepEqual(actionAfter(fixture.applyRequest, fixture.applyRequest.actions[0], fixture.root, {}), fixture.unwrapped)
+      } finally {
+        rmSync(fixture.root, { force: true, recursive: true })
+      }
+    }
+  })
+
+  test('actionAfter rejects visible and hidden output that misses its predicted digest', () => {
+    const visibleFixture = unwrapBackupFailureFixture()
+    try {
+      visibleFixture.applyRequest.inspection.wrapFindings[0].predictedContentBase64 = Buffer.from('different visible output\n', 'utf8').toString('base64')
+
+      expectCode(() => actionAfter(visibleFixture.applyRequest, visibleFixture.applyRequest.actions[0], visibleFixture.root, {}), 'manifest-invalid')
+    } finally {
+      rmSync(visibleFixture.root, { force: true, recursive: true })
+    }
+    const fixture = hiddenUnwrapFixture()
+    try {
+      const action = fixture.applyRequest.actions[0]
+      action.afterRawSha256 = 'a'.repeat(64)
+      fixture.applyRequest.inspection.wrapFindings[0].predictedRawSha256 = action.afterRawSha256
+
+      expectCode(() => actionAfter(fixture.applyRequest, action, fixture.root, {}), 'manifest-invalid')
+    } finally {
+      rmSync(fixture.root, { force: true, recursive: true })
+    }
+  })
+
+  test('unwrap prediction drift writes no project target on normal or resume admission', () => {
+    for (const resume of [false, true]) {
+      const fixture = unwrapBackupFailureFixture()
+      try {
+        fixture.applyRequest.inspection.wrapFindings[0].beforeRawSha256 = 'a'.repeat(64)
+        fixture.applyRequest.inspection.snapshotId = deriveSnapshotId({ ...fixture.applyRequest.inspection, snapshotId: null })
+        const targetPath = join(fixture.root, fixture.target)
+        const targetWrites = []
+
+        expectCode(() => publishApply(fixture.applyRequest, { currentInspection: fixture.applyRequest.inspection, resume, writeSpy: (path) => { if (path === targetPath) targetWrites.push(path) } }), 'manifest-invalid')
+        assert.deepEqual(targetWrites, [], String(resume))
+        assert.deepEqual(readFileSync(targetPath), fixture.wrapped, String(resume))
+      } finally {
+        rmSync(fixture.root, { force: true, recursive: true })
+      }
+    }
+  })
+
+  test('publication-time hidden unwrap prediction failure writes no project target', () => {
+    const fixture = hiddenUnwrapFixture()
+    const targetPath = join(fixture.root, fixture.target)
+    const targetWrites = []
+    try {
+      expectCode(() => publishApply(fixture.applyRequest, {
+        currentInspection: fixture.applyRequest.inspection,
+        onTransition: (point) => {
+          if (point !== 'after-lock-upgrade') return
+          const action = fixture.applyRequest.actions[0]
+          action.afterRawSha256 = 'a'.repeat(64)
+          fixture.applyRequest.inspection.wrapFindings[0].predictedRawSha256 = action.afterRawSha256
+        },
+        writeSpy: (path) => { if (path === targetPath) targetWrites.push(path) },
+      }), 'manifest-invalid')
+      assert.deepEqual(targetWrites, [])
+      assert.deepEqual(readFileSync(targetPath), fixture.wrapped)
+    } finally {
+      rmSync(fixture.root, { force: true, recursive: true })
+    }
+  })
+
   test('persistent linked staging parents create no external publication artifact', () => {
     const root = fixtureRoot()
     const external = fixtureRoot()

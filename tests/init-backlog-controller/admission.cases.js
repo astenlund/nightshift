@@ -5,7 +5,7 @@ const test = require('node:test')
 
 const { admitApplyManifest, buildAdmissionIndexes, simulateReady } = require('../../skills/init-backlog/lib/apply-manifest')
 const { analyzeCatalog } = require('../../skills/ready/ready')
-const { deriveManifestId, deriveSemanticActionId, deriveSnapshotId, validateResultRecord } = require('../../skills/init-backlog/lib/protocol')
+const { deriveManifestId, deriveSemanticActionId, deriveSnapshotId, sha256, validateResultRecord } = require('../../skills/init-backlog/lib/protocol')
 
 const ROOT = 'C:/admission-fixture'
 const HOST_CONTEXT = {
@@ -93,6 +93,21 @@ function request(overrides = {}) {
   }
 }
 
+function unwrapRequest(visible = true) {
+  const wrapped = Buffer.from('# Issue\n\nThis paragraph is deliberately hard wrapped across\ntwo physical lines so the detector fires.\n', 'utf8')
+  const predicted = Buffer.from('# Issue\n\nThis paragraph is deliberately hard wrapped across two physical lines so the detector fires.\n', 'utf8')
+  const targetName = '.claude/features/issue.md'
+  const inspection = baseInspection()
+  const action = { afterRawSha256: sha256(predicted), beforeRawSha256: sha256(wrapped), id: 'p-unwrap-integrity', kind: 'unwrap-file', mode: 493, target: targetName }
+  inspection.targets = [{ ...target(targetName, 'file', 'present'), contentBase64: visible ? wrapped.toString('base64') : null, contentRole: visible ? 'semantic' : 'mechanical', editableRegions: visible ? [{ endByte: wrapped.length, regionId: 'features.document-preamble', startByte: 0 }] : [], rawSha256: action.beforeRawSha256, states: ['wrapped'], templateId: null, templateSha256: null }]
+  inspection.proposals = [{ action, afterBase64: visible ? predicted.toString('base64') : null, beforeBase64: wrapped.toString('base64'), condition: 'always', proposalId: action.id, reason: 'hard-wrap' }]
+  inspection.wrapFindings = [{ beforeRawSha256: action.beforeRawSha256, count: 1, firstLine: 3, predictedContentBase64: visible ? predicted.toString('base64') : null, predictedEditableRegions: visible ? [{ endByte: predicted.length, regionId: 'features.document-preamble', startByte: 0 }] : [], predictedRawSha256: action.afterRawSha256, target: targetName }]
+  inspection.unwrapReady = { after: inspection.ready, targets: [targetName] }
+  inspection.snapshotId = deriveSnapshotId({ ...inspection, snapshotId: null })
+
+  return request({ actions: [action], inspection, proposalDispositions: [{ disposition: 'selected', proposalId: action.id }] })
+}
+
 function edit(id, before, after) {
   return { afterBase64: after.toString('base64'), beforeBase64: before.toString('base64'), id, kind: 'exact-edit', regionId: 'gitignore.policy-append', target: '.gitignore' }
 }
@@ -102,6 +117,33 @@ function expectManifestError(callback, code = 'manifest-invalid') {
 }
 
 function runAdmissionCases() {
+  test('rejects unwrap action and finding digest drift before assigning transition state', () => {
+    for (const field of ['beforeRawSha256', 'predictedRawSha256']) {
+      const value = unwrapRequest()
+      value.inspection.wrapFindings[0][field] = 'a'.repeat(64)
+      value.inspection.snapshotId = deriveSnapshotId({ ...value.inspection, snapshotId: null })
+
+      expectManifestError(() => admitApplyManifest(value))
+    }
+  })
+
+  test('rejects visible unwrap bytes that do not hash to the predicted digest', () => {
+    const value = unwrapRequest()
+    value.inspection.wrapFindings[0].predictedContentBase64 = Buffer.from('different visible output\n', 'utf8').toString('base64')
+    value.inspection.snapshotId = deriveSnapshotId({ ...value.inspection, snapshotId: null })
+
+    expectManifestError(() => admitApplyManifest(value))
+  })
+
+  test('admits valid visible and hidden unwrap predictions', () => {
+    for (const visible of [true, false]) {
+      const value = unwrapRequest(visible)
+      const result = admitApplyManifest(value)
+
+      assert.equal(result.states[0].rawSha256, value.actions[0].afterRawSha256)
+    }
+  })
+
   test('builds reusable admission indexes with linear proposal reads', () => {
     let targetReads = 0
     const proposals = Array.from({ length: 200 }, (_, index) => {
@@ -382,11 +424,11 @@ function runAdmissionCases() {
     const record = { ...target('.claude/FEATURES.md', 'file', 'present'), contentBase64: Buffer.from(wrappedText, 'utf8').toString('base64'), rawSha256: 'b'.repeat(64), editableRegions: [{ endByte: Buffer.byteLength(wrappedText), regionId: 'features.document-preamble', startByte: 0 }] }
     inspection.targets = [target('.claude', 'directory', 'present'), record]
     inspection.templates = [{ conceptIds: ['features.dependency-grammar'], logicalSha256: 'c'.repeat(64), target: '.claude/FEATURES.md', templateId: 'backlog.features' }]
-    const unwrap = { afterRawSha256: 'd'.repeat(64), beforeRawSha256: 'b'.repeat(64), id: 'p-unwrap-compound', kind: 'unwrap-file', mode: 493, target: '.claude/FEATURES.md' }
+    const unwrap = { afterRawSha256: sha256(Buffer.from(unwrappedText, 'utf8')), beforeRawSha256: 'b'.repeat(64), id: 'p-unwrap-compound', kind: 'unwrap-file', mode: 493, target: '.claude/FEATURES.md' }
     const semanticWithoutId = { afterBase64: Buffer.from(finalText, 'utf8').toString('base64'), beforeBase64: Buffer.from(unwrappedText, 'utf8').toString('base64'), kind: 'exact-edit', regionId: 'features.document-preamble', target: '.claude/FEATURES.md' }
     const semantic = { ...semanticWithoutId, id: deriveSemanticActionId(semanticWithoutId) }
     inspection.proposals = [{ action: unwrap, afterBase64: Buffer.from(unwrappedText, 'utf8').toString('base64'), beforeBase64: record.contentBase64, condition: 'always', proposalId: unwrap.id, reason: 'hard-wrap' }]
-    inspection.wrapFindings = [{ predictedContentBase64: Buffer.from(unwrappedText, 'utf8').toString('base64'), predictedEditableRegions: [{ endByte: Buffer.byteLength(unwrappedText), regionId: 'features.document-preamble', startByte: 0 }], target: '.claude/FEATURES.md' }]
+    inspection.wrapFindings = [{ beforeRawSha256: unwrap.beforeRawSha256, count: 1, firstLine: 1, predictedContentBase64: Buffer.from(unwrappedText, 'utf8').toString('base64'), predictedEditableRegions: [{ endByte: Buffer.byteLength(unwrappedText), regionId: 'features.document-preamble', startByte: 0 }], predictedRawSha256: unwrap.afterRawSha256, target: '.claude/FEATURES.md' }]
     inspection.ready = analyzeCatalog([{ contents: wrappedText, target: 'FEATURES.md' }, { contents: '# Alpha\n', target: 'features/alpha.md' }])
     inspection.unwrapReady = { after: analyzeCatalog([{ contents: unwrappedText, target: 'FEATURES.md' }, { contents: '# Alpha\n', target: 'features/alpha.md' }]), targets: ['.claude/FEATURES.md'] }
     inspection.snapshotId = deriveSnapshotId({ ...inspection, snapshotId: null })
@@ -405,8 +447,8 @@ function runAdmissionCases() {
     const wrappedFeature = '# Features\n## Requires lines\n\n## Exploring\n\n## Slicing\n\n### [Alpha](features/alpha.md)\n\n**Requires:** none.\nwrapped\n'
     const unwrappedFeature = wrappedFeature.replace('wrapped\n', '')
     const finalFeature = unwrappedFeature.replace('## Requires lines', '##\tRequires lines')
-    const wrappedBreakout = '# Alpha\n\n**Requires:** none.\nwrapped\n'
-    const unwrappedBreakout = wrappedBreakout.replace('wrapped\n', '')
+    const wrappedBreakout = '# Alpha\n\nThis paragraph is deliberately hard wrapped across\ntwo physical lines so the detector fires.\n'
+    const unwrappedBreakout = '# Alpha\n\nThis paragraph is deliberately hard wrapped across two physical lines so the detector fires.\n'
     const inspection = baseInspection()
     const feature = { ...target('.claude/FEATURES.md', 'file', 'present'), contentBase64: Buffer.from(wrappedFeature, 'utf8').toString('base64'), rawSha256: 'b'.repeat(64), editableRegions: [
       { endByte: Buffer.byteLength(wrappedFeature), regionId: 'features.document-preamble', startByte: 0 },
@@ -414,8 +456,8 @@ function runAdmissionCases() {
     const breakout = { ...target('.claude/features/alpha.md', 'file', 'present'), contentBase64: null, contentRole: 'mechanical', editableRegions: [], rawSha256: 'e'.repeat(64), templateId: null, templateSha256: null }
     inspection.targets = [target('.claude', 'directory', 'present'), feature, breakout]
     inspection.templates = [{ conceptIds: ['features.dependency-grammar'], logicalSha256: 'c'.repeat(64), target: '.claude/FEATURES.md', templateId: 'backlog.features' }]
-    const featureUnwrap = { afterRawSha256: 'd'.repeat(64), beforeRawSha256: 'b'.repeat(64), id: 'p-feature-unwrap', kind: 'unwrap-file', mode: 493, target: '.claude/FEATURES.md' }
-    const breakoutUnwrap = { afterRawSha256: 'f'.repeat(64), beforeRawSha256: 'e'.repeat(64), id: 'p-breakout-unwrap', kind: 'unwrap-file', mode: 493, target: '.claude/features/alpha.md' }
+    const featureUnwrap = { afterRawSha256: sha256(Buffer.from(unwrappedFeature, 'utf8')), beforeRawSha256: 'b'.repeat(64), id: 'p-feature-unwrap', kind: 'unwrap-file', mode: 493, target: '.claude/FEATURES.md' }
+    const breakoutUnwrap = { afterRawSha256: sha256(Buffer.from(unwrappedBreakout, 'utf8')), beforeRawSha256: 'e'.repeat(64), id: 'p-breakout-unwrap', kind: 'unwrap-file', mode: 493, target: '.claude/features/alpha.md' }
     const semanticWithoutId = { afterBase64: Buffer.from(finalFeature, 'utf8').toString('base64'), beforeBase64: Buffer.from(unwrappedFeature, 'utf8').toString('base64'), kind: 'exact-edit', regionId: 'features.document-preamble', target: '.claude/FEATURES.md' }
     const semantic = { ...semanticWithoutId, id: deriveSemanticActionId(semanticWithoutId) }
     inspection.proposals = [
@@ -423,8 +465,8 @@ function runAdmissionCases() {
       { action: breakoutUnwrap, afterBase64: null, beforeBase64: Buffer.from(wrappedBreakout, 'utf8').toString('base64'), condition: 'always', proposalId: breakoutUnwrap.id, reason: 'hard-wrap' },
     ]
     inspection.wrapFindings = [
-      { predictedContentBase64: Buffer.from(unwrappedFeature, 'utf8').toString('base64'), predictedEditableRegions: [{ endByte: Buffer.byteLength(unwrappedFeature), regionId: 'features.document-preamble', startByte: 0 }], target: '.claude/FEATURES.md' },
-      { predictedContentBase64: null, predictedEditableRegions: [], target: '.claude/features/alpha.md' },
+      { beforeRawSha256: featureUnwrap.beforeRawSha256, count: 1, firstLine: 1, predictedContentBase64: Buffer.from(unwrappedFeature, 'utf8').toString('base64'), predictedEditableRegions: [{ endByte: Buffer.byteLength(unwrappedFeature), regionId: 'features.document-preamble', startByte: 0 }], predictedRawSha256: featureUnwrap.afterRawSha256, target: '.claude/FEATURES.md' },
+      { beforeRawSha256: breakoutUnwrap.beforeRawSha256, count: 1, firstLine: 3, predictedContentBase64: null, predictedEditableRegions: [], predictedRawSha256: breakoutUnwrap.afterRawSha256, target: '.claude/features/alpha.md' },
     ]
     inspection.ready = analyzeCatalog([{ contents: wrappedFeature, target: 'FEATURES.md' }, { contents: wrappedBreakout, target: 'features/alpha.md' }])
     inspection.unwrapReady = { after: analyzeCatalog([{ contents: unwrappedFeature, target: 'FEATURES.md' }, { contents: unwrappedBreakout, target: 'features/alpha.md' }]), targets: ['.claude/FEATURES.md', '.claude/features/alpha.md'] }
@@ -445,8 +487,8 @@ function runAdmissionCases() {
     const wrappedFeature = '## Area\n### [Alpha](features/alpha.md)\n\n**Requires:** none.\nwrapped\n'
     const unwrappedFeature = wrappedFeature.replace('wrapped\n', '')
     const finalFeature = unwrappedFeature.replace('[Alpha]', '[Beta]')
-    const wrappedBreakout = '# Alpha\n\n**Requires:** none.\nwrapped\n'
-    const unwrappedBreakout = wrappedBreakout.replace('wrapped\n', '')
+    const wrappedBreakout = '# Alpha\n\nThis paragraph is deliberately hard wrapped across\ntwo physical lines so the detector fires.\n'
+    const unwrappedBreakout = '# Alpha\n\nThis paragraph is deliberately hard wrapped across two physical lines so the detector fires.\n'
     const inspection = baseInspection()
     const feature = { ...target('.claude/FEATURES.md', 'file', 'present'), contentBase64: Buffer.from(wrappedFeature, 'utf8').toString('base64'), rawSha256: 'b'.repeat(64), editableRegions: [
       { endByte: Buffer.byteLength(wrappedFeature), regionId: 'features.document-preamble', startByte: 0 },
@@ -454,8 +496,8 @@ function runAdmissionCases() {
     const breakout = { ...target('.claude/features/alpha.md', 'file', 'present'), contentBase64: null, contentRole: 'mechanical', editableRegions: [], rawSha256: 'e'.repeat(64), templateId: null, templateSha256: null }
     inspection.targets = [target('.claude', 'directory', 'present'), feature, breakout]
     inspection.templates = [{ conceptIds: ['features.dependency-grammar'], logicalSha256: 'c'.repeat(64), target: '.claude/FEATURES.md', templateId: 'backlog.features' }]
-    const featureUnwrap = { afterRawSha256: 'd'.repeat(64), beforeRawSha256: 'b'.repeat(64), id: 'p-feature-unwrap-final', kind: 'unwrap-file', mode: 493, target: '.claude/FEATURES.md' }
-    const breakoutUnwrap = { afterRawSha256: 'f'.repeat(64), beforeRawSha256: 'e'.repeat(64), id: 'p-breakout-unwrap-final', kind: 'unwrap-file', mode: 493, target: '.claude/features/alpha.md' }
+    const featureUnwrap = { afterRawSha256: sha256(Buffer.from(unwrappedFeature, 'utf8')), beforeRawSha256: 'b'.repeat(64), id: 'p-feature-unwrap-final', kind: 'unwrap-file', mode: 493, target: '.claude/FEATURES.md' }
+    const breakoutUnwrap = { afterRawSha256: sha256(Buffer.from(unwrappedBreakout, 'utf8')), beforeRawSha256: 'e'.repeat(64), id: 'p-breakout-unwrap-final', kind: 'unwrap-file', mode: 493, target: '.claude/features/alpha.md' }
     const semanticWithoutId = { afterBase64: Buffer.from(finalFeature, 'utf8').toString('base64'), beforeBase64: Buffer.from(unwrappedFeature, 'utf8').toString('base64'), kind: 'exact-edit', regionId: 'features.document-preamble', target: '.claude/FEATURES.md' }
     const semantic = { ...semanticWithoutId, id: deriveSemanticActionId(semanticWithoutId) }
     inspection.proposals = [
@@ -463,8 +505,8 @@ function runAdmissionCases() {
       { action: breakoutUnwrap, afterBase64: null, beforeBase64: Buffer.from(wrappedBreakout, 'utf8').toString('base64'), condition: 'always', proposalId: breakoutUnwrap.id, reason: 'hard-wrap' },
     ]
     inspection.wrapFindings = [
-      { predictedContentBase64: Buffer.from(unwrappedFeature, 'utf8').toString('base64'), predictedEditableRegions: [{ endByte: Buffer.byteLength(unwrappedFeature), regionId: 'features.document-preamble', startByte: 0 }], target: '.claude/FEATURES.md' },
-      { predictedContentBase64: null, predictedEditableRegions: [], target: '.claude/features/alpha.md' },
+      { beforeRawSha256: featureUnwrap.beforeRawSha256, count: 1, firstLine: 1, predictedContentBase64: Buffer.from(unwrappedFeature, 'utf8').toString('base64'), predictedEditableRegions: [{ endByte: Buffer.byteLength(unwrappedFeature), regionId: 'features.document-preamble', startByte: 0 }], predictedRawSha256: featureUnwrap.afterRawSha256, target: '.claude/FEATURES.md' },
+      { beforeRawSha256: breakoutUnwrap.beforeRawSha256, count: 1, firstLine: 3, predictedContentBase64: null, predictedEditableRegions: [], predictedRawSha256: breakoutUnwrap.afterRawSha256, target: '.claude/features/alpha.md' },
     ]
     inspection.ready = analyzeCatalog([{ contents: wrappedFeature, target: 'FEATURES.md' }, { contents: wrappedBreakout, target: 'features/alpha.md' }])
     inspection.unwrapReady = { after: analyzeCatalog([{ contents: unwrappedFeature, target: 'FEATURES.md' }, { contents: unwrappedBreakout, target: 'features/alpha.md' }]), targets: ['.claude/FEATURES.md', '.claude/features/alpha.md'] }

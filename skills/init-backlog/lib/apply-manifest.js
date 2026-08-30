@@ -7,6 +7,7 @@ const { unwrapText } = require('../unwrap')
 const { BACKLOG_DIRECTORY_TARGETS, loadManifest } = require('./assets')
 const { InitBacklogError, failureRecord } = require('./errors')
 const { buildReadyCatalog, inspectRegions } = require('./inspection')
+const { validateUnwrapPrediction } = require('./unwrap-prediction')
 const {
   OPERATION,
   canonicalActionOrder,
@@ -310,14 +311,25 @@ function simulateAction(action, state, inspection, targets, indexes, options, de
   if (!state.present || state.kind !== 'file') admissionError('Edit prerequisite requires a present file.', { actionId: action.id, target: action.target })
   if (action.kind === 'unwrap-file') {
     if (state.rawSha256 !== action.beforeRawSha256 || action.mode !== record.mode) admissionError('Unwrap input or mode differs from inspection.', { actionId: action.id, target: action.target })
-    state.rawSha256 = action.afterRawSha256
     const finding = indexes.wrapByTarget.get(action.target)
-    if (finding?.predictedContentBase64 !== null && finding?.predictedContentBase64 !== undefined) {
-      state.content = validateBase64(finding.predictedContentBase64)
+    let predicted
+    try {
+      predicted = validateUnwrapPrediction(action, finding)
+    } catch (error) {
+      admissionError('Mechanical unwrap prediction integrity is invalid.', { actionId: action.id, target: action.target, systemCode: error?.code })
+    }
+    if (predicted !== null) {
+      state.content = predicted
       state.regions = finding.predictedEditableRegions
     } else if (state.content !== null) {
       state.content = Buffer.from(unwrapText(state.content.toString('utf8')), 'utf8')
+      try {
+        validateUnwrapPrediction(action, finding, state.content)
+      } catch (error) {
+        admissionError('Mechanical unwrap prediction integrity is invalid.', { actionId: action.id, target: action.target, systemCode: error?.code })
+      }
     }
+    state.rawSha256 = action.afterRawSha256
 
     return
   }

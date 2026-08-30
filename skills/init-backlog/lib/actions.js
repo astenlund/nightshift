@@ -3,7 +3,9 @@
 const { lstatSync } = require('node:fs')
 
 const { boundedOpenOptions, containedTargetPath, platformMode, stableOpenFile, verifyFinalMode } = require('./filesystem')
-const { MAX_MECHANICAL_FILE_BYTES, canonicalJson, proposalsByCanonicalAction } = require('./protocol')
+const { InitBacklogError, failureRecord } = require('./errors')
+const { MAX_MECHANICAL_FILE_BYTES, OPERATION, canonicalJson, proposalsByCanonicalAction } = require('./protocol')
+const { validateUnwrapPrediction } = require('./unwrap-prediction')
 const { unwrapText } = require('../unwrap')
 
 const POSIX_DEFAULT_FILE_MODE = 0o644
@@ -33,6 +35,14 @@ function validateUnwrapDigest(finding, action) {
   if (finding === undefined || finding.beforeRawSha256 !== action.beforeRawSha256) throw new Error('Mechanical unwrap digest evidence is invalid')
 }
 
+function validatedUnwrapPrediction(action, finding, computedOutput = undefined) {
+  try {
+    return validateUnwrapPrediction(action, finding, computedOutput)
+  } catch (error) {
+    throw new InitBacklogError(failureRecord({ actionId: action.id, code: 'manifest-invalid', detail: 'Mechanical unwrap prediction integrity is invalid.', operation: OPERATION.APPLY, phase: 'prevalidate', target: action.target }), { cause: error })
+  }
+}
+
 function openUnwrapTarget(root, action, options, openedTarget = undefined) {
   if (openedTarget === null) throw new Error('Mechanical unwrap target is not an ordinary file')
   if (openedTarget !== undefined) return openedTarget
@@ -43,13 +53,14 @@ function openUnwrapTarget(root, action, options, openedTarget = undefined) {
 function actionAfter(request, action, root, options, openedTarget = undefined) {
   if (action.kind === 'unwrap-file') {
     const finding = resolveUnwrapFinding(request, action)
-    if (finding?.predictedContentBase64 !== null && finding?.predictedContentBase64 !== undefined) return Buffer.from(finding.predictedContentBase64, 'base64')
-    validateUnwrapDigest(finding, action)
+    const predicted = validatedUnwrapPrediction(action, finding)
+    if (predicted !== null) return predicted
     const opened = openUnwrapTarget(root, action, options, openedTarget)
     if (opened.rawSha256 === action.afterRawSha256) return opened.bytes
     if (opened.rawSha256 !== action.beforeRawSha256) throw new Error('Mechanical unwrap input changed before publication')
+    const computed = Buffer.from(unwrapText(opened.bytes.toString('utf8')), 'utf8')
 
-    return Buffer.from(unwrapText(opened.bytes.toString('utf8')), 'utf8')
+    return validatedUnwrapPrediction(action, finding, computed)
   }
 
   return proposalAfter(request, action)
