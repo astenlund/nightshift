@@ -441,6 +441,7 @@ test('plan workflows share one physical binding and consume revalidated bytes', 
   }
 
   assert.equal(handoverBody.includes('before each plan-derived implementation dispatch'), true, 'handover must revalidate each implementation dispatch')
+  assert.equal(handoverBody.includes('`~/.claude/plans/`'), true, 'handover must consider the shared global plan fallback during inferred selection')
   assert.equal(handoverBody.includes('shared candidate-evidence procedure before modification time or content influences selection'), true, 'handover must bind candidate evidence before inferred selection')
   assert.equal(handoverBody.includes('git status` recency'), false, 'handover must not select from tracked plan evidence rejected by the shared binding')
   assert.equal(handoverBody.includes('must not reread `PLAN_FILE`'), true, 'handover task dispatch must not reopen the plan pathname')
