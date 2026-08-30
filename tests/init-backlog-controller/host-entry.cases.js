@@ -2742,6 +2742,105 @@ function runHostEntryCases(repositoryRoot) {
     }
   })
 
+  test('the live worker rejects an extended ready frame before host launch', async () => {
+    const digest = 'a'.repeat(64)
+    const runRoot = 'C:/synthetic-run-root'
+    const live = hostBehavior.createLiveBindings({
+      filesystem: nodeFilesystem,
+      platform: 'win32',
+      workerProcessAdapterFactory: (options) => ({
+        adapter: {
+          dispose() {},
+          start() {
+            options.onHostStdout(Buffer.from(canonicalJson({ controllerRuntimeSha256: digest, extra: true, ready: true }) + '\n', 'utf8'))
+
+            return { ok: true }
+          },
+        },
+        ok: true,
+      }),
+    })
+    try {
+      const completion = await live.launch({
+        argv: ['worker', 'entry.js', digest],
+        boundary: 'worker',
+        cwd: runRoot,
+        environment: {},
+        executable: 'node.exe',
+        host: 'codex',
+      })
+
+      assert.deepEqual(completion, {
+        failure: {
+          code: 'harness-infrastructure',
+          detailCode: 'proxy',
+          host: 'codex',
+          initialCode: null,
+          ok: false,
+          phase: 'initial-turn',
+          retainedRunRoot: runRoot,
+        },
+      })
+    } finally {
+      live.dispose()
+    }
+  })
+
+  test('the live worker retains unsolicited output between readiness and session wiring', async () => {
+    const digest = 'a'.repeat(64)
+    const runRoot = 'C:/synthetic-run-root'
+    const live = hostBehavior.createLiveBindings({
+      filesystem: nodeFilesystem,
+      platform: 'win32',
+      workerProcessAdapterFactory: (options) => ({
+        adapter: {
+          dispose() {},
+          start() {
+            options.onHostStdout(Buffer.from(canonicalJson({ controllerRuntimeSha256: digest, ready: true }) + '\n{}\n', 'utf8'))
+
+            return { ok: true }
+          },
+          terminate() {},
+        },
+        ok: true,
+      }),
+    })
+    try {
+      const launch = await live.launch({
+        argv: ['worker', 'entry.js', digest],
+        boundary: 'worker',
+        cwd: runRoot,
+        environment: {},
+        executable: 'node.exe',
+        host: 'codex',
+      })
+      const proxySession = await live.proxySessionFactory()
+      const session = await live.runSession({
+        controllerEnabled: true,
+        cwd: 'C:/synthetic-scenario-root',
+        host: 'codex',
+        proxySession,
+        runRoot,
+        scenario: { conversation: [], oracles: { approvalBranch: 'none' }, repository: { entries: [] } },
+      })
+
+      assert.deepEqual(launch, { ready: true })
+      assert.deepEqual(session, {
+        failure: {
+          code: 'harness-infrastructure',
+          detailCode: 'proxy',
+          host: 'codex',
+          initialCode: null,
+          ok: false,
+          phase: 'initial-turn',
+          retainedRunRoot: runRoot,
+        },
+      })
+    } finally {
+      live.dispose()
+    }
+  })
+
   test('pre-spawn scenario revalidation rejects drift injected after plugin setup with zero codex sessions', async () => {
     const scratch = tempRoot()
     try {

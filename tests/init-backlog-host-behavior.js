@@ -2064,9 +2064,12 @@ function createLiveBindings({ filesystem = nodeFilesystem, platform, workerProce
       limitName: 'MAX_RUNNER_FRAME_BYTES',
       onLine: (line) => {
         if (entry.ready) {
-          if (entry.onLine !== null) {
-            entry.onLine(Buffer.from(line))
+          if (entry.onLine === null) {
+            workerFailure({ detailCode: 'proxy' })
+
+            return
           }
+          entry.onLine(Buffer.from(line))
 
           return
         }
@@ -2077,7 +2080,15 @@ function createLiveBindings({ filesystem = nodeFilesystem, platform, workerProce
           frame = null
         }
         const expectedDigest = call.argv[2]
-        if (!/^[0-9a-f]{64}$/.test(expectedDigest ?? '') || frame === null || frame.ready !== true || frame.controllerRuntimeSha256 !== expectedDigest) {
+        const readyFrame = { controllerRuntimeSha256: expectedDigest, ready: true }
+        const exactReadyFrame = frame !== null
+          && typeof frame === 'object'
+          && !Array.isArray(frame)
+          && Object.keys(frame).sort().join(',') === 'controllerRuntimeSha256,ready'
+          && frame.ready === true
+          && frame.controllerRuntimeSha256 === expectedDigest
+          && Buffer.from(line).equals(Buffer.from(canonicalJson(readyFrame), 'utf8'))
+        if (!/^[0-9a-f]{64}$/.test(expectedDigest ?? '') || !exactReadyFrame) {
           startupFailure()
 
           return
