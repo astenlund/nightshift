@@ -241,6 +241,68 @@ function buildReadyCatalog(entries) {
   return result.sort((left, right) => compareOrdinal(left.target, right.target))
 }
 
+function readyCatalogInspectionRecords(inspection) {
+  if (inspection === null || typeof inspection !== 'object' || !Array.isArray(inspection.targets)) throw new TypeError('Ready catalog inspection is invalid')
+  const records = new Map()
+  for (const record of inspection.targets) {
+    if (record === null || typeof record !== 'object' || typeof record.target !== 'string' || !record.target.startsWith('.claude/')) continue
+    const logicalTarget = record.target.slice('.claude/'.length)
+    if (!isReadyCatalogTarget(logicalTarget)) continue
+    if (records.has(record.target)) throw new TypeError('Ready catalog inspection target is duplicated')
+    const present = Array.isArray(record.states) && record.states.includes('present')
+    records.set(record.target, { kind: record.kind, mode: record.mode, present, rawSha256: record.rawSha256, target: record.target })
+  }
+
+  return records
+}
+
+function acquireReadyCatalog(root, expectedInspections, options = {}) {
+  if (!Array.isArray(expectedInspections) || expectedInspections.length === 0) throw new TypeError('Ready catalog expectations are invalid')
+  const canonical = canonicalRoot(root)
+  const expectations = expectedInspections.map((item) => {
+    const inspection = item?.inspection ?? item
+    const ignored = item?.ignoredStateTargets instanceof Set ? item.ignoredStateTargets : new Set()
+
+    return { ignored, records: readyCatalogInspectionRecords(inspection) }
+  })
+  const targetNames = [...expectations[0].records.keys()].sort(compareOrdinal)
+  for (const expectation of expectations.slice(1)) {
+    if (canonicalJson([...expectation.records.keys()].sort(compareOrdinal)) !== canonicalJson(targetNames)) throw new Error('Ready catalog inspection target sets differ')
+  }
+  const discovered = discoverControlledMarkdown(canonical, undefined, { ...options, maxBytes: MAX_MECHANICAL_FILE_BYTES })
+  const descriptors = new Map(discovered.map((item) => [item.target, item]))
+  const acquiredTargets = new Set(targetNames)
+  for (const item of discovered) {
+    if (!isReadyCatalogTarget(item.target.slice('.claude/'.length))) continue
+    acquiredTargets.add(item.target)
+  }
+  const acquired = []
+  const catalog = []
+  for (const target of [...acquiredTargets].sort(compareOrdinal)) {
+    let descriptor = descriptors.get(target)
+    if (descriptor === undefined) descriptor = targetState(target, canonical, { ...options, expectedKind: 'file', maxBytes: MAX_MECHANICAL_FILE_BYTES })
+    const present = descriptor.present === true
+    const record = {
+      identity: present ? descriptor.identity : null,
+      kind: descriptor.kind,
+      mode: (options.platform ?? process.platform) === 'win32' ? null : descriptor.mode,
+      present,
+      rawSha256: present ? descriptor.rawSha256 : null,
+      target,
+    }
+    acquired.push(record)
+    if (present) catalog.push({ contents: decodeText(descriptor.bytes).text, target: target.slice('.claude/'.length) })
+  }
+  const acquiredState = acquired.map(({ identity, ...record }) => record)
+  for (const expectation of expectations) {
+    const expected = targetNames.map((target) => expectation.records.get(target)).filter((record) => !expectation.ignored.has(record.target))
+    const actual = acquiredState.filter((record) => !expectation.ignored.has(record.target))
+    if (canonicalJson(actual) !== canonicalJson(expected)) throw new Error('Ready catalog state differs from inspection')
+  }
+
+  return { catalog: buildReadyCatalog(catalog), evidence: acquired }
+}
+
 function projectReadyProblems(ready, catalog = []) {
   if (ready === null || typeof ready !== 'object') throw new TypeError('Ready result is invalid')
   if (!Array.isArray(catalog)) throw new TypeError('Ready catalog is invalid')
@@ -877,4 +939,4 @@ function inspect(root, host, hostContext = {}, options = {}) {
   }
 }
 
-module.exports = { MAX_IGNORE_PROBE_ATTEMPTS, buildIgnoreProbes, buildReadyCatalog, collectInspection, composeElectionMarker, composeElectionRecord, creationMode, decodeText, discoverInitialLockStage, ignoreProbesForGitKind, inspect, inspectRegions, isReadyCatalogTarget, lineRecords, materializeText, maskedRecords, newlineTargetEvidence, projectGitProblems, projectReadyProblems, proposal, readElectionMarker, targetRecord, targetState, validateElectionMarkerRecord }
+module.exports = { MAX_IGNORE_PROBE_ATTEMPTS, acquireReadyCatalog, buildIgnoreProbes, buildReadyCatalog, collectInspection, composeElectionMarker, composeElectionRecord, creationMode, decodeText, discoverInitialLockStage, ignoreProbesForGitKind, inspect, inspectRegions, isReadyCatalogTarget, lineRecords, materializeText, maskedRecords, newlineTargetEvidence, projectGitProblems, projectReadyProblems, proposal, readElectionMarker, targetRecord, targetState, validateElectionMarkerRecord }

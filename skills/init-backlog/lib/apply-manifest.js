@@ -365,13 +365,22 @@ function simulateReady(inspection, actions, states, options = {}, recordsByTarge
   }
 
   const contentsByTarget = new Map(catalogEntries.map((item) => [item.target.startsWith('.claude/') ? item.target.slice('.claude/'.length) : item.target, item.contents]))
+  const actionTargets = new Set(actions.map((action) => action.target))
   const unwrapTargets = new Set(unwrap.map((action) => action.target))
   const targetIndex = recordsByTarget ?? targetMap(inspection)
+  for (const action of unwrap) {
+    const logicalTarget = action.target.startsWith('.claude/') ? action.target.slice('.claude/'.length) : null
+    const record = targetIndex.get(action.target)
+    if (logicalTarget === null || record?.contentRole !== 'mechanical' || !contentsByTarget.has(logicalTarget)) continue
+    const contents = contentsByTarget.get(logicalTarget)
+    if (sha256(Buffer.from(contents, 'utf8')) === action.afterRawSha256) continue
+    contentsByTarget.set(logicalTarget, unwrapText(contents))
+  }
   for (const [physicalTarget, state] of states ?? []) {
-    if (!physicalTarget.startsWith('.claude/') || state.kind !== 'file' || state.content === null) continue
+    if (!actionTargets.has(physicalTarget) || !physicalTarget.startsWith('.claude/') || state.kind !== 'file' || state.content === null) continue
     const record = targetIndex.get(physicalTarget)
+    if (carriedReadyCatalog && record?.contentRole === 'mechanical' && unwrapTargets.has(physicalTarget)) continue
     const logicalTarget = physicalTarget.slice('.claude/'.length)
-    if (record?.contentRole === 'mechanical' && unwrapTargets.has(physicalTarget) && carriedReadyCatalog && contentsByTarget.has(logicalTarget)) continue
     contentsByTarget.set(logicalTarget, Buffer.from(state.content).toString('utf8'))
   }
   const predictedCatalog = [...contentsByTarget.entries()].map(([target, contents]) => ({ contents, target }))

@@ -252,6 +252,48 @@ function buildApplyRequest(root, inspection, choice = 'not-required', options = 
   }
 }
 
+function readyCatalogFixture(options = {}) {
+  const root = makeRoot()
+  writeFileSync(join(root, 'CLAUDE.md'), BARE_GUIDANCE, 'utf8')
+  const scaffoldInspection = driveCli(root, inspectRequest(root, 'claude-code', claudeHostContext('included')))
+  assert.equal(scaffoldInspection.exitCode, 0, scaffoldInspection.stderr)
+  const scaffoldApply = driveCli(root, buildApplyRequest(root, scaffoldInspection.record))
+  assert.equal(scaffoldApply.record.ok, true, `fixture scaffold failed: ${JSON.stringify(scaffoldApply.record).slice(0, 400)}`)
+  const linked = options.linked !== false
+  const linkedTarget = join(root, '.claude', 'features', 'linked.md')
+  const featuresTarget = join(root, '.claude', 'FEATURES.md')
+  const scaffoldFeatures = readFileSync(featuresTarget, 'utf8')
+  const newline = scaffoldFeatures.includes('\r\n') ? '\r\n' : '\n'
+  const featureLines = ['', '## Active']
+  if (linked) featureLines.push('', '### [Linked](features/linked.md)', '', '**Requires:** none.')
+  writeFileSync(featuresTarget, `${scaffoldFeatures.trimEnd()}${newline}${featureLines.join(newline)}${newline}`, 'utf8')
+  if (linked) {
+    const linkedContents = options.structural === true
+      ? '# Linked\n\n**Requires:** none.\n'
+      : options.wrapped === true
+        ? '# Linked\n\nThis paragraph is deliberately hard wrapped across\ntwo physical lines so the detector fires.\n'
+        : '# Linked\n'
+    writeFileSync(linkedTarget, linkedContents, 'utf8')
+  }
+  if (options.unlinked === true) writeFileSync(join(root, '.claude', 'features', 'unlinked.md'), '# Unlinked\n', 'utf8')
+  const inspected = driveCli(root, inspectRequest(root, 'claude-code', claudeHostContext('included')))
+  assert.equal(inspected.exitCode, 0, inspected.stderr)
+
+  return { inspection: inspected.record, linkedTarget, root }
+}
+
+function featuresPreambleEdit(inspection) {
+  const record = inspection.targets.find((entry) => entry.target === '.claude/FEATURES.md')
+  const region = record.editableRegions.find((entry) => entry.regionId === 'features.document-preamble')
+  assert.ok(region !== undefined, 'the feature preamble must be an authorized semantic region')
+  const before = Buffer.from(record.contentBase64, 'base64')
+  const newline = before.includes(Buffer.from('\r\n', 'utf8')) ? '\r\n' : '\n'
+  const insertion = Buffer.from(`Current catalog note.${newline}${newline}`, 'utf8')
+  const after = Buffer.concat([before.subarray(0, region.endByte), insertion, before.subarray(region.endByte)])
+
+  return { action: semanticEdit(record.target, region.regionId, before, after), after, before }
+}
+
 function runE2eCases() {
   test('inspection over a Git repository with unignored backlog directories survives the CLI transport', () => {
     const root = makeGitRoot()
@@ -442,6 +484,101 @@ function runE2eCases() {
       assert.equal(readFileSync(join(root, 'CLAUDE.md'), 'utf8'), POPULATED_GUIDANCE, 'a refused manifest writes nothing')
     } finally {
       removeRoot(root)
+    }
+  })
+
+  for (const item of [
+    { name: 'linked breakout', options: { linked: true } },
+    { name: 'unlinked breakout', options: { linked: false, unlinked: true } },
+  ]) {
+    test(`a no-op apply retains the complete ready catalog for a ${item.name}`, () => {
+      const fixture = readyCatalogFixture(item.options)
+      try {
+        const applied = driveCli(fixture.root, buildApplyRequest(fixture.root, fixture.inspection))
+
+        assert.equal(applied.stderr, '')
+        assert.equal(applied.record.ok, true, `apply failed: ${JSON.stringify(applied.record).slice(0, 400)}`)
+        assert.equal(applied.record.complete, true)
+        assert.deepEqual(applied.record.outcomes, [])
+        assert.deepEqual(applied.record.postInspect.ready, fixture.inspection.ready, 'a no-op must preserve exact parser output')
+      } finally {
+        removeRoot(fixture.root)
+      }
+    })
+  }
+
+  test('a semantic index edit overlays the complete hidden ready catalog', () => {
+    const fixture = readyCatalogFixture({ linked: true, unlinked: true })
+    try {
+      const edit = featuresPreambleEdit(fixture.inspection)
+      const request = buildApplyRequest(fixture.root, fixture.inspection, 'not-required', { extraActions: [edit.action] })
+      const applied = driveCli(fixture.root, request)
+
+      assert.equal(applied.stderr, '')
+      assert.equal(applied.record.ok, true, `apply failed: ${JSON.stringify(applied.record).slice(0, 400)}`)
+      assert.deepEqual(readFileSync(join(fixture.root, '.claude', 'FEATURES.md')), edit.after)
+      assert.deepEqual(applied.record.postInspect.ready, fixture.inspection.ready, 'the semantic overlay must retain linked and unlinked parser evidence')
+    } finally {
+      removeRoot(fixture.root)
+    }
+  })
+
+  test('a hidden mechanical unwrap overlays its prediction without dropping sibling catalog entries', () => {
+    const fixture = readyCatalogFixture({ linked: true, unlinked: true, wrapped: true })
+    try {
+      const request = buildApplyRequest(fixture.root, fixture.inspection)
+      assert.equal(request.actions.some((action) => action.kind === 'unwrap-file' && action.target === '.claude/features/linked.md'), true, 'the fixture must select the hidden unwrap')
+
+      const applied = driveCli(fixture.root, request)
+
+      assert.equal(applied.stderr, '')
+      assert.equal(applied.record.ok, true, `apply failed: ${JSON.stringify(applied.record).slice(0, 400)}`)
+      assert.deepEqual(applied.record.postInspect.ready, fixture.inspection.unwrapReady.after, 'the unwrap prediction must preserve the complete sibling catalog')
+      assert.equal(readFileSync(fixture.linkedTarget, 'utf8').includes('across two physical'), true)
+    } finally {
+      removeRoot(fixture.root)
+    }
+  })
+
+  test('a linked breakout structural error survives a no-op apply exactly', () => {
+    const fixture = readyCatalogFixture({ linked: true, structural: true })
+    try {
+      assert.notEqual(fixture.inspection.ready.structuralErrors.length, 0, 'the fixture must expose breakout dependency prose')
+      assert.equal(fixture.inspection.ready.evidence.structuralErrors.some((item) => item.evidencePaths.includes('features/linked.md')), true, 'the structural evidence must name the linked breakout')
+
+      const applied = driveCli(fixture.root, buildApplyRequest(fixture.root, fixture.inspection))
+
+      assert.equal(applied.stderr, '')
+      assert.equal(applied.record.ok, true, `apply failed: ${JSON.stringify(applied.record).slice(0, 400)}`)
+      assert.equal(applied.record.complete, false, 'the preserved structural error remains incomplete')
+      assert.deepEqual(applied.record.postInspect.ready, fixture.inspection.ready)
+    } finally {
+      removeRoot(fixture.root)
+    }
+  })
+
+  test('an identity mutation after ready catalog acquisition fails before semantic publication', () => {
+    const fixture = readyCatalogFixture({ linked: true })
+    try {
+      const edit = featuresPreambleEdit(fixture.inspection)
+      const request = buildApplyRequest(fixture.root, fixture.inspection, 'not-required', { extraActions: [edit.action] })
+      let mutated = false
+      const applied = driveCli(fixture.root, request, { onTransition: (point) => {
+        if (point === 'after-ready-catalog-acquisition') {
+          const bytes = readFileSync(fixture.linkedTarget)
+          rmSync(fixture.linkedTarget)
+          writeFileSync(fixture.linkedTarget, bytes)
+          mutated = true
+        }
+      } })
+
+      assert.equal(mutated, true, 'the mutation must land after acquisition')
+      assert.equal(applied.record.ok, false)
+      assert.equal(applied.record.code, 'snapshot-drift')
+      assert.deepEqual(readFileSync(join(fixture.root, '.claude', 'FEATURES.md')), edit.before, 'catalog drift must prevent every target publication')
+      assert.equal(existsSync(join(fixture.root, LOCK_BASENAME)), false, 'prepublication drift must clean the owner record')
+    } finally {
+      removeRoot(fixture.root)
     }
   })
 

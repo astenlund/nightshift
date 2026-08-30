@@ -27,7 +27,7 @@ const {
   verifyFinalMode,
   verifyPublishedIdentity,
 } = require('./filesystem')
-const { collectInspection, composeElectionMarker } = require('./inspection')
+const { acquireReadyCatalog, collectInspection, composeElectionMarker } = require('./inspection')
 const { approvedProgress, detectResume, liveHostContext, publishedHostContext, resumeProjectionScope } = require('./resume')
 const { BACKUP_DIRECTORY, DIGEST_PATTERN, MAX_INLINE_FILE_BYTES, MAX_MECHANICAL_FILE_BYTES, MAX_RECOVERY_REQUEST_BYTES, NONCE_PATTERN, OPERATION, RECOVERY_GATE_BASENAME, RECOVERY_LOCK_BASENAME: LOCK_BASENAME, RECOVERY_MARKER_BASENAME: ELECTION_BASENAME, canonicalJson, compareOrdinal, electionMarkerTemporaryNames, sha256, validOwnerRecordSchema } = require('./protocol')
 
@@ -806,6 +806,14 @@ function currentInspection(request, root, options, hostContext = request.hostCon
   return collectInspection(root, request.host, hostContext, options)
 }
 
+function authenticatedReadyCatalog(root, expectedInspections, options, detail) {
+  try {
+    return acquireReadyCatalog(root, expectedInspections, options)
+  } catch (error) {
+    publicationError(detail, { code: 'snapshot-drift', phase: 'prevalidate' }, error)
+  }
+}
+
 function verifiedPostInspect(request, root, options, admission, outcomes, { electionWitnesses = [], onReadyFailure } = {}) {
   try {
     return currentInspection(request, root, { ...options, electionWitnesses }, publishedHostContext(request, outcomes))
@@ -1065,7 +1073,19 @@ function publishApply(request, options = {}) {
   try {
     liveInspection = options.currentInspection ?? currentInspection(request, root, options, liveHostContext(request, root, resume === true))
     verifyRecoveryGateAbsent(root)
-    admission = admitApplyManifest(request, { ...options, currentInspection: resume === true ? request.inspection : liveInspection })
+    const admissionOptions = { ...options, currentInspection: resume === true ? request.inspection : liveInspection }
+    if (options.currentInspection === undefined && options.collectInspection === undefined) {
+      const actionTargets = new Set((request.actions ?? []).map((action) => action.target))
+      const ignoredStateTargets = resume === true ? actionTargets : new Set()
+      const readyExpectations = [{ inspection: liveInspection }, { ignoredStateTargets, inspection: request.inspection }]
+      const readyDriftDetail = resume === true ? 'Live repository differs from the approved resume state.' : 'Ready catalog differs from the approved inspection.'
+      const readyAcquisition = authenticatedReadyCatalog(root, readyExpectations, options, readyDriftDetail)
+      transition(options, 'after-ready-catalog-acquisition')
+      const readyRecheck = authenticatedReadyCatalog(root, readyExpectations, options, readyDriftDetail)
+      if (canonicalJson(readyAcquisition.evidence) !== canonicalJson(readyRecheck.evidence)) publicationError('Ready catalog identity changed before admission.', { code: 'snapshot-drift', phase: 'prevalidate' })
+      admissionOptions.readyCatalog = readyAcquisition.catalog
+    }
+    admission = admitApplyManifest(request, admissionOptions)
   } catch (error) {
     if (lock !== null && options.crash !== true && options.preserveLockOnError !== true) {
       try { cleanupOwner(root, lock, options, ownedTemporaries) } catch (cleanupError) { throw cleanupError }
