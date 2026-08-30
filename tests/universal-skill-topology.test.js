@@ -2,6 +2,7 @@
 
 const assert = require('node:assert/strict')
 const { execFileSync } = require('node:child_process')
+const { createHash } = require('node:crypto')
 const { existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } = require('node:fs')
 const { tmpdir } = require('node:os')
 const { dirname, join, relative } = require('node:path')
@@ -14,9 +15,11 @@ const {
   MAX_PLAN_CANDIDATE_BYTES,
   MAX_PLAN_CANDIDATES,
   capturePlanCandidateEvidence,
+  deleteBoundPlan,
   establishPlanBinding,
   refreshPlanBinding,
   revalidatePlanBinding,
+  writePlanProvenanceStamp,
 } = require('../internal/plan-binding')
 
 const REPOSITORY_ROOT = join(__dirname, '..')
@@ -507,16 +510,16 @@ test('plan workflows share one physical binding and consume revalidated bytes', 
     'stable candidate set',
     "each binding's `mtimeNs`",
     "that binding's captured bytes",
-    "retain that candidate's existing binding",
+    "retain that candidate's existing full binding",
     'Global and external plans are outside the current repository\'s ignore policy',
-    'immediately before every authoritative plan read, plan mutation, plan-derived dispatch, or deletion',
+    'Call `revalidatePlanBinding` immediately before every authoritative plan read, plan mutation, or plan-derived dispatch.',
     'returns the plan bytes read from the revalidated file identity',
     'never rereads the logical pathname between revalidation and use',
     'captured bytes and stable content metadata agree across both reads',
-    'Immediately before replacement, repeat the stable two-read capture',
+    'Immediately before replacement, repeat `revalidatePlanBinding`',
     'still has the captured baseline bytes',
-    '`writeBoundProvenanceStamp`',
-    'refreshed binding returned by the helper',
+    '`writePlanProvenanceStamp`',
+    'returns the refreshed full binding',
     'failure stops the run before any read, write, dispatch, or deletion',
   ]) {
     assert.equal(bindingBody.includes(contract), true, `shared plan binding must preserve contract: ${contract}`)
@@ -524,6 +527,8 @@ test('plan workflows share one physical binding and consume revalidated bytes', 
 
   for (const [body, owner] of [[handoverBody, 'handover'], [planBody, 'revise-plan'], [codeBody, 'revise-code']]) {
     assert.equal(body.includes('${CLAUDE_PLUGIN_ROOT}/internal/plan-binding.md'), true, `${owner} must load the shared plan binding procedure`)
+    assert.equal(body.includes('${CLAUDE_PLUGIN_ROOT}/internal/plan-binding.js'), true, `${owner} must load the executable plan binding service`)
+    assert.equal(body.includes('revalidatePlanBinding'), true, `${owner} must call executable plan revalidation`)
     assert.equal(body.includes('captured plan bytes'), true, `${owner} must consume plan bytes returned by revalidation`)
     for (const sharedOnlyContract of [
       'symbolic link, junction, or other reparse point',
@@ -539,13 +544,21 @@ test('plan workflows share one physical binding and consume revalidated bytes', 
   assert.equal(handoverBody.includes('before each plan-derived implementation dispatch'), true, 'handover must revalidate each implementation dispatch')
   assert.equal(handoverBody.includes('`~/.claude/plans/`'), true, 'handover must consider the shared global plan fallback during inferred selection')
   assert.equal(handoverBody.includes('shared candidate-evidence procedure before modification time or content influences selection'), true, 'handover must bind candidate evidence before inferred selection')
+  assert.equal(handoverBody.includes('capturePlanCandidateEvidence'), true, 'handover must capture inferred candidate evidence through the executable service')
+  assert.equal(handoverBody.includes('establishPlanBinding'), true, 'handover must establish direct selections through the executable service')
+  assert.equal(handoverBody.includes('deleteBoundPlan'), true, 'handover must delete only through the retained executable binding')
   assert.equal(handoverBody.includes('git status` recency'), false, 'handover must not select from tracked plan evidence rejected by the shared binding')
   assert.equal(handoverBody.includes('must not reread `PLAN_FILE`'), true, 'handover task dispatch must not reopen the plan pathname')
   assert.equal(planBody.includes('before each reviewer or skeptic dispatch'), true, 'revise-plan must revalidate each review dispatch')
   assert.equal(planBody.includes('shared candidate-evidence procedure before modification time or content influences selection'), true, 'revise-plan must bind candidate evidence before inferred selection')
+  assert.equal(planBody.includes('capturePlanCandidateEvidence'), true, 'revise-plan must capture inferred candidate evidence through the executable service')
+  assert.equal(planBody.includes('establishPlanBinding'), true, 'revise-plan must establish direct selections through the executable service')
+  assert.equal(planBody.includes('refreshPlanBinding'), true, 'revise-plan must refresh bindings after local replacements')
   assert.equal(planBody.includes('Recently touched plan-shaped files in `git status`'), false, 'revise-plan must not select from tracked plan evidence rejected by the shared binding')
-  assert.equal(planBody.includes('writeBoundProvenanceStamp'), true, 'revise-plan must stamp through the retained physical binding')
+  assert.equal(planBody.includes('writePlanProvenanceStamp'), true, 'revise-plan must stamp through the retained full binding')
   assert.equal(codeBody.includes('before each reviewer or skeptic dispatch'), true, 'revise-code must revalidate each review dispatch when a plan is active')
+  assert.equal(codeBody.includes('establishPlanBinding'), true, 'revise-code must establish active plans through the executable service')
+  assert.equal(codeBody.includes('refreshPlanBinding'), true, 'revise-code must refresh bindings after active-plan replacements')
   assert.equal(codeBody.includes('parsePlanContract'), true, 'revise-code must parse captured plan authority')
 })
 
@@ -646,6 +659,53 @@ test('plan binding service enforces repository ignore and tracking policy', () =
     assert.equal(establishPlanBinding(input).binding.classification, 'repository')
     execFileSync('git', ['-C', repositoryRoot, 'add', '--force', '--', '.claude/plans/repository.md'], { windowsHide: true })
     assert.throws(() => establishPlanBinding(input), /must be untracked/)
+  } finally {
+    rmSync(root, { force: true, recursive: true })
+  }
+})
+
+test('plan provenance refresh retains full authority and enforces the size cap before mutation', () => {
+  const root = mkdtempSync(join(tmpdir(), 'nightshift-plan-provenance-'))
+  try {
+    const repositoryRoot = join(root, 'repository')
+    const globalPlansRoot = join(root, 'global-plans')
+    const plan = join(globalPlansRoot, 'global.md')
+    mkdirSync(repositoryRoot)
+    mkdirSync(globalPlansRoot)
+    const initial = Buffer.from('# Plan\n')
+    writeFileSync(plan, initial)
+    const established = establishPlanBinding({ exactUserPath: false, globalPlansRoot, logicalPath: plan, repositoryRoot })
+    const baselineHash = createHash('sha256').update(initial).digest('hex')
+    const stamp = '- revise-plan graduated 2026-08-30 10:00 at abcdef1, scope: whole file, content: 12345678'
+    const written = writePlanProvenanceStamp({ baselineHash, binding: established.binding, stamp })
+
+    assert.equal(written.binding.classification, 'global')
+    assert.equal(written.binding.globalPlansRoot, established.binding.globalPlansRoot)
+    assert.equal(written.binding.repositoryRoot, established.binding.repositoryRoot)
+    assert.equal(written.bytes.includes(Buffer.from(stamp)), true)
+    assert.equal(revalidatePlanBinding(written.binding).bytes.equals(written.bytes), true)
+    assert.throws(() => revalidatePlanBinding(established.binding), /stale/)
+
+    const fullPlan = join(globalPlansRoot, 'full.md')
+    const fullBytes = Buffer.alloc(MAX_PLAN_BYTES, 0x61)
+    writeFileSync(fullPlan, fullBytes)
+    const full = establishPlanBinding({ exactUserPath: false, globalPlansRoot, logicalPath: fullPlan, repositoryRoot })
+    const fullHash = createHash('sha256').update(fullBytes).digest('hex')
+
+    assert.throws(() => writePlanProvenanceStamp({ baselineHash: fullHash, binding: full.binding, stamp }), /plan-too-large/)
+    assert.equal(readFileSync(fullPlan).equals(fullBytes), true)
+
+    const removablePlan = join(globalPlansRoot, 'removable.md')
+    const replacement = Buffer.from('# Replacement\n')
+    writeFileSync(removablePlan, initial)
+    const removable = establishPlanBinding({ exactUserPath: false, globalPlansRoot, logicalPath: removablePlan, repositoryRoot })
+    writeFileSync(removablePlan, replacement)
+    assert.throws(() => deleteBoundPlan(removable.binding), /stale/)
+    assert.equal(readFileSync(removablePlan).equals(replacement), true)
+    const refreshed = refreshPlanBinding({ binding: removable.binding, expectedBytes: replacement })
+
+    assert.deepEqual(deleteBoundPlan(refreshed.binding), { alreadyAbsent: false, binding: null })
+    assert.deepEqual(deleteBoundPlan(refreshed.binding), { alreadyAbsent: true, binding: null })
   } finally {
     rmSync(root, { force: true, recursive: true })
   }

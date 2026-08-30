@@ -629,7 +629,7 @@ test('revise profiles use agreement fingerprint selector', () => {
   assert.equal(spec.includes('recognized placeholder'), true, 'spec profile must replace a recognized first-graduation placeholder');
   assert.equal(spec.includes('later provenance stamps append'), true, 'spec profile must append later provenance');
   assert.equal(spec.includes('complete revise-spec boundary batch'), true, 'spec profile must classify after the complete revise-spec batch');
-  assert.equal(plan.includes('writeBoundProvenanceStamp'), true, 'plan profile must stamp through its retained physical binding');
+  assert.equal(plan.includes('writePlanProvenanceStamp'), true, 'plan profile must stamp through its retained full binding');
 
   assert.equal(plan.includes('parsePlanContract'), true, 'plan profile must parse exact governing declarations');
   assert.equal(plan.includes('additions, removals, repoints, reorders, and retargeting'), true, 'plan profile must classify every governing declaration and target change');

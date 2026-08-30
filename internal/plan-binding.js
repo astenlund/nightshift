@@ -6,6 +6,7 @@ const nodePath = require('node:path')
 
 const { resolveTrustedExecutable } = require('../skills/init-backlog/lib/filesystem')
 const { runGit } = require('../skills/init-backlog/lib/git-policy')
+const { prepareProvenanceWrite, productionBindingAdapter, productionFsAdapter, writeBoundProvenanceStamp } = require('../skills/spec-agreement/spec-agreement')
 
 const MAX_PLAN_BYTES = 2_097_152
 const MAX_PLAN_CANDIDATES = 128
@@ -395,6 +396,78 @@ function refreshPlanBinding(input, options = {}) {
   return refreshed
 }
 
+function toProvenanceBinding(binding) {
+  validateBinding(binding)
+
+  return {
+    ctimeNs: binding.ctimeNs,
+    dev: binding.dev,
+    ino: binding.ino,
+    mode: binding.mode,
+    mtimeNs: binding.mtimeNs,
+    nlink: binding.nlink,
+    realPath: binding.realPath,
+    size: binding.size,
+  }
+}
+
+function writePlanProvenanceStamp(input, options = {}) {
+  if (!hasExactKeys(input, ['baselineHash', 'binding', 'stamp']) || typeof input.baselineHash !== 'string' || typeof input.stamp !== 'string') {
+    fail('plan-input', 'Plan provenance input is invalid')
+  }
+  const current = revalidatePlanBinding(input.binding, options)
+  const prepared = prepareProvenanceWrite(current.bytes, input.stamp, input.baselineHash)
+  if (prepared.nextBytes.length > MAX_PLAN_BYTES) {
+    fail('plan-too-large', 'Plan provenance would exceed the maximum byte size', { maximumBytes: MAX_PLAN_BYTES, observedBytes: prepared.nextBytes.length })
+  }
+  const writer = options.provenanceWriter ?? writeBoundProvenanceStamp
+  const relativePath = nodePath.relative(current.binding.declaredBoundary, current.binding.realPath).split(nodePath.sep).join('/')
+  const written = writer({
+    projectRoot: current.binding.declaredBoundary,
+    path: relativePath,
+    stamp: input.stamp,
+    baselineHash: input.baselineHash,
+    binding: toProvenanceBinding(current.binding),
+  }, {
+    fsAdapter: options.provenanceFsAdapter ?? productionFsAdapter(),
+    bindingAdapter: options.provenanceBindingAdapter ?? productionBindingAdapter(),
+  })
+  if (written === null || typeof written !== 'object' || !Buffer.isBuffer(written.bytes) || typeof written.alreadyApplied !== 'boolean') {
+    fail('plan-provenance-result', 'Plan provenance writer returned an invalid result')
+  }
+  const refreshed = refreshPlanBinding({ binding: current.binding, expectedBytes: written.bytes }, options)
+
+  return { alreadyApplied: written.alreadyApplied, binding: refreshed.binding, bytes: refreshed.bytes }
+}
+
+function deleteBoundPlan(binding, options = {}) {
+  validateBinding(binding)
+  const filesystem = options.filesystem ?? nodeFilesystem
+  try {
+    filesystem.lstatSync(binding.logicalPath, { bigint: true })
+  } catch (error) {
+    if (error.code === 'ENOENT') {
+      return { alreadyAbsent: true, binding: null }
+    }
+    fail('plan-unreadable', 'Plan deletion target cannot be inspected', { path: binding.logicalPath })
+  }
+  const current = revalidatePlanBinding(binding, options)
+  try {
+    filesystem.unlinkSync(current.binding.realPath)
+  } catch {
+    fail('plan-delete-failed', 'Plan could not be removed', { path: current.binding.realPath })
+  }
+  try {
+    filesystem.lstatSync(current.binding.logicalPath, { bigint: true })
+  } catch (error) {
+    if (error.code === 'ENOENT') {
+      return { alreadyAbsent: false, binding: null }
+    }
+    fail('plan-delete-failed', 'Plan absence could not be verified', { path: current.binding.logicalPath })
+  }
+  fail('plan-delete-failed', 'Plan still exists after removal', { path: current.binding.logicalPath })
+}
+
 function validateCandidate(candidate) {
   if (!hasExactKeys(candidate, ['exactUserPath', 'logicalPath']) || typeof candidate.exactUserPath !== 'boolean' || typeof candidate.logicalPath !== 'string') {
     fail('plan-candidate-shape', 'Plan candidate is invalid')
@@ -449,7 +522,10 @@ module.exports = {
   MAX_PLAN_CANDIDATES,
   PlanBindingError,
   capturePlanCandidateEvidence,
+  deleteBoundPlan,
   establishPlanBinding,
   refreshPlanBinding,
   revalidatePlanBinding,
+  toProvenanceBinding,
+  writePlanProvenanceStamp,
 }
