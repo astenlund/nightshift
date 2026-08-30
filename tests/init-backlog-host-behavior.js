@@ -2700,12 +2700,13 @@ async function runLiveHostSession({ call, filesystem, platform, processAdapterFa
       limit: driver.BYTE_BOUNDS.MAX_HOST_LINE_BYTES,
       limitName: 'MAX_HOST_LINE_BYTES',
       onLine: (line) => {
-        if (transcript.appendHostEvent(Buffer.from(line)).ordinal === undefined) {
+        const lineBytes = Buffer.from(line)
+        if (transcript.appendHostEvent(lineBytes).ordinal === undefined) {
           settle({ failure: recordTranscriptFailure() })
 
           return
         }
-        const outcome = conductor.acceptLine(Buffer.from(line))
+        const outcome = conductor.acceptLine(lineBytes)
         if (outcome.failure !== undefined) {
           conductorFailure = outcome.failure
           adapter.terminate()
@@ -2867,12 +2868,13 @@ async function runLiveHostSession({ call, filesystem, platform, processAdapterFa
       limit: driver.BYTE_BOUNDS.MAX_HOST_LINE_BYTES,
       limitName: 'MAX_HOST_LINE_BYTES',
       onLine: (line) => {
-        if (transcript.appendHostEvent(Buffer.from(line)).ordinal === undefined) {
+        const lineBytes = Buffer.from(line)
+        if (transcript.appendHostEvent(lineBytes).ordinal === undefined) {
           settle({ failure: recordTranscriptFailure() })
 
           return
         }
-        const outcome = conductor.acceptLine(Buffer.from(line))
+        const outcome = conductor.acceptLine(lineBytes)
         if (outcome.failure !== undefined) {
           primaryFailure = primaryFailure ?? claimPrimaryFailure('session-input', activePhase)
 
