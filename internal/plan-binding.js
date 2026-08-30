@@ -279,6 +279,36 @@ function defaultGitPolicy(request, options) {
   }
 }
 
+function repositoryGitState(repositoryRoot, filesystem) {
+  const markerPath = nodePath.join(repositoryRoot, '.git')
+  let metadata
+  try {
+    metadata = filesystem.lstatSync(markerPath, { bigint: true })
+  } catch (error) {
+    if (error.code === 'ENOENT') return { kind: 'non-git' }
+    fail('plan-git-policy', 'Repository Git metadata could not be classified', { path: markerPath })
+  }
+  if (metadata.isSymbolicLink() || (!metadata.isFile() && !metadata.isDirectory())) {
+    fail('plan-git-policy', 'Repository Git metadata is not an ordinary file or directory', { path: markerPath })
+  }
+
+  return { kind: 'git' }
+}
+
+function defaultRepositoryPolicy(request, filesystem, options) {
+  const before = repositoryGitState(request.repositoryRoot, filesystem)
+  if (before.kind === 'git') defaultGitPolicy(request, options)
+
+  return before
+}
+
+function revalidateRepositoryPolicy(request, expected, filesystem) {
+  const current = repositoryGitState(request.repositoryRoot, filesystem)
+  if (current.kind !== expected.kind) {
+    fail('plan-git-policy', 'Repository Git classification changed during plan capture', { current: current.kind, expected: expected.kind })
+  }
+}
+
 function createBinding(classified, metadata) {
   const state = metadataRecord(metadata)
 
@@ -336,13 +366,19 @@ function establishPlanBinding(input, options = {}) {
   }
   requireOrdinarySingleLink(metadata, classified.realPath)
   const binding = createBinding(classified, metadata)
+  let repositoryPolicy = null
+  let repositoryPolicyRequest = null
   if (binding.classification === 'repository') {
-    const gitPolicy = options.gitPolicy ?? ((request) => defaultGitPolicy(request, options))
-    gitPolicy({
+    repositoryPolicyRequest = {
       globalPlansRoot: classified.globalPlansRoot,
       repositoryRelativePath: binding.repositoryRelativePath,
       repositoryRoot: classified.repositoryRoot,
-    })
+    }
+    if (options.gitPolicy === undefined) {
+      repositoryPolicy = defaultRepositoryPolicy(repositoryPolicyRequest, filesystem, options)
+    } else {
+      options.gitPolicy(repositoryPolicyRequest)
+    }
   }
   const bytes = captureStableBytes(binding.realPath, binding, filesystem)
   let after
@@ -356,6 +392,7 @@ function establishPlanBinding(input, options = {}) {
   if (!stateMatches(after, binding) || !pathsMatchExactly(afterRealPath, binding.realPath)) {
     fail('plan-stale', 'Plan changed after stable capture', { path: binding.logicalPath })
   }
+  if (repositoryPolicy !== null) revalidateRepositoryPolicy(repositoryPolicyRequest, repositoryPolicy, filesystem)
 
   return { binding, bytes }
 }

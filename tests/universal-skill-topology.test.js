@@ -3,7 +3,8 @@
 const assert = require('node:assert/strict')
 const { execFileSync, spawnSync } = require('node:child_process')
 const { createHash } = require('node:crypto')
-const { existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } = require('node:fs')
+const nodeFilesystem = require('node:fs')
+const { existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } = nodeFilesystem
 const Module = require('node:module')
 const { tmpdir } = require('node:os')
 const { dirname, join, relative } = require('node:path')
@@ -703,6 +704,9 @@ test('plan workflows share one physical binding and consume revalidated bytes', 
     'symbolic link, junction, or other reparse point',
     'project-established custom location, inference, or an exact user-supplied path',
     'actual repository-relative path is ignored and untracked',
+    'Absence is the only confirmed non-Git state.',
+    'Linked, special, or unreadable metadata is ambiguous',
+    'A confirmed non-Git root skips only those Git ignore and tracking checks.',
     'link count is available and exactly one',
     'file size, stable content metadata',
     'Before modification time or content can influence inferred selection',
@@ -712,6 +716,7 @@ test('plan workflows share one physical binding and consume revalidated bytes', 
     "retain that candidate's existing full binding",
     'Global and external plans are outside the current repository\'s ignore policy',
     'Call `revalidatePlanBinding` immediately before every authoritative plan read, plan mutation, or plan-derived dispatch.',
+    'reclassifies every repository root',
     'returns the plan bytes read from the revalidated file identity',
     'never rereads the logical pathname between revalidation and use',
     'captured bytes and stable content metadata agree across both reads',
@@ -929,6 +934,54 @@ test('plan binding service enforces repository ignore and tracking policy', () =
     assert.equal(establishPlanBinding(input).binding.classification, 'repository')
     execFileSync('git', ['-C', repositoryRoot, 'add', '--force', '--', '.claude/plans/repository.md'], { windowsHide: true })
     assert.throws(() => establishPlanBinding(input), /must be untracked/)
+  } finally {
+    rmSync(root, { force: true, recursive: true })
+  }
+})
+
+test('plan binding production default supports confirmed non-Git roots and revalidates Git metadata', () => {
+  const root = mkdtempSync(join(tmpdir(), 'nightshift-plan-non-git-policy-'))
+  try {
+    const repositoryRoot = join(root, 'repository')
+    const globalPlansRoot = join(root, 'global-plans')
+    const plan = join(repositoryRoot, '.claude', 'plans', 'repository.md')
+    const gitMetadata = join(repositoryRoot, '.git')
+    mkdirSync(dirname(plan), { recursive: true })
+    mkdirSync(globalPlansRoot)
+    writeFileSync(plan, '# Plan\n')
+    const input = { exactUserPath: false, globalPlansRoot, logicalPath: plan, repositoryRoot }
+
+    const established = establishPlanBinding(input)
+    assert.equal(established.binding.classification, 'repository')
+    assert.equal(established.bytes.equals(Buffer.from('# Plan\n')), true)
+    assert.equal(revalidatePlanBinding(established.binding).bytes.equals(established.bytes), true)
+
+    let gitMetadataChecks = 0
+    const racingFilesystem = {
+      ...nodeFilesystem,
+      lstatSync: (path, options) => {
+        if (path === gitMetadata) {
+          gitMetadataChecks += 1
+          if (gitMetadataChecks === 2) mkdirSync(gitMetadata)
+        }
+
+        return nodeFilesystem.lstatSync(path, options)
+      },
+    }
+    assert.throws(() => establishPlanBinding(input, { filesystem: racingFilesystem }), { code: 'plan-git-policy' })
+    assert.equal(gitMetadataChecks, 2)
+    rmSync(gitMetadata, { recursive: true })
+
+    mkdirSync(gitMetadata)
+    assert.throws(() => revalidatePlanBinding(established.binding), { code: 'plan-git-policy' })
+    rmSync(gitMetadata, { recursive: true })
+    writeFileSync(gitMetadata, 'malformed\n')
+    assert.throws(() => revalidatePlanBinding(established.binding), { code: 'plan-git-policy' })
+    rmSync(gitMetadata)
+    const externalMetadata = join(root, 'external-git-metadata')
+    mkdirSync(externalMetadata)
+    symlinkSync(externalMetadata, gitMetadata, process.platform === 'win32' ? 'junction' : 'dir')
+    assert.throws(() => revalidatePlanBinding(established.binding), { code: 'plan-git-policy' })
   } finally {
     rmSync(root, { force: true, recursive: true })
   }
