@@ -2461,6 +2461,16 @@ function runHostEntryCases(repositoryRoot) {
         const rejected = hostBehavior.verifyCodexPluginList({ platform: process.platform, runPluginRoot: '/run/enabled-plugin', stdoutBytes: Buffer.from(JSON.stringify(records) + '\n', 'utf8') })
         assert.equal(rejected.ok, false, label)
       }
+      let extra = null
+      for (let depth = 0; depth < 65; depth += 1) {
+        extra = { nested: extra }
+      }
+      const overDepth = hostBehavior.verifyCodexPluginList({
+        platform: process.platform,
+        runPluginRoot: '/run/enabled-plugin',
+        stdoutBytes: Buffer.from(JSON.stringify([{ extra, pluginId: 'nightshift@astenlund', source: { path: '/run/enabled-plugin', source: 'local' } }]) + '\n', 'utf8'),
+      })
+      assert.deepEqual(overDepth, { detail: 'plugin list output is not valid JSON', ok: false })
     } finally {
       nodeFilesystem.rmSync(scratch, { force: true, recursive: true })
     }

@@ -619,12 +619,11 @@ function verifyCodexPluginList({ platform, runPluginRoot, stdoutBytes }) {
   if (text === null) {
     return { detail: 'plugin list output is not valid UTF-8', ok: false }
   }
-  let parsed
-  try {
-    parsed = JSON.parse(text)
-  } catch {
+  const parsedResult = parseJsonWithDepthLimit(text)
+  if (parsedResult.ok !== true) {
     return { detail: 'plugin list output is not valid JSON', ok: false }
   }
+  const parsed = parsedResult.value
   const records = Array.isArray(parsed) ? parsed : Array.isArray(parsed?.plugins) ? parsed.plugins : null
   if (records === null) {
     return { detail: 'plugin list output carries no record array', ok: false }
