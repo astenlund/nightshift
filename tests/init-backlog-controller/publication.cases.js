@@ -868,6 +868,34 @@ function runPublicationCases() {
     }
   })
 
+  test('resume comparison preserves same-target backups from another transition', () => {
+    const fixture = unwrapBackupFailureFixture()
+    try {
+      const carried = fixture.applyRequest.inspection
+      const manifestId = admitApplyManifest(fixture.applyRequest).manifestId
+      const foreignSnapshotId = carried.snapshotId === 'a'.repeat(64) ? 'b'.repeat(64) : 'a'.repeat(64)
+      const foreignManifestId = manifestId === 'c'.repeat(64) ? 'd'.repeat(64) : 'c'.repeat(64)
+      const targetHash = sha256(Buffer.from(fixture.target, 'utf8'))
+      const foreignBackup = `.tmp/nightshift-init-backlog-unwrap-${foreignSnapshotId}-${foreignManifestId}-${targetHash}.bak`
+      writeFileSync(join(fixture.root, fixture.target), fixture.unwrapped)
+      const live = inspection(fixture.root, {
+        proposals: carried.proposals,
+        ready: carried.unwrapReady.after,
+        retainedBackups: [foreignBackup],
+        targets: [{ ...carried.targets[0], contentBase64: fixture.unwrapped.toString('base64'), rawSha256: sha256(fixture.unwrapped), states: ['present'] }],
+        templates: carried.templates,
+        unwrapReady: { after: carried.unwrapReady.after, targets: [] },
+        warnings: [{ code: 'manual-cleanup', detail: 'One retained unwrap backup requires manual cleanup.', target: foreignBackup }],
+        wrapFindings: [],
+      })
+
+      expectCode(() => publishApply(fixture.applyRequest, { collectInspection: () => live, resume: true }), 'snapshot-drift')
+      assert.equal(existsSync(join(fixture.root, '.nightshift-init-backlog.lock')), false)
+    } finally {
+      rmSync(fixture.root, { force: true, recursive: true })
+    }
+  })
+
   test('resumes a response-loss prefix after election-marker publication from live state', () => {
     const root = fixtureRoot()
     try {

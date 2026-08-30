@@ -832,16 +832,14 @@ function projectedGuidance(guidance, ownedTargets) {
   }
 }
 
-function ownedBackup(path, targetHashes) {
-  const parts = BACKUP_PATTERN.exec(path)
-
-  return parts !== null && targetHashes.has(parts[3])
+function ownedBackup(path, ownedBackupPaths) {
+  return ownedBackupPaths.has(path)
 }
 
-function ownedProblem(problem, actionTargets, unwrapTargetHashes) {
+function ownedProblem(problem, actionTargets, ownedBackupPaths) {
   if (problem.code === 'git-policy') return true
   const evidencePaths = problem.evidencePaths ?? []
-  const ownedPath = (path) => actionTargets.has(path) || ownedBackup(path, unwrapTargetHashes)
+  const ownedPath = (path) => actionTargets.has(path) || ownedBackup(path, ownedBackupPaths)
   if (evidencePaths.some((path) => !ownedPath(path))) return false
   if (problem.target !== null) return ownedPath(problem.target)
 
@@ -896,8 +894,8 @@ function resumeInspectionProjection(inspection, actionTargets, markerStates, sco
     git.plansPolicy = git.plansPolicy === 'nested-conflict' ? 'nested-conflict' : null
   }
   const hasNestedIgnoreEvidence = nestedIgnoreEvidence.length > 0 || inspection.git?.plansPolicy === 'nested-conflict'
-  const problems = (inspection.problems ?? []).filter((problem) => (problem.code === 'git-policy' && hasNestedIgnoreEvidence) || !ownedProblem(problem, actionTargets, scope.unwrapTargetHashes))
-  const retainedBackups = (inspection.retainedBackups ?? []).filter((path) => !ownedBackup(path, scope.unwrapTargetHashes))
+  const problems = (inspection.problems ?? []).filter((problem) => (problem.code === 'git-policy' && hasNestedIgnoreEvidence) || !ownedProblem(problem, actionTargets, scope.ownedBackupPaths))
+  const retainedBackups = (inspection.retainedBackups ?? []).filter((path) => !ownedBackup(path, scope.ownedBackupPaths))
 
   return {
     ...inspection,
@@ -982,7 +980,7 @@ function validateResumeInspection(request, liveInspection, admission, { options,
     if (!progress.recognized) publicationError('Durable target state is not a unique approved prefix of the manifest.', { code: 'snapshot-drift', phase: 'prevalidate', manifestId: admission.manifestId })
   }
   const completedActionTargets = new Set(progress === null ? [] : (request.actions ?? []).slice(0, progress.applied).map((action) => action.target))
-  const scope = resumeProjectionScope(request, actionTargets, progressRoot === null ? request.hostContext : liveHostContext(request, progressRoot, true), completedActionTargets)
+  const scope = resumeProjectionScope(request, actionTargets, progressRoot === null ? request.hostContext : liveHostContext(request, progressRoot, true), completedActionTargets, admission.manifestId)
   if (canonicalJson(resumeInspectionProjection(request.inspection, actionTargets, markerStates, scope)) !== canonicalJson(resumeInspectionProjection(liveInspection, actionTargets, markerStates, scope))) {
     publicationError('Live repository differs from the approved resume state.', { code: 'snapshot-drift', phase: 'prevalidate', manifestId: admission.manifestId })
   }

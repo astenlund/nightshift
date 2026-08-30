@@ -4,8 +4,9 @@ const { lstatSync } = require('node:fs')
 
 const { POSIX_DEFAULT_FILE_MODE, actionAfter, actionBefore, targetPath } = require('./actions')
 const { deriveRequestManifestId } = require('./apply-manifest')
+const { backupTarget } = require('./backups')
 const { boundedOpenOptions, classifyPid, comparableMode, pathExists, platformMode, stableOpenFile } = require('./filesystem')
-const { MAX_MECHANICAL_FILE_BYTES, sha256 } = require('./protocol')
+const { MAX_MECHANICAL_FILE_BYTES } = require('./protocol')
 
 function approvedGuidanceCreation(request) {
   const rootGuidance = request.inspection?.guidance?.baseAdapter
@@ -41,16 +42,16 @@ function liveHostContext(request, root, resuming) {
   return guidanceResolvedHostContext(request, resuming && creation !== null && pathExists(targetPath(root, creation.target)))
 }
 
-function resumeProjectionScope(request, actionTargets, hostContext, completedActionTargets = new Set()) {
+function resumeProjectionScope(request, actionTargets, hostContext, completedActionTargets, manifestId) {
   const guidance = request.inspection?.guidance ?? {}
   const guidanceTargets = new Set([guidance.resolvedTarget, guidance.baseAdapter].filter((target) => typeof target === 'string' && actionTargets.has(target)))
-  const unwrapTargetHashes = new Set((request.actions ?? []).filter((action) => action.kind === 'unwrap-file').map((action) => sha256(Buffer.from(action.target, 'utf8'))))
+  const ownedBackupPaths = new Set((request.actions ?? []).filter((action) => action.kind === 'unwrap-file').map((action) => backupTarget(action.target, request.inspection.snapshotId, manifestId)))
 
   return {
     gitignorePublished: completedActionTargets.has('.gitignore'),
     guidanceTargets,
     hostContext,
-    unwrapTargetHashes,
+    ownedBackupPaths,
   }
 }
 
