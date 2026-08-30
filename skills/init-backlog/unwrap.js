@@ -379,6 +379,7 @@ function collectMarkdownFiles(targets) {
     if (rootIdentity === null) {
       throw new CatalogError(`backlog root escapes its repository authority: ${root}`);
     }
+    visitedDirectories.add(rootIdentity);
     for (const entry of sortedEntries(root)) {
       const child = path.join(root, entry.name);
       const stat = statOrNull(child);

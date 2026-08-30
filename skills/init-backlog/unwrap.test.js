@@ -237,7 +237,9 @@ test('collectMarkdownFiles follows contained links once and rejects links outsid
   const external = fs.mkdtempSync(path.join(require('node:os').tmpdir(), 'unwrap-external-'));
   try {
     fs.mkdirSync(path.join(root, 'real'));
+    fs.mkdirSync(path.join(root, 'plans'));
     fs.writeFileSync(path.join(root, 'real', 'a.md'), '# A\n');
+    fs.writeFileSync(path.join(root, 'plans', 'excluded.md'), 'excluded\ncontinuation\n');
     fs.writeFileSync(path.join(external, 'nested.md'), 'nested\ncontinuation\n');
     fs.writeFileSync(path.join(external, 'top.md'), 'top\ncontinuation\n');
     try {
@@ -247,6 +249,7 @@ test('collectMarkdownFiles follows contained links once and rejects links outsid
       fs.symlinkSync(path.join(external, 'top.md'), path.join(root, 'FEATURES.md'), 'file');
       fs.symlinkSync(path.join(root, 'real', 'missing.md'), path.join(root, 'real', 'dangling.md'), 'file');
       fs.symlinkSync(path.join(root, 'real'), path.join(root, 'real', 'loop'), 'junction');
+      fs.symlinkSync(root, path.join(root, 'real', 'up'), 'junction');
     } catch {
       // Link creation needs privileges this runner lacks; the walk is then untestable here.
       t.skip('symlinks unavailable');
