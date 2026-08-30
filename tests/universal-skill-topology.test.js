@@ -319,6 +319,17 @@ test('handover queue accepts reordered evidence records', () => {
   assert.deepEqual(resumeQueue({ detectedEntryStep: 5, evidence, expectedAuthority: authority, sourceBuffer }), { kind: 'live', nextStep: 5, sourceBuffer })
 })
 
+test('handover queue rejects a UTF-8 BOM before a valid queue', () => {
+  const authority = { artifactPath: '.claude/features/example.md', planFingerprint: 'none', targetScope: 'whole file' }
+  const evidence = { ignored: true, ordinary: true, singleLink: true, stable: true, tracked: false }
+  const sourceBuffer = Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), createQueue({ authority, entryStep: 5 })])
+
+  assert.throws(
+    () => resumeQueue({ detectedEntryStep: 5, evidence, expectedAuthority: authority, sourceBuffer }),
+    /Queue source encoding is not canonical/,
+  )
+})
+
 test('handover queue rejects malformed authority and cannot outrun the ladder', () => {
   const authority = { artifactPath: '.claude/features/example.md', planFingerprint: `sha256:${'a'.repeat(64)}`, targetScope: 'whole file' }
   const evidence = { ignored: true, ordinary: true, singleLink: true, stable: true, tracked: false }

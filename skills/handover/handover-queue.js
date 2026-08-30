@@ -133,7 +133,7 @@ function parseSource(sourceBuffer) {
   }
   let text
   try {
-    text = new TextDecoder('utf-8', { fatal: true }).decode(sourceBuffer)
+    text = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(sourceBuffer)
   } catch {
     fail('Queue source is not UTF-8')
   }
