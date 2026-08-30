@@ -2563,6 +2563,91 @@ test('dependency lookup rejects invalid and mismatched qualified targets without
   assert.deepStrictEqual(findByTitle(result.blocked, 'Index anchor').blockers, ['Parent']);
 });
 
+test('index-anchor lookup stays bound to the exact active index', () => {
+  const result = analyze({
+    QUICK_WINS: `## Area
+- **Quick Parent**: Ready work.
+`,
+    FEATURES: `## Area
+### [Feature Parent](features/feature-parent.md)
+
+**Requires:** none.
+
+### [Shared](features/shared.md)
+
+**Requires:** none.
+
+### [Wrong index](features/wrong-index.md)
+
+**Requires:** [Bug Parent](FEATURES.md#bug-parent).
+
+### [Feature valid](features/feature-valid.md)
+
+**Requires:** [Feature Parent](FEATURES.md#feature-parent).
+
+### [Bug valid](features/bug-valid.md)
+
+**Requires:** [Bug Parent](BUGS.md#bug-parent).
+
+### [Quick valid](features/quick-valid.md)
+
+**Requires:** [Quick Parent](QUICK_WINS.md#quick-parent).
+
+### [Duplicate valid](features/duplicate-valid.md)
+
+**Requires:** [Shared](FEATURES.md#shared).
+
+### [History](features/history.md)
+
+**Requires:** [Feature Parent](FEATURES_HISTORY.md#feature-parent).
+
+### [Quick history](features/quick-history.md)
+
+**Requires:** [Quick Parent](QUICK_WINS_HISTORY.md#quick-parent).
+
+### [Bug history](features/bug-history.md)
+
+**Requires:** [Bug Parent](BUGS_HISTORY.md#bug-parent).
+
+### [Pattern index](features/pattern-index.md)
+
+**Requires:** [Feature Parent](PATTERNS.md#feature-parent).
+
+### [Traversal index](features/traversal-index.md)
+
+**Requires:** [Feature Parent](../FEATURES.md#feature-parent).
+
+### [Nested index](features/nested-index.md)
+
+**Requires:** [Feature Parent](nested/FEATURES.md#feature-parent).
+
+### [Case-variant index](features/case-variant-index.md)
+
+**Requires:** [Feature Parent](features.md#feature-parent).
+`,
+    BUGS: `## Area
+### [Bug Parent](bugs/bug-parent.md)
+
+**Requires:** [Wrong index](BUGS.md#wrong-index).
+
+### [Shared](bugs/shared.md)
+
+**Requires:** none.
+`,
+  });
+
+  assert.deepStrictEqual(findByTitle(result.blocked, 'Feature valid').blockers, ['Feature Parent']);
+  assert.deepStrictEqual(findByTitle(result.blocked, 'Bug valid').blockers, ['Bug Parent']);
+  assert.deepStrictEqual(findByTitle(result.blocked, 'Quick valid').blockers, ['Quick Parent']);
+  assert.deepStrictEqual(findByTitle(result.blocked, 'Duplicate valid').blockers, ['Shared']);
+  for (const title of ['Wrong index', 'History', 'Quick history', 'Bug history', 'Pattern index', 'Traversal index', 'Nested index', 'Case-variant index']) {
+    const problem = findByTitle(result.structuralErrors, title)?.problem ?? '';
+    assert.match(problem, /does not resolve to any active backlog entry/, `${title}: ${problem}`);
+    assert.ok(!findByTitle(result.blocked, title), `${title} must not acquire a cross-index blocker`);
+  }
+  assert.ok(!result.structuralErrors.some((error) => error.index === '[cycle]'), JSON.stringify(result.structuralErrors));
+});
+
 test('legacy history detection handles repeated empty and populated sections', () => {
   const result = analyzeCatalog([
     { target: 'FEATURES.md', contents: `## Implemented

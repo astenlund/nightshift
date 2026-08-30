@@ -29,6 +29,7 @@ const INDEX_FILE_STEMS = new Set([
   'QUICK_WINS_HISTORY', 'FEATURES_HISTORY', 'BUGS_HISTORY',
 ]);
 const WORK_INDEX_NAMES = ['QUICK_WINS', 'FEATURES', 'BUGS'];
+const WORK_INDEX_FILES = new Set(WORK_INDEX_NAMES.map((name) => `${name}.md`));
 
 // The one excluded section whose entries are still collected (as drafts,
 // never as work items). Named once so the exclusion and the collection
@@ -593,8 +594,8 @@ function isCatalogReferenceTarget(target) {
 
 function buildRegistry(indexEntries) {
   // indexEntries: [{ index, entry }]
-  const byTitle = new Map();
-  const titleDupes = new Set();
+  const byIndexTitle = new Map();
+  const indexTitleDupes = new Set();
   const bySlug = new Map();
   const slugDupes = new Set();
   const byPath = new Map();
@@ -610,9 +611,9 @@ function buildRegistry(indexEntries) {
   // structural instead of falling through to a weaker identity route.
   const pathGroups = new Map();
   for (const rec of indexEntries) {
-    const titleKey = normalizeTitle(rec.entry.title);
-    if (byTitle.has(titleKey)) titleDupes.add(titleKey);
-    else byTitle.set(titleKey, rec);
+    const titleKey = indexTitleKey(rec.index, rec.entry.title);
+    if (byIndexTitle.has(titleKey)) indexTitleDupes.add(titleKey);
+    else byIndexTitle.set(titleKey, rec);
     const pathKey = targetPathKey(rec.entry.selfTarget);
     if (pathKey && isCatalogReferenceTarget(rec.entry.selfTarget)) {
       byPath.set(pathKey, rec);
@@ -635,7 +636,11 @@ function buildRegistry(indexEntries) {
     }
   }
   const pathDupes = new Map([...pathGroups].filter(([, records]) => records.length > 1));
-  return { byTitle, titleDupes, bySlug, slugDupes, byPath, pathDupes, slicesByRecord };
+  return { byIndexTitle, indexTitleDupes, bySlug, slugDupes, byPath, pathDupes, slicesByRecord };
+}
+
+function indexTitleKey(index, title) {
+  return `${index}\u0000${normalizeTitle(title)}`;
 }
 
 function dependencyLookupRoute(target) {
@@ -648,7 +653,9 @@ function dependencyLookupRoute(target) {
   const slug = targetSlug(fileTarget);
   if (!slug) return { kind: 'invalid' };
   if (INDEX_FILE_STEMS.has(slug)) {
-    return anchor === '' ? { kind: 'invalid' } : { kind: 'title' };
+    const index = `${slug}.md`;
+
+    return !isCatalogReferenceTarget(target) || anchor === '' || fileTarget !== index || !WORK_INDEX_FILES.has(index) ? { kind: 'invalid' } : { kind: 'index-title', index };
   }
   if (fileTarget.includes('/')) {
     if (!isCatalogReferenceTarget(target)) return { kind: 'invalid' };
@@ -661,8 +668,8 @@ function dependencyLookupRoute(target) {
 
 // Look up an entry by the identity route selected by the target grammar.
 // Directory-qualified paths use exact path identity, bare basenames use slug
-// identity, and index anchors use display-title identity. A supplied strong
-// form never falls through to a weaker match after it misses.
+// identity, and active-index anchors use display-title identity within that
+// exact index. A supplied strong form never falls through to a weaker match.
 function lookupEntry(registry, display, target) {
   const route = dependencyLookupRoute(target);
   if (route.kind === 'path' && registry.pathDupes.has(route.key)) {
@@ -679,13 +686,13 @@ function lookupEntry(registry, display, target) {
     }
     return registry.bySlug.has(route.key) ? { rec: registry.bySlug.get(route.key), via: 'slug' } : {};
   }
-  if (route.kind === 'title' && display) {
-    const titleKey = normalizeTitle(display);
-    if (registry.titleDupes.has(titleKey)) {
-      return { ambiguous: `several active entries share the title "${display}"` };
+  if (route.kind === 'index-title' && display) {
+    const titleKey = indexTitleKey(route.index, display);
+    if (registry.indexTitleDupes.has(titleKey)) {
+      return { ambiguous: `several active entries in ${route.index} share the title "${display}"` };
     }
-    if (registry.byTitle.has(titleKey)) {
-      return { rec: registry.byTitle.get(titleKey), via: 'title' };
+    if (registry.byIndexTitle.has(titleKey)) {
+      return { rec: registry.byIndexTitle.get(titleKey), via: 'title' };
     }
   }
   return {};
