@@ -2,7 +2,7 @@
 
 const { join } = require('node:path')
 
-const { evaluateEvidence, runCell } = require('./host-discovery-smoke-lib')
+const { createTrustedSmokeRuntime, evaluateEvidence, runCell } = require('./host-discovery-smoke-lib')
 
 const checkoutRoot = join(__dirname, '..')
 const evidenceRoot = join(checkoutRoot, '.tmp', 'host-smoke-evidence')
@@ -10,7 +10,8 @@ const argumentsList = process.argv.slice(2)
 
 async function main() {
   if (argumentsList.length === 1 && (argumentsList[0] === '--check-local' || argumentsList[0] === '--check-release')) {
-    const result = evaluateEvidence({ checkoutRoot, evidenceRoot, release: argumentsList[0] === '--check-release' })
+    const runtime = createTrustedSmokeRuntime({ checkoutRoot, evidenceRoot, parentEnv: process.env })
+    const result = evaluateEvidence({ checkoutRoot, evidenceRoot, gitRunner: runtime.gitRunner, release: argumentsList[0] === '--check-release' })
     process.stdout.write(JSON.stringify({ status: 'pass', candidateDigest: result.digest }) + '\n')
     return
   }

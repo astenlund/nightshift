@@ -1,9 +1,9 @@
 'use strict'
 
 const assert = require('node:assert/strict')
-const { copyFileSync, cpSync, existsSync, linkSync, lstatSync, mkdtempSync, mkdirSync, openSync, readFileSync, readSync, readdirSync, rmSync, symlinkSync, writeFileSync } = require('node:fs')
+const { chmodSync, copyFileSync, cpSync, existsSync, linkSync, lstatSync, mkdtempSync, mkdirSync, openSync, readFileSync, readSync, readdirSync, rmSync, symlinkSync, writeFileSync } = require('node:fs')
 const { tmpdir } = require('node:os')
-const { basename, dirname, join } = require('node:path')
+const { basename, delimiter, dirname, join } = require('node:path')
 const test = require('node:test')
 
 const {
@@ -18,6 +18,7 @@ const {
   buildCodexArgv,
   candidateFactsForIndex,
   createMarketplace,
+  createTrustedSmokeRuntime,
   evaluateEvidence,
   loadLegacyBaseline,
   loadCandidateEngineResources,
@@ -94,6 +95,46 @@ test('runtime projection copies only nonempty permitted values with original spe
 test('runtime projection preserves Windows parent spelling and POSIX exact spelling', () => {
   assert.deepEqual(projectRuntimeEnvironment({ Path: 'windows-path', TEMP: 'temp', path: 'ignored' }, 'win32'), { Path: 'windows-path', TEMP: 'temp' })
   assert.deepEqual(projectRuntimeEnvironment({ Path: 'ignored', PATH: 'posix-path', TEMP: 'temp' }, 'linux'), { PATH: 'posix-path', TEMP: 'temp' })
+})
+
+test('trusted smoke runtime excludes direct and linked protected PATH entries', () => {
+  const root = createTemporaryDirectory()
+  try {
+    const checkoutRoot = join(root, 'checkout')
+    const temporaryRoot = join(root, 'temporary')
+    const evidenceRoot = join(checkoutRoot, 'evidence')
+    const outsideRoot = join(root, 'outside')
+    const linkedCheckout = join(root, 'linked-checkout')
+    for (const directory of [checkoutRoot, temporaryRoot, evidenceRoot, outsideRoot]) {
+      mkdirSync(directory, { recursive: true })
+    }
+    symlinkSync(checkoutRoot, linkedCheckout, process.platform === 'win32' ? 'junction' : 'dir')
+    const suffix = process.platform === 'win32' ? '.exe' : ''
+    for (const directory of [checkoutRoot, temporaryRoot, evidenceRoot, outsideRoot]) {
+      for (const command of ['git', 'codex']) {
+        const executable = join(directory, command + suffix)
+        writeFileSync(executable, 'fake executable\n')
+        if (process.platform !== 'win32') {
+          chmodSync(executable, 0o755)
+        }
+      }
+    }
+    const path = [checkoutRoot, linkedCheckout, temporaryRoot, evidenceRoot, outsideRoot].join(delimiter)
+    const runtime = createTrustedSmokeRuntime({
+      checkoutRoot,
+      evidenceRoot,
+      host: 'codex',
+      parentEnv: { OPENAI_API_KEY: 'fake-token', PATH: path },
+      temporaryRoot,
+    })
+
+    assert.equal(runtime.gitExecutable, join(outsideRoot, 'git' + suffix))
+    assert.equal(runtime.hostExecutable, join(outsideRoot, 'codex' + suffix))
+    assert.equal(runtime.environment.PATH, outsideRoot)
+    assert.equal('OPENAI_API_KEY' in runtime.environment, false)
+  } finally {
+    removeTemporaryDirectory(root)
+  }
 })
 
 test('nonzero child classification exposes only structural JSON metadata or byte counts', () => {

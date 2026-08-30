@@ -1,11 +1,13 @@
 'use strict'
 
 const { createHash, randomBytes } = require('node:crypto')
+const nodeFilesystem = require('node:fs')
 const { closeSync, copyFileSync, cpSync, existsSync, fstatSync, linkSync, lstatSync, mkdirSync, mkdtempSync, openSync, readFileSync, readSync, readdirSync, realpathSync, rmSync, unlinkSync, writeFileSync } = require('node:fs')
 const { tmpdir } = require('node:os')
 const { dirname, isAbsolute, join, relative, resolve, sep } = require('node:path')
 const { execFileSync, spawn } = require('node:child_process')
 const { PUBLIC_SKILLS } = require('./entry-contract')
+const { buildContainedAmbientEnvironment, resolveHostCommand, resolveTrustedGit } = require('./init-backlog-host-behavior')
 const { loadPromptBaseline: loadValidatedPromptBaseline } = require('./init-backlog-prompt-baseline')
 
 const CODEX_CATALOG_PROMPT = 'Return a JSON object whose skills array contains only the plugin-qualified Nightshift skill identifiers visible in the injected Skills catalog.'
@@ -31,6 +33,29 @@ function projectRuntimeEnvironment(parentEnv, platform = process.platform) {
   }
 
   return environment
+}
+
+function createTrustedSmokeRuntime({ checkoutRoot, evidenceRoot, filesystem = nodeFilesystem, host = null, parentEnv, platform = process.platform, temporaryRoot = null }) {
+  const protectedRoots = [checkoutRoot, evidenceRoot, temporaryRoot].filter((value) => typeof value === 'string' && value !== '')
+  const contained = buildContainedAmbientEnvironment({ ambientEnvironment: parentEnv, filesystem, platform, protectedRoots })
+  if (contained.unstable) {
+    throw new Error('Smoke PATH changed during trust resolution')
+  }
+  const environment = projectRuntimeEnvironment(contained.environment, platform)
+  const gitExecutable = resolveTrustedGit({ ambientPath: environment.PATH, filesystem, platform, protectedRoots }).executable
+  let hostExecutable = null
+  if (host !== null) {
+    const resolution = resolveHostCommand({ ambientPath: environment.PATH, filesystem, host, platform, protectedRoots })
+    if (resolution.unsupported) {
+      const error = new Error('Host executable is unavailable')
+      error.code = 'ENOENT'
+      throw error
+    }
+    hostExecutable = resolution.descriptor.executable
+  }
+  const gitRunner = (root, args, encoding = 'utf8') => git(root, args, encoding, { environment, executable: gitExecutable })
+
+  return { environment, gitExecutable, gitRunner, hostExecutable }
 }
 
 function resolveExternalClaudeConfigRoot(parentEnv, homeDir) {
@@ -81,12 +106,12 @@ function copyCredential({ checkoutRoot, sourceRoot, sourceName, profileRoot }) {
   copyFileSync(resolvedSource, join(profileRoot, sourceName))
 }
 
-function git(checkoutRoot, args, encoding = 'utf8') {
-  return execFileSync('git', ['-C', checkoutRoot, ...args], { encoding, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true })
+function git(checkoutRoot, args, encoding = 'utf8', options = {}) {
+  return execFileSync(options.executable ?? 'git', ['-C', checkoutRoot, ...args], { encoding, env: options.environment, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true })
 }
 
-function listedTreeEntries(checkoutRoot, treeId) {
-  const output = git(checkoutRoot, ['ls-tree', '-rz', '--full-tree', treeId], 'buffer')
+function listedTreeEntries(checkoutRoot, treeId, gitRunner = git) {
+  const output = gitRunner(checkoutRoot, ['ls-tree', '-rz', '--full-tree', treeId], 'buffer')
   return output.toString('utf8').split('\0').filter(Boolean).map((record) => {
     const tab = record.indexOf('\t')
     const header = record.slice(0, tab).split(' ')
@@ -125,11 +150,11 @@ function writeDigestRecord(hash, entryPath, content) {
   hash.update(content)
 }
 
-function collectCandidateTree({ checkoutRoot, treeId, visitEntry = () => {} }) {
+function collectCandidateTree({ checkoutRoot, gitRunner = git, treeId, visitEntry = () => {} }) {
   const hash = createHash('sha256')
   let manifestBytes = null
-  for (const entry of listedTreeEntries(checkoutRoot, treeId)) {
-    const content = git(checkoutRoot, ['cat-file', 'blob', entry.objectId], 'buffer')
+  for (const entry of listedTreeEntries(checkoutRoot, treeId, gitRunner)) {
+    const content = gitRunner(checkoutRoot, ['cat-file', 'blob', entry.objectId], 'buffer')
     visitEntry(entry, content)
     if (entry.entryPath === '.claude-plugin/plugin.json') {
       manifestBytes = content
@@ -144,11 +169,12 @@ function collectCandidateTree({ checkoutRoot, treeId, visitEntry = () => {} }) {
   return { version: manifest.version, digest: hash.digest('hex') }
 }
 
-function stageCandidate({ checkoutRoot, destinationRoot, treeId }) {
+function stageCandidate({ checkoutRoot, destinationRoot, gitRunner = git, treeId }) {
   const root = join(destinationRoot, 'snapshot')
   mkdirSync(root, { recursive: true })
   const facts = collectCandidateTree({
     checkoutRoot,
+    gitRunner,
     treeId,
     visitEntry(entry, content) {
       const target = join(root, ...entry.entryPath.split('/'))
@@ -504,11 +530,11 @@ function readEvidence(evidenceRoot, host, mode) {
   return JSON.parse(stableEvidenceFile(evidenceRoot, join(evidenceRoot, host + '-' + mode + '.json')).bytes.toString('utf8'))
 }
 
-function candidateFactsForIndex(checkoutRoot) {
-  return collectCandidateTree({ checkoutRoot, treeId: git(checkoutRoot, ['write-tree']).trim() })
+function candidateFactsForIndex(checkoutRoot, gitRunner = git) {
+  return collectCandidateTree({ checkoutRoot, gitRunner, treeId: gitRunner(checkoutRoot, ['write-tree']).trim() })
 }
 
-function evaluateEvidence({ checkoutRoot, evidenceRoot, release }) {
+function evaluateEvidence({ checkoutRoot, evidenceRoot, gitRunner = git, release }) {
   const snapshot = inspectEvidenceDirectoryChain(checkoutRoot, evidenceRoot, false)
   const expectedRows = ['claude-clean.json', 'claude-repeat.json', 'codex-clean.json', 'codex-repeat.json']
   assertion(readdirSync(snapshot.root).sort(compareOrdinal).join(',') === expectedRows.join(','), 'Evidence root must contain exactly the four row files')
@@ -521,7 +547,7 @@ function evaluateEvidence({ checkoutRoot, evidenceRoot, release }) {
     assertion(row.status === 'pass' || !release && row.status === 'provisional' && row.diagnostic === 'host executable absent', 'Evidence status is not accepted')
   }
   const rows = cells.map((cell) => cell.row)
-  const digest = candidateFactsForIndex(checkoutRoot).digest
+  const digest = candidateFactsForIndex(checkoutRoot, gitRunner).digest
   for (const row of rows) {
     assertion(row.candidateDigest === digest, 'Evidence candidate digest is stale or mixed')
   }
@@ -774,10 +800,12 @@ async function runCell({ host, mode, checkoutRoot, evidenceRoot }) {
   const tempRoot = mkdtempSync(join(tmpdir(), 'nightshift-host-smoke-'))
   try {
     assertion(['claude', 'codex'].includes(host) && ['clean', 'repeat'].includes(mode), 'Unsupported host cell')
+    const parentEnv = process.env
+    const runtime = createTrustedSmokeRuntime({ checkoutRoot, evidenceRoot, host, parentEnv, temporaryRoot: tempRoot })
     const sequence = createCellSequence(host, mode)
     const repeat = sequence.includes('verify-baseline')
-    const treeId = git(checkoutRoot, ['write-tree']).trim()
-    const candidate = stageCandidate({ checkoutRoot, destinationRoot: tempRoot, treeId })
+    const treeId = runtime.gitRunner(checkoutRoot, ['write-tree']).trim()
+    const candidate = stageCandidate({ checkoutRoot, destinationRoot: tempRoot, gitRunner: runtime.gitRunner, treeId })
     const baseline = repeat ? loadLegacyBaseline(candidate.root) : null
     row.candidateVersion = candidate.version
     row.candidateDigest = candidate.digest
@@ -785,11 +813,14 @@ async function runCell({ host, mode, checkoutRoot, evidenceRoot }) {
     mkdirSync(workspace)
     const marketplace = join(tempRoot, 'marketplace')
     createMarketplace({ marketplaceRoot: marketplace, snapshotRoot: baseline === null ? candidate.root : baseline.root })
-    const parentEnv = process.env
     const homeDir = parentEnv.USERPROFILE || parentEnv.HOME
     assertion(typeof homeDir === 'string' && homeDir !== '', 'Home directory is unavailable')
-    const environment = projectRuntimeEnvironment(parentEnv)
-    const execute = (command, args, stdin) => runChild(command, args, { cwd: workspace, env: environment, stdin })
+    const environment = runtime.environment
+    const execute = (command, args, stdin) => {
+      assertion(command === host, 'Smoke cell requested a different host executable')
+
+      return runChild(runtime.hostExecutable, args, { cwd: workspace, env: environment, stdin })
+    }
     if (host === 'claude') {
       const profile = join(tempRoot, 'profile')
       copyCredential({ checkoutRoot, sourceRoot: resolveExternalClaudeConfigRoot(parentEnv, homeDir), sourceName: '.credentials.json', profileRoot: profile })
@@ -873,4 +904,4 @@ async function runCell({ host, mode, checkoutRoot, evidenceRoot }) {
   return row
 }
 
-module.exports = { CODEX_CATALOG_PROMPT, PUBLIC_SKILLS, RUNTIME_KEYS, assembleClaudePromptBaseline, assembleCodexPromptBaseline, assertClaudeInventory, assertEngineClosure, assertInitBacklogClosure, assertOutsideCheckout, buildCodexArgv, candidateFactsForIndex, classifyChildExit, createCellSequence, createMarketplace, evaluateEvidence, executeCellSequence, loadCandidateEngineResources, loadLegacyBaseline, loadPromptBaseline, parseClaudeAuthStatus, parseClaudeDetails, parseCodexAuthStatus, projectRuntimeEnvironment, resolveExternalClaudeConfigRoot, runCell, stableEvidenceFile, stageCandidate, validateEvidenceRow, writeEvidence }
+module.exports = { CODEX_CATALOG_PROMPT, PUBLIC_SKILLS, RUNTIME_KEYS, assembleClaudePromptBaseline, assembleCodexPromptBaseline, assertClaudeInventory, assertEngineClosure, assertInitBacklogClosure, assertOutsideCheckout, buildCodexArgv, candidateFactsForIndex, classifyChildExit, createCellSequence, createMarketplace, createTrustedSmokeRuntime, evaluateEvidence, executeCellSequence, loadCandidateEngineResources, loadLegacyBaseline, loadPromptBaseline, parseClaudeAuthStatus, parseClaudeDetails, parseCodexAuthStatus, projectRuntimeEnvironment, resolveExternalClaudeConfigRoot, runCell, stableEvidenceFile, stageCandidate, validateEvidenceRow, writeEvidence }

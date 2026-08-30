@@ -3085,6 +3085,7 @@ module.exports = {
   RESULT_ROW_FIELDS,
   UNSUPPORTED_HOST_LAUNCHER_DETAIL,
   buildClaudeSessionArgv,
+  buildContainedAmbientEnvironment,
   buildCodexInitialSessionArgv,
   buildCodexPluginSetupArgvs,
   buildCodexResumeSessionArgv,
