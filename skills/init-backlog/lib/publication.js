@@ -880,8 +880,10 @@ function resumeInspectionProjection(inspection, actionTargets, markerStates, sco
   // and the election requirement that follows from it.
   git.electionRequired = null
   git.freshScaffold = null
-  // Repository attributes and Git configuration can change a controlled
-  // target's newline policy without changing that target's bytes.
+  // Non-Git action policies can move from platform defaults to sibling
+  // evidence as approved targets appear. Git policies remain strict because
+  // repository attributes and configuration can change them independently.
+  if (git.kind === 'non-git') git.newlinePolicies = (git.newlinePolicies ?? []).filter((policy) => !actionTargets.has(policy.target))
   const nestedIgnoreEvidence = (git.nonPlanIgnoreMatches ?? []).filter((match) => match.sourcePath !== '.gitignore')
   if (scope.gitignorePublished) {
     // A completed root action can move root-sourced matches and their derived

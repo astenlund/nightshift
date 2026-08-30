@@ -100,7 +100,7 @@ function request(root, overrides = {}) {
   }
 }
 
-function approvedScaffoldRequest(root, context, carried, versionControlChoice) {
+function approvedScaffoldRequest(root, context, carried, versionControlChoice, requireRootIgnore = true) {
   const selected = (proposal) => proposal.condition === 'always' || proposal.condition === 'newline-lf'
   const semanticDecisions = carried.targets
     .filter((target) => target.contentRole === 'semantic' && target.templateId !== null && !target.states.includes('exact-template'))
@@ -113,7 +113,7 @@ function approvedScaffoldRequest(root, context, carried, versionControlChoice) {
     versionControlOptions: ['track', 'ignore', 'deferred', 'not-required'],
   }
   const applyRequest = JSON.parse(buildApprovedApplyRequest({ host: 'codex', hostContext: context, inspection: carried, manifestProposal, root }))
-  assert.ok(applyRequest.actions.some((action) => action.target === '.gitignore'), 'the approved transition must carry the root ignore action whose resume allowance is under test')
+  if (requireRootIgnore) assert.ok(applyRequest.actions.some((action) => action.target === '.gitignore'), 'the approved transition must carry the root ignore action whose resume allowance is under test')
 
   return applyRequest
 }
@@ -127,6 +127,15 @@ function realGitScaffoldFixture(root) {
   const carried = collect()
 
   return { applyRequest: approvedScaffoldRequest(root, context, carried, 'track'), carried, collect, context }
+}
+
+function realNonGitScaffoldFixture(root) {
+  mkdirSync(join(root, '.claude'), { recursive: true })
+  const context = { claudeContextSource: null, claudeRootExclusionStatus: null, codexContextSource: 'user-confirmed', codexInvocationDirectory: '.', codexProjectDocMaxBytes: 1048576, codexProjectInstructions: [] }
+  const collect = (inspectionRoot = root, host = 'codex', hostContext = context, options = {}) => collectInspection(inspectionRoot, host, hostContext, { ...options, candidates: [], platformEol: 'lf' })
+  const carried = collect()
+
+  return { applyRequest: approvedScaffoldRequest(root, context, carried, 'not-required', false), carried, collect }
 }
 
 function resumableCreateFixture(root, target = 'FEATURES.md') {
@@ -1000,6 +1009,47 @@ function runPublicationCases() {
         assert.notDeepEqual(actionPolicies(live), actionPolicies(carried), scenario.name)
 
         expectCode(() => publishApply(applyRequest, { collectInspection: () => live, resume: true }), 'snapshot-drift')
+      } finally {
+        rmSync(root, { force: true, recursive: true })
+      }
+    })
+  }
+
+  for (const scenario of [
+    { name: 'file-prefix', stopAfter: 1 },
+    { name: 'completion', stopAfter: Number.POSITIVE_INFINITY },
+  ]) {
+    test(`resume accepts non-Git platform-to-siblings newline policy transitions after ${scenario.name}`, () => {
+      const root = fixtureRoot()
+      try {
+        const { applyRequest, carried, collect } = realNonGitScaffoldFixture(root)
+        const fileActions = applyRequest.actions.filter((action) => action.kind !== 'ensure-directory')
+        const actionTargets = new Set(fileActions.map((action) => action.target))
+        const actionPaths = new Set([...actionTargets].map((target) => join(root, ...target.split('/'))))
+        const stopAfter = scenario.stopAfter === Number.POSITIVE_INFINITY ? fileActions.length : scenario.stopAfter
+        let publicationCount = 0
+        let stopPending = false
+
+        assert.throws(() => publishApply(applyRequest, {
+          crash: true,
+          currentInspection: carried,
+          onPublished: (destination) => {
+            if (!actionPaths.has(destination)) return
+            publicationCount += 1
+            stopPending = publicationCount === stopAfter
+          },
+          onTransition: (point) => { if (stopPending && point === 'after-temporary-cleanup') throw new Error(`crash after ${scenario.name}`) },
+        }), new RegExp(`crash after ${scenario.name}`))
+        const progress = approvedProgress(applyRequest, root, {})
+        assert.equal(progress.recognized, true, canonicalJson(progress))
+        assert.ok(progress.applied > 0, canonicalJson(progress))
+        assert.equal(progress.applied === applyRequest.actions.length, scenario.name === 'completion', canonicalJson(progress))
+        const live = collect()
+        const carriedPolicies = new Map(carried.git.newlinePolicies.map((policy) => [policy.target, policy]))
+        const transitioned = live.git.newlinePolicies.filter((policy) => actionTargets.has(policy.target) && carriedPolicies.get(policy.target)?.source === 'platform' && policy.source === 'siblings')
+        assert.ok(transitioned.length > 0, canonicalJson({ carried: carried.git.newlinePolicies, live: live.git.newlinePolicies }))
+
+        assert.equal(publishApply(applyRequest, { collectInspection: collect, resume: true }).ok, true)
       } finally {
         rmSync(root, { force: true, recursive: true })
       }
