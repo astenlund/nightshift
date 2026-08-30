@@ -2518,6 +2518,25 @@ function runRecoveryCases() {
     }
   })
 
+  test('stale-owner evidence rejects a backup stage without the required dot prefix', () => {
+    const root = fixtureRoot()
+    try {
+      const snapshotId = 'a'.repeat(64)
+      const manifestId = 'b'.repeat(64)
+      const targetHash = sha256(Buffer.from('FEATURES.md', 'utf8'))
+      const malformedStage = `.tmp/Xnightshift-init-backlog-unwrap-${snapshotId}-${manifestId}-${targetHash}.tmp`
+      const backup = `.tmp/nightshift-init-backlog-unwrap-${snapshotId}-${manifestId}-${targetHash}.bak`
+      mkdirSync(join(root, '.tmp'), { mode: 0o700 })
+      writeFileSync(join(root, ...malformedStage.split('/')), Buffer.from('backup', 'utf8'), { mode: 0o600 })
+      linkSync(join(root, ...malformedStage.split('/')), join(root, ...backup.split('/')))
+      ownerFixture(root, { manifestId, temporaryPaths: [malformedStage, backup] })
+
+      assert.throws(() => inspectRecovery(request(root, 'stale-owner', '.nightshift-init-backlog.lock'), { killProcess: absentPid() }), /malformed|inventory|temporary/i)
+    } finally {
+      rmSync(root, { force: true, recursive: true })
+    }
+  })
+
   test('stale-owner evidence rejects a missing stage paired with a different backup snapshot', () => {
     const root = fixtureRoot()
     try {
