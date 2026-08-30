@@ -414,19 +414,19 @@ function readElectionMarker(root, options = {}) {
   return { marker: value.state, mode, path, snapshotId: value.snapshotId }
 }
 
-function discoverInitialLockStages(root, options = {}) {
+function discoverInitialLockStage(root, options = {}) {
   let name
   try {
     name = readOrdinalFirstDirectoryName(root, { ...options, includeName: (candidate) => RECOVERY_LOCK_STAGE_PATTERN.test(candidate) })
   } catch (error) {
     inspectError('runtime-lock', 'Inspection lock residue cannot be enumerated.', null, error, 'lock')
   }
-  if (name === null) return []
+  if (name === null) return null
   const path = join(root, name)
   try {
     const opened = stableOpenFile(root, path, boundedOpenOptions(options, MAX_RECOVERY_REQUEST_BYTES, { requireSingleLink: true }))
 
-    return [{ name, opened, path }]
+    return { name, opened, path }
   } catch (error) {
     inspectError('runtime-lock', 'Orphan initial lock stage cannot be trusted.', name, error, 'lock')
   }
@@ -808,8 +808,8 @@ function inspect(root, host, hostContext = {}, options = {}) {
   }
   const canonical = canonicalRoot(root)
   const lockPath = join(canonical, RECOVERY_LOCK_BASENAME)
-  const stages = discoverInitialLockStages(canonical, options)
-  if (stages.length > 0) inspectError('runtime-lock', 'Orphan initial lock stage requires recovery.', stages[0].name, undefined, 'lock')
+  const stage = discoverInitialLockStage(canonical, options)
+  if (stage !== null) inspectError('runtime-lock', 'Orphan initial lock stage requires recovery.', stage.name, undefined, 'lock')
   try {
     lstatSync(lockPath, { bigint: true })
     inspectError('runtime-lock', 'Inspection lock already exists.', RECOVERY_LOCK_BASENAME, undefined, 'lock')
@@ -855,4 +855,4 @@ function inspect(root, host, hostContext = {}, options = {}) {
   }
 }
 
-module.exports = { buildIgnoreProbes, buildReadyCatalog, collectInspection, composeElectionMarker, composeElectionRecord, creationMode, decodeText, discoverInitialLockStages, inspect, inspectRegions, isReadyCatalogTarget, lineRecords, materializeText, maskedRecords, newlineTargetEvidence, projectGitProblems, projectReadyProblems, proposal, readElectionMarker, targetRecord, targetState, validateElectionMarkerRecord }
+module.exports = { buildIgnoreProbes, buildReadyCatalog, collectInspection, composeElectionMarker, composeElectionRecord, creationMode, decodeText, discoverInitialLockStage, inspect, inspectRegions, isReadyCatalogTarget, lineRecords, materializeText, maskedRecords, newlineTargetEvidence, projectGitProblems, projectReadyProblems, proposal, readElectionMarker, targetRecord, targetState, validateElectionMarkerRecord }

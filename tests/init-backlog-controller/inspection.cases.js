@@ -18,7 +18,7 @@ const {
   composeElectionMarker,
   inspect,
   creationMode,
-  discoverInitialLockStages,
+  discoverInitialLockStage,
   maskedRecords,
   newlineTargetEvidence,
   readElectionMarker,
@@ -907,9 +907,9 @@ function runInspectionCases(repositoryRoot) {
     const root = mkdtempSync(join(tmpdir(), 'nightshift-stage-'))
     const name = `.nightshift-init-backlog.lock.1234.${'b'.repeat(32)}.new`
     writeFileSync(join(root, name), '{"protocolVersion":1}\n', { mode: 0o600 })
-    const stages = discoverInitialLockStages(root)
-    assert.equal(stages.length, 1)
-    assert.equal(stages[0].name, name)
+    const stage = discoverInitialLockStage(root)
+    assert.notEqual(stage, null)
+    assert.equal(stage.name, name)
     rmSync(root, { recursive: true, force: true })
   })
 

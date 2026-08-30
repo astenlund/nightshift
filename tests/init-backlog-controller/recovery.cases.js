@@ -14,7 +14,7 @@ const { InitBacklogError, failureRecord } = require('../../skills/init-backlog/l
 const { runPrivateDispatcher } = require('../../skills/init-backlog/init-backlog')
 const { MAX_INLINE_FILE_BYTES, MAX_MECHANICAL_FILE_BYTES, MAX_RECOVERY_REQUEST_BYTES, backupFileNames, canonicalBytes, canonicalJson, compareOrdinal, deriveRecoveryId, deriveSnapshotId, encodeResult, sha256, validateResultRecord } = require('../../skills/init-backlog/lib/protocol')
 const { stableOpenFile } = require('../../skills/init-backlog/lib/filesystem')
-const { discoverInitialLockStages, inspect } = require('../../skills/init-backlog/lib/inspection')
+const { discoverInitialLockStage, inspect } = require('../../skills/init-backlog/lib/inspection')
 const { unwrapText } = require('../../skills/init-backlog/unwrap')
 const { ELECTION_MARKER_PATH } = require('./election-oracles')
 
@@ -1577,10 +1577,10 @@ function runRecoveryCases() {
     try {
       const first = stageFixture(root, 123, 'a'.repeat(32))
       const second = stageFixture(root, 124, 'b'.repeat(32))
-      const found = discoverInitialLockStages(root, { killProcess: absentPid() })
-      assert.deepEqual(found.map((item) => item.name), [first])
+      const found = discoverInitialLockStage(root, { killProcess: absentPid() })
+      assert.equal(found.name, first)
       rmSync(join(root, first))
-      assert.deepEqual(discoverInitialLockStages(root, { killProcess: absentPid() }).map((item) => item.name), [second])
+      assert.equal(discoverInitialLockStage(root, { killProcess: absentPid() }).name, second)
     } finally { rmSync(root, { force: true, recursive: true }) }
   })
 
@@ -1588,7 +1588,7 @@ function runRecoveryCases() {
     const root = fixtureRoot()
     try {
       writeFileSync(join(root, '.nightshift-init-backlog.lock.bad.new'), Buffer.from('ignored'))
-      assert.deepEqual(discoverInitialLockStages(root), [])
+      assert.equal(discoverInitialLockStage(root), null)
     } finally { rmSync(root, { force: true, recursive: true }) }
   })
 
@@ -1596,7 +1596,7 @@ function runRecoveryCases() {
     const root = fixtureRoot()
     try {
       const target = stageFixture(root)
-      discoverInitialLockStages(root, { killProcess: absentPid() })
+      discoverInitialLockStage(root, { killProcess: absentPid() })
       assert.equal(existsSync(join(root, target)), true)
     } finally { rmSync(root, { force: true, recursive: true }) }
   })
@@ -1707,15 +1707,15 @@ function runRecoveryCases() {
 
   test('ordinary inspect reports no orphan stage when none exists', () => {
     const root = fixtureRoot()
-    try { assert.deepEqual(discoverInitialLockStages(root), []) } finally { rmSync(root, { force: true, recursive: true }) }
+    try { assert.equal(discoverInitialLockStage(root), null) } finally { rmSync(root, { force: true, recursive: true }) }
   })
 
   test('ordinary inspect reports the malformed orphan stage for recovery', () => {
     const root = fixtureRoot()
     try {
       const target = stageFixture(root, 123, 'a'.repeat(32), Buffer.from('malformed', 'utf8'))
-      const found = discoverInitialLockStages(root, { killProcess: absentPid() })
-      assert.equal(found[0].name, target)
+      const found = discoverInitialLockStage(root, { killProcess: absentPid() })
+      assert.equal(found.name, target)
     } finally { rmSync(root, { force: true, recursive: true }) }
   })
 
@@ -1723,9 +1723,9 @@ function runRecoveryCases() {
     const root = fixtureRoot()
     try {
       const targets = Array.from({ length: 65 }, (_, index) => stageFixture(root, 1000 + index, index.toString(16).padStart(32, '0'))).sort(compareOrdinal)
-      assert.deepEqual(discoverInitialLockStages(root, { killProcess: absentPid() }).map((item) => item.name), [targets[0]])
+      assert.equal(discoverInitialLockStage(root, { killProcess: absentPid() }).name, targets[0])
       rmSync(join(root, targets[0]))
-      assert.deepEqual(discoverInitialLockStages(root, { killProcess: absentPid() }).map((item) => item.name), [targets[1]])
+      assert.equal(discoverInitialLockStage(root, { killProcess: absentPid() }).name, targets[1])
     } finally { rmSync(root, { force: true, recursive: true }) }
   })
 
