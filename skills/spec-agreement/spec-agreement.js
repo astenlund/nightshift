@@ -595,14 +595,14 @@ function uniquePhysicalLegacyArtifacts(artifacts) {
   return [...byPath.values()];
 }
 
-function detectLegacyMarkers(input) {
+function detectLegacyMarkers(input, scan = scanMarkdown) {
   if (!exactOrderedKeys(input, ['artifacts']) || !Array.isArray(input.artifacts)) {
     hardeningGrammar('Legacy detection requires an ordered artifact array.');
   }
   const matches = [];
 
   for (const artifact of uniquePhysicalLegacyArtifacts(input.artifacts)) {
-    const scanned = scanMarkdown(artifact.sourceBuffer);
+    const scanned = scan(artifact.sourceBuffer);
     if (scanned.unclosedFence) {
       hardeningGrammar('Legacy detection cannot scan an unclosed fenced block.');
     }
@@ -636,7 +636,7 @@ function detectLegacyMarkers(input) {
   return { matches };
 }
 
-function previewLegacyMarkerDeletion(input) {
+function previewLegacyMarkerDeletion(input, scan = scanMarkdown) {
   if (!exactOrderedKeys(input, ['sourceBuffer', 'baselineHash', 'matches']) || !Buffer.isBuffer(input.sourceBuffer) || !Array.isArray(input.matches)) {
     hardeningGrammar('Legacy preview input must use the closed shape.');
   }
@@ -646,11 +646,11 @@ function previewLegacyMarkerDeletion(input) {
   }
   const detected = detectLegacyMarkers({
     artifacts: [{ path: input.matches[0]?.path, selectorKind: 'design-before-hardening', selectors: [], sourceBuffer: input.sourceBuffer }],
-  }).matches;
+  }, scan).matches;
   if (!legacyMatchesEqual(input.matches, detected)) {
     hardeningGrammar('Legacy deletion evidence does not match the markers detected in the current source bytes.');
   }
-  const scanned = scanMarkdown(input.sourceBuffer);
+  const scanned = scan(input.sourceBuffer);
   let previousEnd = -1;
   let path = null;
   for (const match of input.matches) {
@@ -2610,7 +2610,8 @@ function legacyDeletionsEqual(actual, expected) {
 function deriveLegacyDeletions(artifacts) {
   const deletions = [];
   const physicalArtifacts = uniquePhysicalLegacyArtifacts(artifacts);
-  const matches = detectLegacyMarkers({ artifacts: physicalArtifacts }).matches;
+  const scan = createMarkdownScanner();
+  const matches = detectLegacyMarkers({ artifacts: physicalArtifacts }, scan).matches;
   let matchIndex = 0;
   for (const artifact of physicalArtifacts) {
     const firstMatchIndex = matchIndex;
@@ -2619,7 +2620,7 @@ function deriveLegacyDeletions(artifacts) {
     }
     const artifactMatches = matches.slice(firstMatchIndex, matchIndex);
     if (artifactMatches.length > 0) {
-      const preview = previewLegacyMarkerDeletion({ sourceBuffer: artifact.sourceBuffer, baselineHash: completeFileHash(artifact.sourceBuffer), matches: artifactMatches });
+      const preview = previewLegacyMarkerDeletion({ sourceBuffer: artifact.sourceBuffer, baselineHash: completeFileHash(artifact.sourceBuffer), matches: artifactMatches }, scan);
       for (const deletion of preview.deletions) {
         deletions.push(deletion);
       }

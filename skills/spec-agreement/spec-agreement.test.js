@@ -3850,6 +3850,19 @@ test('reviewed migration evidence must exactly match current detector and previe
   assert.equal(decideAgreementGate({ ...noMarker, legacyDeletions: deletions }).kind, 'stop-error', 'fabricated');
 });
 
+test('reviewed migration derivation scans each stable artifact once per gate invocation', () => {
+  const { input, deletions } = legacyMigrationFixture();
+  const scanCounts = input.resolution.artifacts.map((artifact) => countMarkdownScans(artifact.sourceBuffer));
+
+  assert.equal(detectLegacyMarkers.length, 1);
+  assert.equal(previewLegacyMarkerDeletion.length, 1);
+  assert.deepEqual(decideAgreementGate(input), { kind: 'reviewed-migration', sessionState: null, digest: null, evidence: { deletions } });
+  assert.deepEqual(scanCounts.map((count) => count()), [1, 1]);
+
+  assert.deepEqual(decideAgreementGate(input), { kind: 'reviewed-migration', sessionState: null, digest: null, evidence: { deletions } });
+  assert.deepEqual(scanCounts.map((count) => count()), [2, 2], 'a later gate invocation must own a fresh memo');
+});
+
 test('large legacy marker sets stay linear and do not exceed the argument stack', () => {
   const target = scope('whole-file', 'docs/spec.md');
   const sourceBuffer = Buffer.from('Status: signed off\n'.repeat(150_000));
