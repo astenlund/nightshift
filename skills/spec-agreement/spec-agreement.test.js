@@ -2831,7 +2831,7 @@ test('resolveGoverningSet preserves declaration order, inserts companions, sorts
   assert.equal(distinct.governingScopes.length, 2);
   assert.deepEqual(distinct.governingScopes.map((item) => item.workUnit.declaration), [firstSlice, secondSlice]);
   assert.equal(distinct.artifacts.length, 1);
-  assert.deepEqual(counted.counts, { readFile: 1, readDirectory: 2, realpath: 2, replaceFileAtomically: 0 });
+  assert.deepEqual(counted.counts, { readFile: 1, readDirectory: 2, realpath: 6, replaceFileAtomically: 0 });
 });
 
 test('resolveGoverningSet reuses canonical artifacts within one invocation only', () => {
@@ -2842,13 +2842,13 @@ test('resolveGoverningSet reuses canonical artifacts within one invocation only'
 
   assert.equal(first.governingScopes.length, 1);
   assert.equal(first.artifacts.length, 1);
-  assert.deepEqual(counted.counts, { readFile: 1, readDirectory: 1, realpath: 2, replaceFileAtomically: 0 });
+  assert.deepEqual(counted.counts, { readFile: 1, readDirectory: 1, realpath: 6, replaceFileAtomically: 0 });
 
   const second = resolve(resolverRequest, counted.adapter);
 
   assert.equal(second.governingScopes.length, 1);
   assert.equal(second.artifacts.length, 1);
-  assert.deepEqual(counted.counts, { readFile: 2, readDirectory: 2, realpath: 4, replaceFileAtomically: 0 });
+  assert.deepEqual(counted.counts, { readFile: 2, readDirectory: 2, realpath: 12, replaceFileAtomically: 0 });
 });
 
 test('resolveGoverningSet scans each stable artifact buffer once per invocation', () => {
@@ -3347,6 +3347,64 @@ test('parsePlanContract enforces exact declaration and visible-header grammar', 
 
   const fencedLookalike = Buffer.from(`# Plan\n\n\`\`\`\n**Spec:** none\n## Governing specs\n- None.\n\`\`\`\n\n${validHeader}\n\n## Governing specs\n\n- Spec JSON: ${json}\n`);
   assert.deepEqual(parsePlanContract({ planBuffer: fencedLookalike, projectRoot }, { fsAdapter }).governingScopes, [canonicalScope]);
+});
+
+test('parsePlanContract rejects detectable parent replacement during an authoritative read', () => {
+  const path = 'docs/spec.md';
+  const governingScope = scope('whole-file', path);
+  const repository = fakeRepository({ [path]: '# Spec\n' });
+  let parentReplaced = false;
+  const fsAdapter = {
+    ...repository,
+    readFile: (target) => {
+      const bytes = repository.readFile(target);
+      parentReplaced = true;
+
+      return bytes;
+    },
+    realpath: (target) => parentReplaced ? target.replace(projectRoot, 'C:/replacement') : target,
+  };
+  const planBuffer = serializePlanContract({ planBody: Buffer.from('# Plan\n\n## Work\n'), governingScopes: [governingScope] });
+
+  assert.throws(
+    () => parsePlanContract({ planBuffer, projectRoot }, { fsAdapter }),
+    (error) => error instanceof AgreementError && error.code === 'structural-error' && error.evidence.kind === 'artifact-identity-drift' && error.evidence.path === path,
+  );
+});
+
+test('parsePlanContract classifies stable-open identity drift', () => {
+  const path = 'docs/spec.md';
+  const governingScope = scope('whole-file', path);
+  const repository = fakeRepository({ [path]: '# Spec\n' });
+  const drift = new Error('Stable-open parent identity changed');
+  drift.code = 'identity-changed';
+  const fsAdapter = { ...repository, readFile: () => { throw drift; } };
+  const planBuffer = serializePlanContract({ planBody: Buffer.from('# Plan\n\n## Work\n'), governingScopes: [governingScope] });
+
+  assert.throws(
+    () => parsePlanContract({ planBuffer, projectRoot }, { fsAdapter }),
+    (error) => error instanceof AgreementError && error.code === 'structural-error' && error.evidence.kind === 'artifact-identity-drift' && error.evidence.path === path,
+  );
+});
+
+test('parsePlanContract preserves ordinary read failures as unreadable artifacts', () => {
+  const path = 'docs/spec.md';
+  const governingScope = scope('whole-file', path);
+  const repository = fakeRepository({ [path]: '# Spec\n' });
+  const failure = new Error('ordinary read failure');
+  failure.code = 'EIO';
+  const fsAdapter = { ...repository, readFile: () => { throw failure; } };
+  const planBuffer = serializePlanContract({ planBody: Buffer.from('# Plan\n\n## Work\n'), governingScopes: [governingScope] });
+
+  assert.throws(
+    () => parsePlanContract({ planBuffer, projectRoot }, { fsAdapter }),
+    (error) => error instanceof AgreementError
+      && error.code === 'structural-error'
+      && error.evidence.kind === 'unreadable-artifact'
+      && error.evidence.operation === 'readFile'
+      && error.evidence.path === `${projectRoot}/${path}`
+      && error.evidence.originalMessage === 'ordinary read failure',
+  );
 });
 
 test('parsePlanContract rejects excessive declarations before filesystem access', () => {

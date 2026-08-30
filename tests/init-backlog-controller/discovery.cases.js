@@ -2,7 +2,7 @@
 
 const assert = require('node:assert/strict')
 const { spawnSync } = require('node:child_process')
-const { chmodSync, linkSync, lstatSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } = require('node:fs')
+const { chmodSync, linkSync, lstatSync, mkdirSync, mkdtempSync, renameSync, rmSync, symlinkSync, writeFileSync } = require('node:fs')
 const { tmpdir } = require('node:os')
 const { join, resolve } = require('node:path')
 const test = require('node:test')
@@ -74,6 +74,71 @@ function runDiscoveryCases(repositoryRoot) {
     } finally {
       rmSync(root, { force: true, recursive: true })
       rmSync(outsideRoot, { force: true, recursive: true })
+    }
+  })
+
+  test('stable-open classifies same-path target replacement as identity drift', () => {
+    const root = temporaryRoot('nightshift-discovery-target-drift-')
+    try {
+      const path = ordinaryFile(join(root, 'file.md'))
+      const displaced = join(root, 'displaced.md')
+
+      assert.throws(
+        () => stableOpenFile(root, path, {
+          beforeOpen: () => {
+            renameSync(path, displaced)
+            ordinaryFile(path, 'replacement\n')
+          },
+        }),
+        (error) => error?.code === 'identity-changed' && error.message === 'Stable-open target identity changed',
+      )
+    } finally {
+      rmSync(root, { force: true, recursive: true })
+    }
+  })
+
+  test('stable-open rejects same-path parent replacement', () => {
+    const root = temporaryRoot('nightshift-discovery-parent-drift-')
+    try {
+      const parent = join(root, 'docs')
+      const displaced = join(root, 'displaced')
+      mkdirSync(parent)
+      const path = ordinaryFile(join(parent, 'file.md'))
+
+      assert.throws(
+        () => stableOpenFile(root, path, {
+          beforeOpen: () => {
+            renameSync(parent, displaced)
+            mkdirSync(parent)
+            ordinaryFile(path, 'replacement\n')
+          },
+        }),
+        (error) => error?.code === 'identity-changed' && error.message === 'Stable-open parent identity changed',
+      )
+    } finally {
+      rmSync(root, { force: true, recursive: true })
+    }
+  })
+
+  test('stable-open rejects same-path root replacement when the target parent is the root', () => {
+    const root = temporaryRoot('nightshift-discovery-root-drift-')
+    const displaced = `${root}-displaced`
+    try {
+      const path = ordinaryFile(join(root, 'file.md'))
+
+      assert.throws(
+        () => stableOpenFile(root, path, {
+          beforeOpen: () => {
+            renameSync(root, displaced)
+            mkdirSync(root)
+            ordinaryFile(path, 'replacement\n')
+          },
+        }),
+        (error) => error?.code === 'identity-changed' && error.message === 'Stable-open root identity changed',
+      )
+    } finally {
+      rmSync(root, { force: true, recursive: true })
+      rmSync(displaced, { force: true, recursive: true })
     }
   })
 

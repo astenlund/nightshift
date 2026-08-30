@@ -3,6 +3,7 @@ const { isUtf8 } = require('node:buffer');
 const { closeSync, lstatSync, openSync, readFileSync, readdirSync, realpathSync, renameSync, statSync, unlinkSync, writeFileSync } = require('node:fs');
 const nodePath = require('node:path');
 const { isDeepStrictEqual } = require('node:util');
+const { stableOpenFile } = require('../../internal/filesystem-primitives.js');
 
 let stagingCounter = 0;
 
@@ -464,11 +465,15 @@ function thrownMessage(thrown) {
   }
 }
 
-function adapterCall(fsAdapter, operation, path) {
+function unreadableArtifact(operation, path, thrown) {
+  structural('Filesystem adapter could not read the nominated artifact.', { kind: 'unreadable-artifact', operation, path, originalMessage: thrownMessage(thrown) });
+}
+
+function adapterCall(fsAdapter, operation, path, ...args) {
   try {
-    return fsAdapter[operation](path);
+    return fsAdapter[operation](path, ...args);
   } catch (thrown) {
-    structural('Filesystem adapter could not read the nominated artifact.', { kind: 'unreadable-artifact', operation, path, originalMessage: thrownMessage(thrown) });
+    unreadableArtifact(operation, path, thrown);
   }
 }
 
@@ -521,6 +526,40 @@ function canonicalizePath(projectRoot, nominatedPath, fsAdapter) {
   }
 
   return { path: segments.join('/'), realPath };
+}
+
+function artifactIdentityDrift(canonical) {
+  structural('Authoritative artifact identity changed during the read.', { kind: 'artifact-identity-drift', path: canonical.path });
+}
+
+function revalidateCanonicalArtifact(projectRoot, canonical, fsAdapter) {
+  const realRoot = adapterCall(fsAdapter, 'realpath', projectRoot);
+  const nominatedPath = `${projectRoot.replace(/[\\/]$/, '')}/${canonical.path}`;
+  const realPath = adapterCall(fsAdapter, 'realpath', nominatedPath);
+  const relative = nodePath.relative(realRoot, realPath);
+  if (realPath !== canonical.realPath || relative === '' || relative === '..' || relative.startsWith(`..${nodePath.sep}`) || nodePath.isAbsolute(relative)) {
+    artifactIdentityDrift(canonical);
+  }
+
+  return realRoot;
+}
+
+function readCanonicalArtifact(projectRoot, canonical, fsAdapter) {
+  const realRoot = revalidateCanonicalArtifact(projectRoot, canonical, fsAdapter);
+  let sourceBuffer;
+  try {
+    sourceBuffer = fsAdapter.readFile(canonical.realPath, { realRoot });
+  } catch (thrown) {
+    if (thrown instanceof Error && thrown.code === 'identity-changed') {
+      artifactIdentityDrift(canonical);
+    }
+    unreadableArtifact('readFile', canonical.realPath, thrown);
+  }
+  if (revalidateCanonicalArtifact(projectRoot, canonical, fsAdapter) !== realRoot) {
+    artifactIdentityDrift(canonical);
+  }
+
+  return sourceBuffer;
 }
 
 function completeFileHash(sourceBuffer) {
@@ -1144,7 +1183,7 @@ function createArtifactSnapshot(projectRoot, fsAdapter, realTargets = new Map())
     },
     read: (canonical) => {
       if (!sourceByRealPath.has(canonical.realPath)) {
-        sourceByRealPath.set(canonical.realPath, adapterCall(fsAdapter, 'readFile', canonical.realPath));
+        sourceByRealPath.set(canonical.realPath, readCanonicalArtifact(projectRoot, canonical, fsAdapter));
       }
 
       return sourceByRealPath.get(canonical.realPath);
@@ -2844,7 +2883,11 @@ function decideAgreementGate(input, options = null) {
 
 function productionFsAdapter() {
   return {
-    readFile: (path) => readFileSync(path),
+    readFile: (path, options = {}) => {
+      if (options.realRoot === undefined) return readFileSync(path);
+
+      return stableOpenFile(options.realRoot, path, { requireSingleLink: false }).bytes;
+    },
     readDirectory: (path) => readdirSync(path),
     realpath: (path) => realpathSync(path),
     replaceFileAtomically: (path, nextBytes) => {
