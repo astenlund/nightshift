@@ -292,6 +292,45 @@ function runDiscoveryCases(repositoryRoot) {
     }
   })
 
+  test('Windows guidance discovery excludes root and nested uppercase Git metadata directories', () => {
+    const root = temporaryRoot('nightshift-discovery-windows-git-skip-')
+    try {
+      ordinaryFile(join(root, 'CLAUDE.md'), '# CLAUDE.md\n')
+      mkdirSync(join(root, 'nested'))
+      ordinaryFile(join(root, 'nested', 'CLAUDE.md'), '# nested\n')
+      mkdirSync(join(root, '.GIT', 'objects'), { recursive: true })
+      ordinaryFile(join(root, '.GIT', 'CLAUDE.md'), '# repository metadata\n')
+      ordinaryFile(join(root, '.GIT', 'objects', 'CLAUDE.local.md'), '# repository metadata\n')
+      mkdirSync(join(root, 'vendor', '.GIT'), { recursive: true })
+      ordinaryFile(join(root, 'vendor', '.GIT', 'CLAUDE.md'), '# nested metadata\n')
+
+      const resolved = resolveGuidance(root, 'claude-code', { claudeRootExclusionStatus: 'included', claudeContextSource: 'host-observed' }, { attributeProbe: (paths) => windowsAttributeProbe(paths), platform: 'win32' })
+
+      assert.deepEqual(resolved.candidates, ['CLAUDE.md', 'nested/CLAUDE.md'])
+      assert.deepEqual(resolved.independentPaths, ['nested/CLAUDE.md'])
+      assert.equal(resolved.graphPaths.some((target) => target.includes('.GIT/')), false)
+    } finally {
+      rmSync(root, { force: true, recursive: true })
+    }
+  })
+
+  test('POSIX guidance discovery preserves uppercase Git-named guidance directories', () => {
+    const root = temporaryRoot('nightshift-discovery-posix-git-preserve-')
+    try {
+      ordinaryFile(join(root, 'CLAUDE.md'), '# CLAUDE.md\n')
+      mkdirSync(join(root, '.GIT'))
+      ordinaryFile(join(root, '.GIT', 'CLAUDE.md'), '# ordinary POSIX guidance\n')
+
+      const resolved = resolveGuidance(root, 'claude-code', { claudeRootExclusionStatus: 'included', claudeContextSource: 'host-observed' }, { platform: 'linux' })
+
+      assert.deepEqual(resolved.candidates, ['.GIT/CLAUDE.md', 'CLAUDE.md'])
+      assert.deepEqual(resolved.independentPaths, ['.GIT/CLAUDE.md'])
+      assert.deepEqual(resolved.graphPaths, ['.GIT/CLAUDE.md', 'CLAUDE.md'])
+    } finally {
+      rmSync(root, { force: true, recursive: true })
+    }
+  })
+
   test('overlapping Claude traversals emit each import edge once', () => {
     const root = temporaryRoot('nightshift-discovery-overlap-')
     try {

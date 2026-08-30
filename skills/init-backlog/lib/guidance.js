@@ -20,6 +20,10 @@ const MAX_CONTROLLED_MARKDOWN_RETAINED_BYTES = 1048576
 const MAX_CONTROLLED_DISCOVERY_ENTRIES = 1024
 const GIT_METADATA_DIRECTORY = '.git'
 
+function isGitMetadataDirectory(name, platform) {
+  return platform === 'win32' ? /^\.git$/i.test(name) : name === GIT_METADATA_DIRECTORY
+}
+
 function fail(detail, cause, target = null) {
   throwInitBacklogError({ code: 'guidance-resolution', detail, operation: OPERATION.INSPECT, phase: 'resolve', target }, cause)
 }
@@ -127,11 +131,10 @@ function inspectDirectory(root, target, visitor, options = {}) {
   for (const entry of entries) {
     const child = target === '' ? entry.name : `${target}/${entry.name}`
     if (entry.metadata.isDirectory()) {
-      // Repository metadata is never user-authored guidance, and a `.git`
-      // directory at any depth (the repository's own, a submodule's, a nested
-      // checkout's) can hold an unbounded object store. Descending it would
-      // read the whole store on every inspection to discover nothing.
-      if (entry.name === GIT_METADATA_DIRECTORY) {
+      // Repository metadata is never user-authored guidance. Windows reserves
+      // every case variant of `.git`, while POSIX reserves only the exact name.
+      // A metadata directory at any depth can hold an unbounded object store.
+      if (isGitMetadataDirectory(entry.name, options.platform ?? process.platform)) {
         continue
       }
       inspectDirectory(root, child, visitor, options)
