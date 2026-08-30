@@ -346,7 +346,7 @@ function createWindowsJobRunnerAdapter({
 
       return
     }
-    const members = OUTPUT_FRAME_MEMBERS[frame.kind]
+    const members = Object.hasOwn(OUTPUT_FRAME_MEMBERS, frame.kind) ? OUTPUT_FRAME_MEMBERS[frame.kind] : undefined
     if (members === undefined || Object.keys(frame).sort().join(',') !== members.join(',')) {
       protocolFailure()
 

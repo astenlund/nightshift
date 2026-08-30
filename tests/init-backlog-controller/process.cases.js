@@ -514,6 +514,17 @@ function runProcessCases(repositoryRoot) {
     }
   })
 
+  test('inherited output-frame kind names fail through protocol cleanup', () => {
+    const harness = startedWindowsHarness()
+
+    assert.doesNotThrow(() => harness.runner.pushStdout(canonicalLine({ kind: '__proto__' })))
+    assert.deepEqual(harness.events.failures, [{ detailCode: 'termination' }])
+    assert.deepEqual(harness.runner.stdinWrites[1], canonicalLine({ kind: 'terminate' }), 'the malformed frame starts contained cleanup')
+    assert.equal(harness.clock.timers.length, 1, 'cleanup arms the job-empty deadline')
+    harness.runner.pushStderr(Buffer.from('late'))
+    assert.deepEqual(harness.adapter.accounting(), [{ detailCode: 'termination' }], 'later runner failures remain accounting only')
+  })
+
   test('a pre-session command sends close-input immediately after started and a session retains stdin', () => {
     const preSession = windowsHarness({ mode: 'pre-session' })
     preSession.adapter.start(START_PAYLOAD)
