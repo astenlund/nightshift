@@ -2173,6 +2173,48 @@ function runHostEntryCases(repositoryRoot) {
     }
   })
 
+  test('credential-bearing transcript and repository carriers publish no evidence leaf', async () => {
+    for (const source of ['host-event', 'repository-file']) {
+      const scratch = tempRoot()
+      try {
+        const evidenceOutputRoot = join(scratch, 'evidence')
+        nodeFilesystem.mkdirSync(evidenceOutputRoot, { recursive: true })
+        const harness = createEvaluationHarness(scratch, {
+          onSession: (call) => {
+            const token = call.environment.ANTHROPIC_API_KEY
+            const evidence = []
+            if (source === 'host-event') {
+              const transcript = driver.createTranscript()
+              transcript.appendHostEvent(Buffer.from(`event:${token}`, 'utf8'))
+              evidence.push({ bytes: transcript.toBuffer(), path: 'transcript.jsonl' })
+            } else {
+              nodeFilesystem.writeFileSync(join(call.cwd, 'credential-leak.txt'), `file:${token}`)
+            }
+
+            return { evidence, record: { deterministicDigest: 'd'.repeat(64), dialogueFacts: { ...DIALOGUE_FACTS_TRUE }, lifecycleFacts: { ...LIFECYCLE_FACTS_TRUE }, passed: true, terminationProven: true } }
+          },
+          options: { evidenceOutputRoot, hosts: ['claude-code'] },
+        })
+        const evaluation = await hostBehavior.runEvaluation(harness.options)
+
+        assert.deepEqual(evaluation.result, {
+          code: 'harness-infrastructure',
+          detailCode: 'evidence-verification',
+          host: 'claude-code',
+          initialCode: null,
+          ok: false,
+          phase: 'post-session',
+          retainedRunRoot: harness.roots[1],
+        }, source)
+        assert.deepEqual(evaluation.rows, [], source)
+        assert.deepEqual(evaluation.evidenceManifests, [], source)
+        assert.deepEqual(listFilesNamed(evidenceOutputRoot, 'manifest.json'), [], `${source} must publish no evidence leaf`)
+      } finally {
+        nodeFilesystem.rmSync(scratch, { force: true, recursive: true })
+      }
+    }
+  })
+
   test('scenario Git setup failures return typed infrastructure and remove the proved-closed run root', async () => {
     const scratch = tempRoot()
     try {

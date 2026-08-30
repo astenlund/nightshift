@@ -4,11 +4,97 @@ const nodeFilesystem = require('node:fs')
 const { dirname, isAbsolute, join, relative, resolve, sep } = require('node:path')
 
 const { BYTE_BOUNDS, HOSTS, compareOrdinal, sha256 } = require('./primitives')
-const { canonicalJson, canonicalJsonLine } = require('./transcript')
+const { canonicalJson, canonicalJsonLine, isCanonicalBase64, parseJsonWithDepthLimit } = require('./transcript')
 
 const EVIDENCE_HOSTS = HOSTS
 const ENABLED_REPETITIONS = Object.freeze([1, 2, 3])
 const ROOT_REPORT_FILENAMES = Object.freeze(['import-matrix.json', 'summary.json'])
+
+function containsCredential(bytes, credentials) {
+  return credentials.some((credential) => bytes.indexOf(credential) !== -1)
+}
+
+function decodeCanonicalBase64(value) {
+  if (!isCanonicalBase64(value)) {
+    return null
+  }
+
+  return Buffer.from(value, 'base64')
+}
+
+function transcriptContainsCredential(bytes, credentials) {
+  let offset = 0
+  while (offset < bytes.length) {
+    const newline = bytes.indexOf(0x0a, offset)
+    if (newline === -1 || newline === offset) {
+      return null
+    }
+    const parsed = parseJsonWithDepthLimit(bytes.subarray(offset, newline).toString('utf8'))
+    if (parsed.ok !== true || parsed.value === null || typeof parsed.value !== 'object' || Array.isArray(parsed.value)) {
+      return null
+    }
+    const payload = decodeCanonicalBase64(parsed.value.payloadBase64)
+    if (payload === null) {
+      return null
+    }
+    if (containsCredential(payload, credentials)) {
+      return true
+    }
+    offset = newline + 1
+  }
+
+  return false
+}
+
+function repositoryContainsCredential(bytes, credentials) {
+  const parsed = parseJsonWithDepthLimit(bytes.toString('utf8').trimEnd())
+  if (parsed.ok !== true || parsed.value === null || typeof parsed.value !== 'object' || Array.isArray(parsed.value) || !Array.isArray(parsed.value.observed?.entries)) {
+    return null
+  }
+  for (const entry of parsed.value.observed.entries) {
+    if (entry === null || typeof entry !== 'object' || Array.isArray(entry)) {
+      return null
+    }
+    if (entry.contentBase64 === null) {
+      continue
+    }
+    const content = decodeCanonicalBase64(entry.contentBase64)
+    if (content === null) {
+      return null
+    }
+    if (containsCredential(content, credentials)) {
+      return true
+    }
+  }
+
+  return false
+}
+
+function verifyCredentialFreeEvidence({ credentialValues, files }) {
+  if (!Array.isArray(credentialValues) || credentialValues.some((value) => typeof value !== 'string') || !Array.isArray(files)) {
+    return false
+  }
+  const credentials = [...new Set(credentialValues)].filter((value) => value !== '').map((value) => Buffer.from(value, 'utf8'))
+  if (credentials.length === 0) {
+    return true
+  }
+  for (const file of files) {
+    if (file === null || typeof file !== 'object' || typeof file.path !== 'string' || !Buffer.isBuffer(file.bytes) || containsCredential(file.bytes, credentials)) {
+      return false
+    }
+    let carrierContaminated = false
+    if (file.path === 'transcript.jsonl') {
+      carrierContaminated = transcriptContainsCredential(file.bytes, credentials)
+    } else if (file.path === 'repository-attestation.json') {
+      carrierContaminated = repositoryContainsCredential(file.bytes, credentials)
+    }
+    if (carrierContaminated !== false) {
+      return false
+    }
+  }
+
+  return true
+}
 
 function filesystemOperation(filesystem, name) {
   const operation = filesystem[name] ?? nodeFilesystem[name]
@@ -322,4 +408,4 @@ function publishEvidenceLeaf({ files, filesystem = nodeFilesystem, host, leafLim
   return { evidenceManifestSha256: manifest.evidenceManifestSha256, leafBytes, leafPath, ok: true }
 }
 
-module.exports = { ENABLED_REPETITIONS, buildEvidenceManifest, buildLeafPath, publishEvidenceLeaf, publishOutputFile }
+module.exports = { ENABLED_REPETITIONS, buildEvidenceManifest, buildLeafPath, publishEvidenceLeaf, publishOutputFile, verifyCredentialFreeEvidence }

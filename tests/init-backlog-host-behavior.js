@@ -1645,6 +1645,7 @@ async function runEvaluation(options) {
         proxySession,
         temporaryPaths,
       })
+      const credentialValues = driver.credentialValuesFromProjection(environment)
       const session = await runSession({
         argv,
         controllerEnabled,
@@ -1676,8 +1677,15 @@ async function runEvaluation(options) {
           terminationProven: sessionRecord.terminationProven === true,
         })
       }
+      const evidenceFiles = [...(session.evidence ?? []), { bytes: attestation.evidenceBytes, path: 'repository-attestation.json' }]
+      if (!driver.verifyCredentialFreeEvidence({ credentialValues, files: evidenceFiles })) {
+        return finishRepetition({
+          outcome: { result: infrastructureCarrier({ detailCode: 'evidence-verification', host, phase: 'post-session', retainedRunRoot: runRoot }) },
+          phase: 'post-session',
+          terminationProven: sessionRecord.terminationProven === true,
+        })
+      }
       if (evidenceOutputRoot !== null) {
-        const evidenceFiles = [...(session.evidence ?? []), { bytes: attestation.evidenceBytes, path: 'repository-attestation.json' }]
         const published = driver.publishEvidenceLeaf({
           files: evidenceFiles,
           filesystem,

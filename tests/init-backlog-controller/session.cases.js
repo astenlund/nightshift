@@ -218,6 +218,7 @@ function runSessionCases(repositoryRoot) {
       'createTurnSequencer',
       'createWindowsJobRunnerAdapter',
       'createWriteState',
+      'credentialValuesFromProjection',
       'evaluateLinuxContainment',
       'finalizeRunRoot',
       'infrastructureFailure',
@@ -227,6 +228,7 @@ function runSessionCases(repositoryRoot) {
       'publishEvidenceLeaf',
       'publishOutputFile',
       'scenarioRootDigest',
+      'verifyCredentialFreeEvidence',
       'verifyScenarioFileSet',
       'windowsJobRunnerPath',
     ])
@@ -1639,23 +1641,31 @@ function runSessionCases(repositoryRoot) {
     }
   })
 
-  test('published evidence bytes carry zero credential evidence', () => {
-    const outputRoot = tempRoot()
-    try {
-      const token = 'c'.repeat(64)
-      const files = [
-        { bytes: canonicalLine({ exitCode: 0, ordinal: 1, requestBase64: 'aGk=', stderrBase64: '', stdoutBase64: 'aGk=' }), path: 'proxy.jsonl' },
-        { bytes: canonicalLine({ kind: 'input', ordinal: 1, payloadBase64: 'aGk=' }), path: 'transcript.jsonl' },
-      ]
-      const outcome = driver.publishEvidenceLeaf({ files, host: 'codex', mode: 'enabled', outputRoot, repetition: 2, scenario: 'fresh-empty-track-approved' })
-      assert.equal(outcome.ok, true)
-      const walk = (directory) => readdirSync(directory, { withFileTypes: true }).flatMap((entry) => entry.isDirectory() ? walk(join(directory, entry.name)) : [join(directory, entry.name)])
-      for (const leaf of walk(outputRoot)) {
-        assert.equal(readFileSync(leaf).includes(token), false, `published evidence must not contain the proxy token: ${leaf}`)
-      }
-    } finally {
-      rmSync(outputRoot, { force: true, recursive: true })
-    }
+  test('credential isolation decodes transcript payloads and repository contents', () => {
+    const token = 'credential-value-' + 'c'.repeat(48)
+    const credentialValues = driver.credentialValuesFromProjection({ ANTHROPIC_API_KEY: token, OPENAI_API_KEY: '', PATH: '/usr/bin' })
+    const cleanTranscript = canonicalLine({ kind: 'host-event', ordinal: 1, payloadBase64: Buffer.from('clean host event', 'utf8').toString('base64') })
+    const contaminatedTranscript = canonicalLine({ kind: 'host-event', ordinal: 1, payloadBase64: Buffer.from(`event:${token}`, 'utf8').toString('base64') })
+    const repositoryEvidence = (content) => canonicalLine({
+      expectedSha256: 'a'.repeat(64),
+      observed: {
+        entries: [{ contentBase64: Buffer.from(content, 'utf8').toString('base64'), kind: 'file', mode: 420, path: 'result.txt' }],
+        git: { kind: 'non-git', trackedPaths: [] },
+      },
+      observedSha256: 'b'.repeat(64),
+    })
+    const files = (transcript, repository) => [
+      { bytes: repository, path: 'repository-attestation.json' },
+      { bytes: transcript, path: 'transcript.jsonl' },
+    ]
+
+    assert.deepEqual(credentialValues, [token])
+    assert.equal(contaminatedTranscript.includes(token), false, 'the transcript carrier hides the credential behind Base64')
+    assert.equal(repositoryEvidence(token).includes(token), false, 'the repository carrier hides the credential behind Base64')
+    assert.equal(driver.verifyCredentialFreeEvidence({ credentialValues, files: files(cleanTranscript, repositoryEvidence('clean repository file')) }), true)
+    assert.equal(driver.verifyCredentialFreeEvidence({ credentialValues, files: files(contaminatedTranscript, repositoryEvidence('clean repository file')) }), false)
+    assert.equal(driver.verifyCredentialFreeEvidence({ credentialValues, files: files(cleanTranscript, repositoryEvidence(`file:${token}`)) }), false)
+    assert.equal(driver.verifyCredentialFreeEvidence({ credentialValues: [null], files: [] }), false, 'a malformed credential list fails closed')
   })
 
   test('terminal repository attestation matches stable enabled and disabled collections including the marker rule', () => {

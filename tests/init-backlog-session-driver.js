@@ -148,6 +148,24 @@ function buildWorkerProjection({ ambientEnvironment, checkoutRoot, gitIsolation,
   return projection
 }
 
+function credentialValuesFromProjection(projection) {
+  const values = []
+  for (const key of CREDENTIAL_KEYS) {
+    if (!Object.hasOwn(projection, key)) {
+      continue
+    }
+    const value = projection[key]
+    if (typeof value !== 'string') {
+      throw new TypeError(`projected credential ${key} must be a string`)
+    }
+    if (value !== '' && !values.includes(value)) {
+      values.push(value)
+    }
+  }
+
+  return values
+}
+
 function buildHarnessGitEnvironment({ ambientEnvironment, attributesPath, configPath, platform, templatePath }) {
   const environment = {}
   for (const [key, value] of Object.entries(ambientEnvironment)) {
@@ -434,6 +452,7 @@ module.exports = {
   createTurnSequencer: state.createTurnSequencer,
   createWindowsJobRunnerAdapter: processModule.createWindowsJobRunnerAdapter,
   createWriteState: state.createWriteState,
+  credentialValuesFromProjection,
   evaluateLinuxContainment: processModule.evaluateLinuxContainment,
   finalizeRunRoot: cleanupModule.finalizeRunRoot,
   infrastructureFailure: state.infrastructureFailure,
@@ -443,6 +462,7 @@ module.exports = {
   publishEvidenceLeaf: evidenceModule.publishEvidenceLeaf,
   publishOutputFile: evidenceModule.publishOutputFile,
   scenarioRootDigest,
+  verifyCredentialFreeEvidence: evidenceModule.verifyCredentialFreeEvidence,
   verifyScenarioFileSet,
   windowsJobRunnerPath: processModule.windowsJobRunnerPath,
 }
