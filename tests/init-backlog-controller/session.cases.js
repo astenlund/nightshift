@@ -1647,7 +1647,8 @@ function runSessionCases(repositoryRoot) {
   test('credential isolation decodes transcript, proxy, and repository carriers', () => {
     const token = 'credential-value-' + 'c'.repeat(48)
     const proxyToken = 'd'.repeat(64)
-    const credentialValues = driver.credentialValuesFromProjection({ ANTHROPIC_API_KEY: token, NIGHTSHIFT_INIT_BACKLOG_PROXY_TOKEN: proxyToken, OPENAI_API_KEY: '', PATH: '/usr/bin' })
+    const proxyUrl = 'https://synthetic-user:synthetic-password@proxy.invalid:8080'
+    const credentialValues = driver.credentialValuesFromProjection({ ANTHROPIC_API_KEY: token, HTTPS_PROXY: proxyUrl, NIGHTSHIFT_INIT_BACKLOG_PROXY_TOKEN: proxyToken, OPENAI_API_KEY: '', PATH: '/usr/bin' })
     const cleanTranscript = canonicalLine({ kind: 'host-event', ordinal: 1, payloadBase64: Buffer.from('clean host event', 'utf8').toString('base64') })
     const contaminatedTranscript = canonicalLine({ kind: 'host-event', ordinal: 1, payloadBase64: Buffer.from(`event:${token}`, 'utf8').toString('base64') })
     const repositoryEvidence = (content) => canonicalLine({
@@ -1672,12 +1673,13 @@ function runSessionCases(repositoryRoot) {
     ]
     const cleanProxy = proxyEvidence()
 
-    assert.deepEqual(credentialValues, [token, proxyToken])
+    assert.deepEqual(credentialValues, [token, proxyToken, proxyUrl])
     assert.equal(contaminatedTranscript.includes(token), false, 'the transcript carrier hides the credential behind Base64')
     assert.equal(repositoryEvidence(token).includes(token), false, 'the repository carrier hides the credential behind Base64')
     assert.equal(driver.verifyCredentialFreeEvidence({ credentialValues, files: files(cleanTranscript, cleanProxy, repositoryEvidence('clean repository file')) }), true)
     assert.equal(driver.verifyCredentialFreeEvidence({ credentialValues, files: files(contaminatedTranscript, cleanProxy, repositoryEvidence('clean repository file')) }), false)
     assert.equal(driver.verifyCredentialFreeEvidence({ credentialValues, files: files(cleanTranscript, cleanProxy, repositoryEvidence(`file:${token}`)) }), false)
+    assert.equal(driver.verifyCredentialFreeEvidence({ credentialValues, files: files(cleanTranscript, cleanProxy, repositoryEvidence(`proxy:${proxyUrl}`)) }), false, 'ambient proxy credential')
     for (const outer of ['request', 'stderr', 'stdout']) {
       assert.equal(driver.verifyCredentialFreeEvidence({ credentialValues, files: files(cleanTranscript, proxyEvidence({ [outer]: Buffer.from(`outer:${token}`, 'utf8') }), repositoryEvidence('clean repository file')) }), false, outer)
     }
