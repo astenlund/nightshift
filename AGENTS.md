@@ -4,7 +4,7 @@ This file provides guidance to coding agents working with this repository.
 
 ## What this repo is
 
-Nightshift is a Claude Code and Codex plugin: a feature-lifecycle workflow built from markdown slash commands and skills, plus one Node.js parser. Most of the "source" is instruction prose that an agent executes, not code. The repo is also its own plugin marketplace (`.claude-plugin/marketplace.json` with `source: "./"`).
+Nightshift is a Claude Code and Codex plugin: a feature-lifecycle workflow built from Markdown skills plus bundled Node.js controllers, parsers, and support modules. Most of the "source" is instruction prose that an agent executes, not code. The repo is also its own plugin marketplace (`.claude-plugin/marketplace.json` with `source: "./"`).
 
 The operational host-neutralization work is tracked by [Agent-host-agnostic Nightshift](.claude/features/agent-host-agnostic-nightshift.md), which preserves `.claude/` as the shared backlog-data namespace on every host.
 

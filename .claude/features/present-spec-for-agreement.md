@@ -207,13 +207,13 @@ These are reinforcement surfaces, not independent approval stores. The shared ag
 
 With durable sign-off removed, document design fingerprints exclude only the `## Hardening` provenance section. A `Status:` header is ordinary content and moves the fingerprint. The canonical recipes in handover and revise drop the `!/^Status:/` filter.
 
-The pending Content fingerprint helper must land after this feature. Its design and synchronized index excerpt change in this implementation so `partial` mode excludes only `## Hardening`, its `Status:` fixture expects both `partial` and `whole-file` fingerprints to move, and its `Requires:` line names this feature. The agreement selector already accepts both legacy 8-hex provenance fingerprints and helper-era `p-` plus 12-hex fingerprints; the helper changes future stamp production without making old stamps unreadable. If helper code exists when this feature is implemented despite that dependency, the same change updates the helper implementation and fixtures rather than leaving the old contract live.
+The Content fingerprint helper landed after this feature. Its design and synchronized index excerpt change made `partial` mode exclude only `## Hardening`, its `Status:` fixture expects both `partial` and `whole-file` fingerprints to move, and its `Requires:` line names this feature. The agreement selector already accepts both legacy 8-hex provenance fingerprints and helper-era `p-` plus 12-hex fingerprints; the helper changes future stamp production without making old stamps unreadable.
 
 Second-opinion gates must also land after this feature. Their design and synchronized index excerpt gain that dependency and the ordering described under Boundary timing. The Agent-host-agnostic Nightshift design records the reverse relationship: its universal-skill MVP precedes this feature, later migration slices preserve the agreement gate, and the portable fingerprint slice receives the helper's transitive dependency.
 
-Durable scope anchor must land after this feature because its deliberate-empty exclusion form and anchor backfill both depend on the accepted digest. Its design and synchronized index excerpt carry that dependency now; Contract-calibrated revise admission already follows the anchor transitively.
+Durable scope anchor landed after this feature because its deliberate-empty exclusion form and anchor backfill both depended on the accepted digest. Its design and synchronized index excerpt carried that dependency; Contract-calibrated revise admission already follows the anchor transitively.
 
-Move deterministic init-backlog mechanics out of promptspace remains unordered relative to this feature. Whichever lands second resolves the current canonical template owner from the tree and preserves all template content already landed by the first; neither implementation assumes that the templates still occupy their pre-extraction file. This is a reconciliation rule, not a new runtime adapter.
+Move deterministic init-backlog mechanics out of promptspace landed after this feature. The implementation resolved the current canonical template owner from the tree and preserved all template content already landed by the first change; it did not assume that templates still occupied their pre-extraction file. This was a reconciliation rule, not a new runtime adapter.
 
 ## Complete implementation surface
 
@@ -361,4 +361,4 @@ New ready-parser fixtures are required for fenced fake headings, bullets, labels
 - revise-spec refreshed 2026-08-19 12:00 at 5e2c306, scope: whole file, content: 8594fb1b (review fixes)
 - revise-spec refreshed 2026-08-19 14:10 at ab08948, scope: whole file, content: f628ce22 (live-claim deferral)
 - handover completed 2026-08-19 14:10 at ab08948, scope: whole file, content: f628ce22
-- revise-spec refreshed 2026-08-22 10:18 at 6022378, scope: whole file, content: d88c86b4 (breakout line removal)
+- revise-spec refreshed 2026-08-22 10:18 at 6022378, scope: whole file, content: 01fb6688 (breakout line removal)

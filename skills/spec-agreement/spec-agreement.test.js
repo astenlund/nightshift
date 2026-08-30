@@ -768,13 +768,14 @@ test('related feature designs and excerpts record shipped agreement ordering and
       path: '.claude/features/agent-host-agnostic-nightshift.md',
       heading: '### [Agent-host-agnostic Nightshift](features/agent-host-agnostic-nightshift.md)',
       dependencySection: '## Related backlog work',
-      designRequirement: '- [Move deterministic init-backlog mechanics out of promptspace](deterministic-init-backlog.md) is the remaining prerequisite for host-neutral scaffolding.',
-      excerptRequirement: '  **Requires:** [Move deterministic init-backlog mechanics out of promptspace](features/deterministic-init-backlog.md).',
+      designRequirement: '- [Move deterministic init-backlog mechanics out of promptspace](deterministic-init-backlog.md) was the prerequisite for host-neutral scaffolding and has landed.',
+      excerptRequirement: '  **Requires:** none.',
+      excerptRequirementCount: 2,
       ordering: 'The universal-skill MVP and the agreement gate are shipped; every later migration slice preserves that gate.',
     },
   ];
 
-  for (const { path, heading, dependencySection, designRequirement, excerptRequirement, ordering } of pairs) {
+  for (const { path, heading, dependencySection, designRequirement, excerptRequirement, excerptRequirementCount = 1, ordering } of pairs) {
     const design = readRepositoryFile(path);
     const designDependencies = extractSection(design, dependencySection);
     const excerpt = extractFeatureEntry(features, heading);
@@ -783,7 +784,7 @@ test('related feature designs and excerpts record shipped agreement ordering and
     if (designRequirement !== undefined) {
       assert.equal(countExact(designDependencies, designRequirement), 1, `${path} must carry its current prerequisite once in ${dependencySection}`);
     }
-    assert.equal(countExact(excerpt, excerptRequirement), 1, `${heading} excerpt must carry its current prerequisite once`);
+    assert.equal(countExact(excerpt, excerptRequirement), excerptRequirementCount, `${heading} excerpt must carry its current prerequisite the expected number of times`);
     assert.equal(countExact(design, ordering), 1, `${path} must contain its ordering sentence once`);
     assert.equal(countExact(excerpt, ordering), 1, `${heading} excerpt must contain its ordering sentence once`);
   }

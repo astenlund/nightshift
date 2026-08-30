@@ -115,7 +115,7 @@ Land the Content fingerprint helper before this slice, then consume and verify i
 
 ### Host-neutral scaffolding and instruction routing
 
-The spec-agreement gate is in place. Land the deterministic init-backlog extraction before this slice, then teach init-backlog host-neutral targets while preserving the gate's project-guidance reinforcement. `AGENTS.md` is the canonical project instruction source for a fresh scaffold, and host files such as `CLAUDE.md` are adapters to it. Existing projects are preserved:
+The spec-agreement gate is in place. The deterministic init-backlog extraction landed before this slice, and this slice taught init-backlog host-neutral targets while preserving the gate's project-guidance reinforcement. `AGENTS.md` is the canonical project instruction source for a fresh scaffold, and host files such as `CLAUDE.md` are adapters to it. Existing projects are preserved:
 
 - If only one substantive supported instruction file exists, append or merge the backlog section there and create a missing adapter only when it can point at that durable source without duplicating prose.
 - If both canonical and host files contain substantive independent instructions, treat consolidation as ambiguous, show the proposed routing, and ask. Do not overwrite either file or silently create a second authority.
@@ -176,7 +176,7 @@ Every matrix cell either passes or records a deliberate unsupported-capability d
 The universal-skill MVP and the agreement gate are shipped; every later migration slice preserves that gate.
 
 - [Content fingerprint helper](content-fingerprint-helper.md) is a prerequisite for the portable resource and fingerprint slice.
-- [Move deterministic init-backlog mechanics out of promptspace](deterministic-init-backlog.md) is the remaining prerequisite for host-neutral scaffolding.
+- [Move deterministic init-backlog mechanics out of promptspace](deterministic-init-backlog.md) was the prerequisite for host-neutral scaffolding and has landed.
 - [Review orchestration tests](review-orchestration-tests.md) is a prerequisite for review host adapters.
 - [Durable run identity and concurrency protection](durable-run-identity-concurrency.md) shares durable state and scratch-path concerns but can land on either side of the adapter slice under the reconciliation rule above.
 - [Second-opinion gates](second-opinion-gates.md) remains responsible for cross-model-family review. Semantic model roles introduced here must not collapse that feature's distinct-family requirement into a same-provider tier choice.
