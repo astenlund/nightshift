@@ -160,7 +160,11 @@ function stableRewriteFile(root, target, transform, options = {}) {
     }
     validate(true)
     const replacement = transform(bytes)
-    if (replacement === null || replacement === undefined || Buffer.isBuffer(replacement) && replacement.equals(bytes)) return { bytes, changed: false, identity: comparableIdentity(before), mode: comparableMode(before, platform), rawSha256: sha256(bytes) }
+    if (replacement === null || replacement === undefined || Buffer.isBuffer(replacement) && replacement.equals(bytes)) {
+      validate(true)
+
+      return { bytes, changed: false, identity: comparableIdentity(before), mode: comparableMode(before, platform), rawSha256: sha256(bytes) }
+    }
     if (!Buffer.isBuffer(replacement)) throw new TypeError('Stable-rewrite transform must return a Buffer or null')
     options.beforeWrite?.()
     validate(true)

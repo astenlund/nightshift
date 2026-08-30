@@ -2,13 +2,14 @@
 
 const assert = require('node:assert/strict')
 const { spawnSync } = require('node:child_process')
-const { chmodSync, linkSync, lstatSync, mkdirSync, mkdtempSync, renameSync, rmSync, symlinkSync, writeFileSync } = require('node:fs')
+const { chmodSync, linkSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, symlinkSync, writeFileSync } = require('node:fs')
 const { tmpdir } = require('node:os')
 const { join, resolve } = require('node:path')
 const test = require('node:test')
 
 const { MAX_CONTROLLED_DISCOVERY_ENTRIES, MAX_CONTROLLED_MARKDOWN_FILES, MAX_CONTROLLED_MARKDOWN_RETAINED_BYTES, MAX_GUIDANCE_CANDIDATES, MAX_GUIDANCE_FILE_BYTES, MAX_GUIDANCE_RETAINED_BYTES, discoverControlledMarkdown, guidanceImports, resolveClaude, resolveCodex, resolveGuidance } = require('../../skills/init-backlog/lib/guidance')
 const { MAX_MECHANICAL_FILE_BYTES } = require('../../skills/init-backlog/lib/protocol')
+const { stableRewriteFile } = require('../../internal/filesystem-primitives')
 const {
   enumerateDirectory,
   probeWindowsAttributes,
@@ -139,6 +140,25 @@ function runDiscoveryCases(repositoryRoot) {
     } finally {
       rmSync(root, { force: true, recursive: true })
       rmSync(displaced, { force: true, recursive: true })
+    }
+  })
+
+  test('stable-rewrite revalidates a target before returning a no-op result', () => {
+    const root = temporaryRoot('nightshift-discovery-rewrite-no-op-')
+    try {
+      const path = ordinaryFile(join(root, 'file.md'))
+
+      assert.throws(
+        () => stableRewriteFile(root, path, () => {
+          writeFileSync(path, 'concurrent mutation\n')
+
+          return null
+        }),
+        (error) => error?.code === 'identity-changed',
+      )
+      assert.equal(readFileSync(path, 'utf8'), 'concurrent mutation\n')
+    } finally {
+      rmSync(root, { force: true, recursive: true })
     }
   })
 
