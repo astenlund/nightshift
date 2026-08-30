@@ -23,6 +23,7 @@ const {
   revalidatePlanBinding,
   writePlanProvenanceStamp,
 } = require('../internal/plan-binding')
+const { resolveTrustedExecutable } = require('../internal/filesystem-primitives')
 const { runGit } = require('../internal/git-runner')
 
 const REPOSITORY_ROOT = join(__dirname, '..')
@@ -880,6 +881,103 @@ test('plan candidate evidence compares duplicate-free membership independently o
 
       return enumerationCount === 1 ? candidates : [candidates[0], candidates[0]]
     } }), { code: 'plan-candidate-duplicate' })
+  } finally {
+    rmSync(root, { force: true, recursive: true })
+  }
+})
+
+test('plan candidate evidence resolves one trusted Git executable per capture', () => {
+  const root = mkdtempSync(join(tmpdir(), 'nightshift-plan-candidate-git-'))
+  try {
+    const repositoryRoot = join(root, 'repository')
+    const globalPlansRoot = join(root, 'global-plans')
+    const plansRoot = join(repositoryRoot, '.claude', 'plans')
+    const candidates = ['first.md', 'second.md'].map((name) => ({ exactUserPath: false, logicalPath: join(plansRoot, name) }))
+    mkdirSync(plansRoot, { recursive: true })
+    mkdirSync(globalPlansRoot)
+    execFileSync('git', ['init', '--quiet', repositoryRoot], { windowsHide: true })
+    writeFileSync(join(repositoryRoot, '.gitignore'), '.claude/plans/\n')
+    candidates.forEach((candidate) => writeFileSync(candidate.logicalPath, '# Plan\n'))
+    const trustedGit = resolveTrustedExecutable({
+      basename: process.platform === 'win32' ? 'git.exe' : 'git',
+      protectedRoots: [globalPlansRoot],
+      root: repositoryRoot,
+    })
+    const resolutionRequests = []
+    const input = { enumerateCandidates: () => candidates, globalPlansRoot, repositoryRoot }
+    const options = {
+      resolveGitExecutable: (request) => {
+        resolutionRequests.push(request)
+
+        return trustedGit
+      },
+    }
+
+    assert.equal(capturePlanCandidateEvidence(input, options).evidence.length, 2)
+    assert.equal(resolutionRequests.length, 1)
+    assert.deepEqual(resolutionRequests[0], {
+      basename: process.platform === 'win32' ? 'git.exe' : 'git',
+      protectedRoots: [globalPlansRoot],
+      root: repositoryRoot,
+    })
+
+    assert.equal(capturePlanCandidateEvidence(input, options).evidence.length, 2)
+    assert.equal(resolutionRequests.length, 2)
+  } finally {
+    rmSync(root, { force: true, recursive: true })
+  }
+})
+
+test('plan candidate evidence preserves explicit Git executables and custom Git policies', () => {
+  const root = mkdtempSync(join(tmpdir(), 'nightshift-plan-candidate-git-options-'))
+  try {
+    const repositoryRoot = join(root, 'repository')
+    const globalPlansRoot = join(root, 'global-plans')
+    const plansRoot = join(repositoryRoot, '.claude', 'plans')
+    const candidates = ['first.md', 'second.md'].map((name) => ({ exactUserPath: false, logicalPath: join(plansRoot, name) }))
+    mkdirSync(plansRoot, { recursive: true })
+    mkdirSync(globalPlansRoot)
+    execFileSync('git', ['init', '--quiet', repositoryRoot], { windowsHide: true })
+    writeFileSync(join(repositoryRoot, '.gitignore'), '.claude/plans/\n')
+    candidates.forEach((candidate) => writeFileSync(candidate.logicalPath, '# Plan\n'))
+    const trustedGit = resolveTrustedExecutable({ root: repositoryRoot })
+    const input = { enumerateCandidates: () => candidates, globalPlansRoot, repositoryRoot }
+    const rejectResolution = () => { throw new Error('trusted Git resolution must not run') }
+
+    assert.equal(capturePlanCandidateEvidence(input, { gitExecutable: trustedGit, resolveGitExecutable: rejectResolution }).evidence.length, 2)
+    let policyCalls = 0
+    assert.equal(capturePlanCandidateEvidence(input, {
+      gitPolicy: () => {
+        policyCalls += 1
+      },
+      resolveGitExecutable: rejectResolution,
+    }).evidence.length, 2)
+    assert.equal(policyCalls, 2)
+  } finally {
+    rmSync(root, { force: true, recursive: true })
+  }
+})
+
+test('plan candidate evidence does not resolve Git for global and external candidates', () => {
+  const root = mkdtempSync(join(tmpdir(), 'nightshift-plan-candidate-no-git-'))
+  try {
+    const repositoryRoot = join(root, 'repository')
+    const globalPlansRoot = join(root, 'global-plans')
+    const globalPlan = join(globalPlansRoot, 'global.md')
+    const externalPlan = join(root, 'external', 'external.md')
+    mkdirSync(repositoryRoot)
+    mkdirSync(globalPlansRoot)
+    mkdirSync(dirname(externalPlan))
+    writeFileSync(globalPlan, '# Global\n')
+    writeFileSync(externalPlan, '# External\n')
+    const candidates = [
+      { exactUserPath: false, logicalPath: globalPlan },
+      { exactUserPath: true, logicalPath: externalPlan },
+    ]
+
+    assert.equal(capturePlanCandidateEvidence({ enumerateCandidates: () => candidates, globalPlansRoot, repositoryRoot }, {
+      resolveGitExecutable: () => { throw new Error('trusted Git resolution must not run') },
+    }).evidence.length, 2)
   } finally {
     rmSync(root, { force: true, recursive: true })
   }

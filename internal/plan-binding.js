@@ -260,7 +260,8 @@ function captureStableBytes(realPath, expectedState, filesystem) {
 }
 
 function defaultGitPolicy(request, options) {
-  const gitExecutable = options.gitExecutable ?? resolveTrustedExecutable({
+  const resolveGitExecutable = options.resolveGitExecutable ?? resolveTrustedExecutable
+  const gitExecutable = options.gitExecutable ?? resolveGitExecutable({
     basename: process.platform === 'win32' ? 'git.exe' : 'git',
     protectedRoots: [request.globalPlansRoot],
     root: request.repositoryRoot,
@@ -516,6 +517,25 @@ function candidateSetSignature(candidates) {
   return JSON.stringify(identities.sort())
 }
 
+function candidateCaptureOptions(options) {
+  if ((options.gitExecutable !== null && options.gitExecutable !== undefined) || options.gitPolicy !== undefined) return options
+  const resolveGitExecutable = options.resolveGitExecutable ?? resolveTrustedExecutable
+  let gitExecutable
+  let resolved = false
+
+  return {
+    ...options,
+    resolveGitExecutable: (request) => {
+      if (!resolved) {
+        gitExecutable = resolveGitExecutable(request)
+        resolved = true
+      }
+
+      return gitExecutable
+    },
+  }
+}
+
 function capturePlanCandidateEvidence(input, options = {}) {
   if (!hasExactKeys(input, ['enumerateCandidates', 'globalPlansRoot', 'repositoryRoot']) || typeof input.enumerateCandidates !== 'function') {
     fail('plan-input', 'Plan candidate evidence input is invalid')
@@ -526,6 +546,7 @@ function capturePlanCandidateEvidence(input, options = {}) {
   }
   first.forEach(validateCandidate)
   const firstSignature = candidateSetSignature(first)
+  const captureOptions = candidateCaptureOptions(options)
   const evidence = []
   let aggregateBytes = 0
   for (const candidate of first) {
@@ -534,7 +555,7 @@ function capturePlanCandidateEvidence(input, options = {}) {
       globalPlansRoot: input.globalPlansRoot,
       logicalPath: candidate.logicalPath,
       repositoryRoot: input.repositoryRoot,
-    }, options)
+    }, captureOptions)
     aggregateBytes += captured.bytes.length
     if (aggregateBytes > MAX_PLAN_CANDIDATE_BYTES) {
       fail('plan-candidate-aggregate-bytes', 'Plan candidate aggregate-bytes limit was exceeded', { maximumBytes: MAX_PLAN_CANDIDATE_BYTES, observedBytes: aggregateBytes })
