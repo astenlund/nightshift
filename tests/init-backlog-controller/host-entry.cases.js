@@ -1,7 +1,7 @@
 'use strict'
 
 const assert = require('node:assert/strict')
-const { execFileSync } = require('node:child_process')
+const { execFileSync, spawnSync } = require('node:child_process')
 const nodeFilesystem = require('node:fs')
 const { tmpdir } = require('node:os')
 const nodePath = require('node:path')
@@ -622,6 +622,7 @@ function runHostEntryCases(repositoryRoot) {
       'buildImportProbeArgv',
       'buildLaunchProjection',
       'buildResultRow',
+      'buildSourceGitEnvironment',
       'classifyCodexLoginStatus',
       'collectQualifyingWriterCodes',
       'collectTerminalRepository',
@@ -3177,18 +3178,32 @@ function runHostEntryCases(repositoryRoot) {
   })
 
   test('the shared prompt-baseline loader validates one canonical manifest read and the closed fixture tree', () => {
-    const { SOURCE_PATHS, loadPromptBaseline } = require('../init-backlog-prompt-baseline')
+    const { SOURCE_PATHS, createSourceGitRunner, loadPromptBaseline } = require('../init-backlog-prompt-baseline')
     const manifestPath = join(repositoryRoot, 'tests', 'fixtures', 'init-backlog-prompt-baseline', 'manifest.json')
     const reads = []
+    const launches = []
+    const gitExecutablePath = resolveRealGitExecutable()
     const filesystem = Object.create(nodeFilesystem)
     filesystem.readFileSync = (path) => {
       reads.push(path)
 
       return nodeFilesystem.readFileSync(path)
     }
-    const baseline = loadPromptBaseline(repositoryRoot, { filesystem })
+    const sourceGitRunner = createSourceGitRunner({
+      environment: hostBehavior.buildSourceGitEnvironment({ ambientEnvironment: process.env, platform: process.platform }),
+      gitExecutablePath,
+      spawnSync: (executable, args, options) => {
+        launches.push({ args, executable })
+
+        return spawnSync(executable, args, options)
+      },
+    })
+    const baseline = loadPromptBaseline(repositoryRoot, { filesystem, sourceGitRunner })
 
     assert.equal(reads.filter((path) => path === manifestPath).length, 1, 'manifest identity comes from one stable read')
+    assert.equal(launches.length, 2, 'source authority uses one closure query and one bounded batch retrieval')
+    assert.equal(launches.every((launch) => launch.executable === gitExecutablePath), true, 'source authority uses only the retained absolute Git executable')
+    assert.equal(launches[1].args.includes('--batch'), true, 'source blobs share one batch retrieval')
     assert.deepEqual(baseline.files.map((entry) => entry.path), SOURCE_PATHS)
     assert.deepEqual(baseline.manifest.files.map((entry) => entry.path), SOURCE_PATHS)
     assert.equal(baseline.baselineManifestSha256, sha256(nodeFilesystem.readFileSync(manifestPath)))
@@ -3219,6 +3234,28 @@ function runHostEntryCases(repositoryRoot) {
       driftedEntry.sha256 = sha256(driftedBytes)
       nodeFilesystem.writeFileSync(copiedManifestPath, canonicalJson(driftedManifest) + '\n')
       assert.throws(() => loadPromptBaseline(copiedRoot, { sourceRepositoryRoot: repositoryRoot }), /source blob/)
+    } finally {
+      nodeFilesystem.rmSync(scratch, { force: true, recursive: true })
+    }
+  })
+
+  test('staged prompt-baseline consumers retain source authority in the checkout', () => {
+    const { createSourceGitRunner } = require('../init-backlog-prompt-baseline')
+    const { assembleClaudePromptBaseline, assembleCodexPromptBaseline, loadPromptBaseline, stageCandidate } = require('../host-discovery-smoke-lib')
+    const scratch = tempRoot()
+    const gitExecutablePath = resolveRealGitExecutable()
+    const sourceGitRunner = createSourceGitRunner({ environment: hostBehavior.buildSourceGitEnvironment({ ambientEnvironment: process.env, platform: process.platform }), gitExecutablePath })
+    try {
+      const treeId = execFileSync(gitExecutablePath, ['-C', repositoryRoot, 'write-tree'], { encoding: 'utf8', windowsHide: true }).trim()
+      const candidate = stageCandidate({ checkoutRoot: repositoryRoot, destinationRoot: scratch, treeId })
+      const baseline = loadPromptBaseline(candidate.root, { sourceGitRunner, sourceRepositoryRoot: repositoryRoot })
+      const assemblies = [
+        assembleClaudePromptBaseline({ candidateRoot: candidate.root, destinationRoot: join(scratch, 'claude'), sourceGitRunner, sourceRepositoryRoot: repositoryRoot }),
+        assembleCodexPromptBaseline({ candidateRoot: candidate.root, destinationRoot: join(scratch, 'codex'), sourceGitRunner, sourceRepositoryRoot: repositoryRoot }),
+      ]
+
+      assert.deepEqual(baseline.files.map((entry) => entry.path), baseline.manifest.files.map((entry) => entry.path))
+      assert.equal(assemblies.every((assembly) => assembly.fixtureRoot.startsWith(candidate.root)), true)
     } finally {
       nodeFilesystem.rmSync(scratch, { force: true, recursive: true })
     }
@@ -3351,6 +3388,26 @@ function runHostEntryCases(repositoryRoot) {
     } finally {
       nodeFilesystem.rmSync(rejectedScratch, { force: true, recursive: true })
     }
+  })
+
+  test('the prompt-baseline source Git environment excludes ambient resolution and credentials', () => {
+    const environment = hostBehavior.buildSourceGitEnvironment({
+      ambientEnvironment: {
+        ComSpec: 'C:\\Windows\\System32\\cmd.exe',
+        HOME: '/home/harness',
+        OPENAI_API_KEY: 'credential',
+        PATH: 'sentinel-path',
+        SystemRoot: 'C:\\Windows',
+      },
+      platform: process.platform,
+    })
+
+    assert.equal(Object.hasOwn(environment, 'PATH'), false)
+    assert.equal(Object.hasOwn(environment, 'OPENAI_API_KEY'), false)
+    assert.equal(environment.GIT_CONFIG_NOSYSTEM, '1')
+    assert.equal(environment.GIT_TERMINAL_PROMPT, '0')
+    assert.equal(Object.isFrozen(environment), true)
+    assert.throws(() => hostBehavior.buildSourceGitEnvironment({ ambientEnvironment: { SystemRoot: 'first', SYSTEMROOT: 'second' }, platform: 'win32' }), /duplicate-case alias/)
   })
 
   test('a live-session transcript admission failure fixes the output-capacity carrier, closes proxy admission, and terminates host and worker exactly once', async () => {

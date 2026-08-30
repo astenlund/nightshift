@@ -2,7 +2,7 @@
 
 const nodeFilesystem = require('node:fs')
 const nodePath = require('node:path')
-const { execFileSync } = require('node:child_process')
+const { execFileSync, spawnSync } = require('node:child_process')
 
 const { sha256 } = require('./init-backlog-session-driver/primitives')
 const { canonicalJson, parseJsonWithDepthLimit } = require('./init-backlog-session-driver/transcript')
@@ -43,6 +43,7 @@ const MAX_FIXTURE_ENTRIES = 256
 const MAX_FIXTURE_FILE_BYTES = 16777216
 const MAX_FIXTURE_TOTAL_BYTES = 67108864
 const MAX_MANIFEST_BYTES = 1048576
+const MAX_SOURCE_BATCH_RESPONSE_BYTES = MAX_FIXTURE_TOTAL_BYTES + MAX_MANIFEST_BYTES
 const SOURCE_GIT_TIMEOUT_MS = 30000
 
 function isContained(root, target) {
@@ -117,25 +118,101 @@ function listFixtureFiles({ filesystem, root, physicalRoot }) {
   return files.sort()
 }
 
-function runSourceGit(repositoryRoot, args, maxBuffer) {
-  return execFileSync('git', ['-C', repositoryRoot, ...args], { encoding: 'buffer', maxBuffer, shell: false, timeout: SOURCE_GIT_TIMEOUT_MS, windowsHide: true })
+class SourceGitCommandError extends Error {
+  constructor(detailCode) {
+    super(`bounded prompt-baseline source Git ${detailCode} failed`)
+    this.detailCode = detailCode
+    this.name = 'SourceGitCommandError'
+  }
 }
 
-function loadSourceAuthority(repositoryRoot) {
-  const closureBytes = runSourceGit(repositoryRoot, ['ls-tree', '-rz', '--name-only', SOURCE_COMMIT, '--', '.claude-plugin/plugin.json', '.claude-plugin/marketplace.json', 'skills/', 'internal/', 'hooks/'], MAX_MANIFEST_BYTES)
+function defaultSourceGitRunner(repositoryRoot, args, maxBuffer, input = null) {
+  return execFileSync('git', ['-C', repositoryRoot, ...args], { encoding: 'buffer', input, maxBuffer, shell: false, timeout: SOURCE_GIT_TIMEOUT_MS, windowsHide: true })
+}
+
+function createSourceGitRunner({ environment, gitExecutablePath, spawnSync: run = spawnSync }) {
+  if (typeof gitExecutablePath !== 'string' || !nodePath.isAbsolute(gitExecutablePath)) {
+    throw new Error('the prompt-baseline source Git runner requires a retained absolute trusted executable path')
+  }
+  if (environment === null || typeof environment !== 'object' || Array.isArray(environment)) {
+    throw new Error('the prompt-baseline source Git runner requires a closed environment')
+  }
+
+  return (repositoryRoot, args, maxBuffer, input = null) => {
+    const completion = run(gitExecutablePath, ['-C', repositoryRoot, ...args], {
+      encoding: null,
+      env: environment,
+      input,
+      killSignal: 'SIGKILL',
+      maxBuffer,
+      shell: false,
+      timeout: SOURCE_GIT_TIMEOUT_MS,
+      windowsHide: true,
+    })
+    const stdout = completion?.stdout
+    const stderr = completion?.stderr
+    if (completion?.error?.code === 'ENOBUFS' || Buffer.isBuffer(stdout) && stdout.length > maxBuffer || Buffer.isBuffer(stderr) && stderr.length > MAX_MANIFEST_BYTES) {
+      throw new SourceGitCommandError('output-capacity')
+    }
+    if (completion?.error?.code === 'ETIMEDOUT' || completion?.signal !== null && completion?.signal !== undefined) {
+      throw new SourceGitCommandError('termination')
+    }
+    if (completion?.error || completion?.status !== 0 || !Buffer.isBuffer(stdout) || !Buffer.isBuffer(stderr) || stderr.length !== 0) {
+      throw new SourceGitCommandError('child-process')
+    }
+
+    return stdout
+  }
+}
+
+function parseSourceBlobBatch(bytes, paths) {
+  const sourceFiles = new Map()
+  let offset = 0
+  let totalBytes = 0
+  for (const path of paths) {
+    const headerEnd = bytes.indexOf(0x0a, offset)
+    if (headerEnd === -1) {
+      throw new Error('Prompt baseline source batch is missing an object header')
+    }
+    const header = bytes.subarray(offset, headerEnd).toString('ascii')
+    const matched = /^[a-f0-9]{40,64} blob ([0-9]+)$/.exec(header)
+    if (matched === null) {
+      throw new Error(`Prompt baseline source batch returned an invalid object header: ${path}`)
+    }
+    const size = Number(matched[1])
+    if (!Number.isSafeInteger(size) || size > MAX_FIXTURE_FILE_BYTES) {
+      throw new Error('Prompt baseline source blobs exceed their byte limit')
+    }
+    const contentStart = headerEnd + 1
+    const contentEnd = contentStart + size
+    if (contentEnd >= bytes.length || bytes[contentEnd] !== 0x0a) {
+      throw new Error(`Prompt baseline source batch returned truncated object bytes: ${path}`)
+    }
+    totalBytes += size
+    if (totalBytes > MAX_FIXTURE_TOTAL_BYTES) {
+      throw new Error('Prompt baseline source blobs exceed their byte limit')
+    }
+    sourceFiles.set(path, Buffer.from(bytes.subarray(contentStart, contentEnd)))
+    offset = contentEnd + 1
+  }
+  if (offset !== bytes.length) {
+    throw new Error('Prompt baseline source batch returned trailing output')
+  }
+
+  return sourceFiles
+}
+
+function loadSourceAuthority(repositoryRoot, sourceGitRunner) {
+  const closureBytes = sourceGitRunner(repositoryRoot, ['ls-tree', '-rz', '--name-only', SOURCE_COMMIT, '--', '.claude-plugin/plugin.json', '.claude-plugin/marketplace.json', 'skills/', 'internal/', 'hooks/'], MAX_MANIFEST_BYTES)
   const paths = closureBytes.toString('utf8').split('\0').filter(Boolean).sort()
   if (paths.join('\0') !== SOURCE_PATHS.join('\0')) {
     throw new Error('Prompt baseline source closure differs from the frozen path authority')
   }
-  let totalBytes = 0
-  const sourceFiles = new Map()
+  const batchInput = Buffer.from(paths.map((path) => `${SOURCE_COMMIT}:${path}\n`).join(''), 'utf8')
+  const batchOutput = sourceGitRunner(repositoryRoot, ['cat-file', '--batch'], MAX_SOURCE_BATCH_RESPONSE_BYTES, batchInput)
+  const sourceFiles = parseSourceBlobBatch(batchOutput, paths)
   const files = paths.map((path) => {
-    const bytes = runSourceGit(repositoryRoot, ['cat-file', 'blob', `${SOURCE_COMMIT}:${path}`], MAX_FIXTURE_FILE_BYTES + 1)
-    totalBytes += bytes.length
-    if (bytes.length > MAX_FIXTURE_FILE_BYTES || totalBytes > MAX_FIXTURE_TOTAL_BYTES) {
-      throw new Error('Prompt baseline source blobs exceed their byte limit')
-    }
-    sourceFiles.set(path, bytes)
+    const bytes = sourceFiles.get(path)
 
     return { path, sha256: sha256(bytes) }
   })
@@ -144,7 +221,7 @@ function loadSourceAuthority(repositoryRoot) {
   return { manifestBytes, sourceFiles }
 }
 
-function loadPromptBaseline(repositoryRoot, { filesystem = nodeFilesystem, sourceRepositoryRoot = repositoryRoot } = {}) {
+function loadPromptBaseline(repositoryRoot, { filesystem = nodeFilesystem, sourceGitRunner = defaultSourceGitRunner, sourceRepositoryRoot = repositoryRoot } = {}) {
   const logicalRepositoryRoot = nodePath.resolve(repositoryRoot)
   const physicalRepositoryRoot = filesystem.realpathSync.native(logicalRepositoryRoot)
   const root = nodePath.join(logicalRepositoryRoot, 'tests', 'fixtures', 'init-backlog-prompt-baseline')
@@ -180,7 +257,7 @@ function loadPromptBaseline(repositoryRoot, { filesystem = nodeFilesystem, sourc
   if (paths.join('\0') !== SOURCE_PATHS.join('\0')) {
     throw new Error('Prompt baseline manifest file set differs from the frozen source closure')
   }
-  const sourceAuthority = loadSourceAuthority(nodePath.resolve(sourceRepositoryRoot))
+  const sourceAuthority = loadSourceAuthority(nodePath.resolve(sourceRepositoryRoot), sourceGitRunner)
   if (!manifestBytes.equals(sourceAuthority.manifestBytes)) {
     throw new Error('Prompt baseline manifest differs from the source blobs')
   }
@@ -221,4 +298,4 @@ function loadPromptBaseline(repositoryRoot, { filesystem = nodeFilesystem, sourc
   return Object.freeze({ baselineManifestSha256: sha256(manifestBytes), files: Object.freeze(files), manifest: Object.freeze(manifest), root })
 }
 
-module.exports = { SOURCE_COMMIT, SOURCE_PATHS, loadPromptBaseline }
+module.exports = { SOURCE_COMMIT, SOURCE_PATHS, SourceGitCommandError, createSourceGitRunner, loadPromptBaseline }

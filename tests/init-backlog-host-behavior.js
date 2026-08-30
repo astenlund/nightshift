@@ -25,7 +25,7 @@ const dialogue = require('./init-backlog-session-driver/dialogue')
 const evidence = require('./init-backlog-session-driver/evidence')
 const hostEvents = require('./init-backlog-session-driver/host-events')
 const oracles = require('./init-backlog-controller/host-fixture-oracles')
-const { loadPromptBaseline } = require('./init-backlog-prompt-baseline')
+const { SourceGitCommandError, createSourceGitRunner, loadPromptBaseline } = require('./init-backlog-prompt-baseline')
 const { CLAUDE_ROOT_EXCLUSION_CONFIRMATION } = require('./init-backlog-controller/election-oracles')
 const { HOSTS, OutputCapacityError, compareOrdinal, sha256 } = require('./init-backlog-session-driver/primitives')
 
@@ -379,6 +379,45 @@ function resolveTrustedGit({ ambientPath, filesystem = nodeFilesystem, platform,
   }
 
   return { executable: resolution.descriptor.executable }
+}
+
+function buildSourceGitEnvironment({ ambientEnvironment, platform }) {
+  const allowedKeys = platform === 'win32'
+    ? ['SystemRoot', 'ComSpec', 'PATHEXT', 'USERPROFILE', 'LANG', 'LC_ALL', 'LC_CTYPE']
+    : ['HOME', 'USER', 'LOGNAME', 'SHELL', 'LANG', 'LC_ALL', 'LC_CTYPE']
+  const environment = {}
+  if (platform === 'win32') {
+    const ambientByUpper = new Map()
+    for (const [key, value] of Object.entries(ambientEnvironment)) {
+      const upper = key.toUpperCase()
+      if (ambientByUpper.has(upper)) {
+        throw new Error(`ambient environment carries a duplicate-case alias for ${key}`)
+      }
+      ambientByUpper.set(upper, value)
+    }
+    for (const key of allowedKeys) {
+      const value = ambientByUpper.get(key.toUpperCase())
+      if (value !== undefined) environment[key] = value
+    }
+  } else {
+    for (const key of allowedKeys) {
+      if (Object.hasOwn(ambientEnvironment, key)) environment[key] = ambientEnvironment[key]
+    }
+  }
+  const nullDevice = platform === 'win32' ? 'NUL' : '/dev/null'
+  Object.assign(environment, {
+    GIT_ATTR_NOSYSTEM: '1',
+    GIT_CONFIG_COUNT: '1',
+    GIT_CONFIG_GLOBAL: nullDevice,
+    GIT_CONFIG_KEY_0: 'core.attributesFile',
+    GIT_CONFIG_NOSYSTEM: '1',
+    GIT_CONFIG_VALUE_0: nullDevice,
+    GIT_OPTIONAL_LOCKS: '0',
+    GIT_PAGER: '',
+    GIT_TERMINAL_PROMPT: '0',
+  })
+
+  return Object.freeze(environment)
 }
 
 function buildContainedAmbientEnvironment({ ambientEnvironment, filesystem, platform, protectedRoots }) {
@@ -1402,6 +1441,7 @@ async function runEvaluation(options) {
     scenarios,
     turnSchemaJson,
     turnSchemaPath,
+    trustedGitExecutable: suppliedTrustedGitExecutable = null,
   } = options
   const stopWith = (result) => ({ evidenceManifests: [], exitCode: 1, result, resultLine: formatResultLine(result), rows: [], summary: null, trustedGitExecutable: null, versions: null })
   const resolvedDescriptors = {}
@@ -1416,18 +1456,20 @@ async function runEvaluation(options) {
   // against the original ambient PATH and outside every protected root, and
   // threaded to every scenario git runner. A resolution failure is a
   // preflight-class trusted-executable failure before any session.
-  let trustedGitExecutable = null
+  let trustedGitExecutable = suppliedTrustedGitExecutable
   let effectiveRunGitFactory = runGitFactory
   if (effectiveRunGitFactory === null) {
-    try {
-      trustedGitExecutable = resolveTrustedGit({
-        ambientPath: ambientPathValue(ambientEnvironment, platform),
-        filesystem: commandFilesystem ?? filesystem,
-        platform,
-        protectedRoots,
-      }).executable
-    } catch {
-      return stopWith(infrastructureCarrier({ detailCode: 'containment-unavailable', host: hosts[0], phase: 'version' }))
+    if (trustedGitExecutable === null) {
+      try {
+        trustedGitExecutable = resolveTrustedGit({
+          ambientPath: ambientPathValue(ambientEnvironment, platform),
+          filesystem: commandFilesystem ?? filesystem,
+          platform,
+          protectedRoots,
+        }).executable
+      } catch {
+        return stopWith(infrastructureCarrier({ detailCode: 'containment-unavailable', host: hosts[0], phase: 'version' }))
+      }
     }
     effectiveRunGitFactory = ({ gitIsolation, scenarioRoot }) => createScenarioGitRunner({
       environment: driver.buildHarnessGitEnvironment({
@@ -2851,19 +2893,49 @@ async function runOutputEvaluation({ outputRoot, overrides = {}, stdout = proces
   const launch = overrides.launch ?? live.launch
   const runSession = overrides.runSession ?? live.runSession
   const proxySessionFactory = overrides.proxySessionFactory ?? live?.proxySessionFactory ?? null
-  try {
-    const fixtures = overrides.fixtures ?? (() => {
-      const tree = oracles.loadHostFixtureTree(checkoutRoot)
-      const promptBaseline = loadPromptBaseline(nodePath.resolve(__dirname, '..'), { filesystem })
-
-      return {
-        baselineManifestSha256: promptBaseline.baselineManifestSha256,
-        importCases: oracles.buildExpectedImportCases(),
-        promptBaseline,
-        scenarioManifestSha256: tree.scenarioManifestSha256,
-        scenarios: [...tree.scenarios.values()].map((entry) => entry.object),
+  let sourceGitRunner = overrides.sourceGitRunner ?? null
+  let trustedGitExecutable = overrides.trustedGitExecutable ?? null
+  if (overrides.fixtures === undefined && sourceGitRunner === null) {
+    try {
+      if (trustedGitExecutable === null) {
+        trustedGitExecutable = resolveTrustedGit({
+          ambientPath: ambientPathValue(ambientEnvironment, platform),
+          filesystem: commandFilesystem,
+          platform,
+          protectedRoots,
+        }).executable
       }
-    })()
+      sourceGitRunner = createSourceGitRunner({
+        environment: buildSourceGitEnvironment({ ambientEnvironment: launchEnvironment, platform }),
+        gitExecutablePath: trustedGitExecutable,
+      })
+    } catch {
+      stdout.write(formatResultLine(infrastructureCarrier({ detailCode: 'containment-unavailable', host: 'claude-code', phase: 'version' })))
+
+      return 1
+    }
+  }
+  try {
+    let fixtures
+    try {
+      fixtures = overrides.fixtures ?? (() => {
+        const tree = oracles.loadHostFixtureTree(checkoutRoot)
+        const promptBaseline = loadPromptBaseline(nodePath.resolve(__dirname, '..'), { filesystem, sourceGitRunner, sourceRepositoryRoot: checkoutRoot })
+
+        return {
+          baselineManifestSha256: promptBaseline.baselineManifestSha256,
+          importCases: oracles.buildExpectedImportCases(),
+          promptBaseline,
+          scenarioManifestSha256: tree.scenarioManifestSha256,
+          scenarios: [...tree.scenarios.values()].map((entry) => entry.object),
+        }
+      })()
+    } catch (error) {
+      if (!(error instanceof SourceGitCommandError)) throw error
+      stdout.write(formatResultLine(infrastructureCarrier({ detailCode: error.detailCode, host: 'claude-code', phase: 'version' })))
+
+      return 1
+    }
     // The import matrix runs before the behavioral matrix, per the probe
     // slice's ordering.
     const matrix = await runImportMatrix({
@@ -2930,6 +3002,7 @@ async function runOutputEvaluation({ outputRoot, overrides = {}, stdout = proces
       scenarios: fixtures.scenarios,
       turnSchemaJson: overrides.turnSchemaJson ?? filesystem.readFileSync(turnSchemaSourcePath).toString('utf8'),
       turnSchemaPath: turnSchemaSourcePath,
+      trustedGitExecutable,
     })
     if (evaluation.result !== null) {
       stdout.write(evaluation.resultLine)
@@ -3003,6 +3076,7 @@ module.exports = {
   buildImportProbeArgv,
   buildLaunchProjection,
   buildResultRow,
+  buildSourceGitEnvironment,
   classifyCodexLoginStatus,
   collectQualifyingWriterCodes,
   collectTerminalRepository,

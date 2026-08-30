@@ -181,12 +181,12 @@ function loadLegacyBaseline(candidateRoot) {
   return { root, version: manifest.version, commandNames, skillNames }
 }
 
-function loadPromptBaseline(candidateRoot) {
-  return loadValidatedPromptBaseline(candidateRoot)
+function loadPromptBaseline(candidateRoot, options = {}) {
+  return loadValidatedPromptBaseline(candidateRoot, options)
 }
 
-function assemblePromptBaseline({ candidateRoot, destinationRoot }) {
-  const baseline = loadPromptBaseline(candidateRoot)
+function assemblePromptBaseline({ candidateRoot, destinationRoot, sourceGitRunner, sourceRepositoryRoot }) {
+  const baseline = loadPromptBaseline(candidateRoot, { sourceGitRunner, sourceRepositoryRoot })
   const fixtureRoot = realpathSync(baseline.root)
   const installedRoot = join(destinationRoot, 'plugin')
   for (const entry of baseline.files) {

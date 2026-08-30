@@ -22,7 +22,7 @@ const { runProcessCases } = require('./init-backlog-controller/process.cases')
 const { runHostEntryCases } = require('./init-backlog-controller/host-entry.cases')
 const { runDialogueCases } = require('./init-backlog-controller/dialogue.cases')
 const { runE2eCases } = require('./init-backlog-controller/e2e.cases')
-const { canonicalJson, compareOrdinal, fixtureRoot, git, isContained, loadPromptBaseline, sha256, sourceClosure } = require('./init-backlog-controller/helpers')
+const { canonicalJson, compareOrdinal, fixtureRoot, git, isContained, loadPromptBaseline, sha256 } = require('./init-backlog-controller/helpers')
 const { assembleClaudePromptBaseline, assembleCodexPromptBaseline, loadPromptBaseline: loadHostPromptBaseline, stageCandidate } = require('./host-discovery-smoke-lib')
 
 const REPOSITORY_ROOT = join(__dirname, '..')
@@ -61,8 +61,6 @@ test('the immutable prompt baseline copies the exact runtime closure from its so
   assert.deepEqual(manifestPaths, SOURCE_PATHS)
   assert.equal(manifestPaths.includes('skills/init-backlog/init-backlog.js'), false, 'the source baseline predates the controller')
 
-  const closure = sourceClosure(REPOSITORY_ROOT, SOURCE_COMMIT)
-  assert.deepEqual(closure, SOURCE_PATHS)
   const copiedRoot = fixtureRoot(REPOSITORY_ROOT)
   const hostFixture = loadHostPromptBaseline(REPOSITORY_ROOT)
   assert.ok(copiedRoot.startsWith(REPOSITORY_ROOT))
@@ -75,10 +73,10 @@ test('both host prompt assemblers install only the staged copied baseline fixtur
   const temporaryRoot = mkdtempSync(join(tmpdir(), 'nightshift-init-backlog-controller-'))
   try {
     const candidate = stageCandidate({ checkoutRoot: REPOSITORY_ROOT, destinationRoot: temporaryRoot, treeId: git(REPOSITORY_ROOT, ['write-tree']).toString('utf8').trim() })
-    const baseline = loadHostPromptBaseline(candidate.root)
+    const baseline = loadHostPromptBaseline(candidate.root, { sourceRepositoryRoot: REPOSITORY_ROOT })
     const assemblies = [
-      assembleClaudePromptBaseline({ candidateRoot: candidate.root, destinationRoot: join(temporaryRoot, 'claude') }),
-      assembleCodexPromptBaseline({ candidateRoot: candidate.root, destinationRoot: join(temporaryRoot, 'codex') }),
+      assembleClaudePromptBaseline({ candidateRoot: candidate.root, destinationRoot: join(temporaryRoot, 'claude'), sourceRepositoryRoot: REPOSITORY_ROOT }),
+      assembleCodexPromptBaseline({ candidateRoot: candidate.root, destinationRoot: join(temporaryRoot, 'codex'), sourceRepositoryRoot: REPOSITORY_ROOT }),
     ]
     const expectedPaths = baseline.manifest.files.map((entry) => entry.path)
 
