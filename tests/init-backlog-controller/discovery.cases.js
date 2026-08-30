@@ -13,6 +13,7 @@ const {
   enumerateDirectory,
   probeWindowsAttributes,
   readDirectoryNames,
+  readOrdinalFirstDirectoryName,
   resolveTrustedExecutable,
   stableOpenFile,
   trustedWindowsPowerShellPath,
@@ -125,6 +126,21 @@ function runDiscoveryCases(repositoryRoot) {
       assert.deepEqual(readDirectoryNames(root, { includeName: (name) => name.endsWith('.md'), maxSelectedEntries: 2, opendirSync: openDirectory(names), platform: 'linux' }), ['a.md', 'b.md'])
       const overflow = [...names, Buffer.from('c.md', 'utf8')]
       assert.throws(() => readDirectoryNames(root, { includeName: (name) => name.endsWith('.md'), maxSelectedEntries: 2, opendirSync: openDirectory(overflow), platform: 'linux' }), (error) => error.code === 'directory-too-large')
+    } finally {
+      rmSync(root, { force: true, recursive: true })
+    }
+  })
+
+  test('first directory name selection retains only the ordinal minimum across the matching set', () => {
+    const root = temporaryRoot('nightshift-discovery-first-name-')
+    const names = Array.from({ length: 65 }, (_, index) => Buffer.from(`stage-${(64 - index).toString().padStart(2, '0')}.new`, 'utf8'))
+    let index = 0
+    const opendirSync = () => ({
+      closeSync: () => {},
+      readSync: () => index < names.length ? { name: names[index++] } : null,
+    })
+    try {
+      assert.equal(readOrdinalFirstDirectoryName(root, { includeName: (name) => name.endsWith('.new'), opendirSync, platform: 'linux' }), 'stage-00.new')
     } finally {
       rmSync(root, { force: true, recursive: true })
     }

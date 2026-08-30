@@ -201,18 +201,24 @@ function decodeDirectoryName(name, platform = process.platform) {
   return decoded
 }
 
-function readDirectoryNames(directory, options = {}) {
-  const platform = options.platform ?? process.platform
-  const injectedReadDirectory = options.readdirSync ?? options.readdir
+function directoryNameComparator(platform) {
+  return platform === 'win32' ? compareOrdinal : (left, right) => Buffer.from(left, 'utf8').compare(Buffer.from(right, 'utf8'))
+}
+
+function directoryNameFilter(options) {
   if (options.includeName !== undefined && typeof options.includeName !== 'function') {
     throw new TypeError('Directory name filter must be a function')
   }
-  for (const [name, value] of [['maxEntries', options.maxEntries], ['maxSelectedEntries', options.maxSelectedEntries]]) {
-    if (value !== undefined && (!Number.isSafeInteger(value) || value < 0)) {
-      throw new TypeError(`${name} must be a nonnegative safe integer`)
-    }
+
+  return options.includeName ?? (() => true)
+}
+
+function visitDirectoryNames(directory, options, visit) {
+  const platform = options.platform ?? process.platform
+  const injectedReadDirectory = options.readdirSync ?? options.readdir
+  if (options.maxEntries !== undefined && (!Number.isSafeInteger(options.maxEntries) || options.maxEntries < 0)) {
+    throw new TypeError('maxEntries must be a nonnegative safe integer')
   }
-  const selected = []
   let entryCount = 0
   const accept = (rawName) => {
     entryCount += 1
@@ -223,13 +229,7 @@ function readDirectoryNames(directory, options = {}) {
     }
     const name = decodeDirectoryName(rawName, platform)
     assertSafeWindowsScalar(name, platform)
-    if (options.includeName !== undefined && !options.includeName(name)) return
-    if (options.maxSelectedEntries !== undefined && selected.length >= options.maxSelectedEntries) {
-      const error = new Error('Directory exceeds its selected entry limit')
-      error.code = 'directory-too-large'
-      throw error
-    }
-    selected.push(name)
+    visit(name)
   }
   if (injectedReadDirectory) {
     for (const rawName of injectedReadDirectory(directory, platform === 'win32' ? { encoding: 'utf8' } : { encoding: 'buffer' })) accept(rawName)
@@ -246,9 +246,40 @@ function readDirectoryNames(directory, options = {}) {
       handle.closeSync()
     }
   }
-  selected.sort(platform === 'win32' ? compareOrdinal : (left, right) => Buffer.from(left, 'utf8').compare(Buffer.from(right, 'utf8')))
+}
+
+function readDirectoryNames(directory, options = {}) {
+  const platform = options.platform ?? process.platform
+  const includeName = directoryNameFilter(options)
+  if (options.maxSelectedEntries !== undefined && (!Number.isSafeInteger(options.maxSelectedEntries) || options.maxSelectedEntries < 0)) {
+    throw new TypeError('maxSelectedEntries must be a nonnegative safe integer')
+  }
+  const selected = []
+  visitDirectoryNames(directory, options, (name) => {
+    if (!includeName(name)) return
+    if (options.maxSelectedEntries !== undefined && selected.length >= options.maxSelectedEntries) {
+      const error = new Error('Directory exceeds its selected entry limit')
+      error.code = 'directory-too-large'
+      throw error
+    }
+    selected.push(name)
+  })
+  selected.sort(directoryNameComparator(platform))
 
   return selected
+}
+
+function readOrdinalFirstDirectoryName(directory, options = {}) {
+  const platform = options.platform ?? process.platform
+  const includeName = directoryNameFilter(options)
+  const compare = directoryNameComparator(platform)
+  let first = null
+  visitDirectoryNames(directory, options, (name) => {
+    if (!includeName(name)) return
+    if (first === null || compare(name, first) < 0) first = name
+  })
+
+  return first
 }
 
 function enumerateDirectory(directory, options = {}) {
@@ -1098,6 +1129,7 @@ module.exports = {
   platformMode,
   probeWindowsAttributes,
   readDirectoryNames,
+  readOrdinalFirstDirectoryName,
   publishNoReplace,
   readBackExact,
   assignAndVerifyMode,

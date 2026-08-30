@@ -1578,7 +1578,9 @@ function runRecoveryCases() {
       const first = stageFixture(root, 123, 'a'.repeat(32))
       const second = stageFixture(root, 124, 'b'.repeat(32))
       const found = discoverInitialLockStages(root, { killProcess: absentPid() })
-      assert.deepEqual(found.map((item) => item.name), [first, second].sort())
+      assert.deepEqual(found.map((item) => item.name), [first])
+      rmSync(join(root, first))
+      assert.deepEqual(discoverInitialLockStages(root, { killProcess: absentPid() }).map((item) => item.name), [second])
     } finally { rmSync(root, { force: true, recursive: true }) }
   })
 
@@ -1717,12 +1719,13 @@ function runRecoveryCases() {
     } finally { rmSync(root, { force: true, recursive: true }) }
   })
 
-  test('ordinary inspect reports multiple orphan stages across fresh inspections', () => {
+  test('ordinary inspect reports more than 64 orphan stages one per fresh inspection', () => {
     const root = fixtureRoot()
     try {
-      stageFixture(root, 123)
-      stageFixture(root, 124, 'b'.repeat(32))
-      assert.equal(discoverInitialLockStages(root, { killProcess: absentPid() }).length, 2)
+      const targets = Array.from({ length: 65 }, (_, index) => stageFixture(root, 1000 + index, index.toString(16).padStart(32, '0'))).sort(compareOrdinal)
+      assert.deepEqual(discoverInitialLockStages(root, { killProcess: absentPid() }).map((item) => item.name), [targets[0]])
+      rmSync(join(root, targets[0]))
+      assert.deepEqual(discoverInitialLockStages(root, { killProcess: absentPid() }).map((item) => item.name), [targets[1]])
     } finally { rmSync(root, { force: true, recursive: true }) }
   })
 

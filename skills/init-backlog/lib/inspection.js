@@ -10,7 +10,7 @@ const { BACKLOG_DIRECTORY_TARGETS, PLANS_DIRECTORY_TARGET, loadManifest } = requ
 const { inspectBackups } = require('./backups')
 const { InitBacklogError, failureRecord } = require('./errors')
 const { HTML_BLOCK_TYPE_SIX_TAGS, MAX_GUIDANCE_FILE_BYTES, discoverControlledMarkdown, resolveGuidance } = require('./guidance')
-const { boundedOpenOptions, canonicalRoot, comparableIdentity, comparableMode, createInitialLock, initialLockPaths, readDirectoryNames, removeInitialLock, stableOpenFile, targetPath } = require('./filesystem')
+const { boundedOpenOptions, canonicalRoot, comparableIdentity, comparableMode, createInitialLock, initialLockPaths, readOrdinalFirstDirectoryName, removeInitialLock, stableOpenFile, targetPath } = require('./filesystem')
 const { BACKUP_DIRECTORY, DIGEST_PATTERN, MAX_INLINE_FILE_BYTES, MAX_MECHANICAL_FILE_BYTES, MAX_RECOVERY_REQUEST_BYTES, RECOVERY_LOCK_BASENAME, RECOVERY_LOCK_STAGE_PATTERN, RECOVERY_MARKER_BASENAME, canonicalJson, compareOrdinal, deriveProposalId, deriveSnapshotId, encodeResult, sameKeys, sha256 } = require('./protocol')
 const { detectGitKind, inspectGitPolicy, newlineStyle, plansRootRuleEffective } = require('./git-policy')
 
@@ -415,22 +415,21 @@ function readElectionMarker(root, options = {}) {
 }
 
 function discoverInitialLockStages(root, options = {}) {
-  let names
+  let name
   try {
-    names = readDirectoryNames(root, { ...options, includeName: (name) => RECOVERY_LOCK_STAGE_PATTERN.test(name), maxSelectedEntries: 64 })
+    name = readOrdinalFirstDirectoryName(root, { ...options, includeName: (candidate) => RECOVERY_LOCK_STAGE_PATTERN.test(candidate) })
   } catch (error) {
     inspectError('runtime-lock', 'Inspection lock residue cannot be enumerated.', null, error, 'lock')
   }
-  return names.map((name) => {
-    const path = join(root, name)
-    try {
-      const opened = stableOpenFile(root, path, boundedOpenOptions(options, MAX_RECOVERY_REQUEST_BYTES, { requireSingleLink: true }))
+  if (name === null) return []
+  const path = join(root, name)
+  try {
+    const opened = stableOpenFile(root, path, boundedOpenOptions(options, MAX_RECOVERY_REQUEST_BYTES, { requireSingleLink: true }))
 
-      return { name, opened, path }
-    } catch (error) {
-      inspectError('runtime-lock', 'Orphan initial lock stage cannot be trusted.', name, error, 'lock')
-    }
-  })
+    return [{ name, opened, path }]
+  } catch (error) {
+    inspectError('runtime-lock', 'Orphan initial lock stage cannot be trusted.', name, error, 'lock')
+  }
 }
 
 function creationMode(kind, options = {}) {
