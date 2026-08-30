@@ -608,6 +608,9 @@ test('handover preserves lifecycle behavior behind the agreement gate', () => {
   assert.equal(body.includes('`callerResult.agreement` is only the complete public agreement-record projection'), true, 'handover must keep the public agreement projection closed')
   assert.equal(body.includes('`controllerContext.sessionState` remains the separate complete state authority'), true, 'handover must retain the complete state authority separately')
   assert.equal(body.includes('Read `fitEvidence` only from `controllerContext.sessionState.fitEvidence`'), true, 'handover must read fit evidence from controller state')
+  assert.equal(body.includes('For repository-local `.claude/plans/` plans, plans are never committed: `.claude/plans/` is git-ignored.'), true, 'handover must scope ignored plan policy to repository-local plans')
+  assert.equal(body.includes('Global and external plans remain outside the current repository\'s Git policy'), true, 'handover must state the complementary global and external plan branch')
+  assert.equal(body.includes('Plans are never committed: `.claude/plans/` is git-ignored.'), false, 'handover must not state a universal repository Git policy for plans')
   assert.equal(countExact(body, '`writeProvenanceStamp`'), 2, 'handover must use the shared provenance writer for refresh and completion')
   for (const lifecycleContract of [
     '5. `/nightshift:revise-code`',
