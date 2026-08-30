@@ -10,6 +10,7 @@ const { isDeepStrictEqual } = require('node:util');
 const {
   AgreementError,
   AGREEMENT_VERSION,
+  MAX_DERIVED_DIFF_LCS_AREA,
   MAX_GOVERNING_NOMINATIONS,
   buildCandidate,
   buildDerivedDiff,
@@ -4286,6 +4287,34 @@ test('large sparse edits preserve disjoint shortest-edit hunk boundaries with bo
 
   assert.equal(result.status, 0, result.stderr);
   assert.deepEqual(JSON.parse(result.stdout), [['line-0\n', 'changed-first\n'], ['line-1999\n', 'changed-last\n']]);
+});
+
+test('derived diff shares one bounded LCS area budget across artifacts', () => {
+  assert.equal(MAX_DERIVED_DIFF_LCS_AREA, 4_000_000);
+  const lineCount = 1500;
+  const changed = (label) => {
+    const before = Array.from({ length: lineCount }, (_, index) => `${label}-${index}\n`);
+    const after = [...before];
+    after[0] = `${label}-changed-first\n`;
+    after[lineCount - 1] = `${label}-changed-last\n`;
+
+    return { before: before.join(''), after: after.join('') };
+  };
+  const first = changed('first');
+  const second = changed('second');
+  const before = candidateFixture([
+    { path: 'docs/first.md', text: first.before },
+    { path: 'docs/second.md', text: second.before },
+  ]);
+  const after = candidateFixture([
+    { path: 'docs/first.md', text: first.after },
+    { path: 'docs/second.md', text: second.after },
+  ]);
+  const result = buildDerivedDiff({ previousCandidate: before.candidate, currentCandidate: after.candidate, previousSources: before.currentSources, currentSources: after.currentSources });
+
+  assert.deepEqual(result.hunks.map((hunk) => hunk.path), ['docs/first.md', 'docs/first.md', 'docs/second.md']);
+  assert.equal(result.hunks[2].before, second.before);
+  assert.equal(result.hunks[2].after, second.after);
 });
 
 test('large complete replacements produce a bounded derived diff', () => {

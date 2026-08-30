@@ -1920,6 +1920,20 @@ function sharedEdgeLengths(left, right) {
   return { prefix, suffix };
 }
 
+const MAX_DERIVED_DIFF_LCS_AREA = 4_000_000;
+
+function reserveLcsArea(budget, leftLength, rightLength) {
+  if (leftLength <= 1 || rightLength <= 1) {
+    return true;
+  }
+  if (leftLength > Math.floor(budget.remainingArea / rightLength)) {
+    return false;
+  }
+  budget.remainingArea -= leftLength * rightLength;
+
+  return true;
+}
+
 function lcsPrefixLengths(left, right) {
   const lengths = new Uint32Array(right.length + 1);
   for (const leftLine of left) {
@@ -1986,22 +2000,30 @@ function appendShortestEdits(left, right, edits) {
   appendShortestEdits(left.slice(midpoint), right.slice(split), edits);
 }
 
-function shortestEdits(before, after) {
+function shortestEdits(before, after, budget) {
   const left = linesWithTerminators(before);
   const right = linesWithTerminators(after);
   const { prefix, suffix } = sharedEdgeLengths(left, right);
+  const leftMiddle = left.slice(prefix, left.length - suffix);
+  const rightMiddle = right.slice(prefix, right.length - suffix);
+  if (!reserveLcsArea(budget, leftMiddle.length, rightMiddle.length)) {
+    return { kind: 'bounded-replacement', before: leftMiddle.join(''), after: rightMiddle.join('') };
+  }
   const edits = left.slice(0, prefix).map((text) => ({ kind: 'equal', text }));
-  appendShortestEdits(left.slice(prefix, left.length - suffix), right.slice(prefix, right.length - suffix), edits);
+  appendShortestEdits(leftMiddle, rightMiddle, edits);
   appendMappedEdits(edits, left.slice(left.length - suffix), 'equal');
 
-  return edits;
+  return { kind: 'shortest', edits };
 }
 
-function canonicalHunks(path, before, after) {
-  const edits = shortestEdits(before, after);
+function canonicalHunks(path, before, after, budget) {
+  const result = shortestEdits(before, after, budget);
+  if (result.kind === 'bounded-replacement') {
+    return [{ path, before: result.before, after: result.after }];
+  }
   const hunks = [];
   let active = null;
-  for (const edit of edits) {
+  for (const edit of result.edits) {
     if (edit.kind === 'equal') {
       if (active !== null) {
         hunks.push(active);
@@ -2037,11 +2059,12 @@ function buildDerivedDiff(input) {
     return { hunks: [] };
   }
   const hunks = [];
+  const lcsBudget = { remainingArea: MAX_DERIVED_DIFF_LCS_AREA };
   for (let index = 0; index < previousSources.length; index += 1) {
     const previousSource = previousSources[index];
     const currentSource = currentSources[index];
     if (!previousSource.selectedBytes.equals(currentSource.selectedBytes)) {
-      for (const hunk of canonicalHunks(previousSource.path, decode(previousSource.selectedBytes), decode(currentSource.selectedBytes))) {
+      for (const hunk of canonicalHunks(previousSource.path, decode(previousSource.selectedBytes), decode(currentSource.selectedBytes), lcsBudget)) {
         hunks.push({ ordinal: hunks.length + 1, path: hunk.path, kind: 'canonical', before: hunk.before, after: hunk.after });
       }
     } else if (previousCandidate.artifacts[index].sourceHash !== currentCandidate.artifacts[index].sourceHash) {
@@ -3084,6 +3107,7 @@ function runCli(input, options = {}) {
 module.exports = {
   AgreementError,
   AGREEMENT_VERSION,
+  MAX_DERIVED_DIFF_LCS_AREA,
   MAX_GOVERNING_NOMINATIONS,
   canonicalizePath,
   canonicalScopePath,
