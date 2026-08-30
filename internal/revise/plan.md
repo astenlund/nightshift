@@ -19,6 +19,8 @@ If a scope is provided, interpret it based on what it looks like:
 
 Git-diff scope shapes (`staged`, `unstaged`, `main..HEAD`) that the code artifact accepts are not supported here; a plan is a single document, not a multi-file changeset, so a file path (or natural-language pointer at one) is the only meaningful scope.
 
+Before reading the selected plan as authority or allowing an edit, establish a stable physical plan binding that records its logical path, declared boundary, resolved physical path, and stable file identity. A repository-local boundary is the resolved physical repository root; require every component from that root through `.claude/plans/` and the selected file to be an existing ordinary directory or file, reject a symbolic link, junction, or other reparse point, and prove the plan remains physically inside the repository root. A global plan uses the resolved `~/.claude/plans/` root as its boundary and applies the same component and containment checks. An explicitly named plan outside the standard roots uses its existing parent directory as its declared boundary only when the user supplied that exact path. Reject missing or non-regular files. Retain the binding throughout the run. The controller revalidates immediately before every plan mutation or deletion, including reviewer fix batches and the hardening-stamp write: re-resolve the boundary and path, repeat the link and containment checks, and require the same file identity. Any failure stops the run before any write and requires fresh selection; it never edits or removes the replacement target.
+
 ## Setup
 
 **Identify the plan file and in-scope sections.**
@@ -48,7 +50,7 @@ The plan carries no operating-context section of its own; its calibration source
 
 ## Review parameters
 
-- **Artifact**: the plan file. Edit surface: the plan file only: no code, no docs, no command files, no backlog entries during the loop. The sole exception is the post-loop Spec Reconciliation step below, which may edit the upstream spec with the user's per-edit approval.
+- **Artifact**: the plan file. Edit surface: the plan file only, through the retained and immediately revalidated physical binding: no code, no docs, no command files, no backlog entries during the loop. The sole exception is the post-loop Spec Reconciliation step below, which may edit the upstream spec with the user's per-edit approval.
 
 - **Model pin**: pass `model: "opus"` to every reviewer Agent call. Rationale: plan review is judgment-only; there is no build or test cycle to catch a bad fix downstream, so the stronger tier's judgment wins over the cheaper tier's volume (the code artifact makes the opposite trade).
 
@@ -66,7 +68,7 @@ The plan carries no operating-context section of its own; its calibration source
   - revise-plan graduated <date and time> at <sha>, scope: <scope>, content: <fingerprint>
   ```
 
-  where `<date and time>` is now (minute precision), `<sha>` is the current repo HEAD (short form), `<scope>` is `whole file` (plans are typically hardened whole-file) or `sections <headings or ranges>`, and `<fingerprint>` is the first 8 hexadecimal characters of the shared `hashSelection` result's `contentHash`. On first graduation, the helper creates an absent eligible final Hardening section, fills an eligible empty one, or replaces the sole recognized placeholder. Later provenance stamps append after existing valid provenance. Never hand-assemble the selector, placeholder replacement, or append behavior. Reparse and resolve the plan contract after this mutation before clearing the common agreement boundary. This stamp is what `/nightshift:handover` stage detection reads, both for plan hardening and as the baseline for its implementation-completeness evidence; skipping it silently breaks cross-session detection. Do not commit the plan as part of stamping.
+  where `<date and time>` is now (minute precision), `<sha>` is the current repo HEAD (short form), `<scope>` is `whole file` (plans are typically hardened whole-file) or `sections <headings or ranges>`, and `<fingerprint>` is the first 8 hexadecimal characters of the shared `hashSelection` result's `contentHash`. Immediately revalidate the retained physical binding before calling the writer. On first graduation, the helper creates an absent eligible final Hardening section, fills an eligible empty one, or replaces the sole recognized placeholder. Later provenance stamps append after existing valid provenance. Never hand-assemble the selector, placeholder replacement, or append behavior. Reparse and resolve the plan contract after this mutation before clearing the common agreement boundary. This stamp is what `/nightshift:handover` stage detection reads, both for plan hardening and as the baseline for its implementation-completeness evidence; skipping it silently breaks cross-session detection. Do not commit the plan as part of stamping.
 
 ## Dimensions
 

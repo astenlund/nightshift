@@ -392,6 +392,21 @@ test('handover preserves lifecycle behavior behind the agreement gate', () => {
   assert.equal(body.toLowerCase().includes('signed off'), false, 'handover must not retain signed-off stage logic')
 })
 
+test('plan workflows bind every mutation to a physically contained file', () => {
+  const handoverBody = parseFrontmatter(join(PUBLIC_SKILLS_ROOT, 'handover', 'SKILL.md')).body
+  const planBody = readRequiredFile(join(ENGINE_ROOT, 'plan.md'))
+
+  for (const [body, owner] of [[handoverBody, 'handover'], [planBody, 'revise-plan']]) {
+    assert.equal(body.includes('stable physical plan binding'), true, `${owner} must retain a stable physical plan binding`)
+    assert.equal(body.includes('symbolic link, junction, or other reparse point'), true, `${owner} must reject linked plan paths`)
+    assert.equal(body.includes('immediately before every plan mutation or deletion'), true, `${owner} must revalidate before each plan write or removal`)
+    assert.equal(body.includes('failure stops the run before any write'), true, `${owner} must fail closed on plan-path drift`)
+  }
+
+  assert.equal(handoverBody.includes('repository-local plan remains physically inside the repository root'), true, 'handover must keep repository plans inside the repository boundary')
+  assert.equal(planBody.includes('explicitly named plan outside the standard roots'), true, 'revise-plan must define the boundary for an explicit external plan')
+})
+
 test('production procedures contain no smoke-only probe branch', () => {
   for (const skillName of PUBLIC_SKILLS) {
     assert.equal(readRequiredFile(join(PUBLIC_SKILLS_ROOT, skillName, 'SKILL.md')).includes('NIGHTSHIFT_ENTRY_PROBE:'), false, `${skillName} must not retain a smoke probe`)
