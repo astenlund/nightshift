@@ -1578,9 +1578,9 @@ function runRecoveryCases() {
       const first = stageFixture(root, 123, 'a'.repeat(32))
       const second = stageFixture(root, 124, 'b'.repeat(32))
       const found = discoverInitialLockStage(root, { killProcess: absentPid() })
-      assert.equal(found.name, first)
+      assert.equal(found, first)
       rmSync(join(root, first))
-      assert.equal(discoverInitialLockStage(root, { killProcess: absentPid() }).name, second)
+      assert.equal(discoverInitialLockStage(root, { killProcess: absentPid() }), second)
     } finally { rmSync(root, { force: true, recursive: true }) }
   })
 
@@ -1715,7 +1715,7 @@ function runRecoveryCases() {
     try {
       const target = stageFixture(root, 123, 'a'.repeat(32), Buffer.from('malformed', 'utf8'))
       const found = discoverInitialLockStage(root, { killProcess: absentPid() })
-      assert.equal(found.name, target)
+      assert.equal(found, target)
     } finally { rmSync(root, { force: true, recursive: true }) }
   })
 
@@ -1723,9 +1723,9 @@ function runRecoveryCases() {
     const root = fixtureRoot()
     try {
       const targets = Array.from({ length: 65 }, (_, index) => stageFixture(root, 1000 + index, index.toString(16).padStart(32, '0'))).sort(compareOrdinal)
-      assert.equal(discoverInitialLockStage(root, { killProcess: absentPid() }).name, targets[0])
+      assert.equal(discoverInitialLockStage(root, { killProcess: absentPid() }), targets[0])
       rmSync(join(root, targets[0]))
-      assert.equal(discoverInitialLockStage(root, { killProcess: absentPid() }).name, targets[1])
+      assert.equal(discoverInitialLockStage(root, { killProcess: absentPid() }), targets[1])
     } finally { rmSync(root, { force: true, recursive: true }) }
   })
 
