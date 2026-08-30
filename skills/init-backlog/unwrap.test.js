@@ -118,6 +118,7 @@ test('collectMarkdownFiles reads a directory as a backlog root and accepts singl
     fs.writeFileSync(path.join(root, 'notes.md'), '# Stray\n');
     assert.deepEqual(collectMarkdownFiles([root]).map((file) => path.relative(root, file).replace(/\\/g, '/')), ['FEATURES.md', 'FEATURES_HISTORY.md', 'bugs/c.md', 'features/a.md', 'features/nested/b.md', 'patterns/d.md']);
     assert.deepEqual(collectMarkdownFiles([path.join(root, 'features', 'a.md')]), [path.join(root, 'features', 'a.md')]);
+    assert.throws(() => collectMarkdownFiles([{ path: root, stat: fs.statSync(root) }]), /path strings/);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }

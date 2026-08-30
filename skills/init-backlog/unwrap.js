@@ -357,9 +357,9 @@ function canonicalBacklogRootIdentity(root) {
 // A directory target is read as a backlog root: the seven backlog files at its
 // top level plus everything under the backlog directories, following contained
 // links once and skipping dangling or escaping ones. A file target is taken when
-// it is markdown. A target is a path string (statted here, throwing when
-// unreachable) or a { path, stat } pair carrying an already-obtained stat.
-function collectMarkdownFiles(targets) {
+// it is markdown. This private collector consumes targets already statted by its
+// caller so the CLI can report missing inputs without repeating filesystem work.
+function collectMarkdownFilesFromStattedTargets(targets) {
   const files = [];
   const visitedDirectories = new Set();
   const isMarkdown = (name) => path.extname(name).toLowerCase() === '.md';
@@ -400,8 +400,8 @@ function collectMarkdownFiles(targets) {
     }
   };
   for (const target of targets) {
-    const resolved = path.resolve(typeof target === 'string' ? target : target.path);
-    const stat = typeof target === 'string' ? fs.statSync(resolved) : target.stat;
+    const resolved = path.resolve(target.path);
+    const stat = target.stat;
     if (stat.isDirectory()) {
       visitBacklogRoot(resolved);
     } else {
@@ -410,6 +410,19 @@ function collectMarkdownFiles(targets) {
   }
 
   return files;
+}
+
+function collectMarkdownFiles(targets) {
+  if (!Array.isArray(targets) || targets.some((target) => typeof target !== 'string')) {
+    throw new TypeError('collectMarkdownFiles targets must be path strings');
+  }
+  const statted = targets.map((target) => {
+    const resolved = path.resolve(target);
+
+    return { path: resolved, stat: fs.statSync(resolved) };
+  });
+
+  return collectMarkdownFilesFromStattedTargets(statted);
 }
 
 function runCli(argv) {
@@ -430,7 +443,7 @@ function runCli(argv) {
   const report = [];
   let files;
   try {
-    files = collectMarkdownFiles(statted);
+    files = collectMarkdownFilesFromStattedTargets(statted);
   } catch (error) {
     if (!(error instanceof CatalogError)) throw error;
     process.stderr.write(`unwrap.js: ${error.message}\n`);
