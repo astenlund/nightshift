@@ -27,7 +27,7 @@ function guidanceResolvedHostContext(request, published) {
   return { ...hostContext, claudeContextSource: 'host-observed', claudeRootExclusionStatus: 'included' }
 }
 
-function publishedHostContext(request, admission, outcomes) {
+function publishedHostContext(request, outcomes) {
   const creation = approvedGuidanceCreation(request)
 
   return guidanceResolvedHostContext(request, creation !== null && outcomes.some((outcome) => outcome.actionId === creation.id))

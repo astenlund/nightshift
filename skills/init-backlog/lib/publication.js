@@ -808,7 +808,7 @@ function currentInspection(request, root, options, hostContext = request.hostCon
 
 function verifiedPostInspect(request, root, options, admission, outcomes, { electionWitnesses = [], onReadyFailure } = {}) {
   try {
-    return currentInspection(request, root, { ...options, electionWitnesses }, publishedHostContext(request, admission, outcomes))
+    return currentInspection(request, root, { ...options, electionWitnesses }, publishedHostContext(request, outcomes))
   } catch (error) {
     if (onReadyFailure !== undefined) onReadyFailure(error)
     if (error instanceof InitBacklogError && error.record.code === 'ready-failed' && error.record.phase === 'verify') throwEnrichedReadyFailure(error, admission.manifestId, outcomes)
