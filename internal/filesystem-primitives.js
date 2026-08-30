@@ -1,7 +1,7 @@
 'use strict'
 
 const { createHash } = require('node:crypto')
-const { closeSync, constants, fstatSync, lstatSync, openSync, readSync, realpathSync } = require('node:fs')
+const { closeSync, constants, fstatSync, fsyncSync, ftruncateSync, lstatSync, openSync, readSync, realpathSync, writeSync } = require('node:fs')
 const nodePath = require('node:path')
 
 function assertSafeWindowsScalar(value, platform = process.platform) {
@@ -47,6 +47,13 @@ function sha256(bytes) {
   return createHash('sha256').update(bytes).digest('hex')
 }
 
+function stableRewriteIdentityError(message) {
+  const error = new Error(message)
+  error.code = 'identity-changed'
+
+  return error
+}
+
 function stableOpenFile(root, target, options = {}) {
   const canonicalizeRoot = options.canonicalizeRoot ?? canonicalRoot
   const canonical = canonicalizeRoot(root)
@@ -88,6 +95,67 @@ function stableOpenFile(root, target, options = {}) {
     }
 
     return { bytes, identity: comparableIdentity(before), mode: comparableMode(before, platform), rawSha256: sha256(bytes) }
+  } finally {
+    closeSync(descriptor)
+  }
+}
+
+function stableRewriteFile(root, target, transform, options = {}) {
+  if (typeof transform !== 'function') throw new TypeError('Stable-rewrite transform must be a function')
+  const canonical = canonicalRoot(root)
+  const platform = options.platform ?? process.platform
+  assertSafeWindowsScalar(target)
+  if (typeof target !== 'string' || !nodePath.isAbsolute(target) || !pathIsContained(canonical, target)) throw stableRewriteIdentityError('Stable-rewrite target escapes its root')
+  const rootBefore = lstatSync(canonical, { bigint: true })
+  const parent = nodePath.dirname(target)
+  const parentBefore = lstatSync(parent, { bigint: true })
+  const before = lstatSync(target, { bigint: true })
+  if (!rootBefore.isDirectory() || rootBefore.isSymbolicLink() || options.expectedRootIdentity !== undefined && comparableIdentity(rootBefore) !== options.expectedRootIdentity) throw stableRewriteIdentityError('Stable-rewrite root identity changed')
+  if (!parentBefore.isDirectory() || parentBefore.isSymbolicLink() || realpathSync.native(parent) !== parent || !pathIsContained(canonical, parent) && parent !== canonical || options.expectedParentIdentity !== undefined && comparableIdentity(parentBefore) !== options.expectedParentIdentity) throw stableRewriteIdentityError('Stable-rewrite parent identity changed')
+  if (!before.isFile() || before.isSymbolicLink() || before.nlink !== 1n || realpathSync.native(target) !== target || options.expectedTargetIdentity !== undefined && comparableIdentity(before) !== options.expectedTargetIdentity) throw stableRewriteIdentityError('Stable-rewrite target identity changed')
+  const flags = constants.O_RDWR | (platform === 'win32' ? 0 : constants.O_NOFOLLOW ?? 0)
+  const descriptor = openSync(target, flags)
+  const validate = (compareContents) => {
+    const rootState = lstatSync(canonical, { bigint: true })
+    const parentState = lstatSync(parent, { bigint: true })
+    const targetState = lstatSync(target, { bigint: true })
+    const openedState = fstatSync(descriptor, { bigint: true })
+    if (!rootState.isDirectory() || rootState.isSymbolicLink() || realpathSync.native(canonical) !== canonical || comparableIdentity(rootState) !== comparableIdentity(rootBefore)) throw stableRewriteIdentityError('Stable-rewrite root identity changed')
+    if (!parentState.isDirectory() || parentState.isSymbolicLink() || realpathSync.native(parent) !== parent || comparableIdentity(parentState) !== comparableIdentity(parentBefore)) throw stableRewriteIdentityError('Stable-rewrite parent identity changed')
+    if (!targetState.isFile() || targetState.isSymbolicLink() || targetState.nlink !== 1n || realpathSync.native(target) !== target || comparableIdentity(targetState) !== comparableIdentity(before) || !openedState.isFile() || openedState.nlink !== 1n || comparableIdentity(openedState) !== comparableIdentity(before)) throw stableRewriteIdentityError('Stable-rewrite target identity changed')
+    if (compareContents && (targetState.size !== before.size || targetState.mtimeNs !== before.mtimeNs || openedState.size !== before.size || openedState.mtimeNs !== before.mtimeNs)) throw stableRewriteIdentityError('Stable-rewrite target changed during the read')
+
+    return openedState
+  }
+  try {
+    const openedBefore = validate(true)
+    const size = Number(openedBefore.size)
+    if (!Number.isSafeInteger(size) || size < 0) throw new Error('Stable-rewrite target size is invalid')
+    const bytes = Buffer.alloc(size)
+    let offset = 0
+    while (offset < size) {
+      const count = readSync(descriptor, bytes, offset, size - offset, offset)
+      if (count === 0) throw new Error('Stable-rewrite target ended early')
+      offset += count
+    }
+    validate(true)
+    const replacement = transform(bytes)
+    if (replacement === null || replacement === undefined || Buffer.isBuffer(replacement) && replacement.equals(bytes)) return { bytes, changed: false, identity: comparableIdentity(before), mode: comparableMode(before, platform), rawSha256: sha256(bytes) }
+    if (!Buffer.isBuffer(replacement)) throw new TypeError('Stable-rewrite transform must return a Buffer or null')
+    options.beforeWrite?.()
+    validate(true)
+    ftruncateSync(descriptor, 0)
+    offset = 0
+    while (offset < replacement.length) {
+      const count = writeSync(descriptor, replacement, offset, replacement.length - offset, offset)
+      if (count === 0) throw new Error('Stable-rewrite target write ended early')
+      offset += count
+    }
+    fsyncSync(descriptor)
+    const openedAfter = validate(false)
+    if (openedAfter.size !== BigInt(replacement.length)) throw new Error('Stable-rewrite target size is invalid after mutation')
+
+    return { bytes: replacement, changed: true, identity: comparableIdentity(before), mode: comparableMode(before, platform), rawSha256: sha256(replacement) }
   } finally {
     closeSync(descriptor)
   }
@@ -146,4 +214,5 @@ module.exports = {
   resolveTrustedExecutable,
   stableMetadata,
   stableOpenFile,
+  stableRewriteFile,
 }

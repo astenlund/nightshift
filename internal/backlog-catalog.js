@@ -25,6 +25,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { TextDecoder } = require('node:util');
+const { comparableIdentity, stableRewriteFile } = require('./filesystem-primitives');
 
 const BOM = String.fromCharCode(0xfeff);
 const LIST_MARKER = /^\s*(?:[-*+]|\d+[.)])\s+/;
@@ -379,12 +380,69 @@ function canonicalBacklogRootIdentity(root) {
 // links once and skipping dangling or escaping ones. A file target is taken when
 // it is markdown. This private collector consumes targets already statted by its
 // caller so the CLI can report missing inputs without repeating filesystem work.
-function collectMarkdownFilesFromStattedTargets(targets) {
+function mutationAuthority(rootIdentity, target) {
+  try {
+    const file = path.resolve(target);
+    const aliasParent = path.dirname(file);
+    const parentIdentity = fs.realpathSync.native(aliasParent);
+    const targetIdentity = fs.realpathSync.native(file);
+    const rootMetadata = fs.lstatSync(rootIdentity, { bigint: true });
+    const aliasParentMetadata = fs.lstatSync(aliasParent, { bigint: true });
+    const parentMetadata = fs.lstatSync(parentIdentity, { bigint: true });
+    const aliasMetadata = fs.lstatSync(file, { bigint: true });
+    const targetMetadata = fs.lstatSync(targetIdentity, { bigint: true });
+
+    return {
+      aliasIdentity: comparableIdentity(aliasMetadata),
+      aliasIsLink: aliasMetadata.isSymbolicLink(),
+      aliasParent,
+      aliasParentIdentity: comparableIdentity(aliasParentMetadata),
+      aliasParentIsLink: aliasParentMetadata.isSymbolicLink(),
+      file,
+      parentIdentity,
+      parentIdentityToken: comparableIdentity(parentMetadata),
+      rootIdentity,
+      rootIdentityToken: comparableIdentity(rootMetadata),
+      targetIdentity,
+      targetIdentityToken: comparableIdentity(targetMetadata),
+    };
+  } catch (cause) {
+    const error = new CatalogError(`cannot retain backlog mutation authority for ${target}`, { cause });
+    error.code = 'identity-changed';
+
+    throw error;
+  }
+}
+
+function validateMutationAuthority(authority) {
+  try {
+    const rootMetadata = fs.lstatSync(authority.rootIdentity, { bigint: true });
+    const aliasParentMetadata = fs.lstatSync(authority.aliasParent, { bigint: true });
+    const parentMetadata = fs.lstatSync(authority.parentIdentity, { bigint: true });
+    const aliasMetadata = fs.lstatSync(authority.file, { bigint: true });
+    const targetMetadata = fs.lstatSync(authority.targetIdentity, { bigint: true });
+    if (!rootMetadata.isDirectory() || rootMetadata.isSymbolicLink() || fs.realpathSync.native(authority.rootIdentity) !== authority.rootIdentity || comparableIdentity(rootMetadata) !== authority.rootIdentityToken
+      || aliasParentMetadata.isSymbolicLink() !== authority.aliasParentIsLink || comparableIdentity(aliasParentMetadata) !== authority.aliasParentIdentity || fs.realpathSync.native(authority.aliasParent) !== authority.parentIdentity
+      || !parentMetadata.isDirectory() || parentMetadata.isSymbolicLink() || comparableIdentity(parentMetadata) !== authority.parentIdentityToken
+      || aliasMetadata.isSymbolicLink() !== authority.aliasIsLink || comparableIdentity(aliasMetadata) !== authority.aliasIdentity || fs.realpathSync.native(authority.file) !== authority.targetIdentity
+      || !targetMetadata.isFile() || targetMetadata.isSymbolicLink() || targetMetadata.nlink !== 1n || comparableIdentity(targetMetadata) !== authority.targetIdentityToken
+      || !isContainedPath(authority.rootIdentity, authority.targetIdentity)) {
+      throw new Error('backlog mutation authority changed');
+    }
+  } catch (cause) {
+    const error = new CatalogError(`backlog mutation authority changed for ${authority.file}`, { cause });
+    error.code = 'identity-changed';
+
+    throw error;
+  }
+}
+
+function collectMarkdownFilesFromStattedTargets(targets, options = {}) {
   const files = [];
   const visitedDirectories = new Set();
   const isMarkdown = (name) => path.extname(name).toLowerCase() === '.md';
   const addMarkdown = (rootIdentity, target, name) => {
-    if (isMarkdown(name) && isContainedPath(rootIdentity, canonicalPath(target))) files.push(target);
+    if (isMarkdown(name) && isContainedPath(rootIdentity, canonicalPath(target))) files.push(options.captureAuthorities === true ? mutationAuthority(rootIdentity, target) : target);
   };
   const visitAll = (directory, rootIdentity) => {
     const identity = canonicalPath(directory);
@@ -445,34 +503,63 @@ function collectMarkdownFiles(targets) {
   return collectMarkdownFilesFromStattedTargets(statted);
 }
 
-function runCli(argv) {
+function runCli(argv, options = {}) {
+  const stdout = options.stdout ?? process.stdout;
+  const stderr = options.stderr ?? process.stderr;
   const write = argv.includes('--write');
   const targets = argv.filter((arg) => arg !== '--write');
   if (targets.length === 0) {
-    process.stderr.write('usage: node unwrap.js [--write] <file-or-directory>...\n');
+    stderr.write('usage: node unwrap.js [--write] <file-or-directory>...\n');
     process.exitCode = 2;
     return;
   }
   const statted = targets.map((target) => ({ path: target, stat: statOrNull(path.resolve(target)) }));
   const missing = statted.find((entry) => entry.stat === null);
   if (missing !== undefined) {
-    process.stderr.write(`unwrap.js: no such file or directory: ${missing.path}\n`);
+    stderr.write(`unwrap.js: no such file or directory: ${missing.path}\n`);
     process.exitCode = 2;
     return;
   }
   const report = [];
   let files;
   try {
-    files = collectMarkdownFilesFromStattedTargets(statted);
+    files = collectMarkdownFilesFromStattedTargets(statted, { captureAuthorities: write });
   } catch (error) {
     if (!(error instanceof CatalogError)) throw error;
-    process.stderr.write(`unwrap.js: ${error.message}\n`);
+    stderr.write(`unwrap.js: ${error.message}\n`);
     process.exitCode = 2;
 
     return;
   }
-  for (const file of files) {
+  for (const item of files) {
+    const file = write ? item.file : item;
     let text;
+    if (write) {
+      let result = null;
+      try {
+        stableRewriteFile(item.rootIdentity, item.targetIdentity, (bytes) => {
+          text = decodeUtf8(bytes);
+          const analysis = analyzeText(text);
+          const wraps = analysis.wraps;
+          if (wraps.length === 0) return null;
+          result = { file, wraps: wraps.length, firstLine: wraps[0].line, rewritten: true };
+
+          return Buffer.from(joinContinuations(analysis), 'utf8');
+        }, {
+          beforeWrite: () => {
+            options.beforeWrite?.({ file });
+            validateMutationAuthority(item);
+          },
+          expectedParentIdentity: item.parentIdentityToken,
+          expectedRootIdentity: item.rootIdentityToken,
+          expectedTargetIdentity: item.targetIdentityToken,
+        });
+        if (result !== null) report.push(result);
+      } catch (error) {
+        report.push({ file, error: error?.code ?? 'unknown' });
+      }
+      continue;
+    }
     try {
       text = decodeUtf8(fs.readFileSync(file));
     } catch (error) {
@@ -482,12 +569,9 @@ function runCli(argv) {
     const analysis = analyzeText(text);
     const wraps = analysis.wraps;
     if (wraps.length === 0) continue;
-    report.push({ file, wraps: wraps.length, firstLine: wraps[0].line, rewritten: write });
-    if (write) {
-      fs.writeFileSync(file, joinContinuations(analysis));
-    }
+    report.push({ file, wraps: wraps.length, firstLine: wraps[0].line, rewritten: false });
   }
-  process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
+  stdout.write(`${JSON.stringify(report, null, 2)}\n`);
   const unreadable = report.some((entry) => entry.error !== undefined);
   process.exitCode = unreadable || (report.length > 0 && !write) ? 1 : 0;
 }

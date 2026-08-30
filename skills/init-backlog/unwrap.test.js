@@ -7,10 +7,29 @@ const path = require('node:path');
 const test = require('node:test');
 
 const { CatalogError, canonicalPath, detectHardWraps, unwrapText, collectMarkdownFiles, analyzeUnwrapCatalog } = require('./unwrap.js');
+const { runCli } = require('../../internal/backlog-catalog.js');
 const { targetRecord } = require('./lib/inspection.js');
 const { scanMarkdown } = require('../spec-agreement/spec-agreement.js');
 
 const CRLF = String.fromCharCode(13, 10);
+
+function invokeRunCli(argv, options = {}) {
+  const previousExitCode = process.exitCode;
+  let stdout = '';
+  let stderr = '';
+  process.exitCode = undefined;
+  try {
+    runCli(argv, {
+      ...options,
+      stderr: { write: (value) => { stderr += value; } },
+      stdout: { write: (value) => { stdout += value; } },
+    });
+
+    return { status: process.exitCode ?? 0, stderr, stdout };
+  } finally {
+    process.exitCode = previousExitCode;
+  }
+}
 
 test('a hard-wrapped paragraph is detected at each continuation line and joined with single spaces', () => {
   const text = '# Title\n\nFirst line of a paragraph\nsecond line\nthird line\n\nLone line\n';
@@ -323,6 +342,167 @@ test('the unwrap CLI rejects a backlog root junction outside the repository root
     const completion = spawnSync(process.execPath, [path.join(__dirname, 'unwrap.js'), '--write', claudeDir], { encoding: 'utf8' });
     assert.notEqual(completion.status, 0, 'an escaping backlog root must fail closed');
     assert.equal(fs.readFileSync(externalFeatures, 'utf8'), '# Features\n\nwrapped line one\nwrapped line two\n');
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('the unwrap CLI rejects parent junction substitution before mutation', { skip: process.platform !== 'win32' }, (t) => {
+  const root = fs.mkdtempSync(path.join(require('node:os').tmpdir(), 'unwrap-parent-substitution-'));
+  const backlogRoot = path.join(root, '.claude');
+  const contained = path.join(backlogRoot, 'contained');
+  const external = path.join(root, 'external');
+  const features = path.join(backlogRoot, 'features');
+  const internalTarget = path.join(contained, 'item.md');
+  const externalTarget = path.join(external, 'item.md');
+  const original = 'wrapped line one\nwrapped line two\n';
+  try {
+    fs.mkdirSync(contained, { recursive: true });
+    fs.mkdirSync(external);
+    fs.writeFileSync(internalTarget, original);
+    fs.writeFileSync(externalTarget, original);
+    try {
+      fs.symlinkSync(contained, features, 'junction');
+    } catch {
+      t.skip('junctions unavailable');
+
+      return;
+    }
+    const completion = invokeRunCli(['--write', backlogRoot], {
+      beforeWrite: () => {
+        fs.unlinkSync(features);
+        fs.symlinkSync(external, features, 'junction');
+      },
+    });
+
+    assert.notEqual(completion.status, 0);
+    assert.equal(completion.stderr, '');
+    assert.deepEqual(JSON.parse(completion.stdout), [{ file: path.join(features, 'item.md'), error: 'identity-changed' }]);
+    assert.equal(fs.readFileSync(internalTarget, 'utf8'), original);
+    assert.equal(fs.readFileSync(externalTarget, 'utf8'), original);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('the unwrap CLI rejects target link substitution before mutation', { skip: process.platform !== 'win32' }, (t) => {
+  const root = fs.mkdtempSync(path.join(require('node:os').tmpdir(), 'unwrap-target-substitution-'));
+  const backlogRoot = path.join(root, '.claude');
+  const containedTarget = path.join(backlogRoot, 'contained.md');
+  const alias = path.join(backlogRoot, 'FEATURES.md');
+  const externalTarget = path.join(root, 'external.md');
+  const original = 'wrapped line one\nwrapped line two\n';
+  try {
+    fs.mkdirSync(backlogRoot);
+    fs.writeFileSync(containedTarget, original);
+    fs.writeFileSync(externalTarget, original);
+    try {
+      fs.symlinkSync(containedTarget, alias, 'file');
+    } catch {
+      t.skip('file links unavailable');
+
+      return;
+    }
+    const completion = invokeRunCli(['--write', backlogRoot], {
+      beforeWrite: () => {
+        fs.unlinkSync(alias);
+        fs.symlinkSync(externalTarget, alias, 'file');
+      },
+    });
+
+    assert.notEqual(completion.status, 0);
+    assert.equal(completion.stderr, '');
+    assert.deepEqual(JSON.parse(completion.stdout), [{ file: alias, error: 'identity-changed' }]);
+    assert.equal(fs.readFileSync(containedTarget, 'utf8'), original);
+    assert.equal(fs.readFileSync(externalTarget, 'utf8'), original);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('the unwrap CLI rejects a hard-linked target without changing its alias', { skip: process.platform !== 'win32' }, (t) => {
+  const root = fs.mkdtempSync(path.join(require('node:os').tmpdir(), 'unwrap-hard-link-'));
+  const backlogRoot = path.join(root, '.claude');
+  const externalTarget = path.join(root, 'external.md');
+  const target = path.join(backlogRoot, 'FEATURES.md');
+  const original = 'wrapped line one\nwrapped line two\n';
+  try {
+    fs.mkdirSync(backlogRoot);
+    fs.writeFileSync(externalTarget, original);
+    try {
+      fs.linkSync(externalTarget, target);
+    } catch {
+      t.skip('hard links unavailable');
+
+      return;
+    }
+    const completion = invokeRunCli(['--write', backlogRoot]);
+
+    assert.notEqual(completion.status, 0);
+    assert.equal(completion.stderr, '');
+    assert.deepEqual(JSON.parse(completion.stdout), [{ file: target, error: 'identity-changed' }]);
+    assert.equal(fs.readFileSync(target, 'utf8'), original);
+    assert.equal(fs.readFileSync(externalTarget, 'utf8'), original);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('the unwrap CLI rejects a hard-link alias added after the stable read', { skip: process.platform !== 'win32' }, (t) => {
+  const root = fs.mkdtempSync(path.join(require('node:os').tmpdir(), 'unwrap-hard-link-drift-'));
+  const backlogRoot = path.join(root, '.claude');
+  const target = path.join(backlogRoot, 'FEATURES.md');
+  const alias = path.join(root, 'external.md');
+  const original = 'wrapped line one\nwrapped line two\n';
+  try {
+    fs.mkdirSync(backlogRoot);
+    fs.writeFileSync(target, original);
+    try {
+      fs.linkSync(target, alias);
+      fs.unlinkSync(alias);
+    } catch {
+      t.skip('hard links unavailable');
+
+      return;
+    }
+    const completion = invokeRunCli(['--write', backlogRoot], {
+      beforeWrite: () => {
+        fs.linkSync(target, alias);
+      },
+    });
+
+    assert.notEqual(completion.status, 0);
+    assert.equal(completion.stderr, '');
+    assert.deepEqual(JSON.parse(completion.stdout), [{ file: target, error: 'identity-changed' }]);
+    assert.equal(fs.readFileSync(target, 'utf8'), original);
+    assert.equal(fs.readFileSync(alias, 'utf8'), original);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('the unwrap CLI preserves an unchanged contained target link', { skip: process.platform !== 'win32' }, (t) => {
+  const root = fs.mkdtempSync(path.join(require('node:os').tmpdir(), 'unwrap-contained-link-'));
+  const backlogRoot = path.join(root, '.claude');
+  const containedTarget = path.join(backlogRoot, 'contained.md');
+  const alias = path.join(backlogRoot, 'FEATURES.md');
+  try {
+    fs.mkdirSync(backlogRoot);
+    fs.writeFileSync(containedTarget, 'wrapped line one\nwrapped line two\n');
+    try {
+      fs.symlinkSync(containedTarget, alias, 'file');
+    } catch {
+      t.skip('file links unavailable');
+
+      return;
+    }
+    const completion = invokeRunCli(['--write', backlogRoot]);
+
+    assert.equal(completion.status, 0);
+    assert.equal(completion.stderr, '');
+    assert.deepEqual(JSON.parse(completion.stdout), [{ file: alias, wraps: 1, firstLine: 2, rewritten: true }]);
+    assert.equal(fs.readFileSync(containedTarget, 'utf8'), 'wrapped line one wrapped line two\n');
+    assert.equal(fs.lstatSync(alias).isSymbolicLink(), true);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }
