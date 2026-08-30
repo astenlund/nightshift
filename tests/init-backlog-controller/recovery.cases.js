@@ -1879,6 +1879,19 @@ function runRecoveryCases() {
     }
   })
 
+  test('marker recovery classifies the stable file-too-large code independently of diagnostic wording', () => {
+    const root = fixtureRoot()
+    try {
+      const capacityError = new Error('capacity exhausted')
+      capacityError.code = 'file-too-large'
+      const artifactOpenFile = () => { throw capacityError }
+
+      assert.throws(() => inspectRecovery(request(root, 'election-marker', ELECTION_MARKER_PATH), { artifactOpenFile, currentInspection: { git: { kind: 'git' } } }), (error) => error.record?.code === 'payload-too-large' && error.cause === capacityError)
+    } finally {
+      rmSync(root, { force: true, recursive: true })
+    }
+  })
+
   test('oversized mechanical backup fails with typed payload-too-large recovery record before embedding', () => {
     const fixture = backupFixture('FEATURES.md', 'b'.repeat(MAX_MECHANICAL_FILE_BYTES + 1), 'current\n')
     try {

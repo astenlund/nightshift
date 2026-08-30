@@ -86,8 +86,9 @@ function validRecoveryTemporaryTarget(target, record, inventory) {
 
 function readArtifact(root, target, options = {}, requireSingleLink = true) {
   const path = artifactPath(root, target)
+  const openFile = options.artifactOpenFile ?? stableOpenFile
   try {
-    return stableOpenFile(root, path, boundedOpenOptions(options, recoveryArtifactByteLimit(target), { requireSingleLink }))
+    return openFile(root, path, boundedOpenOptions(options, recoveryArtifactByteLimit(target), { requireSingleLink }))
   } catch (error) {
     if (error?.code === 'ENOENT') return null
 
@@ -337,7 +338,7 @@ function stageEvidence(root, target, options = {}) {
   try {
     opened = readArtifact(root, target, { ...options, maxBytes: MAX_RECOVERY_REQUEST_BYTES }, true)
   } catch (error) {
-    if (error?.message?.includes('byte limit')) failure('recover-inspect', 'inspect', 'payload-too-large', 'Lock stage exceeds the maximum size.', target, error)
+    if (error?.code === 'file-too-large') failure('recover-inspect', 'inspect', 'payload-too-large', 'Lock stage exceeds the maximum size.', target, error)
 
     throw error
   }
@@ -359,7 +360,7 @@ function markerEvidence(root, options = {}) {
   try {
     opened = readArtifact(root, MARKER_BASENAME, { ...options, maxBytes: MAX_INLINE_FILE_BYTES }, true)
   } catch (error) {
-    if (error?.message?.includes('byte limit')) failure('recover-inspect', 'inspect', 'payload-too-large', 'Election marker exceeds the maximum inline size.', MARKER_BASENAME, error)
+    if (error?.code === 'file-too-large') failure('recover-inspect', 'inspect', 'payload-too-large', 'Election marker exceeds the maximum inline size.', MARKER_BASENAME, error)
 
     throw error
   }
@@ -397,7 +398,7 @@ function backupEvidence(root, target, options = {}) {
   try {
     backup = readArtifact(root, target, boundedOpenOptions(options, MAX_MECHANICAL_FILE_BYTES), true)
   } catch (error) {
-    if (error?.message?.includes('byte limit')) failure('recover-inspect', 'inspect', 'payload-too-large', 'Backup exceeds the maximum mechanical size.', target, error)
+    if (error?.code === 'file-too-large') failure('recover-inspect', 'inspect', 'payload-too-large', 'Backup exceeds the maximum mechanical size.', target, error)
 
     throw error
   }
@@ -409,7 +410,7 @@ function backupEvidence(root, target, options = {}) {
   try {
     current = candidateTarget === null ? null : readArtifact(root, candidateTarget, boundedOpenOptions(options, MAX_MECHANICAL_FILE_BYTES), true)
   } catch (error) {
-    if (error?.message?.includes('byte limit')) failure('recover-inspect', 'inspect', 'payload-too-large', 'Current recovery target exceeds the maximum mechanical size.', candidateTarget, error)
+    if (error?.code === 'file-too-large') failure('recover-inspect', 'inspect', 'payload-too-large', 'Current recovery target exceeds the maximum mechanical size.', candidateTarget, error)
 
     throw error
   }
