@@ -3,6 +3,7 @@
 const { Buffer } = require('node:buffer')
 
 const { analyzeCatalog } = require('../../ready/ready')
+const { unwrapText } = require('../unwrap')
 const { BACKLOG_DIRECTORY_TARGETS, loadManifest } = require('./assets')
 const { InitBacklogError, failureRecord } = require('./errors')
 const { buildReadyCatalog, inspectRegions } = require('./inspection')
@@ -313,6 +314,8 @@ function simulateAction(action, state, inspection, targets, indexes, options, de
     if (finding?.predictedContentBase64 !== null && finding?.predictedContentBase64 !== undefined) {
       state.content = validateBase64(finding.predictedContentBase64)
       state.regions = finding.predictedEditableRegions
+    } else if (state.content !== null) {
+      state.content = Buffer.from(unwrapText(state.content.toString('utf8')), 'utf8')
     }
 
     return
@@ -339,13 +342,8 @@ function simulateAction(action, state, inspection, targets, indexes, options, de
 
 function simulateReady(inspection, actions, states, options = {}, recordsByTarget = null) {
   const unwrap = actions.filter((action) => action.kind === 'unwrap-file')
-  const semanticChanges = actions.some((action) => isSemanticActionId(action.id) && action.beforeBase64 !== action.afterBase64)
-  if (unwrap.length > 0 && !Array.isArray(options.readyCatalog)) {
-    if (semanticChanges) admissionError('Compound ready simulation requires the carried post-unwrap catalog.', { code: 'manifest-invalid' })
-
-    return clone(inspection.unwrapReady.after)
-  }
-  const catalogEntries = Array.isArray(options.readyCatalog) ? options.readyCatalog.map((item) => ({ ...item })) : []
+  const carriedReadyCatalog = Array.isArray(options.readyCatalog)
+  const catalogEntries = carriedReadyCatalog ? options.readyCatalog.map((item) => ({ ...item })) : []
   if (catalogEntries.length === 0) {
     for (const record of inspection.targets ?? []) {
       if (record.kind !== 'file' || !record.target.startsWith('.claude/') || record.contentBase64 === null || record.contentBase64 === undefined) continue
@@ -360,7 +358,7 @@ function simulateReady(inspection, actions, states, options = {}, recordsByTarge
     if (!physicalTarget.startsWith('.claude/') || state.kind !== 'file' || state.content === null) continue
     const record = targetIndex.get(physicalTarget)
     const logicalTarget = physicalTarget.slice('.claude/'.length)
-    if (record?.contentRole === 'mechanical' && unwrapTargets.has(physicalTarget) && contentsByTarget.has(logicalTarget)) continue
+    if (record?.contentRole === 'mechanical' && unwrapTargets.has(physicalTarget) && carriedReadyCatalog && contentsByTarget.has(logicalTarget)) continue
     contentsByTarget.set(logicalTarget, Buffer.from(state.content).toString('utf8'))
   }
   const predictedCatalog = [...contentsByTarget.entries()].map(([target, contents]) => ({ contents, target }))

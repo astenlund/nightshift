@@ -435,6 +435,98 @@ function runPublicationCases() {
     }
   })
 
+  test('publishes an unwrap plus semantic repair without a ready catalog injection', () => {
+    const root = fixtureRoot()
+    const featuresText = '## Area\n### [Alpha](features/alpha.md)\n\n**Requires:** none.\n'
+    const finalText = featuresText.replace('## Area', '## Repaired area')
+    const wrappedText = '# Alpha\n\n**Requires:** none.\nwrapped\n'
+    const unwrappedText = unwrapText(wrappedText)
+    const features = Buffer.from(featuresText, 'utf8')
+    const final = Buffer.from(finalText, 'utf8')
+    const wrapped = Buffer.from(wrappedText, 'utf8')
+    const unwrapped = Buffer.from(unwrappedText, 'utf8')
+    const semanticTarget = '.claude/FEATURES.md'
+    const unwrapTarget = '.claude/features/alpha.md'
+    const mode = process.platform === 'win32' ? null : 420
+    try {
+      mkdirSync(join(root, '.claude/features'), { mode: 0o755, recursive: true })
+      writeFileSync(join(root, semanticTarget), features, { mode: 0o644 })
+      writeFileSync(join(root, unwrapTarget), wrapped, { mode: 0o644 })
+      const unwrap = { afterRawSha256: sha256(unwrapped), beforeRawSha256: sha256(wrapped), id: 'p-public-ready-catalog-unwrap', kind: 'unwrap-file', mode, target: unwrapTarget }
+      const semanticWithoutId = { afterBase64: final.toString('base64'), beforeBase64: features.toString('base64'), kind: 'exact-edit', regionId: 'features.document-preamble', target: semanticTarget }
+      const semantic = { ...semanticWithoutId, id: deriveSemanticActionId(semanticWithoutId) }
+      const carried = inspection(root, {
+        ready: analyzeCatalog([{ contents: featuresText, target: 'FEATURES.md' }, { contents: wrappedText, target: 'features/alpha.md' }]),
+        targets: [
+          { bom: null, cleanTextSha256: null, contentBase64: features.toString('base64'), contentRole: 'semantic', editableRegions: [{ endByte: features.length, regionId: 'features.document-preamble', startByte: 0 }], finalNewline: true, kind: 'file', mode, newline: 'lf', rawSha256: sha256(features), states: ['present'], target: semanticTarget, templateId: 'backlog.features', templateSha256: 'c'.repeat(64) },
+          { bom: null, cleanTextSha256: null, contentBase64: wrapped.toString('base64'), contentRole: 'mechanical', editableRegions: [], finalNewline: true, kind: 'file', mode, newline: 'lf', rawSha256: sha256(wrapped), states: ['wrapped'], target: unwrapTarget, templateId: null, templateSha256: null },
+        ],
+        templates: [{ conceptIds: ['features.dependency-grammar'], logicalSha256: 'c'.repeat(64), target: semanticTarget, templateId: 'backlog.features' }],
+        proposals: [{ action: unwrap, afterBase64: null, beforeBase64: wrapped.toString('base64'), condition: 'always', proposalId: unwrap.id, reason: 'hard-wrap' }],
+        unwrapReady: { after: analyzeCatalog([{ contents: featuresText, target: 'FEATURES.md' }, { contents: unwrappedText, target: 'features/alpha.md' }]), targets: [unwrapTarget] },
+        wrapFindings: [{ beforeRawSha256: sha256(wrapped), predictedContentBase64: null, predictedEditableRegions: [], predictedRawSha256: sha256(unwrapped), target: unwrapTarget }],
+      })
+      carried.snapshotId = deriveSnapshotId({ ...carried, snapshotId: null })
+      const applyRequest = request(root, { actions: [unwrap, semantic], inspection: carried, proposalDispositions: [{ disposition: 'selected', proposalId: unwrap.id }], semanticDecisions: [{ conceptIds: ['features.dependency-grammar'], status: 'satisfied', target: semanticTarget }] })
+      const unwrapInspection = inspection(root, { ...carried, ready: carried.unwrapReady.after, targets: [{ ...carried.targets[0] }, { ...carried.targets[1], contentBase64: unwrapped.toString('base64'), rawSha256: sha256(unwrapped), states: ['present'] }] })
+      const finalInspection = inspection(root, { ...carried, ready: carried.unwrapReady.after, targets: [{ ...carried.targets[0], contentBase64: final.toString('base64'), rawSha256: sha256(final) }, { ...carried.targets[1], contentBase64: unwrapped.toString('base64'), rawSha256: sha256(unwrapped), states: ['present'] }] })
+      const result = publishApply(applyRequest, {
+        collectInspection: () => readFileSync(join(root, unwrapTarget)).equals(unwrapped) && readFileSync(join(root, semanticTarget)).equals(features) ? unwrapInspection : finalInspection,
+        currentInspection: carried,
+        rescanRegions: ({ content }) => [{ endByte: content.length, regionId: 'features.document-preamble', startByte: 0 }],
+      })
+
+      assert.deepEqual(result.postInspect.ready, finalInspection.ready)
+      assert.deepEqual(readFileSync(join(root, semanticTarget)), final)
+      assert.deepEqual(readFileSync(join(root, unwrapTarget)), unwrapped)
+    } finally {
+      rmSync(root, { force: true, recursive: true })
+    }
+  })
+
+  test('publishes a mechanical unwrap without a ready catalog injection', () => {
+    const root = fixtureRoot()
+    const featuresText = '## Area\n### [Alpha](features/alpha.md)\n\n**Requires:** none.\n'
+    const wrappedText = '# Alpha\n\n**Requires:** none.\nwrapped\n'
+    const unwrappedText = unwrapText(wrappedText)
+    const features = Buffer.from(featuresText, 'utf8')
+    const wrapped = Buffer.from(wrappedText, 'utf8')
+    const unwrapped = Buffer.from(unwrappedText, 'utf8')
+    const target = '.claude/features/alpha.md'
+    const mode = process.platform === 'win32' ? null : 420
+    try {
+      mkdirSync(join(root, '.claude/features'), { mode: 0o755, recursive: true })
+      writeFileSync(join(root, '.claude/FEATURES.md'), features, { mode: 0o644 })
+      writeFileSync(join(root, target), wrapped, { mode: 0o644 })
+      const unwrap = { afterRawSha256: sha256(unwrapped), beforeRawSha256: sha256(wrapped), id: 'p-public-mechanical-ready-catalog-unwrap', kind: 'unwrap-file', mode, target }
+      const carried = inspection(root, {
+        ready: analyzeCatalog([{ contents: featuresText, target: 'FEATURES.md' }, { contents: wrappedText, target: 'features/alpha.md' }]),
+        targets: [
+          { bom: null, cleanTextSha256: null, contentBase64: features.toString('base64'), contentRole: 'semantic', editableRegions: [], finalNewline: true, kind: 'file', mode, newline: 'lf', rawSha256: sha256(features), states: ['present'], target: '.claude/FEATURES.md', templateId: null, templateSha256: null },
+          { bom: null, cleanTextSha256: null, contentBase64: wrapped.toString('base64'), contentRole: 'mechanical', editableRegions: [], finalNewline: true, kind: 'file', mode, newline: 'lf', rawSha256: sha256(wrapped), states: ['wrapped'], target, templateId: null, templateSha256: null },
+        ],
+        proposals: [{ action: unwrap, afterBase64: null, beforeBase64: wrapped.toString('base64'), condition: 'always', proposalId: unwrap.id, reason: 'hard-wrap' }],
+        unwrapReady: { after: analyzeCatalog([{ contents: featuresText, target: 'FEATURES.md' }, { contents: unwrappedText, target: 'features/alpha.md' }]), targets: [target] },
+        wrapFindings: [{ beforeRawSha256: sha256(wrapped), predictedContentBase64: null, predictedEditableRegions: [], predictedRawSha256: sha256(unwrapped), target }],
+      })
+      carried.snapshotId = deriveSnapshotId({ ...carried, snapshotId: null })
+      const applyRequest = request(root, { actions: [unwrap], inspection: carried, proposalDispositions: [{ disposition: 'selected', proposalId: unwrap.id }] })
+      const post = inspection(root, {
+        ...carried,
+        ready: carried.unwrapReady.after,
+        targets: [{ ...carried.targets[0] }, { ...carried.targets[1], contentBase64: unwrapped.toString('base64'), rawSha256: sha256(unwrapped), states: ['present'] }],
+        unwrapReady: { after: carried.unwrapReady.after, targets: [] },
+        wrapFindings: [],
+      })
+      const result = publishApply(applyRequest, { collectInspection: () => post, currentInspection: carried })
+
+      assert.deepEqual(result.postInspect.ready, carried.unwrapReady.after)
+      assert.deepEqual(readFileSync(join(root, target)), unwrapped)
+    } finally {
+      rmSync(root, { force: true, recursive: true })
+    }
+  })
+
   test('retires unwrap backups before a later same-target semantic crash', () => {
     const root = fixtureRoot()
     const wrappedText = '## Area\n### [Alpha](features/alpha.md)\n\n**Requires:** none.\nwrapped\n'
