@@ -605,20 +605,34 @@ async function runMalformedStructuredTurn({ host, hostClosureProven }) {
   const token = host === 'claude-code' ? 'a'.repeat(64) : 'b'.repeat(64)
   let hostClosed = false
   let hostTerminations = 0
+  let recordedTurns = 0
   const worker = openWorkerEntry()
   const proxyEntry = { server: null, tcpServer: null, token }
+  const transcript = driver.createTranscript()
   nodeFilesystem.mkdirSync(runRoot, { recursive: true })
+  const malformedTurn = {
+    gateId: null,
+    phase: 'finished',
+    presentation: {
+      actionDisclosures: [],
+      ambiguityIds: [],
+      disclosureCodes: [],
+      manifestProposal: null,
+      result: { ok: true, operation: 'apply' },
+    },
+    semanticClassifications: [],
+  }
   if (host === 'codex') {
-    nodeFilesystem.writeFileSync(join(runRoot, 'turn-output.json'), Buffer.from(canonicalJson({}), 'utf8'))
+    nodeFilesystem.writeFileSync(join(runRoot, 'turn-output.json'), Buffer.from(canonicalJson(malformedTurn), 'utf8'))
   }
   const hostOutput = host === 'claude-code'
     ? Buffer.concat([
       hostEventLine(claudeInitEvent(sessionPluginRoot)),
-      hostEventLine({ structured_output: {}, subtype: 'success', type: 'result' }),
+      hostEventLine({ structured_output: malformedTurn, subtype: 'success', type: 'result' }),
     ])
     : Buffer.concat([
       hostEventLine({ thread_id: 'thread-1', type: 'thread.started' }),
-      hostEventLine({ item: { text: '{}', type: 'agent_message' }, type: 'item.completed' }),
+      hostEventLine({ item: { text: canonicalJson(malformedTurn), type: 'agent_message' }, type: 'item.completed' }),
     ])
   try {
     const session = await hostBehavior.runLiveHostSession({
@@ -661,10 +675,18 @@ async function runMalformedStructuredTurn({ host, hostClosureProven }) {
         ok: true,
       }),
       proxyRegistry: new Map([[token, proxyEntry]]),
+      transcriptFactory: () => ({
+        ...transcript,
+        appendStructuredOutput: (bytes) => {
+          recordedTurns += 1
+
+          return transcript.appendStructuredOutput(bytes)
+        },
+      }),
       workerRegistry: new Map([[runRoot, worker.entry]]),
     })
 
-    return { hostTerminations, proxyEntry, runRoot, session, worker }
+    return { hostTerminations, proxyEntry, recordedTurns, runRoot, session, worker }
   } finally {
     nodeFilesystem.rmSync(scratch, { force: true, recursive: true })
   }
@@ -4522,6 +4544,7 @@ function runHostEntryCases(repositoryRoot) {
       })
       assert.equal(outcome.proxyEntry.server.verifiedClosure(), true, 'proxy admission and connections are closed')
       assert.equal(outcome.hostTerminations, 1, 'host termination starts exactly once')
+      assert.equal(outcome.recordedTurns, 0, 'schema-invalid structured output is rejected before recordTurn')
       assert.equal(outcome.worker.state.terminations, 1, 'worker termination starts exactly once')
       assert.equal(outcome.worker.state.closed, true, 'worker closure is proven')
     })
@@ -4543,6 +4566,7 @@ function runHostEntryCases(repositoryRoot) {
       })
       assert.equal(outcome.proxyEntry.server.verifiedClosure(), true, 'proxy admission and connections are closed')
       assert.equal(outcome.hostTerminations, 1, 'host termination starts exactly once')
+      assert.equal(outcome.recordedTurns, 0, 'schema-invalid structured output is rejected before recordTurn')
       assert.equal(outcome.worker.state.terminations, 1, 'worker termination starts exactly once')
       assert.equal(outcome.worker.state.closed, true, 'worker closure is proven')
     })

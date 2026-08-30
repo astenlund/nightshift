@@ -2,11 +2,14 @@
 
 const assert = require('node:assert/strict')
 const { execFileSync } = require('node:child_process')
-const { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync } = require('node:fs')
+const { cpSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync } = require('node:fs')
 const { tmpdir } = require('node:os')
 const { dirname, join } = require('node:path')
 const test = require('node:test')
 
+const { failureRecord } = require('../../skills/init-backlog/lib/errors')
+const { OPERATION, validateResultRecord: validateProtocolResultRecord } = require('../../skills/init-backlog/lib/protocol')
+const { inspect } = require('../../skills/init-backlog/init-backlog')
 const { canonicalJson, compareOrdinal, sha256 } = require('./helpers')
 const { BREAKOUT_DIGEST_NOTICE, CLAUDE_ROOT_EXCLUSION_CONFIRMATION, CODEX_HOST_CONTEXT_CONFIRMATION, ELECTION_MARKER_PATH, HEX64_PATTERN, HOST_CONTROL_RECORDS, LIST_SEPARATOR, MAX_PRESENTATION_CANONICAL_BYTES, buildDecodedContentDisclosures, disclosureTurnByteLength, requireExactKeys, selectTerminalExpectation, validateLiveElectionMarker, validateTurnObject, windowsRepositoryImage } = require('./election-oracles')
 const { HOST_FIXTURE_DIRECTORY, SCENARIO_IDS, INITIAL_PROMPT, APPROVAL_RESPONSES, ENTRYPOINTS, ENVELOPE_INSTRUCTIONS, HOST_CONTEXTS, QUICK_WINS_CONCEPTS, FEATURES_CONCEPTS, WHITESPACE_CODE_POINTS, isCanonicalBase64, isOrdinalSortedUnique, readCanonicalFixture, validateRepositoryObject, validateScenarioObject, listTree, loadHostFixtureTree, importSentinel, buildExpectedImportCases, buildEvaluationEnvelope } = require('./host-fixture-oracles')
@@ -874,6 +877,67 @@ function runOracleCases(repositoryRoot) {
     assert.throws(mutate(disclosureTurn, (turn) => {
       turn.presentation.actionDisclosures[0] = { actionId: 'p-' + 'a'.repeat(62), afterRawSha256: digest, beforeRawSha256: digest, extent: 'complete-file', kind: 'breakout-digest', notice: 'Images withheld.', proposalDigest: digest, selection: 'selected', target: '.claude/FEATURES.md' }
     }), /breakout-digest/)
+  })
+
+  test('finished turns accept production failures and apply successes only', () => {
+    const scratch = mkdtempSync(join(tmpdir(), 'nightshift-turn-result-oracle-'))
+    try {
+      const root = realpathSync.native(scratch)
+      const inspection = inspect(root, 'codex', HOST_CONTEXTS.codex, { candidates: [], ownerNonce: 'a'.repeat(32) })
+      const turnWith = (result) => ({
+        gateId: null,
+        phase: 'finished',
+        presentation: { actionDisclosures: [], ambiguityIds: [], disclosureCodes: [], manifestProposal: null, result },
+        semanticClassifications: [],
+      })
+      const applySuccess = {
+        complete: true,
+        host: 'codex',
+        hostContext: HOST_CONTEXTS.codex,
+        incompleteTargets: [],
+        manifestId: 'b'.repeat(64),
+        ok: true,
+        operation: OPERATION.APPLY,
+        outcomes: [],
+        postInspect: inspection,
+        protocolVersion: 1,
+        retainedBackups: [],
+        root,
+        snapshotId: inspection.snapshotId,
+        versionControlChoice: 'not-required',
+        warnings: [],
+      }
+      const inspectSuccess = inspection
+      const recoverySuccess = {
+        changedPaths: [`.nightshift-init-backlog.lock.9.${'c'.repeat(32)}.new`],
+        disposition: 'remove',
+        host: 'codex',
+        hostContext: HOST_CONTEXTS.codex,
+        ok: true,
+        operation: OPERATION.RECOVER_APPLY,
+        protocolVersion: 1,
+        recoveryId: 'd'.repeat(64),
+        recoveryKind: 'orphan-lock-stage',
+        recoveryTarget: `.nightshift-init-backlog.lock.9.${'c'.repeat(32)}.new`,
+        retainedPaths: [],
+        root,
+        status: 'completed',
+        warnings: [],
+      }
+      const failure = failureRecord({ code: 'invalid-request', detail: 'Request is invalid.', phase: 'decode' })
+      for (const result of [applySuccess, inspectSuccess, recoverySuccess, failure]) {
+        validateProtocolResultRecord(result)
+      }
+      validateTurnObject(turnWith(applySuccess))
+      validateTurnObject(turnWith(failure))
+      assert.throws(() => validateTurnObject(turnWith({ ok: true, operation: OPERATION.APPLY })), /result/i, 'a partial apply result is not a valid turn result')
+      assert.throws(() => validateTurnObject(turnWith(inspectSuccess)), /result/i, 'an inspect success is not a valid turn result')
+      assert.throws(() => validateTurnObject(turnWith(recoverySuccess)), /result/i, 'a recovery success is not a valid turn result')
+      assert.throws(() => validateTurnObject(turnWith({ ...failure, extra: true })), /result/i, 'production failure fields remain closed')
+      assert.throws(() => validateTurnObject(turnWith({ ...failure, code: 'filesystem' })), /phase|code/, 'production failure phase and code remain paired')
+    } finally {
+      rmSync(scratch, { force: true, recursive: true })
+    }
   })
 
   test('decoded-content disclosure chunking covers images exactly and re-fits after re-indexing', () => {

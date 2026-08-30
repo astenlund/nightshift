@@ -3,6 +3,7 @@
 const assert = require('node:assert/strict')
 
 const { VERSION_CONTROL_OPTION_ORDER } = require('../../skills/init-backlog/lib/apply-request')
+const { OPERATION, validateResultRecord } = require('../../skills/init-backlog/lib/protocol')
 const { canonicalJson, compareOrdinal, sha256 } = require('./helpers')
 
 const MAX_PRESENTATION_CANONICAL_BYTES = 320000
@@ -103,6 +104,11 @@ function validateTurnObject(turn) {
     requireExactKeys(presentation.result, ['approvalBranch', 'reasonCode'], 'turn result')
     if (!NO_APPLY_RESULT_PAIRS.has(`${presentation.result.approvalBranch}:${presentation.result.reasonCode}`)) {
       throw new Error('turn result approval branch and reason code are inconsistent')
+    }
+  } else if (presentation.result !== null) {
+    validateResultRecord(presentation.result)
+    if (presentation.result.ok === true && presentation.result.operation !== OPERATION.APPLY) {
+      throw new Error('turn result success operation must be apply')
     }
   }
   if (presentation.manifestProposal !== null) {

@@ -128,6 +128,27 @@ function syntheticProposal(overrides = {}) {
   }
 }
 
+function productionApplyResult(inspection, overrides = {}) {
+  return {
+    complete: true,
+    host: inspection.host,
+    hostContext: inspection.hostContext,
+    incompleteTargets: [],
+    manifestId: 'b'.repeat(64),
+    ok: true,
+    operation: protocol.OPERATION.APPLY,
+    outcomes: [],
+    postInspect: inspection,
+    protocolVersion: 1,
+    retainedBackups: [],
+    root: inspection.root,
+    snapshotId: inspection.snapshotId,
+    versionControlChoice: 'not-required',
+    warnings: [],
+    ...overrides,
+  }
+}
+
 function runDialogueCases(repositoryRoot) {
   void repositoryRoot
 
@@ -384,8 +405,9 @@ function runDialogueCases(repositoryRoot) {
       assert.deepEqual(faultAdmissions[0], { ok: true, operation: 'apply' }, 'the apply authorization is fixed before the fault runs')
       assert.deepEqual(gate.admit(expectedApplyBytes), { ok: true, operation: 'apply' })
       assert.equal(gate.admit(Buffer.concat([expectedApplyBytes, Buffer.from(' ')])).reason, 'request-byte')
-      const done = walk.receiveTurn(makeTurn({ phase: 'finished', result: { complete: true, ok: true } }))
-      assert.deepEqual(done, { done: true, result: { complete: true, ok: true } })
+      const result = productionApplyResult(inspection)
+      const done = walk.receiveTurn(makeTurn({ phase: 'finished', result }))
+      assert.deepEqual(done, { done: true, result })
       assert.equal(walk.receiveTurn(makeTurn({ gateId: 'manifest-approval', manifestProposal })).failure.reason, 'extra-turn')
     })
   })
@@ -673,11 +695,13 @@ function runDialogueCases(repositoryRoot) {
 
   test('a result before the scripted branch or an extra gate after approval fails the walk', () => {
     const walkWith = () => enabledCodexWalk({ gate: driver.createAuthorizationGate({ host: 'codex', hostContext: HOST_CONTEXTS.codex, scenarioRoot: SYNTHETIC_ROOT }), root: SYNTHETIC_ROOT })
-    const early = walkWith()
-    assert.equal(early.receiveTurn(makeTurn({ phase: 'finished', result: { ok: true } })).failure.reason, 'early-result')
-    assert.equal(early.receiveTurn(makeTurn({ gateId: 'host-context-confirmation' })).failure.reason, 'walk-failed')
+    withRealInspection(({ inspection }) => {
+      const early = walkWith()
+      assert.equal(early.receiveTurn(makeTurn({ phase: 'finished', result: productionApplyResult(inspection) })).failure.reason, 'early-result')
+      assert.equal(early.receiveTurn(makeTurn({ gateId: 'host-context-confirmation' })).failure.reason, 'walk-failed')
+    })
     const schema = walkWith()
-    assert.equal(schema.receiveTurn({}).failure.reason, 'turn-schema')
+    assert.equal(schema.receiveTurn(makeTurn({ phase: 'finished', result: { ok: true, operation: protocol.OPERATION.APPLY } })).failure.reason, 'turn-schema')
     assert.equal(schema.receiveTurn(makeTurn({ gateId: 'host-context-confirmation' })).failure.reason, 'walk-failed')
     const extra = walkWith()
     extra.receiveTurn(makeTurn({ gateId: 'host-context-confirmation' }))
