@@ -392,23 +392,45 @@ test('handover preserves lifecycle behavior behind the agreement gate', () => {
   assert.equal(body.toLowerCase().includes('signed off'), false, 'handover must not retain signed-off stage logic')
 })
 
-test('plan workflows bind every mutation to a physically contained file', () => {
+test('plan workflows share one physical binding and consume revalidated bytes', () => {
   const handoverBody = parseFrontmatter(join(PUBLIC_SKILLS_ROOT, 'handover', 'SKILL.md')).body
   const planBody = readRequiredFile(join(ENGINE_ROOT, 'plan.md'))
+  const bindingPath = join(REPOSITORY_ROOT, 'internal', 'plan-binding.md')
+  const bindingBody = readRequiredFile(bindingPath)
 
-  for (const [body, owner] of [[handoverBody, 'handover'], [planBody, 'revise-plan']]) {
-    assert.equal(body.includes('stable physical plan binding'), true, `${owner} must retain a stable physical plan binding`)
-    assert.equal(body.includes('symbolic link, junction, or other reparse point'), true, `${owner} must reject linked plan paths`)
-    assert.equal(body.includes('project-established custom location, inference, or an exact user-supplied path'), true, `${owner} must classify every physically contained plan as repository-local`)
-    assert.equal(body.includes('actual repository-relative path is ignored and untracked'), true, `${owner} must verify custom repository plan policy at the selected path`)
-    assert.equal(body.includes('link count is available and exactly one'), true, `${owner} must reject hard-linked plan leaves`)
-    assert.equal(body.includes('Global and external plans are outside the current repository\'s ignore policy'), true, `${owner} must exclude non-repository plans from project ignore checks`)
-    assert.equal(body.includes('immediately before every plan mutation or deletion'), true, `${owner} must revalidate before each plan write or removal`)
-    assert.equal(body.includes('failure stops the run before any write'), true, `${owner} must fail closed on plan-path drift`)
+  requireRegularFile(bindingPath)
+  for (const contract of [
+    'stable physical plan binding',
+    'symbolic link, junction, or other reparse point',
+    'project-established custom location, inference, or an exact user-supplied path',
+    'actual repository-relative path is ignored and untracked',
+    'link count is available and exactly one',
+    'Global and external plans are outside the current repository\'s ignore policy',
+    'immediately before every authoritative plan read, plan mutation, plan-derived dispatch, or deletion',
+    'returns the plan bytes read from the revalidated file identity',
+    'never rereads the logical pathname between revalidation and use',
+    'failure stops the run before any read, write, dispatch, or deletion',
+  ]) {
+    assert.equal(bindingBody.includes(contract), true, `shared plan binding must preserve contract: ${contract}`)
   }
 
-  assert.equal(handoverBody.includes('repository-local plan remains physically inside the repository root'), true, 'handover must keep repository plans inside the repository boundary')
-  assert.equal(planBody.includes('external plan is accepted only when the user supplied that exact path'), true, 'revise-plan must define the boundary for an explicit external plan')
+  for (const [body, owner] of [[handoverBody, 'handover'], [planBody, 'revise-plan']]) {
+    assert.equal(body.includes('${CLAUDE_PLUGIN_ROOT}/internal/plan-binding.md'), true, `${owner} must load the shared plan binding procedure`)
+    assert.equal(body.includes('captured plan bytes'), true, `${owner} must consume plan bytes returned by revalidation`)
+    for (const sharedOnlyContract of [
+      'symbolic link, junction, or other reparse point',
+      'project-established custom location, inference, or an exact user-supplied path',
+      'actual repository-relative path is ignored and untracked',
+      'link count is available and exactly one',
+      'Global and external plans are outside the current repository\'s ignore policy',
+    ]) {
+      assert.equal(body.includes(sharedOnlyContract), false, `${owner} must not duplicate shared plan-binding contract: ${sharedOnlyContract}`)
+    }
+  }
+
+  assert.equal(handoverBody.includes('before each plan-derived implementation dispatch'), true, 'handover must revalidate each implementation dispatch')
+  assert.equal(handoverBody.includes('must not reread `PLAN_FILE`'), true, 'handover task dispatch must not reopen the plan pathname')
+  assert.equal(planBody.includes('before each reviewer or skeptic dispatch'), true, 'revise-plan must revalidate each review dispatch')
 })
 
 test('production procedures contain no smoke-only probe branch', () => {

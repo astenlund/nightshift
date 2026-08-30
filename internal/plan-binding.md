@@ -1,0 +1,23 @@
+# Physical plan binding
+
+This resource is the sole owner of plan-path classification, containment, link safety, repository Git policy, and binding revalidation for every Nightshift workflow that treats an implementation plan as authority. A caller owns only its local read, mutation, dispatch, and deletion sites.
+
+## Establish the binding
+
+Before the first authoritative plan read, establish a stable physical plan binding that records the logical path, declared boundary, resolved physical path, stable file identity, link count, plan classification, and whether the user supplied the exact path.
+
+Resolve the physical repository root, the global `~/.claude/plans/` root, and the selected path before classifying it. Any selected plan physically inside the repository root is repository-local, regardless of whether it came from the standard `.claude/plans/` directory, a project-established custom location, inference, or an exact user-supplied path. Its declared boundary is the resolved physical repository root. Require every actual component from that root through the selected file to be an existing ordinary directory or file, reject a symbolic link, junction, or other reparse point, and prove the plan remains physically inside the repository root.
+
+A selected plan outside the repository but physically inside the global plans root is global and uses that resolved root as its boundary with the same component and containment checks. An external plan is accepted only when the user supplied that exact path. It must be outside both prior roots and uses its existing physical parent directory as the declared boundary. For every plan type, reject a missing or non-regular file and require that the selected plan file's link count is available and exactly one, so a hard-linked leaf cannot authorize access through a peer path.
+
+Before accepting a repository-local plan as authority, verify that its actual repository-relative path is ignored and untracked. The standard `.claude/plans/` directory is unconditionally ignored. A project-established custom location must carry an applicable ignore rule, and an explicit unignore, uncovered path, or tracked file stops the run for user remediation. Global and external plans are outside the current repository's ignore policy and receive no project Git check.
+
+## Revalidate and consume
+
+Retain the binding for the complete plan lifecycle. Revalidate it immediately before every authoritative plan read, plan mutation, plan-derived dispatch, or deletion. Re-resolve the boundary and path, repeat the component, containment, kind, link, and single-link checks, require the same file identity, and repeat the ignored-and-untracked Git policy check for a repository-local plan.
+
+For an authoritative read or plan-derived dispatch, successful revalidation returns the plan bytes read from the revalidated file identity. The caller consumes those captured plan bytes directly and never rereads the logical pathname between revalidation and use. Read through a no-follow file handle, require the handle identity and single-link state to match the binding before and after the read, and require the resolved path to identify that same file after the read. A reviewer, skeptic, parser, task-brief helper, or implementation agent receives the captured bytes or content derived directly from them, never a pathname it is expected to reopen as authority.
+
+For a mutation, use the captured bytes as the writer's exact baseline and keep the existing binding until the write succeeds. After a successful replacement, repeat the complete establishment checks against the resulting file, verify its bytes are the intended result, and refresh the binding to its new stable identity before any later operation. A failed or ambiguous mutation invalidates the binding. A successful deletion ends the plan lifecycle and invalidates it without refresh.
+
+Any revalidation or capture failure stops the run before any read, write, dispatch, or deletion and requires fresh selection. It never reads, edits, dispatches from, or removes the replacement target. A missing plan at a final optional-removal site is reported as already absent; it does not authorize selecting a different file.
