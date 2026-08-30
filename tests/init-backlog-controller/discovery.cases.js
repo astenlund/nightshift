@@ -52,6 +52,7 @@ function runDiscoveryCases(repositoryRoot) {
 
   test('stable-open rejects wrong kind, links, hard links, and escaped targets', () => {
     const root = temporaryRoot('nightshift-discovery-kinds-')
+    const outsideRoot = temporaryRoot('nightshift-discovery-outside-')
     try {
       const file = ordinaryFile(join(root, 'file.md'))
       const directory = join(root, 'directory')
@@ -66,14 +67,11 @@ function runDiscoveryCases(repositoryRoot) {
       linkSync(file, hardLink)
       assert.throws(() => stableOpenFile(root, file, { requireSingleLink: true }))
 
-      const outside = ordinaryFile(join(resolve(root, '..'), 'nightshift-discovery-outside.md'))
-      try {
-        assert.throws(() => stableOpenFile(root, outside))
-      } finally {
-        rmSync(outside, { force: true })
-      }
+      const outside = ordinaryFile(join(outsideRoot, 'outside.md'))
+      assert.throws(() => stableOpenFile(root, outside))
     } finally {
       rmSync(root, { force: true, recursive: true })
+      rmSync(outsideRoot, { force: true, recursive: true })
     }
   })
 
