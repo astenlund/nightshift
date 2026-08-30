@@ -1,7 +1,7 @@
 'use strict'
 
 const assert = require('node:assert/strict')
-const { execFileSync } = require('node:child_process')
+const { execFileSync, spawnSync } = require('node:child_process')
 const { createHash } = require('node:crypto')
 const { existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } = require('node:fs')
 const Module = require('node:module')
@@ -22,6 +22,7 @@ const {
   revalidatePlanBinding,
   writePlanProvenanceStamp,
 } = require('../internal/plan-binding')
+const { runGit } = require('../internal/git-runner')
 
 const REPOSITORY_ROOT = join(__dirname, '..')
 const AGREEMENT_PATH = '../spec-agreement/SKILL.md'
@@ -888,6 +889,77 @@ test('plan binding service enforces repository ignore and tracking policy', () =
   } finally {
     rmSync(root, { force: true, recursive: true })
   }
+})
+
+test('plan binding ignores ambient command-scope Git configuration', () => {
+  const root = mkdtempSync(join(tmpdir(), 'nightshift-plan-git-environment-'))
+  try {
+    const repositoryRoot = join(root, 'repository')
+    const globalPlansRoot = join(root, 'global-plans')
+    const plan = join(repositoryRoot, '.claude', 'plans', 'repository.md')
+    const injectedExcludes = join(root, 'ambient-excludes')
+    mkdirSync(dirname(plan), { recursive: true })
+    mkdirSync(globalPlansRoot)
+    execFileSync('git', ['init', '--quiet', repositoryRoot], { windowsHide: true })
+    writeFileSync(injectedExcludes, '.claude/plans/\n')
+    writeFileSync(plan, '# Plan\n')
+    const completion = spawnSync(process.execPath, [join(__dirname, 'fixtures', 'plan-binding-ambient-config.js'), repositoryRoot, globalPlansRoot, plan], {
+      encoding: 'utf8',
+      env: {
+        ...process.env,
+        GIT_CONFIG_COUNT: '1',
+        GIT_CONFIG_KEY_0: 'core.excludesFile',
+        GIT_CONFIG_VALUE_0: injectedExcludes,
+      },
+      windowsHide: true,
+    })
+
+    assert.equal(completion.status, 2, completion.stderr || completion.stdout)
+    assert.match(completion.stderr, /^plan-git-policy\n$/)
+  } finally {
+    rmSync(root, { force: true, recursive: true })
+  }
+})
+
+test('Git runner reconstructs only an explicitly trusted Git environment', () => {
+  let observedEnvironment
+  runGit('C:/repository', ['status'], {
+    env: {
+      GIT_CONFIG_COUNT: '1',
+      GIT_CONFIG_KEY_0: 'core.excludesFile',
+      GIT_CONFIG_VALUE_0: 'C:/ambient/excludes',
+      GIT_EXEC_PATH: 'C:/ambient/git-core',
+      PATH: 'C:/tools',
+    },
+    platform: 'win32',
+    spawnSync: (executable, args, options) => {
+      observedEnvironment = options.env
+
+      return { status: 0, stderr: Buffer.alloc(0), stdout: Buffer.alloc(0) }
+    },
+    trustedGitEnvironment: {
+      GIT_ATTR_NOSYSTEM: '1',
+      GIT_CONFIG_COUNT: '1',
+      GIT_CONFIG_GLOBAL: 'C:/trusted/config',
+      GIT_CONFIG_KEY_0: 'core.attributesFile',
+      GIT_CONFIG_NOSYSTEM: '1',
+      GIT_CONFIG_VALUE_0: 'C:/trusted/attributes',
+    },
+    trustedGitPath: 'C:/trusted/git.exe',
+  })
+
+  assert.equal(observedEnvironment.PATH, 'C:/tools')
+  assert.equal(observedEnvironment.GIT_CONFIG_COUNT, '1')
+  assert.equal(observedEnvironment.GIT_CONFIG_GLOBAL, 'C:/trusted/config')
+  assert.equal(observedEnvironment.GIT_CONFIG_KEY_0, 'core.attributesFile')
+  assert.equal(observedEnvironment.GIT_CONFIG_VALUE_0, 'C:/trusted/attributes')
+  assert.equal(observedEnvironment.GIT_ATTR_NOSYSTEM, '1')
+  assert.equal(observedEnvironment.GIT_CONFIG_NOSYSTEM, '1')
+  assert.equal(observedEnvironment.GIT_OPTIONAL_LOCKS, '0')
+  assert.equal(observedEnvironment.GIT_PAGER, 'cat')
+  assert.equal(observedEnvironment.GIT_TERMINAL_PROMPT, '0')
+  assert.equal('GIT_EXEC_PATH' in observedEnvironment, false)
+  assert.throws(() => runGit('C:/repository', ['status'], { platform: 'win32', spawnSync: () => { throw new Error('must not launch') }, trustedGitEnvironment: { GIT_EXEC_PATH: 'C:/git-core' }, trustedGitPath: 'C:/trusted/git.exe' }), /not allowed/)
 })
 
 test('plan provenance refresh retains full authority and enforces the size cap before mutation', () => {

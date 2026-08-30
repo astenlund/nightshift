@@ -269,6 +269,21 @@ function runInspectionCases(repositoryRoot) {
     let observed
     runGit(repositoryRoot, ['status'], {
       trustedGitPath: 'C:/trusted/git.exe',
+      env: {
+        GIT_CONFIG_COUNT: '1',
+        GIT_CONFIG_KEY_0: 'core.excludesFile',
+        GIT_CONFIG_VALUE_0: 'C:/ambient/excludes',
+        GIT_EXEC_PATH: 'C:/ambient/git-core',
+        PATH: 'C:/tools',
+      },
+      trustedGitEnvironment: {
+        GIT_ATTR_NOSYSTEM: '1',
+        GIT_CONFIG_COUNT: '1',
+        GIT_CONFIG_GLOBAL: 'C:/trusted/config',
+        GIT_CONFIG_KEY_0: 'core.attributesFile',
+        GIT_CONFIG_NOSYSTEM: '1',
+        GIT_CONFIG_VALUE_0: 'C:/trusted/attributes',
+      },
       spawnSync: (executable, args, options) => {
         observed = { args, executable, options }
         return { status: 0, stdout: Buffer.alloc(0), stderr: Buffer.alloc(0), signal: null }
@@ -282,6 +297,14 @@ function runInspectionCases(repositoryRoot) {
     assert.equal(observed.options.env.GIT_OPTIONAL_LOCKS, '0')
     assert.equal(observed.options.env.GIT_TERMINAL_PROMPT, '0')
     assert.equal(observed.options.env.GIT_PAGER, 'cat')
+    assert.equal(observed.options.env.GIT_CONFIG_COUNT, '1')
+    assert.equal(observed.options.env.GIT_CONFIG_KEY_0, 'core.attributesFile')
+    assert.equal(observed.options.env.GIT_CONFIG_VALUE_0, 'C:/trusted/attributes')
+    assert.equal(observed.options.env.GIT_CONFIG_GLOBAL, 'C:/trusted/config')
+    assert.equal(observed.options.env.GIT_ATTR_NOSYSTEM, '1')
+    assert.equal(observed.options.env.GIT_CONFIG_NOSYSTEM, '1')
+    assert.equal(observed.options.env.PATH, 'C:/tools')
+    assert.equal('GIT_EXEC_PATH' in observed.options.env, false)
   })
 
   test('Git launch rejects non-absolute executables and ambient repository overrides', () => {
