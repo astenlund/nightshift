@@ -1750,12 +1750,14 @@ function deriveProposalCarriers(inspection) {
 
 function deriveSemanticCarriers({ manifestProposal, proposalActionIds, scenario }) {
   const carriers = []
+  const consumedActionIds = new Set(proposalActionIds)
   for (const repairOracle of scenario.oracles.semanticRepairOracles) {
     for (const action of repairOracle.actions) {
-      const proposalAction = (manifestProposal?.actions ?? []).find((candidate) => candidate.target === action.target && !proposalActionIds.has(candidate.id))
+      const proposalAction = (manifestProposal?.actions ?? []).find((candidate) => candidate.target === action.target && !consumedActionIds.has(candidate.id))
       if (proposalAction === undefined) {
         return null
       }
+      consumedActionIds.add(proposalAction.id)
       carriers.push({
         actionId: proposalAction.id,
         afterBytes: Buffer.from(action.afterBase64, 'base64'),
@@ -2864,6 +2866,7 @@ module.exports = {
   createLiveBindings,
   createScenarioGitRunner,
   createTerminalRepositoryCollector,
+  deriveSemanticCarriers,
   deriveVerifiedLoadedMemory,
   driverSurface: driver,
   formatResultLine,

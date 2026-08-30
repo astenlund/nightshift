@@ -629,6 +629,7 @@ function runHostEntryCases(repositoryRoot) {
       'createLiveBindings',
       'createScenarioGitRunner',
       'createTerminalRepositoryCollector',
+      'deriveSemanticCarriers',
       'deriveVerifiedLoadedMemory',
       'driverSurface',
       'formatResultLine',
@@ -676,6 +677,30 @@ function runHostEntryCases(repositoryRoot) {
       'terminalRepositorySha256',
       'passed',
     ])
+  })
+
+  test('semantic carriers consume same-target manifest actions in chain order', () => {
+    const target = '.claude/FEATURES.md'
+    const manifestProposal = {
+      actions: [
+        { id: 'repair-a', kind: 'write-file', target },
+        { id: 'repair-b', kind: 'write-file', target },
+      ],
+    }
+    const scenario = {
+      oracles: {
+        semanticRepairOracles: [{
+          actions: [
+            { afterBase64: Buffer.from('middle\n', 'utf8').toString('base64'), beforeBase64: Buffer.from('before\n', 'utf8').toString('base64'), target },
+            { afterBase64: Buffer.from('after\n', 'utf8').toString('base64'), beforeBase64: Buffer.from('middle\n', 'utf8').toString('base64'), target },
+          ],
+        }],
+      },
+    }
+
+    const carriers = hostBehavior.deriveSemanticCarriers({ manifestProposal, proposalActionIds: new Set(), scenario })
+
+    assert.deepEqual(carriers.map((carrier) => carrier.actionId), ['repair-a', 'repair-b'])
   })
 
   test('the session argv builders pin the exact host command contracts', () => {
