@@ -170,9 +170,13 @@ function requireUniqueSelectorMatch(matches, label) {
   return matches[0];
 }
 
+function sectionPathKey(path) {
+  return path.map((heading) => `${heading.length}:${heading}`).join('');
+}
+
 function resolveSectionSelectors(lines, selectors, absenceIsFalse) {
   const paths = [];
-  const headings = [];
+  const headingsByPath = new Map();
   for (const [index, line] of lines.entries()) {
     if (!line.outsideFence || line.heading === null) {
       continue;
@@ -180,12 +184,20 @@ function resolveSectionSelectors(lines, selectors, absenceIsFalse) {
     paths.splice(line.heading.level - 1);
     paths[line.heading.level - 1] = line.heading.exactLine;
     if (line.heading.level >= 2) {
-      headings.push({ index, path: paths.slice(1, line.heading.level) });
+      const path = paths.slice(1, line.heading.level);
+      const key = sectionPathKey(path);
+      const matches = headingsByPath.get(key);
+      if (matches === undefined) {
+        headingsByPath.set(key, [{ index }]);
+      } else {
+        matches.push({ index });
+      }
     }
   }
   let previous = -1;
   for (const selector of selectors) {
-    const matches = headings.filter((heading) => JSON.stringify(heading.path) === JSON.stringify(selector.headingPath));
+    const key = sectionPathKey(selector.headingPath);
+    const matches = headingsByPath.get(key) ?? [];
     if (matches.length === 0 && absenceIsFalse) {
       return false;
     }
@@ -1002,6 +1014,37 @@ function markdownPathDestination(path) {
   return path.split('/').map((segment) => encodeURIComponent(segment).replace(/[!'()*]/g, (character) => `%${character.charCodeAt(0).toString(16).toUpperCase()}`)).join('/');
 }
 
+function parseMarkdownLinkPrefix(raw) {
+  const displayEnd = raw.indexOf(']');
+  if (!raw.startsWith('[') || displayEnd < 0 || raw[displayEnd + 1] !== '(') {
+    return null;
+  }
+  const display = raw.slice(1, displayEnd).trim();
+  const targetStart = displayEnd + 2;
+  let depth = 1;
+  for (let index = targetStart; index < raw.length; index += 1) {
+    if (raw[index] === '(') {
+      depth += 1;
+      continue;
+    }
+    if (raw[index] !== ')') {
+      continue;
+    }
+    depth -= 1;
+    if (depth === 0) {
+      return { display, target: raw.slice(targetStart, index).trim(), suffix: raw.slice(index + 1) };
+    }
+  }
+
+  return null;
+}
+
+function parseHeadingLink(heading) {
+  const link = heading.startsWith('### ') ? parseMarkdownLinkPrefix(heading.slice('### '.length)) : null;
+
+  return link !== null && link.suffix === '' ? link : null;
+}
+
 function singleScopeHeader(path) {
   return `**Spec:** [${markdownPathLabel(path)}](${markdownPathDestination(path)})`;
 }
@@ -1237,8 +1280,7 @@ function resolveWorkUnit(scope, sourceBuffer, request, readyParser, declarationS
   if (!Array.isArray(slices)) {
     scopeStructural('Selected work unit has no slice declarations.', 'selector-absence');
   }
-  const normalizedKey = readyCall(readyParser, 'normalizeSliceName', scope.workUnit.normalizedKey);
-  const matches = readyCall(readyParser, 'findSlicesByNormalizedName', slices, normalizedKey);
+  const matches = slices.filter((slice) => slice.name === scope.workUnit.normalizedKey);
   if (!Array.isArray(matches) || matches.length === 0) {
     scopeStructural('Selected work unit does not resolve.', 'selector-absence');
   }
@@ -1315,8 +1357,9 @@ function companionFor(scope, snapshot) {
     if (!isReadyBacklogHeading(line, 3) || parentHeading === null) {
       continue;
     }
-    const link = /^### \[[^\]]+\]\(([^)]+)\)$/.exec(line.content);
-    if (link && canonicalScopePath(link[1]) && `.claude/${link[1]}` === scope.path) {
+    const link = parseHeadingLink(line.content);
+    const fileTarget = link?.target.split('#')[0];
+    if (fileTarget && canonicalScopePath(fileTarget) && `.claude/${fileTarget}` === scope.path) {
       matches.push({ parentHeading, entryHeading: line.content });
     }
   }
@@ -1346,9 +1389,9 @@ function frontmatterIsExploring(sourceBuffer) {
 function titleForScope(scope) {
   if (scope.kind === 'index-entry') {
     const heading = scope.selectors[0].entryHeading;
-    const linked = /^### \[([^\]]+)\]\([^)]+\)$/.exec(heading);
+    const linked = parseHeadingLink(heading);
 
-    return linked ? linked[1] : heading.replace(/^### /, '');
+    return linked ? linked.display : heading.replace(/^### /, '');
   }
 
   return scope.selectors[0].entryTitle;
@@ -1365,9 +1408,9 @@ function archiveDeclarationForLine(archivePath, line, plainFeatureTitle = null) 
     return null;
   }
   if (archivePath === '.claude/FEATURES_HISTORY.md') {
-    const linked = /^- \[([^\]]+)\]\([^)]+\):(?:[ \t]|$)/.exec(line.content);
-    if (linked) {
-      return { declaration: line.content, label: linked[1] };
+    const linked = line.content.startsWith('- ') ? parseMarkdownLinkPrefix(line.content.slice(2)) : null;
+    if (linked && (linked.suffix === ':' || /^:[ \t]/.test(linked.suffix))) {
+      return { declaration: line.content, label: linked.display };
     }
     if (plainFeatureTitle === null) {
       return null;

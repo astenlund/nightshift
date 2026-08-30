@@ -2907,6 +2907,20 @@ test('slice resolution retains exact declarations, shipped state, and collision 
   );
 });
 
+test('slice resolution passes canonical internal-dash keys to Ready exactly once', () => {
+  const entryHeading = '### [Feature A](features/a.md)';
+  const declaration = '- **MVP - collector - phase one.**';
+  const workUnit = { normalizedKey: 'collector - phase one', declaration, state: 'unshipped' };
+  const target = scope('index-entry', '.claude/FEATURES.md', [{ parentHeading: '## Active', entryHeading }], workUnit);
+  const fsAdapter = fakeRepository({
+    '.claude/FEATURES.md': `# Features\n\n## Active\n\n${entryHeading}\n\n**Slices:**\n${declaration}\n`,
+  });
+
+  const result = resolve(request({ target, seeds: [target] }), fsAdapter);
+
+  assert.deepEqual(result.governingScopes[0].workUnit, workUnit);
+});
+
 test('slice resolution is confined to the selected entry and binds breakout work units through the companion', () => {
   const otherEntry = '### [Other](features/other.md)';
   const selectedEntry = '### [Feature A](features/a.md)';
@@ -2929,12 +2943,28 @@ test('slice resolution is confined to the selected entry and binds breakout work
   assert.equal(breakoutResult.governingScopes[0].workUnit.declaration, selectedDeclaration);
 });
 
-test('ready-parser failures are normalized at each closed adapter operation', () => {
+test('breakout companions accept balanced destination parentheses and ignore anchors for file identity', () => {
+  const entryHeading = '### [Feature A](features/a(v2).md#details)';
+  const target = scope('whole-file', '.claude/features/a(v2).md');
+  const fsAdapter = fakeRepository({
+    '.claude/FEATURES.md': `# Features\n\n## Active\n\n${entryHeading}\n`,
+    '.claude/features/a(v2).md': '# Feature A\n',
+  });
+
+  const result = resolve(request({ target, seeds: [target] }), fsAdapter);
+
+  assert.deepEqual(result.artifacts.map((artifact) => [artifact.path, artifact.selectorKind]), [
+    ['.claude/features/a(v2).md', 'design-before-hardening'],
+    ['.claude/FEATURES.md', 'index-entry'],
+  ]);
+});
+
+test('ready-parser failures are normalized at each invoked adapter operation', () => {
   const entryHeading = '### [Feature A](features/a.md)';
   const declaration = '- **MVP - Core**';
   const fsAdapter = fakeRepository({ '.claude/FEATURES.md': `# Features\n\n## Active\n\n${entryHeading}\n\n**Slices:**\n${declaration}\n` });
   const sliced = scope('index-entry', '.claude/FEATURES.md', [{ parentHeading: '## Active', entryHeading }], { normalizedKey: 'core', declaration, state: 'unshipped' });
-  const operations = ['normalizeSliceName', 'parseSlices', 'findSlicesByNormalizedName'];
+  const operations = ['normalizeSliceName', 'parseSlices'];
 
   for (const operation of operations) {
     const parser = { ...readyParser, [operation]: () => { throw new Error(`${operation} failed`); } };
@@ -3136,6 +3166,23 @@ test('handover completion uses only unique exact archive title and displayName e
     () => resolve(request({ mode: 'handover', target: slicedTarget, seeds: [slicedTarget], allowCompletedNoOp: true }), duplicateFs),
     (error) => error instanceof AgreementError && error.code === 'structural-error' && error.evidence.kind === 'selector-absence',
   );
+});
+
+test('handover completion accepts balanced destination parentheses and anchored archive links', () => {
+  const entryHeading = '### [Done](features/done(v2).md#details)';
+  const sliceDeclaration = '- **MVP - Core**';
+  const workUnit = { normalizedKey: 'core', declaration: sliceDeclaration, state: 'unshipped' };
+  const target = scope('index-entry', '.claude/FEATURES.md', [{ parentHeading: '## Active', entryHeading }], workUnit);
+  const historyDeclaration = '- [Done: MVP - Core](features/done(v2).md#details): shipped.';
+  const fsAdapter = fakeRepository({
+    '.claude/FEATURES.md': '# Features\n\n## Active\n',
+    '.claude/FEATURES_HISTORY.md': `# History\n\n## Entries\n\n${historyDeclaration}\n`,
+  });
+
+  assert.deepEqual(resolve(request({ mode: 'handover', target, seeds: [target], allowCompletedNoOp: true }), fsAdapter), {
+    kind: 'completed-no-op',
+    evidence: { target, archivePath: '.claude/FEATURES_HISTORY.md', matchedDeclaration: historyDeclaration },
+  });
 });
 
 test('handover completion recognizes unique plain index-only feature archive entries', () => {
@@ -3487,6 +3534,22 @@ test('selector failures use only the closed shape absence and ambiguity evidence
     (error) => error instanceof AgreementError && error.code === 'structural-error' && error.evidence.kind === 'selector-shape',
     'resolved section order must report selector-shape',
   );
+});
+
+test('section selector resolution does not repeat selector serialization for every heading', () => {
+  const sourceBuffer = Buffer.from(`${Array.from({ length: 64 }, (_, index) => `## Section ${index}\nBody ${index}\n`).join('')}`);
+  const headingPath = ['## Section 63'];
+  let serializations = 0;
+  Object.defineProperty(headingPath, 'toJSON', {
+    value: () => {
+      serializations += 1;
+
+      return [...headingPath];
+    },
+  });
+
+  expectStructural(() => selectArtifact({ path: 'a.md', sourceBuffer, selectorKind: 'sections', selectors: [{ headingPath }] }), 'selector-shape');
+  assert.ok(serializations <= 1, `selector serialized ${serializations} times`);
 });
 
 test('ready-backed backlog selectors reject unsupported Markdown entry tokens', () => {
