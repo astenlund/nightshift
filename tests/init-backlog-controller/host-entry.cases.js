@@ -2174,18 +2174,18 @@ function runHostEntryCases(repositoryRoot) {
     }
   })
 
-  test('credential-bearing transcript, proxy, and repository carriers publish no evidence leaf', async () => {
+  test('credential-bearing transcript, proxy, and repository carriers prevent contaminated evidence publication', async () => {
     const line = (value) => Buffer.from(canonicalJson(value) + '\n', 'utf8')
-    for (const source of ['host-event', 'proxy-trace', 'repository-file']) {
+    for (const source of ['host-event', 'proxy-session-token', 'proxy-trace', 'repository-file']) {
       const scratch = tempRoot()
       try {
         const evidenceOutputRoot = join(scratch, 'evidence')
         nodeFilesystem.mkdirSync(evidenceOutputRoot, { recursive: true })
         const harness = createEvaluationHarness(scratch, {
           onSession: (call) => {
-            const token = call.environment.ANTHROPIC_API_KEY
+            const token = source === 'proxy-session-token' ? call.environment.NIGHTSHIFT_INIT_BACKLOG_PROXY_TOKEN : call.environment.ANTHROPIC_API_KEY
             const evidence = []
-            if (source === 'host-event') {
+            if (source === 'host-event' || source === 'proxy-session-token') {
               const transcript = driver.createTranscript()
               transcript.appendHostEvent(Buffer.from(`event:${token}`, 'utf8'))
               evidence.push({ bytes: transcript.toBuffer(), path: 'transcript.jsonl' })
@@ -2216,11 +2216,13 @@ function runHostEntryCases(repositoryRoot) {
           initialCode: null,
           ok: false,
           phase: 'post-session',
-          retainedRunRoot: harness.roots[1],
+          retainedRunRoot: harness.roots[source === 'proxy-session-token' ? 2 : 1],
         }, source)
         assert.deepEqual(evaluation.rows, [], source)
         assert.deepEqual(evaluation.evidenceManifests, [], source)
-        assert.deepEqual(listFilesNamed(evidenceOutputRoot, 'manifest.json'), [], `${source} must publish no evidence leaf`)
+        const publishedManifests = listFilesNamed(evidenceOutputRoot, 'manifest.json')
+        assert.equal(publishedManifests.some((path) => path.includes(`${nodePath.sep}enabled${nodePath.sep}`)), false, `${source} must publish no contaminated enabled evidence leaf`)
+        assert.equal(publishedManifests.length, source === 'proxy-session-token' ? 1 : 0, `${source} publishes only evidence completed before the contaminated repetition`)
       } finally {
         nodeFilesystem.rmSync(scratch, { force: true, recursive: true })
       }

@@ -3,7 +3,8 @@
 const { BYTE_BOUNDS, compareOrdinal } = require('./primitives')
 const { createByteBudget } = require('./state')
 
-const PROXY_TRACE_MEMBERS = Object.freeze(['exitCode', 'ordinal', 'requestBase64', 'stderrBase64', 'stdoutBase64'])
+const PROXY_TRACE_BASE64_MEMBERS = Object.freeze(['requestBase64', 'stderrBase64', 'stdoutBase64'])
+const PROXY_TRACE_MEMBERS = Object.freeze(['exitCode', 'ordinal', ...PROXY_TRACE_BASE64_MEMBERS])
 const MAX_PARSED_JSON_DEPTH = 64
 
 // Well-formed base64 spelling only. Canonicity (no over-long final group) is a
@@ -140,4 +141,4 @@ function createProxyTrace({ flush, limit = BYTE_BOUNDS.MAX_PROXY_TRACE_BYTES } =
   }
 }
 
-module.exports = { BASE64_PATTERN, MAX_PARSED_JSON_DEPTH, canonicalJson, canonicalJsonLine, createProxyTrace, createTranscript, isCanonicalBase64, parseJsonWithDepthLimit }
+module.exports = { BASE64_PATTERN, MAX_PARSED_JSON_DEPTH, PROXY_TRACE_BASE64_MEMBERS, PROXY_TRACE_MEMBERS, canonicalJson, canonicalJsonLine, createProxyTrace, createTranscript, isCanonicalBase64, parseJsonWithDepthLimit }

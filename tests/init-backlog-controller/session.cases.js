@@ -8,6 +8,7 @@ const { dirname, join } = require('node:path')
 const test = require('node:test')
 
 const driver = require('../init-backlog-session-driver')
+const transcriptModule = require('../init-backlog-session-driver/transcript')
 const workerModule = require('../init-backlog-controller-worker')
 const proxyClient = require('../fixtures/init-backlog-eval/controller-proxy.js')
 const { canonicalJson, nestedJsonText, sha256 } = require('./helpers')
@@ -932,6 +933,8 @@ function runSessionCases(repositoryRoot) {
       },
     })
     const record = { exitCode: 0, ordinal: 1, requestBase64: 'aGk=', stderrBase64: '', stdoutBase64: 'aGk=' }
+    assert.deepEqual(transcriptModule.PROXY_TRACE_MEMBERS, Object.keys(record).sort())
+    assert.deepEqual(transcriptModule.PROXY_TRACE_BASE64_MEMBERS, ['requestBase64', 'stderrBase64', 'stdoutBase64'])
     trace.append(record)
     assert.equal(flushed.length, 1)
     assert.equal(flushed[0].toString('utf8'), canonicalJson(record) + '\n')
@@ -1643,7 +1646,8 @@ function runSessionCases(repositoryRoot) {
 
   test('credential isolation decodes transcript, proxy, and repository carriers', () => {
     const token = 'credential-value-' + 'c'.repeat(48)
-    const credentialValues = driver.credentialValuesFromProjection({ ANTHROPIC_API_KEY: token, OPENAI_API_KEY: '', PATH: '/usr/bin' })
+    const proxyToken = 'd'.repeat(64)
+    const credentialValues = driver.credentialValuesFromProjection({ ANTHROPIC_API_KEY: token, NIGHTSHIFT_INIT_BACKLOG_PROXY_TOKEN: proxyToken, OPENAI_API_KEY: '', PATH: '/usr/bin' })
     const cleanTranscript = canonicalLine({ kind: 'host-event', ordinal: 1, payloadBase64: Buffer.from('clean host event', 'utf8').toString('base64') })
     const contaminatedTranscript = canonicalLine({ kind: 'host-event', ordinal: 1, payloadBase64: Buffer.from(`event:${token}`, 'utf8').toString('base64') })
     const repositoryEvidence = (content) => canonicalLine({
@@ -1668,7 +1672,7 @@ function runSessionCases(repositoryRoot) {
     ]
     const cleanProxy = proxyEvidence()
 
-    assert.deepEqual(credentialValues, [token])
+    assert.deepEqual(credentialValues, [token, proxyToken])
     assert.equal(contaminatedTranscript.includes(token), false, 'the transcript carrier hides the credential behind Base64')
     assert.equal(repositoryEvidence(token).includes(token), false, 'the repository carrier hides the credential behind Base64')
     assert.equal(driver.verifyCredentialFreeEvidence({ credentialValues, files: files(cleanTranscript, cleanProxy, repositoryEvidence('clean repository file')) }), true)

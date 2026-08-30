@@ -4,7 +4,7 @@ const nodeFilesystem = require('node:fs')
 const { dirname, isAbsolute, join, relative, resolve, sep } = require('node:path')
 
 const { BYTE_BOUNDS, HOSTS, compareOrdinal, sha256 } = require('./primitives')
-const { canonicalJson, canonicalJsonLine, isCanonicalBase64, parseJsonWithDepthLimit } = require('./transcript')
+const { PROXY_TRACE_BASE64_MEMBERS, PROXY_TRACE_MEMBERS, canonicalJson, canonicalJsonLine, isCanonicalBase64, parseJsonWithDepthLimit } = require('./transcript')
 
 const EVIDENCE_HOSTS = HOSTS
 const ENABLED_REPETITIONS = Object.freeze([1, 2, 3])
@@ -12,7 +12,6 @@ const ROOT_REPORT_FILENAMES = Object.freeze(['import-matrix.json', 'summary.json
 const CREDENTIAL_CARRIER_KEYS = new Set(['afterBase64', 'backupContentBase64', 'beforeBase64', 'contentBase64', 'currentContentBase64', 'dataBase64', 'payloadBase64', 'predictedContentBase64', 'requestBase64', 'stderrBase64', 'stdoutBase64'])
 const MAX_CREDENTIAL_CARRIER_DEPTH = 8
 const MAX_CREDENTIAL_DECODED_BYTES = BYTE_BOUNDS.MAX_PROXY_TRACE_BYTES * 2
-const PROXY_TRACE_KEYS = Object.freeze(['exitCode', 'ordinal', 'requestBase64', 'stderrBase64', 'stdoutBase64'])
 
 function containsCredential(bytes, credentials) {
   return credentials.some((credential) => bytes.indexOf(credential) !== -1)
@@ -147,7 +146,7 @@ function proxyTraceContainsCredential(bytes, credentials) {
       || record === null
       || typeof record !== 'object'
       || Array.isArray(record)
-      || Object.keys(record).sort(compareOrdinal).join(',') !== PROXY_TRACE_KEYS.join(',')
+      || Object.keys(record).sort(compareOrdinal).join(',') !== PROXY_TRACE_MEMBERS.join(',')
       || !Number.isSafeInteger(record.exitCode)
       || record.exitCode < 0
       || record.exitCode > 255
@@ -156,7 +155,7 @@ function proxyTraceContainsCredential(bytes, credentials) {
       || !line.equals(canonicalJsonLine(record))) {
       return null
     }
-    for (const key of ['requestBase64', 'stderrBase64', 'stdoutBase64']) {
+    for (const key of PROXY_TRACE_BASE64_MEMBERS) {
       const decoded = decodeCanonicalBase64(record[key])
       if (decoded === null) {
         return null
