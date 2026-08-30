@@ -297,7 +297,7 @@ function runActivationCases(repositoryRoot) {
     }
   })
 
-  test('retired tracked-plan phrases are absent from handover and revise-plan', () => {
+  test('retired tracked-plan phrases are absent and shared plan policy is pinned', () => {
     const baselineHandover = readBaseline(repositoryRoot, 'skills/handover/SKILL.md')
     const baselinePlan = readBaseline(repositoryRoot, 'internal/revise/plan.md')
     for (const phrase of RETIRED_TRACKED_PLAN_PHRASES) {
@@ -305,6 +305,7 @@ function runActivationCases(repositoryRoot) {
     }
     const liveHandover = readLive(repositoryRoot, 'skills/handover/SKILL.md')
     const livePlan = readLive(repositoryRoot, 'internal/revise/plan.md')
+    const liveBinding = readLive(repositoryRoot, 'internal/plan-binding.md')
     for (const [name, text] of [['skills/handover/SKILL.md', liveHandover], ['internal/revise/plan.md', livePlan]]) {
       for (const phrase of RETIRED_TRACKED_PLAN_PHRASES) {
         assertPhraseRetired(name, text, phrase)
@@ -316,13 +317,15 @@ function runActivationCases(repositoryRoot) {
       }
     }
     assert.equal(countExact(liveHandover, 'Plans are outside that election.'), 1, 'handover must place plans outside the version-control election')
-    assert.equal(countExact(liveHandover, '`.claude/plans/` is git-ignored unconditionally as the standard repository location'), 1, 'handover must retain the unconditional standard plan policy')
     assert.equal(countExact(liveHandover, 'Plans are never committed: `.claude/plans/` is git-ignored'), 1, 'handover must state that plans are never committed')
-    assert.equal(countExact(liveHandover, 'Before trusting or writing a repository-local plan hardening stamp, verify that its actual repository-relative path is ignored and untracked.'), 1, 'handover must verify the selected repository plan path before stamping')
-    assert.equal(countExact(liveHandover, 'An explicit unignore, an uncovered custom path, or a tracked plan is a blocking policy conflict: stop before stamping, implementation, or deletion and require the user to add an applicable ignore rule or resolve tracking as appropriate.'), 1, 'handover must stop on every repository-local plan policy conflict')
-    assert.equal(countExact(liveHandover, 'Global and external plans are outside the current repository\'s ignore policy and receive no project Git check.'), 1, 'handover must not apply project ignore policy to non-repository plans')
+    assert.equal(countExact(liveBinding, 'Before accepting a repository-local plan as authority, verify that its actual repository-relative path is ignored and untracked.'), 1, 'the shared owner must verify the selected repository plan path')
+    assert.equal(countExact(liveBinding, 'The standard `.claude/plans/` directory is unconditionally ignored.'), 1, 'the shared owner must retain the unconditional standard plan policy')
+    assert.equal(countExact(liveBinding, 'A project-established custom location must carry an applicable ignore rule, and an explicit unignore, uncovered path, or tracked file stops the run for user remediation.'), 1, 'the shared owner must stop on every repository-local plan policy conflict')
+    assert.equal(countExact(liveBinding, 'Global and external plans are outside the current repository\'s ignore policy and receive no project Git check.'), 1, 'the shared owner must exempt non-repository plans from project ignore policy')
+    assert.equal(countExact(liveBinding, 'Perform recency comparison only from each binding\'s `mtimeNs`, and perform content matching only from that binding\'s captured bytes.'), 1, 'the shared owner must select from bound candidate evidence')
+    assert.equal(countExact(liveHandover, '${CLAUDE_PLUGIN_ROOT}/internal/plan-binding.md'), 1, 'handover must delegate to the shared plan owner')
+    assert.equal(countExact(livePlan, '${CLAUDE_PLUGIN_ROOT}/internal/plan-binding.md'), 1, 'revise-plan must delegate to the shared plan owner')
     assert.equal(countExact(liveHandover, 'git rm -f'), 0, 'handover must not prescribe git removal of a plan file')
-    assert.equal(countExact(livePlan, '`git status` reports tracked changes and ordinary untracked files, while `git diff --stat` reports tracked differences; ignored `.claude/plans/` files appear in neither normal output, so fall back to file modification time.'), 1, 'revise-plan must explain why ignored plan files require the modification-time fallback')
   })
 
   test('generated root guidance matches the repository guidance excerpt for plans', () => {
