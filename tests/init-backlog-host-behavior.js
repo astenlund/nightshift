@@ -1452,7 +1452,7 @@ function buildDisabledPluginRoot({ baselineFiles = null, baselineManifest = null
   return { manifest, runPluginRootDigest: null }
 }
 
-// --- Cross-domain wiring helpers (Task 14b review obligations) --------------
+// --- Cross-domain wiring helpers (admission watermark pairing) --------------
 
 // Transcript ordinals and proxy ordinals are separate domains, so each
 // admitted apply call captures the transcript watermark at admission; the
@@ -2009,10 +2009,9 @@ function createSettleGuard(resolve) {
 
 function infrastructureCarrier({ detailCode, host, initialCode = null, phase, retainedRunRoot = null }) {
   if (detailCode === 'cleanup' && phase !== 'post-session') {
-    // Pre-session cleanup carriers stay locally constructed: the driver
-    // validator pins cleanup to post-session, while the recorded Task 14
-    // ruling accepts the authentication/version/import-probe cleanup carriers
-    // as an extrapolation of the plan's version-phase carve-out.
+    // Pre-session cleanup carriers stay locally constructed because the driver
+    // validator admits cleanup only at post-session. Authentication, version,
+    // and import-probe cleanup use the version-phase carve-out.
     return { ok: false, host, code: 'harness-infrastructure', phase, initialCode, detailCode, retainedRunRoot }
   }
 
