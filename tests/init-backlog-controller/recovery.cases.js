@@ -143,6 +143,13 @@ function runRecoveryCases() {
     assert.equal(typeof applyRecovery, 'function')
   })
 
+  test('owner inventory derives lock stages from the shared recovery basename', () => {
+    const source = readFileSync(join(__dirname, '..', '..', 'skills', 'init-backlog', 'lib', 'owner-inventory.js'), 'utf8')
+
+    assert.equal(source.includes("const { RECOVERY_LOCK_BASENAME } = require('./protocol')"), true)
+    assert.equal(source.includes('`.nightshift-init-backlog.lock.${'), false)
+  })
+
   test('owner inventory indexing and state validation visit inventory linearly', () => {
     const pairCount = 256
     const manifestId = 'a'.repeat(64)

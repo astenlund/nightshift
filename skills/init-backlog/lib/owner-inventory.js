@@ -1,6 +1,7 @@
 'use strict'
 
 const { backupParts } = require('./backups')
+const { RECOVERY_LOCK_BASENAME } = require('./protocol')
 
 function backupPairKey(parts) {
   return JSON.stringify([parts.directory, parts.snapshotId, parts.manifestId, parts.targetHash])
@@ -53,8 +54,8 @@ function validateBackupSequence(inventory, temporaryStates) {
 }
 
 function validateCleanupPrefix(record, inventory, states, isRecoveryTemporary) {
-  const initialLockStage = `.nightshift-init-backlog.lock.${record.pid}.${record.ownerNonce}.new`
-  const nextLockStage = `.nightshift-init-backlog.lock.${record.ownerNonce}.next`
+  const initialLockStage = `${RECOVERY_LOCK_BASENAME}.${record.pid}.${record.ownerNonce}.new`
+  const nextLockStage = `${RECOVERY_LOCK_BASENAME}.${record.ownerNonce}.next`
   const laterFinalPairs = new Set()
   let initialLockCount = 0
   let laterMatchingManifestBackups = 0
