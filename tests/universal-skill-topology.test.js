@@ -199,6 +199,41 @@ test('handover pins the durable queue lifecycle contract', () => {
   assert.equal(body.includes('sub-step resume is deliberately not tracked'), false, 'handover must not deny the cross-session step resume the queue now provides')
 })
 
+test('handover queue accepts reordered creation input without changing durable ordering', () => {
+  const authority = { artifactPath: '.claude/features/example.md', planFingerprint: 'none', targetScope: 'whole file' }
+
+  const sourceBuffer = createQueue({ entryStep: 5, authority })
+
+  assert.equal(sourceBuffer.toString('utf8'), [
+    '{"artifactPath":".claude/features/example.md","entryStep":5,"planFingerprint":"none","protocolVersion":1,"targetScope":"whole file"}',
+    '- [ ] 5. Revise code',
+    '- [ ] 6. Verify end-to-end',
+    '- [ ] 7. Revise docs',
+    '- [ ] 8. Backlog bookkeeping check',
+    '- [ ] 9. Revise lore',
+    '- [ ] 10. Persist workflow edits',
+    '- [ ] 11. Full test suite',
+    '- [ ] 12. Morning report',
+    '',
+  ].join('\n'))
+})
+
+test('handover queue accepts reordered authority records', () => {
+  const authority = { targetScope: 'whole file', planFingerprint: 'none', artifactPath: '.claude/features/example.md' }
+
+  const sourceBuffer = createQueue({ authority, entryStep: 5 })
+
+  assert.equal(sourceBuffer.toString('utf8').split('\n')[0], '{"artifactPath":".claude/features/example.md","entryStep":5,"planFingerprint":"none","protocolVersion":1,"targetScope":"whole file"}')
+})
+
+test('handover queue accepts reordered evidence records', () => {
+  const authority = { artifactPath: '.claude/features/example.md', planFingerprint: 'none', targetScope: 'whole file' }
+  const evidence = { tracked: false, stable: true, singleLink: true, ordinary: true, ignored: true }
+  const sourceBuffer = createQueue({ authority, entryStep: 5 })
+
+  assert.deepEqual(resumeQueue({ detectedEntryStep: 5, evidence, expectedAuthority: authority, sourceBuffer }), { kind: 'live', nextStep: 5, sourceBuffer })
+})
+
 test('handover queue rejects malformed authority and cannot outrun the ladder', () => {
   const authority = { artifactPath: '.claude/features/example.md', planFingerprint: `sha256:${'a'.repeat(64)}`, targetScope: 'whole file' }
   const evidence = { ignored: true, ordinary: true, singleLink: true, stable: true, tracked: false }
@@ -208,6 +243,7 @@ test('handover queue rejects malformed authority and cannot outrun the ladder', 
 
   assert.deepEqual(resumeQueue({ detectedEntryStep: 4, evidence, expectedAuthority: authority, sourceBuffer }), { kind: 'live', nextStep: 4, sourceBuffer })
   for (const malformed of [
+    Buffer.from(text.replace(lines[0], `{"entryStep":4,"artifactPath":".claude/features/example.md","planFingerprint":"sha256:${'a'.repeat(64)}","protocolVersion":1,"targetScope":"whole file"}`)),
     Buffer.from([...lines.slice(0, 2), ...lines.slice(3)].join('\n') + '\n'),
     Buffer.from([...lines, lines[1]].join('\n') + '\n'),
     Buffer.from([lines[0], lines[2], lines[1], ...lines.slice(3)].join('\n') + '\n'),

@@ -27,8 +27,12 @@ class HandoverQueueError extends Error {
   }
 }
 
-function exactKeys(value, keys) {
-  return value !== null && typeof value === 'object' && !Array.isArray(value) && Object.keys(value).length === keys.length && Object.keys(value).every((key, index) => key === keys[index])
+function exactKeyMembership(value, keys) {
+  return value !== null && typeof value === 'object' && !Array.isArray(value) && Object.keys(value).length === keys.length && keys.every((key) => Object.hasOwn(value, key))
+}
+
+function exactOrderedKeys(value, keys) {
+  return exactKeyMembership(value, keys) && Object.keys(value).every((key, index) => key === keys[index])
 }
 
 function fail(message) {
@@ -44,7 +48,7 @@ function validArtifactPath(value) {
 }
 
 function validateAuthority(authority) {
-  if (!exactKeys(authority, ['artifactPath', 'planFingerprint', 'targetScope'])
+  if (!exactKeyMembership(authority, ['artifactPath', 'planFingerprint', 'targetScope'])
     || !validArtifactPath(authority.artifactPath)
     || !(authority.planFingerprint === 'none' || /^sha256:[0-9a-f]{64}$/.test(authority.planFingerprint))
     || !validText(authority.targetScope, 1_024)) {
@@ -53,7 +57,7 @@ function validateAuthority(authority) {
 }
 
 function validateEvidence(evidence) {
-  if (!exactKeys(evidence, ['ignored', 'ordinary', 'singleLink', 'stable', 'tracked'])
+  if (!exactKeyMembership(evidence, ['ignored', 'ordinary', 'singleLink', 'stable', 'tracked'])
     || evidence.ignored !== true
     || evidence.ordinary !== true
     || evidence.singleLink !== true
@@ -92,7 +96,7 @@ function serializeQueue(authority, entryStep, completedSteps) {
 }
 
 function createQueue(input) {
-  if (!exactKeys(input, ['authority', 'entryStep'])) {
+  if (!exactKeyMembership(input, ['authority', 'entryStep'])) {
     fail('Queue creation input is invalid')
   }
   validateAuthority(input.authority)
@@ -121,7 +125,7 @@ function parseSource(sourceBuffer) {
   } catch {
     fail('Queue header is malformed')
   }
-  if (!exactKeys(header, ['artifactPath', 'entryStep', 'planFingerprint', 'protocolVersion', 'targetScope'])
+  if (!exactOrderedKeys(header, ['artifactPath', 'entryStep', 'planFingerprint', 'protocolVersion', 'targetScope'])
     || JSON.stringify(header) !== lines[0]
     || header.protocolVersion !== QUEUE_PROTOCOL_VERSION) {
     fail('Queue header is not canonical')
@@ -188,7 +192,7 @@ function sameAuthority(left, right) {
 }
 
 function resumeQueue(input) {
-  if (!exactKeys(input, ['detectedEntryStep', 'evidence', 'expectedAuthority', 'sourceBuffer'])) {
+  if (!exactKeyMembership(input, ['detectedEntryStep', 'evidence', 'expectedAuthority', 'sourceBuffer'])) {
     fail('Queue resume input is invalid')
   }
   if (!QUEUE_ENTRY_STEPS.includes(input.detectedEntryStep)) {
@@ -212,7 +216,7 @@ function resumeQueue(input) {
 }
 
 function advanceQueue(input) {
-  if (!exactKeys(input, ['completedStep', 'currentAuthority', 'evidence', 'nextAuthority', 'sourceBuffer'])) {
+  if (!exactKeyMembership(input, ['completedStep', 'currentAuthority', 'evidence', 'nextAuthority', 'sourceBuffer'])) {
     fail('Queue update input is invalid')
   }
   validateEvidence(input.evidence)
