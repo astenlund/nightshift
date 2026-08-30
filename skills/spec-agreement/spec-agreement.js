@@ -1,7 +1,8 @@
 const { createHash } = require('node:crypto');
 const { isUtf8 } = require('node:buffer');
-const { closeSync, openSync, readFileSync, readdirSync, realpathSync, renameSync, statSync, unlinkSync, writeFileSync } = require('node:fs');
+const { closeSync, lstatSync, openSync, readFileSync, readdirSync, realpathSync, renameSync, statSync, unlinkSync, writeFileSync } = require('node:fs');
 const nodePath = require('node:path');
+const { isDeepStrictEqual } = require('node:util');
 
 let stagingCounter = 0;
 
@@ -816,6 +817,89 @@ function replaceFile(fsAdapter, path, bytes) {
   }
 }
 
+const PROVENANCE_BINDING_KEYS = ['ctimeNs', 'dev', 'ino', 'mode', 'mtimeNs', 'nlink', 'realPath', 'size'];
+const PROVENANCE_FILE_STATE_KEYS = ['ctimeNs', 'dev', 'ino', 'mode', 'mtimeNs', 'nlink', 'size'];
+
+function validateBindingAdapter(bindingAdapter) {
+  if (!exactOrderedKeys(bindingAdapter, ['fileState']) || typeof bindingAdapter.fileState !== 'function') {
+    hardeningGrammar('Binding adapter must use the closed ordered shape.');
+  }
+}
+
+function normalizeFileState(realPath, state) {
+  if (!exactOrderedKeys(state, PROVENANCE_FILE_STATE_KEYS) || PROVENANCE_FILE_STATE_KEYS.some((key) => typeof state[key] !== 'bigint' || state[key] < 0n)) {
+    structural('Filesystem adapter returned invalid file-binding state.', { kind: 'invalid-file-binding', path: realPath });
+  }
+  if (state.nlink !== 1n || (state.mode & 0o170000n) !== 0o100000n) {
+    structural('Provenance target must be one ordinary single-linked file.', { kind: 'invalid-file-binding', path: realPath });
+  }
+
+  return Object.fromEntries(PROVENANCE_FILE_STATE_KEYS.map((key) => [key, state[key].toString()]).concat([['realPath', realPath]]).sort(([left], [right]) => left < right ? -1 : left > right ? 1 : 0));
+}
+
+function readProvenanceBinding(realPath, bindingAdapter) {
+  let state;
+  try {
+    state = bindingAdapter.fileState(realPath);
+  } catch (thrown) {
+    structural('Filesystem adapter could not inspect the provenance target.', { kind: 'unreadable-artifact', operation: 'fileState', path: realPath, originalMessage: thrownMessage(thrown) });
+  }
+
+  return normalizeFileState(realPath, state);
+}
+
+function validateProvenanceBinding(binding) {
+  if (!exactOrderedKeys(binding, PROVENANCE_BINDING_KEYS)
+    || typeof binding.realPath !== 'string'
+    || binding.realPath === ''
+    || PROVENANCE_FILE_STATE_KEYS.some((key) => typeof binding[key] !== 'string' || !/^(?:0|[1-9][0-9]*)$/.test(binding[key]))
+    || binding.nlink !== '1'
+    || (BigInt(binding.mode) & 0o170000n) !== 0o100000n) {
+    hardeningGrammar('Provenance binding must use the closed canonical shape.');
+  }
+}
+
+function requireCurrentBinding(expected, current) {
+  if (!isDeepStrictEqual(expected, current)) {
+    structural('The retained provenance file binding is stale.', { kind: 'stale-file-binding', expected, current });
+  }
+}
+
+function captureProvenanceBinding(input, options) {
+  if (!exactOrderedKeys(input, ['projectRoot', 'path']) || !exactOrderedKeys(options, ['fsAdapter', 'bindingAdapter'])) {
+    hardeningGrammar('Provenance binding input must use the closed ordered shape.');
+  }
+  const { projectRoot, path } = input;
+  const { fsAdapter, bindingAdapter } = options;
+  validateFsAdapter(fsAdapter, hardeningGrammar);
+  validateBindingAdapter(bindingAdapter);
+  const canonical = canonicalizePath(projectRoot, path, fsAdapter);
+
+  return readProvenanceBinding(canonical.realPath, bindingAdapter);
+}
+
+function prepareProvenanceWrite(currentBytes, stamp, baselineHash) {
+  requireUtf8(currentBytes);
+  if (isAppliedRetry(currentBytes, stamp, baselineHash)) {
+    return { alreadyApplied: true, nextBytes: Buffer.from(currentBytes) };
+  }
+  const currentHash = completeFileHash(currentBytes);
+  if (!/^[0-9a-f]{64}$/.test(baselineHash) || currentHash !== baselineHash) {
+    staleBaseline(baselineHash, currentHash);
+  }
+
+  return { alreadyApplied: false, nextBytes: buildProvenanceBytes(currentBytes, stamp) };
+}
+
+function readProvenanceReplacement(fsAdapter, realPath, nextBytes) {
+  const readbackBytes = adapterCall(fsAdapter, 'readFile', realPath);
+  if (!Buffer.isBuffer(readbackBytes) || !readbackBytes.equals(nextBytes)) {
+    throw new AgreementError('unexpected-adapter-failure', 'Atomic replacement readback did not match the intended complete bytes.', { operation: 'replaceFileAtomically', path: realPath, originalMessage: 'atomic replacement readback mismatch' });
+  }
+
+  return Buffer.from(readbackBytes);
+}
+
 function writeProvenanceStamp(input, options) {
   if (!exactOrderedKeys(input, ['projectRoot', 'path', 'stamp', 'baselineHash']) || !exactOrderedKeys(options, ['fsAdapter'])) {
     hardeningGrammar('Provenance input must use the closed ordered shape.');
@@ -828,22 +912,47 @@ function writeProvenanceStamp(input, options) {
   validateFsAdapter(fsAdapter, hardeningGrammar);
   const canonical = canonicalizePath(projectRoot, path, fsAdapter);
   const currentBytes = adapterCall(fsAdapter, 'readFile', canonical.realPath);
-  requireUtf8(currentBytes);
-  if (isAppliedRetry(currentBytes, stamp, baselineHash)) {
+  const prepared = prepareProvenanceWrite(currentBytes, stamp, baselineHash);
+  if (prepared.alreadyApplied) {
     return { bytes: Buffer.from(currentBytes), alreadyApplied: true };
   }
-  const currentHash = completeFileHash(currentBytes);
-  if (!/^[0-9a-f]{64}$/.test(baselineHash) || currentHash !== baselineHash) {
-    staleBaseline(baselineHash, currentHash);
-  }
-  const nextBytes = buildProvenanceBytes(currentBytes, stamp);
-  replaceFile(fsAdapter, canonical.realPath, nextBytes);
-  const readbackBytes = adapterCall(fsAdapter, 'readFile', canonical.realPath);
-  if (!Buffer.isBuffer(readbackBytes) || !readbackBytes.equals(nextBytes)) {
-    throw new AgreementError('unexpected-adapter-failure', 'Atomic replacement readback did not match the intended complete bytes.', { operation: 'replaceFileAtomically', path: canonical.realPath, originalMessage: 'atomic replacement readback mismatch' });
-  }
+  replaceFile(fsAdapter, canonical.realPath, prepared.nextBytes);
+  const readbackBytes = readProvenanceReplacement(fsAdapter, canonical.realPath, prepared.nextBytes);
 
   return { bytes: Buffer.from(readbackBytes), alreadyApplied: false };
+}
+
+function writeBoundProvenanceStamp(input, options) {
+  if (!exactOrderedKeys(input, ['projectRoot', 'path', 'stamp', 'baselineHash', 'binding']) || !exactOrderedKeys(options, ['fsAdapter', 'bindingAdapter'])) {
+    hardeningGrammar('Bound provenance input must use the closed ordered shape.');
+  }
+  const { projectRoot, path, stamp, baselineHash, binding } = input;
+  const { fsAdapter, bindingAdapter } = options;
+  if (typeof projectRoot !== 'string' || projectRoot === '' || typeof stamp !== 'string' || provenanceKind(stamp) === null || typeof baselineHash !== 'string') {
+    hardeningGrammar('Bound provenance input contains an invalid value.');
+  }
+  validateProvenanceBinding(binding);
+  validateFsAdapter(fsAdapter, hardeningGrammar);
+  validateBindingAdapter(bindingAdapter);
+  const canonical = canonicalizePath(projectRoot, path, fsAdapter);
+  requireCurrentBinding(binding, readProvenanceBinding(canonical.realPath, bindingAdapter));
+  const currentBytes = adapterCall(fsAdapter, 'readFile', canonical.realPath);
+  requireCurrentBinding(binding, readProvenanceBinding(canonical.realPath, bindingAdapter));
+  const prepared = prepareProvenanceWrite(currentBytes, stamp, baselineHash);
+  if (prepared.alreadyApplied) {
+    return { bytes: Buffer.from(currentBytes), alreadyApplied: true, binding };
+  }
+  requireCurrentBinding(binding, readProvenanceBinding(canonical.realPath, bindingAdapter));
+  replaceFile(fsAdapter, canonical.realPath, prepared.nextBytes);
+  const readbackBytes = readProvenanceReplacement(fsAdapter, canonical.realPath, prepared.nextBytes);
+  const refreshedBinding = readProvenanceBinding(canonical.realPath, bindingAdapter);
+  const confirmedBytes = adapterCall(fsAdapter, 'readFile', canonical.realPath);
+  requireCurrentBinding(refreshedBinding, readProvenanceBinding(canonical.realPath, bindingAdapter));
+  if (!Buffer.isBuffer(confirmedBytes) || !confirmedBytes.equals(readbackBytes)) {
+    structural('The replacement binding changed during provenance readback.', { kind: 'stale-file-binding', path: canonical.realPath });
+  }
+
+  return { bytes: Buffer.from(confirmedBytes), alreadyApplied: false, binding: refreshedBinding };
 }
 
 function planStructural(message) {
@@ -2621,6 +2730,16 @@ function productionFsAdapter() {
   };
 }
 
+function productionBindingAdapter() {
+  return {
+    fileState: (path) => {
+      const metadata = lstatSync(path, { bigint: true });
+
+      return { ctimeNs: metadata.ctimeNs, dev: metadata.dev, ino: metadata.ino, mode: metadata.mode, mtimeNs: metadata.mtimeNs, nlink: metadata.nlink, size: metadata.size };
+    },
+  };
+}
+
 function invocationFailure(message, evidence = {}) {
   throw new AgreementError('invocation-error', message, evidence);
 }
@@ -2795,7 +2914,7 @@ function encodeCliValue(value) {
   return encoded;
 }
 
-function dispatchCliOperation(operation, input, adapters, environment) {
+function dispatchCliOperation(operation, input, adapters, environment, bindingAdapter) {
   validateCliWireKeys(input);
   const decoded = decodeCliValue(input);
   switch (operation) {
@@ -2842,6 +2961,10 @@ function dispatchCliOperation(operation, input, adapters, environment) {
       return previewLegacyMarkerDeletion(decoded);
     case 'provenance-write':
       return writeProvenanceStamp(decoded, { fsAdapter: adapters.fsAdapter });
+    case 'provenance-write-bound':
+      return writeBoundProvenanceStamp(decoded, { fsAdapter: adapters.fsAdapter, bindingAdapter });
+    case 'provenance-bind':
+      return captureProvenanceBinding(decoded, { fsAdapter: adapters.fsAdapter, bindingAdapter });
     default:
       invocationFailure('CLI operation is not allowlisted.', { operation });
   }
@@ -2868,7 +2991,8 @@ function runCli(input, options = {}) {
       fsAdapter: options.fsAdapter ?? productionFsAdapter(),
       readyParser: options.readyParser,
     };
-    const value = dispatchCliOperation(requestEnvelope.operation, requestEnvelope.input, adapters, options.environment ?? process.env);
+    const bindingAdapter = options.bindingAdapter ?? productionBindingAdapter();
+    const value = dispatchCliOperation(requestEnvelope.operation, requestEnvelope.input, adapters, options.environment ?? process.env, bindingAdapter);
     envelope = { ok: true, value: encodeCliValue(value) };
     exitCode = 0;
   } catch (thrown) {
@@ -2887,6 +3011,7 @@ module.exports = {
   AGREEMENT_VERSION,
   canonicalizePath,
   canonicalScopePath,
+  captureProvenanceBinding,
   scanMarkdown,
   selectArtifact,
   hashSelection,
@@ -2906,6 +3031,7 @@ module.exports = {
   decideAgreementGate,
   detectLegacyMarkers,
   previewLegacyMarkerDeletion,
+  writeBoundProvenanceStamp,
   writeProvenanceStamp,
   runCli,
 };

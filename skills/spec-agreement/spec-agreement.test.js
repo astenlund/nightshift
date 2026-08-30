@@ -1,7 +1,7 @@
 const assert = require('node:assert/strict');
 const { spawnSync } = require('node:child_process');
 const { createHash } = require('node:crypto');
-const { chmodSync, existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } = require('node:fs');
+const { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } = require('node:fs');
 const { tmpdir } = require('node:os');
 const { join } = require('node:path');
 const test = require('node:test');
@@ -15,6 +15,7 @@ const {
   candidateToken,
   canonicalizePath,
   canonicalScopePath,
+  captureProvenanceBinding,
   compareCandidates,
   createAgreementState,
   decideAgreementGate,
@@ -32,6 +33,7 @@ const {
   selectArtifact,
   serializePlanContract,
   validateContractFitVerdict,
+  writeBoundProvenanceStamp,
   writeProvenanceStamp,
 } = require('./spec-agreement');
 const readyImplementation = require('../ready/ready');
@@ -246,6 +248,8 @@ function mutableRepository(files) {
 
 function mutableArtifact(initialBytes, { aliases = {}, readFailures = [] } = {}) {
   let bytes = Buffer.from(initialBytes);
+  let identity = 1n;
+  let metadataRevision = 1n;
   const replacements = [];
   const directories = new Map([
     [projectRoot, ['docs']],
@@ -265,13 +269,34 @@ function mutableArtifact(initialBytes, { aliases = {}, readFailures = [] } = {})
     replaceFileAtomically: (path, nextBytes) => {
       replacements.push({ path, bytes: Buffer.from(nextBytes) });
       bytes = Buffer.from(nextBytes);
+      identity += 1n;
+      metadataRevision += 1n;
     },
+  };
+  const bindingAdapter = {
+    fileState: () => ({
+      ctimeNs: metadataRevision,
+      dev: 1n,
+      ino: identity,
+      mode: 0o100644n,
+      mtimeNs: metadataRevision,
+      nlink: 1n,
+      size: BigInt(bytes.length),
+    }),
   };
 
   return {
     adapter,
+    bindingAdapter,
     bytes: () => Buffer.from(bytes),
+    replaceIdentity: () => {
+      identity += 1n;
+      metadataRevision += 1n;
+    },
     replacements: () => replacements.map((replacement) => ({ path: replacement.path, bytes: Buffer.from(replacement.bytes) })),
+    touchMetadata: () => {
+      metadataRevision += 1n;
+    },
   };
 }
 
@@ -573,6 +598,7 @@ test('revise profiles use agreement fingerprint selector', () => {
   assert.equal(spec.includes('recognized placeholder'), true, 'spec profile must replace a recognized first-graduation placeholder');
   assert.equal(spec.includes('later provenance stamps append'), true, 'spec profile must append later provenance');
   assert.equal(spec.includes('complete revise-spec boundary batch'), true, 'spec profile must classify after the complete revise-spec batch');
+  assert.equal(plan.includes('writeBoundProvenanceStamp'), true, 'plan profile must stamp through its retained physical binding');
 
   assert.equal(plan.includes('parsePlanContract'), true, 'plan profile must parse exact governing declarations');
   assert.equal(plan.includes('additions, removals, repoints, reorders, and retargeting'), true, 'plan profile must classify every governing declaration and target change');
@@ -799,6 +825,7 @@ test('CLI dispatches every allowlisted operation through closed JSON records', (
   const plan = `**Spec:** [docs/spec.md](docs/spec.md)\n\n## Governing specs\n\n- Spec JSON: ${JSON.stringify(base.candidate.target)}\n\n## Work\n\nbody\n`;
   const legacyBytes = Buffer.from('Status: signed off\n\n# Spec\n');
   const legacyLine = Buffer.from('Status: signed off\n');
+  let cliBinding = null;
   const resolvedValue = {
     kind: 'resolved',
     target: base.candidate.target,
@@ -858,10 +885,22 @@ test('CLI dispatches every allowlisted operation through closed JSON records', (
       stamp: '- revise-spec graduated 2026-08-19 04:00 at abcdef0, scope: whole file, content: 1234abcd',
       baselineHash: fullHash(Buffer.from('# Spec\n')),
     }, (value) => assert.equal(value.alreadyApplied, false)],
+    ['provenance-bind', { projectRoot, path: 'docs/spec.md' }, (value) => {
+      cliBinding = value;
+      assert.deepEqual(Object.keys(value), ['ctimeNs', 'dev', 'ino', 'mode', 'mtimeNs', 'nlink', 'realPath', 'size']);
+    }],
+    ['provenance-write-bound', () => ({
+      projectRoot,
+      path: 'docs/spec.md',
+      stamp: '- revise-spec refreshed 2026-08-19 04:01 at abcdef0, scope: whole file, content: 2345bcde (bound CLI test)',
+      baselineHash: fullHash(artifact.bytes()),
+      binding: cliBinding,
+    }), (value) => assert.equal(value.alreadyApplied, false)],
   ];
 
   for (const [operation, input, assertValue] of cases) {
-    const result = runCli({ requestText: JSON.stringify({ operation, input }) }, { fsAdapter: artifact.adapter, readyParser, environment: {} });
+    const resolvedInput = typeof input === 'function' ? input() : input;
+    const result = runCli({ requestText: JSON.stringify({ operation, input: resolvedInput }) }, { fsAdapter: artifact.adapter, bindingAdapter: artifact.bindingAdapter, readyParser, environment: {} });
     assert.equal(result.exitCode, 0, operation);
     const envelope = parseCliResult(result);
     assert.equal(envelope.ok, true, operation);
@@ -3695,6 +3734,65 @@ test('provenance writes first graduation into missing empty and placeholder Hard
     assert.deepEqual(artifact.bytes(), expected, name);
     assert.equal(artifact.replacements().length, 1, name);
     assert.equal(artifact.replacements()[0].path, `${projectRoot}/docs/spec.md`, name);
+  }
+});
+
+test('bound provenance refuses same-byte identity and metadata replacement', () => {
+  const initial = Buffer.from('# Plan\n');
+  const stamp = '- revise-plan graduated 2026-08-19 04:00 at 9ebd097, scope: whole file, content: 74092a52';
+  for (const mutation of ['replaceIdentity', 'touchMetadata']) {
+    const artifact = mutableArtifact(initial);
+    const binding = captureProvenanceBinding({ projectRoot, path: 'docs/spec.md' }, { fsAdapter: artifact.adapter, bindingAdapter: artifact.bindingAdapter });
+    artifact[mutation]();
+
+    assert.throws(
+      () => writeBoundProvenanceStamp({ projectRoot, path: 'docs/spec.md', stamp, baselineHash: fullHash(initial), binding }, { fsAdapter: artifact.adapter, bindingAdapter: artifact.bindingAdapter }),
+      (error) => error instanceof AgreementError && error.code === 'structural-error' && error.evidence.kind === 'stale-file-binding',
+      mutation,
+    );
+    assert.deepEqual(artifact.bytes(), initial, mutation);
+    assert.equal(artifact.replacements().length, 0, mutation);
+  }
+});
+
+test('bound provenance returns the refreshed replacement binding', () => {
+  const initial = Buffer.from('# Plan\n');
+  const stamp = '- revise-plan graduated 2026-08-19 04:00 at 9ebd097, scope: whole file, content: 74092a52';
+  const artifact = mutableArtifact(initial);
+  const binding = captureProvenanceBinding({ projectRoot, path: 'docs/spec.md' }, { fsAdapter: artifact.adapter, bindingAdapter: artifact.bindingAdapter });
+
+  const written = writeBoundProvenanceStamp({ projectRoot, path: 'docs/spec.md', stamp, baselineHash: fullHash(initial), binding }, { fsAdapter: artifact.adapter, bindingAdapter: artifact.bindingAdapter });
+
+  assert.equal(written.alreadyApplied, false);
+  assert.notDeepEqual(written.binding, binding);
+  assert.deepEqual(written.bytes, artifact.bytes());
+  const retry = writeBoundProvenanceStamp({ projectRoot, path: 'docs/spec.md', stamp, baselineHash: fullHash(initial), binding: written.binding }, { fsAdapter: artifact.adapter, bindingAdapter: artifact.bindingAdapter });
+  assert.deepEqual(retry, { bytes: written.bytes, alreadyApplied: true, binding: written.binding });
+});
+
+test('production bound provenance captures and refreshes an ordinary file binding', () => {
+  const root = mkdtempSync(join(tmpdir(), 'nightshift-bound-provenance-'));
+  const relativePath = 'docs/plan.md';
+  const path = join(root, 'docs', 'plan.md');
+  const initial = Buffer.from('# Plan\n');
+  const stamp = '- revise-plan graduated 2026-08-19 04:00 at 9ebd097, scope: whole file, content: 74092a52';
+  try {
+    mkdirSync(join(root, 'docs'));
+    writeFileSync(path, initial);
+    const captured = parseCliResult(runCli({ requestText: JSON.stringify({ operation: 'provenance-bind', input: { projectRoot: root, path: relativePath } }) }));
+
+    assert.equal(captured.ok, true);
+    const written = parseCliResult(runCli({ requestText: JSON.stringify({
+      operation: 'provenance-write-bound',
+      input: { projectRoot: root, path: relativePath, stamp, baselineHash: fullHash(initial), binding: captured.value },
+    }) }));
+
+    assert.equal(written.ok, true);
+    assert.equal(written.value.alreadyApplied, false);
+    assert.notDeepEqual(written.value.binding, captured.value);
+    assert.deepEqual(Buffer.from(written.value.bytesHex, 'hex'), readFileSync(path));
+  } finally {
+    rmSync(root, { force: true, recursive: true });
   }
 });
 
