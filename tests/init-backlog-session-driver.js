@@ -319,7 +319,7 @@ function collectControllerRuntimeClosure({ entryPath, filesystem = nodeFilesyste
   readClosureFile(join(skillsRoot, 'spec-agreement', 'spec-agreement.js'), 'skills/spec-agreement/spec-agreement.js')
   inventory.sort((left, right) => left.path < right.path ? -1 : 1)
 
-  return { controllerRuntimeSha256: sha256(Buffer.from(canonicalJson(inventory), 'utf8')), entryPath, files: inventory }
+  return { controllerRuntimeSha256: sha256(Buffer.from(canonicalJson(inventory), 'utf8')), files: inventory }
 }
 
 function scenarioRootDigest(repository, platform) {

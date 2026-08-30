@@ -851,6 +851,7 @@ function runSessionCases(repositoryRoot) {
 
   test('the controller runtime closure inventory is ordinal, digest-stable, and byte-sensitive', () => {
     const closure = driver.collectControllerRuntimeClosure({ entryPath: controllerEntryPath })
+    assert.deepEqual(Object.keys(closure).sort(), ['controllerRuntimeSha256', 'files'])
     assert.match(closure.controllerRuntimeSha256, HEX64)
     assert.equal(closure.files[0].path, 'skills/init-backlog/init-backlog.js')
     assert.ok(closure.files.length > 5)
@@ -1265,6 +1266,7 @@ function runSessionCases(repositoryRoot) {
   test('the checked-in worker loads the production closure and emits the exact ready frame', () => {
     const expected = driver.collectControllerRuntimeClosure({ entryPath: controllerEntryPath })
     const runtime = workerModule.createWorkerRuntime({ entryPath: controllerEntryPath, expectedControllerRuntimeSha256: expected.controllerRuntimeSha256 })
+    assert.deepEqual(Object.keys(runtime).sort(), ['handleFrameLine', 'readyFrameBytes'])
     const readyLine = runtime.readyFrameBytes().toString('utf8')
     assert.equal(readyLine, canonicalJson({ controllerRuntimeSha256: expected.controllerRuntimeSha256, ready: true }) + '\n')
     assert.throws(

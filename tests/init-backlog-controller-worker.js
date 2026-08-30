@@ -14,11 +14,11 @@ class WorkerProtocolError extends Error {
 }
 
 function createWorkerRuntime({ entryPath, expectedControllerRuntimeSha256, loadModule = require }) {
-  const closure = collectControllerRuntimeClosure({ entryPath })
+  const { controllerRuntimeSha256 } = collectControllerRuntimeClosure({ entryPath })
   if (!/^[0-9a-f]{64}$/.test(expectedControllerRuntimeSha256 ?? '')) {
     throw new WorkerProtocolError('worker expected controller runtime digest is malformed')
   }
-  if (closure.controllerRuntimeSha256 !== expectedControllerRuntimeSha256) {
+  if (controllerRuntimeSha256 !== expectedControllerRuntimeSha256) {
     throw new WorkerProtocolError('worker runtime closure differs from the pre-launch snapshot')
   }
   const facade = loadModule(entryPath)
@@ -31,7 +31,6 @@ function createWorkerRuntime({ entryPath, expectedControllerRuntimeSha256, loadM
   }
 
   return {
-    closure,
     handleFrameLine(lineBytes) {
       let frame
       try {
@@ -59,7 +58,7 @@ function createWorkerRuntime({ entryPath, expectedControllerRuntimeSha256, loadM
       })
     },
     readyFrameBytes() {
-      return Buffer.from(canonicalJson({ controllerRuntimeSha256: closure.controllerRuntimeSha256, ready: true }) + '\n', 'utf8')
+      return Buffer.from(canonicalJson({ controllerRuntimeSha256, ready: true }) + '\n', 'utf8')
     },
   }
 }
