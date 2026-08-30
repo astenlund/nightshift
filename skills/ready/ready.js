@@ -1719,9 +1719,10 @@ function runCli(argRoot) {
     try {
       unlinkedNotices = scanUnlinkedBacklogFiles(claudeDir, scanned.scannedFiles, { rootIdentity });
     } catch (error) {
-      if (!errorChainHasCode(error, 'ENOENT')) throw error;
       if (!rootRemainsAcquired()) return;
-      unlinkedNotices = ['backlog tree changed during traversal; retry; unlinked backlog files were not checked this run'];
+      unlinkedNotices = errorChainHasCode(error, 'ENOENT')
+        ? ['backlog tree changed during traversal; retry; unlinked backlog files were not checked this run']
+        : [`backlog tree could not be fully traversed (${error?.code ?? 'unknown'}); retry; unlinked backlog files were not checked this run`];
     }
     if (!rootRemainsAcquired()) return;
     result.notices.push(...scanned.notices, ...unlinkedNotices);

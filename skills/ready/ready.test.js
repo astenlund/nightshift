@@ -2200,6 +2200,44 @@ test('CLI reports nested traversal disappearance without claiming the backlog ro
   }
 });
 
+test('CLI reports an unreadable backlog directory as a controlled traversal notice', () => {
+  const tmpRoot = path.join(__dirname, '..', '..', '.tmp', `ready-nested-unreadable-${process.pid}`);
+  const claudeDir = path.join(tmpRoot, '.claude');
+  const featuresDir = path.join(claudeDir, 'features');
+  fs.mkdirSync(featuresDir, { recursive: true });
+  const originalReaddirSync = fs.readdirSync;
+  const originalWrite = process.stdout.write;
+  const originalExitCode = process.exitCode;
+  let stdout = '';
+  fs.readdirSync = (target, options) => {
+    if (path.resolve(target) === path.resolve(featuresDir)) {
+      const error = new Error('synthetic directory denial');
+      error.code = 'EACCES';
+      throw error;
+    }
+
+    return originalReaddirSync(target, options);
+  };
+  process.stdout.write = (chunk) => {
+    stdout += chunk;
+
+    return true;
+  };
+  process.exitCode = undefined;
+  try {
+    runCli(tmpRoot);
+    const result = JSON.parse(stdout);
+    assert.strictEqual(process.exitCode, undefined);
+    assert.ok(result.notices.includes('backlog tree could not be fully traversed (EACCES); retry; unlinked backlog files were not checked this run'));
+    assert.strictEqual(Object.hasOwn(result, 'error'), false);
+  } finally {
+    fs.readdirSync = originalReaddirSync;
+    process.stdout.write = originalWrite;
+    process.exitCode = originalExitCode;
+    fs.rmSync(tmpRoot, { force: true, recursive: true });
+  }
+});
+
 test('CLI rejects a contained backlog-root replacement before breakout traversal', () => {
   const tmpRoot = path.join(__dirname, '..', '..', '.tmp', `ready-root-replaced-${process.pid}`);
   const repoRoot = path.join(tmpRoot, 'repo');

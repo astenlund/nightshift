@@ -306,7 +306,15 @@ function analyzeUnwrapCatalog(items) {
 }
 
 function sortedEntries(directory) {
-  return fs.readdirSync(directory, { withFileTypes: true }).sort((a, b) => compareTargets(a.name, b.name));
+  try {
+    return fs.readdirSync(directory, { withFileTypes: true }).sort((a, b) => compareTargets(a.name, b.name));
+  } catch (error) {
+    const code = error?.code ?? 'unknown';
+    const wrapped = new CatalogError(`cannot enumerate backlog directory ${directory} (${code})`, { cause: error });
+    wrapped.code = code;
+
+    throw wrapped;
+  }
 }
 
 // The on-disk identity of a path: links resolved and, on case-insensitive

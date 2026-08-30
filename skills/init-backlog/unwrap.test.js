@@ -6,7 +6,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const test = require('node:test');
 
-const { canonicalPath, detectHardWraps, unwrapText, collectMarkdownFiles, analyzeUnwrapCatalog } = require('./unwrap.js');
+const { CatalogError, canonicalPath, detectHardWraps, unwrapText, collectMarkdownFiles, analyzeUnwrapCatalog } = require('./unwrap.js');
 const { scanMarkdown } = require('../spec-agreement/spec-agreement.js');
 
 const CRLF = String.fromCharCode(13, 10);
@@ -263,6 +263,31 @@ test('collectMarkdownFiles follows contained links once and rejects links outsid
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
     fs.rmSync(external, { recursive: true, force: true });
+  }
+});
+
+test('collectMarkdownFiles reports directory enumeration failures as catalog errors', () => {
+  const root = fs.mkdtempSync(path.join(require('node:os').tmpdir(), 'unwrap-unreadable-'));
+  const features = path.join(root, 'features');
+  fs.mkdirSync(features);
+  const originalReaddirSync = fs.readdirSync;
+  fs.readdirSync = (target, options) => {
+    if (path.resolve(target) === path.resolve(features)) {
+      const error = new Error('synthetic directory denial');
+      error.code = 'EACCES';
+      throw error;
+    }
+
+    return originalReaddirSync(target, options);
+  };
+  try {
+    assert.throws(
+      () => collectMarkdownFiles([root]),
+      (error) => error instanceof CatalogError && error.code === 'EACCES' && error.message.includes(features),
+    );
+  } finally {
+    fs.readdirSync = originalReaddirSync;
+    fs.rmSync(root, { recursive: true, force: true });
   }
 });
 
