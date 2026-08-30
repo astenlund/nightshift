@@ -152,6 +152,11 @@ function buildWorkerProjection({ ambientEnvironment, checkoutRoot, gitIsolation,
 
 function credentialValuesFromProjection(projection) {
   const values = []
+  const append = (value) => {
+    if (value !== '' && !values.includes(value)) {
+      values.push(value)
+    }
+  }
   for (const key of EVIDENCE_CREDENTIAL_KEYS) {
     if (!Object.hasOwn(projection, key)) {
       continue
@@ -160,8 +165,23 @@ function credentialValuesFromProjection(projection) {
     if (typeof value !== 'string') {
       throw new TypeError(`projected credential ${key} must be a string`)
     }
-    if (value !== '' && !values.includes(value)) {
-      values.push(value)
+    append(value)
+    if (value === '' || !PROXY_CREDENTIAL_KEYS.includes(key)) {
+      continue
+    }
+    let parsed
+    try {
+      parsed = new URL(value)
+    } catch {
+      throw new TypeError(`projected proxy credential ${key} is malformed`)
+    }
+    for (const component of [parsed.username, parsed.password]) {
+      append(component)
+      try {
+        append(decodeURIComponent(component))
+      } catch {
+        throw new TypeError(`projected proxy credential ${key} is malformed`)
+      }
     }
   }
 
