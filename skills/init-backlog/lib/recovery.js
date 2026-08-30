@@ -22,7 +22,7 @@ const {
   stableOpenFile,
   stageFile,
 } = require('./filesystem')
-const { DIGEST_PATTERN, MAX_INLINE_FILE_BYTES, MAX_MECHANICAL_FILE_BYTES, MAX_RECOVERY_REQUEST_BYTES, MAX_RECOVERY_RESULT_BYTES, NONCE_PATTERN, OWNER_BASENAME: RECOVERY_OWNER_BASENAME, OWNER_STAGE_BASENAME: RECOVERY_OWNER_STAGE_BASENAME, RECOVERY_GATE_BASENAME, RECOVERY_LOCK_BASENAME: LOCK_BASENAME, RECOVERY_LOCK_STAGE_PATTERN: LOCK_STAGE_PATTERN, RECOVERY_MARKER_BASENAME: MARKER_BASENAME, WARNING_CODES, buildRecoveryApplyRequest, canonicalBytes, canonicalJson, compareOrdinal, deriveRecoveryId, electionMarkerTemporaryNames, recoveryAllowedDispositions, sameCanonical, sameKeys, sha256, validateTarget, validOwnerRecordSchema } = require('./protocol')
+const { MAX_INLINE_FILE_BYTES, MAX_MECHANICAL_FILE_BYTES, MAX_RECOVERY_REQUEST_BYTES, MAX_RECOVERY_RESULT_BYTES, NONCE_PATTERN, OWNER_BASENAME: RECOVERY_OWNER_BASENAME, OWNER_STAGE_BASENAME: RECOVERY_OWNER_STAGE_BASENAME, RECOVERY_GATE_BASENAME, RECOVERY_LOCK_BASENAME: LOCK_BASENAME, RECOVERY_LOCK_STAGE_PATTERN: LOCK_STAGE_PATTERN, RECOVERY_MARKER_BASENAME: MARKER_BASENAME, WARNING_CODES, buildRecoveryApplyRequest, canonicalBytes, canonicalJson, compareOrdinal, deriveRecoveryId, electionMarkerTemporaryNames, recoveryAllowedDispositions, sameCanonical, sha256, validateTarget, validOwnerRecordSchema } = require('./protocol')
 const { collectInspection, validateElectionMarkerRecord } = require('./inspection')
 const { createOwnerInventoryIndex, validateOwnerInventoryStates } = require('./owner-inventory')
 const { publishRecoveryFile, recoveryTemporaryMatches, recoveryTemporaryTarget, relativeArtifact, removeRecoveryFile } = require('./publication')
