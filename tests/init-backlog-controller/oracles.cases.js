@@ -291,6 +291,7 @@ function runOracleCases(repositoryRoot) {
     const { object } = readCanonicalFixture(fixturePath(TURN_SCHEMA_PATH))
     assert.equal(object.type, 'object')
     assert.equal(object.additionalProperties, false)
+    assert.equal(Object.hasOwn(object, 'allOf'), false, 'Codex rejects allOf at the structured-output root')
     assert.deepEqual(Object.keys(object.properties).sort(compareOrdinal), ['gateId', 'phase', 'presentation', 'semanticClassifications'])
     assert.deepEqual(object.required, ['gateId', 'phase', 'presentation', 'semanticClassifications'])
     assert.deepEqual(object.properties.phase.enum, ['awaiting-response', 'finished'])
@@ -310,25 +311,58 @@ function runOracleCases(repositoryRoot) {
     assert.deepEqual(presentation.properties.disclosureCodes.items.const, 'external-writer-window')
     assert.equal(presentation.properties.disclosureCodes.maxItems, 1)
     const proposal = presentation.properties.manifestProposal.anyOf[1]
-    assert.deepEqual(proposal.properties.versionControlOptions.items.enum, ['track', 'ignore', 'deferred', 'not-required'])
+    const versionControlOptions = ['track', 'ignore', 'deferred', 'not-required']
+    assert.deepEqual(proposal.properties.versionControlOptions.items, { enum: versionControlOptions, type: 'string' })
+    assert.equal(proposal.properties.versionControlOptions.minItems, versionControlOptions.length)
+    assert.equal(proposal.properties.versionControlOptions.maxItems, versionControlOptions.length)
     assert.deepEqual(proposal.properties.versionControlChoice.enum, ['track', 'ignore', 'deferred', 'not-required'])
     const resultBranches = presentation.properties.result.anyOf
     assert.equal(resultBranches[0].type, 'null')
-    assert.deepEqual(resultBranches[1].anyOf.map((branch) => [branch.properties.approvalBranch.const, branch.properties.reasonCode.const]), [
+    assert.deepEqual(resultBranches.slice(1, 6).map((branch) => [branch.properties.approvalBranch.const, branch.properties.reasonCode.const]), [
       ['denied', 'denied'],
       ['deferred', 'deferred'],
       ['unavailable', 'unavailable'],
       ['unavailable', 'guidance-resolution'],
       ['auto-denied', 'auto-denied'],
     ])
-    const finishedResultBranches = object.allOf.find((item) => item.if?.properties?.phase?.const === 'finished').then.properties.presentation.properties.result.anyOf
-    assert.deepEqual(finishedResultBranches, resultBranches.slice(1))
-    assert.equal(resultBranches[2].properties.ok.const, true)
-    assert.equal(resultBranches[2].properties.operation.const, 'apply')
-    assert.deepEqual(resultBranches[2].properties.outcomes.items.properties.status.enum, ['created', 'edited', 'unwrapped', 'skipped-complete'])
-    assert.equal(resultBranches[3].properties.ok.const, false)
-    assert.deepEqual(resultBranches[3].properties.phase.enum, ['decode', 'resolve', 'inspect', 'lock', 'prevalidate', 'publish', 'verify', 'restore', 'cleanup'])
-    assert.deepEqual(resultBranches[3].properties.code.enum, ['payload-too-large', 'invalid-json', 'invalid-request', 'guidance-resolution', 'template-invalid', 'content-invalid', 'git-policy', 'filesystem', 'ready-failed', 'snapshot-drift', 'invalid-target', 'runtime-marker', 'runtime-lock', 'manifest-invalid', 'recovery-invalid', 'ready-delta', 'restore-failed', 'cleanup-failed'])
+    assert.ok(resultBranches.slice(1, 6).every((branch) => branch.type === 'object'))
+    assert.equal(resultBranches[6].properties.ok.const, true)
+    assert.equal(resultBranches[6].properties.operation.const, 'apply')
+    assert.deepEqual(resultBranches[6].properties.outcomes.items.properties.status.enum, ['created', 'edited', 'unwrapped', 'skipped-complete'])
+    assert.equal(resultBranches[7].properties.ok.const, false)
+    assert.deepEqual(resultBranches[7].properties.phase.enum, ['decode', 'resolve', 'inspect', 'lock', 'prevalidate', 'publish', 'verify', 'restore', 'cleanup'])
+    assert.deepEqual(resultBranches[7].properties.code.enum, ['payload-too-large', 'invalid-json', 'invalid-request', 'guidance-resolution', 'template-invalid', 'content-invalid', 'git-policy', 'filesystem', 'ready-failed', 'snapshot-drift', 'invalid-target', 'runtime-marker', 'runtime-lock', 'manifest-invalid', 'recovery-invalid', 'ready-delta', 'restore-failed', 'cleanup-failed'])
+    const assertTypedLiterals = (value, path = []) => {
+      if (Array.isArray(value)) {
+        value.forEach((item, index) => assertTypedLiterals(item, [...path, index]))
+      } else if (value !== null && typeof value === 'object') {
+        if (Object.hasOwn(value, 'const') || Object.hasOwn(value, 'enum')) {
+          assert.equal(typeof value.type, 'string', `literal schema lacks an explicit type at ${path.join('.')}`)
+        }
+        for (const [key, child] of Object.entries(value)) {
+          assertTypedLiterals(child, [...path, key])
+        }
+      }
+    }
+    assertTypedLiterals(object)
+    const assertStrictObjectGraph = (schema, path = ['root']) => {
+      assert.ok(typeof schema.type === 'string' || Array.isArray(schema.anyOf), `schema lacks a type or anyOf at ${path.join('.')}`)
+      if (schema.type === 'object') {
+        assert.equal(schema.additionalProperties, false, `object schema is open at ${path.join('.')}`)
+        const propertyNames = Object.keys(schema.properties ?? {}).sort(compareOrdinal)
+        assert.deepEqual([...(schema.required ?? [])].sort(compareOrdinal), propertyNames, `object schema does not require every property at ${path.join('.')}`)
+        for (const [name, propertySchema] of Object.entries(schema.properties ?? {})) {
+          assertStrictObjectGraph(propertySchema, [...path, 'properties', name])
+        }
+      }
+      if (schema.type === 'array') {
+        assertStrictObjectGraph(schema.items, [...path, 'items'])
+      }
+      for (const [index, branch] of (schema.anyOf ?? []).entries()) {
+        assertStrictObjectGraph(branch, [...path, 'anyOf', index])
+      }
+    }
+    assertStrictObjectGraph(object)
     assert.ok(bytes.length <= MAX_HOST_EVENT_FRAME_BYTES, 'the schema itself must stay well below the host framing bound')
   })
 
@@ -707,6 +741,16 @@ function runOracleCases(repositoryRoot) {
       semanticClassifications: [],
     }
     validateTurnObject(disclosureTurn)
+    const manifestTurn = JSON.parse(JSON.stringify(disclosureTurn))
+    manifestTurn.gateId = 'manifest-approval'
+    manifestTurn.presentation.manifestProposal = {
+      actions: [],
+      proposalDispositions: [],
+      semanticDecisions: [],
+      versionControlChoice: 'not-required',
+      versionControlOptions: ['track', 'ignore', 'deferred', 'not-required'],
+    }
+    validateTurnObject(manifestTurn)
     const finishedTurn = {
       gateId: null,
       phase: 'finished',
@@ -743,6 +787,7 @@ function runOracleCases(repositoryRoot) {
     assert.throws(mutate(disclosureTurn, (turn) => { turn.presentation.actionDisclosures[0].text = '' }), /text/)
     assert.throws(mutate(disclosureTurn, (turn) => { delete turn.presentation.actionDisclosures[0].rawSha256 }), /decoded-content/)
     assert.throws(mutate(disclosureTurn, (turn) => { turn.presentation.actionDisclosures[0].contentBase64 = 'aGk=' }), /decoded-content/)
+    assert.throws(mutate(manifestTurn, (turn) => { [turn.presentation.manifestProposal.versionControlOptions[0], turn.presentation.manifestProposal.versionControlOptions[1]] = [turn.presentation.manifestProposal.versionControlOptions[1], turn.presentation.manifestProposal.versionControlOptions[0]] }), /versionControlOptions/)
     assert.throws(mutate(disclosureTurn, (turn) => {
       turn.presentation.actionDisclosures[0] = { actionId: 'p-' + 'a'.repeat(62), afterRawSha256: digest, beforeRawSha256: digest, extent: 'complete-file', kind: 'breakout-digest', notice: 'Images withheld.', proposalDigest: digest, selection: 'selected', target: '.claude/FEATURES.md' }
     }), /breakout-digest/)

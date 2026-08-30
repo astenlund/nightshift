@@ -2,6 +2,7 @@
 
 const assert = require('node:assert/strict')
 
+const { VERSION_CONTROL_OPTION_ORDER } = require('../../skills/init-backlog/lib/apply-request')
 const { canonicalJson, compareOrdinal, sha256 } = require('./helpers')
 
 const MAX_PRESENTATION_CANONICAL_BYTES = 320000
@@ -106,6 +107,10 @@ function validateTurnObject(turn) {
   }
   if (presentation.manifestProposal !== null) {
     requireExactKeys(presentation.manifestProposal, ['actions', 'proposalDispositions', 'semanticDecisions', 'versionControlChoice', 'versionControlOptions'], 'turn manifestProposal')
+    const options = presentation.manifestProposal.versionControlOptions
+    if (!Array.isArray(options) || options.length !== VERSION_CONTROL_OPTION_ORDER.length || options.some((value, index) => value !== VERSION_CONTROL_OPTION_ORDER[index])) {
+      throw new Error('turn manifestProposal versionControlOptions must use the fixed order')
+    }
   }
   for (const item of presentation.actionDisclosures) {
     const kind = item !== null && typeof item === 'object' ? item.kind : null
