@@ -1965,6 +1965,64 @@ function runHostEntryCases(repositoryRoot) {
     }
   })
 
+  test('the terminal repository collector enforces file, aggregate, entry, and path admission before file reads', () => {
+    const scratch = tempRoot()
+    try {
+      const scenarioRoot = join(scratch, 'scenario')
+      nodeFilesystem.mkdirSync(scenarioRoot, { recursive: true })
+      nodeFilesystem.writeFileSync(join(scenarioRoot, 'a.md'), 'aaa')
+      nodeFilesystem.writeFileSync(join(scenarioRoot, 'b.md'), 'bbb')
+      const readPaths = []
+      const filesystem = Object.create(nodeFilesystem)
+      filesystem.readFileSync = (path) => {
+        readPaths.push(path)
+
+        return nodeFilesystem.readFileSync(path)
+      }
+      const collect = (limits) => hostBehavior.collectTerminalRepository({ filesystem, limits, platform: process.platform, scenarioRoot })
+      const generous = { aggregateBytes: 6, entries: 2, fileBytes: 3, pathBytes: 8 }
+
+      assert.deepEqual(collect(generous).entries.map((entry) => entry.path), ['a.md', 'b.md'])
+      readPaths.length = 0
+      assert.throws(() => collect({ ...generous, fileBytes: 2 }), /MAX_TERMINAL_REPOSITORY_FILE_BYTES/)
+      assert.equal(readPaths.length, 0, 'the per-file metadata limit rejects before the first read')
+      assert.throws(() => collect({ ...generous, aggregateBytes: 5 }), /MAX_TERMINAL_REPOSITORY_AGGREGATE_BYTES/)
+      assert.equal(readPaths.length, 1, 'the aggregate metadata limit rejects before reading the overflowing file')
+      readPaths.length = 0
+      assert.throws(() => collect({ ...generous, entries: 1 }), /MAX_TERMINAL_REPOSITORY_ENTRIES/)
+      assert.equal(readPaths.length, 1, 'the entry-count limit rejects before reading the overflowing entry')
+      readPaths.length = 0
+      assert.throws(() => collect({ ...generous, pathBytes: 7 }), /MAX_TERMINAL_REPOSITORY_PATH_BYTES/)
+      assert.equal(readPaths.length, 1, 'the cumulative path-byte limit rejects before reading the overflowing path')
+    } finally {
+      nodeFilesystem.rmSync(scratch, { force: true, recursive: true })
+    }
+  })
+
+  test('terminal repository capacity failures retain output-capacity through assembled evaluation', async () => {
+    const scratch = tempRoot()
+    try {
+      const collectRepositoryFactory = (options) => hostBehavior.createTerminalRepositoryCollector({
+        ...options,
+        limits: { aggregateBytes: 0, entries: 1, fileBytes: 0, pathBytes: 1024 },
+      })
+      const harness = createEvaluationHarness(scratch, { options: { collectRepositoryFactory } })
+      const evaluation = await hostBehavior.runEvaluation(harness.options)
+
+      assert.deepEqual(evaluation.result, {
+        code: 'harness-infrastructure',
+        detailCode: 'output-capacity',
+        host: 'claude-code',
+        initialCode: null,
+        ok: false,
+        phase: 'post-session',
+        retainedRunRoot: harness.roots[1],
+      })
+    } finally {
+      nodeFilesystem.rmSync(scratch, { force: true, recursive: true })
+    }
+  })
+
   test('the real collector composes with the terminal attestation seam over a live scratch scenario', () => {
     const scratch = tempRoot()
     try {

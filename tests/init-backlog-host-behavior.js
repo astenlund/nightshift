@@ -26,7 +26,7 @@ const evidence = require('./init-backlog-session-driver/evidence')
 const hostEvents = require('./init-backlog-session-driver/host-events')
 const oracles = require('./init-backlog-controller/host-fixture-oracles')
 const { CLAUDE_ROOT_EXCLUSION_CONFIRMATION } = require('./init-backlog-controller/election-oracles')
-const { HOSTS, compareOrdinal, sha256 } = require('./init-backlog-session-driver/primitives')
+const { HOSTS, OutputCapacityError, compareOrdinal, sha256 } = require('./init-backlog-session-driver/primitives')
 
 const HOST_ORDER = HOSTS
 const LOGICAL_COMMANDS = Object.freeze({ 'claude-code': 'claude', codex: 'codex' })
@@ -38,6 +38,12 @@ const DISABLED_REPETITIONS = 1
 const CODEX_PLUGIN_ID = 'nightshift@astenlund'
 const MAX_SYMLINK_CHAIN_LINKS = 32
 const MAX_VERSION_LINE_BYTES = 256
+const TERMINAL_REPOSITORY_LIMITS = Object.freeze({
+  aggregateBytes: 134217728,
+  entries: 65536,
+  fileBytes: 134217728,
+  pathBytes: 4194304,
+})
 const UNSUPPORTED_HOST_LAUNCHER_DETAIL = 'The first PATH host launcher is not a supported native executable.'
 const WINDOWS_CANDIDATE_SUFFIXES = Object.freeze(['.exe', '.cmd', '.bat', '.com'])
 
@@ -780,9 +786,25 @@ async function runVersionPreflight({ ambientEnvironment, checkoutRoot, controlle
 
 // --- Real terminal repository collector ------------------------------------
 
-function collectTerminalRepository({ filesystem = nodeFilesystem, platform, runGit = null, scenarioRoot }) {
+function collectTerminalRepository({ filesystem = nodeFilesystem, limits = TERMINAL_REPOSITORY_LIMITS, platform, runGit = null, scenarioRoot }) {
+  const limitKeys = ['aggregateBytes', 'entries', 'fileBytes', 'pathBytes']
+  if (Object.keys(limits).sort().join(',') !== limitKeys.join(',') || limitKeys.some((key) => !Number.isSafeInteger(limits[key]) || limits[key] < 0)) {
+    throw new Error('terminal repository limits must carry exactly four nonnegative safe integers')
+  }
   const entries = []
+  let aggregateBytes = 0n
+  let entryCount = 0
+  let pathBytes = 0
+  const admit = (limitName, observed, limit) => {
+    if (BigInt(observed) > BigInt(limit)) {
+      throw new OutputCapacityError({ limitName, observed })
+    }
+  }
   const collectEntry = (absolutePath, relativePath) => {
+    entryCount += 1
+    admit('MAX_TERMINAL_REPOSITORY_ENTRIES', entryCount, limits.entries)
+    pathBytes += Buffer.byteLength(relativePath, 'utf8')
+    admit('MAX_TERMINAL_REPOSITORY_PATH_BYTES', pathBytes, limits.pathBytes)
     const before = filesystem.lstatSync(absolutePath, { bigint: true })
     if (before.isSymbolicLink()) {
       throw new Error(`terminal repository entry is linked: ${relativePath}`)
@@ -796,9 +818,12 @@ function collectTerminalRepository({ filesystem = nodeFilesystem, platform, runG
     if (!before.isFile()) {
       throw new Error(`terminal repository entry is not an ordinary file or directory: ${relativePath}`)
     }
+    admit('MAX_TERMINAL_REPOSITORY_FILE_BYTES', before.size, limits.fileBytes)
+    aggregateBytes += before.size
+    admit('MAX_TERMINAL_REPOSITORY_AGGREGATE_BYTES', aggregateBytes, limits.aggregateBytes)
     const bytes = filesystem.readFileSync(absolutePath)
     const after = filesystem.lstatSync(absolutePath, { bigint: true })
-    if (after.isSymbolicLink() || !after.isFile() || before.dev !== after.dev || before.ino !== after.ino || after.size !== BigInt(bytes.length)) {
+    if (after.isSymbolicLink() || !after.isFile() || before.dev !== after.dev || before.ino !== after.ino || before.size !== BigInt(bytes.length) || after.size !== BigInt(bytes.length)) {
       throw new Error(`terminal repository entry is unstable: ${relativePath}`)
     }
     entries.push({ contentBase64: bytes.toString('base64'), kind: 'file', mode, path: relativePath })
@@ -806,15 +831,21 @@ function collectTerminalRepository({ filesystem = nodeFilesystem, platform, runG
     return false
   }
   const walk = (directory, prefix) => {
-    for (const entry of filesystem.readdirSync(directory, { withFileTypes: true })) {
-      if (prefix === '' && entry.name === '.git') {
-        continue
+    const handle = filesystem.opendirSync(directory)
+    try {
+      let entry = handle.readSync()
+      while (entry !== null) {
+        if (!(prefix === '' && entry.name === '.git')) {
+          const relativePath = prefix === '' ? entry.name : `${prefix}/${entry.name}`
+          const absolutePath = nodePath.join(directory, entry.name)
+          if (collectEntry(absolutePath, relativePath)) {
+            walk(absolutePath, relativePath)
+          }
+        }
+        entry = handle.readSync()
       }
-      const relativePath = prefix === '' ? entry.name : `${prefix}/${entry.name}`
-      const absolutePath = nodePath.join(directory, entry.name)
-      if (collectEntry(absolutePath, relativePath)) {
-        walk(absolutePath, relativePath)
-      }
+    } finally {
+      handle.closeSync()
     }
   }
   walk(scenarioRoot, '')
@@ -1532,7 +1563,7 @@ async function runEvaluation(options) {
       const attestation = driver.attestTerminalRepository({ collectRepository, host, member, platform, scenarioRoot })
       if (attestation.failure) {
         return finishRepetition({
-          outcome: { result: infrastructureCarrier({ detailCode: 'repository-attestation', host, phase: 'post-session', retainedRunRoot: runRoot }) },
+          outcome: { result: infrastructureCarrier({ detailCode: attestation.failure.detailCode, host, phase: 'post-session', retainedRunRoot: runRoot }) },
           phase: 'post-session',
           terminationProven: sessionRecord.terminationProven === true,
         })

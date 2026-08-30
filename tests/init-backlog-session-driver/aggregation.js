@@ -1,6 +1,6 @@
 'use strict'
 
-const { HOSTS, compareOrdinal, sha256 } = require('./primitives')
+const { HOSTS, OutputCapacityError, compareOrdinal, sha256 } = require('./primitives')
 const { canonicalJson } = require('./transcript')
 const { ELECTION_MARKER_PATH, selectTerminalExpectation, validateLiveElectionMarker, windowsRepositoryImage } = require('../init-backlog-controller/election-oracles')
 
@@ -11,22 +11,29 @@ function normalizePlatformModes(repository, platform) {
 }
 
 function attestTerminalRepository({ collectRepository, host, member, platform, scenarioRoot }) {
-  let first
-  let second
+  let firstSha256
+  let observed
+  let observedJson
   try {
-    first = collectRepository()
-    second = collectRepository()
-  } catch {
+    firstSha256 = sha256(Buffer.from(canonicalJson(collectRepository()), 'utf8'))
+    observed = collectRepository()
+    observedJson = canonicalJson(observed)
+  } catch (error) {
+    if (error instanceof OutputCapacityError) {
+      return { failure: { detailCode: error.detailCode, initialCode: null, phase: 'post-session' } }
+    }
+
     return { failure: { detailCode: 'repository-attestation', initialCode: null, phase: 'post-session' } }
   }
-  if (canonicalJson(first) !== canonicalJson(second)) {
+  const observedSha256 = sha256(Buffer.from(observedJson, 'utf8'))
+  if (firstSha256 !== observedSha256) {
     return { failure: { detailCode: 'repository-attestation', initialCode: null, phase: 'post-session' } }
   }
-  const observed = second
   const expected = normalizePlatformModes(selectTerminalExpectation(member, host), platform)
+  const expectedJson = canonicalJson(expected)
   const observedMarkers = observed.entries.filter((entry) => entry.path === ELECTION_MARKER_PATH)
   const observedWithoutMarker = { entries: observed.entries.filter((entry) => entry.path !== ELECTION_MARKER_PATH), git: observed.git }
-  let passed = canonicalJson(observedWithoutMarker) === canonicalJson(expected)
+  let passed = canonicalJson(observedWithoutMarker) === expectedJson
   if (member.marker === null) {
     passed = passed && observedMarkers.length === 0
   } else if (observedMarkers.length !== 1) {
@@ -44,12 +51,10 @@ function attestTerminalRepository({ collectRepository, host, member, platform, s
       passed = false
     }
   }
-  const observedSha256 = sha256(Buffer.from(canonicalJson(observed), 'utf8'))
-
   return {
     passed,
     record: {
-      expectedSha256: sha256(Buffer.from(canonicalJson(expected), 'utf8')),
+      expectedSha256: sha256(Buffer.from(expectedJson, 'utf8')),
       observed,
       observedSha256,
     },

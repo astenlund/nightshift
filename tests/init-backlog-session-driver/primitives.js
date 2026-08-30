@@ -39,6 +39,16 @@ const HOSTS = Object.freeze(['claude-code', 'codex'])
 
 const APPROVAL_BRANCHES = Object.freeze(['approved', 'denied', 'deferred', 'unavailable', 'auto-denied'])
 
+class OutputCapacityError extends Error {
+  constructor({ limitName, observed }) {
+    super(`output capacity exceeded: ${limitName} at ${observed}`)
+    this.detailCode = 'output-capacity'
+    this.limitName = limitName
+    this.name = 'OutputCapacityError'
+    this.observed = String(observed)
+  }
+}
+
 function sha256(bytes) {
   return createHash('sha256').update(bytes).digest('hex')
 }
@@ -58,6 +68,7 @@ module.exports = {
   HOSTS,
   INFRASTRUCTURE_DETAIL_CODES,
   INFRASTRUCTURE_PHASES,
+  OutputCapacityError,
   POST_SESSION_ONLY_DETAIL_CODES,
   PRIMARY_INITIAL_CODES,
   PROCESS_ADAPTER_EVENTS,
