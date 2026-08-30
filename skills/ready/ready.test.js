@@ -27,6 +27,7 @@ const {
   collectEntryEdges,
   createBreakoutLoader,
   readFileIfPresent,
+  runCli,
   scanUnlinkedBacklogFiles,
   scanBreakoutLines,
   scanBreakoutTargets,
@@ -2067,6 +2068,97 @@ test('real structural and cycle outcomes reach the missing-breakout notice end t
 });
 
 // ---------- CLI smoke test ----------
+
+test('CLI acquires a missing backlog root without an existence precheck or later traversal', () => {
+  const tmpRoot = path.join(__dirname, '..', '..', '.tmp', `ready-missing-${process.pid}`);
+  const claudeDir = path.join(tmpRoot, '.claude');
+  fs.mkdirSync(tmpRoot, { recursive: true });
+  const originalExistsSync = fs.existsSync;
+  const originalLstatSync = fs.lstatSync;
+  const originalReaddirSync = fs.readdirSync;
+  const originalWrite = process.stdout.write;
+  const originalExitCode = process.exitCode;
+  let existsProbes = 0;
+  let traversals = 0;
+  let stdout = '';
+  fs.existsSync = () => {
+    existsProbes += 1;
+
+    return false;
+  };
+  fs.lstatSync = (target, options) => {
+    if (path.resolve(target) === path.resolve(claudeDir)) {
+      const error = new Error('missing during root acquisition');
+      error.code = 'ENOENT';
+      throw error;
+    }
+
+    return originalLstatSync(target, options);
+  };
+  fs.readdirSync = (...args) => {
+    traversals += 1;
+
+    return originalReaddirSync(...args);
+  };
+  process.stdout.write = (chunk) => {
+    stdout += chunk;
+
+    return true;
+  };
+  process.exitCode = undefined;
+  try {
+    runCli(tmpRoot);
+    assert.strictEqual(existsProbes, 0, 'root acquisition must not use existsSync');
+    assert.strictEqual(traversals, 0, 'a missing root stops before traversal');
+    assert.strictEqual(process.exitCode, 1);
+    assert.deepStrictEqual(JSON.parse(stdout), { error: `no .claude directory found at ${claudeDir}; run /nightshift:init-backlog to scaffold the four-index layout` });
+  } finally {
+    fs.existsSync = originalExistsSync;
+    fs.lstatSync = originalLstatSync;
+    fs.readdirSync = originalReaddirSync;
+    process.stdout.write = originalWrite;
+    process.exitCode = originalExitCode;
+    fs.rmSync(tmpRoot, { force: true, recursive: true });
+  }
+});
+
+test('CLI maps backlog root removal during traversal to the missing-root result', () => {
+  const tmpRoot = path.join(__dirname, '..', '..', '.tmp', `ready-removed-${process.pid}`);
+  const claudeDir = path.join(tmpRoot, '.claude');
+  fs.mkdirSync(claudeDir, { recursive: true });
+  const originalReaddirSync = fs.readdirSync;
+  const originalWrite = process.stdout.write;
+  const originalExitCode = process.exitCode;
+  let traversals = 0;
+  let stdout = '';
+  fs.readdirSync = (target, options) => {
+    if (path.resolve(target) === path.resolve(claudeDir)) {
+      traversals += 1;
+      const error = new Error('removed after root acquisition');
+      error.code = 'ENOENT';
+      throw error;
+    }
+
+    return originalReaddirSync(target, options);
+  };
+  process.stdout.write = (chunk) => {
+    stdout += chunk;
+
+    return true;
+  };
+  process.exitCode = undefined;
+  try {
+    runCli(tmpRoot);
+    assert.strictEqual(traversals, 1, 'the failure occurs during traversal after root acquisition');
+    assert.strictEqual(process.exitCode, 1);
+    assert.deepStrictEqual(JSON.parse(stdout), { error: `no .claude directory found at ${claudeDir}; run /nightshift:init-backlog to scaffold the four-index layout` });
+  } finally {
+    fs.readdirSync = originalReaddirSync;
+    process.stdout.write = originalWrite;
+    process.exitCode = originalExitCode;
+    fs.rmSync(tmpRoot, { force: true, recursive: true });
+  }
+});
 
 test('CLI reads a .claude dir and emits the same JSON shape', () => {
   const tmpRoot = path.join(__dirname, '..', '..', '.tmp', `ready-test-${process.pid}`);

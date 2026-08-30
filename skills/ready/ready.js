@@ -1622,18 +1622,56 @@ function readFileIfPresent(p, rootIdentity, options = {}) {
   }
 }
 
+function errorChainHasCode(error, code) {
+  let current = error;
+  for (let depth = 0; depth < 8 && current !== null && typeof current === 'object'; depth += 1) {
+    if (current.code === code) return true;
+    current = current.cause;
+  }
+
+  return false;
+}
+
+function acquireBacklogRootIdentity(claudeDir) {
+  const resolved = path.resolve(claudeDir);
+  try {
+    const authority = fs.realpathSync.native(path.dirname(resolved));
+    const before = fs.lstatSync(resolved, { bigint: true });
+    const identity = fs.realpathSync.native(resolved);
+    const after = fs.lstatSync(identity, { bigint: true });
+    if (!before.isDirectory()
+      || before.isSymbolicLink()
+      || !after.isDirectory()
+      || after.isSymbolicLink()
+      || before.dev !== after.dev
+      || before.ino !== after.ino
+      || !isContainedPath(authority, identity)) {
+      return { kind: 'invalid' };
+    }
+
+    return { identity, kind: 'ok' };
+  } catch (error) {
+    return errorChainHasCode(error, 'ENOENT') ? { kind: 'missing' } : { kind: 'invalid' };
+  }
+}
+
+function writeMissingBacklogRoot(claudeDir) {
+  process.stdout.write(JSON.stringify({
+    error: `no .claude directory found at ${claudeDir}; run /nightshift:init-backlog to scaffold the four-index layout`,
+  }, null, 2) + '\n');
+  process.exitCode = 1;
+}
+
 function runCli(argRoot) {
   const root = path.resolve(argRoot || process.cwd());
   const claudeDir = path.basename(root) === '.claude' ? root : path.join(root, '.claude');
-  if (!fs.existsSync(claudeDir)) {
-    process.stdout.write(JSON.stringify({
-      error: `no .claude directory found at ${claudeDir}; run /nightshift:init-backlog to scaffold the four-index layout`,
-    }, null, 2) + '\n');
-    process.exitCode = 1;
+  const acquired = acquireBacklogRootIdentity(claudeDir);
+  if (acquired.kind === 'missing') {
+    writeMissingBacklogRoot(claudeDir);
+
     return;
   }
-  const rootIdentity = canonicalBacklogRootIdentity(claudeDir);
-  if (rootIdentity === null) {
+  if (acquired.kind !== 'ok') {
     process.stdout.write(JSON.stringify({
       error: `the .claude directory escapes its repository authority: ${claudeDir}`,
     }, null, 2) + '\n');
@@ -1641,18 +1679,24 @@ function runCli(argRoot) {
 
     return;
   }
-  const files = {};
-  for (const name of [...WORK_INDEX_NAMES, 'PATTERNS']) {
-    files[name] = readFileIfPresent(path.join(claudeDir, `${name}.md`), rootIdentity);
+  const rootIdentity = acquired.identity;
+  try {
+    const files = {};
+    for (const name of [...WORK_INDEX_NAMES, 'PATTERNS']) {
+      files[name] = readFileIfPresent(path.join(claudeDir, `${name}.md`), rootIdentity);
+    }
+    const result = analyze(files);
+
+    const scanned = scanBreakoutTargets(result.breakoutTargets, claudeDir);
+    result.notices.push(...scanned.notices, ...scanUnlinkedBacklogFiles(claudeDir, scanned.scannedFiles, { rootIdentity }));
+    result.structuralErrors.push(...scanned.structuralErrors);
+    delete result.breakoutTargets;
+
+    process.stdout.write(JSON.stringify(result, null, 2) + '\n');
+  } catch (error) {
+    if (!errorChainHasCode(error, 'ENOENT')) throw error;
+    writeMissingBacklogRoot(claudeDir);
   }
-  const result = analyze(files);
-
-  const scanned = scanBreakoutTargets(result.breakoutTargets, claudeDir);
-  result.notices.push(...scanned.notices, ...scanUnlinkedBacklogFiles(claudeDir, scanned.scannedFiles, { rootIdentity }));
-  result.structuralErrors.push(...scanned.structuralErrors);
-  delete result.breakoutTargets;
-
-  process.stdout.write(JSON.stringify(result, null, 2) + '\n');
 }
 
 // Stable identity for a backlog entry as a graph node. Path-qualified self
@@ -1828,6 +1872,7 @@ module.exports = {
   collectEntryEdges,
   createBreakoutLoader,
   readFileIfPresent,
+  runCli,
   scanUnlinkedBacklogFiles,
   nodeKey,
   findCycles,
