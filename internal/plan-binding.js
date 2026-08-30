@@ -54,19 +54,15 @@ function hasExactKeys(value, expected) {
   return keys.length === expectedKeys.length && keys.every((key, index) => key === expectedKeys[index])
 }
 
-function comparablePath(path, platform = process.platform) {
-  const normalized = nodePath.normalize(path)
-
-  return platform === 'win32' ? normalized.toLowerCase() : normalized
-}
-
-function samePath(left, right, platform = process.platform) {
-  return comparablePath(left, platform) === comparablePath(right, platform)
+function pathsMatchExactly(left, right) {
+  return nodePath.normalize(left) === nodePath.normalize(right)
 }
 
 function pathIsContained(root, target, platform = process.platform) {
   const pathApi = platform === 'win32' ? nodePath.win32 : nodePath
-  const relation = pathApi.relative(root, target)
+  const comparableRoot = platform === 'win32' ? pathApi.normalize(root).toLowerCase() : pathApi.normalize(root)
+  const comparableTarget = platform === 'win32' ? pathApi.normalize(target).toLowerCase() : pathApi.normalize(target)
+  const relation = pathApi.relative(comparableRoot, comparableTarget)
 
   return relation !== '' && relation !== '..' && !relation.startsWith(`..${pathApi.sep}`) && !pathApi.isAbsolute(relation)
 }
@@ -95,14 +91,23 @@ function canonicalDirectory(path, filesystem, allowMissing = false) {
   }
 }
 
-function requireCanonicalComponents(boundary, realPath, filesystem) {
-  const relation = nodePath.relative(boundary, realPath)
-  if (relation === '' || relation === '..' || relation.startsWith(`..${nodePath.sep}`) || nodePath.isAbsolute(relation)) {
+function requireCanonicalComponents(boundary, logicalPath, realPath, filesystem) {
+  if (!pathIsContained(boundary, logicalPath) || !pathIsContained(boundary, realPath)) {
     fail('plan-containment', 'Plan is outside its declared boundary', { boundary, realPath })
   }
+  const relation = nodePath.relative(boundary, logicalPath)
   let current = boundary
   const segments = relation.split(nodePath.sep)
   for (let index = 0; index < segments.length; index += 1) {
+    let entries
+    try {
+      entries = filesystem.readdirSync(current)
+    } catch {
+      fail('plan-unreadable', 'Plan component parent cannot be inspected', { path: current })
+    }
+    if (!entries.includes(segments[index])) {
+      fail('plan-link', 'Plan components must use their exact canonical spelling', { path: nodePath.join(current, segments[index]) })
+    }
     current = nodePath.join(current, segments[index])
     let metadata
     try {
@@ -120,9 +125,12 @@ function requireCanonicalComponents(boundary, realPath, filesystem) {
     } catch {
       fail('plan-unreadable', 'Plan component cannot be resolved', { path: current })
     }
-    if (!samePath(current, resolved)) {
+    if (!pathsMatchExactly(current, resolved)) {
       fail('plan-link', 'Plan components cannot use aliases or reparse points', { path: current })
     }
+  }
+  if (!pathsMatchExactly(logicalPath, realPath)) {
+    fail('plan-link', 'Plan logical path must be its direct physical path', { logicalPath, realPath })
   }
 }
 
@@ -142,9 +150,6 @@ function classifyPlan(input, filesystem) {
   } catch {
     fail('plan-unreadable', 'Plan cannot be resolved', { path: logicalPath })
   }
-  if (!samePath(logicalPath, realPath)) {
-    fail('plan-link', 'Plan logical path must be its direct physical path', { logicalPath, realPath })
-  }
   let classification
   let declaredBoundary
   let repositoryRelativePath = null
@@ -162,7 +167,7 @@ function classifyPlan(input, filesystem) {
     classification = 'external'
     declaredBoundary = canonicalDirectory(nodePath.dirname(realPath), filesystem)
   }
-  requireCanonicalComponents(declaredBoundary, realPath, filesystem)
+  requireCanonicalComponents(declaredBoundary, logicalPath, realPath, filesystem)
 
   return { classification, declaredBoundary, exactUserPath: input.exactUserPath, globalPlansRoot, logicalPath, realPath, repositoryRelativePath, repositoryRoot }
 }
@@ -357,7 +362,7 @@ function establishPlanBinding(input, options = {}) {
   } catch {
     fail('plan-stale', 'Plan changed after stable capture', { path: binding.logicalPath })
   }
-  if (!stateMatches(after, binding) || !samePath(afterRealPath, binding.realPath)) {
+  if (!stateMatches(after, binding) || !pathsMatchExactly(afterRealPath, binding.realPath)) {
     fail('plan-stale', 'Plan changed after stable capture', { path: binding.logicalPath })
   }
 
@@ -474,6 +479,15 @@ function validateCandidate(candidate) {
   }
 }
 
+function candidateSetSignature(candidates) {
+  const identities = candidates.map((candidate) => JSON.stringify([candidate.logicalPath, candidate.exactUserPath]))
+  if (new Set(identities).size !== candidates.length) {
+    fail('plan-candidate-duplicate', 'Plan candidate enumeration contains duplicates')
+  }
+
+  return JSON.stringify(identities.sort())
+}
+
 function capturePlanCandidateEvidence(input, options = {}) {
   if (!hasExactKeys(input, ['enumerateCandidates', 'globalPlansRoot', 'repositoryRoot']) || typeof input.enumerateCandidates !== 'function') {
     fail('plan-input', 'Plan candidate evidence input is invalid')
@@ -483,10 +497,7 @@ function capturePlanCandidateEvidence(input, options = {}) {
     fail('plan-candidate-count', 'Plan candidate count exceeds its limit', { maximumCandidates: MAX_PLAN_CANDIDATES, observedCandidates: Array.isArray(first) ? first.length : null })
   }
   first.forEach(validateCandidate)
-  const firstSignature = JSON.stringify(first.map((candidate) => [candidate.logicalPath, candidate.exactUserPath]))
-  if (new Set(first.map((candidate) => `${candidate.logicalPath}\u0000${candidate.exactUserPath}`)).size !== first.length) {
-    fail('plan-candidate-duplicate', 'Plan candidate enumeration contains duplicates')
-  }
+  const firstSignature = candidateSetSignature(first)
   const evidence = []
   let aggregateBytes = 0
   for (const candidate of first) {
@@ -507,12 +518,12 @@ function capturePlanCandidateEvidence(input, options = {}) {
     fail('plan-candidate-shape', 'Plan candidate enumeration is invalid')
   }
   second.forEach(validateCandidate)
-  const secondSignature = JSON.stringify(second.map((candidate) => [candidate.logicalPath, candidate.exactUserPath]))
+  const secondSignature = candidateSetSignature(second)
   if (firstSignature !== secondSignature) {
     fail('plan-candidate-drift', 'Plan candidate set changed during capture')
   }
 
-  return { aggregateBytes, evidence }
+  return { evidence }
 }
 
 module.exports = {

@@ -3,7 +3,7 @@
 const assert = require('node:assert/strict')
 const { execFileSync } = require('node:child_process')
 const { createHash } = require('node:crypto')
-const { existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } = require('node:fs')
+const { existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } = require('node:fs')
 const { tmpdir } = require('node:os')
 const { dirname, join, relative } = require('node:path')
 const test = require('node:test')
@@ -638,6 +638,77 @@ test('plan binding service bounds individual and inferred candidate evidence', (
 
       return result
     } }, { gitPolicy }), /candidate set changed/)
+  } finally {
+    rmSync(root, { force: true, recursive: true })
+  }
+})
+
+test('plan candidate evidence compares duplicate-free membership independently of enumeration order', () => {
+  const root = mkdtempSync(join(tmpdir(), 'nightshift-plan-candidates-'))
+  try {
+    const repositoryRoot = join(root, 'repository')
+    const globalPlansRoot = join(root, 'global-plans')
+    const firstPlan = join(globalPlansRoot, 'first.md')
+    const secondPlan = join(globalPlansRoot, 'second.md')
+    mkdirSync(repositoryRoot)
+    mkdirSync(globalPlansRoot)
+    writeFileSync(firstPlan, '# First\n')
+    writeFileSync(secondPlan, '# Second\n')
+    const common = { globalPlansRoot, repositoryRoot }
+    const candidates = [
+      { exactUserPath: false, logicalPath: secondPlan },
+      { exactUserPath: false, logicalPath: firstPlan },
+    ]
+    assert.deepEqual(Object.keys(capturePlanCandidateEvidence({ ...common, enumerateCandidates: () => candidates })), ['evidence'])
+
+    let enumerationCount = 0
+    const captured = capturePlanCandidateEvidence({ ...common, enumerateCandidates: () => {
+      enumerationCount += 1
+
+      return enumerationCount === 1 ? candidates : [...candidates].reverse()
+    } })
+
+    assert.deepEqual(captured.evidence.map(({ binding }) => binding.logicalPath), [secondPlan, firstPlan])
+
+    enumerationCount = 0
+    assert.throws(() => capturePlanCandidateEvidence({ ...common, enumerateCandidates: () => {
+      enumerationCount += 1
+
+      return enumerationCount === 1 ? candidates : [candidates[0], candidates[0]]
+    } }), { code: 'plan-candidate-duplicate' })
+  } finally {
+    rmSync(root, { force: true, recursive: true })
+  }
+})
+
+test('plan binding rejects case-only logical aliases on Windows', { skip: process.platform !== 'win32' }, () => {
+  const root = mkdtempSync(join(tmpdir(), 'nightshift-plan-case-'))
+  try {
+    const repositoryRoot = join(root, 'repository')
+    const globalPlansRoot = join(root, 'Global-Plans')
+    const planDirectory = join(globalPlansRoot, 'MiXeD')
+    const plan = join(planDirectory, 'Plan.MD')
+    mkdirSync(repositoryRoot)
+    mkdirSync(planDirectory, { recursive: true })
+    writeFileSync(plan, '# Plan\n')
+    const common = { exactUserPath: false, globalPlansRoot, repositoryRoot }
+
+    assert.equal(establishPlanBinding({ ...common, logicalPath: plan }).binding.logicalPath, plan)
+    assert.throws(() => establishPlanBinding({ ...common, logicalPath: join(planDirectory, 'plan.md') }), { code: 'plan-link' })
+    assert.throws(() => establishPlanBinding({ ...common, logicalPath: join(globalPlansRoot, 'mixed', 'Plan.MD') }), { code: 'plan-link' })
+    assert.throws(() => establishPlanBinding({ ...common, globalPlansRoot: join(root, 'global-plans'), logicalPath: join(root, 'global-plans', 'MiXeD', 'Plan.MD') }), { code: 'plan-link' })
+
+    const junctionTarget = join(globalPlansRoot, 'Junction-Target')
+    const junctionAlias = join(globalPlansRoot, 'Junction-Alias')
+    mkdirSync(junctionTarget)
+    writeFileSync(join(junctionTarget, 'Linked.md'), '# Linked\n')
+    symlinkSync(junctionTarget, junctionAlias, 'junction')
+    assert.throws(() => establishPlanBinding({ ...common, logicalPath: join(junctionAlias, 'Linked.md') }), (error) => {
+      assert.equal(error.code, 'plan-link')
+      assert.equal(error.details.path, junctionAlias)
+
+      return true
+    })
   } finally {
     rmSync(root, { force: true, recursive: true })
   }
