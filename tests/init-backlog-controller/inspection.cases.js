@@ -19,6 +19,7 @@ const {
   inspect,
   creationMode,
   discoverInitialLockStage,
+  ignoreProbesForGitKind,
   maskedRecords,
   newlineTargetEvidence,
   readElectionMarker,
@@ -261,6 +262,23 @@ function runInspectionCases(repositoryRoot) {
     const probes = buildIgnoreProbes(repositoryRoot, [])
     assert.ok(probes.some((item) => item.gate === true && item.probe === '.claude/plans' && item.target === '.claude/plans'))
     assert.equal(probes.some((item) => item.target.endsWith('/')), false, 'recorded probe targets must be confined protocol targets')
+  })
+
+  test('non-Git inspection skips automatic ignore-probe discovery', () => {
+    let builds = 0
+    const build = () => {
+      builds += 1
+
+      return [{ probe: '.claude/.nightshift-probe.md', target: '.claude' }]
+    }
+
+    assert.deepEqual(ignoreProbesForGitKind('non-git', undefined, build), [])
+    assert.equal(builds, 0)
+    assert.deepEqual(ignoreProbesForGitKind('git', undefined, build), [{ probe: '.claude/.nightshift-probe.md', target: '.claude' }])
+    assert.equal(builds, 1)
+    const supplied = [{ probe: 'supplied.md', target: 'supplied.md' }]
+    assert.equal(ignoreProbesForGitKind('non-git', supplied, build), supplied)
+    assert.equal(builds, 1)
   })
 
   test('default global ignore identity follows XDG before platform fallbacks', () => {

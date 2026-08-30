@@ -560,6 +560,20 @@ function buildIgnoreProbes(root, descriptors) {
   return probes.sort((left, right) => compareOrdinal(left.probe, right.probe))
 }
 
+function ignoreProbesForGitKind(gitKind, supplied, build) {
+  if (supplied !== undefined) {
+    return supplied
+  }
+  if (gitKind === 'non-git') {
+    return []
+  }
+  if (gitKind !== 'git' || typeof build !== 'function') {
+    throw new TypeError('Ignore-probe selection requires a supported Git kind and builder.')
+  }
+
+  return build()
+}
+
 function newlineFamily(target, resolvedGuidance) {
   if (target === resolvedGuidance) return 'guidance'
   const match = /^\.claude\/([^/]+)(?:\/|$)/.exec(target)
@@ -706,7 +720,7 @@ function collectInspection(root, host, hostContext = {}, options = {}) {
   const targetRecords = descriptors.map((entry) => targetRecord(entry.target, entry.descriptor, { ...entry.declaration, contentRole: entry.declaration.contentRole ?? 'semantic' }, entry.template, { ...options, decode: decodeTargetText, gitKind: git.kind }))
   let gitRecord
   try {
-    const ignoreProbes = options.ignoreProbes ?? buildIgnoreProbes(canonical, descriptors)
+    const ignoreProbes = ignoreProbesForGitKind(git.kind, options.ignoreProbes, () => buildIgnoreProbes(canonical, descriptors))
     const fileRecords = targetRecords.filter((item) => item.kind === 'file')
     const guidanceStyles = git.kind === 'git' ? [] : guidanceNewlineEvidence(canonical, guidance, options)
     const newlineTargets = newlineTargetEvidence(fileRecords, guidance.resolvedTarget, guidanceStyles, git.kind)
@@ -855,4 +869,4 @@ function inspect(root, host, hostContext = {}, options = {}) {
   }
 }
 
-module.exports = { buildIgnoreProbes, buildReadyCatalog, collectInspection, composeElectionMarker, composeElectionRecord, creationMode, decodeText, discoverInitialLockStage, inspect, inspectRegions, isReadyCatalogTarget, lineRecords, materializeText, maskedRecords, newlineTargetEvidence, projectGitProblems, projectReadyProblems, proposal, readElectionMarker, targetRecord, targetState, validateElectionMarkerRecord }
+module.exports = { buildIgnoreProbes, buildReadyCatalog, collectInspection, composeElectionMarker, composeElectionRecord, creationMode, decodeText, discoverInitialLockStage, ignoreProbesForGitKind, inspect, inspectRegions, isReadyCatalogTarget, lineRecords, materializeText, maskedRecords, newlineTargetEvidence, projectGitProblems, projectReadyProblems, proposal, readElectionMarker, targetRecord, targetState, validateElectionMarkerRecord }
