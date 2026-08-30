@@ -1642,6 +1642,41 @@ function runHostEntryCases(repositoryRoot) {
     }
   })
 
+  test('version cleanup escalation selects only primary failure identities', async () => {
+    const cases = [
+      ['plain primary code', { code: 'preflight-timeout', host: 'claude-code', ok: false, phase: 'version', retainedRunRoot: null }, 'preflight-timeout'],
+      ['nested primary code', { code: 'harness-infrastructure', detailCode: 'termination', host: 'claude-code', initialCode: 'session-input', ok: false, phase: 'version', retainedRunRoot: null }, 'session-input'],
+      ['null nested code', { code: 'harness-infrastructure', detailCode: 'termination', host: 'claude-code', initialCode: null, ok: false, phase: 'version', retainedRunRoot: null }, null],
+    ]
+    for (const [label, failure, expectedInitialCode] of cases) {
+      const scratch = tempRoot()
+      try {
+        const preflightRunRoot = join(scratch, 'preflight-run')
+        const result = await hostBehavior.runVersionPreflight({
+          ambientEnvironment: {},
+          checkoutRoot: join(scratch, 'checkout'),
+          descriptors: { 'claude-code': { argsPrefix: [], executable: 'synthetic-host', kind: 'windows-native', logicalName: 'claude', sourcePath: 'synthetic-host' } },
+          filesystem: {
+            ...nodeFilesystem,
+            rmSync() {
+              throw new Error('synthetic cleanup failure')
+            },
+          },
+          hosts: ['claude-code'],
+          launch: async () => ({ failure }),
+          platform: process.platform,
+          preflightRunRoot,
+        })
+
+        assert.equal(result.result.initialCode, expectedInitialCode, label)
+        assert.equal(result.result.detailCode, 'cleanup', label)
+        assert.equal(result.result.retainedRunRoot, preflightRunRoot, label)
+      } finally {
+        nodeFilesystem.rmSync(scratch, { force: true, recursive: true })
+      }
+    }
+  })
+
   test('a live pre-session deadline covers silent runner startup and settles only after closure proof', async () => {
     let closed = false
     let proven = false
@@ -2960,6 +2995,112 @@ function runHostEntryCases(repositoryRoot) {
     }
   })
 
+  test('live pre-ready spawn failures remove the physical repetition root', async () => {
+    for (const source of ['start-frame-rejection', 'start-failed']) {
+      const scratch = tempRoot()
+      const live = hostBehavior.createLiveBindings({
+        filesystem: nodeFilesystem,
+        platform: 'win32',
+        workerProcessAdapterFactory: (options) => ({
+          adapter: {
+            dispose() {},
+            retainsRunRoot: () => false,
+            start() {
+              if (source === 'start-frame-rejection') {
+                options.onFailure({ detailCode: 'spawn' })
+
+                return { ok: false }
+              }
+              setImmediate(() => options.onFailure({ detailCode: 'spawn' }))
+
+              return { ok: true }
+            },
+          },
+          ok: true,
+        }),
+      })
+      try {
+        const harness = createEvaluationHarness(scratch)
+        const evaluation = await hostBehavior.runEvaluation({
+          ...harness.options,
+          launch: (call) => call.boundary === 'worker' ? live.launch(call) : harness.options.launch(call),
+        })
+
+        assert.deepEqual(evaluation.result, {
+          code: 'harness-infrastructure',
+          detailCode: 'spawn',
+          host: 'claude-code',
+          initialCode: null,
+          ok: false,
+          phase: 'initial-turn',
+          retainedRunRoot: null,
+        }, source)
+        assert.equal(nodeFilesystem.existsSync(harness.roots[2]), false, `${source} removes the proved-empty worker root`)
+      } finally {
+        live.dispose()
+        nodeFilesystem.rmSync(scratch, { force: true, recursive: true })
+      }
+    }
+  })
+
+  test('all other pre-ready worker failures retain the conservative proxy carrier', async () => {
+    const cases = [
+      ['malformed failure', 'malformed'],
+      ['missing detail', {}],
+      ['termination failure', { detailCode: 'termination' }],
+      ['proxy failure', { detailCode: 'proxy' }],
+      ['other failure', { detailCode: 'child-process' }],
+      ['bare start rejection', null],
+    ]
+    for (const [label, failure] of cases) {
+      const runRoot = `C:/synthetic-${label.replaceAll(' ', '-')}-root`
+      const live = hostBehavior.createLiveBindings({
+        filesystem: nodeFilesystem,
+        platform: 'win32',
+        workerProcessAdapterFactory: (options) => ({
+          adapter: {
+            dispose() {},
+            retainsRunRoot: () => false,
+            start() {
+              if (failure !== null) {
+                options.onFailure(failure)
+
+                return { ok: true }
+              }
+
+              return { ok: false }
+            },
+          },
+          ok: true,
+        }),
+      })
+      try {
+        const completion = await live.launch({
+          argv: ['worker', 'entry.js', 'a'.repeat(64)],
+          boundary: 'worker',
+          cwd: runRoot,
+          environment: {},
+          executable: 'node.exe',
+          host: 'codex',
+        })
+
+        assert.deepEqual(completion, {
+          failure: {
+            code: 'harness-infrastructure',
+            detailCode: 'proxy',
+            host: 'codex',
+            initialCode: null,
+            ok: false,
+            phase: 'initial-turn',
+            retainedRunRoot: runRoot,
+          },
+        }, label)
+      } finally {
+        live.dispose()
+      }
+    }
+  })
+
   test('a pre-ready worker adapter failure stops before start and stays on the proxy path', async () => {
     const runRoot = 'C:/synthetic-pre-ready-adapter-failure-root'
     let starts = 0
@@ -3658,6 +3799,54 @@ function runHostEntryCases(repositoryRoot) {
       assert.equal(nodeFilesystem.existsSync(caseRoot), true, 'the cleanup carrier reports the retained import case root')
     } finally {
       nodeFilesystem.rmSync(scratch, { force: true, recursive: true })
+    }
+  })
+
+  test('import cleanup escalation selects only nested primary failure identities', async () => {
+    const cases = [
+      ['nested primary code', 'session-input', 'session-input'],
+      ['null nested code', null, null],
+    ]
+    for (const [label, initialCode, expectedInitialCode] of cases) {
+      const scratch = tempRoot()
+      try {
+        const caseRoot = join(scratch, 'import-cleanup-failure')
+        const result = await hostBehavior.runImportMatrix({
+          ambientEnvironment: {},
+          checkoutRoot: join(scratch, 'checkout'),
+          createRoot: () => caseRoot,
+          descriptor: { argsPrefix: [], executable: 'synthetic-host', kind: 'windows-native', logicalName: 'claude', sourcePath: 'synthetic-host' },
+          filesystem: {
+            ...nodeFilesystem,
+            rmSync(path, options) {
+              if (path === caseRoot) {
+                throw new Error('synthetic import cleanup failure')
+              }
+
+              return nodeFilesystem.rmSync(path, options)
+            },
+          },
+          importCases: [{ adapterBase64: null, caseId: 'cleanup-failure', expectedSentinel: null, files: [] }],
+          launch: async () => ({
+            failure: {
+              code: 'harness-infrastructure',
+              detailCode: 'termination',
+              host: 'claude-code',
+              initialCode,
+              ok: false,
+              phase: 'import-probe',
+              retainedRunRoot: null,
+            },
+          }),
+          platform: process.platform,
+        })
+
+        assert.equal(result.failure.initialCode, expectedInitialCode, label)
+        assert.equal(result.failure.detailCode, 'cleanup', label)
+        assert.equal(result.failure.retainedRunRoot, caseRoot, label)
+      } finally {
+        nodeFilesystem.rmSync(scratch, { force: true, recursive: true })
+      }
     }
   })
 

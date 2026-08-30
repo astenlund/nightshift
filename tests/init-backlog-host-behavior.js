@@ -778,12 +778,26 @@ function cleanupRunRoot({ filesystem, path }) {
   return { ok: true }
 }
 
+function cleanupInitialCode(failure) {
+  if (failure === null || typeof failure !== 'object') {
+    return null
+  }
+  if (driver.PRIMARY_INITIAL_CODES.includes(failure.code)) {
+    return failure.code
+  }
+  if (driver.PRIMARY_INITIAL_CODES.includes(failure.initialCode)) {
+    return failure.initialCode
+  }
+
+  return null
+}
+
 async function runVersionPreflight({ ambientEnvironment, checkoutRoot, controllerPath = null, descriptors, filesystem = nodeFilesystem, hosts = HOST_ORDER, launch, platform, preflightRunRoot }) {
   createFreshRunRoot({ filesystem, path: preflightRunRoot })
   const hostTemp = driver.createHostTempChild({ filesystem, platform, runRoot: preflightRunRoot })
   const versions = {}
-  const escalateCleanup = (host, initialCode) => ({
-    result: infrastructureCarrier({ detailCode: 'cleanup', host, initialCode, phase: 'version', retainedRunRoot: preflightRunRoot }),
+  const escalateCleanup = (host, failure) => ({
+    result: infrastructureCarrier({ detailCode: 'cleanup', host, initialCode: cleanupInitialCode(failure), phase: 'version', retainedRunRoot: preflightRunRoot }),
   })
   for (const host of hosts) {
     const descriptor = descriptors[host]
@@ -810,7 +824,7 @@ async function runVersionPreflight({ ambientEnvironment, checkoutRoot, controlle
         return { result: completion.failure }
       }
       if (!cleanupRunRoot({ filesystem, path: preflightRunRoot }).ok) {
-        return escalateCleanup(host, completion.failure.code ?? null)
+        return escalateCleanup(host, completion.failure)
       }
 
       return { result: completion.failure }
@@ -818,7 +832,7 @@ async function runVersionPreflight({ ambientEnvironment, checkoutRoot, controlle
     const validation = validateVersionOutput(completion)
     if (!validation.ok) {
       if (!cleanupRunRoot({ filesystem, path: preflightRunRoot }).ok) {
-        return escalateCleanup(host, 'invalid-host-version')
+        return escalateCleanup(host, { code: 'invalid-host-version' })
       }
 
       return { result: { ok: false, host, code: 'invalid-host-version', detail: validation.detail } }
@@ -1181,7 +1195,7 @@ async function runImportMatrix({ ambientEnvironment, checkoutRoot, controllerPat
       }
       if (!cleanupRunRoot({ filesystem, path: caseRoot }).ok) {
         return {
-          failure: infrastructureCarrier({ detailCode: 'cleanup', host: 'claude-code', initialCode: failure.code ?? null, phase: 'import-probe', retainedRunRoot: caseRoot }),
+          failure: infrastructureCarrier({ detailCode: 'cleanup', host: 'claude-code', initialCode: cleanupInitialCode(failure), phase: 'import-probe', retainedRunRoot: caseRoot }),
           verdicts,
         }
       }
@@ -2142,6 +2156,31 @@ function createLiveBindings({ filesystem = nodeFilesystem, platform, workerProce
     const entry = { adapter: null, failure: null, onFailure: null, onLine: null, ready: false }
     const { armDeadline, isSettled, settle } = createSettleGuard(resolve)
     const startupFailure = () => settle({ failure: infrastructureCarrier({ detailCode: 'proxy', host: call.host, phase: 'initial-turn', retainedRunRoot: call.cwd }) })
+    const workerConstructionFailure = () => settle({ failure: infrastructureCarrier({ detailCode: 'spawn', host: call.host, phase: 'initial-turn' }) })
+    const workerFailure = (failure) => {
+      if (!entry.ready) {
+        if (failure !== null
+          && typeof failure === 'object'
+          && failure.detailCode === 'spawn'
+          && entry.adapter !== null
+          && typeof entry.adapter.retainsRunRoot === 'function'
+          && entry.adapter.retainsRunRoot() === false) {
+          workerConstructionFailure()
+        } else {
+          startupFailure()
+        }
+
+        return
+      }
+      if (entry.onFailure === null) {
+        if (entry.failure === null) {
+          entry.failure = failure
+        }
+
+        return
+      }
+      entry.onFailure(failure)
+    }
     const decoder = driver.createLineDecoder({
       limit: driver.BYTE_BOUNDS.MAX_RUNNER_FRAME_BYTES,
       limitName: 'MAX_RUNNER_FRAME_BYTES',
@@ -2252,8 +2291,9 @@ function createLiveBindings({ filesystem = nodeFilesystem, platform, workerProce
       return
     }
     armDeadline(startupFailure, driver.DEADLINES.WORKER_STARTUP_MILLISECONDS)
-    if (entry.adapter.start({ args: call.argv, environment: call.environment, executable: call.executable }).ok !== true) {
-      startupFailure()
+    const start = entry.adapter.start({ args: call.argv, environment: call.environment, executable: call.executable })
+    if (start.ok !== true) {
+      workerFailure(start)
     }
   })
 
