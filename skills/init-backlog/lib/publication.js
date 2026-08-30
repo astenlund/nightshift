@@ -702,7 +702,6 @@ function publishMarker(request, admission, root, manifestId, ownerMode, options)
   let expectedContent = null
   let expectedIdentity = null
   const carriedGit = request.inspection.git ?? {}
-  const carriedState = carriedGit.electionMarker
   const oldBytes = markerOldBytes(request, root)
   const markerByteLimit = Math.max(bytes.length, oldBytes?.length ?? 0)
   const oldMode = platformMode(options, carriedGit.electionMarkerMode ?? 0o600)
@@ -931,8 +930,6 @@ function hasTerminalMarkerEvidence(request, admission, root, existing, paths, ex
   if (request.inspection.git?.electionMarker !== undefined && request.inspection.git.electionMarker !== 'absent') requiredPaths.push(paths.electionOldWitness)
   const required = requiredPaths.map((path) => relativeArtifact(root, path))
   if (required.some((path) => !inventory.has(path))) return false
-  const relativeTombstone = relativeArtifact(root, paths.electionTombstone)
-  const relativeWitness = relativeArtifact(root, paths.electionNewWitness)
   const present = (path) => {
     try {
       lstatSync(path)

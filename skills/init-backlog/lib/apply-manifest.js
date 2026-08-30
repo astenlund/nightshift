@@ -20,7 +20,6 @@ const {
   sha256,
   validateAction,
   validateBase64,
-  validateDigest,
   validateTarget,
   validateProposalDispositions,
 } = require('./protocol')
