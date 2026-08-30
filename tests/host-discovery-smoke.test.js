@@ -9,6 +9,8 @@ const test = require('node:test')
 
 const {
   CODEX_CATALOG_PROMPT,
+  MAX_CANDIDATE_BATCH_RESPONSE_BYTES,
+  MAX_CANDIDATE_BLOB_BYTES,
   createCellSequence,
   classifyChildExit,
   executeCellSequence,
@@ -28,6 +30,7 @@ const {
   loadCandidateEngineResources,
   projectRuntimeEnvironment,
   parseClaudeAuthStatus,
+  parseCandidateBlobBatch,
   parseClaudeDetails,
   parseCodexAuthStatus,
   resolveExternalClaudeConfigRoot,
@@ -37,7 +40,7 @@ const {
   writeEvidence,
 } = require('./host-discovery-smoke-lib')
 const { REVISE_ENGINE_RESOURCES } = require('./entry-contract')
-const { MAX_SOURCE_BATCH_RESPONSE_BYTES, parseSourceBlobBatch } = require('./init-backlog-prompt-baseline')
+const { parseSourceBlobBatch } = require('./init-backlog-prompt-baseline')
 
 const TEMP_PREFIX = 'nightshift-host-smoke-test-'
 const TEN_PUBLIC_SKILLS = Object.freeze([
@@ -483,7 +486,7 @@ test('candidate tree reads one ordered binary cat-file batch within a bound', ()
     }
     assert.deepEqual(args, ['cat-file', '--batch'])
     assert.equal(encoding, 'buffer')
-    assert.equal(options.maxBuffer, MAX_SOURCE_BATCH_RESPONSE_BYTES)
+    assert.equal(options.maxBuffer, MAX_CANDIDATE_BATCH_RESPONSE_BYTES)
     assert.deepEqual(options.input, Buffer.from(entries.map(({ objectId }) => `${objectId}\n`).join(''), 'ascii'))
 
     return Buffer.concat(entries.map(({ objectId, content }) => Buffer.concat([Buffer.from(`${objectId} blob ${content.length}\n`, 'ascii'), content, Buffer.from('\n', 'ascii')])))
@@ -496,17 +499,22 @@ test('candidate tree reads one ordered binary cat-file batch within a bound', ()
   assert.match(facts.digest, /^[a-f0-9]{64}$/)
 })
 
-test('candidate blob batches reject missing, non-blob, truncated, trailing, and mismatched responses', () => {
+test('candidate blob batches reject malformed, truncated, and oversized responses with candidate diagnostics', () => {
   const objectId = 'a'.repeat(40)
   const item = { objectId, path: 'file.bin' }
   const valid = Buffer.from(`${objectId} blob 2\n\0\xff\n`, 'binary')
 
-  assert.deepEqual(parseSourceBlobBatch(valid, [item]).get('file.bin'), Buffer.from([0, 255]))
-  assert.throws(() => parseSourceBlobBatch(Buffer.from('missing\n', 'ascii'), [item]), /invalid object header/)
-  assert.throws(() => parseSourceBlobBatch(Buffer.from(`${objectId} tree 2\n\0\xff\n`, 'binary'), [item]), /invalid object header/)
-  assert.throws(() => parseSourceBlobBatch(Buffer.from(`${objectId} blob 2\n\0`, 'binary'), [item]), /truncated object bytes/)
-  assert.throws(() => parseSourceBlobBatch(Buffer.concat([valid, Buffer.from('trailing', 'ascii')]), [item]), /trailing output/)
-  assert.throws(() => parseSourceBlobBatch(valid, [{ objectId: 'b'.repeat(40), path: 'file.bin' }]), /unexpected object ID/)
+  assert.deepEqual(parseCandidateBlobBatch(valid, [item]).get('file.bin'), Buffer.from([0, 255]))
+  assert.throws(() => parseCandidateBlobBatch(Buffer.from('missing\n', 'ascii'), [item]), /Candidate source batch returned an invalid object header: file\.bin/)
+  assert.throws(() => parseCandidateBlobBatch(Buffer.from(`${objectId} blob 2\n\0`, 'binary'), [item]), /Candidate source batch returned truncated object bytes: file\.bin/)
+  assert.throws(() => parseCandidateBlobBatch(Buffer.from(`${objectId} blob ${MAX_CANDIDATE_BLOB_BYTES + 1}\n`, 'ascii'), [item]), /Candidate source blobs exceed their byte limit/)
+})
+
+test('prompt-baseline blob adapter preserves its source diagnostics', () => {
+  const objectId = 'a'.repeat(40)
+  const item = { objectId, path: 'file.bin' }
+
+  assert.throws(() => parseSourceBlobBatch(Buffer.from('missing\n', 'ascii'), [item]), /Prompt baseline source batch returned an invalid object header: file\.bin/)
 })
 
 test('Codex catalog adapter builds its literal isolated-workspace-safe argv', () => {

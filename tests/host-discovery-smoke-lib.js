@@ -7,13 +7,17 @@ const { tmpdir } = require('node:os')
 const { dirname, isAbsolute, join, relative, resolve, sep } = require('node:path')
 const { execFileSync, spawn } = require('node:child_process')
 const { PUBLIC_SKILLS } = require('./entry-contract')
+const { parseGitBlobBatch } = require('./git-blob-batch')
 const { buildContainedAmbientEnvironment, resolveHostCommand, resolveTrustedGit } = require('./init-backlog-host-behavior')
-const { loadPromptBaseline: loadValidatedPromptBaseline, MAX_SOURCE_BATCH_RESPONSE_BYTES, parseSourceBlobBatch } = require('./init-backlog-prompt-baseline')
+const { loadPromptBaseline: loadValidatedPromptBaseline } = require('./init-backlog-prompt-baseline')
 
 const CODEX_CATALOG_PROMPT = 'Return a JSON object whose skills array contains only the plugin-qualified Nightshift skill identifiers visible in the injected Skills catalog.'
 const RUNTIME_KEYS = Object.freeze(['PATH', 'PATHEXT', 'SystemRoot', 'WINDIR', 'ComSpec', 'TEMP', 'TMP', 'TMPDIR', 'HOME', 'USERPROFILE', 'HOMEDRIVE', 'HOMEPATH', 'APPDATA', 'LOCALAPPDATA', 'LANG', 'LC_ALL', 'TERM'])
 const MAX_CAPTURE_BYTES = 1048576
 const MAX_EVIDENCE_ROW_BYTES = 1048576
+const MAX_CANDIDATE_BLOB_BYTES = 16777216
+const MAX_CANDIDATE_TOTAL_BYTES = 67108864
+const MAX_CANDIDATE_BATCH_RESPONSE_BYTES = MAX_CANDIDATE_TOTAL_BYTES + 1048576
 const TIMEOUT_MS = 300000
 const ENGINE_RESOURCE_KEYS = Object.freeze(['code', 'plan', 'rigor', 'spec', 'workflow'])
 
@@ -152,13 +156,22 @@ function writeDigestRecord(hash, entryPath, content) {
   hash.update(content)
 }
 
+function parseCandidateBlobBatch(bytes, entries) {
+  return parseGitBlobBatch(bytes, entries, {
+    batchLabel: 'Candidate source batch',
+    blobLimitLabel: 'Candidate source blobs',
+    maxBlobBytes: MAX_CANDIDATE_BLOB_BYTES,
+    maxTotalBytes: MAX_CANDIDATE_TOTAL_BYTES,
+  })
+}
+
 function collectCandidateTree({ checkoutRoot, gitRunner = git, treeId, visitEntry = () => {} }) {
   const hash = createHash('sha256')
   let manifestBytes = null
   const entries = listedTreeEntries(checkoutRoot, treeId, gitRunner)
   const batchInput = Buffer.from(entries.map((entry) => `${entry.objectId}\n`).join(''), 'ascii')
-  const batchOutput = gitRunner(checkoutRoot, ['cat-file', '--batch'], 'buffer', { input: batchInput, maxBuffer: MAX_SOURCE_BATCH_RESPONSE_BYTES })
-  const sourceFiles = parseSourceBlobBatch(batchOutput, entries.map(({ entryPath, objectId }) => ({ objectId, path: entryPath })))
+  const batchOutput = gitRunner(checkoutRoot, ['cat-file', '--batch'], 'buffer', { input: batchInput, maxBuffer: MAX_CANDIDATE_BATCH_RESPONSE_BYTES })
+  const sourceFiles = parseCandidateBlobBatch(batchOutput, entries.map(({ entryPath, objectId }) => ({ objectId, path: entryPath })))
   for (const entry of entries) {
     const content = sourceFiles.get(entry.entryPath)
     visitEntry(entry, content)
@@ -940,4 +953,4 @@ async function runCell({ host, mode, checkoutRoot, evidenceRoot }) {
   return row
 }
 
-module.exports = { CODEX_CATALOG_PROMPT, PUBLIC_SKILLS, RUNTIME_KEYS, assembleClaudePromptBaseline, assembleCodexPromptBaseline, assertClaudeInventory, assertEngineClosure, assertInitBacklogClosure, assertInstalledBaseline, assertInstalledCandidate, assertOutsideCheckout, buildCodexArgv, candidateFactsForIndex, classifyChildExit, collectCandidateTree, createCellSequence, createMarketplace, createTrustedSmokeRuntime, evaluateEvidence, executeCellSequence, loadCandidateEngineResources, loadLegacyBaseline, loadPromptBaseline, parseClaudeAuthStatus, parseClaudeDetails, parseCodexAuthStatus, projectRuntimeEnvironment, resolveExternalClaudeConfigRoot, runCell, stableEvidenceFile, stageCandidate, validateEvidenceRow, writeEvidence }
+module.exports = { CODEX_CATALOG_PROMPT, MAX_CANDIDATE_BATCH_RESPONSE_BYTES, MAX_CANDIDATE_BLOB_BYTES, PUBLIC_SKILLS, RUNTIME_KEYS, assembleClaudePromptBaseline, assembleCodexPromptBaseline, assertClaudeInventory, assertEngineClosure, assertInitBacklogClosure, assertInstalledBaseline, assertInstalledCandidate, assertOutsideCheckout, buildCodexArgv, candidateFactsForIndex, classifyChildExit, collectCandidateTree, createCellSequence, createMarketplace, createTrustedSmokeRuntime, evaluateEvidence, executeCellSequence, loadCandidateEngineResources, loadLegacyBaseline, loadPromptBaseline, parseCandidateBlobBatch, parseClaudeAuthStatus, parseClaudeDetails, parseCodexAuthStatus, projectRuntimeEnvironment, resolveExternalClaudeConfigRoot, runCell, stableEvidenceFile, stageCandidate, validateEvidenceRow, writeEvidence }

@@ -4,6 +4,7 @@ const nodeFilesystem = require('node:fs')
 const nodePath = require('node:path')
 const { execFileSync, spawnSync } = require('node:child_process')
 
+const { parseGitBlobBatch } = require('./git-blob-batch')
 const { sha256 } = require('./init-backlog-session-driver/primitives')
 const { canonicalJson, parseJsonWithDepthLimit } = require('./init-backlog-session-driver/transcript')
 
@@ -166,45 +167,12 @@ function createSourceGitRunner({ environment, gitExecutablePath, spawnSync: run 
 }
 
 function parseSourceBlobBatch(bytes, paths) {
-  const sourceFiles = new Map()
-  let offset = 0
-  let totalBytes = 0
-  for (const item of paths) {
-    const path = typeof item === 'string' ? item : item.path
-    const expectedObjectId = typeof item === 'string' ? null : item.objectId
-    const headerEnd = bytes.indexOf(0x0a, offset)
-    if (headerEnd === -1) {
-      throw new Error('Prompt baseline source batch is missing an object header')
-    }
-    const header = bytes.subarray(offset, headerEnd).toString('ascii')
-    const matched = /^([a-f0-9]{40,64}) blob ([0-9]+)$/.exec(header)
-    if (matched === null) {
-      throw new Error(`Prompt baseline source batch returned an invalid object header: ${path}`)
-    }
-    if (expectedObjectId !== null && matched[1] !== expectedObjectId) {
-      throw new Error(`Prompt baseline source batch returned an unexpected object ID: ${path}`)
-    }
-    const size = Number(matched[2])
-    if (!Number.isSafeInteger(size) || size > MAX_FIXTURE_FILE_BYTES) {
-      throw new Error('Prompt baseline source blobs exceed their byte limit')
-    }
-    const contentStart = headerEnd + 1
-    const contentEnd = contentStart + size
-    if (contentEnd >= bytes.length || bytes[contentEnd] !== 0x0a) {
-      throw new Error(`Prompt baseline source batch returned truncated object bytes: ${path}`)
-    }
-    totalBytes += size
-    if (totalBytes > MAX_FIXTURE_TOTAL_BYTES) {
-      throw new Error('Prompt baseline source blobs exceed their byte limit')
-    }
-    sourceFiles.set(path, Buffer.from(bytes.subarray(contentStart, contentEnd)))
-    offset = contentEnd + 1
-  }
-  if (offset !== bytes.length) {
-    throw new Error('Prompt baseline source batch returned trailing output')
-  }
-
-  return sourceFiles
+  return parseGitBlobBatch(bytes, paths, {
+    batchLabel: 'Prompt baseline source batch',
+    blobLimitLabel: 'Prompt baseline source blobs',
+    maxBlobBytes: MAX_FIXTURE_FILE_BYTES,
+    maxTotalBytes: MAX_FIXTURE_TOTAL_BYTES,
+  })
 }
 
 function loadSourceAuthority(repositoryRoot, sourceGitRunner) {
