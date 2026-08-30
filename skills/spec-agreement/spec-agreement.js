@@ -2914,7 +2914,11 @@ function encodeCliValue(value) {
   return encoded;
 }
 
-function dispatchCliOperation(operation, input, adapters, environment, bindingAdapter) {
+function resolverAdapters(adapters) {
+  return { fsAdapter: adapters.fsAdapter, readyParser: adapters.readyParser };
+}
+
+function dispatchCliOperation(operation, input, adapters, environment) {
   validateCliWireKeys(input);
   const decoded = decodeCliValue(input);
   switch (operation) {
@@ -2923,7 +2927,7 @@ function dispatchCliOperation(operation, input, adapters, environment, bindingAd
     case 'plan-serialize':
       return { planBytesHex: serializePlanContract(decoded).toString('hex') };
     case 'resolve':
-      return resolveGoverningSet(decoded, adapters);
+      return resolveGoverningSet(decoded, resolverAdapters(adapters));
     case 'locate':
       if (decoded !== null && typeof decoded === 'object') {
         const callerOwnedLinkField = ['linkFormat', 'fileLinkFormat', 'linkRendering'].find((field) => Object.hasOwn(decoded, field));
@@ -2954,7 +2958,7 @@ function dispatchCliOperation(operation, input, adapters, environment, bindingAd
     case 'state-invalidate':
       return invalidateAgreementState(decoded);
     case 'gate':
-      return decideAgreementGate(decoded, adapters);
+      return decideAgreementGate(decoded, resolverAdapters(adapters));
     case 'legacy-detect':
       return detectLegacyMarkers(decoded);
     case 'legacy-preview':
@@ -2962,9 +2966,9 @@ function dispatchCliOperation(operation, input, adapters, environment, bindingAd
     case 'provenance-write':
       return writeProvenanceStamp(decoded, { fsAdapter: adapters.fsAdapter });
     case 'provenance-write-bound':
-      return writeBoundProvenanceStamp(decoded, { fsAdapter: adapters.fsAdapter, bindingAdapter });
+      return writeBoundProvenanceStamp(decoded, { fsAdapter: adapters.fsAdapter, bindingAdapter: adapters.bindingAdapter });
     case 'provenance-bind':
-      return captureProvenanceBinding(decoded, { fsAdapter: adapters.fsAdapter, bindingAdapter });
+      return captureProvenanceBinding(decoded, { fsAdapter: adapters.fsAdapter, bindingAdapter: adapters.bindingAdapter });
     default:
       invocationFailure('CLI operation is not allowlisted.', { operation });
   }
@@ -2988,11 +2992,11 @@ function runCli(input, options = {}) {
       invocationFailure('CLI request must contain exactly operation and input in canonical order.');
     }
     const adapters = {
+      bindingAdapter: options.bindingAdapter ?? productionBindingAdapter(),
       fsAdapter: options.fsAdapter ?? productionFsAdapter(),
       readyParser: options.readyParser,
     };
-    const bindingAdapter = options.bindingAdapter ?? productionBindingAdapter();
-    const value = dispatchCliOperation(requestEnvelope.operation, requestEnvelope.input, adapters, options.environment ?? process.env, bindingAdapter);
+    const value = dispatchCliOperation(requestEnvelope.operation, requestEnvelope.input, adapters, options.environment ?? process.env);
     envelope = { ok: true, value: encodeCliValue(value) };
     exitCode = 0;
   } catch (thrown) {

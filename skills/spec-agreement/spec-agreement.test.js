@@ -4280,6 +4280,14 @@ test('selector validation and artifact selection share their selector resolvers'
   assert.equal(countExact(controller, 'resolveSectionSelectors('), 3);
 });
 
+test('CLI dispatch keeps the binding adapter inside the shared adapter bundle', () => {
+  const controller = readRepositoryFile('skills/spec-agreement/spec-agreement.js');
+
+  assert.equal(controller.includes('function dispatchCliOperation(operation, input, adapters, environment, bindingAdapter)'), false);
+  assert.equal(controller.includes('bindingAdapter: options.bindingAdapter ?? productionBindingAdapter()'), true);
+  assert.equal(controller.includes('bindingAdapter: adapters.bindingAdapter'), true);
+});
+
 test('production provenance replacement preserves restrictive permissions', { skip: process.platform === 'win32' }, () => {
   const root = mkdtempSync(join(tmpdir(), 'nightshift-mode-'));
   const path = join(root, 'spec.md');
