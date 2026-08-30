@@ -3798,6 +3798,17 @@ test('legacy preview rejects complete-file drift before calculating a replacemen
   }
 });
 
+test('legacy derivation validates each stable artifact hash once without calling public preview', () => {
+  const source = readRepositoryFile('skills/spec-agreement/spec-agreement.js');
+  const start = source.indexOf('function deriveLegacyDeletions(');
+  const end = source.indexOf('\nfunction reviewedLegacyMigration(', start);
+  const derivation = source.slice(start, end);
+
+  assert.equal((derivation.match(/completeFileHash\(artifact\.sourceBuffer\)/g) ?? []).length, 1);
+  assert.equal(derivation.includes('previewLegacyMarkerDeletion('), false);
+  assert.equal(source.includes('function previewLegacyMarkerDeletionValidated('), true);
+});
+
 test('legacy preview rejects caller spans hidden inside fenced blocks', () => {
   for (const fence of ['```', '~~~']) {
     const prefix = Buffer.from(`# Design\n${fence}\n`);

@@ -644,6 +644,11 @@ function previewLegacyMarkerDeletion(input, scan = scanMarkdown) {
   if (!/^[0-9a-f]{64}$/.test(input.baselineHash) || currentHash !== input.baselineHash) {
     staleBaseline(input.baselineHash, currentHash);
   }
+
+  return previewLegacyMarkerDeletionValidated(input, scan);
+}
+
+function previewLegacyMarkerDeletionValidated(input, scan = scanMarkdown) {
   const detected = detectLegacyMarkers({
     artifacts: [{ path: input.matches[0]?.path, selectorKind: 'design-before-hardening', selectors: [], sourceBuffer: input.sourceBuffer }],
   }, scan).matches;
@@ -2621,7 +2626,7 @@ function deriveLegacyDeletions(artifacts) {
     }
     const artifactMatches = matches.slice(firstMatchIndex, matchIndex);
     if (artifactMatches.length > 0) {
-      const preview = previewLegacyMarkerDeletion({ sourceBuffer: artifact.sourceBuffer, baselineHash: completeFileHash(artifact.sourceBuffer), matches: artifactMatches }, scan);
+      const preview = previewLegacyMarkerDeletionValidated({ sourceBuffer: artifact.sourceBuffer, baselineHash: completeFileHash(artifact.sourceBuffer), matches: artifactMatches }, scan);
       for (const deletion of preview.deletions) {
         deletions.push(deletion);
       }
