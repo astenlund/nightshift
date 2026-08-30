@@ -13,6 +13,8 @@ const {
   executeCellSequence,
   assertEngineClosure,
   assertClaudeInventory,
+  assertInstalledBaseline,
+  assertInstalledCandidate,
   assertOutsideCheckout,
   PUBLIC_SKILLS,
   buildCodexArgv,
@@ -345,6 +347,61 @@ test('legacy repeat baseline is bound to the immutable candidate snapshot', () =
     assert.equal(baseline.version, '2.4.5')
     assert.deepEqual(baseline.commandNames, ['handover'])
     assert.deepEqual(baseline.skillNames, ['ready'])
+  } finally {
+    removeTemporaryDirectory(root)
+  }
+})
+
+test('installed inventories reject extras, omissions, links, and disallowed marker paths', () => {
+  const root = createTemporaryDirectory()
+  const snapshotRoot = join(root, 'snapshot')
+  const installedRoot = join(root, 'profile', 'plugin')
+  const outsideRoot = join(root, 'outside')
+  const version = '2.6.14'
+  try {
+    mkdirSync(join(snapshotRoot, '.claude-plugin'), { recursive: true })
+    mkdirSync(join(snapshotRoot, 'skills', 'ready'), { recursive: true })
+    writeFileSync(join(snapshotRoot, '.claude-plugin', 'plugin.json'), JSON.stringify({ version }) + '\n')
+    writeFileSync(join(snapshotRoot, 'skills', 'ready', 'SKILL.md'), 'ready\n')
+    cpSync(snapshotRoot, installedRoot, { recursive: true })
+    assert.doesNotThrow(() => assertInstalledCandidate(snapshotRoot, installedRoot, join(root, 'profile'), version, 'claude'))
+
+    writeFileSync(join(installedRoot, 'extra.txt'), 'extra\n')
+    assert.throws(() => assertInstalledCandidate(snapshotRoot, installedRoot, join(root, 'profile'), version, 'claude'), /unexpected installed entry/)
+    rmSync(join(installedRoot, 'extra.txt'))
+
+    const baselineRoot = join(root, 'baseline')
+    const baselineInstalledRoot = join(root, 'baseline-profile', 'plugin')
+    mkdirSync(join(baselineRoot, '.claude-plugin'), { recursive: true })
+    mkdirSync(join(baselineRoot, 'commands'))
+    mkdirSync(join(baselineRoot, 'skills', 'ready'), { recursive: true })
+    writeFileSync(join(baselineRoot, '.claude-plugin', 'plugin.json'), JSON.stringify({ version: '2.4.5' }) + '\n')
+    writeFileSync(join(baselineRoot, 'commands', 'handover.md'), 'handover\n')
+    writeFileSync(join(baselineRoot, 'skills', 'ready', 'SKILL.md'), 'ready\n')
+    cpSync(baselineRoot, baselineInstalledRoot, { recursive: true })
+    const baseline = { root: baselineRoot, version: '2.4.5', commandNames: ['handover'], skillNames: ['ready'] }
+    assert.doesNotThrow(() => assertInstalledBaseline(baseline, baselineInstalledRoot, join(root, 'baseline-profile'), 'claude'))
+    mkdirSync(join(baselineInstalledRoot, 'skills', 'legacy'))
+    writeFileSync(join(baselineInstalledRoot, 'skills', 'legacy', 'SKILL.md'), 'legacy\n')
+    assert.throws(() => assertInstalledBaseline(baseline, baselineInstalledRoot, join(root, 'baseline-profile'), 'claude'), /unexpected installed entry/)
+
+    rmSync(join(installedRoot, 'skills', 'ready', 'SKILL.md'))
+    assert.throws(() => assertInstalledCandidate(snapshotRoot, installedRoot, join(root, 'profile'), version, 'claude'), /missing installed entry/)
+    cpSync(join(snapshotRoot, 'skills', 'ready', 'SKILL.md'), join(installedRoot, 'skills', 'ready', 'SKILL.md'))
+
+    mkdirSync(outsideRoot)
+    writeFileSync(join(outsideRoot, 'linked.txt'), 'linked\n')
+    rmSync(join(installedRoot, 'skills', 'ready', 'SKILL.md'))
+    symlinkSync(join(outsideRoot, 'linked.txt'), join(installedRoot, 'skills', 'ready', 'SKILL.md'))
+    assert.throws(() => assertInstalledCandidate(snapshotRoot, installedRoot, join(root, 'profile'), version, 'claude'), /link/)
+    rmSync(join(installedRoot, 'skills', 'ready', 'SKILL.md'))
+    cpSync(join(snapshotRoot, 'skills', 'ready', 'SKILL.md'), join(installedRoot, 'skills', 'ready', 'SKILL.md'))
+
+    mkdirSync(join(installedRoot, '.in_use'))
+    assert.doesNotThrow(() => assertInstalledCandidate(snapshotRoot, installedRoot, join(root, 'profile'), version, 'claude'))
+    assert.throws(() => assertInstalledCandidate(snapshotRoot, installedRoot, join(root, 'profile'), version, 'codex'), /unexpected installed entry/)
+    writeFileSync(join(installedRoot, '.in_use', 'nested.txt'), 'nested\n')
+    assert.throws(() => assertInstalledCandidate(snapshotRoot, installedRoot, join(root, 'profile'), version, 'claude'), /unexpected installed entry/)
   } finally {
     removeTemporaryDirectory(root)
   }

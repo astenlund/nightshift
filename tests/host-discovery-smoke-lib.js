@@ -562,45 +562,74 @@ function isContained(root, target) {
   return relation !== '' && relation !== '..' && !relation.startsWith('..' + require('node:path').sep) && !isAbsolute(relation)
 }
 
-function listFiles(root, prefix = '') {
+function listEntries(root, prefix = '') {
   return readdirSync(root, { withFileTypes: true }).flatMap((entry) => {
     const child = join(root, entry.name)
     const entryPath = prefix === '' ? entry.name : prefix + '/' + entry.name
     assertion(entry.isSymbolicLink() === false, 'Installed candidate contains a link')
     if (entry.isDirectory()) {
-      return listFiles(child, entryPath)
+      return [{ kind: 'directory', path: entryPath }, ...listEntries(child, entryPath)]
     }
     assertion(entry.isFile(), 'Installed candidate contains an unsupported entry')
 
-    return [entryPath]
-  }).sort(compareOrdinal)
+    return [{ kind: 'file', path: entryPath }]
+  }).sort((left, right) => compareOrdinal(left.path, right.path))
 }
 
-function assertInstalledPlugin(snapshotRoot, installedRoot, tempRoot, version) {
+function allowedInstalledExtras(host) {
+  assertion(['claude', 'codex'].includes(host), 'Unsupported installed host')
+
+  return host === 'claude' ? new Map([['.in_use', 'directory']]) : new Map()
+}
+
+function assertInstalledInventory(snapshotRoot, installedRoot, host) {
+  const expectedEntries = listEntries(snapshotRoot)
+  const installedEntries = listEntries(installedRoot)
+  const expectedByPath = new Map(expectedEntries.map((entry) => [entry.path, entry.kind]))
+  const installedByPath = new Map(installedEntries.map((entry) => [entry.path, entry.kind]))
+  const allowedExtras = allowedInstalledExtras(host)
+  for (const expected of expectedEntries) {
+    const actualKind = installedByPath.get(expected.path)
+    assertion(actualKind !== undefined, 'missing installed entry: ' + expected.path)
+    assertion(actualKind === expected.kind, 'Installed entry kind differs: ' + expected.path)
+  }
+  for (const actual of installedEntries) {
+    if (expectedByPath.has(actual.path)) {
+      continue
+    }
+    assertion(allowedExtras.get(actual.path) === actual.kind, 'unexpected installed entry: ' + actual.path)
+  }
+
+  return expectedEntries
+}
+
+function assertInstalledPlugin(snapshotRoot, installedRoot, tempRoot, version, host) {
   const resolvedTemp = realpathSync(tempRoot)
   const resolvedInstalled = realpathSync(installedRoot)
   assertion(isContained(resolvedTemp, resolvedInstalled), 'Host reported an installed root outside the generated profile')
   const manifest = JSON.parse(readFileSync(join(resolvedInstalled, '.claude-plugin', 'plugin.json'), 'utf8'))
   assertion(manifest && manifest.version === version, 'Installed manifest version differs from candidate')
-  for (const entryPath of listFiles(snapshotRoot)) {
+  const expectedEntries = assertInstalledInventory(snapshotRoot, resolvedInstalled, host)
+  for (const { kind, path: entryPath } of expectedEntries) {
+    if (kind !== 'file') {
+      continue
+    }
     const installedPath = join(resolvedInstalled, ...entryPath.split('/'))
-    const metadata = lstatSync(installedPath)
-    assertion(metadata.isSymbolicLink() === false && metadata.isFile(), 'Installed candidate file is missing or not regular: ' + entryPath)
     assertion(Buffer.compare(readFileSync(join(snapshotRoot, ...entryPath.split('/'))), readFileSync(installedPath)) === 0, 'Installed candidate bytes differ: ' + entryPath)
   }
 
   return resolvedInstalled
 }
 
-function assertInstalledCandidate(snapshotRoot, installedRoot, tempRoot, version) {
-  const resolvedInstalled = assertInstalledPlugin(snapshotRoot, installedRoot, tempRoot, version)
+function assertInstalledCandidate(snapshotRoot, installedRoot, tempRoot, version, host) {
+  const resolvedInstalled = assertInstalledPlugin(snapshotRoot, installedRoot, tempRoot, version, host)
   assertion(existsSync(join(resolvedInstalled, 'commands')) === false && existsSync(join(resolvedInstalled, 'skills', 'revise')) === false, 'Installed candidate exposes retired entries')
 
   return resolvedInstalled
 }
 
-function assertInstalledBaseline(baseline, installedRoot, tempRoot) {
-  const resolvedInstalled = assertInstalledPlugin(baseline.root, installedRoot, tempRoot, baseline.version)
+function assertInstalledBaseline(baseline, installedRoot, tempRoot, host) {
+  const resolvedInstalled = assertInstalledPlugin(baseline.root, installedRoot, tempRoot, baseline.version, host)
   const commandNames = readdirSync(join(resolvedInstalled, 'commands'), { withFileTypes: true }).map((entry) => {
     assertion(entry.isSymbolicLink() === false && entry.isFile() && entry.name.endsWith('.md'), 'Installed baseline command is invalid')
     return entry.name.slice(0, -3)
@@ -750,7 +779,7 @@ async function verifyInstalled({ host, execute, candidate, tempRoot, row }) {
   if (host === 'claude') {
     const list = await execute('claude', ['plugin', 'list', '--json'])
     const details = await execute('claude', ['plugin', 'details', 'nightshift@astenlund'])
-    const installedRoot = assertInstalledCandidate(candidate.root, parseClaudeInstalledRoot(list.stdout), tempRoot, candidate.version)
+    const installedRoot = assertInstalledCandidate(candidate.root, parseClaudeInstalledRoot(list.stdout), tempRoot, candidate.version, host)
     assertEngineClosure(installedRoot, resources)
     assertInitBacklogClosure(installedRoot)
     const observed = assertClaudeInventory(details.stdout, PUBLIC_SKILLS, 'Claude public discovery differs from candidate')
@@ -761,7 +790,7 @@ async function verifyInstalled({ host, execute, candidate, tempRoot, row }) {
     return installedRoot
   }
   const list = await execute('codex', ['plugin', 'list', '--json'])
-  const installedRoot = assertInstalledCandidate(candidate.root, parseCodexInstalledRoot(list.stdout), tempRoot, candidate.version)
+  const installedRoot = assertInstalledCandidate(candidate.root, parseCodexInstalledRoot(list.stdout), tempRoot, candidate.version, host)
   assertEngineClosure(installedRoot, resources)
   assertInitBacklogClosure(installedRoot)
   const catalog = await execute('codex', buildCodexArgv({ prompt: CODEX_CATALOG_PROMPT, schemaPath: join(candidate.root, 'tests', 'fixtures', 'codex-skill-catalog.schema.json') }))
@@ -778,7 +807,7 @@ async function verifyBaseline({ host, execute, baseline, candidate, tempRoot }) 
   if (host === 'claude') {
     const list = await execute('claude', ['plugin', 'list', '--json'])
     const details = await execute('claude', ['plugin', 'details', 'nightshift@astenlund'])
-    const installedRoot = assertInstalledBaseline(baseline, parseClaudeInstalledRoot(list.stdout), tempRoot)
+    const installedRoot = assertInstalledBaseline(baseline, parseClaudeInstalledRoot(list.stdout), tempRoot, host)
     const expected = [...baseline.skillNames, ...baseline.commandNames].sort(compareOrdinal)
     const observed = assertClaudeInventory(details.stdout, expected, 'Claude baseline discovery differs from fixture')
     const legacyCommands = observed.filter((name) => baseline.commandNames.includes(name))
@@ -787,7 +816,7 @@ async function verifyBaseline({ host, execute, baseline, candidate, tempRoot }) 
     return installedRoot
   }
   const list = await execute('codex', ['plugin', 'list', '--json'])
-  const installedRoot = assertInstalledBaseline(baseline, parseCodexInstalledRoot(list.stdout), tempRoot)
+  const installedRoot = assertInstalledBaseline(baseline, parseCodexInstalledRoot(list.stdout), tempRoot, host)
   const catalog = await execute('codex', buildCodexArgv({ prompt: CODEX_CATALOG_PROMPT, schemaPath: join(candidate.root, 'tests', 'fixtures', 'codex-skill-catalog.schema.json') }))
   const observed = parseJsonOutput(catalog.stdout, 'Codex skill catalog').skills
   const expected = ['nightshift:exploring', 'nightshift:ready', 'nightshift:revise']
@@ -905,4 +934,4 @@ async function runCell({ host, mode, checkoutRoot, evidenceRoot }) {
   return row
 }
 
-module.exports = { CODEX_CATALOG_PROMPT, PUBLIC_SKILLS, RUNTIME_KEYS, assembleClaudePromptBaseline, assembleCodexPromptBaseline, assertClaudeInventory, assertEngineClosure, assertInitBacklogClosure, assertOutsideCheckout, buildCodexArgv, candidateFactsForIndex, classifyChildExit, createCellSequence, createMarketplace, createTrustedSmokeRuntime, evaluateEvidence, executeCellSequence, loadCandidateEngineResources, loadLegacyBaseline, loadPromptBaseline, parseClaudeAuthStatus, parseClaudeDetails, parseCodexAuthStatus, projectRuntimeEnvironment, resolveExternalClaudeConfigRoot, runCell, stableEvidenceFile, stageCandidate, validateEvidenceRow, writeEvidence }
+module.exports = { CODEX_CATALOG_PROMPT, PUBLIC_SKILLS, RUNTIME_KEYS, assembleClaudePromptBaseline, assembleCodexPromptBaseline, assertClaudeInventory, assertEngineClosure, assertInitBacklogClosure, assertInstalledBaseline, assertInstalledCandidate, assertOutsideCheckout, buildCodexArgv, candidateFactsForIndex, classifyChildExit, createCellSequence, createMarketplace, createTrustedSmokeRuntime, evaluateEvidence, executeCellSequence, loadCandidateEngineResources, loadLegacyBaseline, loadPromptBaseline, parseClaudeAuthStatus, parseClaudeDetails, parseCodexAuthStatus, projectRuntimeEnvironment, resolveExternalClaudeConfigRoot, runCell, stableEvidenceFile, stageCandidate, validateEvidenceRow, writeEvidence }
