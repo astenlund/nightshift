@@ -2774,10 +2774,23 @@ function runHostEntryCases(repositoryRoot) {
 
           return null
         },
+        options: { hosts: ['codex'], scenarios: [sessionScenario()] },
       })
 
-      await assert.rejects(hostBehavior.runEvaluation(harness.options), /plugin installation verification/)
+      const evaluation = await hostBehavior.runEvaluation(harness.options)
+
+      assert.deepEqual(evaluation.result, {
+        code: 'harness-infrastructure',
+        detailCode: 'child-process',
+        host: 'codex',
+        initialCode: null,
+        ok: false,
+        phase: 'plugin-setup',
+        retainedRunRoot: null,
+      })
+      assert.deepEqual(evaluation.rows, [])
       assert.equal(harness.sessions.filter((session) => session.host === 'codex').length, 0)
+      assert.equal(nodeFilesystem.existsSync(harness.roots[1]), false, 'the plugin-list failure finalizes its repetition root')
 
       const verification = hostBehavior.verifyCodexPluginList({
         platform: process.platform,
@@ -2810,7 +2823,34 @@ function runHostEntryCases(repositoryRoot) {
     }
   })
 
-  test('a copied codex credential never survives a throw or failure stop path of the assembled evaluation', async () => {
+  test('a nonzero codex plugin setup command returns a closed failure and finalizes its root', async () => {
+    const scratch = tempRoot()
+    try {
+      const harness = createEvaluationHarness(scratch, {
+        onLaunch: (call) => call.boundary === 'plugin-setup' && call.argv[1] === 'marketplace' ? completedTuple({ exitCode: 1 }) : null,
+        options: { hosts: ['codex'], scenarios: [sessionScenario()] },
+      })
+
+      const evaluation = await hostBehavior.runEvaluation(harness.options)
+
+      assert.deepEqual(evaluation.result, {
+        code: 'harness-infrastructure',
+        detailCode: 'child-process',
+        host: 'codex',
+        initialCode: null,
+        ok: false,
+        phase: 'plugin-setup',
+        retainedRunRoot: null,
+      })
+      assert.deepEqual(evaluation.rows, [])
+      assert.equal(harness.sessions.length, 0)
+      assert.equal(nodeFilesystem.existsSync(harness.roots[1]), false)
+    } finally {
+      nodeFilesystem.rmSync(scratch, { force: true, recursive: true })
+    }
+  })
+
+  test('a copied codex credential never survives a setup or failure stop path of the assembled evaluation', async () => {
     const copyingProvision = async ({ isolatedCodexHome }) => {
       nodeFilesystem.mkdirSync(isolatedCodexHome, { recursive: true })
       nodeFilesystem.writeFileSync(join(isolatedCodexHome, 'auth.json'), '{"synthetic":"credential"}\n')
@@ -2824,11 +2864,16 @@ function runHostEntryCases(repositoryRoot) {
         onLaunch: (call) => call.boundary === 'plugin-setup' && call.argv[1] === 'list'
           ? completedTuple({ stdout: JSON.stringify([{ pluginId: 'nightshift@astenlund', source: { path: join(throwScratch, 'wrong'), source: 'local' } }]) + '\n' })
           : null,
-        options: { provisionAuthentication: copyingProvision },
+        options: { hosts: ['codex'], provisionAuthentication: copyingProvision, scenarios: [sessionScenario()] },
       })
 
-      await assert.rejects(hostBehavior.runEvaluation(harness.options), /plugin installation verification/)
-      assert.deepEqual(listFilesNamed(throwScratch, 'auth.json'), [], 'the throw path removes the copied credential before rethrowing')
+      const evaluation = await hostBehavior.runEvaluation(harness.options)
+
+      assert.equal(evaluation.result.code, 'harness-infrastructure')
+      assert.equal(evaluation.result.phase, 'plugin-setup')
+      assert.equal(evaluation.result.retainedRunRoot, null)
+      assert.deepEqual(listFilesNamed(throwScratch, 'auth.json'), [], 'the setup failure removes the copied credential before returning')
+      assert.equal(nodeFilesystem.existsSync(harness.roots[1]), false, 'the setup failure finalizes the repetition root')
     } finally {
       nodeFilesystem.rmSync(throwScratch, { force: true, recursive: true })
     }
@@ -2881,7 +2926,7 @@ function runHostEntryCases(repositoryRoot) {
     }
   })
 
-  test('a credential-removal failure on an evaluation stop path escalates to the retained-root carrier', async () => {
+  test('a credential-removal failure preserves the plugin setup identity and retains the root', async () => {
     const scratch = tempRoot()
     try {
       const harness = createEvaluationHarness(scratch, {
@@ -2914,9 +2959,9 @@ function runHostEntryCases(repositoryRoot) {
         ok: false,
         host: 'codex',
         code: 'harness-infrastructure',
-        phase: 'authentication',
+        phase: 'plugin-setup',
         initialCode: null,
-        detailCode: 'cleanup',
+        detailCode: 'child-process',
         retainedRunRoot: harness.roots[5],
       })
       assert.deepEqual(evaluation.rows, [])

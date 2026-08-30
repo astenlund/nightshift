@@ -1586,6 +1586,11 @@ async function runEvaluation(options) {
 
       return outcome
     }
+    const failPluginSetup = () => finishRepetition({
+      outcome: { result: infrastructureCarrier({ detailCode: 'child-process', host, phase: 'plugin-setup' }) },
+      phase: 'plugin-setup',
+      terminationProven: true,
+    })
     if (host === 'codex') {
       codexHome = nodePath.join(runRoot, 'codex-home')
       const provisioned = await provisionAuthentication({
@@ -1633,13 +1638,13 @@ async function runEvaluation(options) {
             })
           }
           if (completion.exitCode !== 0) {
-            throw new Error(`codex plugin setup command failed: ${argv.join(' ')}`)
+            return failPluginSetup()
           }
           pluginListStdout = completion.stdoutBytes
         }
         const listVerification = verifyCodexPluginList({ platform, runPluginRoot: sessionPluginRoot, stdoutBytes: pluginListStdout })
         if (!listVerification.ok) {
-          throw new Error(`codex plugin installation verification failed: ${listVerification.detail}`)
+          return failPluginSetup()
         }
       }
       if (controllerEnabled) {
