@@ -6,7 +6,7 @@ const { TextDecoder } = require('node:util')
 
 const { InitBacklogError, failureRecord } = require('./errors')
 const { pathIsContained, stableOpenFile } = require('./filesystem')
-const { canonicalJson, compareOrdinal, sameKeys, sha256, validateDigest, validateLogicalId, validateSelector, validateTarget } = require('./protocol')
+const { OPERATION, canonicalJson, compareOrdinal, sameKeys, sha256, validateDigest, validateLogicalId, validateSelector, validateTarget } = require('./protocol')
 
 const ASSET_IDS = [
   'backlog.bugs',
@@ -108,7 +108,7 @@ function expectedTargetRecord(selector, expected) {
 }
 
 function templateInvalid(detail, cause) {
-  throw new InitBacklogError(failureRecord({ code: 'template-invalid', detail, operation: 'inspect', phase: 'inspect' }), cause === undefined ? undefined : { cause })
+  throw new InitBacklogError(failureRecord({ code: 'template-invalid', detail, operation: OPERATION.INSPECT, phase: 'inspect' }), cause === undefined ? undefined : { cause })
 }
 
 function normalizeLogicalAsset(bytes) {

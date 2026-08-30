@@ -3,7 +3,7 @@
 
 const { InitBacklogError, throwInitBacklogError } = require('./lib/errors')
 const { buildApprovedApplyRequest } = require('./lib/apply-request')
-const { DIGEST_PATTERN, NONCE_PATTERN, canonicalJson, decodeRequest, encodeResult } = require('./lib/protocol')
+const { DIGEST_PATTERN, NONCE_PATTERN, OPERATION, canonicalJson, decodeRequest, encodeResult } = require('./lib/protocol')
 const {
   RequestTransportResidueError,
   cleanRequestResidue,
@@ -25,7 +25,7 @@ function controllerExitCode(result) {
   if (result.ok === false) {
     return result.phase === 'decode' ? 2 : 1
   }
-  if (result.operation === 'apply' && result.complete === false) {
+  if (result.operation === OPERATION.APPLY && result.complete === false) {
     return 1
   }
 
@@ -115,7 +115,7 @@ function runCli(options = {}) {
         payloadRawSha256: argv[5] === 'null' ? null : argv[5],
       }, options.filesystemOptions)
     } else {
-      const dispatch = options.dispatch ?? ((bytes, transportRoot) => runPrivateDispatcher(bytes, { inspect, apply: (request) => publishApply(request, options.filesystemOptions ?? {}), 'recover-inspect': (request) => inspectRecovery(request, { ...options.filesystemOptions, collectInspection }), 'recover-apply': (request) => applyRecovery(request, { ...options.filesystemOptions, collectInspection }), ...(options.handlers ?? {}) }, transportRoot))
+      const dispatch = options.dispatch ?? ((bytes, transportRoot) => runPrivateDispatcher(bytes, { [OPERATION.INSPECT]: inspect, [OPERATION.APPLY]: (request) => publishApply(request, options.filesystemOptions ?? {}), [OPERATION.RECOVER_INSPECT]: (request) => inspectRecovery(request, { ...options.filesystemOptions, collectInspection }), [OPERATION.RECOVER_APPLY]: (request) => applyRecovery(request, { ...options.filesystemOptions, collectInspection }), ...(options.handlers ?? {}) }, transportRoot))
       const dispatched = consumeRequest(argv[1], argv[2], dispatch, options.filesystemOptions)
       stdout.write(dispatched.stdout)
       if (dispatched.stderr.length !== 0) {

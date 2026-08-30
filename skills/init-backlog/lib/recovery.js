@@ -22,7 +22,7 @@ const {
   stableOpenFile,
   stageFile,
 } = require('./filesystem')
-const { MAX_INLINE_FILE_BYTES, MAX_MECHANICAL_FILE_BYTES, MAX_RECOVERY_REQUEST_BYTES, MAX_RECOVERY_RESULT_BYTES, NONCE_PATTERN, OWNER_BASENAME: RECOVERY_OWNER_BASENAME, OWNER_STAGE_BASENAME: RECOVERY_OWNER_STAGE_BASENAME, RECOVERY_GATE_BASENAME, RECOVERY_LOCK_BASENAME: LOCK_BASENAME, RECOVERY_LOCK_STAGE_PATTERN: LOCK_STAGE_PATTERN, RECOVERY_MARKER_BASENAME: MARKER_BASENAME, WARNING_CODES, buildRecoveryApplyRequest, canonicalBytes, canonicalJson, compareOrdinal, deriveRecoveryId, electionMarkerTemporaryNames, recoveryAllowedDispositions, sameCanonical, sha256, validateTarget, validOwnerRecordSchema } = require('./protocol')
+const { MAX_INLINE_FILE_BYTES, MAX_MECHANICAL_FILE_BYTES, MAX_RECOVERY_REQUEST_BYTES, MAX_RECOVERY_RESULT_BYTES, NONCE_PATTERN, OPERATION, OWNER_BASENAME: RECOVERY_OWNER_BASENAME, OWNER_STAGE_BASENAME: RECOVERY_OWNER_STAGE_BASENAME, RECOVERY_GATE_BASENAME, RECOVERY_LOCK_BASENAME: LOCK_BASENAME, RECOVERY_LOCK_STAGE_PATTERN: LOCK_STAGE_PATTERN, RECOVERY_MARKER_BASENAME: MARKER_BASENAME, WARNING_CODES, buildRecoveryApplyRequest, canonicalBytes, canonicalJson, compareOrdinal, deriveRecoveryId, electionMarkerTemporaryNames, recoveryAllowedDispositions, sameCanonical, sha256, validateTarget, validOwnerRecordSchema } = require('./protocol')
 const { collectInspection, validateElectionMarkerRecord } = require('./inspection')
 const { createOwnerInventoryIndex, validateOwnerInventoryStates } = require('./owner-inventory')
 const { publishRecoveryFile, recoveryTemporaryMatches, recoveryTemporaryTarget, relativeArtifact, removeRecoveryFile } = require('./publication')
@@ -180,7 +180,7 @@ function gateEvidence(root, options = {}) {
 }
 
 function ownerRecordValid(record, root) {
-  return validOwnerRecordSchema(record) && record.operation === 'recover-apply' && record.root === root && record.temporaryPaths.length === 0 && record.unfinalizedDirectories.length === 0
+  return validOwnerRecordSchema(record) && record.operation === OPERATION.RECOVER_APPLY && record.root === root && record.temporaryPaths.length === 0 && record.unfinalizedDirectories.length === 0
 }
 
 function markerTopology(root, target, record, inventory) {
@@ -288,12 +288,12 @@ function validOwnerTemporary(root, target, record, inventory) {
   const initial = `${LOCK_BASENAME}.${record.pid}.${record.ownerNonce}.new`
   const next = `${LOCK_BASENAME}.${record.ownerNonce}.next`
   if (target === initial) return true
-  if (record.operation === 'apply' && target === next) return true
-  if (record.operation === 'recover-apply') {
+  if (record.operation === OPERATION.APPLY && target === next) return true
+  if (record.operation === OPERATION.RECOVER_APPLY) {
     if (validRecoveryTemporaryTarget(target, record, inventory)) return true
     return backupParts(target) !== null
   }
-  if (record.operation !== 'apply' || record.manifestId === null) return false
+  if (record.operation !== OPERATION.APPLY || record.manifestId === null) return false
   if (validRecoveryTemporaryTarget(target, { ...record, recoveryId: record.manifestId }, inventory)) return true
   const backup = backupParts(target)
   if (backup !== null) return backup.manifestId === record.manifestId
@@ -353,22 +353,22 @@ function ownerEvidence(root, options = {}) {
 
 function stageEvidence(root, target, options = {}) {
   const match = LOCK_STAGE_PATTERN.exec(target)
-  if (match === null) failure('recover-inspect', 'inspect', 'runtime-lock', 'Lock stage basename is invalid.', null)
+  if (match === null) failure(OPERATION.RECOVER_INSPECT, 'inspect', 'runtime-lock', 'Lock stage basename is invalid.', null)
   let opened
   try {
     opened = readArtifact(root, target, { ...options, maxBytes: MAX_RECOVERY_REQUEST_BYTES }, true)
   } catch (error) {
-    if (error?.code === 'file-too-large') failure('recover-inspect', 'inspect', 'payload-too-large', 'Lock stage exceeds the maximum size.', target, error)
+    if (error?.code === 'file-too-large') failure(OPERATION.RECOVER_INSPECT, 'inspect', 'payload-too-large', 'Lock stage exceeds the maximum size.', target, error)
 
     throw error
   }
-  if (opened === null) failure('recover-inspect', 'inspect', 'runtime-lock', 'Lock stage is absent.', target)
+  if (opened === null) failure(OPERATION.RECOVER_INSPECT, 'inspect', 'runtime-lock', 'Lock stage is absent.', target)
   const pid = Number(match[1])
   const ownerNonce = match[2]
   const pidStatus = pidEvidence(pid, options)
-  if (pidStatus !== 'absent') failure('recover-inspect', 'lock', 'runtime-lock', 'Lock stage owner is live or indeterminate.', target)
+  if (pidStatus !== 'absent') failure(OPERATION.RECOVER_INSPECT, 'lock', 'runtime-lock', 'Lock stage owner is live or indeterminate.', target)
   const parsedRecord = parseCanonicalRecord(opened)
-  if (parsedRecord !== null && (parsedRecord.pid !== pid || parsedRecord.ownerNonce !== ownerNonce)) failure('recover-inspect', 'inspect', 'runtime-lock', 'Lock stage identity differs from its basename.', target)
+  if (parsedRecord !== null && (parsedRecord.pid !== pid || parsedRecord.ownerNonce !== ownerNonce)) failure(OPERATION.RECOVER_INSPECT, 'inspect', 'runtime-lock', 'Lock stage identity differs from its basename.', target)
   const inventory = Array.isArray(parsedRecord?.temporaryPaths) ? createOwnerInventoryIndex(parsedRecord.temporaryPaths) : null
   const record = parsedRecord !== null && inventory !== null && validOwnerRecord(parsedRecord, root, opened, inventory, options.platform) ? parsedRecord : null
 
@@ -380,18 +380,18 @@ function markerEvidence(root, options = {}) {
   try {
     opened = readArtifact(root, MARKER_BASENAME, { ...options, maxBytes: MAX_INLINE_FILE_BYTES }, true)
   } catch (error) {
-    if (error?.code === 'file-too-large') failure('recover-inspect', 'inspect', 'payload-too-large', 'Election marker exceeds the maximum inline size.', MARKER_BASENAME, error)
+    if (error?.code === 'file-too-large') failure(OPERATION.RECOVER_INSPECT, 'inspect', 'payload-too-large', 'Election marker exceeds the maximum inline size.', MARKER_BASENAME, error)
 
     throw error
   }
-  if (opened === null) failure('recover-inspect', 'inspect', 'runtime-marker', 'Election marker is absent.', MARKER_BASENAME)
+  if (opened === null) failure(OPERATION.RECOVER_INSPECT, 'inspect', 'runtime-marker', 'Election marker is absent.', MARKER_BASENAME)
   const parsed = parseCanonicalRecord(opened)
   const inspection = options.currentInspection
   const policyProjection = recoveryPolicyProjection(inspection)
   const gitKind = inspection?.git?.kind ?? 'git'
   const validRecord = validateElectionMarkerRecord(parsed, root)
-  if (!['git', 'non-git'].includes(gitKind)) failure('recover-inspect', 'inspect', 'runtime-marker', 'Election marker Git context is invalid.', MARKER_BASENAME)
-  if (validRecord && gitKind === 'git') failure('recover-inspect', 'inspect', 'runtime-marker', 'Election marker is valid in the current Git root.', MARKER_BASENAME)
+  if (!['git', 'non-git'].includes(gitKind)) failure(OPERATION.RECOVER_INSPECT, 'inspect', 'runtime-marker', 'Election marker Git context is invalid.', MARKER_BASENAME)
+  if (validRecord && gitKind === 'git') failure(OPERATION.RECOVER_INSPECT, 'inspect', 'runtime-marker', 'Election marker is valid in the current Git root.', MARKER_BASENAME)
   const classification = validRecord ? 'valid-non-git' : 'invalid'
   return {
     rawSha256: opened.rawSha256,
@@ -413,16 +413,16 @@ function recoveryPolicyProjection(inspection) {
 
 function backupEvidence(root, target, options = {}) {
   const match = BACKUP_PATTERN.exec(target)
-  if (match === null) failure('recover-inspect', 'inspect', 'filesystem', 'Backup basename is invalid.', null)
+  if (match === null) failure(OPERATION.RECOVER_INSPECT, 'inspect', 'filesystem', 'Backup basename is invalid.', null)
   let backup
   try {
     backup = readArtifact(root, target, boundedOpenOptions(options, MAX_MECHANICAL_FILE_BYTES), true)
   } catch (error) {
-    if (error?.code === 'file-too-large') failure('recover-inspect', 'inspect', 'payload-too-large', 'Backup exceeds the maximum mechanical size.', target, error)
+    if (error?.code === 'file-too-large') failure(OPERATION.RECOVER_INSPECT, 'inspect', 'payload-too-large', 'Backup exceeds the maximum mechanical size.', target, error)
 
     throw error
   }
-  if (backup === null) failure('recover-inspect', 'inspect', 'filesystem', 'Backup is absent.', target)
+  if (backup === null) failure(OPERATION.RECOVER_INSPECT, 'inspect', 'filesystem', 'Backup is absent.', target)
   const inspectionTargets = options.currentInspection?.targets ?? []
   const candidate = inspectionTargets.find((item) => sha256(Buffer.from(item.target, 'utf8')) === match[3])
   const candidateTarget = candidate?.target ?? null
@@ -430,7 +430,7 @@ function backupEvidence(root, target, options = {}) {
   try {
     current = candidateTarget === null ? null : readArtifact(root, candidateTarget, boundedOpenOptions(options, MAX_MECHANICAL_FILE_BYTES), true)
   } catch (error) {
-    if (error?.code === 'file-too-large') failure('recover-inspect', 'inspect', 'payload-too-large', 'Current recovery target exceeds the maximum mechanical size.', candidateTarget, error)
+    if (error?.code === 'file-too-large') failure(OPERATION.RECOVER_INSPECT, 'inspect', 'payload-too-large', 'Current recovery target exceeds the maximum mechanical size.', candidateTarget, error)
 
     throw error
   }
@@ -444,7 +444,7 @@ function allowedDispositionsFor(recoveryKind, evidence) {
 }
 
 function buildRecoveryResult(request, recoveryKind, recoveryTarget, evidence, allowedDispositions) {
-  const value = { allowedDispositions, evidence: { backup: evidence.backup ?? null, lockStage: evidence.lockStage ?? null, marker: evidence.marker ?? null, owner: evidence.owner ?? null, recoveryGate: evidence.recoveryGate ?? null }, host: request.host, hostContext: request.hostContext, ok: true, operation: 'recover-inspect', protocolVersion: 1, recoveryId: null, recoveryKind, recoveryTarget, root: request.root }
+  const value = { allowedDispositions, evidence: { backup: evidence.backup ?? null, lockStage: evidence.lockStage ?? null, marker: evidence.marker ?? null, owner: evidence.owner ?? null, recoveryGate: evidence.recoveryGate ?? null }, host: request.host, hostContext: request.hostContext, ok: true, operation: OPERATION.RECOVER_INSPECT, protocolVersion: 1, recoveryId: null, recoveryKind, recoveryTarget, root: request.root }
   value.recoveryId = deriveRecoveryId(value)
 
   return value
@@ -460,7 +460,7 @@ function withTransientRecoveryLock(root, request, options, callback, lockContext
   const ownerNonce = ownerNonceFor(options, request)
   const paths = initialLockPaths(root, pid, ownerNonce)
   const temporaryPaths = [relativeArtifact(root, paths.stage), ...(lockContext.temporaryPaths ?? [])].sort(compareOrdinal)
-  const record = { createdAtUnixMs: Date.now(), manifestId: null, operation: lockContext.operation ?? 'recover-inspect', ownerNonce, pid, protocolVersion: 1, recoveryId: lockContext.recoveryId ?? null, root, temporaryPaths, unfinalizedDirectories: [] }
+  const record = { createdAtUnixMs: Date.now(), manifestId: null, operation: lockContext.operation ?? OPERATION.RECOVER_INSPECT, ownerNonce, pid, protocolVersion: 1, recoveryId: lockContext.recoveryId ?? null, root, temporaryPaths, unfinalizedDirectories: [] }
   const lockCleanupOptions = { ...options }
   delete lockCleanupOptions.unlinkSync
   let acquired
@@ -546,25 +546,25 @@ function inspectRecoveryOnce(request, options, currentInspection) {
     let evidence
     let allowed
     if (request.recoveryKind === 'stale-owner') {
-      if (request.recoveryTarget !== LOCK_BASENAME) failure('recover-inspect', 'inspect', 'runtime-lock', 'Stale owner target is invalid.', request.recoveryTarget)
+      if (request.recoveryTarget !== LOCK_BASENAME) failure(OPERATION.RECOVER_INSPECT, 'inspect', 'runtime-lock', 'Stale owner target is invalid.', request.recoveryTarget)
       try {
         evidence = { owner: ownerEvidence(options.root, options) }
       } catch (error) {
-        if (error?.message === 'Publication lock owner is live or indeterminate') failure('recover-inspect', 'lock', 'runtime-lock', 'Publication lock owner is live or indeterminate.', request.recoveryTarget, error)
+        if (error?.message === 'Publication lock owner is live or indeterminate') failure(OPERATION.RECOVER_INSPECT, 'lock', 'runtime-lock', 'Publication lock owner is live or indeterminate.', request.recoveryTarget, error)
 
-        failure('recover-inspect', 'lock', 'runtime-lock', 'Publication lock is malformed: directory or inventory validation failed.', request.recoveryTarget, error)
+        failure(OPERATION.RECOVER_INSPECT, 'lock', 'runtime-lock', 'Publication lock is malformed: directory or inventory validation failed.', request.recoveryTarget, error)
       }
       allowed = ['cleanup']
     } else if (request.recoveryKind === 'stale-recovery-gate') {
-      if (request.recoveryTarget !== RECOVERY_GATE_BASENAME) failure('recover-inspect', 'inspect', 'runtime-lock', 'Recovery gate target is invalid.', request.recoveryTarget)
+      if (request.recoveryTarget !== RECOVERY_GATE_BASENAME) failure(OPERATION.RECOVER_INSPECT, 'inspect', 'runtime-lock', 'Recovery gate target is invalid.', request.recoveryTarget)
       let gate
       try {
         gate = gateEvidence(options.root, options)
       } catch (error) {
-        failure('recover-inspect', 'lock', 'runtime-lock', 'Recovery gate is malformed: link, identity, or extra entry validation failed.', request.recoveryTarget, error)
+        failure(OPERATION.RECOVER_INSPECT, 'lock', 'runtime-lock', 'Recovery gate is malformed: link, identity, or extra entry validation failed.', request.recoveryTarget, error)
       }
-      if (gate === null) failure('recover-inspect', 'inspect', 'runtime-lock', 'Recovery gate is absent.', request.recoveryTarget)
-      if (gate.record !== null && gate.pidStatus !== 'absent') failure('recover-inspect', 'lock', 'runtime-lock', 'Recovery gate owner is live or indeterminate.', request.recoveryTarget)
+      if (gate === null) failure(OPERATION.RECOVER_INSPECT, 'inspect', 'runtime-lock', 'Recovery gate is absent.', request.recoveryTarget)
+      if (gate.record !== null && gate.pidStatus !== 'absent') failure(OPERATION.RECOVER_INSPECT, 'lock', 'runtime-lock', 'Recovery gate owner is live or indeterminate.', request.recoveryTarget)
       evidence = { recoveryGate: gate }
       allowed = ['cleanup']
     } else if (request.recoveryKind === 'orphan-lock-stage') {
@@ -577,22 +577,22 @@ function inspectRecoveryOnce(request, options, currentInspection) {
       const backup = backupEvidence(options.root, request.recoveryTarget, { ...options, currentInspection })
       evidence = { backup }
     } else {
-      failure('recover-inspect', 'inspect', 'invalid-request', 'Recovery kind is invalid.', null)
+      failure(OPERATION.RECOVER_INSPECT, 'inspect', 'invalid-request', 'Recovery kind is invalid.', null)
     }
 
     allowed ??= allowedDispositionsFor(request.recoveryKind, evidence)
 
     const result = buildRecoveryResult(request, request.recoveryKind, request.recoveryTarget, evidence, allowed)
-    if (canonicalBytes(result).length > MAX_RECOVERY_RESULT_BYTES) failure('recover-inspect', 'inspect', 'payload-too-large', 'Recovery inspection result exceeds the maximum size.', request.recoveryTarget)
+    if (canonicalBytes(result).length > MAX_RECOVERY_RESULT_BYTES) failure(OPERATION.RECOVER_INSPECT, 'inspect', 'payload-too-large', 'Recovery inspection result exceeds the maximum size.', request.recoveryTarget)
     for (const disposition of allowed) {
       const applyRequest = buildRecoveryApplyRequest(request, result, disposition)
-      if (canonicalBytes(applyRequest).length > MAX_RECOVERY_REQUEST_BYTES) failure('recover-inspect', 'inspect', 'payload-too-large', 'Recovery apply request exceeds the maximum size.', request.recoveryTarget)
+      if (canonicalBytes(applyRequest).length > MAX_RECOVERY_REQUEST_BYTES) failure(OPERATION.RECOVER_INSPECT, 'inspect', 'payload-too-large', 'Recovery apply request exceeds the maximum size.', request.recoveryTarget)
     }
 
     return result
   } catch (error) {
     if (error instanceof InitBacklogError) throw error
-    failure('recover-inspect', 'inspect', 'filesystem', 'Recovery evidence inspection failed.', request.recoveryTarget, error)
+    failure(OPERATION.RECOVER_INSPECT, 'inspect', 'filesystem', 'Recovery evidence inspection failed.', request.recoveryTarget, error)
   }
 }
 
@@ -601,7 +601,7 @@ function inspectRecovery(request, options = {}) {
   try {
     root = canonicalRoot(request.root)
   } catch (error) {
-    failure('recover-inspect', 'inspect', 'filesystem', 'Recovery root validation failed.', null, error)
+    failure(OPERATION.RECOVER_INSPECT, 'inspect', 'filesystem', 'Recovery root validation failed.', null, error)
   }
   const kind = request.recoveryKind
   const target = request.recoveryTarget
@@ -610,7 +610,7 @@ function inspectRecovery(request, options = {}) {
       const collections = ['election-marker', 'abandoned-backup'].includes(kind) ? collectRecoveryInspections(root, request, options) : { first: undefined, second: undefined }
       const first = inspectRecoveryOnce(request, { ...options, root, skipTransientLock: true }, collections.first)
       const second = inspectRecoveryOnce(request, { ...options, root, skipTransientLock: true }, collections.second)
-      if (canonicalJson(first.evidence) !== canonicalJson(second.evidence)) failure('recover-inspect', 'inspect', 'snapshot-drift', 'snapshot-drift: Recovery evidence collections differ.', target)
+      if (canonicalJson(first.evidence) !== canonicalJson(second.evidence)) failure(OPERATION.RECOVER_INSPECT, 'inspect', 'snapshot-drift', 'snapshot-drift: Recovery evidence collections differ.', target)
 
       return second
     })
@@ -723,7 +723,7 @@ function removeOwnerArtifact(root, target, expected, options, record, inventory)
 }
 
 function recoverySuccess(request, inspection, disposition, status, changedPaths, retainedPaths) {
-  return { changedPaths: [...new Set(changedPaths)].sort(compareOrdinal), disposition, host: request.host, hostContext: request.hostContext, ok: true, operation: 'recover-apply', protocolVersion: 1, recoveryId: inspection.recoveryId, recoveryKind: inspection.recoveryKind, recoveryTarget: inspection.recoveryTarget, retainedPaths: [...new Set(retainedPaths)].sort(compareOrdinal), root: request.root, status, warnings: [] }
+  return { changedPaths: [...new Set(changedPaths)].sort(compareOrdinal), disposition, host: request.host, hostContext: request.hostContext, ok: true, operation: OPERATION.RECOVER_APPLY, protocolVersion: 1, recoveryId: inspection.recoveryId, recoveryKind: inspection.recoveryKind, recoveryTarget: inspection.recoveryTarget, retainedPaths: [...new Set(retainedPaths)].sort(compareOrdinal), root: request.root, status, warnings: [] }
 }
 
 function directoryIdentity(path) {
@@ -766,9 +766,9 @@ function claimRecoveryGate(root, inspection, options = {}) {
   const gate = recoveryGatePath(root)
   const stage = join(gate, RECOVERY_OWNER_STAGE_BASENAME)
   const owner = join(gate, RECOVERY_OWNER_BASENAME)
-  const pid = recoveryPidFor(options, { operation: 'recover-apply' })
-  const nonce = ownerNonceFor(options, { operation: 'recover-apply' })
-  const record = { createdAtUnixMs: Date.now(), manifestId: null, operation: 'recover-apply', ownerNonce: nonce, pid, protocolVersion: 1, recoveryId: inspection.recoveryId, root, temporaryPaths: [], unfinalizedDirectories: [] }
+  const pid = recoveryPidFor(options, { operation: OPERATION.RECOVER_APPLY })
+  const nonce = ownerNonceFor(options, { operation: OPERATION.RECOVER_APPLY })
+  const record = { createdAtUnixMs: Date.now(), manifestId: null, operation: OPERATION.RECOVER_APPLY, ownerNonce: nonce, pid, protocolVersion: 1, recoveryId: inspection.recoveryId, root, temporaryPaths: [], unfinalizedDirectories: [] }
   const bytes = Buffer.from(`${canonicalJson(record)}\n`, 'utf8')
   let created = false
   let createdIdentity = null
@@ -781,15 +781,15 @@ function claimRecoveryGate(root, inspection, options = {}) {
     }
     if (!created) {
       const existing = gateEvidence(root, options)
-      if (existing === null || existing.record === null || existing.record.recoveryId !== inspection.recoveryId || existing.ownerRawSha256 === null || existing.pidStatus !== 'absent') failure('recover-apply', 'lock', 'runtime-lock', 'Recovery gate is owned by another operation.', RECOVERY_GATE_BASENAME)
-      if (existing.ownerStageRawSha256 !== null) failure('recover-apply', 'lock', 'runtime-lock', 'Recovery gate is owned by another operation.', RECOVERY_GATE_BASENAME)
+      if (existing === null || existing.record === null || existing.record.recoveryId !== inspection.recoveryId || existing.ownerRawSha256 === null || existing.pidStatus !== 'absent') failure(OPERATION.RECOVER_APPLY, 'lock', 'runtime-lock', 'Recovery gate is owned by another operation.', RECOVERY_GATE_BASENAME)
+      if (existing.ownerStageRawSha256 !== null) failure(OPERATION.RECOVER_APPLY, 'lock', 'runtime-lock', 'Recovery gate is owned by another operation.', RECOVERY_GATE_BASENAME)
 
       const existingOwner = stableOpenFile(root, owner, boundedOpenOptions(options, MAX_RECOVERY_REQUEST_BYTES, { requireSingleLink: false }))
       const gateIdentity = directoryIdentity(gate)
       try {
         linkSync(owner, stage)
       } catch (error) {
-        failure('recover-apply', 'lock', 'runtime-lock', 'Recovery gate is owned by another operation.', RECOVERY_GATE_BASENAME, error)
+        failure(OPERATION.RECOVER_APPLY, 'lock', 'runtime-lock', 'Recovery gate is owned by another operation.', RECOVERY_GATE_BASENAME, error)
       }
       const existingStage = stableOpenFile(root, stage, boundedOpenOptions(options, existingOwner.bytes.length, { requireSingleLink: false }))
       const stageMetadata = lstatSync(stage, { bigint: true })
@@ -941,7 +941,7 @@ function collectFreshRecoveryProjection(root, request, options, carriedTargets) 
   const collect = options.collectInspection ?? collectInspection
   const first = collect(root, request.host, request.hostContext, options)
   const second = collect(root, request.host, request.hostContext, options)
-  if (canonicalJson({ ...first, snapshotId: null }) !== canonicalJson({ ...second, snapshotId: null })) failure('recover-apply', 'prevalidate', 'snapshot-drift', 'Recovery evidence changed before publication.', request.recoveryTarget)
+  if (canonicalJson({ ...first, snapshotId: null }) !== canonicalJson({ ...second, snapshotId: null })) failure(OPERATION.RECOVER_APPLY, 'prevalidate', 'snapshot-drift', 'Recovery evidence changed before publication.', request.recoveryTarget)
 
   return { inspection: second, authoritative: true }
 }
@@ -1024,30 +1024,30 @@ function enforceRecoveryResultCapacity(request, inspection, disposition, options
   const warnings = recoveryCapacityWarnings(paths)
   const success = recoverySuccess(request, inspection, disposition, 'completed', paths, paths)
   success.warnings = warnings
-  const failureResult = { actionId: null, code: 'payload-too-large', detail: '\u0000'.repeat(4096), manifestId: null, ok: false, operation: 'recover-apply', outcomes: [], phase: 'prevalidate', protocolVersion: 1, recovery: { retainedBackups: paths, status: 'cleanup-failed', warnings }, systemCode: null, target: inspection.recoveryTarget }
-  if (canonicalBytes(success).length > MAX_RECOVERY_RESULT_BYTES || canonicalBytes(failureResult).length > MAX_RECOVERY_RESULT_BYTES) failure('recover-apply', 'prevalidate', 'payload-too-large', 'Recovery result exceeds the maximum size.', inspection.recoveryTarget)
+  const failureResult = { actionId: null, code: 'payload-too-large', detail: '\u0000'.repeat(4096), manifestId: null, ok: false, operation: OPERATION.RECOVER_APPLY, outcomes: [], phase: 'prevalidate', protocolVersion: 1, recovery: { retainedBackups: paths, status: 'cleanup-failed', warnings }, systemCode: null, target: inspection.recoveryTarget }
+  if (canonicalBytes(success).length > MAX_RECOVERY_RESULT_BYTES || canonicalBytes(failureResult).length > MAX_RECOVERY_RESULT_BYTES) failure(OPERATION.RECOVER_APPLY, 'prevalidate', 'payload-too-large', 'Recovery result exceeds the maximum size.', inspection.recoveryTarget)
 
   return temporaryPaths
 }
 
 function throwRecoveryCleanupFailure(inspection, error) {
   const retainedBackups = inspection.recoveryKind === 'stale-owner' ? inspection.evidence.owner?.retainedBackups ?? [] : inspection.recoveryKind === 'abandoned-backup' ? [inspection.recoveryTarget] : []
-  failure('recover-apply', 'cleanup', 'cleanup-failed', 'cleanup-failed: Recovery publication cleanup failed.', inspection.recoveryTarget, error, { recovery: { retainedBackups, status: 'cleanup-failed', warnings: [{ code: 'manual-cleanup', detail: 'Manual cleanup is required for retained recovery residue.', target: inspection.recoveryTarget }] } })
+  failure(OPERATION.RECOVER_APPLY, 'cleanup', 'cleanup-failed', 'cleanup-failed: Recovery publication cleanup failed.', inspection.recoveryTarget, error, { recovery: { retainedBackups, status: 'cleanup-failed', warnings: [{ code: 'manual-cleanup', detail: 'Manual cleanup is required for retained recovery residue.', target: inspection.recoveryTarget }] } })
 }
 
 function applyRecovery(request, options = {}) {
   const inspection = request.recoveryInspection
-  if (inspection === null || inspection === undefined || deriveRecoveryId({ ...inspection, recoveryId: null }) !== inspection.recoveryId || !inspection.allowedDispositions.includes(request.disposition)) failure('recover-apply', 'prevalidate', 'recovery-invalid', 'Recovery inspection or disposition is invalid.', inspection?.recoveryTarget ?? null)
-  if (options.unattended === true && (options.authority === undefined || canonicalJson(options.authority) !== canonicalJson(inspection))) failure('recover-apply', 'prevalidate', 'recovery-invalid', 'Unattended recovery requires captured surrounding authority.', inspection.recoveryTarget)
+  if (inspection === null || inspection === undefined || deriveRecoveryId({ ...inspection, recoveryId: null }) !== inspection.recoveryId || !inspection.allowedDispositions.includes(request.disposition)) failure(OPERATION.RECOVER_APPLY, 'prevalidate', 'recovery-invalid', 'Recovery inspection or disposition is invalid.', inspection?.recoveryTarget ?? null)
+  if (options.unattended === true && (options.authority === undefined || canonicalJson(options.authority) !== canonicalJson(inspection))) failure(OPERATION.RECOVER_APPLY, 'prevalidate', 'recovery-invalid', 'Unattended recovery requires captured surrounding authority.', inspection.recoveryTarget)
   const root = canonicalRoot(request.root)
-  if (root !== inspection.root) failure('recover-apply', 'prevalidate', 'recovery-invalid', 'Recovery inspection root differs from the apply root.', inspection.recoveryTarget)
-  if (inspection.recoveryKind === 'election-marker' && inspection.recoveryTarget !== MARKER_BASENAME) failure('recover-apply', 'prevalidate', 'recovery-invalid', 'Election marker target is invalid.', inspection.recoveryTarget)
+  if (root !== inspection.root) failure(OPERATION.RECOVER_APPLY, 'prevalidate', 'recovery-invalid', 'Recovery inspection root differs from the apply root.', inspection.recoveryTarget)
+  if (inspection.recoveryKind === 'election-marker' && inspection.recoveryTarget !== MARKER_BASENAME) failure(OPERATION.RECOVER_APPLY, 'prevalidate', 'recovery-invalid', 'Election marker target is invalid.', inspection.recoveryTarget)
   const recoveryOwnerOptions = { ...options, ownerNonce: ownerNonceFor(options, request), pid: recoveryPidFor(options, request) }
   options = recoveryOwnerOptions
   const recoveryLockTemporaryPaths = enforceRecoveryResultCapacity(request, inspection, request.disposition, recoveryOwnerOptions)
   if (['orphan-lock-stage', 'election-marker', 'abandoned-backup'].includes(inspection.recoveryKind) && options.skipTransientLock !== true) {
     const stageTarget = relativeArtifact(root, initialLockPaths(root, recoveryOwnerOptions.pid, recoveryOwnerOptions.ownerNonce).stage)
-    const lockContext = ['election-marker', 'abandoned-backup'].includes(inspection.recoveryKind) ? { cleanupInventory: recoveryLockTemporaryPaths.filter((target) => target !== stageTarget && target !== inspection.recoveryTarget), operation: 'recover-apply', recoveryId: inspection.recoveryId, temporaryPaths: recoveryLockTemporaryPaths.filter((target) => target !== stageTarget) } : {}
+    const lockContext = ['election-marker', 'abandoned-backup'].includes(inspection.recoveryKind) ? { cleanupInventory: recoveryLockTemporaryPaths.filter((target) => target !== stageTarget && target !== inspection.recoveryTarget), operation: OPERATION.RECOVER_APPLY, recoveryId: inspection.recoveryId, temporaryPaths: recoveryLockTemporaryPaths.filter((target) => target !== stageTarget) } : {}
 
     try {
       return withTransientRecoveryLock(root, request, recoveryOwnerOptions, (verifyLock) => applyRecovery(request, { ...recoveryOwnerOptions, skipTransientLock: true, verifyLock }), lockContext)
@@ -1071,7 +1071,7 @@ function applyRecovery(request, options = {}) {
         const inventory = createOwnerInventoryIndex(inspection.evidence.owner.record.temporaryPaths)
         validateStaleOwnerReplay(root, inspection.evidence.owner, options, inventory)
       } catch (error) {
-        failure('recover-apply', 'prevalidate', 'snapshot-drift', 'Recovery evidence changed before publication.', inspection.recoveryTarget, error)
+        failure(OPERATION.RECOVER_APPLY, 'prevalidate', 'snapshot-drift', 'Recovery evidence changed before publication.', inspection.recoveryTarget, error)
       }
     }
     const restoreState = inspection.recoveryKind === 'abandoned-backup' && request.disposition === 'restore' ? backupRestoreState(root, inspection, options) : null
@@ -1082,7 +1082,7 @@ function applyRecovery(request, options = {}) {
       try {
         verifyTerminalRecovery(root, request, inspection, fresh, options)
       } catch (error) {
-        failure('recover-apply', 'prevalidate', 'snapshot-drift', 'Recovery evidence changed before publication.', inspection.recoveryTarget, error)
+        failure(OPERATION.RECOVER_APPLY, 'prevalidate', 'snapshot-drift', 'Recovery evidence changed before publication.', inspection.recoveryTarget, error)
       }
 
       if (restoreState === 'target-restored-backup-retained') {
@@ -1094,21 +1094,21 @@ function applyRecovery(request, options = {}) {
       return recoverySuccess(request, inspection, request.disposition, 'already-complete', [], [])
     }
     const freshOptions = options.currentInspection === undefined && options.collectInspection === undefined ? { ...options, currentInspection: { git: inspection.recoveryKind === 'election-marker' ? { kind: 'git', freshScaffold: true } : undefined, targets: carriedTargets } } : options
-    const freshRequest = { ...request, operation: 'recover-inspect', recoveryKind: inspection.recoveryKind, recoveryTarget: inspection.recoveryTarget }
+    const freshRequest = { ...request, operation: OPERATION.RECOVER_INSPECT, recoveryKind: inspection.recoveryKind, recoveryTarget: inspection.recoveryTarget }
     let fresh = null
     if (!(lockAbsentStaleOwner || inspection.recoveryKind === 'stale-recovery-gate')) {
       try {
         fresh = inspectRecovery(freshRequest, freshOptions)
       } catch (error) {
-        if (error instanceof InitBacklogError && error.record.code === 'snapshot-drift') failure('recover-apply', 'prevalidate', 'snapshot-drift', 'Recovery evidence changed before publication.', inspection.recoveryTarget, error)
+        if (error instanceof InitBacklogError && error.record.code === 'snapshot-drift') failure(OPERATION.RECOVER_APPLY, 'prevalidate', 'snapshot-drift', 'Recovery evidence changed before publication.', inspection.recoveryTarget, error)
 
         throw error
       }
     }
-    if (fresh !== null && !sameEvidence(fresh, inspection)) failure('recover-apply', 'prevalidate', 'snapshot-drift', 'Recovery evidence changed before publication.', inspection.recoveryTarget)
+    if (fresh !== null && !sameEvidence(fresh, inspection)) failure(OPERATION.RECOVER_APPLY, 'prevalidate', 'snapshot-drift', 'Recovery evidence changed before publication.', inspection.recoveryTarget)
     const currentEvidence = fresh?.evidence ?? inspection.evidence
     const allowedDispositions = allowedDispositionsFor(inspection.recoveryKind, currentEvidence)
-    if (canonicalJson(allowedDispositions) !== canonicalJson(inspection.allowedDispositions)) failure('recover-apply', 'prevalidate', 'snapshot-drift', 'Recovery evidence changed before publication.', inspection.recoveryTarget)
+    if (canonicalJson(allowedDispositions) !== canonicalJson(inspection.allowedDispositions)) failure(OPERATION.RECOVER_APPLY, 'prevalidate', 'snapshot-drift', 'Recovery evidence changed before publication.', inspection.recoveryTarget)
     let changed = []
     let retained = []
     let mutated = false
@@ -1121,11 +1121,11 @@ function applyRecovery(request, options = {}) {
       try {
         currentGate = gateEvidence(root, options)
       } catch (error) {
-        failure('recover-apply', 'prevalidate', 'snapshot-drift', 'Recovery evidence changed before publication.', inspection.recoveryTarget, error)
+        failure(OPERATION.RECOVER_APPLY, 'prevalidate', 'snapshot-drift', 'Recovery evidence changed before publication.', inspection.recoveryTarget, error)
       }
       if (currentGate === null) return recoverySuccess(request, inspection, request.disposition, 'already-complete', [], [])
       const transitionState = recoveryGateTransition(expectedGate, currentGate)
-      if (transitionState === null) failure('recover-apply', 'prevalidate', 'snapshot-drift', 'Recovery evidence changed before publication.', inspection.recoveryTarget)
+      if (transitionState === null) failure(OPERATION.RECOVER_APPLY, 'prevalidate', 'snapshot-drift', 'Recovery evidence changed before publication.', inspection.recoveryTarget)
       const recoveryId = expectedGate.record?.recoveryId ?? currentGate.record?.recoveryId
       if (currentGate.ownerStageRawSha256 !== null) { removeArtifact(root, `${RECOVERY_GATE_BASENAME}/${RECOVERY_OWNER_STAGE_BASENAME}`, { mode: currentGate.ownerStageMode, rawSha256: currentGate.ownerStageRawSha256, recoveryId }, options, false); mutated = true }
       if (currentGate.ownerRawSha256 !== null) { removeArtifact(root, `${RECOVERY_GATE_BASENAME}/${RECOVERY_OWNER_BASENAME}`, { mode: currentGate.ownerMode, rawSha256: currentGate.ownerRawSha256, recoveryId }, options, false); mutated = true }
@@ -1156,7 +1156,7 @@ function applyRecovery(request, options = {}) {
       } catch (error) {
         if (error instanceof InitBacklogError) throw error
 
-        failure('recover-apply', 'prevalidate', 'snapshot-drift', 'Recovery evidence changed before publication.', inspection.recoveryTarget, error)
+        failure(OPERATION.RECOVER_APPLY, 'prevalidate', 'snapshot-drift', 'Recovery evidence changed before publication.', inspection.recoveryTarget, error)
       }
       for (const item of owner.temporaryStates) if (item.present && !BACKUP_PATTERN.test(item.target) && removeOwnerArtifact(root, item.target, item, { ...options, removeAndVerify: remove }, owner.record, inventory)) mutated = true
       if (existsSync(join(root, LOCK_BASENAME))) { removeArtifact(root, LOCK_BASENAME, { mode: owner.mode, rawSha256: owner.rawSha256 }, options); mutated = true }
@@ -1175,7 +1175,7 @@ function applyRecovery(request, options = {}) {
         try {
           removeRecoveryFile(root, markerPath, { mode: marker.mode, rawSha256: marker.rawSha256 }, { ...options, unlinkSync: options.unlinkSync ?? unlinkSync })
         } catch (error) {
-          if (error?.message === 'Recovery removal evidence changed') failure('recover-apply', 'prevalidate', 'snapshot-drift', 'Recovery evidence changed before publication.', inspection.recoveryTarget, error)
+          if (error?.message === 'Recovery removal evidence changed') failure(OPERATION.RECOVER_APPLY, 'prevalidate', 'snapshot-drift', 'Recovery evidence changed before publication.', inspection.recoveryTarget, error)
 
           throw error
         }
@@ -1194,7 +1194,7 @@ function applyRecovery(request, options = {}) {
         try {
           publishRecoveryFile(root, markerPath, Buffer.from(`${canonicalJson(valid)}\n`, 'utf8'), marker.mode, { ...options, expected: { mode: marker.mode, rawSha256: marker.rawSha256 }, recoveryId: inspection.recoveryId, temporary })
         } catch (error) {
-          if (error?.message === 'Recovery publication target changed before rename') failure('recover-apply', 'prevalidate', 'snapshot-drift', 'Recovery evidence changed before publication.', inspection.recoveryTarget, error)
+          if (error?.message === 'Recovery publication target changed before rename') failure(OPERATION.RECOVER_APPLY, 'prevalidate', 'snapshot-drift', 'Recovery evidence changed before publication.', inspection.recoveryTarget, error)
 
           throw error
         }
@@ -1202,7 +1202,7 @@ function applyRecovery(request, options = {}) {
       }
       changed = [inspection.recoveryTarget]
     } else {
-      failure('recover-apply', 'prevalidate', 'recovery-invalid', 'Recovery kind is invalid.', inspection.recoveryTarget)
+      failure(OPERATION.RECOVER_APPLY, 'prevalidate', 'recovery-invalid', 'Recovery kind is invalid.', inspection.recoveryTarget)
     }
 
     return recoverySuccess(request, inspection, request.disposition, mutated ? 'completed' : 'already-complete', changed, retained)
@@ -1213,7 +1213,7 @@ function applyRecovery(request, options = {}) {
     }
     if (inspection.recoveryKind === 'abandoned-backup' && (error instanceof InitBacklogError ? !['restore-failed', 'cleanup-failed', 'snapshot-drift'].includes(error.record.code) : true)) {
       const status = request.disposition === 'restore' ? 'restore-failed' : 'cleanup-failed'
-      failure('recover-apply', request.disposition === 'restore' ? 'restore' : 'cleanup', status, `${status}: Recovery publication failed.`, inspection.recoveryTarget, error, { recovery: { retainedBackups: [inspection.recoveryTarget], status, warnings: [{ code: 'manual-cleanup', detail: 'Manual cleanup is required for retained recovery residue.', target: inspection.recoveryTarget }] } })
+      failure(OPERATION.RECOVER_APPLY, request.disposition === 'restore' ? 'restore' : 'cleanup', status, `${status}: Recovery publication failed.`, inspection.recoveryTarget, error, { recovery: { retainedBackups: [inspection.recoveryTarget], status, warnings: [{ code: 'manual-cleanup', detail: 'Manual cleanup is required for retained recovery residue.', target: inspection.recoveryTarget }] } })
     }
     if (error instanceof InitBacklogError && error.record.code === 'snapshot-drift') throw error
 
@@ -1222,7 +1222,7 @@ function applyRecovery(request, options = {}) {
       throwRecoveryCleanupFailure(inspection, error)
     }
 
-    failure('recover-apply', 'publish', 'filesystem', 'Recovery publication failed.', inspection.recoveryTarget, error)
+    failure(OPERATION.RECOVER_APPLY, 'publish', 'filesystem', 'Recovery publication failed.', inspection.recoveryTarget, error)
   }
 }
 

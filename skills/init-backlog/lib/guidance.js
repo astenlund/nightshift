@@ -6,7 +6,7 @@ const { TextDecoder } = require('node:util')
 
 const { InitBacklogError, throwInitBacklogError } = require('./errors')
 const { canonicalRoot, enumerateDirectory, pathIsContained, stableOpenFile, withAttributeProbe } = require('./filesystem')
-const { assertSafeWindowsScalar, compareOrdinal } = require('./protocol')
+const { OPERATION, assertSafeWindowsScalar, compareOrdinal } = require('./protocol')
 
 const GUIDANCE_SECTION = '## Backlogs and indexes'
 const CLAUDE_CANDIDATES = ['CLAUDE.md', 'CLAUDE.local.md']
@@ -21,11 +21,11 @@ const MAX_CONTROLLED_DISCOVERY_ENTRIES = 1024
 const GIT_METADATA_DIRECTORY = '.git'
 
 function fail(detail, cause, target = null) {
-  throwInitBacklogError({ code: 'guidance-resolution', detail, operation: 'inspect', phase: 'resolve', target }, cause)
+  throwInitBacklogError({ code: 'guidance-resolution', detail, operation: OPERATION.INSPECT, phase: 'resolve', target }, cause)
 }
 
 function failCandidateSize(target, cause) {
-  throwInitBacklogError({ code: 'payload-too-large', detail: 'Guidance candidate exceeds its maximum size.', operation: 'inspect', phase: 'inspect', target }, cause)
+  throwInitBacklogError({ code: 'payload-too-large', detail: 'Guidance candidate exceeds its maximum size.', operation: OPERATION.INSPECT, phase: 'inspect', target }, cause)
 }
 
 function relativeTarget(root, target) {
@@ -536,7 +536,7 @@ function discoverControlledMarkdown(root, directories = ['.claude/bugs', '.claud
   try {
     canonical = canonicalRoot(root)
   } catch (error) {
-    throwInitBacklogError({ code: 'filesystem', detail: 'Controlled discovery root is invalid.', operation: 'inspect', phase: 'inspect' }, error)
+    throwInitBacklogError({ code: 'filesystem', detail: 'Controlled discovery root is invalid.', operation: OPERATION.INSPECT, phase: 'inspect' }, error)
   }
   const discovered = []
   const identities = new Set()
@@ -550,7 +550,7 @@ function discoverControlledMarkdown(root, directories = ['.claude/bugs', '.claud
     } catch (error) {
       const code = error?.code === 'directory-too-large' ? 'payload-too-large' : error?.code === 'invalid-directory-name' ? 'invalid-target' : 'filesystem'
       const detail = code === 'payload-too-large' ? 'Controlled directory entries exceed the controller limit.' : 'Controlled directory discovery failed.'
-      throwInitBacklogError({ code, detail, operation: 'inspect', phase: 'inspect', target: code === 'invalid-target' ? null : relativeTarget(canonical, directory) }, error)
+      throwInitBacklogError({ code, detail, operation: OPERATION.INSPECT, phase: 'inspect', target: code === 'invalid-target' ? null : relativeTarget(canonical, directory) }, error)
     }
     visitedEntries += entries.length
 
@@ -561,7 +561,7 @@ function discoverControlledMarkdown(root, directories = ['.claude/bugs', '.claud
     while (pending.length > 0) {
       const entry = pending.pop()
       if (entry.name.includes('\\')) {
-        throwInitBacklogError({ code: 'invalid-target', detail: 'Controlled target cannot contain a backslash.', operation: 'inspect', phase: 'inspect' })
+        throwInitBacklogError({ code: 'invalid-target', detail: 'Controlled target cannot contain a backslash.', operation: OPERATION.INSPECT, phase: 'inspect' })
       }
       if (entry.metadata.isDirectory()) {
         const children = boundedEntries(entry.path)
@@ -573,7 +573,7 @@ function discoverControlledMarkdown(root, directories = ['.claude/bugs', '.claud
       }
       const target = relativeTarget(canonical, entry.path)
       if (discovered.length >= MAX_CONTROLLED_MARKDOWN_FILES) {
-        throwInitBacklogError({ code: 'payload-too-large', detail: 'Controlled Markdown count exceeds the controller limit.', operation: 'inspect', phase: 'inspect', target })
+        throwInitBacklogError({ code: 'payload-too-large', detail: 'Controlled Markdown count exceeds the controller limit.', operation: OPERATION.INSPECT, phase: 'inspect', target })
       }
       let opened
       try {
@@ -581,14 +581,14 @@ function discoverControlledMarkdown(root, directories = ['.claude/bugs', '.claud
       } catch (error) {
         const code = error?.code === 'file-too-large' ? 'payload-too-large' : 'filesystem'
         const detail = code === 'payload-too-large' ? 'Controlled mechanical target exceeds its maximum size.' : 'Controlled target cannot be stably read.'
-        throwInitBacklogError({ code, detail, operation: 'inspect', phase: 'inspect', target }, error)
+        throwInitBacklogError({ code, detail, operation: OPERATION.INSPECT, phase: 'inspect', target }, error)
       }
       if (identities.has(opened.identity)) {
-        throwInitBacklogError({ code: 'filesystem', detail: 'Controlled targets share a physical identity.', operation: 'inspect', phase: 'inspect', target })
+        throwInitBacklogError({ code: 'filesystem', detail: 'Controlled targets share a physical identity.', operation: OPERATION.INSPECT, phase: 'inspect', target })
       }
       retainedBytes += opened.bytes.length
       if (retainedBytes > MAX_CONTROLLED_MARKDOWN_RETAINED_BYTES) {
-        throwInitBacklogError({ code: 'payload-too-large', detail: 'Controlled Markdown files exceed the controller retained-byte limit.', operation: 'inspect', phase: 'inspect', target })
+        throwInitBacklogError({ code: 'payload-too-large', detail: 'Controlled Markdown files exceed the controller retained-byte limit.', operation: OPERATION.INSPECT, phase: 'inspect', target })
       }
       identities.add(opened.identity)
       discovered.push({ applicability: 'always', conceptIds: [], identity: opened.identity, kind: 'file', mode: opened.mode, path: entry.path, present: true, regions: [], target, templateRule: null, bytes: opened.bytes, rawSha256: opened.rawSha256 })
@@ -609,7 +609,7 @@ function discoverControlledMarkdown(root, directories = ['.claude/bugs', '.claud
       if (error instanceof InitBacklogError) {
         throw error
       }
-      throwInitBacklogError({ code: error?.code === 'invalid-directory-name' ? 'invalid-target' : 'filesystem', detail: 'Controlled directory is invalid.', operation: 'inspect', phase: 'inspect', target: error?.code === 'invalid-directory-name' ? null : directory }, error)
+      throwInitBacklogError({ code: error?.code === 'invalid-directory-name' ? 'invalid-target' : 'filesystem', detail: 'Controlled directory is invalid.', operation: OPERATION.INSPECT, phase: 'inspect', target: error?.code === 'invalid-directory-name' ? null : directory }, error)
     }
   }
 

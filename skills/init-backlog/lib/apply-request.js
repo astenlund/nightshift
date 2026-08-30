@@ -1,6 +1,6 @@
 'use strict'
 
-const { canonicalActionOrder, canonicalBytes, sameKeys, validateRequestRecord } = require('./protocol')
+const { OPERATION, canonicalActionOrder, canonicalBytes, sameKeys, validateRequestRecord } = require('./protocol')
 
 const MANIFEST_PROPOSAL_KEYS = Object.freeze(['actions', 'proposalDispositions', 'semanticDecisions', 'versionControlChoice', 'versionControlOptions'])
 const VERSION_CONTROL_OPTION_ORDER = Object.freeze(['track', 'ignore', 'deferred', 'not-required'])
@@ -17,7 +17,7 @@ function buildApprovedApplyRequest({ host, hostContext, inspection, manifestProp
     host,
     hostContext,
     inspection,
-    operation: 'apply',
+    operation: OPERATION.APPLY,
     proposalDispositions: manifestProposal.proposalDispositions,
     protocolVersion: 1,
     root,

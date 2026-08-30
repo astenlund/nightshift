@@ -8,6 +8,7 @@ const { BACKLOG_DIRECTORY_TARGETS, loadManifest } = require('./assets')
 const { InitBacklogError, failureRecord } = require('./errors')
 const { buildReadyCatalog, inspectRegions } = require('./inspection')
 const {
+  OPERATION,
   canonicalActionOrder,
   canonicalJson,
   compareOrdinal,
@@ -29,7 +30,7 @@ const DIRECTORY_TARGETS = new Set(['.claude', ...BACKLOG_DIRECTORY_TARGETS])
 const ACTION_KINDS = new Set(['ensure-directory', 'create-from-template', 'exact-edit', 'unwrap-file'])
 
 function admissionError(detail, fields = {}) {
-  throw new InitBacklogError(failureRecord({ code: fields.code ?? 'manifest-invalid', detail, operation: 'apply', phase: 'prevalidate', ...fields }))
+  throw new InitBacklogError(failureRecord({ code: fields.code ?? 'manifest-invalid', detail, operation: OPERATION.APPLY, phase: 'prevalidate', ...fields }))
 }
 
 function clone(value) {
@@ -77,7 +78,7 @@ function buildAdmissionIndexes(inspection) {
 }
 
 function validateInspectionIdentity(inspection, currentInspection) {
-  if (!inspection || inspection.ok !== true || inspection.operation !== 'inspect') admissionError('Carried inspection is invalid.')
+  if (!inspection || inspection.ok !== true || inspection.operation !== OPERATION.INSPECT) admissionError('Carried inspection is invalid.')
   let expected
   try {
     expected = deriveSnapshotId({ ...inspection, snapshotId: null })
@@ -395,7 +396,7 @@ function deriveRequestManifestId(request) {
 
 function admitApplyManifest(request, options = {}) {
   const inspection = request?.inspection ?? request
-  if (request?.operation !== undefined && request.operation !== 'apply') admissionError('Apply manifest operation is invalid.')
+  if (request?.operation !== undefined && request.operation !== OPERATION.APPLY) admissionError('Apply manifest operation is invalid.')
   const choice = request?.versionControlChoice ?? 'not-required'
   const dispositions = request?.proposalDispositions ?? []
   const actions = request?.actions ?? []

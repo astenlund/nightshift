@@ -34,6 +34,8 @@ const {
   MAX_INSPECT_RESULT_BYTES,
   MAX_RECOVERY_REQUEST_BYTES,
   MAX_RECOVERY_RESULT_BYTES,
+  OPERATION,
+  OPERATIONS,
   canonicalActionOrder,
   canonicalJson,
   compareOrdinal,
@@ -329,6 +331,40 @@ function runChild(scriptPath, args) {
 }
 
 function runProtocolCases(repositoryRoot) {
+  test('protocol operations expose one frozen vocabulary and derived validation order', () => {
+    assert.deepEqual(OPERATION, {
+      APPLY: 'apply',
+      INSPECT: 'inspect',
+      RECOVER_APPLY: 'recover-apply',
+      RECOVER_INSPECT: 'recover-inspect',
+    })
+    assert.equal(Object.isFrozen(OPERATION), true)
+    assert.deepEqual(OPERATIONS, Object.values(OPERATION))
+    assert.equal(Object.isFrozen(OPERATIONS), true)
+
+    const consumerTargets = [
+      'skills/init-backlog/init-backlog.js',
+      'skills/init-backlog/lib/apply-manifest.js',
+      'skills/init-backlog/lib/apply-request.js',
+      'skills/init-backlog/lib/assets.js',
+      'skills/init-backlog/lib/guidance.js',
+      'skills/init-backlog/lib/inspection.js',
+      'skills/init-backlog/lib/protocol.js',
+      'skills/init-backlog/lib/publication.js',
+      'skills/init-backlog/lib/recovery.js',
+    ]
+    const rawConsumer = /(?:\boperation\s*:\s*|\boperation\s*(?:===|!==)\s*|\bfailure\s*\(\s*)['"](?:apply|inspect|recover-apply|recover-inspect)['"]/u
+    for (const target of consumerTargets) {
+      const source = readFileSync(join(repositoryRoot, target), 'utf8')
+      assert.doesNotMatch(source, rawConsumer, `${target} retypes a protocol operation`)
+      if (target !== 'skills/init-backlog/lib/protocol.js') {
+        assert.doesNotMatch(source, /['"](?:apply|recover-apply|recover-inspect)['"]/u, `${target} retypes a protocol operation value`)
+      }
+    }
+    const controllerSource = readFileSync(join(repositoryRoot, 'skills/init-backlog/init-backlog.js'), 'utf8')
+    assert.doesNotMatch(controllerSource, /\{\s*inspect\s*,\s*apply\s*:/u, 'controller dispatch retypes operation keys')
+  })
+
   test('protocol constants and lexical grammars are closed', () => {
     assert.deepEqual(
       {

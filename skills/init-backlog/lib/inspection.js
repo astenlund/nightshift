@@ -11,11 +11,11 @@ const { inspectBackups } = require('./backups')
 const { InitBacklogError, failureRecord } = require('./errors')
 const { HTML_BLOCK_TYPE_SIX_TAGS, MAX_GUIDANCE_FILE_BYTES, discoverControlledMarkdown, resolveGuidance } = require('./guidance')
 const { boundedOpenOptions, canonicalRoot, comparableIdentity, comparableMode, createInitialLock, initialLockPaths, readOrdinalFirstDirectoryName, removeInitialLock, stableOpenFile, targetPath } = require('./filesystem')
-const { BACKUP_DIRECTORY, DIGEST_PATTERN, MAX_INLINE_FILE_BYTES, MAX_MECHANICAL_FILE_BYTES, MAX_RECOVERY_REQUEST_BYTES, RECOVERY_LOCK_BASENAME, RECOVERY_LOCK_STAGE_PATTERN, RECOVERY_MARKER_BASENAME, canonicalJson, compareOrdinal, deriveProposalId, deriveSnapshotId, encodeResult, sameKeys, sha256 } = require('./protocol')
+const { BACKUP_DIRECTORY, DIGEST_PATTERN, MAX_INLINE_FILE_BYTES, MAX_MECHANICAL_FILE_BYTES, MAX_RECOVERY_REQUEST_BYTES, OPERATION, RECOVERY_LOCK_BASENAME, RECOVERY_LOCK_STAGE_PATTERN, RECOVERY_MARKER_BASENAME, canonicalJson, compareOrdinal, deriveProposalId, deriveSnapshotId, encodeResult, sameKeys, sha256 } = require('./protocol')
 const { detectGitKind, inspectGitPolicy, newlineStyle, plansRootRuleEffective } = require('./git-policy')
 
 function inspectError(code, detail, target = null, cause, phase = 'inspect') {
-  throw new InitBacklogError(failureRecord({ code, detail, operation: 'inspect', phase, target }), cause === undefined ? undefined : { cause })
+  throw new InitBacklogError(failureRecord({ code, detail, operation: OPERATION.INSPECT, phase, target }), cause === undefined ? undefined : { cause })
 }
 
 function lineRecords(bytes) {
@@ -815,14 +815,14 @@ function collectInspection(root, host, hostContext = {}, options = {}) {
   } catch (error) {
     inspectError('filesystem', 'Retained backup inspection failed.', BACKUP_DIRECTORY, error)
   }
-  const result = { git: gitRecord, guidance: { baseAdapter: guidance.baseAdapter, candidates: guidance.candidates, graphPaths: guidance.graphPaths, imports: guidance.imports, independentPaths: guidance.independentPaths, resolvedTarget: guidance.resolvedTarget }, host, hostContext, ok: true, operation: 'inspect', problems: [...projectedProblems, ...backupEvidence.problems].sort((left, right) => compareOrdinal(`${left.code}\0${left.target ?? ''}\0${left.detail}`, `${right.code}\0${right.target ?? ''}\0${right.detail}`)), proposals: proposals.sort((left, right) => compareOrdinal(left.proposalId, right.proposalId)), protocolVersion: 1, retainedBackups: backupEvidence.backups, root: canonical, snapshotId: null, targets: targetRecords.sort((left, right) => compareOrdinal(left.target, right.target)), templates: descriptors.filter((entry) => entry.template).map((entry) => ({ conceptIds: entry.template.conceptIds, logicalSha256: entry.template.logicalSha256, target: entry.target, templateId: entry.template.templateId })).sort((left, right) => compareOrdinal(left.templateId, right.templateId)), unwrapReady: { after, targets: wrapFindings.map((item) => item.target).sort(compareOrdinal) }, warnings: [...readyProblems.warnings, ...backupEvidence.warnings].sort((left, right) => compareOrdinal(left.code, right.code)), wrapFindings, ready }
+  const result = { git: gitRecord, guidance: { baseAdapter: guidance.baseAdapter, candidates: guidance.candidates, graphPaths: guidance.graphPaths, imports: guidance.imports, independentPaths: guidance.independentPaths, resolvedTarget: guidance.resolvedTarget }, host, hostContext, ok: true, operation: OPERATION.INSPECT, problems: [...projectedProblems, ...backupEvidence.problems].sort((left, right) => compareOrdinal(`${left.code}\0${left.target ?? ''}\0${left.detail}`, `${right.code}\0${right.target ?? ''}\0${right.detail}`)), proposals: proposals.sort((left, right) => compareOrdinal(left.proposalId, right.proposalId)), protocolVersion: 1, retainedBackups: backupEvidence.backups, root: canonical, snapshotId: null, targets: targetRecords.sort((left, right) => compareOrdinal(left.target, right.target)), templates: descriptors.filter((entry) => entry.template).map((entry) => ({ conceptIds: entry.template.conceptIds, logicalSha256: entry.template.logicalSha256, target: entry.target, templateId: entry.template.templateId })).sort((left, right) => compareOrdinal(left.templateId, right.templateId)), unwrapReady: { after, targets: wrapFindings.map((item) => item.target).sort(compareOrdinal) }, warnings: [...readyProblems.warnings, ...backupEvidence.warnings].sort((left, right) => compareOrdinal(left.code, right.code)), wrapFindings, ready }
   result.snapshotId = deriveSnapshotId({ ...result, snapshotId: null })
 
   return result
 }
 
 function inspect(root, host, hostContext = {}, options = {}) {
-  if (root !== null && typeof root === 'object' && root.operation === 'inspect') {
+  if (root !== null && typeof root === 'object' && root.operation === OPERATION.INSPECT) {
     options = root.options ?? {}
     hostContext = root.hostContext ?? {}
     host = root.host
@@ -850,7 +850,7 @@ function inspect(root, host, hostContext = {}, options = {}) {
   const stageName = paths.stage.slice(canonical.length + 1).replaceAll('\\', '/')
   let lock
   try {
-    lock = createInitialLock(canonical, { createdAtUnixMs: Date.now(), manifestId: null, operation: 'inspect', ownerNonce, pid, protocolVersion: 1, recoveryId: null, root: canonical, temporaryPaths: [stageName], unfinalizedDirectories: [] }, { ...options, ownerNonce, pid })
+    lock = createInitialLock(canonical, { createdAtUnixMs: Date.now(), manifestId: null, operation: OPERATION.INSPECT, ownerNonce, pid, protocolVersion: 1, recoveryId: null, root: canonical, temporaryPaths: [stageName], unfinalizedDirectories: [] }, { ...options, ownerNonce, pid })
   } catch (error) {
     const code = error?.cause?.code
     inspectError(code === 'EEXIST' ? 'runtime-lock' : 'filesystem', 'Inspection lock could not be acquired.', RECOVERY_LOCK_BASENAME, error, 'lock')

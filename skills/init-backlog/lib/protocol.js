@@ -36,7 +36,13 @@ const RECOVERY_LOCK_STAGE_PATTERN = /^\.nightshift-init-backlog\.lock\.([1-9][0-
 
 const OWNER_RECORD_KEYS = ['createdAtUnixMs', 'manifestId', 'operation', 'ownerNonce', 'pid', 'protocolVersion', 'recoveryId', 'root', 'temporaryPaths', 'unfinalizedDirectories']
 
-const OPERATIONS = ['apply', 'inspect', 'recover-apply', 'recover-inspect']
+const OPERATION = Object.freeze({
+  APPLY: 'apply',
+  INSPECT: 'inspect',
+  RECOVER_APPLY: 'recover-apply',
+  RECOVER_INSPECT: 'recover-inspect',
+})
+const OPERATIONS = Object.freeze(Object.values(OPERATION))
 const PHASES = ['decode', 'resolve', 'inspect', 'lock', 'prevalidate', 'publish', 'verify', 'restore', 'cleanup']
 const WARNING_CODES = ['external-writer-window', 'manual-cleanup', 'nonblocking-ready-notice', 'runtime-support-created']
 const FAILURE_CODES = [
@@ -176,7 +182,7 @@ function proposalsByCanonicalAction(proposals) {
 }
 
 function buildRecoveryApplyRequest(request, recoveryInspection, disposition) {
-  return { disposition, host: request.host, hostContext: request.hostContext, operation: 'recover-apply', protocolVersion: 1, recoveryInspection, root: request.root }
+  return { disposition, host: request.host, hostContext: request.hostContext, operation: OPERATION.RECOVER_APPLY, protocolVersion: 1, recoveryInspection, root: request.root }
 }
 
 function sha256(bytes) {
@@ -524,7 +530,7 @@ function validateGit(value) {
 
 function validateInspectSuccess(value) {
   requireRecord(value, ['ok', 'protocolVersion', 'operation', 'root', 'host', 'hostContext', 'snapshotId', 'guidance', 'git', 'templates', 'targets', 'wrapFindings', 'proposals', 'ready', 'unwrapReady', 'problems', 'warnings', 'retainedBackups'], 'inspect result')
-  if (value.ok !== true || value.protocolVersion !== 1 || value.operation !== 'inspect') {
+  if (value.ok !== true || value.protocolVersion !== 1 || value.operation !== OPERATION.INSPECT) {
     invalid('invalid-request', 'decode', 'Inspect result is invalid.')
   }
   validateAbsoluteRoot(value.root)
@@ -613,7 +619,7 @@ function validateInspectSuccess(value) {
 
 function validateRecoveryInspection(value) {
   requireRecord(value, ['ok', 'protocolVersion', 'operation', 'root', 'host', 'hostContext', 'recoveryId', 'recoveryKind', 'recoveryTarget', 'evidence', 'allowedDispositions'], 'recovery inspection')
-  if (value.ok !== true || value.protocolVersion !== 1 || value.operation !== 'recover-inspect') {
+  if (value.ok !== true || value.protocolVersion !== 1 || value.operation !== OPERATION.RECOVER_INSPECT) {
     invalid('invalid-request', 'decode', 'Recovery inspection is invalid.')
   }
   validateAbsoluteRoot(value.root)
@@ -737,7 +743,7 @@ function validateRecoveryInspection(value) {
     const stageOnly = evidence.ownerName === null && evidence.ownerRawSha256 === null && evidence.ownerMode === null && evidence.ownerStageRawSha256 !== null && evidence.ownerStageMode !== null && evidence.record === null && evidence.pidStatus === null
     const ownerOnly = evidence.ownerName === OWNER_BASENAME && evidence.ownerRawSha256 !== null && evidence.ownerMode !== null && evidence.ownerStageRawSha256 === null && evidence.ownerStageMode === null && evidence.record !== null && evidence.pidStatus === 'absent'
     const ownerPair = evidence.ownerName === OWNER_BASENAME && evidence.ownerRawSha256 !== null && evidence.ownerMode !== null && evidence.ownerStageRawSha256 !== null && evidence.ownerStageMode !== null && evidence.record !== null && evidence.pidStatus === 'absent'
-    if (!(empty || stageOnly || ownerOnly || ownerPair) || evidence.record !== null && (evidence.record.operation !== 'recover-apply' || evidence.record.root !== value.root)) {
+    if (!(empty || stageOnly || ownerOnly || ownerPair) || evidence.record !== null && (evidence.record.operation !== OPERATION.RECOVER_APPLY || evidence.record.root !== value.root)) {
       invalid('recovery-invalid', 'prevalidate', 'Recovery gate evidence is invalid.', { target: value.recoveryTarget })
     }
   }
@@ -777,7 +783,7 @@ function validateOwnerRecord(value) {
   requireSafeInteger(value.createdAtUnixMs, 'owner creation time', { minimum: 0 })
   requireNullable(value.manifestId, validateDigest)
   requireNullable(value.recoveryId, validateDigest)
-  if (['inspect', 'recover-inspect'].includes(value.operation) && (value.manifestId !== null || value.recoveryId !== null) || value.operation === 'apply' && value.recoveryId !== null || value.operation === 'recover-apply' && (value.manifestId !== null || value.recoveryId === null)) {
+  if ([OPERATION.INSPECT, OPERATION.RECOVER_INSPECT].includes(value.operation) && (value.manifestId !== null || value.recoveryId !== null) || value.operation === OPERATION.APPLY && value.recoveryId !== null || value.operation === OPERATION.RECOVER_APPLY && (value.manifestId !== null || value.recoveryId === null)) {
     invalid('recovery-invalid', 'prevalidate', 'Owner record identity fields do not match its operation.')
   }
   requireArray(value.temporaryPaths, 'temporary paths', validateTarget, { ordinalBy: (item) => item, uniqueBy: (item) => item })
@@ -847,10 +853,10 @@ function validateRequestRecord(value, options = {}) {
     invalid('invalid-request', 'decode', 'Request operation is invalid.')
   }
   const keys = {
-    apply: ['protocolVersion', 'operation', 'root', 'host', 'hostContext', 'inspection', 'versionControlChoice', 'semanticDecisions', 'proposalDispositions', 'actions'],
-    inspect: ['protocolVersion', 'operation', 'root', 'host', 'hostContext'],
-    'recover-apply': ['protocolVersion', 'operation', 'root', 'host', 'hostContext', 'recoveryInspection', 'disposition'],
-    'recover-inspect': ['protocolVersion', 'operation', 'root', 'host', 'hostContext', 'recoveryKind', 'recoveryTarget'],
+    [OPERATION.APPLY]: ['protocolVersion', 'operation', 'root', 'host', 'hostContext', 'inspection', 'versionControlChoice', 'semanticDecisions', 'proposalDispositions', 'actions'],
+    [OPERATION.INSPECT]: ['protocolVersion', 'operation', 'root', 'host', 'hostContext'],
+    [OPERATION.RECOVER_APPLY]: ['protocolVersion', 'operation', 'root', 'host', 'hostContext', 'recoveryInspection', 'disposition'],
+    [OPERATION.RECOVER_INSPECT]: ['protocolVersion', 'operation', 'root', 'host', 'hostContext', 'recoveryKind', 'recoveryTarget'],
   }[value.operation]
   requireRecord(value, keys, 'request')
   if (value.protocolVersion !== 1) {
@@ -859,7 +865,7 @@ function validateRequestRecord(value, options = {}) {
   validateAbsoluteRoot(value.root, options)
   requireString(value.host, 'host', { values: ['claude-code', 'codex'] })
   validateHostContext(value.hostContext, value.host, options)
-  if (value.operation === 'apply') {
+  if (value.operation === OPERATION.APPLY) {
     validateInspectSuccess(value.inspection)
     if (value.inspection.root !== value.root || value.inspection.host !== value.host || canonicalJson(value.inspection.hostContext) !== canonicalJson(value.hostContext)) {
       invalid('manifest-invalid', 'prevalidate', 'Carried inspection identity does not match the request.')
@@ -880,7 +886,7 @@ function validateRequestRecord(value, options = {}) {
     }, { uniqueBy: (item) => item.proposalId })
     validateProposalDispositions(value.inspection.proposals, value.proposalDispositions, { versionControlChoice: value.versionControlChoice })
     requireArray(value.actions, 'actions', (item) => validateAction(item), { uniqueBy: (item) => item.id })
-  } else if (value.operation === 'recover-inspect') {
+  } else if (value.operation === OPERATION.RECOVER_INSPECT) {
     requireString(value.recoveryKind, 'recovery kind', { values: RECOVERY_KINDS })
     try {
       validateTarget(value.recoveryTarget)
@@ -890,7 +896,7 @@ function validateRequestRecord(value, options = {}) {
     if (!recoveryTargetMatches(value.recoveryKind, value.recoveryTarget)) {
       invalid('recovery-invalid', 'prevalidate', 'Recovery target does not match its recovery kind.', { target: value.recoveryTarget })
     }
-  } else if (value.operation === 'recover-apply') {
+  } else if (value.operation === OPERATION.RECOVER_APPLY) {
     try {
       validateRecoveryInspection(value.recoveryInspection)
     } catch (error) {
@@ -919,10 +925,10 @@ function validateResultRecord(value) {
   if (value.ok === false) {
     return validateFailure(value)
   }
-  if (value.operation === 'inspect') {
+  if (value.operation === OPERATION.INSPECT) {
     return validateInspectSuccess(value)
   }
-  if (value.operation === 'apply') {
+  if (value.operation === OPERATION.APPLY) {
     requireRecord(value, ['ok', 'protocolVersion', 'operation', 'root', 'host', 'hostContext', 'snapshotId', 'manifestId', 'versionControlChoice', 'complete', 'outcomes', 'incompleteTargets', 'warnings', 'retainedBackups', 'postInspect'], 'apply result')
     if (value.protocolVersion !== 1) {
       throw new TypeError('Apply result is invalid')
@@ -942,10 +948,10 @@ function validateResultRecord(value) {
 
     return value
   }
-  if (value.operation === 'recover-inspect') {
+  if (value.operation === OPERATION.RECOVER_INSPECT) {
     return validateRecoveryInspection(value)
   }
-  if (value.operation === 'recover-apply') {
+  if (value.operation === OPERATION.RECOVER_APPLY) {
     requireRecord(value, ['ok', 'protocolVersion', 'operation', 'root', 'host', 'hostContext', 'recoveryId', 'recoveryKind', 'recoveryTarget', 'disposition', 'status', 'changedPaths', 'retainedPaths', 'warnings'], 'recovery apply result')
     if (value.protocolVersion !== 1) {
       throw new TypeError('Recovery apply result is invalid')
@@ -996,10 +1002,10 @@ function decodeRequest(rawBytes, options = {}) {
     invalid('invalid-request', 'decode', 'Request JSON is not canonical.')
   }
   const operation = isPlainObject(value) && typeof value.operation === 'string' && OPERATIONS.includes(value.operation) ? value.operation : null
-  if ((operation === 'inspect' || operation === 'recover-inspect') && body.length > MAX_INSPECT_REQUEST_BYTES) {
+  if ((operation === OPERATION.INSPECT || operation === OPERATION.RECOVER_INSPECT) && body.length > MAX_INSPECT_REQUEST_BYTES) {
     invalid('payload-too-large', 'decode', 'Request exceeds the operation size.', { operation })
   }
-  if (operation === 'recover-apply' && body.length > MAX_RECOVERY_REQUEST_BYTES) {
+  if (operation === OPERATION.RECOVER_APPLY && body.length > MAX_RECOVERY_REQUEST_BYTES) {
     invalid('payload-too-large', 'decode', 'Request exceeds the operation size.', { operation })
   }
 
@@ -1007,10 +1013,10 @@ function decodeRequest(rawBytes, options = {}) {
 }
 
 function resultLimit(value) {
-  if (value.operation === 'inspect') {
+  if (value.operation === OPERATION.INSPECT) {
     return MAX_INSPECT_RESULT_BYTES
   }
-  if (value.operation === 'recover-inspect' || value.operation === 'recover-apply') {
+  if (value.operation === OPERATION.RECOVER_INSPECT || value.operation === OPERATION.RECOVER_APPLY) {
     return MAX_RECOVERY_RESULT_BYTES
   }
 
@@ -1018,7 +1024,7 @@ function resultLimit(value) {
 }
 
 function resultOverflowPhase(value) {
-  return value.operation === 'inspect' || value.operation === 'recover-inspect' ? 'inspect' : 'prevalidate'
+  return value.operation === OPERATION.INSPECT || value.operation === OPERATION.RECOVER_INSPECT ? 'inspect' : 'prevalidate'
 }
 
 function encodeResult(value) {
@@ -1260,6 +1266,7 @@ module.exports = {
   MAX_RECOVERY_REQUEST_BYTES,
   MAX_RECOVERY_RESULT_BYTES,
   NONCE_PATTERN,
+  OPERATION,
   OPERATIONS,
   OWNER_BASENAME,
   OWNER_STAGE_BASENAME,
