@@ -773,6 +773,63 @@ function runProtocolCases(repositoryRoot) {
     ]))
   })
 
+  test('canonical action ordering handles many interleaved rank-two targets without repeated full scans', () => {
+    let targetReads = 0
+    const actionWithTarget = (fields, target) => Object.defineProperty(fields, 'target', {
+      enumerable: true,
+      get() {
+        targetReads += 1
+
+        return target
+      },
+    })
+    const groups = Array.from({ length: 24 }, (_, index) => {
+      const suffix = String(index).padStart(2, '0')
+      const target = `target-${suffix}.md`
+
+      return {
+        create: actionWithTarget({ id: `create-${suffix}`, kind: 'create-from-template', mode: null, newline: 'lf', templateId: 'backlog.bugs' }, target),
+        first: actionWithTarget({ afterBase64: 'Yg==', beforeBase64: 'YQ==', id: `edit-${suffix}-a`, kind: 'exact-edit', regionId: `region-${suffix}-a` }, target),
+        second: actionWithTarget({ afterBase64: 'Yw==', beforeBase64: 'Yg==', id: `edit-${suffix}-b`, kind: 'exact-edit', regionId: `region-${suffix}-b` }, target),
+      }
+    })
+    const interleaved = []
+    for (let index = 0; index < groups.length; index += 1) {
+      const reverse = groups[groups.length - index - 1]
+      interleaved.push(reverse.second, groups[index].create, reverse.first)
+    }
+
+    const ordered = canonicalActionOrder(interleaved)
+
+    assert.deepEqual(ordered.map((action) => action.id), [
+      'create-00', 'edit-00-a', 'edit-00-b',
+      'create-01', 'edit-01-a', 'edit-01-b',
+      'create-02', 'edit-02-a', 'edit-02-b',
+      'create-03', 'edit-03-a', 'edit-03-b',
+      'create-04', 'edit-04-a', 'edit-04-b',
+      'create-05', 'edit-05-a', 'edit-05-b',
+      'create-06', 'edit-06-a', 'edit-06-b',
+      'create-07', 'edit-07-a', 'edit-07-b',
+      'create-08', 'edit-08-a', 'edit-08-b',
+      'create-09', 'edit-09-a', 'edit-09-b',
+      'create-10', 'edit-10-a', 'edit-10-b',
+      'create-11', 'edit-11-a', 'edit-11-b',
+      'create-12', 'edit-12-a', 'edit-12-b',
+      'create-13', 'edit-13-a', 'edit-13-b',
+      'create-14', 'edit-14-a', 'edit-14-b',
+      'create-15', 'edit-15-a', 'edit-15-b',
+      'create-16', 'edit-16-a', 'edit-16-b',
+      'create-17', 'edit-17-a', 'edit-17-b',
+      'create-18', 'edit-18-a', 'edit-18-b',
+      'create-19', 'edit-19-a', 'edit-19-b',
+      'create-20', 'edit-20-a', 'edit-20-b',
+      'create-21', 'edit-21-a', 'edit-21-b',
+      'create-22', 'edit-22-a', 'edit-22-b',
+      'create-23', 'edit-23-a', 'edit-23-b',
+    ])
+    assert.ok(targetReads < 2000, `canonical ordering read targets ${targetReads} times`)
+  })
+
   test('canonical identities bind complete protocol projections', () => {
     const root = canonicalRoot(repositoryRoot)
     const inspection = inspectResult(root)

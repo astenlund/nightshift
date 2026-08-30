@@ -1171,20 +1171,31 @@ function canonicalActionOrder(actions) {
     return left.index - right.index
   })
   const ordered = positioned.map((item) => item.action)
-  const rankTwoTargets = new Set(ordered.filter((action) => actionRank(action) === 2).map((action) => action.target))
-  for (const target of rankTwoTargets) {
-    const targetActions = ordered.filter((action) => actionRank(action) === 2 && action.target === target)
-    const chain = rankTwoChainOrder(targetActions)
-    let targetIndex = 0
-    for (let index = 0; index < ordered.length; index += 1) {
-      if (actionRank(ordered[index]) === 2 && ordered[index].target === target) {
-        ordered[index] = chain[targetIndex]
-        targetIndex += 1
-      }
+  const rankTwoByTarget = new Map()
+  for (const action of ordered) {
+    if (actionRank(action) !== 2) {
+      continue
     }
+    const { target } = action
+    const targetActions = rankTwoByTarget.get(target) ?? []
+    targetActions.push(action)
+    rankTwoByTarget.set(target, targetActions)
   }
+  for (const [target, targetActions] of rankTwoByTarget) {
+    rankTwoByTarget.set(target, rankTwoChainOrder(targetActions))
+  }
+  const targetIndexes = new Map()
 
-  return ordered
+  return ordered.map((action) => {
+    if (actionRank(action) !== 2) {
+      return action
+    }
+    const { target } = action
+    const targetIndex = targetIndexes.get(target) ?? 0
+    targetIndexes.set(target, targetIndex + 1)
+
+    return rankTwoByTarget.get(target)[targetIndex]
+  })
 }
 
 function deriveProposalId(value) {
