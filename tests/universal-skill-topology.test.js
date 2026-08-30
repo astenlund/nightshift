@@ -10,7 +10,7 @@ const { dirname, join, relative } = require('node:path')
 const test = require('node:test')
 
 const { PROCEDURE_REPLACEMENTS, PUBLIC_SKILLS, REVISE_ENGINE_RESOURCES, REVISE_WRAPPERS } = require('./entry-contract')
-const { advanceQueue, createQueue, resumeQueue } = require('../skills/handover/handover-queue')
+const { QUEUE_STEPS, advanceQueue, createQueue, resumeQueue } = require('../skills/handover/handover-queue')
 const {
   MAX_PLAN_BYTES,
   MAX_PLAN_CANDIDATE_BYTES,
@@ -93,6 +93,27 @@ function runtimeModuleClosure(entryPath) {
 
 function removeProcedureEnvelope(text) {
   return text.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n/, '').replace(/\r?\n/g, '\n')
+}
+
+function extractHandoverProcedureTitles(body) {
+  const normalizedBody = body.replace(/\r?\n/g, '\n')
+  const procedureStart = normalizedBody.indexOf('## Procedure\n')
+  assert.notEqual(procedureStart, -1, 'handover must define its procedure')
+  const procedure = normalizedBody.slice(procedureStart + '## Procedure\n'.length)
+  const nextSection = procedure.indexOf('\n## ')
+  const steps = [...(nextSection === -1 ? procedure : procedure.slice(0, nextSection)).matchAll(/^(\d+)\. (.+)$/gm)]
+
+  return steps.map((step, index) => {
+    assert.equal(Number(step[1]), index + 1, 'handover procedure steps must be contiguous')
+    const boldTitle = /^\*\*(.+?)\*\*/.exec(step[2])
+    if (boldTitle !== null) {
+      return boldTitle[1].replace(/\.$/, '')
+    }
+    const reviseTitle = /^`?\/nightshift:revise-([a-z-]+)`?:/.exec(step[2])
+    assert.notEqual(reviseTitle, null, `handover procedure step ${step[1]} must have a queue title`)
+
+    return `Revise ${reviseTitle[1].replace(/-/g, ' ')}`
+  })
 }
 
 function countExact(text, value) {
@@ -464,6 +485,24 @@ test('init-backlog embeds no prompt-owned template bodies', () => {
   assert.equal(countExact(body, '# Quick wins\n'), 0, 'skills/init-backlog/SKILL.md still contains the prompt-owned `# Quick wins` template body')
   assert.equal(countExact(body, '~~~markdown'), 0, 'init-backlog must not fence any prompt-owned template body')
   assert.equal(countExact(body, '### `.claude/'), 0, 'init-backlog must not carry per-target template headings')
+})
+
+test('handover procedure titles match the ordered queue inventory', () => {
+  const { body } = parseFrontmatter(join(PUBLIC_SKILLS_ROOT, 'handover', 'SKILL.md'))
+  const procedureTitles = extractHandoverProcedureTitles(body)
+
+  assert.equal(procedureTitles.length, 12, 'handover must define all twelve lifecycle procedure steps')
+  assert.deepEqual(procedureTitles, QUEUE_STEPS)
+  const mutatedBody = body.replace('**Spec gate.**', '**Changed gate.**')
+  assert.notEqual(mutatedBody, body, 'handover procedure mutation target must exist')
+  assert.throws(() => assert.deepEqual(extractHandoverProcedureTitles(mutatedBody), QUEUE_STEPS), assert.AssertionError)
+})
+
+test('plan binding delegates containment to the shared filesystem primitive', () => {
+  const source = readRequiredFile(join(REPOSITORY_ROOT, 'internal', 'plan-binding.js'))
+
+  assert.match(source, /const \{[^}]*pathIsContained[^}]*\} = require\('\.\/filesystem-primitives'\)/)
+  assert.equal(/function pathIsContained\s*\(/.test(source), false)
 })
 
 test('handover preserves lifecycle behavior behind the agreement gate', () => {
