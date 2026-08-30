@@ -1267,59 +1267,69 @@ function publishApply(request, options = {}) {
       else publishMarker(request, admission, root, admission.manifestId, platformMode(options, 0o600), publicationOptions, fixed)
     }
     const publishActions = (startIndex, endIndex) => {
-      for (let index = startIndex; index < endIndex; index += 1) {
-        const action = allActions[index]
-        const path = targets[index]
-        const state = states.get(action.target) ?? { content: null, kind: action.kind === 'ensure-directory' ? 'directory' : 'file', mode: action.mode, present: false }
-        const chain = []
-        for (let chainIndex = index; chainIndex < endIndex && allActions[chainIndex].target === action.target; chainIndex += 1) chain.push(allActions[chainIndex])
-        if (chain.length > 1 && action.kind !== 'ensure-directory') {
-          const terminalBytes = actionAfter(request, chain[chain.length - 1], root, options)
-          const terminalMode = effectiveActionFileMode(chain[chain.length - 1], state.mode, options)
-          if (terminalBytes !== null && targetMatchesOutput(root, path, 'file', terminalBytes, terminalMode, options)) {
-            for (const completed of chain) outcomes.push({ actionId: completed.id, status: 'skipped-complete', target: completed.target })
+      let index = startIndex
+      while (index < endIndex) {
+        const firstAction = allActions[index]
+        const firstPath = targets[index]
+        const state = states.get(firstAction.target) ?? { content: null, kind: firstAction.kind === 'ensure-directory' ? 'directory' : 'file', mode: firstAction.mode, present: false }
+        let chainEnd = index + 1
+        while (chainEnd < endIndex && allActions[chainEnd].target === firstAction.target) chainEnd += 1
+        if (chainEnd - index > 1 && firstAction.kind !== 'ensure-directory') {
+          const terminalAction = allActions[chainEnd - 1]
+          const terminalBytes = actionAfter(request, terminalAction, root, options)
+          const terminalMode = effectiveActionFileMode(terminalAction, state.mode, options)
+          if (terminalBytes !== null && targetMatchesOutput(root, firstPath, 'file', terminalBytes, terminalMode, options)) {
+            for (let completedIndex = index; completedIndex < chainEnd; completedIndex += 1) {
+              const completed = allActions[completedIndex]
+              outcomes.push({ actionId: completed.id, status: 'skipped-complete', target: completed.target })
+            }
             state.present = true
             state.content = terminalBytes
-            states.set(action.target, state)
-            index += chain.length - 1
+            states.set(firstAction.target, state)
+            index = chainEnd
             continue
           }
         }
-        if (action.kind === 'ensure-directory') {
-          const approvedMode = platformMode(options, action.mode)
-          const already = state.present || targetMatchesOutput(root, path, 'directory', null, approvedMode, options)
-          if (!state.present) {
-            if (!already) publishDirectory(root, path, approvedMode, publicationOptions)
-            state.present = true
-          }
-          outcomes.push({ actionId: action.id, status: already ? 'skipped-complete' : 'created', target: action.target })
-        } else {
-          const bytes = actionAfter(request, action, root, options)
-          if (bytes === null) publicationError('Approved action has no content image.', { code: 'manifest-invalid', phase: 'prevalidate', manifestId: admission.manifestId, actionId: action.id, target: action.target })
-          let already = false
-          const effectiveMode = effectiveActionFileMode(action, state.mode, options)
-          already = targetMatchesPublishedTemporary(root, path, bytes, effectiveMode, actionTemps[index], publicationOptions) || targetMatchesOutput(root, path, 'file', bytes, effectiveMode, options)
-          const expectedContent = state.content ?? actionBefore(request, action, root, options)
-          let published
-          if (!already) published = publishContent(root, path, bytes, effectiveMode, actionTemps[index], publicationOptions, state.present, { content: expectedContent, identity: state.identity, mode: state.mode })
-          state.present = true
-          state.content = bytes
-          if (published !== undefined) {
-            state.identity = published.final.identity
-            state.mode = published.final.mode
-          } else if (already) {
-            const adopted = publicationOptions.ownedTemporaries?.get(actionTemps[index])
-            if (adopted?.destination === path) {
-              state.identity = adopted.identity
-              state.mode = adopted.mode
-            } else {
-              const current = stableOpenFile(root, path, boundedOpenOptions(options, bytes.length, { requireSingleLink: true }))
-              state.identity = current.identity
-              state.mode = current.mode
+        while (index < chainEnd) {
+          const action = allActions[index]
+          const path = targets[index]
+          if (action.kind === 'ensure-directory') {
+            const approvedMode = platformMode(options, action.mode)
+            const already = state.present || targetMatchesOutput(root, path, 'directory', null, approvedMode, options)
+            if (!state.present) {
+              if (!already) publishDirectory(root, path, approvedMode, publicationOptions)
+              state.present = true
             }
+            outcomes.push({ actionId: action.id, status: already ? 'skipped-complete' : 'created', target: action.target })
+          } else {
+            const bytes = actionAfter(request, action, root, options)
+            if (bytes === null) publicationError('Approved action has no content image.', { code: 'manifest-invalid', phase: 'prevalidate', manifestId: admission.manifestId, actionId: action.id, target: action.target })
+            const effectiveMode = effectiveActionFileMode(action, state.mode, options)
+            const already = targetMatchesPublishedTemporary(root, path, bytes, effectiveMode, actionTemps[index], publicationOptions) || targetMatchesOutput(root, path, 'file', bytes, effectiveMode, options)
+            const expectedContent = state.content ?? actionBefore(request, action, root, options)
+            let published
+            if (!already) published = publishContent(root, path, bytes, effectiveMode, actionTemps[index], publicationOptions, state.present, { content: expectedContent, identity: state.identity, mode: state.mode })
+            state.present = true
+            state.content = bytes
+            if (published !== undefined) {
+              state.identity = published.final.identity
+              state.mode = published.final.mode
+            } else if (already) {
+              const adopted = publicationOptions.ownedTemporaries?.get(actionTemps[index])
+              if (adopted?.destination === path) {
+                state.identity = adopted.identity
+                state.mode = adopted.mode
+              } else {
+                const current = stableOpenFile(root, path, boundedOpenOptions(options, bytes.length, { requireSingleLink: true }))
+                state.identity = current.identity
+                state.mode = current.mode
+              }
+            }
+            const status = already ? 'skipped-complete' : action.kind === 'unwrap-file' ? 'unwrapped' : action.kind === 'create-from-template' ? 'created' : 'edited'
+            outcomes.push({ actionId: action.id, status, target: action.target })
           }
-          const status = already ? 'skipped-complete' : action.kind === 'unwrap-file' ? 'unwrapped' : action.kind === 'create-from-template' ? 'created' : 'edited'
-          outcomes.push({ actionId: action.id, status, target: action.target })
+          states.set(action.target, state)
+          index += 1
         }
       }
       if (action.kind === 'ensure-directory') {

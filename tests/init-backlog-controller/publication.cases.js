@@ -1599,6 +1599,46 @@ function runPublicationCases() {
     }
   })
 
+  test('buffers each same-target publication action at most once', (context) => {
+    const root = fixtureRoot()
+    context.after(() => rmSync(root, { force: true, recursive: true }))
+    const target = '.claude/FEATURES.md'
+    const actionCount = 64
+    const images = [Buffer.from('# Features\n', 'utf8')]
+    for (let index = 0; index < actionCount; index += 1) images.push(Buffer.from(`${images[index].toString('utf8')}line ${index}\n`, 'utf8'))
+    const actions = Array.from({ length: actionCount }, (_, index) => ({ afterBase64: images[index + 1].toString('base64'), beforeBase64: images[index].toString('base64'), id: `p-linear-chain-${index}`, kind: 'exact-edit', regionId: 'features.document-preamble', target }))
+    const carried = inspection(root, {
+      proposals: actions.map((action) => ({ action, afterBase64: action.afterBase64, beforeBase64: action.beforeBase64, condition: 'always', proposalId: action.id, reason: 'guidance-section' })),
+      ready: analyzeCatalog([{ contents: images[actionCount].toString('utf8'), target: 'FEATURES.md' }]),
+      targets: [{ bom: null, cleanTextSha256: null, contentBase64: images[0].toString('base64'), contentRole: 'semantic', editableRegions: [{ endByte: images[0].length, regionId: 'features.document-preamble', startByte: 0 }], finalNewline: true, kind: 'file', mode: process.platform === 'win32' ? null : 420, newline: 'lf', rawSha256: sha256(images[0]), states: ['present'], target, templateId: null, templateSha256: null }],
+    })
+    carried.snapshotId = deriveSnapshotId({ ...carried, snapshotId: null })
+    const applyRequest = request(root, { actions, inspection: carried, proposalDispositions: actions.map((action) => ({ disposition: 'selected', proposalId: action.id })) })
+    mkdirSync(join(root, '.claude'), { recursive: true })
+    writeFileSync(join(root, target), images[0])
+    const originalPush = Array.prototype.push
+    let countActionBuffering = false
+    let bufferedActions = 0
+    try {
+      Array.prototype.push = function (...items) {
+        if (countActionBuffering) bufferedActions += items.filter((item) => item?.kind === 'exact-edit' && item.target === target).length
+
+        return Reflect.apply(originalPush, this, items)
+      }
+      const result = publishApply(applyRequest, {
+        collectInspection: () => carried,
+        onTransition: (point) => { if (point === 'after-lock-upgrade') countActionBuffering = true },
+        rescanRegions: ({ action }) => [{ endByte: Buffer.from(action.afterBase64, 'base64').length, regionId: action.regionId, startByte: 0 }],
+      })
+
+      assert.equal(result.outcomes.length, actionCount)
+    } finally {
+      Array.prototype.push = originalPush
+    }
+    assert.ok(bufferedActions <= actionCount, `same-target planning buffered ${bufferedActions} actions for a ${actionCount}-action chain`)
+    assert.deepEqual(readFileSync(join(root, target)), images[actionCount])
+  })
+
   test('rejects an untrusted resumed lock before any publication', () => {
     const root = fixtureRoot()
     try {
