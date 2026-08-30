@@ -1647,6 +1647,7 @@ async function runEvaluation(options) {
           return failPluginSetup()
         }
       }
+      let readyWorkerCompletion = null
       if (controllerEnabled) {
         const workerEnvironment = driver.buildWorkerProjection({ ambientEnvironment: workerAmbient.environment, checkoutRoot, gitIsolation, platform, protectedRoots, temporaryPath: hostTemp.path })
         const workerCompletion = await launch({
@@ -1671,11 +1672,28 @@ async function runEvaluation(options) {
             terminationProven: false,
           })
         }
+        readyWorkerCompletion = workerCompletion
       }
       // Pre-spawn scenario revalidation: any added, removed, or changed
       // repository entry fails before the host launch.
       driver.verifyScenarioFileSet({ filesystem, platform, repository: scenario.repository, runGit, scenarioRoot })
-      const proxySession = controllerEnabled ? await proxySessionFactory({ host, repetition, scenario }) : null
+      let proxySession = null
+      if (controllerEnabled) {
+        try {
+          proxySession = await proxySessionFactory({ host, repetition, runRoot, scenario })
+          if (!isProxySession(proxySession)) {
+            throw new Error('proxy session factory returned an invalid session')
+          }
+        } catch {
+          const terminationProven = await closeReadyWorker({ completion: readyWorkerCompletion, proxySession })
+
+          return finishRepetition({
+            outcome: { result: infrastructureCarrier({ detailCode: 'proxy', host, phase: 'initial-turn' }) },
+            phase: 'initial-turn',
+            terminationProven,
+          })
+        }
+      }
       // The turn schema is copied run-local so neither the codex argv nor the
       // scenario envelope carries a checkout path.
       const turnSchemaRunPath = nodePath.join(runRoot, 'turn.schema.json')
@@ -1847,6 +1865,9 @@ function createSettleGuard(resolve) {
         pollHandle = null
       }
     },
+    isSettled() {
+      return settled
+    },
     settle(value) {
       if (settled) {
         return
@@ -1879,6 +1900,8 @@ const INFRASTRUCTURE_CARRIER_KEYS = Object.freeze(['code', 'detailCode', 'host',
 const WORKER_CONSTRUCTION_DETAIL_CODES = Object.freeze(['containment-unavailable', 'spawn'])
 const WORKER_CONSTRUCTION_COMPLETION_KEYS = Object.freeze(['failure'])
 const WORKER_READY_COMPLETION_KEYS = Object.freeze(['ready'])
+const PROXY_SESSION_KEYS = Object.freeze(['port', 'token'])
+const WORKER_SESSION_TEARDOWN = Symbol('workerSessionTeardown')
 
 function hasExactKeys(value, expectedKeys) {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) {
@@ -1906,6 +1929,27 @@ function isWorkerConstructionCompletion(completion, host) {
 
 function isReadyWorkerCompletion(completion) {
   return hasExactKeys(completion, WORKER_READY_COMPLETION_KEYS) && completion.ready === true
+}
+
+function isProxySession(value) {
+  return hasExactKeys(value, PROXY_SESSION_KEYS)
+    && Number.isSafeInteger(value.port)
+    && value.port >= 1
+    && value.port <= 65535
+    && typeof value.token === 'string'
+    && /^[a-f0-9]{64}$/.test(value.token)
+}
+
+async function closeReadyWorker({ completion, proxySession }) {
+  const teardown = completion?.[WORKER_SESSION_TEARDOWN]
+  if (typeof teardown !== 'function') {
+    return false
+  }
+  try {
+    return await teardown(proxySession) === true
+  } catch {
+    return false
+  }
 }
 
 function latestClassificationsByTarget(turnRecords) {
@@ -2056,8 +2100,8 @@ function createLiveBindings({ filesystem = nodeFilesystem, platform, workerProce
 
       return
     }
-    const entry = { adapter: null, onLine: null, ready: false }
-    const { armDeadline, settle } = createSettleGuard(resolve)
+    const entry = { adapter: null, failure: null, onFailure: null, onLine: null, ready: false }
+    const { armDeadline, isSettled, settle } = createSettleGuard(resolve)
     const startupFailure = () => settle({ failure: infrastructureCarrier({ detailCode: 'proxy', host: call.host, phase: 'initial-turn', retainedRunRoot: call.cwd }) })
     const decoder = driver.createLineDecoder({
       limit: driver.BYTE_BOUNDS.MAX_RUNNER_FRAME_BYTES,
@@ -2094,11 +2138,61 @@ function createLiveBindings({ filesystem = nodeFilesystem, platform, workerProce
           return
         }
         entry.ready = true
-        settle({ ready: true })
+        const completion = { ready: true }
+        Object.defineProperty(completion, WORKER_SESSION_TEARDOWN, { value: teardownReadyWorker })
+        settle(completion)
       },
       onOverflow: () => workerFailure({ detailCode: 'output-capacity' }),
       onUnterminated: () => workerFailure({ detailCode: 'proxy' }),
     })
+    let teardownPromise = null
+    const teardownReadyWorker = async (proxySession) => {
+      if (teardownPromise !== null) {
+        return teardownPromise
+      }
+      teardownPromise = (async () => {
+        const token = proxySession !== null && typeof proxySession === 'object' && typeof proxySession.token === 'string'
+          ? proxySession.token
+          : null
+        const proxyEntry = token === null ? null : proxyRegistry.get(token)
+        let proxyClosed = true
+        if (proxyEntry !== null && proxyEntry !== undefined) {
+          if (proxyEntry.server !== null && proxyEntry.server.admissionOpen()) {
+            proxyEntry.server.close(() => {})
+          }
+          proxyClosed = await new Promise((resolveClose) => {
+            const timeoutHandle = setTimeout(() => resolveClose(false), driver.DEADLINES.NATURAL_CLOSURE_MILLISECONDS)
+            try {
+              proxyEntry.tcpServer.close((error) => {
+                clearTimeout(timeoutHandle)
+                resolveClose(error === undefined)
+              })
+            } catch {
+              clearTimeout(timeoutHandle)
+              resolveClose(false)
+            }
+          })
+        }
+        if (entry.adapter === null || entry.adapter === undefined) {
+          return false
+        }
+        entry.adapter.closeInput()
+        if (entry.adapter.terminate().ok !== true) {
+          return false
+        }
+        const deadline = Date.now() + driver.DEADLINES.NATURAL_CLOSURE_MILLISECONDS
+        while (Date.now() < deadline) {
+          if (proxyClosed && entry.adapter.runnerClosed() && entry.adapter.closureProof().proven === true) {
+            return true
+          }
+          await new Promise((resolveDelay) => setTimeout(resolveDelay, LIVE_COMPLETION_POLL_MILLISECONDS))
+        }
+
+        return proxyClosed && entry.adapter.runnerClosed() && entry.adapter.closureProof().proven === true
+      })()
+
+      return teardownPromise
+    }
     const production = attemptProcessAdapterConstruction(workerProcessAdapterFactory, {
       cwd: call.cwd,
       mode: 'session',
@@ -2115,6 +2209,9 @@ function createLiveBindings({ filesystem = nodeFilesystem, platform, workerProce
     }
     entry.adapter = production.adapter
     workerRegistry.set(call.cwd, entry)
+    if (isSettled()) {
+      return
+    }
     armDeadline(startupFailure, driver.DEADLINES.WORKER_STARTUP_MILLISECONDS)
     if (entry.adapter.start({ args: call.argv, environment: call.environment, executable: call.executable }).ok !== true) {
       startupFailure()

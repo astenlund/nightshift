@@ -2742,6 +2742,144 @@ function runHostEntryCases(repositoryRoot) {
     }
   })
 
+  test('a pre-ready worker adapter failure stops before start and stays on the proxy path', async () => {
+    const runRoot = 'C:/synthetic-pre-ready-adapter-failure-root'
+    let starts = 0
+    const live = hostBehavior.createLiveBindings({
+      filesystem: nodeFilesystem,
+      platform: 'win32',
+      workerProcessAdapterFactory: (options) => {
+        options.onFailure({ detailCode: 'child-process' })
+
+        return {
+          adapter: {
+            dispose() {},
+            start() {
+              starts += 1
+
+              return { ok: true }
+            },
+          },
+          ok: true,
+        }
+      },
+    })
+    try {
+      const completion = await live.launch({
+        argv: ['worker', 'entry.js', 'a'.repeat(64)],
+        boundary: 'worker',
+        cwd: runRoot,
+        environment: {},
+        executable: 'node.exe',
+        host: 'codex',
+      })
+
+      assert.deepEqual(completion, {
+        failure: {
+          code: 'harness-infrastructure',
+          detailCode: 'proxy',
+          host: 'codex',
+          initialCode: null,
+          ok: false,
+          phase: 'initial-turn',
+          retainedRunRoot: runRoot,
+        },
+      })
+      assert.equal(starts, 0, 'a pre-ready adapter failure cannot advance into worker start')
+    } finally {
+      live.dispose()
+    }
+  })
+
+  test('proxy factory failures close a ready worker and finalize their repetition', async () => {
+    for (const source of ['rejection', 'malformed-output']) {
+      const scratch = tempRoot()
+      const worker = { closed: false, terminations: 0 }
+      const live = hostBehavior.createLiveBindings({
+        filesystem: nodeFilesystem,
+        platform: 'win32',
+        workerProcessAdapterFactory: (options) => ({
+          adapter: {
+            closeInput() {},
+            closureProof: () => ({ proven: worker.closed }),
+            dispose() {},
+            hostExitCode: () => 0,
+            runnerClosed: () => worker.closed,
+            start() {
+              options.onHostStdout(Buffer.from(canonicalJson({ controllerRuntimeSha256: '4'.repeat(64), ready: true }) + '\n', 'utf8'))
+
+              return { ok: true }
+            },
+            terminate() {
+              worker.closed = true
+              worker.terminations += 1
+
+              return { ok: true }
+            },
+          },
+          ok: true,
+        }),
+      })
+      try {
+        const harness = createEvaluationHarness(scratch)
+        const evaluation = await hostBehavior.runEvaluation({
+          ...harness.options,
+          launch: (call) => call.boundary === 'worker' ? live.launch(call) : harness.options.launch(call),
+          proxySessionFactory: source === 'rejection'
+            ? async () => Promise.reject(new Error('synthetic proxy startup failure'))
+            : async () => ({ ...(await live.proxySessionFactory()), port: 0 }),
+          runSession: (call) => {
+            if (call.controllerEnabled !== true) {
+              return { record: { deterministicDigest: 'd'.repeat(64), dialogueFacts: { ...DIALOGUE_FACTS_TRUE }, lifecycleFacts: { ...LIFECYCLE_FACTS_TRUE }, passed: true, terminationProven: true } }
+            }
+
+            throw new Error('a failed proxy factory must not launch a host session')
+          },
+        })
+
+        assert.deepEqual(evaluation.result, {
+          ok: false,
+          host: 'claude-code',
+          code: 'harness-infrastructure',
+          phase: 'initial-turn',
+          initialCode: null,
+          detailCode: 'proxy',
+          retainedRunRoot: null,
+        }, source)
+        assert.equal(worker.terminations, 1, `${source} terminates the ready worker exactly once`)
+        assert.equal(nodeFilesystem.existsSync(harness.roots[2]), false, `${source} finalizes the proven repetition root`)
+      } finally {
+        live.dispose()
+        nodeFilesystem.rmSync(scratch, { force: true, recursive: true })
+      }
+    }
+  })
+
+  test('an unproved proxy factory failure retains its repetition root', async () => {
+    const scratch = tempRoot()
+    try {
+      const harness = createEvaluationHarness(scratch, {
+        options: {
+          proxySessionFactory: async () => Promise.reject(new Error('synthetic proxy startup failure')),
+        },
+      })
+      const evaluation = await hostBehavior.runEvaluation(harness.options)
+
+      assert.deepEqual(evaluation.result, {
+        ok: false,
+        host: 'claude-code',
+        code: 'harness-infrastructure',
+        phase: 'initial-turn',
+        initialCode: null,
+        detailCode: 'proxy',
+        retainedRunRoot: harness.roots[2],
+      })
+      assert.equal(nodeFilesystem.existsSync(harness.roots[2]), true, 'an unproved ready worker keeps the repetition root')
+    } finally {
+      nodeFilesystem.rmSync(scratch, { force: true, recursive: true })
+    }
+  })
+
   test('the live worker rejects an extended ready frame before host launch', async () => {
     const digest = 'a'.repeat(64)
     const runRoot = 'C:/synthetic-run-root'
