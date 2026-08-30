@@ -206,6 +206,9 @@ function enumerateDirectory(directory, options = {}) {
   const platform = options.platform ?? process.platform
   const injectedReadDirectory = options.readdirSync ?? options.readdir
   const readDirectory = injectedReadDirectory ?? readdirSync
+  if (options.includeName !== undefined && typeof options.includeName !== 'function') {
+    throw new TypeError('Directory name filter must be a function')
+  }
   if (platform === 'win32' && typeof options.attributeProbe !== 'function') {
     throw new Error('Windows directory enumeration requires an attribute probe')
   }
@@ -238,9 +241,14 @@ function enumerateDirectory(directory, options = {}) {
       throw error
     }
   }
-  const entries = names.map((rawName) => {
+  const namesAreBuffers = platform !== 'win32' && Buffer.isBuffer(names[0])
+  const selectedNames = names.map((rawName) => {
     const name = decodeDirectoryName(rawName, platform)
     assertSafeWindowsScalar(name, platform)
+
+    return name
+  }).filter((name) => options.includeName === undefined || options.includeName(name))
+  const entries = selectedNames.map((name) => {
     const target = join(directory, name)
     const metadata = lstatSync(target, { bigint: true })
     if (metadata.isSymbolicLink() || (!metadata.isFile() && !metadata.isDirectory())) {
@@ -251,13 +259,13 @@ function enumerateDirectory(directory, options = {}) {
   })
 
   entries.sort((left, right) => {
-    if (platform !== 'win32' && Buffer.isBuffer(names[0])) {
+    if (namesAreBuffers) {
       return Buffer.from(left.name, 'utf8').compare(Buffer.from(right.name, 'utf8'))
     }
 
     return compareOrdinal(left.name, right.name)
   })
-  if (platform === 'win32') {
+  if (platform === 'win32' && entries.length > 0) {
     const paths = entries.map((entry) => entry.path)
     const before = options.attributeProbe(paths)
     validateAttributeProbe(before, paths)

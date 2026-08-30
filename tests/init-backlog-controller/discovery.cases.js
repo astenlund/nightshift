@@ -84,6 +84,26 @@ function runDiscoveryCases(repositoryRoot) {
 
       symlinkSync(join(root, 'b.md'), join(root, 'z.md'))
       assert.throws(() => enumerateDirectory(root, { attributeProbe: (paths) => windowsAttributeProbe(paths) }))
+      const probedPaths = []
+      assert.deepEqual(enumerateDirectory(root, {
+        attributeProbe: (paths) => {
+          probedPaths.push(paths)
+
+          return windowsAttributeProbe(paths)
+        },
+        includeName: (name) => name === 'b.md',
+      }).map((entry) => entry.name), ['b.md'])
+      assert.ok(probedPaths.every((paths) => paths.length === 1 && paths[0] === join(root, 'b.md')))
+      let emptyProbeCalls = 0
+      assert.deepEqual(enumerateDirectory(root, {
+        attributeProbe: () => {
+          emptyProbeCalls += 1
+
+          return windowsAttributeProbe([])
+        },
+        includeName: () => false,
+      }), [])
+      assert.equal(emptyProbeCalls, 0)
     } finally {
       rmSync(root, { force: true, recursive: true })
     }

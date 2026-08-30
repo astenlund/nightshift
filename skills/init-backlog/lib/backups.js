@@ -42,7 +42,7 @@ function inspectBackups(root, targets, options = {}) {
     throw error
   }
   const enumerationOptions = withAttributeProbe(options)
-  const entries = enumerateDirectory(directory, enumerationOptions)
+  const entries = enumerateDirectory(directory, { ...enumerationOptions, includeName: (name) => backupParts(`${BACKUP_DIRECTORY}/${name}`) !== null })
   const targetByHash = new Map((targets ?? []).map((item) => [sha256(Buffer.from(item.target, 'utf8')), item.target]))
   const backups = []
   const problems = []
