@@ -3021,6 +3021,40 @@ test('breakout companions accept balanced destination parentheses and ignore anc
   ]);
 });
 
+test('nested feature and bug breakouts resolve canonical companions and feature slices', () => {
+  const featureEntry = '### [Nested Feature](features/platform/nested.md)';
+  const bugEntry = '### [Nested Bug](bugs/parser/regression.md)';
+  const declaration = '- **Nested - Core**';
+  const files = {
+    '.claude/FEATURES.md': `# Features\n\n## Active\n\n${featureEntry}\n\n**Slices:**\n${declaration}\n`,
+    '.claude/BUGS.md': `# Bugs\n\n## Active\n\n${bugEntry}\n`,
+    '.claude/features/platform/nested.md': '# Nested Feature\n',
+    '.claude/bugs/parser/regression.md': '# Nested Bug\n',
+  };
+  const fsAdapter = fakeRepository(files);
+  const featureScope = scope('whole-file', '.claude/features/platform/nested.md');
+  const bugScope = scope('whole-file', '.claude/bugs/parser/regression.md');
+  const featureResult = resolve(request({ target: featureScope, seeds: [featureScope] }), fsAdapter);
+  const bugResult = resolve(request({ target: bugScope, seeds: [bugScope] }), fsAdapter);
+
+  assert.deepEqual(featureResult.artifacts.map((artifact) => [artifact.path, artifact.selectorKind]), [
+    ['.claude/features/platform/nested.md', 'design-before-hardening'],
+    ['.claude/FEATURES.md', 'index-entry'],
+  ]);
+  assert.deepEqual(bugResult.artifacts.map((artifact) => [artifact.path, artifact.selectorKind]), [
+    ['.claude/bugs/parser/regression.md', 'design-before-hardening'],
+    ['.claude/BUGS.md', 'index-entry'],
+  ]);
+
+  const workUnit = { normalizedKey: 'core', declaration, state: 'unshipped' };
+  const indexScope = scope('index-entry', '.claude/FEATURES.md', [{ parentHeading: '## Active', entryHeading: featureEntry }], workUnit);
+  const indexResult = resolve(request({ target: indexScope, seeds: [indexScope] }), fsAdapter);
+  const nestedFeatureWithSlice = resolve(request({ target: scope('whole-file', '.claude/features/platform/nested.md', [], workUnit), seeds: [scope('whole-file', '.claude/features/platform/nested.md', [], workUnit)] }), fsAdapter);
+
+  assert.equal(indexResult.governingScopes[0].workUnit.declaration, declaration);
+  assert.equal(nestedFeatureWithSlice.governingScopes[0].workUnit.declaration, declaration);
+});
+
 test('ready-parser failures are normalized at each invoked adapter operation', () => {
   const entryHeading = '### [Feature A](features/a.md)';
   const declaration = '- **MVP - Core**';

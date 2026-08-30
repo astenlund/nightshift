@@ -1404,7 +1404,7 @@ function artifactSelectorsForScope(scope) {
 }
 
 function companionFor(scope, snapshot, scan = scanMarkdown) {
-  const match = /^\.claude\/(features|bugs)\/[^/]+\.md$/.exec(scope.path);
+  const match = /^\.claude\/(features|bugs)\/(?:[^/]+\/)*[^/]+\.md$/.exec(scope.path);
   if (!match || !['whole-file', 'sections'].includes(scope.kind)) {
     return null;
   }
