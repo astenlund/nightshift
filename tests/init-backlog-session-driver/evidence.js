@@ -59,14 +59,35 @@ function nestedCarrierContainsCredential(bytes, credentials, budget, sequences, 
   if (parsed.ok !== true) {
     return false
   }
+  function inspectDecodedString(value, required) {
+    const decoded = decodeCanonicalBase64(value)
+    if (decoded === null) {
+      return required ? null : false
+    }
+    budget.decodedBytes += decoded.length
+    if (budget.decodedBytes > MAX_CREDENTIAL_DECODED_BYTES) {
+      return null
+    }
+    if (sequences.carriers.push(decoded)) {
+      return true
+    }
+
+    return nestedCarrierContainsCredential(decoded, credentials, budget, sequences, depth + 1)
+  }
   function inspectValue(value) {
     if (value === null || typeof value !== 'object') {
       return false
     }
     for (const [key, child] of Object.entries(value)) {
       if (!CREDENTIAL_CARRIER_KEYS.has(key)) {
-        if (typeof child === 'string' && sequences.primitives.push(Buffer.from(child, 'utf8'))) {
-          return true
+        if (typeof child === 'string') {
+          if (sequences.primitives.push(Buffer.from(child, 'utf8'))) {
+            return true
+          }
+          const contaminated = inspectDecodedString(child, false)
+          if (contaminated !== false) {
+            return contaminated
+          }
         }
         if (child !== null && typeof child === 'object') {
           const contaminated = inspectValue(child)
@@ -79,18 +100,7 @@ function nestedCarrierContainsCredential(bytes, credentials, budget, sequences, 
       if (child === null) {
         continue
       }
-      const decoded = decodeCanonicalBase64(child)
-      if (decoded === null) {
-        return null
-      }
-      budget.decodedBytes += decoded.length
-      if (budget.decodedBytes > MAX_CREDENTIAL_DECODED_BYTES) {
-        return null
-      }
-      if (sequences.carriers.push(decoded)) {
-        return true
-      }
-      const contaminated = nestedCarrierContainsCredential(decoded, credentials, budget, sequences, depth + 1)
+      const contaminated = inspectDecodedString(child, true)
       if (contaminated !== false) {
         return contaminated
       }

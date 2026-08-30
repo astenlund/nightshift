@@ -1700,6 +1700,12 @@ function runSessionCases(repositoryRoot) {
     const splitFields = canonicalLine({ first: token.slice(0, tokenBoundary), second: token.slice(tokenBoundary) })
     const structuredTranscript = canonicalLine({ kind: 'host-event', ordinal: 1, payloadBase64: splitFields.toString('base64') })
     assert.equal(driver.verifyCredentialFreeEvidence({ credentialValues, files: files(structuredTranscript, cleanProxy, repositoryEvidence('clean repository file')) }), false, 'ordered structured fields reconstruct the credential')
+    const arbitraryCarrierTranscript = canonicalLine({
+      kind: 'host-event',
+      ordinal: 1,
+      payloadBase64: canonicalLine({ arbitraryBlob: Buffer.from(token, 'utf8').toString('base64'), type: 'progress' }).toString('base64'),
+    })
+    assert.equal(driver.verifyCredentialFreeEvidence({ credentialValues, files: files(arbitraryCarrierTranscript, cleanProxy, repositoryEvidence('clean repository file')) }), false, 'canonical Base64 under an arbitrary host-event field is credential evidence')
     const evidenceOrderToken = 'SYNTHETIC-PREFIX-SUFFIX'
     const callerOrderedFiles = [
       { bytes: canonicalLine({ kind: 'host-event', ordinal: 1, payloadBase64: Buffer.from('SUFFIX', 'utf8').toString('base64') }), path: 'transcript.jsonl' },
