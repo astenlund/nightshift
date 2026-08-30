@@ -317,6 +317,25 @@ test('the unwrap CLI rejects a backlog root junction outside the repository root
   }
 });
 
+test('the unwrap CLI rejects malformed UTF-8 in check and write modes without changing the bytes', () => {
+  const root = fs.mkdtempSync(path.join(require('node:os').tmpdir(), 'unwrap-invalid-utf8-'));
+  const target = path.join(root, 'FEATURES.md');
+  const invalidBytes = Buffer.from([0xc3, 0x28]);
+  fs.writeFileSync(target, invalidBytes);
+  try {
+    for (const args of [[target], ['--write', target]]) {
+      const completion = spawnSync(process.execPath, [path.join(__dirname, 'unwrap.js'), ...args], { encoding: 'utf8' });
+
+      assert.equal(completion.status, 1);
+      assert.equal(completion.stderr, '');
+      assert.deepEqual(JSON.parse(completion.stdout), [{ file: target, error: 'invalid-utf8' }]);
+      assert.deepEqual(fs.readFileSync(target), invalidBytes);
+    }
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('canonicalPath gives one identity to every spelling of a file and never throws', (t) => {
   const root = fs.mkdtempSync(path.join(require('node:os').tmpdir(), 'unwrap-'));
   try {

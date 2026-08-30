@@ -22,7 +22,7 @@ const fs = require('fs');
 const path = require('path');
 const { stableOpenFile } = require('../../internal/filesystem-primitives.js');
 const { scanMarkdown } = require('../spec-agreement/spec-agreement.js');
-const { LABEL_AT_START, CatalogError, canonicalBacklogRootIdentity, canonicalPath, compareTargets, detectHardWraps, collectMarkdownFiles, isContainedPath, normalizeCatalogItems } = require('../../internal/backlog-catalog.js');
+const { LABEL_AT_START, CatalogError, canonicalBacklogRootIdentity, canonicalPath, compareTargets, decodeUtf8, detectHardWraps, collectMarkdownFiles, isContainedPath, normalizeCatalogItems } = require('../../internal/backlog-catalog.js');
 
 const INDEX_FILE_STEMS = new Set([
   'QUICK_WINS', 'FEATURES', 'BUGS', 'PATTERNS',
@@ -70,7 +70,14 @@ const ANALYSIS_EVIDENCE = Symbol('analysisEvidence');
 
 function readCanonicalText(rootIdentity, target) {
   try {
-    return stableOpenFile(rootIdentity, target, { requireSingleLink: false }).bytes.toString('utf8');
+    try {
+      return decodeUtf8(stableOpenFile(rootIdentity, target, { requireSingleLink: false }).bytes);
+    } catch (error) {
+      if (error?.code === 'invalid-utf8') {
+        error.catalogTarget = path.relative(rootIdentity, target).replace(/\\/g, '/');
+      }
+      throw error;
+    }
   } catch (error) {
     try {
       if (fs.lstatSync(target).isDirectory()) error.code = 'EISDIR';
@@ -1342,6 +1349,7 @@ function createBreakoutLoader(claudeDir, rootIdentity, options = {}) {
         try {
           read = { contents: readFile(identity), identity };
         } catch (error) {
+          if (error?.code === 'invalid-utf8') throw error;
           read = { errorCode: error?.code ?? 'unknown' };
         }
       }
@@ -1407,6 +1415,7 @@ function scanUnlinkedBacklogFiles(claudeDir, alreadyScanned, options = {}) {
         try {
           return { contents: readFile(identity) };
         } catch (error) {
+          if (error?.code === 'invalid-utf8') throw error;
           return { errorCode: error?.code ?? 'unknown' };
         }
       },
@@ -1702,6 +1711,13 @@ function writeInvalidBacklogRoot(claudeDir) {
   process.exitCode = 1;
 }
 
+function writeInvalidUtf8BacklogFile(target) {
+  process.stdout.write(JSON.stringify({
+    error: `backlog file ${target} is not valid UTF-8; repair or replace the file and retry`,
+  }, null, 2) + '\n');
+  process.exitCode = 1;
+}
+
 function runCli(argRoot) {
   const root = path.resolve(argRoot || process.cwd());
   const claudeDir = path.basename(root) === '.claude' ? root : path.join(root, '.claude');
@@ -1739,6 +1755,7 @@ function runCli(argRoot) {
     try {
       unlinkedNotices = scanUnlinkedBacklogFiles(claudeDir, scanned.scannedFiles, { rootIdentity });
     } catch (error) {
+      if (error?.code === 'invalid-utf8') throw error;
       if (!rootRemainsAcquired()) return;
       unlinkedNotices = errorChainHasCode(error, 'ENOENT')
         ? ['backlog tree changed during traversal; retry; unlinked backlog files were not checked this run']
@@ -1751,6 +1768,11 @@ function runCli(argRoot) {
 
     process.stdout.write(JSON.stringify(result, null, 2) + '\n');
   } catch (error) {
+    if (error?.code === 'invalid-utf8') {
+      writeInvalidUtf8BacklogFile(error.catalogTarget ?? 'unknown');
+
+      return;
+    }
     if (!errorChainHasCode(error, 'ENOENT')) throw error;
     const current = revalidateBacklogRootIdentity(acquired);
     if (current.kind !== 'missing') throw error;

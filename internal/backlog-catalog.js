@@ -24,6 +24,7 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
+const { TextDecoder } = require('node:util');
 
 const BOM = String.fromCharCode(0xfeff);
 const LIST_MARKER = /^\s*(?:[-*+]|\d+[.)])\s+/;
@@ -48,6 +49,7 @@ const LABEL_AT_START = /^\*\*[^*]+?:\*\*/;
 // skills, rules) is out of scope.
 const BACKLOG_FILES = ['QUICK_WINS.md', 'FEATURES.md', 'BUGS.md', 'PATTERNS.md', 'QUICK_WINS_HISTORY.md', 'FEATURES_HISTORY.md', 'BUGS_HISTORY.md'];
 const BACKLOG_DIRECTORIES = ['features', 'bugs', 'patterns'];
+const STRICT_UTF8_DECODER = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true });
 
 function splitLines(text) {
   const bom = text.startsWith(BOM) ? BOM : '';
@@ -230,6 +232,17 @@ function unwrapText(text) {
 }
 
 class CatalogError extends TypeError {}
+
+function decodeUtf8(bytes) {
+  try {
+    return STRICT_UTF8_DECODER.decode(bytes);
+  } catch (cause) {
+    const error = new CatalogError('backlog file is not valid UTF-8', { cause });
+    error.code = 'invalid-utf8';
+
+    throw error;
+  }
+}
 
 function compareTargets(left, right) {
   return left < right ? -1 : left > right ? 1 : 0;
@@ -452,7 +465,7 @@ function runCli(argv) {
   for (const file of files) {
     let text;
     try {
-      text = fs.readFileSync(file, 'utf8');
+      text = decodeUtf8(fs.readFileSync(file));
     } catch (error) {
       report.push({ file, error: error?.code ?? 'unknown' });
       continue;
@@ -470,4 +483,4 @@ function runCli(argv) {
   process.exitCode = unreadable || (report.length > 0 && !write) ? 1 : 0;
 }
 
-module.exports = { LABEL_AT_START, CatalogError, canonicalBacklogRootIdentity, canonicalPath, compareTargets, detectHardWraps, unwrapText, collectMarkdownFiles, isContainedPath, normalizeCatalogItems, analyzeUnwrapCatalog, runCli };
+module.exports = { LABEL_AT_START, CatalogError, canonicalBacklogRootIdentity, canonicalPath, compareTargets, decodeUtf8, detectHardWraps, unwrapText, collectMarkdownFiles, isContainedPath, normalizeCatalogItems, analyzeUnwrapCatalog, runCli };

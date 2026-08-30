@@ -2073,6 +2073,41 @@ test('real structural and cycle outcomes reach the missing-breakout notice end t
 
 // ---------- CLI smoke test ----------
 
+test('CLI rejects malformed UTF-8 in indexes and linked breakouts without changing the bytes', () => {
+  const invalidBytes = Buffer.from([0xc3, 0x28]);
+  const cases = [
+    {
+      name: 'FEATURES.md',
+      prepare: (claudeDir) => fs.writeFileSync(path.join(claudeDir, 'FEATURES.md'), invalidBytes),
+    },
+    {
+      name: 'features/bad.md',
+      prepare: (claudeDir) => {
+        fs.mkdirSync(path.join(claudeDir, 'features'), { recursive: true });
+        fs.writeFileSync(path.join(claudeDir, 'FEATURES.md'), '# Features\n\n## Active\n\n### [Bad](features/bad.md)\n\n**Requires:** none.\n');
+        fs.writeFileSync(path.join(claudeDir, 'features', 'bad.md'), invalidBytes);
+      },
+    },
+  ];
+  for (const fixture of cases) {
+    const tmpRoot = path.join(__dirname, '..', '..', '.tmp', `ready-invalid-utf8-${process.pid}-${fixture.name.replaceAll('/', '-')}`);
+    const claudeDir = path.join(tmpRoot, '.claude');
+    fs.mkdirSync(claudeDir, { recursive: true });
+    try {
+      fixture.prepare(claudeDir);
+      const target = path.join(claudeDir, ...fixture.name.split('/'));
+      const completion = spawnSync(process.execPath, [path.join(__dirname, 'ready.js'), tmpRoot], { encoding: 'utf8' });
+
+      assert.notStrictEqual(completion.status, 0);
+      assert.strictEqual(completion.stderr, '');
+      assert.deepStrictEqual(JSON.parse(completion.stdout), { error: `backlog file ${fixture.name} is not valid UTF-8; repair or replace the file and retry` });
+      assert.deepStrictEqual(fs.readFileSync(target), invalidBytes);
+    } finally {
+      fs.rmSync(tmpRoot, { recursive: true, force: true });
+    }
+  }
+});
+
 test('CLI acquires a missing backlog root without an existence precheck or later traversal', () => {
   const tmpRoot = path.join(__dirname, '..', '..', '.tmp', `ready-missing-${process.pid}`);
   const claudeDir = path.join(tmpRoot, '.claude');
