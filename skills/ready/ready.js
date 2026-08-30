@@ -1332,8 +1332,8 @@ function createBreakoutLoader(claudeDir, rootIdentity, options = {}) {
   };
 }
 
-function scanBreakoutTargets(breakoutTargets, claudeDir) {
-  const rootIdentity = canonicalBacklogRootIdentity(claudeDir);
+function scanBreakoutTargets(breakoutTargets, claudeDir, options = {}) {
+  const rootIdentity = options.rootIdentity ?? canonicalBacklogRootIdentity(claudeDir);
   if (rootIdentity === null) {
     throw new CatalogError(`backlog root escapes its repository authority: ${claudeDir}`);
   }
@@ -1649,15 +1649,35 @@ function acquireBacklogRootIdentity(claudeDir) {
       return { kind: 'invalid' };
     }
 
-    return { identity, kind: 'ok' };
+    return { authority, device: after.dev, identity, inode: after.ino, kind: 'ok', logicalPath: resolved };
   } catch (error) {
     return errorChainHasCode(error, 'ENOENT') ? { kind: 'missing' } : { kind: 'invalid' };
   }
 }
 
+function revalidateBacklogRootIdentity(acquired) {
+  const current = acquireBacklogRootIdentity(acquired.logicalPath);
+  if (current.kind !== 'ok') return current;
+  if (current.authority !== acquired.authority
+    || current.device !== acquired.device
+    || current.identity !== acquired.identity
+    || current.inode !== acquired.inode) {
+    return { kind: 'invalid' };
+  }
+
+  return current;
+}
+
 function writeMissingBacklogRoot(claudeDir) {
   process.stdout.write(JSON.stringify({
     error: `no .claude directory found at ${claudeDir}; run /nightshift:init-backlog to scaffold the four-index layout`,
+  }, null, 2) + '\n');
+  process.exitCode = 1;
+}
+
+function writeInvalidBacklogRoot(claudeDir) {
+  process.stdout.write(JSON.stringify({
+    error: `the .claude directory escapes its repository authority: ${claudeDir}`,
   }, null, 2) + '\n');
   process.exitCode = 1;
 }
@@ -1672,29 +1692,47 @@ function runCli(argRoot) {
     return;
   }
   if (acquired.kind !== 'ok') {
-    process.stdout.write(JSON.stringify({
-      error: `the .claude directory escapes its repository authority: ${claudeDir}`,
-    }, null, 2) + '\n');
-    process.exitCode = 1;
+    writeInvalidBacklogRoot(claudeDir);
 
     return;
   }
   const rootIdentity = acquired.identity;
+  const rootRemainsAcquired = () => {
+    const current = revalidateBacklogRootIdentity(acquired);
+    if (current.kind === 'ok') return true;
+    if (current.kind === 'missing') writeMissingBacklogRoot(claudeDir);
+    else writeInvalidBacklogRoot(claudeDir);
+
+    return false;
+  };
   try {
     const files = {};
     for (const name of [...WORK_INDEX_NAMES, 'PATTERNS']) {
       files[name] = readFileIfPresent(path.join(claudeDir, `${name}.md`), rootIdentity);
     }
     const result = analyze(files);
+    if (!rootRemainsAcquired()) return;
 
-    const scanned = scanBreakoutTargets(result.breakoutTargets, claudeDir);
-    result.notices.push(...scanned.notices, ...scanUnlinkedBacklogFiles(claudeDir, scanned.scannedFiles, { rootIdentity }));
+    const scanned = scanBreakoutTargets(result.breakoutTargets, claudeDir, { rootIdentity });
+    if (!rootRemainsAcquired()) return;
+    let unlinkedNotices;
+    try {
+      unlinkedNotices = scanUnlinkedBacklogFiles(claudeDir, scanned.scannedFiles, { rootIdentity });
+    } catch (error) {
+      if (!errorChainHasCode(error, 'ENOENT')) throw error;
+      if (!rootRemainsAcquired()) return;
+      unlinkedNotices = ['backlog tree changed during traversal; retry; unlinked backlog files were not checked this run'];
+    }
+    if (!rootRemainsAcquired()) return;
+    result.notices.push(...scanned.notices, ...unlinkedNotices);
     result.structuralErrors.push(...scanned.structuralErrors);
     delete result.breakoutTargets;
 
     process.stdout.write(JSON.stringify(result, null, 2) + '\n');
   } catch (error) {
     if (!errorChainHasCode(error, 'ENOENT')) throw error;
+    const current = revalidateBacklogRootIdentity(acquired);
+    if (current.kind !== 'missing') throw error;
     writeMissingBacklogRoot(claudeDir);
   }
 }

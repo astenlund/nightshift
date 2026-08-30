@@ -2134,6 +2134,7 @@ test('CLI maps backlog root removal during traversal to the missing-root result'
   fs.readdirSync = (target, options) => {
     if (path.resolve(target) === path.resolve(claudeDir)) {
       traversals += 1;
+      fs.rmSync(claudeDir, { force: true, recursive: true });
       const error = new Error('removed after root acquisition');
       error.code = 'ENOENT';
       throw error;
@@ -2154,6 +2155,90 @@ test('CLI maps backlog root removal during traversal to the missing-root result'
     assert.deepStrictEqual(JSON.parse(stdout), { error: `no .claude directory found at ${claudeDir}; run /nightshift:init-backlog to scaffold the four-index layout` });
   } finally {
     fs.readdirSync = originalReaddirSync;
+    process.stdout.write = originalWrite;
+    process.exitCode = originalExitCode;
+    fs.rmSync(tmpRoot, { force: true, recursive: true });
+  }
+});
+
+test('CLI reports nested traversal disappearance without claiming the backlog root is missing', () => {
+  const tmpRoot = path.join(__dirname, '..', '..', '.tmp', `ready-nested-removed-${process.pid}`);
+  const claudeDir = path.join(tmpRoot, '.claude');
+  const featuresDir = path.join(claudeDir, 'features');
+  fs.mkdirSync(featuresDir, { recursive: true });
+  const originalReaddirSync = fs.readdirSync;
+  const originalWrite = process.stdout.write;
+  const originalExitCode = process.exitCode;
+  let stdout = '';
+  fs.readdirSync = (target, options) => {
+    if (path.resolve(target) === path.resolve(featuresDir)) {
+      const error = new Error('nested directory removed during traversal');
+      error.code = 'ENOENT';
+      throw error;
+    }
+
+    return originalReaddirSync(target, options);
+  };
+  process.stdout.write = (chunk) => {
+    stdout += chunk;
+
+    return true;
+  };
+  process.exitCode = undefined;
+  try {
+    runCli(tmpRoot);
+    const result = JSON.parse(stdout);
+    assert.strictEqual(fs.statSync(claudeDir).isDirectory(), true, 'the backlog root remains present');
+    assert.strictEqual(process.exitCode, undefined);
+    assert.ok(result.notices.includes('backlog tree changed during traversal; retry; unlinked backlog files were not checked this run'));
+    assert.strictEqual(Object.hasOwn(result, 'error'), false);
+  } finally {
+    fs.readdirSync = originalReaddirSync;
+    process.stdout.write = originalWrite;
+    process.exitCode = originalExitCode;
+    fs.rmSync(tmpRoot, { force: true, recursive: true });
+  }
+});
+
+test('CLI rejects a contained backlog-root replacement before breakout traversal', () => {
+  const tmpRoot = path.join(__dirname, '..', '..', '.tmp', `ready-root-replaced-${process.pid}`);
+  const repoRoot = path.join(tmpRoot, 'repo');
+  const claudeDir = path.join(repoRoot, '.claude');
+  const replacement = path.join(repoRoot, 'replacement');
+  const displaced = path.join(repoRoot, 'displaced');
+  fs.mkdirSync(claudeDir, { recursive: true });
+  fs.mkdirSync(replacement, { recursive: true });
+  fs.writeFileSync(path.join(claudeDir, 'FEATURES.md'), '# Features\n');
+  fs.writeFileSync(path.join(replacement, 'FEATURES.md'), '# Replacement\n');
+  const originalLstatSync = fs.lstatSync;
+  const originalWrite = process.stdout.write;
+  const originalExitCode = process.exitCode;
+  let rootStats = 0;
+  let stdout = '';
+  fs.lstatSync = (target, options) => {
+    if (path.resolve(target) === path.resolve(claudeDir)) {
+      rootStats += 1;
+      if (rootStats === 3) {
+        fs.renameSync(claudeDir, displaced);
+        fs.symlinkSync(replacement, claudeDir, 'junction');
+      }
+    }
+
+    return originalLstatSync(target, options);
+  };
+  process.stdout.write = (chunk) => {
+    stdout += chunk;
+
+    return true;
+  };
+  process.exitCode = undefined;
+  try {
+    runCli(repoRoot);
+    assert.strictEqual(rootStats, 3, 'the replacement occurs at the first post-index revalidation');
+    assert.strictEqual(process.exitCode, 1);
+    assert.deepStrictEqual(JSON.parse(stdout), { error: `the .claude directory escapes its repository authority: ${claudeDir}` });
+  } finally {
+    fs.lstatSync = originalLstatSync;
     process.stdout.write = originalWrite;
     process.exitCode = originalExitCode;
     fs.rmSync(tmpRoot, { force: true, recursive: true });
