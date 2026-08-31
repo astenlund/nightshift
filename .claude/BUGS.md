@@ -27,7 +27,17 @@ A missing `Requires:` line is a structural error. `/nightshift:ready` parses the
 
 ## Open
 
-Nothing tracked yet.
+### [Ignore election cannot initialize a missing `.gitignore`](bugs/ignore-election-missing-gitignore.md)
+
+In a Git repository with no `.gitignore`, the ignore election is unreachable because creating the file has no unambiguous newline base and the existing gate correctly refuses to guess. The fix must define the file-creation newline rule while preserving fail-closed behavior, with regressions for missing, empty, and mixed-newline repository states.
+
+**Requires:** none.
+
+### [Overlapping Markdown roots can lose or duplicate collected files](bugs/overlapping-markdown-root-deduplication.md)
+
+Markdown collection does not consistently separate traversal coverage from emitted-file identity across repeated, aliased, and overlapping roots. The fix must de-duplicate by canonical file identity while preserving the first path and authority spelling, with both nested-parent orderings covered so a visited-root shortcut cannot hide files.
+
+**Requires:** none.
 
 
 ## History
