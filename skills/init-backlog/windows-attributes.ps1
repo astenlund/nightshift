@@ -1,7 +1,22 @@
 param()
 
 $ErrorActionPreference = 'Stop'
-$inputText = [Console]::In.ReadToEnd()
+$utf8 = New-Object System.Text.UTF8Encoding -ArgumentList @($false, $true)
+
+function Read-StandardInput() {
+    $reader = [System.IO.StreamReader]::new([Console]::OpenStandardInput(), $utf8, $false)
+    try {
+        return $reader.ReadToEnd()
+    } finally {
+        $reader.Dispose()
+    }
+}
+
+function Write-StandardOutput([string]$value) {
+    $bytes = $utf8.GetBytes($value)
+    $stream = [Console]::OpenStandardOutput()
+    $stream.Write($bytes, 0, $bytes.Length)
+}
 
 function Test-SafeScalar([string]$value) {
     for ($index = 0; $index -lt $value.Length; $index++) {
@@ -101,6 +116,7 @@ function ConvertTo-JsonAttributeSuccess($items, [string]$systemDirectory) {
 }
 
 try {
+    $inputText = Read-StandardInput
     if ([string]::IsNullOrEmpty($inputText) -or -not $inputText.EndsWith("`n") -or $inputText.Substring(0, $inputText.Length - 1).Contains("`n")) {
         throw 'invalid input'
     }
@@ -134,12 +150,12 @@ try {
             $items.Add((ConvertTo-JsonAttributeItem $number $paths[$index] $reparsePoint))
         } catch {
             $failure = ConvertTo-JsonAttributeFailure $index
-            [Console]::Out.Write($failure + "`n")
+            Write-StandardOutput ($failure + "`n")
             exit 1
         }
     }
     $success = ConvertTo-JsonAttributeSuccess $items $systemDirectory
-    [Console]::Out.Write($success + "`n")
+    Write-StandardOutput ($success + "`n")
     exit 0
 } catch {
     exit 2
