@@ -385,7 +385,7 @@ function runProtocolCases(repositoryRoot) {
         MAX_INLINE_FILE_BYTES: 65536,
         MAX_MECHANICAL_FILE_BYTES: 131072,
         MAX_INSPECT_REQUEST_BYTES: 65536,
-        MAX_INSPECT_RESULT_BYTES: 262144,
+        MAX_INSPECT_RESULT_BYTES: 524288,
         MAX_RECOVERY_REQUEST_BYTES: 1114112,
         MAX_RECOVERY_RESULT_BYTES: 1048576,
       },
@@ -619,6 +619,17 @@ function runProtocolCases(repositoryRoot) {
     const oversized = clone(inspectResult(root))
     oversized.ready = { detail: 'x'.repeat(MAX_INSPECT_RESULT_BYTES) }
     expectInitError(() => encodeResult(oversized), 'payload-too-large', 'inspect')
+  })
+
+  test('inspect results admit a bounded repository-scale payload above the legacy ceiling', () => {
+    const result = inspectResult(repositoryRoot)
+    result.ready = { detail: 'x'.repeat(300000) }
+    result.unwrapReady = { after: null, targets: [] }
+
+    const encoded = encodeResult(result)
+
+    assert.ok(encoded.length > 262144)
+    assert.ok(encoded.length <= MAX_INSPECT_RESULT_BYTES)
   })
 
   test('canonical Base64 and bounded inline images reject alternate spellings and overflow', () => {

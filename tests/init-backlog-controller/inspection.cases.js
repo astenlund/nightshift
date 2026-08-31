@@ -857,6 +857,13 @@ function runInspectionCases(repositoryRoot) {
     })
   })
 
+  test('an inspection without wrap findings omits the duplicate ready prediction', () => {
+    inspectDiscoveredBreakout('nightshift-breakout-no-wrap-prediction-', '# Issue\n\nOne unwrapped paragraph on one physical line.\n', (result) => {
+      assert.deepEqual(result.wrapFindings, [])
+      assert.deepEqual(result.unwrapReady, { after: null, targets: [] })
+    })
+  })
+
   test('semantic controlled files accept the inline boundary and reject its next byte', () => {
     const exact = sizedMarkdown('# Guidance', MAX_INLINE_FILE_BYTES)
     inspectSemanticGuidance('nightshift-semantic-boundary-', exact, (result) => {

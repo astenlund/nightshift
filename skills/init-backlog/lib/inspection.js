@@ -776,7 +776,7 @@ function collectInspection(root, host, hostContext = {}, options = {}) {
 
       return { ...item, contents: predicted }
     })
-    after = wrapFindings.length === 0 ? ready : analyzeCatalog(buildReadyCatalog(overlayCatalog))
+    after = wrapFindings.length === 0 ? null : analyzeCatalog(buildReadyCatalog(overlayCatalog))
     readyProblems = projectReadyProblems(ready, catalog)
   } catch (error) {
     inspectError('ready-failed', 'Ready parser conversion failed.', null, error)
