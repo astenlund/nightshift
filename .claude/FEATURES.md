@@ -133,6 +133,26 @@ Draft exploring an explicit compaction boundary after plan hardening and before 
 
 Draft exploring a lifecycle-shape proposal presented right after the user accepts the decision-complete digest: the controller proposes which lifecycle steps the work warrants (the full ladder of harden spec, write plan, harden plan, implement, review code, verify, docs, lore for a complex feature; a direct jump to implement then revise-code for a trivial bug or quick win), and the user accepts or tweaks that shape before any work begins. Captured 2026-08-23 while a quick-win handover was running the full ladder over a twelve-line backlog bullet.
 
+### [Controller-owned session experiment ledger](features/controller-owned-session-experiment-ledger.md)
+
+Draft exploring a controller-owned, run-scoped experiment ledger that persists only material decisions and evidence at revise-round adjudication and other evidence-producing boundaries, then feeds complete morning-report disposition. `.tmp/handover-report-notes.md` remains the low-noise run-local implementation until the lifecycle is agreed and hardened.
+
+### [Class-level review deferral valve](features/class-level-review-deferral-valve.md)
+
+Draft exploring a controller-owned diminishing-returns valve for a fuzzy issue family reported in a second consecutive round. The controller may designate the class deferrable then and there, route and log the current finding with a narrow boundary, and acknowledge only that family while every review, staleness, convergence, and verifier gate continues normally.
+
+### [Stage-altitude finding routing](features/stage-altitude-finding-routing.md)
+
+Draft exploring controller-owned routing of valid review findings to the pipeline stage that owns their altitude, including durable `valid-but-plan-altitude` seeds that plan authoring must consume or explicitly reject with a verified record.
+
+### [Code simplifier workflow placement](features/code-simplifier-workflow-placement.md)
+
+Draft exploring whether code simplification belongs in each implementation task, in a Nightshift-owned lifecycle boundary, or in a host-side workflow. The design must select one owner and entry condition without duplicating revise-code's Code Quality dimension or `/simplify`.
+
+### [Review-run command enforcement](features/review-run-command-enforcement.md)
+
+Draft exploring mechanical enforcement that blocks prohibited controller-suite entry points during active review rounds without interfering with legitimate local or post-convergence runs. Authoritative run state, false-positive policy, and recovery behavior remain open design boundaries.
+
 ## Review hardening
 
 ### [Bundled revise controller](features/bundled-revise-controller.md)
