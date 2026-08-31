@@ -73,6 +73,8 @@ If a write or verification fails, the controller reports the exact durable state
 
 ## Lifecycle integration
 
+This feature lands after Move deterministic init-backlog mechanics out of promptspace. It extends that controller's closed inspection, approval, fingerprint, recovery, and semantic-ownership boundaries to Quick Win breakout prose rather than replacing or independently reimplementing them.
+
 `skills/ready/ready.js` recognizes canonical linked Quick Win titles, resolves `quick_wins/<slug>.md`, and applies the existing breakout hygiene rules. A linked breakout that contains `Requires:` or `External:` is a structural error because the index remains the sole dependency authority. Ready output preserves the entry title and full index wording.
 
 `skills/spec-agreement/spec-agreement.js` and its skill procedure own the confirmation, materialization, post-write target transition, and companion mapping. A materialized breakout uses the whole-file candidate selector. A multi-entry agreement receives one governing seed per breakout.

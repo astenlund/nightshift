@@ -93,6 +93,14 @@ Draft exploring a lightened variant of the revise review workflows: one fresh re
 
 Draft exploring how to cut the round count a revise run consumes to converge, prompted by the 2026-08-20 spec run needing three user cap raises. Observed amplifiers: whole-artifact fingerprint granularity, single-finding tail rounds, fix-authored surface, and verifier rounds inside the round cap (the last already a queued quick win). Candidate directions include delta-scoped re-review, convergence-aware batching, and round-economy telemetry first; none committed.
 
+### [Immutable accepted authority for compatible refreshes](features/immutable-accepted-authority.md)
+
+Draft exploring a controller-owned immutable agreement baseline for compatible review fixes. After agreement, confirmed findings either fit the accepted product shape, route to follow-up when they would expand it, or block only when a necessary correction cannot fit and progress cannot safely continue; routine tweaks never trigger renewed user agreement.
+
+### [Controller-owned revise convergence recovery](features/controller-owned-revise-convergence-recovery.md)
+
+Draft exploring longitudinal run-health reflection in the revise controller: persist finding provenance, detect review-induced expansion or non-convergence before mutation, recover against immutable accepted authority, and distinguish issues introduced by, exposed by, or independent of earlier fixes.
+
 ### [Review dimension deferral](features/review-dimension-deferral.md)
 
 Draft exploring a dimension-resolution step at review setup: adopt review dimensions from another installed skill carrying rigorous review specs, falling back to the nightshift defaults when none qualifies. Open questions at capture: the detection contract, precedence among qualifying skills, mid-run stability (the resolved set freezes at run start), and fixture impact. Captured 2026-08-20.
@@ -215,7 +223,7 @@ The universal-skill MVP and the agreement gate are shipped; every later migratio
 - **Portable resource and fingerprint contract.** Remove host-named plugin-root and shell-specific hashing assumptions from bundled-resource consumers.
   **Requires:** [Content fingerprint helper](features/content-fingerprint-helper.md).
 - **Host-neutral scaffolding and instruction routing.** Make `init-backlog`, project instructions, and global instructions work without assuming one host's filenames or instruction runtime.
-  **Requires:** [Move deterministic init-backlog mechanics out of promptspace](features/deterministic-init-backlog.md).
+  **Requires:** none.
 - **Review host adapters.** Express questions, fresh-agent dispatch, completion, recovery identities, tool guidance, model tiers, and optional handover-queue mirroring through capability contracts with Claude Code and Codex adapters.
   **Requires:** none.
 - **Host-neutral documentation and lore.** Route documentation and durable learning updates to canonical instruction sources while preserving host adapters and optional helper integrations.
@@ -237,15 +245,7 @@ Gives Nightshift's user-facing surfaces a declared audience model and communicat
 
 ### [Pick-time breakouts](features/pick-time-breakouts.md)
 
-Materializes each selected index-only Quick Win, feature, or bug into its own permanent governing breakout after the user confirms the complete source entry, then adds only the canonical title link and presents one decision-complete digest over the new file and companion index entry. Quick Win text remains a frozen, grep-friendly captured request with exact drift detection; feature and bug excerpts retain their live synchronization contract. The two-write transition has deterministic crash recovery, dependency authority stays in the index, and no file is created before an entry is picked.
-
-**Requires:** none.
-
-### [Move deterministic init-backlog mechanics out of promptspace](features/deterministic-init-backlog.md)
-
-Moves `init-backlog`'s deterministically-answerable behavior (static template bodies, directory and missing-file creation, and structural edits) out of the prompt and into bundled plugin code or static files, so one-correct-answer steps are executed rather than re-derived, while the genuinely semantic judgments (concept coverage in customized prose, ambiguous merges, when a user decision is required) remain with Claude. Boundary rule: if there is one objectively correct answer, get it out of promptspace. The per-candidate code-vs-file attribution is left open for the implementing session.
-
-Follows the breakout-dependency-drift bug fix (shipped 2026-08-22).
+Materializes each selected index-only Quick Win, feature, or bug into its own permanent governing breakout after the user confirms the complete source entry, then adds only the canonical title link and presents one decision-complete digest over the new file and companion index entry. Quick Win text remains a frozen, grep-friendly captured request with exact drift detection; feature and bug excerpts retain their live synchronization contract. The two-write transition has deterministic crash recovery, dependency authority stays in the index, and no file is created before an entry is picked. It lands after deterministic init-backlog extraction and extends that controller's closed inspection, approval, fingerprint, recovery, and semantic-ownership boundaries to Quick Win breakout prose.
 
 **Requires:** none.
 
