@@ -282,7 +282,7 @@ function recoveryTargetMatches(kind, target) {
   if (kind === 'stale-recovery-gate') return target === RECOVERY_GATE_BASENAME
   if (kind === 'election-marker') return target === RECOVERY_MARKER_BASENAME
   if (kind === 'orphan-lock-stage') return RECOVERY_LOCK_STAGE_PATTERN.test(target)
-  if (kind === 'abandoned-backup') return RECOVERY_BACKUP_PATTERN.test(target)
+  if (kind === 'abandoned-backup') return BACKUP_PATTERN.test(target)
 
   return false
 }

@@ -2040,6 +2040,33 @@ function runPublicationCases() {
     }
   })
 
+  test('keeps an orphan bootstrap stage on an abrupt pre-hard-link termination', () => {
+    const root = fixtureRoot()
+    try {
+      assert.throws(() => publishApply(request(root), { currentInspection: inspection(root), crash: true, crashBeforeOwnerPublish: true, failAt: 'after-owner-stage-write' }), /Injected publication failure at after-owner-stage-write/)
+      const names = readdirSync(root)
+
+      assert.equal(names.includes('.nightshift-init-backlog.lock'), false)
+      assert.equal(names.some((name) => name.endsWith('.new')), true)
+    } finally {
+      rmSync(root, { force: true, recursive: true })
+    }
+  })
+
+  test('acquires the bootstrap lock before live inspection and admission', () => {
+    const root = fixtureRoot()
+    try {
+      let observed = false
+      let collectionCount = 0
+      const result = publishApply(request(root), { collectInspection: () => { collectionCount += 1; if (collectionCount === 1) observed = existsSync(join(root, '.nightshift-init-backlog.lock')); return inspection(root) } })
+
+      assert.equal(result.ok, true)
+      assert.equal(observed, true)
+    } finally {
+      rmSync(root, { force: true, recursive: true })
+    }
+  })
+
   test('resumes a bootstrap lock with its unchanged owner stage and cleans that stage', () => {
     const root = fixtureRoot()
     try {
@@ -2645,14 +2672,86 @@ function runPublicationCases() {
       carried.snapshotId = deriveSnapshotId({ ...carried, snapshotId: null })
       const readyFailure = new InitBacklogError(failureRecord({ code: 'ready-failed', detail: 'ready parser failed after publication', operation: 'apply', phase: 'verify' }))
       let collectionCount = 0
+      const applyRequest = request(root, { actions: [action], inspection: carried, proposalDispositions: [{ disposition: 'selected', proposalId: action.id }] })
+      const manifestId = admitApplyManifest(applyRequest).manifestId
 
-      assert.throws(() => publishApply(request(root, { actions: [action], inspection: carried, proposalDispositions: [{ disposition: 'selected', proposalId: action.id }] }), { collectInspection: () => { collectionCount += 1; if (collectionCount === 1) return carried; throw readyFailure } }), (error) => error instanceof InitBacklogError && error.record.code === 'ready-failed' && error.record.phase === 'verify')
+      assert.throws(() => publishApply(applyRequest, { collectInspection: () => { collectionCount += 1; if (collectionCount === 1) return carried; throw readyFailure } }), (error) => {
+        assert.deepEqual(error.record, failureRecord({ code: 'ready-failed', detail: 'ready parser failed after publication', manifestId, operation: 'apply', outcomes: [{ actionId: action.id, status: 'created', target: action.target }], phase: 'verify' }))
+        return true
+      })
       assert.equal(collectionCount, 2)
       assert.equal(existsSync(join(root, '.claude')), true)
       assert.equal(existsSync(join(root, '.nightshift-init-backlog.lock')), false)
       assert.equal(readdirSync(root).some((name) => name.includes('.nightshift-init-backlog.')), false)
     } finally {
       rmSync(root, { force: true, recursive: true })
+    }
+  })
+
+  test('rolls back the first post-unwrap ready failure with exact recovery evidence', () => {
+    const fixture = unwrapBackupFailureFixture()
+    const manifestId = admitApplyManifest(fixture.applyRequest).manifestId
+    const expectedRecord = failureRecord({
+      code: 'ready-failed',
+      detail: 'ready parser failed after unwrap publication',
+      manifestId,
+      operation: 'apply',
+      outcomes: [{ actionId: fixture.applyRequest.actions[0].id, status: 'unwrapped', target: fixture.target }],
+      phase: 'verify',
+      recovery: { retainedBackups: [], status: 'restored', warnings: [] },
+    })
+    const readyFailure = new InitBacklogError(failureRecord({ code: 'ready-failed', detail: expectedRecord.detail, operation: 'apply', phase: 'verify' }))
+    let collectionCount = 0
+    const collectFailure = () => {
+      collectionCount += 1
+      throw readyFailure
+    }
+    const applyOptions = { collectInspection: collectFailure, currentInspection: fixture.applyRequest.inspection }
+    const expectedBackupPath = join(fixture.root, ...fixture.backupTarget.split('/'))
+    try {
+      assert.throws(() => publishApply(fixture.applyRequest, applyOptions), (error) => {
+        assert.deepEqual(error.record, expectedRecord)
+        assert.equal(error.cause, readyFailure)
+
+        return true
+      })
+      assert.equal(collectionCount, 1)
+      assert.deepEqual(readFileSync(join(fixture.root, fixture.target)), fixture.wrapped)
+      assert.equal(statSync(join(fixture.root, fixture.target)).mode & 0o777, process.platform === 'win32' ? 0o666 : 0o644)
+      assert.equal(existsSync(expectedBackupPath), false)
+      assert.equal(existsSync(join(fixture.root, '.nightshift-init-backlog.lock')), false)
+
+      const dispatchActionId = `p-${'a'.repeat(62)}`
+      const dispatchAction = { ...fixture.applyRequest.actions[0], id: dispatchActionId }
+      const dispatchInspection = {
+        ...fixture.applyRequest.inspection,
+        proposals: fixture.applyRequest.inspection.proposals.map((proposal) => ({ ...proposal, action: dispatchAction, proposalId: dispatchActionId })),
+        targets: fixture.applyRequest.inspection.targets.map((record) => ({ ...record, states: ['present', 'wrapped'] })),
+        wrapFindings: fixture.applyRequest.inspection.wrapFindings.map((finding) => ({ ...finding, count: 1, firstLine: 1 })),
+      }
+      dispatchInspection.snapshotId = deriveSnapshotId({ ...dispatchInspection, snapshotId: null })
+      const dispatchRequest = { ...fixture.applyRequest, actions: [dispatchAction], hostContext: dispatchInspection.hostContext, inspection: dispatchInspection, proposalDispositions: [{ disposition: 'selected', proposalId: dispatchActionId }] }
+      const dispatchedManifestId = admitApplyManifest(dispatchRequest).manifestId
+      const dispatchedRecord = { ...expectedRecord, manifestId: dispatchedManifestId }
+      dispatchedRecord.outcomes = [{ ...dispatchedRecord.outcomes[0], actionId: dispatchActionId }]
+      const dispatchedBackupPath = join(fixture.root, ...`.tmp/nightshift-init-backlog-unwrap-${dispatchInspection.snapshotId}-${dispatchedManifestId}-${sha256(Buffer.from(fixture.target, 'utf8'))}.bak`.split('/'))
+      let dispatchedCollectionCount = 0
+      const dispatchCollectFailure = () => {
+        dispatchedCollectionCount += 1
+        throw readyFailure
+      }
+      const dispatched = runPrivateDispatcher(Buffer.from(`${canonicalJson(dispatchRequest)}\n`, 'utf8'), {
+        apply: (value) => publishApply(value, { ...applyOptions, collectInspection: dispatchCollectFailure, currentInspection: value.inspection }),
+      })
+      assert.equal(dispatched.exitCode, 1, dispatched.stdout.toString('utf8'))
+      assert.equal(dispatchedCollectionCount, 1)
+      assert.equal(dispatched.stderr.length, 0)
+      assert.deepEqual(JSON.parse(dispatched.stdout.toString('utf8')), dispatchedRecord)
+      assert.deepEqual(readFileSync(join(fixture.root, fixture.target)), fixture.wrapped)
+      assert.equal(existsSync(dispatchedBackupPath), false)
+      assert.equal(existsSync(join(fixture.root, '.nightshift-init-backlog.lock')), false)
+    } finally {
+      rmSync(fixture.root, { force: true, recursive: true })
     }
   })
 

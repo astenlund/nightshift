@@ -48,8 +48,8 @@ function verifyRecoveryGateAbsent(root) {
   }
 }
 
-function throwEnrichedReadyFailure(error, manifestId, outcomes) {
-  throw new InitBacklogError(failureRecord({ ...error.record, manifestId, outcomes }), { cause: error })
+function throwEnrichedReadyFailure(error, manifestId, outcomes, recovery = error.record.recovery) {
+  throw new InitBacklogError(failureRecord({ ...error.record, manifestId, outcomes, recovery }), { cause: error })
 }
 
 function relativeArtifact(root, path) {
@@ -214,7 +214,8 @@ function notifyWrite(options, path) {
 function registerTemporary(root, ownedTemporaries, path, bytes, options, requireSingleLink = true, mode = null) {
   const opened = stableOpenFile(root, path, boundedOpenOptions(options, bytes.length, { requireSingleLink }))
   if (!opened.bytes.equals(bytes)) throw new Error('Staged temporary bytes changed')
-  ownedTemporaries.set(path, { bytes: Buffer.from(bytes), identity: opened.identity, requireSingleLink })
+  if (mode !== null && opened.mode !== mode) throw new Error('Staged temporary mode changed')
+  ownedTemporaries.set(path, { bytes: Buffer.from(bytes), destination: null, identity: opened.identity, mode, requireSingleLink })
 }
 
 function verifyOwnedTemporary(root, path, owned, options, requireSingleLink = owned.requireSingleLink) {
@@ -235,6 +236,7 @@ function verifyOwnedTemporary(root, path, owned, options, requireSingleLink = ow
 function removeOwnedTemporary(root, path, options, destination = null) {
   const owned = options.ownedTemporaries?.get(path)
   if (owned === undefined) throw new Error('Reserved temporary ownership is not proven')
+  options.verifyLock?.()
   verifyOwnedTemporary(root, path, owned, options, destination === null ? owned.requireSingleLink : false)
   if (destination !== null) {
     const ownedWithDestination = { ...owned, destination }
@@ -269,9 +271,11 @@ function publishContent(root, path, bytes, mode, temp, options, replace, expecte
   transition(options, 'after-mode-assignment')
   const staged = options.ownedTemporaries?.get(temp)
   if (staged === undefined) throw new Error('Reserved temporary ownership is not proven')
+  options.verifyLock?.()
   verifyOwnedTemporary(root, temp, staged, options)
   const { content: expectedContent, identity: expectedIdentity = null, mode: expectedMode } = expected
   stableTarget(root, path, { content: replace ? expectedContent : null, identity: replace ? expectedIdentity : null, kind: 'file', mode: replace ? expectedMode : null, present: replace }, options)
+  options.verifyLock?.()
   if (replace) {
     renameVerified(temp, path, bytes, fileOptions)
   } else {
@@ -429,8 +433,9 @@ function lockRecord(request, root, pid, ownerNonce, manifestId, temporaryPathsVa
   return { createdAtUnixMs: Date.now(), manifestId, operation: OPERATION.APPLY, ownerNonce, pid, protocolVersion: 1, recoveryId: null, root, temporaryPaths: temporaryPathsValue.map((path) => relativeArtifact(root, path)).sort(compareOrdinal), unfinalizedDirectories: unfinalizedDirectories.sort((left, right) => compareOrdinal(left.target, right.target)) }
 }
 
-function requireReservedTemporariesAbsent(root, temporarySet) {
+function requireReservedTemporariesAbsent(root, temporarySet, authorized = new Set()) {
   for (const path of temporarySet) {
+    if (authorized.has(path)) continue
     try {
       lstatSync(path)
       publicationError('A reserved publication temporary already exists.', { code: 'runtime-lock', phase: 'lock', target: relativeArtifact(root, path) })
@@ -466,7 +471,7 @@ function cleanupOwner(root, lock, options, ownedTemporaries = new Map()) {
       if (BACKUP_PATTERN.test(temporary)) {
         continue
       }
-      verifyLockState(root, lock, options)
+      verifyLockState(root, lock, { ...options, skipRecoveryGateCheck: true })
       const temporaryPath = targetPath(root, temporary)
       let present = false
       try {
@@ -477,9 +482,11 @@ function cleanupOwner(root, lock, options, ownedTemporaries = new Map()) {
       }
       if (!present) continue
       const owned = ownedTemporaries.get(temporaryPath)
-      if (owned === undefined) throw new Error('Reserved temporary ownership is not proven')
-      const currentTemporary = stableOpenFile(root, temporaryPath, { ...options, requireSingleLink: owned.requireSingleLink })
-      if (currentTemporary.identity !== owned.identity || !currentTemporary.bytes.equals(owned.bytes)) throw new Error('Reserved temporary changed before cleanup')
+      if (owned === undefined) {
+        throw new Error('Reserved temporary ownership is not proven')
+      }
+      verifyOwnedTemporary(root, temporaryPath, owned, options, owned.requireSingleLink)
+      verifyOwnedPublishedLink(root, temporaryPath, owned, options)
       removeAndVerify(temporaryPath, options)
       ownedTemporaries.delete(temporaryPath)
     }
@@ -638,8 +645,16 @@ function adoptPendingLockUpgrade(root, existing, expectedRecord, path, options, 
   }
 }
 
-function adoptResumeTemporaries(root, existing, expectedTemporaries, options, ownedTemporaries, bootstrapStage) {
+function adoptResumeTemporaries(root, existing, expectedTemporaries, options, ownedTemporaries, bootstrapStage, upgradedLockNext) {
   if (existing === null) return
+  if (existing.record.manifestId !== null) {
+    try {
+      lstatSync(upgradedLockNext)
+      throw new Error('Publication lock upgrade temporary remains after upgrade')
+    } catch (error) {
+      if (error?.code !== 'ENOENT') throw error
+    }
+  }
   for (const relativePath of existing.record.temporaryPaths) {
     const path = targetPath(root, relativePath)
     if (path === bootstrapStage) {
@@ -691,16 +706,12 @@ function adoptResumeTemporaries(root, existing, expectedTemporaries, options, ow
   }
 }
 
-function publishMarker(request, admission, root, manifestId, ownerMode, options) {
+function publishMarker(request, admission, root, manifestId, ownerMode, options, paths) {
   if (admission.electionMarker.state === 'absent') return
   const path = join(root, ELECTION_BASENAME)
-  const temp = join(root, `.nightshift-init-backlog-election.${manifestId}.tmp`)
   const bytes = markerBytes(request, admission, root)
-  if (targetMatchesPublishedTemporary(root, path, bytes, ownerMode, temp, options)) return false
-  let replace = false
-  let mode = ownerMode
-  let expectedContent = null
-  let expectedIdentity = null
+  options.verifyLock?.()
+  notifyWrite(options, path)
   const carriedGit = request.inspection.git ?? {}
   const oldBytes = markerOldBytes(request, root)
   const markerByteLimit = Math.max(bytes.length, oldBytes?.length ?? 0)
@@ -759,7 +770,7 @@ function publishMarker(request, admission, root, manifestId, ownerMode, options)
   return true
 }
 
-function removeMarker(request, admission, root, options) {
+function removeMarker(request, admission, root, options, paths) {
   const path = join(root, ELECTION_BASENAME)
   const expected = markerBytes(request, admission, root)
   const mode = platformMode(options, request.inspection.git?.electionMarkerMode ?? 0o600)
@@ -777,8 +788,6 @@ function removeMarker(request, admission, root, options) {
     transition(options, 'after-marker-unlink')
     transition(options, 'after-marker-terminal-rename')
     transition(options, 'after-marker-removal')
-
-    return
   }
   if (pathExists(paths.electionNewWitness)) {
     const owned = options.ownedTemporaries?.get(paths.electionNewWitness)
@@ -974,6 +983,7 @@ function validateResumeInspection(request, liveInspection, admission, { options,
   const actionTargets = new Set(admission.actions.map((action) => action.target))
   const carriedGit = request.inspection.git ?? {}
   const markerStates = { carried: carriedGit.electionMarker, mode: carriedGit.electionMarkerMode, snapshotId: carriedGit.electionMarkerSnapshotId, values: new Set([carriedGit.electionMarker, admission.electionMarker.state]) }
+  if (terminalMarkerEvidence) markerStates.values.add('absent')
   if (liveInspection.git?.electionMarker !== undefined && !markerStates.values.has(liveInspection.git.electionMarker)) publicationError('Live election marker differs from the approved resume state.', { code: 'snapshot-drift', phase: 'prevalidate', manifestId: admission.manifestId })
   let progress = null
   if (progressRoot !== null) {
@@ -1134,7 +1144,7 @@ function publishApply(request, options = {}) {
     }
     throw error
   }
-  const states = initialStates(request.inspection, root, options)
+  let states
   try {
     states = initialStates(request.inspection, root, options)
     hydrateUnwrapStates(request, unwrapActions, states, root, options, backupTargets, existing, resume)
@@ -1159,8 +1169,9 @@ function publishApply(request, options = {}) {
           if (error?.code !== 'ENOENT') throw error
         }
       }
-      lock = { bytes: existing.bytes, manifestId: existing.record.manifestId, ownerNonce, paths: resumedPaths, pid, record: existing.record, temporaryPaths: existing.record.temporaryPaths }
-    } else {
+      lock = { bytes: existing.bytes, identity: existing.identity, manifestId: existing.record.manifestId, mode: existing.mode, ownerNonce, paths: resumedPaths, pid, record: existing.record, temporaryPaths: existing.record.temporaryPaths }
+    } else if (lock === null) {
+      verifyRecoveryGateAbsent(root)
       notifyWrite(options, fixed.lockStage)
       lock = createInitialLock(root, bootstrap, { ...options, beforePublish: () => verifyRecoveryGateAbsent(root), ownerNonce, pid, onTransition: (point) => transition(options, point) })
       const initialReadback = stableOpenFile(root, bootstrapPaths.lock, boundedOpenOptions(options, lock.bytes.length, { requireSingleLink: true }))
@@ -1262,7 +1273,23 @@ function publishApply(request, options = {}) {
 
       retainedBackups = []
     }
+    const rollbackUnwrapAfterVerification = (error = null) => {
+      try {
+        restoreUnwrapBatch(root, unwrapActions, admission.manifestId, request.inspection.snapshotId, publicationOptions)
+      } catch (restoreError) {
+        retainedBackups = retainedBackupPaths(root, retainedBackups)
+        publicationError('Unwrap restoration failed after ready verification drift.', { code: 'restore-failed', phase: 'restore', manifestId: admission.manifestId, outcomes, recovery: { retainedBackups, status: 'restore-failed', warnings: [{ code: 'manual-cleanup', detail: 'Unwrap backups require manual cleanup after restoration failure.', target: null }] } }, restoreError)
+      }
+      cleanupUnwrapBackups()
+      const recovery = { retainedBackups: [], status: 'restored', warnings: [] }
+      if (error instanceof InitBacklogError && error.record.code === 'ready-failed' && error.record.phase === 'verify') {
+        throwEnrichedReadyFailure(error, admission.manifestId, outcomes, recovery)
+      }
+      if (error !== null) publicationError('Post-publication ready verification failed.', { code: 'ready-failed', phase: 'verify', manifestId: admission.manifestId, outcomes, recovery }, error)
+      publicationError('Predicted ready result differs after unwrap publication.', { code: 'ready-delta', phase: 'verify', manifestId: admission.manifestId, outcomes })
+    }
     if (backupPaths.length !== 0) {
+      publicationOptions.verifyLock?.()
       backupDirectoryCreated = verifyBackupDirectory(root, options)
       for (let index = 0; index < backupPaths.length; index += 1) {
         const action = unwrapActions[index]
@@ -1353,28 +1380,6 @@ function publishApply(request, options = {}) {
           index += 1
         }
       }
-      if (action.kind === 'ensure-directory') {
-        const approvedMode = (options.platform ?? process.platform) === 'win32' ? null : action.mode
-        const already = state.present || targetMatchesOutput(root, path, 'directory', null, approvedMode, options)
-        if (!state.present) {
-          if (!already) publishDirectory(root, path, approvedMode, publicationOptions)
-          state.present = true
-        }
-        outcomes.push({ actionId: action.id, status: already ? 'skipped-complete' : 'created', target: action.target })
-      } else {
-        const bytes = actionAfter(request, action)
-        if (bytes === null) publicationError('Approved action has no content image.', { code: 'manifest-invalid', phase: 'prevalidate', manifestId: admission.manifestId, actionId: action.id, target: action.target })
-        let already = false
-        const effectiveMode = (options.platform ?? process.platform) === 'win32' ? null : action.mode ?? state.mode ?? POSIX_DEFAULT_FILE_MODE
-        already = targetMatchesPublishedTemporary(root, path, bytes, effectiveMode, actionTemps[index], publicationOptions) || targetMatchesOutput(root, path, 'file', bytes, effectiveMode, options)
-        const expectedContent = state.content ?? (action.beforeBase64 === null || action.beforeBase64 === undefined ? null : Buffer.from(action.beforeBase64, 'base64'))
-        if (!already) publishContent(root, path, bytes, effectiveMode, actionTemps[index], publicationOptions, state.present, expectedContent, state.mode, state.identity)
-        state.present = true
-        state.content = bytes
-        const status = already ? 'skipped-complete' : action.kind === 'unwrap-file' ? 'unwrapped' : action.kind === 'create-from-template' ? 'created' : 'edited'
-        outcomes.push({ actionId: action.id, status, target: action.target })
-      }
-      states.set(action.target, state)
     }
     // The marker temporaries this manifest reserved are the only hard links
     // the published marker may legitimately carry while verification runs.
@@ -1391,14 +1396,7 @@ function publishApply(request, options = {}) {
     })
     const expectedUnwrapReady = request.inspection?.unwrapReady?.after
     if (unwrapActions.length !== 0 && expectedUnwrapReady !== undefined && canonicalJson(postInspect.ready ?? null) !== canonicalJson(expectedUnwrapReady)) {
-      try {
-        restoreUnwrapBatch(root, unwrapActions, admission.manifestId, request.inspection.snapshotId, publicationOptions)
-      } catch (error) {
-        retainedBackups = retainedBackupPaths(root, retainedBackups)
-        publicationError('Unwrap restoration failed after ready verification drift.', { code: 'restore-failed', phase: 'restore', manifestId: admission.manifestId, outcomes, recovery: { retainedBackups, status: 'restore-failed', warnings: [{ code: 'manual-cleanup', detail: 'Unwrap backups require manual cleanup after restoration failure.', target: null }] } }, error)
-      }
-      cleanupUnwrapBackups()
-      publicationError('Predicted ready result differs after unwrap publication.', { code: 'ready-delta', phase: 'verify', manifestId: admission.manifestId, outcomes })
+      rollbackUnwrapAfterVerification()
     }
     if (unwrapActions.length !== 0 && expectedUnwrapReady !== undefined) {
       cleanupUnwrapBackups()
