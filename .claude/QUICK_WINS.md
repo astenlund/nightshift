@@ -85,6 +85,62 @@ Refactors the agreement-gate revise run reviewed and agreed are valid but deferr
 
 - **Loop revise-lore's fresh-eyes pass to convergence.** User ruling 2026-08-23: the pass over drafted instruction edits in `skills/revise-lore/SKILL.md` stays a single fresh reviewer at the current review bar, but iterates instead of running once: fold each pass's findings into the proposals, dispatch another fresh single reviewer over the folded set, and stop at the first clean pass. No dimension fan-out and no engine invocation; instruction text is high-leverage enough to warrant convergence, not a bigger swarm. Version increase when it lands.
 
+## Review workflow refinements
+
+- **Reserve review authority vocabulary for the controller.** Sweep Nightshift's review surfaces so adjudication, certification, gate evaluation, and stamping name controller actions, while reviewers, skeptics, and verifiers review, test claims, and report evidence without claiming controller authority.
+
+- **Align manual revise fallback with the Workflow path.** Audit the manual fallback against the primary Workflow path and align shared scheduling, skeptic fan-out, adjudication, checkpoint, recovery, and all-inactive wave invariants. Explicitly preserve or deliberately reconsider the fallback's documented lack of a dedup judge.
+
+- **Make review probes hermetic.** Move reviewer and skeptic probes that mutate checkout files into isolated fixtures, or capture and restore the exact original bytes and line endings through guaranteed cleanup, then verify restoration before returning.
+
+## Init-backlog runtime and controller structure
+
+- **Reduce init-backlog controller-suite process startup.** Establish measured timing baselines, then evaluate coordinated Windows attribute-probe batching, one bounded long-lived `pwsh` probe protocol, safe owned scratch-repository reuse, shared `git cat-file --batch` reads with per-entry failure attribution, and a fast/full split that retains the complete end-to-end tier in CI. Document the buffered-output false-hang signature and choose the simplest combination that meets the runtime budget.
+
+- **Remove unsupported POSIX host-discovery execution paths.** Remove the inert POSIX live-execution surface, its dedicated fixtures, and its documentation instead of hardening its latent resolver race. Retain host-neutral pure logic used by supported Windows flows and keep the Windows-only support and verification boundary explicit.
+
+- **Centralize controller-suite fixture cleanup.** Centralize fixture creation, register exact owned paths immediately, and remove them through guaranteed `finally` and process-exit cleanup with interruption coverage. Permit any stale-startup sweep only for ownership-marked paths older than a conservative threshold.
+
+- **Decompose init-backlog filesystem services.** Split `skills/init-backlog/lib/filesystem.js` into focused atomic I/O, trusted-executable discovery, and request-transport session modules while preserving current consumer boundaries and using existing tests to define the compatibility migration.
+
+- **Decompose publication apply phases.** Decompose `publishApply` by lock, admission, temporary-path derivation, collision, resume, and marker and backup publication phases, centralize the repeated lock-cleanup guard, and preserve crash-state recovery through focused tests.
+
+- **Memoize guidance-resolution candidate bytes.** Introduce a per-resolution decoded-byte memo shared by guidance resolution and newline-evidence inspection, mirroring `collectInspection` while preserving stable-open and file-identity semantics and prohibiting cross-resolution caching.
+
+- **Avoid quadratic streaming buffer concatenation.** Replace per-chunk `Buffer.concat` accumulation in the three streaming paths with chunk arrays and one concatenation at the framing boundary, retaining current size limits and partial-frame behavior.
+
+- **Separate inspection evidence from proposal generation.** Separate `collectInspection` evidence gathering from proposal generation, extract focused validation helpers, preserve behavior, and pin the resulting manifest through fixtures.
+
+- **Separate Git-policy probes from policy assembly.** Extract the duplicated Git-policy probe loop, separate evidence gathering from policy assembly, preserve behavior, and cover repository and ignore-election variants with fixtures.
+
+- **Modularize recovery validation and execution.** Isolate shared `applyRecovery` preconditions and dispatch its five recovery kinds through focused handlers. Separate generic protocol shape validation from one mutation-free business-rule validator per kind, align validators with handlers without coupling validation to mutation, and pin accepted, rejected, retry, drift, and terminal states with fixtures.
+
+## Backlog parser and template maintenance
+
+- **Unify cross-skill backlog parsing sources.** Give `unwrap.js`, `ready.js`, and the init-backlog scanners authoritative shared sources for the seven backlog file stems, the CommonMark type-6 HTML tag inventory, and the catalog-target portability predicate. Preserve standalone skill packaging, remove redundant normalization, and pin identical classification behavior across consumers.
+
+- **Unify ready continuation joining after grammar fixtures.** First pin both continuation-joining behaviors with fixtures and decide whether heading treatment is intentional grammar, then extract one shared helper with explicit modes only for genuine differences.
+
+- **Profile-gate ready Requires resolution reuse.** Treat this as low priority: share top-level `Requires` resolution only when measured catalog scale justifies it, and derive the redundant contents-keyed catalog map from the existing target-keyed representation instead of remapping the same entries.
+
+- **Compose shared init-backlog template boilerplate.** Extract the two byte-identical boilerplate paragraphs shared by five templates into one composed asset while preserving rendered bytes and updating the manifest inventory and asset-identity pins together.
+
+- **Decide remaining unwrap scanner parity.** Treat this as low priority: decide whether `unwrap.js` should match the shared scanner for tab indentation and closing-fence indentation, then either align both with fixtures or document and test the intentional grammar difference.
+
+## Init-backlog harness architecture
+
+- **Extract Windows runner protocol state.** Extract frame validation, sequencing, budgets, failure identity, and closure projections into a focused protocol-state object while the Windows adapter retains process handles, event wiring, timers, writes, and disposal. Preserve integration coverage and add direct transition tests.
+
+- **Regenerate init-backlog import fixtures.** Add a direct Node regenerator using `buildExpectedImportCases` and canonical JSON, retain compatibility metadata when the cases digest is unchanged, fail closed before populated probe metadata becomes stale, and test that it imports the shared oracle rather than a cases registrar.
+
+- **Decompose host-behavior test registrars.** Split `tests/init-backlog-host-behavior.js` and its 90-plus-case `host-entry.cases.js` companion into facade-preserving boundary modules with shared fixture support, and replace positional plan comments with named design decisions.
+
+- **Extract host-discovery evidence persistence.** Extract smoke-row validation, evidence-path stability, exclusive publication, and row reads from `host-discovery-smoke-lib.js`; retain snapshot-digest and release-acceptance policy there, and keep this subsystem separate from the session driver's distinct leaf-manifest evidence contract.
+
+- **Decompose controller oracle registrars.** Split `oracles.cases.js` into concern-focused modules behind an order-preserving facade, preserve test names and shared seams, and extract the neutral manifest validator from `assets.cases.js` for asset and activation registrars.
+
+- **Revalidate and consolidate residual micro-cleanups.** Revalidate each residual against the pickup tree, preserve intentional duplicates and malformed fixtures, group surviving helper, constant, dead-state, fixture, and drift-pin cleanups into atomic behavior-preserving commits, and run focused tests after each cluster.
+
 ## (add sections as work emerges)
 
 ## History
