@@ -45,6 +45,12 @@ Markdown collection does not consistently separate traversal coverage from emitt
 
 **Requires:** none.
 
+### Revise workflows cannot dispatch on the supported Codex agent surface
+
+In a supported Codex session, the revise engine prefers a Workflow tool that may not be surfaced, while its manual fallback requires the Claude-specific `sonnet` model pin that Codex's fresh-agent interface does not accept. The run therefore cannot enter its own review lifecycle even though Codex exposes background submission and attributable completion primitives. The fix must define host-neutral role-to-model resolution and capability-driven Workflow versus manual dispatch so each supported host preserves the intended review tier, fail-closed checkpoint behavior, and complete reviewer and skeptic lifecycle without inventing unsupported model identifiers.
+
+**Requires:** [Agent-host-agnostic Nightshift: Review host adapters](features/agent-host-agnostic-nightshift.md).
+
 
 ## History
 
