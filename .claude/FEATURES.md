@@ -187,6 +187,18 @@ Resolves a skeptic-confirmed, controller-admitted finding through an agent-to-ag
 
 **Requires:** [Contract-calibrated revise admission](features/contract-calibrated-revise-admission.md).
 
+### [Verified fixup transactions](features/verified-fixup-transactions.md)
+
+Routes every Nightshift-created fixup through one private deterministic service that proves disjoint repair ownership and an unpublished target, runs normal hooks in an isolated worktree, simulates the complete pending autosquash, and publishes only the verified fixup commit as an ordinary fast-forward. The MVP never rewrites live history and records compact promotion evidence for a manually approved continuation.
+
+**Slices:**
+
+- **MVP - verified fixup creation.** Own fixup creation, simulation, deterministic recovery, and evidence while forbidding autonomous autosquash.
+- **Checkpoint autosquash.** After manual promotion from MVP evidence, permit actual autosquash at safe revise-run and lifecycle checkpoints with recovery refs and post-rewrite verification.
+  **External:** manual promotion based on sufficient MVP evidence.
+
+**Requires:** none.
+
 ### [Durable run identity and concurrency protection](features/durable-run-identity-concurrency.md)
 
 Gives each Nightshift run a frozen durable identity and a scope-hash-scoped scratch home, and protects concurrent same-scope runs from silently overwriting each other. Reverses `internal/revise/SKILL.md`'s "do not add a lock" invariant: a start-of-session boundary check classifies found state as resume (stale heartbeat), live concurrent run (fresh heartbeat, user picks abort or force-break), or foreign/stale (interactive asks, autonomous fails closed). An opaque validated handover-queue persistence binding owns the fixed path, physical identity, ignored and untracked Git policy, stable reads, compare-before-replace, atomic replacement, readback, and stale-state refusal while pure queue transitions remain path-free.
