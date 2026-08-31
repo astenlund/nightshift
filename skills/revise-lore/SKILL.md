@@ -36,6 +36,8 @@ Propose changes the same way as CLAUDE.md updates: show the diff, explain why, a
 
 ## Fresh-eyes pass before applying
 
+Never dispatch Fable for reviewers, skeptics, verifiers, implementers, fixers, validators, or auxiliary agents. Fable is reserved for the user-interacting controller; retain the role-specific non-Fable model pins.
+
 CLAUDE.md files and plugin files are the most durable, highest-leverage artifacts this workflow touches: an error persisted here shapes every future session on every machine, and same-context self-review is exactly the shortcut the revise skill exists to avoid. Before presenting proposed edits for approval, dispatch one fresh agent (no prior context) over the full set of proposed diffs plus the current content of each target file, checking:
 
 - **Conflicts and overlaps**: does a proposed rule contradict or duplicate an existing rule in the same file or a sibling destination (global vs project CLAUDE.md, public skill file vs internal revise SKILL.md)?

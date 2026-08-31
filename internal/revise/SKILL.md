@@ -17,6 +17,8 @@ The first argument token selects `code`, `plan`, or `spec`. Everything after it 
 
 The parameter file supplies scope resolution, agreement binding and impact triggers, dimensions, model pin, pre-seed sources, delivery rules, additional prompt rules, post-fix steps, edit surface, retrospective extras, and artifact-specific post-review work. If the first token is missing or invalid, ask which artifact type is meant.
 
+Never dispatch Fable for reviewers, skeptics, verifiers, implementers, fixers, validators, or auxiliary agents. Fable is reserved for the user-interacting controller; retain the role-specific non-Fable model pins.
+
 ## Review lifecycle
 
 Define and apply these terms consistently:

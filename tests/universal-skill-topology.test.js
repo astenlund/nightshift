@@ -34,6 +34,7 @@ const FIXTURE_ROOT = join(__dirname, 'fixtures', 'legacy-plugin-2.4.5')
 const PUBLIC_SKILLS_ROOT = join(REPOSITORY_ROOT, 'skills')
 const INIT_BACKLOG_APPROVAL_SENTENCE = 'Obtain explicit approval for the complete manifest before any `apply` request.'
 const INIT_BACKLOG_WRITER_DISCLOSURE_SENTENCE = 'Before asking for approval, disclose the `external-writer-window`: project targets remain writable by external processes during controller publication, so a concurrent change can make a later action fail with `snapshot-drift` after earlier actions have landed; only an unwrap batch has byte-exact aggregate restoration.'
+const FABLE_RESERVATION_POLICY = 'Never dispatch Fable for reviewers, skeptics, verifiers, implementers, fixers, validators, or auxiliary agents. Fable is reserved for the user-interacting controller; retain the role-specific non-Fable model pins.'
 
 function readRequiredFile(filePath) {
   return readFileSync(filePath, 'utf8')
@@ -135,6 +136,12 @@ function countExact(text, value) {
   return text.split(value).length - 1
 }
 
+function assertFableReservationPolicy(dispatcherBodies) {
+  for (const [owner, body] of dispatcherBodies) {
+    assert.equal(countExact(body, FABLE_RESERVATION_POLICY), 1, `${owner} must reserve Fable for the user-interacting controller exactly once`)
+  }
+}
+
 function assertInitBacklogScaffoldInventory(body) {
   const targetsStart = body.indexOf('## Targets\n')
   const processStart = body.indexOf('\n## Process\n', targetsStart)
@@ -172,6 +179,15 @@ function normalizeProcedure(entryName, text) {
   }
 
   return normalized.replace(/\r?\n/g, '\n')
+}
+
+function normalizeCurrentProcedure(entryName, text) {
+  const normalized = removeProcedureEnvelope(text)
+  if (entryName === 'handover' || entryName === 'revise-lore') {
+    return normalized.replace(`\n\n${FABLE_RESERVATION_POLICY}\n\n`, '\n\n')
+  }
+
+  return normalized
 }
 
 function listDirectChildDirectories(directoryPath) {
@@ -264,7 +280,7 @@ test('procedure fidelity retains each substantial workflow except its declared t
     const fixtureFrontmatter = parseFrontmatter(fixtureCommandPath)
     const migratedFrontmatter = parseFrontmatter(migratedSkillPath)
     assert.equal(migratedFrontmatter.fields.description, fixtureFrontmatter.fields.description, `${entryName} description must remain unchanged`)
-    assert.equal(removeProcedureEnvelope(readRequiredFile(migratedSkillPath)), normalizeProcedure(entryName, readRequiredFile(fixtureCommandPath)), `${entryName} body differs outside allowed topology replacements`)
+    assert.equal(normalizeCurrentProcedure(entryName, readRequiredFile(migratedSkillPath)), normalizeProcedure(entryName, readRequiredFile(fixtureCommandPath)), `${entryName} body differs outside allowed topology replacements`)
   }
 })
 
@@ -688,6 +704,21 @@ test('handover completion stamp policy distinguishes dedicated and index-only ar
   const mutatedBody = body.replace(skipRule, 'For an index-only backlog entry, invoke `writeProvenanceStamp`')
   assert.notEqual(mutatedBody, body, 'handover completion mutation target must exist')
   assert.throws(() => assertHandoverCompletionStampPolicy(mutatedBody), assert.AssertionError)
+})
+
+test('direct plugin dispatchers reserve Fable for the user-interacting controller', () => {
+  const dispatcherBodies = [
+    ['revise engine', readRequiredFile(join(ENGINE_ROOT, 'SKILL.md'))],
+    ['handover', readRequiredFile(join(PUBLIC_SKILLS_ROOT, 'handover', 'SKILL.md'))],
+    ['revise-lore', readRequiredFile(join(PUBLIC_SKILLS_ROOT, 'revise-lore', 'SKILL.md'))],
+  ]
+
+  assertFableReservationPolicy(dispatcherBodies)
+  for (const [owner, body] of dispatcherBodies) {
+    const mutatedBody = body.replace(FABLE_RESERVATION_POLICY, 'Fable is available for every agent role.')
+    assert.notEqual(mutatedBody, body, `${owner} Fable-reservation mutation target must exist`)
+    assert.throws(() => assertFableReservationPolicy([[owner, mutatedBody]]), assert.AssertionError)
+  }
 })
 
 test('plan workflows share one physical binding and consume revalidated bytes', () => {
