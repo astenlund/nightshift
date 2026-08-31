@@ -10,6 +10,10 @@ const { tmpdir } = require('node:os')
 const { dirname, join, relative } = require('node:path')
 const test = require('node:test')
 
+const { normalizeTestTemporaryDirectory } = require('./test-environment')
+
+normalizeTestTemporaryDirectory()
+
 const { PROCEDURE_REPLACEMENTS, PUBLIC_SKILLS, REVISE_ENGINE_RESOURCES, REVISE_WRAPPERS } = require('./entry-contract')
 const { QUEUE_STEPS, advanceQueue, createQueue, resumeQueue } = require('../skills/handover/handover-queue')
 const {

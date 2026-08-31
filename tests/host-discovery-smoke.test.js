@@ -7,6 +7,10 @@ const { tmpdir } = require('node:os')
 const { basename, delimiter, dirname, join } = require('node:path')
 const test = require('node:test')
 
+const { normalizeTestTemporaryDirectory } = require('./test-environment')
+
+normalizeTestTemporaryDirectory()
+
 const {
   CODEX_CATALOG_PROMPT,
   MAX_CANDIDATE_BATCH_RESPONSE_BYTES,
