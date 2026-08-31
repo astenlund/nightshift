@@ -269,6 +269,54 @@ Materializes each selected index-only Quick Win, feature, or bug into its own pe
 
 **Requires:** none.
 
+### [Filesystem metadata preservation](features/filesystem-metadata-preservation.md)
+
+Defines which filesystem metadata Nightshift preserves beyond bytes, BOM state, newline form, controlled regions, and meaningful mode bits. The design must separate supported Windows metadata from portable guarantees and define capture, revalidation, failure, and recovery behavior without claiming support for every filesystem attribute.
+
+**Requires:** none.
+
+### [Request-spool Windows DACL hardening](features/request-spool-windows-dacl.md)
+
+Adds protected creation-time Windows DACLs for request-spool confidentiality beyond protocol version 1's inherited repository DACL. The design must define allowed principals, inheritance, creation and verification ordering, failure policy, recovery handling, and security regressions without weakening the existing contract.
+
+**Requires:** none.
+
+### [Recovery artifact physical identity](features/recovery-artifact-physical-identity.md)
+
+Binds owner temporaries, recovery gates, backup stages, and backups to physical filesystem identities before later recovery mutation. The design must select supported platform identity primitives and define capture, revalidation, stale or missing identity behavior, failure handling, and compatibility for existing recovery records.
+
+**Requires:** none.
+
+### [No-replace action destination binding](features/no-replace-action-destination-binding.md)
+
+Maps every no-replace action temporary to its approved final target so stale-owner recovery can recognize the exact post-publication shared-identity topology while rejecting unverified external hard links. The lock-schema and recovery design must preserve current fail-closed topology validation until the required physical-identity evidence exists.
+
+**Requires:** [Recovery artifact physical identity](features/recovery-artifact-physical-identity.md).
+
+### [Executable identity revalidation for Windows launches](features/executable-identity-revalidation.md)
+
+Defines the complete identity lifecycle for trusted executables used by supported Windows launches, including the host, Git, PowerShell, credential probe, and job runner. The design must cover initial capture, per-launch refresh or revalidation, invalidation, same-path replacement, path-component retargeting, stale state, and fail-closed launch behavior.
+
+**Requires:** none.
+
+### [Bounded guidance discovery](features/bounded-guidance-discovery.md)
+
+Bounds recursive guidance discovery deterministically so dependency and build trees cannot impose unbounded traversal and Windows attribute-probe cost. The design must choose a conventional-directory skip policy, a depth or entry budget, or both, then define reporting and fixtures that prove which guidance remains discoverable.
+
+**Requires:** none.
+
+### [Publication lock and resume lifecycle](features/publication-lock-resume-lifecycle.md)
+
+Settles whether publication acquires its runtime lock before durable-state resume detection so one protected inspection can be reused, or formally retains the current safe double read. Any single-pass design must reconcile bootstrap-lock creation and every recoverable crash state before reducing the existing validation work.
+
+**Requires:** none.
+
+### [Turn-sequencer timer ownership](features/turn-sequencer-timer-ownership.md)
+
+Resolves the mismatch between the accepted turn-sequencer timer contract and the settle guard that currently owns live timer handles. The design must either give the sequencer real timer ownership or remove the duplicate timer model, then reconcile phase, deadline, clear and install lifecycles, the governing contract, and tests.
+
+**Requires:** none.
+
 ## History
 
 Implemented features are archived in [`FEATURES_HISTORY.md`](FEATURES_HISTORY.md), loaded on demand so the active backlog above stays scannable. When a feature (or slice) ships, append its entry there rather than to this file, AND walk every other `**Requires:**` line in `FEATURES.md` / `BUGS.md`: remove the now-satisfied reference (if it was the only one, set the line to `Requires: none.`). The active `Requires:` lines describe what is *currently* blocking, so `/nightshift:ready` never has to consult the history file; the dependency graph settles as features ship.
