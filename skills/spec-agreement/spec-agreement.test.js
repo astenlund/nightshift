@@ -41,8 +41,11 @@ const {
 } = require('./spec-agreement');
 const readyImplementation = require('../ready/ready');
 const { compareTargets } = require('../init-backlog/unwrap');
+const { normalizeTestTemporaryDirectory } = require('../../tests/test-environment');
 
 const fixturePath = join(__dirname, 'fixtures', 'fingerprint-v1.json');
+
+normalizeTestTemporaryDirectory();
 const corpus = JSON.parse(readFileSync(fixturePath, 'utf8'));
 const projectRoot = 'C:/repo';
 const repositoryRoot = join(__dirname, '..', '..');

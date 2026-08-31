@@ -1,7 +1,7 @@
 'use strict'
 
 const assert = require('node:assert/strict')
-const { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync } = require('node:fs')
+const { existsSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync } = require('node:fs')
 const { tmpdir } = require('node:os')
 const { join } = require('node:path')
 const test = require('node:test')
@@ -24,8 +24,15 @@ const { runDialogueCases } = require('./init-backlog-controller/dialogue.cases')
 const { runE2eCases } = require('./init-backlog-controller/e2e.cases')
 const { canonicalJson, compareOrdinal, fixtureRoot, git, isContained, loadPromptBaseline, sha256 } = require('./init-backlog-controller/helpers')
 const { assembleClaudePromptBaseline, assembleCodexPromptBaseline, loadPromptBaseline: loadHostPromptBaseline, stageCandidate } = require('./host-discovery-smoke-lib')
+const { normalizeTestTemporaryDirectory } = require('./test-environment')
 
 const REPOSITORY_ROOT = join(__dirname, '..')
+
+normalizeTestTemporaryDirectory()
+
+test('temporary test roots use the canonical native path spelling', () => {
+  assert.equal(tmpdir(), realpathSync.native(tmpdir()))
+})
 
 function listFiles(root, prefix = '') {
   return readdirSync(root, { withFileTypes: true }).flatMap((entry) => {

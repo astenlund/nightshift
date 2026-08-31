@@ -1255,7 +1255,10 @@ function buildDeterministicDriverSource() {
     "$scenarios += Invoke-Scenario 'resume-failed' @('Resume')",
     '',
     '$reportDocument = @{ commandLine = $commandLineCases; environmentBlock = $environmentCases; scenarios = $scenarios; taskCounts = $taskCountCases }',
-    '[Console]::Out.Write((ConvertTo-Json -InputObject $reportDocument -Depth 8 -Compress))',
+    '$reportJson = ConvertTo-Json -InputObject $reportDocument -Depth 8 -Compress',
+    '$reportBytes = (New-Object System.Text.UTF8Encoding -ArgumentList @($false, $true)).GetBytes($reportJson)',
+    '$standardOutput = [Console]::OpenStandardOutput()',
+    '$standardOutput.Write($reportBytes, 0, $reportBytes.Length)',
     '',
   ]
 
