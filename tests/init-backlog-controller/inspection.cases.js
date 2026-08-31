@@ -45,6 +45,7 @@ const { createInitialLock, initialLockPaths, publishNoReplace, removeInitialLock
 const { MAX_INLINE_FILE_BYTES, MAX_INSPECT_RESULT_BYTES, MAX_MECHANICAL_FILE_BYTES, canonicalJson, sha256, validateProposalDispositions } = require('../../skills/init-backlog/lib/protocol')
 const { analyzeCatalog } = require('../../skills/ready/ready')
 const { ELECTION_MARKER_PATH } = require('./election-oracles')
+const { git } = require('./helpers')
 
 const BACKUPS_MODULE_PATH = require.resolve('../../skills/init-backlog/lib/backups')
 
@@ -1163,16 +1164,24 @@ function runInspectionCases(repositoryRoot) {
   })
 
   test('direct inspection collects a stable Git snapshot and removes its transient lock', () => {
-    const context = codexHostContext()
-    const result = inspect(repositoryRoot, 'codex', context, {
-      ownerNonce: 'f'.repeat(32),
-      readdirSync: (directory, options) => directory === join(repositoryRoot, '.tmp') ? [] : readdirSync(directory, options),
-      trustedGitPath: 'C:/Program Files/Git/cmd/git.exe',
-    })
-    assert.equal(result.ok, true)
-    assert.equal(result.operation, 'inspect')
-    assert.equal(result.git.kind, 'git')
-    assert.equal(require('node:fs').existsSync(join(repositoryRoot, '.nightshift-init-backlog.lock')), false)
+    const root = mkdtempSync(join(tmpdir(), 'nightshift-inspect-stable-git-'))
+    try {
+      git(root, ['init', '--quiet'])
+      mkdirSync(join(root, '.claude'))
+      writeFileSync(join(root, 'AGENTS.md'), '# Instructions\n')
+
+      const result = inspect(root, 'codex', codexHostContext(), {
+        ownerNonce: 'f'.repeat(32),
+        trustedGitPath: 'C:/Program Files/Git/cmd/git.exe',
+      })
+
+      assert.equal(result.ok, true)
+      assert.equal(result.operation, 'inspect')
+      assert.equal(result.git.kind, 'git')
+      assert.equal(existsSync(join(root, '.nightshift-init-backlog.lock')), false)
+    } finally {
+      rmSync(root, { force: true, recursive: true })
+    }
   })
 
   test('ordinary inspection classifies flat backups in deterministic order and ignores malformed entries', () => {
