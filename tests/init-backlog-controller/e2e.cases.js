@@ -74,9 +74,10 @@ function driveCli(root, request, filesystemOptions = undefined) {
   const reserveExit = runCli({ argv: ['--reserve-request', root], nonce, stderr: reserveStreams.stderr, stdout: reserveStreams.stdout })
   assert.equal(reserveExit, 0, `request reservation failed: ${reserveStreams.stderrBytes().toString('utf8')}`)
   const reserved = JSON.parse(reserveStreams.stdoutBytes().toString('utf8'))
-  writeFileSync(join(root, ...reserved.requestPath.split('/')), Buffer.from(canonicalJson(request) + '\n', 'utf8'), { flag: 'wx' })
+  const requestRecord = typeof request === 'function' ? request(reserved.canonicalRoot) : request
+  writeFileSync(join(reserved.canonicalRoot, ...reserved.requestPath.split('/')), Buffer.from(canonicalJson(requestRecord) + '\n', 'utf8'), { flag: 'wx' })
   const streams = captureStreams()
-  const exitCode = runCli({ argv: ['--consume-request', root, nonce], filesystemOptions, stderr: streams.stderr, stdout: streams.stdout })
+  const exitCode = runCli({ argv: ['--consume-request', reserved.canonicalRoot, nonce], filesystemOptions, stderr: streams.stderr, stdout: streams.stdout })
   const stdout = streams.stdoutBytes().toString('utf8')
 
   return { exitCode, record: stdout.length === 0 ? null : JSON.parse(stdout), stderr: streams.stderrBytes().toString('utf8') }
@@ -295,6 +296,23 @@ function featuresPreambleEdit(inspection) {
 }
 
 function runE2eCases() {
+  test('forward-slash reservation carries the native root through production inspect transport', { skip: process.platform !== 'win32' }, () => {
+    const root = makeRoot()
+    try {
+      const projectRoot = root.replaceAll('\\', '/')
+
+      const outcome = driveCli(projectRoot, (canonicalRoot) => inspectRequest(canonicalRoot))
+
+      assert.equal(outcome.stderr, '')
+      assert.equal(outcome.exitCode, 0)
+      assert.equal(outcome.record.ok, true)
+      assert.equal(outcome.record.root, root)
+      assert.deepEqual(readdirSync(root).filter((entry) => entry.startsWith('.nightshift-init-backlog.')), [])
+    } finally {
+      removeRoot(root)
+    }
+  })
+
   test('inspection over a Git repository with unignored backlog directories survives the CLI transport', () => {
     const root = makeGitRoot()
     try {

@@ -59,9 +59,10 @@ function canonicalRoot(root) {
     if (typeof root !== 'string' || !isAbsolute(root)) {
       transportError('request-filesystem', 'Request root is invalid.')
     }
-    const canonical = realpathSync.native(root)
+    const nativeSpelling = process.platform === 'win32' ? root.replaceAll('/', '\\') : root
+    const canonical = realpathSync.native(nativeSpelling)
     const metadata = lstatSync(canonical)
-    if (canonical !== root || !metadata.isDirectory() || metadata.isSymbolicLink()) {
+    if (canonical !== nativeSpelling || !metadata.isDirectory() || metadata.isSymbolicLink()) {
       transportError('request-filesystem', 'Request root is not canonical.')
     }
 
@@ -849,6 +850,7 @@ function reserveRequest(root, options = {}) {
   publishOwnerStage(canonical, paths, ownerBytes, options)
 
   return {
+    canonicalRoot: canonical,
     maxRequestBytes: MAX_APPLY_REQUEST_BYTES,
     nonce,
     requestDirectory: REQUEST_GATE_BASENAME,

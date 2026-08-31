@@ -18,7 +18,7 @@ const {
   writeFileSync,
 } = require('node:fs')
 const { tmpdir } = require('node:os')
-const { join } = require('node:path')
+const { basename, dirname, join, sep } = require('node:path')
 const { spawn } = require('node:child_process')
 const test = require('node:test')
 
@@ -1324,6 +1324,62 @@ function runProtocolCases(repositoryRoot) {
     }
   })
 
+  test('request reservation accepts Windows forward-slash root spelling and returns the native identity', { skip: process.platform !== 'win32' }, () => {
+    const root = makeTemporaryRoot()
+    try {
+      const forwardSlashRoot = root.replaceAll('\\', '/')
+      assert.notEqual(forwardSlashRoot, root)
+      const streams = captureStreams()
+
+      const exitCode = runCli({ argv: ['--reserve-request', forwardSlashRoot], nonce: NONCE_A, stderr: streams.stderr, stdout: streams.stdout })
+
+      assert.equal(exitCode, 0)
+      assert.equal(streams.stderrBytes().length, 0)
+      const record = JSON.parse(streams.stdoutBytes().toString('utf8'))
+      assert.equal(record.canonicalRoot, root)
+      const owner = JSON.parse(readFileSync(join(root, REQUEST_GATE_BASENAME, REQUEST_OWNER_BASENAME), 'utf8'))
+      assert.equal(owner.root, root)
+    } finally {
+      removeTemporaryRoot(root)
+    }
+  })
+
+  test('request reservation rejects every other Windows root alias without mutation', { skip: process.platform !== 'win32' }, () => {
+    const root = makeTemporaryRoot()
+    const rootName = basename(root)
+    const caseAlias = join(dirname(root), rootName[0].toUpperCase() + rootName.slice(1))
+    const junction = join(dirname(root), `${rootName}-junction`)
+    const nonDirectory = join(root, 'not-a-directory')
+    try {
+      assert.notEqual(caseAlias, root)
+      symlinkSync(root, junction, 'junction')
+      writeFileSync(nonDirectory, Buffer.from('file root', 'utf8'))
+      const expectedEntries = readdirSync(root).sort()
+      const cases = [
+        ['relative', rootName],
+        ['dot segment', `${root}${sep}.`],
+        ['traversal', `${root}${sep}..${sep}${rootName}`],
+        ['case alias', caseAlias],
+        ['junction', junction],
+        ['non-directory', nonDirectory],
+      ]
+
+      for (const [name, projectRoot] of cases) {
+        const streams = captureStreams()
+
+        const exitCode = runCli({ argv: ['--reserve-request', projectRoot], nonce: NONCE_A, stderr: streams.stderr, stdout: streams.stdout })
+
+        assert.equal(exitCode, 1, name)
+        assert.equal(streams.stderrBytes().length, 0, name)
+        assert.deepEqual(JSON.parse(streams.stdoutBytes().toString('utf8')), { code: 'request-filesystem', ok: false }, name)
+        assert.deepEqual(readdirSync(root).sort(), expectedEntries, `${name} changed the target root`)
+      }
+    } finally {
+      rmSync(junction, { force: true, recursive: true })
+      removeTemporaryRoot(root)
+    }
+  })
+
   test('request transport public commands pin argv, records, exits, and stream bytes', () => {
     const root = makeTemporaryRoot()
     try {
@@ -1351,7 +1407,8 @@ function runProtocolCases(repositoryRoot) {
       assert.equal(reserveExit, 0)
       assert.equal(reserveStreams.stderrBytes().length, 0)
       const reserveRecord = JSON.parse(reserveStreams.stdoutBytes().toString('utf8'))
-      assert.deepEqual(Object.keys(reserveRecord), ['maxRequestBytes', 'nonce', 'requestDirectory', 'requestPath'])
+      assert.deepEqual(Object.keys(reserveRecord), ['canonicalRoot', 'maxRequestBytes', 'nonce', 'requestDirectory', 'requestPath'])
+      assert.equal(reserveRecord.canonicalRoot, root)
       assert.equal(reserveRecord.maxRequestBytes, MAX_APPLY_REQUEST_BYTES)
       assert.equal(reserveRecord.nonce, NONCE_A)
 

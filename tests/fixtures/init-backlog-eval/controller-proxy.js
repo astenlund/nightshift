@@ -158,9 +158,10 @@ function canonicalRoot(root) {
     if (typeof root !== 'string' || root === '' || root.includes(String.fromCharCode(0)) || !isAbsolute(root)) {
       refuse('request-filesystem')
     }
-    const canonical = realpathSync.native(root)
+    const nativeSpelling = process.platform === 'win32' ? root.replaceAll('/', '\\') : root
+    const canonical = realpathSync.native(nativeSpelling)
     const metadata = lstatSync(canonical)
-    if (canonical !== root || !metadata.isDirectory() || metadata.isSymbolicLink()) {
+    if (canonical !== nativeSpelling || !metadata.isDirectory() || metadata.isSymbolicLink()) {
       refuse('request-filesystem')
     }
 
@@ -425,6 +426,7 @@ function reserveRequest(root, options = {}) {
   }
 
   return {
+    canonicalRoot: canonical,
     maxRequestBytes: MAX_REQUEST_BYTES,
     nonce,
     requestDirectory: REQUEST_GATE_BASENAME,

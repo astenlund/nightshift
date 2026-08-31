@@ -4,7 +4,7 @@ const assert = require('node:assert/strict')
 const { execFileSync } = require('node:child_process')
 const { cpSync, existsSync, linkSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, symlinkSync, unlinkSync, writeFileSync } = require('node:fs')
 const { tmpdir } = require('node:os')
-const { dirname, join } = require('node:path')
+const { basename, dirname, join, sep } = require('node:path')
 const test = require('node:test')
 
 const driver = require('../init-backlog-session-driver')
@@ -2094,11 +2094,12 @@ function runSessionCases(repositoryRoot) {
   test('reservation publishes the fixed gate through the one-path contract with no support directory', async () => {
     const root = canonicalTempRoot()
     try {
-      const first = await runClient({ argv: ['--reserve-request', root], env: clientEnvironment(), nonce: NONCE_A })
+      const projectRoot = process.platform === 'win32' ? root.replaceAll('\\', '/') : root
+      const first = await runClient({ argv: ['--reserve-request', projectRoot], env: clientEnvironment(), nonce: NONCE_A })
       assert.equal(first.exitCode, 0)
       assert.equal(first.stderr.length, 0)
       const record = JSON.parse(first.stdout.toString('utf8'))
-      assert.deepEqual(record, { maxRequestBytes: 16777216, nonce: NONCE_A, requestDirectory: REQUEST_GATE_BASENAME, requestPath: `${REQUEST_GATE_BASENAME}/request.json` })
+      assert.deepEqual(record, { canonicalRoot: root, maxRequestBytes: 16777216, nonce: NONCE_A, requestDirectory: REQUEST_GATE_BASENAME, requestPath: `${REQUEST_GATE_BASENAME}/request.json` })
       assert.equal(first.stdout.toString('utf8'), canonicalJson(record) + '\n')
       assert.deepEqual(readdirSync(root), [REQUEST_GATE_BASENAME], 'reservation creates only the fixed gate and no support directory')
       assert.deepEqual(readdirSync(gatePath(root)).sort(), ['owner.json'])
@@ -2107,7 +2108,58 @@ function runSessionCases(repositoryRoot) {
       assert.equal(second.exitCode, 1, 'concurrent reservation loses on the one fixed path')
       assert.deepEqual(JSON.parse(second.stdout.toString('utf8')), { code: 'request-residue', ok: false })
       assert.deepEqual(readFileSync(gatePath(root, 'owner.json')), ownerRecordBytes(root, NONCE_A, 'reserved'), 'the losing reserver mutates nothing')
+      const payload = Buffer.from(canonicalJson({ operation: 'inspect', protocolVersion: 1, root: record.canonicalRoot }) + '\n', 'utf8')
+      writeFileSync(join(record.canonicalRoot, ...record.requestPath.split('/')), payload, { flag: 'wx' })
+      const consumed = await runClient({
+        argv: ['--consume-request', record.canonicalRoot, NONCE_A],
+        connect: async () => ({
+          end() {},
+          async sendFrame(frameBytes) {
+            const frame = JSON.parse(frameBytes.toString('utf8'))
+            assert.deepEqual(Buffer.from(frame.requestBase64, 'base64'), payload)
+
+            return canonicalLine({ exitCode: 0, ordinal: 1, requestBase64: frame.requestBase64, stderrBase64: '', stdoutBase64: Buffer.from('{"ok":true}\n', 'utf8').toString('base64') })
+          },
+        }),
+        env: clientEnvironment(),
+      })
+      assert.equal(consumed.exitCode, 0)
+      assert.deepEqual(readdirSync(root), [])
     } finally {
+      rmSync(root, { force: true, recursive: true })
+    }
+  })
+
+  test('the proxy client rejects every other Windows root alias without mutation', { skip: process.platform !== 'win32' }, async () => {
+    const root = canonicalTempRoot()
+    const rootName = basename(root)
+    const caseAlias = join(dirname(root), rootName[0].toUpperCase() + rootName.slice(1))
+    const junction = join(dirname(root), `${rootName}-junction`)
+    const nonDirectory = join(root, 'not-a-directory')
+    try {
+      assert.notEqual(caseAlias, root)
+      symlinkSync(root, junction, 'junction')
+      writeFileSync(nonDirectory, Buffer.from('file root', 'utf8'))
+      const expectedEntries = readdirSync(root).sort()
+      const cases = [
+        ['relative', rootName],
+        ['dot segment', `${root}${sep}.`],
+        ['traversal', `${root}${sep}..${sep}${rootName}`],
+        ['case alias', caseAlias],
+        ['junction', junction],
+        ['non-directory', nonDirectory],
+      ]
+
+      for (const [name, projectRoot] of cases) {
+        const outcome = await runClient({ argv: ['--reserve-request', projectRoot], env: clientEnvironment(), nonce: NONCE_A })
+
+        assert.equal(outcome.exitCode, 1, name)
+        assert.equal(outcome.stderr.length, 0, name)
+        assert.deepEqual(JSON.parse(outcome.stdout.toString('utf8')), { code: 'request-filesystem', ok: false }, name)
+        assert.deepEqual(readdirSync(root).sort(), expectedEntries, `${name} changed the target root`)
+      }
+    } finally {
+      rmSync(junction, { force: true, recursive: true })
       rmSync(root, { force: true, recursive: true })
     }
   })
