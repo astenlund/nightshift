@@ -33,6 +33,12 @@ In a Git repository with no `.gitignore`, the ignore election is unreachable bec
 
 **Requires:** none.
 
+### [Agreement digests drift toward micro-detail through review revisions](bugs/agreement-digest-revision-detail-drift.md)
+
+Successive compatible review corrections can make the decision-complete digest accumulate lower-level lifecycle and implementation detail, forcing renewed approval without a changed macro decision. The fix must define a stable macro approval surface while preserving complete artifact and review-evidence access, with renewed agreement for genuine goal, scope, architecture, ownership, or contract-fit changes.
+
+**Requires:** none.
+
 ### [Overlapping Markdown roots can lose or duplicate collected files](bugs/overlapping-markdown-root-deduplication.md)
 
 Markdown collection does not consistently separate traversal coverage from emitted-file identity across repeated, aliased, and overlapping roots. The fix must de-duplicate by canonical file identity while preserving the first path and authority spelling, with both nested-parent orderings covered so a visited-root shortcut cannot hide files.
