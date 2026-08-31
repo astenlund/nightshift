@@ -137,6 +137,10 @@ Draft exploring a lifecycle-shape proposal presented right after the user accept
 
 Draft exploring a controller-owned, run-scoped experiment ledger that persists only material decisions and evidence at revise-round adjudication and other evidence-producing boundaries, then feeds complete morning-report disposition. `.tmp/handover-report-notes.md` remains the low-noise run-local implementation until the lifecycle is agreed and hardened.
 
+### [Night manager and shift supervisor](features/night-manager-shift-supervisor.md)
+
+Draft exploring a two-level management hierarchy for autonomous Nightshift runs: the Night Manager owns intent, executive judgment, convergence and stop authority, controlled experiments, recovery governance, and the morning report, while an on-demand Shift Supervisor manages workers and minute-by-minute orchestration. Long revise waves produce hourly convergence packets, clean crash or compaction recovery continues automatically, and managerial second opinions remain same-role and same-model until a formal cross-host or cross-provider consultation contract exists.
+
 ### [Class-level review deferral valve](features/class-level-review-deferral-valve.md)
 
 Draft exploring a controller-owned diminishing-returns valve for a fuzzy issue family reported in a second consecutive round. The controller may designate the class deferrable then and there, route and log the current finding with a narrow boundary, and acknowledge only that family while every review, staleness, convergence, and verifier gate continues normally.
