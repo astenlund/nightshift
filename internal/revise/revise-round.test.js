@@ -8,6 +8,7 @@ const ENGINE_PATH = join(__dirname, 'SKILL.md')
 const SOURCE_PATH = join(__dirname, 'revise-round.workflow.js')
 const CASES = [
   'agreement boundary blocks dispatch',
+  'current checkpoint ledger projection is mandatory and narrowly scoped',
   'workflow metadata describes completion-driven concurrency',
   'all reviewer submissions start before any reviewer completion is observed',
   'one reviewer starts every skeptic while another reviewer remains blocked',
@@ -323,6 +324,44 @@ const TESTS = {
     const dispatchGuardMutant = engine.replace(dispatchCondition, 'Only when the controller is ready may it resolve the transition')
     assert.notEqual(dispatchGuardMutant, engine, 'dispatch-condition mutation probe must alter the real instruction surface')
     assert.throws(() => assertDispatchContract(dispatchGuardMutant), /real dispatch transition must require durable none/)
+  },
+  async 'current checkpoint ledger projection is mandatory and narrowly scoped'() {
+    const engine = await readFile(ENGINE_PATH, 'utf8')
+    const dispatchStart = engine.indexOf('## Dispatch and repair')
+    const dispatchEnd = engine.indexOf('\n## ', dispatchStart + 3)
+    assert.notEqual(dispatchStart, -1, 'revise engine must define dispatch and repair')
+    assert.notEqual(dispatchEnd, -1, 'dispatch and repair must end at the next top-level section')
+    const dispatch = engine.slice(dispatchStart, dispatchEnd)
+    const requiredContracts = [
+      'Current checkpoint ledger',
+      'derived solely from the current validated checkpoint',
+      'never a separately accumulated, retained, hand-assembled, or historical common-context file',
+      'every acknowledgement and caveat in current checkpoint order',
+      'every and only `open` Follow-ups row',
+      'stable ID',
+      'final or current route',
+      'decoded text',
+      'decoded evidence or the literal `none`',
+      'Every original reviewer, repair, and verifier payload',
+      'Skeptics read that same canonical reviewer payload',
+      'next byte-for-byte payload comparison',
+      'Missing, malformed, or undecodable ledger data fails closed before dispatch',
+      'exact settled claim or exact deferred boundary',
+      'adjacent findings remain reportable',
+      'Keep static project context and profile material in common context.',
+    ]
+    const assertLedgerContract = source => {
+      for (const contract of requiredContracts) {
+        assert.equal(source.includes(contract), true, `dispatch ledger contract must state ${contract}`)
+      }
+    }
+    assertLedgerContract(dispatch)
+
+    for (const contract of requiredContracts) {
+      const mutant = dispatch.replace(contract, 'removed ledger contract')
+      assert.notEqual(mutant, dispatch, `ledger mutation must alter the real dispatch subsection for ${contract}`)
+      assert.throws(() => assertLedgerContract(mutant), /dispatch ledger contract must state/)
+    }
   },
   async 'workflow metadata describes completion-driven concurrency'() {
     const source = await readFile(SOURCE_PATH, 'utf8')
