@@ -163,13 +163,13 @@ Present chosen spec for agreement before work shipped before Second-opinion gate
 
 ### [Adversarial repair dialogue](features/adversarial-repair-dialogue.md)
 
-Resolves a skeptic-confirmed, controller-admitted finding through an agent-to-agent repair dialogue: the confirming skeptic resumes as repair author and the originating reviewer as its adversarial critic, iterating focused turns until the critic accepts the repair, a narrow disagreement blocks, or a safety limit stops the exchange. Neither agent edits the artifact; the controller applies the repair from a returned resolution package. Reviewer acceptance validates the proposal only and never produces LGTM, and any independent pre-existing problem found during the dialogue enters the normal fresh-skeptic and admission pipeline.
+Resolves a skeptic-confirmed, controller-admitted finding through an agent-to-agent repair dialogue: the confirming skeptic proposes and revises an exact repair while the originating reviewer accepts or rejects it with notes. A named follow-up carve-out must prove the current slice remains correct and complete under an enforcing guard; governing-text changes remain a last resort and cannot clear the current review. Accepted repairs may execute through controller-issued disjoint file leases with execution-start EOL baselines, while release, fingerprint advancement, certification, and convergence remain controller-wide barriers. Reviewer acceptance validates the proposal only and never produces LGTM.
 
 **Requires:** [Contract-calibrated revise admission](features/contract-calibrated-revise-admission.md).
 
 ### [Durable run identity and concurrency protection](features/durable-run-identity-concurrency.md)
 
-Gives each Nightshift run a frozen durable identity and a scope-hash-scoped scratch home, and protects concurrent same-scope runs from silently overwriting each other. Reverses `internal/revise/SKILL.md`'s "do not add a lock" invariant: a start-of-session boundary check classifies found state as resume (stale heartbeat), live concurrent run (fresh heartbeat, user picks abort or force-break), or foreign/stale (interactive asks, autonomous fails closed). Path relocation only; preserves the Markdown state schema and atomic staging.
+Gives each Nightshift run a frozen durable identity and a scope-hash-scoped scratch home, and protects concurrent same-scope runs from silently overwriting each other. Reverses `internal/revise/SKILL.md`'s "do not add a lock" invariant: a start-of-session boundary check classifies found state as resume (stale heartbeat), live concurrent run (fresh heartbeat, user picks abort or force-break), or foreign/stale (interactive asks, autonomous fails closed). An opaque validated handover-queue persistence binding owns the fixed path, physical identity, ignored and untracked Git policy, stable reads, compare-before-replace, atomic replacement, readback, and stale-state refusal while pure queue transitions remain path-free.
 
 **Requires:** none.
 
@@ -224,11 +224,11 @@ The universal-skill MVP and the agreement gate are shipped; every later migratio
   **Requires:** [Content fingerprint helper](features/content-fingerprint-helper.md).
 - **Host-neutral scaffolding and instruction routing.** Make `init-backlog`, project instructions, and global instructions work without assuming one host's filenames or instruction runtime.
   **Requires:** none.
-- **Review host adapters.** Express questions, fresh-agent dispatch, completion, recovery identities, tool guidance, model tiers, and optional handover-queue mirroring through capability contracts with Claude Code and Codex adapters.
+- **Review host adapters.** Express questions, fresh-agent dispatch, completion, recovery identities, tool guidance, model tiers, optional handover-queue mirroring, and host-compatible turn-state coupling through capability contracts with Claude Code and Codex adapters; runtime and dialogue validators remain authoritative.
   **Requires:** none.
 - **Host-neutral documentation and lore.** Route documentation and durable learning updates to canonical instruction sources while preserving host adapters and optional helper integrations.
   **Requires:** [Agent-host-agnostic Nightshift: Host-neutral scaffolding and instruction routing](features/agent-host-agnostic-nightshift.md), [Agent-host-agnostic Nightshift: Review host adapters](features/agent-host-agnostic-nightshift.md).
-- **Packaging and cross-host validation.** Add provider-neutral metadata, supported manifest forms, installation guidance, and clean-environment behavior checks for every supported host path.
+- **Packaging and cross-host validation.** Add provider-neutral metadata, supported manifest forms, installation guidance, isolated credential provisioning and preflight, no-secret evidence, and clean-environment behavior checks for every supported host path.
   **Requires:** [Agent-host-agnostic Nightshift: Portable resource and fingerprint contract](features/agent-host-agnostic-nightshift.md), [Agent-host-agnostic Nightshift: Host-neutral scaffolding and instruction routing](features/agent-host-agnostic-nightshift.md), [Agent-host-agnostic Nightshift: Review host adapters](features/agent-host-agnostic-nightshift.md), [Agent-host-agnostic Nightshift: Host-neutral documentation and lore](features/agent-host-agnostic-nightshift.md).
 
 **Requires:** [Content fingerprint helper](features/content-fingerprint-helper.md).

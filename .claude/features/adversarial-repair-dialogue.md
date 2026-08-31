@@ -15,7 +15,13 @@ The relationship remains adversarial throughout:
 
 ## Termination
 
-Allow several exchanges when they continue to improve the repair. A few focused turns are cheaper than extra full review iterations caused by a shallow fix. Terminate when the reviewer has no remaining objection to the repair, the agents reach a narrow unresolved disagreement, or a safety limit prevents further exchanges. Keep productive repair dialogue separate from execution-repair budgets for malformed or missing agent output.
+Allow several exchanges when they continue to improve the repair. A few focused turns are cheaper than extra full review iterations caused by a shallow fix. When the originating reviewer rejects a proposal, it returns notes to the same skeptic, which revises and resubmits rather than handing the repair to a new agent. Terminate when the reviewer has no remaining objection to the repair, the agents reach a narrow unresolved disagreement, or a safety limit prevents further exchanges. Keep productive repair dialogue separate from execution-repair budgets for malformed or missing agent output.
+
+## Dialogue admission and escape hatches
+
+Controller disposition surrounds the dialogue rather than running inside it. Only a finding already adjudicated for repair enters the exchange. Only the originating reviewer may name a scope escape, and only when the finding is valid and repairing it would materially expand the current implementation; the skeptic may respond to that escape but cannot initiate deferral. An independently discovered reviewer finding returns as normal next-round intake. A safety-limit exit also returns to the controller for disposition.
+
+A scope escape should prefer an exact named follow-up slice, feature, bug, or quick win over a governing-text change. It must state the deferred boundary, show that the current slice remains correct and complete, name the guard or test that enforces that boundary, and name the durable route. Without a safe carve-out, the finding remains in scope. Changing governing text is a last resort that requires renewed agreement and cannot clear the current review.
 
 ## Resolution package
 
@@ -26,15 +32,22 @@ Return a compact resolution package to the controller containing:
 - the adjacent invariants checked;
 - the required validation;
 - the reviewer's acceptance or remaining objection;
-- any independently discovered findings.
+- any independently discovered findings;
+- any proposed deferral boundary, enforcing evidence, and named durable route.
 
 ## Controller's role
 
-The controller remains responsible for disposition, edit-surface enforcement, applying the repair, and running validation. It should not reconstruct the solution unless the agents disagree.
+The controller remains responsible for disposition, edit-surface enforcement, assigning accepted repairs to fixers, and running validation. It should not reconstruct the solution unless the agents disagree. Dialogue output is a report, never a state transition: certification, deferral, routing, fingerprint advancement, and convergence remain controller acts.
+
+## Concurrent repair pipelines
+
+Accepted repair packages may execute concurrently when the controller can issue disjoint file leases. Each lease names the complete owned file set and records every file's execution-start working-tree EOL form. The controller owns a deterministic acquisition order, rejects overlapping leases, and requires a fixer that discovers a cross-file dependency to request scope expansion before touching the additional file. A conflicting expansion waits or returns for controller disposition; it never edits outside the lease.
+
+Lease state defines acquisition, stale-owner recovery, the atomic commit boundary, release, and a protected-worktree verification after every lease drains. Repair pipelines may advance independently while their leases are disjoint, but asynchronous landing does not create per-pipeline certification. The controller recomputes the shared fingerprint after accepted fixes land, waits for all applicable cells to become inactive before the staleness sweep, and applies certification and latest-fingerprint convergence barriers across the whole run.
 
 ## Session continuity
 
-Resume the same skeptic and reviewer sessions when available: their retained, role-specific understanding of the artifact area is a repair-quality mechanism, while prompt caching reduces cost. If either session is unavailable, use a fresh replacement with the complete persisted role-specific finding and dialogue state, and record the loss of session continuity. This recovery path preserves progress but is not equivalent to continued same-session deliberation.
+Resume the same skeptic and reviewer sessions when available: their retained, role-specific understanding of the artifact area is a repair-quality mechanism, while prompt caching reduces cost. The same skeptic continues through rejected proposals and, when selected as the fixer, through execution of the accepted repair. Discard persistent repair sessions at every reactivation-wave boundary because the sweep starts a new convergence epoch; reviewers for the resulting artifact remain fresh as the review engine requires. If either dialogue session is unavailable, use a fresh replacement with the complete persisted role-specific finding and dialogue state, and record the loss of session continuity. This recovery path preserves progress but is not equivalent to continued same-session deliberation.
 
 ## Reviewer acceptance is not LGTM
 

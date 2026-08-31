@@ -95,6 +95,10 @@ The scope-hash directory already guarantees different runs never collide at the 
 - Persist the identity block with the state (same canonical JSON-scalar discipline as other arbitrary-text scalars) and refresh the heartbeat timestamp on every boundary write.
 - Run the start-of-session classification before treating any existing state as a resume candidate; everything in `internal/revise/SKILL.md`'s resume, drift, and recovery machinery then keys off the classification already made.
 
+### Handover queue persistence binding
+
+Queue transitions receive an opaque validated persistence binding rather than reopening `.tmp/handover-queue.md` by path. The binding owns the fixed queue path under the scoped scratch home, records its stable physical identity, verifies that Git treats it as ignored and untracked, requires a single-link file, and performs stable reads. A write compares the current durable bytes and identity with the binding before replacement, publishes through atomic replacement, and verifies the readback. Missing, stale, multiply linked, newly tracked, or identity-changed state refuses mutation and returns to controller recovery instead of letting pure queue transitions select a new authority.
+
 ## Status
 
 Draft proposal; not yet designed as a buildable skill change or spec. Partially designed in the backlog migration (scope-hash layout, identity block split, heartbeat-lease liveness, start-boundary check) on 2026-08-11; the remaining design is to be hardened before planning. The shipped review behavior it protects is present, but the already in-flight universal-skill MVP must first establish its final engine path.

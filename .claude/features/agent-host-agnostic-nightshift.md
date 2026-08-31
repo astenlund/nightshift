@@ -147,6 +147,8 @@ Replace provider model literals in canonical profiles with semantic roles that p
 
 The Durable run identity and concurrency protection feature is adjacent but not a prerequisite. Whichever lands second must preserve the other's frozen run identity, scratch-home, heartbeat, and dispatch-adapter fields rather than introducing a parallel state authority.
 
+Strengthen the host-compatible turn contract only where both Claude Code and Codex accept the same schema rule. Schema-level phase, gate, presentation, and result coupling supplements rather than replaces `validateTurnObject` and dialogue validation. Both adapters must reject a finished turn with the wrong gate and a null result, and an awaiting-response turn with a null gate and a non-null result, before transcript recording or walk dispatch. Runtime and dialogue validators remain the authoritative fail-closed boundary when a shared schema cannot express a coupling safely.
+
 ### Host-neutral documentation and lore
 
 Make `revise-docs` discover project documentation and every supported instruction adapter, then edit only the durable source behind an adapter. Make `revise-lore` own provider-neutral reflection and routing rather than requiring the Claude-specific `claude-md-management` plugin. A compatible external skill can accelerate the scan, but its absence does not remove the Nightshift workflow.
@@ -158,6 +160,8 @@ Discover project, local, and global instruction destinations through the active 
 ### Packaging and cross-host validation
 
 Make the manifest description and README provider-neutral. Ship the manifest forms required for the supported plugin directories from one synchronized metadata source or with a parity check, while retaining compatibility with Claude's marketplace. Document install, update, and invocation for Claude Code and Codex.
+
+Isolated validation must provision credentials without copying secrets into repository evidence, logs, fixtures, or committed state. For Claude Code, support an operator-provided `CLAUDE_CODE_OAUTH_TOKEN` created through `claude setup-token`, and run a cheap ambient-credential preflight before launching a long evaluation. An absent credential stops the affected run with a concrete diagnostic. Evidence records only credential availability and the host path exercised, never the token or another reusable secret.
 
 This slice must explicitly extend or replace the MVP host smoke rather than create a second release authority. Add fixture or smoke coverage for the adapter boundaries and generated files. The completion matrix includes:
 
