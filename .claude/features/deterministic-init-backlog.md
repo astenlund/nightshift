@@ -186,3 +186,4 @@ Recovered to the approved product and architecture layer on 2026-08-25 after the
 
 - revise-spec graduated 2026-08-25 14:31 at 2f3f818, scope: whole file, content: 636fcfd7
 - revise-spec refreshed 2026-08-30 23:37 at d41745e, scope: whole file, content: 7b9239e0 (Windows-only live support)
+- handover completed 2026-08-31 07:16 at 1f8b7ea, scope: whole file, content: 7b9239e0
