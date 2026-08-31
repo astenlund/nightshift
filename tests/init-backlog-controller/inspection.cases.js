@@ -1,7 +1,7 @@
 'use strict'
 
 const assert = require('node:assert/strict')
-const { cpSync, existsSync, linkSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } = require('node:fs')
+const { existsSync, linkSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } = require('node:fs')
 const { tmpdir } = require('node:os')
 const { join } = require('node:path')
 const test = require('node:test')
@@ -48,11 +48,20 @@ const { ELECTION_MARKER_PATH } = require('./election-oracles')
 const { git } = require('./helpers')
 
 const BACKUPS_MODULE_PATH = require.resolve('../../skills/init-backlog/lib/backups')
+const INSPECTION_FEATURES = '# Features\n\n## Test\n'
 
 // Fresh valid Codex host context for direct inspect/collect calls; every
 // caller may mutate its copy freely.
 function codexHostContext() {
   return { claudeContextSource: null, claudeRootExclusionStatus: null, codexContextSource: 'user-confirmed', codexInvocationDirectory: '.', codexProjectDocMaxBytes: 1048576, codexProjectInstructions: [] }
+}
+
+function scaffoldInspectionRepository(root) {
+  mkdirSync(join(root, '.claude', 'features'), { recursive: true })
+  writeFileSync(join(root, 'AGENTS.md'), '# Instructions\n')
+  writeFileSync(join(root, 'CLAUDE.md'), '@AGENTS.md\n')
+  writeFileSync(join(root, '.claude', 'FEATURES.md'), INSPECTION_FEATURES)
+  writeFileSync(join(root, '.claude', 'features', 'example.md'), '# Example\n')
 }
 
 // Scaffolds a repository whose only controlled content is one discovered
@@ -604,9 +613,7 @@ function runInspectionCases(repositoryRoot) {
   test('direct inspection maps snapshot drift and cleanup failures without target writes', () => {
     const root = mkdtempSync(join(tmpdir(), 'nightshift-inspect-lifecycle-'))
     try {
-      cpSync(join(repositoryRoot, '.claude'), join(root, '.claude'), { recursive: true })
-      cpSync(join(repositoryRoot, 'AGENTS.md'), join(root, 'AGENTS.md'))
-      cpSync(join(repositoryRoot, 'CLAUDE.md'), join(root, 'CLAUDE.md'))
+      scaffoldInspectionRepository(root)
       const context = codexHostContext()
       let collections = 0
       assert.throws(() => inspect(root, 'codex', context, {
@@ -645,9 +652,7 @@ function runInspectionCases(repositoryRoot) {
   test('direct inspection reports cleanup failure after stable collections', () => {
     const root = mkdtempSync(join(tmpdir(), 'nightshift-inspect-cleanup-'))
     try {
-      cpSync(join(repositoryRoot, '.claude'), join(root, '.claude'), { recursive: true })
-      cpSync(join(repositoryRoot, 'AGENTS.md'), join(root, 'AGENTS.md'))
-      cpSync(join(repositoryRoot, 'CLAUDE.md'), join(root, 'CLAUDE.md'))
+      scaffoldInspectionRepository(root)
       const context = codexHostContext()
       let removals = 0
       assert.throws(() => inspect(root, 'codex', context, {
@@ -666,9 +671,7 @@ function runInspectionCases(repositoryRoot) {
     const context = codexHostContext()
     const fixture = () => {
       const root = mkdtempSync(join(tmpdir(), 'nightshift-inspect-failure-'))
-      cpSync(join(repositoryRoot, '.claude'), join(root, '.claude'), { recursive: true })
-      cpSync(join(repositoryRoot, 'AGENTS.md'), join(root, 'AGENTS.md'))
-      cpSync(join(repositoryRoot, 'CLAUDE.md'), join(root, 'CLAUDE.md'))
+      scaffoldInspectionRepository(root)
 
       return root
     }
@@ -712,9 +715,7 @@ function runInspectionCases(repositoryRoot) {
   test('direct inspection accepts an identical-projection ABA between collections', () => {
     const root = mkdtempSync(join(tmpdir(), 'nightshift-inspect-aba-'))
     try {
-      cpSync(join(repositoryRoot, '.claude'), join(root, '.claude'), { recursive: true })
-      cpSync(join(repositoryRoot, 'AGENTS.md'), join(root, 'AGENTS.md'))
-      cpSync(join(repositoryRoot, 'CLAUDE.md'), join(root, 'CLAUDE.md'))
+      scaffoldInspectionRepository(root)
       const context = codexHostContext()
       const original = readFileSync(join(root, '.claude', 'FEATURES.md'))
       let collections = 0
@@ -928,9 +929,7 @@ function runInspectionCases(repositoryRoot) {
       const inspectionRoot = mkdtempSync(join(tmpdir(), 'nightshift-inspect-concurrent-'))
       const context = codexHostContext()
       try {
-        cpSync(join(repositoryRoot, '.claude'), join(inspectionRoot, '.claude'), { recursive: true })
-        cpSync(join(repositoryRoot, 'AGENTS.md'), join(inspectionRoot, 'AGENTS.md'))
-        cpSync(join(repositoryRoot, 'CLAUDE.md'), join(inspectionRoot, 'CLAUDE.md'))
+        scaffoldInspectionRepository(inspectionRoot)
         const result = inspect(inspectionRoot, 'codex', context, { candidates: [], ownerNonce: 'b'.repeat(32), onCollection: (index) => { if (index === 1) { try { inspect(inspectionRoot, 'codex', context, { candidates: [], ownerNonce: 'c'.repeat(32) }) } catch (error) { nested = error } } } })
         assert.equal(result.ok, true)
         assert.equal(nested?.record?.code, 'runtime-lock')
@@ -969,9 +968,7 @@ function runInspectionCases(repositoryRoot) {
       const observed = []
       const isolatedRoot = mkdtempSync(join(tmpdir(), 'nightshift-lock-identity-'))
       try {
-        cpSync(join(repositoryRoot, '.claude'), join(isolatedRoot, '.claude'), { recursive: true })
-        cpSync(join(repositoryRoot, 'AGENTS.md'), join(isolatedRoot, 'AGENTS.md'))
-        cpSync(join(repositoryRoot, 'CLAUDE.md'), join(isolatedRoot, 'CLAUDE.md'))
+        scaffoldInspectionRepository(isolatedRoot)
         const context = codexHostContext()
         const result = inspect(isolatedRoot, 'codex', context, {
           candidates: [],
@@ -1188,16 +1185,14 @@ function runInspectionCases(repositoryRoot) {
     const root = mkdtempSync(join(tmpdir(), 'nightshift-inspect-backups-'))
     const context = codexHostContext()
     const target = '.claude/FEATURES.md'
-    const targetBytes = readFileSync(join(repositoryRoot, target))
-    const targetMode = statSync(join(repositoryRoot, target)).mode & 0o777
     const targetHash = sha256(Buffer.from(target, 'utf8'))
     const redundant = `.tmp/nightshift-init-backlog-unwrap-${'a'.repeat(64)}-${'b'.repeat(64)}-${targetHash}.bak`
     const divergent = `.tmp/nightshift-init-backlog-unwrap-${'c'.repeat(64)}-${'d'.repeat(64)}-${targetHash}.bak`
     const orphan = `.tmp/nightshift-init-backlog-unwrap-${'e'.repeat(64)}-${'f'.repeat(64)}-${'0'.repeat(64)}.bak`
     try {
-      cpSync(join(repositoryRoot, '.claude'), join(root, '.claude'), { recursive: true })
-      cpSync(join(repositoryRoot, 'AGENTS.md'), join(root, 'AGENTS.md'))
-      cpSync(join(repositoryRoot, 'CLAUDE.md'), join(root, 'CLAUDE.md'))
+      scaffoldInspectionRepository(root)
+      const targetBytes = readFileSync(join(root, target))
+      const targetMode = statSync(join(root, target)).mode & 0o777
       mkdirSync(join(root, '.tmp'), { mode: 0o700 })
       writeFileSync(join(root, ...redundant.split('/')), targetBytes, { mode: targetMode })
       writeFileSync(join(root, ...divergent.split('/')), Buffer.from('divergent backup\n', 'utf8'), { mode: targetMode })
