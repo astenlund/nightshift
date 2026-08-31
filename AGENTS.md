@@ -42,7 +42,7 @@ Backlog prose is one paragraph or one bullet per physical line, never hard-wrapp
 - Run the revise orchestration suite: `node internal/revise/orchestration.test.js`.
 - Run the universal-skill topology suite: `node --test tests/universal-skill-topology.test.js`.
 - Run the host-discovery smoke suite: `node tests/host-discovery-smoke.test.js`.
-- Run the init-backlog controller suite: `node tests/init-backlog-controller.test.js`.
+- Run the init-backlog controller suite: `node tests/init-backlog-controller.test.js`. Use a full checkout for baseline comparisons. A linked worktree uses a `.git` indirection file and can materialize template bytes as CRLF, producing spurious `Prompt baseline manifest is not canonical` failures.
 - Run the release surface suite: `node tests/release-surface.test.js` (release state, CI conformance, documented command lists, and the version-increase gate over the unpushed range locally or the pull-request range in CI, where the checkout fetches full history so `origin/main` resolves; generic, so version bumps and doc edits never touch a feature suite). The gate reads committed state only and skips with a diagnostic when no upstream or `origin/main` resolves; the diagnostic names the last git error so a broken git reads differently from a missing ref.
 - CI runs all ten suites on Node 22.
 - The plugin is developed and verified on Windows, and CI runs on `windows-latest`; POSIX code paths exist but are inert and unsupported for live use.
