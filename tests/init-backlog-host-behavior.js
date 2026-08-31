@@ -260,8 +260,16 @@ function canonicalizeStableDirectory({ entry, filesystem, platform, protectedRoo
   if (walked.unstable) {
     return { unstable: true }
   }
-  const currentPath = walked.currentPath
-  if (!walked.stat.isDirectory()) {
+  const canonical = stableRealpath(filesystem, walked.currentPath, pathApi, platform)
+  if (canonical.unstable) {
+    return { unstable: true }
+  }
+  const currentPath = canonical.canonicalPath
+  const canonicalProbe = stableLstat(filesystem, currentPath)
+  if (canonicalProbe.absent || canonicalProbe.unstable || !sameFilesystemIdentity(walked.stat, canonicalProbe.stat)) {
+    return { unstable: true }
+  }
+  if (!canonicalProbe.stat.isDirectory()) {
     return { skip: true }
   }
   if (insideProtectedRoots(currentPath, protectedRoots, platform)) {
