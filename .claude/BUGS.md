@@ -27,6 +27,12 @@ A missing `Requires:` line is a structural error. `/nightshift:ready` parses the
 
 ## Open
 
+### [Init-backlog templates prescribe parser-invalid empty Requires syntax](bugs/init-backlog-parser-invalid-empty-requires.md)
+
+The init-backlog templates tell maintainers to replace a removed final dependency with `Requires: none.`, but `ready.js` recognizes only the bold `**Requires:**` label. Following the generated guidance therefore creates a missing-Requires structural error. The fix must correct every shipped template occurrence and add a regression that proves generated guidance prescribes parser-valid syntax.
+
+**Requires:** none.
+
 ### [Ignore election cannot initialize a missing `.gitignore`](bugs/ignore-election-missing-gitignore.md)
 
 In a Git repository with no `.gitignore`, the ignore election is unreachable because creating the file has no unambiguous newline base and the existing gate correctly refuses to guess. The fix must define the file-creation newline rule while preserving fail-closed behavior, with regressions for missing, empty, and mixed-newline repository states.
