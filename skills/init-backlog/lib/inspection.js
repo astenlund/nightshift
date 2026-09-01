@@ -11,7 +11,7 @@ const { inspectBackups } = require('./backups')
 const { InitBacklogError, failureRecord } = require('./errors')
 const { HTML_BLOCK_TYPE_SIX_TAGS, MAX_GUIDANCE_FILE_BYTES, discoverControlledMarkdown, resolveGuidance } = require('./guidance')
 const { boundedOpenOptions, canonicalRoot, comparableIdentity, comparableMode, createInitialLock, initialLockPaths, readOrdinalFirstDirectoryName, removeInitialLock, stableOpenFile, targetPath } = require('./filesystem')
-const { BACKUP_DIRECTORY, DIGEST_PATTERN, MAX_INLINE_FILE_BYTES, MAX_MECHANICAL_FILE_BYTES, MAX_RECOVERY_REQUEST_BYTES, OPERATION, RECOVERY_LOCK_BASENAME, RECOVERY_LOCK_STAGE_PATTERN, RECOVERY_MARKER_BASENAME, canonicalJson, compareOrdinal, deriveProposalId, deriveSnapshotId, encodeResult, sameKeys, sha256 } = require('./protocol')
+const { BACKUP_DIRECTORY, DIGEST_PATTERN, MAX_BREAKOUT_FILE_BYTES, MAX_FEATURE_FILE_BYTES, MAX_INLINE_FILE_BYTES, MAX_MECHANICAL_FILE_BYTES, MAX_RECOVERY_REQUEST_BYTES, OPERATION, RECOVERY_LOCK_BASENAME, RECOVERY_LOCK_STAGE_PATTERN, RECOVERY_MARKER_BASENAME, canonicalJson, compareOrdinal, deriveProposalId, deriveSnapshotId, encodeResult, sameKeys, sha256 } = require('./protocol')
 const { detectGitKind, inspectGitPolicy, newlineStyle, plansRootRuleEffective } = require('./git-policy')
 
 function inspectError(code, detail, target = null, cause, phase = 'inspect') {
@@ -241,6 +241,18 @@ function buildReadyCatalog(entries) {
   return result.sort((left, right) => compareOrdinal(left.target, right.target))
 }
 
+function discoverReadyControlledMarkdown(root, options = {}) {
+  const oversizedFeatures = []
+  const discovered = discoverControlledMarkdown(root, undefined, {
+    ...options,
+    featureMaxBytes: MAX_FEATURE_FILE_BYTES,
+    maxBytes: MAX_BREAKOUT_FILE_BYTES,
+    onOversizedFeature: (item) => oversizedFeatures.push(item),
+  })
+
+  return { discovered, oversizedFeatures }
+}
+
 function readyCatalogInspectionRecords(inspection) {
   if (inspection === null || typeof inspection !== 'object' || !Array.isArray(inspection.targets)) throw new TypeError('Ready catalog inspection is invalid')
   const records = new Map()
@@ -269,7 +281,7 @@ function acquireReadyCatalog(root, expectedInspections, options = {}) {
   for (const expectation of expectations.slice(1)) {
     if (canonicalJson([...expectation.records.keys()].sort(compareOrdinal)) !== canonicalJson(targetNames)) throw new Error('Ready catalog inspection target sets differ')
   }
-  const discovered = discoverControlledMarkdown(canonical, undefined, { ...options, maxBytes: MAX_MECHANICAL_FILE_BYTES })
+  const { discovered, oversizedFeatures } = discoverReadyControlledMarkdown(canonical, options)
   const descriptors = new Map(discovered.map((item) => [item.target, item]))
   const acquiredTargets = new Set(targetNames)
   for (const item of discovered) {
@@ -277,7 +289,7 @@ function acquireReadyCatalog(root, expectedInspections, options = {}) {
     acquiredTargets.add(item.target)
   }
   const acquired = []
-  const catalog = []
+  const catalog = oversizedFeatures.map((item) => ({ contents: '', target: item.target.slice('.claude/'.length) }))
   for (const target of [...acquiredTargets].sort(compareOrdinal)) {
     let descriptor = descriptors.get(target)
     if (descriptor === undefined) descriptor = targetState(target, canonical, { ...options, expectedKind: 'file', maxBytes: MAX_MECHANICAL_FILE_BYTES })
@@ -720,7 +732,8 @@ function collectInspection(root, host, hostContext = {}, options = {}) {
     descriptors.push({ declaration: { ...declaration, contentRole: target === '.gitignore' ? 'mechanical' : 'semantic' }, descriptor, target, template: templateId ? bundle.templates.get(templateId) : null })
   }
   const declaredTargets = new Set(descriptors.map((entry) => entry.target))
-  for (const item of discoverControlledMarkdown(canonical, undefined, { ...options, maxBytes: MAX_MECHANICAL_FILE_BYTES })) {
+  const { discovered, oversizedFeatures } = discoverReadyControlledMarkdown(canonical, options)
+  for (const item of discovered) {
     if (!declaredTargets.has(item.target)) descriptors.push({ declaration: { contentRole: 'mechanical', kind: 'file', regions: [] }, descriptor: item, target: item.target, template: null })
   }
   // Decode and unwrap results are pure per byte buffer; the memos below let
@@ -747,7 +760,7 @@ function collectInspection(root, host, hostContext = {}, options = {}) {
 
     return analysis
   }
-  const catalog = []
+  const catalog = oversizedFeatures.map((item) => ({ contents: '', target: item.target.slice('.claude/'.length) }))
   const wrapFindings = []
   const predictedCatalogContents = new Map()
   for (const entry of descriptors) {
@@ -870,14 +883,30 @@ function collectInspection(root, host, hostContext = {}, options = {}) {
     const missing = missingIgnoreLines(electiveBacklog)
     if (missing.length > 0) appendGitignorePolicy('elective-ignore', 'version-control-ignore', Buffer.from(missing.join('\n') + '\n', 'utf8'))
   }
-  const projectedProblems = [...readyProblems.problems, ...projectGitProblems(gitRecord)].sort((left, right) => compareOrdinal(`${left.code}\0${left.target ?? ''}\0${left.detail}`, `${right.code}\0${right.target ?? ''}\0${right.detail}`))
+  const oversizedFeatureProblems = oversizedFeatures.map((item) => ({
+    blocking: false,
+    code: 'ready-notice',
+    detail: `Feature breakout is ${item.observedBytes} bytes, above the ${item.maximumBytes}-byte inspection limit; the file was left untouched and hard-wrap and breakout-hygiene checks were skipped.`,
+    evidencePaths: [item.target],
+    target: item.target,
+  }))
+  const projectedProblems = [...readyProblems.problems, ...oversizedFeatureProblems, ...projectGitProblems(gitRecord)].sort((left, right) => compareOrdinal(`${left.code}\0${left.target ?? ''}\0${left.detail}`, `${right.code}\0${right.target ?? ''}\0${right.detail}`))
+  const readyNoticeProblems = projectedProblems.filter((item) => item.code === 'ready-notice')
+  const readyWarnings = readyProblems.warnings.filter((item) => item.code !== 'nonblocking-ready-notice')
+  if (readyNoticeProblems.length > 0) {
+    readyWarnings.push({
+      code: 'nonblocking-ready-notice',
+      detail: readyNoticeProblems.length === 1 ? '1 ready notice remains.' : `${readyNoticeProblems.length} ready notices remain.`,
+      target: readyNoticeProblems.length === 1 ? readyNoticeProblems[0].target : null,
+    })
+  }
   let backupEvidence
   try {
     backupEvidence = inspectBackups(canonical, targetRecords, options)
   } catch (error) {
     inspectError('filesystem', 'Retained backup inspection failed.', BACKUP_DIRECTORY, error)
   }
-  const result = { git: gitRecord, guidance: { baseAdapter: guidance.baseAdapter, candidates: guidance.candidates, graphPaths: guidance.graphPaths, imports: guidance.imports, independentPaths: guidance.independentPaths, resolvedTarget: guidance.resolvedTarget }, host, hostContext, ok: true, operation: OPERATION.INSPECT, problems: [...projectedProblems, ...backupEvidence.problems].sort((left, right) => compareOrdinal(`${left.code}\0${left.target ?? ''}\0${left.detail}`, `${right.code}\0${right.target ?? ''}\0${right.detail}`)), proposals: proposals.sort((left, right) => compareOrdinal(left.proposalId, right.proposalId)), protocolVersion: 1, retainedBackups: backupEvidence.backups, root: canonical, snapshotId: null, targets: targetRecords.sort((left, right) => compareOrdinal(left.target, right.target)), templates: descriptors.filter((entry) => entry.template).map((entry) => ({ conceptIds: entry.template.conceptIds, logicalSha256: entry.template.logicalSha256, target: entry.target, templateId: entry.template.templateId })).sort((left, right) => compareOrdinal(left.templateId, right.templateId)), unwrapReady: { after, targets: wrapFindings.map((item) => item.target).sort(compareOrdinal) }, warnings: [...readyProblems.warnings, ...backupEvidence.warnings].sort((left, right) => compareOrdinal(left.code, right.code)), wrapFindings, ready }
+  const result = { git: gitRecord, guidance: { baseAdapter: guidance.baseAdapter, candidates: guidance.candidates, graphPaths: guidance.graphPaths, imports: guidance.imports, independentPaths: guidance.independentPaths, resolvedTarget: guidance.resolvedTarget }, host, hostContext, ok: true, operation: OPERATION.INSPECT, problems: [...projectedProblems, ...backupEvidence.problems].sort((left, right) => compareOrdinal(`${left.code}\0${left.target ?? ''}\0${left.detail}`, `${right.code}\0${right.target ?? ''}\0${right.detail}`)), proposals: proposals.sort((left, right) => compareOrdinal(left.proposalId, right.proposalId)), protocolVersion: 1, retainedBackups: backupEvidence.backups, root: canonical, snapshotId: null, targets: targetRecords.sort((left, right) => compareOrdinal(left.target, right.target)), templates: descriptors.filter((entry) => entry.template).map((entry) => ({ conceptIds: entry.template.conceptIds, logicalSha256: entry.template.logicalSha256, target: entry.target, templateId: entry.template.templateId })).sort((left, right) => compareOrdinal(left.templateId, right.templateId)), unwrapReady: { after, targets: wrapFindings.map((item) => item.target).sort(compareOrdinal) }, warnings: [...readyWarnings, ...backupEvidence.warnings].sort((left, right) => compareOrdinal(left.code, right.code)), wrapFindings, ready }
   result.snapshotId = deriveSnapshotId({ ...result, snapshotId: null })
 
   return result

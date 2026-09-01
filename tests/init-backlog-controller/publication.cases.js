@@ -268,6 +268,25 @@ function runPublicationCases() {
     }
   })
 
+  test('actionAfter accepts feature breakouts above the legacy mechanical carrier limit', () => {
+    const root = fixtureRoot()
+    const target = '.claude/features/large.md'
+    const wrapped = Buffer.from('# Large\n\nThis paragraph is deliberately hard wrapped across\ntwo physical lines so the detector fires.\n' + '<!-- padding -->\n'.repeat(8000), 'utf8')
+    const unwrapped = Buffer.from(unwrapText(wrapped.toString('utf8')), 'utf8')
+    const action = { afterRawSha256: sha256(unwrapped), beforeRawSha256: sha256(wrapped), id: 'p-large-feature-unwrap', kind: 'unwrap-file', mode: process.platform === 'win32' ? null : 420, target }
+    const applyRequest = { inspection: { proposals: [], wrapFindings: [{ beforeRawSha256: action.beforeRawSha256, predictedContentBase64: null, predictedRawSha256: action.afterRawSha256, target }] } }
+    try {
+      mkdirSync(join(root, '.claude/features'), { recursive: true })
+      writeFileSync(join(root, target), wrapped)
+
+      assert.ok(wrapped.length > 131072)
+      assert.ok(wrapped.length <= 262144)
+      assert.deepEqual(actionAfter(applyRequest, action, root, {}), unwrapped)
+    } finally {
+      rmSync(root, { force: true, recursive: true })
+    }
+  })
+
   test('actionAfter rejects visible and hidden output that misses its predicted digest', () => {
     const visibleFixture = unwrapBackupFailureFixture()
     try {

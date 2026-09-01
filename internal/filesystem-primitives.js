@@ -97,6 +97,8 @@ function stableOpenFile(root, target, options = {}) {
     if (options.maxBytes !== undefined && size > options.maxBytes) {
       const error = new Error('Stable-open target exceeds its byte limit')
       error.code = 'file-too-large'
+      error.maximumBytes = options.maxBytes
+      error.observedBytes = size
       throw error
     }
     const bytes = Buffer.alloc(size)

@@ -42,7 +42,7 @@ const {
 } = require('../../skills/init-backlog/lib/git-policy')
 const filesystem = require('../../skills/init-backlog/lib/filesystem')
 const { createInitialLock, initialLockPaths, publishNoReplace, removeInitialLock } = filesystem
-const { MAX_INLINE_FILE_BYTES, MAX_INSPECT_RESULT_BYTES, MAX_MECHANICAL_FILE_BYTES, canonicalJson, sha256, validateProposalDispositions } = require('../../skills/init-backlog/lib/protocol')
+const { MAX_BREAKOUT_FILE_BYTES, MAX_INLINE_FILE_BYTES, MAX_INSPECT_RESULT_BYTES, canonicalJson, sha256, validateProposalDispositions } = require('../../skills/init-backlog/lib/protocol')
 const { analyzeCatalog } = require('../../skills/ready/ready')
 const { ELECTION_MARKER_PATH } = require('./election-oracles')
 const { git } = require('./helpers')
@@ -75,6 +75,20 @@ function inspectDiscoveredBreakout(prefix, breakoutContents, run) {
     writeFileSync(join(root, 'AGENTS.md'), '')
     writeFileSync(join(root, '.claude', 'BUGS.md'), '## Open\n\n### [Issue](bugs/issue.md)\n\n**Requires:** none.\n')
     writeFileSync(join(root, '.claude', 'bugs', 'issue.md'), breakoutContents)
+    run(collectInspection(root, 'claude-code', { claudeContextSource: 'host-observed', claudeRootExclusionStatus: 'included' }, { candidates: [] }))
+  } finally {
+    rmSync(root, { force: true, recursive: true })
+  }
+}
+
+function inspectDiscoveredFeature(prefix, breakoutContents, run) {
+  const root = mkdtempSync(join(tmpdir(), prefix))
+  try {
+    mkdirSync(join(root, '.claude', 'features'), { recursive: true })
+    writeFileSync(join(root, 'CLAUDE.md'), '@AGENTS.md\n')
+    writeFileSync(join(root, 'AGENTS.md'), '')
+    writeFileSync(join(root, '.claude', 'FEATURES.md'), '## Work\n\n### [Large feature](features/large-feature.md)\n\n**Requires:** none.\n')
+    writeFileSync(join(root, '.claude', 'features', 'large-feature.md'), breakoutContents)
     run(collectInspection(root, 'claude-code', { claudeContextSource: 'host-observed', claudeRootExclusionStatus: 'included' }, { candidates: [] }))
   } finally {
     rmSync(root, { force: true, recursive: true })
@@ -877,7 +891,7 @@ function runInspectionCases(repositoryRoot) {
   })
 
   test('mechanical breakout files accept their governed boundary and reject its next byte', () => {
-    const exact = sizedMarkdown('# Issue', MAX_MECHANICAL_FILE_BYTES)
+    const exact = sizedMarkdown('# Issue', MAX_BREAKOUT_FILE_BYTES)
     inspectDiscoveredBreakout('nightshift-mechanical-boundary-', exact, (result) => {
       const record = result.targets.find((item) => item.target === '.claude/bugs/issue.md')
       assert.equal(record.contentBase64, null)
@@ -887,6 +901,33 @@ function runInspectionCases(repositoryRoot) {
       () => inspectDiscoveredBreakout('nightshift-mechanical-overflow-', Buffer.concat([exact, Buffer.from('x')]), () => {}),
       (error) => error.record?.code === 'payload-too-large' && error.record?.phase === 'inspect' && error.record?.target === '.claude/bugs/issue.md',
     )
+  })
+
+  test('feature breakout files accept the doubled inspection boundary', () => {
+    const exact = sizedMarkdown('# Large feature', 262144)
+    inspectDiscoveredFeature('nightshift-feature-boundary-', exact, (result) => {
+      const record = result.targets.find((item) => item.target === '.claude/features/large-feature.md')
+      assert.equal(record.contentBase64, null)
+      assert.equal(record.rawSha256, sha256(exact))
+    })
+  })
+
+  test('oversized feature breakouts become nonblocking incomplete-validation notices', () => {
+    const oversized = sizedMarkdown('# Large feature', 262145)
+    inspectDiscoveredFeature('nightshift-feature-opaque-', oversized, (result) => {
+      const target = '.claude/features/large-feature.md'
+      assert.equal(result.targets.some((item) => item.target === target), false)
+      assert.equal(result.proposals.some((item) => item.action.target === target), false)
+      assert.equal(result.ready.ready.some((item) => item.title === 'Large feature'), true)
+      assert.deepEqual(result.problems.filter((item) => item.target === target), [{
+        blocking: false,
+        code: 'ready-notice',
+        detail: 'Feature breakout is 262145 bytes, above the 262144-byte inspection limit; the file was left untouched and hard-wrap and breakout-hygiene checks were skipped.',
+        evidencePaths: [target],
+        target,
+      }])
+      assert.deepEqual(result.warnings.filter((item) => item.code === 'nonblocking-ready-notice'), [{ code: 'nonblocking-ready-notice', detail: '1 ready notice remains.', target }])
+    })
   })
 
   test('a hard-wrapped discovered breakout yields a mechanical unwrap proposal', () => {

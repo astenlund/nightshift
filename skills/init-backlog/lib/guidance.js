@@ -579,9 +579,15 @@ function discoverControlledMarkdown(root, directories = ['.claude/bugs', '.claud
         throwInitBacklogError({ code: 'payload-too-large', detail: 'Controlled Markdown count exceeds the controller limit.', operation: OPERATION.INSPECT, phase: 'inspect', target })
       }
       let opened
+      const featureTarget = target.startsWith('.claude/features/')
+      const maxBytes = featureTarget ? resolvedOptions.featureMaxBytes ?? resolvedOptions.maxBytes : resolvedOptions.maxBytes
       try {
-        opened = stableOpenFile(canonical, entry.path, { ...resolvedOptions, requireSingleLink: true })
+        opened = stableOpenFile(canonical, entry.path, { ...resolvedOptions, maxBytes, requireSingleLink: true })
       } catch (error) {
+        if (featureTarget && error?.code === 'file-too-large' && typeof resolvedOptions.onOversizedFeature === 'function') {
+          resolvedOptions.onOversizedFeature({ maximumBytes: error.maximumBytes, observedBytes: error.observedBytes, target })
+          continue
+        }
         const code = error?.code === 'file-too-large' ? 'payload-too-large' : 'filesystem'
         const detail = code === 'payload-too-large' ? 'Controlled mechanical target exceeds its maximum size.' : 'Controlled target cannot be stably read.'
         throwInitBacklogError({ code, detail, operation: OPERATION.INSPECT, phase: 'inspect', target }, error)
