@@ -45,7 +45,7 @@ function liveHostContext(request, root, resuming) {
 function resumeProjectionScope(request, actionTargets, hostContext, completedActionTargets, manifestId) {
   const guidance = request.inspection?.guidance ?? {}
   const guidanceTargets = new Set([guidance.resolvedTarget, guidance.baseAdapter].filter((target) => typeof target === 'string' && actionTargets.has(target)))
-  const ownedBackupPaths = new Set((request.actions ?? []).filter((action) => action.kind === 'unwrap-file').map((action) => backupTarget(action.target, request.inspection.snapshotId, manifestId)))
+  const ownedBackupPaths = new Set((request.actions ?? []).filter((action) => action.kind === 'repair-file' || action.kind === 'unwrap-file').map((action) => backupTarget(action.target, request.inspection.snapshotId, manifestId)))
 
   return {
     gitignorePublished: completedActionTargets.has('.gitignore'),

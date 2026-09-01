@@ -607,6 +607,71 @@ function runAdmissionCases() {
     expectManifestError(() => admitApplyManifest(request({ actions: [removedFirst, removedSecond], inspection: removedInspection, proposalDispositions: [{ disposition: 'selected', proposalId: removedFirst.id }], semanticDecisions: [{ conceptIds: ['features.dependency-grammar'], status: 'satisfied', target: '.claude/FEATURES.md' }] })))
   })
 
+  test('rescans semantic regions after newline repair before admitting a same-target edit', () => {
+    const before = Buffer.from('## Requires lines\r\nentry\r\n## Slicing\nsafe\n', 'utf8')
+    const repaired = Buffer.from('## Requires lines\nentry\n## Slicing\nsafe\n', 'utf8')
+    const widened = Buffer.from('## Requires lines\nentry\n## Slicing\nXafe\n', 'utf8')
+    const inspection = baseInspection()
+    const record = {
+      ...target('.claude/FEATURES.md', 'file', 'present'),
+      contentBase64: before.toString('base64'),
+      editableRegions: [{ endByte: before.length, regionId: 'features.requires-lines', startByte: 0 }],
+      newline: 'mixed',
+      rawSha256: sha256(before),
+      states: ['present', 'mixed-line-endings'],
+    }
+    inspection.targets = [target('.claude', 'directory', 'present'), record]
+    inspection.templates = [{ conceptIds: ['features.dependency-grammar'], logicalSha256: 'c'.repeat(64), target: record.target, templateId: record.templateId }]
+    const repair = { afterRawSha256: sha256(repaired), beforeRawSha256: sha256(before), id: 'p-repair-regions', kind: 'repair-file', mode: record.mode, newline: 'lf', target: record.target, unwrap: false }
+    const semanticWithoutId = { afterBase64: widened.toString('base64'), beforeBase64: repaired.toString('base64'), kind: 'exact-edit', regionId: 'features.requires-lines', target: record.target }
+    const semantic = { ...semanticWithoutId, id: deriveSemanticActionId(semanticWithoutId) }
+    inspection.proposals = [{ action: repair, afterBase64: repaired.toString('base64'), beforeBase64: before.toString('base64'), condition: 'always', proposalId: repair.id, reason: 'mixed-line-endings' }]
+    inspection.ready = analyzeCatalog([{ contents: before.toString('utf8'), target: 'FEATURES.md' }])
+    inspection.unwrapReady = { after: inspection.ready, targets: [record.target] }
+    inspection.snapshotId = deriveSnapshotId({ ...inspection, snapshotId: null })
+    const correctEnd = repaired.indexOf('## Slicing')
+
+    expectManifestError(() => admitApplyManifest(request({
+      actions: [repair, semantic],
+      inspection,
+      proposalDispositions: [{ disposition: 'selected', proposalId: repair.id }],
+      semanticDecisions: [{ conceptIds: ['features.dependency-grammar'], status: 'satisfied', target: record.target }],
+    }), { readyCatalog: [{ contents: before.toString('utf8'), target: 'FEATURES.md' }], rescanRegions: () => [{ endByte: correctEnd, regionId: 'features.requires-lines', startByte: 0 }] }))
+  })
+
+  test('admits newline repair while a semantic structure defect remains separately incomplete', () => {
+    const before = Buffer.from('## Requires lines\r\nentry\r\n## Requires lines\nentry\n', 'utf8')
+    const repaired = Buffer.from('## Requires lines\nentry\n## Requires lines\nentry\n', 'utf8')
+    const inspection = baseInspection()
+    const record = {
+      ...target('.claude/FEATURES.md', 'file', 'present'),
+      contentBase64: before.toString('base64'),
+      editableRegions: [],
+      newline: 'mixed',
+      rawSha256: sha256(before),
+      states: ['present', 'mixed-line-endings', 'structurally-invalid'],
+    }
+    inspection.targets = [target('.claude', 'directory', 'present'), record]
+    inspection.templates = [{ conceptIds: ['features.dependency-grammar'], logicalSha256: record.templateSha256, target: record.target, templateId: record.templateId }]
+    const repair = { afterRawSha256: sha256(repaired), beforeRawSha256: sha256(before), id: 'p-repair-structural', kind: 'repair-file', mode: record.mode, newline: 'lf', target: record.target, unwrap: false }
+    inspection.proposals = [{ action: repair, afterBase64: repaired.toString('base64'), beforeBase64: before.toString('base64'), condition: 'always', proposalId: repair.id, reason: 'mixed-line-endings' }]
+    inspection.ready = analyzeCatalog([{ contents: before.toString('utf8'), target: 'FEATURES.md' }])
+    inspection.unwrapReady = { after: inspection.ready, targets: [record.target] }
+    inspection.snapshotId = deriveSnapshotId({ ...inspection, snapshotId: null })
+    let rescans = 0
+
+    const result = admitApplyManifest(request({ actions: [repair], inspection, proposalDispositions: [{ disposition: 'selected', proposalId: repair.id }], semanticDecisions: [{ conceptIds: ['features.dependency-grammar'], status: 'deferred', target: record.target }] }), {
+      readyCatalog: [{ contents: before.toString('utf8'), target: 'FEATURES.md' }],
+      rescanRegions: () => {
+        rescans += 1
+        throw new Error('structural defect remains')
+      },
+    })
+
+    assert.equal(rescans, 0)
+    assert.deepEqual(result.states.find((item) => item.target === record.target).content, repaired)
+  })
+
   test('rejects direct semantic actions without authorized template evidence', () => {
     const cases = [
       { name: 'null-template', templateId: null, templates: [], regionId: 'features.document-preamble' },

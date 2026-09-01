@@ -72,12 +72,12 @@ function inspectBackups(root, targets, options = {}) {
     }
     backups.push(target)
     if (currentTarget !== undefined && classifyBackup(backup, current) === 'divergent') {
-      problems.push({ blocking: true, code: 'runtime-state', detail: 'Retained unwrap backup differs from its controlled target.', evidencePaths: [target, currentTarget].sort(compareOrdinal), target: currentTarget })
+      problems.push({ blocking: true, code: 'runtime-state', detail: 'Retained mechanical repair backup differs from its controlled target.', evidencePaths: [target, currentTarget].sort(compareOrdinal), target: currentTarget })
     }
   }
   backups.sort(compareOrdinal)
   problems.sort((left, right) => compareOrdinal(`${left.target}\0${left.detail}`, `${right.target}\0${right.detail}`))
-  const warnings = backups.length === 0 ? [] : [{ code: 'manual-cleanup', detail: backups.length === 1 ? 'One retained unwrap backup requires manual cleanup.' : `${backups.length} retained unwrap backups require manual cleanup.`, target: backups.length === 1 ? backups[0] : null }]
+  const warnings = backups.length === 0 ? [] : [{ code: 'manual-cleanup', detail: backups.length === 1 ? 'One retained mechanical repair backup requires manual cleanup.' : `${backups.length} retained mechanical repair backups require manual cleanup.`, target: backups.length === 1 ? backups[0] : null }]
 
   return { backups, problems, warnings }
 }

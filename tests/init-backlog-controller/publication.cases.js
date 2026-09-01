@@ -517,7 +517,7 @@ function runPublicationCases() {
       assert.throws(() => publishApply(fixture.applyRequest, { currentInspection: fixture.applyRequest.inspection, collectInspection: () => fixture.applyRequest.inspection, onRenamed: (destination) => { if (destination.endsWith('FEATURES.md')) throw new Error('target callback failure after backup publication') } }), (error) => {
         assert.equal(error.record?.code, 'filesystem')
         assert.equal(error.record?.phase, 'publish')
-        assert.deepEqual(error.record?.recovery, { retainedBackups: [fixture.backupTarget], status: 'none', warnings: [{ code: 'manual-cleanup', detail: 'Unwrap backups remain retained after publication failure.', target: null }] })
+        assert.deepEqual(error.record?.recovery, { retainedBackups: [fixture.backupTarget], status: 'none', warnings: [{ code: 'manual-cleanup', detail: 'Repair backups remain retained after publication failure.', target: null }] })
         return true
       })
       assert.equal(existsSync(join(fixture.root, ...fixture.backupTarget.split('/'))), true)
@@ -1164,7 +1164,7 @@ function runPublicationCases() {
         targets: [{ ...carried.targets[0], contentBase64: fixture.unwrapped.toString('base64'), rawSha256: sha256(fixture.unwrapped), states: ['present'] }],
         templates: carried.templates,
         unwrapReady: { after: carried.unwrapReady.after, targets: [] },
-        warnings: [{ code: 'manual-cleanup', detail: 'One retained unwrap backup requires manual cleanup.', target: unrelatedBackup }],
+        warnings: [{ code: 'manual-cleanup', detail: 'One retained mechanical repair backup requires manual cleanup.', target: unrelatedBackup }],
         wrapFindings: [],
       })
 
@@ -1192,7 +1192,7 @@ function runPublicationCases() {
         targets: [{ ...carried.targets[0], contentBase64: fixture.unwrapped.toString('base64'), rawSha256: sha256(fixture.unwrapped), states: ['present'] }],
         templates: carried.templates,
         unwrapReady: { after: carried.unwrapReady.after, targets: [] },
-        warnings: [{ code: 'manual-cleanup', detail: 'One retained unwrap backup requires manual cleanup.', target: foreignBackup }],
+        warnings: [{ code: 'manual-cleanup', detail: 'One retained mechanical repair backup requires manual cleanup.', target: foreignBackup }],
         wrapFindings: [],
       })
 

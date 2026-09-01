@@ -543,17 +543,31 @@ function normalizeIgnorePattern(line) {
   return normalized
 }
 
-function newlineStyle(bytes) {
+function newlineStyle(bytes, options = {}) {
   const input = buffers(bytes)
   const text = input.toString('utf8')
   const crlf = text.includes('\r\n')
   const bareLf = text.replaceAll('\r\n', '').includes('\n')
   const bareCr = text.replaceAll('\r\n', '').includes('\r')
-  if (bareCr || crlf && bareLf) {
+  if (bareCr || crlf && bareLf && options.allowMixed !== true) {
     throw new Error('Mixed or invalid line endings')
   }
 
-  return crlf ? 'crlf' : bareLf ? 'lf' : 'none'
+  return crlf && bareLf ? 'mixed' : crlf ? 'crlf' : bareLf ? 'lf' : 'none'
+}
+
+function normalizeLineEndings(bytes, style) {
+  if (style !== 'lf' && style !== 'crlf') throw new Error('Destination line ending is invalid')
+  const input = buffers(bytes)
+  const bom = input.subarray(0, 3).equals(Buffer.from([0xef, 0xbb, 0xbf]))
+  const payload = bom ? input.subarray(3) : input
+  newlineStyle(payload, { allowMixed: true })
+  if (payload.includes(0)) throw new Error('Content contains NUL')
+  const text = new TextDecoder('utf-8', { fatal: true }).decode(payload)
+  const logical = text.replaceAll('\r\n', '\n')
+  const rendered = Buffer.from(style === 'crlf' ? logical.replaceAll('\n', '\r\n') : logical, 'utf8')
+
+  return bom ? Buffer.concat([input.subarray(0, 3), rendered]) : rendered
 }
 
 function normalizeConfigValue(value, kind) {
@@ -664,6 +678,7 @@ module.exports = {
   classifyGitKind,
   detectGitKind,
   newlineStyle,
+  normalizeLineEndings,
   normalizeGitPolicy,
   normalizeConfigValue,
   plansRootRuleEffective,

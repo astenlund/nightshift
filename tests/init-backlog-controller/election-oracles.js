@@ -15,7 +15,7 @@ const HOST_CONTROL_RECORDS = {
 }
 const CODEX_HOST_CONTEXT_CONFIRMATION = 'Confirm fixed guidance candidates AGENTS.override.md and AGENTS.md, no additional fallback guidance names, project_doc_max_bytes 32768, no project_doc_fallback_filenames override, and invocation directory repository root (.).'
 const CLAUDE_ROOT_EXCLUSION_CONFIRMATION = 'Confirm that no effective claudeMdExcludes pattern matches the future root CLAUDE.md path shown above.'
-const BREAKOUT_DIGEST_NOTICE = 'Decoded before and after images are withheld for mechanical breakout unwrap.'
+const BREAKOUT_DIGEST_NOTICE = 'Decoded before and after images are withheld for mechanical breakout repair.'
 
 const ELECTION_MARKER_PATH = '.nightshift-init-backlog-election'
 
@@ -131,8 +131,10 @@ function validateTurnObject(turn) {
         throw new Error('decoded-empty disclosure byteLength must be literal zero')
       }
     } else if (kind === 'breakout-digest') {
-      requireExactKeys(item, ['actionId', 'afterRawSha256', 'beforeRawSha256', 'extent', 'kind', 'notice', 'proposalDigest', 'selection', 'target'], 'breakout-digest disclosure')
-      if (item.extent !== 'complete-file' || item.notice !== BREAKOUT_DIGEST_NOTICE) {
+      requireExactKeys(item, ['actionId', 'afterRawSha256', 'beforeRawSha256', 'extent', 'firstLine', 'kind', 'mode', 'newline', 'notice', 'proposalDigest', 'selection', 'target', 'unwrap', 'wrapCount'], 'breakout-digest disclosure')
+      const validMode = item.mode === null || Number.isSafeInteger(item.mode) && item.mode >= 0 && item.mode <= 4095
+      const validWrap = typeof item.unwrap === 'boolean' && Number.isSafeInteger(item.wrapCount) && (item.unwrap ? item.wrapCount >= 1 && Number.isSafeInteger(item.firstLine) && item.firstLine >= 1 : item.wrapCount === 0 && item.firstLine === null)
+      if (item.extent !== 'complete-file' || item.notice !== BREAKOUT_DIGEST_NOTICE || !validMode || !['crlf', 'lf'].includes(item.newline) || !validWrap) {
         throw new Error('breakout-digest disclosure literals are invalid')
       }
     } else if (kind === 'structural-action') {

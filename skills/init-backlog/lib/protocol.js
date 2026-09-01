@@ -8,10 +8,14 @@ const { InitBacklogError, SYSTEM_CODE_PATTERN, failureRecord, throwInitBacklogEr
 
 const MAX_INSPECT_REQUEST_BYTES = 65536
 const MAX_INLINE_FILE_BYTES = 65536
-const MAX_BREAKOUT_FILE_BYTES = 131072
+const MAX_BREAKOUT_FILE_BYTES = 262144
 const MAX_FEATURE_FILE_BYTES = 262144
 const MAX_MECHANICAL_FILE_BYTES = MAX_FEATURE_FILE_BYTES
-const MAX_INSPECT_RESULT_BYTES = 524288
+// Seven semantic backlog targets can each carry one target image, one wrap
+// prediction, and two before/after newline alternatives. Eight MiB covers
+// those Base64 images plus templates, guidance, policy, and JSON structure
+// while remaining below the apply request's sixteen MiB envelope.
+const MAX_INSPECT_RESULT_BYTES = 8388608
 const MAX_APPLY_REQUEST_BYTES = 16777216
 const MAX_RECOVERY_REQUEST_BYTES = 1114112
 const MAX_APPLY_RESULT_BYTES = 1048576
@@ -432,6 +436,7 @@ function validateAction(value, code = 'invalid-request', phase = 'decode') {
     'create-from-template': ['id', 'kind', 'target', 'templateId', 'newline', 'mode'],
     'ensure-directory': ['id', 'kind', 'target', 'mode'],
     'exact-edit': ['id', 'kind', 'target', 'regionId', 'beforeBase64', 'afterBase64'],
+    'repair-file': ['id', 'kind', 'target', 'beforeRawSha256', 'afterRawSha256', 'mode', 'newline', 'unwrap'],
     'unwrap-file': ['id', 'kind', 'target', 'beforeRawSha256', 'afterRawSha256', 'mode'],
   }
   const keys = keysByKind[value.kind]
@@ -452,6 +457,13 @@ function validateAction(value, code = 'invalid-request', phase = 'decode') {
       validateLogicalId(value.regionId)
       validateBase64(value.beforeBase64)
       validateBase64(value.afterBase64)
+    } else if (value.kind === 'repair-file') {
+      validateDigest(value.beforeRawSha256)
+      validateDigest(value.afterRawSha256)
+      validateMode(value.mode)
+      if (!['crlf', 'lf'].includes(value.newline) || typeof value.unwrap !== 'boolean') {
+        throw new TypeError('Repair options are invalid')
+      }
     } else {
       validateDigest(value.beforeRawSha256)
       validateDigest(value.afterRawSha256)
@@ -552,9 +564,9 @@ function validateInspectSuccess(value) {
     requireRecord(item, ['target', 'kind', 'states', 'contentRole', 'contentBase64', 'rawSha256', 'cleanTextSha256', 'mode', 'templateId', 'templateSha256', 'newline', 'bom', 'finalNewline', 'editableRegions'], 'target item')
     validateTarget(item.target)
     requireString(item.kind, 'target kind', { values: ['directory', 'file'] })
-    requireArray(item.states, 'target states', (entry) => requireString(entry, 'target state', { values: ['exact-template', 'missing', 'present', 'structurally-invalid', 'wrapped'] }), { uniqueBy: (entry) => entry })
+    requireArray(item.states, 'target states', (entry) => requireString(entry, 'target state', { values: ['exact-template', 'missing', 'mixed-line-endings', 'present', 'structurally-invalid', 'wrapped'] }), { uniqueBy: (entry) => entry })
     const stateKey = item.states.join(',')
-    const validFileStates = ['missing', 'present', 'present,exact-template', 'present,wrapped', 'present,structurally-invalid', 'present,wrapped,structurally-invalid']
+    const validFileStates = ['missing', 'present', 'present,exact-template', 'present,mixed-line-endings', 'present,mixed-line-endings,structurally-invalid', 'present,wrapped', 'present,wrapped,mixed-line-endings', 'present,wrapped,mixed-line-endings,structurally-invalid', 'present,structurally-invalid', 'present,wrapped,structurally-invalid']
     const validDirectoryStates = ['missing', 'present']
     if (!(item.kind === 'file' ? validFileStates : validDirectoryStates).includes(stateKey)) {
       invalid('invalid-request', 'decode', 'Target state combination is invalid.')
@@ -567,7 +579,7 @@ function validateInspectSuccess(value) {
     requireNullable(item.templateId, validateLogicalId)
     requireNullable(item.templateSha256, validateDigest)
     if (item.newline !== null) {
-      requireString(item.newline, 'newline', { values: ['crlf', 'lf', 'none'] })
+      requireString(item.newline, 'newline', { values: ['crlf', 'lf', 'mixed', 'none'] })
     }
     if (item.bom !== null) {
       requireBoolean(item.bom, 'bom')
@@ -602,7 +614,7 @@ function validateInspectSuccess(value) {
     if (typeof item.proposalId !== 'string' || !/^p-[a-f0-9]{62}$/.test(item.proposalId)) {
       invalid('invalid-request', 'decode', 'Proposal ID is invalid.')
     }
-    requireString(item.reason, 'proposal reason', { values: ['elective-ignore', 'empty-target', 'guidance-section', 'hard-wrap', 'missing-target', 'plans-policy'] })
+    requireString(item.reason, 'proposal reason', { values: ['elective-ignore', 'empty-target', 'guidance-section', 'hard-wrap', 'missing-target', 'mixed-line-endings', 'plans-policy'] })
     requireString(item.condition, 'proposal condition', { values: ['always', 'newline-crlf', 'newline-lf', 'version-control-ignore'] })
     validateAction(item.action)
     requireNullable(item.beforeBase64, validateBase64)
@@ -840,7 +852,7 @@ function validateOutcome(value) {
     invalid('invalid-request', 'decode', 'Outcome action ID is invalid.')
   }
   validateTarget(value.target)
-  requireString(value.status, 'outcome status', { values: ['created', 'edited', 'skipped-complete', 'unwrapped'] })
+  requireString(value.status, 'outcome status', { values: ['created', 'edited', 'repaired', 'skipped-complete', 'unwrapped'] })
 }
 
 function validateRecovery(value) {
@@ -1100,7 +1112,7 @@ function actionRank(action) {
   if (action.kind === 'ensure-directory') {
     return 0
   }
-  if (action.kind === 'unwrap-file') {
+  if (action.kind === 'repair-file' || action.kind === 'unwrap-file') {
     return 1
   }
 

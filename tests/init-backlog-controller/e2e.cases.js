@@ -271,12 +271,20 @@ function readyCatalogFixture(options = {}) {
   if (linked) {
     const linkedContents = options.structural === true
       ? '# Linked\n\n**Requires:** none.\n'
+      : options.mixedWrapped === true
+        ? '\ufeff# Linked\r\n\r\nThis paragraph is deliberately hard wrapped across\ntwo physical lines so both repairs run.\r\n'
+      : options.mixed === true
+        ? '# Linked\r\n\r\nThis paragraph deliberately mixes line endings.\n'
       : options.wrapped === true
         ? '# Linked\n\nThis paragraph is deliberately hard wrapped across\ntwo physical lines so the detector fires.\n'
         : '# Linked\n'
     writeFileSync(linkedTarget, linkedContents, 'utf8')
   }
   if (options.unlinked === true) writeFileSync(join(root, '.claude', 'features', 'unlinked.md'), '# Unlinked\n', 'utf8')
+  if (options.ambiguousNewline === true) {
+    writeFileSync(join(root, '.claude', 'features', 'sibling-crlf.md'), '# CRLF sibling\r\n', 'utf8')
+    writeFileSync(join(root, '.claude', 'features', 'sibling-lf.md'), '# LF sibling\n', 'utf8')
+  }
   const inspected = driveCli(root, inspectRequest(root, 'claude-code', claudeHostContext('included')))
   assert.equal(inspected.exitCode, 0, inspected.stderr)
 
@@ -553,6 +561,75 @@ function runE2eCases() {
       assert.equal(applied.record.ok, true, `apply failed: ${JSON.stringify(applied.record).slice(0, 400)}`)
       assert.deepEqual(applied.record.postInspect.ready, fixture.inspection.unwrapReady.after, 'the unwrap prediction must preserve the complete sibling catalog')
       assert.equal(readFileSync(fixture.linkedTarget, 'utf8').includes('across two physical'), true)
+    } finally {
+      removeRoot(fixture.root)
+    }
+  })
+
+  test('a mixed-line-ending backlog file is repaired instead of blocking init-backlog', () => {
+    const fixture = readyCatalogFixture({ linked: true, mixed: true })
+    try {
+      const request = buildApplyRequest(fixture.root, fixture.inspection, 'not-required', { newline: 'crlf' })
+      assert.equal(request.actions.some((action) => action.kind === 'repair-file' && action.target === '.claude/features/linked.md'), true, 'the fixture must select the mixed-line-ending repair')
+
+      const applied = driveCli(fixture.root, request)
+
+      assert.equal(applied.stderr, '')
+      assert.equal(applied.record.ok, true, `apply failed: ${JSON.stringify(applied.record).slice(0, 400)}`)
+      assert.equal(applied.record.complete, true)
+      assert.deepEqual(readFileSync(fixture.linkedTarget), Buffer.from('# Linked\r\n\r\nThis paragraph deliberately mixes line endings.\r\n', 'utf8'))
+    } finally {
+      removeRoot(fixture.root)
+    }
+  })
+
+  test('an ambiguous mixed-line-ending repair exposes both newline choices', () => {
+    const fixture = readyCatalogFixture({ ambiguousNewline: true, linked: true, mixed: true })
+    try {
+      const repairs = fixture.inspection.proposals.filter((proposal) => proposal.action.kind === 'repair-file' && proposal.action.target === '.claude/features/linked.md')
+      assert.deepEqual(repairs.map((proposal) => proposal.condition).sort(), ['newline-crlf', 'newline-lf'])
+
+      const applied = driveCli(fixture.root, buildApplyRequest(fixture.root, fixture.inspection, 'not-required', { newline: 'lf' }))
+
+      assert.equal(applied.stderr, '')
+      assert.equal(applied.record.ok, true, `apply failed: ${JSON.stringify(applied.record).slice(0, 400)}`)
+      assert.deepEqual(readFileSync(fixture.linkedTarget), Buffer.from('# Linked\n\nThis paragraph deliberately mixes line endings.\n', 'utf8'))
+    } finally {
+      removeRoot(fixture.root)
+    }
+  })
+
+  test('mixed-line-ending repair composes hard-wrap repair and preserves a byte-order mark', () => {
+    const fixture = readyCatalogFixture({ linked: true, mixedWrapped: true })
+    try {
+      const request = buildApplyRequest(fixture.root, fixture.inspection, 'not-required', { newline: 'crlf' })
+      const repair = request.actions.find((action) => action.kind === 'repair-file' && action.target === '.claude/features/linked.md')
+      assert.equal(repair?.unwrap, true)
+
+      const applied = driveCli(fixture.root, request)
+
+      assert.equal(applied.stderr, '')
+      assert.equal(applied.record.ok, true, `apply failed: ${JSON.stringify(applied.record).slice(0, 400)}`)
+      assert.deepEqual(readFileSync(fixture.linkedTarget), Buffer.from('\ufeff# Linked\r\n\r\nThis paragraph is deliberately hard wrapped across two physical lines so both repairs run.\r\n', 'utf8'))
+    } finally {
+      removeRoot(fixture.root)
+    }
+  })
+
+  test('a mixed-line-ending repair resumes from its durable published state', () => {
+    const fixture = readyCatalogFixture({ linked: true, mixed: true })
+    try {
+      const request = buildApplyRequest(fixture.root, fixture.inspection, 'not-required', { newline: 'crlf' })
+      driveCli(fixture.root, request, { crash: true, failAt: 'after-final-verification' })
+      assert.equal(existsSync(join(fixture.root, LOCK_BASENAME)), true, 'the interrupted repair must retain its owner record')
+
+      const resumed = driveCli(fixture.root, request)
+
+      assert.equal(resumed.stderr, '')
+      assert.equal(resumed.record.ok, true, `resume failed: ${JSON.stringify(resumed.record).slice(0, 400)}`)
+      assert.equal(resumed.record.complete, true)
+      assert.equal(existsSync(join(fixture.root, LOCK_BASENAME)), false)
+      assert.deepEqual(readFileSync(fixture.linkedTarget), Buffer.from('# Linked\r\n\r\nThis paragraph deliberately mixes line endings.\r\n', 'utf8'))
     } finally {
       removeRoot(fixture.root)
     }

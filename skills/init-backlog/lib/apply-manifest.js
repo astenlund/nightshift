@@ -6,6 +6,7 @@ const { analyzeCatalog } = require('../../ready/ready')
 const { unwrapText } = require('../unwrap')
 const { BACKLOG_DIRECTORY_TARGETS, loadManifest } = require('./assets')
 const { InitBacklogError, failureRecord } = require('./errors')
+const { repairFileBytes } = require('./file-repair')
 const { buildReadyCatalog, inspectRegions } = require('./inspection')
 const { validateUnwrapPrediction } = require('./unwrap-prediction')
 const {
@@ -28,7 +29,7 @@ const {
 } = require('./protocol')
 
 const DIRECTORY_TARGETS = new Set(['.claude', ...BACKLOG_DIRECTORY_TARGETS])
-const ACTION_KINDS = new Set(['ensure-directory', 'create-from-template', 'exact-edit', 'unwrap-file'])
+const ACTION_KINDS = new Set(['ensure-directory', 'create-from-template', 'exact-edit', 'repair-file', 'unwrap-file'])
 
 function admissionError(detail, fields = {}) {
   throw new InitBacklogError(failureRecord({ code: fields.code ?? 'manifest-invalid', detail, operation: OPERATION.APPLY, phase: 'prevalidate', ...fields }))
@@ -156,9 +157,14 @@ function selectedProposals(inspection, dispositions, choice) {
   }
   const wraps = inspection.wrapFindings ?? []
   if (wraps.length > 0) {
-    const selectedTargets = selected.filter((item) => item.reason === 'hard-wrap').map((item) => item.action.target)
+    const selectedTargets = selected.filter((item) => item.action.kind === 'repair-file' || item.action.kind === 'unwrap-file').map((item) => item.action.target)
     const expectedTargets = wraps.map((item) => item.target).sort()
-    if (!sameCanonical(selectedTargets.slice().sort(), expectedTargets)) admissionError('Unwrap proposals must be admitted as one complete batch.')
+    if (!expectedTargets.every((target) => selectedTargets.includes(target))) admissionError('Hard-wrap repairs must be admitted as one complete batch.')
+  }
+  const mixedTargets = (inspection.targets ?? []).filter((item) => item.newline === 'mixed').map((item) => item.target).sort()
+  if (mixedTargets.length > 0) {
+    const selectedTargets = selected.filter((item) => item.action.kind === 'repair-file').map((item) => item.action.target).sort()
+    if (!sameCanonical(selectedTargets, mixedTargets)) admissionError('Mixed-line-ending repairs must be admitted as one complete batch.')
   }
 
   return selected
@@ -309,6 +315,23 @@ function simulateAction(action, state, inspection, targets, indexes, options, de
     return
   }
   if (!state.present || state.kind !== 'file') admissionError('Edit prerequisite requires a present file.', { actionId: action.id, target: action.target })
+  if (action.kind === 'repair-file') {
+    if (state.rawSha256 !== action.beforeRawSha256 || action.mode !== record.mode) admissionError('Mechanical repair input or mode differs from inspection.', { actionId: action.id, target: action.target })
+    if (state.content !== null) {
+      let predicted
+      try {
+        predicted = repairFileBytes(state.content, action)
+      } catch (error) {
+        admissionError('Mechanical repair prediction is invalid.', { actionId: action.id, target: action.target, systemCode: error?.code })
+      }
+      if (sha256(predicted) !== action.afterRawSha256) admissionError('Mechanical repair output differs from inspection.', { actionId: action.id, target: action.target })
+      state.content = predicted
+      state.regions = record.states.includes('structurally-invalid') ? [] : rescanRegions(action, predicted, inspection, options, declarationsFor)
+    }
+    state.rawSha256 = action.afterRawSha256
+
+    return
+  }
   if (action.kind === 'unwrap-file') {
     if (state.rawSha256 !== action.beforeRawSha256 || action.mode !== record.mode) admissionError('Unwrap input or mode differs from inspection.', { actionId: action.id, target: action.target })
     const finding = indexes.wrapByTarget.get(action.target)
@@ -354,7 +377,7 @@ function simulateAction(action, state, inspection, targets, indexes, options, de
 }
 
 function simulateReady(inspection, actions, states, options = {}, recordsByTarget = null) {
-  const unwrap = actions.filter((action) => action.kind === 'unwrap-file')
+  const repairs = actions.filter((action) => action.kind === 'repair-file' || action.kind === 'unwrap-file')
   const carriedReadyCatalog = Array.isArray(options.readyCatalog)
   const catalogEntries = carriedReadyCatalog ? options.readyCatalog.map((item) => ({ ...item })) : []
   if (catalogEntries.length === 0) {
@@ -366,20 +389,20 @@ function simulateReady(inspection, actions, states, options = {}, recordsByTarge
 
   const contentsByTarget = new Map(catalogEntries.map((item) => [item.target.startsWith('.claude/') ? item.target.slice('.claude/'.length) : item.target, item.contents]))
   const actionTargets = new Set(actions.map((action) => action.target))
-  const unwrapTargets = new Set(unwrap.map((action) => action.target))
+  const repairTargets = new Set(repairs.map((action) => action.target))
   const targetIndex = recordsByTarget ?? targetMap(inspection)
-  for (const action of unwrap) {
+  for (const action of repairs) {
     const logicalTarget = action.target.startsWith('.claude/') ? action.target.slice('.claude/'.length) : null
     const record = targetIndex.get(action.target)
     if (logicalTarget === null || record?.contentRole !== 'mechanical' || !contentsByTarget.has(logicalTarget)) continue
     const contents = contentsByTarget.get(logicalTarget)
     if (sha256(Buffer.from(contents, 'utf8')) === action.afterRawSha256) continue
-    contentsByTarget.set(logicalTarget, unwrapText(contents))
+    contentsByTarget.set(logicalTarget, action.kind === 'repair-file' ? repairFileBytes(Buffer.from(contents, 'utf8'), action).toString('utf8') : unwrapText(contents))
   }
   for (const [physicalTarget, state] of states ?? []) {
     if (!actionTargets.has(physicalTarget) || !physicalTarget.startsWith('.claude/') || state.kind !== 'file' || state.content === null) continue
     const record = targetIndex.get(physicalTarget)
-    if (carriedReadyCatalog && record?.contentRole === 'mechanical' && unwrapTargets.has(physicalTarget)) continue
+    if (carriedReadyCatalog && record?.contentRole === 'mechanical' && repairTargets.has(physicalTarget)) continue
     const logicalTarget = physicalTarget.slice('.claude/'.length)
     contentsByTarget.set(logicalTarget, Buffer.from(state.content).toString('utf8'))
   }
@@ -462,7 +485,7 @@ function admitApplyManifest(request, options = {}) {
   const simulateStates = (transition) => {
     const simulated = new Map([...targets].map(([target, record]) => [target, initialState(record, indexes)]))
     for (const action of transition) {
-      if (deferredTargets.has(action.target)) admissionError('Deferred semantic targets cannot receive an action.', { actionId: action.id, target: action.target })
+      if (deferredTargets.has(action.target) && action.kind !== 'repair-file') admissionError('Deferred semantic targets cannot receive a semantic action.', { actionId: action.id, target: action.target })
       const parent = parentTarget(action.target)
       if (parent !== null && simulated.has(parent) && !simulated.get(parent).present) admissionError('Action prerequisite parent is not present.', { actionId: action.id, target: action.target })
       simulateAction(action, simulated.get(action.target), inspection, targets, indexes, options, declarationsFor)

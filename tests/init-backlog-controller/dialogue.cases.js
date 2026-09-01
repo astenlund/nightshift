@@ -73,8 +73,11 @@ function carriersFrom(inspection) {
     if (proposal.action.kind === 'ensure-directory') {
       return { actionId: proposal.action.id, kind: 'structural-action', target: proposal.action.target }
     }
-    if (proposal.action.kind === 'unwrap-file') {
-      return { actionId: proposal.action.id, afterRawSha256: proposal.action.afterRawSha256, beforeRawSha256: proposal.action.beforeRawSha256, kind: 'breakout-digest', target: proposal.action.target }
+    if ((proposal.action.kind === 'repair-file' || proposal.action.kind === 'unwrap-file') && proposal.afterBase64 === null && proposal.beforeBase64 === null) {
+      const finding = (inspection.wrapFindings ?? []).find((item) => item.target === proposal.action.target)
+      const target = (inspection.targets ?? []).find((item) => item.target === proposal.action.target)
+
+      return { actionId: proposal.action.id, afterRawSha256: proposal.action.afterRawSha256, beforeRawSha256: proposal.action.beforeRawSha256, firstLine: finding?.firstLine ?? null, kind: 'breakout-digest', mode: proposal.action.mode, newline: proposal.action.newline ?? target?.newline ?? null, target: proposal.action.target, unwrap: proposal.action.kind === 'unwrap-file' || proposal.action.unwrap, wrapCount: finding?.count ?? 0 }
     }
 
     return {
@@ -150,6 +153,27 @@ function productionApplyResult(inspection, overrides = {}) {
 }
 
 function runDialogueCases(repositoryRoot) {
+  test('mechanical repair proposals use digest carriers when breakout images are withheld', () => {
+    const proposal = {
+      action: { afterRawSha256: 'b'.repeat(64), beforeRawSha256: 'a'.repeat(64), id: 'p-repair-carrier', kind: 'repair-file', mode: null, newline: 'lf', target: '.claude/bugs/issue.md', unwrap: false },
+      afterBase64: null,
+      beforeBase64: null,
+      condition: 'always',
+      proposalId: 'p-' + 'c'.repeat(62),
+      reason: 'mixed-line-endings',
+    }
+
+    assert.deepEqual(carriersFrom({ proposals: [proposal], wrapFindings: [] }), [{ actionId: proposal.action.id, afterRawSha256: proposal.action.afterRawSha256, beforeRawSha256: proposal.action.beforeRawSha256, firstLine: null, kind: 'breakout-digest', mode: null, newline: 'lf', target: proposal.action.target, unwrap: false, wrapCount: 0 }])
+
+    const before = Buffer.from('# Features\r\n', 'utf8')
+    const after = Buffer.from('# Features\n', 'utf8')
+    const semantic = { ...proposal, action: { ...proposal.action, target: '.claude/FEATURES.md' }, afterBase64: after.toString('base64'), beforeBase64: before.toString('base64') }
+    assert.deepEqual(carriersFrom({ proposals: [semantic], wrapFindings: [] }), [{ actionId: semantic.action.id, afterBytes: after, beforeBytes: before, kind: 'decoded', target: semantic.action.target }])
+
+    const unwrap = { ...proposal, action: { afterRawSha256: 'd'.repeat(64), beforeRawSha256: 'e'.repeat(64), id: 'p-unwrap-carrier', kind: 'unwrap-file', mode: null, target: proposal.action.target } }
+    assert.deepEqual(carriersFrom({ proposals: [unwrap], targets: [{ newline: 'lf', target: unwrap.action.target }], wrapFindings: [{ count: 2, firstLine: 3, target: unwrap.action.target }] }), [{ actionId: unwrap.action.id, afterRawSha256: unwrap.action.afterRawSha256, beforeRawSha256: unwrap.action.beforeRawSha256, firstLine: 3, kind: 'breakout-digest', mode: null, newline: 'lf', target: unwrap.action.target, unwrap: true, wrapCount: 2 }])
+  })
+
   void repositoryRoot
 
   test('the dialogue engine modules export exactly their closed surfaces', () => {
@@ -175,6 +199,7 @@ function runDialogueCases(repositoryRoot) {
       'deriveApprovalFacts',
       'deriveDeterministicDigest',
       'deriveElectionPresented',
+      'deriveRequiredNewlineAmbiguityIds',
       'deriveResultPresentation',
       'deriveWriterDisclosure',
       'verifyDisabledSemanticOwnership',
@@ -729,10 +754,16 @@ function runDialogueCases(repositoryRoot) {
   })
 
   test('ambiguity coverage requires every presented ambiguity to be asked as a gate', () => {
-    assert.equal(adjudication.deriveAmbiguityCoverage({ ambiguityIdSequences: [['semantic-quick-wins']], gateIds: ['host-context-confirmation', 'semantic-quick-wins', 'manifest-approval'] }), true)
-    assert.equal(adjudication.deriveAmbiguityCoverage({ ambiguityIdSequences: [['semantic-quick-wins'], ['semantic-features']], gateIds: ['semantic-quick-wins', 'manifest-approval'] }), false)
-    assert.equal(adjudication.deriveAmbiguityCoverage({ ambiguityIdSequences: [], gateIds: [] }), true)
-    assert.throws(() => adjudication.deriveAmbiguityCoverage({ ambiguityIdSequences: [['x', 3]], gateIds: [] }), /ambiguity/)
+    const newlineGate = 'newline-style:.claude/FEATURES.md'
+    assert.equal(adjudication.deriveAmbiguityCoverage({ ambiguityIdSequences: [[newlineGate]], gateIds: ['host-context-confirmation', newlineGate, 'manifest-approval'], requiredAmbiguityIds: [newlineGate] }), true)
+    assert.equal(adjudication.deriveAmbiguityCoverage({ ambiguityIdSequences: [['semantic-quick-wins']], gateIds: ['semantic-quick-wins', 'manifest-approval'], requiredAmbiguityIds: [newlineGate] }), false)
+    assert.equal(adjudication.deriveAmbiguityCoverage({ ambiguityIdSequences: [], gateIds: [], requiredAmbiguityIds: [] }), true)
+    assert.throws(() => adjudication.deriveAmbiguityCoverage({ ambiguityIdSequences: [['x', 3]], gateIds: [], requiredAmbiguityIds: [newlineGate] }), /ambiguity/)
+    assert.deepEqual(adjudication.deriveRequiredNewlineAmbiguityIds({ proposals: [] }), [])
+    assert.deepEqual(adjudication.deriveRequiredNewlineAmbiguityIds({ proposals: [
+      { action: { target: '.claude/FEATURES.md' }, condition: 'newline-crlf' },
+      { action: { target: '.claude/FEATURES.md' }, condition: 'newline-lf' },
+    ] }), [newlineGate])
   })
 
   test('election presentation derives from the manifest proposal alone', () => {
@@ -774,18 +805,23 @@ function runDialogueCases(repositoryRoot) {
     const breakoutDigest = sha256(Buffer.from(canonicalJson(breakoutProposal), 'utf8'))
     const breakout = adjudication.buildExpectedDisclosureSequence({
       manifestProposal: breakoutProposal,
-      proposalCarriers: [{ actionId: 'unwrap-bugs', afterRawSha256: 'b'.repeat(64), beforeRawSha256: 'a'.repeat(64), kind: 'breakout-digest', target: '.claude/BUGS.md' }],
+      proposalCarriers: [{ actionId: 'unwrap-bugs', afterRawSha256: 'b'.repeat(64), beforeRawSha256: 'a'.repeat(64), firstLine: 4, kind: 'breakout-digest', mode: null, newline: 'lf', target: '.claude/BUGS.md', unwrap: true, wrapCount: 1 }],
     })
     assert.deepEqual(breakout.items, [{
       actionId: 'unwrap-bugs',
       afterRawSha256: 'b'.repeat(64),
       beforeRawSha256: 'a'.repeat(64),
       extent: 'complete-file',
+      firstLine: 4,
       kind: 'breakout-digest',
-      notice: 'Decoded before and after images are withheld for mechanical breakout unwrap.',
+      mode: null,
+      newline: 'lf',
+      notice: 'Decoded before and after images are withheld for mechanical breakout repair.',
       proposalDigest: breakoutDigest,
       selection: 'selected',
       target: '.claude/BUGS.md',
+      unwrap: true,
+      wrapCount: 1,
     }])
     const emptyAfter = adjudication.buildExpectedDisclosureSequence({
       manifestProposal: breakoutProposal,
@@ -817,7 +853,7 @@ function runDialogueCases(repositoryRoot) {
     const decodedBytes = Buffer.from('hello\n', 'utf8')
     const carriers = [
       { actionId: 'dir-claude', kind: 'structural-action', target: '.claude' },
-      { actionId: 'unwrap-bugs', afterRawSha256: 'b'.repeat(64), beforeRawSha256: 'a'.repeat(64), kind: 'breakout-digest', target: '.claude/BUGS.md' },
+      { actionId: 'unwrap-bugs', afterRawSha256: 'b'.repeat(64), beforeRawSha256: 'a'.repeat(64), firstLine: 4, kind: 'breakout-digest', mode: null, newline: 'lf', target: '.claude/BUGS.md', unwrap: true, wrapCount: 1 },
       { actionId: 'create-features', afterBytes: decodedBytes, afterRawSha256: sha256(decodedBytes), beforeBytes: null, beforeRawSha256: null, kind: 'decoded', target: '.claude/FEATURES.md' },
       { actionId: 'create-gitkeep', afterBytes: Buffer.alloc(0), afterRawSha256: sha256(Buffer.alloc(0)), beforeBytes: null, beforeRawSha256: null, kind: 'decoded', target: '.claude/plans/.gitkeep' },
     ]
@@ -837,9 +873,14 @@ function runDialogueCases(repositoryRoot) {
         afterRawSha256: 'b'.repeat(64),
         beforeRawSha256: 'a'.repeat(64),
         extent: 'complete-file',
+        firstLine: 4,
         kind: 'breakout-digest',
-        notice: 'Decoded before and after images are withheld for mechanical breakout unwrap.',
+        mode: null,
+        newline: 'lf',
+        notice: 'Decoded before and after images are withheld for mechanical breakout repair.',
         target: '.claude/BUGS.md',
+        unwrap: true,
+        wrapCount: 1,
         ...proposalBinding,
       },
       proposalCarriersByActionId,

@@ -336,6 +336,7 @@ function runOracleCases(repositoryRoot) {
     const breakout = presentation.properties.actionDisclosures.items.anyOf[2]
     assert.equal(breakout.properties.notice.const, BREAKOUT_DIGEST_NOTICE)
     assert.equal(breakout.properties.extent.const, 'complete-file')
+    assert.deepEqual(breakout.properties.newline, { enum: ['lf', 'crlf'], type: 'string' })
     assert.equal(presentation.properties.actionDisclosures.items.anyOf[1].properties.byteLength.const, 0)
     assert.deepEqual(presentation.properties.disclosureCodes.items.const, 'external-writer-window')
     assert.equal(presentation.properties.disclosureCodes.maxItems, 1)
@@ -345,6 +346,7 @@ function runOracleCases(repositoryRoot) {
     assert.equal(proposal.properties.versionControlOptions.minItems, versionControlOptions.length)
     assert.equal(proposal.properties.versionControlOptions.maxItems, versionControlOptions.length)
     assert.deepEqual(proposal.properties.versionControlChoice.enum, ['track', 'ignore', 'deferred', 'not-required'])
+    assert.deepEqual(proposal.properties.actions.items.anyOf.map((branch) => branch.properties.kind.const), ['ensure-directory', 'create-from-template', 'exact-edit', 'repair-file', 'unwrap-file'])
     const resultBranches = presentation.properties.result.anyOf
     assert.equal(resultBranches[0].type, 'null')
     assert.deepEqual(resultBranches.slice(1, 6).map((branch) => [branch.properties.approvalBranch.const, branch.properties.reasonCode.const]), [
@@ -357,7 +359,7 @@ function runOracleCases(repositoryRoot) {
     assert.ok(resultBranches.slice(1, 6).every((branch) => branch.type === 'object'))
     assert.equal(resultBranches[6].properties.ok.const, true)
     assert.equal(resultBranches[6].properties.operation.const, 'apply')
-    assert.deepEqual(resultBranches[6].properties.outcomes.items.properties.status.enum, ['created', 'edited', 'unwrapped', 'skipped-complete'])
+    assert.deepEqual(resultBranches[6].properties.outcomes.items.properties.status.enum, ['created', 'edited', 'repaired', 'unwrapped', 'skipped-complete'])
     assert.equal(resultBranches[7].properties.ok.const, false)
     assert.deepEqual(resultBranches[7].properties.phase.enum, ['decode', 'resolve', 'inspect', 'lock', 'prevalidate', 'publish', 'verify', 'restore', 'cleanup'])
     assert.deepEqual(resultBranches[7].properties.code.enum, ['payload-too-large', 'invalid-json', 'invalid-request', 'guidance-resolution', 'template-invalid', 'content-invalid', 'git-policy', 'filesystem', 'ready-failed', 'snapshot-drift', 'invalid-target', 'runtime-marker', 'runtime-lock', 'manifest-invalid', 'recovery-invalid', 'ready-delta', 'restore-failed', 'cleanup-failed'])

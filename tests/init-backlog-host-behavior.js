@@ -2098,8 +2098,11 @@ function deriveProposalCarriers(inspection) {
     if (proposal.action.kind === 'ensure-directory') {
       return { actionId: proposal.action.id, kind: 'structural-action', target: proposal.action.target }
     }
-    if (proposal.action.kind === 'unwrap-file') {
-      return { actionId: proposal.action.id, afterRawSha256: proposal.action.afterRawSha256, beforeRawSha256: proposal.action.beforeRawSha256, kind: 'breakout-digest', target: proposal.action.target }
+    if ((proposal.action.kind === 'repair-file' || proposal.action.kind === 'unwrap-file') && proposal.afterBase64 === null && proposal.beforeBase64 === null) {
+      const finding = (inspection.wrapFindings ?? []).find((item) => item.target === proposal.action.target)
+      const target = (inspection.targets ?? []).find((item) => item.target === proposal.action.target)
+
+      return { actionId: proposal.action.id, afterRawSha256: proposal.action.afterRawSha256, beforeRawSha256: proposal.action.beforeRawSha256, firstLine: finding?.firstLine ?? null, kind: 'breakout-digest', mode: proposal.action.mode, newline: proposal.action.newline ?? target?.newline ?? null, target: proposal.action.target, unwrap: proposal.action.kind === 'unwrap-file' || proposal.action.unwrap, wrapCount: finding?.count ?? 0 }
     }
 
     const afterBytes = Buffer.from(proposal.afterBase64, 'base64')
@@ -2711,6 +2714,7 @@ async function runLiveHostSession({ call, filesystem, platform, processAdapterFa
       ambiguitiesAsked: adjudication.deriveAmbiguityCoverage({
         ambiguityIdSequences: awaiting.map((record) => record.turn.presentation.ambiguityIds),
         gateIds: awaiting.map((record) => record.turn.gateId),
+        requiredAmbiguityIds: inspection === null ? [] : adjudication.deriveRequiredNewlineAmbiguityIds(inspection),
       }),
       electionPresented: adjudication.deriveElectionPresented({ electionRequired, manifestProposal }),
       approvalBeforeApply: approvalFacts.approvalBeforeApply,

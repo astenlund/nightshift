@@ -44,11 +44,12 @@ function deriveApprovalFacts({ applyCalls, approvalBranch, approvalInputOrdinal 
   return { approvalApplyCardinality, approvalBeforeApply, denialNoApply }
 }
 
-function deriveAmbiguityCoverage({ ambiguityIdSequences, gateIds }) {
-  if (!Array.isArray(ambiguityIdSequences) || !Array.isArray(gateIds)) {
+function deriveAmbiguityCoverage({ ambiguityIdSequences, gateIds, requiredAmbiguityIds }) {
+  if (!Array.isArray(ambiguityIdSequences) || !Array.isArray(gateIds) || !Array.isArray(requiredAmbiguityIds) || requiredAmbiguityIds.some((id) => typeof id !== 'string' || id === '') || new Set(requiredAmbiguityIds).size !== requiredAmbiguityIds.length) {
     throw new TypeError('ambiguity coverage derives from the presented sequences alone')
   }
   const asked = new Set(gateIds)
+  const covered = new Set()
   for (const sequence of ambiguityIdSequences) {
     if (!Array.isArray(sequence) || sequence.some((id) => typeof id !== 'string' || id === '')) {
       throw new TypeError('every ambiguity sequence carries nonblank string IDs')
@@ -56,9 +57,24 @@ function deriveAmbiguityCoverage({ ambiguityIdSequences, gateIds }) {
     if (sequence.some((id) => !asked.has(id))) {
       return false
     }
+    for (const id of sequence) covered.add(id)
   }
 
-  return true
+  return requiredAmbiguityIds.every((id) => covered.has(id))
+}
+
+function deriveRequiredNewlineAmbiguityIds(inspection) {
+  if (!isPlainObject(inspection) || !Array.isArray(inspection.proposals)) throw new TypeError('required newline ambiguities derive from the inspected proposals')
+  const conditionsByTarget = new Map()
+  for (const proposal of inspection.proposals) {
+    const target = proposal?.action?.target
+    if (typeof target !== 'string' || target === '') throw new TypeError('every inspected proposal carries a target')
+    if (proposal.condition !== 'newline-crlf' && proposal.condition !== 'newline-lf') continue
+    if (!conditionsByTarget.has(target)) conditionsByTarget.set(target, new Set())
+    conditionsByTarget.get(target).add(proposal.condition)
+  }
+
+  return [...conditionsByTarget.entries()].filter(([, conditions]) => conditions.has('newline-crlf') && conditions.has('newline-lf')).map(([target]) => `newline-style:${target}`).sort(compareOrdinal)
 }
 
 function deriveElectionPresented({ electionRequired, manifestProposal }) {
@@ -90,11 +106,16 @@ function expandCarrier({ carrier, items, proposalDigest, selection, semanticClas
       afterRawSha256: carrier.afterRawSha256,
       beforeRawSha256: carrier.beforeRawSha256,
       extent: 'complete-file',
+      firstLine: carrier.firstLine,
       kind: 'breakout-digest',
+      mode: carrier.mode,
+      newline: carrier.newline,
       notice: BREAKOUT_DIGEST_NOTICE,
       proposalDigest,
       selection,
       target: carrier.target,
+      unwrap: carrier.unwrap,
+      wrapCount: carrier.wrapCount,
     })
 
     return { ok: true }
@@ -179,7 +200,12 @@ function verifyInspectionBoundDisclosure({ item, proposalCarriersByActionId }) {
         && item.afterRawSha256 === carrier.afterRawSha256
         && item.beforeRawSha256 === carrier.beforeRawSha256
         && item.extent === 'complete-file'
-        && item.notice === BREAKOUT_DIGEST_NOTICE,
+        && item.firstLine === carrier.firstLine
+        && item.mode === carrier.mode
+        && item.newline === carrier.newline
+        && item.notice === BREAKOUT_DIGEST_NOTICE
+        && item.unwrap === carrier.unwrap
+        && item.wrapCount === carrier.wrapCount,
     }
   }
   if (carrier.kind !== 'decoded') {
@@ -356,6 +382,7 @@ module.exports = {
   compareSemanticClassifications,
   deriveAllActionsDisclosed,
   deriveAmbiguityCoverage,
+  deriveRequiredNewlineAmbiguityIds,
   deriveApprovalFacts,
   deriveDeterministicDigest,
   deriveElectionPresented,

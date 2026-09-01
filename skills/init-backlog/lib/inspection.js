@@ -13,6 +13,7 @@ const { HTML_BLOCK_TYPE_SIX_TAGS, MAX_GUIDANCE_FILE_BYTES, discoverControlledMar
 const { boundedOpenOptions, canonicalRoot, comparableIdentity, comparableMode, createInitialLock, initialLockPaths, readOrdinalFirstDirectoryName, removeInitialLock, stableOpenFile, targetPath } = require('./filesystem')
 const { BACKUP_DIRECTORY, DIGEST_PATTERN, MAX_BREAKOUT_FILE_BYTES, MAX_FEATURE_FILE_BYTES, MAX_INLINE_FILE_BYTES, MAX_MECHANICAL_FILE_BYTES, MAX_RECOVERY_REQUEST_BYTES, OPERATION, RECOVERY_LOCK_BASENAME, RECOVERY_LOCK_STAGE_PATTERN, RECOVERY_MARKER_BASENAME, canonicalJson, compareOrdinal, deriveProposalId, deriveSnapshotId, encodeResult, sameKeys, sha256 } = require('./protocol')
 const { detectGitKind, inspectGitPolicy, newlineStyle, plansRootRuleEffective } = require('./git-policy')
+const { repairFileBytes } = require('./file-repair')
 
 function inspectError(code, detail, target = null, cause, phase = 'inspect') {
   throw new InitBacklogError(failureRecord({ code, detail, operation: OPERATION.INSPECT, phase, target }), cause === undefined ? undefined : { cause })
@@ -186,14 +187,14 @@ function inspectRegions(source, declarations = []) {
   return regions.sort((left, right) => compareOrdinal(left.regionId, right.regionId))
 }
 
-function decodeText(source) {
+function decodeText(source, options = {}) {
   const bytes = Buffer.isBuffer(source) ? source : Buffer.from(source ?? '', 'utf8')
   const bom = bytes.subarray(0, 3).equals(Buffer.from([0xef, 0xbb, 0xbf]))
   const payload = bom ? bytes.subarray(3) : bytes
   if (payload.includes(0)) throw new Error('Content contains NUL')
   const text = new TextDecoder('utf-8', { fatal: true }).decode(payload)
 
-  return { bom, bytes, logicalBytes: Buffer.from(text, 'utf8'), style: newlineStyle(payload), text }
+  return { bom, bytes, logicalBytes: Buffer.from(text, 'utf8'), style: newlineStyle(payload, { allowMixed: options.allowMixed === true }), text }
 }
 
 function materializeText(source, startByte, endByte, fragment, options = {}) {
@@ -303,7 +304,7 @@ function acquireReadyCatalog(root, expectedInspections, options = {}) {
       target,
     }
     acquired.push(record)
-    if (present) catalog.push({ contents: decodeText(descriptor.bytes).text, target: target.slice('.claude/'.length) })
+    if (present) catalog.push({ contents: decodeText(descriptor.bytes, { allowMixed: true }).text, target: target.slice('.claude/'.length) })
   }
   const acquiredState = acquired.map(({ identity, ...record }) => record)
   for (const expectation of expectations) {
@@ -569,6 +570,7 @@ function targetRecord(target, descriptor, declaration, template, options = {}) {
   const states = ['present']
   if (template && decoded.logicalBytes.equals(template.logicalBytes)) states.push('exact-template')
   if (isLineDisciplineTarget(target) && (options.wraps ?? analyzeText(decoded.text).wraps).length > 0) states.push('wrapped')
+  if (decoded.style === 'mixed') states.push('mixed-line-endings')
   if (hasForbiddenMissing || boundaryInvalid) {
     states.push('structurally-invalid')
     editableRegions = []
@@ -739,12 +741,13 @@ function collectInspection(root, host, hostContext = {}, options = {}) {
   // Decode and unwrap results are pure per byte buffer; the memos below let
   // the catalog scan, the target records, and the proposal loop share one
   // computation per target instead of re-decoding the same bytes.
-  const decodedByBytes = new Map()
-  const decodeTargetText = (bytes) => {
-    let decoded = decodedByBytes.get(bytes)
+  const decodedByBytes = { permissive: new Map(), strict: new Map() }
+  const decodeTargetText = (bytes, allowMixed = false) => {
+    const cache = allowMixed ? decodedByBytes.permissive : decodedByBytes.strict
+    let decoded = cache.get(bytes)
     if (decoded === undefined) {
-      decoded = decodeText(bytes)
-      decodedByBytes.set(bytes, decoded)
+      decoded = decodeText(bytes, { allowMixed })
+      cache.set(bytes, decoded)
     }
 
     return decoded
@@ -753,7 +756,7 @@ function collectInspection(root, host, hostContext = {}, options = {}) {
   const analyzeTargetWraps = (bytes) => {
     let analysis = wrapAnalysisByBytes.get(bytes)
     if (analysis === undefined) {
-      const scanned = analyzeText(decodeTargetText(bytes).text)
+      const scanned = analyzeText(decodeTargetText(bytes, true).text)
       analysis = { unwrapped: joinContinuations(scanned), wraps: scanned.wraps }
       wrapAnalysisByBytes.set(bytes, analysis)
     }
@@ -767,14 +770,16 @@ function collectInspection(root, host, hostContext = {}, options = {}) {
     if (!entry.descriptor.present || entry.descriptor.kind !== 'file') continue
     const target = entry.target.startsWith('.claude/') ? entry.target.slice('.claude/'.length) : entry.target
     if (!isReadyCatalogTarget(target)) continue
-    const decoded = decodeTargetText(entry.descriptor.bytes)
+    const decoded = decodeTargetText(entry.descriptor.bytes, true)
     catalog.push({ contents: decoded.text, target })
-    const { unwrapped, wraps } = analyzeTargetWraps(entry.descriptor.bytes)
+    const { wraps } = analyzeTargetWraps(entry.descriptor.bytes)
     if (wraps.length > 0) {
-      predictedCatalogContents.set(entry.target, unwrapped)
+      const predictedBytes = repairFileBytes(entry.descriptor.bytes, { newline: decoded.style === 'crlf' ? 'crlf' : 'lf', unwrap: true })
+      const predictedText = decodeText(predictedBytes).text
+      predictedCatalogContents.set(entry.target, predictedText)
       let predictedEditableRegions = []
-      try { predictedEditableRegions = inspectRegions(Buffer.from(unwrapped, 'utf8'), entry.declaration.regions ?? []) } catch { predictedEditableRegions = [] }
-      wrapFindings.push({ target: entry.target, count: wraps.length, firstLine: wraps[0].line, beforeRawSha256: entry.descriptor.rawSha256, predictedRawSha256: sha256(Buffer.from(unwrapped, 'utf8')), predictedContentBase64: entry.declaration.contentRole === 'semantic' ? Buffer.from(unwrapped, 'utf8').toString('base64') : null, predictedEditableRegions })
+      try { predictedEditableRegions = inspectRegions(predictedBytes, entry.declaration.regions ?? []) } catch { predictedEditableRegions = [] }
+      wrapFindings.push({ target: entry.target, count: wraps.length, firstLine: wraps[0].line, beforeRawSha256: entry.descriptor.rawSha256, predictedRawSha256: sha256(predictedBytes), predictedContentBase64: entry.declaration.contentRole === 'semantic' ? predictedBytes.toString('base64') : null, predictedEditableRegions })
     }
   }
   let ready
@@ -799,7 +804,7 @@ function collectInspection(root, host, hostContext = {}, options = {}) {
       ? analyzeTargetWraps(entry.descriptor.bytes).wraps
       : undefined
 
-    return targetRecord(entry.target, entry.descriptor, { ...entry.declaration, contentRole: entry.declaration.contentRole ?? 'semantic' }, entry.template, { ...options, decode: decodeTargetText, gitKind: git.kind, wraps })
+    return targetRecord(entry.target, entry.descriptor, { ...entry.declaration, contentRole: entry.declaration.contentRole ?? 'semantic' }, entry.template, { ...options, decode: (bytes) => decodeTargetText(bytes, isLineDisciplineTarget(entry.target)), gitKind: git.kind, wraps })
   })
   let gitRecord
   try {
@@ -832,6 +837,15 @@ function collectInspection(root, host, hostContext = {}, options = {}) {
         const newline = record.newline === 'crlf' || record.newline === 'lf' ? record.newline : variant.style
         const output = Buffer.from(entry.template.logicalBytes.toString('utf8').replaceAll('\n', newline === 'crlf' ? '\r\n' : '\n'), 'utf8')
         proposals.push(proposal(entry.target === '.gitignore' ? 'plans-policy' : 'missing-target', record.newline === 'crlf' || record.newline === 'lf' ? 'always' : variant.condition, { kind: 'create-from-template', mode: record.mode, newline, target: entry.target, templateId: entry.template.templateId }, null, output.toString('base64')))
+      }
+    } else if (record.kind === 'file' && record.states.includes('mixed-line-endings')) {
+      const policy = newlineByTarget.get(entry.target)
+      for (const variant of newlineVariants(policy)) {
+        const output = repairFileBytes(entry.descriptor.bytes, { newline: variant.style, unwrap: record.states.includes('wrapped') })
+        const outputLimit = record.contentRole === 'mechanical' ? MAX_MECHANICAL_FILE_BYTES : MAX_INLINE_FILE_BYTES
+        if (output.length > outputLimit) inspectError('payload-too-large', 'Mechanical repair output exceeds its maximum size.', entry.target)
+        const action = { afterRawSha256: sha256(output), beforeRawSha256: entry.descriptor.rawSha256, kind: 'repair-file', mode: record.mode, newline: variant.style, target: entry.target, unwrap: record.states.includes('wrapped') }
+        proposals.push(proposal('mixed-line-endings', variant.condition, action, record.contentRole === 'semantic' ? record.contentBase64 : null, record.contentRole === 'semantic' ? output.toString('base64') : null))
       }
     } else if (record.kind === 'file' && record.states.includes('wrapped')) {
       const predicted = analyzeTargetWraps(entry.descriptor.bytes).unwrapped
@@ -884,9 +898,9 @@ function collectInspection(root, host, hostContext = {}, options = {}) {
     if (missing.length > 0) appendGitignorePolicy('elective-ignore', 'version-control-ignore', Buffer.from(missing.join('\n') + '\n', 'utf8'))
   }
   const oversizedFeatureProblems = oversizedFeatures.map((item) => ({
-    blocking: false,
-    code: 'ready-notice',
-    detail: `Feature breakout is ${item.observedBytes} bytes, above the ${item.maximumBytes}-byte inspection limit; the file was left untouched and hard-wrap and breakout-hygiene checks were skipped.`,
+    blocking: true,
+    code: 'runtime-state',
+    detail: `Feature breakout is ${item.observedBytes} bytes, above the ${item.maximumBytes}-byte mechanical repair limit; the file was left untouched and line-discipline checks were skipped.`,
     evidencePaths: [item.target],
     target: item.target,
   }))
@@ -906,7 +920,9 @@ function collectInspection(root, host, hostContext = {}, options = {}) {
   } catch (error) {
     inspectError('filesystem', 'Retained backup inspection failed.', BACKUP_DIRECTORY, error)
   }
-  const result = { git: gitRecord, guidance: { baseAdapter: guidance.baseAdapter, candidates: guidance.candidates, graphPaths: guidance.graphPaths, imports: guidance.imports, independentPaths: guidance.independentPaths, resolvedTarget: guidance.resolvedTarget }, host, hostContext, ok: true, operation: OPERATION.INSPECT, problems: [...projectedProblems, ...backupEvidence.problems].sort((left, right) => compareOrdinal(`${left.code}\0${left.target ?? ''}\0${left.detail}`, `${right.code}\0${right.target ?? ''}\0${right.detail}`)), proposals: proposals.sort((left, right) => compareOrdinal(left.proposalId, right.proposalId)), protocolVersion: 1, retainedBackups: backupEvidence.backups, root: canonical, snapshotId: null, targets: targetRecords.sort((left, right) => compareOrdinal(left.target, right.target)), templates: descriptors.filter((entry) => entry.template).map((entry) => ({ conceptIds: entry.template.conceptIds, logicalSha256: entry.template.logicalSha256, target: entry.target, templateId: entry.template.templateId })).sort((left, right) => compareOrdinal(left.templateId, right.templateId)), unwrapReady: { after, targets: wrapFindings.map((item) => item.target).sort(compareOrdinal) }, warnings: [...readyWarnings, ...backupEvidence.warnings].sort((left, right) => compareOrdinal(left.code, right.code)), wrapFindings, ready }
+  const repairTargets = [...new Set([...wrapFindings.map((item) => item.target), ...targetRecords.filter((item) => item.newline === 'mixed').map((item) => item.target)])].sort(compareOrdinal)
+  if (after === null && repairTargets.length > 0) after = ready
+  const result = { git: gitRecord, guidance: { baseAdapter: guidance.baseAdapter, candidates: guidance.candidates, graphPaths: guidance.graphPaths, imports: guidance.imports, independentPaths: guidance.independentPaths, resolvedTarget: guidance.resolvedTarget }, host, hostContext, ok: true, operation: OPERATION.INSPECT, problems: [...projectedProblems, ...backupEvidence.problems].sort((left, right) => compareOrdinal(`${left.code}\0${left.target ?? ''}\0${left.detail}`, `${right.code}\0${right.target ?? ''}\0${right.detail}`)), proposals: proposals.sort((left, right) => compareOrdinal(left.proposalId, right.proposalId)), protocolVersion: 1, retainedBackups: backupEvidence.backups, root: canonical, snapshotId: null, targets: targetRecords.sort((left, right) => compareOrdinal(left.target, right.target)), templates: descriptors.filter((entry) => entry.template).map((entry) => ({ conceptIds: entry.template.conceptIds, logicalSha256: entry.template.logicalSha256, target: entry.target, templateId: entry.template.templateId })).sort((left, right) => compareOrdinal(left.templateId, right.templateId)), unwrapReady: { after, targets: repairTargets }, warnings: [...readyWarnings, ...backupEvidence.warnings].sort((left, right) => compareOrdinal(left.code, right.code)), wrapFindings, ready }
   result.snapshotId = deriveSnapshotId({ ...result, snapshotId: null })
 
   return result

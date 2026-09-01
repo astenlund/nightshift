@@ -73,7 +73,7 @@ function recoveryTemporaryMatches(target, recoveryId) {
   return DIGEST_PATTERN.test(targetHash)
 }
 
-function restoreUnwrapBatch(root, actions, manifestId, snapshotId, options = {}) {
+function restoreRepairBatch(root, actions, manifestId, snapshotId, options = {}) {
   for (const action of [...actions].reverse()) {
     const backup = backupTarget(action.target, snapshotId, manifestId)
     const backupPath = targetPath(root, backup)
@@ -157,18 +157,18 @@ function initialStates(inspection, root, options) {
   }))
 }
 
-function hydrateUnwrapStates(request, actions, states, root, options, backupTargets, existing, resume) {
+function hydrateRepairStates(request, actions, states, root, options, backupTargets, existing, resume) {
   const existingInventory = new Set(existing?.record.temporaryPaths ?? [])
   for (const [index, action] of actions.entries()) {
     const state = states.get(action.target)
-    if (state?.present !== true) throw new Error('Unwrap backup source is unavailable')
+    if (state?.present !== true) throw new Error('Repair backup source is unavailable')
     try {
       state.content = actionBefore(request, action, root, options)
     } catch (error) {
       const backupTargetValue = backupTargets[index]
-      if (resume !== true || error?.message !== 'Mechanical unwrap input changed before publication' || !existingInventory.has(backupTargetValue)) throw error
+      if (resume !== true || !['Mechanical repair input changed before publication', 'Mechanical unwrap input changed before publication'].includes(error?.message) || !existingInventory.has(backupTargetValue)) throw error
       const opened = stableOpenFile(root, targetPath(root, backupTargetValue), boundedOpenOptions(options, MAX_MECHANICAL_FILE_BYTES, { requireSingleLink: true }))
-      if (opened.rawSha256 !== action.beforeRawSha256 || state.mode !== null && opened.mode !== state.mode) throw new Error('Owned unwrap backup changed before resume')
+      if (opened.rawSha256 !== action.beforeRawSha256 || state.mode !== null && opened.mode !== state.mode) throw new Error('Owned repair backup changed before resume')
       state.content = opened.bytes
     }
     states.set(action.target, state)
@@ -367,7 +367,7 @@ function removeRecoveryFile(root, path, expected, options = {}) {
 function completePostInspect(postInspect, admission, request) {
   const incomplete = new Set()
   for (const record of postInspect.targets ?? []) {
-    if ((record.states ?? []).includes('missing') || (record.states ?? []).includes('wrapped') || (record.states ?? []).includes('structurally-invalid')) incomplete.add(record.target)
+    if ((record.states ?? []).includes('missing') || (record.states ?? []).includes('mixed-line-endings') || (record.states ?? []).includes('wrapped') || (record.states ?? []).includes('structurally-invalid')) incomplete.add(record.target)
   }
   for (const decision of request.semanticDecisions ?? []) {
     if (decision.status === 'deferred') incomplete.add(decision.target)
@@ -869,7 +869,7 @@ function projectedWarnings(warnings, problems, retainedBackups) {
     projected.push({ code: 'nonblocking-ready-notice', detail: notices.length === 1 ? '1 ready notice remains.' : `${notices.length} ready notices remain.`, target: notices.length === 1 ? notices[0].target : null })
   }
   if (retainedBackups.length > 0) {
-    projected.push({ code: 'manual-cleanup', detail: retainedBackups.length === 1 ? 'One retained unwrap backup requires manual cleanup.' : `${retainedBackups.length} retained unwrap backups require manual cleanup.`, target: retainedBackups.length === 1 ? retainedBackups[0] : null })
+    projected.push({ code: 'manual-cleanup', detail: retainedBackups.length === 1 ? 'One retained mechanical repair backup requires manual cleanup.' : `${retainedBackups.length} retained mechanical repair backups require manual cleanup.`, target: retainedBackups.length === 1 ? retainedBackups[0] : null })
   }
 
   return projected.sort((left, right) => compareOrdinal(left.code, right.code))
@@ -1110,12 +1110,12 @@ function publishApply(request, options = {}) {
   const allActions = request.actions ?? []
   const fixed = temporaryPaths(root, admission.manifestId, 1, ownerNonce, request.inspection.snapshotId, pid)
   const actionTemps = allActions.map((action, index) => actionTemporaryPath(root, admission.manifestId, index + 1, action.target))
-  const unwrapActions = allActions.filter((action) => action.kind === 'unwrap-file')
-  const backupTargets = unwrapActions.map((action) => backupTarget(action.target, request.inspection.snapshotId, admission.manifestId))
+  const repairActions = allActions.filter((action) => action.kind === 'repair-file' || action.kind === 'unwrap-file')
+  const backupTargets = repairActions.map((action) => backupTarget(action.target, request.inspection.snapshotId, admission.manifestId))
   backupCandidates = backupTargets
   const backupPaths = backupTargets.map((target) => targetPath(root, target))
-  const backupStagingPaths = unwrapActions.map((action) => targetPath(root, backupStageTarget(action.target, request.inspection.snapshotId, admission.manifestId)))
-  const rollbackTemporaryPaths = unwrapActions.map((action) => targetPath(root, recoveryTemporaryTarget(action.target, admission.manifestId)))
+  const backupStagingPaths = repairActions.map((action) => targetPath(root, backupStageTarget(action.target, request.inspection.snapshotId, admission.manifestId)))
+  const rollbackTemporaryPaths = repairActions.map((action) => targetPath(root, recoveryTemporaryTarget(action.target, admission.manifestId)))
   const unfinalizedDirectories = allActions.filter((action) => action.kind === 'ensure-directory').map((action) => ({ mode: action.mode, target: action.target }))
   const markerTemporaries = admission.electionMarker.state === 'absent' ? [] : [fixed.electionAlias, fixed.electionNewWitness, ...(request.inspection.git?.electionMarker !== undefined && request.inspection.git?.electionMarker !== 'absent' ? [fixed.electionOldWitness] : []), fixed.electionTombstone]
   const tempSet = [...actionTemps, ...backupPaths, ...backupStagingPaths, ...rollbackTemporaryPaths, fixed.lockStage, fixed.lockNext, ...markerTemporaries]
@@ -1147,7 +1147,7 @@ function publishApply(request, options = {}) {
   let states
   try {
     states = initialStates(request.inspection, root, options)
-    hydrateUnwrapStates(request, unwrapActions, states, root, options, backupTargets, existing, resume)
+    hydrateRepairStates(request, repairActions, states, root, options, backupTargets, existing, resume)
     if (existing !== null) {
       if (existing.record.root !== root || (existing.record.manifestId !== null && existing.record.manifestId !== admission.manifestId)) publicationError('Existing publication lock does not match the approved manifest.', { code: 'runtime-lock', phase: 'lock', manifestId: admission.manifestId, target: LOCK_BASENAME })
       ownerNonce = existing.record.ownerNonce
@@ -1235,8 +1235,8 @@ function publishApply(request, options = {}) {
     }
     const expectedTemporaries = new Map([[fixed.lockNext, { bytes: upgradedBytes, destination: null, mode: platformMode(options, 0o600) }], [fixed.lockStage, { bytes: null, destination: null, mode: null }]])
     for (let index = 0; index < backupPaths.length; index += 1) {
-      const state = states.get(unwrapActions[index].target)
-      if (state?.content === null || state?.content === undefined) throw new Error('Unwrap backup source is unavailable')
+      const state = states.get(repairActions[index].target)
+      if (state?.content === null || state?.content === undefined) throw new Error('Repair backup source is unavailable')
       expectedTemporaries.set(backupPaths[index], { bytes: state.content, destination: null, mode: platformMode(options, state.mode) })
       expectedTemporaries.set(backupStagingPaths[index], { bytes: state.content, destination: backupPaths[index], mode: platformMode(options, state.mode) })
       expectedTemporaries.set(rollbackTemporaryPaths[index], { bytes: state.content, destination: null, mode: platformMode(options, state.mode) })
@@ -1259,42 +1259,42 @@ function publishApply(request, options = {}) {
     }
     const publicationOptions = { ...options, ownedTemporaries, verifyLock: () => verifyLockState(root, lock, options), onTemporaryStaged: (path, bytes, mode) => registerTemporary(root, ownedTemporaries, path, bytes, options, true, mode), onTemporaryRemoved: (path) => { ownedTemporaries.delete(path) } }
     retainedBackups = []
-    const cleanupUnwrapBackups = () => {
+    const cleanupRepairBackups = () => {
       try {
-        for (const action of unwrapActions) {
+        for (const action of repairActions) {
           const backup = backupTarget(action.target, request.inspection.snapshotId, admission.manifestId)
           removeOwnedTemporary(root, targetPath(root, backup), publicationOptions)
           retainedBackups = retainedBackups.filter((target) => target !== backup)
         }
       } catch (error) {
         retainedBackups = retainedBackupPaths(root, retainedBackups)
-        publicationError('Unwrap backup cleanup failed after ready verification.', { code: 'cleanup-failed', phase: 'cleanup', manifestId: admission.manifestId, outcomes, recovery: { retainedBackups, status: 'cleanup-failed', warnings: [{ code: 'manual-cleanup', detail: 'Unwrap backups require manual cleanup.', target: null }] } }, error)
+        publicationError('Repair backup cleanup failed after ready verification.', { code: 'cleanup-failed', phase: 'cleanup', manifestId: admission.manifestId, outcomes, recovery: { retainedBackups, status: 'cleanup-failed', warnings: [{ code: 'manual-cleanup', detail: 'Repair backups require manual cleanup.', target: null }] } }, error)
       }
 
       retainedBackups = []
     }
-    const rollbackUnwrapAfterVerification = (error = null) => {
+    const rollbackRepairAfterVerification = (error = null) => {
       try {
-        restoreUnwrapBatch(root, unwrapActions, admission.manifestId, request.inspection.snapshotId, publicationOptions)
+        restoreRepairBatch(root, repairActions, admission.manifestId, request.inspection.snapshotId, publicationOptions)
       } catch (restoreError) {
         retainedBackups = retainedBackupPaths(root, retainedBackups)
-        publicationError('Unwrap restoration failed after ready verification drift.', { code: 'restore-failed', phase: 'restore', manifestId: admission.manifestId, outcomes, recovery: { retainedBackups, status: 'restore-failed', warnings: [{ code: 'manual-cleanup', detail: 'Unwrap backups require manual cleanup after restoration failure.', target: null }] } }, restoreError)
+        publicationError('Repair restoration failed after ready verification drift.', { code: 'restore-failed', phase: 'restore', manifestId: admission.manifestId, outcomes, recovery: { retainedBackups, status: 'restore-failed', warnings: [{ code: 'manual-cleanup', detail: 'Repair backups require manual cleanup after restoration failure.', target: null }] } }, restoreError)
       }
-      cleanupUnwrapBackups()
+      cleanupRepairBackups()
       const recovery = { retainedBackups: [], status: 'restored', warnings: [] }
       if (error instanceof InitBacklogError && error.record.code === 'ready-failed' && error.record.phase === 'verify') {
         throwEnrichedReadyFailure(error, admission.manifestId, outcomes, recovery)
       }
       if (error !== null) publicationError('Post-publication ready verification failed.', { code: 'ready-failed', phase: 'verify', manifestId: admission.manifestId, outcomes, recovery }, error)
-      publicationError('Predicted ready result differs after unwrap publication.', { code: 'ready-delta', phase: 'verify', manifestId: admission.manifestId, outcomes })
+      publicationError('Predicted ready result differs after mechanical repair publication.', { code: 'ready-delta', phase: 'verify', manifestId: admission.manifestId, outcomes })
     }
     if (backupPaths.length !== 0) {
       publicationOptions.verifyLock?.()
       backupDirectoryCreated = verifyBackupDirectory(root, options)
       for (let index = 0; index < backupPaths.length; index += 1) {
-        const action = unwrapActions[index]
+        const action = repairActions[index]
         const state = states.get(action.target)
-        if (state?.present !== true || state.content === null) throw new Error('Unwrap backup source is unavailable')
+        if (state?.present !== true || state.content === null) throw new Error('Repair backup source is unavailable')
         const backupPath = backupPaths[index]
         let backupPresent = true
         try {
@@ -1373,7 +1373,7 @@ function publishApply(request, options = {}) {
                 state.mode = current.mode
               }
             }
-            const status = already ? 'skipped-complete' : action.kind === 'unwrap-file' ? 'unwrapped' : action.kind === 'create-from-template' ? 'created' : 'edited'
+            const status = already ? 'skipped-complete' : action.kind === 'repair-file' ? 'repaired' : action.kind === 'unwrap-file' ? 'unwrapped' : action.kind === 'create-from-template' ? 'created' : 'edited'
             outcomes.push({ actionId: action.id, status, target: action.target })
           }
           states.set(action.target, state)
@@ -1384,25 +1384,25 @@ function publishApply(request, options = {}) {
     // The marker temporaries this manifest reserved are the only hard links
     // the published marker may legitimately carry while verification runs.
     const electionWitnesses = [fixed.electionAlias, fixed.electionNewWitness, fixed.electionOldWitness, fixed.electionTombstone]
-    const firstRankTwo = allActions.findIndex((action) => action.kind !== 'ensure-directory' && action.kind !== 'unwrap-file')
-    const hasUnwrapBatch = unwrapActions.length !== 0
-    const unwrapEnd = hasUnwrapBatch && firstRankTwo !== -1 ? firstRankTwo : allActions.length
-    publishActions(0, unwrapEnd)
+    const firstRankTwo = allActions.findIndex((action) => action.kind !== 'ensure-directory' && action.kind !== 'repair-file' && action.kind !== 'unwrap-file')
+    const hasRepairBatch = repairActions.length !== 0
+    const repairEnd = hasRepairBatch && firstRankTwo !== -1 ? firstRankTwo : allActions.length
+    publishActions(0, repairEnd)
     let postInspect = verifiedPostInspect(request, root, options, admission, outcomes, {
       electionWitnesses,
       onReadyFailure: (error) => {
-        if (unwrapActions.length !== 0) rollbackUnwrapAfterVerification(error)
+        if (repairActions.length !== 0) rollbackRepairAfterVerification(error)
       },
     })
-    const expectedUnwrapReady = request.inspection?.unwrapReady?.after
-    if (unwrapActions.length !== 0 && expectedUnwrapReady !== undefined && canonicalJson(postInspect.ready ?? null) !== canonicalJson(expectedUnwrapReady)) {
-      rollbackUnwrapAfterVerification()
+    const expectedRepairReady = request.inspection?.unwrapReady?.after
+    if (repairActions.length !== 0 && expectedRepairReady !== undefined && canonicalJson(postInspect.ready ?? null) !== canonicalJson(expectedRepairReady)) {
+      rollbackRepairAfterVerification()
     }
-    if (unwrapActions.length !== 0 && expectedUnwrapReady !== undefined) {
-      cleanupUnwrapBackups()
+    if (repairActions.length !== 0) {
+      cleanupRepairBackups()
     }
-    if (hasUnwrapBatch) {
-      publishActions(unwrapEnd, allActions.length)
+    if (hasRepairBatch) {
+      publishActions(repairEnd, allActions.length)
       postInspect = verifiedPostInspect(request, root, options, admission, outcomes, { electionWitnesses })
     }
     if (canonicalJson(postInspect.ready ?? null) !== canonicalJson(admission.ready ?? null)) publicationError('Predicted ready result differs after semantic publication.', { code: 'ready-delta', phase: 'verify', manifestId: admission.manifestId, outcomes })
@@ -1424,7 +1424,7 @@ function publishApply(request, options = {}) {
     if (options.preserveLockOnError === true || options.crash === true || options.failAt !== undefined) throw error
     try { cleanupOwner(root, lock, options, ownedTemporaries) } catch (cleanupError) { throw cleanupError }
     const retained = retainedBackupPaths(root, [...new Set([...retainedBackups, ...backupCandidates])])
-    publicationError('Publication effect failed.', { code: 'filesystem', phase: 'publish', manifestId: admission.manifestId, outcomes, recovery: retained.length === 0 ? undefined : { retainedBackups: retained, status: 'none', warnings: [{ code: 'manual-cleanup', detail: 'Unwrap backups remain retained after publication failure.', target: null }] }, systemCode: trustedSystemCode(error) }, error)
+    publicationError('Publication effect failed.', { code: 'filesystem', phase: 'publish', manifestId: admission.manifestId, outcomes, recovery: retained.length === 0 ? undefined : { retainedBackups: retained, status: 'none', warnings: [{ code: 'manual-cleanup', detail: 'Repair backups remain retained after publication failure.', target: null }] }, systemCode: trustedSystemCode(error) }, error)
   }
 }
 

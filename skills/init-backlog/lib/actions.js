@@ -3,8 +3,9 @@
 const { lstatSync } = require('node:fs')
 
 const { boundedOpenOptions, containedTargetPath, platformMode, stableOpenFile, verifyFinalMode } = require('./filesystem')
+const { repairFileBytes } = require('./file-repair')
 const { InitBacklogError, failureRecord } = require('./errors')
-const { MAX_MECHANICAL_FILE_BYTES, OPERATION, canonicalJson, proposalsByCanonicalAction } = require('./protocol')
+const { MAX_MECHANICAL_FILE_BYTES, OPERATION, canonicalJson, proposalsByCanonicalAction, sha256 } = require('./protocol')
 const { validateUnwrapPrediction } = require('./unwrap-prediction')
 const { unwrapText } = require('../unwrap')
 
@@ -43,19 +44,28 @@ function validatedUnwrapPrediction(action, finding, computedOutput = undefined) 
   }
 }
 
-function openUnwrapTarget(root, action, options, openedTarget = undefined) {
-  if (openedTarget === null) throw new Error('Mechanical unwrap target is not an ordinary file')
+function openMechanicalTarget(root, action, options, openedTarget = undefined) {
+  if (openedTarget === null) throw new Error('Mechanical repair target is not an ordinary file')
   if (openedTarget !== undefined) return openedTarget
 
   return stableOpenFile(root, targetPath(root, action.target), boundedOpenOptions(options, MAX_MECHANICAL_FILE_BYTES, { requireSingleLink: true }))
 }
 
 function actionAfter(request, action, root, options, openedTarget = undefined) {
+  if (action.kind === 'repair-file') {
+    const opened = openMechanicalTarget(root, action, options, openedTarget)
+    if (opened.rawSha256 === action.afterRawSha256) return opened.bytes
+    if (opened.rawSha256 !== action.beforeRawSha256) throw new Error('Mechanical repair input changed before publication')
+    const computed = repairFileBytes(opened.bytes, action)
+    if (sha256(computed) !== action.afterRawSha256) throw new Error('Mechanical repair output differs from inspection')
+
+    return computed
+  }
   if (action.kind === 'unwrap-file') {
     const finding = resolveUnwrapFinding(request, action)
     const predicted = validatedUnwrapPrediction(action, finding)
     if (predicted !== null) return predicted
-    const opened = openUnwrapTarget(root, action, options, openedTarget)
+    const opened = openMechanicalTarget(root, action, options, openedTarget)
     if (opened.rawSha256 === action.afterRawSha256) return opened.bytes
     if (opened.rawSha256 !== action.beforeRawSha256) throw new Error('Mechanical unwrap input changed before publication')
     const computed = Buffer.from(unwrapText(opened.bytes.toString('utf8')), 'utf8')
@@ -67,15 +77,17 @@ function actionAfter(request, action, root, options, openedTarget = undefined) {
 }
 
 function actionBefore(request, action, root, options, openedTarget = undefined) {
-  if (action.kind !== 'unwrap-file') {
+  if (action.kind !== 'repair-file' && action.kind !== 'unwrap-file') {
     if (action.beforeBase64 === null || action.beforeBase64 === undefined) return null
 
     return Buffer.from(action.beforeBase64, 'base64')
   }
-  const finding = resolveUnwrapFinding(request, action)
-  validateUnwrapDigest(finding, action)
-  const opened = openUnwrapTarget(root, action, options, openedTarget)
-  if (opened.rawSha256 !== action.beforeRawSha256) throw new Error('Mechanical unwrap input changed before publication')
+  if (action.kind === 'unwrap-file') {
+    const finding = resolveUnwrapFinding(request, action)
+    validateUnwrapDigest(finding, action)
+  }
+  const opened = openMechanicalTarget(root, action, options, openedTarget)
+  if (opened.rawSha256 !== action.beforeRawSha256) throw new Error(action.kind === 'repair-file' ? 'Mechanical repair input changed before publication' : 'Mechanical unwrap input changed before publication')
 
   return opened.bytes
 }

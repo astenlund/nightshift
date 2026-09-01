@@ -39,10 +39,12 @@ const {
   runGit,
   inspectIgnoreProbes,
   inspectGitPolicy,
+  newlineStyle,
+  normalizeLineEndings,
 } = require('../../skills/init-backlog/lib/git-policy')
 const filesystem = require('../../skills/init-backlog/lib/filesystem')
 const { createInitialLock, initialLockPaths, publishNoReplace, removeInitialLock } = filesystem
-const { MAX_BREAKOUT_FILE_BYTES, MAX_INLINE_FILE_BYTES, MAX_INSPECT_RESULT_BYTES, canonicalJson, sha256, validateProposalDispositions } = require('../../skills/init-backlog/lib/protocol')
+const { MAX_BREAKOUT_FILE_BYTES, MAX_INLINE_FILE_BYTES, MAX_INSPECT_RESULT_BYTES, canonicalJson, encodeResult, sha256, validateProposalDispositions } = require('../../skills/init-backlog/lib/protocol')
 const { analyzeCatalog } = require('../../skills/ready/ready')
 const { ELECTION_MARKER_PATH } = require('./election-oracles')
 const { git } = require('./helpers')
@@ -282,6 +284,17 @@ function runInspectionCases(repositoryRoot) {
     assert.equal(resolveNewlinePolicy({ kind: 'git', text: 'unset', autocrlf: 'true', eol: 'crlf', target: 'A.md' }).style, 'crlf')
     assert.equal(resolveNewlinePolicy({ kind: 'git', text: 'set', autocrlf: 'false', eol: null, platformEol: 'crlf', target: 'A.md' }).style, 'crlf')
     assert.equal(resolveNewlinePolicy({ kind: 'non-git', siblingStyles: [], platformEol: 'lf', target: 'A.md' }).style, 'lf')
+  })
+
+  test('mixed newline normalization preserves byte-order marks and terminal-newline state', () => {
+    const mixed = Buffer.from('\ufefffirst\r\nsecond\nthird', 'utf8')
+
+    assert.throws(() => newlineStyle(mixed), /Mixed or invalid line endings/)
+    assert.equal(newlineStyle(mixed, { allowMixed: true }), 'mixed')
+    assert.deepEqual(normalizeLineEndings(mixed, 'lf'), Buffer.from('\ufefffirst\nsecond\nthird', 'utf8'))
+    assert.deepEqual(normalizeLineEndings(mixed, 'crlf'), Buffer.from('\ufefffirst\r\nsecond\r\nthird', 'utf8'))
+    assert.throws(() => normalizeLineEndings(Buffer.from('first\rsecond', 'utf8'), 'lf'), /Mixed or invalid line endings/)
+    assert.throws(() => normalizeLineEndings(Buffer.from([0xc3, 0x28, 0x0a]), 'lf'), /encoded data was not valid/)
   })
 
   test('fence closers with trailing info remain opaque', () => {
@@ -903,6 +916,40 @@ function runInspectionCases(repositoryRoot) {
     )
   })
 
+  test('mechanical repair output cannot expand beyond the admitted file-size boundary', () => {
+    const mixed = Buffer.alloc(MAX_BREAKOUT_FILE_BYTES, 0x0a)
+    Buffer.from('# Issue\r\n', 'utf8').copy(mixed)
+
+    assert.throws(
+      () => inspectDiscoveredBreakout('nightshift-mechanical-repair-overflow-', mixed, () => {}),
+      (error) => error.record?.code === 'payload-too-large' && error.record?.phase === 'inspect' && error.record?.target === '.claude/bugs/issue.md',
+    )
+  })
+
+  test('near-limit mixed wrapped semantic targets fit the inspect-result envelope', () => {
+    const root = mkdtempSync(join(tmpdir(), 'nightshift-semantic-repair-envelope-'))
+    try {
+      scaffoldInspectionRepository(root)
+      const targetPath = join(root, '.claude', 'FEATURES.md')
+      const prefix = Buffer.from('# Features\r\n\r\nThis paragraph is deliberately hard wrapped across\ntwo physical lines.\n', 'utf8')
+      const contents = Buffer.alloc(MAX_INLINE_FILE_BYTES - 1, 0x20)
+      prefix.copy(contents)
+      writeFileSync(targetPath, contents)
+      writeFileSync(join(root, '.claude', 'BUGS.md'), '# Bugs\n')
+      writeFileSync(join(root, '.claude', 'QUICK_WINS.md'), '# Quick wins\r\n')
+
+      const result = collectInspection(root, 'codex', codexHostContext(), { candidates: [], platform: 'win32' })
+      const repairs = result.proposals.filter((proposal) => proposal.action.kind === 'repair-file' && proposal.action.target === '.claude/FEATURES.md')
+      assert.deepEqual(repairs.map((proposal) => proposal.condition).sort(), ['newline-crlf', 'newline-lf'])
+      assert.equal(repairs.every((proposal) => proposal.action.unwrap === true), true)
+      const encoded = encodeResult(result)
+      assert.ok(encoded.length > 524288, 'the regression must exceed the retired inspect-result envelope')
+      assert.ok(encoded.length <= MAX_INSPECT_RESULT_BYTES)
+    } finally {
+      rmSync(root, { force: true, recursive: true })
+    }
+  })
+
   test('feature breakout files accept the doubled inspection boundary', () => {
     const exact = sizedMarkdown('# Large feature', 262144)
     inspectDiscoveredFeature('nightshift-feature-boundary-', exact, (result) => {
@@ -912,7 +959,7 @@ function runInspectionCases(repositoryRoot) {
     })
   })
 
-  test('oversized feature breakouts become nonblocking incomplete-validation notices', () => {
+  test('oversized feature breakouts remain blocking when mechanical repair cannot inspect them', () => {
     const oversized = sizedMarkdown('# Large feature', 262145)
     inspectDiscoveredFeature('nightshift-feature-opaque-', oversized, (result) => {
       const target = '.claude/features/large-feature.md'
@@ -920,13 +967,13 @@ function runInspectionCases(repositoryRoot) {
       assert.equal(result.proposals.some((item) => item.action.target === target), false)
       assert.equal(result.ready.ready.some((item) => item.title === 'Large feature'), true)
       assert.deepEqual(result.problems.filter((item) => item.target === target), [{
-        blocking: false,
-        code: 'ready-notice',
-        detail: 'Feature breakout is 262145 bytes, above the 262144-byte inspection limit; the file was left untouched and hard-wrap and breakout-hygiene checks were skipped.',
+        blocking: true,
+        code: 'runtime-state',
+        detail: 'Feature breakout is 262145 bytes, above the 262144-byte mechanical repair limit; the file was left untouched and line-discipline checks were skipped.',
         evidencePaths: [target],
         target,
       }])
-      assert.deepEqual(result.warnings.filter((item) => item.code === 'nonblocking-ready-notice'), [{ code: 'nonblocking-ready-notice', detail: '1 ready notice remains.', target }])
+      assert.deepEqual(result.warnings.filter((item) => item.code === 'nonblocking-ready-notice'), [])
     })
   })
 

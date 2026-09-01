@@ -37,7 +37,7 @@ const ENGINE_PATH = '../../internal/revise/SKILL.md'
 const FIXTURE_ROOT = join(__dirname, 'fixtures', 'legacy-plugin-2.4.5')
 const PUBLIC_SKILLS_ROOT = join(REPOSITORY_ROOT, 'skills')
 const INIT_BACKLOG_APPROVAL_SENTENCE = 'Obtain explicit approval for the complete manifest before any `apply` request.'
-const INIT_BACKLOG_WRITER_DISCLOSURE_SENTENCE = 'Before asking for approval, disclose the `external-writer-window`: project targets remain writable by external processes during controller publication, so a concurrent change can make a later action fail with `snapshot-drift` after earlier actions have landed; only an unwrap batch has byte-exact aggregate restoration.'
+const INIT_BACKLOG_WRITER_DISCLOSURE_SENTENCE = 'Before asking for approval, disclose the `external-writer-window`: project targets remain writable by external processes during controller publication, so a concurrent change can make a later action fail with `snapshot-drift` after earlier actions have landed; only a mechanical backlog-file repair batch has byte-exact aggregate restoration.'
 const FABLE_RESERVATION_POLICY = 'Never dispatch Fable for reviewers, skeptics, verifiers, implementers, fixers, validators, or auxiliary agents. Fable is reserved for the user-interacting controller; retain the role-specific non-Fable model pins.'
 
 function readRequiredFile(filePath) {
