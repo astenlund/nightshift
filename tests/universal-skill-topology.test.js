@@ -15,7 +15,7 @@ const { normalizeTestTemporaryDirectory } = require('./test-environment')
 normalizeTestTemporaryDirectory()
 
 const { PROCEDURE_REPLACEMENTS, PUBLIC_SKILLS, REVISE_ENGINE_RESOURCES, REVISE_WRAPPERS } = require('./entry-contract')
-const { QUEUE_STEPS, advanceQueue, createQueue, resumeQueue } = require('../skills/handover/handover-queue')
+const { QUEUE_PROTOCOL_VERSION, QUEUE_STEPS, advanceQueue, bindImplementationAuditBase, createQueue, resumeQueue } = require('../skills/handover/handover-queue')
 const {
   MAX_PLAN_BYTES,
   MAX_PLAN_CANDIDATE_BYTES,
@@ -324,7 +324,7 @@ test('handover queue accepts reordered creation input without changing durable o
   const sourceBuffer = createQueue({ entryStep: 5, authority })
 
   assert.equal(sourceBuffer.toString('utf8'), [
-    '{"artifactPath":".claude/features/example.md","entryStep":5,"planFingerprint":"none","protocolVersion":1,"targetScope":"whole file"}',
+    '{"artifactPath":".claude/features/example.md","entryStep":5,"implementationAuditBase":null,"planFingerprint":"none","protocolVersion":2,"targetScope":"whole file"}',
     '- [ ] 5. Revise code',
     '- [ ] 6. Verify end-to-end',
     '- [ ] 7. Revise docs',
@@ -342,7 +342,67 @@ test('handover queue accepts reordered authority records', () => {
 
   const sourceBuffer = createQueue({ authority, entryStep: 5 })
 
-  assert.equal(sourceBuffer.toString('utf8').split('\n')[0], '{"artifactPath":".claude/features/example.md","entryStep":5,"planFingerprint":"none","protocolVersion":1,"targetScope":"whole file"}')
+  assert.equal(sourceBuffer.toString('utf8').split('\n')[0], '{"artifactPath":".claude/features/example.md","entryStep":5,"implementationAuditBase":null,"planFingerprint":"none","protocolVersion":2,"targetScope":"whole file"}')
+})
+
+test('handover queue migrates version 1 and binds audit bases', () => {
+  const authority = { artifactPath: '.claude/features/example.md', planFingerprint: 'none', targetScope: 'whole file' }
+  const evidence = { ignored: true, ordinary: true, singleLink: true, stable: true, tracked: false }
+  const sourceBuffer = createQueue({ authority, entryStep: 5 })
+
+  assert.equal(QUEUE_PROTOCOL_VERSION, 2)
+  assert.equal(sourceBuffer.toString('utf8').split('\n')[0], '{"artifactPath":".claude/features/example.md","entryStep":5,"implementationAuditBase":null,"planFingerprint":"none","protocolVersion":2,"targetScope":"whole file"}')
+
+  const legacy = Buffer.from([
+    '{"artifactPath":".claude/features/example.md","entryStep":4,"planFingerprint":"none","protocolVersion":1,"targetScope":"whole file"}',
+    '- [ ] 4. Implement the plan',
+    '- [ ] 5. Revise code',
+    '- [ ] 6. Verify end-to-end',
+    '- [ ] 7. Revise docs',
+    '- [ ] 8. Backlog bookkeeping check',
+    '- [ ] 9. Revise lore',
+    '- [ ] 10. Persist workflow edits',
+    '- [ ] 11. Full test suite',
+    '- [ ] 12. Morning report',
+    '',
+  ].join('\n'))
+  const migrated = resumeQueue({ detectedEntryStep: 4, evidence, expectedAuthority: authority, sourceBuffer: legacy })
+  assert.equal(migrated.kind, 'live')
+  assert.equal(JSON.parse(migrated.sourceBuffer.toString('utf8').split('\n')[0]).implementationAuditBase, null)
+  assert.equal(JSON.parse(migrated.sourceBuffer.toString('utf8').split('\n')[0]).protocolVersion, 2)
+  assert.throws(() => advanceQueue({ completedStep: 4, currentAuthority: authority, evidence, nextAuthority: authority, sourceBuffer: legacy }), /Queue header is not canonical/)
+
+  const legacyRestart = Buffer.from(legacy.toString('utf8').replace('- [ ] 4. Implement the plan', '- [x] 4. Implement the plan'))
+  const restarted = resumeQueue({ detectedEntryStep: 3, evidence, expectedAuthority: authority, sourceBuffer: legacyRestart })
+  assert.equal(restarted.kind, 'restart')
+  assert.equal(JSON.parse(restarted.sourceBuffer.toString('utf8').split('\n')[0]).protocolVersion, 2)
+  assert.equal(JSON.parse(restarted.sourceBuffer.toString('utf8').split('\n')[0]).implementationAuditBase, null)
+  assert.equal(restarted.sourceBuffer.toString('utf8').includes('- [x]'), false)
+
+  const legacyDead = Buffer.from(legacy.toString('utf8').replaceAll('- [ ]', '- [x]'))
+  const dead = resumeQueue({ detectedEntryStep: 4, evidence, expectedAuthority: authority, sourceBuffer: legacyDead })
+  assert.equal(dead.kind, 'dead')
+  assert.equal(JSON.parse(dead.sourceBuffer.toString('utf8').split('\n')[0]).protocolVersion, 2)
+  assert.equal(JSON.parse(dead.sourceBuffer.toString('utf8').split('\n')[0]).implementationAuditBase, null)
+  assert.equal(dead.sourceBuffer.toString('utf8').includes('- [x]'), false)
+
+  const implementationSource = createQueue({ authority, entryStep: 4 })
+  const bound = bindImplementationAuditBase({ currentAuthority: authority, evidence, implementationAuditBase: 'a'.repeat(40), sourceBuffer: implementationSource })
+  assert.deepEqual(Object.keys(bound), ['complete', 'nextStep', 'sourceBuffer'])
+  assert.equal(bound.complete, false)
+  assert.equal(bound.nextStep, 4)
+  assert.equal(JSON.parse(bound.sourceBuffer.toString('utf8').split('\n')[0]).implementationAuditBase, 'a'.repeat(40))
+  assert.deepEqual(bindImplementationAuditBase({ currentAuthority: authority, evidence, implementationAuditBase: 'a'.repeat(40), sourceBuffer: bound.sourceBuffer }), bound)
+  const refreshedAuthority = { ...authority, planFingerprint: `sha256:${'d'.repeat(64)}` }
+  const advanced = advanceQueue({ completedStep: 4, currentAuthority: authority, evidence, nextAuthority: refreshedAuthority, sourceBuffer: bound.sourceBuffer })
+  assert.equal(JSON.parse(advanced.sourceBuffer.toString('utf8').split('\n')[0]).implementationAuditBase, 'a'.repeat(40))
+  assert.deepEqual(advanceQueue({ completedStep: 4, currentAuthority: refreshedAuthority, evidence, nextAuthority: refreshedAuthority, sourceBuffer: advanced.sourceBuffer }), advanced)
+  assert.throws(() => bindImplementationAuditBase({ currentAuthority: authority, evidence, implementationAuditBase: 'c'.repeat(40), sourceBuffer: bound.sourceBuffer }))
+  assert.throws(() => bindImplementationAuditBase({ currentAuthority: authority, evidence, implementationAuditBase: null, sourceBuffer: implementationSource }), /full object ID/)
+  assert.throws(() => bindImplementationAuditBase({ currentAuthority: authority, evidence: { ...evidence, tracked: true }, implementationAuditBase: 'b'.repeat(64), sourceBuffer }))
+  assert.throws(() => bindImplementationAuditBase({ currentAuthority: refreshedAuthority, evidence, implementationAuditBase: 'b'.repeat(64), sourceBuffer }))
+  assert.throws(() => bindImplementationAuditBase({ currentAuthority: authority, evidence, implementationAuditBase: 'b'.repeat(64), sourceBuffer: legacy }))
+  assert.throws(() => bindImplementationAuditBase({ currentAuthority: authority, evidence, implementationAuditBase: 'b'.repeat(64), sourceBuffer: createQueue({ authority, entryStep: 5 }) }))
 })
 
 test('handover queue accepts reordered evidence records', () => {

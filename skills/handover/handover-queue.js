@@ -3,7 +3,9 @@
 const { TextDecoder } = require('node:util')
 
 const MAX_QUEUE_BYTES = 16_384
-const QUEUE_PROTOCOL_VERSION = 1
+const QUEUE_PROTOCOL_VERSION = 2
+const LEGACY_QUEUE_PROTOCOL_VERSION = 1
+const AUDIT_BASE_PATTERN = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/
 const QUEUE_ENTRY_STEPS = Object.freeze([1, 2, 3, 4, 5])
 const QUEUE_STEPS = Object.freeze([
   'Spec gate',
@@ -95,21 +97,35 @@ function validateEntryStep(entryStep) {
   }
 }
 
-function authorityHeader(authority, entryStep) {
+function validateImplementationAuditBase(value) {
+  if (!(value === null || typeof value === 'string' && AUDIT_BASE_PATTERN.test(value))) {
+    fail('Queue implementation audit base is invalid')
+  }
+}
+
+function validateFullImplementationAuditBase(value) {
+  if (!(typeof value === 'string' && AUDIT_BASE_PATTERN.test(value))) {
+    fail('Queue supplied audit base must be one full object ID')
+  }
+}
+
+function authorityHeader(authority, entryStep, implementationAuditBase = null) {
   return {
     artifactPath: authority.artifactPath,
     entryStep,
+    implementationAuditBase,
     planFingerprint: authority.planFingerprint,
     protocolVersion: QUEUE_PROTOCOL_VERSION,
     targetScope: authority.targetScope,
   }
 }
 
-function serializeQueue(authority, entryStep, completedSteps) {
+function serializeQueue(authority, entryStep, completedSteps, implementationAuditBase = null) {
   validateAuthority(authority)
   validateEntryStep(entryStep)
+  validateImplementationAuditBase(implementationAuditBase)
   const completed = new Set(completedSteps)
-  const lines = [JSON.stringify(authorityHeader(authority, entryStep))]
+  const lines = [JSON.stringify(authorityHeader(authority, entryStep, implementationAuditBase))]
   for (let step = entryStep; step <= QUEUE_STEPS.length; step += 1) {
     lines.push(`- [${completed.has(step) ? 'x' : ' '}] ${step}. ${QUEUE_STEPS[step - 1]}`)
   }
@@ -127,7 +143,7 @@ function createQueue(input) {
   return serializeQueue(input.authority, input.entryStep, [])
 }
 
-function parseSource(sourceBuffer) {
+function parseQueueSource(sourceBuffer, allowLegacy) {
   if (!Buffer.isBuffer(sourceBuffer) || sourceBuffer.length === 0 || sourceBuffer.length > MAX_QUEUE_BYTES) {
     fail('Queue source size is invalid')
   }
@@ -147,13 +163,15 @@ function parseSource(sourceBuffer) {
   } catch {
     fail('Queue header is malformed')
   }
-  if (!exactOrderedKeys(header, ['artifactPath', 'entryStep', 'planFingerprint', 'protocolVersion', 'targetScope'])
-    || JSON.stringify(header) !== lines[0]
-    || header.protocolVersion !== QUEUE_PROTOCOL_VERSION) {
+  const isVersionTwo = versionTwoHeader(header, lines[0])
+  const isVersionOne = allowLegacy && versionOneHeader(header, lines[0])
+  if (!isVersionTwo && !isVersionOne) {
     fail('Queue header is not canonical')
   }
   const authority = { artifactPath: header.artifactPath, planFingerprint: header.planFingerprint, targetScope: header.targetScope }
+  const implementationAuditBase = isVersionOne ? null : header.implementationAuditBase
   validateAuthority(authority)
+  validateImplementationAuditBase(implementationAuditBase)
   validateEntryStep(header.entryStep)
   if (lines.length !== QUEUE_STEPS.length - header.entryStep + 2) {
     fail('Queue step inventory is incomplete')
@@ -170,7 +188,27 @@ function parseSource(sourceBuffer) {
     }
   }
 
-  return { authority, completedSteps, entryStep: header.entryStep }
+  return { authority, completedSteps, entryStep: header.entryStep, implementationAuditBase, migrated: isVersionOne }
+}
+
+function versionTwoHeader(header, line) {
+  return exactOrderedKeys(header, ['artifactPath', 'entryStep', 'implementationAuditBase', 'planFingerprint', 'protocolVersion', 'targetScope'])
+    && JSON.stringify(header) === line
+    && header.protocolVersion === QUEUE_PROTOCOL_VERSION
+}
+
+function versionOneHeader(header, line) {
+  return exactOrderedKeys(header, ['artifactPath', 'entryStep', 'planFingerprint', 'protocolVersion', 'targetScope'])
+    && JSON.stringify(header) === line
+    && header.protocolVersion === LEGACY_QUEUE_PROTOCOL_VERSION
+}
+
+function parseSource(sourceBuffer) {
+  return parseQueueSource(sourceBuffer, false)
+}
+
+function parseResumeSource(sourceBuffer) {
+  return parseQueueSource(sourceBuffer, true)
 }
 
 function queueState(parsed) {
@@ -226,7 +264,7 @@ function resumeQueue(input) {
   }
   validateEvidence(input.evidence)
   validateAuthority(input.expectedAuthority)
-  const parsed = parseSource(input.sourceBuffer)
+  const parsed = parseResumeSource(input.sourceBuffer)
   if (!sameAuthority(parsed.authority, input.expectedAuthority)) {
     fail('Queue authority does not match the current run')
   }
@@ -238,7 +276,9 @@ function resumeQueue(input) {
     return { kind: 'restart', nextStep: input.detectedEntryStep, sourceBuffer: createQueue({ authority: input.expectedAuthority, entryStep: input.detectedEntryStep }) }
   }
 
-  return { kind: 'live', nextStep: state.nextStep, sourceBuffer: input.sourceBuffer }
+  return { kind: 'live', nextStep: state.nextStep, sourceBuffer: parsed.migrated
+    ? serializeQueue(parsed.authority, parsed.entryStep, parsed.completedSteps, parsed.implementationAuditBase)
+    : input.sourceBuffer }
 }
 
 function advanceQueue(input) {
@@ -268,10 +308,27 @@ function advanceQueue(input) {
     completedSteps.push(QUEUE_TAIL_STEPS.persistWorkflowEdits)
   }
   completedSteps.sort((left, right) => left - right)
-  const sourceBuffer = serializeQueue(input.nextAuthority, parsed.entryStep, completedSteps)
+  const sourceBuffer = serializeQueue(input.nextAuthority, parsed.entryStep, completedSteps, parsed.implementationAuditBase)
   const nextState = queueState(parseSource(sourceBuffer))
 
   return { complete: nextState.complete, nextStep: nextState.nextStep, sourceBuffer }
 }
 
-module.exports = { HandoverQueueError, MAX_QUEUE_BYTES, QUEUE_ENTRY_STEPS, QUEUE_PROTOCOL_VERSION, QUEUE_STEPS, advanceQueue, createQueue, resumeQueue }
+function bindImplementationAuditBase(input) {
+  if (!exactKeyMembership(input, ['currentAuthority', 'evidence', 'implementationAuditBase', 'sourceBuffer'])) fail('Queue audit-base input is invalid')
+  validateEvidence(input.evidence)
+  validateAuthority(input.currentAuthority)
+  validateFullImplementationAuditBase(input.implementationAuditBase)
+  const parsed = parseSource(input.sourceBuffer)
+  if (!sameAuthority(parsed.authority, input.currentAuthority)) fail('Queue authority changed before audit-base binding')
+  const state = queueState(parsed)
+  if (state.complete || state.nextStep !== 4) fail('Queue audit base can bind only while implementation is next')
+  if (parsed.implementationAuditBase !== null && parsed.implementationAuditBase !== input.implementationAuditBase) fail('Queue implementation audit base cannot change')
+  const sourceBuffer = parsed.implementationAuditBase === input.implementationAuditBase
+    ? input.sourceBuffer
+    : serializeQueue(parsed.authority, parsed.entryStep, parsed.completedSteps, input.implementationAuditBase)
+
+  return { complete: false, nextStep: 4, sourceBuffer }
+}
+
+module.exports = { HandoverQueueError, MAX_QUEUE_BYTES, QUEUE_ENTRY_STEPS, QUEUE_PROTOCOL_VERSION, QUEUE_STEPS, advanceQueue, bindImplementationAuditBase, createQueue, resumeQueue }
