@@ -376,7 +376,7 @@ test('README ready excerpt agrees with the production parser for its named examp
     { cwd: repositoryRoot, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] },
   ))
   const readyExamples = [
-    { index: 'QUICK_WINS.md', title: 'Tell implementation subagents where their scratch files go' },
+    { index: 'QUICK_WINS.md', title: "Keep the governing entry's archive move out of implementation plans" },
     { index: 'FEATURES.md', title: 'Content fingerprint helper' },
   ]
   const blockedExamples = [

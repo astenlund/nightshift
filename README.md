@@ -28,8 +28,8 @@ Ask what to work on, and you get the dependency graph resolved rather than a lis
 
 Ready
   Quick Wins
-    - Tell implementation subagents where their scratch files go
-      (a small handover instruction repair)
+    - Keep the governing entry's archive move out of implementation plans
+      (keeps review authority resolvable through code review)
   Features
     - Content fingerprint helper
       (shared selector and hashing machinery)
@@ -43,8 +43,8 @@ Blocked
 Recommended
   1. `Content fingerprint helper`. It unblocks the portable resource and
      fingerprint contract.
-  2. `Tell implementation subagents where their scratch files go`. It is a
-     self-contained Quick Win for a short session.
+  2. `Keep the governing entry's archive move out of implementation plans`.
+     It prevents implementation from invalidating its own review authority.
 ```
 
 The classification is not the model's opinion. A bundled parser reads each entry's declared `**Requires:**` and `**External:**` lines and resolves the graph deterministically, with fixture tests covering the grammar. If the report looks wrong, that is a parser bug with a reproducible test case, not a prompt to reword.
