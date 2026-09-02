@@ -213,6 +213,59 @@ function compareOrdinal(left, right) {
   return 0
 }
 
+function gitEnvelope({ error = null, signal = null, status = 0, stderr = Buffer.alloc(0), stdout = Buffer.alloc(0) } = {}) {
+  return { error, signal, status, stderr, stdout }
+}
+
+function dispatchFilesystem(root, { markerEntries = new Map(), realRoot = root, rootError = null } = {}) {
+  const ordinaryDirectory = { isDirectory: () => true, isFile: () => false, isReparsePoint: () => false, isSymbolicLink: () => false }
+
+  return {
+    realpathSync: {
+      native(value) {
+        if (rootError !== null) throw rootError
+
+        return value === root ? realRoot : value
+      },
+    },
+    lstatSync(value) {
+      if (value === root) {
+        if (rootError !== null) throw rootError
+
+        return ordinaryDirectory
+      }
+      if (markerEntries.has(value)) {
+        const entry = markerEntries.get(value)
+        if (entry instanceof Error) throw entry
+
+        return entry
+      }
+      const error = new Error(`Missing fixture path: ${value}`)
+      error.code = 'ENOENT'
+      throw error
+    },
+  }
+}
+
+function dispatchMarker(kind) {
+  return {
+    isDirectory: () => kind === 'directory',
+    isFile: () => kind === 'file',
+    isReparsePoint: () => kind === 'reparse',
+    isSymbolicLink: () => kind === 'symbolic',
+  }
+}
+
+function assertDispatchFailure(action, code, details) {
+  assert.throws(action, (error) => {
+    assert.equal(error instanceof ImplementationDispatchError, true)
+    assert.equal(error.code, code)
+    assert.deepEqual(error.details, details)
+
+    return true
+  })
+}
+
 function assertCurrentPathsAreAbsent(filePath) {
   const text = readRequiredFile(filePath)
   assert.equal(text.includes('commands/'), false, `${filePath} must not reference commands/`)
@@ -243,34 +296,703 @@ test('public topology exposes only the ten public skills and no legacy command t
 })
 
 test('implementation dispatch derives task briefs', () => {
-  const planBytes = Buffer.from('# Plan\n\n### Task 1: First task\r\nbody\r\n\n### Task 2: Second task\r\nnext\r\n')
-  const result = deriveImplementationTaskBrief({ planBytes, taskHeading: '### Task 1: First task' })
-  assert.equal(result.taskTitle, 'First task')
-  assert.equal(result.briefBytes.toString(), '### Task 1: First task\r\nbody\r\n\n')
-  assert.throws(() => deriveImplementationTaskBrief({ planBytes, taskHeading: '### Task 3: Missing' }), (error) => error.code === 'dispatch-input')
+  const byteRangeCases = [
+    {
+      heading: '### Task 1: First task',
+      plan: '# Plan\n\u00e9\n### Task 1: First task\r\nbody\r\n\n### Task 2: Second task\r\nnext\r\n',
+      title: 'First task',
+      want: '### Task 1: First task\r\nbody\r\n\n',
+    },
+    {
+      heading: '### Task 2: Stops at level two',
+      plan: '# Plan\n### Task 2: Stops at level two\nbody\n## Verification\nrest\n',
+      title: 'Stops at level two',
+      want: '### Task 2: Stops at level two\nbody\n',
+    },
+    {
+      heading: '### Task 3: Keeps malformed and fenced headings',
+      plan: '### Task 3: Keeps malformed and fenced headings\nbody\n### Task 04: malformed\n```\n### Task 4: fenced\n```\ntail',
+      title: 'Keeps malformed and fenced headings',
+      want: '### Task 3: Keeps malformed and fenced headings\nbody\n### Task 04: malformed\n```\n### Task 4: fenced\n```\ntail',
+    },
+  ]
+  for (const vector of byteRangeCases) {
+    const result = deriveImplementationTaskBrief({ planBytes: Buffer.from(vector.plan), taskHeading: vector.heading })
+    assert.equal(result.taskTitle, vector.title)
+    assert.deepEqual(result.briefBytes, Buffer.from(vector.want))
+  }
+
+  for (const vector of [
+    { heading: '### Task 1: x', title: 'x' },
+    { heading: '### Task 999999999: Last ordinal', title: 'Last ordinal' },
+    { heading: `### Task 7: ${'a'.repeat(1024)}`, title: 'a'.repeat(1024) },
+  ]) {
+    const result = deriveImplementationTaskBrief({ planBytes: Buffer.from(`${vector.heading}\nbody\n`), taskHeading: vector.heading })
+    assert.equal(result.taskTitle, vector.title)
+    assert.deepEqual(result.briefBytes, Buffer.from(`${vector.heading}\nbody\n`))
+  }
+
+  const distinctHeadings = [
+    { heading: '### Task 1: Same task', title: 'Same task' },
+    { heading: '### Task 2: same task', title: 'same task' },
+    { heading: '### Task 3: Same  task', title: 'Same  task' },
+    { heading: '### Task 4: \u00e9', title: '\u00e9' },
+    { heading: '### Task 5: e\u0301', title: 'e\u0301' },
+  ]
+  const distinctPlan = Buffer.from(`${distinctHeadings.map((vector) => vector.heading).join('\nbody\n')}\nbody\n`)
+  for (const vector of distinctHeadings) {
+    const result = deriveImplementationTaskBrief({ planBytes: distinctPlan, taskHeading: vector.heading })
+    assert.equal(result.taskTitle, vector.title)
+  }
+
+  const duplicateSemanticTitle = Buffer.from('### Task 1: Same\nbody\n### Task 2: Same\nbody\n')
+  assertDispatchFailure(
+    () => deriveImplementationTaskBrief({ planBytes: duplicateSemanticTitle, taskHeading: '### Task 1: Same' }),
+    'dispatch-input',
+    { field: 'taskId', reason: 'invalid-task-heading' },
+  )
+  const duplicateExactHeading = Buffer.from('### Task 1: Same\nbody\n### Task 1: Same\nbody\n')
+  assertDispatchFailure(
+    () => deriveImplementationTaskBrief({ planBytes: duplicateExactHeading, taskHeading: '### Task 1: Same' }),
+    'dispatch-input',
+    { field: 'taskId', reason: 'invalid-task-heading' },
+  )
+
+  const maximumHeading = '### Task 1: Maximum plan'
+  const maximumPlan = Buffer.concat([Buffer.from(`${maximumHeading}\n`), Buffer.alloc(2097152 - Buffer.byteLength(`${maximumHeading}\n`), 0x78)])
+  const maximumResult = deriveImplementationTaskBrief({ planBytes: maximumPlan, taskHeading: maximumHeading })
+  assert.equal(maximumResult.briefBytes.length, 2097152)
+  assert.equal(maximumResult.briefBytes.subarray(0, Buffer.byteLength(`${maximumHeading}\n`)).toString(), `${maximumHeading}\n`)
+  assert.equal(maximumResult.briefBytes[2097151], 0x78)
+
+  for (const vector of [
+    { heading: '### Task 3: Missing', plan: '### Task 1: Present\n', reason: 'missing' },
+    { heading: '### Task 1: x', plan: '```\n### Task 1: x\n```\n', reason: 'fenced-only' },
+    { heading: '### Task 0: x', reason: 'zero ordinal' },
+    { heading: '### Task 01: x', reason: 'leading zero' },
+    { heading: '### Task 1000000000: x', reason: 'ordinal overflow' },
+    { heading: '## Task 1: x', reason: 'wrong heading level' },
+    { heading: '### task 1: x', reason: 'wrong prefix case' },
+    { heading: '#### Task 1: x', reason: 'extra prefix marker' },
+    { heading: '###  Task 1: x', reason: 'extra prefix space' },
+    { heading: '### Task  1: x', reason: 'extra ordinal space' },
+    { heading: '### Task\t1: x', reason: 'prefix tab' },
+    { heading: '### Task 1:x', reason: 'missing delimiter space' },
+    { heading: '### Task 1 : x', reason: 'space before delimiter' },
+    { heading: '### Task 1:  x', reason: 'extra delimiter space' },
+    { heading: '### Task 1:\tx', reason: 'delimiter tab' },
+    { heading: '### Task 1: ', reason: 'empty title' },
+    { heading: '### Task 1: x ', reason: 'trailing ASCII whitespace' },
+    { heading: '### Task 1:  x', reason: 'leading ASCII whitespace' },
+    { heading: '### Task 1: \u00a0x', reason: 'leading ECMAScript whitespace' },
+    { heading: '### Task 1: x\u00a0', reason: 'trailing ECMAScript whitespace' },
+    { heading: '### Task 1: x\n', reason: 'LF terminator' },
+    { heading: '### Task 1: x\r', reason: 'CR terminator' },
+    { heading: '### Task 1: x\u2028', reason: 'line separator' },
+    { heading: '### Task 1: x\u2029', reason: 'paragraph separator' },
+    { heading: '### Task 1: x\u0000', reason: 'NUL control' },
+    { heading: '### Task 1: x\u007f', reason: 'DEL control' },
+    { heading: '### Task 1: x\u0085', reason: 'C1 control' },
+    { heading: `### Task 1: ${'b'.repeat(1025)}`, reason: 'title overflow' },
+  ]) {
+    const vectorPlan = Buffer.from(vector.plan ?? `${vector.heading}\n`)
+    assertDispatchFailure(
+      () => deriveImplementationTaskBrief({ planBytes: vectorPlan, taskHeading: vector.heading }),
+      'dispatch-input',
+      { field: 'taskId', reason: 'invalid-task-heading' },
+    )
+  }
+
+  for (const vector of [
+    { planBytes: 'text', details: { field: 'planBytes', reason: 'not-buffer' } },
+    { planBytes: Buffer.alloc(0), details: { field: 'planBytes', reason: 'empty-buffer' } },
+    { planBytes: Buffer.alloc(2097153), details: { field: 'planBytes', reason: 'too-large' } },
+  ]) {
+    assertDispatchFailure(
+      () => deriveImplementationTaskBrief({ planBytes: vector.planBytes, taskHeading: '### Task 1: x' }),
+      'dispatch-input',
+      vector.details,
+    )
+  }
 })
 
 test('implementation dispatch normalizes Git envelopes', () => {
-  assert.equal(typeof ImplementationDispatchError, 'function')
+  const dispatchSource = readRequiredFile(join(PUBLIC_SKILLS_ROOT, 'handover', 'implementation-dispatch.js'))
+  for (const helperName of [
+    'normalizeRunGitResult',
+    'validateGitResultEnvelope',
+    'requireGitStatus',
+    'decodeStrictUtf8',
+    'parseCheckIgnoreRecords',
+    'parseNulPathList',
+    'parseLfObjectIds',
+    'parseExactAsciiLine',
+    'gitCommand',
+    'parsePlanStamp',
+  ]) {
+    const definition = `function ${helperName}(`
+    const definitionCount = dispatchSource.split(definition).length - 1
+    assert.equal(definitionCount, 1, `${helperName} must have exactly one private definition; found ${definitionCount}`)
+  }
+
+  const repositoryRoot = 'C:\\repo'
+  const planBytes = Buffer.from('# Plan\n- revise-plan graduated 2026-09-01 12:00 at abcdef1, scope: x, content: 12345678\n')
+  const sha1 = 'a'.repeat(40)
+  const filesystem = dispatchFilesystem(repositoryRoot, { markerEntries: new Map([[join(repositoryRoot, '.git'), dispatchMarker('directory')]]) })
+  const spawnCalls = []
+  const rawSpawnSync = (executable, args, options) => {
+    spawnCalls.push({ args, cwd: options.cwd, executable })
+    const command = args.slice(2)
+    const stdout = command.includes('--show-object-format=storage')
+      ? Buffer.from('sha1\n')
+      : command.includes('--is-ancestor') ? Buffer.alloc(0) : Buffer.from(`${sha1}\n`)
+
+    return { pid: 42, output: [null, stdout, Buffer.alloc(0)], stdout, stderr: Buffer.alloc(0), status: 0, signal: null, error: undefined }
+  }
+  assert.deepEqual(
+    resolveImplementationAuditBase(
+      { planBytes, repositoryRoot, storedAuditBase: null },
+      { filesystem, resolveGitExecutable: () => 'C:\\tools\\git.exe', spawnSync: rawSpawnSync },
+    ),
+    { auditBase: sha1, objectFormat: 'sha1', stampSha: 'abcdef1' },
+  )
+  assert.deepEqual(spawnCalls.map((call) => ({ args: call.args.slice(2), cwd: call.cwd, executable: call.executable })), [
+    { args: ['rev-parse', '--show-object-format=storage'], cwd: repositoryRoot, executable: 'C:\\tools\\git.exe' },
+    { args: ['rev-parse', '--verify', 'abcdef1^{commit}'], cwd: repositoryRoot, executable: 'C:\\tools\\git.exe' },
+    { args: ['merge-base', '--is-ancestor', sha1, 'HEAD'], cwd: repositoryRoot, executable: 'C:\\tools\\git.exe' },
+  ])
+
+  for (const vector of [
+    { label: 'pid', result: { error: null, signal: null, status: 0, stderr: Buffer.alloc(0), stdout: Buffer.from('sha1\n'), pid: 42 } },
+    { label: 'output', result: { error: null, signal: null, status: 0, stderr: Buffer.alloc(0), stdout: Buffer.from('sha1\n'), output: [null] } },
+  ]) {
+    assertDispatchFailure(
+      () => resolveImplementationAuditBase({ planBytes, repositoryRoot, storedAuditBase: null }, { filesystem, git: () => vector.result }),
+      'git-command',
+      { args: ['rev-parse', '--show-object-format=storage'], operation: 'show-object-format', status: null, stderr: '' },
+    )
+  }
+
+  const malformedEnvelopes = [
+    { label: 'null', result: null },
+    { label: 'array', result: [] },
+    { label: 'date', result: new Date(0) },
+    { label: 'missing error', result: { signal: null, status: 0, stderr: Buffer.alloc(0), stdout: Buffer.from('sha1\n') } },
+    { label: 'missing signal', result: { error: null, status: 0, stderr: Buffer.alloc(0), stdout: Buffer.from('sha1\n') } },
+    { label: 'missing status', result: { error: null, signal: null, stderr: Buffer.alloc(0), stdout: Buffer.from('sha1\n') } },
+    { label: 'missing stderr', result: { error: null, signal: null, status: 0, stdout: Buffer.from('sha1\n') } },
+    { label: 'missing stdout', result: { error: null, signal: null, status: 0, stderr: Buffer.alloc(0) } },
+    { label: 'extra key', result: { error: null, signal: null, status: 0, stderr: Buffer.alloc(0), stdout: Buffer.from('sha1\n'), extra: true } },
+    { label: 'wrong key order', result: { signal: null, error: null, status: 0, stderr: Buffer.alloc(0), stdout: Buffer.from('sha1\n') } },
+    { label: 'invalid error', result: { error: 'failure', signal: null, status: 0, stderr: Buffer.alloc(0), stdout: Buffer.from('sha1\n') } },
+    { label: 'invalid signal', result: { error: null, signal: 9, status: 0, stderr: Buffer.alloc(0), stdout: Buffer.from('sha1\n') } },
+    { label: 'invalid status string', result: { error: null, signal: null, status: '0', stderr: Buffer.alloc(0), stdout: Buffer.from('sha1\n') } },
+    { label: 'invalid fractional status', result: { error: null, signal: null, status: 0.5, stderr: Buffer.alloc(0), stdout: Buffer.from('sha1\n') } },
+    { label: 'invalid stderr', result: { error: null, signal: null, status: 0, stderr: '', stdout: Buffer.from('sha1\n') } },
+    { label: 'invalid stdout', result: { error: null, signal: null, status: 0, stderr: Buffer.alloc(0), stdout: 'sha1\n' } },
+  ]
+  for (const vector of malformedEnvelopes) {
+    assertDispatchFailure(
+      () => resolveImplementationAuditBase({ planBytes, repositoryRoot, storedAuditBase: null }, { filesystem, git: () => vector.result }),
+      'git-command',
+      { args: ['rev-parse', '--show-object-format=storage'], operation: 'show-object-format', status: null, stderr: '' },
+    )
+  }
+
+  for (const vector of [
+    { result: gitEnvelope({ error: new Error('spawn failed'), stdout: Buffer.from('sha1\n') }), want: { status: 0, stderr: '' } },
+    { result: gitEnvelope({ signal: 'SIGKILL', stdout: Buffer.from('sha1\n') }), want: { status: 0, stderr: '' } },
+    { result: gitEnvelope({ status: 2, stdout: Buffer.from('sha1\n') }), want: { status: 2, stderr: '' } },
+    { result: gitEnvelope({ stderr: Buffer.from('fatal\n'), stdout: Buffer.from('sha1\n') }), want: { status: 0, stderr: 'fatal\n' } },
+  ]) {
+    assertDispatchFailure(
+      () => resolveImplementationAuditBase({ planBytes, repositoryRoot, storedAuditBase: null }, { filesystem, git: () => vector.result }),
+      'git-command',
+      { args: ['rev-parse', '--show-object-format=storage'], operation: 'show-object-format', status: vector.want.status, stderr: vector.want.stderr },
+    )
+  }
+
+  const malformedFormatFrames = [
+    Buffer.alloc(0),
+    Buffer.from('sha1'),
+    Buffer.from('sha1\r\n'),
+    Buffer.from('sha1\n\n'),
+    Buffer.from(' sha1\n'),
+    Buffer.from('sha1 \n'),
+    Buffer.from('SHA1\n'),
+    Buffer.from('sha512\n'),
+    Buffer.from([0xef, 0xbb, 0xbf, 0x73, 0x68, 0x61, 0x31, 0x0a]),
+    Buffer.from([0x73, 0x68, 0x61, 0x31, 0x0a, 0x00]),
+    Buffer.from([0xff, 0x0a]),
+  ]
+  for (const frame of malformedFormatFrames) {
+    assertDispatchFailure(
+      () => resolveImplementationAuditBase({ planBytes, repositoryRoot, storedAuditBase: null }, { filesystem, git: () => gitEnvelope({ stdout: frame }) }),
+      'git-command',
+      { args: ['rev-parse', '--show-object-format=storage'], operation: 'show-object-format', status: 0, stderr: '' },
+    )
+  }
+
+  const malformedIdFrames = [
+    Buffer.alloc(0),
+    Buffer.from(sha1),
+    Buffer.from(`${sha1}\r\n`),
+    Buffer.from(`${sha1}\n\n`),
+    Buffer.from(` ${sha1}\n`),
+    Buffer.from(`${sha1} \n`),
+    Buffer.from(`${sha1.toUpperCase()}\n`),
+    Buffer.from(`${'g'.repeat(40)}\n`),
+    Buffer.from(`${'a'.repeat(39)}\n`),
+    Buffer.from(`${'a'.repeat(41)}\n`),
+    Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), Buffer.from(`${sha1}\n`)]),
+    Buffer.concat([Buffer.from(`${sha1}\n`), Buffer.from([0x00])]),
+    Buffer.concat([Buffer.from('a'.repeat(39)), Buffer.from([0xff, 0x0a])]),
+  ]
+  for (const frame of malformedIdFrames) {
+    const git = (_root, args) => gitEnvelope({ stdout: args.includes('--show-object-format=storage') ? Buffer.from('sha1\n') : frame })
+    assertDispatchFailure(
+      () => resolveImplementationAuditBase({ planBytes, repositoryRoot, storedAuditBase: null }, { filesystem, git }),
+      'git-command',
+      { args: ['rev-parse', '--verify', 'abcdef1^{commit}'], operation: 'resolve-commit', status: 0, stderr: '' },
+    )
+  }
 })
 
 test('implementation dispatch classifies repositories', () => {
-  const root = 'C:\\repo'
-  const filesystem = { realpathSync: { native: (value) => value }, lstatSync: () => ({ isDirectory: () => true, isSymbolicLink: () => false }) }
-  const git = (_root, args) => ({ error: null, signal: null, status: 0, stderr: Buffer.alloc(0), stdout: args.includes('--show-toplevel') ? Buffer.from('C:\\repo\n') : Buffer.alloc(0) })
-  assert.deepEqual(classifyImplementationRepository({ repositoryRoot: root }, { filesystem, git }), { kind: 'git' })
+  for (const markerKind of ['directory', 'file']) {
+    const root = markerKind === 'directory' ? 'C:\\ordinary' : 'C:\\linked'
+    const filesystem = dispatchFilesystem(root, { markerEntries: new Map([[join(root, '.git'), dispatchMarker(markerKind)]]) })
+    const git = (receivedRoot, args, input) => {
+      assert.equal(receivedRoot, root)
+      assert.deepEqual(args, ['rev-parse', '--show-toplevel'])
+      assert.equal(input, null)
+
+      return gitEnvelope({ stdout: Buffer.from(`${root}\n`) })
+    }
+    assert.deepEqual(classifyImplementationRepository({ repositoryRoot: root }, { filesystem, git }), { kind: 'git' })
+  }
+
+  for (const markerKind of ['directory', 'file']) {
+    const root = markerKind === 'directory' ? 'C:\\ordinary\\nested' : 'C:\\linked\\nested'
+    const topLevel = markerKind === 'directory' ? 'C:\\ordinary' : 'C:\\linked'
+    const filesystem = dispatchFilesystem(root, { markerEntries: new Map([[join(topLevel, '.git'), dispatchMarker(markerKind)]]) })
+    assertDispatchFailure(
+      () => classifyImplementationRepository({ repositoryRoot: root }, { filesystem, git: () => gitEnvelope({ stdout: Buffer.from(`${topLevel}\n`) }) }),
+      'repository-classification',
+      { cause: 'root-mismatch', path: root },
+    )
+  }
+
+  const noMarkerRoot = 'C:\\plain\\nested'
+  let noMarkerGitCalls = 0
+  assert.deepEqual(
+    classifyImplementationRepository(
+      { repositoryRoot: noMarkerRoot },
+      { filesystem: dispatchFilesystem(noMarkerRoot), git: () => { noMarkerGitCalls += 1; return gitEnvelope() } },
+    ),
+    { kind: 'non-git' },
+  )
+  assert.equal(noMarkerGitCalls, 0)
+
+  const fakeRoot = 'C:\\fake'
+  const fakeFilesystem = dispatchFilesystem(fakeRoot, { markerEntries: new Map([[join(fakeRoot, '.git'), dispatchMarker('directory')]]) })
+  assertDispatchFailure(
+    () => classifyImplementationRepository({ repositoryRoot: fakeRoot }, { filesystem: fakeFilesystem, git: () => gitEnvelope({ status: 1 }) }),
+    'git-command',
+    { args: ['rev-parse', '--show-toplevel'], operation: 'show-toplevel', status: 1, stderr: '' },
+  )
+
+  const markerFailures = [
+    {
+      details: { cause: 'metadata-unavailable', path: 'C:\\inaccessible\\.git' },
+      marker: Object.assign(new Error('access denied'), { code: 'EACCES' }),
+      root: 'C:\\inaccessible',
+    },
+    { details: { cause: 'metadata-not-ordinary', path: 'C:\\symbolic\\.git' }, marker: dispatchMarker('symbolic'), root: 'C:\\symbolic' },
+    { details: { cause: 'metadata-not-ordinary', path: 'C:\\nonordinary\\.git' }, marker: dispatchMarker('other'), root: 'C:\\nonordinary' },
+    { details: { cause: 'metadata-not-ordinary', path: 'C:\\reparse\\.git' }, marker: dispatchMarker('reparse'), root: 'C:\\reparse' },
+  ]
+  for (const vector of markerFailures) {
+    const markerPath = join(vector.root, '.git')
+    const filesystem = dispatchFilesystem(vector.root, { markerEntries: new Map([[markerPath, vector.marker]]) })
+    assertDispatchFailure(
+      () => classifyImplementationRepository({ repositoryRoot: vector.root }, { filesystem, git: () => gitEnvelope() }),
+      'repository-classification',
+      vector.details,
+    )
+  }
+
+  const malformedFrames = [
+    Buffer.alloc(0),
+    Buffer.from('C:\\repo'),
+    Buffer.from('C:\\repo\r\n'),
+    Buffer.from('C:\\repo\nextra\n'),
+    Buffer.from([0xef, 0xbb, 0xbf, 0x43, 0x3a, 0x5c, 0x72, 0x65, 0x70, 0x6f, 0x0a]),
+    Buffer.from([0xff, 0x0a]),
+  ]
+  const malformedRoot = 'C:\\repo'
+  const malformedFilesystem = dispatchFilesystem(malformedRoot, { markerEntries: new Map([[join(malformedRoot, '.git'), dispatchMarker('directory')]]) })
+  for (const frame of malformedFrames) {
+    assertDispatchFailure(
+      () => classifyImplementationRepository({ repositoryRoot: malformedRoot }, { filesystem: malformedFilesystem, git: () => gitEnvelope({ stdout: frame }) }),
+      'git-command',
+      { args: ['rev-parse', '--show-toplevel'], operation: 'show-toplevel', status: 0, stderr: '' },
+    )
+  }
+
+  for (const topLevel of ['C:\\other', 'c:\\repo', ' C:\\repo', 'C:\\repo ']) {
+    assertDispatchFailure(
+      () => classifyImplementationRepository({ repositoryRoot: malformedRoot }, { filesystem: malformedFilesystem, git: () => gitEnvelope({ stdout: Buffer.from(`${topLevel}\n`) }) }),
+      'repository-classification',
+      { cause: 'root-mismatch', path: malformedRoot },
+    )
+  }
 })
 
 test('implementation dispatch resolves audit bases', () => {
   const planBytes = Buffer.from('# Plan\n\n## Hardening\n- revise-plan graduated 2026-09-01 12:00 at abcdef1, scope: whole file, content: 12345678\n')
-  const sha = 'a'.repeat(40)
-  const filesystem = { realpathSync: { native: (value) => value }, lstatSync: () => ({ isDirectory: () => true, isSymbolicLink: () => false }) }
-  const git = (_root, args) => ({ error: null, signal: null, status: 0, stderr: Buffer.alloc(0), stdout: args.includes('--show-object-format=storage') ? Buffer.from('sha1\n') : Buffer.from(`${sha}\n`) })
-  assert.deepEqual(resolveImplementationAuditBase({ planBytes, repositoryRoot: 'C:\\repo', storedAuditBase: null }, { filesystem, git }), { auditBase: sha, objectFormat: 'sha1', stampSha: 'abcdef1' })
+  const repositoryRoot = 'C:\\repo'
+  const sha1 = 'a'.repeat(40)
+  const storedSha1 = `abcdef1${'a'.repeat(33)}`
+  const sha256 = `abcdef1${'b'.repeat(57)}`
+  const filesystem = dispatchFilesystem(repositoryRoot)
+  const makeGit = ({ format = 'sha1', mergeStatus = 0, resolved = sha1, resolveStatus = 0 } = {}) => {
+    const calls = []
+    const git = (_root, args, input) => {
+      calls.push({ args: [...args], input })
+      if (args.includes('--show-object-format=storage')) return gitEnvelope({ stdout: Buffer.from(`${format}\n`) })
+      if (args.includes('--verify')) return gitEnvelope({ status: resolveStatus, stdout: resolveStatus === 0 ? Buffer.from(`${resolved}\n`) : Buffer.alloc(0) })
+
+      return gitEnvelope({ status: mergeStatus })
+    }
+
+    return { calls, git }
+  }
+
+  const sha1Git = makeGit()
+  assert.deepEqual(
+    resolveImplementationAuditBase({ planBytes, repositoryRoot, storedAuditBase: null }, { filesystem, git: sha1Git.git }),
+    { auditBase: sha1, objectFormat: 'sha1', stampSha: 'abcdef1' },
+  )
+  assert.deepEqual(sha1Git.calls, [
+    { args: ['rev-parse', '--show-object-format=storage'], input: null },
+    { args: ['rev-parse', '--verify', 'abcdef1^{commit}'], input: null },
+    { args: ['merge-base', '--is-ancestor', sha1, 'HEAD'], input: null },
+  ])
+
+  const sha256Git = makeGit({ format: 'sha256', resolved: sha256 })
+  assert.deepEqual(
+    resolveImplementationAuditBase({ planBytes, repositoryRoot, storedAuditBase: sha256 }, { filesystem, git: sha256Git.git }),
+    { auditBase: sha256, objectFormat: 'sha256', stampSha: 'abcdef1' },
+  )
+  assert.deepEqual(sha256Git.calls, [
+    { args: ['rev-parse', '--show-object-format=storage'], input: null },
+    { args: ['rev-parse', '--verify', `${sha256}^{commit}`], input: null },
+    { args: ['merge-base', '--is-ancestor', sha256, 'HEAD'], input: null },
+  ])
+
+  const wrongWidthGit = makeGit({ format: 'sha256' })
+  assertDispatchFailure(
+    () => resolveImplementationAuditBase({ planBytes, repositoryRoot, storedAuditBase: storedSha1 }, { filesystem, git: wrongWidthGit.git }),
+    'object-format',
+    { kind: 'width-mismatch', objectFormat: 'sha256', stampSha: 'abcdef1', storedAuditBase: storedSha1 },
+  )
+  assert.deepEqual(wrongWidthGit.calls, [{ args: ['rev-parse', '--show-object-format=storage'], input: null }])
+
+  assertDispatchFailure(
+    () => resolveImplementationAuditBase({ planBytes: Buffer.from('# Plan\n'), repositoryRoot, storedAuditBase: null }, { filesystem, git: makeGit().git }),
+    'plan-stamp',
+    { kind: 'missing' },
+  )
+
+  for (const vector of [
+    { label: 'ambiguous abbreviation', storedAuditBase: null },
+    { label: 'unresolvable stored base', storedAuditBase: storedSha1 },
+  ]) {
+    const unresolved = makeGit({ resolveStatus: 1 })
+    assertDispatchFailure(
+      () => resolveImplementationAuditBase({ planBytes, repositoryRoot, storedAuditBase: vector.storedAuditBase }, { filesystem, git: unresolved.git }),
+      'object-format',
+      { kind: 'resolution-failed', objectFormat: 'sha1', stampSha: 'abcdef1', storedAuditBase: vector.storedAuditBase },
+    )
+  }
+
+  const malformedLines = [
+    '- revise-plan graduated 0000-01-01 00:00 at abcdef1, scope: x, content: 12345678',
+    '- revise-plan graduated 2024-00-01 00:00 at abcdef1, scope: x, content: 12345678',
+    '- revise-plan graduated 2024-13-01 00:00 at abcdef1, scope: x, content: 12345678',
+    '- revise-plan graduated 2024-01-00 00:00 at abcdef1, scope: x, content: 12345678',
+    '- revise-plan graduated 2024-04-31 00:00 at abcdef1, scope: x, content: 12345678',
+    '- revise-plan graduated 2023-02-29 00:00 at abcdef1, scope: x, content: 12345678',
+    '- revise-plan graduated 2024-02-29 24:00 at abcdef1, scope: x, content: 12345678',
+    '- revise-plan graduated 2024-02-29 23:60 at abcdef1, scope: x, content: 12345678',
+    '- revise-plan graduated 2024-02-29 23:59 at abcdef, scope: x, content: 12345678',
+    `- revise-plan graduated 2024-02-29 23:59 at ${'a'.repeat(41)}, scope: x, content: 12345678`,
+    '- revise-plan graduated 2024-02-29 23:59 at ABCDEF1, scope: x, content: 12345678',
+    '- revise-plan graduated 2024-02-29 23:59 at abcdeg1, scope: x, content: 12345678',
+    '- revise-plan graduated 2024-02-29 23:59 at abcdef1, scope: , content: 12345678',
+    '- revise-plan graduated 2024-02-29 23:59 at abcdef1, scope:  x, content: 12345678',
+    '- revise-plan graduated 2024-02-29 23:59 at abcdef1, scope: x , content: 12345678',
+    '- revise-plan graduated 2024-02-29 23:59 at abcdef1, scope: x, content: 1234567',
+    '- revise-plan graduated 2024-02-29 23:59 at abcdef1, scope: x, content: 123456789',
+    '- revise-plan graduated 2024-02-29 23:59 at abcdef1, scope: x, content: p-123456789ab',
+    '- revise-plan graduated 2024-02-29 23:59 at abcdef1, scope: x, content: p-123456789abcd',
+    '- revise-plan graduated 2024-02-29 23:59 at abcdef1, scope: x, content: P-123456789abc',
+    '- revise-plan graduated 2024-02-29 23:59 at abcdef1, scope: x, content: p-123456789abG',
+  ]
+  for (const line of malformedLines) {
+    assertDispatchFailure(
+      () => resolveImplementationAuditBase({ planBytes: Buffer.from(`# Plan\n${line}\n`), repositoryRoot, storedAuditBase: null }, { filesystem, git: makeGit().git }),
+      'plan-stamp',
+      { kind: 'malformed', line },
+    )
+  }
+
+  for (const vector of [
+    { stamp: '0001-01-01 00:00', stampSha: 'abcdef1' },
+    { stamp: '2000-02-29 12:30', stampSha: 'abcdef1' },
+    { stamp: '2024-02-29 23:59', stampSha: 'abcdef1' },
+    { stamp: '9999-12-31 23:59', stampSha: 'abcdef1' },
+  ]) {
+    const validPlan = Buffer.from(`# Plan\n- revise-plan graduated ${vector.stamp} at ${vector.stampSha}, scope: x, content: p-123456789abc\n`)
+    assert.deepEqual(
+      resolveImplementationAuditBase({ planBytes: validPlan, repositoryRoot, storedAuditBase: null }, { filesystem, git: makeGit().git }),
+      { auditBase: sha1, objectFormat: 'sha1', stampSha: vector.stampSha },
+    )
+  }
+
+  const validThenMalformed = Buffer.from('# Plan\n- revise-plan graduated 2026-09-01 12:00 at abcdef1, scope: first, content: 12345678\n- revise-plan graduated invalid\n')
+  assertDispatchFailure(
+    () => resolveImplementationAuditBase({ planBytes: validThenMalformed, repositoryRoot, storedAuditBase: null }, { filesystem, git: makeGit().git }),
+    'plan-stamp',
+    { kind: 'malformed', line: '- revise-plan graduated invalid' },
+  )
+
+  const earliestPlan = Buffer.from('# Plan\n- revise-plan graduated 2026-09-02 12:00 at abcdef1, scope: first, content: 12345678\n- revise-plan graduated 2020-01-01 00:00 at bcdef12, scope: second, content: 87654321\n')
+  assert.deepEqual(
+    resolveImplementationAuditBase({ planBytes: earliestPlan, repositoryRoot, storedAuditBase: null }, { filesystem, git: makeGit().git }),
+    { auditBase: sha1, objectFormat: 'sha1', stampSha: 'abcdef1' },
+  )
+
+  let prefixMismatchCalls = 0
+  assertDispatchFailure(
+    () => resolveImplementationAuditBase(
+      { planBytes, repositoryRoot, storedAuditBase: 'b'.repeat(40) },
+      { filesystem, git: () => { prefixMismatchCalls += 1; return gitEnvelope() } },
+    ),
+    'object-format',
+    { kind: 'resolved-id-mismatch', objectFormat: null, stampSha: 'abcdef1', storedAuditBase: 'b'.repeat(40) },
+  )
+  assert.equal(prefixMismatchCalls, 0)
+
+  const mismatchedResolved = `abcdef1${'c'.repeat(33)}`
+  assertDispatchFailure(
+    () => resolveImplementationAuditBase({ planBytes, repositoryRoot, storedAuditBase: storedSha1 }, { filesystem, git: makeGit({ resolved: mismatchedResolved }).git }),
+    'object-format',
+    { kind: 'resolved-id-mismatch', objectFormat: 'sha1', stampSha: 'abcdef1', storedAuditBase: storedSha1 },
+  )
+
+  assertDispatchFailure(
+    () => resolveImplementationAuditBase({ planBytes, repositoryRoot, storedAuditBase: null }, { filesystem, git: makeGit({ mergeStatus: 1 }).git }),
+    'history-base',
+    { auditBase: sha1, kind: 'non-ancestor' },
+  )
+  assertDispatchFailure(
+    () => resolveImplementationAuditBase({ planBytes, repositoryRoot, storedAuditBase: null }, { filesystem, git: makeGit({ mergeStatus: 2 }).git }),
+    'git-command',
+    { args: ['merge-base', '--is-ancestor', sha1, 'HEAD'], operation: 'merge-base', status: 2, stderr: '' },
+  )
+
+  const fixtureRoot = mkdtempSync(join(tmpdir(), 'nightshift-implementation-audit-'))
+  try {
+    writeFileSync(join(fixtureRoot, '.gitignore'), '/.tmp/\n.superpowers/\n')
+    mkdirSync(join(fixtureRoot, '.tmp'))
+    mkdirSync(join(fixtureRoot, '.superpowers'))
+    writeFileSync(join(fixtureRoot, 'fixture.txt'), 'first\n')
+    execFileSync('git', ['init', '--quiet'], { cwd: fixtureRoot })
+    execFileSync('git', ['config', 'core.autocrlf', 'false'], { cwd: fixtureRoot })
+    execFileSync('git', ['config', 'user.email', 'fixture@example.invalid'], { cwd: fixtureRoot })
+    execFileSync('git', ['config', 'user.name', 'Fixture'], { cwd: fixtureRoot })
+    execFileSync('git', ['add', '.gitignore', 'fixture.txt'], { cwd: fixtureRoot })
+    execFileSync('git', ['commit', '--quiet', '-m', 'first'], { cwd: fixtureRoot })
+    const auditBase = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: fixtureRoot, encoding: 'utf8' }).trim()
+    writeFileSync(join(fixtureRoot, 'fixture.txt'), 'second\n')
+    execFileSync('git', ['add', 'fixture.txt'], { cwd: fixtureRoot })
+    execFileSync('git', ['commit', '--quiet', '-m', 'second'], { cwd: fixtureRoot })
+    const fixturePlan = Buffer.from(`# Plan\n- revise-plan graduated 2026-09-01 12:00 at ${auditBase.slice(0, 7)}, scope: whole file, content: 12345678\n`)
+    const fixtureFilesystem = dispatchFilesystem(fixtureRoot)
+    const realGit = (root, args) => {
+      const result = spawnSync('git', args, { cwd: root, encoding: null, shell: false })
+
+      return gitEnvelope({ error: result.error ?? null, signal: result.signal ?? null, status: result.status, stderr: result.stderr, stdout: result.stdout })
+    }
+    assert.deepEqual(
+      resolveImplementationAuditBase({ planBytes: fixturePlan, repositoryRoot: fixtureRoot, storedAuditBase: auditBase }, { filesystem: fixtureFilesystem, git: realGit }),
+      { auditBase, objectFormat: 'sha1', stampSha: auditBase.slice(0, 7) },
+    )
+  } finally {
+    rmSync(fixtureRoot, { force: true, recursive: true })
+  }
 })
 
 test('implementation dispatch maps typed failures', () => {
-  assert.throws(() => deriveImplementationTaskBrief({ planBytes: Buffer.alloc(0), taskHeading: '### Task 1: x' }), (error) => error.code === 'dispatch-input' && error.details.reason === 'empty-buffer')
+  const validDetails = [
+    ...['conflicting-seams', 'empty-buffer', 'invalid-audit-base', 'invalid-option', 'invalid-plan-fingerprint', 'invalid-task-heading', 'invalid-task-id', 'invalid-dispatch-id', 'invalid-scratch-path', 'not-buffer', 'not-canonical-root', 'root-alias', 'root-not-ordinary', 'root-unavailable', 'too-large', 'unknown-key']
+      .map((reason) => ['dispatch-input', { field: 'field', reason }]),
+    ['git-command', { args: ['rev-parse', 'HEAD'], operation: 'resolve-tip', status: null, stderr: '' }],
+    ['git-command', { args: ['rev-parse', 'HEAD'], operation: 'resolve-tip', status: 1, stderr: 'failure\n' }],
+    ...['kind-changed', 'metadata-unavailable', 'metadata-not-ordinary', 'root-mismatch']
+      .map((cause) => ['repository-classification', { cause, path: 'C:\\repo' }]),
+    ['plan-stamp', { kind: 'missing' }],
+    ['plan-stamp', { kind: 'malformed', line: '- revise-plan graduated invalid' }],
+    ...['unsupported-format', 'width-mismatch', 'resolution-failed', 'resolved-id-mismatch']
+      .map((kind) => ['object-format', { kind, objectFormat: kind === 'unsupported-format' ? 'sha512' : 'sha1', stampSha: 'abcdef1', storedAuditBase: null }]),
+    ['ignore-policy', { expectedPattern: '/.tmp/', observedPattern: null, observedSource: null, path: '.tmp/' }],
+    ['ignore-policy', { expectedPattern: '/.tmp/', observedPattern: '/tmp/', observedSource: '.gitignore', path: '.tmp/' }],
+    ['superpowers-policy', { expectedPattern: null, observedPattern: null, observedSource: null, path: '.superpowers/' }],
+    ['superpowers-policy', { expectedPattern: null, observedPattern: '.superpowers/', observedSource: '.gitignore', path: '.superpowers/' }],
+    ['history-base', { auditBase: 'a'.repeat(40), kind: 'missing-object' }],
+    ['history-base', { auditBase: 'a'.repeat(40), kind: 'non-ancestor' }],
+    ['history-base', { auditBase: 'a'.repeat(40), expectedTip: 'b'.repeat(40), kind: 'tip-changed', observedTip: 'c'.repeat(40) }],
+    ['staged-scratch', { paths: ['.tmp/a', '.tmp/b'] }],
+    ['committed-scratch', { offenders: [{ commit: 'a', path: '.tmp/a' }, { commit: 'a', path: '.tmp/b' }, { commit: 'b', path: '.tmp/a' }] }],
+    ['scratch-allocation', { cause: 'root-unavailable', path: 'C:\\repo\\.tmp' }],
+    ['scratch-allocation', { cause: 'parent-alias', path: 'C:\\repo\\.tmp' }],
+    ['scratch-allocation', { cause: 'containment-failure', path: 'C:\\outside' }],
+    ['scratch-tracked', { path: '.tmp/implementation-id' }],
+    ...['commit-count', 'offender-count', 'offender-bytes'].map((kind) => ['audit-limit', { kind, limit: 1, observed: 2 }]),
+  ]
+  for (const [code, details] of validDetails) {
+    const error = new ImplementationDispatchError(code, 'valid details', details)
+    assert.equal(error.name, 'ImplementationDispatchError')
+    assert.equal(error.message, `${code}: valid details`)
+    assert.equal(error.code, code)
+    assert.deepEqual(error.details, details)
+  }
+
+  const codes = ['dispatch-input', 'git-command', 'repository-classification', 'plan-stamp', 'object-format', 'ignore-policy', 'superpowers-policy', 'history-base', 'staged-scratch', 'committed-scratch', 'scratch-allocation', 'scratch-tracked', 'audit-limit']
+  for (const code of codes) {
+    assert.throws(() => new ImplementationDispatchError(code, 'missing details'), TypeError)
+    assert.throws(() => new ImplementationDispatchError(code, 'null details', null), TypeError)
+    assert.throws(() => new ImplementationDispatchError(code, 'array details', []), TypeError)
+  }
+  assert.throws(() => new ImplementationDispatchError('unknown-code', 'unknown', {}), TypeError)
+
+  for (const [code, missing, malformed] of [
+    ['dispatch-input', { field: 'field' }, { field: 1, reason: 'unknown-key' }],
+    ['git-command', { args: [], operation: 'x', status: null }, { args: [1], operation: 'x', status: null, stderr: '' }],
+    ['repository-classification', { cause: 'root-mismatch' }, { cause: 'other', path: 'x' }],
+    ['plan-stamp', {}, { kind: 'malformed' }],
+    ['object-format', { kind: 'width-mismatch', objectFormat: 'sha1', stampSha: 'abcdef1' }, { kind: 'other', objectFormat: 'sha1', stampSha: 'abcdef1', storedAuditBase: null }],
+    ['ignore-policy', { expectedPattern: '/.tmp/', observedPattern: null, observedSource: null }, { expectedPattern: '/tmp/', observedPattern: null, observedSource: null, path: '.tmp/' }],
+    ['superpowers-policy', { expectedPattern: null, observedPattern: null, observedSource: null }, { expectedPattern: '/.superpowers/', observedPattern: null, observedSource: null, path: '.superpowers/' }],
+    ['history-base', { auditBase: 'a', kind: 'tip-changed' }, { auditBase: 'a', kind: 'other' }],
+    ['staged-scratch', {}, { paths: ['b', 'a'] }],
+    ['committed-scratch', {}, { offenders: [{ commit: 'b', path: 'a' }, { commit: 'a', path: 'z' }] }],
+    ['scratch-allocation', { cause: 'x' }, { cause: 1, path: 'x' }],
+    ['scratch-tracked', {}, { path: 1 }],
+    ['audit-limit', { kind: 'commit-count', limit: 1 }, { kind: 'other', limit: 1, observed: 2 }],
+  ]) {
+    assert.throws(() => new ImplementationDispatchError(code, 'missing key', missing), TypeError)
+    assert.throws(() => new ImplementationDispatchError(code, 'malformed value', malformed), TypeError)
+  }
+
+  const validByCode = new Map(validDetails.filter(([code], index, entries) => entries.findIndex(([candidate]) => candidate === code) === index))
+  for (const code of codes) {
+    assert.throws(() => new ImplementationDispatchError(code, 'extra key', { ...validByCode.get(code), extra: true }), TypeError)
+  }
+  assert.throws(() => new ImplementationDispatchError('staged-scratch', 'duplicate path', { paths: ['a', 'a'] }), TypeError)
+  assert.throws(() => new ImplementationDispatchError('committed-scratch', 'wrong path order', { offenders: [{ commit: 'a', path: 'b' }, { commit: 'a', path: 'a' }] }), TypeError)
+  assert.throws(() => new ImplementationDispatchError('committed-scratch', 'wrong commit order', { offenders: [{ commit: 'b', path: 'a' }, { commit: 'a', path: 'z' }] }), TypeError)
+
+  const repositoryRoot = 'C:\\repo'
+  const planBytes = Buffer.from('# Plan\n- revise-plan graduated 2026-09-01 12:00 at abcdef1, scope: x, content: 12345678\n')
+  const storedAuditBase = `abcdef1${'a'.repeat(33)}`
+  const validGit = (_root, args) => gitEnvelope({ stdout: args.includes('--show-object-format=storage') ? Buffer.from('sha1\n') : args.includes('--verify') ? Buffer.from(`${storedAuditBase}\n`) : Buffer.alloc(0) })
+
+  for (const publicCall of [
+    () => classifyImplementationRepository({ repositoryRoot: 'relative' }, { filesystem: dispatchFilesystem('relative'), git: validGit }),
+    () => resolveImplementationAuditBase({ planBytes, repositoryRoot: 'relative', storedAuditBase }, { filesystem: dispatchFilesystem('relative'), git: validGit }),
+    () => classifyImplementationRepository({}, { filesystem: dispatchFilesystem(repositoryRoot), git: validGit }),
+    () => resolveImplementationAuditBase({ planBytes, storedAuditBase }, { filesystem: dispatchFilesystem(repositoryRoot), git: validGit }),
+  ]) {
+    assertDispatchFailure(publicCall, 'dispatch-input', { field: 'repositoryRoot', reason: 'not-canonical-root' })
+  }
+
+  const rootFailureCases = [
+    {
+      classifier: { cause: 'metadata-not-ordinary', path: repositoryRoot },
+      filesystem: dispatchFilesystem(repositoryRoot, { realRoot: 'C:\\canonical' }),
+      resolver: { field: 'repositoryRoot', reason: 'root-alias' },
+    },
+    {
+      classifier: { cause: 'metadata-unavailable', path: repositoryRoot },
+      filesystem: dispatchFilesystem(repositoryRoot, { rootError: Object.assign(new Error('missing'), { code: 'ENOENT' }) }),
+      resolver: { field: 'repositoryRoot', reason: 'root-unavailable' },
+    },
+    {
+      classifier: { cause: 'metadata-not-ordinary', path: repositoryRoot },
+      filesystem: {
+        realpathSync: { native: (value) => value },
+        lstatSync: () => ({ isDirectory: () => false, isReparsePoint: () => false, isSymbolicLink: () => false }),
+      },
+      resolver: { field: 'repositoryRoot', reason: 'root-not-ordinary' },
+    },
+  ]
+  for (const vector of rootFailureCases) {
+    assertDispatchFailure(
+      () => classifyImplementationRepository({ repositoryRoot }, { filesystem: vector.filesystem, git: validGit }),
+      'repository-classification',
+      vector.classifier,
+    )
+    assertDispatchFailure(
+      () => resolveImplementationAuditBase({ planBytes, repositoryRoot, storedAuditBase }, { filesystem: vector.filesystem, git: validGit }),
+      'dispatch-input',
+      vector.resolver,
+    )
+  }
+
+  const optionContainers = [null, [], () => {}, 'x', 1, true, new Date(0)]
+  for (const options of optionContainers) {
+    for (const publicCall of [
+      () => classifyImplementationRepository({ repositoryRoot }, options),
+      () => resolveImplementationAuditBase({ planBytes, repositoryRoot, storedAuditBase }, options),
+    ]) assertDispatchFailure(publicCall, 'dispatch-input', { field: 'options', reason: 'invalid-option' })
+  }
+
+  for (const vector of [
+    { options: { nope: 1 }, details: { field: 'options.nope', reason: 'unknown-key' } },
+    { options: { uuid: null }, details: { field: 'options.uuid', reason: 'unknown-key' } },
+    { options: { filesystem: null }, details: { field: 'options.filesystem', reason: 'invalid-option' } },
+    { options: { git: null }, details: { field: 'options.git', reason: 'invalid-option' } },
+    { options: { resolveGitExecutable: null }, details: { field: 'options.resolveGitExecutable', reason: 'invalid-option' } },
+    { options: { spawnSync: null }, details: { field: 'options.spawnSync', reason: 'invalid-option' } },
+    { options: { git: validGit, resolveGitExecutable: () => 'C:\\git.exe' }, details: { field: 'options', reason: 'conflicting-seams' } },
+    { options: { git: validGit, spawnSync: () => ({}) }, details: { field: 'options', reason: 'conflicting-seams' } },
+  ]) {
+    for (const publicCall of [
+      () => classifyImplementationRepository({ repositoryRoot }, vector.options),
+      () => resolveImplementationAuditBase({ planBytes, repositoryRoot, storedAuditBase }, vector.options),
+    ]) assertDispatchFailure(publicCall, 'dispatch-input', vector.details)
+  }
+
+  for (const vector of [
+    { action: () => deriveImplementationTaskBrief(null), details: { field: 'input', reason: 'unknown-key' } },
+    { action: () => deriveImplementationTaskBrief({ planBytes: Buffer.from('### Task 1: x\n'), taskHeading: '### Task 1: x', extra: true }), details: { field: 'extra', reason: 'unknown-key' } },
+    { action: () => deriveImplementationTaskBrief({ taskHeading: '### Task 1: x' }), details: { field: 'planBytes', reason: 'not-buffer' } },
+    { action: () => classifyImplementationRepository({ repositoryRoot, extra: true }), details: { field: 'extra', reason: 'unknown-key' } },
+    { action: () => resolveImplementationAuditBase(null), details: { field: 'input', reason: 'unknown-key' } },
+    { action: () => resolveImplementationAuditBase({ planBytes, repositoryRoot, storedAuditBase, extra: true }), details: { field: 'extra', reason: 'unknown-key' } },
+    { action: () => resolveImplementationAuditBase({ repositoryRoot, storedAuditBase }), details: { field: 'planBytes', reason: 'not-buffer' } },
+    { action: () => resolveImplementationAuditBase({ planBytes, repositoryRoot }), details: { field: 'storedAuditBase', reason: 'invalid-audit-base' } },
+  ]) assertDispatchFailure(vector.action, 'dispatch-input', vector.details)
+
+  const reorderedBrief = deriveImplementationTaskBrief({ taskHeading: '### Task 1: x', planBytes: Buffer.from('### Task 1: x\n') })
+  assert.deepEqual(reorderedBrief, { briefBytes: Buffer.from('### Task 1: x\n'), taskTitle: 'x' })
+  assert.deepEqual(
+    resolveImplementationAuditBase({ storedAuditBase, repositoryRoot, planBytes }, { git: validGit, filesystem: dispatchFilesystem(repositoryRoot) }),
+    { auditBase: storedAuditBase, objectFormat: 'sha1', stampSha: 'abcdef1' },
+  )
 })
 
 test('ready and plan binding runtime closures exclude init-backlog infrastructure', () => {

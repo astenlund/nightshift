@@ -1,10 +1,9 @@
 'use strict'
 
-const { randomUUID } = require('node:crypto')
 const nodeFilesystem = require('node:fs')
 const nodePath = require('node:path')
 
-const { pathIsContained, resolveTrustedExecutable } = require('../../internal/filesystem-primitives')
+const { resolveTrustedExecutable } = require('../../internal/filesystem-primitives')
 const { runGit } = require('../../internal/git-runner')
 const { scanMarkdown } = require('../spec-agreement/spec-agreement')
 
@@ -34,16 +33,28 @@ function fail(code, message, details) {
 }
 
 function validateErrorDetails(code, details) {
-  if (code === 'dispatch-input' && details && typeof details.field === 'string' && typeof details.reason === 'string' && Object.keys(details).length === 2) return details
-  if (code === 'git-command' && details && Array.isArray(details.args) && typeof details.operation === 'string' && (details.status === null || Number.isInteger(details.status)) && typeof details.stderr === 'string' && Object.keys(details).length === 4) return details
-  const schemas = {
-    'repository-classification': ['cause', 'path'], 'plan-stamp': ['kind'], 'object-format': ['kind', 'objectFormat', 'stampSha', 'storedAuditBase'],
-    'ignore-policy': ['expectedPattern', 'observedPattern', 'observedSource', 'path'], 'superpowers-policy': ['expectedPattern', 'observedPattern', 'observedSource', 'path'],
-    'history-base': ['auditBase', 'kind'], 'staged-scratch': ['paths'], 'committed-scratch': ['offenders'], 'scratch-allocation': ['cause', 'path'],
-    'scratch-tracked': ['path'], 'audit-limit': ['kind', 'limit', 'observed'],
+  const exact = (keys) => details && isPlainObject(details) && Object.keys(details).length === keys.length && keys.every((key) => Object.prototype.hasOwnProperty.call(details, key))
+  const enums = {
+    'dispatch-input': ['conflicting-seams', 'empty-buffer', 'invalid-audit-base', 'invalid-option', 'invalid-plan-fingerprint', 'invalid-task-heading', 'invalid-task-id', 'invalid-dispatch-id', 'invalid-scratch-path', 'not-buffer', 'not-canonical-root', 'root-alias', 'root-not-ordinary', 'root-unavailable', 'too-large', 'unknown-key'],
+    'repository-classification': ['kind-changed', 'metadata-unavailable', 'metadata-not-ordinary', 'root-mismatch'],
+    'object-format': ['unsupported-format', 'width-mismatch', 'resolution-failed', 'resolved-id-mismatch'],
+    'history-base': ['missing-object', 'non-ancestor', 'tip-changed'],
+    'audit-limit': ['commit-count', 'offender-count', 'offender-bytes'],
   }
-  const expected = schemas[code]
-  if (expected && details && Object.keys(details).length === expected.length && expected.every((key) => Object.prototype.hasOwnProperty.call(details, key))) return details
+  if (code === 'dispatch-input' && exact(['field', 'reason']) && typeof details.field === 'string' && enums[code].includes(details.reason)) return details
+  if (code === 'git-command' && exact(['args', 'operation', 'status', 'stderr']) && Array.isArray(details.args) && details.args.every((arg) => typeof arg === 'string') && typeof details.operation === 'string' && (details.status === null || Number.isInteger(details.status)) && typeof details.stderr === 'string') return details
+  if (code === 'repository-classification' && exact(['cause', 'path']) && enums[code].includes(details.cause) && typeof details.path === 'string') return details
+  if (code === 'plan-stamp' && (exact(['kind']) && details.kind === 'missing' || exact(['kind', 'line']) && details.kind === 'malformed' && typeof details.line === 'string')) return details
+  if (code === 'object-format' && exact(['kind', 'objectFormat', 'stampSha', 'storedAuditBase']) && enums[code].includes(details.kind) && (details.objectFormat === null || typeof details.objectFormat === 'string') && /^[0-9a-f]{7,40}$/.test(details.stampSha) && (details.storedAuditBase === null || /^[0-9a-f]{40}$/.test(details.storedAuditBase) || /^[0-9a-f]{64}$/.test(details.storedAuditBase))) return details
+  if (code === 'ignore-policy' && exact(['expectedPattern', 'observedPattern', 'observedSource', 'path']) && details.expectedPattern === '/.tmp/' && (details.observedPattern === null || typeof details.observedPattern === 'string') && (details.observedSource === null || typeof details.observedSource === 'string') && typeof details.path === 'string') return details
+  if (code === 'superpowers-policy' && exact(['expectedPattern', 'observedPattern', 'observedSource', 'path']) && details.expectedPattern === null && details.path === '.superpowers/' && (details.observedPattern === null || typeof details.observedPattern === 'string') && (details.observedSource === null || typeof details.observedSource === 'string')) return details
+  if (code === 'history-base' && exact(['auditBase', 'kind']) && typeof details.auditBase === 'string' && (details.kind === 'missing-object' || details.kind === 'non-ancestor')) return details
+  if (code === 'history-base' && exact(['auditBase', 'expectedTip', 'kind', 'observedTip']) && typeof details.auditBase === 'string' && typeof details.expectedTip === 'string' && typeof details.observedTip === 'string' && details.kind === 'tip-changed') return details
+  if (code === 'staged-scratch' && exact(['paths']) && Array.isArray(details.paths) && details.paths.every((value) => typeof value === 'string') && details.paths.every((value, index) => index === 0 || details.paths[index - 1] < value)) return details
+  if (code === 'committed-scratch' && exact(['offenders']) && Array.isArray(details.offenders) && details.offenders.every((value) => isPlainObject(value) && Object.keys(value).length === 2 && typeof value.commit === 'string' && typeof value.path === 'string') && details.offenders.every((value, index) => index === 0 || details.offenders[index - 1].commit < value.commit || details.offenders[index - 1].commit === value.commit && details.offenders[index - 1].path < value.path)) return details
+  if (code === 'scratch-allocation' && exact(['cause', 'path']) && typeof details.cause === 'string' && typeof details.path === 'string') return details
+  if (code === 'scratch-tracked' && exact(['path']) && typeof details.path === 'string') return details
+  if (code === 'audit-limit' && exact(['kind', 'limit', 'observed']) && enums[code].includes(details.kind) && Number.isSafeInteger(details.limit) && Number.isSafeInteger(details.observed)) return details
   throw new TypeError(`Invalid ${code} error details`)
 }
 
@@ -75,7 +86,7 @@ function validatePlanBytes(value) {
 }
 
 function validateCanonicalRepositoryRoot(repositoryRoot, filesystem = nodeFilesystem) {
-  if (typeof repositoryRoot !== 'string' || !nodePath.isAbsolute(repositoryRoot)) throw new CanonicalRootValidationError('root-alias', repositoryRoot)
+  if (nodePath.resolve(repositoryRoot) !== repositoryRoot) throw new CanonicalRootValidationError('root-alias', repositoryRoot)
   try {
     const resolved = filesystem.realpathSync.native(repositoryRoot)
     if (resolved !== repositoryRoot) throw new CanonicalRootValidationError('root-alias', repositoryRoot)
@@ -94,7 +105,12 @@ function normalizeRunGitResult(raw) {
 
 function requireGitStatus(result, operation, allowedStatuses) {
   validateGitResultEnvelope(result, operation)
-  if (result.error !== null || result.signal !== null || !allowedStatuses.includes(result.status) || result.stderr.length !== 0) throw new Error(`Git command failed for ${operation}`)
+  if (result.error !== null || result.signal !== null || !allowedStatuses.includes(result.status) || result.stderr.length !== 0) {
+    const error = new Error(`Git command failed for ${operation}`)
+    error.status = result.status
+    error.stderr = result.stderr
+    throw error
+  }
 
   return result
 }
@@ -128,7 +144,7 @@ function validateGitResultEnvelope(result, operation) {
   return result
 }
 
-function gitCommand(repositoryRoot, args, input, operation, options) {
+function gitCommand(repositoryRoot, args, input, operation, options, allowedStatuses = [0]) {
   try {
     let raw
     if (typeof options.git === 'function') raw = options.git(repositoryRoot, args, input ?? null)
@@ -137,23 +153,24 @@ function gitCommand(repositoryRoot, args, input, operation, options) {
       raw = runGit(repositoryRoot, args, { ...(input === undefined ? {} : { input }), ...(options.spawnSync === undefined ? {} : { spawnSync: options.spawnSync }), trustedGitPath })
       raw = normalizeRunGitResult(raw)
     }
-    const result = validateGitResultEnvelope(raw, operation)
-    if (result.error !== null || result.signal !== null || ![0, 1].includes(result.status) || result.stderr.length !== 0) throw new Error('Git command failed')
+    const result = requireGitStatus(raw, operation, allowedStatuses)
     return result
   } catch (error) {
     if (error instanceof ImplementationDispatchError) throw error
     const stderr = error?.stderr instanceof Buffer ? error.stderr.toString('utf8') : ''
-    fail('git-command', 'Git command failed', { args, operation, status: null, stderr })
+    const status = Number.isInteger(error?.status) ? error.status : null
+    fail('git-command', 'Git command failed', { args, operation, status, stderr })
   }
 }
 
 function parseExactAsciiLine(bytes, operation, allowed) {
-  if (!Buffer.isBuffer(bytes) || !allowed.some((value) => bytes.equals(Buffer.from(`${value}\n`, 'ascii')))) throw new Error(`Malformed ${operation} output`)
+  if (!Buffer.isBuffer(bytes) || bytes.some((byte) => byte > 0x7f) || !allowed.some((value) => bytes.equals(Buffer.from(`${value}\n`, 'ascii')))) throw new Error(`Malformed ${operation} output`)
   return bytes.toString('ascii').slice(0, -1)
 }
 
 function parsePlanStamp(planBytes) {
   const lines = planBytes.toString('utf8').split(/\r?\n/)
+  let firstStampSha = null
   for (const line of lines) {
     if (!line.startsWith('- revise-plan graduated ')) continue
     const match = PLAN_GRADUATION.exec(line)
@@ -162,8 +179,9 @@ function parsePlanStamp(planBytes) {
     const year = Number(date.slice(0, 4)); const month = Number(date.slice(5, 7)); const day = Number(date.slice(8, 10)); const hour = Number(date.slice(11, 13)); const minute = Number(date.slice(14, 16))
     const days = [0, 31, (year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0)) ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
     if (year < 1 || month < 1 || month > 12 || day < 1 || day > days[month] || hour > 23 || minute > 59) fail('plan-stamp', 'Malformed plan stamp', { kind: 'malformed', line })
-    return match[1]
+    if (firstStampSha === null) firstStampSha = match[1]
   }
+  if (firstStampSha !== null) return firstStampSha
   fail('plan-stamp', 'Plan stamp is missing', { kind: 'missing' })
 }
 
@@ -173,8 +191,9 @@ function deriveImplementationTaskBrief(input) {
   if (typeof input.taskHeading !== 'string') fail('dispatch-input', 'Task heading is invalid', { field: 'taskId', reason: 'invalid-task-heading' })
   const headingPattern = /^### Task ([1-9][0-9]{0,8}): (.+)$/u
   const match = headingPattern.exec(input.taskHeading)
-  if (!match || match[2].length > 1024 || /^\s|\s$/u.test(match[2]) || /\p{Control}/u.test(match[2])) fail('dispatch-input', 'Task heading is invalid', { field: 'taskId', reason: 'invalid-task-heading' })
-  const scanned = scanMarkdown(input.planBytes)
+  if (!match || match[2].length > 1024 || /^[\s]|[\s]$/u.test(match[2]) || /\p{Control}/u.test(match[2]) || /[\r\n\u2028\u2029]/u.test(input.taskHeading)) fail('dispatch-input', 'Task heading is invalid', { field: 'taskId', reason: 'invalid-task-heading' })
+  let scanned
+  try { scanned = scanMarkdown(input.planBytes) } catch { fail('dispatch-input', 'Task heading is invalid', { field: 'taskId', reason: 'invalid-task-heading' }) }
   const taskRecords = scanned.lines.filter((line) => line.outsideFence && line.heading?.level === 3 && /^### Task /.test(line.content))
   const canonical = taskRecords.filter((line) => headingPattern.test(line.content))
   if (canonical.some((line, index) => canonical.findIndex((other) => other.content.slice(other.content.indexOf(': ') + 2) === line.content.slice(line.content.indexOf(': ') + 2)) !== index)) fail('dispatch-input', 'Task heading is invalid', { field: 'taskId', reason: 'invalid-task-heading' })
@@ -189,21 +208,34 @@ function deriveImplementationTaskBrief(input) {
 function classifyImplementationRepository(input, suppliedOptions = {}) {
   if (!isPlainObject(input) || Object.keys(input).some((key) => key !== 'repositoryRoot')) fail('dispatch-input', 'Unknown classifier input', { field: Object.keys(input ?? {}).find((key) => key !== 'repositoryRoot') ?? 'input', reason: 'unknown-key' })
   const options = validateOptions(suppliedOptions)
+  if (typeof input.repositoryRoot !== 'string' || !nodePath.isAbsolute(input.repositoryRoot)) fail('dispatch-input', 'Repository root is invalid', { field: 'repositoryRoot', reason: 'not-canonical-root' })
   let root
   try { root = validateCanonicalRepositoryRoot(input?.repositoryRoot, options.filesystem ?? nodeFilesystem) } catch (error) {
     if (!(error instanceof CanonicalRootValidationError)) throw error
     fail('repository-classification', 'Repository metadata is unavailable', { cause: error.cause === 'root-unavailable' ? 'metadata-unavailable' : 'metadata-not-ordinary', path: error.path })
   }
   try {
-    try {
-      const marker = (options.filesystem ?? nodeFilesystem).lstatSync(nodePath.join(root, '.git'), { bigint: true })
-      if (!marker.isDirectory() && !marker.isFile() || marker.isSymbolicLink() || marker.isReparsePoint?.()) return { kind: 'non-git' }
-    } catch {
-      return { kind: 'non-git' }
+    const filesystem = options.filesystem ?? nodeFilesystem
+    let current = root
+    let markerFound = false
+    while (true) {
+      const markerPath = nodePath.join(current, '.git')
+      try {
+        const marker = filesystem.lstatSync(markerPath, { bigint: true })
+        if (!marker.isDirectory() && !marker.isFile() || marker.isSymbolicLink() || marker.isReparsePoint?.()) fail('repository-classification', 'Git metadata is not ordinary', { cause: 'metadata-not-ordinary', path: markerPath })
+        markerFound = true
+        break
+      } catch (error) {
+        if (error instanceof ImplementationDispatchError) throw error
+        if (error?.code !== 'ENOENT' && error?.code !== 'ENOTDIR') fail('repository-classification', 'Git metadata is unavailable', { cause: 'metadata-unavailable', path: markerPath })
+      }
+      const parent = nodePath.dirname(current)
+      if (parent === current) break
+      current = parent
     }
+    if (!markerFound) return { kind: 'non-git' }
     const result = gitCommand(root, ['rev-parse', '--show-toplevel'], undefined, 'show-toplevel', options)
-    if (result.status === 1) return { kind: 'non-git' }
-    if (result.stdout.length === 0 || result.stdout[result.stdout.length - 1] !== 0x0a || result.stdout.includes(0x0d) || result.stdout.length < 2) throw new Error('Malformed show-toplevel output')
+    if (result.stdout.length === 0 || result.stdout[result.stdout.length - 1] !== 0x0a || result.stdout.subarray(0, -1).includes(0x0a) || result.stdout.includes(0x0d) || result.stdout.length < 2 || result.stdout.some((byte) => byte > 0x7f)) fail('git-command', 'Malformed Git output', { args: ['rev-parse', '--show-toplevel'], operation: 'show-toplevel', status: result.status, stderr: '' })
     const top = result.stdout.subarray(0, -1).toString('utf8')
     if (top !== root) fail('repository-classification', 'Git root differs', { cause: 'root-mismatch', path: root })
     return { kind: 'git' }
@@ -219,6 +251,7 @@ function resolveImplementationAuditBase(input, suppliedOptions = {}) {
   validatePlanBytes(input.planBytes)
   if (input.storedAuditBase !== null && !/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/.test(input.storedAuditBase ?? '')) fail('dispatch-input', 'Audit base is invalid', { field: 'storedAuditBase', reason: 'invalid-audit-base' })
   const options = validateOptions(suppliedOptions)
+  if (typeof input.repositoryRoot !== 'string' || !nodePath.isAbsolute(input.repositoryRoot)) fail('dispatch-input', 'Repository root is invalid', { field: 'repositoryRoot', reason: 'not-canonical-root' })
   let root
   try { root = validateCanonicalRepositoryRoot(input.repositoryRoot, options.filesystem ?? nodeFilesystem) } catch (error) {
     if (!(error instanceof CanonicalRootValidationError)) throw error
@@ -226,20 +259,27 @@ function resolveImplementationAuditBase(input, suppliedOptions = {}) {
   }
   const stampSha = parsePlanStamp(input.planBytes)
   if (input.storedAuditBase !== null && !input.storedAuditBase.startsWith(stampSha)) fail('object-format', 'Stored audit base does not match stamp', { kind: 'resolved-id-mismatch', objectFormat: null, stampSha, storedAuditBase: input.storedAuditBase })
-  const formatResult = gitCommand(root, ['rev-parse', '--show-object-format=storage'], undefined, 'show-object-format', options)
-  const objectFormat = parseExactAsciiLine(formatResult.stdout, 'show-object-format', ['sha1', 'sha256'])
+  const formatArgs = ['rev-parse', '--show-object-format=storage']
+  const formatResult = gitCommand(root, formatArgs, undefined, 'show-object-format', options)
+  let objectFormat
+  try { objectFormat = parseExactAsciiLine(formatResult.stdout, 'show-object-format', ['sha1', 'sha256']) } catch { fail('git-command', 'Malformed Git output', { args: formatArgs, operation: 'show-object-format', status: formatResult.status, stderr: '' }) }
   const width = objectFormat === 'sha1' ? 40 : 64
   if (input.storedAuditBase !== null && input.storedAuditBase.length !== width) fail('object-format', 'Audit base width does not match object format', { kind: 'width-mismatch', objectFormat, stampSha, storedAuditBase: input.storedAuditBase })
   const value = input.storedAuditBase ?? stampSha
-  const resolved = gitCommand(root, ['rev-parse', '--verify', `${value}^{commit}`], undefined, 'resolve-commit', options)
-  let auditBase
-  try {
-    if (resolved.stdout.length !== width + 1 || resolved.stdout[width] !== 0x0a || !/^[0-9a-f]+$/.test(resolved.stdout.subarray(0, width).toString('ascii'))) throw new Error('Malformed commit id')
-    auditBase = resolved.stdout.subarray(0, width).toString('ascii')
-  } catch {
-    fail('object-format', 'Commit resolution failed', { kind: 'resolution-failed', objectFormat, stampSha, storedAuditBase: input.storedAuditBase })
+  const resolveArgs = ['rev-parse', '--verify', `${value}^{commit}`]
+  let resolved
+  try { resolved = gitCommand(root, resolveArgs, undefined, 'resolve-commit', options, [0, 1]) } catch (error) {
+    if (error instanceof ImplementationDispatchError && error.code === 'git-command' && error.details.status === 1) fail('object-format', 'Commit abbreviation could not be resolved', { kind: 'resolution-failed', objectFormat, stampSha, storedAuditBase: input.storedAuditBase })
+    throw error
   }
+  if (resolved.status === 1) fail('object-format', 'Commit abbreviation could not be resolved', { kind: 'resolution-failed', objectFormat, stampSha, storedAuditBase: input.storedAuditBase })
+  let auditBase
+  if (resolved.stdout.length !== width + 1 || resolved.stdout[width] !== 0x0a || resolved.stdout.some((byte) => byte > 0x7f) || !/^[0-9a-f]+$/.test(resolved.stdout.subarray(0, width).toString('ascii'))) fail('git-command', 'Malformed Git output', { args: resolveArgs, operation: 'resolve-commit', status: resolved.status, stderr: '' })
+  auditBase = resolved.stdout.subarray(0, width).toString('ascii')
   if (auditBase.length !== width || (input.storedAuditBase !== null && auditBase !== input.storedAuditBase)) fail('object-format', 'Resolved commit differs', { kind: 'resolved-id-mismatch', objectFormat, stampSha, storedAuditBase: input.storedAuditBase })
+  const mergeArgs = ['merge-base', '--is-ancestor', auditBase, 'HEAD']
+  const mergeResult = gitCommand(root, mergeArgs, undefined, 'merge-base', options, [0, 1])
+  if (mergeResult.status === 1) fail('history-base', 'Audit base is not an ancestor of HEAD', { auditBase, kind: 'non-ancestor' })
 
   return { auditBase, objectFormat, stampSha }
 }
