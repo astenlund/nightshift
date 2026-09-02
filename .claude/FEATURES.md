@@ -165,6 +165,10 @@ Draft exploring mechanical enforcement that blocks prohibited controller-suite e
 
 Draft exploring an explicit, tested policy for which repository paths ship in marketplace installations, prompted by backlog files appearing in the installed plugin. The design must separate runtime resources from repository-maintenance and development-only content, preserve `${CLAUDE_PLUGIN_ROOT}` dependencies, and keep Claude Code and Codex installation surfaces equivalent.
 
+### [Overarching backlog goals](features/overarching-backlog-goals.md)
+
+Draft exploring an `## Overarching goals` section for absolute invariants, mutable directional goals, and north-star vision. `/nightshift:ready` would explain how recommendations advance current goals while keeping them separate from dependency resolution, readiness, authorization, and same-session agreement.
+
 ## Review hardening
 
 ### [Bundled revise controller](features/bundled-revise-controller.md)
