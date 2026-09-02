@@ -491,33 +491,33 @@ test('implementation dispatch allocates isolated scratch', () => {
   mkdirSync(join(repositoryRoot, '.tmp'), { recursive: true })
   const validUuid = '123e4567-e89b-42d3-a456-426614174000'
   try {
-    const result = createImplementationScratch({ dispatchId: 'dispatch', repositoryRoot, taskId: 'task' }, { randomUUID: () => validUuid })
+    const result = createImplementationScratch({ dispatchId: 'dispatch', repositoryRoot, taskId: 'task' }, { uuid: () => validUuid })
     assert.equal(result.relativePath, '.tmp/implementation-0ebb429fa86d-db8d1b6d64e4-123e4567-e89b-42d3-a456-426614174000')
     assert.equal(result.absolutePath, join(repositoryRoot, result.relativePath))
     assert.equal(lstatSync(result.absolutePath).isDirectory(), true)
 
-    const unicode = createImplementationScratch({ dispatchId: 'dispatch', repositoryRoot, taskId: '\u00c5' }, { randomUUID: () => validUuid.replace('000', '001') })
+    const unicode = createImplementationScratch({ dispatchId: 'dispatch', repositoryRoot, taskId: '\u00c5' }, { uuid: () => validUuid.replace('000', '001') })
     assert.equal(unicode.relativePath, '.tmp/implementation-0a94dc9d420d-db8d1b6d64e4-123e4567-e89b-42d3-a456-426614174001')
-    const decomposed = createImplementationScratch({ dispatchId: 'dispatch', repositoryRoot, taskId: 'A\u030a' }, { randomUUID: () => validUuid.replace('000', '002') })
+    const decomposed = createImplementationScratch({ dispatchId: 'dispatch', repositoryRoot, taskId: 'A\u030a' }, { uuid: () => validUuid.replace('000', '002') })
     assert.notEqual(decomposed.relativePath, unicode.relativePath)
-    const swapped = createImplementationScratch({ dispatchId: 'task', repositoryRoot, taskId: 'dispatch' }, { randomUUID: () => validUuid.replace('000', '003') })
+    const swapped = createImplementationScratch({ dispatchId: 'task', repositoryRoot, taskId: 'dispatch' }, { uuid: () => validUuid.replace('000', '003') })
     assert.notEqual(swapped.relativePath, result.relativePath)
 
     for (const value of ['', 'x'.repeat(1025), 1, ...[0x0000, 0x000a, 0x007f, 0x0085].map((codePoint) => String.fromCharCode(codePoint))]) {
-      assertDispatchFailure(() => createImplementationScratch({ dispatchId: 'dispatch', repositoryRoot, taskId: value }, { randomUUID: () => validUuid }), 'dispatch-input', { field: 'taskId', reason: 'invalid-task-id' })
+      assertDispatchFailure(() => createImplementationScratch({ dispatchId: 'dispatch', repositoryRoot, taskId: value }, { uuid: () => validUuid }), 'dispatch-input', { field: 'taskId', reason: 'invalid-task-id' })
     }
     for (const value of ['', 'x'.repeat(1025), 1, ...[0x0000, 0x000a, 0x007f, 0x0085].map((codePoint) => String.fromCharCode(codePoint))]) {
-      assertDispatchFailure(() => createImplementationScratch({ dispatchId: value, repositoryRoot, taskId: 'task' }, { randomUUID: () => validUuid }), 'dispatch-input', { field: 'dispatchId', reason: 'invalid-dispatch-id' })
+      assertDispatchFailure(() => createImplementationScratch({ dispatchId: value, repositoryRoot, taskId: 'task' }, { uuid: () => validUuid }), 'dispatch-input', { field: 'dispatchId', reason: 'invalid-dispatch-id' })
     }
-    assertDispatchFailure(() => createImplementationScratch({ dispatchId: String.fromCharCode(0x0085), repositoryRoot, taskId: String.fromCharCode(0x000a) }, { randomUUID: () => validUuid }), 'dispatch-input', { field: 'taskId', reason: 'invalid-task-id' })
-    assertDispatchFailure(() => createImplementationScratch({ dispatchId: '', repositoryRoot: 'relative', taskId: '' }, { randomUUID: () => validUuid }), 'dispatch-input', { field: 'taskId', reason: 'invalid-task-id' })
-    assertDispatchFailure(() => createImplementationScratch({ dispatchId: 'dispatch', repositoryRoot: `${repositoryRoot}${nodePath.sep}.`, taskId: 'task' }, { randomUUID: () => validUuid }), 'dispatch-input', { field: 'repositoryRoot', reason: 'not-canonical-root' })
+    assertDispatchFailure(() => createImplementationScratch({ dispatchId: String.fromCharCode(0x0085), repositoryRoot, taskId: String.fromCharCode(0x000a) }, { uuid: () => validUuid }), 'dispatch-input', { field: 'taskId', reason: 'invalid-task-id' })
+    assertDispatchFailure(() => createImplementationScratch({ dispatchId: '', repositoryRoot: 'relative', taskId: '' }, { uuid: () => validUuid }), 'dispatch-input', { field: 'taskId', reason: 'invalid-task-id' })
+    assertDispatchFailure(() => createImplementationScratch({ dispatchId: 'dispatch', repositoryRoot: `${repositoryRoot}${nodePath.sep}.`, taskId: 'task' }, { uuid: () => validUuid }), 'dispatch-input', { field: 'repositoryRoot', reason: 'not-canonical-root' })
     for (const uuid of [null, '123E4567-E89B-42D3-A456-426614174000', '123e4567-e89b-52d3-a456-426614174000', 'bad']) {
-      assertDispatchFailure(() => createImplementationScratch({ dispatchId: 'dispatch', repositoryRoot, taskId: 'task' }, { randomUUID: () => uuid }), 'scratch-allocation', { cause: 'invalid-uuid', path: join(repositoryRoot, '.tmp', 'implementation-0ebb429fa86d-db8d1b6d64e4-') })
+      assertDispatchFailure(() => createImplementationScratch({ dispatchId: 'dispatch', repositoryRoot, taskId: 'task' }, { uuid: () => uuid }), 'scratch-allocation', { cause: 'invalid-uuid', path: join(repositoryRoot, '.tmp', 'implementation-0ebb429fa86d-db8d1b6d64e4-') })
     }
 
     const collisionFilesystem = { ...nodeFilesystem, mkdirSync: () => { const error = new Error('exists'); error.code = 'EEXIST'; throw error } }
-    assertDispatchFailure(() => createImplementationScratch({ dispatchId: 'dispatch', repositoryRoot, taskId: 'task' }, { filesystem: collisionFilesystem, randomUUID: () => validUuid }), 'scratch-allocation', { cause: 'create-failed', path: join(repositoryRoot, '.tmp', 'implementation-0ebb429fa86d-db8d1b6d64e4-123e4567-e89b-42d3-a456-426614174000') })
+    assertDispatchFailure(() => createImplementationScratch({ dispatchId: 'dispatch', repositoryRoot, taskId: 'task' }, { filesystem: collisionFilesystem, uuid: () => validUuid }), 'scratch-allocation', { cause: 'create-failed', path: join(repositoryRoot, '.tmp', 'implementation-0ebb429fa86d-db8d1b6d64e4-123e4567-e89b-42d3-a456-426614174000') })
     assert.equal(Object.hasOwn(require('../skills/handover/implementation-dispatch'), 'cleanupImplementationScratch'), false)
     assert.equal(Object.hasOwn(require('../skills/handover/implementation-dispatch'), 'scanImplementationScratch'), false)
   } finally {
@@ -546,7 +546,7 @@ test('implementation dispatch allocation matrix rejects unsafe filesystem states
     mkdirSync(path, options) { calls.push(['mkdir', path, options]); if (states.mkdir instanceof Error) throw states.mkdir; created.add(path) },
     }
   }
-  const allocate = (filesystem, input = { dispatchId: 'dispatch', repositoryRoot, taskId: 'task' }) => createImplementationScratch(input, { filesystem, randomUUID: () => uuid })
+  const allocate = (filesystem, input = { dispatchId: 'dispatch', repositoryRoot, taskId: 'task' }) => createImplementationScratch(input, { filesystem, uuid: () => uuid })
   const assertCause = (action, code, details) => assertDispatchFailure(action, code, details)
 
   for (const [value, reason] of [['relative', 'not-canonical-root'], [`${repositoryRoot}${nodePath.sep}.`, 'not-canonical-root']]) {
@@ -582,13 +582,36 @@ test('implementation dispatch allocation matrix rejects unsafe filesystem states
   }
   assertCause(() => allocate(makeFilesystem({ realpath: { [target]: 'C:/created-alias' } })), 'scratch-allocation', { cause: 'created-alias', path: target })
 
-  let gitCalls = 0
   const noGitFilesystem = makeFilesystem()
-  const result = createImplementationScratch({ dispatchId: 'dispatch', repositoryRoot, taskId: 'task' }, { filesystem: noGitFilesystem, git: () => { gitCalls += 1; throw new Error('Git must not be called') }, randomUUID: () => uuid })
+  const result = createImplementationScratch({ dispatchId: 'dispatch', repositoryRoot, taskId: 'task' }, { filesystem: noGitFilesystem, uuid: () => uuid })
   assert.equal(typeof result.absolutePath, 'string')
-  assert.equal(gitCalls, 0)
   assert.equal(Object.hasOwn(require('../skills/handover/implementation-dispatch'), 'cleanupImplementationScratch'), false)
   assert.equal(Object.hasOwn(require('../skills/handover/implementation-dispatch'), 'scanImplementationScratch'), false)
+})
+
+test('implementation dispatch enforces exact option contracts', () => {
+  const repositoryRoot = 'C:\\option-root'
+  const planBytes = Buffer.from('# Plan\n- revise-plan graduated 2026-09-01 12:00 at abcdef1, scope: x, content: 12345678\n')
+  const storedAuditBase = `abcdef1${'a'.repeat(33)}`
+  const auditInput = { auditBase: storedAuditBase, objectFormat: 'sha1', repositoryRoot, scratchRelativePath: null }
+  const scratchInput = { dispatchId: 'dispatch', repositoryRoot, taskId: 'task' }
+
+  const gitHelperCalls = [
+    (options) => classifyImplementationRepository({ repositoryRoot }, options),
+    (options) => resolveImplementationAuditBase({ planBytes, repositoryRoot, storedAuditBase }, options),
+    (options) => inspectImplementationBoundary(auditInput, options),
+  ]
+  for (const call of gitHelperCalls) {
+    assertDispatchFailure(() => call({ uuid: () => 'unused' }), 'dispatch-input', { field: 'options.uuid', reason: 'unknown-key' })
+    assertDispatchFailure(() => call({ randomUUID: () => 'unused' }), 'dispatch-input', { field: 'options.randomUUID', reason: 'unknown-key' })
+    assertDispatchFailure(() => call({ filesystem: null, uuid: null }), 'dispatch-input', { field: 'options.uuid', reason: 'unknown-key' })
+  }
+
+  assertDispatchFailure(() => createImplementationScratch(scratchInput, { uuid: null }), 'dispatch-input', { field: 'options.uuid', reason: 'invalid-option' })
+  assertDispatchFailure(() => createImplementationScratch(scratchInput, { uuid: null, randomUUID: () => 'unused' }), 'dispatch-input', { field: 'options.randomUUID', reason: 'unknown-key' })
+  for (const key of ['git', 'randomUUID', 'resolveGitExecutable', 'spawnSync']) {
+    assertDispatchFailure(() => createImplementationScratch(scratchInput, { [key]: () => 'unused' }), 'dispatch-input', { field: `options.${key}`, reason: 'unknown-key' })
+  }
 })
 
 test('implementation dispatch normalizes Git envelopes', () => {
@@ -602,6 +625,7 @@ test('implementation dispatch normalizes Git envelopes', () => {
     'parseNulPathList',
     'parseLfObjectIds',
     'parseExactAsciiLine',
+    'validateGitTopLevel',
     'gitCommand',
     'parsePlanStamp',
   ]) {
@@ -609,6 +633,7 @@ test('implementation dispatch normalizes Git envelopes', () => {
     const definitionCount = dispatchSource.split(definition).length - 1
     assert.equal(definitionCount, 1, `${helperName} must have exactly one private definition; found ${definitionCount}`)
   }
+  assert.equal(dispatchSource.split('validateGitTopLevel(').length - 1, 3, 'the shared Git top-level validator must have one definition and exactly two callers')
 
   const repositoryRoot = 'C:\\repo'
   const planBytes = Buffer.from('# Plan\n- revise-plan graduated 2026-09-01 12:00 at abcdef1, scope: x, content: 12345678\n')
@@ -754,7 +779,7 @@ test('implementation dispatch classifies repositories', () => {
     assertDispatchFailure(
       () => classifyImplementationRepository({ repositoryRoot: root }, { filesystem, git: () => gitEnvelope({ stdout: Buffer.from(`${topLevel}\n`) }) }),
       'repository-classification',
-      { cause: 'root-mismatch', path: root },
+      { cause: 'root-mismatch', path: topLevel },
     )
   }
 
@@ -815,13 +840,46 @@ test('implementation dispatch classifies repositories', () => {
     )
   }
 
+  assert.deepEqual(
+    classifyImplementationRepository({ repositoryRoot: malformedRoot }, { filesystem: malformedFilesystem, git: () => gitEnvelope({ stdout: Buffer.from('C:/repo\n') }) }),
+    { kind: 'git' },
+  )
+  assert.deepEqual(
+    classifyImplementationRepository({ repositoryRoot: malformedRoot }, { filesystem: malformedFilesystem, git: () => gitEnvelope({ stdout: Buffer.from('C:/repo/child/../.\n') }) }),
+    { kind: 'git' },
+  )
+
+  const classifierAlias = 'C:\\repo-alias'
+  const classifierAliasFilesystem = dispatchFilesystem(malformedRoot, { markerEntries: new Map([[join(malformedRoot, '.git'), dispatchMarker('directory')]]) })
+  classifierAliasFilesystem.realpathSync.native = (path) => path === classifierAlias ? malformedRoot : path
+  assert.deepEqual(
+    classifyImplementationRepository({ repositoryRoot: malformedRoot }, { filesystem: classifierAliasFilesystem, git: () => gitEnvelope({ stdout: Buffer.from(`${classifierAlias}\n`) }) }),
+    { kind: 'git' },
+  )
+
   for (const topLevel of ['C:\\other', 'c:\\repo', ' C:\\repo', 'C:\\repo ']) {
     assertDispatchFailure(
       () => classifyImplementationRepository({ repositoryRoot: malformedRoot }, { filesystem: malformedFilesystem, git: () => gitEnvelope({ stdout: Buffer.from(`${topLevel}\n`) }) }),
       'repository-classification',
-      { cause: 'root-mismatch', path: malformedRoot },
+      { cause: 'root-mismatch', path: topLevel },
     )
   }
+
+  const classifierInaccessible = 'C:/inaccessible/../inaccessible-root'
+  const canonicalClassifierInaccessible = 'C:\\inaccessible-root'
+  const inaccessibleClassifierFilesystem = dispatchFilesystem(malformedRoot, { markerEntries: new Map([[join(malformedRoot, '.git'), dispatchMarker('directory')]]) })
+  inaccessibleClassifierFilesystem.realpathSync.native = (path) => {
+    if (path === canonicalClassifierInaccessible) throw Object.assign(new Error('access denied'), { code: 'EACCES' })
+
+    return path
+  }
+  assertDispatchFailure(
+    () => classifyImplementationRepository({ repositoryRoot: malformedRoot }, { filesystem: inaccessibleClassifierFilesystem, git: () => gitEnvelope({ stdout: Buffer.from(`${classifierInaccessible}\n`) }) }),
+    'repository-classification',
+    { cause: 'metadata-unavailable', path: classifierInaccessible },
+  )
+
+  assert.deepEqual(classifyImplementationRepository({ repositoryRoot: REPOSITORY_ROOT }), { kind: 'git' })
 })
 
 test('implementation dispatch resolves audit bases', () => {
@@ -1033,6 +1091,84 @@ test('implementation dispatch audits root scratch history', () => {
   assert.deepEqual(calls[2].input, Buffer.from('.tmp/nightshift-implementation-policy-probe' + nul, 'utf8'))
   assert.deepEqual(calls[3].input, Buffer.from('.superpowers/nightshift-implementation-policy-probe' + nul, 'utf8'))
   assert.deepEqual(calls[9].args, ['ls-files', '-z', '--', ':(literal).tmp/implementation-000000000000-000000000000-00000000-0000-4000-8000-000000000000'])
+})
+
+test('implementation dispatch validates returned top-level identity', () => {
+  const root = 'C:\\audit-root'
+  const base = 'a'.repeat(40)
+  const input = { auditBase: base, objectFormat: 'sha1', repositoryRoot: root, scratchRelativePath: null }
+  const run = (top, filesystem = dispatchFilesystem(root)) => inspectImplementationBoundary(input, {
+    filesystem,
+    git: createImplementationBoundaryGit({ overrides: new Map([['show-toplevel', gitEnvelope({ stdout: Buffer.from(`${top}\n`) })]]) }),
+  })
+
+  assert.deepEqual(run(root), { commitsChecked: 0, scratchTracked: false })
+  assert.deepEqual(run('C:/audit-root'), { commitsChecked: 0, scratchTracked: false })
+
+  const normalizedEquivalent = `${root}${nodePath.sep}.`
+  assert.deepEqual(run(normalizedEquivalent), { commitsChecked: 0, scratchTracked: false })
+  const mixedAlias = 'C:/audit-root/child/../.'
+  assert.deepEqual(run(mixedAlias), { commitsChecked: 0, scratchTracked: false })
+
+  const realpathAlias = 'C:\\audit-alias'
+  let aliasRealpathCalls = 0
+  const aliasFilesystem = dispatchFilesystem(root)
+  aliasFilesystem.realpathSync.native = (path) => {
+    if (path === realpathAlias) aliasRealpathCalls += 1
+
+    return path === realpathAlias ? root : path
+  }
+  assert.deepEqual(run(realpathAlias, aliasFilesystem), { commitsChecked: 0, scratchTracked: false })
+  assert.equal(aliasRealpathCalls, 1)
+
+  const relativeTop = 'audit-root'
+  assertDispatchFailure(() => run(relativeTop), 'repository-classification', { cause: 'root-mismatch', path: relativeTop })
+
+  const differentRoot = 'C:\\different-root'
+  assertDispatchFailure(() => run(differentRoot), 'repository-classification', { cause: 'root-mismatch', path: differentRoot })
+
+  let rootRealpathCalls = 0
+  const physicallyDifferentFilesystem = dispatchFilesystem(root)
+  physicallyDifferentFilesystem.realpathSync.native = (path) => {
+    rootRealpathCalls += 1
+
+    return rootRealpathCalls === 1 ? path : differentRoot
+  }
+  assertDispatchFailure(() => run(root, physicallyDifferentFilesystem), 'repository-classification', { cause: 'root-mismatch', path: root })
+
+  const inaccessibleTop = 'C:/inaccessible/../inaccessible-root'
+  const canonicalInaccessibleTop = 'C:\\inaccessible-root'
+  const inaccessibleFilesystem = dispatchFilesystem(root)
+  inaccessibleFilesystem.realpathSync.native = (path) => {
+    if (path === canonicalInaccessibleTop) throw Object.assign(new Error('access denied'), { code: 'EACCES' })
+
+    return path
+  }
+  const failure = captureDispatchFailure(
+    () => run(inaccessibleTop, inaccessibleFilesystem),
+    'repository-classification',
+    { cause: 'metadata-unavailable', path: inaccessibleTop },
+  )
+  assert.deepEqual(Object.keys(failure.details), ['cause', 'path'])
+
+  const malformedFrames = [
+    Buffer.alloc(0),
+    Buffer.from(root),
+    Buffer.from(`${root}\r\n`),
+    Buffer.from(`${root}\nextra\n`),
+    Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), Buffer.from(`${root}\n`)]),
+    Buffer.from([0xff, 0x0a]),
+  ]
+  for (const frame of malformedFrames) {
+    assertDispatchFailure(
+      () => inspectImplementationBoundary(input, {
+        filesystem: dispatchFilesystem(root),
+        git: createImplementationBoundaryGit({ overrides: new Map([['show-toplevel', gitEnvelope({ stdout: frame })]]) }),
+      }),
+      'git-command',
+      { args: ['rev-parse', '--show-toplevel'], operation: 'show-toplevel', status: 0, stderr: '' },
+    )
+  }
 })
 
 test('implementation dispatch audits real add-delete and merge history', () => {
@@ -1645,12 +1781,95 @@ test('handover pins the durable queue lifecycle contract', () => {
     assert.equal(countExact(scopeSection, contractTerm), 1, `handover scope must ${expectation} exactly once`)
   }
 
+  assert.equal(countExact(scopeSection, '`implementationAuditBase`'), 1)
+  assert.equal(countExact(scopeSection, '`bindImplementationAuditBase`'), 1)
+  assert.equal(countExact(scopeSection, 'canonical version-1 queue'), 1)
+  assert.equal(scopeSection.includes('returns exactly `{ complete, nextStep, sourceBuffer }`'), true)
+  assert.equal(scopeSection.includes('returns replacement bytes plus the bound value'), false)
+
   const rebuildGuard = 'scratch state can never skip a lifecycle gate'
   assert.equal(countExact(body, rebuildGuard), 1, 'handover must restart at the ladder when queue marks would skip a gate')
   assert.equal(countExact(body, 'a queue may resume earlier than or at the detected ladder step, never later'), 1, 'handover must treat the ladder as the latest safe resume bound')
   assert.equal(countExact(body, 'completing step 12 marks steps 10 and 12 together'), 1, 'handover must model the coupled step-10 and step-12 tail marks')
   assert.equal(body.indexOf(rebuildGuard) > agreementStart, true, 'the resume branch must live in the agreement and stage entry procedure')
   assert.equal(body.includes('sub-step resume is deliberately not tracked'), false, 'handover must not deny the cross-session step resume the queue now provides')
+})
+
+test('handover pins implementation dispatch scratch isolation', () => {
+  const body = parseFrontmatter(join(PUBLIC_SKILLS_ROOT, 'handover', 'SKILL.md')).body
+  const startMarker = '4. **Implement the plan**'
+  const endMarker = '5. ' + String.fromCharCode(96) + '/nightshift:revise-code' + String.fromCharCode(96)
+  assert.equal(countExact(body, startMarker), 1)
+  assert.equal(countExact(body, endMarker), 1)
+  const implementationStep = body.slice(body.indexOf(startMarker), body.indexOf(endMarker))
+
+  assert.equal(implementationStep.includes('`resolveImplementationAuditBase`'), true)
+  assert.equal(implementationStep.includes('`inspectImplementationBoundary`'), true)
+  assert.equal(implementationStep.includes('`createImplementationScratch`'), true)
+  assert.equal(countExact(implementationStep, 'performs no automatic cleanup'), 1)
+  assert.equal(implementationStep.includes('add `.superpowers/` to the project\'s `.gitignore`'), false)
+  assert.equal(implementationStep.includes('use the retained resolver `auditBase` for the entry or resume audit'), true)
+  assert.equal(implementationStep.includes('use that returned ID'), false)
+  for (const boundaryName of ['Entry or resume boundary', 'First pre-dispatch boundary', 'Later pre-dispatch boundary', 'Post-return boundary', 'Pre-exit boundary']) {
+    assert.equal(implementationStep.includes(boundaryName), true)
+  }
+  for (const contractTerm of [
+    'original, repair, replacement, or replay dispatch',
+    'exact `/.tmp/` rule',
+    'staged-path audit',
+    'commit-by-commit audit',
+    'retained non-Git branch',
+    'user-owned remediation',
+    'For every failure outcome, preserve the exact queue bytes with step 4 unchecked.',
+    'Only after every required post-return boundary passes may the pre-exit boundary run and the queue advance.',
+    'A crash before verified replacement leaves step 4 unchecked and reruns the implementation success boundary; a crash after replacement resumes at revise-code.',
+  ]) {
+    assert.equal(implementationStep.includes(contractTerm), true)
+  }
+
+  const orderedMarkers = [
+    'Queue migration boundary:',
+    'Selected-task validation boundary:',
+    'Repository classification boundary:',
+    'Scratch allocation boundary:',
+    'Prompt finalization boundary:',
+    'Assigned-path inspection boundary:',
+    'Final repository classification boundary:',
+    'External dispatch boundary:',
+  ]
+  const terminalMarker = 'Terminal outcomes boundary:'
+  const postReturnMarker = 'Single post-return boundary:'
+  const nonGitMarker = 'Non-Git post-return boundary:'
+  const dispatchTerminalBoundarySentence = 'External dispatch boundary: invoke the external agent exactly once; its result is exactly one Terminal outcomes boundary: normal return, thrown error, cancellation, or interruption, and each enters Single post-return boundary: exactly once.'
+
+  function assertLifecycleOrder(text) {
+    for (const marker of [...orderedMarkers, terminalMarker, postReturnMarker, nonGitMarker]) assert.equal(countExact(text, marker), 1)
+    for (let index = 1; index < orderedMarkers.length; index += 1) assert.equal(text.indexOf(orderedMarkers[index - 1]) < text.indexOf(orderedMarkers[index]), true)
+    assert.equal(text.indexOf(orderedMarkers.at(-1)) < text.indexOf(terminalMarker), true)
+    assert.equal(text.indexOf(terminalMarker) < text.indexOf(postReturnMarker), true)
+    assert.equal(countExact(text, dispatchTerminalBoundarySentence), 1)
+    assert.equal(text.indexOf(postReturnMarker) < text.indexOf(nonGitMarker), true)
+    assert.equal(countExact(text, 'normal return'), 1)
+    assert.equal(countExact(text, 'thrown error'), 1)
+    assert.equal(countExact(text, 'cancellation'), 1)
+    assert.equal(countExact(text, 'interruption'), 1)
+    assert.equal(countExact(text, 'Dispatch failure'), 1)
+    assert.equal(countExact(text, 'Boundary failure'), 1)
+    assert.equal(text.indexOf('Dispatch failure') < text.indexOf('Boundary failure'), true)
+  }
+
+  assertLifecycleOrder(implementationStep)
+  const swapped = implementationStep
+    .replace('Prompt finalization boundary:', 'LIFECYCLE_SWAP_SENTINEL')
+    .replace('Assigned-path inspection boundary:', 'Prompt finalization boundary:')
+    .replace('LIFECYCLE_SWAP_SENTINEL', 'Assigned-path inspection boundary:')
+  assert.throws(() => assertLifecycleOrder(swapped))
+  const brokenDispatchBridge = implementationStep.replace(
+    dispatchTerminalBoundarySentence,
+    'External dispatch boundary: invoke the external agent. Terminal outcomes boundary: Single post-return boundary:',
+  )
+  assert.throws(() => assertLifecycleOrder(brokenDispatchBridge))
+  assert.throws(() => assertLifecycleOrder(implementationStep.replace('interruption', 'interrupted outcome')))
 })
 
 test('handover queue accepts reordered creation input without changing durable ordering', () => {

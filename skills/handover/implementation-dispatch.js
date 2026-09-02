@@ -9,7 +9,8 @@ const { runGit } = require('../../internal/git-runner')
 const { scanMarkdown } = require('../spec-agreement/spec-agreement')
 
 const MAX_PLAN_BYTES = 2097152
-const OPTION_KEYS = ['filesystem', 'git', 'randomUUID', 'resolveGitExecutable', 'spawnSync']
+const ALLOCATION_OPTION_KEYS = ['filesystem', 'uuid']
+const GIT_OPTION_KEYS = ['filesystem', 'git', 'resolveGitExecutable', 'spawnSync']
 const PLAN_GRADUATION = /^- revise-plan graduated \d{4}-\d{2}-\d{2} \d{2}:\d{2} at ([0-9a-f]{7,40}), scope: \S(?:.*\S)?, content: (?:[0-9a-f]{8}|p-[0-9a-f]{12})$/
 
 class ImplementationDispatchError extends Error {
@@ -63,7 +64,7 @@ function isPlainObject(value) {
   return value !== null && typeof value === 'object' && !Array.isArray(value) && (Object.getPrototypeOf(value) === Object.prototype || Object.getPrototypeOf(value) === null)
 }
 
-function validateOptions(options, allowed = OPTION_KEYS) {
+function validateOptions(options, allowed = GIT_OPTION_KEYS) {
   if (options === undefined) options = {}
   if (!isPlainObject(options)) fail('dispatch-input', 'Options are invalid', { field: 'options', reason: 'invalid-option' })
   for (const key of Object.keys(options)) {
@@ -74,7 +75,7 @@ function validateOptions(options, allowed = OPTION_KEYS) {
     if (key === 'git' && typeof options[key] !== 'function') fail('dispatch-input', 'Git option is invalid', { field: 'options.git', reason: 'invalid-option' })
     if (key === 'resolveGitExecutable' && typeof options[key] !== 'function') fail('dispatch-input', 'Executable resolver is invalid', { field: 'options.resolveGitExecutable', reason: 'invalid-option' })
     if (key === 'spawnSync' && typeof options[key] !== 'function') fail('dispatch-input', 'Spawn option is invalid', { field: 'options.spawnSync', reason: 'invalid-option' })
-    if (key === 'randomUUID' && typeof options[key] !== 'function') fail('dispatch-input', 'UUID option is invalid', { field: 'options.randomUUID', reason: 'invalid-option' })
+    if (key === 'uuid' && typeof options[key] !== 'function') fail('dispatch-input', 'UUID option is invalid', { field: 'options.uuid', reason: 'invalid-option' })
   }
   if (typeof options.git === 'function' && (options.resolveGitExecutable !== undefined || options.spawnSync !== undefined)) fail('dispatch-input', 'Git seams conflict', { field: 'options', reason: 'conflicting-seams' })
 
@@ -113,7 +114,7 @@ function createImplementationScratch(input, suppliedOptions = {}) {
   const validIdentifier = (value) => typeof value === 'string' && value.length > 0 && value.length <= 1024 && !/\p{Control}/u.test(value)
   if (!validIdentifier(input?.taskId)) fail('dispatch-input', 'Task ID is invalid', { field: 'taskId', reason: 'invalid-task-id' })
   if (!validIdentifier(input?.dispatchId)) fail('dispatch-input', 'Dispatch ID is invalid', { field: 'dispatchId', reason: 'invalid-dispatch-id' })
-  const options = validateOptions(suppliedOptions)
+  const options = validateOptions(suppliedOptions, ALLOCATION_OPTION_KEYS)
   if (options.filesystem !== undefined && typeof options.filesystem.mkdirSync !== 'function') fail('dispatch-input', 'Filesystem option is invalid', { field: 'options.filesystem', reason: 'invalid-option' })
   if (typeof input.repositoryRoot !== 'string' || !nodePath.isAbsolute(input.repositoryRoot) || nodePath.resolve(input.repositoryRoot) !== input.repositoryRoot) fail('dispatch-input', 'Repository root is invalid', { field: 'repositoryRoot', reason: 'not-canonical-root' })
   const filesystem = options.filesystem ?? nodeFilesystem
@@ -135,7 +136,7 @@ function createImplementationScratch(input, suppliedOptions = {}) {
     if (error instanceof ImplementationDispatchError) throw error
     fail('scratch-allocation', 'Scratch parent is unavailable', { cause: 'tmp-missing', path: parent })
   }
-  const uuid = (options.randomUUID ?? nodeRandomUUID)()
+  const uuid = (options.uuid ?? nodeRandomUUID)()
   const prefix = nodePath.join(parent, `implementation-${shortHash(input.taskId)}-${shortHash(input.dispatchId)}-`)
   if (typeof uuid !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(uuid)) fail('scratch-allocation', 'UUID is invalid', { cause: 'invalid-uuid', path: prefix })
   const leaf = `implementation-${shortHash(input.taskId)}-${shortHash(input.dispatchId)}-${uuid}`
@@ -223,6 +224,22 @@ function parseExactAsciiLine(bytes, operation, allowed) {
   return bytes.toString('ascii').slice(0, -1)
 }
 
+function validateGitTopLevel(repositoryRoot, result, filesystem) {
+  const args = ['rev-parse', '--show-toplevel']
+  let top
+  try {
+    if (result.stdout.length < 2 || result.stdout[result.stdout.length - 1] !== 0x0a || result.stdout.subarray(0, -1).includes(0x0a) || result.stdout.includes(0x0d) || startsWithUtf8Bom(result.stdout)) throw new Error('Malformed top-level path')
+    top = decodeStrictUtf8(result.stdout.subarray(0, -1), 'show-toplevel')
+  } catch {
+    fail('git-command', 'Malformed Git output', { args, operation: 'show-toplevel', status: result.status, stderr: '' })
+  }
+  if (!nodePath.isAbsolute(top)) fail('repository-classification', 'Git root differs', { cause: 'root-mismatch', path: top })
+  const canonicalTop = nodePath.resolve(top)
+  let realTop
+  try { realTop = filesystem.realpathSync.native(canonicalTop) } catch { fail('repository-classification', 'Repository metadata is unavailable', { cause: 'metadata-unavailable', path: top }) }
+  if (realTop !== repositoryRoot) fail('repository-classification', 'Git root differs', { cause: 'root-mismatch', path: top })
+}
+
 function parsePlanStamp(planBytes) {
   const lines = planBytes.toString('utf8').split(/\r?\n/)
   let firstStampSha = null
@@ -290,9 +307,7 @@ function classifyImplementationRepository(input, suppliedOptions = {}) {
     }
     if (!markerFound) return { kind: 'non-git' }
     const result = gitCommand(root, ['rev-parse', '--show-toplevel'], undefined, 'show-toplevel', options)
-    if (result.stdout.length === 0 || result.stdout[result.stdout.length - 1] !== 0x0a || result.stdout.subarray(0, -1).includes(0x0a) || result.stdout.includes(0x0d) || result.stdout.length < 2 || result.stdout.some((byte) => byte > 0x7f)) fail('git-command', 'Malformed Git output', { args: ['rev-parse', '--show-toplevel'], operation: 'show-toplevel', status: result.status, stderr: '' })
-    const top = result.stdout.subarray(0, -1).toString('utf8')
-    if (top !== root) fail('repository-classification', 'Git root differs', { cause: 'root-mismatch', path: root })
+    validateGitTopLevel(root, result, filesystem)
     return { kind: 'git' }
   } catch (error) {
     if (error instanceof ImplementationDispatchError) throw error
@@ -388,8 +403,8 @@ function inspectImplementationBoundary(input, suppliedOptions = {}) {
   const formatArgs = ['rev-parse', '--show-object-format=storage']
   let result = gitCommand(root, formatArgs, undefined, 'show-object-format', options)
   try { if (parseExactAsciiLine(result.stdout, 'show-object-format', ['sha1', 'sha256']) !== objectFormat) throw new Error('Object format mismatch') } catch { fail('git-command', 'Malformed Git output', { args: formatArgs, operation: 'show-object-format', status: result.status, stderr: '' }) }
-  const topArgs = ['rev-parse', '--show-toplevel']; result = gitCommand(root, topArgs, undefined, 'show-toplevel', options)
-  try { const top = decodeStrictUtf8(result.stdout.subarray(0, -1), 'show-toplevel'); if (result.stdout.length < 2 || result.stdout[result.stdout.length - 1] !== 0x0a || result.stdout.subarray(0, -1).includes(0x0a) || result.stdout.includes(0x0d) || nodePath.normalize(top) !== nodePath.normalize(root)) throw new Error('Root mismatch') } catch { fail('git-command', 'Malformed Git output', { args: topArgs, operation: 'show-toplevel', status: result.status, stderr: '' }) }
+  result = gitCommand(root, ['rev-parse', '--show-toplevel'], undefined, 'show-toplevel', options)
+  validateGitTopLevel(root, result, options.filesystem ?? nodeFilesystem)
   const checkIgnore = (path, operation, expectedPattern) => {
     const args = ['check-ignore', '-z', '-v', '--no-index', '--stdin']; result = gitCommand(root, args, Buffer.from(`${path}\0`, 'utf8'), operation, options, [0, 1])
     if (result.status === 1) { if (result.stdout.length !== 0) fail('git-command', 'Unexpected Git output', { args, operation, status: result.status, stderr: '' }); fail(operation === 'check-root-ignore' ? 'ignore-policy' : 'superpowers-policy', 'Ignore policy is missing', operation === 'check-root-ignore' ? { expectedPattern: expectedPattern ?? '/.tmp/', observedPattern: null, observedSource: null, path: '.tmp/' } : { expectedPattern: null, observedPattern: null, observedSource: null, path: '.superpowers/' }) }
