@@ -1,4 +1,4 @@
-.tmp/
+/.tmp/
 .worktrees/
 .superpowers/
 .claude/plans/
