@@ -143,7 +143,7 @@ Draft exploring a controller-owned, run-scoped experiment ledger that persists o
 
 ### [Night manager and shift supervisor](features/night-manager-shift-supervisor.md)
 
-Draft exploring a two-level management hierarchy for autonomous Nightshift runs: the Night Manager owns intent, executive judgment, convergence and stop authority, controlled experiments, recovery governance, and the morning report, while an on-demand Shift Supervisor manages workers and minute-by-minute orchestration. Long revise waves produce hourly convergence packets, clean crash or compaction recovery continues automatically, and managerial second opinions remain same-role and same-model until a formal cross-host or cross-provider consultation contract exists.
+Draft exploring a two-level management hierarchy for autonomous Nightshift runs: the Night Manager owns intent, executive judgment, convergence and stop authority, controlled experiments, recovery governance, and the morning report, while an on-demand Shift Supervisor manages workers and minute-by-minute orchestration. Long revise waves produce hourly convergence packets, clean crash or compaction recovery continues automatically, and managerial second opinions remain same-role and same-model until a formal cross-host or cross-provider consultation contract exists. Graduation must also bind task scratch directories to assignment and attempt identity, validate their physical root, discover cross-session ownership, and define race-free deferred cleanup.
 
 ### [Class-level review deferral valve](features/class-level-review-deferral-valve.md)
 
