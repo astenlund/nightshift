@@ -2,13 +2,14 @@
 
 const nodeFilesystem = require('node:fs')
 const nodePath = require('node:path')
+const { createHash, randomUUID: nodeRandomUUID } = require('node:crypto')
 
-const { resolveTrustedExecutable } = require('../../internal/filesystem-primitives')
+const { pathIsContained, resolveTrustedExecutable } = require('../../internal/filesystem-primitives')
 const { runGit } = require('../../internal/git-runner')
 const { scanMarkdown } = require('../spec-agreement/spec-agreement')
 
 const MAX_PLAN_BYTES = 2097152
-const OPTION_KEYS = ['filesystem', 'git', 'resolveGitExecutable', 'spawnSync']
+const OPTION_KEYS = ['filesystem', 'git', 'randomUUID', 'resolveGitExecutable', 'spawnSync']
 const PLAN_GRADUATION = /^- revise-plan graduated \d{4}-\d{2}-\d{2} \d{2}:\d{2} at ([0-9a-f]{7,40}), scope: \S(?:.*\S)?, content: (?:[0-9a-f]{8}|p-[0-9a-f]{12})$/
 
 class ImplementationDispatchError extends Error {
@@ -73,6 +74,7 @@ function validateOptions(options, allowed = OPTION_KEYS) {
     if (key === 'git' && typeof options[key] !== 'function') fail('dispatch-input', 'Git option is invalid', { field: 'options.git', reason: 'invalid-option' })
     if (key === 'resolveGitExecutable' && typeof options[key] !== 'function') fail('dispatch-input', 'Executable resolver is invalid', { field: 'options.resolveGitExecutable', reason: 'invalid-option' })
     if (key === 'spawnSync' && typeof options[key] !== 'function') fail('dispatch-input', 'Spawn option is invalid', { field: 'options.spawnSync', reason: 'invalid-option' })
+    if (key === 'randomUUID' && typeof options[key] !== 'function') fail('dispatch-input', 'UUID option is invalid', { field: 'options.randomUUID', reason: 'invalid-option' })
   }
   if (typeof options.git === 'function' && (options.resolveGitExecutable !== undefined || options.spawnSync !== undefined)) fail('dispatch-input', 'Git seams conflict', { field: 'options', reason: 'conflicting-seams' })
 
@@ -97,6 +99,59 @@ function validateCanonicalRepositoryRoot(repositoryRoot, filesystem = nodeFilesy
     if (error instanceof CanonicalRootValidationError) throw error
     throw new CanonicalRootValidationError('root-unavailable', repositoryRoot)
   }
+}
+
+function shortHash(value) {
+  const digest = createHash('sha256').update(Buffer.from(value, 'utf8')).digest('hex').slice(0, 12)
+  if (!/^[0-9a-f]{12}$/.test(digest)) throw new Error('Unexpected short hash')
+
+  return digest
+}
+
+function createImplementationScratch(input, suppliedOptions = {}) {
+  if (!isPlainObject(input) || Object.keys(input).some((key) => !['dispatchId', 'repositoryRoot', 'taskId'].includes(key))) fail('dispatch-input', 'Unknown scratch input', { field: Object.keys(input ?? {}).find((key) => !['dispatchId', 'repositoryRoot', 'taskId'].includes(key)) ?? 'input', reason: 'unknown-key' })
+  const validIdentifier = (value) => typeof value === 'string' && value.length > 0 && value.length <= 1024 && !/\p{Control}/u.test(value)
+  if (!validIdentifier(input?.taskId)) fail('dispatch-input', 'Task ID is invalid', { field: 'taskId', reason: 'invalid-task-id' })
+  if (!validIdentifier(input?.dispatchId)) fail('dispatch-input', 'Dispatch ID is invalid', { field: 'dispatchId', reason: 'invalid-dispatch-id' })
+  const options = validateOptions(suppliedOptions)
+  if (options.filesystem !== undefined && typeof options.filesystem.mkdirSync !== 'function') fail('dispatch-input', 'Filesystem option is invalid', { field: 'options.filesystem', reason: 'invalid-option' })
+  if (typeof input.repositoryRoot !== 'string' || !nodePath.isAbsolute(input.repositoryRoot) || nodePath.resolve(input.repositoryRoot) !== input.repositoryRoot) fail('dispatch-input', 'Repository root is invalid', { field: 'repositoryRoot', reason: 'not-canonical-root' })
+  const filesystem = options.filesystem ?? nodeFilesystem
+  try {
+    const metadata = filesystem.lstatSync(input.repositoryRoot, { bigint: true })
+    if (!metadata.isDirectory() || metadata.isSymbolicLink() || metadata.isReparsePoint?.()) fail('scratch-allocation', 'Repository root is not ordinary', { cause: 'root-not-ordinary', path: input.repositoryRoot })
+    if (filesystem.realpathSync.native(input.repositoryRoot) !== input.repositoryRoot) fail('scratch-allocation', 'Repository root is an alias', { cause: 'root-alias', path: input.repositoryRoot })
+  } catch (error) {
+    if (error instanceof ImplementationDispatchError) throw error
+    fail('scratch-allocation', 'Repository root is unavailable', { cause: 'root-unavailable', path: input.repositoryRoot })
+  }
+  const parent = nodePath.join(input.repositoryRoot, '.tmp')
+  if (nodePath.relative(input.repositoryRoot, parent) !== '.tmp' || !pathIsContained(input.repositoryRoot, parent)) fail('scratch-allocation', 'Scratch parent escapes root', { cause: 'tmp-escape', path: parent })
+  try {
+    const metadata = filesystem.lstatSync(parent, { bigint: true })
+    if (!metadata.isDirectory() || metadata.isSymbolicLink() || metadata.isReparsePoint?.()) fail('scratch-allocation', 'Scratch parent is not ordinary', { cause: 'tmp-not-ordinary', path: parent })
+    if (filesystem.realpathSync.native(parent) !== parent) fail('scratch-allocation', 'Scratch parent is an alias', { cause: 'tmp-alias', path: parent })
+  } catch (error) {
+    if (error instanceof ImplementationDispatchError) throw error
+    fail('scratch-allocation', 'Scratch parent is unavailable', { cause: 'tmp-missing', path: parent })
+  }
+  const uuid = (options.randomUUID ?? nodeRandomUUID)()
+  const prefix = nodePath.join(parent, `implementation-${shortHash(input.taskId)}-${shortHash(input.dispatchId)}-`)
+  if (typeof uuid !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(uuid)) fail('scratch-allocation', 'UUID is invalid', { cause: 'invalid-uuid', path: prefix })
+  const leaf = `implementation-${shortHash(input.taskId)}-${shortHash(input.dispatchId)}-${uuid}`
+  const relativePath = `.tmp/${leaf}`
+  const absolutePath = nodePath.join(input.repositoryRoot, '.tmp', leaf)
+  try { filesystem.mkdirSync(absolutePath) } catch { fail('scratch-allocation', 'Scratch directory creation failed', { cause: 'create-failed', path: absolutePath }) }
+  try {
+    const metadata = filesystem.lstatSync(absolutePath, { bigint: true })
+    if (!metadata.isDirectory() || metadata.isSymbolicLink() || metadata.isReparsePoint?.()) fail('scratch-allocation', 'Scratch directory is not ordinary', { cause: 'created-not-ordinary', path: absolutePath })
+    if (filesystem.realpathSync.native(absolutePath) !== absolutePath) fail('scratch-allocation', 'Scratch directory is an alias', { cause: 'created-alias', path: absolutePath })
+  } catch (error) {
+    if (error instanceof ImplementationDispatchError) throw error
+    fail('scratch-allocation', 'Scratch directory verification failed', { cause: 'created-unavailable', path: absolutePath })
+  }
+
+  return { absolutePath, relativePath }
 }
 
 function normalizeRunGitResult(raw) {
@@ -373,4 +428,4 @@ function inspectImplementationBoundary(input, suppliedOptions = {}) {
   return { commitsChecked: commits.length, scratchTracked: false }
 }
 
-module.exports = { ImplementationDispatchError, classifyImplementationRepository, deriveImplementationTaskBrief, inspectImplementationBoundary, resolveImplementationAuditBase }
+module.exports = { ImplementationDispatchError, classifyImplementationRepository, createImplementationScratch, deriveImplementationTaskBrief, inspectImplementationBoundary, resolveImplementationAuditBase }

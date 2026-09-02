@@ -7,6 +7,7 @@ const nodeFilesystem = require('node:fs')
 const { existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } = nodeFilesystem
 const Module = require('node:module')
 const { tmpdir } = require('node:os')
+const nodePath = require('node:path')
 const { dirname, join, relative } = require('node:path')
 const test = require('node:test')
 
@@ -16,7 +17,7 @@ normalizeTestTemporaryDirectory()
 
 const { PROCEDURE_REPLACEMENTS, PUBLIC_SKILLS, REVISE_ENGINE_RESOURCES, REVISE_WRAPPERS } = require('./entry-contract')
 const { QUEUE_PROTOCOL_VERSION, QUEUE_STEPS, advanceQueue, bindImplementationAuditBase, createQueue, resumeQueue } = require('../skills/handover/handover-queue')
-const { deriveImplementationTaskBrief, classifyImplementationRepository, resolveImplementationAuditBase, inspectImplementationBoundary, ImplementationDispatchError } = require('../skills/handover/implementation-dispatch')
+const { deriveImplementationTaskBrief, classifyImplementationRepository, resolveImplementationAuditBase, inspectImplementationBoundary, createImplementationScratch, ImplementationDispatchError } = require('../skills/handover/implementation-dispatch')
 const {
   MAX_PLAN_BYTES,
   MAX_PLAN_CANDIDATE_BYTES,
@@ -482,6 +483,112 @@ test('implementation dispatch derives task briefs', () => {
       vector.details,
     )
   }
+})
+
+test('implementation dispatch allocates isolated scratch', () => {
+  const root = mkdtempSync(join(tmpdir(), 'nightshift-implementation-scratch-'))
+  const repositoryRoot = join(root, 'repository')
+  mkdirSync(join(repositoryRoot, '.tmp'), { recursive: true })
+  const validUuid = '123e4567-e89b-42d3-a456-426614174000'
+  try {
+    const result = createImplementationScratch({ dispatchId: 'dispatch', repositoryRoot, taskId: 'task' }, { randomUUID: () => validUuid })
+    assert.equal(result.relativePath, '.tmp/implementation-0ebb429fa86d-db8d1b6d64e4-123e4567-e89b-42d3-a456-426614174000')
+    assert.equal(result.absolutePath, join(repositoryRoot, result.relativePath))
+    assert.equal(lstatSync(result.absolutePath).isDirectory(), true)
+
+    const unicode = createImplementationScratch({ dispatchId: 'dispatch', repositoryRoot, taskId: '\u00c5' }, { randomUUID: () => validUuid.replace('000', '001') })
+    assert.equal(unicode.relativePath, '.tmp/implementation-0a94dc9d420d-db8d1b6d64e4-123e4567-e89b-42d3-a456-426614174001')
+    const decomposed = createImplementationScratch({ dispatchId: 'dispatch', repositoryRoot, taskId: 'A\u030a' }, { randomUUID: () => validUuid.replace('000', '002') })
+    assert.notEqual(decomposed.relativePath, unicode.relativePath)
+    const swapped = createImplementationScratch({ dispatchId: 'task', repositoryRoot, taskId: 'dispatch' }, { randomUUID: () => validUuid.replace('000', '003') })
+    assert.notEqual(swapped.relativePath, result.relativePath)
+
+    for (const value of ['', 'x'.repeat(1025), 1, ...[0x0000, 0x000a, 0x007f, 0x0085].map((codePoint) => String.fromCharCode(codePoint))]) {
+      assertDispatchFailure(() => createImplementationScratch({ dispatchId: 'dispatch', repositoryRoot, taskId: value }, { randomUUID: () => validUuid }), 'dispatch-input', { field: 'taskId', reason: 'invalid-task-id' })
+    }
+    for (const value of ['', 'x'.repeat(1025), 1, ...[0x0000, 0x000a, 0x007f, 0x0085].map((codePoint) => String.fromCharCode(codePoint))]) {
+      assertDispatchFailure(() => createImplementationScratch({ dispatchId: value, repositoryRoot, taskId: 'task' }, { randomUUID: () => validUuid }), 'dispatch-input', { field: 'dispatchId', reason: 'invalid-dispatch-id' })
+    }
+    assertDispatchFailure(() => createImplementationScratch({ dispatchId: String.fromCharCode(0x0085), repositoryRoot, taskId: String.fromCharCode(0x000a) }, { randomUUID: () => validUuid }), 'dispatch-input', { field: 'taskId', reason: 'invalid-task-id' })
+    assertDispatchFailure(() => createImplementationScratch({ dispatchId: '', repositoryRoot: 'relative', taskId: '' }, { randomUUID: () => validUuid }), 'dispatch-input', { field: 'taskId', reason: 'invalid-task-id' })
+    assertDispatchFailure(() => createImplementationScratch({ dispatchId: 'dispatch', repositoryRoot: `${repositoryRoot}${nodePath.sep}.`, taskId: 'task' }, { randomUUID: () => validUuid }), 'dispatch-input', { field: 'repositoryRoot', reason: 'not-canonical-root' })
+    for (const uuid of [null, '123E4567-E89B-42D3-A456-426614174000', '123e4567-e89b-52d3-a456-426614174000', 'bad']) {
+      assertDispatchFailure(() => createImplementationScratch({ dispatchId: 'dispatch', repositoryRoot, taskId: 'task' }, { randomUUID: () => uuid }), 'scratch-allocation', { cause: 'invalid-uuid', path: join(repositoryRoot, '.tmp', 'implementation-0ebb429fa86d-db8d1b6d64e4-') })
+    }
+
+    const collisionFilesystem = { ...nodeFilesystem, mkdirSync: () => { const error = new Error('exists'); error.code = 'EEXIST'; throw error } }
+    assertDispatchFailure(() => createImplementationScratch({ dispatchId: 'dispatch', repositoryRoot, taskId: 'task' }, { filesystem: collisionFilesystem, randomUUID: () => validUuid }), 'scratch-allocation', { cause: 'create-failed', path: join(repositoryRoot, '.tmp', 'implementation-0ebb429fa86d-db8d1b6d64e4-123e4567-e89b-42d3-a456-426614174000') })
+    assert.equal(Object.hasOwn(require('../skills/handover/implementation-dispatch'), 'cleanupImplementationScratch'), false)
+    assert.equal(Object.hasOwn(require('../skills/handover/implementation-dispatch'), 'scanImplementationScratch'), false)
+  } finally {
+    rmSync(root, { force: true, recursive: true })
+  }
+})
+
+test('implementation dispatch allocation matrix rejects unsafe filesystem states', () => {
+  const repositoryRoot = nodePath.resolve('C:/allocation-matrix-root')
+  const parent = join(repositoryRoot, '.tmp')
+  const uuid = '123e4567-e89b-42d3-a456-426614174000'
+  const ordinary = dispatchMarker('directory')
+  const makeFilesystem = (states = {}, calls = []) => {
+    const created = new Set()
+
+    return {
+    lstatSync(path) {
+      calls.push(['lstat', path])
+      const state = Object.hasOwn(states, path) ? states[path] : (created.has(path) ? ordinary : path === repositoryRoot || path === parent ? ordinary : null)
+      if (state instanceof Error) throw state
+      if (state === null) { const error = new Error('missing'); error.code = 'ENOENT'; throw error }
+
+      return state
+    },
+    realpathSync: { native(path) { calls.push(['realpath', path]); return states.realpath?.[path] ?? path } },
+    mkdirSync(path, options) { calls.push(['mkdir', path, options]); if (states.mkdir instanceof Error) throw states.mkdir; created.add(path) },
+    }
+  }
+  const allocate = (filesystem, input = { dispatchId: 'dispatch', repositoryRoot, taskId: 'task' }) => createImplementationScratch(input, { filesystem, randomUUID: () => uuid })
+  const assertCause = (action, code, details) => assertDispatchFailure(action, code, details)
+
+  for (const [value, reason] of [['relative', 'not-canonical-root'], [`${repositoryRoot}${nodePath.sep}.`, 'not-canonical-root']]) {
+    assertCause(() => allocate(makeFilesystem(), { dispatchId: 'dispatch', repositoryRoot: value, taskId: 'task' }), 'dispatch-input', { field: 'repositoryRoot', reason })
+  }
+  for (const [state, cause] of [[Object.assign(new Error('missing'), { code: 'ENOENT' }), 'root-unavailable'], [dispatchMarker('file'), 'root-not-ordinary'], [dispatchMarker('symbolic'), 'root-not-ordinary'], [dispatchMarker('reparse'), 'root-not-ordinary']]) {
+    assertCause(() => allocate(makeFilesystem({ [repositoryRoot]: state })), 'scratch-allocation', { cause, path: repositoryRoot })
+  }
+  assertCause(() => allocate(makeFilesystem({ realpath: { [repositoryRoot]: 'C:/alias' } })), 'scratch-allocation', { cause: 'root-alias', path: repositoryRoot })
+
+  for (const [state, cause] of [[null, 'tmp-missing'], [Object.assign(new Error('denied'), { code: 'EACCES' }), 'tmp-missing'], [dispatchMarker('file'), 'tmp-not-ordinary'], [dispatchMarker('symbolic'), 'tmp-not-ordinary'], [dispatchMarker('reparse'), 'tmp-not-ordinary']]) {
+    assertCause(() => allocate(makeFilesystem({ [parent]: state })), 'scratch-allocation', { cause, path: parent })
+  }
+  assertCause(() => allocate(makeFilesystem({ realpath: { [parent]: 'C:/tmp-alias' } })), 'scratch-allocation', { cause: 'tmp-alias', path: parent })
+
+  const calls = []
+  const filesystem = makeFilesystem({}, calls)
+  const allocation = allocate(filesystem)
+  assert.deepEqual(Object.keys(allocation), ['absolutePath', 'relativePath'])
+  assert.match(allocation.relativePath, /^\.tmp\/implementation-[0-9a-f]{12}-[0-9a-f]{12}-[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/)
+  assert.equal(calls.some((call) => call[0] === 'mkdir' && call[2]?.recursive === true), false)
+  assert.equal(calls.some((call) => call[1] === join(repositoryRoot, '.tmp', 'nightshift')), false)
+
+  const target = join(repositoryRoot, allocation.relativePath)
+  const collision = makeFilesystem({ [target]: ordinary, mkdir: Object.assign(new Error('exists'), { code: 'EEXIST' }) })
+  assertCause(() => allocate(collision), 'scratch-allocation', { cause: 'create-failed', path: target })
+  const malformedCreate = makeFilesystem({ mkdir: new Error('not ordinary') })
+  assertCause(() => allocate(malformedCreate), 'scratch-allocation', { cause: 'create-failed', path: target })
+
+  for (const state of [null, dispatchMarker('file'), dispatchMarker('symbolic'), dispatchMarker('reparse')]) {
+    const postCreate = makeFilesystem({ [target]: state })
+    assertCause(() => allocate(postCreate), 'scratch-allocation', { cause: state === null ? 'created-unavailable' : 'created-not-ordinary', path: target })
+  }
+  assertCause(() => allocate(makeFilesystem({ realpath: { [target]: 'C:/created-alias' } })), 'scratch-allocation', { cause: 'created-alias', path: target })
+
+  let gitCalls = 0
+  const noGitFilesystem = makeFilesystem()
+  const result = createImplementationScratch({ dispatchId: 'dispatch', repositoryRoot, taskId: 'task' }, { filesystem: noGitFilesystem, git: () => { gitCalls += 1; throw new Error('Git must not be called') }, randomUUID: () => uuid })
+  assert.equal(typeof result.absolutePath, 'string')
+  assert.equal(gitCalls, 0)
+  assert.equal(Object.hasOwn(require('../skills/handover/implementation-dispatch'), 'cleanupImplementationScratch'), false)
+  assert.equal(Object.hasOwn(require('../skills/handover/implementation-dispatch'), 'scanImplementationScratch'), false)
 })
 
 test('implementation dispatch normalizes Git envelopes', () => {
