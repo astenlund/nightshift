@@ -16,6 +16,7 @@ normalizeTestTemporaryDirectory()
 
 const { PROCEDURE_REPLACEMENTS, PUBLIC_SKILLS, REVISE_ENGINE_RESOURCES, REVISE_WRAPPERS } = require('./entry-contract')
 const { QUEUE_PROTOCOL_VERSION, QUEUE_STEPS, advanceQueue, bindImplementationAuditBase, createQueue, resumeQueue } = require('../skills/handover/handover-queue')
+const { deriveImplementationTaskBrief, classifyImplementationRepository, resolveImplementationAuditBase, ImplementationDispatchError } = require('../skills/handover/implementation-dispatch')
 const {
   MAX_PLAN_BYTES,
   MAX_PLAN_CANDIDATE_BYTES,
@@ -232,12 +233,44 @@ test('public topology exposes only the ten public skills and no legacy command t
 
   for (const bundledPath of [
     join(PUBLIC_SKILLS_ROOT, 'handover', 'handover-queue.js'),
+    join(PUBLIC_SKILLS_ROOT, 'handover', 'implementation-dispatch.js'),
     join(PUBLIC_SKILLS_ROOT, 'spec-agreement', 'spec-agreement.js'),
     join(PUBLIC_SKILLS_ROOT, 'spec-agreement', 'spec-agreement.test.js'),
     join(PUBLIC_SKILLS_ROOT, 'spec-agreement', 'fixtures', 'fingerprint-v1.json'),
   ]) {
     requireRegularFile(bundledPath)
   }
+})
+
+test('implementation dispatch derives task briefs', () => {
+  const planBytes = Buffer.from('# Plan\n\n### Task 1: First task\r\nbody\r\n\n### Task 2: Second task\r\nnext\r\n')
+  const result = deriveImplementationTaskBrief({ planBytes, taskHeading: '### Task 1: First task' })
+  assert.equal(result.taskTitle, 'First task')
+  assert.equal(result.briefBytes.toString(), '### Task 1: First task\r\nbody\r\n\n')
+  assert.throws(() => deriveImplementationTaskBrief({ planBytes, taskHeading: '### Task 3: Missing' }), (error) => error.code === 'dispatch-input')
+})
+
+test('implementation dispatch normalizes Git envelopes', () => {
+  assert.equal(typeof ImplementationDispatchError, 'function')
+})
+
+test('implementation dispatch classifies repositories', () => {
+  const root = 'C:\\repo'
+  const filesystem = { realpathSync: { native: (value) => value }, lstatSync: () => ({ isDirectory: () => true, isSymbolicLink: () => false }) }
+  const git = (_root, args) => ({ error: null, signal: null, status: 0, stderr: Buffer.alloc(0), stdout: args.includes('--show-toplevel') ? Buffer.from('C:\\repo\n') : Buffer.alloc(0) })
+  assert.deepEqual(classifyImplementationRepository({ repositoryRoot: root }, { filesystem, git }), { kind: 'git' })
+})
+
+test('implementation dispatch resolves audit bases', () => {
+  const planBytes = Buffer.from('# Plan\n\n## Hardening\n- revise-plan graduated 2026-09-01 12:00 at abcdef1, scope: whole file, content: 12345678\n')
+  const sha = 'a'.repeat(40)
+  const filesystem = { realpathSync: { native: (value) => value }, lstatSync: () => ({ isDirectory: () => true, isSymbolicLink: () => false }) }
+  const git = (_root, args) => ({ error: null, signal: null, status: 0, stderr: Buffer.alloc(0), stdout: args.includes('--show-object-format=storage') ? Buffer.from('sha1\n') : Buffer.from(`${sha}\n`) })
+  assert.deepEqual(resolveImplementationAuditBase({ planBytes, repositoryRoot: 'C:\\repo', storedAuditBase: null }, { filesystem, git }), { auditBase: sha, objectFormat: 'sha1', stampSha: 'abcdef1' })
+})
+
+test('implementation dispatch maps typed failures', () => {
+  assert.throws(() => deriveImplementationTaskBrief({ planBytes: Buffer.alloc(0), taskHeading: '### Task 1: x' }), (error) => error.code === 'dispatch-input' && error.details.reason === 'empty-buffer')
 })
 
 test('ready and plan binding runtime closures exclude init-backlog infrastructure', () => {
