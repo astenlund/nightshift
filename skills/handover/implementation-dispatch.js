@@ -284,4 +284,93 @@ function resolveImplementationAuditBase(input, suppliedOptions = {}) {
   return { auditBase, objectFormat, stampSha }
 }
 
-module.exports = { ImplementationDispatchError, classifyImplementationRepository, deriveImplementationTaskBrief, resolveImplementationAuditBase }
+const MAX_AUDIT_COMMITS = 256
+const MAX_AUDIT_OFFENDERS = 4096
+const MAX_AUDIT_OFFENDER_UTF8_BYTES = 1048576
+const GENERATED_SCRATCH_PATH = /^\.tmp\/implementation-[0-9a-f]{12}-[0-9a-f]{12}-[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
+
+function startsWithUtf8Bom(bytes) {
+  return bytes.length >= 3 && bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf
+}
+
+function parseStrictPathList(bytes, operation) {
+  if (bytes.length === 0) return []
+  if (startsWithUtf8Bom(bytes)) throw new Error(`Malformed UTF-8 for ${operation}`)
+  const values = parseNulPathList(bytes, operation)
+  if (values.some((value) => value.length === 0 || value.includes('\\') || value.includes('\r') || value.includes('\n') || value.startsWith('/') || value.split('/').some((part) => part === '.' || part === '..') || nodePath.posix.normalize(value) !== value)) throw new Error(`Noncanonical path for ${operation}`)
+
+  return values
+}
+
+function parseFullCommit(bytes, width, operation) {
+  if (!Buffer.isBuffer(bytes) || bytes.length !== width + 1 || bytes[width] !== 0x0a) throw new Error(`Malformed commit for ${operation}`)
+  const value = bytes.subarray(0, width).toString('ascii')
+  if (!/^[0-9a-f]+$/.test(value) || bytes.some((byte, index) => index < width && byte > 0x7f)) throw new Error(`Malformed commit for ${operation}`)
+
+  return value
+}
+
+function parseIgnoreRecord(bytes, expectedPath, expectedPattern) {
+  const fields = parseCheckIgnoreRecords(bytes, 'check-ignore')
+  if (fields.length !== 4 || fields.some((field) => field.length === 0) || !/^[1-9][0-9]*$/.test(fields[1]) || fields[3] !== expectedPath || (expectedPattern !== null && fields[2] !== expectedPattern)) throw new Error('Malformed check-ignore output')
+
+  return fields
+}
+
+function inspectImplementationBoundary(input, suppliedOptions = {}) {
+  if (!isPlainObject(input)) fail('dispatch-input', 'Audit input is invalid', { field: 'input', reason: 'unknown-key' })
+  const keys = ['auditBase', 'objectFormat', 'repositoryRoot', 'scratchRelativePath']
+  const unknown = Object.keys(input).find((key) => !keys.includes(key)); if (unknown) fail('dispatch-input', 'Unknown audit input', { field: unknown, reason: 'unknown-key' })
+  const options = validateOptions(suppliedOptions)
+  const objectFormat = input.objectFormat
+  if (typeof input.objectFormat !== 'string' || !['sha1', 'sha256'].includes(input.objectFormat)) fail('dispatch-input', 'Object format is invalid', { field: 'objectFormat', reason: 'invalid-audit-base' })
+  const width = objectFormat === 'sha1' ? 40 : 64
+  if (typeof input.auditBase !== 'string' || !new RegExp(`^[0-9a-f]{${width}}$`).test(input.auditBase)) fail('dispatch-input', 'Audit base is invalid', { field: 'auditBase', reason: 'invalid-audit-base' })
+  if (typeof input.repositoryRoot !== 'string' || !nodePath.isAbsolute(input.repositoryRoot)) fail('dispatch-input', 'Repository root is invalid', { field: 'repositoryRoot', reason: 'not-canonical-root' })
+  try { validateCanonicalRepositoryRoot(input.repositoryRoot, options.filesystem ?? nodeFilesystem) } catch (error) { if (error instanceof CanonicalRootValidationError) fail('dispatch-input', 'Repository root is invalid', { field: 'repositoryRoot', reason: error.cause }) ; throw error }
+  if (input.scratchRelativePath !== null && (typeof input.scratchRelativePath !== 'string' || !GENERATED_SCRATCH_PATH.test(input.scratchRelativePath))) fail('dispatch-input', 'Scratch path is invalid', { field: 'scratchRelativePath', reason: 'invalid-scratch-path' })
+  const root = input.repositoryRoot
+  const formatArgs = ['rev-parse', '--show-object-format=storage']
+  let result = gitCommand(root, formatArgs, undefined, 'show-object-format', options)
+  try { if (parseExactAsciiLine(result.stdout, 'show-object-format', ['sha1', 'sha256']) !== objectFormat) throw new Error('Object format mismatch') } catch { fail('git-command', 'Malformed Git output', { args: formatArgs, operation: 'show-object-format', status: result.status, stderr: '' }) }
+  const topArgs = ['rev-parse', '--show-toplevel']; result = gitCommand(root, topArgs, undefined, 'show-toplevel', options)
+  try { const top = decodeStrictUtf8(result.stdout.subarray(0, -1), 'show-toplevel'); if (result.stdout.length < 2 || result.stdout[result.stdout.length - 1] !== 0x0a || result.stdout.subarray(0, -1).includes(0x0a) || result.stdout.includes(0x0d) || nodePath.normalize(top) !== nodePath.normalize(root)) throw new Error('Root mismatch') } catch { fail('git-command', 'Malformed Git output', { args: topArgs, operation: 'show-toplevel', status: result.status, stderr: '' }) }
+  const checkIgnore = (path, operation, expectedPattern) => {
+    const args = ['check-ignore', '-z', '-v', '--no-index', '--stdin']; result = gitCommand(root, args, Buffer.from(`${path}\0`, 'utf8'), operation, options, [0, 1])
+    if (result.status === 1) { if (result.stdout.length !== 0) fail('git-command', 'Unexpected Git output', { args, operation, status: result.status, stderr: '' }); fail(operation === 'check-root-ignore' ? 'ignore-policy' : 'superpowers-policy', 'Ignore policy is missing', operation === 'check-root-ignore' ? { expectedPattern: expectedPattern ?? '/.tmp/', observedPattern: null, observedSource: null, path: '.tmp/' } : { expectedPattern: null, observedPattern: null, observedSource: null, path: '.superpowers/' }) }
+    let fields
+    try { fields = parseIgnoreRecord(result.stdout, path, null) } catch { fail('git-command', 'Malformed Git output', { args, operation, status: result.status, stderr: '' }) }
+    if (operation === 'check-root-ignore' && (fields[0] !== '.gitignore' || fields[2] !== expectedPattern)) fail('ignore-policy', 'Root ignore policy is invalid', { expectedPattern, observedPattern: fields[2], observedSource: fields[0], path: '.tmp/' })
+  }
+  checkIgnore('.tmp/nightshift-implementation-policy-probe', 'check-root-ignore', '/.tmp/')
+  checkIgnore('.superpowers/nightshift-implementation-policy-probe', 'check-superpowers-ignore', null)
+  const stagedArgs = ['diff', '--cached', '--name-only', '-z', '--', ':(top).tmp']
+  result = gitCommand(root, stagedArgs, undefined, 'list-staged-scratch', options)
+  let staged
+  try { staged = parseStrictPathList(result.stdout, 'list-staged-scratch').sort() } catch { fail('git-command', 'Malformed Git output', { args: stagedArgs, operation: 'list-staged-scratch', status: result.status, stderr: '' }) }
+  if (staged.length > 0) fail('staged-scratch', 'Staged scratch paths found', { paths: staged })
+  const tipArgs = ['rev-parse', '--verify', 'HEAD^{commit}']; result = gitCommand(root, tipArgs, undefined, 'resolve-tip', options); let auditTip; try { auditTip = parseFullCommit(result.stdout, width, 'resolve-tip') } catch { fail('git-command', 'Malformed Git output', { args: tipArgs, operation: 'resolve-tip', status: result.status, stderr: '' }) }
+  const objectArgs = ['cat-file', '-e', `${input.auditBase}^{commit}`]; result = gitCommand(root, objectArgs, undefined, 'check-object', options, [0, 1]); if (result.status === 1) fail('history-base', 'Audit base object is missing', { auditBase: input.auditBase, kind: 'missing-object' })
+  const ancestryArgs = ['merge-base', '--is-ancestor', input.auditBase, auditTip]; result = gitCommand(root, ancestryArgs, undefined, 'check-ancestry', options, [0, 1]); if (result.status === 1) fail('history-base', 'Audit base is not an ancestor', { auditBase: input.auditBase, kind: 'non-ancestor' })
+  const listArgs = ['rev-list', '--reverse', `${input.auditBase}..${auditTip}`]; result = gitCommand(root, listArgs, undefined, 'list-commits', options); let commits; try { if (startsWithUtf8Bom(result.stdout)) throw new Error('BOM'); commits = result.stdout.length === 0 ? [] : parseLfObjectIds(result.stdout, 'list-commits'); if (commits.some((id) => id.length !== width || !/^[0-9a-f]+$/.test(id))) throw new Error('width') } catch { fail('git-command', 'Malformed Git output', { args: listArgs, operation: 'list-commits', status: result.status, stderr: '' }) }
+  if (commits.length > MAX_AUDIT_COMMITS) fail('audit-limit', 'Audit commit limit exceeded', { kind: 'commit-count', limit: MAX_AUDIT_COMMITS, observed: commits.length })
+  const offenders = []; let offenderBytes = 0
+  for (const commit of commits) {
+    const args = ['diff-tree', '-m', '--root', '--no-commit-id', '--name-only', '-z', '-r', commit, '--', ':(top).tmp']; result = gitCommand(root, args, undefined, 'list-commit-paths', options); let paths; try { paths = [...new Set(parseStrictPathList(result.stdout, 'list-commit-paths'))].sort() } catch { fail('git-command', 'Malformed Git output', { args, operation: 'list-commit-paths', status: result.status, stderr: '' }) }
+    for (const path of paths) { const nextCount = offenders.length + 1; const nextBytes = offenderBytes + Buffer.byteLength(commit, 'utf8') + Buffer.byteLength(path, 'utf8'); if (nextCount > MAX_AUDIT_OFFENDERS) fail('audit-limit', 'Audit offender limit exceeded', { kind: 'offender-count', limit: MAX_AUDIT_OFFENDERS, observed: nextCount }); if (nextBytes > MAX_AUDIT_OFFENDER_UTF8_BYTES) fail('audit-limit', 'Audit offender bytes exceeded', { kind: 'offender-bytes', limit: MAX_AUDIT_OFFENDER_UTF8_BYTES, observed: nextBytes }); offenders.push({ commit, path }); offenderBytes = nextBytes }
+  }
+  if (offenders.length > 0) { offenders.sort((left, right) => left.commit < right.commit || left.commit === right.commit && left.path < right.path ? -1 : 1); fail('committed-scratch', 'Committed scratch paths found', { offenders }) }
+  if (input.scratchRelativePath !== null) {
+    const args = ['ls-files', '-z', '--', `:(literal)${input.scratchRelativePath}`]
+    result = gitCommand(root, args, undefined, 'check-scratch-tracked', options)
+    let tracked
+    try { tracked = parseStrictPathList(result.stdout, 'check-scratch-tracked') } catch { fail('git-command', 'Malformed Git output', { args, operation: 'check-scratch-tracked', status: result.status, stderr: '' }) }
+    if (tracked.length > 0) fail('scratch-tracked', 'Scratch path is tracked', { path: input.scratchRelativePath })
+  }
+  const finalArgs = ['rev-parse', '--verify', 'HEAD^{commit}']; result = gitCommand(root, finalArgs, undefined, 'recheck-tip', options); let observedTip; try { observedTip = parseFullCommit(result.stdout, width, 'recheck-tip') } catch { fail('git-command', 'Malformed Git output', { args: finalArgs, operation: 'recheck-tip', status: result.status, stderr: '' }) }
+  if (observedTip !== auditTip) fail('history-base', 'Audit tip changed', { auditBase: input.auditBase, expectedTip: auditTip, kind: 'tip-changed', observedTip })
+
+  return { commitsChecked: commits.length, scratchTracked: false }
+}
+
+module.exports = { ImplementationDispatchError, classifyImplementationRepository, deriveImplementationTaskBrief, inspectImplementationBoundary, resolveImplementationAuditBase }

@@ -16,7 +16,7 @@ normalizeTestTemporaryDirectory()
 
 const { PROCEDURE_REPLACEMENTS, PUBLIC_SKILLS, REVISE_ENGINE_RESOURCES, REVISE_WRAPPERS } = require('./entry-contract')
 const { QUEUE_PROTOCOL_VERSION, QUEUE_STEPS, advanceQueue, bindImplementationAuditBase, createQueue, resumeQueue } = require('../skills/handover/handover-queue')
-const { deriveImplementationTaskBrief, classifyImplementationRepository, resolveImplementationAuditBase, ImplementationDispatchError } = require('../skills/handover/implementation-dispatch')
+const { deriveImplementationTaskBrief, classifyImplementationRepository, resolveImplementationAuditBase, inspectImplementationBoundary, ImplementationDispatchError } = require('../skills/handover/implementation-dispatch')
 const {
   MAX_PLAN_BYTES,
   MAX_PLAN_CANDIDATE_BYTES,
@@ -264,6 +264,74 @@ function assertDispatchFailure(action, code, details) {
 
     return true
   })
+}
+
+function captureDispatchFailure(action, code, details) {
+  let capturedError
+  assertDispatchFailure(() => {
+    try {
+      return action()
+    } catch (error) {
+      capturedError = error
+      throw error
+    }
+  }, code, details)
+
+  return capturedError
+}
+
+function createImplementationBoundaryGit({
+  calls = [],
+  commits = [],
+  diffPaths = new Map(),
+  format = 'sha1',
+  overrides = new Map(),
+  root = 'C:\\audit-root',
+  staged = Buffer.alloc(0),
+  tip = 'b'.repeat(format === 'sha1' ? 40 : 64),
+  tracked = Buffer.alloc(0),
+} = {}) {
+  const nul = String.fromCharCode(0)
+  let verifyCount = 0
+
+  return (_repositoryRoot, args, input) => {
+    let operation
+    if (args[0] === 'rev-parse' && args[1] === '--show-object-format=storage') operation = 'show-object-format'
+    else if (args[0] === 'rev-parse' && args[1] === '--show-toplevel') operation = 'show-toplevel'
+    else if (args[0] === 'check-ignore') operation = input.equals(Buffer.from(`.tmp/nightshift-implementation-policy-probe${nul}`, 'utf8')) ? 'check-root-ignore' : 'check-superpowers-ignore'
+    else if (args[0] === 'diff') operation = 'list-staged-scratch'
+    else if (args[0] === 'rev-parse' && args[1] === '--verify') {
+      verifyCount += 1
+      operation = verifyCount === 1 ? 'resolve-tip' : 'recheck-tip'
+    } else if (args[0] === 'cat-file') operation = 'check-object'
+    else if (args[0] === 'merge-base') operation = 'check-ancestry'
+    else if (args[0] === 'rev-list') operation = 'list-commits'
+    else if (args[0] === 'diff-tree') operation = 'list-commit-paths'
+    else if (args[0] === 'ls-files') operation = 'check-scratch-tracked'
+    else throw new Error(`Unexpected Git arguments: ${args.join(' ')}`)
+    calls.push({ args: [...args], input, operation })
+    if (overrides.has(operation)) {
+      const override = overrides.get(operation)
+
+      return typeof override === 'function' ? override({ args, input, operation }) : override
+    }
+    if (operation === 'show-object-format') return gitEnvelope({ stdout: Buffer.from(`${format}\n`) })
+    if (operation === 'show-toplevel') return gitEnvelope({ stdout: Buffer.from(`${root}\n`) })
+    if (operation === 'check-root-ignore') return gitEnvelope({ stdout: Buffer.from(['.gitignore', '1', '/.tmp/', '.tmp/nightshift-implementation-policy-probe'].join(nul) + nul) })
+    if (operation === 'check-superpowers-ignore') return gitEnvelope({ stdout: Buffer.from(['.gitignore', '2', '/.superpowers/', '.superpowers/nightshift-implementation-policy-probe'].join(nul) + nul) })
+    if (operation === 'list-staged-scratch') return gitEnvelope({ stdout: Buffer.from(staged) })
+    if (operation === 'resolve-tip' || operation === 'recheck-tip') return gitEnvelope({ stdout: Buffer.from(`${tip}\n`) })
+    if (operation === 'list-commits') return gitEnvelope({ stdout: Buffer.from(commits.length === 0 ? '' : `${commits.join('\n')}\n`) })
+    if (operation === 'list-commit-paths') {
+      const commit = args[args.indexOf('-r') + 1]
+      const paths = diffPaths.get(commit) ?? []
+
+      return gitEnvelope({ stdout: Buffer.from(paths.length === 0 ? '' : `${paths.join(nul)}${nul}`) })
+    }
+    if (operation === 'check-scratch-tracked') return gitEnvelope({ stdout: Buffer.from(tracked) })
+
+    return gitEnvelope()
+  }
 }
 
 function assertCurrentPathsAreAbsent(filePath) {
@@ -832,6 +900,411 @@ test('implementation dispatch resolves audit bases', () => {
     )
   } finally {
     rmSync(fixtureRoot, { force: true, recursive: true })
+  }
+})
+
+test('implementation dispatch audits root scratch history', () => {
+  const root = 'C:\\audit-root'
+  const base = 'a'.repeat(40)
+  const tip = 'b'.repeat(40)
+  const nul = String.fromCharCode(0)
+  const calls = []
+  const git = (_root, args, input) => {
+    calls.push({ args, input })
+    if (args[0] === 'rev-parse' && args[1] === '--show-object-format=storage') return gitEnvelope({ stdout: Buffer.from('sha1\n') })
+    if (args[0] === 'rev-parse' && args[1] === '--show-toplevel') return gitEnvelope({ stdout: Buffer.from(`${root}\n`) })
+    if (args[0] === 'check-ignore') {
+      const path = input.toString('utf8').slice(0, -1)
+      return gitEnvelope({ stdout: Buffer.from(['.gitignore', '1', path.startsWith('.tmp/') ? '/.tmp/' : '.superpowers/', path].join(nul) + nul) })
+    }
+    if (args[0] === 'rev-parse' && args[1] === '--verify') return gitEnvelope({ stdout: Buffer.from(`${tip}\n`) })
+    if (args[0] === 'rev-list') return gitEnvelope()
+    return gitEnvelope()
+  }
+  assert.deepEqual(inspectImplementationBoundary({ auditBase: base, objectFormat: 'sha1', repositoryRoot: root, scratchRelativePath: '.tmp/implementation-000000000000-000000000000-00000000-0000-4000-8000-000000000000' }, { filesystem: dispatchFilesystem(root), git }), { commitsChecked: 0, scratchTracked: false })
+  assert.deepEqual(calls.map(({ args }) => args[0]), ['rev-parse', 'rev-parse', 'check-ignore', 'check-ignore', 'diff', 'rev-parse', 'cat-file', 'merge-base', 'rev-list', 'ls-files', 'rev-parse'])
+  assert.deepEqual(calls[2].input, Buffer.from('.tmp/nightshift-implementation-policy-probe' + nul, 'utf8'))
+  assert.deepEqual(calls[3].input, Buffer.from('.superpowers/nightshift-implementation-policy-probe' + nul, 'utf8'))
+  assert.deepEqual(calls[9].args, ['ls-files', '-z', '--', ':(literal).tmp/implementation-000000000000-000000000000-00000000-0000-4000-8000-000000000000'])
+})
+
+test('implementation dispatch audits real add-delete and merge history', () => {
+  const fixtureRoot = mkdtempSync(join(tmpdir(), 'nightshift-implementation-boundary-'))
+  const diffTreeCalls = []
+  try {
+    writeFileSync(join(fixtureRoot, '.gitignore'), '/.tmp/\n/.superpowers/\n')
+    writeFileSync(join(fixtureRoot, 'anchor.txt'), 'anchor\n')
+    execFileSync('git', ['init', '--quiet'], { cwd: fixtureRoot })
+    execFileSync('git', ['config', 'core.autocrlf', 'false'], { cwd: fixtureRoot })
+    execFileSync('git', ['config', 'user.email', 'fixture@example.invalid'], { cwd: fixtureRoot })
+    execFileSync('git', ['config', 'user.name', 'Fixture'], { cwd: fixtureRoot })
+    execFileSync('git', ['add', '.gitignore', 'anchor.txt'], { cwd: fixtureRoot })
+    execFileSync('git', ['commit', '--quiet', '-m', 'base'], { cwd: fixtureRoot })
+    const auditBase = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: fixtureRoot, encoding: 'utf8' }).trim()
+
+    mkdirSync(join(fixtureRoot, '.tmp'))
+    writeFileSync(join(fixtureRoot, '.tmp', 'transient'), 'added\n')
+    execFileSync('git', ['add', '--force', '.tmp/transient'], { cwd: fixtureRoot })
+    execFileSync('git', ['commit', '--quiet', '-m', 'add transient'], { cwd: fixtureRoot })
+    const addCommit = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: fixtureRoot, encoding: 'utf8' }).trim()
+    execFileSync('git', ['rm', '--quiet', '.tmp/transient'], { cwd: fixtureRoot })
+    execFileSync('git', ['commit', '--quiet', '-m', 'delete transient'], { cwd: fixtureRoot })
+    const divergenceBase = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: fixtureRoot, encoding: 'utf8' }).trim()
+    const deleteCommit = divergenceBase
+
+    execFileSync('git', ['checkout', '--quiet', '-b', 'parent-a'], { cwd: fixtureRoot })
+    mkdirSync(join(fixtureRoot, '.tmp'), { recursive: true })
+    writeFileSync(join(fixtureRoot, '.tmp', 'left'), 'left\n')
+    writeFileSync(join(fixtureRoot, '.tmp', 'shared'), 'parent a\n')
+    execFileSync('git', ['add', '--force', '.tmp/left', '.tmp/shared'], { cwd: fixtureRoot })
+    execFileSync('git', ['commit', '--quiet', '-m', 'parent a'], { cwd: fixtureRoot })
+    const parentA = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: fixtureRoot, encoding: 'utf8' }).trim()
+
+    execFileSync('git', ['checkout', '--quiet', '-b', 'parent-b', divergenceBase], { cwd: fixtureRoot })
+    mkdirSync(join(fixtureRoot, '.tmp'), { recursive: true })
+    writeFileSync(join(fixtureRoot, '.tmp', 'right'), 'right\n')
+    writeFileSync(join(fixtureRoot, '.tmp', 'shared'), 'parent b\n')
+    execFileSync('git', ['add', '--force', '.tmp/right', '.tmp/shared'], { cwd: fixtureRoot })
+    execFileSync('git', ['commit', '--quiet', '-m', 'parent b'], { cwd: fixtureRoot })
+    const parentB = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: fixtureRoot, encoding: 'utf8' }).trim()
+
+    execFileSync('git', ['checkout', '--quiet', 'parent-a'], { cwd: fixtureRoot })
+    const mergeResult = spawnSync('git', ['merge', '--no-commit', '--no-ff', 'parent-b'], { cwd: fixtureRoot, encoding: null, shell: false })
+    assert.equal(mergeResult.status, 1)
+    writeFileSync(join(fixtureRoot, '.tmp', 'shared'), 'merged\n')
+    execFileSync('git', ['add', '--force', '.tmp/shared'], { cwd: fixtureRoot })
+    execFileSync('git', ['commit', '--quiet', '-m', 'merge parents'], { cwd: fixtureRoot })
+    const mergeCommit = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: fixtureRoot, encoding: 'utf8' }).trim()
+    assert.deepEqual(execFileSync('git', ['rev-parse', `${mergeCommit}^1`, `${mergeCommit}^2`], { cwd: fixtureRoot, encoding: 'utf8' }).trim().split('\n'), [parentA, parentB])
+
+    const realGit = (root, args, input) => {
+      const result = spawnSync('git', args, { cwd: root, encoding: null, input, shell: false })
+      if (args[0] === 'diff-tree' && args.includes(mergeCommit)) diffTreeCalls.push({ args: [...args], stdout: Buffer.from(result.stdout ?? []) })
+
+      return gitEnvelope({ error: result.error ?? null, signal: result.signal ?? null, status: result.status, stderr: result.stderr, stdout: result.stdout })
+    }
+    let auditError
+    assert.throws(
+      () => inspectImplementationBoundary({ auditBase, objectFormat: 'sha1', repositoryRoot: fixtureRoot, scratchRelativePath: null }, { filesystem: dispatchFilesystem(fixtureRoot), git: realGit }),
+      (error) => {
+        auditError = error
+
+        return error instanceof ImplementationDispatchError && error.code === 'committed-scratch'
+      },
+    )
+    const transientOffenders = auditError.details.offenders.filter(({ path }) => path === '.tmp/transient')
+    assert.equal(transientOffenders.length, 2)
+    assert.deepEqual(transientOffenders.find(({ commit }) => commit === addCommit), { commit: addCommit, path: '.tmp/transient' })
+    assert.deepEqual(transientOffenders.find(({ commit }) => commit === deleteCommit), { commit: deleteCommit, path: '.tmp/transient' })
+    assert.equal(diffTreeCalls.length, 1)
+    assert.deepEqual(diffTreeCalls[0].args, ['diff-tree', '-m', '--root', '--no-commit-id', '--name-only', '-z', '-r', mergeCommit, '--', ':(top).tmp'])
+    const rawMergePaths = diffTreeCalls[0].stdout.toString('utf8').slice(0, -1).split(String.fromCharCode(0))
+    assert.equal(rawMergePaths.filter((path) => path === '.tmp/shared').length, 2)
+    assert.equal(rawMergePaths.filter((path) => path === '.tmp/left').length, 1)
+    assert.equal(rawMergePaths.filter((path) => path === '.tmp/right').length, 1)
+    assert.deepEqual(auditError.details.offenders.filter(({ commit }) => commit === mergeCommit), [
+      { commit: mergeCommit, path: '.tmp/left' },
+      { commit: mergeCommit, path: '.tmp/right' },
+      { commit: mergeCommit, path: '.tmp/shared' },
+    ])
+
+    writeFileSync(join(fixtureRoot, '.tmp', 'z-staged'), 'z\n')
+    writeFileSync(join(fixtureRoot, '.tmp', 'A-staged'), 'a\n')
+    mkdirSync(join(fixtureRoot, 'nested', '.tmp'), { recursive: true })
+    writeFileSync(join(fixtureRoot, 'nested', '.tmp', 'excluded'), 'nested\n')
+    execFileSync('git', ['add', '--force', '.tmp/z-staged', '.tmp/A-staged', 'nested/.tmp/excluded'], { cwd: fixtureRoot })
+    assertDispatchFailure(
+      () => inspectImplementationBoundary({ auditBase: mergeCommit, objectFormat: 'sha1', repositoryRoot: fixtureRoot, scratchRelativePath: null }, { filesystem: dispatchFilesystem(fixtureRoot), git: realGit }),
+      'staged-scratch',
+      { paths: ['.tmp/A-staged', '.tmp/z-staged'] },
+    )
+  } finally {
+    rmSync(fixtureRoot, { force: true, recursive: true })
+  }
+})
+
+test('implementation dispatch rejects hostile policy frames and preserves validation order', () => {
+  const root = 'C:\\audit-root'
+  const base = 'a'.repeat(40)
+  const valid = { objectFormat: 'sha1', repositoryRoot: root, scratchRelativePath: null }
+  const filesystem = dispatchFilesystem(root)
+  const nul = String.fromCharCode(0)
+  const frameGit = (frame, status = 0) => (_root, args) => gitEnvelope({ status: args[0] === 'check-ignore' ? status : 0, stdout: args[0] === 'rev-parse' && args[1] === '--show-object-format=storage' ? Buffer.from('sha1\n') : args[0] === 'check-ignore' ? frame : Buffer.from(`${root}\n`) })
+  assertDispatchFailure(() => inspectImplementationBoundary({ ...valid, auditBase: base }, { filesystem, git: frameGit(Buffer.from(['wrong', '1', '/.tmp/', '.tmp/nightshift-implementation-policy-probe'].join(nul) + nul)) }), 'ignore-policy', { expectedPattern: '/.tmp/', observedPattern: '/.tmp/', observedSource: 'wrong', path: '.tmp/' })
+  assertDispatchFailure(() => inspectImplementationBoundary({ ...valid, auditBase: base }, { filesystem, git: frameGit(Buffer.from('hostile'), 1) }), 'git-command', { args: ['check-ignore', '-z', '-v', '--no-index', '--stdin'], operation: 'check-root-ignore', status: 1, stderr: '' })
+  let probeNumber = 0
+  const superpowersHostile = (_root, args) => {
+    if (args[0] === 'rev-parse' && args[1] === '--show-object-format=storage') return gitEnvelope({ stdout: Buffer.from('sha1\n') })
+    if (args[0] === 'rev-parse' && args[1] === '--show-toplevel') return gitEnvelope({ stdout: Buffer.from(`${root}\n`) })
+    if (args[0] === 'check-ignore') { probeNumber += 1; return probeNumber === 2 ? gitEnvelope({ status: 1, stdout: Buffer.from('hostile') }) : gitEnvelope({ stdout: Buffer.from(['.gitignore', '1', '/.tmp/', '.tmp/nightshift-implementation-policy-probe'].join(nul) + nul) }) }
+    return gitEnvelope()
+  }
+  assertDispatchFailure(() => inspectImplementationBoundary({ ...valid, auditBase: base }, { filesystem, git: superpowersHostile }), 'git-command', { args: ['check-ignore', '-z', '-v', '--no-index', '--stdin'], operation: 'check-superpowers-ignore', status: 1, stderr: '' })
+  assertDispatchFailure(
+    () => inspectImplementationBoundary({ ...valid, auditBase: base }, { filesystem, git: createImplementationBoundaryGit({ overrides: new Map([['check-root-ignore', gitEnvelope({ status: 1 })]]) }) }),
+    'ignore-policy',
+    { expectedPattern: '/.tmp/', observedPattern: null, observedSource: null, path: '.tmp/' },
+  )
+  assertDispatchFailure(
+    () => inspectImplementationBoundary({ ...valid, auditBase: base }, { filesystem, git: createImplementationBoundaryGit({ overrides: new Map([['check-superpowers-ignore', gitEnvelope({ status: 1 })]]) }) }),
+    'superpowers-policy',
+    { expectedPattern: null, observedPattern: null, observedSource: null, path: '.superpowers/' },
+  )
+  assertDispatchFailure(() => inspectImplementationBoundary({ ...valid, objectFormat: 'sha512', auditBase: base }, { filesystem, git: () => { throw new Error('must not call Git') } }), 'dispatch-input', { field: 'objectFormat', reason: 'invalid-audit-base' })
+})
+
+test('implementation dispatch distinguishes history base semantic statuses', () => {
+  const root = 'C:\\audit-root'
+  const base = 'a'.repeat(40)
+  const tip = 'b'.repeat(40)
+  const filesystem = dispatchFilesystem(root)
+  const input = { auditBase: base, objectFormat: 'sha1', repositoryRoot: root, scratchRelativePath: null }
+  assertDispatchFailure(
+    () => inspectImplementationBoundary(input, { filesystem, git: createImplementationBoundaryGit({ overrides: new Map([['check-object', gitEnvelope({ status: 1 })]]) }) }),
+    'history-base',
+    { auditBase: base, kind: 'missing-object' },
+  )
+  const ancestryCalls = []
+  assertDispatchFailure(
+    () => inspectImplementationBoundary(input, { filesystem, git: createImplementationBoundaryGit({ calls: ancestryCalls, overrides: new Map([['check-ancestry', gitEnvelope({ status: 1 })]]) }) }),
+    'history-base',
+    { auditBase: base, kind: 'non-ancestor' },
+  )
+  assert.deepEqual(ancestryCalls.find(({ operation }) => operation === 'check-ancestry').args, ['merge-base', '--is-ancestor', base, tip])
+})
+
+test('implementation dispatch bounds and frames the complete audit range', () => {
+  const root = 'C:\\audit-root'
+  const base = 'a'.repeat(40)
+  const tip = 'b'.repeat(40)
+  const nul = String.fromCharCode(0)
+  const filesystem = dispatchFilesystem(root)
+  const makeGit = ({ commits = [], diffPaths = new Map(), staged = '', tracked = '', secondTip = tip, status = new Map(), malformed = new Map(), failureCommit = null } = {}) => {
+    let probe = 0
+    return (_root, args, input) => {
+      const key = args[0]
+      if (status.has(args[0] + ':' + (args[1] ?? ''))) return gitEnvelope({ status: status.get(args[0] + ':' + (args[1] ?? '')) })
+      if (key === 'rev-parse' && args[1] === '--show-object-format=storage') return gitEnvelope({ stdout: Buffer.from('sha1\n') })
+      if (key === 'rev-parse' && args[1] === '--show-toplevel') return gitEnvelope({ stdout: Buffer.from(`${root}\n`) })
+      if (key === 'check-ignore') { probe += 1; const path = input.toString('utf8').slice(0, -1); return gitEnvelope({ stdout: Buffer.from(['.gitignore', '1', path.startsWith('.tmp/') ? '/.tmp/' : '.superpowers/', path].join(nul) + nul) }) }
+      if (key === 'diff') return gitEnvelope({ stdout: Buffer.from(staged) })
+      if (key === 'rev-parse' && args[1] === '--verify') return gitEnvelope({ stdout: Buffer.from(`${probe > 2 ? secondTip : tip}\n`) })
+      if (key === 'cat-file') return gitEnvelope()
+      if (key === 'merge-base') return gitEnvelope()
+      if (key === 'rev-list') return gitEnvelope({ stdout: malformed.get('rev-list') ?? Buffer.from(commits.length === 0 ? '' : commits.join('\n') + '\n') })
+      if (key === 'diff-tree') { const commit = args[args.indexOf('-r') + 1]; if (failureCommit === commit) return gitEnvelope({ status: 2 }); if (malformed.has(commit)) return gitEnvelope({ stdout: Buffer.from(malformed.get(commit)) }); return gitEnvelope({ stdout: Buffer.from((diffPaths.get(commit) ?? []).join(nul) + ((diffPaths.get(commit) ?? []).length > 0 ? nul : '')) }) }
+      if (key === 'ls-files') return gitEnvelope({ stdout: Buffer.from(tracked) })
+      return gitEnvelope()
+    }
+  }
+  const validInput = { auditBase: base, objectFormat: 'sha1', repositoryRoot: root, scratchRelativePath: null }
+  const empty = inspectImplementationBoundary(validInput, { filesystem, git: makeGit() })
+  assert.deepEqual(empty, { commitsChecked: 0, scratchTracked: false })
+  const c1 = 'c'.repeat(40); const c2 = 'd'.repeat(40)
+  assertDispatchFailure(() => inspectImplementationBoundary(validInput, { filesystem, git: makeGit({ commits: [c1, c2], diffPaths: new Map([[c1, ['.tmp/one', '.tmp/one']], [c2, ['.tmp/two']]]) }) }), 'committed-scratch', { offenders: [{ commit: c1, path: '.tmp/one' }, { commit: c2, path: '.tmp/two' }] })
+  let overLimitDiffTreeCalls = 0
+  const overLimitGit = makeGit({ commits: Array.from({ length: 257 }, (_, index) => index.toString(16).padStart(40, '0')) })
+  assertDispatchFailure(
+    () => inspectImplementationBoundary(validInput, { filesystem, git: (rootValue, args, input) => {
+      if (args[0] === 'diff-tree') overLimitDiffTreeCalls += 1
+
+      return overLimitGit(rootValue, args, input)
+    } }),
+    'audit-limit',
+    { kind: 'commit-count', limit: 256, observed: 257 },
+  )
+  assert.equal(overLimitDiffTreeCalls, 0)
+  const fourThousandNinetySix = Array.from({ length: 4097 }, (_, index) => `.tmp/p${index}`)
+  assertDispatchFailure(() => inspectImplementationBoundary(validInput, { filesystem, git: makeGit({ commits: [c1], diffPaths: new Map([[c1, fourThousandNinetySix]]) }) }), 'audit-limit', { kind: 'offender-count', limit: 4096, observed: 4097 })
+  const byteOverflowPath = '.tmp/' + 'x'.repeat(1048532)
+  assertDispatchFailure(() => inspectImplementationBoundary(validInput, { filesystem, git: makeGit({ commits: [c1], diffPaths: new Map([[c1, [byteOverflowPath]]]) }) }), 'audit-limit', { kind: 'offender-bytes', limit: 1048576, observed: 1048577 })
+  const acceptedCommits = Array.from({ length: 256 }, (_, index) => index.toString(16).padStart(40, '0'))
+  const acceptedResult = inspectImplementationBoundary(validInput, { filesystem, git: makeGit({ commits: acceptedCommits }) })
+  assert.deepEqual(acceptedResult, { commitsChecked: 256, scratchTracked: false })
+  const acceptedOffenders = Array.from({ length: 4096 }, (_, index) => `.tmp/q${index}`)
+  assertDispatchFailure(() => inspectImplementationBoundary(validInput, { filesystem, git: makeGit({ commits: [c1], diffPaths: new Map([[c1, acceptedOffenders]]) }) }), 'committed-scratch', { offenders: acceptedOffenders.map((path) => ({ commit: c1, path })).sort((left, right) => left.path < right.path ? -1 : 1) })
+  const exactBytesPath = '.tmp/' + 'y'.repeat(1048531)
+  assertDispatchFailure(() => inspectImplementationBoundary(validInput, { filesystem, git: makeGit({ commits: [c1], diffPaths: new Map([[c1, [exactBytesPath]]]) }) }), 'committed-scratch', { offenders: [{ commit: c1, path: exactBytesPath }] })
+  let verifyCount = 0
+  const changedTipGit = makeGit({ secondTip: 'c'.repeat(40) })
+  const changedTipWrapper = (rootValue, args, input) => { const result = changedTipGit(rootValue, args, input); if (args[0] === 'rev-parse' && args[1] === '--verify') verifyCount += 1; return verifyCount > 1 && args[0] === 'rev-parse' && args[1] === '--verify' ? gitEnvelope({ stdout: Buffer.from('c'.repeat(40) + '\n') }) : result }
+  assertDispatchFailure(() => inspectImplementationBoundary(validInput, { filesystem, git: changedTipWrapper }), 'history-base', { auditBase: base, expectedTip: tip, kind: 'tip-changed', observedTip: 'c'.repeat(40) })
+  const partialCalls = []
+  const partialFailure = captureDispatchFailure(
+    () => inspectImplementationBoundary(validInput, {
+      filesystem,
+      git: createImplementationBoundaryGit({
+        calls: partialCalls,
+        commits: [c1, c2],
+        overrides: new Map([['list-commit-paths', ({ args }) => args.includes(c1) ? gitEnvelope({ stdout: Buffer.from(`.tmp/earlier${nul}`) }) : gitEnvelope({ status: 2 })]]),
+      }),
+    }),
+    'git-command',
+    { args: ['diff-tree', '-m', '--root', '--no-commit-id', '--name-only', '-z', '-r', c2, '--', ':(top).tmp'], operation: 'list-commit-paths', status: 2, stderr: '' },
+  )
+  assert.deepEqual(partialCalls.filter(({ operation }) => operation === 'list-commit-paths').map(({ args }) => args), [
+    ['diff-tree', '-m', '--root', '--no-commit-id', '--name-only', '-z', '-r', c1, '--', ':(top).tmp'],
+    ['diff-tree', '-m', '--root', '--no-commit-id', '--name-only', '-z', '-r', c2, '--', ':(top).tmp'],
+  ])
+  assert.equal(partialCalls.some(({ operation }) => operation === 'check-scratch-tracked' || operation === 'recheck-tip'), false)
+  assert.equal(Object.hasOwn(partialFailure.details, 'offenders'), false)
+  assert.equal(JSON.stringify(partialFailure.details).includes('.tmp/earlier'), false)
+  const malformedRevListGit = makeGit({ malformed: new Map([['rev-list', Buffer.from(`${c1}\r\n`)]]) })
+  assertDispatchFailure(() => inspectImplementationBoundary(validInput, { filesystem, git: malformedRevListGit }), 'git-command', { args: ['rev-list', '--reverse', `${base}..${tip}`], operation: 'list-commits', status: 0, stderr: '' })
+  const generated = '.tmp/implementation-000000000000-000000000000-00000000-0000-4000-8000-000000000000'
+  assertDispatchFailure(() => inspectImplementationBoundary({ ...validInput, scratchRelativePath: generated }, { filesystem, git: makeGit({ tracked: generated + nul }) }), 'scratch-tracked', { path: generated })
+  for (const path of ['.tmp/other', '.tmp/implementation-foo', '.tmp/implementation-000000000000-000000000000-00000000-0000-4000-8000-00000000000x']) assertDispatchFailure(() => inspectImplementationBoundary({ ...validInput, scratchRelativePath: path }, { filesystem, git: makeGit() }), 'dispatch-input', { field: 'scratchRelativePath', reason: 'invalid-scratch-path' })
+})
+
+test('implementation dispatch reports staged root scratch paths in ordinal order', () => {
+  const root = 'C:\\audit-root'
+  const base = 'a'.repeat(40)
+  const nul = String.fromCharCode(0)
+  const calls = []
+  assertDispatchFailure(
+    () => inspectImplementationBoundary(
+      { auditBase: base, objectFormat: 'sha1', repositoryRoot: root, scratchRelativePath: null },
+      { filesystem: dispatchFilesystem(root), git: createImplementationBoundaryGit({ calls, staged: Buffer.from(`.tmp/z${nul}.tmp/A${nul}`) }) },
+    ),
+    'staged-scratch',
+    { paths: ['.tmp/A', '.tmp/z'] },
+  )
+  assert.deepEqual(calls.find(({ operation }) => operation === 'list-staged-scratch').args, ['diff', '--cached', '--name-only', '-z', '--', ':(top).tmp'])
+})
+
+test('implementation dispatch rejects every malformed strict audit frame', () => {
+  const root = 'C:\\audit-root'
+  const sha1Base = 'a'.repeat(40)
+  const sha1Tip = 'b'.repeat(40)
+  const sha1Commit = 'c'.repeat(40)
+  const sha256Base = 'a'.repeat(64)
+  const sha256Tip = 'b'.repeat(64)
+  const sha256Commit = 'c'.repeat(64)
+  const generated = '.tmp/implementation-000000000000-000000000000-00000000-0000-4000-8000-000000000000'
+  const nul = String.fromCharCode(0)
+  const lineBreak = String.fromCharCode(13, 10)
+  const backslash = String.fromCharCode(92)
+  const canonicalPathFrame = Buffer.from(`.tmp/a${nul}`)
+  const pathFrameMutations = [
+    { label: 'invalid UTF-8', frame: Buffer.from([0xc3, 0x28, 0x00]) },
+    { label: 'UTF-8 BOM', frame: Buffer.from([0xef, 0xbb, 0xbf, ...Buffer.from('.tmp/a'), 0x00]) },
+    { label: 'CRLF data', frame: Buffer.from(`.tmp/a${lineBreak}${nul}`) },
+    { label: 'missing terminal NUL', frame: Buffer.from('.tmp/a') },
+    { label: 'empty record', frame: Buffer.from(`.tmp/a${nul}${nul}`) },
+    { label: 'extra byte after terminal NUL', frame: Buffer.from(`.tmp/a${nul}x`) },
+    { label: 'backslash path', frame: Buffer.from(`.tmp${backslash}a${nul}`) },
+    { label: 'dot segment path', frame: Buffer.from(`.tmp/./a${nul}`) },
+  ]
+  const pathOperations = [
+    {
+      args: ['diff', '--cached', '--name-only', '-z', '--', ':(top).tmp'],
+      input: { auditBase: sha1Base, objectFormat: 'sha1', repositoryRoot: root, scratchRelativePath: null },
+      operation: 'list-staged-scratch',
+      options(frame) {
+        return { overrides: new Map([['list-staged-scratch', gitEnvelope({ stdout: frame })]]) }
+      },
+    },
+    {
+      args: ['diff-tree', '-m', '--root', '--no-commit-id', '--name-only', '-z', '-r', sha1Commit, '--', ':(top).tmp'],
+      input: { auditBase: sha1Base, objectFormat: 'sha1', repositoryRoot: root, scratchRelativePath: null },
+      operation: 'list-commit-paths',
+      options(frame) {
+        return { commits: [sha1Commit], overrides: new Map([['list-commit-paths', gitEnvelope({ stdout: frame })]]) }
+      },
+    },
+    {
+      args: ['ls-files', '-z', '--', `:(literal)${generated}`],
+      input: { auditBase: sha1Base, objectFormat: 'sha1', repositoryRoot: root, scratchRelativePath: generated },
+      operation: 'check-scratch-tracked',
+      options(frame) {
+        return { overrides: new Map([['check-scratch-tracked', gitEnvelope({ stdout: frame })]]) }
+      },
+    },
+  ]
+  for (const mutation of pathFrameMutations) {
+    assert.notDeepEqual(mutation.frame, canonicalPathFrame, `${mutation.label} must mutate the canonical path frame`)
+    for (const vector of pathOperations) {
+      assertDispatchFailure(
+        () => inspectImplementationBoundary(vector.input, { filesystem: dispatchFilesystem(root), git: createImplementationBoundaryGit(vector.options(mutation.frame)) }),
+        'git-command',
+        { args: vector.args, operation: vector.operation, status: 0, stderr: '' },
+      )
+    }
+  }
+
+  const revListMutations = [
+    { format: 'sha1', frame: Buffer.from([0xc3, 0x28, 0x0a]), label: 'invalid UTF-8', value: sha1Commit },
+    { format: 'sha1', frame: Buffer.from([0xef, 0xbb, 0xbf, ...Buffer.from(sha1Commit), 0x0a]), label: 'UTF-8 BOM', value: sha1Commit },
+    { format: 'sha1', frame: Buffer.from(`${sha1Commit}${lineBreak}`), label: 'CRLF terminator', value: sha1Commit },
+    { format: 'sha1', frame: Buffer.from(sha1Commit), label: 'missing terminal LF', value: sha1Commit },
+    { format: 'sha1', frame: Buffer.from(`${String.fromCharCode(10)}${sha1Commit}${String.fromCharCode(10)}`), label: 'empty record', value: sha1Commit },
+    { format: 'sha1', frame: Buffer.from(`${sha1Commit}\n${'d'.repeat(40)}\nextra\n`), label: 'extra line', value: sha1Commit },
+    { format: 'sha1', frame: Buffer.from(`${'c'.repeat(39)}\n`), label: 'wrong SHA-1 width', value: sha1Commit },
+    { format: 'sha256', frame: Buffer.from(`${'c'.repeat(40)}\n`), label: 'wrong SHA-256 width', value: sha256Commit },
+  ]
+  for (const mutation of revListMutations) {
+    const base = mutation.format === 'sha1' ? sha1Base : sha256Base
+    const tip = mutation.format === 'sha1' ? sha1Tip : sha256Tip
+    const canonical = Buffer.from(`${mutation.value}\n`)
+    assert.notDeepEqual(mutation.frame, canonical, `${mutation.label} must mutate the canonical rev-list frame`)
+    assertDispatchFailure(
+      () => inspectImplementationBoundary(
+        { auditBase: base, objectFormat: mutation.format, repositoryRoot: root, scratchRelativePath: null },
+        {
+          filesystem: dispatchFilesystem(root),
+          git: createImplementationBoundaryGit({
+            format: mutation.format,
+            overrides: new Map([['list-commits', gitEnvelope({ stdout: mutation.frame })]]),
+            tip,
+          }),
+        },
+      ),
+      'git-command',
+      { args: ['rev-list', '--reverse', `${base}..${tip}`], operation: 'list-commits', status: 0, stderr: '' },
+    )
+  }
+})
+
+test('implementation dispatch maps every audit Git operation failure exactly', () => {
+  const root = 'C:\\audit-root'
+  const base = 'a'.repeat(40)
+  const tip = 'b'.repeat(40)
+  const commit = 'c'.repeat(40)
+  const generated = '.tmp/implementation-000000000000-000000000000-00000000-0000-4000-8000-000000000000'
+  const input = { auditBase: base, objectFormat: 'sha1', repositoryRoot: root, scratchRelativePath: null }
+  const vectors = [
+    { args: ['check-ignore', '-z', '-v', '--no-index', '--stdin'], operation: 'check-root-ignore' },
+    { args: ['check-ignore', '-z', '-v', '--no-index', '--stdin'], operation: 'check-superpowers-ignore' },
+    { args: ['diff', '--cached', '--name-only', '-z', '--', ':(top).tmp'], operation: 'list-staged-scratch' },
+    { args: ['rev-parse', '--verify', 'HEAD^{commit}'], operation: 'resolve-tip' },
+    { args: ['cat-file', '-e', `${base}^{commit}`], operation: 'check-object' },
+    { args: ['merge-base', '--is-ancestor', base, tip], operation: 'check-ancestry' },
+    { args: ['rev-list', '--reverse', `${base}..${tip}`], operation: 'list-commits' },
+    { args: ['diff-tree', '-m', '--root', '--no-commit-id', '--name-only', '-z', '-r', commit, '--', ':(top).tmp'], commits: [commit], operation: 'list-commit-paths' },
+    { args: ['ls-files', '-z', '--', `:(literal)${generated}`], operation: 'check-scratch-tracked', scratchRelativePath: generated },
+    { args: ['rev-parse', '--verify', 'HEAD^{commit}'], operation: 'recheck-tip' },
+  ]
+  for (const vector of vectors) {
+    const calls = []
+    const stderr = `failure:${vector.operation}\n`
+    const error = captureDispatchFailure(
+      () => inspectImplementationBoundary(
+        { ...input, scratchRelativePath: vector.scratchRelativePath ?? null },
+        {
+          filesystem: dispatchFilesystem(root),
+          git: createImplementationBoundaryGit({
+            calls,
+            commits: vector.commits ?? [],
+            overrides: new Map([[vector.operation, gitEnvelope({ status: 2, stderr: Buffer.from(stderr) })]]),
+          }),
+        },
+      ),
+      'git-command',
+      { args: vector.args, operation: vector.operation, status: 2, stderr },
+    )
+    assert.deepEqual(calls.at(-1).args, vector.args)
+    assert.equal(calls.at(-1).operation, vector.operation)
+    assert.equal(Object.hasOwn(error.details, 'offenders'), false)
   }
 })
 
