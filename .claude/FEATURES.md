@@ -87,7 +87,7 @@ Pre-dependency-analysis brainstorms live here. An entry is a draft feature whose
 
 ### [Light revise mode](features/light-revise-mode.md)
 
-Draft exploring a lightened variant of the revise review workflows: one fresh reviewer per iteration instead of the full per-dimension swarm, and a curated dimension set that skips the least-relevant dimensions. Prompted by the single-reviewer revise-spec run over `.claude/features/dependency-cycle-detection.md` (2026-08-11).
+Draft exploring a lightened variant of the revise review workflows: one fresh reviewer per iteration instead of the full per-dimension swarm, and a curated dimension set that skips the least-relevant dimensions. Prompted by the single-reviewer revise-spec run over `.claude/features/dependency-cycle-detection.md` (2026-08-11). A candidate automatic path applies Light revise to a selected Quick Win only after a scope validator confirms the item is genuinely small; failed or uncertain validation keeps normal review rather than trusting the backlog label.
 
 ### [Wave round economy](features/wave-round-economy.md)
 
