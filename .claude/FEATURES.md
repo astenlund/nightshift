@@ -113,6 +113,10 @@ Draft exploring a dimension-derived authoring overlay for specs and plans: night
 
 Draft exploring a JSON schema that review agents validate their final report against before the session ends, so malformed output is caught by the reviewer itself instead of forcing the controller to salvage-parse an erroneous report or re-run the review after the agent session has been cleared.
 
+### [Incremental revise finding delivery](features/incremental-revise-finding-delivery.md)
+
+Draft exploring reviewer-to-controller streaming of individual findings so each can enter same-round deduplication and skeptic dispatch before the reviewer finishes. The design must preserve the whole-round adjudication barrier while defining bounded frames, stable identities, completion, correction, backpressure, checkpoint recovery, and Workflow/manual/supervisor parity.
+
 ### [Backlog index version](features/backlog-index-version.md)
 
 Draft exploring a durable version marker on each backlog index file (a "backlog index version", distinct from the plugin version), with an instruction and an on-demand check that compares it against the plugin's latest and notifies the user to run `init-backlog` when an index predates the current template.
