@@ -157,6 +157,10 @@ Draft exploring whether code simplification belongs in each implementation task,
 
 Draft exploring mechanical enforcement that blocks prohibited controller-suite entry points during active review rounds without interfering with legitimate local or post-convergence runs. Authoritative run state, false-positive policy, and recovery behavior remain open design boundaries.
 
+### [Marketplace installation surface](features/marketplace-installation-surface.md)
+
+Draft exploring an explicit, tested policy for which repository paths ship in marketplace installations, prompted by backlog files appearing in the installed plugin. The design must separate runtime resources from repository-maintenance and development-only content, preserve `${CLAUDE_PLUGIN_ROOT}` dependencies, and keep Claude Code and Codex installation surfaces equivalent.
+
 ## Review hardening
 
 ### [Bundled revise controller](features/bundled-revise-controller.md)
