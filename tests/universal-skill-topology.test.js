@@ -2305,9 +2305,12 @@ test('handover preserves lifecycle behavior behind the agreement gate', () => {
     'Write the dedicated-artifact completion stamp BEFORE the next offer',
     'then offer to remove the plan file',
     'Invalidate volatile agreement state on completion before returning.',
+    'as a flag or note per the classification below',
+    'the user rules on the flagged markers there',
   ]) {
     assert.equal(body.includes(lifecycleContract), true, `handover must preserve lifecycle contract: ${lifecycleContract}`)
   }
+  assert.equal(body.includes('as a flag with the claim\'s context'), false, 'handover must not restate the retired unconditional live-claim flag rule')
   assert.equal(body.includes('Status:'), false, 'handover must not create or trust Status markers')
   assert.equal(body.toLowerCase().includes('signed off'), false, 'handover must not retain signed-off stage logic')
 })
