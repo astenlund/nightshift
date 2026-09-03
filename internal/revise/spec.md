@@ -79,6 +79,7 @@ The operating-context section must exist and be complete before any reviewer or 
 3. **Inputs and outputs**: are the data shapes for inputs and outputs (including error shapes) named, sized, and typed? Are field semantics specified (required vs optional, range, encoding)?
 4. **Success criteria**: how does an implementer know they're done? Is there a concrete "this passes when..." or only prose?
 5. **Naming consistency**: does the spec use one term per concept, or drift between synonyms? Pick one and stick with it.
+6. **Bound grammar slots**: every angle-bracket slot in a literal form the spec defines (a marker, a stamp line, an echo line, a record bullet) has a binding clause at its definition saying what fills it, how it is normalized, and what the empty case renders; a slot bound only by example is a finding, because two implementers fill it two ways.
 
 ### Dimension 3: Scope and decomposition
 
@@ -93,6 +94,7 @@ The operating-context section must exist and be complete before any reviewer or 
 2. **Data-shape boundary integrity**: when data crosses an interface (input -> algorithm -> output -> persistence), is the shape consistent at each step? Watch for field renames mid-document.
 3. **Cross-reference validity**: do "see section X" pointers refer to sections that exist and say what's claimed? Stale cross-references rot specs from the inside.
 4. **Constants in lockstep**: numeric values, field names, and file paths that appear in multiple places (e.g., a coordinate pinned in CSS, code, and spec) should agree across all sites. The spec is one of those sites.
+5. **Amended files swept by claim**: for every file the spec amends, grep that file for every sentence asserting the claim the amendment changes (the count, the timing, the owner, the rule), not only the sentence the spec quotes; a hit the amendment enumeration does not name is a finding, since an enumeration written from memory misses the second sentence stating the same fact and ships a contradiction.
 
 ### Dimension 5: Completeness
 
