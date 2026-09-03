@@ -57,3 +57,4 @@ Agreed 2026-09-02 as part of the three-entry handover live-claim surfacing batch
 
 - revise-spec graduated 2026-09-03 04:07 at 49090ee, scope: whole file, content: 0678f7e9
 - revise-spec refreshed 2026-09-03 20:07 at 316caad, scope: whole file, content: e281b31d (live-claim probes)
+- handover completed 2026-09-03 20:22 at 6e6b824, scope: whole file, content: e281b31d
