@@ -54,6 +54,11 @@ const HARD_BREAK = /(?: {2,}|\\)$/;
 // A **Label:** line starts a new block, so **Requires:** and **External:**
 // keep their own lines; the ready parser imports this as its label terminator.
 const LABEL_AT_START = /^\*\*[^*]+?:\*\*/;
+// The two dependency labels the ready parser resolves and the agreement controller
+// places an Operating context block after. Requires holds in-backlog links only;
+// External holds bare-text external primitives only. Both share one grammar.
+const REQUIRES_LABEL = /^\*\*Requires:\*\*/i;
+const EXTERNAL_LABEL = /^\*\*External:\*\*/i;
 // The files and directories under .claude/ that hold backlog prose. Anything
 // else in a .claude/ tree (plans, host instruction files, commands, agents,
 // skills, rules) is out of scope.
@@ -629,4 +634,4 @@ function runCli(argv, options = {}) {
   process.exitCode = unreadable || (report.length > 0 && !write) ? 1 : 0;
 }
 
-module.exports = { LABEL_AT_START, CatalogError, canonicalBacklogRootIdentity, canonicalPath, compareTargets, decodeUtf8, detectHardWraps, unwrapText, collectMarkdownFiles, isContainedPath, maskRawHtmlBlocks, normalizeCatalogItems, analyzeText, joinContinuations, analyzeUnwrapCatalog, runCli };
+module.exports = { LABEL_AT_START, REQUIRES_LABEL, EXTERNAL_LABEL, CatalogError, canonicalBacklogRootIdentity, canonicalPath, compareTargets, decodeUtf8, detectHardWraps, unwrapText, collectMarkdownFiles, isContainedPath, maskRawHtmlBlocks, normalizeCatalogItems, analyzeText, joinContinuations, analyzeUnwrapCatalog, runCli };

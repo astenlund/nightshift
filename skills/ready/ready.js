@@ -22,7 +22,7 @@ const fs = require('fs');
 const path = require('path');
 const { stableOpenFile } = require('../../internal/filesystem-primitives.js');
 const { scanMarkdown } = require('../spec-agreement/spec-agreement.js');
-const { LABEL_AT_START, CatalogError, canonicalBacklogRootIdentity, canonicalPath, compareTargets, decodeUtf8, detectHardWraps, collectMarkdownFiles, isContainedPath, maskRawHtmlBlocks: sharedMaskRawHtmlBlocks, normalizeCatalogItems } = require('../../internal/backlog-catalog.js');
+const { LABEL_AT_START, REQUIRES_LABEL, EXTERNAL_LABEL, CatalogError, canonicalBacklogRootIdentity, canonicalPath, compareTargets, decodeUtf8, detectHardWraps, collectMarkdownFiles, isContainedPath, maskRawHtmlBlocks: sharedMaskRawHtmlBlocks, normalizeCatalogItems } = require('../../internal/backlog-catalog.js');
 
 const INDEX_FILE_STEMS = new Set([
   'QUICK_WINS', 'FEATURES', 'BUGS', 'PATTERNS',
@@ -52,10 +52,6 @@ const PLACEHOLDER_LINES = new Set([
 // A bold label at line start (e.g. **Slices:**, **Shipped:**) terminates a
 // wrapped Requires or External line; inline **bold** mid-line does not. The
 // pattern is imported from the unwrapper so both read the same block boundary.
-// The two dependency labels. Requires holds in-backlog links only; External
-// holds bare-text external primitives only. Both share one grammar.
-const REQUIRES_LABEL = /^\*\*Requires:\*\*/i;
-const EXTERNAL_LABEL = /^\*\*External:\*\*/i;
 const SLICES_LABEL = /^\*\*Slices:\*\*\s*$/i;
 const BREAKOUT_LINE_LABELS = [['Requires', REQUIRES_LABEL], ['External', EXTERNAL_LABEL]];
 // Every grammar error names its remedy: these messages are the upgrade
