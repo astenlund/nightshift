@@ -24,7 +24,7 @@ A single final-gate-only alternative was considered and rejected: it concentrate
 
 Sonnet-vs-Opus is not a diversity mechanism: same training lineage, shared blind spots, correlated hallucinations (the exact failure mode the reviewer-pair redundancy was meant to survive). A real second opinion means an **independent error distribution**, e.g. a DeepSeek/Qwen/Gemini read when the driving session runs Claude, or vice versa. On Anthropic, consigned to one family, the question properly reduces to higher tier *and/or* higher reasoning effort, and the skill should surface that as a distinctly different choice, not a value judgment.
 
-This premise is an empirical claim about external model behavior that this repository cannot settle; it carries `(live-claim: provisional)` until a cross-family versus same-lineage comparison on a shared artifact corpus settles it.
+This premise is an empirical claim about external model behavior that this repository cannot settle; it carries `(live-claim: provisional, awaiting a cross-family versus same-lineage comparison on a shared artifact corpus)` until that comparison settles it.
 
 When possible the second opinion should use a model of the same strength as the strongest deployable reviewer: the point is divergence, not a free weaker pass. The user picks the second-opinion model per run, because the landscape shifts on a weekly basis; the skill may ask whether to consult an external model-ranking site and fold 2-3 gated recommendations into the question, but the choice remains under user control.
 
@@ -115,3 +115,5 @@ Landing order: the wave-convergence lifecycle shipped 2026-08-14 in the 2.2.0 ba
 
 - revise-spec graduated 2026-08-10 22:57 at 0cbfb1c, scope: whole file, content: d552b097
 - revise-spec refreshed 2026-08-22 10:18 at 6022378, scope: whole file, content: 21d8307b (breakout line removal)
+- revise-spec refreshed 2026-09-03 15:51 at 4bb64ae, scope: whole file, content: 6b6d89f7 (live-claim marker migration)
+- revise-spec refreshed 2026-09-03 17:53 at 5dc42e9, scope: whole file, content: 771ed0aa (final review fixes)

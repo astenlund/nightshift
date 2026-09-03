@@ -2307,10 +2307,25 @@ test('handover preserves lifecycle behavior behind the agreement gate', () => {
     'Invalidate volatile agreement state on completion before returning.',
     'as a flag or note per the classification below',
     'the user rules on the flagged markers there',
+    'markers beginning `(live-claim: provisional`, bare or carrying an `awaiting <precondition>` clause',
+    'replace the whole marker with `(live-claim: probed <date>)` on a confirming result',
+    'deriving each item from the marker\'s own record',
+    'a `(live-claim: provisional, awaiting <precondition>)` marker, whose clause is the artifact\'s own record',
+    'designed-ness is read from the artifact, so a marker carrying an `awaiting <precondition>` clause surfaces as a note',
+    'its marker is rewritten to `(live-claim: provisional, awaiting <precondition>)` naming that release or cutover',
   ]) {
     assert.equal(body.includes(lifecycleContract), true, `handover must preserve lifecycle contract: ${lifecycleContract}`)
   }
   assert.equal(body.includes('as a flag with the claim\'s context'), false, 'handover must not restate the retired unconditional live-claim flag rule')
+  for (const retiredLiveClaimLiteral of [
+    'when the hardened spec carries `(live-claim: provisional)` markers',
+    'Where the run settles any claim still marked `(live-claim: provisional)`,',
+    'a `(live-claim: provisional)` marker whose provisional status is a designed outcome',
+    'its probe gated behind a cutover or release precondition recorded per step 1\'s rules',
+    'and its morning-report item names the release as the probe\'s precondition',
+  ]) {
+    assert.equal(body.includes(retiredLiveClaimLiteral), false, `handover must not retain the pre-clause live-claim literal: ${retiredLiveClaimLiteral}`)
+  }
   assert.equal(body.includes('Status:'), false, 'handover must not create or trust Status markers')
   assert.equal(body.toLowerCase().includes('signed off'), false, 'handover must not retain signed-off stage logic')
 })

@@ -76,8 +76,8 @@ Derivation per `internal/revise/rigor.js`: audience `public` gives baseline `hig
 
 ## Verification
 
-- The motivating claim that removing phase vocabulary reduces controller lifecycle mis-execution is owned by the LLM controller runtime; the deterministic simulation cannot settle it. Probe: run one real wave-model review of each artifact type (code, plan, and spec) and record every controller lifecycle deviation that requires human interruption, the 2026-08-12 failure signature. Pass condition: zero such interruptions across the three runs; any interruption routes to prose correction or redesign (live-claim: provisional).
-- The completion-soundness trade prices in the verifier producing genuine cross-dimension findings, a runtime-owned LLM behavior the simulation stipulated rather than demonstrated. Probe: across the first five stamped wave-model runs, covering at least one run of each artifact type (code, plan, and spec), record each verifier round's confirmed findings and whether any was outside every dimension's lens. Pass condition: at least one verifier-originated confirmed finding, or an explicit user re-evaluation of the thinned-second-look trade with the recorded counts in hand (live-claim: provisional).
+- The motivating claim that removing phase vocabulary reduces controller lifecycle mis-execution is owned by the LLM controller runtime; the deterministic simulation cannot settle it. Probe: run one real wave-model review of each artifact type (code, plan, and spec) and record every controller lifecycle deviation that requires human interruption, the 2026-08-12 failure signature. Pass condition: zero such interruptions across the three runs; any interruption routes to prose correction or redesign (live-claim: provisional, awaiting one real wave-model review run of each artifact type).
+- The completion-soundness trade prices in the verifier producing genuine cross-dimension findings, a runtime-owned LLM behavior the simulation stipulated rather than demonstrated. Probe: across the first five stamped wave-model runs, covering at least one run of each artifact type (code, plan, and spec), record each verifier round's confirmed findings and whether any was outside every dimension's lens. Pass condition: at least one verifier-originated confirmed finding, or an explicit user re-evaluation of the thinned-second-look trade with the recorded counts in hand (live-claim: provisional, awaiting the first five stamped wave-model runs).
 
 ## Status
 
@@ -97,3 +97,4 @@ Designed 2026-08-13 across a working session: economics analysis, ten-controller
 - revise-spec refreshed 2026-08-18 02:39 at c0d1909, scope: whole file, content: 043c5582 (shipped interaction tense reconciled)
 - revise-spec refreshed 2026-08-18 20:17 at 476d8d8, scope: whole file, content: 1c081c72 (universal-entry topology references)
 - revise-spec refreshed 2026-08-22 10:18 at 6022378, scope: whole file, content: a5fd414d (breakout line removal)
+- revise-spec refreshed 2026-09-03 15:50 at 4bb64ae, scope: whole file, content: 4b2ba9b2 (live-claim marker migration)
