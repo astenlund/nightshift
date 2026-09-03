@@ -6,7 +6,7 @@ Bug: shipped init-backlog guidance tells maintainers to write `Requires: none.` 
 
 A fresh-context review of an init-backlog rerun on 2026-09-01 found the generated instruction in `templates/bugs.md`. A sibling sweep confirmed the same parser-invalid fallback in `templates/features.md` and `templates/root-guidance.md`, including both active convention sections and trailing history boilerplate.
 
-`skills/ready/ready.js` defines `REQUIRES_LABEL` as `^\*\*Requires:\*\*`, so a maintainer who follows `Requires: none.` creates a line the parser does not recognize. The next ready pass reports a missing-Requires structural error even though the maintainer followed Nightshift's own generated guidance.
+`internal/backlog-catalog.js` defines `REQUIRES_LABEL` as `^\*\*Requires:\*\*`, which `skills/ready/ready.js` imports, so a maintainer who follows `Requires: none.` creates a line the parser does not recognize. The next ready pass reports a missing-Requires structural error even though the maintainer followed Nightshift's own generated guidance.
 
 ## Expected behavior
 
