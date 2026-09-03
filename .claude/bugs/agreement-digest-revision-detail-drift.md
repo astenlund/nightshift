@@ -21,6 +21,8 @@ A renewed digest and explicit agreement are required when a revision changes a h
 - Route compatible detail to the plan or a tracked follow-up, and require renewed agreement only for an actual macro-level change or an unresolved fit boundary.
 - Keep the controller's candidate, fingerprint, exact response binding, and invalidation rules authoritative.
 
+This bug's fix lands after [Operating context at shift start](../features/operating-context-at-shift-start.md) and treats the Operating context digest field as part of the contract it classifies onto the macro approval surface.
+
 ## Regression needs
 
 - A sequence of compatible review corrections does not make the approval digest grow by accumulating micro-level decisions.

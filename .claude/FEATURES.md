@@ -183,6 +183,12 @@ The spec's rigor tier becomes an executable budget every lifecycle step reads: a
 
 **Requires:** [Bundled revise controller](features/bundled-revise-controller.md).
 
+### [Operating context at shift start](features/operating-context-at-shift-start.md)
+
+Handover and the attended lifecycle entry run the operating-context check per governing artifact at shift start, before the agreement skill captures its presentation baseline; derived sections and their deviation entries are held in the volatile controller context, rendered in a twelfth decision-complete digest field (Operating context, with a rigor line the user can override), and written to the governing artifacts only on the gate's continue through a new controller-owned `operating-context-write` operation, one artifact at a time, that converges after a crash. The grounding step in `internal/revise/spec.md` keeps its procedure and gains the deferred write and an amended skeletal rule for user-overridden tiers.
+
+**Requires:** none.
+
 ### [Audience-category recalibration](features/audience-category-recalibration.md)
 
 Sharpen the audience component-to-category judgment so a repository that is merely public on GitHub does not read as category `public` and earn the top baseline tier: `public` requires actual external adoption signals (forks, stars, known downstream installs), and an unadopted open-source repo maps to `personal use`. Decide whether `AUDIENCE_BASELINE` needs a distinct category or only sharper judgment prose, and sweep the recorded judgments in existing Operating context sections. Uplift predicates stay as-is. Promoted from a quick win on 2026-08-22 because the baseline table it edits is rebased by Rigor-steered lifecycle.

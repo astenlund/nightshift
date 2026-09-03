@@ -73,7 +73,7 @@ If a write or verification fails, the controller reports the exact durable state
 
 ## Lifecycle integration
 
-This feature lands after Move deterministic init-backlog mechanics out of promptspace. It extends that controller's closed inspection, approval, fingerprint, recovery, and semantic-ownership boundaries to Quick Win breakout prose rather than replacing or independently reimplementing them.
+This feature lands after Move deterministic init-backlog mechanics out of promptspace, and after [Operating context at shift start](operating-context-at-shift-start.md), whose index-only placement branches and their fixtures this feature retires as it routes every picked entry through a breakout. It extends that controller's closed inspection, approval, fingerprint, recovery, and semantic-ownership boundaries to Quick Win breakout prose rather than replacing or independently reimplementing them.
 
 `skills/ready/ready.js` recognizes canonical linked Quick Win titles, resolves `quick_wins/<slug>.md`, and applies the existing breakout hygiene rules. A linked breakout that contains `Requires:` or `External:` is a structural error because the index remains the sole dependency authority. Ready output preserves the entry title and full index wording.
 
