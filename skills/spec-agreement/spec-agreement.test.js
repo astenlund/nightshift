@@ -37,10 +37,12 @@ const {
   serializePlanContract,
   validateContractFitVerdict,
   writeBoundProvenanceStamp,
+  writeOperatingContextSection,
   writeProvenanceStamp,
 } = require('./spec-agreement');
 const readyImplementation = require('../ready/ready');
 const { compareTargets } = require('../init-backlog/unwrap');
+const { derive, dimensionEffort } = require('../../internal/revise/rigor');
 const { normalizeTestTemporaryDirectory } = require('../../tests/test-environment');
 
 const fixturePath = join(__dirname, 'fixtures', 'fingerprint-v1.json');
@@ -969,6 +971,44 @@ test('CLI dispatches bound provenance operations as an isolated round trip', () 
   assert.equal(parseCliResult(written).value.alreadyApplied, false);
 });
 
+test('CLI dispatches the operating-context write as an isolated round trip', () => {
+  const initial = Buffer.from('# Feature\n\nBody.\n\n## Status\n\nAgreed.\n');
+  const artifact = mutableArtifact(initial);
+  const block = ['## Operating context', '', '- **Audience**: personal use.'].join('\n');
+  const written = runCli({ requestText: JSON.stringify({
+    operation: 'operating-context-write',
+    input: {
+      projectRoot,
+      path: 'docs/spec.md',
+      selectorKind: 'design-before-hardening',
+      selectors: [],
+      sectionBytesHex: Buffer.from(block).toString('hex'),
+      baselineHash: fullHash(initial),
+    },
+  }) }, { fsAdapter: artifact.adapter, bindingAdapter: artifact.bindingAdapter, readyParser, environment: {} });
+
+  assert.equal(written.exitCode, 0, written.outputText);
+  const value = parseCliResult(written).value;
+
+  assert.equal(value.alreadyApplied, false);
+  assert.equal(Buffer.from(value.bytesHex, 'hex').toString(), `# Feature\n\nBody.\n\n${block}\n\n## Status\n\nAgreed.\n`);
+
+  const rejected = runCli({ requestText: JSON.stringify({
+    operation: 'operating-context-write',
+    input: {
+      projectRoot,
+      path: 'docs/spec.md',
+      selectorKind: 'design-before-hardening',
+      selectors: [],
+      sectionBytes: block,
+      baselineHash: fullHash(artifact.bytes()),
+    },
+  }) }, { fsAdapter: artifact.adapter, bindingAdapter: artifact.bindingAdapter, readyParser, environment: {} });
+
+  assert.equal(rejected.exitCode, 2);
+  assert.equal(parseCliResult(rejected).error.code, 'invocation-error');
+});
+
 test('CLI locate reads the line-link format from the injected environment, defaulting to the process environment', () => {
   const input = { projectRoot, path: 'docs/FEATURES.md', selectorKind: 'bullet-entry', selectors: [{ parentHeading: '## Parent', entryTitle: 'Task' }], sourceBytesHex: Buffer.from('## Parent\n- Task\n').toString('hex') };
   const requestText = JSON.stringify({ operation: 'locate', input });
@@ -1116,7 +1156,7 @@ test('CLI preserves __proto__ as an own key for closed-record validation', () =>
 });
 
 test('CLI rejects raw Buffer keys and raw-hex aliases throughout wire records', () => {
-  const rawBufferKeys = ['planBuffer', 'planBody', 'sourceBuffer', 'selectedBytes', 'sourceSpans', 'rawLine', 'replacementBytes', 'bytes'];
+  const rawBufferKeys = ['planBuffer', 'planBody', 'sourceBuffer', 'selectedBytes', 'sourceSpans', 'sectionBytes', 'rawLine', 'replacementBytes', 'bytes'];
   const rawOnly = rawBufferKeys.map((rawKey) => ({
     operation: 'state-invalidate',
     input: { reason: 'completion', nested: { [rawKey]: 'raw-wire-value' } },
@@ -1189,6 +1229,101 @@ test('production CLI pipes resolve output directly into candidate construction',
   }
 });
 
+const OPERATING_CONTEXT_EFFORT_DIMENSIONS = ['validation', 'recovery', 'compatibility', 'observability', 'proofEffort'];
+const OPERATING_CONTEXT_INPUT_LABELS = ['deployment', 'audience', 'failure', 'concurrency', 'reversibility', 'lifetime'];
+
+function normalizeOverrideBasis(basis) {
+  const collapsed = String(basis ?? '').replace(/[`;]/g, '').replace(/\s+/g, ' ').trim();
+
+  return collapsed === '' ? 'none stated' : collapsed;
+}
+
+function renderEffortList(tier) {
+  const effort = dimensionEffort(tier);
+
+  return OPERATING_CONTEXT_EFFORT_DIMENSIONS.map((dimension) => `${dimension} ${effort[dimension]}`).join(', ');
+}
+
+function derivedTier(member) {
+  return derive({ audienceCategory: member.inputs.audienceCategory, firedUplifts: member.inputs.firedUplifts }).tier;
+}
+
+function settledTier(member) {
+  if (member.inputs === null) {
+    return null;
+  }
+
+  return member.override === null ? derivedTier(member) : member.override.tier;
+}
+
+function renderRigorLine(member) {
+  const tier = settledTier(member);
+  if (tier === null) {
+    return 'Rigor: not derived';
+  }
+  const derivation = `${member.inputs.audienceCategory}, ${member.inputs.firedUplifts} uplifts fired`;
+  if (member.override === null) {
+    return `Rigor: ${tier} (derived: ${derivation}); effort: ${renderEffortList(tier)}`;
+  }
+
+  return `Rigor: ${tier} (overridden by user ${member.override.date}: ${normalizeOverrideBasis(member.override.basis)}; derived: ${derivedTier(member)} from ${derivation}); effort: ${renderEffortList(tier)}`;
+}
+
+function renderOverriddenRigorRecord(member) {
+  return `- **Derived rigor**: overridden by user ${member.override.date}: ${normalizeOverrideBasis(member.override.basis)}; derived tier ${derivedTier(member)} from audience ${member.inputs.audienceCategory} plus ${member.inputs.firedUplifts} fired uplifts via node internal/revise/rigor.js; effective tier ${member.override.tier}; per-dimension effort: ${renderEffortList(member.override.tier)}`;
+}
+
+function renderSkeletalReason(skeletal) {
+  const rules = [
+    ['a', OPERATING_CONTEXT_INPUT_LABELS.filter((label) => (skeletal.a ?? []).includes(label))],
+    ['b', skeletal.b === true ? ['derivation'] : []],
+    ['c', skeletal.c === true ? ['tier'] : []],
+  ];
+
+  return rules.filter(([, items]) => items.length > 0).map(([letter, items]) => `${letter}: ${items.join(', ')}`).join('; ');
+}
+
+function renderOperatingContextMarker(member) {
+  if (member.marker === 'skeletal') {
+    return `skeletal (${renderSkeletalReason(member.skeletal)})`;
+  }
+
+  return member.marker;
+}
+
+function renderOperatingContextDivergence(members) {
+  const tiers = members.map(settledTier);
+  const settled = tiers.filter((tier) => tier !== null);
+  if (settled.length < 2 || new Set(settled).size === 1) {
+    return null;
+  }
+
+  return `Divergence: ${members.map((member, index) => `${member.artifact} ${tiers[index] ?? 'not derived'}`).join('; ')}`;
+}
+
+function renderOperatingContext(members) {
+  const blocks = members.map((member) => [
+    `${member.artifact} (${renderOperatingContextMarker(member)})`,
+    ...member.body,
+    renderRigorLine(member),
+  ].join('\n'));
+  const divergence = renderOperatingContextDivergence(members);
+
+  return divergence === null ? blocks.join('\n\n') : [...blocks, divergence].join('\n\n');
+}
+
+function operatingContextMember(overrides) {
+  return {
+    artifact: 'docs/GOVERNING_PATH_ALPHA.md',
+    marker: 'derived, written on agreement',
+    skeletal: {},
+    body: ['- **Audience**: personal use.'],
+    inputs: { audienceCategory: 'personal use', firedUplifts: 2 },
+    override: null,
+    ...overrides,
+  };
+}
+
 function renderDigestFixture(fields) {
   const renderItems = (items, explicitlyNone) => {
     if (items.length === 0) {
@@ -1197,8 +1332,8 @@ function renderDigestFixture(fields) {
 
     return items.map((item) => `- ${item.text} (source: ${item.source})`).join('\n');
   };
-  if (fields.goal.text.trim() === '' || fields.goal.source.trim() === '' || fields.decisions.length === 0 || fields.decisions.some((item) => item.text.trim() === '' || item.source.trim() === '')) {
-    throw new AgreementError('structural-error', 'Digest requires source-backed goal and decisions.', { kind: 'selector-shape' });
+  if (fields.goal.text.trim() === '' || fields.goal.source.trim() === '' || fields.decisions.length === 0 || fields.decisions.some((item) => item.text.trim() === '' || item.source.trim() === '') || fields.operatingContext.length === 0) {
+    throw new AgreementError('structural-error', 'Digest requires source-backed goal and decisions and a nonempty operating context.', { kind: 'selector-shape' });
   }
   const artifactLines = fields.artifacts.map((artifact) => `- [${artifact.path}](${artifact.path})`).join('\n');
   const workUnits = fields.workUnits.map((workUnit) => `- ${workUnit}`).join('\n');
@@ -1216,6 +1351,7 @@ function renderDigestFixture(fields) {
     '## External prerequisites', renderItems(fields.prerequisites, fields.explicitNone.prerequisites),
     '## Unresolved questions', renderItems(fields.questions, fields.explicitNone.questions),
     '## Provisional or deferred live claims', renderItems(fields.liveClaims, fields.explicitNone.liveClaims),
+    '## Operating context', renderOperatingContext(fields.operatingContext),
   ].join('\n');
 }
 
@@ -1480,6 +1616,10 @@ test('all-field digest adapter keeps every sentinel in its named field', () => {
       { text: 'DEFERRED_CLAIM_SENTINEL', source: 'docs/GOVERNING_PATH_BETA.md#verification' },
     ],
     explicitNone: { exclusions: false, nonGoals: false, dependencies: false, prerequisites: false, questions: false, liveClaims: false },
+    operatingContext: [
+      operatingContextMember({ body: ['OPERATING_CONTEXT_SENTINEL_ALPHA'] }),
+      operatingContextMember({ artifact: 'docs/GOVERNING_PATH_BETA.md', marker: 'complete', body: ['OPERATING_CONTEXT_SENTINEL_BETA'] }),
+    ],
     fencedLookalike: 'FENCED_LOOKALIKE_SENTINEL',
     ordinaryRelatedLinks: ['ORDINARY_RELATED_LINK_SENTINEL'],
   };
@@ -1498,6 +1638,13 @@ test('all-field digest adapter keeps every sentinel in its named field', () => {
     'External prerequisites': ['PREREQUISITE_SENTINEL'],
     'Unresolved questions': ['QUESTION_SENTINEL'],
     'Provisional or deferred live claims': ['PROVISIONAL_CLAIM_SENTINEL', 'DEFERRED_CLAIM_SENTINEL'],
+    'Operating context': [
+      'docs/GOVERNING_PATH_ALPHA.md (derived, written on agreement)',
+      'OPERATING_CONTEXT_SENTINEL_ALPHA',
+      'docs/GOVERNING_PATH_BETA.md (complete)',
+      'OPERATING_CONTEXT_SENTINEL_BETA',
+      'Rigor: high (derived: personal use, 2 uplifts fired); effort: validation high, recovery high, compatibility high, observability high, proofEffort high',
+    ],
   };
   for (const [heading, sentinels] of Object.entries(expectedByField)) {
     const section = digestSection(digest, heading);
@@ -1525,6 +1672,7 @@ test('digest adapter distinguishes explicit emptiness from reviewed absence', ()
     questions: [],
     liveClaims: [],
     explicitNone: { exclusions: true, nonGoals: false, dependencies: false, prerequisites: false, questions: false, liveClaims: false },
+    operatingContext: [operatingContextMember({ artifact: 'docs/spec.md', marker: 'absent', body: [], inputs: null })],
   };
   const harness = callerHarness();
   harness.preparePresentation({ digestFields: base });
@@ -1532,6 +1680,190 @@ test('digest adapter distinguishes explicit emptiness from reviewed absence', ()
 
   assert.equal(digestSection(digest, 'Material exclusions'), 'none explicitly stated');
   assert.equal(digestSection(digest, 'Non-goals'), 'none found after full governing-set review');
+});
+
+test('operating-context digest field renders every marker, body form, and rigor line', () => {
+  const derivedEffort = 'effort: validation high, recovery high, compatibility high, observability high, proofEffort high';
+  const overriddenEffort = 'effort: validation medium, recovery medium, compatibility medium, observability medium, proofEffort medium';
+  const cases = [
+    [operatingContextMember({ marker: 'complete', body: ['The section as written, in prose.'] }), [
+      'docs/GOVERNING_PATH_ALPHA.md (complete)',
+      'The section as written, in prose.',
+      `Rigor: high (derived: personal use, 2 uplifts fired); ${derivedEffort}`,
+    ]],
+    [operatingContextMember({}), [
+      'docs/GOVERNING_PATH_ALPHA.md (derived, written on agreement)',
+      '- **Audience**: personal use.',
+      `Rigor: high (derived: personal use, 2 uplifts fired); ${derivedEffort}`,
+    ]],
+    [operatingContextMember({ marker: 'absent', body: [], inputs: null }), [
+      'docs/GOVERNING_PATH_ALPHA.md (absent)',
+      'Rigor: not derived',
+    ]],
+    [operatingContextMember({ marker: 'skeletal', skeletal: { a: ['audience', 'deployment'], c: true }, body: [], inputs: null }), [
+      'docs/GOVERNING_PATH_ALPHA.md (skeletal (a: deployment, audience; c: tier))',
+      'Rigor: not derived',
+    ]],
+    [operatingContextMember({ marker: 'skeletal', skeletal: { b: true }, body: [], inputs: null }), [
+      'docs/GOVERNING_PATH_ALPHA.md (skeletal (b: derivation))',
+      'Rigor: not derived',
+    ]],
+    [operatingContextMember({ marker: 'overridden, written on agreement', override: { tier: 'medium', date: '2026-09-03', basis: 'the entry is a one-line prose softening' } }), [
+      'docs/GOVERNING_PATH_ALPHA.md (overridden, written on agreement)',
+      '- **Audience**: personal use.',
+      `Rigor: medium (overridden by user 2026-09-03: the entry is a one-line prose softening; derived: high from personal use, 2 uplifts fired); ${overriddenEffort}`,
+    ]],
+    [operatingContextMember({ marker: 'overridden, written on agreement', override: { tier: 'medium', date: '2026-09-03', basis: '' } }), [
+      'docs/GOVERNING_PATH_ALPHA.md (overridden, written on agreement)',
+      '- **Audience**: personal use.',
+      `Rigor: medium (overridden by user 2026-09-03: none stated; derived: high from personal use, 2 uplifts fired); ${overriddenEffort}`,
+    ]],
+    [operatingContextMember({ marker: 'overridden, written on agreement', override: { tier: 'medium', date: '2026-09-03', basis: '  a  `quoted`  reason;  spread   over lines  ' } }), [
+      'docs/GOVERNING_PATH_ALPHA.md (overridden, written on agreement)',
+      '- **Audience**: personal use.',
+      `Rigor: medium (overridden by user 2026-09-03: a quoted reason spread over lines; derived: high from personal use, 2 uplifts fired); ${overriddenEffort}`,
+    ]],
+    [operatingContextMember({ marker: 'complete', body: ['Derivation: audience personal use with two uplifts fired, per-dimension effort HIGH across the board.'] }), [
+      'docs/GOVERNING_PATH_ALPHA.md (complete)',
+      'Derivation: audience personal use with two uplifts fired, per-dimension effort HIGH across the board.',
+      `Rigor: high (derived: personal use, 2 uplifts fired); ${derivedEffort}`,
+    ]],
+  ];
+
+  for (const [member, expectedLines] of cases) {
+    assert.equal(renderOperatingContext([member]), expectedLines.join('\n'), renderOperatingContextMarker(member));
+  }
+});
+
+const OPERATING_CONTEXT_BOLD_LABELS = [
+  'Deployment environment and operational criticality',
+  'Audience',
+  'Failure consequence and data or security sensitivity',
+  'Concurrency and compatibility risk',
+  'Reversibility and recovery cost',
+  'Expected feature lifetime',
+];
+
+test('operating-context digest field renders each held skeletal replacement in its authored shape', () => {
+  const record = 'Derived rigor: audience personal use (baseline low) plus 2 fired uplifts yields tier high; per-dimension effort: validation high, recovery high, compatibility high, observability high, proofEffort high.';
+  const appended = 'appended by the shift-start check.';
+  const markerLine = 'docs/GOVERNING_PATH_ALPHA.md (derived, written on agreement)';
+  const rigorLine = 'Rigor: high (derived: personal use, 2 uplifts fired); effort: validation high, recovery high, compatibility high, observability high, proofEffort high';
+  const cases = [
+    {
+      name: 'rules (a) and (b): authored bullets kept, the four missing inputs appended, the record rewritten in place',
+      body: [
+        '  - **Operating context** (authored 2026-08-01):',
+        '    - **Audience**: personal use.',
+        '    - **Expected feature lifetime**: long-lived.',
+        `    - **Deployment environment and operational criticality**: ${appended}`,
+        `    - **Failure consequence and data or security sensitivity**: ${appended}`,
+        `    - **Concurrency and compatibility risk**: ${appended}`,
+        `    - **Reversibility and recovery cost**: ${appended}`,
+        `    - **Derived rigor**: ${record}`,
+      ],
+      lastAuthoredIndex: 2,
+      firstAppendedIndex: 3,
+      lastInputIndex: 6,
+      recordIndex: 7,
+      recordFollowsBlank: false,
+    },
+    {
+      name: 'rule (b) with bullet inputs: the Derived rigor bullet inserted after the last input bullet',
+      body: [
+        '  - **Operating context** (authored 2026-08-01):',
+        '    - **Deployment environment and operational criticality**: a public plugin.',
+        '    - **Audience**: personal use.',
+        '    - **Failure consequence and data or security sensitivity**: a stalled review session.',
+        '    - **Concurrency and compatibility risk**: two hosts.',
+        '    - **Reversibility and recovery cost**: a git revert.',
+        '    - **Expected feature lifetime**: long-lived.',
+        `    - **Derived rigor**: ${record}`,
+      ],
+      lastAuthoredIndex: 6,
+      firstAppendedIndex: null,
+      lastInputIndex: 6,
+      recordIndex: 7,
+      recordFollowsBlank: false,
+    },
+    {
+      name: 'rule (b) with prose inputs: a trailing derivation paragraph after the last paragraph',
+      body: [
+        'Deployment environment and operational criticality: a public plugin. Audience: personal use. Failure consequence and data or security sensitivity: a stalled review session.',
+        'Concurrency and compatibility risk: two hosts. Reversibility and recovery cost: a git revert. Expected feature lifetime: long-lived.',
+        '',
+        record,
+      ],
+      lastAuthoredIndex: 1,
+      firstAppendedIndex: null,
+      lastInputIndex: 1,
+      recordIndex: 3,
+      recordFollowsBlank: true,
+    },
+    {
+      name: 'rules (a) and (b) with prose inputs: missing inputs appended as bullets, then the paragraph closing the section',
+      body: [
+        'Audience: personal use, and Expected feature lifetime: long-lived.',
+        `- **Deployment environment and operational criticality**: ${appended}`,
+        `- **Failure consequence and data or security sensitivity**: ${appended}`,
+        `- **Concurrency and compatibility risk**: ${appended}`,
+        `- **Reversibility and recovery cost**: ${appended}`,
+        '',
+        record,
+      ],
+      lastAuthoredIndex: 0,
+      firstAppendedIndex: 1,
+      lastInputIndex: 4,
+      recordIndex: 6,
+      recordFollowsBlank: true,
+    },
+  ];
+
+  for (const held of cases) {
+    const member = operatingContextMember({ body: held.body });
+
+    assert.equal(renderOperatingContext([member]), [markerLine, ...held.body, rigorLine].join('\n'), held.name);
+    assert.equal(held.recordIndex, held.body.length - 1, `${held.name}: the derivation record must close the section`);
+    assert.equal(held.body[held.recordIndex].includes(record), true, `${held.name}: the closing line must carry the derivation record`);
+    assert.equal(held.recordIndex, held.lastInputIndex + (held.recordFollowsBlank ? 2 : 1), `${held.name}: record placement relative to the last input`);
+    assert.equal(held.body[held.recordIndex - 1], held.recordFollowsBlank ? '' : held.body[held.lastInputIndex], `${held.name}: the line before the record`);
+    if (held.firstAppendedIndex !== null) {
+      assert.equal(held.firstAppendedIndex, held.lastAuthoredIndex + 1, `${held.name}: appended inputs start right after the authored bytes`);
+      const appendedLines = held.body.slice(held.firstAppendedIndex, held.lastInputIndex + 1);
+      assert.equal(appendedLines.every((line) => line.includes(appended)), true, `${held.name}: every appended line is an input bullet`);
+      assert.equal(held.body.slice(0, held.firstAppendedIndex).some((line) => line.includes(appended)), false, `${held.name}: authored bytes are not rewritten`);
+    }
+    for (const label of OPERATING_CONTEXT_BOLD_LABELS) {
+      assert.equal(held.body.some((line) => line.includes(label)), true, `${held.name}: ${label} must be present`);
+    }
+  }
+});
+
+test('operating-context digest field supersedes an earlier override and renders mixed and diverging sets', () => {
+  const first = operatingContextMember({ marker: 'overridden, written on agreement', override: { tier: 'medium', date: '2026-09-03', basis: 'first election' } });
+  const firstRendering = renderOperatingContext([first]);
+  const superseded = { ...first, override: { tier: 'low', date: '2026-09-04', basis: 'second election' } };
+  const supersededRendering = renderOperatingContext([superseded]);
+
+  // The first election must be renderable before the supersession assertion below
+  // can mean that the second one replaced it rather than that it never rendered.
+  assert.equal(firstRendering.includes('overridden by user 2026-09-03: first election; derived: high from personal use, 2 uplifts fired'), true);
+  assert.equal(firstRendering.includes('medium'), true);
+  assert.equal(supersededRendering.includes('overridden by user 2026-09-04: second election; derived: high from personal use, 2 uplifts fired'), true);
+  assert.equal(supersededRendering.includes('medium'), false);
+  assert.equal(renderOverriddenRigorRecord(superseded), '- **Derived rigor**: overridden by user 2026-09-04: second election; derived tier high from audience personal use plus 2 fired uplifts via node internal/revise/rigor.js; effective tier low; per-dimension effort: validation low, recovery low, compatibility low, observability low, proofEffort low');
+
+  const complete = operatingContextMember({ artifact: '.claude/FEATURES.md:186', marker: 'complete', body: ['The section as written.'] });
+  const mixed = renderOperatingContext([operatingContextMember({}), complete]);
+
+  assert.equal(mixed.includes('docs/GOVERNING_PATH_ALPHA.md (derived, written on agreement)'), true);
+  assert.equal(mixed.includes('.claude/FEATURES.md:186 (complete)'), true);
+  assert.equal(mixed.includes('Divergence:'), false);
+
+  const absent = operatingContextMember({ artifact: '.claude/BUGS.md:12', marker: 'absent', body: [], inputs: null });
+  const diverging = renderOperatingContext([superseded, complete, absent]);
+
+  assert.equal(diverging.endsWith('Divergence: docs/GOVERNING_PATH_ALPHA.md low; .claude/FEATURES.md:186 high; .claude/BUGS.md:12 not derived'), true);
 });
 
 test('interaction skill defines the host-neutral controller contract', () => {
@@ -2054,6 +2386,27 @@ test('contract fit returns closed controller-owned failures for every invalid se
     semanticInput: { kind: 'json', text: JSON.stringify({ ...valid, citations: [{ kind: 'source', path: 'docs/spec.md', hunk: 2, digestFields: ['decisions'] }] }) },
   });
   assert.equal(nonconsecutive.errors[0].kind, 'invalid-schema');
+});
+
+test('contract fit accepts the operating-context citation and still rejects an unknown field', () => {
+  const comparison = { kind: 'source-change', evidence: [] };
+  const hunks = [{ ordinal: 1, path: 'docs/spec.md', kind: 'canonical', before: 'old\n', after: 'new\n' }];
+  const cited = {
+    verdict: 'within-contract',
+    reason: 'The written block is the digest field the user already read.',
+    citations: [{ kind: 'source', path: 'docs/spec.md', hunk: 1, digestFields: ['operatingContext'] }],
+  };
+
+  assert.deepEqual(validateContractFitVerdict({ comparison, hunks, semanticInput: { kind: 'json', text: JSON.stringify(cited) } }), {
+    ...cited,
+    hunkHash: fullHash(Buffer.from(JSON.stringify(hunks))),
+  });
+
+  const unknown = { ...cited, citations: [{ kind: 'source', path: 'docs/spec.md', hunk: 1, digestFields: ['operatingcontext'] }] };
+  const rejected = validateContractFitVerdict({ comparison, hunks, semanticInput: { kind: 'json', text: JSON.stringify(unknown) } });
+
+  assert.equal(rejected.verdict, 'uncertain');
+  assert.equal(rejected.errors[0].kind, 'invalid-citation');
 });
 
 test('agreement gate exposes only the closed action matrix and keeps authorities separate', () => {
@@ -4404,6 +4757,370 @@ test('provenance normalizes every atomic replacement failure at its adapter boun
       && error.evidence.operation === 'replaceFileAtomically'
       && error.evidence.path === `${projectRoot}/docs/spec.md`
       && error.evidence.originalMessage === 'inner adapter error',
+  );
+});
+
+const OPERATING_CONTEXT_BULLET_BLOCK = [
+  '  - **Operating context** (derived 2026-09-03 by the shift-start check):',
+  '    - **Audience**: personal use.',
+  '    - **Derived rigor**: audience personal use (baseline low) plus 2 fired uplifts yields tier high.',
+].join('\n');
+const OPERATING_CONTEXT_ENTRY_BLOCK = [
+  '- **Operating context** (derived 2026-09-03 by the shift-start check):',
+  '  - **Audience**: personal use.',
+  '  - **Derived rigor**: audience personal use (baseline low) plus 2 fired uplifts yields tier high.',
+].join('\n');
+const OPERATING_CONTEXT_FILE_BLOCK = [
+  '## Operating context',
+  '',
+  '- **Audience**: personal use.',
+  '- **Derived rigor**: audience personal use (baseline low) plus 2 fired uplifts yields tier high.',
+].join('\n');
+const BULLET_SELECTOR = [{ parentHeading: '## Handover live-claim surfacing', entryTitle: '**Entry title.** Body sentence.' }];
+const INDEX_SELECTOR = [{ parentHeading: '## Active', entryHeading: '### [Entry](features/entry.md)' }];
+
+function operatingContextWrite(artifact, selectorKind, selectors, block, baselineBytes) {
+  return writeOperatingContextSection({
+    projectRoot,
+    path: 'docs/spec.md',
+    selectorKind,
+    selectors,
+    sectionBytes: Buffer.from(block),
+    baselineHash: fullHash(baselineBytes),
+  }, { fsAdapter: artifact.adapter });
+}
+
+test('operating-context write inserts and replaces a bullet-entry continuation inside the entry extent', () => {
+  const inserted = Buffer.from('## Handover live-claim surfacing\n- **Entry title.** Body sentence.\n\n## Next\n');
+  const insertArtifact = mutableArtifact(inserted);
+  const insertResult = operatingContextWrite(insertArtifact, 'bullet-entry', BULLET_SELECTOR, OPERATING_CONTEXT_BULLET_BLOCK, inserted);
+  const expectedInsert = Buffer.from(`## Handover live-claim surfacing\n- **Entry title.** Body sentence.\n${OPERATING_CONTEXT_BULLET_BLOCK}\n\n## Next\n`);
+
+  assert.deepEqual(insertResult, { bytes: expectedInsert, alreadyApplied: false });
+  assert.deepEqual(insertArtifact.bytes(), expectedInsert);
+  assert.equal(insertArtifact.replacements().length, 1);
+
+  const skeletal = Buffer.from('## Handover live-claim surfacing\n- **Entry title.** Body sentence.\n  - **Operating context** (skeletal):\n    - **Audience**: personal use.\n\n## Next\n');
+  const replaceArtifact = mutableArtifact(skeletal);
+  const replaceResult = operatingContextWrite(replaceArtifact, 'bullet-entry', BULLET_SELECTOR, OPERATING_CONTEXT_BULLET_BLOCK, skeletal);
+
+  assert.deepEqual(replaceResult, { bytes: expectedInsert, alreadyApplied: false });
+  assert.deepEqual(replaceArtifact.bytes(), expectedInsert);
+});
+
+test('operating-context write appends and replaces a heading-entry block inside the entry extent', () => {
+  const trailing = '\n## Later\n\n- **Operating context** (another entry, untouched):\n  - **Audience**: personal use.\n';
+  const inserted = Buffer.from(`# Features\n\n## Active\n\n### [Entry](features/entry.md)\n\nExcerpt paragraph.\n\n**Requires:** none.\n${trailing}`);
+  const insertArtifact = mutableArtifact(inserted);
+  const insertResult = operatingContextWrite(insertArtifact, 'index-entry', INDEX_SELECTOR, OPERATING_CONTEXT_ENTRY_BLOCK, inserted);
+  const expectedInsert = Buffer.from(`# Features\n\n## Active\n\n### [Entry](features/entry.md)\n\nExcerpt paragraph.\n\n**Requires:** none.\n${OPERATING_CONTEXT_ENTRY_BLOCK}\n${trailing}`);
+
+  assert.deepEqual(insertResult, { bytes: expectedInsert, alreadyApplied: false });
+  assert.equal(insertArtifact.bytes().toString().includes('another entry, untouched'), true);
+
+  const existing = Buffer.from(`# Features\n\n## Active\n\n### [Entry](features/entry.md)\n\nExcerpt paragraph.\n\n**Requires:** none.\n- **Operating context** (skeletal):\n  - **Audience**: personal use.\n${trailing}`);
+  const replaceArtifact = mutableArtifact(existing);
+  const replaceResult = operatingContextWrite(replaceArtifact, 'index-entry', INDEX_SELECTOR, OPERATING_CONTEXT_ENTRY_BLOCK, existing);
+
+  assert.deepEqual(replaceResult, { bytes: expectedInsert, alreadyApplied: false });
+  assert.equal(replaceArtifact.bytes().toString().split('**Operating context**').length - 1, 2);
+});
+
+test('operating-context write places a feature-file section at each fallback site and keeps a replacement in place', () => {
+  const cases = [
+    ['# Feature\n\nBody.\n\n## Status\n\nAgreed.\n\n## Hardening\n\n- stamp\n', `# Feature\n\nBody.\n\n${OPERATING_CONTEXT_FILE_BLOCK}\n\n## Status\n\nAgreed.\n\n## Hardening\n\n- stamp\n`, 'before Status'],
+    ['# Feature\n\nBody.\n\n## Hardening\n\n- stamp\n', `# Feature\n\nBody.\n\n${OPERATING_CONTEXT_FILE_BLOCK}\n\n## Hardening\n\n- stamp\n`, 'before the terminal Hardening section'],
+    ['# Feature\n\nBody.\n', `# Feature\n\nBody.\n\n${OPERATING_CONTEXT_FILE_BLOCK}\n`, 'at the end of the body'],
+    ['# Feature\n\nBody.\n\n## Operating context\n\n- old input.\n\n## Status\n\nAgreed.\n', `# Feature\n\nBody.\n\n${OPERATING_CONTEXT_FILE_BLOCK}\n\n## Status\n\nAgreed.\n`, 'replacing in place'],
+  ];
+
+  for (const [initialText, expectedText, name] of cases) {
+    const initial = Buffer.from(initialText);
+    const artifact = mutableArtifact(initial);
+    const result = operatingContextWrite(artifact, 'design-before-hardening', [], OPERATING_CONTEXT_FILE_BLOCK, initial);
+
+    assert.deepEqual(result, { bytes: Buffer.from(expectedText), alreadyApplied: false }, name);
+    assert.deepEqual(artifact.bytes(), Buffer.from(expectedText), name);
+    assert.equal(artifact.replacements().length, 1, name);
+  }
+});
+
+test('operating-context write leaves a nested slice continuation alone under a heading-entry selector', () => {
+  const initial = Buffer.from([
+    '# Features',
+    '',
+    '## Active',
+    '',
+    '### [Entry](features/entry.md)',
+    '',
+    'Excerpt paragraph.',
+    '',
+    '- **First slice.** Body sentence.',
+    '  - **Operating context** (derived 2026-08-01 by the spec gate):',
+    '    - **Audience**: personal use.',
+    '    - **Expected feature lifetime**: long-lived.',
+    '- **Second slice.** Body sentence.',
+    '',
+    '**Requires:** none.',
+    '',
+    '## Later',
+    '',
+    'body',
+    '',
+  ].join('\n'));
+  const artifact = mutableArtifact(initial);
+  const result = operatingContextWrite(artifact, 'index-entry', INDEX_SELECTOR, OPERATING_CONTEXT_ENTRY_BLOCK, initial);
+  const written = artifact.bytes().toString();
+
+  // The nested continuation belongs to the slice bullet, not to the heading entry,
+  // so the write appends at the entry's extent end and disturbs none of these.
+  for (const survivor of [
+    '  - **Operating context** (derived 2026-08-01 by the spec gate):',
+    '    - **Audience**: personal use.',
+    '    - **Expected feature lifetime**: long-lived.',
+    '- **Second slice.** Body sentence.',
+    '**Requires:** none.',
+  ]) {
+    assert.equal(written.includes(survivor), true, `the index-entry write must not disturb: ${survivor}`);
+  }
+
+  const expected = Buffer.from(`# Features\n\n## Active\n\n### [Entry](features/entry.md)\n\nExcerpt paragraph.\n\n- **First slice.** Body sentence.\n  - **Operating context** (derived 2026-08-01 by the spec gate):\n    - **Audience**: personal use.\n    - **Expected feature lifetime**: long-lived.\n- **Second slice.** Body sentence.\n\n**Requires:** none.\n${OPERATING_CONTEXT_ENTRY_BLOCK}\n\n## Later\n\nbody\n`);
+
+  assert.deepEqual(result, { bytes: expected, alreadyApplied: false });
+  assert.deepEqual(artifact.bytes(), expected);
+  assert.equal(artifact.replacements().length, 1);
+});
+
+test('operating-context write lands a heading-entry block after its dependency lines, never inside a trailing Slices block', () => {
+  const initial = Buffer.from([
+    '# Features',
+    '',
+    '## Active',
+    '',
+    '### [Entry](features/entry.md)',
+    '',
+    'Excerpt paragraph.',
+    '',
+    '**Requires:** none.',
+    '**External:** a source-system export gate that',
+    'stays wrapped onto a second line.',
+    '',
+    '**Slices:**',
+    '',
+    '- **First slice.** Body sentence.',
+    '- **Second slice.** Body sentence.',
+    '',
+    '## Later',
+    '',
+    'body',
+    '',
+  ].join('\n'));
+  const artifact = mutableArtifact(initial);
+  const result = operatingContextWrite(artifact, 'index-entry', INDEX_SELECTOR, OPERATING_CONTEXT_ENTRY_BLOCK, initial);
+
+  const expected = Buffer.from(`# Features\n\n## Active\n\n### [Entry](features/entry.md)\n\nExcerpt paragraph.\n\n**Requires:** none.\n**External:** a source-system export gate that\nstays wrapped onto a second line.\n${OPERATING_CONTEXT_ENTRY_BLOCK}\n\n**Slices:**\n\n- **First slice.** Body sentence.\n- **Second slice.** Body sentence.\n\n## Later\n\nbody\n`);
+  assert.deepEqual(result, { bytes: expected, alreadyApplied: false });
+  assert.deepEqual(artifact.bytes(), expected);
+
+  // The real slice parser over the written entry body must still see exactly the two authored slices.
+  const body = artifact.bytes().toString().split('\n');
+  const entryBody = body.slice(body.indexOf('### [Entry](features/entry.md)') + 1, body.indexOf('## Later'));
+  assert.deepEqual(readyParser.parseSlices(entryBody).map((slice) => slice.displayName), ['First slice', 'Second slice']);
+
+  // A retry of the same write with the pre-write baseline is an applied no-op, because the
+  // block ends at its own indented extent rather than at the Slices block that follows it.
+  const retried = operatingContextWrite(artifact, 'index-entry', INDEX_SELECTOR, OPERATING_CONTEXT_ENTRY_BLOCK, initial);
+  assert.deepEqual(retried, { bytes: expected, alreadyApplied: true });
+
+  // A second write replaces the block in place instead of appending a copy, and the Slices
+  // block that follows the block survives with both slices.
+  const replaced = operatingContextWrite(artifact, 'index-entry', INDEX_SELECTOR, OPERATING_CONTEXT_ENTRY_BLOCK.replace('personal use', 'trusted circle'), artifact.bytes());
+  const replacedText = replaced.bytes.toString();
+  assert.equal(replacedText.split('**Operating context**').length - 1, 1);
+  assert.equal(replacedText.includes('trusted circle'), true);
+  assert.equal(replacedText.includes('**Slices:**'), true);
+  const replacedBody = replacedText.split('\n');
+  const replacedEntry = replacedBody.slice(replacedBody.indexOf('### [Entry](features/entry.md)') + 1, replacedBody.indexOf('## Later'));
+  assert.deepEqual(readyParser.parseSlices(replacedEntry).map((slice) => slice.displayName), ['First slice', 'Second slice']);
+  assert.equal(replacedText.includes('**Requires:** none.'), true);
+});
+
+test('operating-context write measures tabs as columns, keeps fenced block content whole, and matches a padded file heading', () => {
+  // A tab-indented authored label (four columns) with a two-space sibling continuation: the
+  // sibling is shallower than the label, so a replace ends before it.
+  const tabbedInitial = Buffer.from('## Handover live-claim surfacing\n- **Entry title.** Body sentence.\n\t- **Operating context** (authored 2026-08-01):\n\t\t- **Audience**: personal use.\n  - **Note**: sibling continuation at two spaces.\n- **Other entry.** Other body.\n\n## Next\n');
+  const tabbed = mutableArtifact(tabbedInitial);
+  const tabbedResult = operatingContextWrite(tabbed, 'bullet-entry', BULLET_SELECTOR, OPERATING_CONTEXT_BULLET_BLOCK, tabbedInitial);
+  const tabbedText = tabbedResult.bytes.toString();
+  assert.equal(tabbedResult.alreadyApplied, false);
+  assert.equal(tabbedText.split('**Operating context**').length - 1, 1);
+  assert.equal(tabbedText.includes('  - **Note**: sibling continuation at two spaces.'), true);
+  assert.equal(tabbedText.includes('- **Other entry.** Other body.'), true);
+
+  // An authored block whose fence holds a blank line: the fenced run belongs to the block, so a
+  // replace removes the whole fence with the block and leaves the artifact with no open fence.
+  const fencedInitial = Buffer.from('## Handover live-claim surfacing\n- **Entry title.** Body sentence.\n  - **Operating context** (authored):\n   ```\n   code\n\n   more\n   ```\n    - **Audience**: personal use.\n- **Other entry.** Other body.\n\n## Next\n');
+  const fenced = mutableArtifact(fencedInitial);
+  const fencedResult = operatingContextWrite(fenced, 'bullet-entry', BULLET_SELECTOR, OPERATING_CONTEXT_BULLET_BLOCK, fencedInitial);
+  const fencedText = fencedResult.bytes.toString();
+  assert.equal(scanMarkdown(fencedResult.bytes).unclosedFence, false);
+  assert.equal(fencedText.includes('```'), false);
+  assert.equal(fencedText.includes('- **Other entry.** Other body.'), true);
+  assert.deepEqual(operatingContextWrite(fenced, 'bullet-entry', BULLET_SELECTOR, OPERATING_CONTEXT_BULLET_BLOCK, fencedInitial), { bytes: fencedResult.bytes, alreadyApplied: true });
+
+  // A file heading with trailing whitespace is the same heading, so the write replaces it in place.
+  const paddedInitial = Buffer.from('# Feature\n\nBody.\n\n## Operating context \n\n- old.\n\n## Status\n\nAgreed.\n');
+  const padded = mutableArtifact(paddedInitial);
+  const paddedResult = operatingContextWrite(padded, 'design-before-hardening', [], OPERATING_CONTEXT_FILE_BLOCK, paddedInitial);
+  assert.deepEqual(paddedResult, { bytes: Buffer.from(`# Feature\n\nBody.\n\n${OPERATING_CONTEXT_FILE_BLOCK}\n\n## Status\n\nAgreed.\n`), alreadyApplied: false });
+
+  // A four-backtick fence closed by four backticks is balanced under the scanner rule and accepted.
+  const longFence = `${OPERATING_CONTEXT_FILE_BLOCK}\n\n\`\`\`\`\ncode with \`\`\` inside\n\`\`\`\``;
+  const longInitial = Buffer.from('# Feature\n\nBody.\n\n## Status\n\nAgreed.\n');
+  const long = mutableArtifact(longInitial);
+  const longResult = operatingContextWrite(long, 'design-before-hardening', [], longFence, longInitial);
+  assert.equal(longResult.alreadyApplied, false);
+  assert.equal(scanMarkdown(longResult.bytes).unclosedFence, false);
+});
+
+test('operating-context write uses the artifact line terminator and refuses foreign, unterminated, mislabeled, or selector-inappropriate bytes', () => {
+  const crlfBlock = OPERATING_CONTEXT_FILE_BLOCK.split('\n').join('\r\n');
+  const crlfInitial = Buffer.from('# Feature\r\n\r\nBody.\r\n\r\n## Status\r\n\r\nAgreed.\r\n');
+  const crlfArtifact = mutableArtifact(crlfInitial);
+  const crlfResult = operatingContextWrite(crlfArtifact, 'design-before-hardening', [], crlfBlock, crlfInitial);
+
+  assert.deepEqual(crlfResult.bytes, Buffer.from(`# Feature\r\n\r\nBody.\r\n\r\n${crlfBlock}\r\n\r\n## Status\r\n\r\nAgreed.\r\n`));
+
+  const refusals = [
+    // Each row carries the evidence kind it expects: the UTF-8 rule is the module's
+    // shared `invalid-utf8`, the shape rules this writer owns report
+    // `operating-context-grammar`, and each scope-escape rule, plus the fence-balance
+    // rule, reports its own kind so a caller can tell the four apart.
+    [Buffer.from('# Feature\n\nBody.\n'), 'design-before-hardening', [], Buffer.from('ff', 'hex'), 'invalid-utf8', 'section bytes that are not valid UTF-8'],
+    [crlfInitial, 'design-before-hardening', [], OPERATING_CONTEXT_FILE_BLOCK, 'operating-context-grammar', 'a foreign line terminator'],
+    [Buffer.from('# Feature\n\nBody.'), 'design-before-hardening', [], OPERATING_CONTEXT_FILE_BLOCK, 'operating-context-grammar', 'an unterminated final line'],
+    [Buffer.from('# Feature\n\nBody.\n'), 'design-before-hardening', [], '## Operating profile\n\n- **Audience**: personal use.', 'operating-context-grammar', 'a mislabeled section'],
+    [Buffer.from('# Feature\n\nBody.\n'), 'design-before-hardening', [], `\n${OPERATING_CONTEXT_FILE_BLOCK}`, 'operating-context-grammar', 'a leading line terminator'],
+    [Buffer.from('# Feature\n\nBody.\n'), 'design-before-hardening', [], `${OPERATING_CONTEXT_FILE_BLOCK}\n`, 'operating-context-grammar', 'a trailing line terminator'],
+    [Buffer.from('## Handover live-claim surfacing\n- **Entry title.** Body sentence.\n\n## Next\n'), 'bullet-entry', BULLET_SELECTOR, OPERATING_CONTEXT_ENTRY_BLOCK, 'operating-context-grammar', 'a top-level block handed to a bullet-entry selector'],
+    [Buffer.from('# Features\n\n## Active\n\n### [Entry](features/entry.md)\n\nExcerpt paragraph.\n\n**Requires:** none.\n\n## Later\n'), 'index-entry', INDEX_SELECTOR, OPERATING_CONTEXT_BULLET_BLOCK, 'operating-context-grammar', 'an indented continuation handed to an index-entry selector'],
+    [Buffer.from('## Handover live-claim surfacing\n- **Entry title.** Body sentence.\n\n## Next\n'), 'bullet-entry', BULLET_SELECTOR, '  - **Operating context** (derived):\n\n    - **Audience**: personal use.', 'operating-context-blank-line', 'an interior blank line in a bullet-entry section'],
+    [Buffer.from('## Handover live-claim surfacing\n- **Entry title.** Body sentence.\n\n## Next\n'), 'bullet-entry', BULLET_SELECTOR, `${OPERATING_CONTEXT_BULLET_BLOCK}\n- deviation entry at top level.`, 'operating-context-dedent', 'a tail dedented below the label line of a bullet-entry section'],
+    [Buffer.from('# Features\n\n## Active\n\n### [Entry](features/entry.md)\n\nExcerpt paragraph.\n\n**Requires:** none.\n\n## Later\n'), 'index-entry', INDEX_SELECTOR, `${OPERATING_CONTEXT_ENTRY_BLOCK}\n## Escaped heading`, 'operating-context-heading', 'a heading line in an index-entry section'],
+    [Buffer.from('# Feature\n\nBody.\n'), 'design-before-hardening', [], ['## Operating context', '', '- **Audience**: personal use.', '```'].join('\n'), 'operating-context-unbalanced-fence', 'an unbalanced fence in the section bytes'],
+    [Buffer.from('## Handover live-claim surfacing\n- **Entry title.** Body sentence.\n\n## Next\n'), 'bullet-entry', BULLET_SELECTOR, `${OPERATING_CONTEXT_BULLET_BLOCK}\n  - **Deviation**: audience closest-match recorded.`, 'operating-context-dedent', 'a tail at the label indentation on a bullet entry'],
+    [Buffer.from('# Features\n\n## Active\n\n### [Entry](features/entry.md)\n\nExcerpt paragraph.\n\n**Requires:** none.\n\n## Later\n'), 'index-entry', INDEX_SELECTOR, `${OPERATING_CONTEXT_ENTRY_BLOCK}\n- **Deviation**: audience closest-match recorded.`, 'operating-context-dedent', 'a tail at the label indentation on a heading entry'],
+    [Buffer.from('# Feature\n\nBody.\n'), 'design-before-hardening', [], `${OPERATING_CONTEXT_FILE_BLOCK}\n\n## Derived rigor\n\ntier high.`, 'operating-context-heading', 'a level-2 heading inside a file section'],
+    [Buffer.from('# Feature\n\nBody.\n'), 'design-before-hardening', [], `${OPERATING_CONTEXT_FILE_BLOCK}\n\n# Escaped`, 'operating-context-heading', 'a level-1 heading inside a file section'],
+    [Buffer.from('# Feature\n\nBody.\n'), 'design-before-hardening', [], `${OPERATING_CONTEXT_FILE_BLOCK}\n   `, 'operating-context-blank-line', 'a whitespace-only final line in a file section'],
+    [Buffer.from('# Feature\n\nBody.\n'), 'design-before-hardening', [], `${OPERATING_CONTEXT_FILE_BLOCK}\n\n\`\`\`\n~~~\n\`\`\`\n~~~`, 'operating-context-unbalanced-fence', 'mixed fence markers that never close'],
+    [Buffer.from('# Feature\n\nBody.\n'), 'design-before-hardening', [], `${OPERATING_CONTEXT_FILE_BLOCK}\n\n\`\`\`\`\ncode\n\`\`\``, 'operating-context-unbalanced-fence', 'a four-backtick opener closed by three backticks'],
+  ];
+
+  for (const [initial, selectorKind, selectors, block, kind, name] of refusals) {
+    const artifact = mutableArtifact(initial);
+    expectStructural(() => operatingContextWrite(artifact, selectorKind, selectors, block, initial), kind);
+    assert.equal(artifact.replacements().length, 0, name);
+  }
+
+  // A level-3 subsection stays inside the file extent, so it is accepted, replaced in place, and idempotent on retry.
+  const subsectioned = `${OPERATING_CONTEXT_FILE_BLOCK}\n\n### Derived rigor\n\ntier high.`;
+  const subsectionInitial = Buffer.from('# Feature\n\nBody.\n\n## Status\n\nAgreed.\n');
+  const subsectionArtifact = mutableArtifact(subsectionInitial);
+  const first = operatingContextWrite(subsectionArtifact, 'design-before-hardening', [], subsectioned, subsectionInitial);
+  assert.equal(first.alreadyApplied, false);
+  assert.deepEqual(operatingContextWrite(subsectionArtifact, 'design-before-hardening', [], subsectioned, subsectionInitial), { bytes: first.bytes, alreadyApplied: true });
+  const rewritten = operatingContextWrite(subsectionArtifact, 'design-before-hardening', [], subsectioned.replace('tier high', 'tier medium'), subsectionArtifact.bytes());
+  assert.equal(rewritten.bytes.toString().split('### Derived rigor').length - 1, 1);
+  assert.equal(rewritten.bytes.toString().includes('tier medium'), true);
+});
+
+test('operating-context write captures each member baseline immediately before that member write', () => {
+  const initial = Buffer.from('## Handover live-claim surfacing\n- **First entry.** Body.\n- **Second entry.** Body.\n\n## Next\n');
+  const artifact = mutableArtifact(initial);
+  const firstSelector = [{ parentHeading: '## Handover live-claim surfacing', entryTitle: '**First entry.** Body.' }];
+  const secondSelector = [{ parentHeading: '## Handover live-claim surfacing', entryTitle: '**Second entry.** Body.' }];
+  const first = operatingContextWrite(artifact, 'bullet-entry', firstSelector, OPERATING_CONTEXT_BULLET_BLOCK, initial);
+
+  assert.equal(first.alreadyApplied, false);
+  assert.throws(
+    () => operatingContextWrite(artifact, 'bullet-entry', secondSelector, OPERATING_CONTEXT_BULLET_BLOCK, initial),
+    (error) => error instanceof AgreementError && error.code === 'stale-baseline',
+  );
+  assert.equal(artifact.replacements().length, 1);
+
+  const second = operatingContextWrite(artifact, 'bullet-entry', secondSelector, OPERATING_CONTEXT_BULLET_BLOCK, artifact.bytes());
+
+  assert.equal(second.alreadyApplied, false);
+  assert.equal(artifact.replacements().length, 2);
+  assert.deepEqual(artifact.bytes(), Buffer.from(`## Handover live-claim surfacing\n- **First entry.** Body.\n${OPERATING_CONTEXT_BULLET_BLOCK}\n- **Second entry.** Body.\n${OPERATING_CONTEXT_BULLET_BLOCK}\n\n## Next\n`));
+});
+
+test('operating-context write records an overridden member with the literal rewritten Derived rigor bullet', () => {
+  const overriddenBlock = [
+    '  - **Operating context** (derived 2026-09-03 by the shift-start check):',
+    '    - **Audience**: personal use.',
+    '    - **Derived rigor**: overridden by user 2026-09-03: the tier is more than this entry needs; derived tier high from audience personal use plus 2 fired uplifts via node internal/revise/rigor.js; effective tier medium; per-dimension effort: validation medium, recovery medium, compatibility medium, observability medium, proofEffort medium',
+  ].join('\n');
+  const initial = Buffer.from('## Handover live-claim surfacing\n- **Entry title.** Body sentence.\n  - **Operating context** (complete):\n    - **Audience**: personal use.\n\n## Next\n');
+  const artifact = mutableArtifact(initial);
+  const result = operatingContextWrite(artifact, 'bullet-entry', BULLET_SELECTOR, overriddenBlock, initial);
+
+  assert.equal(result.alreadyApplied, false);
+  assert.deepEqual(artifact.bytes(), Buffer.from(`## Handover live-claim surfacing\n- **Entry title.** Body sentence.\n${overriddenBlock}\n\n## Next\n`));
+});
+
+test('operating-context write replaces a tab-indented existing continuation in place', () => {
+  const initial = Buffer.from('## Handover live-claim surfacing\n- **Entry title.** Body sentence.\n\t- **Operating context** (skeletal):\n\t\t- **Audience**: personal use.\n\n## Next\n');
+  const artifact = mutableArtifact(initial);
+  const result = operatingContextWrite(artifact, 'bullet-entry', BULLET_SELECTOR, OPERATING_CONTEXT_BULLET_BLOCK, initial);
+  const expected = Buffer.from(`## Handover live-claim surfacing\n- **Entry title.** Body sentence.\n${OPERATING_CONTEXT_BULLET_BLOCK}\n\n## Next\n`);
+
+  assert.deepEqual(result, { bytes: expected, alreadyApplied: false });
+  assert.deepEqual(artifact.bytes(), expected);
+  assert.equal(artifact.bytes().toString().split('**Operating context**').length - 1, 1);
+});
+
+test('operating-context write fails closed on a readback failure and re-applies idempotently afterwards', () => {
+  const initial = Buffer.from('# Feature\n\nBody.\n\n## Status\n\nAgreed.\n');
+  const expected = Buffer.from(`# Feature\n\nBody.\n\n${OPERATING_CONTEXT_FILE_BLOCK}\n\n## Status\n\nAgreed.\n`);
+  const artifact = mutableArtifact(initial, { readFailures: [undefined, new Error('readback failed')] });
+
+  assert.throws(
+    () => operatingContextWrite(artifact, 'design-before-hardening', [], OPERATING_CONTEXT_FILE_BLOCK, initial),
+    (error) => error instanceof AgreementError
+      && error.code === 'structural-error'
+      && error.evidence.kind === 'unreadable-artifact'
+      && error.evidence.operation === 'readFile'
+      && error.evidence.originalMessage === 'readback failed',
+  );
+  assert.deepEqual(artifact.bytes(), expected);
+
+  const retried = operatingContextWrite(artifact, 'design-before-hardening', [], OPERATING_CONTEXT_FILE_BLOCK, initial);
+
+  assert.deepEqual(retried, { bytes: expected, alreadyApplied: true });
+  assert.equal(artifact.replacements().length, 1);
+});
+
+test('operating-context write rejects a stale baseline and a replacement that silently keeps the old bytes', () => {
+  const initial = Buffer.from('# Feature\n\nBody.\n\n## Status\n\nAgreed.\n');
+  const staleArtifact = mutableArtifact(initial);
+
+  assert.throws(
+    () => operatingContextWrite(staleArtifact, 'design-before-hardening', [], OPERATING_CONTEXT_FILE_BLOCK, Buffer.from('# Feature\n')),
+    (error) => error instanceof AgreementError && error.code === 'stale-baseline' && error.evidence.currentHash === fullHash(initial),
+  );
+  assert.equal(staleArtifact.replacements().length, 0);
+
+  const silentArtifact = mutableArtifact(initial);
+  silentArtifact.adapter.replaceFileAtomically = () => {};
+
+  assert.throws(
+    () => operatingContextWrite(silentArtifact, 'design-before-hardening', [], OPERATING_CONTEXT_FILE_BLOCK, initial),
+    (error) => error instanceof AgreementError
+      && error.code === 'unexpected-adapter-failure'
+      && error.evidence.operation === 'replaceFileAtomically'
+      && error.evidence.originalMessage === 'atomic replacement readback mismatch',
   );
 });
 

@@ -2250,6 +2250,7 @@ test('handover preserves lifecycle behavior behind the agreement gate', () => {
     'yield control to handover',
     'active-artifact completion no-op',
     'any Exploring member',
+    'Run the shift-start operating-context check',
     'Build one stable presentation baseline',
   ]
   assert.notEqual(sharedEntryStart, -1, 'the shared gate must define its entry procedure')
@@ -2312,11 +2313,23 @@ test('handover preserves lifecycle behavior behind the agreement gate', () => {
     'deriving each item from the marker\'s own record',
     'a `(live-claim: provisional, awaiting <precondition>)` marker, whose clause is the artifact\'s own record',
     'designed-ness is read from the artifact, so a marker carrying an `awaiting <precondition>` clause surfaces as a note',
+    'The validation agent also confirms that every member\'s section (every artifact the check covers) is present and complete.',
+    'plus the post-agreement Operating context write, whose refreshed stamp carries the suffix `(operating-context write)`',
+    'plus a same-change-set amendment to a neighbouring design record made at the implementation step',
+    'Let it run the shift-start operating-context check per covered artifact first, holding each derived section rather than writing it',
+    'validated `within-contract` only when no held Operating context section is still unpresented',
     'its marker is rewritten to `(live-claim: provisional, awaiting <precondition>)` naming that release or cutover',
   ]) {
     assert.equal(body.includes(lifecycleContract), true, `handover must preserve lifecycle contract: ${lifecycleContract}`)
   }
   assert.equal(body.includes('as a flag with the claim\'s context'), false, 'handover must not restate the retired unconditional live-claim flag rule')
+  for (const retiredOperatingContextRule of [
+    'reports an absent or skeletal section as a flag',
+    'That flag downgrades a clean detection to confirm-first only when',
+    'The consult, when needed, is the entry-point action performed at shift start',
+  ]) {
+    assert.equal(body.includes(retiredOperatingContextRule), false, `handover must not retain the retired operating-context rule: ${retiredOperatingContextRule}`)
+  }
   for (const retiredLiveClaimLiteral of [
     'when the hardened spec carries `(live-claim: provisional)` markers',
     'Where the run settles any claim still marked `(live-claim: provisional)`,',
@@ -2325,6 +2338,34 @@ test('handover preserves lifecycle behavior behind the agreement gate', () => {
     'and its morning-report item names the release as the probe\'s precondition',
   ]) {
     assert.equal(body.includes(retiredLiveClaimLiteral), false, `handover must not retain the pre-clause live-claim literal: ${retiredLiveClaimLiteral}`)
+  }
+  for (const agreementContract of [
+    'Run this step only in request mode `handover` or `lifecycle`, after governing-set resolution and the unfinished-design guard have passed and immediately before the presentation baseline is captured',
+    'Write nothing to a governing artifact here: nothing lands in a governing artifact before the user agrees to the digest.',
+    'excluding the index-entry companion the resolver adds beside a feature or bug breakout file',
+    'A skeletal section is held as its completed replacement, never as a from-scratch section.',
+    '`heldSections`: null or the held or overridden Operating context section and deviation entries per covered artifact',
+    'The one carve-out is that the agreed section bytes in `heldSections` leave this context through `operating-context-write` on the gate\'s `continue`, and by no other path.',
+    'a held section not yet shown to the user is part of the decision surface and forces a fresh presentation instead',
+    'A divergence left standing at agreement is not an error',
+    'the user\'s words normalized to one line, whitespace runs collapsed and any backtick or semicolon removed',
+    'in the literal spellings above whatever spelling the section\'s own record uses',
+    'This section and its override channel apply only in request modes `handover` and `lifecycle`.',
+    'an override names one or more members or, when it names none, applies to every member of the set',
+    'its deviation entry replaces the earlier entry and still names the derived tier, never the superseded election',
+    'it is the one requested change that edits the held sections in memory instead of discarding them',
+    'the untouched-members rule below applies only to members without an override',
+    'Operating context: no writes (no held sections)',
+    'Operating context: wrote <n> (<artifact> <tier> <derived|overridden>; ...); deviation entries <k>; persisted <yes|no>',
+    'halts before the post-mutation boundary: invalidate authority, leave the already-written prefix in place, and report which members were written and which failed',
+    'Any verdict other than `within-contract` on a completed write is a controller or judge defect',
+    'A decline, an abandoned presentation, or a requested change other than a tier override discards the held sections with the pending presentation',
+    'A reply carrying both a change and an override discards and re-derives, then re-applies the override to the re-derived sections.',
+    'the stability recheck does the same when it restarts from a replacement baseline',
+    'on agreement writes only the missing members, so the half-written state converges without rollback',
+    'no override is inferred from a crashed run',
+  ]) {
+    assert.equal(agreementBody.includes(agreementContract), true, `the shared agreement gate must preserve lifecycle contract: ${agreementContract}`)
   }
   assert.equal(body.includes('Status:'), false, 'handover must not create or trust Status markers')
   assert.equal(body.toLowerCase().includes('signed off'), false, 'handover must not retain signed-off stage logic')

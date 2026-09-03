@@ -3,6 +3,7 @@ const { isUtf8 } = require('node:buffer');
 const { closeSync, lstatSync, openSync, readFileSync, readdirSync, realpathSync, renameSync, statSync, unlinkSync, writeFileSync } = require('node:fs');
 const nodePath = require('node:path');
 const { isDeepStrictEqual } = require('node:util');
+const { EXTERNAL_LABEL, LABEL_AT_START, REQUIRES_LABEL } = require('../../internal/backlog-catalog.js');
 const { stableOpenFile } = require('../../internal/filesystem-primitives.js');
 
 let stagingCounter = 0;
@@ -319,6 +320,22 @@ function selection(path, selectorKind, selectors, sourceSpans) {
   return { path, selectorKind, selectors, selectedBytes, sourceSpans: sourceSpans.map((sourceSpan) => sourceSpan.buffer), sourceRanges: sourceSpans.map(({ start, end }) => ({ start, end })) };
 }
 
+// A bullet entry runs from its bullet to the first line outside any fence that is blank,
+// another top-level bullet, a level-1 to level-3 heading, or unindented; fenced lines belong
+// to the entry whatever their shape, which the scanner already records per line.
+function bulletEntryEnd(lines, bulletIndex) {
+  let entryEnd = bulletIndex + 1;
+  while (entryEnd < lines.length) {
+    const line = lines[entryEnd];
+    if (line.outsideFence && (line.content.trim() === '' || readyBacklogBulletText(line) !== null || [1, 2, 3].some((level) => isReadyBacklogHeading(line, level)) || !/^[ \t]+/.test(line.content))) {
+      break;
+    }
+    entryEnd += 1;
+  }
+
+  return entryEnd;
+}
+
 function resolveReadyEntry(lines, selectorKind, selector) {
   const parents = lines.filter((line) => isReadyBacklogHeading(line, 2) && line.content === selector.parentHeading);
   const parent = requireUniqueSelectorMatch(parents, 'Parent heading');
@@ -361,26 +378,7 @@ function selectArtifact({ path, selectorKind, selectors, sourceBuffer }, scan = 
   if (selectorKind === 'index-entry') {
     return selection(path, selectorKind, selectors, [rangeSpan(sourceBuffer, resolved.parent.rawStart, resolved.parent.rawEnd), rangeSpan(sourceBuffer, resolved.entry.rawStart, lines[resolved.entryEnd - 1].rawEnd)]);
   }
-  let entryEnd = resolved.bulletIndex + 1;
-  let inFence = null;
-  while (entryEnd < lines.length) {
-    const line = lines[entryEnd];
-    if (inFence) {
-      if (isFenceCloser(line.content, inFence)) {
-        inFence = null;
-      }
-      entryEnd += 1;
-      continue;
-    }
-    if (line.content.trim() === '' || readyBacklogBulletText(line) !== null || [1, 2, 3].some((level) => isReadyBacklogHeading(line, level)) || !/^[ \t]+/.test(line.content)) {
-      break;
-    }
-    const opener = fenceOpener(line.content);
-    if (opener) {
-      inFence = opener;
-    }
-    entryEnd += 1;
-  }
+  const entryEnd = bulletEntryEnd(lines, resolved.bulletIndex);
   return selection(path, selectorKind, selectors, [rangeSpan(sourceBuffer, resolved.parent.rawStart, resolved.parent.rawEnd), rangeSpan(sourceBuffer, resolved.bullet.rawStart, lines[entryEnd - 1].rawEnd)]);
 }
 
@@ -953,27 +951,43 @@ function captureProvenanceBinding(input, options) {
   return readProvenanceBinding(canonical.realPath, bindingAdapter);
 }
 
+function requireFreshBaseline(currentBytes, baselineHash) {
+  const currentHash = completeFileHash(currentBytes);
+  if (!/^[0-9a-f]{64}$/.test(baselineHash) || currentHash !== baselineHash) {
+    staleBaseline(baselineHash, currentHash);
+  }
+}
+
 function prepareProvenanceWrite(currentBytes, stamp, baselineHash) {
   requireUtf8(currentBytes);
   const scan = createMarkdownScanner();
   if (isAppliedRetry(currentBytes, stamp, baselineHash, scan)) {
     return { alreadyApplied: true, nextBytes: Buffer.from(currentBytes) };
   }
-  const currentHash = completeFileHash(currentBytes);
-  if (!/^[0-9a-f]{64}$/.test(baselineHash) || currentHash !== baselineHash) {
-    staleBaseline(baselineHash, currentHash);
-  }
+  requireFreshBaseline(currentBytes, baselineHash);
 
   return { alreadyApplied: false, nextBytes: buildProvenanceBytes(currentBytes, stamp, scan) };
 }
 
-function readProvenanceReplacement(fsAdapter, realPath, nextBytes) {
+function readAtomicReplacement(fsAdapter, realPath, nextBytes) {
   const readbackBytes = adapterCall(fsAdapter, 'readFile', realPath);
   if (!Buffer.isBuffer(readbackBytes) || !readbackBytes.equals(nextBytes)) {
     throw new AgreementError('unexpected-adapter-failure', 'Atomic replacement readback did not match the intended complete bytes.', { operation: 'replaceFileAtomically', path: realPath, originalMessage: 'atomic replacement readback mismatch' });
   }
 
   return Buffer.from(readbackBytes);
+}
+
+function writePreparedBytes(fsAdapter, realPath, prepare) {
+  const currentBytes = adapterCall(fsAdapter, 'readFile', realPath);
+  const prepared = prepare(currentBytes);
+  if (prepared.alreadyApplied) {
+    return { bytes: Buffer.from(currentBytes), alreadyApplied: true };
+  }
+  replaceFile(fsAdapter, realPath, prepared.nextBytes);
+  const readbackBytes = readAtomicReplacement(fsAdapter, realPath, prepared.nextBytes);
+
+  return { bytes: Buffer.from(readbackBytes), alreadyApplied: false };
 }
 
 function writeProvenanceStamp(input, options) {
@@ -987,15 +1001,8 @@ function writeProvenanceStamp(input, options) {
   }
   validateFsAdapter(fsAdapter, hardeningGrammar);
   const canonical = canonicalizePath(projectRoot, path, fsAdapter);
-  const currentBytes = adapterCall(fsAdapter, 'readFile', canonical.realPath);
-  const prepared = prepareProvenanceWrite(currentBytes, stamp, baselineHash);
-  if (prepared.alreadyApplied) {
-    return { bytes: Buffer.from(currentBytes), alreadyApplied: true };
-  }
-  replaceFile(fsAdapter, canonical.realPath, prepared.nextBytes);
-  const readbackBytes = readProvenanceReplacement(fsAdapter, canonical.realPath, prepared.nextBytes);
 
-  return { bytes: Buffer.from(readbackBytes), alreadyApplied: false };
+  return writePreparedBytes(fsAdapter, canonical.realPath, (currentBytes) => prepareProvenanceWrite(currentBytes, stamp, baselineHash));
 }
 
 function writeBoundProvenanceStamp(input, options) {
@@ -1020,7 +1027,7 @@ function writeBoundProvenanceStamp(input, options) {
   }
   requireCurrentBinding(binding, readProvenanceBinding(canonical.realPath, bindingAdapter));
   replaceFile(fsAdapter, canonical.realPath, prepared.nextBytes);
-  const readbackBytes = readProvenanceReplacement(fsAdapter, canonical.realPath, prepared.nextBytes);
+  const readbackBytes = readAtomicReplacement(fsAdapter, canonical.realPath, prepared.nextBytes);
   const refreshedBinding = readProvenanceBinding(canonical.realPath, bindingAdapter);
   const confirmedBytes = adapterCall(fsAdapter, 'readFile', canonical.realPath);
   requireCurrentBinding(refreshedBinding, readProvenanceBinding(canonical.realPath, bindingAdapter));
@@ -1029,6 +1036,304 @@ function writeBoundProvenanceStamp(input, options) {
   }
 
   return { bytes: Buffer.from(confirmedBytes), alreadyApplied: false, binding: refreshedBinding };
+}
+
+const OPERATING_CONTEXT_HEADING = '## Operating context';
+const OPERATING_CONTEXT_BULLET_PREFIX = '- **Operating context**';
+const OPERATING_CONTEXT_FILE_ANCHORS = ['## Status', '## Hardening'];
+// A bullet entry's section must be an indented continuation of its own bullet.
+// An unindented block would splice in as a sibling top-level bullet, which the
+// bullet-entry selector stops at, so it would land outside the governing scope
+// and a later write would append a second copy rather than replace it.
+const OPERATING_CONTEXT_LABEL_SHAPES = Object.freeze({
+  'design-before-hardening': (first) => first === OPERATING_CONTEXT_HEADING,
+  'index-entry': (first) => first.startsWith(OPERATING_CONTEXT_BULLET_PREFIX),
+  'bullet-entry': (first) => /^ {2,}/.test(first) && first.trimStart().startsWith(OPERATING_CONTEXT_BULLET_PREFIX),
+});
+// The locator differs for `bullet-entry` alone: new bytes are written at the
+// two-space indentation above, while an existing section is located by the
+// indentation bulletEntryEnd walks, so a tab-indented or one-space authored
+// section is inside the entry and gets replaced in place instead of duplicated.
+const OPERATING_CONTEXT_LOCATOR_SHAPES = Object.freeze({
+  ...OPERATING_CONTEXT_LABEL_SHAPES,
+  'bullet-entry': (first) => /^[ \t]+/.test(first) && first.trimStart().startsWith(OPERATING_CONTEXT_BULLET_PREFIX),
+});
+
+function operatingContextGrammar(message, kind = 'operating-context-grammar') {
+  structural(message, { kind });
+}
+
+// Indentation is measured in columns with four-column tab stops, as CommonMark reads it,
+// so a tab-indented label and a space-indented sibling compare the way a renderer nests them.
+function indentWidth(line) {
+  let width = 0;
+  for (const char of /^[ \t]*/.exec(line)[0]) {
+    width = char === '\t' ? width + 4 - (width % 4) : width + 1;
+  }
+
+  return width;
+}
+
+// The label shape settles the first line only. For the two entry kinds every
+// later line must stay inside the block operatingContextBlockEnd walks, which a
+// blank line, a line indented no deeper than the label, or (for a heading entry)
+// an ATX heading each end: such a tail is written outside the block, a retry
+// reads as a stale baseline, and a later replace duplicates the tail.
+function requireOperatingContextEntryScope(sectionLines, selectorKind) {
+  const labelIndent = indentWidth(sectionLines[0]);
+  for (const line of sectionLines.slice(1)) {
+    if (line.trim() === '') {
+      operatingContextGrammar('Operating context entry section bytes must not contain a blank line.', 'operating-context-blank-line');
+    }
+    if (selectorKind === 'index-entry' && headingFor(line) !== null) {
+      operatingContextGrammar('Operating context index-entry section bytes must not contain a heading line.', 'operating-context-heading');
+    }
+    if (indentWidth(line) <= labelIndent) {
+      operatingContextGrammar('Operating context entry section bytes must nest every line after the label deeper than the label line.', 'operating-context-dedent');
+    }
+  }
+}
+
+// The pre-write unclosedFence check reads the artifact's current bytes, so a
+// section whose fences do not close under the scanner's own rule (a closer shares
+// the opener's marker and is at least as long) would leave every later write on
+// that artifact refusing on an unclosed fence.
+function requireBalancedSectionFences(sectionLines) {
+  let fence = null;
+  for (const line of sectionLines) {
+    if (fence === null) {
+      fence = fenceOpener(line);
+    } else if (isFenceCloser(line, fence)) {
+      fence = null;
+    }
+  }
+  if (fence !== null) {
+    operatingContextGrammar('Operating context section bytes must not leave a fence unbalanced.', 'operating-context-unbalanced-fence');
+  }
+}
+
+function requireOperatingContextShape(sectionBytes, selectorKind, terminator) {
+  requireUtf8(sectionBytes);
+  if (sectionBytes.length === 0) {
+    operatingContextGrammar('Operating context section bytes must be nonempty.');
+  }
+  const sectionLines = decode(sectionBytes).split(decode(terminator));
+  if (sectionLines.some((line) => /[\r\n]/.test(line))) {
+    operatingContextGrammar('Operating context section bytes must use the artifact line terminator.');
+  }
+  if (sectionLines[0] === '' || sectionLines.at(-1) === '') {
+    operatingContextGrammar('Operating context section bytes must not begin or end with a line terminator.');
+  }
+  if (!OPERATING_CONTEXT_LABEL_SHAPES[selectorKind](sectionLines[0])) {
+    operatingContextGrammar('Operating context section bytes must open with the placement label for this selector kind.');
+  }
+  if (selectorKind !== 'design-before-hardening') {
+    requireOperatingContextEntryScope(sectionLines, selectorKind);
+  } else {
+    requireOperatingContextFileScope(sectionLines);
+  }
+  requireBalancedSectionFences(sectionLines);
+}
+
+// A file section ends at the next level-1 or level-2 heading (operatingContextFilePlacement),
+// so a section carrying one would escape its own extent the same way an entry tail does;
+// a level-3 or deeper subsection stays inside the section.
+function requireOperatingContextFileScope(sectionLines) {
+  if (sectionLines.at(-1).trim() === '') {
+    operatingContextGrammar('Operating context file section bytes must end with a content line.', 'operating-context-blank-line');
+  }
+  for (const line of sectionLines.slice(1)) {
+    const heading = headingFor(line);
+    if (heading !== null && heading.level <= 2) {
+      operatingContextGrammar('Operating context file section bytes must not contain a level-1 or level-2 heading.', 'operating-context-heading');
+    }
+  }
+}
+
+function lastContentIndex(lines, from, to) {
+  for (let index = to - 1; index >= from; index -= 1) {
+    if (lines[index].content.trim() !== '') {
+      return index;
+    }
+  }
+
+  return -1;
+}
+
+// Locating an existing block and writing a new one agree on the label grammar
+// up to the bullet-entry indentation width, so both go through the shape sets
+// declared beside OPERATING_CONTEXT_LABEL_SHAPES. A locator that matched the
+// trimmed prefix for a heading entry would read an indented continuation nested
+// under a slice bullet as that entry's own block, and the replace span would
+// then run to the entry's end and delete the sibling bullets and the Requires
+// line after it.
+function operatingContextLabelIndex(lines, from, to, selectorKind) {
+  for (let index = from; index < to; index += 1) {
+    const line = lines[index];
+    if (line.outsideFence && OPERATING_CONTEXT_LOCATOR_SHAPES[selectorKind](line.content)) {
+      return index;
+    }
+  }
+
+  return -1;
+}
+
+function operatingContextEntryRange(lines, selectorKind, selectors) {
+  const resolved = resolveReadyEntry(lines, selectorKind, selectors[0]);
+  if (selectorKind === 'index-entry') {
+    return { from: resolved.entryIndex + 1, to: resolved.entryEnd };
+  }
+
+  return { from: resolved.bulletIndex + 1, to: bulletEntryEnd(lines, resolved.bulletIndex) };
+}
+
+function operatingContextFilePlacement(lines, sourceLength) {
+  const heading = lines.findIndex((line) => line.outsideFence && line.heading?.level === 2 && line.heading.exactLine.trim() === OPERATING_CONTEXT_HEADING);
+  if (heading >= 0) {
+    const next = lines.findIndex((line, index) => index > heading && line.outsideFence && line.heading !== null && line.heading.level <= 2);
+
+    return { kind: 'replace', start: lines[heading].rawStart, end: lines[lastContentIndex(lines, heading, next < 0 ? lines.length : next)].rawEnd };
+  }
+  for (const anchor of OPERATING_CONTEXT_FILE_ANCHORS) {
+    const index = lines.findIndex((line) => line.outsideFence && line.heading?.level === 2 && line.heading.exactLine.trim() === anchor);
+    if (index >= 0) {
+      return { kind: 'insert-before', start: lines[index].rawStart, end: lines[index].rawStart };
+    }
+  }
+
+  return { kind: 'append', start: sourceLength, end: sourceLength };
+}
+
+// A heading-form entry takes its block after its Requires and External lines, so a trailing
+// Slices block never absorbs the new top-level bullet as one more slice (the ready parser
+// reads every top-level bullet contiguous with a Slices block as a slice). The label line
+// extends through its wrapped continuation lines exactly as the ready parser joins them:
+// until a blank line, a heading, a top-level bullet, or another bold label at line start,
+// the catalog's LABEL_AT_START that the ready parser itself imports.
+function dependencyLinesEnd(lines, from, to) {
+  let end = -1;
+  for (let index = from; index < to; index += 1) {
+    const line = lines[index];
+    if (line.outsideFence && (REQUIRES_LABEL.test(line.content) || EXTERNAL_LABEL.test(line.content))) {
+      end = index;
+      while (end + 1 < to) {
+        const next = lines[end + 1];
+        const content = next.content;
+        if (!next.outsideFence || content.trim() === '' || next.heading !== null || /^- /.test(content) || LABEL_AT_START.test(content.trim())) {
+          break;
+        }
+        end += 1;
+      }
+    }
+  }
+
+  return end;
+}
+
+// An entry-form block is its label line plus every following line indented deeper
+// than the label (the same continuation rule the ready parser applies to a bullet),
+// so a block written ahead of a Slices block or a Requires line ends before them and
+// a replace or an applied-retry check never swallows what follows the block. A line
+// inside a fence the block opened belongs to the block whatever its shape, as it does
+// for bulletEntryEnd and the ready parser, so a replace never cuts a fence in half.
+function operatingContextBlockEnd(lines, label, to) {
+  const labelIndent = indentWidth(lines[label].content);
+  let end = label;
+  while (end + 1 < to) {
+    const next = lines[end + 1];
+    if (next.outsideFence && (next.content.trim() === '' || indentWidth(next.content) <= labelIndent)) {
+      break;
+    }
+    end += 1;
+  }
+
+  return end;
+}
+
+function operatingContextPlacement(scanned, selectorKind, selectors) {
+  const { lines } = scanned;
+  if (selectorKind === 'design-before-hardening') {
+    return operatingContextFilePlacement(lines, scanned.sourceBuffer.length);
+  }
+  const { from, to } = operatingContextEntryRange(lines, selectorKind, selectors);
+  const label = operatingContextLabelIndex(lines, from, to, selectorKind);
+  if (label >= 0) {
+    return { kind: 'replace', start: lines[label].rawStart, end: lines[operatingContextBlockEnd(lines, label, to)].rawEnd };
+  }
+
+  const dependencyEnd = selectorKind === 'index-entry' ? dependencyLinesEnd(lines, from, to) : -1;
+  const at = lines[dependencyEnd >= 0 ? dependencyEnd : lastContentIndex(lines, from - 1, to)].rawEnd;
+
+  return { kind: 'insert-after', start: at, end: at };
+}
+
+// Every placement is one span to splice over: a replace covers the existing block, an
+// insert-after or insert-before is a zero-width span at the split point, and an append is
+// a zero-width span at the end. The kind only decides the blank-line padding around the
+// block: a block inserted before a heading keeps one blank line before that heading, and
+// an appended block opens with one blank line after the previous content.
+function operatingContextPadding(kind, sectionBytes, terminator) {
+  if (kind === 'insert-before') {
+    return [sectionBytes, terminator, terminator];
+  }
+  if (kind === 'append') {
+    return [terminator, sectionBytes, terminator];
+  }
+
+  return [sectionBytes, terminator];
+}
+
+function buildOperatingContextBytes(scanned, sectionBytes, placement) {
+  const { sourceBuffer, lines } = scanned;
+  const padded = operatingContextPadding(placement.kind, sectionBytes, preferredTerminator(lines));
+
+  return Buffer.concat([sourceBuffer.subarray(0, placement.start), ...padded, sourceBuffer.subarray(placement.end)]);
+}
+
+function operatingContextApplied(scanned, sectionBytes, placement) {
+  if (placement.kind !== 'replace') {
+    return false;
+  }
+
+  return scanned.sourceBuffer.subarray(placement.start, priorTerminatorStart(scanned.sourceBuffer, placement.end)).equals(sectionBytes);
+}
+
+function prepareOperatingContextWrite(currentBytes, sectionBytes, selectorKind, selectors, baselineHash) {
+  requireUtf8(currentBytes);
+  const scanned = scanMarkdown(currentBytes);
+  if (scanned.unclosedFence) {
+    operatingContextGrammar('An unclosed fence prevents an Operating context write.');
+  }
+  // The splice re-emits one terminator after the written block, so an artifact
+  // whose final line is unterminated has none to copy and is refused rather
+  // than silently given one.
+  if (scanned.lines.length === 0 || scanned.lines.at(-1).terminator.length === 0) {
+    operatingContextGrammar('Operating context write requires an artifact whose final line is terminated.');
+  }
+  requireOperatingContextShape(sectionBytes, selectorKind, preferredTerminator(scanned.lines));
+  const placement = operatingContextPlacement(scanned, selectorKind, selectors);
+  if (operatingContextApplied(scanned, sectionBytes, placement)) {
+    return { alreadyApplied: true, nextBytes: Buffer.from(currentBytes) };
+  }
+  requireFreshBaseline(currentBytes, baselineHash);
+
+  return { alreadyApplied: false, nextBytes: buildOperatingContextBytes(scanned, sectionBytes, placement) };
+}
+
+function writeOperatingContextSection(input, options) {
+  if (!exactOrderedKeys(input, ['projectRoot', 'path', 'selectorKind', 'selectors', 'sectionBytes', 'baselineHash']) || !exactOrderedKeys(options, ['fsAdapter'])) {
+    operatingContextGrammar('Operating context input must use the closed ordered shape.');
+  }
+  const { projectRoot, path, selectorKind, selectors, sectionBytes, baselineHash } = input;
+  const { fsAdapter } = options;
+  if (typeof projectRoot !== 'string' || projectRoot === '' || !Object.hasOwn(OPERATING_CONTEXT_LABEL_SHAPES, selectorKind) || typeof baselineHash !== 'string') {
+    operatingContextGrammar('Operating context input contains an invalid value.');
+  }
+  validateSelectors(selectorKind, selectors);
+  validateFsAdapter(fsAdapter, operatingContextGrammar);
+  const canonical = canonicalizePath(projectRoot, path, fsAdapter);
+
+  return writePreparedBytes(fsAdapter, canonical.realPath, (currentBytes) => prepareOperatingContextWrite(currentBytes, sectionBytes, selectorKind, selectors, baselineHash));
 }
 
 function planStructural(message) {
@@ -2191,7 +2496,7 @@ function buildDerivedDiff(input) {
   return { hunks };
 }
 
-const DIGEST_FIELDS = new Set(['goal', 'exclusions', 'decisions', 'dependencies', 'prerequisites', 'questions', 'liveClaims', 'scope']);
+const DIGEST_FIELDS = new Set(['goal', 'exclusions', 'decisions', 'dependencies', 'prerequisites', 'questions', 'liveClaims', 'scope', 'operatingContext']);
 
 function validationIssue(kind, detail, path = null, hunk = null) {
   return { kind, path, hunk, detail };
@@ -3012,10 +3317,11 @@ const CLI_BUFFER_ALIASES = Object.freeze({
   selectedBytes: 'selectedBytesHex',
   sourceSpans: 'sourceSpansHex',
   rawLine: 'rawLineHex',
+  sectionBytes: 'sectionBytesHex',
   replacementBytes: 'replacementBytesHex',
   bytes: 'bytesHex',
 });
-const CLI_INPUT_HEX_KEYS = new Set(['planBytesHex', 'planBodyBytesHex', 'sourceBytesHex', 'selectedBytesHex', 'sourceSpansHex', 'rawLineHex']);
+const CLI_INPUT_HEX_KEYS = new Set(['planBytesHex', 'planBodyBytesHex', 'sourceBytesHex', 'selectedBytesHex', 'sourceSpansHex', 'rawLineHex', 'sectionBytesHex']);
 
 function validateCliWireKeys(value, path = 'input') {
   if (Array.isArray(value)) {
@@ -3076,6 +3382,8 @@ function decodeCliValue(value, path = 'input') {
       decoded.sourceSpans = entry.map((span, index) => decodeHex(span, `${path}.${key}[${index}]`));
     } else if (key === 'rawLineHex') {
       decoded.rawLine = decodeHex(entry, `${path}.${key}`);
+    } else if (key === 'sectionBytesHex') {
+      decoded.sectionBytes = decodeHex(entry, `${path}.${key}`);
     } else if (key.endsWith('Hex')) {
       invocationFailure(`CLI field ${path}.${key} is not allowlisted.`, { field: `${path}.${key}` });
     } else {
@@ -3174,6 +3482,8 @@ function dispatchCliOperation(operation, input, adapters, environment) {
       return previewLegacyMarkerDeletion(decoded);
     case 'provenance-write':
       return writeProvenanceStamp(decoded, { fsAdapter: adapters.fsAdapter });
+    case 'operating-context-write':
+      return writeOperatingContextSection(decoded, { fsAdapter: adapters.fsAdapter });
     case 'provenance-write-bound':
       return writeBoundProvenanceStamp(decoded, { fsAdapter: adapters.fsAdapter, bindingAdapter: adapters.bindingAdapter });
     case 'provenance-bind':
@@ -3250,6 +3560,7 @@ module.exports = {
   detectLegacyMarkers,
   previewLegacyMarkerDeletion,
   writeBoundProvenanceStamp,
+  writeOperatingContextSection,
   writeProvenanceStamp,
   runCli,
 };
