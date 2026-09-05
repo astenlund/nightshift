@@ -53,7 +53,7 @@ Verification happens during implementation as well as at the end. Tests, builds,
 
 Fresh review remains a defining strength of Nightshift. Reviewers receive the artifact, requirements, applicable constraints, and necessary project context without inheriting the author's conversational argument for its correctness. Independent context reduces one source of bias; it does not make a reviewer correct by construction.
 
-Multidimensional review remains available for specs and code. Dimensions are useful lenses, and their coverage, overlap, and cost deserve deliberate design. Their final set and allocation to agents remain open. A dimension does not automatically require a dedicated agent on every change, and an implementation plan exception does not recreate the old review ladder by default.
+Multidimensional review remains available for specs and code. Every review starts with the complete dimension brief; the author does not exclude dimensions on the reviewer's behalf. A small change starts with one fresh reviewer, while an independent reviewer of larger work decides whether to recruit help and retains responsibility for the integrated assessment. The [workflow's dimension brief](WORKFLOW.md#review-dimensions) defines the agreed spec and code lenses, with local structure and system architecture explicitly covered together. An implementation plan exception does not recreate the old review ladder by default.
 
 Spec review focuses on whether the commitments are coherent, feasible, sufficiently bounded, and verifiable. Code review examines whether the implementation fulfills them and works correctly in its actual setting, including integration, maintainability, and relevant failure behavior. The final result must receive an independent integrated assessment even when specialized reviewers examine parts of it.
 
@@ -65,7 +65,7 @@ Every reported finding receives skeptic validation against concrete evidence. Fa
 
 A false claim is acknowledged as refuted. A true finding outside authorized scope receives a reasoned acknowledgement without an unauthorized edit or automatic backlog entry. Missing evidence remains unresolved. A failure to meet an agreed requirement must be repaired or explicitly renegotiated; cost alone cannot waive it. The [adversarial dialogue feature](.claude/features/adversarial-repair-dialogue.md) records the retained validity-and-value direction; its mechanics will be reconciled with this vision during the later transformation.
 
-Resolved findings must count as resolved. Accepted skips, verified deferrals, and refutations should not force another round merely to obtain literal LGTM. Actual repairs require validation against the finding's evidence and independent review proportionate to their reach. A local correction can receive a targeted check of the change and its relevant interactions; changed shared behavior or an uncertain impact calls for a broader integrated review. This maintains coverage of the resulting artifact without automatically repeating unrelated dimensions. Previously settled tradeoffs travel with later reviews and reopen when new evidence defeats their basis. Completion requires that coverage and no unresolved required work; a time or cost limit cannot manufacture a clean result.
+Resolved findings must count as resolved. Accepted skips, verified deferrals, and refutations should not force another round merely to obtain literal LGTM. Actual repairs require validation against the finding's evidence. After every repair batch, the independent reviewer re-examines the complete cumulative change across all dimensions, including affected surrounding code and sibling paths. Repair size does not restrict coverage: a tiny fix can introduce a regression or address the problem too narrowly. Depth and specialist staffing remain proportionate, and the same independent reviewer can retain useful context. Previously settled tradeoffs travel with later reviews and reopen when new evidence defeats their basis. Completion requires that review coverage and no unresolved required work; a time or cost limit cannot manufacture a clean result.
 
 ## A controller that owns the result
 
@@ -77,7 +77,7 @@ Cheap observable signals, such as repeated identical failures or a finding recur
 
 Long runs need enough durable context to resume: accepted intent, relevant decisions, completed work, remaining obligations, evidence, and unresolved findings. A replacement model reconciles that record with the actual project and any work still in flight before taking over. Model or host changes should preserve logical progress without assuming private reasoning or live sessions can transfer between providers. Missing or contradictory evidence prompts investigation, not fabricated continuity.
 
-The user should hear what has been learned, what materially changed, and what remains uncertain. The closing report presents the result, verification, accepted tradeoffs, deferred work, and any decisions still required. Completion within the workspace and publication are distinct; deployment or other external actions require the user's authorization.
+The user should hear what has been learned, what materially changed, and what remains uncertain. The closing report presents the result, verification, accepted tradeoffs, deferred work, and any decisions still required. Follow-ups retain the existing triage: one item at a time, enough context to decide, and a recommended fix now, track, or skip route where applicable; deferred approval questions keep their own terms. Already-resolved findings do not become new approval chores. Completion within the workspace and publication are distinct; deployment or other external actions require the user's authorization.
 
 ## How this guides the transformation
 
@@ -91,9 +91,9 @@ Transformation should improve completed outcomes per unit of developer attention
 
 ## Decisions still open
 
-- When spec review is warranted, which dimensions matter, and how reviewers share them.
+- How to recognize when a request needs a separate spec and spec review beyond the representative cases in the workflow.
 - How to choose model effort and bounded delegation based on observed results and availability.
-- How to route repairs to proportionate review, when to extend adversarial dialogue, and which progress signals warrant intervention.
+- How to scale investigation within complete review coverage, when to extend adversarial dialogue, and how to calibrate progress signals from actual runs.
 - The smallest reliable execution and resumption machinery that preserves ownership and evidence across hosts.
 - Which current backlog structures and supervisory mechanisms help the intended experience enough to retain.
 
