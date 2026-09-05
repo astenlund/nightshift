@@ -257,6 +257,24 @@ Narrows the round 2+ payload for a dimension whose own admitted findings produce
 
 **Requires:** [Contract-calibrated revise admission](features/contract-calibrated-revise-admission.md).
 
+### [Same-session validation skip and validation stamp](features/same-session-validation-skip.md)
+
+Narrows or skips handover's fresh validation agent when the governing agreement was bound in the current session and the governing bytes have not moved since that digest, and records a validation stamp (the commit plus a content hash over the governing set) when a validation does run, so a later shift start can reuse it while both still match. Any mismatch, unreadable stamp, or unrecognized recipe version fails closed to a full validation, and a skipped validation is never reported as a passed one.
+
+**Requires:** none.
+
+### [Pre-hardening verify-fix loop](features/pre-hardening-verify-fix-loop.md)
+
+Runs a verify-fix loop as a lifecycle step before `revise-spec`, one fresh strongest-model agent per iteration, so the macro-level reshaping of a spec happens before the multi-agent hardening loop starts accumulating micro-detail findings and re-certifying the whole cell set after each structural change. Uses Fable at high effort as an explicit exception to the engine's reviewer, skeptic, and verifier pins, and is deliberately not the multi-agent engine: no dimension fan-out, no skeptics, no certification bookkeeping.
+
+**Requires:** none.
+
+### [Fixer-triggered cell reactivation](features/fixer-triggered-cell-reactivation.md)
+
+Lets a fixer declare a bounded hint naming the inactive cells its edit is likely to concern, so the controller wakes those cells immediately instead of waiting for the all-inactive sweep, which still owns every cell the hint did not name. The saving can be much more than one round, because the round a hint-woken cell joins does not necessarily converge either. Quality is unchanged since every cell still certifies the final fingerprint before the verifier launches, so this is a speed-versus-spend run setting with a default of wait rather than a rigor-profile matter.
+
+**Requires:** none.
+
 ## Host portability
 
 ### [Agent-host-agnostic Nightshift](features/agent-host-agnostic-nightshift.md)
@@ -342,6 +360,46 @@ Settles whether publication acquires its runtime lock before durable-state resum
 ### [Turn-sequencer timer ownership](features/turn-sequencer-timer-ownership.md)
 
 Resolves the mismatch between the accepted turn-sequencer timer contract and the settle guard that currently owns live timer handles. The design must either give the sequencer real timer ownership or remove the duplicate timer model, then reconcile phase, deadline, clear and install lifecycles, the governing contract, and tests.
+
+**Requires:** none.
+
+### [Nightshift inbox](features/nightshift-inbox.md)
+
+Adds a git-ignored `.claude/inbox/` folder where other agents and sessions drop one file per Nightshift bug report or suggestion without ever editing the four indexes, so a concurrent capture cannot move a governing artifact's fingerprint mid-run, plus a triage step that lists the folder's actual contents and promotes each item into `BUGS.md`, `QUICK_WINS.md`, or `FEATURES.md`, or discards it. The drop file shape, how a dropping agent learns the convention, and whether a non-empty inbox surfaces at shift start are open. The two files already in the folder are this entry's first items.
+
+**Requires:** none.
+
+### [Init-backlog ignore-shape election](features/init-backlog-ignore-shape-election.md)
+
+Extends `/nightshift:init-backlog`'s ignore election with a choice of shape: a tracked `.gitignore` entry shared with every clone and visible in history, or a clone-local `.git/info/exclude` entry that is private and never committed. The controller writes only `.gitignore` today, which leaves no supported election for a user keeping tooling out of a shared repository, and the masking behavior of a private parent-directory rule currently makes the ignore election unable to report complete in exactly those clones.
+
+**Requires:** none.
+
+## Run shaping and observability
+
+### [Run-shaping settings: round cap and review lanes](features/run-shaping-settings.md)
+
+Resolves a revise run's speed-versus-spend preferences at run start instead of by mid-run deviation: a per-run round cap defaulted from the rigor tier and overridable by the user, and per-lane host and model pins for the reviewer, skeptic, and verifier roles. Evidence from the 2026-09-02 to 2026-09-03 batch, where the cap was raised five times in one spec run and the lanes were repinned twice (a Codex verifier lane, then Fable verifiers, with opus spec reviewers and sonnet plan and code reviewers), each raise and repin recorded as lore because it could not be expressed as a setting. Folds in the quick win that stops counting verifier rounds toward the cap by reference; that quick win stays independently landable.
+
+**Requires:** none.
+
+### [Dimension duration tracking and split suggestions](features/dimension-duration-tracking.md)
+
+Propagates the workflow's existing per-agent duration into the round result and checkpoint, then surfaces a suggested split for any cell whose median duration persistently exceeds its siblings, proposed along the profile's own numbered criteria. A round costs what its slowest cell costs, and the plan-correctness cell was the straggler in every multi-cell round of the 2026-09-03 plan run against the user's calibration that a good revise agent run sits in the three-to-five-minute band. The first slice is per-run only, since cross-run suggestions would need a durable ledger the engine deliberately does not keep; the plan-correctness static-versus-executable split is its worked example.
+
+**Requires:** none.
+
+### [Revise progress visible by default](features/revise-progress-visible-by-default.md)
+
+Prints the cumulative per-round convergence log after every evaluated round as standard behavior, persists it in the checkpoint so a resumed session prints the full series, and has the morning report review the series rather than the final state. The log is what surfaced the eager-staleness incident now in the inbox; without it the defect would have run unnoticed. The design is open: both format samples (the compact one-line-per-round form chosen for scan speed and the wider prose-column table that reads better per round but grows tall) and the settled column list are carried as inputs, and the format is not locked.
+
+**Requires:** none.
+
+## Agreement machinery
+
+### [Bullet-entry selector re-keying and within-digest continuation](features/bullet-entry-selector-rekeying.md)
+
+Keys the bullet-entry selector in `skills/spec-agreement/spec-agreement.js` on an entry's bold title instead of its entire first-line text, so a body edit routes through the source-diff and contract-fit path like a breakout-file edit rather than counting as a changes-contract event that invalidates authority; today the first applied spec-gate fix stops an unattended handover over any index-only entry. Also persists in `skills/spec-agreement/SKILL.md` the standing ruling that a fix staying within the accepted digest's decisions continues on retained authority with the controller's within-digest judgment recorded.
 
 **Requires:** none.
 
