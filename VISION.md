@@ -1,0 +1,100 @@
+# Nightshift vision
+
+Working draft, 2026-09-05. This document captures the direction for later changes to Nightshift's implementation and backlog. It distinguishes settled direction from choices that still need design; it does not authorize those later changes or describe them as shipped.
+
+## Purpose
+
+Nightshift should let a developer settle the decisions they care about, entrust the engineering work to a capable model, and return to a useful result supported by concrete evidence. The developer owns intent, consequential tradeoffs, and authority. Nightshift owns carrying authorized work through implementation, independent review, verification, and an understandable closing report.
+
+The central design assumption is that a strong model can exercise engineering judgment from a clear outcome, meaningful constraints, and access to the real project. The workflow should support that judgment while making errors discoverable. Every additional artifact, agent role, approval boundary, and review pass must contribute enough value to justify its cost and maintenance.
+
+## Built around capable, interchangeable models
+
+Claude Fable 5.1 and GPT-6 Astra are the current reference models for sustained coding and multistep work. Their documented capabilities motivate delegating engineering judgment, while their limitations still require clear scope and verification. That is the design premise to evaluate on real work, not a claim of infallibility. [Fable guidance](https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/prompting-claude-fable-5-1), [Astra guidance](https://developers.openai.com/api/docs/guides/latest-model).
+
+Either model can lead, implement, review, act as skeptic, or verify. Availability, user preference, task fit, and observed performance determine assignment. One available model must support the complete workflow through independent agent contexts. Splitting work between models is an optional advantage; different families do not guarantee independent errors.
+
+Claude Code and Codex should provide the same intent and review standards through their available tools. Missing parallelism can mean sequential work. If an adequately capable model, independent review context, or required verification capability is unavailable, preserve progress and report which work is blocked. Model availability must not silently lower the completion standard.
+
+## Settle the meaningful decisions
+
+Brainstorming should resolve what success means and which tradeoffs the user wants to own. The controller explores the existing project, challenges assumptions, and asks questions whose answers would materially change the result. Routine implementation choices remain within its delegated judgment.
+
+A spec records the resulting commitments:
+
+- the problem, intended outcome, and scope;
+- important observable behavior and accepted exclusions;
+- constraints and architectural decisions whose reversal would materially affect the result;
+- meaningful failure, compatibility, data preservation, and recovery expectations;
+- evidence that will demonstrate success;
+- unresolved decisions that prevent implementation.
+
+The spec's depth follows these commitments. For a small change, an agreed request or backlog entry may carry them without another document. Exact technical detail belongs where it defines a real contract or protects a consequential decision. Complete internal algorithms, speculative failure trees, verbatim implementation blocks, and exhaustive command sequences do not become mandatory just because a model could write them down.
+
+Different implementations may satisfy the same spec. A reviewer should identify an unfulfilled commitment or a consequential ambiguity before demanding more detail. When the behavior and constraints are complete, an open implementation choice is a delegation of judgment.
+
+Authority comes from the user's request to perform work or an explicit delegation over a defined scope, including a bounded set of backlog work. An existing spec or backlog entry supplies requirements but does not authorize its own implementation. A clear implementation request can supply both commitments and authority; brainstorming resolves consequential uncertainty rather than imposing a ceremony on every change.
+
+Agreement should be an understandable conversation about those commitments. Compatible refinements and movement between workflow stages should not repeatedly require approval of the same intent. A material change to the accepted outcome, obligations, or authority does require the user's decision. Internal hashes and protocol state support that boundary without becoming the user's reading assignment.
+
+## Implement directly, with evidence throughout
+
+The normal flow is to clarify intent, record a concise spec, settle any consequential design concerns, implement and test, obtain independent review of the result, and report what is complete. Spec review remains useful, with its placement and scale chosen deliberately rather than inherited from the current full lifecycle.
+
+Implementation plans are not a routine artifact or lifecycle stage. The implementing model reads the project, reasons about dependencies, chooses an approach, and adjusts as real code and tests provide feedback. A working task list or resumption note may support execution without becoming a separately hardened implementation document. Nightshift should operate without a Superpowers dependency.
+
+A written implementation plan is an exception when the controller assigns work to a weaker or cheaper implementer that needs more explicit guidance. It supplies the context, boundaries, interfaces, and proof obligations that recipient needs. Producing and reviewing nearly complete code for another agent to transcribe must justify its total cost. Delegating to another strong model does not create a planning stage.
+
+Subagents serve bounded purposes and independent review. Parallel implementation is useful where ownership is clear and integration is manageable; tightly coupled work can stay with one strong implementer. The controller remains responsible for the integrated result. No fixed hierarchy or number of workers is required by this vision.
+
+Verification happens during implementation as well as at the end. Tests, builds, targeted experiments, and live use of the affected flow resolve uncertainties against the actual system. The evidence should address realistic failure consequences and agreed acceptance criteria. Additional testing or repeated checks need a reason tied to changed code, a failure, or an unresolved concern.
+
+## Review for useful decisions
+
+Fresh review remains a defining strength of Nightshift. Reviewers receive the artifact, requirements, applicable constraints, and necessary project context without inheriting the author's conversational argument for its correctness. Independent context reduces one source of bias; it does not make a reviewer correct by construction.
+
+Multidimensional review remains available for specs and code. Dimensions are useful lenses, and their coverage, overlap, and cost deserve deliberate design. Their final set and allocation to agents remain open. A dimension does not automatically require a dedicated agent on every change, and an implementation plan exception does not recreate the old review ladder by default.
+
+Spec review focuses on whether the commitments are coherent, feasible, sufficiently bounded, and verifiable. Code review examines whether the implementation fulfills them and works correctly in its actual setting, including integration, maintainability, and relevant failure behavior. The final result must receive an independent integrated assessment even when specialized reviewers examine parts of it.
+
+Every reported finding receives skeptic validation against concrete evidence. Factual validity, permission to act, and practical value remain separate judgments. Findings that survive verification and fall within authorized scope receive a value assessment before repair. For straightforward, undisputed findings, the controller can decide from the reviewer's and skeptic's existing evidence. Extend the adversarial dialogue when consequence, likelihood, value, or repair quality remains unclear or disputed, weighing benefit against effort, regression risk, complexity, and maintenance. Either participant can recommend a disposition; the controller decides:
+
+- **Implement:** meet an agreed obligation or make an improvement whose benefit warrants the cost.
+- **Defer:** preserve a worthwhile improvement with a concrete reason to revisit it and a durable route, while showing that current commitments still hold.
+- **Skip:** accept the behavior or tradeoff with a reason, without automatically creating backlog debt.
+
+A false claim is acknowledged as refuted. A true finding outside authorized scope receives a reasoned acknowledgement without an unauthorized edit or automatic backlog entry. Missing evidence remains unresolved. A failure to meet an agreed requirement must be repaired or explicitly renegotiated; cost alone cannot waive it. The [adversarial dialogue feature](.claude/features/adversarial-repair-dialogue.md) records the retained validity-and-value direction; its mechanics will be reconciled with this vision during the later transformation.
+
+Resolved findings must count as resolved. Accepted skips, verified deferrals, and refutations should not force another round merely to obtain literal LGTM. Actual repairs require validation against the finding's evidence and independent review proportionate to their reach. A local correction can receive a targeted check of the change and its relevant interactions; changed shared behavior or an uncertain impact calls for a broader integrated review. This maintains coverage of the resulting artifact without automatically repeating unrelated dimensions. Previously settled tradeoffs travel with later reviews and reopen when new evidence defeats their basis. Completion requires that coverage and no unresolved required work; a time or cost limit cannot manufacture a clean result.
+
+## A controller that owns the result
+
+The controller protects intent, makes authorized decisions, follows through, and evaluates whether work is making useful progress. It explains material decisions and uncertainty in plain language. An unattended run should continue without routine permission requests; a new obligation or a decision outside existing authority remains a human boundary. When the user is unavailable, record the unanswered decision, options, and evidence, pause the dependent work, and continue independent authorized work. The closing report must identify what remains incomplete; recording a question does not supply its answer.
+
+Models own engineering and product judgment. Deterministic tools own mechanics where a mistake would lose work, corrupt state, or misrepresent what happened. The controller should use reliable operations rather than reconstructing intricate protocols from prose in every session. The amount of machinery should be proportionate to the consequence it prevents.
+
+Cheap observable signals, such as repeated identical failures or a finding recurring after claimed repairs, should prompt the controller to examine its approach and report unresolved obstacles. Such signals support judgment rather than declaring failure automatically. A clean review round that changes nothing is useful progress. The exact signals and intervention thresholds remain design choices.
+
+Long runs need enough durable context to resume: accepted intent, relevant decisions, completed work, remaining obligations, evidence, and unresolved findings. A replacement model reconciles that record with the actual project and any work still in flight before taking over. Model or host changes should preserve logical progress without assuming private reasoning or live sessions can transfer between providers. Missing or contradictory evidence prompts investigation, not fabricated continuity.
+
+The user should hear what has been learned, what materially changed, and what remains uncertain. The closing report presents the result, verification, accepted tradeoffs, deferred work, and any decisions still required. Completion within the workspace and publication are distinct; deployment or other external actions require the user's authorization.
+
+## How this guides the transformation
+
+The implementation and backlog should be reassessed against this vision before work is scheduled. Existing mechanisms and proposed features are candidates, not obligations created by their age, detail, or review history. Their underlying user need may remain valid even when the proposed mechanism no longer fits.
+
+For each candidate, ask what user outcome it serves, which observed failure it prevents, whether that failure still exists in the intended workflow, and whether its value warrants the complexity and recurring cost. Preserve useful evidence and reasoning when merging, simplifying, or retiring entries. The adversarial validity-and-value distinction is a retained direction; its surrounding mechanics remain subject to the same scrutiny.
+
+The backlog should help choose valuable work and retain worthwhile ideas. An incidental review observation should not automatically become a feature, and an experimental workflow adjustment should not silently become a permanent instruction. Learnings need evidence of continuing usefulness, including whether an existing rule can be removed or simplified.
+
+Transformation should improve completed outcomes per unit of developer attention, elapsed time, and model cost while preserving correctness and user control. Escaped defects, avoidable rework, stalled runs, and repeated user corrections matter alongside speed. Finding counts and document length alone cannot establish success. Compare representative real tasks before treating a new workflow shape as better.
+
+## Decisions still open
+
+- When spec review is warranted, which dimensions matter, and how reviewers share them.
+- How to choose model effort and bounded delegation based on observed results and availability.
+- How to route repairs to proportionate review, when to extend adversarial dialogue, and which progress signals warrant intervention.
+- The smallest reliable execution and resumption machinery that preserves ownership and evidence across hosts.
+- Which current backlog structures and supervisory mechanisms help the intended experience enough to retain.
+
+The settled direction is concise commitments, direct implementation by capable models, exceptional implementation plans, flexible model assignment, independent review, and evidence-based finding disposition. The open choices refine that direction without making the existing machinery the default answer.
