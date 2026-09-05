@@ -126,7 +126,7 @@ A durable `## Design provenance` section is required only when spec hardening in
 
 The current engine keeps every finding-bearing cell active until a later literal LGTM. That rule prevents a controller from manufacturing reviewer agreement, but it also means a reviewer that repeatedly reports a true adjacent improvement can keep the run alive indefinitely after the controller correctly refuses the work.
 
-This feature adds a distinct controller certification, `contract-clean`, for the current artifact and contract-context fingerprints. It is allowed only when:
+This feature adds a distinct controller certification, `contract-clean`, for the current artifact and contract-context fingerprints. The following conditions govern admission alone; the later [Adversarial repair dialogue](adversarial-repair-dialogue.md#resolution-and-convergence) extends completion to verified deferrals, accepted discretionary skips, and refuted findings without requiring literal reviewer LGTM. That extension preserves fresh review after repairs and does not grant authority to waive an agreed obligation. Until it lands, contract-clean is allowed only when:
 
 - every finding has a complete skeptic verdict;
 - every `CONFIRMED` or `JUDGMENT_CALL` finding has a complete actionability record;
@@ -146,7 +146,7 @@ The holistic verifier receives the same narrow contract-clean option. Verifier s
 
 ### Admitted finding
 
-The controller records the basis and citation, repairs at the owning abstraction, and records that trace in the applied-change or follow-up entry. Artifact edits advance the fingerprint and preserve existing wave and verifier behavior.
+The controller records the basis and citation. Admission permits work; it does not establish that a discretionary improvement is worth implementing. Without adversarial repair dialogue, the controller uses the existing repair or follow-up routing at the owning abstraction. Once that feature lands, its value assessment chooses implement, defer, or skip before repair or follow-up creation, and its recorded-disposition rules govern completion. Artifact edits still advance the fingerprint and require fresh review.
 
 ### Out-of-contract finding
 
@@ -194,7 +194,7 @@ Any anchor, run basis, governing set, supplementary-authority source, Operating 
 - The holistic verifier consumes and may challenge actionability decisions under the same contract.
 - `skills/handover/SKILL.md` owns the canonical follow-up-item JSON shape, idempotent handoff key, morning decision surface, and admission-owned stale-copy reconciliation for unattended uncertainty.
 - `review-orchestration-tests` supplies the transition module that this feature updates atomically with contract-clean and stamp-basis fixtures.
-- `adversarial-repair-dialogue` starts repair dialogue only for admitted findings.
+- `adversarial-repair-dialogue` evaluates the value and disposition of admitted findings before selecting repair, and extends completion to resolved findings under its own recorded-disposition rules. It cannot override admission or silently waive an agreed obligation.
 - `fix-scoped-rounds` treats contract-clean as a no-fix certification and never narrows a payload based on an out-of-contract observation.
 - `second-opinion-gates` sends its findings through factual verification and admission before repair.
 - `bounded-revise-acknowledgement-context` may later compact repeated acknowledgement prose, but cannot drop the current contract citation or change actionability.

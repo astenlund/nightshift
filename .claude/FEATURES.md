@@ -199,7 +199,7 @@ Present chosen spec for agreement before work shipped before Second-opinion gate
 
 ### [Adversarial repair dialogue](features/adversarial-repair-dialogue.md)
 
-Resolves a skeptic-confirmed, controller-admitted finding through an agent-to-agent repair dialogue: the confirming skeptic proposes and revises an exact repair while the originating reviewer accepts or rejects it with notes. A named follow-up carve-out must prove the current slice remains correct and complete under an enforcing guard; governing-text changes remain a last resort and cannot clear the current review. Accepted repairs may execute through controller-issued disjoint file leases with execution-start EOL baselines, while release, fingerprint advancement, certification, and convergence remain controller-wide barriers. Reviewer acceptance validates the proposal only and never produces LGTM.
+Separates factual validity, authority, and value: every finding receives skeptic validation, then admitted findings enter an adversarial dialogue before the controller chooses implement, defer, or skip. Either participant can challenge whether the benefit warrants the cost and risk. Deferrals need a durable route and a reason to revisit; skips record an accepted tradeoff without automatic backlog debt. Resolved findings can close review without another pass solely to elicit LGTM, while repairs still require validation and fresh review and agreed obligations cannot be silently waived. Accepted repairs retain controller-owned disjoint file leases and shared convergence barriers.
 
 **Requires:** [Contract-calibrated revise admission](features/contract-calibrated-revise-admission.md).
 
