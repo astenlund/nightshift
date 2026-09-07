@@ -4,7 +4,7 @@ Makes revise-run progress visible as standard behavior rather than on request: a
 
 ## Motivation
 
-The per-round convergence log was a user request during the 2026-09-02 run, refined three times before it settled. It is what surfaced the eager-staleness incident now sitting in the inbox as `revise-eager-staleness-interpretation.md`: the log made it obvious that rounds kept expanding back to seven active cells after each fix, which is the wrong lifecycle. Without asking to see convergence details, the defect would have run the whole night unnoticed.
+The per-round convergence log was a user request during the 2026-09-02 run, refined three times before it settled. It surfaced the eager-staleness incident preserved in the [v3 inbox triage](../../V3-MIGRATION.md#inbox-triage): the log showed rounds repeatedly expanding back to seven active cells after each fix, contrary to the legacy scheduling rule. The incident supports making repeated execution and state errors visible. V3's agreed cumulative review after every repair remains required.
 
 `internal/revise/SKILL.md` already requires a report after every evaluated round, but the report's form is not pinned, so what a run shows depends on the controller's judgment that round. A defect that is only visible in the shape of the series is invisible unless the series is printed the same way every time.
 

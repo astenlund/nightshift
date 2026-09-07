@@ -85,6 +85,18 @@ The parent entry stays in its themed section until the **last** slice ships, at 
 
 Pre-dependency-analysis brainstorms live here. An entry is a draft feature whose breakout file carries `status: exploring` in its frontmatter; the design is being firmed up and a `**Requires:**` line isn't expected yet. `/nightshift:ready` lists these drafts titles-only in a clearly-marked not-ready section, never in the readiness set, and `/nightshift:exploring` renders the full draft list. When a draft firms up enough to declare its upstream gates, move it out of `## Exploring` into the appropriate themed `##` section, add the `**Requires:**` line, and drop the `status: exploring` frontmatter on the breakout file. The post-edit `/nightshift:ready` gate in `## Requires lines` is part of graduation, not a later cleanup.
 
+### [Nightshift v3](features/nightshift-v3.md)
+
+Draft consolidating the agreed v3 MVP: direct implementation by interchangeable strong models on Claude Code and Codex for Windows, independent assurance, reliable continuation, optional supervision, migration of project-owned files to `.nightshift`, and completion through retrospective and follow-up triage. Acceptance uses integration tests with a bounded real-agent budget that includes genuine compaction on each host. Scope and acceptance direction are recorded in `V3-MIGRATION.md`; the feature awaits agreement and independent assessment before implementation.
+
+### [Structured model teams](features/structured-model-teams.md)
+
+Draft exploring explicit multi-model team arrangements, such as a Fable controller with an Astra implementer, beyond the v3 MVP's controller-owned assignment judgment and cross-host review preference. Captured 2026-09-07 as a later feature; configuration, selection, and fallback details remain open.
+
+### [Interactive Codex and Claude Code collaboration](features/interactive-session-collaboration.md)
+
+Draft exploring how to pair Codex and Claude Code in separate interactive terminals so they exchange messages and collaborate on a project. Both sessions stay visible side by side in Windows Terminal, and the user can steer either directly. Explore reusing a confirmed idle shell in the same project, asking an existing AI session whether it is available, or splitting a pane to launch a partner. Initial documentation and local-CLI checks identify candidate interfaces; pane inspection, safe reuse, live integration, and coordination remain unverified. Captured 2026-09-07 during v3 MVP discussion and deferred beyond that MVP.
+
 ### [Light revise mode](features/light-revise-mode.md)
 
 Draft exploring a lightened variant of the revise review workflows: one fresh reviewer per iteration instead of the full per-dimension swarm, and a curated dimension set that skips the least-relevant dimensions. Prompted by the single-reviewer revise-spec run over `.claude/features/dependency-cycle-detection.md` (2026-08-11). A candidate automatic path applies Light revise to a selected Quick Win only after a scope validator confirms the item is genuinely small; failed or uncertain validation keeps normal review rather than trusting the backlog label.
@@ -365,7 +377,7 @@ Resolves the mismatch between the accepted turn-sequencer timer contract and the
 
 ### [Nightshift inbox](features/nightshift-inbox.md)
 
-Adds a git-ignored `.claude/inbox/` folder where other agents and sessions drop one file per Nightshift bug report or suggestion without ever editing the four indexes, so a concurrent capture cannot move a governing artifact's fingerprint mid-run, plus a triage step that lists the folder's actual contents and promotes each item into `BUGS.md`, `QUICK_WINS.md`, or `FEATURES.md`, or discards it. The drop file shape, how a dropping agent learns the convention, and whether a non-empty inbox surfaces at shift start are open. The two files already in the folder are this entry's first items.
+Adds a git-ignored `.claude/inbox/` folder where other agents and sessions drop one file per Nightshift bug report or suggestion without ever editing the four indexes, so a concurrent capture cannot move a governing artifact's fingerprint mid-run, plus a triage step that lists the folder's actual contents and promotes each item into `BUGS.md`, `QUICK_WINS.md`, or `FEATURES.md`, or discards it. The drop file shape, how a dropping agent learns the convention, and whether a non-empty inbox surfaces at shift start are open. Five initial reports were triaged and removed on 2026-09-07; their evidence and dispositions are preserved in [the migration ledger](../V3-MIGRATION.md#inbox-triage).
 
 **Requires:** none.
 
@@ -391,7 +403,7 @@ Propagates the workflow's existing per-agent duration into the round result and 
 
 ### [Revise progress visible by default](features/revise-progress-visible-by-default.md)
 
-Prints the cumulative per-round convergence log after every evaluated round as standard behavior, persists it in the checkpoint so a resumed session prints the full series, and has the morning report review the series rather than the final state. The log is what surfaced the eager-staleness incident now in the inbox; without it the defect would have run unnoticed. The design is open: both format samples (the compact one-line-per-round form chosen for scan speed and the wider prose-column table that reads better per round but grows tall) and the settled column list are carried as inputs, and the format is not locked.
+Prints the cumulative per-round convergence log after every evaluated round as standard behavior, persists it in the checkpoint so a resumed session prints the full series, and has the morning report review the series rather than the final state. The log surfaced the eager-staleness incident preserved in [the migration ledger's inbox triage](../V3-MIGRATION.md#inbox-triage), providing evidence of the scheduling problem. The design is open: both format samples (the compact one-line-per-round form chosen for scan speed and the wider prose-column table that reads better per round but grows tall) and the settled column list are carried as inputs, and the format is not locked.
 
 **Requires:** none.
 

@@ -10,7 +10,7 @@ A fix to the unwind paragraph could wake risk at once; a fix that renumbers step
 
 ## Design tension
 
-`internal/revise/SKILL.md` deliberately batches reactivation into the all-inactive sweep, and states that no artifact edit or finding disposition reactivates a cell directly. That rule exists so a settled cell is not re-run per small delta, and the eager-staleness incident in the inbox is the concrete record of what happens when a controller ignores it. This feature must not weaken that rule; it must carve a narrow, declared exception on top of it.
+`internal/revise/SKILL.md` deliberately batches reactivation into the all-inactive sweep, and states that no artifact edit or finding disposition reactivates a cell directly. The eager-staleness report preserved in the [v3 inbox triage](../../V3-MIGRATION.md#inbox-triage) records a controller disregarding that legacy boundary. This proposal was designed as a narrow exception to that scheduler. Its agreed v3 disposition is retirement: cumulative review after every repair replaces selective cell reactivation.
 
 The shape that respects both: the fixer names the cells its edit is likely to concern, the controller reactivates only those, at most a bounded number per boundary, and the all-inactive sweep still owns every cell the hint did not name. The hint is recorded in the applied-change ledger so a wrong hint is visible after the fact rather than being an invisible scheduling decision.
 
