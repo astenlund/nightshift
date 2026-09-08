@@ -111,4 +111,4 @@ Use [V3-MIGRATION.md](../../V3-MIGRATION.md) to reconcile Nightshift's own backl
 
 This feature remains active until the required MVP acceptance holds. The .nightshift relocation has been applied; [MIGRATION_STATUS.md](../MIGRATION_STATUS.md) records the source-backlog consolidation without equating it with delivery.
 
-The [candidate acceptance report](../reports/v3-acceptance-20260908.md) records observed native continuation/compaction, deterministic coverage, remaining model-owned acceptance and the campaign through its authorized 8M checkpoint. No incomplete case is treated as a passed MVP requirement.
+The [candidate acceptance report](../reports/v3-acceptance-16m-20260908.md) records observed native continuation/compaction, deterministic coverage, remaining model-owned acceptance and the campaign through its authorized 16M checkpoint. No incomplete case is treated as a passed MVP requirement.

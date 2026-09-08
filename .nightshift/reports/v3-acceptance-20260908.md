@@ -4,6 +4,8 @@ The v3 candidate is implemented and source-reviewed locally, but MVP acceptance 
 
 After this checkpoint, the user authorized a further doubling to 16,000,000 total tokens. The preceding usage and holds remain charged, leaving 8,137,747 available before further inference. The additional campaign is in progress; the tables below record the completed 8M checkpoint.
 
+Subsequent completed handovers, source repairs and current accounting are recorded in the [16M checkpoint](v3-acceptance-16m-20260908.md).
+
 ## Observed coverage
 
 | Area | Claude Code | Codex |
