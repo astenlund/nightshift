@@ -2,7 +2,7 @@
 'use strict';
 
 // Deterministic parser behind the nightshift:ready skill. Reads the active
-// .claude/ indexes (QUICK_WINS.md, FEATURES.md, BUGS.md), resolves each
+// .nightshift/ indexes (QUICK_WINS.md, FEATURES.md, BUGS.md), resolves each
 // entry's **Requires:** line (in-backlog links) and optional **External:**
 // line (external primitives), expands sliced features into per-slice work
 // units, scans each linked breakout file for a stray dependency line, and
@@ -14,14 +14,14 @@
 // keeps active Requires lines authoritative. PATTERNS.md is a pattern
 // registry, not a work backlog, so it is not parsed either. Every backlog
 // file is still read once for the hard-wrap notice, since the line
-// discipline covers the whole .claude/ backlog.
+// discipline covers the whole .nightshift/ backlog.
 //
-// Usage: node ready.js [repo-root-or-.claude-dir]   (defaults to cwd)
+// Usage: node ready.js [repo-root-or-.nightshift-dir]   (defaults to cwd)
 
 const fs = require('fs');
 const path = require('path');
 const { stableOpenFile } = require('../../internal/filesystem-primitives.js');
-const { scanMarkdown } = require('../spec-agreement/spec-agreement.js');
+const { scanMarkdown } = require('../../internal/markdown.js');
 const { LABEL_AT_START, REQUIRES_LABEL, EXTERNAL_LABEL, CatalogError, canonicalBacklogRootIdentity, canonicalPath, compareTargets, decodeUtf8, detectHardWraps, collectMarkdownFiles, isContainedPath, maskRawHtmlBlocks: sharedMaskRawHtmlBlocks, normalizeCatalogItems } = require('../../internal/backlog-catalog.js');
 
 const INDEX_FILE_STEMS = new Set([
@@ -568,7 +568,7 @@ function targetSlug(target) {
 
 // Normalized directory-qualified key for a link target or entry
 // self-link, e.g. "features/foo". Leading ./ and ../ segments are
-// dropped: all live data is relative to the .claude/ directory the
+// dropped: all live data is relative to the .nightshift/ directory the
 // indexes share. Returns null for index-file targets.
 function targetPathKey(target) {
   if (!target) return null;
@@ -945,7 +945,7 @@ function hardWrapNotice(label, contents) {
   const wraps = detectHardWraps(contents);
   if (wraps.length === 0) return null;
   const noun = wraps.length === 1 ? 'line' : 'lines';
-  return `${label} has ${wraps.length} hard-wrapped ${noun} (first at line ${wraps[0].line}); backlog prose is one paragraph or bullet per physical line; run /nightshift:init-backlog to unwrap`;
+  return `${label} has ${wraps.length} hard-wrapped ${noun} (first at line ${wraps[0].line}); backlog prose is one paragraph or bullet per physical line; run the bundled skills/init-backlog/unwrap.js on the named backlog file to unwrap`;
 }
 
 function parseIndexes(files, out) {
@@ -1314,7 +1314,7 @@ function scanBreakoutTargetsWith(breakoutTargets, load, collectEvidence) {
   return { notices, structuralErrors, scanned: new Set(lineHitsCache.keys()), evidence };
 }
 
-function createBreakoutLoader(claudeDir, rootIdentity, options = {}) {
+function createBreakoutLoader(backlogDir, rootIdentity, options = {}) {
   const canonicalize = options.canonicalize ?? canonicalPath;
   const contains = options.contains ?? isContainedPath;
   const readFile = options.readFile ?? ((target) => readCanonicalText(rootIdentity, target));
@@ -1324,7 +1324,7 @@ function createBreakoutLoader(claudeDir, rootIdentity, options = {}) {
   const failuresWithoutIdentity = new Map();
 
   return (target) => {
-    const resolved = resolvePath(claudeDir, target);
+    const resolved = resolvePath(backlogDir, target);
     const priorFailure = failuresWithoutIdentity.get(resolved);
     if (priorFailure !== undefined) return priorFailure;
     let identity;
@@ -1360,12 +1360,12 @@ function createBreakoutLoader(claudeDir, rootIdentity, options = {}) {
   };
 }
 
-function scanBreakoutTargets(breakoutTargets, claudeDir, options = {}) {
-  const rootIdentity = options.rootIdentity ?? canonicalBacklogRootIdentity(claudeDir);
+function scanBreakoutTargets(breakoutTargets, backlogDir, options = {}) {
+  const rootIdentity = options.rootIdentity ?? canonicalBacklogRootIdentity(backlogDir);
   if (rootIdentity === null) {
-    throw new CatalogError(`backlog root escapes its repository authority: ${claudeDir}`);
+    throw new CatalogError(`backlog root escapes its repository authority: ${backlogDir}`);
   }
-  const { notices, structuralErrors, scanned } = scanBreakoutTargetsWith(breakoutTargets, createBreakoutLoader(claudeDir, rootIdentity), false);
+  const { notices, structuralErrors, scanned } = scanBreakoutTargetsWith(breakoutTargets, createBreakoutLoader(backlogDir, rootIdentity), false);
 
   return { notices, structuralErrors, scannedFiles: scanned };
 }
@@ -1398,19 +1398,19 @@ function scanUnlinkedWith(entries, alreadyScanned, indexKeys, collectEvidence) {
   return notices;
 }
 
-function scanUnlinkedBacklogFiles(claudeDir, alreadyScanned, options = {}) {
+function scanUnlinkedBacklogFiles(backlogDir, alreadyScanned, options = {}) {
   const canonicalize = options.canonicalize ?? canonicalPath;
   const collectFiles = options.collectFiles ?? collectMarkdownFiles;
-  const rootIdentity = options.rootIdentity ?? canonicalBacklogRootIdentity(claudeDir);
-  if (rootIdentity === null) throw new CatalogError(`backlog root escapes its repository authority: ${claudeDir}`);
+  const rootIdentity = options.rootIdentity ?? canonicalBacklogRootIdentity(backlogDir);
+  if (rootIdentity === null) throw new CatalogError(`backlog root escapes its repository authority: ${backlogDir}`);
   const readFile = options.readFile ?? ((target) => readCanonicalText(rootIdentity, target));
-  const indexFiles = new Set([...WORK_INDEX_NAMES, 'PATTERNS'].map((name) => canonicalize(path.resolve(claudeDir, `${name}.md`))));
-  const entries = collectFiles([claudeDir]).map((file) => {
+  const indexFiles = new Set([...WORK_INDEX_NAMES, 'PATTERNS'].map((name) => canonicalize(path.resolve(backlogDir, `${name}.md`))));
+  const entries = collectFiles([backlogDir]).map((file) => {
     const identity = canonicalize(file);
 
     return {
       identity,
-      label: path.relative(claudeDir, file).replace(/\\/g, '/'),
+      label: path.relative(backlogDir, file).replace(/\\/g, '/'),
       load: () => {
         try {
           return { contents: readFile(identity) };
@@ -1467,51 +1467,6 @@ function scanUnlinkedCatalogItems(catalog, alreadyScanned) {
   return scanUnlinkedWith(entries, alreadyScanned, indexTargets, true);
 }
 
-function htmlBlockStart(line) {
-  const trimmed = line.replace(/^ {0,3}/, '');
-  if (/^<(?:address|article|aside|base|basefont|blockquote|body|caption|center|col|colgroup|dd|details|dialog|dir|div|dl|dt|fieldset|figcaption|figure|footer|form|frame|frameset|h[1-6]|head|header|hr|html|iframe|legend|li|link|main|menu|menuitem|nav|noframes|ol|optgroup|option|p|param|search|section|summary|table|tbody|td|tfoot|th|thead|title|tr|track|ul)(?:\s|>|$)/i.test(trimmed)) return { blank: true };
-  if (/^<\/?[A-Za-z][A-Za-z0-9-]*(?:\s[^<>]*)?\/?>/.test(trimmed)) return { blank: true };
-
-  return null;
-}
-
-function maskRawHtmlBlocks(records) {
-  const masked = new Set();
-  let html = null;
-  records.forEach((record) => {
-    if (record.opensFence || !record.outsideFence) {
-      masked.add(record);
-
-      return;
-    }
-    if (html !== null) {
-      if (html.blank && record.content.trim() === '') {
-        html = null;
-        return;
-      }
-      masked.add(record);
-      if (html.terminator === '</' ? new RegExp(`</${html.tag}\\s*>`, 'i').test(record.content) : record.content.includes(html.terminator)) {
-        html = null;
-      }
-      return;
-    }
-    const block = htmlBlockStart(record.content);
-    if (block === null) {
-      return;
-    }
-    masked.add(record);
-    if (block.terminator === '</' && !new RegExp(`</${block.tag}\\s*>`, 'i').test(record.content)) {
-      html = block;
-    } else if (block.terminator && !record.content.includes(block.terminator)) {
-      html = block;
-    } else if (block.blank && record.content.trim() !== '') {
-      html = block;
-    }
-  });
-
-  return masked;
-}
-
 function commonMarkHeadings(contents) {
   const parsed = scanMarkdown(Buffer.from(contents, 'utf8'));
   const masked = sharedMaskRawHtmlBlocks(parsed.lines);
@@ -1556,7 +1511,7 @@ function legacyHistoryFactsFromCatalog(catalog) {
     const headings = commonMarkHeadings(parent.contents);
     if (!hasPopulatedLegacySection(parent.contents, headings, heading)) return [];
 
-    return [{ indexPath: `.claude/${index}`, historyPath: `.claude/${history}` }];
+    return [{ indexPath: `.nightshift/${index}`, historyPath: `.nightshift/${history}` }];
   }).sort((left, right) => compareTargets(`${left.indexPath}\0${left.historyPath}`, `${right.indexPath}\0${right.historyPath}`));
 }
 
@@ -1670,8 +1625,8 @@ function errorChainHasCode(error, code) {
   return false;
 }
 
-function acquireBacklogRootIdentity(claudeDir) {
-  const resolved = path.resolve(claudeDir);
+function acquireBacklogRootIdentity(backlogDir) {
+  const resolved = path.resolve(backlogDir);
   try {
     const authority = fs.realpathSync.native(path.dirname(resolved));
     const before = fs.lstatSync(resolved, { bigint: true });
@@ -1706,16 +1661,16 @@ function revalidateBacklogRootIdentity(acquired) {
   return current;
 }
 
-function writeMissingBacklogRoot(claudeDir) {
+function writeMissingBacklogRoot(backlogDir) {
   process.stdout.write(JSON.stringify({
-    error: `no .claude directory found at ${claudeDir}; run /nightshift:init-backlog to scaffold the four-index layout`,
+    error: `no .nightshift directory found at ${backlogDir}; run /nightshift:init-backlog to scaffold the four-index layout`,
   }, null, 2) + '\n');
   process.exitCode = 1;
 }
 
-function writeInvalidBacklogRoot(claudeDir) {
+function writeInvalidBacklogRoot(backlogDir) {
   process.stdout.write(JSON.stringify({
-    error: `the .claude directory escapes its repository authority: ${claudeDir}`,
+    error: `the .nightshift directory escapes its repository authority: ${backlogDir}`,
   }, null, 2) + '\n');
   process.exitCode = 1;
 }
@@ -1729,15 +1684,15 @@ function writeInvalidUtf8BacklogFile(target) {
 
 function runCli(argRoot) {
   const root = path.resolve(argRoot || process.cwd());
-  const claudeDir = path.basename(root) === '.claude' ? root : path.join(root, '.claude');
-  const acquired = acquireBacklogRootIdentity(claudeDir);
+  const backlogDir = path.basename(root) === '.nightshift' ? root : path.join(root, '.nightshift');
+  const acquired = acquireBacklogRootIdentity(backlogDir);
   if (acquired.kind === 'missing') {
-    writeMissingBacklogRoot(claudeDir);
+    writeMissingBacklogRoot(backlogDir);
 
     return;
   }
   if (acquired.kind !== 'ok') {
-    writeInvalidBacklogRoot(claudeDir);
+    writeInvalidBacklogRoot(backlogDir);
 
     return;
   }
@@ -1745,24 +1700,24 @@ function runCli(argRoot) {
   const rootRemainsAcquired = () => {
     const current = revalidateBacklogRootIdentity(acquired);
     if (current.kind === 'ok') return true;
-    if (current.kind === 'missing') writeMissingBacklogRoot(claudeDir);
-    else writeInvalidBacklogRoot(claudeDir);
+    if (current.kind === 'missing') writeMissingBacklogRoot(backlogDir);
+    else writeInvalidBacklogRoot(backlogDir);
 
     return false;
   };
   try {
     const files = {};
     for (const name of [...WORK_INDEX_NAMES, 'PATTERNS']) {
-      files[name] = readFileIfPresent(path.join(claudeDir, `${name}.md`), rootIdentity);
+      files[name] = readFileIfPresent(path.join(backlogDir, `${name}.md`), rootIdentity);
     }
     const result = analyze(files);
     if (!rootRemainsAcquired()) return;
 
-    const scanned = scanBreakoutTargets(result.breakoutTargets, claudeDir, { rootIdentity });
+    const scanned = scanBreakoutTargets(result.breakoutTargets, backlogDir, { rootIdentity });
     if (!rootRemainsAcquired()) return;
     let unlinkedNotices;
     try {
-      unlinkedNotices = scanUnlinkedBacklogFiles(claudeDir, scanned.scannedFiles, { rootIdentity });
+      unlinkedNotices = scanUnlinkedBacklogFiles(backlogDir, scanned.scannedFiles, { rootIdentity });
     } catch (error) {
       if (error?.code === 'invalid-utf8') throw error;
       if (!rootRemainsAcquired()) return;
@@ -1785,7 +1740,7 @@ function runCli(argRoot) {
     if (!errorChainHasCode(error, 'ENOENT')) throw error;
     const current = revalidateBacklogRootIdentity(acquired);
     if (current.kind !== 'missing') throw error;
-    writeMissingBacklogRoot(claudeDir);
+    writeMissingBacklogRoot(backlogDir);
   }
 }
 

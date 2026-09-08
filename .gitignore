@@ -2,3 +2,6 @@
 .worktrees/
 .superpowers/
 .claude/plans/
+/.nightshift/runs/
+/.nightshift/inbox/
+/.nightshift/plans/

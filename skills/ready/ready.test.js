@@ -205,11 +205,11 @@ test('analyzeCatalog reproduces CLI JSON from exact catalog records and uses pre
     { target: 'features/alpha.md', contents: '# Alpha\n' },
   ];
   const tmpRoot = path.join(__dirname, '..', '..', '.tmp', `ready-catalog-test-${process.pid}`);
-  const claudeDir = path.join(tmpRoot, '.claude');
-  fs.mkdirSync(path.join(claudeDir, 'features'), { recursive: true });
+  const backlogDir = path.join(tmpRoot, '.nightshift');
+  fs.mkdirSync(path.join(backlogDir, 'features'), { recursive: true });
   try {
     for (const item of items) {
-      fs.writeFileSync(path.join(claudeDir, item.target), item.contents);
+      fs.writeFileSync(path.join(backlogDir, item.target), item.contents);
     }
     const cli = JSON.parse(execFileSync(process.execPath, [path.join(__dirname, 'ready.js'), tmpRoot], { encoding: 'utf8' }));
     const readFileSync = fs.readFileSync;
@@ -300,8 +300,8 @@ test('analyzeCatalog requires whitespace before an ATX trailing closure', () => 
   ]);
 
   assert.deepStrictEqual(result.evidence.legacyHistory, [
-    { indexPath: '.claude/BUGS.md', historyPath: '.claude/BUGS_HISTORY.md' },
-    { indexPath: '.claude/FEATURES.md', historyPath: '.claude/FEATURES_HISTORY.md' },
+    { indexPath: '.nightshift/BUGS.md', historyPath: '.nightshift/BUGS_HISTORY.md' },
+    { indexPath: '.nightshift/FEATURES.md', historyPath: '.nightshift/FEATURES_HISTORY.md' },
   ]);
 });
 
@@ -353,8 +353,8 @@ test('analyzeCatalog reports only populated unmasked legacy sections when histor
   ]);
 
   assert.deepStrictEqual(result.evidence.legacyHistory, [
-    { indexPath: '.claude/BUGS.md', historyPath: '.claude/BUGS_HISTORY.md' },
-    { indexPath: '.claude/FEATURES.md', historyPath: '.claude/FEATURES_HISTORY.md' },
+    { indexPath: '.nightshift/BUGS.md', historyPath: '.nightshift/BUGS_HISTORY.md' },
+    { indexPath: '.nightshift/FEATURES.md', historyPath: '.nightshift/FEATURES_HISTORY.md' },
   ]);
 });
 
@@ -365,8 +365,8 @@ test('legacy history evidence shares excluded-section case and period normalizat
   ]);
 
   assert.deepStrictEqual(result.evidence.legacyHistory, [
-    { indexPath: '.claude/BUGS.md', historyPath: '.claude/BUGS_HISTORY.md' },
-    { indexPath: '.claude/FEATURES.md', historyPath: '.claude/FEATURES_HISTORY.md' },
+    { indexPath: '.nightshift/BUGS.md', historyPath: '.nightshift/BUGS_HISTORY.md' },
+    { indexPath: '.nightshift/FEATURES.md', historyPath: '.nightshift/FEATURES_HISTORY.md' },
   ]);
 });
 
@@ -932,8 +932,8 @@ test('hard-wrapped prose in an index file produces one notice per file naming th
     PATTERNS: '# Patterns\n\nline one\nline two\n',
   });
   assert.deepStrictEqual(wrapped.notices, [
-    'QUICK_WINS.md has 2 hard-wrapped lines (first at line 4); backlog prose is one paragraph or bullet per physical line; run /nightshift:init-backlog to unwrap',
-    'PATTERNS.md has 1 hard-wrapped line (first at line 4); backlog prose is one paragraph or bullet per physical line; run /nightshift:init-backlog to unwrap',
+    'QUICK_WINS.md has 2 hard-wrapped lines (first at line 4); backlog prose is one paragraph or bullet per physical line; run the bundled skills/init-backlog/unwrap.js on the named backlog file to unwrap',
+    'PATTERNS.md has 1 hard-wrapped line (first at line 4); backlog prose is one paragraph or bullet per physical line; run the bundled skills/init-backlog/unwrap.js on the named backlog file to unwrap',
   ]);
   assert.ok(result.notices.some((n) => n.startsWith('FEATURES.md has ') && n.includes('hard-wrapped')), 'the main fixture wraps its Requires lines on purpose and must be reported');
 });
@@ -1703,7 +1703,7 @@ test('scanBreakoutLines does not mask inline HTML', () => {
 test('breakout loading reuses one full read across canonical path aliases', () => {
   let canonicalizations = 0;
   const reads = [];
-  const load = createBreakoutLoader('/repo/.claude', '/repo/.claude', {
+  const load = createBreakoutLoader('/repo/.nightshift', '/repo/.nightshift', {
     canonicalize: (target) => { canonicalizations += 1; return target.toLowerCase(); },
     contains: () => true,
     readFile: (target) => { reads.push(target); return '# Breakout\n'; },
@@ -1716,43 +1716,43 @@ test('breakout loading reuses one full read across canonical path aliases', () =
 
   assert.strictEqual(canonicalizations, 2);
   assert.strictEqual(reads.length, 1);
-  assert.strictEqual(reads[0], '/repo/.claude/features/case.md');
+  assert.strictEqual(reads[0], '/repo/.nightshift/features/case.md');
   assert.strictEqual(first, second);
   assert.strictEqual(first, repeated);
-  assert.strictEqual(first.identity, '/repo/.claude/features/case.md');
+  assert.strictEqual(first.identity, '/repo/.nightshift/features/case.md');
 });
 
 test('top-level index loading reads only the canonical contained identity', () => {
   const reads = [];
-  const contents = readFileIfPresent('/repo/.claude/FEATURES.md', '/repo/.claude', {
-    canonicalize: () => '/repo/.claude/canonical/features.md',
+  const contents = readFileIfPresent('/repo/.nightshift/FEATURES.md', '/repo/.nightshift', {
+    canonicalize: () => '/repo/.nightshift/canonical/features.md',
     contains: () => true,
     readFile: (target) => { reads.push(target); return '# Features\n'; },
   });
 
   assert.strictEqual(contents, '# Features\n');
-  assert.deepStrictEqual(reads, ['/repo/.claude/canonical/features.md']);
+  assert.deepStrictEqual(reads, ['/repo/.nightshift/canonical/features.md']);
 });
 
 test('unlinked backlog loading reads only collected canonical identities', () => {
   const reads = [];
-  const notices = scanUnlinkedBacklogFiles('/repo/.claude', new Set(), {
+  const notices = scanUnlinkedBacklogFiles('/repo/.nightshift', new Set(), {
     canonicalize: (target) => target.toLowerCase(),
-    collectFiles: () => ['/repo/.claude/features/Case.md'],
+    collectFiles: () => ['/repo/.nightshift/features/Case.md'],
     readFile: (target) => { reads.push(target); return '# Clean\n'; },
   });
 
   assert.deepStrictEqual(notices, []);
-  assert.deepStrictEqual(reads, ['/repo/.claude/features/case.md']);
+  assert.deepStrictEqual(reads, ['/repo/.nightshift/features/case.md']);
 });
 
 test('scanBreakoutTargets classifies a missing file, a directory, and a dependency line without a pre-read existence probe', () => {
   const tmpRoot = path.join(__dirname, '..', '..', '.tmp', `ready-scan-${process.pid}`);
-  const claudeDir = path.join(tmpRoot, '.claude');
-  fs.mkdirSync(path.join(claudeDir, 'features', 'as-dir.md'), { recursive: true });
-  fs.writeFileSync(path.join(claudeDir, 'features', 'dirty.md'), '# Dirty\n\n**Requires:** none.\n');
-  fs.writeFileSync(path.join(claudeDir, 'features', 'clean.md'), '# Clean\n\nProse only.\n');
-  fs.writeFileSync(path.join(claudeDir, 'features', 'wrapped.md'), '# Wrapped\n\nProse line one\nprose line two\n');
+  const backlogDir = path.join(tmpRoot, '.nightshift');
+  fs.mkdirSync(path.join(backlogDir, 'features', 'as-dir.md'), { recursive: true });
+  fs.writeFileSync(path.join(backlogDir, 'features', 'dirty.md'), '# Dirty\n\n**Requires:** none.\n');
+  fs.writeFileSync(path.join(backlogDir, 'features', 'clean.md'), '# Clean\n\nProse only.\n');
+  fs.writeFileSync(path.join(backlogDir, 'features', 'wrapped.md'), '# Wrapped\n\nProse line one\nprose line two\n');
   try {
     const targets = [
       { index: 'FEATURES.md', title: 'Missing', target: 'features/missing.md', draft: false },
@@ -1765,14 +1765,14 @@ test('scanBreakoutTargets classifies a missing file, a directory, and a dependen
       { index: 'FEATURES.md', title: 'Wrapped', target: 'features/wrapped.md', draft: false },
       { index: 'BUGS.md', title: 'Wrapped again', target: 'features/wrapped.md#other', draft: false },
     ];
-    const scanned = scanBreakoutTargets(targets, claudeDir);
+    const scanned = scanBreakoutTargets(targets, backlogDir);
     assert.deepStrictEqual(scanned.notices, [
       'FEATURES.md entry "Missing" links to features/missing.md, which does not exist; remove the broken link or create the file (its Requires line still resolves normally)',
       'FEATURES.md entry "Missing draft" links to features/missing-draft.md, which does not exist; remove the broken link or create the file (exploring draft; Requires lines do not apply)',
       'FEATURES.md entry "Missing structural" links to features/missing-structural.md, which does not exist; remove the broken link or create the file (its own classification already reports a structural error)',
       'FEATURES.md entry "Missing cycle" links to features/missing-cycle.md, which does not exist; remove the broken link or create the file (it is a dependency-cycle member; see the cycle error)',
       'FEATURES.md entry "As dir" links to features/as-dir.md, which exists but cannot be read as a file (EISDIR); fix the link',
-      'breakout file features/wrapped.md has 1 hard-wrapped line (first at line 4); backlog prose is one paragraph or bullet per physical line; run /nightshift:init-backlog to unwrap',
+      'breakout file features/wrapped.md has 1 hard-wrapped line (first at line 4); backlog prose is one paragraph or bullet per physical line; run the bundled skills/init-backlog/unwrap.js on the named backlog file to unwrap',
     ]);
     assert.deepStrictEqual(scanned.structuralErrors, [{
       index: 'BUGS.md',
@@ -1786,8 +1786,8 @@ test('scanBreakoutTargets classifies a missing file, a directory, and a dependen
 
 test('scanBreakoutTargets treats traversal, absolute, and backslash targets as broken links and never reads outside the backlog', () => {
   const tmpRoot = path.join(__dirname, '..', '..', '.tmp', `ready-confine-${process.pid}`);
-  const claudeDir = path.join(tmpRoot, '.claude');
-  fs.mkdirSync(path.join(claudeDir, 'features'), { recursive: true });
+  const backlogDir = path.join(tmpRoot, '.nightshift');
+  fs.mkdirSync(path.join(backlogDir, 'features'), { recursive: true });
   // A real file outside the backlog directory that the traversal target would
   // reach; its dependency line and hard wrap must never surface in the scan.
   fs.writeFileSync(path.join(tmpRoot, 'outside.md'), '# Outside\n\n**Requires:** none.\n\nwrapped line one\nwrapped line two\n');
@@ -1797,7 +1797,7 @@ test('scanBreakoutTargets treats traversal, absolute, and backslash targets as b
       { index: 'FEATURES.md', title: 'Absolute', target: '/outside.md', draft: false },
       { index: 'FEATURES.md', title: 'Backslash', target: 'features\\outside.md', draft: false },
     ];
-    const scanned = scanBreakoutTargets(targets, claudeDir);
+    const scanned = scanBreakoutTargets(targets, backlogDir);
     assert.deepStrictEqual(scanned.notices, [
       'FEATURES.md entry "Traversal" links to ../outside.md, which does not exist; remove the broken link or create the file (its Requires line still resolves normally)',
       'FEATURES.md entry "Absolute" links to /outside.md, which does not exist; remove the broken link or create the file (its Requires line still resolves normally)',
@@ -1812,16 +1812,16 @@ test('scanBreakoutTargets treats traversal, absolute, and backslash targets as b
 
 test('scanBreakoutTargets treats a breakout through an external directory link as broken and never reads it', () => {
   const tmpRoot = path.join(__dirname, '..', '..', '.tmp', `ready-linked-breakout-${process.pid}`);
-  const claudeDir = path.join(tmpRoot, '.claude');
+  const backlogDir = path.join(tmpRoot, '.nightshift');
   const outside = path.join(tmpRoot, 'outside');
-  fs.mkdirSync(claudeDir, { recursive: true });
+  fs.mkdirSync(backlogDir, { recursive: true });
   fs.mkdirSync(outside, { recursive: true });
   fs.writeFileSync(path.join(outside, 'leak.md'), '# Leak\n\n**Requires:** none.\n');
-  fs.symlinkSync(outside, path.join(claudeDir, 'bugs'), 'junction');
+  fs.symlinkSync(outside, path.join(backlogDir, 'bugs'), 'junction');
   try {
     const scanned = scanBreakoutTargets([
       { index: 'BUGS.md', title: 'Leak', target: 'bugs/leak.md', draft: false },
-    ], claudeDir);
+    ], backlogDir);
     assert.deepStrictEqual(scanned.notices, [
       'BUGS.md entry "Leak" links to bugs/leak.md, which does not exist; remove the broken link or create the file (its Requires line still resolves normally)',
     ]);
@@ -1834,11 +1834,11 @@ test('scanBreakoutTargets treats a breakout through an external directory link a
 
 test('the ready CLI ignores a top-level index link outside the backlog root', () => {
   const tmpRoot = path.join(__dirname, '..', '..', '.tmp', `ready-linked-index-${process.pid}`);
-  const claudeDir = path.join(tmpRoot, '.claude');
+  const backlogDir = path.join(tmpRoot, '.nightshift');
   const outside = path.join(tmpRoot, 'outside-features.md');
-  fs.mkdirSync(claudeDir, { recursive: true });
+  fs.mkdirSync(backlogDir, { recursive: true });
   fs.writeFileSync(outside, '# Features\n\n## External heading\n\n### Secret\n\n**Requires:** none.\n');
-  fs.symlinkSync(outside, path.join(claudeDir, 'FEATURES.md'), 'file');
+  fs.symlinkSync(outside, path.join(backlogDir, 'FEATURES.md'), 'file');
   try {
     const output = execFileSync(process.execPath, [path.join(__dirname, 'ready.js'), tmpRoot], { encoding: 'utf8' });
     assert.ok(!output.includes('External heading'), output);
@@ -1851,14 +1851,14 @@ test('the ready CLI ignores a top-level index link outside the backlog root', ()
 test('the ready CLI rejects a backlog root junction outside the repository root', () => {
   const tmpRoot = path.join(__dirname, '..', '..', '.tmp', `ready-linked-root-${process.pid}`);
   const repoRoot = path.join(tmpRoot, 'repo');
-  const claudeDir = path.join(repoRoot, '.claude');
+  const backlogDir = path.join(repoRoot, '.nightshift');
   const outside = path.join(tmpRoot, 'outside');
   fs.mkdirSync(repoRoot, { recursive: true });
   fs.mkdirSync(outside, { recursive: true });
   fs.writeFileSync(path.join(outside, 'FEATURES.md'), '# Features\n\n## External heading\n\n### Secret root link\n\n**Requires:** none.\n');
   try {
     try {
-      fs.symlinkSync(outside, claudeDir, 'junction');
+      fs.symlinkSync(outside, backlogDir, 'junction');
     } catch {
       return;
     }
@@ -2149,14 +2149,14 @@ test('breakoutTargets omit the outcome field for a resolved entry', () => {
 
 test('real structural and cycle outcomes reach the missing-breakout notice end to end', () => {
   const tmpRoot = path.join(__dirname, '..', '..', '.tmp', `ready-outcome-${process.pid}`);
-  const claudeDir = path.join(tmpRoot, '.claude');
-  fs.mkdirSync(claudeDir, { recursive: true });
+  const backlogDir = path.join(tmpRoot, '.nightshift');
+  fs.mkdirSync(backlogDir, { recursive: true });
   try {
-    const structural = scanBreakoutTargets(mixedSliceRs.breakoutTargets, claudeDir);
+    const structural = scanBreakoutTargets(mixedSliceRs.breakoutTargets, backlogDir);
     assert.deepStrictEqual(structural.notices, [
       'FEATURES.md entry "Mu" links to features/mu.md, which does not exist; remove the broken link or create the file (its own classification already reports a structural error)',
     ]);
-    const cycle = scanBreakoutTargets(extCycleRs.breakoutTargets, claudeDir);
+    const cycle = scanBreakoutTargets(extCycleRs.breakoutTargets, backlogDir);
     assert.deepStrictEqual(cycle.notices, [
       'FEATURES.md entry "Anna" links to features/anna.md, which does not exist; remove the broken link or create the file (it is a dependency-cycle member; see the cycle error)',
       'FEATURES.md entry "Bob" links to features/bob.md, which does not exist; remove the broken link or create the file (it is a dependency-cycle member; see the cycle error)',
@@ -2173,24 +2173,24 @@ test('CLI rejects malformed UTF-8 in indexes and linked breakouts without changi
   const cases = [
     {
       name: 'FEATURES.md',
-      prepare: (claudeDir) => fs.writeFileSync(path.join(claudeDir, 'FEATURES.md'), invalidBytes),
+      prepare: (backlogDir) => fs.writeFileSync(path.join(backlogDir, 'FEATURES.md'), invalidBytes),
     },
     {
       name: 'features/bad.md',
-      prepare: (claudeDir) => {
-        fs.mkdirSync(path.join(claudeDir, 'features'), { recursive: true });
-        fs.writeFileSync(path.join(claudeDir, 'FEATURES.md'), '# Features\n\n## Active\n\n### [Bad](features/bad.md)\n\n**Requires:** none.\n');
-        fs.writeFileSync(path.join(claudeDir, 'features', 'bad.md'), invalidBytes);
+      prepare: (backlogDir) => {
+        fs.mkdirSync(path.join(backlogDir, 'features'), { recursive: true });
+        fs.writeFileSync(path.join(backlogDir, 'FEATURES.md'), '# Features\n\n## Active\n\n### [Bad](features/bad.md)\n\n**Requires:** none.\n');
+        fs.writeFileSync(path.join(backlogDir, 'features', 'bad.md'), invalidBytes);
       },
     },
   ];
   for (const fixture of cases) {
     const tmpRoot = path.join(__dirname, '..', '..', '.tmp', `ready-invalid-utf8-${process.pid}-${fixture.name.replaceAll('/', '-')}`);
-    const claudeDir = path.join(tmpRoot, '.claude');
-    fs.mkdirSync(claudeDir, { recursive: true });
+    const backlogDir = path.join(tmpRoot, '.nightshift');
+    fs.mkdirSync(backlogDir, { recursive: true });
     try {
-      fixture.prepare(claudeDir);
-      const target = path.join(claudeDir, ...fixture.name.split('/'));
+      fixture.prepare(backlogDir);
+      const target = path.join(backlogDir, ...fixture.name.split('/'));
       const completion = spawnSync(process.execPath, [path.join(__dirname, 'ready.js'), tmpRoot], { encoding: 'utf8' });
 
       assert.notStrictEqual(completion.status, 0);
@@ -2205,13 +2205,13 @@ test('CLI rejects malformed UTF-8 in indexes and linked breakouts without changi
 
 test('CLI preserves valid UTF-8, byte-order marks, and line endings', () => {
   const tmpRoot = path.join(__dirname, '..', '..', '.tmp', `ready-valid-utf8-${process.pid}`);
-  const claudeDir = path.join(tmpRoot, '.claude');
+  const backlogDir = path.join(tmpRoot, '.nightshift');
   const title = `Caf${String.fromCharCode(0xe9)}`;
   const featuresBytes = Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), Buffer.from('# Features\r\n')]);
   const quickWinsBytes = Buffer.from(`# Quick wins\n\n## Active\n\n- **${title}**: preserve valid bytes.\n`);
-  fs.mkdirSync(claudeDir, { recursive: true });
-  fs.writeFileSync(path.join(claudeDir, 'FEATURES.md'), featuresBytes);
-  fs.writeFileSync(path.join(claudeDir, 'QUICK_WINS.md'), quickWinsBytes);
+  fs.mkdirSync(backlogDir, { recursive: true });
+  fs.writeFileSync(path.join(backlogDir, 'FEATURES.md'), featuresBytes);
+  fs.writeFileSync(path.join(backlogDir, 'QUICK_WINS.md'), quickWinsBytes);
   try {
     const completion = spawnSync(process.execPath, [path.join(__dirname, 'ready.js'), tmpRoot], { encoding: 'utf8' });
     const result = JSON.parse(completion.stdout);
@@ -2219,8 +2219,8 @@ test('CLI preserves valid UTF-8, byte-order marks, and line endings', () => {
     assert.equal(completion.status, 0);
     assert.equal(completion.stderr, '');
     assert.equal(result.ready.some((entry) => entry.title.includes(title)), true);
-    assert.deepEqual(fs.readFileSync(path.join(claudeDir, 'FEATURES.md')), featuresBytes);
-    assert.deepEqual(fs.readFileSync(path.join(claudeDir, 'QUICK_WINS.md')), quickWinsBytes);
+    assert.deepEqual(fs.readFileSync(path.join(backlogDir, 'FEATURES.md')), featuresBytes);
+    assert.deepEqual(fs.readFileSync(path.join(backlogDir, 'QUICK_WINS.md')), quickWinsBytes);
   } finally {
     fs.rmSync(tmpRoot, { recursive: true, force: true });
   }
@@ -2228,7 +2228,7 @@ test('CLI preserves valid UTF-8, byte-order marks, and line endings', () => {
 
 test('CLI acquires a missing backlog root without an existence precheck or later traversal', () => {
   const tmpRoot = path.join(__dirname, '..', '..', '.tmp', `ready-missing-${process.pid}`);
-  const claudeDir = path.join(tmpRoot, '.claude');
+  const backlogDir = path.join(tmpRoot, '.nightshift');
   fs.mkdirSync(tmpRoot, { recursive: true });
   const originalExistsSync = fs.existsSync;
   const originalLstatSync = fs.lstatSync;
@@ -2244,7 +2244,7 @@ test('CLI acquires a missing backlog root without an existence precheck or later
     return false;
   };
   fs.lstatSync = (target, options) => {
-    if (path.resolve(target) === path.resolve(claudeDir)) {
+    if (path.resolve(target) === path.resolve(backlogDir)) {
       const error = new Error('missing during root acquisition');
       error.code = 'ENOENT';
       throw error;
@@ -2268,7 +2268,7 @@ test('CLI acquires a missing backlog root without an existence precheck or later
     assert.strictEqual(existsProbes, 0, 'root acquisition must not use existsSync');
     assert.strictEqual(traversals, 0, 'a missing root stops before traversal');
     assert.strictEqual(process.exitCode, 1);
-    assert.deepStrictEqual(JSON.parse(stdout), { error: `no .claude directory found at ${claudeDir}; run /nightshift:init-backlog to scaffold the four-index layout` });
+    assert.deepStrictEqual(JSON.parse(stdout), { error: `no .nightshift directory found at ${backlogDir}; run /nightshift:init-backlog to scaffold the four-index layout` });
   } finally {
     fs.existsSync = originalExistsSync;
     fs.lstatSync = originalLstatSync;
@@ -2281,17 +2281,17 @@ test('CLI acquires a missing backlog root without an existence precheck or later
 
 test('CLI maps backlog root removal during traversal to the missing-root result', () => {
   const tmpRoot = path.join(__dirname, '..', '..', '.tmp', `ready-removed-${process.pid}`);
-  const claudeDir = path.join(tmpRoot, '.claude');
-  fs.mkdirSync(claudeDir, { recursive: true });
+  const backlogDir = path.join(tmpRoot, '.nightshift');
+  fs.mkdirSync(backlogDir, { recursive: true });
   const originalReaddirSync = fs.readdirSync;
   const originalWrite = process.stdout.write;
   const originalExitCode = process.exitCode;
   let traversals = 0;
   let stdout = '';
   fs.readdirSync = (target, options) => {
-    if (path.resolve(target) === path.resolve(claudeDir)) {
+    if (path.resolve(target) === path.resolve(backlogDir)) {
       traversals += 1;
-      fs.rmSync(claudeDir, { force: true, recursive: true });
+      fs.rmSync(backlogDir, { force: true, recursive: true });
       const error = new Error('removed after root acquisition');
       error.code = 'ENOENT';
       throw error;
@@ -2309,7 +2309,7 @@ test('CLI maps backlog root removal during traversal to the missing-root result'
     runCli(tmpRoot);
     assert.strictEqual(traversals, 1, 'the failure occurs during traversal after root acquisition');
     assert.strictEqual(process.exitCode, 1);
-    assert.deepStrictEqual(JSON.parse(stdout), { error: `no .claude directory found at ${claudeDir}; run /nightshift:init-backlog to scaffold the four-index layout` });
+    assert.deepStrictEqual(JSON.parse(stdout), { error: `no .nightshift directory found at ${backlogDir}; run /nightshift:init-backlog to scaffold the four-index layout` });
   } finally {
     fs.readdirSync = originalReaddirSync;
     process.stdout.write = originalWrite;
@@ -2320,8 +2320,8 @@ test('CLI maps backlog root removal during traversal to the missing-root result'
 
 test('CLI reports nested traversal disappearance without claiming the backlog root is missing', () => {
   const tmpRoot = path.join(__dirname, '..', '..', '.tmp', `ready-nested-removed-${process.pid}`);
-  const claudeDir = path.join(tmpRoot, '.claude');
-  const featuresDir = path.join(claudeDir, 'features');
+  const backlogDir = path.join(tmpRoot, '.nightshift');
+  const featuresDir = path.join(backlogDir, 'features');
   fs.mkdirSync(featuresDir, { recursive: true });
   const originalReaddirSync = fs.readdirSync;
   const originalWrite = process.stdout.write;
@@ -2345,7 +2345,7 @@ test('CLI reports nested traversal disappearance without claiming the backlog ro
   try {
     runCli(tmpRoot);
     const result = JSON.parse(stdout);
-    assert.strictEqual(fs.statSync(claudeDir).isDirectory(), true, 'the backlog root remains present');
+    assert.strictEqual(fs.statSync(backlogDir).isDirectory(), true, 'the backlog root remains present');
     assert.strictEqual(process.exitCode, undefined);
     assert.ok(result.notices.includes('backlog tree changed during traversal; retry; unlinked backlog files were not checked this run'));
     assert.strictEqual(Object.hasOwn(result, 'error'), false);
@@ -2359,8 +2359,8 @@ test('CLI reports nested traversal disappearance without claiming the backlog ro
 
 test('CLI reports an unreadable backlog directory as a controlled traversal notice', () => {
   const tmpRoot = path.join(__dirname, '..', '..', '.tmp', `ready-nested-unreadable-${process.pid}`);
-  const claudeDir = path.join(tmpRoot, '.claude');
-  const featuresDir = path.join(claudeDir, 'features');
+  const backlogDir = path.join(tmpRoot, '.nightshift');
+  const featuresDir = path.join(backlogDir, 'features');
   fs.mkdirSync(featuresDir, { recursive: true });
   const originalReaddirSync = fs.readdirSync;
   const originalWrite = process.stdout.write;
@@ -2398,12 +2398,12 @@ test('CLI reports an unreadable backlog directory as a controlled traversal noti
 test('CLI rejects a contained backlog-root replacement before breakout traversal', () => {
   const tmpRoot = path.join(__dirname, '..', '..', '.tmp', `ready-root-replaced-${process.pid}`);
   const repoRoot = path.join(tmpRoot, 'repo');
-  const claudeDir = path.join(repoRoot, '.claude');
+  const backlogDir = path.join(repoRoot, '.nightshift');
   const replacement = path.join(repoRoot, 'replacement');
   const displaced = path.join(repoRoot, 'displaced');
-  fs.mkdirSync(claudeDir, { recursive: true });
+  fs.mkdirSync(backlogDir, { recursive: true });
   fs.mkdirSync(replacement, { recursive: true });
-  fs.writeFileSync(path.join(claudeDir, 'FEATURES.md'), '# Features\n');
+  fs.writeFileSync(path.join(backlogDir, 'FEATURES.md'), '# Features\n');
   fs.writeFileSync(path.join(replacement, 'FEATURES.md'), '# Replacement\n');
   const originalLstatSync = fs.lstatSync;
   const originalWrite = process.stdout.write;
@@ -2411,11 +2411,11 @@ test('CLI rejects a contained backlog-root replacement before breakout traversal
   let rootStats = 0;
   let stdout = '';
   fs.lstatSync = (target, options) => {
-    if (path.resolve(target) === path.resolve(claudeDir)) {
+    if (path.resolve(target) === path.resolve(backlogDir)) {
       rootStats += 1;
       if (rootStats === 3) {
-        fs.renameSync(claudeDir, displaced);
-        fs.symlinkSync(replacement, claudeDir, 'junction');
+        fs.renameSync(backlogDir, displaced);
+        fs.symlinkSync(replacement, backlogDir, 'junction');
       }
     }
 
@@ -2431,7 +2431,7 @@ test('CLI rejects a contained backlog-root replacement before breakout traversal
     runCli(repoRoot);
     assert.strictEqual(rootStats, 3, 'the replacement occurs at the first post-index revalidation');
     assert.strictEqual(process.exitCode, 1);
-    assert.deepStrictEqual(JSON.parse(stdout), { error: `the .claude directory escapes its repository authority: ${claudeDir}` });
+    assert.deepStrictEqual(JSON.parse(stdout), { error: `the .nightshift directory escapes its repository authority: ${backlogDir}` });
   } finally {
     fs.lstatSync = originalLstatSync;
     process.stdout.write = originalWrite;
@@ -2440,29 +2440,29 @@ test('CLI rejects a contained backlog-root replacement before breakout traversal
   }
 });
 
-test('CLI reads a .claude dir and emits the same JSON shape', () => {
+test('CLI reads a .nightshift dir and emits the same JSON shape', () => {
   const tmpRoot = path.join(__dirname, '..', '..', '.tmp', `ready-test-${process.pid}`);
-  const claudeDir = path.join(tmpRoot, '.claude');
-  fs.mkdirSync(claudeDir, { recursive: true });
+  const backlogDir = path.join(tmpRoot, '.nightshift');
+  fs.mkdirSync(backlogDir, { recursive: true });
   try {
-    fs.writeFileSync(path.join(claudeDir, 'QUICK_WINS.md'), QUICK_WINS);
-    fs.writeFileSync(path.join(claudeDir, 'FEATURES.md'), FEATURES
+    fs.writeFileSync(path.join(backlogDir, 'QUICK_WINS.md'), QUICK_WINS);
+    fs.writeFileSync(path.join(backlogDir, 'FEATURES.md'), FEATURES
       .replace('### [Draft thing](features/draft.md)', '### [Linked draft](features/draft-linked.md)\n\nSecond draft, whose breakout exists on disk.\n\n### [Draft thing](features/draft.md)')
       .replace('Core engine for the thing.', 'Core engine for the thing. See [stale plan](plans/stale-plan.md) for historical context (body prose, not a breakout target).'));
-    fs.writeFileSync(path.join(claudeDir, 'BUGS.md'), BUGS);
-    fs.mkdirSync(path.join(claudeDir, 'features'), { recursive: true });
-    fs.writeFileSync(path.join(claudeDir, 'features', 'beta.md'), '# Beta\n\n**Requires:** [Alpha](alpha.md).\n');
-    fs.writeFileSync(path.join(claudeDir, 'features', 'draft-linked.md'), '# Draft\n\n  **External:** something.\n');
-    fs.writeFileSync(path.join(claudeDir, 'features', 'gamma.md'), '# Gamma\n\nSee `**Requires:**` in the index.\n\n```\n**Requires:** example\n```\n');
-    fs.mkdirSync(path.join(claudeDir, 'features', 'sigma.md'));
+    fs.writeFileSync(path.join(backlogDir, 'BUGS.md'), BUGS);
+    fs.mkdirSync(path.join(backlogDir, 'features'), { recursive: true });
+    fs.writeFileSync(path.join(backlogDir, 'features', 'beta.md'), '# Beta\n\n**Requires:** [Alpha](alpha.md).\n');
+    fs.writeFileSync(path.join(backlogDir, 'features', 'draft-linked.md'), '# Draft\n\n  **External:** something.\n');
+    fs.writeFileSync(path.join(backlogDir, 'features', 'gamma.md'), '# Gamma\n\nSee `**Requires:**` in the index.\n\n```\n**Requires:** example\n```\n');
+    fs.mkdirSync(path.join(backlogDir, 'features', 'sigma.md'));
     const HISTORY_ONLY_TITLE = 'Retired baseline';
-    fs.writeFileSync(path.join(claudeDir, 'FEATURES_HISTORY.md'), `# Features history\n\n## Entries\n\n### [${HISTORY_ONLY_TITLE}](features/retired-baseline.md)\n\n**Requires:** [Alpha](features/alpha.md).\n`);
-    fs.mkdirSync(path.join(claudeDir, 'plans'), { recursive: true });
-    fs.writeFileSync(path.join(claudeDir, 'plans', 'stale-plan.md'), '# Plan\n\nWrapped plan prose\nstays out of scope.\n\n**Requires:** [Alpha](features/alpha.md).\n');
-    fs.writeFileSync(path.join(claudeDir, 'BUGS_HISTORY.md'), '# Bugs history\n\nA fixed bug whose entry\nis hard-wrapped.\n');
-    fs.mkdirSync(path.join(claudeDir, 'patterns'), { recursive: true });
-    fs.writeFileSync(path.join(claudeDir, 'patterns', 'wrapped.md'), '# Pattern\n\nPattern prose\nhard-wrapped.\n');
-    fs.writeFileSync(path.join(claudeDir, 'features', 'orphan.md'), '# Orphan\n\nNo index entry links here\nand it is hard-wrapped.\n');
+    fs.writeFileSync(path.join(backlogDir, 'FEATURES_HISTORY.md'), `# Features history\n\n## Entries\n\n### [${HISTORY_ONLY_TITLE}](features/retired-baseline.md)\n\n**Requires:** [Alpha](features/alpha.md).\n`);
+    fs.mkdirSync(path.join(backlogDir, 'plans'), { recursive: true });
+    fs.writeFileSync(path.join(backlogDir, 'plans', 'stale-plan.md'), '# Plan\n\nWrapped plan prose\nstays out of scope.\n\n**Requires:** [Alpha](features/alpha.md).\n');
+    fs.writeFileSync(path.join(backlogDir, 'BUGS_HISTORY.md'), '# Bugs history\n\nA fixed bug whose entry\nis hard-wrapped.\n');
+    fs.mkdirSync(path.join(backlogDir, 'patterns'), { recursive: true });
+    fs.writeFileSync(path.join(backlogDir, 'patterns', 'wrapped.md'), '# Pattern\n\nPattern prose\nhard-wrapped.\n');
+    fs.writeFileSync(path.join(backlogDir, 'features', 'orphan.md'), '# Orphan\n\nNo index entry links here\nand it is hard-wrapped.\n');
     const stdout = execFileSync(process.execPath, [path.join(__dirname, 'ready.js'), tmpRoot], { encoding: 'utf8' });
     const cli = JSON.parse(stdout);
     const hardWrapNotices = cli.notices.filter((n) => n.startsWith('backlog file ') && n.includes('hard-wrapped'));
@@ -2835,7 +2835,7 @@ test('legacy history detection handles repeated empty and populated sections', (
   ]);
 
   assert.deepStrictEqual(result.evidence.legacyHistory, [
-    { indexPath: '.claude/FEATURES.md', historyPath: '.claude/FEATURES_HISTORY.md' },
+    { indexPath: '.nightshift/FEATURES.md', historyPath: '.nightshift/FEATURES_HISTORY.md' },
   ]);
 });
 

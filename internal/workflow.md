@@ -1,0 +1,73 @@
+# Nightshift operating brief
+
+Use this brief inside an authorized Nightshift lifecycle or an explicit revise request. Plain review and review-loop requests belong to the user's direct-agent routines and do not enter this workflow.
+
+## Priorities and authority
+
+Autonomy comes first, independent quality assurance second, and speed, efficiency and economy third, within the user's authority and limits. Continue until the authorized work and its required evidence are complete, the user stops it, a resource limit is reached, or every remaining item is blocked without an authorized recovery. A routine failure calls for recovery or a changed approach. It is not an occasion to declare the session done.
+
+Investigate the actual problem before editing. Small work needs a short understanding readback and confirmation; substantial work needs a concise spec of consequential commitments, boundaries and acceptance evidence. Start independent spec assessment through a nonblocking dispatch, then promptly present that same complete stable draft for the user's review while assessment runs. Preserve the worker handle and draft identity. Do not wait for assessment results or work its findings before making the draft available to the user; a progress notice alone is not the presentation. If nonblocking dispatch is unavailable, disclose the sequencing limitation and obtain both reviews without claiming overlap. Implement once the commitments are agreed and the spec assessment is resolved. Compatible corrections preserve agreement; material changes need the user's decision. A shared agreement may cover a finite queue. Saved files, backlog readiness and a stage label do not themselves confer authority.
+
+Implement directly with a strong model. Written implementation plans are exceptional guidance for deliberately selected weaker or cheaper implementers. There is no routine plan stage, plan-review ladder or Superpowers dependency.
+
+Nightshift establishes root `.nightshift` as the home for its new project-owned artifacts, whether or not the directory exists yet. Create new standalone governing specs in `.nightshift/specs`; keep feature and backlog documents in their established `.nightshift` locations. This is the workflow's established convention, so the generic per-host fallback does not apply to these new artifacts. Honor user-supplied or explicitly selected document locations and required host configuration paths; applying Nightshift review does not transfer ownership of those files.
+
+## Durable execution
+
+Read [the runtime interface](runtime/REFERENCE.md) before starting or resuming a run. Capture the accepted outcome, the source of authority, queue dependencies, publication authority, limits, actual controller session and current evidence. Use the transactional operations for consequential transitions. A failed write or stale revision requires reconciliation before dependent work. A status operation supplies focused current obligations; read it when beginning work, dispatching or accepting review, changing a finding disposition, claiming completion, and after compaction or reopening.
+
+Evaluate the host's native persistent goal first. The goal should keep the authorized queue moving through implementation, review, verification, documentation, retrospective and triage, with the stop conditions above. Native goals supply continuation; the run's state and current evidence establish completion. The bundled hooks restore focused obligations and resist premature completion. Before unattended work, verify that the chosen continuation mechanism is loaded, trusted and functional on the actual host. Unverified continuation leaves that host's unattended path unavailable.
+
+After compaction, reconcile the record against actual files and surviving activity before dependent operations. Preserve other writers. Reject stale checks and reports. Recover failed tools, workers, reviews and transient provider errors within the user's limits; after repeated failures, change approach. Pause only dependent work when a material decision or capability is blocked, and continue independent queue items. A stopped host may end unattended execution until the user reopens it; automatic relaunch after exit or Windows restart is outside v3's MVP.
+
+## Model roles and ownership
+
+Fable and Astra are interchangeable strong-role reference models. Either supported Windows host must be able to carry the complete lifecycle with fresh independent contexts. Choose assignments using task fit, observed strengths, availability, context and cost under the priorities. Establish the problem first regardless of model. There is no fixed controller/implementer team.
+
+Working hypotheses from the user's reports: Fable tends toward deeper deliberation, broad contextual reading, sustained focus and strong visual design; Astra tends toward fast precise coding, computer use, quantitative work and skeptical evaluation of plausible prose, often through effective intuition. Both handle browser interaction well. Use these observations as preferences to test against actual task evidence. Longer reasoning is not itself a correctness signal, and either strong model can perform any required role.
+
+Prefer an equivalent-strength lead reviewer on the other host when suitable and available. The controller chooses placement based on independence from the reasoning that shaped the solution and the actual task constraints. Fresh qualified same-host review is valid. Explicit model requirements bind; a preference permits an adequately capable allowed substitute, with the reason recorded. No suitable permitted model pauses that work while independent work continues.
+
+Use bounded helpers when authorized and useful. Record assignment, host/session, model/effort, and exclusive write ownership. Reviewers, skeptics and reviewer peers never change reviewed inputs. Peers clone their lead's model and effort. Checks that mutate inputs need isolated fixtures. A lead can ask the controller to dispatch peers and incorporate their assessments; the lead owns credible integrated coverage. A lower-tier supervisor can coordinate assignments, progress and routine recovery; consequential engineering judgment, authority, finding dispositions and final acceptance stay with the controller. Direct or sequential coordination remains valid when it meets the workload without sacrificing assurance or causing avoidable stalls.
+
+## Review and repair
+
+Give the fresh strong lead the agreed requirements, complete cumulative change or whole spec, surrounding context, applicable conventions and every dimension below. Do not choose only relevant dimensions or supply the author's correctness rationale. One reviewer is normally enough for a small change. The lead decides whether greater depth or peer assistance is needed for credible coverage. A failed or partial assessment is incomplete even if it reports no findings.
+
+Every finding receives fresh skeptic validation against concrete evidence. A skeptic can validate a small batch; an empty finding set needs no skeptic. Convergence is a reason to investigate, not proof. Keep factual validity, authority and practical value distinct. Decide implement, defer with a reason and durable route, skip as an accepted tradeoff, or refuted based on evidence. Missing evidence stays unresolved. A required commitment cannot be waived because its repair is expensive.
+
+When a read-only assessor needs execution evidence, inspect the exact command and fixture source in its untrusted probe proposal, establish that all effects fit authorized verification, and run it through the private-copy probe operation. This uses controller privileges, so the private directory and inventory drift check are not a security sandbox. Return the raw command and output for independent interpretation. Keep execution-dependent claims unresolved until the evidence decides them; do not grant canonical write access to solve a tool limitation.
+
+Validate and dispose the complete intended batch against current evidence before editing. Interleaved edits can invalidate evidence for remaining dispositions; re-establish that evidence rather than narrowing its scope automatically. After every repair batch, however small, run relevant verification and obtain another strong assessment of the full cumulative change across all dimensions, including sibling paths and previous repairs. Revised specs receive whole-spec assessment. A completed strong broad assessment with no edits needed can pass after no-edit dispositions resolve its findings; a literal extra LGTM is unnecessary. Weak or narrow coverage cannot pass the gate. A separate final verifier is not mandatory.
+
+Three successive passes raising related findings after repairs are a signal to investigate the shared cause and the repair approach. Same area alone is weak evidence. Missed siblings, repeated invariant violations and repairs undoing earlier repairs are stronger signals. Reconsider the approach or seek a specialist when warranted; do not automatically launch a swarm, halt or ask the user.
+
+### Spec dimensions
+
+- Intent, scope and acceptance: desired outcome, meaningful behavior, boundaries and success evidence.
+- Soundness and integration: feasibility in the real project and operating environment.
+- Failure, safety and recovery: consequential failures, trust boundaries, data preservation and recovery.
+- Clarity, consistency and proportionality: understandable commitments and reasoning without contradictions, missing decisions or unnecessary prescription.
+
+Review mechanisms the spec actually commits to. Do not invent an implementation and report its unchosen details as spec gaps.
+
+### Code dimensions
+
+- Requirements and user experience: agreed behavior, usable flows and relevant accessibility.
+- Correctness and integration: normal, boundary, concurrent and failure cases, callers, state transitions and siblings.
+- Security and data safety: trust boundaries, permissions, confidentiality, integrity and recovery.
+- Design and maintainability: readable local code and coherent system decomposition, ownership, reuse and coupling.
+- Performance and resources: consequential latency, throughput, resource use and operating cost.
+- Tests and evidence: meaningful assertions and realistic execution, with remaining uncertainty explicit.
+
+One problem is one finding even if several lenses expose it. Every lens receives consideration, without finding quotas, equal-depth narration or duplicated criteria.
+
+## Close and report
+
+Update relevant documentation and backlog records to match actual delivered behavior and evidence. Preserve source references and rationale for retirement; retired proposals are not shipped features or fixed bugs. Run the real ready parser after backlog changes. Retain its dependency walk and history conventions.
+
+Complete task documentation before releasing dependent engineering. Internal governing-spec assessment ends when its independent assessment is accepted. Perform one session retrospective after actionable work settles and before the closing follow-up triage; do not repeat those closing steps for each queue item or internal prerequisite. Examine user corrections, recurring failures, ineffective rules and useful lessons. Prefer concise principles grounded in observed evidence. Propose worthwhile instruction changes as concrete diffs with motivation and independent assessment before asking the user to approve. Do not modify instructions merely because a retrospective suggested an improvement. With no worthwhile proposal, finish the retrospective without manufacturing one.
+
+Triage decision-requiring follow-ups one at a time, with concrete context, a recommendation and the effect of each choice. Use fix now, track or skip where appropriate; preserve the original approve, adjust or revert terms for deferred approvals. Wait for the answer before presenting the next item. When the user is unavailable, preserve unanswered items in the run and report that they remain decisions, not completed work. Mid-run ideas go into this follow-up record so they do not derail the authorized queue.
+
+Commit coherent local work under the user's Git policy and required hooks. Publication proceeds only when authorized and independently reviewed, including any applicable advance handover authority. Do not repeat settled approvals. Without publication authority, finish locally and report unpublished status. Report delivered work, verification and its limits, accepted tradeoffs, deferred work and every incomplete obligation accurately.

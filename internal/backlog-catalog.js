@@ -59,8 +59,8 @@ const LABEL_AT_START = /^\*\*[^*]+?:\*\*/;
 // External holds bare-text external primitives only. Both share one grammar.
 const REQUIRES_LABEL = /^\*\*Requires:\*\*/i;
 const EXTERNAL_LABEL = /^\*\*External:\*\*/i;
-// The files and directories under .claude/ that hold backlog prose. Anything
-// else in a .claude/ tree (plans, host instruction files, commands, agents,
+// The files and directories under .nightshift/ that hold backlog prose. Anything
+// else in a .nightshift/ tree (plans, host instruction files, commands, agents,
 // skills, rules) is out of scope.
 const BACKLOG_FILES = ['QUICK_WINS.md', 'FEATURES.md', 'BUGS.md', 'PATTERNS.md', 'QUICK_WINS_HISTORY.md', 'FEATURES_HISTORY.md', 'BUGS_HISTORY.md'];
 const BACKLOG_DIRECTORIES = ['features', 'bugs', 'patterns'];
@@ -190,7 +190,7 @@ function createBlockTracker() {
     const fenceMatch = FENCE.exec(probe);
     // CommonMark forbids a backtick anywhere in a backtick fence's info
     // string, so such a line opens no fence. This mirrors fenceOpener in
-    // skills/spec-agreement/spec-agreement.js, the shared markdown scanner
+    // internal/markdown.js, the shared markdown scanner
     // that ready.js reads through scanMarkdown; without the rule the two
     // parsers classify the same lines differently around such a line.
     if (fence === null && fenceMatch && !(fenceMatch[1][0] === '`' && fenceMatch[2].includes('`'))) {

@@ -7,33 +7,13 @@ on:
   workflow_dispatch:
 
 jobs:
-  test:
+  deterministic:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v5
-        with:
-          fetch-depth: 0
       - uses: actions/setup-node@v5
         with:
           node-version: 22
-      - run: node skills/spec-agreement/spec-agreement.test.js
       - run: node skills/ready/ready.test.js
       - run: node skills/init-backlog/unwrap.test.js
-      - run: node internal/revise/revise-round.test.js
-      - run: node internal/revise/rigor.test.js
-      - run: node internal/revise/orchestration.test.js
-      - run: node --test tests/universal-skill-topology.test.js
-      - run: node tests/host-discovery-smoke.test.js
-      - run: node tests/release-surface.test.js
-  # The init-backlog controller suite runs for roughly seventy minutes, so it
-  # gets its own job and runs beside the other nine rather than after them.
-  controller:
-    runs-on: windows-latest
-    steps:
-      - uses: actions/checkout@v5
-        with:
-          fetch-depth: 0
-      - uses: actions/setup-node@v5
-        with:
-          node-version: 22
-      - run: node tests/init-backlog-controller.test.js
+      - run: node --test tests/runtime.test.js tests/runtime-hooks.test.js tests/runtime-review.test.js tests/runtime-hosts.test.js tests/runtime-regressions.test.js tests/runtime-probes.test.js tests/setup.test.js tests/package.test.js

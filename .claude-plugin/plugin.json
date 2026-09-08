@@ -1,13 +1,19 @@
 {
   "name": "nightshift",
   "displayName": "Nightshift",
-  "description": "A feature-lifecycle workflow for Claude Code: four-index project backlogs, dependency-resolved work selection, multi-agent review loops for specs, plans, and code, and a handover skill that takes over the remaining lifecycle from wherever the session stands.",
-  "version": "2.7.0",
+  "description": "An autonomous engineering workflow for Claude Code and Codex: direct implementation from agreed commitments, independent review and skeptical finding validation, durable continuation, and a host-neutral project backlog.",
+  "version": "3.0.0",
   "author": {
     "name": "Andreas Stenlund"
   },
   "license": "MIT",
   "homepage": "https://github.com/astenlund/nightshift",
   "repository": "https://github.com/astenlund/nightshift",
-  "keywords": ["workflow", "review", "backlog", "planning", "multi-agent"]
+  "keywords": [
+    "workflow",
+    "review",
+    "backlog",
+    "autonomy",
+    "multi-agent"
+  ]
 }

@@ -1,22 +1,14 @@
 ---
 name: revise-code
-description: "Use when a code change (diff, staged work, or named files) is ready for deep multi-agent review before it ships."
+description: "Use for explicit revise-code or revise code intent, or required code revision inside an authorized Nightshift lifecycle. Plain review and review-loop requests do not activate this skill."
 ---
 
-# revise-code
+# Revise code
 
-Resolve `../spec-agreement/SKILL.md` relative to this skill and execute it first in `lifecycle-entry` phase with caller mode `revise-code` and fixed artifact type `code`.
+Use [the shared operating brief](../../internal/workflow.md) and [runtime review operations](../../internal/runtime/REFERENCE.md#independent-assessment). Establish the agreed outcome and full cumulative change, including uncommitted edits and new files. A previous review does not authorize narrowing a requested new pass.
 
-If the agreement skill is missing or unreadable, report exactly this single line, then stop before starting review work.
-SPEC_AGREEMENT_UNAVAILABLE ../spec-agreement/SKILL.md
+Dispatch a fresh strong lead with all six code dimensions, the requirements, complete change and surrounding context. Prefer the other host at equivalent strength when suitable; the controller chooses placement. Do not supply the author rationale or filter dimensions. Reviewers and skeptics cannot edit reviewed inputs.
 
-When the host supplies usable scope text, pass the same text unchanged to the agreement skill and, after authority is present, to the engine. When scope is missing, empty, or whitespace-only, omit it from the agreement request.
+Validate every finding with a fresh skeptic using concrete evidence; decide validity, authority and practical value separately. Apply authorized worthwhile repairs, verify them, and obtain cumulative strong broad assessment after every repair batch, including small ones and sibling paths. Missing or stale evidence cannot pass. No-edit resolutions can finish without an LGTM-only repeat when coverage is already complete. Investigate the shared cause after repeated related findings.
 
-Continue to the engine only when `callerResult.agreement` is a complete agreement record or the literal `not-applicable`; stop without dispatch on every other outcome.
-
-Resolve `../../internal/revise/SKILL.md` relative to this skill and follow it as the shared review procedure with the same artifact type.
-
-If the engine is missing or unreadable, report exactly this single line, then stop before starting review work.
-REVISE_ENGINE_UNAVAILABLE ../../internal/revise/SKILL.md
-
-When the host supplies usable scope text, pass it to the engine without intentional normalization. When scope is missing, empty, or whitespace-only, omit it so the engine performs its existing inference and clarification behavior.
+Record reports, skeptical verdicts, dispositions, checks and outstanding work through the runtime so compaction cannot erase the obligations. Report the result and any accepted tradeoffs or unresolved work. Preserve follow-ups for triage; do not publish without authority.

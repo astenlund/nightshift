@@ -8,8 +8,7 @@ const test = require('node:test');
 
 const { CatalogError, canonicalPath, detectHardWraps, unwrapText, collectMarkdownFiles, analyzeUnwrapCatalog } = require('./unwrap.js');
 const { maskRawHtmlBlocks, runCli } = require('../../internal/backlog-catalog.js');
-const { targetRecord } = require('./lib/inspection.js');
-const { scanMarkdown } = require('../spec-agreement/spec-agreement.js');
+const { scanMarkdown } = require('../../internal/markdown.js');
 
 const CRLF = String.fromCharCode(13, 10);
 
@@ -145,12 +144,12 @@ test('collectMarkdownFiles reads a directory as a backlog root and accepts singl
 });
 
 test("the plugin's own backlog carries no hard wraps", () => {
-  const backlogRoot = path.join(__dirname, '..', '..', '.claude');
+  const backlogRoot = path.join(__dirname, '..', '..', '.nightshift');
   const offenders = collectMarkdownFiles([backlogRoot])
     .map((file) => ({ file: path.relative(backlogRoot, file).replace(/\\/g, '/'), wraps: detectHardWraps(fs.readFileSync(file, 'utf8')) }))
     .filter(({ wraps }) => wraps.length > 0)
     .map(({ file, wraps }) => `${file} (${wraps.length}, first at line ${wraps[0].line})`);
-  assert.deepEqual(offenders, [], 'run node skills/init-backlog/unwrap.js --write .claude');
+  assert.deepEqual(offenders, [], 'run node skills/init-backlog/unwrap.js --write .nightshift');
 });
 
 test('indented code, HTML blocks and comments, setext headings, and pipe-less tables are never joined', () => {
@@ -675,22 +674,4 @@ test('raw HTML mask analysis is memoized per records array without changing reco
 
   assert.strictEqual(second, first);
   assert.deepEqual(records, before);
-});
-
-test('targetRecord consumes a cached wrap analysis instead of rescanning decoded text', () => {
-  const declaration = { contentRole: 'semantic', kind: 'file', regions: [] };
-  const record = (text, wraps) => {
-    const bytes = Buffer.from(text);
-
-    return targetRecord(
-      '.claude/FEATURES.md',
-      { bytes, kind: 'file', mode: 0o644, present: true, rawSha256: 'a'.repeat(64) },
-      declaration,
-      null,
-      { gitKind: 'non-git', platform: process.platform, wraps },
-    );
-  };
-
-  assert.equal(record('# Features\n', [{ kind: 'paragraph', line: 2 }]).states.includes('wrapped'), true);
-  assert.equal(record('First line\ncontinued\n', []).states.includes('wrapped'), false);
 });

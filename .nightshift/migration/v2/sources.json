@@ -1,0 +1,25 @@
+{
+  "baseline": "5f92330",
+  "indexes": [
+    {
+      "path": ".nightshift/FEATURES.md",
+      "originalSha256": "242f30147871a2ba38a19807e09953150c3f16255b9df8e746cc5f2f06a17c4e",
+      "archive": ".nightshift/migration/v2/FEATURES.md"
+    },
+    {
+      "path": ".nightshift/BUGS.md",
+      "originalSha256": "940372de593967515efe5e0710fc3eace1495088b70199879682bc78640305b4",
+      "archive": ".nightshift/migration/v2/BUGS.md"
+    },
+    {
+      "path": ".nightshift/QUICK_WINS.md",
+      "originalSha256": "aa2fb0df36880bfcec43f8b24a115a4e90f58350bdc2800c84fdd57f740fa17d",
+      "archive": ".nightshift/migration/v2/QUICK_WINS.md"
+    },
+    {
+      "path": ".nightshift/PATTERNS.md",
+      "originalSha256": "3bd116859d5e347276c54e63389bdb893d33bdbd62e07c4658579837815258cc",
+      "archive": ".nightshift/migration/v2/PATTERNS.md"
+    }
+  ]
+}

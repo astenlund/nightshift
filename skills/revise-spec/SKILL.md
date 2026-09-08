@@ -1,22 +1,14 @@
 ---
 name: revise-spec
-description: "Use when a design-shaped file (feature, pattern, or bug-investigation doc) has been written or substantially revised and needs hardening before planning."
+description: "Use for explicit revise-spec or revise spec intent, or required spec revision inside an authorized Nightshift lifecycle. Plain review and review-loop requests do not activate this skill."
 ---
 
-# revise-spec
+# Revise spec
 
-Resolve `../spec-agreement/SKILL.md` relative to this skill and execute it first in `lifecycle-entry` phase with caller mode `revise-spec` and fixed artifact type `spec`.
+Use [the shared operating brief](../../internal/workflow.md) and [runtime review operations](../../internal/runtime/REFERENCE.md#independent-assessment). Give a fresh strong lead the complete current spec, user commitments, relevant project context and all four spec dimensions. Assess meaningful commitments, soundness, failure/recovery and proportionality. Do not demand an unchosen implementation in prose or pseudocode.
 
-If the agreement skill is missing or unreadable, report exactly this single line, then stop before starting review work.
-SPEC_AGREEMENT_UNAVAILABLE ../spec-agreement/SKILL.md
+Create a new standalone Nightshift-owned governing spec in `.nightshift/specs`. Preserve an existing or user-selected governing document's location; reviewing it does not make it a Nightshift-owned file to relocate.
 
-When the host supplies usable scope text, pass the same text unchanged to the agreement skill and, after authority is present, to the engine. When scope is missing, empty, or whitespace-only, omit it from the agreement request.
+When developing a substantial feature, start the assessment through the host's background-process facility and preserve its handle. Present the same complete stable draft for the user's review as soon as dispatch has started, before waiting for results or processing findings. Keep the draft available while assessment runs; announcing that review has started does not present the draft. If nonblocking dispatch is unavailable, disclose the sequencing limitation and obtain both reviews without claiming overlap. Implementation waits for agreed commitments and resolved assessment. Compatible corrections preserve agreement; material commitment changes require the user.
 
-Continue to the engine only when `callerResult.agreement` is a complete agreement record; stop without dispatch on `not-applicable` and every other outcome.
-
-Resolve `../../internal/revise/SKILL.md` relative to this skill and follow it as the shared review procedure with the same artifact type.
-
-If the engine is missing or unreadable, report exactly this single line, then stop before starting review work.
-REVISE_ENGINE_UNAVAILABLE ../../internal/revise/SKILL.md
-
-When the host supplies usable scope text, pass it to the engine without intentional normalization. When scope is missing, empty, or whitespace-only, omit it so the engine performs its existing inference and clarification behavior.
+Every finding needs fresh skeptical validation against evidence and a separate value/authority decision. Apply authorized corrections and return the whole spec for cumulative assessment after each repair batch. A spec cannot pass on weak, narrow, failed, stale or partial coverage. Preserve unresolved decisions, and continue independent work while the user is unavailable.
