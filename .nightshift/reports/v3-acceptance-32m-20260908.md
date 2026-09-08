@@ -1,8 +1,8 @@
 # Nightshift v3 acceptance: 32M campaign
 
-The substantial Codex catalog case completed its supplied-spec review, dependent engineering queue, documentation, independently validated repairs and local closure. Independent audit confirms 178 external product checks and 19 focused tests. Fable also completed standalone documentation reconciliation with verified executable examples and backlog outcomes. Subsequent maintenance and review-material repairs now have clean cumulative source assurance. Full MVP acceptance remains incomplete, and the candidate is local and unpublished.
+The substantial Codex catalog case completed its supplied-spec review, dependent engineering queue, documentation, independently validated repairs and local closure. Independent audit confirms 178 external product checks and 19 focused tests. Fable also completed standalone documentation reconciliation with verified executable examples and backlog outcomes. Subsequent maintenance and review-material repairs have clean cumulative source assurance. A focused Codex case on the repaired installation also preserved an unavailable required reviewer while completing independent docs. Full MVP acceptance remains incomplete, and the candidate is local and unpublished.
 
-This continues the [16M checkpoint](v3-acceptance-16m-20260908.md). These native cases used candidate 1c1f2d3 with the independently reviewed closed-skeptic-schema fixup f6582d3 and attempt-history fixup 4ccadfe, installed as 3.0.0+codex.20260908110641. The subsequent maintenance fixup 4eb7b45 and artifact/exclusion fixup bb76ea1 are installed in the isolated profiles as 3.0.0+codex.20260908153539, again with all 44 files verified per host. No native acceptance of these latest source changes is claimed yet. Editorial acceptance records alone do not require an expensive runtime replay.
+This continues the [16M checkpoint](v3-acceptance-16m-20260908.md). The catalog and standalone Fable docs cases used candidate 1c1f2d3 with the independently reviewed closed-skeptic-schema fixup f6582d3 and attempt-history fixup 4ccadfe, installed as 3.0.0+codex.20260908110641. The subsequent maintenance fixup 4eb7b45 and artifact/exclusion fixup bb76ea1 are installed in the isolated profiles as 3.0.0+codex.20260908153539, again with all 44 files verified per host. The focused required-model case uses that repaired installation; broader native revalidation remains pending. Editorial acceptance records alone do not require an expensive runtime replay.
 
 ## Substantial feature and finite queue
 
@@ -68,7 +68,19 @@ Further review found that Windows case aliases could bypass an explicit exclusio
 
 Twelve additional regression cases exercise selected ignored spec, code and skeptic material, private-probe delivery, input drift, malformed selections, alias handling, historical exclusions and failure to establish identity. All 88 focused tests pass, together with whitespace, ASCII and line-ending checks. Independent cumulative source review is clean across all code and spec dimensions, with a 73-file source manifest and separate deciding probes. No new minor finding was raised. The artifact/exclusion repair is committed as local fixup bb76ea1; its isolated autosquash check also preserves the exact tree without rewriting main history.
 
-The clean report is .tmp/v3-current-source-assessment/artifact-exclusions/report.md. Original deciding evidence remains under .tmp/v3-current-findings-skeptic/explicit-artifacts and artifact-exclusions; previous cumulative source reports remain under .tmp/v3-current-source-assessment/maintenance-assurance and explicit-artifacts. Installation confirms the current packaged bytes, not model-owned execution of the repaired branches.
+The clean report is .tmp/v3-current-source-assessment/artifact-exclusions/report.md. Original deciding evidence remains under .tmp/v3-current-findings-skeptic/explicit-artifacts and artifact-exclusions; previous cumulative source reports remain under .tmp/v3-current-source-assessment/maintenance-assurance and explicit-artifacts. Native execution of the repaired artifact-copy and reviewed-lore branches remains unverified.
+
+## Required model and independent progress
+
+An attended Codex case explicitly required Fable for the supplied duration product's code assessment while separately authorizing a README correction. The isolated Codex profile was authenticated and the isolated Claude profile was deliberately logged out. Claude's actual status query returned exit 1 with valid loggedIn false; the harness corrected its preflight expectation before reservation or inference. It retained derived status evidence without copying raw authentication output into the case record.
+
+The actual Astra controller preserved the Fable-only requirement and recorded a capability blocker instead of substituting available Astra. No review dispatch or participant ran. It then corrected the independent README examples, recovered a failed check under the same check name, and completed the docs task with current passing verification. Independent raw hashes confirm all six protected fixture inputs remained unchanged.
+
+The required task remains pending and blocked, and the attended run remains running at revision 9. Blocker revision 1 precedes docs start 2 and the README rewrite; docs completion 6 precedes retrospective 7, the pending recovery follow-up 8, and triage 9. The structured final report accurately leaves both required work and the run incomplete. There was one native turn, no goal or compaction, no substitute, and verified process cleanup.
+
+The fixture has an unborn Git branch. The original HEAD-based EOL gate failed, and an adapted PowerShell check of every tracked file passed; these are distinct results. The earlier preservation-check mismatch came from CRLF working files versus LF index blobs and was corrected in the scratch check. The original failures remain in evidence. README work is uncommitted in the fixture, whose original index and no-remote state are preserved.
+
+This confirms model-owned handling of an explicit unavailable reviewer and continued independent work. It does not establish Fable inference, an attempted runtime substitution, a fresh docs-only entry, full handover or the repaired artifact-copy path. Exact usage is 902,346 tokens: 895,427 input and 6,919 output, with cache and reasoning counters included rather than added twice. Case codex-required-fable-5885eff5-7320-409f-acb8-1bf9f96dda8e and its original expected-incomplete-observed outcome remain unchanged. The independent audit is .tmp/v3-current-findings-skeptic/required-model-codex/report.md.
 
 ## Budget checkpoint
 
@@ -80,13 +92,14 @@ The user explicitly raised the total campaign allowance to 32,000,000 gross toke
 | Catalog Codex controller | 9,971,835 |
 | Catalog native participants, including the rejected drift attempt | 2,530,448 |
 | Standalone Fable documentation | 2,420,588 |
-| Total observed | 29,842,753 |
+| Codex required-model authority case | 902,346 |
+| Total observed | 30,745,099 |
 | Older unresolved usage holds | 419,919 |
-| Available under the 32M cap | 1,737,328 |
+| Available under the 32M cap | 834,982 |
 
 The catalog case, including its 17 native assessment attempts, settled exactly at 12,502,283 tokens. Cached-input and reasoning counters are subsets of their provider totals; repeated cumulative notifications are not additional charges. No compaction occurred in this case, and no new usage hold was needed.
 
-The remaining balance is below the observed cost of either completed full handover, the catalog case or Fable standalone docs. The prepared Fable catalog driver has a planning guard, not a separate user budget. Its substantial path remains pending, alongside other uncovered requirements. A question about raising the total to 64M is pending; no increase is applied without the user's answer. The current ledger, .tmp/v3-test-budget.json, reserves every running case before inference and retains unobservable consumption as a hold. No native test is currently running.
+The remaining balance is below the observed cost of either completed full handover, the catalog case, Fable standalone docs or the smaller Codex authority case. The prepared Fable catalog driver has a planning guard, not a separate user budget. Its substantial path remains pending, alongside other uncovered requirements. A question about raising the total to 64M is pending; no increase is applied without the user's answer. The current ledger, .tmp/v3-test-budget.json, reserves every running case before inference and retains unobservable consumption as a hold. No native test is currently running, and both isolated credential copies have been removed.
 
 ## Session retrospective
 
