@@ -20,6 +20,10 @@ Post-MVP investigation of measured controller overhead: repeated context reads, 
 
 Post-MVP reboot watchdog for multiple active agent sessions. Persist recovery state continuously, use the seconds-long shutdown window for bounded stop/flush coordination, and recover from saved state even when a session receives no warning or cannot acknowledge it.
 
+### [Native event validation](features/native-event-validation.md)
+
+Post-MVP exploration of consistent handling for assistant messages missing model metadata and other malformed native evidence. Preserve required-model and independent-review guarantees while distinguishing legitimate event shapes and maintaining reliable recovery.
+
 ### [V3 continuations](features/v3-continuations.md)
 
 Retained capabilities outside the first release: additional platform verification, active-controller transfer, independent overlapping runs, restart/relaunch automation, and broader legacy-guidance conversion or structural repair. The migration ledger preserves all other retained needs for evidence-based follow-up.
