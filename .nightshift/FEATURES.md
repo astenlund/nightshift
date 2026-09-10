@@ -1,14 +1,10 @@
 # Features
 
-The active v3 work and its deferred extensions. The original v2 proposals and their agreed dispositions are preserved in [MIGRATION_STATUS.md](MIGRATION_STATUS.md) and [the historical index](migration/v2/FEATURES.md). Readiness is not implementation authority.
+Upcoming work and deferred extensions to the delivered v3 MVP. Its delivery is recorded in [FEATURES_HISTORY.md](FEATURES_HISTORY.md). The original v2 proposals and their agreed dispositions are preserved in [MIGRATION_STATUS.md](MIGRATION_STATUS.md) and [the historical index](migration/v2/FEATURES.md). Readiness is not implementation authority.
 
 ## Current work
 
-### [Nightshift v3](features/nightshift-v3.md)
-
-Implementation is complete locally under the agreed vision and workflow. Required Windows acceptance is complete. The [acceptance report](reports/v3-acceptance-272m-20260910.md) records completed verification and its qualifications. Publication remains pending; this entry does not claim a shipped release.
-
-**Requires:** none.
+No active feature deliveries.
 
 ## Exploring
 

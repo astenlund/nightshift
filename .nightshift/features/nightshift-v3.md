@@ -7,7 +7,7 @@ metadata:
 
 # Nightshift v3
 
-Implementation was authorized on 2026-09-07. The implementation is complete locally. Required Windows acceptance is complete, with evidence and qualifications recorded in the [acceptance report](../reports/v3-acceptance-272m-20260910.md). Publication remains pending. This feature consolidates the agreed [vision](../../VISION.md), [workflow](../../WORKFLOW.md), and [migration assessment](../../V3-MIGRATION.md) for the first v3 release.
+Implementation was authorized on 2026-09-07. Version 3.0.0 was published to `main` on 2026-09-10, with implementation and required Windows acceptance complete. The [acceptance report](../reports/v3-acceptance-272m-20260910.md) records the evidence and its qualifications. This feature consolidates the agreed [vision](../../VISION.md), [workflow](../../WORKFLOW.md), and [migration assessment](../../V3-MIGRATION.md) for the first v3 release.
 
 ## Outcome and priorities
 
@@ -109,6 +109,6 @@ The approved budget for the initial v3 MVP test run was 2,000,000 tokens total a
 
 Use [V3-MIGRATION.md](../../V3-MIGRATION.md) to reconcile Nightshift's own backlog as the implementation changes, preserving surviving requirements, source references, and reasons for retirement. Old proposals are not automatic prerequisites for the rewrite. Retired proposals must not be recorded as shipped features or fixed bugs. Project backlogs being relocated retain their own work and decisions.
 
-This feature remains active pending publication of the locally accepted MVP. The .nightshift relocation has been applied; [MIGRATION_STATUS.md](../MIGRATION_STATUS.md) preserves the source-backlog dispositions separately from delivery.
+Delivery is recorded in [FEATURES_HISTORY.md](../FEATURES_HISTORY.md); this file remains the governing scope and historical design record. The .nightshift relocation has been applied; [MIGRATION_STATUS.md](../MIGRATION_STATUS.md) preserves the source-backlog dispositions separately from delivery.
 
 The [local acceptance report](../reports/v3-acceptance-272m-20260910.md) reconciles the completed continuations and remaining host observations. It includes the accepted Claude explicit-stop boundary and preserves reduced-window and native-goal qualifications, parent-assisted fixture delivery, interrupted accounting, observed convention slips and the private presentation harness limitation. Historical failed outcomes remain intact beside independent adjudications; no incomplete fixture lifecycle is relabeled complete.

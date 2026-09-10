@@ -2,7 +2,7 @@
 
 All 122 original work units have an agreed disposition: 39 retired proposals and 83 retained needs. Their original index entries are preserved in migration/v2, and their design/diagnostic breakouts remain available. The detailed reasons and surviving obligations are in [V3-MIGRATION.md](../V3-MIGRATION.md).
 
-The active backlog now centers on [the v3 MVP](features/nightshift-v3.md) and the explicitly deferred capabilities. Consolidation records where a need is tracked; it does not assert that the implementation or acceptance evidence is complete. The MVP feature governs first-release inclusion. Retained needs outside that scope remain inputs to [continuations](features/v3-continuations.md), with the agreed ledger preserving their complete reasoning. Retired proposals are not shipped features or fixed bugs.
+The delivered [v3 MVP](features/nightshift-v3.md) is recorded in [feature history](FEATURES_HISTORY.md). The active backlog holds deferred capabilities and later work. Consolidation records where a need is tracked; it does not by itself assert delivery of every retained need. The MVP feature governs first-release inclusion. Retained needs outside that scope remain inputs to [continuations](features/v3-continuations.md), with the agreed ledger preserving their complete reasoning. Retired proposals are not shipped features or fixed bugs.
 
 | Original work unit | Agreed disposition | Tracking treatment | Evidence |
 |---|---|---|---|
