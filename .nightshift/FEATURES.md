@@ -12,6 +12,10 @@ Implementation is complete locally under the agreed vision and workflow. Require
 
 ## Exploring
 
+### [Orchestration efficiency](features/orchestration-efficiency.md)
+
+Post-MVP investigation of measured controller overhead: repeated context reads, polling, bookkeeping and mechanical tool round trips. Preserve autonomy, independent review, skeptical validation and cumulative review after fixes; verify actual time and cost improvements before claiming savings.
+
 ### [V3 continuations](features/v3-continuations.md)
 
 Retained capabilities outside the first release: additional platform verification, active-controller transfer, independent overlapping runs, restart/relaunch automation, and broader legacy-guidance conversion or structural repair. The migration ledger preserves all other retained needs for evidence-based follow-up.
