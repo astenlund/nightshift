@@ -4,7 +4,7 @@ Nightshift carries agreed project work through implementation, independent revie
 
 Its priorities are ordered: autonomy first, quality second, then speed and economy. The v3 workflow uses a strong controller and fresh independent reviewers. Fable and Astra are interchangeable; using both is an optional advantage.
 
-**Development status:** this checkout contains the v3 candidate. Targeted native continuation and explicit compaction/recovery checks passed on both Windows hosts; full MVP acceptance remains incomplete within the initial test allowance. The candidate is not yet a verified unattended release. See the [acceptance report](.nightshift/reports/v3-acceptance-20260908.md), [VISION.md](VISION.md), [WORKFLOW.md](WORKFLOW.md) and the [v3 feature](.nightshift/features/nightshift-v3.md).
+**Development status:** the v3 implementation and required Windows acceptance are complete locally. The [acceptance report](.nightshift/reports/v3-acceptance-272m-20260910.md) records the evidence and its qualifications. Publication remains pending. See [VISION.md](VISION.md), [WORKFLOW.md](WORKFLOW.md) and the [v3 feature](.nightshift/features/nightshift-v3.md) for the supported scope.
 
 ## Workflow
 
@@ -66,7 +66,7 @@ Claude Code marketplace installation:
 /plugin install nightshift@astenlund
 ```
 
-This installs the published version, not an unpublished working-tree candidate. Codex packaging is included under `.codex-plugin`; candidate installation and update behavior are part of the outstanding acceptance work. The v3 candidate has no Superpowers dependency.
+These commands install the published release. Local checkout changes require a separate candidate installation. Codex packaging is included under `.codex-plugin`; isolated installation and update checks passed on both Windows hosts. The v3 implementation has no Superpowers dependency.
 
 ## Development
 

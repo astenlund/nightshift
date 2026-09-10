@@ -6,7 +6,7 @@ The active v3 work and its deferred extensions. The original v2 proposals and th
 
 ### [Nightshift v3](features/nightshift-v3.md)
 
-Implementation in progress under the agreed vision and workflow. Deliver the supported Windows lifecycle, independent assurance, dependable continuation and .nightshift migration. Required real-host acceptance, including compaction, remains incomplete; no v3 release is claimed as shipped.
+Implementation is complete locally under the agreed vision and workflow. Required Windows acceptance is complete. The [acceptance report](reports/v3-acceptance-272m-20260910.md) records completed verification and its qualifications. Publication remains pending; this entry does not claim a shipped release.
 
 **Requires:** none.
 
