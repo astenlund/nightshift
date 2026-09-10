@@ -28,7 +28,7 @@ Cross-run suggestions would need a durable ledger the engine deliberately does n
 
 ## First suggested split
 
-The concrete split this feature would propose on its first run already has its own entry: [Split the plan-correctness dimension into a static cell and an executable cell](../QUICK_WINS.md#review-dimension-sourcing), which separates static claims (file paths, anchors, cited API surfaces, cross-file claims, embedded literals) from executable claims (embedded test code execution and spec-derived mappings re-derived from source). That quick win stands on its own evidence and does not wait for this feature; it is named here because it is the worked example of the output this feature produces, and because the two must agree on how a split is described.
+The concrete split this feature would propose on its first run already has its own entry: [Split the plan-correctness dimension into a static cell and an executable cell](../migration/v2/QUICK_WINS.md#review-dimension-sourcing), which separates static claims (file paths, anchors, cited API surfaces, cross-file claims, embedded literals) from executable claims (embedded test code execution and spec-derived mappings re-derived from source). That quick win stands on its own evidence and does not wait for this feature; it is named here because it is the worked example of the output this feature produces, and because the two must agree on how a split is described.
 
 ## Files this touches
 
