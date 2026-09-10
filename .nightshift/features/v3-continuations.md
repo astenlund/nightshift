@@ -16,4 +16,6 @@ These capabilities are deliberately outside [the v3 MVP](nightshift-v3.md). They
 - Relaunch after host exit or Windows restart.
 - Convert broader legacy guidance and repair incompatible project structures.
 
+Reboot checkpointing and multi-session shutdown coordination are explored in [Night Guard](night-guard.md). Automatic host relaunch remains a separate design choice.
+
 Streaming findings, stronger command enforcement, structured model teams and interactive session pairing have separate Exploring entries. [MIGRATION_STATUS.md](../MIGRATION_STATUS.md) and [V3-MIGRATION.md](../../V3-MIGRATION.md) retain every other surviving need and its rationale. Before choosing a continuation, reconcile that need with actual MVP evidence; consolidation alone is not delivery, and an old mechanism is not automatically the new design.
