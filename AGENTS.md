@@ -1,74 +1,68 @@
 # Nightshift repository instructions
 
-This file provides guidance to coding agents working with this repository.
+## Purpose and workflow
 
-## What this repo is
+Nightshift is a Claude Code and Codex plugin for carrying agreed engineering work through implementation, independent review, verification, documentation, session retrospective and follow-up triage. Its invariant priorities are autonomy first, quality second, then speed and economy, within the user's authority and limits.
 
-Nightshift is a Claude Code and Codex plugin: a feature-lifecycle workflow built from Markdown skills plus bundled Node.js controllers, parsers, and support modules. Most of the "source" is instruction prose that an agent executes, not code. The repo is also its own plugin marketplace (`.claude-plugin/marketplace.json` with `source: "./"`).
+Use [VISION.md](VISION.md) and [WORKFLOW.md](WORKFLOW.md) for the agreed direction, [the v3 feature](.nightshift/features/nightshift-v3.md) for supported scope, and [the operating brief](internal/workflow.md) for execution. Historical proposals and migration records preserve reasoning; they do not reinstate retired requirements or authorize implementation.
 
-The operational host-neutralization work is tracked by [Agent-host-agnostic Nightshift](.claude/features/agent-host-agnostic-nightshift.md), which preserves `.claude/` as the shared backlog-data namespace on every host.
+Investigate the request and settle consequential commitments. Small work can use an agreed readback; substantial work needs a concise governing spec. Preserve valid agreement through compatible corrections and compaction. Implement directly with a strong model. Written implementation plans are exceptional guidance for deliberately chosen weaker or cheaper implementers, not a routine stage. There is no Superpowers dependency or plan-stamp/wave-verifier ladder.
 
-## Backlogs and indexes
+The repository is self-hosting: use the v3 independent review and repair process for Nightshift development. Within that process, every review considers the full dimension brief, every finding receives fresh skeptical validation and a value/authority disposition, and every repair batch receives relevant checks and strong cumulative reassessment. Fable and Astra are interchangeable strong roles; prefer equivalent-strength cross-host review when suitable, with fresh same-host review valid. Plain `review` and `review-loop` requests retain the global direct-agent routines; explicit `revise` invokes Nightshift.
 
-Four repo-local indexes live under `.claude/`. Consult the relevant indexes before proposing or starting related work because a task may already be queued, designed, diagnosed, or covered by an existing pattern:
+Use [the runtime interface](internal/runtime/REFERENCE.md) before operating a run. `.nightshift/runs/state.sqlite` owns durable run state; native goals and hooks support continuation. Read focused status at consequential boundaries and after compaction, reconcile actual files and surviving workers, and use runtime operations instead of editing saved state. Scratch notes do not replace that authority. Finish documentation before the session retrospective, then triage follow-ups one at a time.
 
-- `.claude/QUICK_WINS.md`: refactors ready to land when time allows. Shipped entries are appended to `.claude/QUICK_WINS_HISTORY.md` (described below).
-- `.claude/FEATURES.md`: product-level feature ideas, with one file per feature under `.claude/features/`. When a change edits a feature file's design content, sync its `FEATURES.md` excerpt in the same change; excerpt-vs-file drift is a recurring review-finding class (three confirmed findings across the 2026-08-13 wave-lifecycle reviews). Shipped entries are appended to `.claude/FEATURES_HISTORY.md` (described below). When sibling feature files start duplicating shared concerns (machinery, patterns, conventions), promote an umbrella file that hosts the shared content and trim the siblings to deltas; cross-references through an umbrella scale better than pairwise cross-references.
-- `.claude/BUGS.md`: known bugs awaiting fix, with one file per bug under `.claude/bugs/` when more than a few lines of description is needed. Fixed entries are appended to `.claude/BUGS_HISTORY.md` (described below).
-- `.claude/PATTERNS.md`: cross-cutting design patterns that span multiple features, with one file per pattern under `.claude/patterns/`. Complementary to the umbrella-promotion heuristic above: umbrellas cluster children of one family; patterns cluster concerns that span families. A pattern graduates here when the same structure would otherwise be re-described in two or more feature files.
+## Project artifacts and backlog
 
-Four locations sit alongside the indexes and are consulted only on demand when relevant work is in flight:
+Project-owned Nightshift artifacts live under `.nightshift` on both hosts. Host-owned configuration stays in its required location. `CLAUDE.md` imports this file; keep repository guidance canonical here.
 
-- `.claude/plans/<date>-<slug>.md`: implementation plans produced by the writing-plans workflow. **Ephemeral**: a plan exists while the implementation is in flight and is deleted once the work lands. The code, tests, and commits are the durable record. Plans are purely mechanical step-by-step instructions for the agent doing the work. There is no "implemented plans" archive. Plans are never committed: in a Git repository, `.claude/plans/` is git-ignored by the repository-local `.gitignore`, independent of any track-or-ignore election for the durable backlog files.
-- `.claude/QUICK_WINS_HISTORY.md`: archive of shipped quick wins, split out from `QUICK_WINS.md` so the active backlog stays scannable. Append entries here as soon as the quick win lands; the file itself is consulted only when something pulls it in (a pattern-doc cross-reference, an archaeological lookup, a negative-knowledge sweep). Negative-knowledge entries (approaches attempted and reverted) are first-class promotion candidates into the relevant `.claude/patterns/<slug>.md` Cautionary tales sections.
-- `.claude/FEATURES_HISTORY.md`: archive of shipped features and shipped slices, split out from `FEATURES.md` so the active backlog stays scannable. Append entries here as soon as a feature or slice lands.
-- `.claude/BUGS_HISTORY.md`: archive of fixed bugs, split out from `BUGS.md`. Append entries here as soon as a bug is fixed.
+Consult relevant indexes before proposing or starting related work:
 
-**Walk-and-remove convention.** When a feature, slice, quick win, or bug-fix ships, the same change set that appends its entry to the relevant history archive ALSO walks every other `**Requires:**` line in `FEATURES.md` / `BUGS.md` and drops references to the just-shipped item; if the dropped reference was the only one on the line, the line becomes `Requires: none.`. Active `Requires:` lines therefore describe what is *currently* blocking, and `/nightshift:ready` never has to consult the history archives to resolve dependencies; the dependency graph settles as work ships.
+- [FEATURES.md](.nightshift/FEATURES.md): features and Exploring drafts, with design records under `.nightshift/features`.
+- [BUGS.md](.nightshift/BUGS.md): known defects; longer diagnoses belong under `.nightshift/bugs`.
+- [QUICK_WINS.md](.nightshift/QUICK_WINS.md): smaller work items.
+- [PATTERNS.md](.nightshift/PATTERNS.md): reusable concerns spanning features, with supporting files under `.nightshift/patterns`.
 
-Brainstorming output lives in feature files (or in patterns when cross-cutting / in bugs when diagnostic) rather than as separate dated specs. Pre-feature exploratory brainstorms land as draft features with `status: exploring` frontmatter and an entry in `FEATURES.md`'s `## Exploring` section; `/nightshift:ready` lists them titles-only as drafts, never in the ready set, and `/nightshift:exploring` shows the full draft list. They graduate to a themed `##` section with a `**Requires:**` line once the design firms up.
+Keep index excerpts consistent with their feature or bug records. Share genuinely repeated design concerns through a pattern or family umbrella instead of duplicating them. Readiness and graduation are not implementation authority. Exploring entries remain outside the ready set until their commitments and dependencies are settled.
 
-The `/nightshift:ready` command parses each entry's `**Requires:**` line (in-backlog links only) and optional `**External:**` line (external primitives only) in `FEATURES.md` and `BUGS.md` and reports the unblocked work set. Breakout files carry neither line; the index is the sole dependency authority and the parser reports a breakout that carries one. Run it when picking what to work on next.
+Dependency declarations belong in the indexes, not breakout files. Preserve the `Requires`/`External` grammar and use the real ready parser to evaluate it. When work ships or a bug is fixed, move its entry to the corresponding `FEATURES_HISTORY.md`, `QUICK_WINS_HISTORY.md` or `BUGS_HISTORY.md`, remove satisfied dependency references from active indexes, and re-run the parser. Retired proposals are recorded as retired, never as shipped or fixed. [MIGRATION_STATUS.md](.nightshift/MIGRATION_STATUS.md) and [V3-MIGRATION.md](V3-MIGRATION.md) retain the v2 dispositions; `.nightshift/migration/v2` holds the original indexes.
 
-Backlog prose is one paragraph or one bullet per physical line, never hard-wrapped at a column: a search hit then shows the whole entry, the parsers anchor on whole lines, and an edit shows as one changed line instead of a reflowed block. `/nightshift:ready` reports a hard-wrapped file as a notice and `/nightshift:init-backlog` unwraps it.
+Keep backlog paragraphs and bullets on single physical lines. Run `unwrap.js` against the relevant file for hard-wrap repairs, inspect its diff, then run ready again. Initialization does not automatically unwrap existing prose.
 
-## Development commands
+Feature brainstorming belongs in feature records; new standalone governing specs belong in `.nightshift/specs`, and durable acceptance reports belong in `.nightshift/reports`. Respect explicitly selected document locations.
 
-- Run the agreement controller suite: `node skills/spec-agreement/spec-agreement.test.js`.
-- Run the ready parser suite: `node skills/ready/ready.test.js` (fixture-based, no framework, exit code 1 on failure).
-- Run the backlog unwrap suite: `node skills/init-backlog/unwrap.test.js` (hard-wrap detection and repair, plus the gate that this repository's own `.claude/` carries no hard wraps).
-- Run the revise Workflow safety suite: `node internal/revise/revise-round.test.js`.
-- Run the revise rigor derivation suite: `node internal/revise/rigor.test.js`.
-- Run the revise orchestration suite: `node internal/revise/orchestration.test.js`.
-- Run the universal-skill topology suite: `node --test tests/universal-skill-topology.test.js`.
-- Run the host-discovery smoke suite: `node tests/host-discovery-smoke.test.js`.
-- Run the init-backlog controller suite: `node tests/init-backlog-controller.test.js`. Use a full checkout for baseline comparisons. A linked worktree uses a `.git` indirection file and can materialize template bytes as CRLF, producing spurious `Prompt baseline manifest is not canonical` failures.
-- Run the release surface suite: `node tests/release-surface.test.js` (release state, CI conformance, documented command lists, and the version-increase gate over the unpushed range locally or the pull-request range in CI, where the checkout fetches full history so `origin/main` resolves; generic, so version bumps and doc edits never touch a feature suite). The gate reads committed state only and skips with a diagnostic when no upstream or `origin/main` resolves; the diagnostic names the last git error so a broken git reads differently from a missing ref.
-- CI runs all ten suites on Node 22.
-- The plugin is developed and verified on Windows, and CI runs on `windows-latest`; POSIX code paths exist but are inert and unsupported for live use.
-- Run the ready parser manually: `node skills/ready/ready.js [repo-root-or-.claude-dir]` (emits JSON on stdout).
-- Check or repair backlog line discipline manually: `node skills/init-backlog/unwrap.js [--write] .claude` (JSON report on stdout; exit 1 in check mode when any file is hard-wrapped, or in either mode when a file could not be read).
-- There is no build or lint step.
+Exceptional implementation plans belong in ignored `.nightshift/plans` and are temporary working aids; preserve existing plans unless their cleanup is authorized. `.nightshift/inbox` and `.nightshift/runs` are ignored here. Setup writes its self-ignored recovery journal under `.nightshift/setup`; preserve that journal when resolving migration conflicts. Temporary scripts, probes and raw acceptance evidence belong in `.tmp`; preserve evidence still needed for resumption or assessment.
 
 ## Architecture
 
-The public surface is ten skills under `skills/`: `exploring`, `handover`, `init-backlog`, `ready`, `revise-code`, `revise-docs`, `revise-lore`, `revise-plan`, `revise-spec`, and `spec-agreement`. `handover` is the orchestrator: it detects plan and spec stage gates from content-fingerprinted hardening stamps written by those document review loops, states the read (confirming only when detection is not clean), and drives the remaining lifecycle from spec gate through the morning report. Code review does not stamp source files; its completion is consumed within the active revise or handover flow. Final completion is a separate handover-owned record. `init-backlog` scaffolds the four-index `.claude/` backlog layout (`QUICK_WINS.md`, `FEATURES.md`, `BUGS.md`, `PATTERNS.md`) by driving the bundled deterministic controller `skills/init-backlog/init-backlog.js` over the normalized template assets in `skills/init-backlog/templates/`, including the track-vs-ignore version-control election for the durable backlog files; `.claude/plans/` is git-ignored unconditionally. The controller's inspect and apply path consumes `skills/ready/ready.js`'s catalog core (`analyzeCatalog`, required by `lib/inspection.js` and `lib/apply-manifest.js`) and `skills/init-backlog/unwrap.js`'s `unwrapText`, so a change to either surface is a cross-skill change for init-backlog. The public `revise-code`, `revise-plan`, and `revise-spec` wrappers delegate to the shared private engine in `internal/revise/`.
+The eight public skills are `exploring`, `handover`, `init-backlog`, `ready`, `revise-code`, `revise-docs`, `revise-lore` and `revise-spec`. Their instructions live under `skills`; shared operating rules live in `internal/workflow.md`.
 
-Readiness and graduation are not approval: before spec-governed work, present the current decision-complete digest and obtain explicit agreement in this session.
+- `internal/runtime/cli.js` exposes the operations documented in `internal/runtime/REFERENCE.md`. Runtime modules separate SQLite storage, lifecycle gates, evidence and review, host dispatch, private probes and worker ownership.
+- `hooks/hooks.json` and `internal/runtime/hook.js` provide SessionStart, PreCompact and Stop integration. Hook configuration is not proof that continuation is loaded or trusted on a host.
+- `skills/init-backlog/init-backlog.js` delegates setup and migration to `internal/setup.js`, with reference translation in `internal/migration-references.js`.
+- `skills/ready/ready.js` owns dependency analysis, using `internal/backlog-catalog.js` for catalog primitives and `internal/markdown.js` for scanning. Unwrapping shares `internal/backlog-catalog.js`. Keep setup, parser and unwrap consumers coherent when changing these shared modules; add meaningful fixture coverage for grammar changes.
 
-Compatible governing-text changes that remain within the accepted digest continue autonomously after a cited contract-fit check.
+Resolve bundled resources from the executing skill/plugin root and target-project paths from the actual checkout under review. Derive probe payloads, commands and cleanup paths from that root rather than hardcoding the canonical clone.
 
-Most public skills bundle the files they need; a procedure that bundles nothing still belongs here when it is a user-facing surface, since skills reach every host that runs them. The `internal/revise/` engine owns *how* the review run, rounds, reactivation waves, the holistic gate, checkpoints, skeptic verification, and follow-up logging work; the artifact parameter files `code.md` / `plan.md` / `spec.md` own *what* to review (dimensions, model pin, delivery rules, edit surface). Loop-mechanics changes go in `SKILL.md`; dimension or artifact-specific changes go in the parameter file. `.tmp/revise-state.md` is the controller-owned state authority. `revise-round.workflow.js` starts every active review cell concurrently, fans out a completed reviewer's skeptic work immediately (running a low-effort dedup judge first so duplicate-shape findings share one skeptic verdict, surfaced as `sharedVerdictFrom`), and reconciles returned cells and findings by stable ID. The `SKILL.md` manual Agent fallback must preserve the same scheduling and whole-round adjudication barrier while implementing the documented checkpoint and recovery contract; it has no dedup judge and submits one fresh skeptic per finding. `revise-round.test.js` exercises Workflow execution safety. `skills/ready/` is the deterministic backlog-dependency parser (also exports its internals for tests); `ready.test.js` holds the fixture tests. The Requires-line grammar lives only in `ready.js`, except the `REQUIRES_LABEL` and `EXTERNAL_LABEL` label patterns, which `internal/backlog-catalog.js` owns and both the ready parser and the agreement controller import. If output looks wrong for some backlog shape, fix the grammar and add a fixture test; never hand-approximate the graph in the skill prose. `skills/exploring/` is the second view over that same parser output, rendering `## Exploring` drafts in full (titles, excerpts, breakout links) while `/nightshift:ready` lists them titles-only. It bundles no files of its own and invokes `skills/ready/ready.js`.
+## Development and verification
 
-The holistic verifier never launches before every applicable cell has certified the current fingerprint.
-A run completes only on the conjunction of that wave convergence and a verifier stamp over the same fingerprint. A clean LGTM with a concrete nonblank verification note earns that stamp; only a current verifier round that applies no fix and creates an authoritative deferred follow-up may stamp without one.
+The verified host target is Windows with Node.js 22.23 or later, Git, PowerShell 7 and native Claude Code/Codex executables. Other operating systems and command-shim-only installations remain unverified. Node uses built-in modules, including SQLite; no package installation is needed.
 
-Skill prose references bundled files via `${CLAUDE_PLUGIN_ROOT}` so paths resolve in the installed cache.
+Run commands from the repository root, using `pwsh -NoProfile` for PowerShell:
 
-## Conventions
+- Catalog: `node skills/ready/ready.js .`
+- Backlog line check: `node skills/init-backlog/unwrap.js .nightshift` (add `--write` only for an intended repair).
+- Parser fixtures: `node skills/ready/ready.test.js`
+- Unwrap fixtures: `node skills/init-backlog/unwrap.test.js`
+- Packaging: `node --test tests/package.test.js`
+- Runtime or migration changes: use `node --test` with the relevant explicit filenames from `tests/runtime*.test.js` and `tests/setup.test.js`.
 
-- Edit this clone, never an installed plugin cache. Every unpushed batch that changes shipped plugin behavior must include exactly one monotonic version increase in `.claude-plugin/plugin.json`. Shipped plugin behavior is public and internal `SKILL.md` procedures, bundled non-test skill resources, `hooks/**`, and every `.claude-plugin/plugin.json` field other than `version`. Repository-only documentation, tests, CI configuration, marketplace metadata, and repository guidance do not independently require a version increase. Pushing remains user-directed. Claude Code installations with auto-update enabled receive a pushed release automatically; manual refresh commands are `claude plugin update nightshift@astenlund` for Claude Code and `codex plugin marketplace upgrade astenlund` for Codex.
-- The plugin is self-hosting: review changes to it with its own revise loops, and `revise-lore` routes workflow learnings back into these files.
-- `.claude-plugin/plugin.json` carries the version used for update detection. Its `description` must stay in sync with the copy in `.claude-plugin/marketplace.json`.
-- Cross-file consistency matters more than usual here: commands and skills describe each other (handover's procedure names the revise commands, the revise parameter files reference handover's fingerprint recipe, README's table and dimension counts mirror the skill files). When changing one file, grep the others for descriptions of it.
-- When a live probe or plan verification is intended to exercise the checkout under review, resolve that checkout's root once and derive payload paths, embedded repository references, invocation arguments, and cleanup targets from it. Do not hardcode the canonical clone path, which can cause an isolated worktree run to inspect or clean up a different checkout.
+[CI](.github/workflows/ci.yml) defines the full deterministic suite on Windows and Node 22. Choose checks appropriate to the change; repository prose edits do not justify replaying the native acceptance campaign. Actual model-owned behavior needs installed-host evidence when changed. Real-model campaigns require an explicit aggregate budget and reliable usage accounting; unverified or interrupted outcomes stay qualified.
+
+## Packaging and publication
+
+Edit this clone, never an installed plugin cache. Keep `.claude-plugin/plugin.json` and `.codex-plugin/plugin.json` versions equal. Each unpublished batch changing shipped plugin behavior needs one monotonic version increase over upstream. Behavior includes bundled non-test code and resources under `skills`, `internal` and `hooks`, plus non-version fields in either plugin manifest. Repository-only documentation, tests, CI, marketplace metadata and repository guidance do not independently require a version increase.
+
+Keep the Claude plugin description synchronized with its plugin entry in `.claude-plugin/marketplace.json`; the marketplace uses `source: "./"`. Cross-check documentation and consumers when changing public skills, runtime operations, artifact locations or packaging. Pushes remain user-directed and require current independent review coverage. Use [README.md](README.md) for installation guidance, and verify candidate installations separately from the published release.
+
+For manual maintenance, `claude plugin update nightshift@astenlund` updates the Claude Code plugin (restart to apply); `codex plugin marketplace upgrade astenlund` refreshes the configured Codex Git marketplace snapshot. Check current CLI help for scope and confirmation options.
