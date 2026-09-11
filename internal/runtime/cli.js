@@ -11,6 +11,7 @@ const { verifyCommand } = require('./evidence');
 const { dispatchReview, readReceipt, validateBase, validateRequest } = require('./review');
 const { exhaustedLimit, remainingTime } = require('./limits');
 const { runProbe } = require('./probes');
+const { awaitWorker } = require('./wait');
 
 async function execute(root, request, dependencies = {}) {
   const store = new RunStore(root, { create: request.action === 'create' });
@@ -23,6 +24,8 @@ async function execute(root, request, dependencies = {}) {
     }
     if (request.action === 'history') return store.history(request.runId ?? store.read()?.id);
     if (request.action === 'inspect') return store.read(request.runId);
+    // Awaited so the store stays open until the observation finishes; the finally below closes it.
+    if (request.action === 'wait') return await awaitWorker(store, request, dependencies);
     const state = store.read();
     requireCondition(state, 'missing-state', 'No saved Nightshift run; create or recover the authorized run first');
     requireCondition(state?.controller.session === request.actor?.session && state.controller.host === request.actor?.host && state.revision === request.revision, 'stale-owner', 'Read current state and reconcile the controller identity before changing or dispatching work');

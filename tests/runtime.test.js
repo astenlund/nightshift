@@ -7,18 +7,19 @@ const test = require('node:test');
 const { RunStore } = require('../internal/runtime/store');
 const { snapshot, fresh, verifyCommand } = require('../internal/runtime/evidence');
 const { DIMENSIONS, commitmentsFor, obligationBrief, reviewGate, transition } = require('../internal/runtime/lifecycle');
+const { execute } = require('../internal/runtime/cli');
 
 const scratch = path.resolve(__dirname, '../.tmp/runtime-tests');
 fs.mkdirSync(scratch, { recursive: true });
 const actor = { host: 'codex', session: 'controller' };
 
-function fixture(t, tasks) {
+function fixture(t, tasks, extra = {}) {
   const root = fs.mkdtempSync(path.join(scratch, 'case-'));
   const store = new RunStore(root, { create: true });
   t.after(() => { store.close(); fs.rmSync(root, { recursive: true, force: true }); });
   fs.writeFileSync(path.join(root, 'subject.txt'), 'original\r\n');
   fs.writeFileSync(path.join(root, 'sibling.txt'), 'related\r\n');
-  const input = { controller: actor, authority: 'User confirmed this fixture outcome', objective: 'Deliver verified behavior', tasks: tasks ?? [{ id: 'subject', title: 'Subject change', agreement: { source: 'user message', outcome: 'Both paths behave correctly' } }] };
+  const input = { controller: actor, authority: 'User confirmed this fixture outcome', objective: 'Deliver verified behavior', tasks: tasks ?? [{ id: 'subject', title: 'Subject change', agreement: { source: 'user message', outcome: 'Both paths behave correctly' } }], ...extra };
   const state = store.create(input);
   return { root, store, state, input };
 }
@@ -200,4 +201,70 @@ test('database and evidence reject linked input paths', t => {
   fs.linkSync(path.join(f.root, 'subject.txt'), path.join(f.root, 'linked.txt'));
   assert.throws(() => snapshot(f.root, ['linked.txt']), { code: 'unsafe-path' });
   assert.throws(() => snapshot(f.root, ['../outside.txt']), { code: 'unsafe-path' });
+});
+
+const registerWorker = (f, id) => apply(f, { action: 'worker', worker: { id, session: id + '-session', assignment: 'Assess the change', role: 'reviewer', writes: [] } });
+const setWorker = (f, id, change) => f.store.update(actor, f.store.read().revision, 'fixture-worker', state => Object.assign(state.workers.find(worker => worker.id === id), change));
+const wait = (f, request, dependencies) => execute(f.root, { action: 'wait', ...request }, dependencies);
+
+test('wait observes a saved worker without recording progress', async t => {
+  const f = fixture(t);
+  registerWorker(f, 'lead');
+  const revision = f.store.read().revision;
+  const timedOut = await wait(f, { workerId: 'lead', timeoutMs: 50 });
+  assert.deepEqual({ ...timedOut, elapsedMs: null }, { runId: f.state.id, revision, runStatus: 'running', workerId: 'lead', workerStatus: 'running', active: true, runnerAlive: null, receipt: null, evidence: null, elapsedMs: null, reason: 'timeout' });
+  assert.ok(timedOut.elapsedMs >= 50);
+  assert.equal(f.store.read().revision, revision);
+  const pending = wait(f, { workerId: 'lead', runId: f.state.id, timeoutMs: 5000 });
+  setTimeout(() => apply(f, { action: 'worker-finished', workerId: 'lead', status: 'complete', evidence: 'Reviewer process exited 0' }), 100);
+  const finished = await pending;
+  assert.equal(finished.reason, 'worker-result');
+  assert.equal(finished.workerStatus, 'complete');
+  assert.equal(finished.active, false);
+  assert.equal(finished.evidence, 'Reviewer process exited 0');
+  assert.equal(finished.revision, revision + 1);
+  await assert.rejects(wait(f, { workerId: 'nobody' }), { code: 'unknown-worker' });
+  await assert.rejects(wait(f, {}), { code: 'invalid-request' });
+  await assert.rejects(wait(f, { workerId: 'lead', timeoutMs: -1 }), { code: 'invalid-request' });
+});
+
+test('wait reports uncertain runners, unverified results and stopped runs for reconciliation', async t => {
+  const f = fixture(t);
+  registerWorker(f, 'runner');
+  setWorker(f, 'runner', { runnerPid: 4242 });
+  const alive = await wait(f, { workerId: 'runner', timeoutMs: 20 }, { processExists: () => true });
+  assert.equal(alive.reason, 'timeout');
+  assert.equal(alive.runnerAlive, true);
+  const missing = await wait(f, { workerId: 'runner', timeoutMs: 5000 }, { processExists: () => false });
+  assert.equal(missing.reason, 'runner-missing');
+  assert.equal(missing.active, true);
+  assert.equal(missing.runnerAlive, false);
+  assert.equal(missing.workerStatus, 'running');
+  const raced = await wait(f, { workerId: 'runner', timeoutMs: 5000 }, { processExists: () => { apply(f, { action: 'worker-finished', workerId: 'runner', status: 'complete', evidence: 'Completion committed during the probe' }); return false; } });
+  assert.equal(raced.reason, 'worker-result');
+  assert.equal(raced.workerStatus, 'complete');
+  assert.equal(raced.runnerAlive, false);
+  registerWorker(f, 'second');
+  setWorker(f, 'second', { status: 'unverified', receipt: path.join(f.root, '.nightshift/runs/reviews/second/receipt.json') });
+  const unverified = await wait(f, { workerId: 'second', timeoutMs: 5000 });
+  assert.equal(unverified.reason, 'worker-result');
+  assert.equal(unverified.active, true);
+  assert.equal(unverified.receipt, '.nightshift/runs/reviews/second/receipt.json');
+  registerWorker(f, 'third');
+  apply(f, { action: 'stop', kind: 'user-stop', reason: 'Fixture stop' });
+  const stopped = await wait(f, { workerId: 'third', timeoutMs: 5000 });
+  assert.equal(stopped.reason, 'run-stopped');
+  assert.equal(stopped.runStatus, 'stopped');
+  assert.equal(stopped.active, true);
+});
+
+test('wait ends at the run deadline instead of the requested timeout', async t => {
+  const f = fixture(t, undefined, { limits: { deadlineUtc: new Date(Date.now() + 400).toISOString() } });
+  registerWorker(f, 'lead');
+  const reached = await wait(f, { workerId: 'lead', timeoutMs: 5000 });
+  assert.equal(reached.reason, 'deadline');
+  assert.ok(reached.elapsedMs < 5000);
+  const expired = await wait(f, { workerId: 'lead', timeoutMs: 5000 });
+  assert.equal(expired.reason, 'deadline');
+  assert.ok(expired.elapsedMs < 1000);
 });
