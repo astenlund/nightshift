@@ -57,3 +57,67 @@ test('delegation preserves writes, reviewer strength and controller judgment', t
   assert.throws(() => update({ action: 'worker', worker: { id: 'peer', session: 'peer-session', assignment: 'Review sibling', role: 'peer', lead: 'lead', writes: [], model: 'claude-opus-4-7', effort: 'high' } }), { code: 'peer-mismatch' });
   assert.throws(() => store.update({ host: 'claude', session: 'supervisor' }, store.read().revision, 'accept', state => { state.status = 'complete'; }), { code: 'wrong-owner' });
 });
+
+test('unattended Stop permits a pause on user decisions and keeps resisting every other state', t => {
+  const parent = path.resolve(__dirname, '../.tmp/hook-tests');
+  fs.mkdirSync(parent, { recursive: true });
+  const actor = { host: 'claude', session: 'owner' };
+  const agreement = { source: 'User', outcome: 'Behavior' };
+  const open = ids => {
+    const root = fs.mkdtempSync(path.join(parent, 'pause-'));
+    const store = new RunStore(root, { create: true });
+    t.after(() => { store.close(); fs.rmSync(root, { recursive: true, force: true }); });
+    store.create({ objective: 'Work', authority: 'User handover', mode: 'unattended', controller: actor, tasks: ids.map(id => ({ id, title: id, agreement, requires: id === 'follow' ? ['work'] : [] })) });
+    const update = request => store.update(actor, store.read().revision, request.action, state => transition(state, request));
+    update({ action: 'continuation', mechanism: { verified: true, evidence: 'Actual recovery observed in fixture' } });
+    return { store, update, stop: () => handleHook({ cwd: root, session_id: actor.session, hook_event_name: 'Stop' }) };
+  };
+  const block = (run, taskId, kind) => run.update({ action: 'block', taskId, blocker: { kind, reason: 'Fixture blocker', recoveryAttempted: 'Checked prior agreement' } });
+
+  const paused = open(['work']);
+  block(paused, 'work', 'user-decision');
+  const revision = paused.store.read().revision;
+  const pause = paused.stop();
+  assert.equal(pause.decision, undefined);
+  assert.match(pause.systemMessage, /paused on user decisions for work/);
+  assert.match(pause.systemMessage, /Session closing remains due/);
+  assert.equal(paused.store.read().revision, revision);
+  assert.equal(paused.store.read().stopRecovery, undefined);
+  paused.update({ action: 'retrospective', evidence: 'Retrospective recorded before the pause' });
+  assert.equal(paused.stop().decision, undefined);
+  assert.equal(paused.store.read().closing.retrospectiveEvidence, 'Retrospective recorded before the pause');
+  paused.update({ action: 'triage', evidence: 'Triage recorded' });
+  assert.doesNotMatch(paused.stop().systemMessage, /closing remains due/);
+
+  const dependents = open(['work', 'follow']);
+  block(dependents, 'work', 'user-decision');
+  assert.equal(dependents.stop().decision, undefined);
+
+  const independent = open(['work', 'other']);
+  block(independent, 'work', 'user-decision');
+  assert.equal(independent.stop().decision, 'block');
+
+  const capability = open(['work']);
+  block(capability, 'work', 'capability');
+  assert.equal(capability.stop().decision, 'block');
+  capability.update({ action: 'retrospective', evidence: 'Retrospective recorded' });
+  assert.equal(capability.stop().decision, 'block');
+  capability.update({ action: 'triage', evidence: 'Triage recorded' });
+  assert.match(capability.stop().systemMessage, /unfinished blocked work/);
+
+  const resource = open(['work']);
+  block(resource, 'work', 'resource');
+  assert.equal(resource.stop().decision, 'block');
+
+  const mixed = open(['work', 'other']);
+  block(mixed, 'work', 'user-decision');
+  block(mixed, 'other', 'dependency');
+  assert.equal(mixed.stop().decision, 'block');
+
+  const staffed = open(['work']);
+  block(staffed, 'work', 'user-decision');
+  staffed.update({ action: 'worker', worker: { id: 'lead', session: 'lead-session', assignment: 'Broad review', role: 'reviewer', writes: [] } });
+  assert.equal(staffed.stop().decision, 'block');
+  staffed.update({ action: 'worker-finished', workerId: 'lead', status: 'complete', evidence: 'Reviewer process exited 0' });
+  assert.equal(staffed.stop().decision, undefined);
+});

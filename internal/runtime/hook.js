@@ -41,7 +41,14 @@ function handleHook(input) {
     const context = 'Nightshift continuation. Reconcile the saved state and actual files before dependent actions.\n' + JSON.stringify(brief);
     if (input.hook_event_name === 'Stop') {
       if (state.mode !== 'unattended') return { systemMessage: 'Nightshift attended work remains saved. Reconcile its outstanding obligations before resuming or claiming completion.' };
-      if (brief.next.length === 0 && brief.workers.length === 0 && !brief.finalReconciliationPending && !(brief.closing.ready && brief.closing.stage !== 'complete')) return { systemMessage: 'Nightshift has unfinished blocked work. Progress and unanswered decisions are preserved; completion is not established.' };
+      const idle = brief.next.length === 0 && brief.workers.length === 0 && !brief.finalReconciliationPending;
+      const closingDue = brief.closing.ready && brief.closing.stage !== 'complete';
+      const awaitingUser = brief.blockers.length > 0 && brief.blockers.every(entry => entry.blocker.kind === 'user-decision');
+      if (idle && awaitingUser) {
+        // A conversational pause: the only way forward is an answer from the user, so ask instead of closing first.
+        return { systemMessage: `Nightshift is paused on user decisions for ${brief.blockers.map(entry => entry.id).join(', ')}. Progress is preserved; completion is not established.${closingDue ? ' Session closing remains due when the run resumes or ends.' : ''}` };
+      }
+      if (idle && !closingDue) return { systemMessage: 'Nightshift has unfinished blocked work. Progress and unanswered decisions are preserved; completion is not established.' };
       const previous = state.stopRecovery;
       const reminders = previous?.revision === state.revision ? previous.reminders + 1 : 1;
       if (reminders > 3) return { continue: false, stopReason: 'Nightshift continuation made no recorded progress after three reminders. Work remains incomplete. Reconcile the saved state and repair the continuation mechanism before unattended resumption.' };
