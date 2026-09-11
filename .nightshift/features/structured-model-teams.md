@@ -11,3 +11,5 @@ status: exploring
 Explore optional declared multi-model team arrangements, such as a Fable controller with an Astra implementer, and structured assignments of models to lifecycle roles. The user requested this as a later feature on 2026-09-07 while refining cross-host review placement.
 
 The [v3 MVP](nightshift-v3.md) includes cross-host reviewer dispatch as a preference, leaving assignments to controller judgment and preserving a complete single-host path. This later feature would add deliberate team arrangements while respecting availability, role ownership, required review strength, independent contexts, and the invariant priority order. Configuration, selection, and fallback details remain open; no particular team layout is prescribed yet.
+
+The agreed policy for [initial spec/code reviewer selection](initial-reviewer-selection.md) is tracked separately, with additional enforcement left open. It does not prescribe the broader team arrangements explored here.

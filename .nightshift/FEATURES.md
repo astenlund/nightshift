@@ -32,6 +32,10 @@ Deferred beyond the MVP. Streaming could overlap validation with the remaining r
 
 Deferred exploration of stronger enforcement for explicit command restrictions. Existing restrictions remain binding; no general protected-shell mode is claimed.
 
+### [Initial reviewer selection](features/initial-reviewer-selection.md)
+
+Policy for the initial spec/code lead: Fable or Astra only, prefer the other host, preserve the author or implementer effort floor, and use hard when effort is unknown. Strong same-host fallback takes precedence over a weaker cross-host reviewer. Additional enforcement style, if any, remains open.
+
 ### [Structured model teams](features/structured-model-teams.md)
 
 Later deliberate model-role arrangements. The MVP uses task-fit preferences and controller judgment, with interchangeable strong roles and equivalent-strength cross-host review when suitable.
