@@ -16,7 +16,7 @@
         "source": "github",
         "repo": "astenlund/agent-hooks"
       },
-      "description": "Claude Code hooks for disciplined agent shell usage: refuses inline interpreter bodies so scripts are written to files and run by path."
+      "description": "Claude Code hooks for disciplined agent sessions: refuses inline interpreter bodies so scripts are written to files and run by path, and warns as context usage crosses 50% and each 10% band above."
     }
   ]
 }
