@@ -237,7 +237,10 @@ class Setup {
           continue;
         }
         if (!require('node:buffer').isUtf8(bytes) || bytes.includes(0) || !bytes.toString('utf8').includes('.claude')) continue;
-        if (!matchesPurpose(file, policy.activeReferences ?? []) || rewriteReferences(bytes, moves).equals(bytes)) unresolved.push(file);
+        // An undeclared consumer that the rewrite would change needs classification; a declared one the rewrite leaves unchanged hides a computed or unsupported path.
+        const active = matchesPurpose(file, policy.activeReferences ?? []);
+        const rewritten = !rewriteReferences(bytes, moves).equals(bytes);
+        if (active !== rewritten) unresolved.push(file);
       } catch (error) {
         if (!(error instanceof SyntaxError || error instanceof UnresolvedPathError)) throw error;
         unresolved.push(file);

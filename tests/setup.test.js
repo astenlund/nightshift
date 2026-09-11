@@ -400,6 +400,22 @@ test('a migrated stopped run resumes default spec assessment with current paths 
   } finally { store.close(); }
 });
 
+test('undeclared non-document files mentioning only unmigrated legacy paths need no reference decision', t => {
+  const root = fixture(t);
+  write(root, '.claude/features/a.md', '# A\r\n');
+  write(root, 'scripts/host.sh', '#!/bin/sh\r\ncat .claude/settings.json\r\nls .claude/skills/\r\n');
+  write(root, 'scripts/consumer.sh', '#!/bin/sh\r\ncat .claude/features/a.md\r\n');
+  write(root, 'scripts/computed.sh', '#!/bin/sh\r\nhome=.claude\r\ncat "$home/features/a.md"\r\n');
+  const setup = new Setup(root);
+  try {
+    assert.deepEqual(setup.inspect().referenceDecisions, ['scripts/consumer.sh']);
+    assert.deepEqual(setup.inspect({ activeReferences: ['scripts/consumer.sh', 'scripts/computed.sh'] }).referenceDecisions, ['scripts/computed.sh']);
+    assert.equal(setup.apply({ activeReferences: ['scripts/consumer.sh'] }).status, 'complete');
+  } finally { setup.close(); }
+  assert.equal(fs.readFileSync(path.join(root, 'scripts/host.sh'), 'utf8'), '#!/bin/sh\r\ncat .claude/settings.json\r\nls .claude/skills/\r\n');
+  assert.equal(fs.readFileSync(path.join(root, 'scripts/consumer.sh'), 'utf8'), '#!/bin/sh\r\ncat .nightshift/features/a.md\r\n');
+});
+
 test('migration preserves tracked staged bytes, working changes, ignored plans, host config and navigable references', t => {
   const root = fixture(t);
   write(root, '.claude/features/item.md', '# Item\r\n\r\nAccepted design.\r\n');
