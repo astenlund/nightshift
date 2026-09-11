@@ -68,6 +68,14 @@ Make the CLI reject a request whose `action` is missing or unrecognized with an 
 
 **Requires:** none.
 
+### Morning report ends by starting follow-up triage
+
+Observed in this repository on 2026-09-11. An unattended run finished with two follow-ups preserved as pending user decisions. When the user returned, the controller's closing report listed them as awaiting a decision and stopped; the user had to ask for them, and they were then presented one at a time with a host question each, as the triage rule prescribes. The report and the triage are one hand-off: once the user is back, the pending decisions are the next thing to settle.
+
+Add to `skills/handover/SKILL.md` and the brief's "Close and report" section that the report delivered to a returning user ends by presenting the first pending follow-up as a host question, with its concrete context, recommendation and the effect of each choice, then the next after each answer, rather than listing them for the user to request. Keep preserving them untouched when the user is still absent. Shipped text changes model-owned behavior, so it rides with the next version increase.
+
+**Requires:** none.
+
 ## History
 
 Prior delivered work remains in [QUICK_WINS_HISTORY.md](QUICK_WINS_HISTORY.md).
