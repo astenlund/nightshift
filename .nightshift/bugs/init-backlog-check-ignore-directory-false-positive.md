@@ -63,10 +63,25 @@ Environment facts that did not change between the positive and negative observat
 
 What did change in between: the migration itself (files moved, `.gitignore` grew from 70 to 73 lines, `.nightshift/` came into existence), and unrelated activity on the machine. None of those explains why the copied 70-line file in an isolated probe repo reproduced then and does not now.
 
+## Reproduction in the nightshift repository on 2026-09-11
+
+While probing the verbose output format for the ignore-translation fix, a fresh `git init` repo under the session scratchpad reproduced the match deterministically with a six-line CRLF `.gitignore` whose content ends in a blank line:
+
+```
+/.claude/plans/*
+!/.claude/plans/keep.md
+.claude/skills/
+.claude/runs/
+*.lock
+<empty line 6>
+```
+
+With one tracked file `.claude/features/a.md`, `git check-ignore --no-index --verbose -z --stdin` over `.claude/plans/keep.md`, `.claude/plans/private.md`, `.claude/features/a.md`, `.claude/runs/`, `.claude/runs/state.sqlite`, `.claude/bugs/` and `.claude/plans/` returned exit 0 and, after the four genuine matches, `.gitignore`, `6`, `''`, `.claude/bugs/` and `.gitignore`, `6`, `''`, `.claude/plans/`: the empty line 6 reported as the matching pattern for both trailing-slash directory paths, while the file paths were judged correctly. Variants run the same day on git 2.55.0.windows.3 with `core.autocrlf=true`: the identical content with LF endings produced no empty-pattern match; a CRLF file with the blank line interior at line 3 reported line 3 the same way; a CRLF file with no blank line produced no match; a trailing bare CR behaved like the CRLF blank line. The tracked directory `.claude/features/` was reported too when given with a trailing slash. So the trigger is a CRLF blank line at any position, not its trailing placement; the original observation was on a file verified as LF, which this reproduction does not explain. Under this trigger, `git check-ignore -q -- .claude/bugs/` with the index consulted still exits 0 for the untracked directory, while dropping the trailing slash (`.claude/bugs`, `.claude/features`) exits 1 in every variant. The probe scripts were scratchpad files and are not committed; the recipe above is sufficient to rebuild them.
+
 ## Impact
 
 The apply step did not write spurious `.nightshift/*/` ignore rules, but only because the destination check returned the same false positive, so `directory.ignored && !ignored` was false. If the false positive had cleared between the source check in `inspect` and the destination check in `preservePolicies` (the migrated-rules block is appended to `.gitignore` between them, changing the file's shape), the tool would have ignored `.nightshift/features/`, `.nightshift/bugs/`, and `.nightshift/patterns/`, hiding new backlog files from `git add` while the migrated tracked files still passed the final tracking check.
 
 ## Suggested fix
 
-Treat this as a robustness gap rather than a reproducible git bug. The reporter cannot hand over a deterministic trigger. The defensive change stands on its own: a directory containing tracked files (`git ls-files -- <dir>` non-empty) should be classified as visible regardless of what `check-ignore` says, and the ignore probe should avoid the `--no-index` plus trailing-slash combination, since both alternatives answered correctly while the failure was live. Add a fixture that asserts a directory with tracked children is never reported as ignored.
+Treat this as a robustness gap rather than a reproducible git bug. The original reporter could not hand over a deterministic trigger; the 2026-09-11 reproduction above supplies one shape (a CRLF `.gitignore` with a blank line, probed with `--no-index` and a trailing slash) that a fixture can start from. The defensive change stands on its own: a directory containing tracked files (`git ls-files -- <dir>` non-empty) should be classified as visible regardless of what `check-ignore` says, and the ignore probe should drop the trailing slash rather than merely the `--no-index` flag, since both alternatives answered correctly while the original failure was live but only the slash-free form clears the CRLF trigger. Add a fixture that asserts a directory with tracked children is never reported as ignored.
