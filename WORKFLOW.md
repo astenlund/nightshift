@@ -16,7 +16,7 @@ For standalone review requests, Nightshift's review skills activate only for exp
 
 ## Start with a shared understanding
 
-For a small fix, the controller investigates enough to understand the behavior and gives a brief readback before implementation. For example: "Refresh should reload the list while preserving the selected status filter. Did I understand that correctly?" It waits for confirmation before changing code. The exchange supplies the agreed outcome without a separate spec, formal digest, or implementation plan. An already-confirmed scope does not need another routine confirmation at each later stage.
+For a small fix, the controller investigates enough to understand the behavior and gives a brief readback before implementation. For example: "Refresh should reload the list while preserving the selected status filter. Did I understand that correctly?" It waits for confirmation before changing code. The exchange supplies the agreed outcome without a separate spec, formal digest, or implementation plan. An already-confirmed scope does not need another routine confirmation at each later stage. Handover is the user's act. For a queue, every item's readback or decisions are settled in the interactive phase first, and one handover then releases the whole queue for unattended work.
 
 For a substantial feature, the controller explores the project and resolves consequential product decisions with the user, then writes a concise spec. It launches independent spec review immediately before presenting that same draft to the user. The human and AI reviews proceed concurrently against a stable version. User feedback and skeptic-validated review findings inform the next draft; a revised spec returns to the reviewer as a whole.
 
