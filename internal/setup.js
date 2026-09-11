@@ -330,9 +330,7 @@ class Setup {
         rules.push(ignorePath(move.destination));
       }
     }
-    for (const name of ['runs', 'inbox']) {
-      if (!state.directories.includes('.claude/' + name)) rules.push('/.nightshift/' + name + '/');
-    }
+    if (!state.directories.includes('.claude/runs')) rules.push('/.nightshift/runs/');
     for (const directory of state.directoryPolicies ?? []) {
       const ignored = git(this.root, ['check-ignore', '--no-index', '-q', '--', directory.destination + '/'], [0, 1]).status === 0;
       if (directory.ignored && !ignored) rules.push(ignorePath(directory.destination) + '/');
@@ -351,7 +349,7 @@ function initialize(root, options = {}) {
   const setup = new Setup(root);
   try {
     const migration = setup.apply(options);
-    for (const directory of ['features', 'bugs', 'patterns', 'inbox', 'runs']) safeDirectory(setup.root, '.nightshift/' + directory, true);
+    for (const directory of ['features', 'bugs', 'patterns', 'runs']) safeDirectory(setup.root, '.nightshift/' + directory, true);
     for (const file of BACKLOG_FILES) {
       const target = projectFile(setup.root, '.nightshift/' + file);
       if (fs.existsSync(target)) continue;

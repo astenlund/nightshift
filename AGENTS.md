@@ -31,7 +31,7 @@ Keep backlog paragraphs and bullets on single physical lines. Run `unwrap.js` ag
 
 Feature brainstorming belongs in feature records; new standalone governing specs belong in `.nightshift/specs`, and durable acceptance reports belong in `.nightshift/reports`. Respect explicitly selected document locations.
 
-Exceptional implementation plans belong in ignored `.nightshift/plans` and are temporary working aids; preserve existing plans unless their cleanup is authorized. `.nightshift/inbox` and `.nightshift/runs` are ignored here. Setup writes its self-ignored recovery journal under `.nightshift/setup`; preserve that journal when resolving migration conflicts. Temporary scripts, probes and raw acceptance evidence belong in `.tmp`; preserve evidence still needed for resumption or assessment.
+Exceptional implementation plans belong in ignored `.nightshift/plans` and are temporary working aids; preserve existing plans unless their cleanup is authorized. `.nightshift/inbox` and `.nightshift/runs` are ignored here; the inbox is the maintainer's drop box for reports about Nightshift raised in any project, created on demand and triaged only when the user asks. Setup writes its self-ignored recovery journal under `.nightshift/setup`; preserve that journal when resolving migration conflicts. Temporary scripts, probes and raw acceptance evidence belong in `.tmp`; preserve evidence still needed for resumption or assessment.
 
 ## Architecture
 

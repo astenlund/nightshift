@@ -51,7 +51,7 @@ One run owns a checkout. Existing workers and legacy run state must be reconcile
 
 Nightshift uses `.nightshift/` at the project root. The four indexes are `FEATURES.md`, `BUGS.md`, `QUICK_WINS.md` and `PATTERNS.md`, with breakouts and history beside them. The ready parser resolves declared dependencies and diagnoses structural problems. Drafts under `Exploring` are presented separately.
 
-Setup inspects legacy `.claude` content, preserves staged and working bytes and existing tracking choices, and resumes interrupted migration from its saved journal. Shared plans and specs require explicit ownership decisions. Unrelated host configuration stays in place, and existing plans are preserved. Runtime records and new inbox content are ignored by default. Bulk rewriting of legacy instructions and general backlog structural repair are outside this candidate.
+Setup inspects legacy `.claude` content, preserves staged and working bytes and existing tracking choices, and resumes interrupted migration from its saved journal. Shared plans and specs require explicit ownership decisions. Unrelated host configuration stays in place, and existing plans are preserved. Runtime records are ignored by default. Bulk rewriting of legacy instructions and general backlog structural repair are outside this candidate.
 
 The source backlog's v2 decisions are preserved in the [migration ledger](.nightshift/MIGRATION_STATUS.md) and [archived indexes](.nightshift/migration/v2/FEATURES.md). Consolidating an entry there does not claim its need has been delivered.
 
