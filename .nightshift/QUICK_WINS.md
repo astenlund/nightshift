@@ -60,6 +60,14 @@ Add one sentence to the brief, under Durable execution or Review and repair, sta
 
 **Requires:** none.
 
+### Runtime CLI rejects an unrecognized request action with a clear error
+
+Observed in this repository on 2026-09-11. `internal/runtime/REFERENCE.md` names the operations (`status`, `inspect`, `create` and so on) but never states the request key, and `internal/runtime/cli.js` dispatches on `request.action`. A request written as `{"operation": "status"}` fell through every branch to the owner check and failed with `stale-owner`, a message about controller identity, on a read-only status call; the controller spent two calls and a read of the CLI source to find the cause.
+
+Make the CLI reject a request whose `action` is missing or unrecognized with an `invalid-request` error that names the key and lists the accepted actions, before any state check; the `unknown-action` default in `transition` (`internal/runtime/lifecycle.js`) already rejects unrecognized actions but only after the owner and run-state checks, so the new guard should precede it and the two should share one error code. Add one sentence at the top of the reference giving the request shape (`{action, actor, revision, ...}`), and a runtime fixture for the missing-key case. Runtime code, so it ships with a version increase.
+
+**Requires:** none.
+
 ## History
 
 Prior delivered work remains in [QUICK_WINS_HISTORY.md](QUICK_WINS_HISTORY.md).
