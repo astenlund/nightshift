@@ -55,13 +55,14 @@ Run commands from the repository root, using `pwsh -NoProfile` for PowerShell:
 - Parser fixtures: `node skills/ready/ready.test.js`
 - Unwrap fixtures: `node skills/init-backlog/unwrap.test.js`
 - Packaging: `node --test tests/package.test.js`
+- Release gate: `node tools/release-gate.js` compares `HEAD` with `origin/main` (or `--baseline <ref>`); fixtures: `node --test tests/release-gate.test.js`
 - Runtime or migration changes: use `node --test` with the relevant explicit filenames from `tests/runtime*.test.js` and `tests/setup.test.js`.
 
 [CI](.github/workflows/ci.yml) defines the full deterministic suite on Windows and Node 22. Choose checks appropriate to the change; repository prose edits do not justify replaying the native acceptance campaign. Actual model-owned behavior needs installed-host evidence when changed. Real-model campaigns require an explicit aggregate budget and reliable usage accounting; unverified or interrupted outcomes stay qualified.
 
 ## Packaging and publication
 
-Edit this clone, never an installed plugin cache. Keep `.claude-plugin/plugin.json` and `.codex-plugin/plugin.json` versions equal. Each unpublished batch changing shipped plugin behavior needs one monotonic version increase over upstream. Behavior includes bundled non-test code and resources under `skills`, `internal` and `hooks`, plus non-version fields in either plugin manifest. Repository-only documentation, tests, CI, marketplace metadata and repository guidance do not independently require a version increase.
+Edit this clone, never an installed plugin cache. Keep `.claude-plugin/plugin.json` and `.codex-plugin/plugin.json` versions equal. Each unpublished batch changing shipped plugin behavior needs one monotonic version increase over upstream. Behavior includes bundled non-test code and resources under `skills`, `internal` and `hooks`, plus non-version fields in either plugin manifest. Repository-only documentation, tests, CI, marketplace metadata and repository guidance do not independently require a version increase. `tools/release-gate.js` enforces these rules mechanically against the published baseline and also requires the README status line to carry the manifest version; enable it as the pre-push hook once per clone with `git config core.hooksPath .githooks`; the hook gates pushes to `main` against the remote tip and skips other refs, CI runs it against the push or pull-request baseline, and a rewritten `main` leaves that baseline unreachable so the CI step fails closed until the baseline exists again. Versions must be plain `x.y.z`; anything else is rejected.
 
 Keep the Claude plugin description synchronized with its plugin entry in `.claude-plugin/marketplace.json`; the marketplace uses `source: "./"`. Cross-check documentation and consumers when changing public skills, runtime operations, artifact locations or packaging. Pushes remain user-directed and require current independent review coverage. Use [README.md](README.md) for installation guidance, and verify candidate installations separately from the published release.
 

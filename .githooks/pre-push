@@ -1,0 +1,3 @@
+#!/bin/sh
+# Pre-publication release gate. Enable once per clone: git config core.hooksPath .githooks
+exec node "$(git rev-parse --show-toplevel)/tools/release-gate.js" --pre-push

@@ -11,3 +11,5 @@ tests/fixtures/init-backlog-prompt-baseline/** !eol
 tests/fixtures/init-backlog-host/** -text
 tests/fixtures/init-backlog-import/** -text
 tests/fixtures/init-backlog-eval/** -text
+# Shell hooks run under sh, which rejects carriage returns.
+.githooks/* text eol=lf

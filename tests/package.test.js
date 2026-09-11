@@ -4,6 +4,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const test = require('node:test');
+const { README_STATUS } = require('../tools/release-gate');
 
 const root = path.resolve(__dirname, '..');
 const publicSkills = ['exploring', 'handover', 'init-backlog', 'ready', 'revise-code', 'revise-docs', 'revise-lore', 'revise-spec'];
@@ -14,7 +15,7 @@ test('both packages expose the same intentional public skill surface', () => {
   assert.equal(claude.name, 'nightshift');
   assert.equal(codex.name, claude.name);
   assert.equal(codex.version, claude.version);
-  const status = /\*\*Status:\*\* Nightshift (\d+\.\d+\.\d+) is published on `main`/.exec(fs.readFileSync(path.join(root, 'README.md'), 'utf8'));
+  const status = README_STATUS.exec(fs.readFileSync(path.join(root, 'README.md'), 'utf8'));
   assert.ok(status, 'README must carry the published-version status line');
   assert.equal(status[1], claude.version);
   const discovered = fs.readdirSync(path.join(root, 'skills')).filter(name => fs.existsSync(path.join(root, 'skills', name, 'SKILL.md'))).sort();
@@ -39,6 +40,13 @@ test('bundled lifecycle hooks resolve to a shipped executable and portable nativ
       }
     }
   }
+});
+
+test('the pre-push release gate is wired to the shipped script', () => {
+  const hook = fs.readFileSync(path.join(root, '.githooks/pre-push'), 'utf8');
+  assert.equal(hook.includes('\r'), false, 'shell hooks must stay LF-only');
+  assert.match(hook, /tools\/release-gate\.js" --pre-push/);
+  assert.ok(fs.statSync(path.join(root, 'tools/release-gate.js')).isFile());
 });
 
 test('active deterministic entry points load without the retired workflow machinery', () => {
