@@ -48,22 +48,6 @@ Establish which part of the invocation triggers the classifier (the CLI path, th
 **Requires:** none.
 **External:** Claude Code auto-mode classifier behavior that the plugin cannot change.
 
-### Unattended Stop hook blocks yielding to a present user for a blocking decision
-
-Observed on 2026-09-11 in this repository during an unattended self-hosting run. With the single task blocked on a user-decision, no workers active and the user present in the interactive session, the Stop hook kept resisting the controller yield, so the controller could not end its turn to ask the question; it had to record the session closing first to obtain a turn, and later used the host question tool to avoid yielding at all. The hook is documented as resisting premature yields while actionable work, final reconciliation or workers remain, which was not the case, and after three consecutive reminders without a runtime transition it would have ended continuation with an incomplete-recovery report.
-
-In unattended mode, permit the yield when every remaining blocker is a user decision, the next list is empty and no workers are active, with a reminder that says the run is waiting on the user; keep resisting in every other state. Add a hook fixture for that state and for the states that must still resist. This changes `internal/runtime/hook.js`, so it ships with its own version increase. Sibling of [Unattended Stop hook blocks yielding while a background dispatch runs](#unattended-stop-hook-blocks-yielding-while-a-background-dispatch-runs), where the hook resists a yield the controller needs in order to await a running dispatch worker; design the two permitted states together.
-
-**Requires:** none.
-
-### Unattended Stop hook blocks yielding while a background dispatch runs
-
-Reported from an unattended handover run in another project on 2026-09-11 (Claude Code 2.1.268, Windows). Each review or skeptic dispatch ran two to eight minutes. The controller launched it through the host background-process facility, as `internal/runtime/REFERENCE.md` prescribes for long dispatches, whose completion notification only arrives after the controller ends its turn, but in unattended mode the Stop hook resists that yield with a continuation reminder while actionable work remains, and three reminders without a runtime transition end continuation, so waiting for a dispatch by yielding would have spent the reminder budget on every dispatch. The controller improvised a Node poller in the scratch directory that exits when the dispatch redirect file becomes non-empty and ran it in the foreground under a ten-minute tool timeout after each background dispatch; it worked for six dispatches, but the runtime reference describes no such pattern, so every controller has to rediscover it. Sibling of [Unattended Stop hook blocks yielding to a present user for a blocking decision](#unattended-stop-hook-blocks-yielding-to-a-present-user-for-a-blocking-decision): both are the hook resisting a yield the controller needs, but that entry's permitted state, no workers active, still resists here, where the running dispatch worker is the reason to wait.
-
-Give the controller one documented, supported way to wait for a background dispatch inside an unattended turn: a hook exception while a registered dispatch worker is running and nothing else is actionable, guidance to run the dispatch in the foreground with the tool timeout raised and its tradeoffs stated, which amends the reference's background-facility instruction, or a runtime wait operation. Record the chosen mechanism in `internal/runtime/REFERENCE.md` and `skills/handover/SKILL.md`; if the hook changes, add fixtures for the permitted state and for the states that must still resist, designed together with the sibling's, and ship with a version increase.
-
-**Requires:** none.
-
 ## History
 
 Prior delivered work remains in [BUGS_HISTORY.md](BUGS_HISTORY.md).
