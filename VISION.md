@@ -28,7 +28,7 @@ The controller chooses assignments using task fit, observed model strengths, ava
 
 Claude Code and Codex should provide the same intent and review standards through their available tools. Missing parallelism can mean sequential work. If an adequately capable model, independent review context, or required verification capability is unavailable, preserve progress and report which work is blocked. Model availability must not silently lower the completion standard.
 
-Project-owned Nightshift files belong in a root `.nightshift` directory shared across hosts, including the backlog, feature and spec documents, and durable run records. V3 includes migration from `.claude` that preserves content, links, tracking choices, and recoverable work while retaining the backlog format. Host-owned configuration remains in its required location. This is an agreed migration direction; the current checkout has not been relocated.
+Project-owned Nightshift files belong in a root `.nightshift` directory shared across hosts, including the backlog, feature and spec documents, and durable run records. V3 includes migration from `.claude` that preserves content, links, tracking choices, and recoverable work while retaining the backlog format. Host-owned configuration remains in its required location.
 
 ## Settle the meaningful decisions
 

@@ -8,7 +8,7 @@ The [vision's invariant priorities](VISION.md#invariant-priorities) govern every
 
 ## Project files
 
-Use `.nightshift` at the project root for Nightshift-owned backlog, feature and spec documents, and durable run records on both hosts. Fresh setup uses that home. The MVP migrates existing Nightshift-owned files from `.claude`, preserving content, links, tracking choices, and recoverable work while keeping the backlog format. Preserve host-owned configuration in its required location. The current implementation still uses the earlier paths until this migration lands.
+Use `.nightshift` at the project root for Nightshift-owned backlog, feature and spec documents, and durable run records on both hosts. Fresh setup uses that home. The MVP migrates existing Nightshift-owned files from `.claude`, preserving content, links, tracking choices, and recoverable work while keeping the backlog format. Preserve host-owned configuration in its required location.
 
 ## User-facing review requests
 
