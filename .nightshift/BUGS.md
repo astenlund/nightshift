@@ -31,22 +31,6 @@ Reconcile these findings against the retained versions before changing anything.
 **Requires:** none.
 **External:** User decision to reuse the temporary compaction/resume harness.
 
-### Init-backlog flags non-document files that mention unmigrated `.claude` paths
-
-Reported from an init-backlog run in another project on 2026-09-11. `inspect` listed a shell script under `referenceDecisions` and `apply` refused to run until it was classified, although the script only mentioned `.claude/` paths that were not part of the migration and `rewriteReferences` with the run's actual move list left its bytes unchanged. In `Setup.referenceDecisions` (`internal/setup.js`), the branch for files outside the Markdown, JSON, TOML and YAML set pushes the file whenever it is not declared as an active reference or the rewrite would be a no-op, so the byte-level check never clears an undeclared file; the only way through was an `excludeReferences` or `historicalReferences` entry and a rerun of inspect.
-
-Flag a non-document file only when it mentions a migrated path or the rewrite would change its bytes, and it is not declared as an active reference; keep flagging a declared active file whose rewrite is a no-op, since that is how a consumer with a computed or unsupported path literal is surfaced. Add a fixture with a script that references an unmigrated `.claude/` path and expect no decision.
-
-**Requires:** none.
-
-### Init-backlog translates every `.claude/` ignore rule into a `.nightshift/` twin
-
-Reported from an init-backlog run in another project on 2026-09-11. After apply, `.gitignore` gained a "Nightshift migrated ignore rules" block containing `.nightshift/superpowers/`, `.nightshift/skills/`, `.nightshift/commands/` and a lock-file rule, all mirrors of host-side paths under `.claude/` with no `.nightshift/` counterpart, and the block header was appended directly after the previous last line. `Setup.preservePolicies` (`internal/setup.js`) translates every non-comment line containing `.claude/` with a plain replacement without checking whether the rule matched anything that moved. The user removed the wrong rules by hand.
-
-Translate a rule only when it matches a migrated file or an owned directory, and emit a blank line before the block header when the existing content does not end with one. Add a fixture whose legacy `.gitignore` mixes migrated and host-only `.claude/` rules.
-
-**Requires:** none.
-
 ### Directory ignore probe can misreport tracked backlog directories as ignored
 
 Reported from an init-backlog run in another project on 2026-09-11. The reproduction is unverified. `inspect` reported `.claude/features`, `.claude/bugs` and `.claude/patterns` as ignored although all three held tracked files. `Setup.inspect` and `Setup.preservePolicies` (`internal/setup.js`) derive that flag from `git check-ignore --no-index -q -- <dir>/`. While the failure was live on git 2.55.0.windows.3, that command reported a match on a blank `.gitignore` line for every directory in the tree, a copied `.gitignore` reproduced it in a fresh probe repository, and deleting any single line cleared it; the same probe without `--no-index` or without the trailing slash answered correctly. Forty-five minutes later the identical bytes no longer triggered it anywhere, so no deterministic trigger exists. Apply wrote no spurious rules only because the destination probe returned the same false positive; had it cleared between the source and destination checks, the tool would have ignored the new backlog directories while the migrated tracked files still passed the final tracking check.
