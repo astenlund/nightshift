@@ -55,6 +55,15 @@ Treat this as a robustness gap: classify a directory containing tracked files as
 
 **Requires:** none.
 
+### Auto-mode classifier denies the runtime CLI
+
+Observed on 2026-09-11 in this repository under Claude Code auto mode while starting an explicitly handed-over run. `node internal/runtime/cli.js <project> <request.json>` with a `create` request was refused by the auto-mode permission classifier twice, first as "Unauthorized Persistence" when chained with the `continuation` and `status` calls, then as "Instruction Poisoning" on its own. The request described an unattended run, hooks-based continuation and the controller session binding, which appears to read as a persistence or injection attempt. Without the create step no lifecycle operation can run, so an auto-mode controller cannot start, review, close or resume a run; the user had to run the create manually.
+
+Establish which part of the invocation triggers the classifier (the CLI path, the request prose, or the chained calls) with a reproducible probe, then decide between documenting a permission rule for auto-mode users in the README and skills, restructuring the request or invocation so routine run operations are not misclassified, or both. Treat the denial as a capability blocker in the handover skill until then, so a controller reports it instead of retrying.
+
+**Requires:** none.
+**External:** Claude Code auto-mode classifier behavior that the plugin cannot change.
+
 ## History
 
 Prior delivered work remains in [BUGS_HISTORY.md](BUGS_HISTORY.md).
