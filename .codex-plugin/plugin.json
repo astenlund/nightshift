@@ -1,6 +1,6 @@
 {
   "name": "nightshift",
-  "version": "3.0.7",
+  "version": "3.0.8",
   "description": "Carry agreed engineering work through autonomous implementation, independent review, verification and an evidence-backed handover.",
   "author": { "name": "Andreas Stenlund", "email": "a.stenlund@gmail.com" },
   "homepage": "https://github.com/astenlund/nightshift",
