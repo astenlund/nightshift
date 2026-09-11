@@ -58,6 +58,11 @@ else if (args.includes('--print')) {
     }
     if (mode === 'request-error') { send({ id: request.id, error: { code: -32602, message: 'fixture request rejected' } }); return; }
     if (mode === 'malformed') process.stdout.write('not-json\n');
+    const expectedVersion = process.env.NIGHTSHIFT_TEST_EXPECTED_VERSION;
+    if (request.method === 'initialize' && expectedVersion !== undefined && request.params.clientInfo?.version !== expectedVersion) {
+      send({ id: request.id, error: { code: -32602, message: 'fixture rejected client version ' + request.params.clientInfo?.version } });
+      return;
+    }
     if (request.method === 'thread/start') send({ id: request.id, result: { thread: { id: 'fixture-session' }, model: mode === 'wrong-model' ? 'weaker-model' : request.params.model } });
     else send({ id: request.id, result: {} });
     if (request.method === 'turn/start') {

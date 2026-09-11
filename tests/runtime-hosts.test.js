@@ -5,7 +5,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const test = require('node:test');
 const { createHash } = require('node:crypto');
-const { executable, runAgent } = require('../internal/runtime/hosts');
+const { executable, pluginVersion, runAgent } = require('../internal/runtime/hosts');
 const { resolveTrustedExecutable } = require('../internal/filesystem-primitives');
 const { spawnWindowsJob } = require('../internal/runtime/windows-job');
 
@@ -65,6 +65,16 @@ for (const host of ['claude', 'codex']) {
     }
   });
 }
+
+test('Codex handshake identifies the plugin with the manifest version', async t => {
+  const manifest = JSON.parse(fs.readFileSync(path.resolve(__dirname, '../.codex-plugin/plugin.json'), 'utf8'));
+  assert.equal(pluginVersion(), manifest.version);
+  const accepted = fixture(t, 'codex');
+  const result = await runAgent({ ...accepted, env: { ...accepted.env, NIGHTSHIFT_TEST_EXPECTED_VERSION: manifest.version } });
+  assert.equal(result.status, 'complete');
+  const rejected = fixture(t, 'codex');
+  await assert.rejects(runAgent({ ...rejected, env: { ...rejected.env, NIGHTSHIFT_TEST_EXPECTED_VERSION: 'not-the-manifest-version' } }), /fixture rejected client version/);
+});
 
 test('Codex request rejection is collected and the process is reclaimed', async t => {
   await assert.rejects(runAgent(fixture(t, 'codex', 'request-error')), /fixture request rejected/);

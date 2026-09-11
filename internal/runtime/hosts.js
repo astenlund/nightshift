@@ -13,6 +13,20 @@ function executable(host, root) {
   return resolveTrustedExecutable({ root, basename: host + (process.platform === 'win32' ? '.exe' : '') });
 }
 
+function pluginVersion() {
+  const manifest = ['../../.codex-plugin/plugin.json', '../../.claude-plugin/plugin.json'].map(file => path.resolve(__dirname, file)).find(file => fs.existsSync(file));
+  requireCondition(manifest !== undefined, 'plugin-manifest-missing', 'Plugin manifest not found at the plugin root');
+  let parsed;
+  try {
+    parsed = JSON.parse(fs.readFileSync(manifest, 'utf8'));
+  } catch {
+    // A corrupt manifest is reported as invalid below rather than as a bare parse error.
+    parsed = null;
+  }
+  requireCondition(typeof parsed?.version === 'string' && parsed.version.length > 0, 'plugin-manifest-invalid', 'Plugin manifest has no readable version');
+  return parsed.version;
+}
+
 function tokenTotal(usage) {
   return ['inputTokens', 'outputTokens', 'cacheReadInputTokens', 'cacheCreationInputTokens'].reduce((sum, key) => sum + (usage[key] ?? 0), 0);
 }
@@ -97,6 +111,7 @@ async function runClaude(options) {
 }
 
 async function runCodex(options) {
+  const version = pluginVersion();
   const execution = startProcess(options.executable ?? executable('codex', options.protectedRoot ?? options.cwd), ['app-server', '--stdio'], options);
   const log = fs.createWriteStream(path.join(options.artifacts, 'events.jsonl'), { flags: 'wx' });
   let sequence = 0;
@@ -158,7 +173,7 @@ async function runCodex(options) {
   try {
     await execution.ready;
     requireCondition(!execution.failed(), 'host-start-failed', 'Agent host failed to start');
-    await request('initialize', { clientInfo: { name: 'nightshift', version: '3.0.0' }, capabilities: { experimentalApi: true } });
+    await request('initialize', { clientInfo: { name: 'nightshift', version }, capabilities: { experimentalApi: true } });
     execution.child.stdin.write(JSON.stringify({ method: 'initialized', params: {} }) + '\n');
     const started = await request('thread/start', { cwd: options.cwd, model: options.model, approvalPolicy: 'never', sandbox: 'read-only', allowProviderModelFallback: false, baseInstructions: fs.readFileSync(options.systemFile, 'utf8'), config: { project_doc_max_bytes: 0, model_reasoning_effort: options.effort ?? 'high', features: { multi_agent: false } } });
     session = started.thread.id;
@@ -192,4 +207,4 @@ async function runAgent(options) {
   return options.host === 'claude' ? runClaude(options) : options.host === 'codex' ? runCodex(options) : Promise.reject(new Error('Unknown host'));
 }
 
-module.exports = { codexModelContradiction, executable, runAgent, runClaude, runCodex, tokenTotal };
+module.exports = { codexModelContradiction, executable, pluginVersion, runAgent, runClaude, runCodex, tokenTotal };
