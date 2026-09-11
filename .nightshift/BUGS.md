@@ -31,6 +31,14 @@ Reconcile these findings against the retained versions before changing anything.
 **Requires:** none.
 **External:** User decision to reuse the temporary compaction/resume harness.
 
+### Published version surfaces can drift on release
+
+Release-process defect observed on 2026-09-11 while publishing plugin 3.0.1. Both plugin manifests were increased in `a4e4ee8` and the packaging test confirmed they were equal, but the README status line still announced 3.0.0 as the published version when the push landed and needed the follow-up commit `9d26ded`. A third surface is still drifted: `internal/runtime/hosts.js` sends `clientInfo.version` `3.0.0` in the Codex app-server initialize handshake, unchanged since `8ca3cb4`, so the shipped plugin identifies itself to Codex with the wrong version. Nothing mechanical ties either surface to the manifests, and no deterministic check confirms that a batch changing shipped plugin behavior carries a version increase over upstream at all; both rules currently rest on agent recall.
+
+Add deterministic coverage so no plugin-altering change can be pushed without a version increase and every version surface moves with the manifests: assert in the packaging test that the README status version equals the manifest version, make the Codex handshake read its version from the manifest at runtime or assert it in the same test, and add a check that fails when bundled non-test paths under `skills`, `internal` and `hooks` or non-version manifest fields differ from the published baseline without a version increase. That last check must run before publication (a pre-push gate or a pull-request job), since a CI run on the pushed `main` has no diff against itself. Keep the existing equal-manifest assertion. Correcting the handshake version is itself a shipped-behavior change and needs its own version increase. Evidence: commits `a4e4ee8`, `9d26ded` and `8ca3cb4`, and `internal/runtime/hosts.js`.
+
+**Requires:** none.
+
 ## History
 
 Prior delivered work remains in [BUGS_HISTORY.md](BUGS_HISTORY.md).
