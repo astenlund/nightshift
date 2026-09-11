@@ -43,7 +43,7 @@ Reviewers receive immutable copies and read-only host access. When a deciding cl
 
 The runtime saves accepted commitments, task dependencies, ownership, findings, evidence and follow-ups in a transactional local database. Focused hook context restores outstanding obligations after compaction. The controller reconciles saved state with actual files at workflow boundaries and after recovery.
 
-Native persistent goals are the preferred continuation mechanism. Before unattended work, establish that the actual host's continuation and trusted hooks work. Stop reminders resist premature yields in unattended mode and bound repeated reminders without recorded progress; exhaustion is an incomplete recovery result, never successful completion. Attended runs may yield for conversation.
+Native persistent goals are the preferred continuation mechanism. Before unattended work, establish that the actual host's continuation and trusted hooks work. Stop reminders resist premature yields in unattended mode and bound repeated reminders without recorded progress; exhaustion is an incomplete recovery result, never successful completion. A run whose only remaining blockers are user decisions may pause to ask, and a running dispatch is awaited inside the turn with the runtime wait operation. Attended runs may yield for conversation.
 
 One run owns a checkout. Existing workers and legacy run state must be reconciled before a competing run or migration starts. Automatic host relaunch after a crash, reboot recovery, simultaneous independent runs in one checkout, and active control transfer between hosts are deferred.
 
