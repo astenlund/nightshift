@@ -315,14 +315,29 @@ class Setup {
     }
   }
 
+  matchedIgnoreLines(state) {
+    // Only rules git reports matching relocated content are translated; host-only .claude/ rules keep their original meaning.
+    const paths = [...state.files.map(move => move.source), ...state.directories.map(directory => directory + '/')];
+    if (paths.length === 0) return new Set();
+    const report = git(this.root, ['check-ignore', '--no-index', '--verbose', '-z', '--stdin'], [0, 1], paths.join('\0') + '\0').stdout.split('\0');
+    const lines = new Set();
+    for (let index = 0; index + 3 < report.length; index += 4) {
+      const [source, line] = report.slice(index, index + 2);
+      if (source === '.gitignore') lines.add(Number(line));
+    }
+    return lines;
+  }
+
   preservePolicies(state) {
     const target = projectFile(this.root, '.gitignore');
     const existing = fs.existsSync(target) ? fs.readFileSync(target, 'utf8') : '';
     const newline = existing.includes('\r\n') || !existing.includes('\n') ? '\r\n' : '\n';
-    const translated = existing.split(/\r?\n/).filter(line => !line.startsWith('#') && line.includes('.claude/')).map(line => line.replaceAll('.claude/', '.nightshift/'));
+    const lines = existing.split(/\r?\n/);
+    const translated = [...this.matchedIgnoreLines(state)].sort((a, b) => a - b).map(line => lines[line - 1]).filter(line => !line.startsWith('#') && line.includes('.claude/')).map(line => line.replaceAll('.claude/', '.nightshift/'));
     if (translated.length > 0) {
       const block = '# Nightshift migrated ignore rules' + newline + translated.join(newline) + newline;
-      if (!existing.includes(block)) fs.writeFileSync(target, existing + (existing && !existing.endsWith('\n') ? newline : '') + block);
+      const separator = existing === '' || /\r?\n\r?\n$/.test(existing) ? '' : existing.endsWith('\n') ? newline : newline + newline;
+      if (!existing.includes(block)) fs.writeFileSync(target, existing + separator + block);
     }
     const rules = [];
     for (const move of state.files) {

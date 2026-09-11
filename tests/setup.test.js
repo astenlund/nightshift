@@ -416,6 +416,24 @@ test('undeclared non-document files mentioning only unmigrated legacy paths need
   assert.equal(fs.readFileSync(path.join(root, 'scripts/consumer.sh'), 'utf8'), '#!/bin/sh\r\ncat .nightshift/features/a.md\r\n');
 });
 
+test('legacy ignore rules are translated only when they match migrated content', t => {
+  const root = fixture(t);
+  const legacy = '# host\r\n.claude/skills/\r\n.claude/commands/\r\n\r\n# backlog\r\n/.claude/plans/\r\n*.lock\r\n';
+  write(root, '.gitignore', legacy);
+  write(root, '.claude/features/a.md', '# A\r\n');
+  write(root, '.claude/plans/old.md', '# Plan\r\n');
+  write(root, '.claude/skills/tool/SKILL.md', '# Host skill\r\n');
+  const result = initialize(root, { ownership: { '.claude/plans': 'nightshift' } });
+  assert.equal(result.migration.status, 'complete');
+  assert.equal(fs.readFileSync(path.join(root, '.gitignore'), 'utf8'), legacy + '\r\n# Nightshift migrated ignore rules\r\n/.nightshift/plans/\r\n/.nightshift/runs/\r\n');
+  assert.equal(git(root, ['check-ignore', '-q', '--', '.nightshift/plans/old.md'], [0, 1]).status, 0);
+  assert.equal(git(root, ['check-ignore', '-q', '--', '.nightshift/features/a.md'], [0, 1]).status, 1);
+  assert.equal(fs.readFileSync(path.join(root, '.claude/skills/tool/SKILL.md'), 'utf8'), '# Host skill\r\n');
+  const before = fs.readFileSync(path.join(root, '.gitignore'));
+  initialize(root);
+  assert.deepEqual(fs.readFileSync(path.join(root, '.gitignore')), before);
+});
+
 test('migration preserves tracked staged bytes, working changes, ignored plans, host config and navigable references', t => {
   const root = fixture(t);
   write(root, '.claude/features/item.md', '# Item\r\n\r\nAccepted design.\r\n');
