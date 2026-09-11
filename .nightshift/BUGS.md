@@ -64,6 +64,14 @@ Establish which part of the invocation triggers the classifier (the CLI path, th
 **Requires:** none.
 **External:** Claude Code auto-mode classifier behavior that the plugin cannot change.
 
+### Unattended Stop hook blocks yielding to a present user for a blocking decision
+
+Observed on 2026-09-11 in this repository during an unattended self-hosting run. With the single task blocked on a user-decision, no workers active and the user present in the interactive session, the Stop hook kept resisting the controller yield, so the controller could not end its turn to ask the question; it had to record the session closing first to obtain a turn, and later used the host question tool to avoid yielding at all. The hook is documented as resisting premature yields while actionable work, final reconciliation or workers remain, which was not the case, and after three consecutive reminders without a runtime transition it would have ended continuation with an incomplete-recovery report.
+
+In unattended mode, permit the yield when every remaining blocker is a user decision, the next list is empty and no workers are active, with a reminder that says the run is waiting on the user; keep resisting in every other state. Add a hook fixture for that state and for the states that must still resist. This changes `internal/runtime/hook.js`, so it ships with its own version increase.
+
+**Requires:** none.
+
 ## History
 
 Prior delivered work remains in [BUGS_HISTORY.md](BUGS_HISTORY.md).
