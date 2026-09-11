@@ -31,14 +31,6 @@ Reconcile these findings against the retained versions before changing anything.
 **Requires:** none.
 **External:** User decision to reuse the temporary compaction/resume harness.
 
-### Published version surfaces can drift on release
-
-Release-process defect observed on 2026-09-11 while publishing plugin 3.0.1. Both plugin manifests were increased in `a4e4ee8` and the packaging test confirmed they were equal, but the README status line still announced 3.0.0 as the published version when the push landed and needed the follow-up commit `9d26ded`. A third surface had drifted: `internal/runtime/hosts.js` sent a hardcoded `clientInfo.version` `3.0.0` in the Codex app-server initialize handshake, unchanged since `8ca3cb4`; plugin 3.0.2 corrected it by reading the version from the manifest at runtime, with a host fixture test that rejects any other value. Nothing mechanical ties the README to the manifests, and no deterministic check confirms that a batch changing shipped plugin behavior carries a version increase over upstream at all; both rules currently rest on agent recall.
-
-Add deterministic coverage so no plugin-altering change can be pushed without a version increase and every version surface moves with the manifests: assert in the packaging test that the README status version equals the manifest version, and add a check that fails when bundled non-test paths under `skills`, `internal` and `hooks` or non-version manifest fields differ from the published baseline without a version increase. That last check must run before publication (a pre-push gate or a pull-request job), since a CI run on the pushed `main` has no diff against itself. Keep the existing equal-manifest assertion. Evidence: commits `a4e4ee8`, `9d26ded` and `8ca3cb4`, and `internal/runtime/hosts.js`.
-
-**Requires:** none.
-
 ## History
 
 Prior delivered work remains in [BUGS_HISTORY.md](BUGS_HISTORY.md).
