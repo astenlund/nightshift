@@ -4,6 +4,14 @@ V2 entries are preserved in [the historical index](migration/v2/QUICK_WINS.md) a
 
 ## Current
 
+### Probe proposals with implausible timeouts run as specified
+
+Observed in this repository on 2026-09-12 during an unattended run. An independent assessor returned a `deterministic-regressions` probe with `timeoutMs` 600 for five test suites that take about a minute; the `probe` operation executed it as written, `spawnSync` reported `ETIMEDOUT` after 613 ms, and the spurious failure cost a full re-dispatch to explain. The runtime accepts any positive timeout, and neither the reference nor the dispatch rules state the unit or a floor.
+
+Make the `probe` operation reject a proposal whose `timeoutMs` is below a plausible floor (for example 5000) with an error naming the unit, state in `internal/runtime/REFERENCE.md` that `timeoutMs` is milliseconds, and add a runtime fixture for the rejection. Runtime code, so it ships with a version increase.
+
+**Requires:** none.
+
 ### Agent-directed rules leak into user-facing prose
 
 Reported from a `/ready` run in another project on 2026-09-11 and repaired for that skill in plugin 3.0.4; the pattern is broader than one skill. Skill texts state constraints for the agent, such as readiness not being agreement, a draft not being authorized implementation work, or a previous review not authorizing a narrowed new pass, and agents echo them to the user as stiff rule quotations, for example "Readiness is not a selection". The user wrote these conventions and does not need them restated.
