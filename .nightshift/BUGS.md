@@ -4,6 +4,14 @@ V2 entries are preserved in [the historical index](migration/v2/BUGS.md) and [MI
 
 ## Current
 
+### Self-hosting implementation bypasses the Nightshift review lifecycle
+
+Observed in this repository on 2026-09-12 while implementing the ready skill's Exploring presentation change, committed as 1d1812d. The controller used direct fresh-context reviewer and skeptic agents, cumulative reassessment after repairs and native-host presentation probes, but did not invoke the revise-code skill or operate the durable Nightshift review lifecycle. Repository instructions require the v3 independent review and repair process for Nightshift development. The controller reported independent review without distinguishing that evidence from completion of the required self-hosting process; the omission became explicit only when the user asked whether the revise skill had run.
+
+Investigate and repair workflow selection for repository implementation so the self-hosting requirement activates the required Nightshift machinery. Preserve the explicit direct-agent exceptions for user-requested review and review-loop; ordinary implementation is not such an exception. Verify the distinction with installed-host evidence and make completion reporting identify the process actually used and any required lifecycle work still missing. Existing independent reviews and probes remain evidence, but must not be represented as retroactive lifecycle completion. The observation is captured in this conversation and the limited presentation evidence is preserved in [the ready verification report](reports/ready-exploring-presentation-20260912.md).
+
+**Requires:** none.
+
 ### Release status check requires an unpublished candidate to claim publication
 
 Observed in this repository on 2026-09-12 while changing the ready skill. Both manifests were bumped from published 3.0.10 to candidate 3.0.11, and README.md truthfully described the candidate as in development. The shared README_STATUS expression in tools/release-gate.js accepts only the literal published-on-main wording. tests/package.test.js therefore fails on the working tree, and evaluateRelease rejects the same content once committed, even though all three version numbers agree. This unnecessarily couples version consistency to a claim that publication has already happened and stalls ordinary local verification.
