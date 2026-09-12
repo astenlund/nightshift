@@ -4,6 +4,14 @@ V2 entries are preserved in [the historical index](migration/v2/QUICK_WINS.md) a
 
 ## Current
 
+### Settle a spare token allowance for every implementation run at handover
+
+User idea from an unattended run in this repository on 2026-09-12, refined at triage. That run needed two separate budget questions after handover (a 500000 token installed-host campaign, then a re-probe of about 350000), and a controller estimate for one more probe overran the second cap by 101971 tokens because the runner enforced an estimated admission check rather than a spending ceiling. The pending entry [Settle the installed-host evidence budget before handover](#settle-the-installed-host-evidence-budget-before-handover) covers planned live evidence only.
+
+Extend `skills/handover/SKILL.md` so every implementation run settles a token budget in the interactive phase, whether or not live probes are planned at the start: a spare allowance for reviewer-requested probes, dynamic checks and other unexpected but not huge costs, with the accounting source named. The allowance rides with the evidence budget when one is planned. One rule governs exhaustion: once the allowance has run dry in unattended mode, or a single probe's estimate would exceed the remainder, that probe is deferred as a follow-up for the user's decision rather than run; the only exception is a probe whose absence genuinely blocks the run, and that case is recorded as a blocker on the pending decision, never spent past the cap on the controller's own authority. Shipped text changes model-owned behavior, so it rides with the next version increase and needs installed-host evidence.
+
+**Requires:** none.
+
 ### Probe proposals with implausible timeouts run as specified
 
 Observed in this repository on 2026-09-12 during an unattended run. An independent assessor returned a `deterministic-regressions` probe with `timeoutMs` 600 for five test suites that take about a minute; the `probe` operation executed it as written, `spawnSync` reported `ETIMEDOUT` after 613 ms, and the spurious failure cost a full re-dispatch to explain. The runtime accepts any positive timeout, and neither the reference nor the dispatch rules state the unit or a floor.
