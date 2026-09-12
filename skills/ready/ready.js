@@ -16,7 +16,7 @@
 // file is still read once for the hard-wrap notice, since the line
 // discipline covers the whole .nightshift/ backlog.
 //
-// Usage: node ready.js [repo-root-or-.nightshift-dir]   (defaults to cwd)
+// Usage: node ready.js [repo-root, .nightshift dir, or legacy .claude dir]   (defaults to cwd)
 
 const fs = require('fs');
 const path = require('path');
@@ -30,6 +30,8 @@ const INDEX_FILE_STEMS = new Set([
 ]);
 const WORK_INDEX_NAMES = ['QUICK_WINS', 'FEATURES', 'BUGS'];
 const WORK_INDEX_FILES = new Set(WORK_INDEX_NAMES.map((name) => `${name}.md`));
+// A legacy .claude backlog is read in place so init-backlog can validate it before relocating anything.
+const BACKLOG_DIRECTORY_NAMES = ['.nightshift', '.claude'];
 
 // The one excluded section whose entries are still collected (as drafts,
 // never as work items). Named once so the exclusion and the collection
@@ -1662,15 +1664,17 @@ function revalidateBacklogRootIdentity(acquired) {
 }
 
 function writeMissingBacklogRoot(backlogDir) {
+  const name = path.basename(backlogDir);
+  const remedy = name === '.nightshift' ? '; run /nightshift:init-backlog to scaffold the four-index layout' : '';
   process.stdout.write(JSON.stringify({
-    error: `no .nightshift directory found at ${backlogDir}; run /nightshift:init-backlog to scaffold the four-index layout`,
+    error: `no ${name} directory found at ${backlogDir}${remedy}`,
   }, null, 2) + '\n');
   process.exitCode = 1;
 }
 
 function writeInvalidBacklogRoot(backlogDir) {
   process.stdout.write(JSON.stringify({
-    error: `the .nightshift directory escapes its repository authority: ${backlogDir}`,
+    error: `the ${path.basename(backlogDir)} directory escapes its repository authority: ${backlogDir}`,
   }, null, 2) + '\n');
   process.exitCode = 1;
 }
@@ -1684,7 +1688,7 @@ function writeInvalidUtf8BacklogFile(target) {
 
 function runCli(argRoot) {
   const root = path.resolve(argRoot || process.cwd());
-  const backlogDir = path.basename(root) === '.nightshift' ? root : path.join(root, '.nightshift');
+  const backlogDir = BACKLOG_DIRECTORY_NAMES.includes(path.basename(root)) ? root : path.join(root, '.nightshift');
   const acquired = acquireBacklogRootIdentity(backlogDir);
   if (acquired.kind === 'missing') {
     writeMissingBacklogRoot(backlogDir);

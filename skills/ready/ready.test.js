@@ -238,6 +238,30 @@ test('analyzeCatalog reproduces CLI JSON from exact catalog records and uses pre
   }
 });
 
+test('the CLI reads a legacy .claude directory as the backlog root and names the directory it looked for', () => {
+  const tmpRoot = path.join(__dirname, '..', '..', '.tmp', `ready-legacy-${process.pid}`);
+  const legacyDir = path.join(tmpRoot, '.claude');
+  fs.mkdirSync(path.join(legacyDir, 'features'), { recursive: true });
+  fs.writeFileSync(path.join(legacyDir, 'FEATURES.md'), '## Area\n\n### [Alpha](features/alpha.md)\n\n**Requires:** none.\n');
+  fs.writeFileSync(path.join(legacyDir, 'features', 'alpha.md'), '# Alpha\n\n**Requires:** none.\n');
+  const run = (target) => spawnSync(process.execPath, [path.join(__dirname, 'ready.js'), target], { encoding: 'utf8' });
+  try {
+    const legacy = run(legacyDir);
+    assert.strictEqual(legacy.status, 0);
+    const report = JSON.parse(legacy.stdout);
+    assert.deepStrictEqual(report.indexes.found, ['FEATURES.md']);
+    assert.deepStrictEqual(report.structuralErrors.map((entry) => entry.title), ['Alpha']);
+    const missing = run(tmpRoot);
+    assert.strictEqual(missing.status, 1);
+    assert.match(JSON.parse(missing.stdout).error, /^no \.nightshift directory found at .*; run \/nightshift:init-backlog to scaffold the four-index layout$/);
+    const absent = run(path.join(tmpRoot, 'elsewhere', '.claude'));
+    assert.strictEqual(absent.status, 1);
+    assert.match(JSON.parse(absent.stdout).error, /^no \.claude directory found at [^;]*$/);
+  } finally {
+    fs.rmSync(tmpRoot, { recursive: true, force: true });
+  }
+});
+
 test('analyzeCatalog carries parser-owned structural, breakout, cycle, and notice evidence', () => {
   const features = `## Area
 ### [Bad](features/bad.md)

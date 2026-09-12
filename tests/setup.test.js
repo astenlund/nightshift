@@ -519,3 +519,112 @@ test('unfinished run migration preserves state and refuses active writers', t =>
     assert.deepEqual(migrated.history(before.id)[1].state, before);
   } finally { migrated.close(); }
 });
+
+function stagedBlob(root, file) {
+  return git(root, ['ls-files', '--stage', file]).stdout.split(' ')[1];
+}
+
+function workingBlob(root, file) {
+  return git(root, ['hash-object', file]).stdout.trim();
+}
+
+test('a rewritten relocated destination is restaged when its working tree matched the index', t => {
+  const root = fixture(t);
+  write(root, '.claude/features/item.md', '# Item\r\n');
+  write(root, '.claude/FEATURES.md', '# Features\r\n\r\n## Features\r\n\r\n### [Item](features/item.md)\r\n\r\nSee `.claude/features/item.md`.\r\n\r\n**Requires:** none.\r\n');
+  write(root, 'README.md', '[Backlog](.claude/FEATURES.md)\r\n');
+  git(root, ['add', '.claude/features/item.md', '.claude/FEATURES.md', 'README.md']);
+  assert.equal(initialize(root).migration.status, 'complete');
+  assert.ok(fs.readFileSync(path.join(root, '.nightshift/FEATURES.md'), 'utf8').includes('`.nightshift/features/item.md`'));
+  assert.equal(stagedBlob(root, '.nightshift/FEATURES.md'), workingBlob(root, '.nightshift/FEATURES.md'));
+  assert.equal(git(root, ['diff', '--name-only', '--', '.nightshift']).stdout.trim(), '');
+  assert.equal(git(root, ['diff', '--name-only', '--', 'README.md']).stdout.trim(), 'README.md');
+});
+
+test('restaging a rewritten destination survives an interrupted reference write', t => {
+  const root = fixture(t);
+  write(root, '.claude/features/item.md', '# Item\r\n');
+  write(root, '.claude/FEATURES.md', '# Features\r\n\r\n## Features\r\n\r\n### [Item](features/item.md)\r\n\r\nSee `.claude/features/item.md`.\r\n\r\n**Requires:** none.\r\n');
+  git(root, ['add', '.claude/features/item.md', '.claude/FEATURES.md']);
+  const staged = stagedBlob(root, '.claude/FEATURES.md');
+  let setup = new Setup(root);
+  try { assert.throws(() => setup.apply({ afterReference: () => { throw new Error('simulated crash'); } }), /simulated crash/); }
+  finally { setup.close(); }
+  assert.equal(stagedBlob(root, '.nightshift/FEATURES.md'), staged);
+  setup = new Setup(root);
+  try { assert.equal(setup.apply().status, 'complete'); }
+  finally { setup.close(); }
+  assert.notEqual(stagedBlob(root, '.nightshift/FEATURES.md'), staged);
+  assert.equal(stagedBlob(root, '.nightshift/FEATURES.md'), workingBlob(root, '.nightshift/FEATURES.md'));
+});
+
+test('a relocated file with a staged versus working difference keeps its staged blob after the rewrite', t => {
+  const root = fixture(t);
+  write(root, '.claude/features/item.md', '# Item\r\n');
+  write(root, '.claude/FEATURES.md', '# Features\r\n\r\n## Features\r\n\r\n### [Item](features/item.md)\r\n\r\nStaged excerpt.\r\n\r\n**Requires:** none.\r\n');
+  git(root, ['add', '.claude/features/item.md', '.claude/FEATURES.md']);
+  const staged = stagedBlob(root, '.claude/FEATURES.md');
+  write(root, '.claude/FEATURES.md', '# Features\r\n\r\n## Features\r\n\r\n### [Item](features/item.md)\r\n\r\nSee `.claude/features/item.md`.\r\n\r\n**Requires:** none.\r\n');
+  assert.equal(initialize(root).migration.status, 'complete');
+  assert.equal(stagedBlob(root, '.nightshift/FEATURES.md'), staged);
+  assert.ok(fs.readFileSync(path.join(root, '.nightshift/FEATURES.md'), 'utf8').includes('`.nightshift/features/item.md`'));
+});
+
+test('an edit made to a relocated destination during an interruption is not staged on resume', t => {
+  const root = fixture(t);
+  write(root, '.claude/features/item.md', '# Item\r\n');
+  write(root, '.claude/FEATURES.md', '# Features\r\n\r\n## Features\r\n\r\n### [Item](features/item.md)\r\n\r\nSee `.claude/features/item.md`.\r\n\r\n**Requires:** none.\r\n');
+  write(root, '.claude/QUICK_WINS.md', '# Quick wins\r\n\r\n## Current\r\n\r\nSee `.claude/features/item.md`.\r\n');
+  git(root, ['add', '.claude/features/item.md', '.claude/FEATURES.md', '.claude/QUICK_WINS.md']);
+  const staged = stagedBlob(root, '.claude/QUICK_WINS.md');
+  let setup = new Setup(root);
+  try { assert.throws(() => setup.apply({ afterReference: () => { throw new Error('simulated crash'); } }), /simulated crash/); }
+  finally { setup.close(); }
+  assert.ok(fs.readFileSync(path.join(root, '.nightshift/QUICK_WINS.md'), 'utf8').includes('`.claude/features/item.md`'));
+  fs.appendFileSync(path.join(root, '.nightshift/QUICK_WINS.md'), 'Interruption note.\r\n');
+  setup = new Setup(root);
+  try { assert.equal(setup.apply().status, 'complete'); }
+  finally { setup.close(); }
+  const resumed = fs.readFileSync(path.join(root, '.nightshift/QUICK_WINS.md'), 'utf8');
+  assert.ok(resumed.includes('`.nightshift/features/item.md`') && resumed.includes('Interruption note.'));
+  assert.equal(stagedBlob(root, '.nightshift/QUICK_WINS.md'), staged);
+  assert.equal(stagedBlob(root, '.nightshift/FEATURES.md'), workingBlob(root, '.nightshift/FEATURES.md'));
+});
+
+test('structural backlog problems are reported by inspect and refused before relocation', t => {
+  const root = fixture(t);
+  write(root, '.claude/features/item.md', '# Item\r\n\r\n**Requires:** none.\r\n');
+  write(root, '.claude/FEATURES.md', '# Features\r\n\r\n## Features\r\n\r\n### [Item](features/item.md)\r\n\r\nItem.\r\n\r\n**Requires:** none.\r\n');
+  let setup = new Setup(root);
+  try {
+    const inspected = setup.inspect();
+    assert.deepEqual(inspected.backlog.structuralErrors.map(entry => entry.title), ['Item']);
+    assert.deepEqual(inspected.backlog.notices, []);
+  } finally { setup.close(); }
+  assert.throws(() => initialize(root), error => error.code === 'backlog-validation' && error.message.includes('.claude') && error.message.includes('"structuralErrors"') && !error.message.includes('"ready"'));
+  assert.ok(fs.existsSync(path.join(root, '.claude/FEATURES.md')));
+  assert.equal(fs.existsSync(path.join(root, '.nightshift/FEATURES.md')), false);
+  setup = new Setup(root);
+  try { assert.equal(setup.saved(), null); }
+  finally { setup.close(); }
+  write(root, '.claude/features/item.md', '# Item\r\n');
+  assert.equal(initialize(root).migration.status, 'complete');
+  assert.equal(fs.existsSync(path.join(root, '.claude/FEATURES.md')), false);
+});
+
+test('initialization unwraps the migrated backlog only when the option is set', t => {
+  const root = fixture(t);
+  write(root, '.claude/features/item.md', '# Item\r\n');
+  write(root, '.claude/FEATURES.md', '# Features\r\n\r\n## Features\r\n\r\n### [Item](features/item.md)\r\n\r\nFirst line\r\nsecond line.\r\n\r\n**Requires:** none.\r\n');
+  assert.throws(() => initialize(root, { unwrap: 'yes' }), { code: 'invalid-policy' });
+  assert.ok(fs.existsSync(path.join(root, '.claude/FEATURES.md')));
+  const wrapped = initialize(root);
+  assert.equal(wrapped.unwrapped, null);
+  assert.ok(wrapped.backlog.notices.some(notice => notice.startsWith('FEATURES.md has 1 hard-wrapped line')));
+  assert.ok(fs.readFileSync(path.join(root, '.nightshift/FEATURES.md'), 'utf8').includes('First line\r\nsecond line.'));
+  const unwrapped = initialize(root, { unwrap: true });
+  assert.deepEqual(unwrapped.unwrapped.map(entry => [path.relative(root, entry.file).split(path.sep).join('/'), entry.wraps, entry.rewritten]), [['.nightshift/FEATURES.md', 1, true]]);
+  assert.ok(!unwrapped.backlog.notices.some(notice => notice.includes('hard-wrapped')));
+  assert.ok(fs.readFileSync(path.join(root, '.nightshift/FEATURES.md'), 'utf8').includes('First line second line.'));
+  assert.deepEqual(initialize(root, { unwrap: true }).unwrapped, []);
+});

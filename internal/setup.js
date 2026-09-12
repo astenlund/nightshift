@@ -13,9 +13,11 @@ const { UnresolvedPathError, hasUnsupportedPathLiterals, relocated, relocationMo
 const BACKLOG_FILES = ['FEATURES.md', 'BUGS.md', 'QUICK_WINS.md', 'PATTERNS.md', 'FEATURES_HISTORY.md', 'BUGS_HISTORY.md', 'QUICK_WINS_HISTORY.md'];
 const OWNED_DIRECTORIES = ['features', 'bugs', 'patterns', 'inbox', 'plans', 'specs', 'runs'];
 
+const LITERAL_PATHSPEC_COMMANDS = ['ls-files', 'add'];
+
 function git(root, args, allowed = [0], input) {
   // check-ignore rejects pathspec magic; its index must be bypassed separately.
-  const argumentsForGit = args[0] === 'ls-files' ? ['--literal-pathspecs', ...args] : args;
+  const argumentsForGit = LITERAL_PATHSPEC_COMMANDS.includes(args[0]) ? ['--literal-pathspecs', ...args] : args;
   const result = spawnSync('git', argumentsForGit, { cwd: root, windowsHide: true, encoding: 'utf8', timeout: 30000, maxBuffer: 16 * 1024 * 1024, input });
   requireCondition(!result.error && allowed.includes(result.status), 'git-failed', result.error?.message ?? result.stderr);
   return result;
@@ -25,6 +27,11 @@ function policy(root, relative) {
   const tracked = git(root, ['ls-files', '--error-unmatch', '--', relative], [0, 1]).status === 0;
   const ignored = !tracked && git(root, ['check-ignore', '--no-index', '-q', '--', relative], [0, 1]).status === 0;
   return { tracked, ignored, index: tracked ? indexEntry(root, relative) : null };
+}
+
+// hash-object applies the path's filters, so a clean checkout under autocrlf still matches its index blob.
+function workingTreeMatchesIndex(root, relative, index) {
+  return index !== null && git(root, ['hash-object', '--', relative]).stdout.trim() === index.blob;
 }
 
 function indexEntry(root, relative) {
@@ -43,6 +50,15 @@ function relocateIndex(root, move) {
   requireCondition(same(source) && destination === null, 'migration-index-drift', 'Index changed during relocation; preserve staged work and reconcile before retrying');
   const zeros = '0'.repeat(move.index.blob.length);
   git(root, ['update-index', '-z', '--index-info'], [0], `0 ${zeros}\t${move.source}\0${move.index.mode} ${move.index.blob}\t${move.destination}\0`);
+}
+
+// The reference rewrite leaves a relocated destination with its rename staged and its new content unstaged. It is restaged
+// only when the journaled rewrite decision found no staged-versus-working difference and the migration's own entry is still current.
+function restageRewritten(root, move) {
+  if (!move.restage) return;
+  const current = indexEntry(root, move.destination);
+  if (current?.mode !== move.index.mode || current.blob !== move.index.blob) return;
+  git(root, ['add', '--', move.destination]);
 }
 
 function inventory(root, ownership = {}) {
@@ -129,6 +145,10 @@ class Setup {
     return row ? JSON.parse(row.body) : null;
   }
 
+  save(state) {
+    this.db.prepare('UPDATE migration SET body=? WHERE singleton=1').run(JSON.stringify(state));
+  }
+
   inspect(options = {}) {
     assertQuiescent(this.root);
     const saved = this.saved();
@@ -144,16 +164,20 @@ class Setup {
       ignored: git(this.root, ['check-ignore', '--no-index', '-q', '--', source + '/'], [0, 1]).status === 0,
     }));
     const referenceDecisions = this.referenceDecisions(found, policy);
-    return { root: this.root, status: 'prepared', ...found, directoryPolicies, policy, referenceDecisions };
+    const backlog = found.files.length > 0 ? validateBacklog(this.root, '.claude') : null;
+    return { root: this.root, status: 'prepared', ...found, directoryPolicies, policy, referenceDecisions, backlog };
   }
 
   apply(options = {}) {
     assertQuiescent(this.root);
     let state = this.saved();
     if (!state) {
-      state = this.inspect(options);
-      requireCondition(state.undecided.length === 0, 'uncertain-ownership', 'Classify ambiguous legacy content as nightshift or preserve before applying: ' + state.undecided.join(', '));
-      requireCondition(state.referenceDecisions.length === 0, 'reference-policy-required', 'Classify active or historical consumers, or normalize unsupported path literals and computed paths before migration: ' + state.referenceDecisions.join(', '));
+      // The parser report is a pre-relocation snapshot for the caller; the journal keeps only the migration inventory.
+      const { backlog, ...prepared } = this.inspect(options);
+      requireCondition(prepared.undecided.length === 0, 'uncertain-ownership', 'Classify ambiguous legacy content as nightshift or preserve before applying: ' + prepared.undecided.join(', '));
+      requireCondition(prepared.referenceDecisions.length === 0, 'reference-policy-required', 'Classify active or historical consumers, or normalize unsupported path literals and computed paths before migration: ' + prepared.referenceDecisions.join(', '));
+      if (backlog) requireValidBacklog(backlog, '.claude');
+      state = prepared;
       this.db.prepare('INSERT INTO migration VALUES (1, ?)').run(JSON.stringify(state));
     }
     const policy = state.policy ?? migrationPolicy({});
@@ -168,7 +192,7 @@ class Setup {
       this.rebindRun(state);
       return state;
     }
-    const record = () => this.db.prepare('UPDATE migration SET body=? WHERE singleton=1').run(JSON.stringify(state));
+    const record = () => this.save(state);
     for (const directory of state.directories) safeDirectory(this.root, directory.replace(/^\.claude\//, '.nightshift/'), true);
     for (const move of state.files) {
       const source = projectFile(this.root, move.source);
@@ -294,24 +318,32 @@ class Setup {
       if (!/\.(?:md|json|toml|ya?ml)$/.test(file) && !matchesPurpose(file, options.activeReferences ?? [])) continue;
       const target = projectFile(this.root, file);
       if (!fs.existsSync(target) || !fs.statSync(target).isFile()) continue;
+      const move = state.files.find(candidate => candidate.destination === file);
       let edit = this.db.prepare('SELECT * FROM edits WHERE path=?').get(file);
       if (!edit) {
         const before = fs.readFileSync(target);
         const historical = file.startsWith('.nightshift/plans/') || matchesPurpose(file, options.historicalReferences ?? []);
-        const sourcePath = state.files.find(move => move.destination === file)?.source ?? file;
-        const after = rewriteReferences(before, moves, { markdown: file.endsWith('.md'), historical, sourcePath, destinationPath: file, root: this.root });
+        const after = rewriteReferences(before, moves, { markdown: file.endsWith('.md'), historical, sourcePath: move?.source ?? file, destinationPath: file, root: this.root });
         if (after.equals(before)) continue;
+        if (move) {
+          // Decided on the bytes the rewrite starts from and journaled before the edits row, so a rerun reuses it and an
+          // edit made to the destination during an interruption is never swept into the index.
+          move.restage = move.tracked && workingTreeMatchesIndex(this.root, file, move.index);
+          this.save(state);
+        }
         this.db.prepare('INSERT INTO edits VALUES (?, ?, ?, ?)').run(file, hash(before), after, hash(after));
         edit = this.db.prepare('SELECT * FROM edits WHERE path=?').get(file);
       }
       const currentHash = hash(fs.readFileSync(target));
-      if (currentHash === edit.after_hash) continue;
-      requireCondition(currentHash === edit.before_hash, 'reference-drift', `Navigable references changed during migration: ${file}`);
-      const temporary = target + '.nightshift-new';
-      if (fs.existsSync(temporary)) requireCondition(hash(fs.readFileSync(temporary)) === edit.after_hash, 'reference-drift', 'Interrupted reference write has conflicting content');
-      else fs.writeFileSync(temporary, Buffer.from(edit.after_bytes), { flag: 'wx' });
-      fs.renameSync(temporary, target);
-      options.afterReference?.(file);
+      if (currentHash !== edit.after_hash) {
+        requireCondition(currentHash === edit.before_hash, 'reference-drift', `Navigable references changed during migration: ${file}`);
+        const temporary = target + '.nightshift-new';
+        if (fs.existsSync(temporary)) requireCondition(hash(fs.readFileSync(temporary)) === edit.after_hash, 'reference-drift', 'Interrupted reference write has conflicting content');
+        else fs.writeFileSync(temporary, Buffer.from(edit.after_bytes), { flag: 'wx' });
+        fs.renameSync(temporary, target);
+        options.afterReference?.(file);
+      }
+      if (move) restageRewritten(this.root, move);
     }
   }
 
@@ -363,7 +395,32 @@ class Setup {
   }
 }
 
+function runBundledScript(script, args) {
+  const result = spawnSync(process.execPath, [path.resolve(__dirname, '..', script), ...args], { windowsHide: true, encoding: 'utf8', timeout: 30000, maxBuffer: 16 * 1024 * 1024 });
+  let json = null;
+  try { json = JSON.parse(result.stdout); } catch { /* Non-JSON output is reported by the caller through the exit status and stderr. */ }
+  return { ...result, json };
+}
+
+function validateBacklog(root, home) {
+  const parser = runBundledScript('skills/ready/ready.js', [path.join(root, home)]);
+  requireCondition(!parser.error && parser.status === 0 && parser.json !== null, 'backlog-validation', parser.error?.message ?? parser.json?.error ?? parser.stderr);
+  return parser.json;
+}
+
+function requireValidBacklog(report, home) {
+  const { structuralErrors, notices } = report;
+  requireCondition(structuralErrors.length === 0, 'backlog-validation', `Backlog under ${home} has structural problems; scoped repair is required: ` + JSON.stringify({ structuralErrors, notices }));
+}
+
+function unwrapBacklog(root) {
+  const unwrap = runBundledScript('skills/init-backlog/unwrap.js', ['--write', path.join(root, '.nightshift')]);
+  requireCondition(!unwrap.error && unwrap.status === 0 && Array.isArray(unwrap.json), 'backlog-unwrap', unwrap.error?.message ?? (unwrap.json ? JSON.stringify(unwrap.json) : unwrap.stderr));
+  return unwrap.json;
+}
+
 function initialize(root, options = {}) {
+  requireCondition(options.unwrap === undefined || typeof options.unwrap === 'boolean', 'invalid-policy', 'unwrap must be true or false');
   const setup = new Setup(root);
   try {
     const migration = setup.apply(options);
@@ -375,11 +432,10 @@ function initialize(root, options = {}) {
       const content = fs.readFileSync(path.resolve(__dirname, '../skills/init-backlog/templates', template), 'utf8').replace(/\r?\n/g, '\r\n');
       fs.writeFileSync(target, content, { flag: 'wx' });
     }
-    const parser = spawnSync(process.execPath, [path.resolve(__dirname, '../skills/ready/ready.js'), setup.root], { windowsHide: true, encoding: 'utf8', timeout: 30000 });
-    requireCondition(!parser.error && parser.status === 0, 'backlog-validation', parser.error?.message ?? parser.stderr);
-    const report = JSON.parse(parser.stdout);
-    requireCondition(!report.error && report.structuralErrors.length === 0, 'backlog-validation', 'Backlog has structural problems; scoped repair is required: ' + JSON.stringify(report));
-    return { migration, backlog: report };
+    const unwrapped = options.unwrap === true ? unwrapBacklog(setup.root) : null;
+    const backlog = validateBacklog(setup.root, '.nightshift');
+    requireValidBacklog(backlog, '.nightshift');
+    return { migration, unwrapped, backlog };
   } finally { setup.close(); }
 }
 
