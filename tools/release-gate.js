@@ -5,7 +5,7 @@ const { spawnSync } = require('node:child_process');
 
 const SHIPPED_PREFIXES = ['skills/', 'internal/', 'hooks/'];
 const MANIFESTS = ['.claude-plugin/plugin.json', '.codex-plugin/plugin.json'];
-const README_STATUS = /\*\*Status:\*\* Nightshift (\d+\.\d+\.\d+) is published on `main`/;
+const README_STATUS = /^\*\*Status:\*\* Nightshift (\d+\.\d+\.\d+) is (?:in development|published on `main`)(?=[., \t\r\n]|$)/m;
 const SEMVER = /^(\d+)\.(\d+)\.(\d+)$/;
 const ZERO_SHA = /^0+$/;
 const PUBLISHED_REF = 'refs/heads/main';
@@ -76,7 +76,7 @@ function evaluateRelease(root, baseline, head) {
   if (comparison < 0) problems.push(`Version decreases from ${baselineManifests[0].version} to ${headManifests[0].version}`);
   else if (comparison === 0 && (shipped.length > 0 || manifestFieldsChanged.length > 0)) problems.push(`Shipped plugin behavior changed without a version increase over ${baselineManifests[0].version}: ${[...shipped, ...manifestFieldsChanged].join(', ')}`);
   const status = README_STATUS.exec(git(root, ['show', `${head}:README.md`]));
-  if (!status) problems.push(`README.md at ${head} has no recognizable published-version status line`);
+  if (!status) problems.push(`README.md at ${head} has no recognizable candidate or published version status line`);
   else if (status[1] !== headManifests[0].version) problems.push(`README.md status announces ${status[1]} while the manifests carry ${headManifests[0].version}`);
   return { baseline, head, changed, shipped, manifestFieldsChanged, baselineVersion: baselineManifests[0].version, headVersion: headManifests[0].version, problems };
 }

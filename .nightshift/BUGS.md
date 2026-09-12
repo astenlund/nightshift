@@ -12,14 +12,6 @@ Investigate and repair workflow selection and closing for repository implementat
 
 **Requires:** none.
 
-### Release status check requires an unpublished candidate to claim publication
-
-Observed in this repository on 2026-09-12 while changing the ready skill. Both manifests were bumped from published 3.0.10 to candidate 3.0.11, and README.md truthfully described the candidate as in development. The shared README_STATUS expression in tools/release-gate.js accepts only the literal published-on-main wording. tests/package.test.js therefore fails on the working tree, and evaluateRelease rejects the same content once committed, even though all three version numbers agree. This unnecessarily couples version consistency to a claim that publication has already happened and stalls ordinary local verification.
-
-Allow truthful candidate and published status while preserving manifest equality, monotonic release version checks and README version consistency. Cover accepted statuses and mismatched or missing versions with deterministic fixtures, and reconcile the packaging assertions and status documentation so local preparation does not require a false publication claim. The current presentation change can be probed independently; this defect remains a release-preparation check failure until repaired.
-
-**Requires:** none.
-
 ### Retained v3 continuation needs lack actionable backlog visibility
 
 Observed in this repository on 2026-09-12 when ready reported ten ready entries after a migration of 122 original work units. The migration ledger records 39 retired proposals and 83 retained needs, but marks retained needs as consolidated rather than individually distinguishing delivered work from unfinished work. FEATURES.md points to an Exploring V3 continuations umbrella, whose record sends other surviving needs back to the migration ledger. The ready parser reads active indexes, so retained needs represented only in that ledger cannot appear as individually actionable work. Consolidation is explicitly not delivery; the number of unfinished retained needs has not yet been established.

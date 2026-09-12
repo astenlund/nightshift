@@ -16,7 +16,7 @@ test('both packages expose the same intentional public skill surface', () => {
   assert.equal(codex.name, claude.name);
   assert.equal(codex.version, claude.version);
   const status = README_STATUS.exec(fs.readFileSync(path.join(root, 'README.md'), 'utf8'));
-  assert.ok(status, 'README must carry the published-version status line');
+  assert.ok(status, 'README must carry a candidate or published version status line');
   assert.equal(status[1], claude.version);
   const discovered = fs.readdirSync(path.join(root, 'skills')).filter(name => fs.existsSync(path.join(root, 'skills', name, 'SKILL.md'))).sort();
   assert.deepEqual(discovered, publicSkills);

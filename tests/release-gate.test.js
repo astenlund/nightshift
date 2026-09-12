@@ -5,7 +5,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const test = require('node:test');
 const { spawnSync } = require('node:child_process');
-const { GateError, evaluateRelease, isShipped, prePushRanges } = require('../tools/release-gate');
+const { GateError, README_STATUS, evaluateRelease, isShipped, prePushRanges } = require('../tools/release-gate');
 
 const gate = path.resolve(__dirname, '../tools/release-gate.js');
 
@@ -123,11 +123,39 @@ test('version decreases and unequal manifests are rejected', t => {
   assert.ok(evaluateRelease(root, 'HEAD~2', 'HEAD').problems.some(problem => /Manifest versions differ/.test(problem)));
 });
 
+test('candidate status passes without claiming publication and still enforces version agreement', t => {
+  const root = fixture(t);
+  release(root, '1.2.4');
+  write(root, 'internal/runtime/hosts.js', "'use strict';\n// changed behavior\n");
+  write(root, 'README.md', '**Status:** Nightshift 1.2.4 is in development. Version 1.2.3 is published on `main`.\n');
+  commit(root, 'prepare candidate');
+  assert.deepEqual(evaluateRelease(root, 'HEAD~1', 'HEAD').problems, []);
+  write(root, 'README.md', '**Status:** Nightshift 1.2.3 is in development.\n');
+  commit(root, 'stale candidate status');
+  assert.match(evaluateRelease(root, 'HEAD~2', 'HEAD').problems[0], /status announces 1\.2\.3 while the manifests carry 1\.2\.4/);
+});
+
+test('status parsing accepts both states and rejects malformed or unrelated declarations', () => {
+  for (const state of ['in development', 'published on `main`']) {
+    for (const ending of ['', '.', ', with evidence.', '\r\n']) {
+      assert.equal(README_STATUS.exec(`**Status:** Nightshift 1.2.3 is ${state}${ending}`)?.[1], '1.2.3');
+    }
+  }
+  for (const text of [
+    '**Status:** Nightshift 1.2.3 is in developmentally',
+    '**Status:** Nightshift 1.2.3 is published on `main`ish',
+    '**Status:** Nightshift 1.2.3-rc1 is in development.',
+    '**Status:** Nightshift 1.2 is in development.',
+    '**Status:** Nightshift 1.2.3 is pending.',
+    'Example: **Status:** Nightshift 1.2.3 is published on `main`.'
+  ]) assert.equal(README_STATUS.exec(text), null, text);
+});
+
 test('a missing README status line is a problem', t => {
   const root = fixture(t);
   write(root, 'README.md', '# Nightshift\n');
   commit(root, 'drop status');
-  assert.match(evaluateRelease(root, 'HEAD~1', 'HEAD').problems[0], /no recognizable published-version status line/);
+  assert.match(evaluateRelease(root, 'HEAD~1', 'HEAD').problems[0], /no recognizable candidate or published version status line/);
 });
 
 test('unreadable baselines fail closed', t => {
