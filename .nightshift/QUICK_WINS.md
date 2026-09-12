@@ -4,6 +4,14 @@ V2 entries are preserved in [the historical index](migration/v2/QUICK_WINS.md) a
 
 ## Current
 
+### Align Exploring source-link guidance with Ready
+
+Confirmed during review and skeptical validation of the Ready presentation change on 2026-09-13: `skills/exploring/SKILL.md` requests breakout links but lacks the explicit index-relative resolution, index-file fallback, absolute-link preservation and Windows Markdown formatting guidance now present in `skills/ready/SKILL.md`. Earlier Ready probes exposed failures under similarly thin guidance; the Exploring skill itself was not probed, so a corresponding behavior failure remains an inference. The user chose to track this follow-up rather than implement it. See [the Ready presentation evidence](reports/ready-exploring-presentation-20260912.md).
+
+Reconcile the Exploring skill's source-link guidance with Ready and verify its own output on installed hosts, including relative records, drafts without record links, absolute links and Windows paths containing spaces. Preserve the Exploring view's full draft presentation and separation from ready work.
+
+**Requires:** none.
+
 ### Settle a spare token allowance for every implementation run at handover
 
 User idea from an unattended run in this repository on 2026-09-12, refined at triage. That run needed two separate budget questions after handover (a 500000 token installed-host campaign, then a re-probe of about 350000), and a controller estimate for one more probe overran the second cap by 101971 tokens because the runner enforced an estimated admission check rather than a spending ceiling. The pending entry [Settle the installed-host evidence budget before handover](#settle-the-installed-host-evidence-budget-before-handover) covers planned live evidence only.
