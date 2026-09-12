@@ -48,6 +48,14 @@ Establish which part of the invocation triggers the classifier (the CLI path, th
 **Requires:** none.
 **External:** Claude Code auto-mode classifier behavior that the plugin cannot change.
 
+### Windows job pipe and containment fixtures fail outside the code they cover
+
+Observed on 2026-09-12 in this repository on Windows 11 with Node v26.6.0 while running the deterministic suite for an unrelated runtime change. In `tests/runtime-hosts.test.js`, the `--no-input-leaf` case of "Windows pipes keep output and cancellation live while stdin is pending" fails deterministically, also on a checkout without the unrelated change: the test writes 256 KiB to a child that reads no input and kills it after 500 ms, and the assertion that the job emptied fails with the collected error `write EOF`. The case "Windows job containment carries the actual host protocol and proves descendants have ended" fails only when the whole CI file list runs in one `node --test` invocation: the `descendant` fixture's `descendant.pid` does not exist when the test reads it after a 2.5 second timeout, and the same case passes when the file runs alone. Both cases are skipped off Windows, so CI on `windows-latest` is where they can surface.
+
+Establish whether the `write EOF` comes from the job runner closing the child's stdin before the 256 KiB write drains under Node 26, or from a Node change in pipe semantics, and make the fixture assert the intended containment property rather than the incidental write outcome; give the descendant fixture a start-up signal or a longer budget so the containment case does not depend on scheduler load. Evidence: full-suite run and isolated reruns on 2026-09-12, recorded in the session that shipped the unattended wait and pause change.
+
+**Requires:** none.
+
 ## History
 
 Prior delivered work remains in [BUGS_HISTORY.md](BUGS_HISTORY.md).
