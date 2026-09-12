@@ -4,7 +4,7 @@ Nightshift carries agreed project work through implementation, independent revie
 
 Its priorities are ordered: autonomy first, quality second, then speed and economy. The v3 workflow uses a strong controller and fresh independent reviewers. Fable and Astra are interchangeable; using both is an optional advantage.
 
-**Status:** Nightshift 3.0.9 is published on `main`, with implementation and required Windows acceptance complete. The [acceptance report](.nightshift/reports/v3-acceptance-272m-20260910.md) records the evidence and its qualifications. See [VISION.md](VISION.md), [WORKFLOW.md](WORKFLOW.md) and the [v3 feature](.nightshift/features/nightshift-v3.md) for the supported scope.
+**Status:** Nightshift 3.0.10 is published on `main`, with implementation and required Windows acceptance complete. The [acceptance report](.nightshift/reports/v3-acceptance-272m-20260910.md) records the evidence and its qualifications. See [VISION.md](VISION.md), [WORKFLOW.md](WORKFLOW.md) and the [v3 feature](.nightshift/features/nightshift-v3.md) for the supported scope.
 
 ## Workflow
 
