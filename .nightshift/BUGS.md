@@ -14,6 +14,8 @@ A later review in the same run exposed a distinct enforcement failure in the con
 
 The user subsequently granted an additional 2,000,000 tokens and requested carrying forward both the initial 500,000-token estimate being too conservative and the subsequent overshoot. Track estimation calibration as part of this diagnosis: estimate the complete native probe and independent review/repair cycle, including repeated context, necessary recovery and verification of the spending controls. The observed retained-review context became expensive on every further read. An estimate, an internal admission ceiling and the user-owned aggregate allowance are different quantities; neither underestimation nor ineffective enforcement authorizes an overrun.
 
+Later reconciliation also found that Claude streaming assistant events carried placeholder output counts, while persisted completed-response records contained the finalized output usage. Reconciliation added 30,779 tokens to the additional allowance ledger, taking its accounted usage to 1,996,820; some interrupted output remains unmeasured. Include accurate final response accounting and deliberately controlled stop boundaries in the follow-up. Streaming lower bounds, conservative reservations and actual consumption must remain distinguishable.
+
 **Requires:** none.
 
 ### Tool warnings dismissed without assessing their retrospective value
