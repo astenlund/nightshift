@@ -4,6 +4,14 @@ V2 entries are preserved in [the historical index](migration/v2/BUGS.md) and [MI
 
 ## Current
 
+### Controller treats internal token ceilings as user-owned budget decisions
+
+Observed during the self-hosting lifecycle activation repair on 2026-09-13. The user granted 1,000,000 aggregate live-verification tokens. The controller imposed a 60,000-token checkpoint threshold, interrupted a Codex probe at 64,130 reported tokens, and then held 885,870 tokens as uncertain exposure. It repeatedly paused for permission to change its own controls even though the user allowance had not been shown exhausted. The user identified this as a bug, clarified that the controller has full authority to raise its own ceiling within the allowance, requested tracking, and reiterated autonomy as the first core directive. Run 3a98dc79-b675-43c6-8236-1b997c443680 preserves the follow-up and authority clarification; the checkpoint audit is under .tmp/self-hosting-verification.
+
+Repair the distinction between the user-owned aggregate budget and controller-owned probe ceilings, admission estimates and reservations. Resize internal controls and recover autonomously within the existing allowance; do not turn a low internal threshold or speculative hold into a new approval boundary. Preserve actual usage and qualified uncertainty, and distinguish an operational estimate from measured consumption or a proven maximum. A genuinely exhausted user allowance or a proposed increase beyond it remains a user boundary. Verify both recovery within an existing grant and actual exhaustion, keeping autonomy first without silently redefining the granted budget. This entry tracks the workflow defect; the current repair only adjusts its own scratch controls.
+
+**Requires:** none.
+
 ### Tool warnings dismissed without assessing their retrospective value
 
 Observed during inbox triage in this repository on 2026-09-13: sandboxed Git repeatedly warned that `C:/Users/asten/.config/git/ignore` was inaccessible with permission denied, while `git status --short` reported `.claude/` as untracked. The controller treated the warning as incidental, explicitly described it to the independent reviewer as a "harmless warning", and reported the untracked directory without qualifying the missing ignore configuration. The user explained that the directory was ignored in their normal shell. After the user moved the rule to `.git/info/exclude`, checks confirmed the directory was ignored and status was clean; after removal of the global ignore file, checks also confirmed the warning was gone. The warning had affected the interpretation of repository status despite successful Git exit codes. This session performed inbox triage and did not run revise-lore, so it does not demonstrate a failure inside an executed retrospective.
