@@ -12,6 +12,8 @@ Repair the distinction between the user-owned aggregate budget and controller-ow
 
 A later review in the same run exposed a distinct enforcement failure in the controller's scratch harness: the metering callback threw at its threshold, but the copied Claude transport caught that callback exception as malformed input and continued the model process. The controller observed 427,223 reviewer tokens, stopped the dedicated processes, and confirmed their absence. Combined reported checkpoint and reviewer usage reached 1,250,632 tokens, exceeding the 1,000,000 allowance by at least 250,632; further interrupted usage remains unmeasured. No review verdict was accepted. The scratch callback path was repaired to terminate the host on error, with a provider-free regression control. Preserve the distinction between this ineffective enforcement and the earlier unnecessary approval pause when repairing the workflow; neither permits exceeding a user-owned allowance.
 
+The user subsequently granted an additional 2,000,000 tokens and requested carrying forward both the initial 500,000-token estimate being too conservative and the subsequent overshoot. Track estimation calibration as part of this diagnosis: estimate the complete native probe and independent review/repair cycle, including repeated context, necessary recovery and verification of the spending controls. The observed retained-review context became expensive on every further read. An estimate, an internal admission ceiling and the user-owned aggregate allowance are different quantities; neither underestimation nor ineffective enforcement authorizes an overrun.
+
 **Requires:** none.
 
 ### Tool warnings dismissed without assessing their retrospective value
