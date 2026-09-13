@@ -4,6 +4,14 @@ V2 entries are preserved in [the historical index](migration/v2/BUGS.md) and [MI
 
 ## Current
 
+### Ready reports omit actionable recommendations
+
+Observed in this repository on 2026-09-13, Codex session 01a09c60-dd6e-7d42-b8a0-7333fd211d92. The Ready report listed 19 ready items, Exploring drafts and external blockers, then asked the user to select work without recommending priorities. The user identified the omission. The skill describes source inspection "when recommending priorities" and how to number recommendations, but does not explicitly require recommendations when work is ready. This wording is a candidate contributing cause; the observed defect is the missing prioritization in the report.
+
+Make actionable recommendations an explicit part of Ready reports when work is ready. Inspect the relevant source entries, recommend a small selection grounded in the user goals and the priority order of autonomy, quality and efficiency, explain the choices briefly, and reference the existing ready-list numbers. Preserve the complete ready set, separate Exploring and blocked/external work, and the boundary between selection and implementation authority. When no work is ready, state that clearly without inventing a recommendation. Verify installed-host reports with ready work and with an empty ready set; a parser-only check cannot establish that the controller supplies recommendations.
+
+**Requires:** none.
+
 ### Controller treats internal token ceilings as user-owned budget decisions
 
 Observed during the self-hosting lifecycle activation repair on 2026-09-13. The user granted 1,000,000 aggregate live-verification tokens. The controller imposed a 60,000-token checkpoint threshold, interrupted a Codex probe at 64,130 reported tokens, and then held 885,870 tokens as uncertain exposure. It repeatedly paused for permission to change its own controls even though the user allowance had not been shown exhausted. The user identified this as a bug, clarified that the controller has full authority to raise its own ceiling within the allowance, requested tracking, and reiterated autonomy as the first core directive. Run 3a98dc79-b675-43c6-8236-1b997c443680 preserves the follow-up and authority clarification; the checkpoint audit is under .tmp/self-hosting-verification.
