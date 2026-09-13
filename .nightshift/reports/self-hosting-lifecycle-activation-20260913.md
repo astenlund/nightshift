@@ -1,0 +1,32 @@
+# Self-hosting lifecycle activation verification
+
+The 3.0.12 candidate makes agreed implementation under a project self-hosting requirement enter an attended runtime run, or unattended operation after handover. Repository guidance and the shared brief connect revise-code, revise-docs and revise-lore to their actual stages and require truthful completion reporting. Explicit review and review-loop retain their direct-agent exceptions. The runtime state machine is unchanged.
+
+## Evidence and scope
+
+Isolated installations on both native Windows hosts verified all 45 packaged files against candidate bytes. The focused package, runtime and hook suite passed 27 tests; the package link test now covers AGENTS.md. Parser, line-ending and whitespace checks accompany backlog reconciliation. Native checkpoints are observations under supplied candidate instructions, not guarantees of future responses or automatic marketplace activation.
+
+Claude session a9cb6325-e544-4115-84e7-daba6ca020ea created an attended run through the candidate CLI before editing README. Codex session 01a09a81-c4b4-7c51-b9a8-e0aa680362ef did so through restricted fixture tools executing the installed runtime. Both activation checkpoints ended before terminal reporting; they establish creation before editing, not full delivery. Two ordinary Codex shell attempts encountered policy rejections, so ordinary shell execution remains unverified.
+
+Earlier closing and exception probes were descriptive only. Independent assessment 429ba9f1-022c-42a8-8f78-ffcddf6aad07 and fresh skeptical validation 6e340941-8d52-4cc7-820d-c35ca5703178 identified the missing execution evidence without finding a source defect. Those descriptions alone are not acceptance evidence for execution.
+
+Subsequent controlled execution cases use explicitly synthetic pre-review prerequisites and synthetic clean direct-review dispatchers. These stubs establish neither genuine independent assurance nor secondary-model launch. The model must choose and invoke the routes and supply its own documentation and retrospective evidence. Actual installed-runtime operations must perform the closing transitions. Deterministic controls reject completion before the task and closing stages, and reject triage before retrospective.
+
+| Host | Native session | Observed actions |
+| --- | --- | --- |
+| Claude Fable 5.1, high | 72fb173e-ef8a-420c-b17e-239174c61b82 | Invoked both direct-review routes without delivery runs; reconciled matching app/README; advanced documentation; recorded retrospective then triage; completed the fixture run. |
+| GPT-6 Astra, high | 01a09b3a-b42d-75b2-9ef2-228eeb513f41 | Invoked both direct-review routes without delivery runs; reconciled matching app/README; advanced documentation; recorded retrospective then triage; completed the fixture run. |
+
+Both models preserved the synthetic-prerequisite qualification in their evidence. The harness deliberately withheld the final tool response after recording the required actions and stopped the native process at that boundary. There is no final prose response, and process status alone is not treated as a pass. Native attribution, recorded actions and actual complete fixture state establish the scoped execution result. The Claude stream reported 32,562 tokens; its completed native response record reconciles this to 34,532. Codex reported 34,892 tokens. Raw records and the executable fixture are under .tmp/self-hosting-execution-tests; evidence.json projects the actual actions for assessment.
+
+## Accounting and delivery record
+
+The initial six checkpoints reported 823,409 tokens. A scratch review monitor swallowed its threshold exception and allowed another 427,223 reported tokens before the controller stopped its processes: at least 1,250,632 in total, exceeding the original 1M allowance by at least 250,632. Interrupted exposure remains unmeasured. The callback was repaired to terminate the host; a deterministic old-shape/new-shape control verifies that behavior. This does not retroactively authorize or repair the overrun.
+
+The user granted an additional 2M for remaining testing and review. budget-additional.json records that new allowance separately from the preserved original budget.json. Internal ceilings and inactive reservations were resized under the user's explicit authority; unmeasured interrupted exposure is not relabeled exact or zero. The initial 500k underestimate, unnecessary ceiling-approval pauses and subsequent overshoot are tracked in BUGS.md.
+
+Run 3a98dc79-b675-43c6-8236-1b997c443680 owns the repair's current independent assessment, findings, checks and closing in .nightshift/runs/state.sqlite. An earlier resource stop completed its own documentation reconciliation and retrospective without completing the implementation task. The installed Stop hook actually resumed this session and restored its obligations. Resumed work requires current assurance and renewed closing; neither historical checkpoints nor synthetic prerequisites complete that obligation. Publication remains a separate user-directed action.
+
+## Remaining assurance obligation
+
+The additional ledger now accounts for 1,996,820 tokens after reconciling Claude's persisted response records. Its streaming assistant events carried placeholder output counts; finalized native records added 30,779 tokens. Some interrupted responses still lack complete output accounting, so the exact total remains qualified. At most 3,180 tokens of the additional grant remain, insufficient for another independent assessment. The execution evidence addressing the confirmed finding is recorded, but no completed cumulative reassessment has yet accepted it. The activation bug remains active and the implementation is a local candidate, not completed delivery.

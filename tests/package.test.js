@@ -57,7 +57,7 @@ test('active deterministic entry points load without the retired workflow machin
 });
 
 test('public skills and shared brief have resolvable local documentation links', () => {
-  const files = [...publicSkills.map(name => 'skills/' + name + '/SKILL.md'), 'internal/workflow.md', 'internal/runtime/REFERENCE.md'];
+  const files = [...publicSkills.map(name => 'skills/' + name + '/SKILL.md'), 'AGENTS.md', 'internal/workflow.md', 'internal/runtime/REFERENCE.md'];
   for (const file of files) {
     const content = fs.readFileSync(path.join(root, file), 'utf8');
     for (const match of content.matchAll(/\]\(([^)]+)\)/g)) {

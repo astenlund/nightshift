@@ -1,11 +1,11 @@
 ---
 name: revise-docs
-description: "Use when the user explicitly requests revise-docs, or for documentation reconciliation within an authorized Nightshift lifecycle."
+description: "Use when the user explicitly requests revise-docs, or for required documentation and backlog reconciliation within a Nightshift lifecycle, including project self-hosting implementation."
 ---
 
 # Revise docs
 
-Use the documentation and closing rules in [the operating brief](../../internal/workflow.md#close-and-report). This operation also works independently, using a docs task in [the runtime](../../internal/runtime/REFERENCE.md). Establish the actual change from the conversation, files and Git evidence.
+Use the documentation and closing rules in [the operating brief](../../internal/workflow.md#close-and-report). This operation also works independently, using a docs task in [the runtime](../../internal/runtime/REFERENCE.md). During implementation delivery, use the existing run and record this reconciliation as task documentation evidence. Establish the actual change from the conversation, files and Git evidence.
 
 Find documentation that refers to changed behavior, renamed or retired identifiers, relocated files and completed backlog entries. Include relevant README/docs content and the .nightshift indexes, breakouts and patterns. Update actual stale claims and navigable references, including affected sibling descriptions. Keep descriptions proportionate and preserve useful design reasoning and historical evidence. New instruction rules remain proposals for independent assessment and user approval.
 
