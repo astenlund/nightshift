@@ -8,6 +8,10 @@ No active feature deliveries.
 
 ## Exploring
 
+### [Project inboxes](features/project-inboxes.md)
+
+Give every Nightshift project a `.nightshift/inbox/` for suggestions and reports about that project. `init-backlog` creates it, and `ready` lists untriaged reports separately from actionable work. Reports about Nightshift itself continue to belong in Nightshift's maintainer inbox.
+
 ### [Orchestration efficiency](features/orchestration-efficiency.md)
 
 Post-MVP investigation of measured controller overhead: repeated context reads, polling, bookkeeping and mechanical tool round trips. Preserve autonomy, independent review, skeptical validation and cumulative review after fixes; verify actual time and cost improvements before claiming savings.
