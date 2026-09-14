@@ -4,6 +4,14 @@ V2 entries are preserved in [the historical index](migration/v2/BUGS.md) and [MI
 
 ## Current
 
+### Handover leaves existing runs in attended mode
+
+Observed during retained-release delivery in this repository, run `2a89bde5-9c0c-4ba5-b67f-dadc545bfcc4`, Codex session `01a09c60-dd6e-7d42-b8a0-7333fd211d92`. The run began attended. The user explicitly handed over the already-agreed work, but the saved mode remained attended through completion. The runtime accepts mode at creation and provides no supported transition for an existing run. Native goal continuation carried work forward, but it did not change the saved mode or establish that the main run used unattended Stop enforcement. This is distinct from the separately successful unattended acceptance fixtures. The user identified the stuck mode as a bug after delivery.
+
+Provide an authenticated handover transition for an existing owned run that verifies native continuation prerequisites and switches to unattended operation while preserving its identity, queue, workers, accepted commitments, valid evidence, limits and publication authority. Define interruption and retry behavior without recreating the run or directly editing saved state. A failed prerequisite must preserve the existing state and report the actual limitation rather than claim a completed transition. Preserve agreement already established in discussion or a governing spec; handover must not require another readback approval unless consequential requirements changed or decisions remain unresolved. Verify new and existing runs, active workers, repeated handover, failed continuation prerequisites and recovery on both supported hosts.
+
+**Requires:** none.
+
 ### Ready reports omit actionable recommendations
 
 Observed in this repository on 2026-09-13, Codex session 01a09c60-dd6e-7d42-b8a0-7333fd211d92. The Ready report listed 19 ready items, Exploring drafts and external blockers, then asked the user to select work without recommending priorities. The user identified the omission. The skill describes source inspection "when recommending priorities" and how to number recommendations, but does not explicitly require recommendations when work is ready. This wording is a candidate contributing cause; the observed defect is the missing prioritization in the report.
