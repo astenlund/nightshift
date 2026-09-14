@@ -1,6 +1,6 @@
 # Retained plugin releases: acceptance checkpoint
 
-The local 3.1.0 cache-replacement candidate has observations for all twenty acceptance items on both supported hosts and a complete, clean cumulative Astra assessment of the implementation, report and native evidence. The bug is archived as fixed locally. Subsequent documentation verification and delivery closure are recorded in the runtime; publication is not authorized. This report accompanies [the governing design](../specs/retained-plugin-releases.md); durable run `2a89bde5-9c0c-4ba5-b67f-dadc545bfcc4` owns current workflow state.
+The local 3.1.0 cache-replacement candidate has observations for all twenty acceptance items on both supported hosts and a complete, clean cumulative Astra assessment of the implementation, report and native evidence. The bug is archived as fixed locally. Subsequent documentation verification and delivery closure are recorded in the runtime. This report records the local delivery checkpoint before the user separately authorized publication. This report accompanies [the governing design](../specs/retained-plugin-releases.md); durable run `2a89bde5-9c0c-4ba5-b67f-dadc545bfcc4` owns current workflow state.
 
 ## Delivered implementation
 
