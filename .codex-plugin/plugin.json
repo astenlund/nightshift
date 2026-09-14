@@ -1,12 +1,20 @@
 {
   "name": "nightshift",
-  "version": "3.0.12",
+  "version": "3.1.0",
   "description": "Carry agreed engineering work through autonomous implementation, independent review, verification and an evidence-backed handover.",
-  "author": { "name": "Andreas Stenlund", "email": "a.stenlund@gmail.com" },
+  "author": {
+    "name": "Andreas Stenlund",
+    "email": "a.stenlund@gmail.com"
+  },
   "homepage": "https://github.com/astenlund/nightshift",
   "repository": "https://github.com/astenlund/nightshift",
   "license": "MIT",
-  "keywords": ["workflow", "review", "backlog", "autonomy"],
+  "keywords": [
+    "workflow",
+    "review",
+    "backlog",
+    "autonomy"
+  ],
   "skills": "./skills/",
   "interface": {
     "displayName": "Nightshift",
@@ -14,8 +22,14 @@
     "longDescription": "Hand over agreed work to a strong model. Nightshift preserves commitments and evidence through review, repair, compaction, documentation and session retrospective.",
     "developerName": "Andreas Stenlund",
     "category": "Productivity",
-    "capabilities": ["Interactive", "Write"],
-    "defaultPrompt": ["Hand over the agreed work to Nightshift."],
+    "capabilities": [
+      "Interactive",
+      "Write"
+    ],
+    "defaultPrompt": [
+      "Hand over the agreed work to Nightshift."
+    ],
     "websiteURL": "https://github.com/astenlund/nightshift"
-  }
+  },
+  "hooks": "./hooks/codex.json"
 }

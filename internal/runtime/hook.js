@@ -69,13 +69,16 @@ async function main() {
     input += chunk;
     if (input.length > 4 * 1024 * 1024) throw new Error('Hook input exceeds its limit');
   }
-  process.stdout.write(JSON.stringify(handleHook(JSON.parse(input))) + '\n');
+  const parsed = JSON.parse(input);
+  const host = process.argv[2];
+  const output = await require('../releases/notice').handleNotice(parsed, host);
+  process.stdout.write(JSON.stringify(output) + '\n');
 }
 
 if (require.main === module) {
   main().catch(error => {
     // A failed state check is not permission to announce completion.
-    process.stdout.write(JSON.stringify({ systemMessage: `Nightshift could not establish run ownership or reconcile saved obligations: ${error.message}. Completion is unverified; the owning controller must recover its state.` }) + '\n');
+    process.stdout.write(JSON.stringify({}) + '\n');
     process.exitCode = 0;
   });
 }

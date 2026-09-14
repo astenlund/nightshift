@@ -2,6 +2,7 @@
 'use strict';
 
 const backlogCatalog = require('../../internal/backlog-catalog');
+const path = require('node:path');
 
 module.exports = {
   LABEL_AT_START: backlogCatalog.LABEL_AT_START,
@@ -18,5 +19,12 @@ module.exports = {
 };
 
 if (require.main === module) {
-  backlogCatalog.runCli(process.argv.slice(2));
+  try {
+    const args = process.argv.slice(2);
+    const admitted = require('../../internal/releases/entry').admitEntry(path.resolve(__dirname, '../..'), args, args.findIndex(argument => argument !== '--write'));
+    backlogCatalog.runCli(admitted.args);
+  } catch (error) {
+    process.stderr.write(JSON.stringify({ error: error.code ?? 'unwrap-failed', message: error.message }) + '\n');
+    process.exitCode = 1;
+  }
 }

@@ -40,7 +40,7 @@ Exceptional implementation plans belong in ignored `.nightshift/plans` and are t
 The eight public skills are `exploring`, `handover`, `init-backlog`, `ready`, `revise-code`, `revise-docs`, `revise-lore` and `revise-spec`. Their instructions live under `skills`; shared operating rules live in `internal/workflow.md`.
 
 - `internal/runtime/cli.js` exposes the operations documented in `internal/runtime/REFERENCE.md`. Runtime modules separate SQLite storage, lifecycle gates, evidence and review, host dispatch, private probes and worker ownership.
-- `hooks/hooks.json` and `internal/runtime/hook.js` provide SessionStart, PreCompact and Stop integration. Hook configuration is not proof that continuation is loaded or trusted on a host.
+- `hooks/claude.json` and `hooks/codex.json` provide bundled setup notices. User hooks registered by `internal/releases` provide retained SessionStart, PreCompact and Stop integration through `internal/runtime/hook.js`. Hook configuration is not proof that continuation is loaded or trusted on a host.
 - `skills/init-backlog/init-backlog.js` delegates setup and migration to `internal/setup.js`, with reference translation in `internal/migration-references.js`.
 - `skills/ready/ready.js` owns dependency analysis, using `internal/backlog-catalog.js` for catalog primitives and `internal/markdown.js` for scanning. Unwrapping shares `internal/backlog-catalog.js`. Keep setup, parser and unwrap consumers coherent when changing these shared modules; add meaningful fixture coverage for grammar changes.
 
@@ -52,11 +52,11 @@ The verified host target is Windows with Node.js 22.23 or later, Git, PowerShell
 
 Run commands from the repository root, using `pwsh -NoProfile` for PowerShell:
 
-- Catalog: `node skills/ready/ready.js .`
-- Backlog line check: `node skills/init-backlog/unwrap.js .nightshift` (add `--write` only for an intended repair).
+- Catalog: `node skills/ready/ready.js --development .`
+- Backlog line check: `node skills/init-backlog/unwrap.js --development .nightshift` (add `--write` only for an intended repair).
 - Parser fixtures: `node skills/ready/ready.test.js`
 - Unwrap fixtures: `node skills/init-backlog/unwrap.test.js`
-- Packaging: `node --test tests/package.test.js`
+- Packaging: `node tools/release-manifest.js` and `node --test tests/package.test.js`; regenerate the shipped raw-byte manifest with `node tools/release-manifest.js --write` after payload edits.
 - Release gate: `node tools/release-gate.js` compares `HEAD` with `origin/main` (or `--baseline <ref>`); fixtures: `node --test tests/release-gate.test.js`
 - Runtime or migration changes: use `node --test` with the relevant explicit filenames from `tests/runtime*.test.js` and `tests/setup.test.js`.
 

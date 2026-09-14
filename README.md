@@ -4,7 +4,7 @@ Nightshift carries agreed project work through implementation, independent revie
 
 Its priorities are ordered: autonomy first, quality second, then speed and economy. The v3 workflow uses a strong controller and fresh independent reviewers. Fable and Astra are interchangeable; using both is an optional advantage.
 
-**Status:** Nightshift 3.0.12 is in development, clarifying activation and completion of the self-hosting lifecycle. The [verification report](.nightshift/reports/self-hosting-lifecycle-activation-20260913.md) records its evidence and qualifications. Version 3.0.11 is published on `main`. [Ready presentation probes](.nightshift/reports/ready-exploring-presentation-20260912.md) record the earlier Ready skill verification. The release gate accepts both candidate and published status wording while requiring the status version to match the manifests. The [acceptance report](.nightshift/reports/v3-acceptance-272m-20260910.md) records the v3 MVP evidence and its qualifications. See [VISION.md](VISION.md), [WORKFLOW.md](WORKFLOW.md) and the [v3 feature](.nightshift/features/nightshift-v3.md) for the supported scope.
+**Status:** Nightshift 3.1.0 is in development, adding retained resources that survive plugin-cache replacement. The [candidate report](.nightshift/reports/retained-plugin-releases-20260914.md) records its implementation, verification and remaining acceptance. The earlier [self-hosting report](.nightshift/reports/self-hosting-lifecycle-activation-20260913.md) preserves the preceding lifecycle evidence. The installed baseline for this change is version 3.0.12. [Ready presentation probes](.nightshift/reports/ready-exploring-presentation-20260912.md) record the earlier Ready skill verification. The release gate accepts both candidate and published status wording while requiring the status version to match the manifests. The [acceptance report](.nightshift/reports/v3-acceptance-272m-20260910.md) records the v3 MVP evidence and its qualifications. See [VISION.md](VISION.md), [WORKFLOW.md](WORKFLOW.md) and the [v3 feature](.nightshift/features/nightshift-v3.md) for the supported scope.
 
 ## Workflow
 
@@ -68,6 +68,8 @@ Claude Code marketplace installation:
 
 These commands install the published release. Local checkout changes require a separate candidate installation. Codex packaging is included under `.codex-plugin`; isolated installation and update checks passed on both Windows hosts. The v3 implementation has no Superpowers dependency.
 
+The 3.1 candidate requires one-time host resource setup in addition to plugin installation. See [the retained resource interface](internal/releases/REFERENCE.md) for the setup request, native trust and activation, stable launcher, updates and removal. Setup preserves unrelated host hooks and retains complete manifest-verified releases outside the plugin cache. Existing sessions and resumable runs keep their exact release; new sessions can capture the updated enabled installation. Plugin uninstall does not remove these user hooks automatically: use the retained launcher removal operation. This candidate still needs its remaining independent implementation assessment and installed-model acceptance; deterministic and zero-inference native checks alone do not establish that acceptance.
+
 ## Development
 
 Runtime operations and their input contracts are documented in [internal/runtime/REFERENCE.md](internal/runtime/REFERENCE.md). Shared controller guidance lives in [internal/workflow.md](internal/workflow.md).
@@ -82,7 +84,7 @@ node skills/ready/ready.test.js
 node skills/init-backlog/unwrap.test.js
 ```
 
-These are deterministic fixtures, including real process-containment checks on Windows. They do not substitute for installed-model acceptance. Real-model campaigns require an explicit aggregate token budget, native usage accounting and recorded outcomes, including genuine compaction with unfinished obligations on both hosts.
+When issuing these checkout tests through a bound installed runtime `check`, select `check.resourceMode: "development"`; genuine installed-helper checks keep the default `inherit` mode. These are deterministic fixtures, including real process-containment checks on Windows. They do not substitute for installed-model acceptance. Real-model campaigns require an explicit aggregate token budget, native usage accounting and recorded outcomes, including genuine compaction with unfinished obligations on both hosts.
 
 ## License
 

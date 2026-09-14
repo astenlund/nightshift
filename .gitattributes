@@ -1,15 +1,9 @@
-# Workflow scripts are read back by the Claude Code Workflow tool, whose approval
-# validator rejects carriage returns as hidden control characters. Force LF on
-# checkout everywhere (overriding a system-level core.autocrlf=true on Windows) so
-# the installed plugin copy is never CRLF and Workflow(scriptPath=...) stays usable.
-*.workflow.js text eol=lf
-tests/windows-job-runner.ps1 text eol=lf
-# Template loading accepts LF and CRLF, while shipped assets use stable LF bytes.
-skills/init-backlog/templates/** text eol=lf
-tests/fixtures/init-backlog-prompt-baseline/** -text
-tests/fixtures/init-backlog-prompt-baseline/** !eol
-tests/fixtures/init-backlog-host/** -text
-tests/fixtures/init-backlog-import/** -text
-tests/fixtures/init-backlog-eval/** -text
+# Review snapshots and retained payloads must keep stable bytes across checkouts.
+* text=auto eol=lf
+# These fixtures exercise byte preservation, including deliberate CRLF input.
+tests/fixtures/init-backlog-prompt-baseline/** -text !eol
+tests/fixtures/init-backlog-host/** -text !eol
+tests/fixtures/init-backlog-import/** -text !eol
+tests/fixtures/init-backlog-eval/** -text !eol
 # Shell hooks run under sh, which rejects carriage returns.
 .githooks/* text eol=lf

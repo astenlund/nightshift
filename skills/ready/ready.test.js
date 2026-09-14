@@ -211,7 +211,7 @@ test('analyzeCatalog reproduces CLI JSON from exact catalog records and uses pre
     for (const item of items) {
       fs.writeFileSync(path.join(backlogDir, item.target), item.contents);
     }
-    const cli = JSON.parse(execFileSync(process.execPath, [path.join(__dirname, 'ready.js'), tmpRoot], { encoding: 'utf8' }));
+    const cli = JSON.parse(execFileSync(process.execPath, [path.join(__dirname, 'ready.js'), '--development', tmpRoot], { encoding: 'utf8' }));
     const readFileSync = fs.readFileSync;
     let catalog;
     try {
@@ -244,7 +244,7 @@ test('the CLI reads a legacy .claude directory as the backlog root and names the
   fs.mkdirSync(path.join(legacyDir, 'features'), { recursive: true });
   fs.writeFileSync(path.join(legacyDir, 'FEATURES.md'), '## Area\n\n### [Alpha](features/alpha.md)\n\n**Requires:** none.\n');
   fs.writeFileSync(path.join(legacyDir, 'features', 'alpha.md'), '# Alpha\n\n**Requires:** none.\n');
-  const run = (target) => spawnSync(process.execPath, [path.join(__dirname, 'ready.js'), target], { encoding: 'utf8' });
+  const run = (target) => spawnSync(process.execPath, [path.join(__dirname, 'ready.js'), '--development', target], { encoding: 'utf8' });
   try {
     const legacy = run(legacyDir);
     assert.strictEqual(legacy.status, 0);
@@ -1864,7 +1864,7 @@ test('the ready CLI ignores a top-level index link outside the backlog root', ()
   fs.writeFileSync(outside, '# Features\n\n## External heading\n\n### Secret\n\n**Requires:** none.\n');
   fs.symlinkSync(outside, path.join(backlogDir, 'FEATURES.md'), 'file');
   try {
-    const output = execFileSync(process.execPath, [path.join(__dirname, 'ready.js'), tmpRoot], { encoding: 'utf8' });
+    const output = execFileSync(process.execPath, [path.join(__dirname, 'ready.js'), '--development', tmpRoot], { encoding: 'utf8' });
     assert.ok(!output.includes('External heading'), output);
     assert.ok(!output.includes('Secret'), output);
   } finally {
@@ -1886,7 +1886,7 @@ test('the ready CLI rejects a backlog root junction outside the repository root'
     } catch {
       return;
     }
-    const completion = spawnSync(process.execPath, [path.join(__dirname, 'ready.js'), repoRoot], { encoding: 'utf8' });
+    const completion = spawnSync(process.execPath, [path.join(__dirname, 'ready.js'), '--development', repoRoot], { encoding: 'utf8' });
     assert.notStrictEqual(completion.status, 0, 'an escaping backlog root must fail closed');
     assert.ok(!completion.stdout.includes('External heading'), completion.stdout);
     assert.ok(!completion.stdout.includes('Secret root link'), completion.stdout);
@@ -2215,7 +2215,7 @@ test('CLI rejects malformed UTF-8 in indexes and linked breakouts without changi
     try {
       fixture.prepare(backlogDir);
       const target = path.join(backlogDir, ...fixture.name.split('/'));
-      const completion = spawnSync(process.execPath, [path.join(__dirname, 'ready.js'), tmpRoot], { encoding: 'utf8' });
+      const completion = spawnSync(process.execPath, [path.join(__dirname, 'ready.js'), '--development', tmpRoot], { encoding: 'utf8' });
 
       assert.notStrictEqual(completion.status, 0);
       assert.strictEqual(completion.stderr, '');
@@ -2237,7 +2237,7 @@ test('CLI preserves valid UTF-8, byte-order marks, and line endings', () => {
   fs.writeFileSync(path.join(backlogDir, 'FEATURES.md'), featuresBytes);
   fs.writeFileSync(path.join(backlogDir, 'QUICK_WINS.md'), quickWinsBytes);
   try {
-    const completion = spawnSync(process.execPath, [path.join(__dirname, 'ready.js'), tmpRoot], { encoding: 'utf8' });
+    const completion = spawnSync(process.execPath, [path.join(__dirname, 'ready.js'), '--development', tmpRoot], { encoding: 'utf8' });
     const result = JSON.parse(completion.stdout);
 
     assert.equal(completion.status, 0);
@@ -2487,7 +2487,7 @@ test('CLI reads a .nightshift dir and emits the same JSON shape', () => {
     fs.mkdirSync(path.join(backlogDir, 'patterns'), { recursive: true });
     fs.writeFileSync(path.join(backlogDir, 'patterns', 'wrapped.md'), '# Pattern\n\nPattern prose\nhard-wrapped.\n');
     fs.writeFileSync(path.join(backlogDir, 'features', 'orphan.md'), '# Orphan\n\nNo index entry links here\nand it is hard-wrapped.\n');
-    const stdout = execFileSync(process.execPath, [path.join(__dirname, 'ready.js'), tmpRoot], { encoding: 'utf8' });
+    const stdout = execFileSync(process.execPath, [path.join(__dirname, 'ready.js'), '--development', tmpRoot], { encoding: 'utf8' });
     const cli = JSON.parse(stdout);
     const hardWrapNotices = cli.notices.filter((n) => n.startsWith('backlog file ') && n.includes('hard-wrapped'));
     assert.deepStrictEqual(hardWrapNotices.map((n) => n.split(' has ')[0]), [

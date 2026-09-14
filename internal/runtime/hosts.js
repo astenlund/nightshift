@@ -175,7 +175,7 @@ async function runCodex(options) {
     requireCondition(!execution.failed(), 'host-start-failed', 'Agent host failed to start');
     await request('initialize', { clientInfo: { name: 'nightshift', version }, capabilities: { experimentalApi: true } });
     execution.child.stdin.write(JSON.stringify({ method: 'initialized', params: {} }) + '\n');
-    const started = await request('thread/start', { cwd: options.cwd, model: options.model, approvalPolicy: 'never', sandbox: 'read-only', allowProviderModelFallback: false, baseInstructions: fs.readFileSync(options.systemFile, 'utf8'), config: { project_doc_max_bytes: 0, model_reasoning_effort: options.effort ?? 'high', features: { multi_agent: false } } });
+    const started = await request('thread/start', { cwd: options.cwd, model: options.model, approvalPolicy: 'never', sandbox: 'read-only', allowProviderModelFallback: false, baseInstructions: fs.readFileSync(options.systemFile, 'utf8'), config: { project_doc_max_bytes: 0, model_reasoning_effort: options.effort ?? 'high', features: { multi_agent: false, plugins: false, hooks: false, apps: false } } });
     session = started.thread.id;
     options.onSession?.(session);
     actualModel = started.model;

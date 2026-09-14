@@ -36,7 +36,7 @@ function runProbe(root, receipt, probe) {
   requireCondition(!initialized.error && initialized.status === 0, 'probe-git-boundary', 'Could not establish an independent Git repository for the probe');
   const boundary = spawnSync('git', ['rev-parse', '--show-toplevel'], { cwd: project, windowsHide: true, encoding: 'utf8', timeout: 30000 });
   requireCondition(!boundary.error && boundary.status === 0 && fs.realpathSync.native(boundary.stdout.trim()) === fs.realpathSync.native(project), 'probe-git-boundary', 'Probe Git discovery does not resolve to its private copy');
-  const check = executeCommand(project, { name: probe.purpose, executable: probe.executable, args: probe.args, timeoutMs: probe.timeoutMs });
+  const check = executeCommand(project, { name: probe.purpose, executable: probe.executable, args: probe.args, timeoutMs: probe.timeoutMs, resourceMode: 'development' });
   // This is controller-authorized execution with normal user privileges, not a sandbox.
   // Drift detection covers the reviewed inventory, not every writable file on the machine.
   const canonicalUnchanged = fresh(root, inputs);
@@ -44,7 +44,7 @@ function runProbe(root, receipt, probe) {
     requestId: receipt.requestId, runId: receipt.runId, taskId: receipt.taskId,
     probeId: probe.id, purpose: probe.purpose, probe,
     snapshotDigest: receipt.snapshot.digest, contextDigest: inputs.digest, canonicalUnchanged,
-    exitCode: check.exitCode, error: check.error, output: check.output,
+    exitCode: check.exitCode, error: check.error, output: check.output, resourceMode: check.resourceMode,
     startedAt: check.startedAt, finishedAt: check.finishedAt,
   };
   const file = path.join(directory, 'result.json');

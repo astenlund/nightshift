@@ -78,6 +78,10 @@ function evaluateRelease(root, baseline, head) {
   const status = README_STATUS.exec(git(root, ['show', `${head}:README.md`]));
   if (!status) problems.push(`README.md at ${head} has no recognizable candidate or published version status line`);
   else if (status[1] !== headManifests[0].version) problems.push(`README.md status announces ${status[1]} while the manifests carry ${headManifests[0].version}`);
+  if (git(root, ['ls-tree', '--name-only', head, '--', 'internal/releases/launcher.js']).trim()) {
+    try { require('./release-manifest').checkTree(root, head); }
+    catch (error) { problems.push(`Retained release manifest is invalid: ${error.message}`); }
+  }
   return { baseline, head, changed, shipped, manifestFieldsChanged, baselineVersion: baselineManifests[0].version, headVersion: headManifests[0].version, problems };
 }
 

@@ -1,0 +1,7 @@
+{
+  "hooks": {
+    "SessionStart": [{ "hooks": [{ "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/internal/runtime/hook.js", "claude"], "timeout": 60 }] }],
+    "PreCompact": [{ "hooks": [{ "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/internal/runtime/hook.js", "claude"], "timeout": 60 }] }],
+    "Stop": [{ "hooks": [{ "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/internal/runtime/hook.js", "claude"], "timeout": 60 }] }]
+  }
+}

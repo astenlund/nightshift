@@ -83,6 +83,7 @@ function obligationBrief(state, root = state.root, options = {}) {
   return {
     id: state.id, revision: state.revision, status: state.status, controller: state.controller,
     objective: state.objective, authority: state.authority, limits: state.limits, publication: state.publication,
+    resourceMode: state.resourceMode ?? 'legacy', resources: state.resources ?? null,
     next: ready.map(task => ({
       id: task.id, title: task.title,
       stage: options.verifyFreshness !== false && !specReady(state, task) ? 'governing-spec-review' : task.stage,

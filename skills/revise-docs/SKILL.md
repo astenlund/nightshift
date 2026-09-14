@@ -5,6 +5,8 @@ description: "Use when the user explicitly requests revise-docs, or for required
 
 # Revise docs
 
+Follow [shared resource binding](../../internal/releases/REFERENCE.md#skill-activation) before this skill. Claude native session marker: `${CLAUDE_SESSION_ID}`.
+
 Use the documentation and closing rules in [the operating brief](../../internal/workflow.md#close-and-report). This operation also works independently, using a docs task in [the runtime](../../internal/runtime/REFERENCE.md). During implementation delivery, use the existing run and record this reconciliation as task documentation evidence. Establish the actual change from the conversation, files and Git evidence.
 
 Find documentation that refers to changed behavior, renamed or retired identifiers, relocated files and completed backlog entries. Include relevant README/docs content and the .nightshift indexes, breakouts and patterns. Update actual stale claims and navigable references, including affected sibling descriptions. Keep descriptions proportionate and preserve useful design reasoning and historical evidence. New instruction rules remain proposals for independent assessment and user approval.

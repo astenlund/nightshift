@@ -86,9 +86,12 @@ function executeCommand(root, request) {
   requireCondition(!/\.(?:cmd|bat)$/i.test(request.executable), 'shell-required', 'Invoke Windows command shims through an explicit shell script, for example pwsh -NoProfile -File <script.ps1>');
   requireCondition(Array.isArray(request.args) && request.args.every(arg => typeof arg === 'string'), 'invalid-check', 'Check arguments must be a string array');
   requireCondition(request.timeoutMs === undefined || Number.isSafeInteger(request.timeoutMs) && request.timeoutMs > 0, 'invalid-check', 'Check timeout must be a positive integer');
+  const resourceMode = request.resourceMode ?? 'inherit';
+  requireCondition(request.resourceMode !== null, 'invalid-check-resource-mode', 'Check resourceMode cannot be null');
+  const env = require('../releases/entry').verificationEnvironment(resourceMode);
   const startedAt = new Date().toISOString();
-  const result = spawnSync(request.executable, request.args, { cwd: root, shell: false, windowsHide: true, encoding: 'utf8', timeout: request.timeoutMs ?? 120000, maxBuffer: 4 * 1024 * 1024 });
-  return { name: request.name, executable: request.executable, args: request.args, startedAt, finishedAt: new Date().toISOString(), exitCode: result.status, error: result.error?.message ?? null, output: (result.stdout ?? '') + (result.stderr ?? '') };
+  const result = spawnSync(request.executable, request.args, { cwd: root, env, shell: false, windowsHide: true, encoding: 'utf8', timeout: request.timeoutMs ?? 120000, maxBuffer: 4 * 1024 * 1024 });
+  return { name: request.name, executable: request.executable, args: request.args, resourceMode, startedAt, finishedAt: new Date().toISOString(), exitCode: result.status, error: result.error?.message ?? null, output: (result.stdout ?? '') + (result.stderr ?? '') };
 }
 
 function verifyCommand(root, request) {

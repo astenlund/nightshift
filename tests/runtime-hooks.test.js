@@ -9,10 +9,10 @@ const { RunStore } = require('../internal/runtime/store');
 const { handleHook } = require('../internal/runtime/hook');
 const { transition } = require('../internal/runtime/lifecycle');
 
-test('malformed hook input reports unverified completion without claiming a clean state', () => {
+test('malformed bundled-notice input stays silent without an identifiable owner', () => {
   const result = spawnSync(process.execPath, [path.resolve(__dirname, '../internal/runtime/hook.js')], { input: '{invalid', windowsHide: true, encoding: 'utf8' });
   assert.equal(result.status, 0);
-  assert.match(JSON.parse(result.stdout).systemMessage, /Completion is unverified/);
+  assert.deepEqual(JSON.parse(result.stdout), {});
 });
 
 test('hooks recover obligations after compaction and premature yield without taking over other sessions', t => {

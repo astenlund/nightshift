@@ -27,19 +27,31 @@ test('both packages expose the same intentional public skill surface', () => {
   }
 });
 
-test('bundled lifecycle hooks resolve to a shipped executable and portable native events', () => {
-  const hooks = JSON.parse(fs.readFileSync(path.join(root, 'hooks/hooks.json'), 'utf8')).hooks;
+test('host-specific bundled notices resolve to shipped code without duplicate default hooks', () => {
+  assert.equal(fs.existsSync(path.join(root, 'hooks/hooks.json')), false);
+  for (const host of ['claude', 'codex']) {
+  const manifest = JSON.parse(fs.readFileSync(path.join(root, '.' + host + '-plugin/plugin.json'), 'utf8'));
+  const hooks = JSON.parse(fs.readFileSync(path.join(root, manifest.hooks), 'utf8')).hooks;
   assert.deepEqual(Object.keys(hooks).sort(), ['PreCompact', 'SessionStart', 'Stop']);
   for (const matchers of Object.values(hooks)) {
     for (const matcher of matchers) {
       for (const hook of matcher.hooks) {
         assert.equal(hook.type, 'command');
-        const match = /^node "\$\{CLAUDE_PLUGIN_ROOT\}\/([^"]+)"$/.exec(hook.command);
+        const command = host === 'claude' ? `${hook.command} "${hook.args[0]}" ${hook.args[1]}` : hook.command;
+        const match = /^node "\$\{CLAUDE_PLUGIN_ROOT\}\/([^"]+)" (claude|codex)$/.exec(command);
         assert.ok(match, 'Hook must resolve a bundled script using the host-provided plugin root');
+        assert.equal(match[2], host);
         assert.ok(fs.statSync(path.join(root, match[1])).isFile());
       }
     }
   }
+  }
+});
+
+test('the release manifest covers current payload bytes and local dependencies', () => {
+  const { workingManifest } = require('../tools/release-manifest');
+  const { MANIFEST_PATH, encodeManifest } = require('../internal/releases/manifest');
+  assert.deepEqual(fs.readFileSync(path.join(root, MANIFEST_PATH)), encodeManifest(workingManifest(root)));
 });
 
 test('the pre-push release gate is wired to the shipped script', () => {

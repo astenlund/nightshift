@@ -5,6 +5,8 @@ description: "Use for explicit revise-spec or revise spec intent, or required sp
 
 # Revise spec
 
+Follow [shared resource binding](../../internal/releases/REFERENCE.md#skill-activation) before this skill. Claude native session marker: `${CLAUDE_SESSION_ID}`.
+
 Use [the shared operating brief](../../internal/workflow.md) and [runtime review operations](../../internal/runtime/REFERENCE.md#independent-assessment). Give a fresh strong lead the complete current spec, user commitments, relevant project context and all four spec dimensions. Assess meaningful commitments, soundness, failure/recovery and proportionality. Do not demand an unchosen implementation in prose or pseudocode.
 
 Create a new standalone Nightshift-owned governing spec in `.nightshift/specs`. Preserve an existing or user-selected governing document's location; reviewing it does not make it a Nightshift-owned file to relocate.

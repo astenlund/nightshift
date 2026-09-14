@@ -11,6 +11,7 @@ const { fileIdentity, fresh, hash, projectFile, projectInventory, snapshot } = r
 const { codexModelContradiction, runAgent } = require('./hosts');
 const { writeJson, writeText } = require('./artifacts');
 const { loadProbeEvidence } = require('./probes');
+const { workerEnvironment } = require('../releases/entry');
 
 const STRONG_MODELS = Object.freeze({ claude: ['claude-fable-5-1'], codex: ['gpt-6-astra'] });
 
@@ -209,7 +210,7 @@ async function dispatchReview(root, options, dependencies = {}) {
     }
     // A repository boundary prevents host discovery from walking into the controller's checkout.
     git(workspace, ['init', '--quiet']);
-    const request = { id, runId: options.runId, taskId: options.taskId, coveredTaskIds: options.coveredTaskIds ?? [options.taskId], commitments: options.commitments ?? {}, kind: options.kind ?? 'code', requirements: text(options.requirements, 'review requirements'), dimensions: DIMENSIONS[options.kind === 'spec' ? 'spec' : 'code'], findings: options.findings ?? [], snapshot: captured, contextSnapshot, baseSha: options.baseSha };
+    const request = { id, runId: options.runId, taskId: options.taskId, coveredTaskIds: options.coveredTaskIds ?? [options.taskId], commitments: options.commitments ?? {}, resources: options.resources ?? null, kind: options.kind ?? 'code', requirements: text(options.requirements, 'review requirements'), dimensions: DIMENSIONS[options.kind === 'spec' ? 'spec' : 'code'], findings: options.findings ?? [], snapshot: captured, contextSnapshot, baseSha: options.baseSha };
     writeJson(path.join(target, 'request.json'), request);
     options.onPrepared?.(request);
     const systemFile = path.join(target, 'system.md');
@@ -228,7 +229,7 @@ async function dispatchReview(root, options, dependencies = {}) {
         requireCondition(remaining > 0, 'resource-limit', 'The authorized run deadline has been reached');
         processStarted = false;
         terminationProven = false;
-        result = await (dependencies.runAgent ?? runAgent)({ ...candidate, cwd: workspace, protectedRoot: canonical, artifacts, systemFile, prompt: buildPrompt(request), schema: schemaFor(request.kind, id, request.findings), timeoutMs: Math.min(options.timeoutMs ?? 900000, remaining), onProcess: pid => { processStarted = true; options.onProcess?.(pid); }, onSession: options.onSession });
+        result = await (dependencies.runAgent ?? runAgent)({ ...candidate, cwd: workspace, protectedRoot: canonical, artifacts, systemFile, env: workerEnvironment(options.resourceContext), prompt: buildPrompt(request), schema: schemaFor(request.kind, id, request.findings), timeoutMs: Math.min(options.timeoutMs ?? 900000, remaining), onProcess: pid => { processStarted = true; options.onProcess?.(pid); }, onSession: options.onSession });
         attempt.tokens = result.tokens ?? null;
         terminationProven = result.exit?.descendantsReclaimed === true;
         const { events, ...record } = result;
@@ -240,7 +241,7 @@ async function dispatchReview(root, options, dependencies = {}) {
         attempt.status = 'complete';
         const receipt = {
           requestId: id, runId: request.runId, taskId: request.taskId,
-          coveredTaskIds: request.coveredTaskIds, commitments: request.commitments, kind: request.kind,
+          coveredTaskIds: request.coveredTaskIds, commitments: request.commitments, resources: request.resources, kind: request.kind,
           host: result.host, model: result.model, effort: result.effort, session: result.session,
           attributionVerified: true, strength: 'strong', independent: true,
           broad: report.status === 'complete', status: report.status,
@@ -281,9 +282,11 @@ function readReceipt(root, relative, state, taskId) {
   const assignmentFile = path.posix.join(path.posix.dirname(relative), 'request.json');
   const assignment = JSON.parse(fs.readFileSync(projectFile(root, assignmentFile), 'utf8'));
   requireCondition(assignment.id === receipt.requestId && assignment.runId === receipt.runId && assignment.taskId === receipt.taskId && assignment.kind === receipt.kind && isDeepStrictEqual(assignment.snapshot, receipt.snapshot) && isDeepStrictEqual(assignment.contextSnapshot, receipt.contextSnapshot) && isDeepStrictEqual(assignment.coveredTaskIds, receipt.coveredTaskIds), 'changed-assignment', 'Receipt no longer matches the saved dispatch assignment and inputs');
+  requireCondition(isDeepStrictEqual(assignment.resources ?? null, receipt.resources ?? null) && isDeepStrictEqual(state.resources ?? null, receipt.resources ?? null), 'changed-assignment', 'Receipt resource binding does not match its run and assignment');
   if (state.workers) {
     const worker = state.workers.find(candidate => candidate.id === receipt.requestId);
     requireCondition(worker?.snapshotDigest === receipt.snapshot.digest && worker.taskId === taskId && isDeepStrictEqual(worker.coveredTaskIds, receipt.coveredTaskIds), 'changed-assignment', 'Receipt differs from the controller-owned dispatch record');
+    requireCondition(isDeepStrictEqual(worker.resources ?? null, receipt.resources ?? null), 'changed-assignment', 'Receipt differs from the worker resource binding');
     requireCondition(isDeepStrictEqual(worker.commitments, receipt.commitments) && isDeepStrictEqual(assignment.commitments, receipt.commitments), 'changed-assignment', 'Receipt differs from the commitments bound when it was dispatched');
     requireCondition(receipt.coveredTaskIds.every(id => {
       const task = state.tasks.find(candidate => candidate.id === id);

@@ -396,7 +396,7 @@ class Setup {
 }
 
 function runBundledScript(script, args) {
-  const result = spawnSync(process.execPath, [path.resolve(__dirname, '..', script), ...args], { windowsHide: true, encoding: 'utf8', timeout: 30000, maxBuffer: 16 * 1024 * 1024 });
+  const result = spawnSync(process.execPath, [path.resolve(__dirname, '..', script), ...require('./releases/entry').helperArguments(args)], { windowsHide: true, encoding: 'utf8', timeout: 30000, maxBuffer: 16 * 1024 * 1024 });
   let json = null;
   try { json = JSON.parse(result.stdout); } catch { /* Non-JSON output is reported by the caller through the exit status and stderr. */ }
   return { ...result, json };

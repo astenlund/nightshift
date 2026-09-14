@@ -5,6 +5,8 @@ description: "Use when the user hands an agreed task or finite queue to Nightshi
 
 # Handover
 
+Follow [shared resource binding](../../internal/releases/REFERENCE.md#skill-activation) before this skill. Claude native session marker: `${CLAUDE_SESSION_ID}`.
+
 Read [the shared operating brief](../../internal/workflow.md) and [the runtime interface](../../internal/runtime/REFERENCE.md). Carry the authorized work through implementation, independent assurance, verification, documentation, retrospective and follow-up triage. Autonomy comes first, independent quality second, efficiency third, within user limits.
 
 Establish the agreed commitments, authority, dependencies, actual state and valid evidence. Preserve existing agreement and completed work; do not replay confirmation because the session compacted or a compatible spec correction landed. Accept the handover only when every queued item already has the investigated readback or concise-spec agreement described in the brief. If any item lacks it, present the outstanding readback or decisions now and settle them in this interactive exchange; accept a renewed handover only after that settlement is confirmed, never by asking the user to hand over first and settle afterwards. Before the user leaves, settle known user-owned decisions and verify essential execution, review and continuation capabilities.

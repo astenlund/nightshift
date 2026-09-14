@@ -12,11 +12,17 @@ const { dispatchReview, readReceipt, validateBase, validateRequest } = require('
 const { exhaustedLimit, remainingTime } = require('./limits');
 const { runProbe } = require('./probes');
 const { awaitWorker } = require('./wait');
+const { admitEntry, savedResources } = require('../releases/entry');
+const { isReadOnlyAction } = require('./actions');
 
 async function execute(root, request, dependencies = {}) {
   const store = new RunStore(root, { create: request.action === 'create' });
   try {
-    if (request.action === 'create') return store.create(request);
+    if (request.action === 'create') {
+      const resources = savedResources(dependencies.resourceContext);
+      if (resources) requireCondition(request.controller?.session === resources.session, 'resource-owner-mismatch', 'Controller identity does not match its admitted session');
+      return store.create({ ...request, resources, resourceMode: resources ? 'bound' : 'development' });
+    }
     if (request.action === 'status') {
       const state = store.read(request.runId);
       requireCondition(state, 'missing-state', 'No saved Nightshift run');
@@ -28,6 +34,10 @@ async function execute(root, request, dependencies = {}) {
     if (request.action === 'wait') return await awaitWorker(store, request, dependencies);
     const state = store.read();
     requireCondition(state, 'missing-state', 'No saved Nightshift run; create or recover the authorized run first');
+    requireCondition(request.runId === undefined || request.runId === state.id, 'wrong-run', 'Mutations must name the current active run');
+    const resources = savedResources(dependencies.resourceContext);
+    if (state.resources) requireCondition(state.resourceMode === 'bound' && isDeepStrictEqual(state.resources, resources), 'bound-runtime-required', 'Mutate this run only through its exact retained resource binding');
+    else requireCondition(!resources, 'legacy-release-reconciliation', 'A bound runtime cannot silently adopt a legacy or development run');
     requireCondition(state?.controller.session === request.actor?.session && state.controller.host === request.actor?.host && state.revision === request.revision, 'stale-owner', 'Read current state and reconcile the controller identity before changing or dispatching work');
     assertAction(state, request);
     if (request.action === 'dispatch') {
@@ -39,7 +49,7 @@ async function execute(root, request, dependencies = {}) {
       const registered = store.update(request.actor, state.revision, 'dispatch-started', current => {
         requireCondition(!current.baseSha || current.baseSha === request.review.baseSha, 'changed-base', 'Cumulative run review must retain its original base');
         current.baseSha = request.review.baseSha;
-        current.workers.push({ id, session: null, role: request.review.kind === 'skeptic' ? 'skeptic' : 'reviewer', assignment: 'Assess ' + task.title, taskId: task.id, writes: [], status: 'starting', artifactDirectory: `.nightshift/runs/reviews/${id}`, runnerPid: process.pid });
+        current.workers.push({ id, session: null, role: request.review.kind === 'skeptic' ? 'skeptic' : 'reviewer', assignment: 'Assess ' + task.title, taskId: task.id, writes: [], status: 'starting', artifactDirectory: `.nightshift/runs/reviews/${id}`, runnerPid: process.pid, resources: state.resources ?? null });
       });
       const updateWorker = change => store.update(request.actor, store.read().revision, 'dispatch-progress', current => {
         const worker = current.workers.find(candidate => candidate.id === id);
@@ -48,6 +58,8 @@ async function execute(root, request, dependencies = {}) {
       try {
         const result = await dispatchReview(store.root, {
           ...request.review, id, runId: registered.id, taskId: task.id,
+          resources: state.resources ?? null,
+          resourceContext: dependencies.resourceContext,
           artifactPaths: request.review.artifactPaths ?? (task.agreement.spec ? [task.agreement.spec] : undefined),
           probeEvidence: task.probeEvidence ?? [],
           coveredTaskIds: coveredTasks.map(candidate => candidate.id),
@@ -108,10 +120,12 @@ async function execute(root, request, dependencies = {}) {
 }
 
 async function main() {
-  const [root, requestFile] = process.argv.slice(2);
+  const args = process.argv.slice(2);
+  const [root, requestFile] = args[0] === '--development' ? args.slice(1) : args;
   requireCondition(root && requestFile, 'usage', `Usage: node ${path.basename(__filename)} <project-root> <request.json>`);
   const request = JSON.parse(fs.readFileSync(requestFile, 'utf8').replace(/^\uFEFF/, ''));
-  process.stdout.write(JSON.stringify(await execute(root, request), null, 2) + '\n');
+  const admitted = admitEntry(path.resolve(__dirname, '../..'), args, 0, { exactProject: true, diagnostic: isReadOnlyAction(request.action) });
+  process.stdout.write(JSON.stringify(await execute(root, request, { resourceContext: admitted.context }), null, 2) + '\n');
 }
 
 if (require.main === module) {

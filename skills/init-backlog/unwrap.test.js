@@ -388,7 +388,7 @@ test('the unwrap CLI rejects a backlog root junction outside the repository root
 
       return;
     }
-    const completion = spawnSync(process.execPath, [path.join(__dirname, 'unwrap.js'), '--write', claudeDir], { encoding: 'utf8' });
+    const completion = spawnSync(process.execPath, [path.join(__dirname, 'unwrap.js'), '--development', '--write', claudeDir], { encoding: 'utf8' });
     assert.notEqual(completion.status, 0, 'an escaping backlog root must fail closed');
     assert.equal(fs.readFileSync(externalFeatures, 'utf8'), '# Features\n\nwrapped line one\nwrapped line two\n');
   } finally {
@@ -564,7 +564,7 @@ test('the unwrap CLI rejects malformed UTF-8 in check and write modes without ch
   fs.writeFileSync(target, invalidBytes);
   try {
     for (const args of [[target], ['--write', target]]) {
-      const completion = spawnSync(process.execPath, [path.join(__dirname, 'unwrap.js'), ...args], { encoding: 'utf8' });
+      const completion = spawnSync(process.execPath, [path.join(__dirname, 'unwrap.js'), '--development', ...args], { encoding: 'utf8' });
 
       assert.equal(completion.status, 1);
       assert.equal(completion.stderr, '');
@@ -589,7 +589,7 @@ test('the unwrap CLI preserves valid UTF-8, byte-order marks, and line endings',
       const target = path.join(root, fixture.name);
       fs.writeFileSync(target, fixture.before);
 
-      const completion = spawnSync(process.execPath, [path.join(__dirname, 'unwrap.js'), '--write', target], { encoding: 'utf8' });
+      const completion = spawnSync(process.execPath, [path.join(__dirname, 'unwrap.js'), '--development', '--write', target], { encoding: 'utf8' });
 
       assert.equal(completion.status, 0);
       assert.equal(completion.stderr, '');

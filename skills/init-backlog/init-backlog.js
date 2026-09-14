@@ -4,9 +4,10 @@
 const { Setup, initialize } = require('../../internal/setup');
 const { requireCondition } = require('../../internal/runtime/store');
 const fs = require('node:fs');
+const path = require('node:path');
 
-function main() {
-  const [action, root, optionsFile] = process.argv.slice(2);
+function main(args = process.argv.slice(2)) {
+  const [action, root, optionsFile] = args;
   requireCondition(['inspect', 'apply'].includes(action) && root, 'usage', 'Usage: node init-backlog.js <inspect|apply> <project-root> [options.json]');
   const options = optionsFile ? JSON.parse(fs.readFileSync(optionsFile, 'utf8').replace(/^\uFEFF/, '')) : {};
   if (action === 'apply') return initialize(root, options);
@@ -15,7 +16,10 @@ function main() {
 }
 
 if (require.main === module) {
-  try { process.stdout.write(JSON.stringify(main(), null, 2) + String.fromCharCode(10)); }
+  try {
+    const admitted = require('../../internal/releases/entry').admitEntry(path.resolve(__dirname, '../..'), process.argv.slice(2), 1, { exactProject: true });
+    process.stdout.write(JSON.stringify(main(admitted.args), null, 2) + String.fromCharCode(10));
+  }
   catch (error) { process.stderr.write(JSON.stringify({ error: error.code ?? 'setup-failed', message: error.message }) + String.fromCharCode(10)); process.exitCode = 1; }
 }
 

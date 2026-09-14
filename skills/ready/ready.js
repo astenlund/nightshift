@@ -1930,5 +1930,11 @@ module.exports = {
 };
 
 if (require.main === module) {
-  runCli(process.argv[2]);
+  try {
+    const admitted = require('../../internal/releases/entry').admitEntry(path.resolve(__dirname, '../..'), process.argv.slice(2), 0);
+    runCli(admitted.args[0]);
+  } catch (error) {
+    process.stderr.write(JSON.stringify({ error: error.code ?? 'ready-failed', message: error.message }) + '\n');
+    process.exitCode = 1;
+  }
 }

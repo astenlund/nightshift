@@ -5,6 +5,8 @@ description: "Use for explicit revise-code or revise code intent, or required im
 
 # Revise code
 
+Follow [shared resource binding](../../internal/releases/REFERENCE.md#skill-activation) before this skill. Claude native session marker: `${CLAUDE_SESSION_ID}`.
+
 Use [the shared operating brief](../../internal/workflow.md) and [runtime review operations](../../internal/runtime/REFERENCE.md#independent-assessment). For project-required implementation, use the attended or explicitly handed-over run established under the brief; do not substitute a direct-agent review outside it. Establish the agreed outcome and full cumulative change, including uncommitted edits and new files. A previous review does not authorize narrowing a requested new pass.
 
 Dispatch a fresh strong lead with all six code dimensions, the requirements, complete change and surrounding context. Prefer the other host at equivalent strength when suitable; the controller chooses placement. Do not supply the author rationale or filter dimensions. Reviewers and skeptics cannot edit reviewed inputs.
