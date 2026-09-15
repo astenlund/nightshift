@@ -4,6 +4,14 @@ V2 entries are preserved in [the historical index](migration/v2/QUICK_WINS.md) a
 
 ## Current
 
+### Acknowledge accepted handovers clearly
+
+Proposed by the user during retained-release delivery in this repository, run `2a89bde5-9c0c-4ba5-b67f-dadc545bfcc4`, Codex session `01a09c60-dd6e-7d42-b8a0-7333fd211d92`: a clear "Handover accepted" message would tell the user when they can leave the keyboard. The idea was preserved as the `clear-handover-acceptance` run follow-up, and the user chose to track it on 2026-09-15.
+
+Make acceptance of an explicit handover unmistakable once the agreed scope and essential continuation prerequisites are settled. Briefly carry forward the accepted work and relevant limits without reopening settled requirements or bundling publication authority into the acknowledgment. If a material decision or continuation prerequisite remains unresolved, identify it instead of claiming acceptance. Verify the model-owned acknowledgment on both supported hosts for new runs, existing runs and unresolved prerequisites. This is distinct from [switching an existing run to unattended mode](BUGS.md#handover-leaves-existing-runs-in-attended-mode) and [delivering the morning report](BUGS.md#handover-omits-the-morning-report). Tracking does not authorize implementation.
+
+**Requires:** none.
+
 ### Expose a project-relative receipt path in dispatch results
 
 Reported on 2026-09-12 from an unattended Claude handover in FeatherPod-Private, run prefix `216f01e8`, plugin 3.0.6. The dispatch result supplies `receiptFile` as an absolute Windows path, while `review` and `validate` import requests need a project-relative receipt path; the controller derived it from `receipt.requestId`. The current `internal/runtime/review.js` still returns `{receiptFile, receipt}` with an absolute file path and the receipt object. The newer runtime `wait` operation supplies a project-relative `receipt` path, so the report's original claim that dispatch is the only place the path appears no longer describes the current surface; direct dispatch results still require conversion. Original inbox report: observation 3 of `2026-09-12-probe-returns-full-state-and-foreground-wait-recurrence.md`.
