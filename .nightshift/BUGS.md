@@ -4,6 +4,14 @@ V2 entries are preserved in [the historical index](migration/v2/BUGS.md) and [MI
 
 ## Current
 
+### Permission-only recovery invalidates accepted specs
+
+Observed during retained-release delivery in this repository, run `2a89bde5-9c0c-4ba5-b67f-dadc545bfcc4`, Codex session `01a09c60-dd6e-7d42-b8a0-7333fd211d92`. The user approved exporting the already-scoped implementation and review context to Astra. Resolving the approval blocker with `unblock` appended that transport permission to the engineering agreement, advanced its requirements revision and reopened the previously accepted governing-spec task, although the engineering commitments had not changed. The subsequent code-assessment dispatch stopped before any model call because the spec gate was no longer satisfied. The user chose to track this defect during follow-up triage on 2026-09-15. The run preserves the original approval resolution and the `permission-unblock-invalidates-spec` follow-up.
+
+Distinguish permission or capability recovery from consequential changes to the agreed engineering requirements. Preserve valid spec agreement and assessment evidence when only the ability to perform authorized work changes; continue to invalidate affected evidence when scope or requirements actually change. Verify both cases, including a permission-only review-export approval and a genuine change of commitments, without weakening ownership, approval or evidence-freshness checks. This is separate from the external approval rejection itself, tracked in [Review-transfer approval interrupts an authorized handover](#review-transfer-approval-interrupts-an-authorized-handover). Tracking does not authorize implementation.
+
+**Requires:** none.
+
 ### Handover omits the morning report
 
 Observed during retained-release delivery in this repository, run `2a89bde5-9c0c-4ba5-b67f-dadc545bfcc4`, Codex session `01a09c60-dd6e-7d42-b8a0-7333fd211d92`. The user explicitly handed over settled work. The controller performed independent code assessment, documentation reconciliation and a recorded retrospective, but ended with brief completion/publication summaries and a technical acceptance report instead of the expected morning report. The user had to ask whether a morning report existed and whether revise-code, revise-docs and revise-lore had run. The documentation pass had also missed stale README acceptance wording, repaired only during publication review. The user identified the missing morning report as a separate bug from the run remaining attended. This entry promotes and consolidates the former quick win "Morning report ends by starting follow-up triage"; the earlier incidents remain below.
