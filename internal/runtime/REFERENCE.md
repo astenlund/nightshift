@@ -1,6 +1,6 @@
 # Runtime interface
 
-Requires the supported Node.js 22.23 or later baseline. The implementation uses Node's built-in SQLite transactions; no package installation is needed. Run commands in the project's shell, using `pwsh -NoProfile` for PowerShell. For installed work, follow [the retained resource interface](../releases/REFERENCE.md). Write an envelope with `action: "run"`, `entry: "runtime"`, the actual native `session`, absolute `project`, and the runtime request under `request`. Invoke the exact bootstrap and registration from the host locator:
+Requires the supported Node.js 22.23 or later baseline. The implementation uses Node's built-in SQLite transactions; no package installation is needed. Run commands in the project's shell, using `pwsh -NoProfile` for PowerShell. For installed work, follow [automatic preparation in the retained resource interface](../releases/REFERENCE.md#skill-activation). Runtime admission still requires native continuation activation for ordinary operations, even if the session previously ran Ready without activation. Write an envelope with `action: "run"`, `entry: "runtime"`, the actual native `session`, absolute `project`, and the runtime request under `request`. Invoke the exact bootstrap and registration from the host locator:
 
 ```text
 node <BOOTSTRAP> <REGISTRATION> <envelope.json>

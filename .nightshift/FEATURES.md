@@ -4,7 +4,13 @@ Upcoming work and deferred extensions to the delivered v3 MVP. Its delivery is r
 
 ## Current work
 
-No active feature deliveries.
+### Automatic first-use preparation with retained Ready and Exploring
+
+Invoking any public skill prepares Nightshift automatically and continues the requested work, with no setup conversation on success. Ready and Exploring run on retained resources without an observed continuation activation, while every dependent operation still checks native trust and session activation afresh, and deliberate disabling or removal continues to win over automatic preparation. Claude hook disabling is taken from the host's own effective settings, so the managed, command-line, project local, shared project and user layers all apply in their documented precedence rather than the user profile alone. The agreed outcome is recorded in [the governing design](specs/automatic-plugin-preparation.md), and the delivery evidence, including its qualifications, in [the acceptance report](reports/automatic-plugin-preparation-20260915.md).
+
+Implementation and deterministic verification are complete in run `c675a074-6431-46e2-85b7-e3b8616e9220`. The supported strong cumulative assessment, the session retrospective and follow-up triage remain outstanding, and the 3.1.1 candidate is unpublished. Readiness here records delivery state; it is not implementation or publication authority.
+
+**Requires:** none.
 
 ## Exploring
 

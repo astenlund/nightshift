@@ -5,7 +5,7 @@ description: "Use when the user explicitly requests revise-lore or a Nightshift 
 
 # Session retrospective
 
-Follow [shared resource binding](../../internal/releases/REFERENCE.md#skill-activation) before this skill. Claude native session marker: `${CLAUDE_SESSION_ID}`.
+Use [automatic preparation and resource binding](../../internal/releases/REFERENCE.md#skill-activation) before this skill. Claude native session marker: `${CLAUDE_SESSION_ID}`.
 
 Use [the closing and triage rules](../../internal/workflow.md#close-and-report). This operation also works independently, using a lore task in [the runtime](../../internal/runtime/REFERENCE.md). Reflect after documentation/backlog reconciliation and before follow-up triage. During implementation delivery, use the existing run and record the actual retrospective evidence once for the session; a direct documentation edit does not satisfy this stage.
 

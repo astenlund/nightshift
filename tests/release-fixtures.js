@@ -37,16 +37,22 @@ function packageCopy(root, version) {
     value.version = version;
     fs.writeFileSync(path.join(target, file), JSON.stringify(value, null, 2) + '\n');
   }
-  const manifest = makeManifest(files, file => fs.readFileSync(path.join(target, file)));
-  fs.writeFileSync(path.join(target, MANIFEST_PATH), encodeManifest(manifest));
+  refreshPackage(target);
   return target;
 }
 
+function refreshPackage(root) {
+  const manifest = makeManifest(payloadFiles(root), file => fs.readFileSync(path.join(root, file)));
+  fs.writeFileSync(path.join(root, MANIFEST_PATH), encodeManifest(manifest));
+}
+
 function simulatedService(value, source, version = '1.0.0') {
-  const state = { source, version, enabled: true, trusted: true, discoveries: 0 };
+  const state = { source, version, enabled: true, trusted: true, configured: true, disabled: false, discoveries: 0 };
   const service = new ReleaseService(value.store, {
     discover: async () => { state.discoveries++; if (!state.enabled) throw Object.assign(new Error('disabled fixture plugin'), { code: 'installation-unavailable' }); return { root: state.source, version: state.version }; },
-    inspectHooks: async () => ({ usable: state.trusted, entries: [] }),
+    // Model configured and disabled explicitly: leaving them undefined lets every
+    // admission gate that reads them pass without being exercised.
+    inspectHooks: async () => ({ configured: state.configured, disabled: state.disabled, usable: state.trusted && state.configured && !state.disabled, entries: [] }),
     applyHooks: async () => {},
     nativeOwner: () => ({ found: true, pid: process.pid, created: 'fixture-process', name: 'codex.exe' }),
     ownerAlive: owner => owner?.pid === process.pid,
@@ -63,8 +69,21 @@ function simulatedService(value, source, version = '1.0.0') {
   return { service, state };
 }
 
+// Claude hook inspection asks the native host for its effective settings. Deterministic
+// cases supply that answer directly instead of starting a native session.
+function settingsReader(effective = {}) {
+  const calls = [];
+  const read = async (profile, cwd) => { calls.push({ profile, cwd }); return { effective, sources: [] }; };
+  read.calls = calls;
+  return read;
+}
+
+function claudeInspection(configuration, read) {
+  return (registration, cwd, options = {}) => configuration.inspectHooks(registration, cwd, { ...options, readSettings: read });
+}
+
 async function activate(service, registration, project, session) {
   await service.hook(registration, { cwd: project, session_id: session, hook_event_name: 'SessionStart', source: 'startup' });
 }
 
-module.exports = { activate, fixture, packageCopy, repository, simulatedService };
+module.exports = { activate, claudeInspection, fixture, packageCopy, refreshPackage, repository, settingsReader, simulatedService };

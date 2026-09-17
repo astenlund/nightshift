@@ -5,7 +5,7 @@ description: "Use when the user explicitly requests revise-docs, or for required
 
 # Revise docs
 
-Follow [shared resource binding](../../internal/releases/REFERENCE.md#skill-activation) before this skill. Claude native session marker: `${CLAUDE_SESSION_ID}`.
+Use [automatic preparation and resource binding](../../internal/releases/REFERENCE.md#skill-activation) before this skill. Claude native session marker: `${CLAUDE_SESSION_ID}`.
 
 Use the documentation and closing rules in [the operating brief](../../internal/workflow.md#close-and-report). This operation also works independently, using a docs task in [the runtime](../../internal/runtime/REFERENCE.md). During implementation delivery, use the existing run and record this reconciliation as task documentation evidence. Establish the actual change from the conversation, files and Git evidence.
 

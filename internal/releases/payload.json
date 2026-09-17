@@ -1,17 +1,17 @@
 {
   "schema": 1,
   "name": "nightshift",
-  "version": "3.1.0",
+  "version": "3.1.1",
   "files": [
     {
       "path": ".claude-plugin/plugin.json",
       "bytes": 640,
-      "sha256": "c3f0f0e848a13fbe16075dde93e24a3631b3cd1763132b39b47318bd2dd86545"
+      "sha256": "584ef7a9cdfaf2cd2f0b7c1f2e3914ad3be856bb374a7a142f34a5a9826b3aa3"
     },
     {
       "path": ".codex-plugin/plugin.json",
       "bytes": 1160,
-      "sha256": "06fce8bb385b60aef9dfc32cc0a5e6803dceeb9f44014b622930f710ee65fe45"
+      "sha256": "0dc7740c86c891d2057f35cacf8ae1fbc41ca1ee63d68df3341c0cd02f5f4c2c"
     },
     {
       "path": "LICENSE",
@@ -50,13 +50,18 @@
     },
     {
       "path": "internal/releases/REFERENCE.md",
-      "bytes": 14788,
-      "sha256": "2781355bd8ba2401d6fc42533483b7850e58766ebded0fb272cb7ad13ef94048"
+      "bytes": 22172,
+      "sha256": "60b6613a0af7053ac5d177dcb863d35d7a249c4bda8c172dac050328a8ebb4d5"
+    },
+    {
+      "path": "internal/releases/administration.js",
+      "bytes": 2315,
+      "sha256": "092d5eff49f38f5886e439b54510f1389268a7c707ff19f614dddafd7acf76bb"
     },
     {
       "path": "internal/releases/bootstrap.js",
-      "bytes": 8120,
-      "sha256": "df4a381c845edf574f857e2540a5f5d375c94600d30ab22b47b09104807a7c9d"
+      "bytes": 8442,
+      "sha256": "f7a82dc7cf4d4f0a481370617f49768e2f87c8fc817eb7520fa4842ad5633945"
     },
     {
       "path": "internal/releases/bundles.js",
@@ -70,18 +75,18 @@
     },
     {
       "path": "internal/releases/host-config.js",
-      "bytes": 13607,
-      "sha256": "3c3e7385e29a7d659ac676942cad97b385873ee87ba980f36364fd8839d42149"
+      "bytes": 18718,
+      "sha256": "24b3c6bc1c2e2ad70f28b843182559236a65014f971a3bafb8603653f54b4aef"
     },
     {
       "path": "internal/releases/io.js",
-      "bytes": 4118,
-      "sha256": "0dc88a9e0336a25446b16bbbe8dc930b5b14dd1da12d8ab211e2554489d4cb86"
+      "bytes": 4853,
+      "sha256": "da611bd00d4765a31b2af92ffdefc93d207eb49a3b2dd48ea13df593fcabdff1"
     },
     {
       "path": "internal/releases/launcher.js",
-      "bytes": 2830,
-      "sha256": "5395465b8f82a0c48a771a8c578f8c89c55ac37297edaae571f8df157c89e31e"
+      "bytes": 3417,
+      "sha256": "6940611262b5a1df4889daeb7e0d0f1c44cc3b226953029a32886606ae39ca89"
     },
     {
       "path": "internal/releases/manifest.js",
@@ -90,13 +95,18 @@
     },
     {
       "path": "internal/releases/native-host.js",
-      "bytes": 7778,
-      "sha256": "5e4963e490465c29049ec1728f0eda8495bd3aac3b9484819b7d9c4f1317d7af"
+      "bytes": 11934,
+      "sha256": "d5801eba8ca6aef2e97fcb1b187c690b701f8d191e33e8bb322213214754d234"
     },
     {
       "path": "internal/releases/notice.js",
-      "bytes": 2019,
-      "sha256": "69c2c05a0e5f22021f7727650ef88d933fc4af77d5030d73a994996b9a6d854b"
+      "bytes": 1837,
+      "sha256": "3a48a1700e331dd21f05e3a094bab9affd9a3b60614f1db1473603500071d866"
+    },
+    {
+      "path": "internal/releases/preparation.js",
+      "bytes": 5616,
+      "sha256": "f708a105a1ef3a9af2d3ad47aec158a0a2b3332f26826890a68acc3f18cc9ccb"
     },
     {
       "path": "internal/releases/process-info.ps1",
@@ -115,8 +125,8 @@
     },
     {
       "path": "internal/releases/service.js",
-      "bytes": 41270,
-      "sha256": "e871708290505e013d703308aedc7b96da029b01eabccd9843f7dc7b12d4ca78"
+      "bytes": 44257,
+      "sha256": "41fd4adc2eaef604dd1c3a52ec79f132f857df937916962994b08889ac1d3c76"
     },
     {
       "path": "internal/releases/settings-write.ps1",
@@ -125,8 +135,8 @@
     },
     {
       "path": "internal/runtime/REFERENCE.md",
-      "bytes": 23078,
-      "sha256": "620df5eccc7aad39ed98af6b65a6e9552f6c0357cec9577e18b147edeac383e8"
+      "bytes": 23270,
+      "sha256": "d354cd62d0ada79e52386ca352953d26295746c6a85b63aea113adfe795fe33b"
     },
     {
       "path": "internal/runtime/actions.js",
@@ -210,23 +220,23 @@
     },
     {
       "path": "internal/workflow.md",
-      "bytes": 15164,
-      "sha256": "2d4ee7bd43f936bfd83763fdbb9553c147fae292eadf50f544b1cd0e027aeb11"
+      "bytes": 15319,
+      "sha256": "4a8d768f40e482c73c65859213135763372ad2605ea40cb4a7b72371f10ab486"
     },
     {
       "path": "skills/exploring/SKILL.md",
-      "bytes": 1048,
-      "sha256": "66a9600917de214a1bf5985c5a6e104e184adfa0946cc5df2dfa2f6ab1863c43"
+      "bytes": 1064,
+      "sha256": "da2873ec21a3dd5a36f6e4a744429081c58c107183eecaae6e1824e6db80ce96"
     },
     {
       "path": "skills/handover/SKILL.md",
-      "bytes": 3166,
-      "sha256": "383980876fd49b983c5f908f81f190be9e804235d32ab1b9eecf4c5226bca7ae"
+      "bytes": 3182,
+      "sha256": "ebe39285bdb9715e44c72d3543220ea53d2c13e2bdee1e4ad49ab513c779f4e2"
     },
     {
       "path": "skills/init-backlog/SKILL.md",
-      "bytes": 5361,
-      "sha256": "4a671b4a7a3cd6337949407d3503276400872887abaaef800d94824f949dd460"
+      "bytes": 5377,
+      "sha256": "0a0ee1478f54fc9e1b5526c349c075dacb94f70e13eae9a8daba9a5eb90c0271"
     },
     {
       "path": "skills/init-backlog/init-backlog.js",
@@ -275,8 +285,8 @@
     },
     {
       "path": "skills/ready/SKILL.md",
-      "bytes": 2458,
-      "sha256": "9f5effa3a479ec1e71eb70aac63be06457f4c3820fe8e58aef603cbc6bab85fd"
+      "bytes": 2474,
+      "sha256": "117db8809c11117c1e56f47200f010d7b84fd15c192df44672867f99bdf55b66"
     },
     {
       "path": "skills/ready/ready.js",
@@ -285,23 +295,23 @@
     },
     {
       "path": "skills/revise-code/SKILL.md",
-      "bytes": 2053,
-      "sha256": "ce53a9be8d110ee2e57f18491b34a0c6798915fa74cd89b6cfd8de8129620533"
+      "bytes": 2069,
+      "sha256": "b7300d7ee531429067d615bb781bace3ce5f4d97c53dba806def58305551bd70"
     },
     {
       "path": "skills/revise-docs/SKILL.md",
-      "bytes": 1929,
-      "sha256": "4a28f04c254d41fe0a42dd9066926803bb4626af4f7a7d2901bbfe05fdcbbd2d"
+      "bytes": 1945,
+      "sha256": "85336c5c53a1c81936549b4ae63e4fa5c2b8593b99db93629d01fd70cdf375b3"
     },
     {
       "path": "skills/revise-lore/SKILL.md",
-      "bytes": 2188,
-      "sha256": "9ea243f2d198f213f28a11968aae64afdcb5c4686e4ee44038e616156c5fc393"
+      "bytes": 2204,
+      "sha256": "f496b38a578dc24e66588ba15e030a1c6f495e8a5443f28652a03ecbb2d1e16e"
     },
     {
       "path": "skills/revise-spec/SKILL.md",
-      "bytes": 2094,
-      "sha256": "21e7880df167093778430ccbd55a0a13970b51da8811aa3b37e37a10165841bc"
+      "bytes": 2110,
+      "sha256": "9adc5dfcd79eb35171ac8a04f59dc07465fd842bd25270d2843f4be65ae6ecbb"
     }
   ]
 }

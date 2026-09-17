@@ -4,27 +4,26 @@ const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
 const { randomUUID } = require('node:crypto');
+const { isDeepStrictEqual } = require('node:util');
 const { DatabaseSync } = require('node:sqlite');
 const { Registry, registrationKey, sessionKey } = require('./registry');
 const bundles = require('./bundles');
 const native = require('./native-host');
 const configuration = require('./host-config');
 const processes = require('./processes');
+const { CHANGED_CONCURRENTLY, REMOVED_MESSAGE, ownerFree, pluginIdentity, publishBootstrap, retainedRoutes, supportsPreparation } = require('./administration');
 const { CONTEXT_ENV, MODE_ENV } = require('./entry');
 const { isReadOnlyAction } = require('../runtime/actions');
 const { workerIsActive } = require('../runtime/workers');
-const { digest, directory, parseJson, processAlive, readBytes, replaceFile, requireValue, text, writeNew } = require('./io');
+const { digest, directory, hostProfile, parseJson, processAlive, projectRoot, readBytes, replaceFile, requireConsistentRunId, requireValue, text, writeNew } = require('./io');
 
 const ENTRIES = Object.freeze({ ready: 'skills/ready/ready.js', unwrap: 'skills/init-backlog/unwrap.js', setup: 'skills/init-backlog/init-backlog.js', runtime: 'internal/runtime/cli.js' });
 const MAINTENANCE = new Set(['worker-finished', 'review', 'validate', 'stop']);
+// The closed list of entries admitted without observed continuation activation.
+const ACTIVATION_EXEMPT = new Set(['ready']);
+const ENTRY_CHOICE = 'Choose ready, unwrap, setup or runtime';
 
 function defaultStore() { return path.join(process.env.LOCALAPPDATA ?? path.join(os.homedir(), 'AppData', 'Local'), 'Nightshift'); }
-
-function projectRoot(value) {
-  const root = fs.realpathSync.native(text(value, 'project root'));
-  requireValue(fs.statSync(root).isDirectory(), 'invalid-release-project', 'Project root must be a directory');
-  return root;
-}
 
 function runDatabase(root) {
   const file = path.join(root, '.nightshift/runs/state.sqlite');
@@ -98,6 +97,12 @@ class ReleaseService {
     this.overrides = dependencies;
     this.dependencies = { discover: native.discover, isEnabled: dependencies.discover ? async (...args) => { await dependencies.discover(...args); return true; } : native.isEnabled, inspectHooks: configuration.inspectHooks, applyHooks: configuration.applyHooks, recoverClaude: configuration.recoverClaude, reconcileCodexJournal: configuration.reconcileCodexJournal, discardJournal: configuration.discardJournal, nativeOwner: processes.nativeOwner, ownerAlive: processes.ownerAlive, runContained: processes.runContained, readRun, ...dependencies };
     this.context = context;
+    // One operation asks the host the same Claude settings question several times. The
+    // answer cannot change within it, and each service instance serves a single operation,
+    // so it is resolved once instead of starting another native session per call. A Codex
+    // snapshot that feeds a configuration write must be re-read across it and so is never
+    // memoized; the read-only Codex listings are simply not shared yet.
+    this.settingsCache = new Map();
   }
 
   registry(action, options = {}) {
@@ -137,13 +142,14 @@ class ReleaseService {
     throw failure;
   }
 
-  async recoverPending(key) {
+  async recoverPending(key, project) {
     let registration = this.registration(key);
-    if (!registration.pending?.journal) return registration;
+    if (!registration.pending || !registration.pending.journal && registration.pending.remove) return registration;
+    requireValue(['key', 'host', 'profile', 'pluginId'].every(field => registration.pending[field] === registration[field]), 'configuration-conflict', 'Pending Nightshift preparation belongs to a different registration');
     const token = randomUUID();
     registration = this.registry(registry => {
       const value = registry.get('registration', key);
-      requireValue(!value.pending?.ownerPid || processAlive(value.pending.ownerPid) === false, 'release-setup-busy', 'Another process owns configuration recovery');
+      requireValue(ownerFree(value), 'release-setup-busy', 'Another process owns configuration recovery');
       value.pending.ownerPid = process.pid;
       value.pending.ownerToken = token;
       registry.put('registration', key, value);
@@ -154,8 +160,17 @@ class ReleaseService {
       const bundle = this.registry(registry => bundles.verifiedRecord(registry, registration.pending.baseBundle));
       const helper = require(path.join(bundle.root, 'internal/releases/host-config.js'));
       let outcome;
-      if (journal.type === 'claude') { (this.overrides.recoverClaude ?? helper.recoverClaude)(journal, registration.profile); outcome = 'written'; }
-      else { requireValue(journal.type === 'codex', 'invalid-settings-journal', 'Unknown host configuration recovery format'); outcome = await (this.overrides.reconcileCodexJournal ?? helper.reconcileCodexJournal)(registration, registration.profile); }
+      if (!journal) {
+        const pending = registration.pending;
+        // The pending definitions were written by the bundle that owns them, so they
+        // are compared against that release rather than the current administrative one.
+        requireValue(isDeepStrictEqual(pending.definitions, helper.definitions(registration.host, pending.bootstrap, key)), 'invalid-settings-journal', 'Pending Nightshift hook definitions are incomplete or changed');
+        const nativeState = await this.dependencies.inspectHooks({ ...registration, ...configurationFields(pending) }, registration.profile, { project, cache: this.settingsCache });
+        // A no-op configuration write has no journal. Matching native definitions
+        // still prove it can be committed without replacing already-applied hooks.
+        outcome = nativeState.configured === true ? 'written' : 'not-written';
+      } else if (journal.type === 'claude') { (this.overrides.recoverClaude ?? helper.recoverClaude)(journal, registration.profile); outcome = 'written'; }
+      else { requireValue(journal.type === 'codex', 'invalid-settings-journal', 'Unknown host configuration recovery format'); outcome = await (this.overrides.reconcileCodexJournal ?? helper.reconcileCodexJournal)(registration, registration.profile, { project, cache: this.settingsCache }); }
       this.registry(registry => {
         const value = registry.get('registration', key);
         requireValue(value.pending?.ownerToken === token, 'release-setup-conflict', 'Configuration recovery ownership changed');
@@ -173,50 +188,55 @@ class ReleaseService {
     return this.registration(key);
   }
 
+  async prepare(request) {
+    requireValue(Object.hasOwn(ENTRIES, request.entry), 'unknown-release-entry', ENTRY_CHOICE);
+    return require('./preparation').prepare(this, request, locatorState);
+  }
+
   async setup(request) {
     const host = request.host;
-    const profile = projectRoot(request.profile ?? (host === 'codex' ? process.env.CODEX_HOME ?? path.join(os.homedir(), '.codex') : process.env.CLAUDE_CONFIG_DIR ?? path.join(os.homedir(), '.claude')));
+    const automatic = request.automatic === true;
+    const profile = projectRoot(hostProfile(host, request.profile));
     const key = registrationKey(host, profile);
     const locator = locatorState(profile);
     requireValue(!locator.value || locator.value.store === this.store || locator.value.state === 'removed', 'configuration-conflict', 'This profile is already attached to another retained store');
-    const pluginId = request.pluginId ?? 'nightshift@astenlund';
-    requireValue(/^nightshift@[A-Za-z0-9_.-]+$/.test(pluginId), 'invalid-plugin-identity', 'Select the exact installed Nightshift marketplace identity');
+    const pluginId = pluginIdentity(request);
     this.registry(() => {}, { create: true });
     let current = this.registry(registry => registry.get('registration', key));
-    requireValue(!current?.pending?.ownerPid || processAlive(current.pending.ownerPid) === false, 'release-setup-busy', 'Another host configuration operation is active or unreconciled');
-    if (current?.pending?.journal) current = await this.recoverPending(key);
+    if (automatic) requireValue(locator.value?.state !== 'removed' && current?.state !== 'removed' && current?.pending?.remove !== true, 'nightshift-disabled', REMOVED_MESSAGE);
+    requireValue(ownerFree(current), 'release-setup-busy', 'Another host configuration operation is active or unreconciled');
+    if (current?.pending?.journal) current = await this.recoverPending(key, request.project);
     const reservation = randomUUID();
     const bundle = await this.captureCurrent({ host, profile, pluginId }, undefined, (registry, captured) => {
       registry.put('operation', reservation, { schema: 1, kind: 'capture', state: 'running', pid: process.pid, registration: key, bundle: captured.key });
       return captured;
     });
+    // Automatic preparation must establish that the discovered release supports it before
+    // writing host configuration: an older bundle's applyHooks has no deliberate-disabling
+    // guard at all, so registering through it would fail open rather than refuse.
+    if (automatic) requireValue(supportsPreparation(bundle.root), 'preparation-unavailable', 'The enabled Nightshift release does not support automatic preparation; use its matching installed skill');
     const retainedConfiguration = require(path.join(bundle.root, 'internal/releases/host-config.js'));
     const applyHooks = this.overrides.applyHooks ?? retainedConfiguration.applyHooks;
     const inspectHooks = this.overrides.inspectHooks ?? retainedConfiguration.inspectHooks;
     const nonce = randomUUID();
     const pending = this.registry(registry => {
       const previous = registry.get('registration', key);
-      requireValue(!previous?.pending?.ownerPid || processAlive(previous.pending.ownerPid) === false, 'release-setup-busy', 'Another host configuration operation owns this registration');
-      const bytes = readBytes(bundle.root, 'internal/releases/bootstrap.js');
-      const bootstrapHash = digest(bytes);
-      let folder = directory(registry.root, `launchers/${bootstrapHash}`, true);
-      if (fs.existsSync(path.join(folder, 'bootstrap.js')) && !fs.readFileSync(path.join(folder, 'bootstrap.js')).equals(bytes)) folder = directory(registry.root, `launchers/${bootstrapHash}-${nonce}`, true);
-      const bootstrap = path.join(folder, 'bootstrap.js');
-      if (!fs.existsSync(bootstrap)) writeNew(bootstrap, bytes);
+      if (automatic) requireValue(JSON.stringify(previous) === JSON.stringify(current), 'release-registration-changed', CHANGED_CONCURRENTLY);
+      requireValue(ownerFree(previous), 'release-setup-busy', 'Another host configuration operation owns this registration');
+      const { bootstrap, bootstrapHash } = publishBootstrap(registry, bundle);
       const definitions = retainedConfiguration.definitions(host, bootstrap, key);
       const generation = digest(JSON.stringify({ protocol: 1, host, profile, definitions }));
       const value = { schema: 1, key, host, profile, pluginId, bootstrap, bootstrapHash, baseBundle: bundle.key, definitions, generation, ownerPid: process.pid, ownerToken: nonce, remove: false, journal: null };
-      const routes = [...(previous?.routes ?? []), ...(previous?.bootstrap ? [{ bootstrap: previous.bootstrap, bootstrapHash: previous.bootstrapHash }] : [])];
-      registry.put('registration', key, { ...(previous ?? { schema: 1, key, host, profile, pluginId, state: 'preparing' }), routes: routes.filter((route, index) => routes.findIndex(other => other.bootstrap === route.bootstrap) === index), pending: value });
+      registry.put('registration', key, { ...(previous ?? { schema: 1, key, host, profile, pluginId, state: 'preparing' }), routes: retainedRoutes(previous), pending: value });
       registry.remove('operation', reservation);
-      return { ...value, previousDefinitions: [previous?.definitions, previous?.pending?.definitions].filter(Boolean) };
+      return { ...value, automatic, previousDefinitions: [previous?.definitions, previous?.pending?.definitions].filter(Boolean) };
     });
     let journal;
     try {
       await applyHooks(pending, profile, false, value => {
         journal = value;
         this.registry(registry => { const value = registry.get('registration', key); requireValue(value.pending?.ownerToken === nonce, 'release-setup-conflict', 'Host configuration ownership changed'); value.pending.journal = journal; registry.put('registration', key, value); });
-      });
+      }, { project: request.project, cache: this.settingsCache });
       this.registry(registry => {
         const value = registry.get('registration', key);
         requireValue(value.pending?.ownerToken === nonce, 'release-setup-conflict', 'Host configuration ownership changed');
@@ -228,12 +248,12 @@ class ReleaseService {
       throw error;
     }
     const registration = this.registration(key);
-    const nativeState = await inspectHooks(registration, profile);
+    const nativeState = await inspectHooks(registration, profile, { project: request.project, cache: this.settingsCache });
     const locatorFile = this.publishLocator(registration);
-    return { registration: key, bootstrap: registration.bootstrap, locator: locatorFile, generation: registration.generation, native: nativeState, activationRequired: true, next: nativeState.usable ? 'Use a native session that has observed this generation; open or reopen if yours has not.' : 'Review and trust the installed hook definitions, then open or reopen a native session.' };
+    return { registration: key, bootstrap: registration.bootstrap, locator: locatorFile, generation: registration.generation, native: nativeState, activationRequired: true, next: configuration.classifyHooks(nativeState).guidance };
   }
 
-  async status(key, session) {
+  async status(key, session, project) {
     let saved;
     try {
       saved = this.registry(registry => ({ registrations: registry.list('registration').map(entry => ({ key: entry.key, host: entry.value.host, profile: entry.value.profile, state: entry.value.state, bootstrap: entry.value.bootstrap, generation: entry.value.generation, pending: entry.value.pending ? { remove: entry.value.pending.remove, error: entry.value.pending.error, journal: entry.value.pending.journal } : null })), sessions: registry.list('session').map(entry => ({ key: entry.key, ...entry.value })), activations: registry.list('activation').map(entry => ({ key: entry.key, ...entry.value })), operations: registry.list('operation').map(entry => ({ key: entry.key, ...entry.value })), bundles: registry.list('bundle').map(entry => ({ key: entry.key, identity: entry.value.identity, root: entry.value.root })) }));
@@ -243,7 +263,7 @@ class ReleaseService {
     }
     if (key) {
       const registration = this.registration(key);
-      const nativeState = await this.dependencies.inspectHooks(registration, registration.profile);
+      const nativeState = await this.dependencies.inspectHooks(registration, registration.profile, { project, cache: this.settingsCache });
       const activation = session ? this.registry(registry => registry.get('activation', sessionKey(key, session))) : null;
       saved.native = nativeState;
       saved.activationUsable = !!activation && activation.generation === registration.generation && this.dependencies.ownerAlive(activation.owner, registration.profile) === true && nativeState.usable;
@@ -251,23 +271,36 @@ class ReleaseService {
     return { state: 'configured', store: this.store, ...saved };
   }
 
-  async requireActivation(registration, session, maintenance = false) {
-    if (maintenance) return;
+  // Dependent admission resolves host settings against the same project as the Ready
+  // view, so one session cannot see hooks enabled for one entry and disabled for another.
+  async requireActivation(registration, session, skipActivation = false, project) {
+    if (skipActivation) return;
     requireValue(registration.state === 'registered' && !registration.pending, 'release-setup-required', 'Complete host setup before starting protected Nightshift work');
-    const nativeState = await this.dependencies.inspectHooks(registration, registration.profile);
-    requireValue(nativeState.usable, 'hook-activation-required', 'Nightshift hooks are disabled, changed or untrusted; restore native trust and reopen the session');
+    const nativeState = await this.dependencies.inspectHooks(registration, registration.profile, { project, cache: this.settingsCache });
+    const verdict = configuration.classifyHooks(nativeState);
+    if (verdict.state !== 'usable') requireValue(false, verdict.code, verdict.message);
     const activation = this.registry(registry => registry.get('activation', sessionKey(registration.key, session)));
     requireValue(activation?.generation === registration.generation && activation.session === session && this.dependencies.ownerAlive(activation.owner, registration.profile) === true, 'hook-activation-required', 'This native session has not observed the current Nightshift hook generation; open or reopen it before protected work');
   }
 
-  async resolve(key, request, maintenance = false) {
+  async resolve(key, request, maintenance = false, preparing = false) {
+    requireValue(request.entry === undefined || Object.hasOwn(ENTRIES, request.entry), 'unknown-release-entry', ENTRY_CHOICE);
     const registration = this.registration(key);
     const session = text(request.session, 'native session');
     const project = projectRoot(request.project);
     const skey = sessionKey(key, session);
     const binding = this.registry(registry => registry.get('session', skey));
     requireValue(!binding || binding.state === 'bound', 'retired-release-binding', 'This session was retired; explicitly recover its exact identity before resuming');
-    await this.requireActivation(registration, session, maintenance);
+    const needsActivation = !maintenance && !preparing && !ACTIVATION_EXEMPT.has(request.entry);
+    if (!maintenance && !needsActivation) {
+      requireValue(registration.state === 'registered' && !registration.pending, 'release-setup-required', 'Complete host setup before starting protected Nightshift work');
+      const hooks = await this.dependencies.inspectHooks(registration, registration.profile, { project, cache: this.settingsCache });
+      // The read-only view tolerates untrusted hooks; deliberate disabling and a removed
+      // or changed registration keep their own refusal and recovery.
+      const verdict = configuration.classifyHooks(hooks);
+      if (!['usable', 'untrusted'].includes(verdict.state)) requireValue(false, verdict.code, verdict.message);
+    }
+    await this.requireActivation(registration, session, !needsActivation, project);
     const requestedRun = request.runId ? this.dependencies.readRun(project, request.runId) : this.dependencies.readRun(project);
     const newRun = request.entry === 'runtime' && request.request?.action === 'create' && !request.runId && ['complete', 'stopped'].includes(requestedRun?.status) && !activeWorkers(requestedRun);
     const relevantRun = !newRun && (request.runId || request.entry === 'runtime' || requestedRun?.controller?.session === session) ? requestedRun : null;
@@ -283,7 +316,7 @@ class ReleaseService {
     const bind = (registry, selected) => {
       const currentRegistration = registry.get('registration', key);
       requireValue(currentRegistration?.generation === registration.generation && (maintenance || currentRegistration.state === 'registered' && !currentRegistration.pending), 'release-registration-changed', 'Host registration changed during resource acquisition');
-      if (!maintenance) requireValue(registry.get('activation', skey)?.generation === registration.generation, 'hook-activation-required', 'Native activation was retired or invalidated during resource acquisition');
+      if (needsActivation) requireValue(registry.get('activation', skey)?.generation === registration.generation, 'hook-activation-required', 'Native activation was retired or invalidated during resource acquisition');
       const actual = registry.get('session', skey);
       requireValue(!actual || actual.state === 'bound' && actual.identity === selected.identity, 'release-binding-conflict', 'Session binding changed during resource acquisition');
       bundles.verifiedRecord(registry, selected.key);
@@ -293,7 +326,9 @@ class ReleaseService {
       if (relevantRun && !value.runs.some(run => run.project === project && run.id === relevantRun.id)) value.runs.push({ project, id: relevantRun.id, retired: false });
       registry.put('session', skey, value);
       registry.put('project', digest(project), { schema: 1, root: project });
-      if (digest(readBytes(selected.root, 'internal/releases/bootstrap.js')) === currentRegistration.bootstrapHash) { currentRegistration.baseBundle = selected.key; registry.put('registration', key, currentRegistration); }
+      // Only a genuinely new selection can advance administration; an existing
+      // binding or an explicitly selected run must not demote that shared base.
+      if (!identity && digest(readBytes(selected.root, 'internal/releases/bootstrap.js')) === currentRegistration.bootstrapHash) { currentRegistration.baseBundle = selected.key; registry.put('registration', key, currentRegistration); }
       return { binding: value, bundle: selected, registration, project };
     };
     if (bundle) return this.registry(registry => bind(registry, bundle));
@@ -331,12 +366,12 @@ class ReleaseService {
   }
 
   async run(key, request) {
-    requireValue(Object.hasOwn(ENTRIES, request.entry), 'unknown-release-entry', 'Choose ready, unwrap, setup or runtime');
+    requireValue(Object.hasOwn(ENTRIES, request.entry), 'unknown-release-entry', ENTRY_CHOICE);
     requireValue(request.timeoutMs === undefined || Number.isSafeInteger(request.timeoutMs) && request.timeoutMs > 0 && request.timeoutMs <= 3600000, 'invalid-operation-timeout', 'Operation timeout must be a positive integer no greater than one hour');
     if (request.entry === 'runtime') requireValue(request.request && typeof request.request === 'object' && !Array.isArray(request.request) && typeof request.request.action === 'string', 'invalid-runtime-request', 'Supply a runtime request object with action');
     if (request.entry === 'setup') requireValue(request.options === undefined || request.options && typeof request.options === 'object' && !Array.isArray(request.options), 'invalid-setup-options', 'Setup options must be an object');
     if (request.entry === 'unwrap') requireValue((request.target === undefined || typeof request.target === 'string' && request.target.length > 0) && (request.write === undefined || typeof request.write === 'boolean'), 'invalid-unwrap-options', 'Unwrap target and write options have invalid types');
-    requireValue(!request.runId || !request.request?.runId || request.runId === request.request.runId, 'resource-run-conflict', 'Conflicting run identities were supplied');
+    requireConsistentRunId(request);
     const readOnly = request.entry === 'runtime' && isReadOnlyAction(request.request.action);
     const maintenance = readOnly || request.entry === 'runtime' && MAINTENANCE.has(request.request.action);
     const resolved = await this.resolve(key, { ...request, runId: request.runId ?? request.request?.runId }, maintenance);
@@ -422,7 +457,9 @@ class ReleaseService {
       if (!binding) return project && fs.existsSync(path.join(project, '.nightshift')) ? { hookSpecificOutput: input.hook_event_name === 'SessionStart' ? { hookEventName: 'SessionStart', additionalContext: `Nightshift native session: ${input.session_id}. Retained launcher: ${registration.bootstrap}. Registration: ${key}. Resolve resources through this launcher before using Nightshift.` } : undefined } : {};
       requireValue(binding.state === 'bound', 'retired-release-binding', 'This Nightshift session was retired');
       if (identifiable) requireValue(ownerRun.resources?.identity === binding.identity && ownerRun.resources.registration === key, 'legacy-release-reconciliation', 'The owned run does not match this retained resource binding');
-      await this.requireActivation(registration, input.session_id);
+      // Claude scopes project settings to the working directory, so an unresolvable
+      // Nightshift project root still inspects the actual cwd rather than the profile.
+      await this.requireActivation(registration, input.session_id, false, project ?? input.cwd);
       await this.dependencies.isEnabled(registration.host, registration.profile, registration.pluginId, project ?? input.cwd);
       const bundle = this.registry(registry => bundles.availableIdentity(registry, binding.identity));
       requireValue(bundle, 'release-unavailable', 'The session-bound release is unavailable; recover its exact identity');
@@ -439,11 +476,11 @@ class ReleaseService {
 
   async remove(key) {
     let registration = this.registration(key);
-    requireValue(!registration.pending?.ownerPid || processAlive(registration.pending.ownerPid) === false, 'release-setup-busy', 'Host setup/removal still has an active owner');
+    requireValue(ownerFree(registration), 'release-setup-busy', 'Host setup/removal still has an active owner');
     if (!fs.existsSync(registration.profile)) {
       this.registry(registry => {
         const current = registry.get('registration', key);
-        requireValue(!current.pending?.ownerPid || processAlive(current.pending.ownerPid) === false, 'release-setup-busy', 'Host configuration ownership changed');
+        requireValue(ownerFree(current), 'release-setup-busy', 'Host configuration ownership changed');
         registry.put('registration', key, { ...current, ...configurationFields({ ...current, ...(current.pending ?? {}) }), state: 'removed', pending: null });
         removeActivations(registry, key);
       });
@@ -453,7 +490,7 @@ class ReleaseService {
     const nonce = randomUUID();
     const pending = this.registry(registry => {
       const current = registry.get('registration', key);
-      requireValue(!current.pending?.ownerPid || processAlive(current.pending.ownerPid) === false, 'release-setup-busy', 'Host configuration ownership changed');
+      requireValue(ownerFree(current), 'release-setup-busy', 'Host configuration ownership changed');
       const value = { ...configurationFields({ ...current, ...(current.pending ?? {}) }), remove: true, ownerPid: process.pid, ownerToken: nonce, journal: null };
       registry.put('registration', key, { ...current, pending: value });
       return { ...value, previousDefinitions: [current.definitions, current.pending?.definitions].filter(Boolean) };
@@ -550,4 +587,4 @@ class ReleaseService {
   }
 }
 
-module.exports = { ENTRIES, MAINTENANCE, ReleaseService, activeWorkers, defaultStore, locatorState, projectRoot, readRun };
+module.exports = { ENTRIES, MAINTENANCE, ReleaseService, activeWorkers, defaultStore, locatorState, readRun };

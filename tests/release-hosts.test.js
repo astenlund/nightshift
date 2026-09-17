@@ -4,8 +4,9 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const test = require('node:test');
-const { applyHooks, definitions, discardJournal, planHooks, recoverClaude } = require('../internal/releases/host-config');
-const { fixture } = require('./release-fixtures');
+const { applyHooks, claudeHooksDisabled, definitions, discardJournal, inspectHooks, inspectionContext, planHooks, reconcileCodexJournal, recoverClaude } = require('../internal/releases/host-config');
+const { ReleaseError } = require('../internal/releases/io');
+const { fixture, settingsReader } = require('./release-fixtures');
 
 const key = 'a'.repeat(64);
 const source = 'C:\\fixture\\config.toml';
@@ -89,4 +90,112 @@ test('Claude first setup creates a complete file and rejects linked settings', a
   discardJournal(journal);
   fs.linkSync(target, path.join(value.root, 'linked-settings.json'));
   await assert.rejects(applyHooks(registration, value.project, true), /ordinary nonlinked file/);
+});
+
+test('Claude admission follows the host effective settings rather than the user profile file', async t => {
+  const value = fixture(t);
+  const target = path.join(value.profile, 'settings.json');
+  const registration = { host: 'claude', profile: value.profile, definitions: definitions('claude', 'C:/store/launchers/hash/bootstrap.js', key) };
+  const hooks = Object.fromEntries(Object.entries(registration.definitions).map(([event, definition]) => [event, [{ hooks: [definition] }]]));
+
+  // A project or local opt-out never appears in the user profile, which is the only
+  // file the profile snapshot can see.
+  fs.writeFileSync(target, JSON.stringify({ hooks }));
+  const disabling = settingsReader({ disableAllHooks: true });
+  const disabled = await inspectHooks(registration, value.project, { readSettings: disabling });
+  assert.equal(disabled.disabled, true);
+  assert.equal(disabled.configured, true);
+  assert.equal(disabled.usable, false);
+  assert.deepEqual(disabling.calls, [{ profile: value.profile, cwd: value.project }]);
+
+  // The complementary case: a project may re-enable hooks the user profile disabled,
+  // so a profile file saying true cannot stand in for the resolved value.
+  fs.writeFileSync(target, JSON.stringify({ disableAllHooks: true, hooks }));
+  const enabled = await inspectHooks(registration, value.project, { readSettings: settingsReader({ disableAllHooks: false }) });
+  assert.equal(enabled.disabled, false);
+  assert.equal(enabled.usable, true);
+});
+
+test('Claude settings resolve against the project even when inspection runs from the profile', async t => {
+  const value = fixture(t);
+  fs.writeFileSync(path.join(value.profile, 'settings.json'), JSON.stringify({}));
+  const registration = { host: 'claude', profile: value.profile, definitions: definitions('claude', 'C:/store/launchers/hash/bootstrap.js', key) };
+  const read = settingsReader();
+  await inspectHooks(registration, value.profile, { project: value.project, readSettings: read });
+  assert.deepEqual(read.calls, [{ profile: value.profile, cwd: value.project }]);
+});
+
+test('unavailable Claude settings inspection is distinct from an enabled result', async t => {
+  const value = fixture(t);
+  fs.writeFileSync(path.join(value.profile, 'settings.json'), JSON.stringify({}));
+  const registration = { host: 'claude', profile: value.profile, definitions: definitions('claude', 'C:/store/launchers/hash/bootstrap.js', key) };
+  await assert.rejects(inspectHooks(registration, value.project, { readSettings: async () => ({ sources: [] }) }), error => error.code === 'host-configuration-unavailable');
+  await assert.rejects(inspectHooks(registration, value.project, { readSettings: async () => { throw new ReleaseError('native-host-timeout', 'inspection timed out'); } }), error => error.code === 'native-host-timeout');
+});
+
+test('automatic Claude registration stops at a deliberate opt-out without touching settings', async t => {
+  const value = fixture(t);
+  const target = path.join(value.profile, 'settings.json');
+  const original = Buffer.from(JSON.stringify({ theme: 'preserve' }));
+  fs.writeFileSync(target, original);
+  const registration = { host: 'claude', profile: value.profile, automatic: true, definitions: definitions('claude', 'C:/store/launchers/hash/bootstrap.js', key) };
+  let journal;
+  await assert.rejects(applyHooks(registration, value.profile, false, value => { journal = value; }, { project: value.project, readSettings: settingsReader({ disableAllHooks: true }) }), /hooks are disabled/);
+  assert.equal(journal, undefined);
+  assert.deepEqual(fs.readFileSync(target), original);
+
+  await applyHooks(registration, value.profile, false, value => { journal = value; }, { project: value.project, readSettings: settingsReader({ disableAllHooks: false }) });
+  assert.equal(JSON.parse(fs.readFileSync(target)).theme, 'preserve');
+  assert.equal(JSON.parse(fs.readFileSync(target)).hooks.Stop.length, 1);
+  discardJournal(journal);
+});
+
+test('an operation resolves each settings context once and keeps distinct contexts apart', async t => {
+  const value = fixture(t);
+  const other = path.join(value.root, 'other-project');
+  fs.mkdirSync(other);
+  const read = settingsReader({ disableAllHooks: true });
+  const cache = new Map();
+
+  // An inspection started from the profile with an explicit project resolves to the same
+  // context as one started from the project, so both reach the same memo entry.
+  assert.equal(inspectionContext(value.profile, { project: value.project }), value.project);
+  assert.equal(inspectionContext(value.project, {}), value.project);
+
+  assert.equal(await claudeHooksDisabled(value.profile, value.project, { readSettings: read, cache }), true);
+  assert.equal(await claudeHooksDisabled(value.profile, inspectionContext(value.profile, { project: value.project }), { readSettings: read, cache }), true);
+  assert.equal(read.calls.length, 1, 'the same profile and project must not start a second native session');
+
+  assert.equal(await claudeHooksDisabled(value.profile, other, { readSettings: read, cache }), true);
+  assert.equal(read.calls.length, 2, 'a different project is a different question');
+
+  // Without a cache every call resolves again, so the memo is opt-in per operation.
+  await claudeHooksDisabled(value.profile, value.project, { readSettings: read });
+  assert.equal(read.calls.length, 3);
+});
+
+test('Codex journal recovery prefers the recorded directory and survives its deletion', async t => {
+  const value = fixture(t);
+  const desired = definitions('codex', 'C:/store/launchers/hash/bootstrap.js', key);
+  const survivor = { key: stateKey(0), currentHash: 'user-hash', trustStatus: 'trusted', enabled: true };
+  const recorded = path.join(value.root, 'checkout-that-will-be-deleted');
+  const registration = { host: 'codex', profile: value.profile, definitions: desired, pending: { definitions: desired, remove: false, journal: { type: 'codex', expectedVersion: 'before-write', survivors: [survivor], context: recorded } } };
+  const contexts = [];
+  const readSnapshot = async (profile, context) => {
+    contexts.push(context);
+    const hooks = Object.fromEntries(Object.entries(desired).map(([event, definition]) => [event, [{ hooks: [definition] }]]));
+    return { file: source, version: 'after-write', hooks, native: [{ source: 'user', ...survivor }] };
+  };
+
+  fs.mkdirSync(recorded);
+  assert.equal(await reconcileCodexJournal(registration, value.profile, { project: value.project, readSnapshot }), 'written');
+  assert.deepEqual(contexts, [recorded], 'the recorded directory is preferred while it exists');
+
+  // Deleting the checkout the write ran from must not leave the registration pending forever:
+  // recovery falls back to the caller's context, and removal, which carries no project,
+  // falls back to the profile.
+  fs.rmSync(recorded, { recursive: true });
+  assert.equal(await reconcileCodexJournal(registration, value.profile, { project: value.project, readSnapshot }), 'written');
+  assert.equal(await reconcileCodexJournal(registration, value.profile, { readSnapshot }), 'written');
+  assert.deepEqual(contexts, [recorded, value.project, value.profile]);
 });

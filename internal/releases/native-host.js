@@ -4,11 +4,13 @@ const fs = require('node:fs');
 const path = require('node:path');
 const readline = require('node:readline');
 const { spawnSync } = require('node:child_process');
+const { randomUUID } = require('node:crypto');
 const { resolveTrustedExecutable } = require('../filesystem-primitives');
 const { spawnWindowsJob } = require('../runtime/windows-job');
 const { ReleaseError, parseJson, requireValue } = require('./io');
 
 const METHODS = new Set(['initialize', 'hooks/list', 'skills/list', 'plugin/list', 'config/read', 'config/batchWrite']);
+const CONTROL_SUBTYPES = new Set(['initialize', 'get_settings']);
 
 function executable(host, protectedRoot) {
   requireValue(process.platform === 'win32' && ['codex', 'claude'].includes(host), 'unsupported-release-host', 'Retained host integration requires the supported native Windows host');
@@ -75,6 +77,75 @@ async function withCodex(profile, cwd, action, options = {}) {
   }
 }
 
+// Claude resolves managed, command-line, project, local and user settings into one
+// effective value. Asking the host for that value keeps deliberate disabling honoured
+// at every level, including layers no file inspection of the profile can observe.
+async function claudeSettings(profile, cwd, options = {}) {
+  const args = ['--print', '--safe-mode', '--no-session-persistence', '--input-format', 'stream-json', '--output-format', 'stream-json', '--verbose', '--strict-mcp-config', '--no-chrome', '--tools', ''];
+  const child = spawnWindowsJob(executable('claude', cwd), args, { cwd, protectedRoot: cwd, env: { ...process.env, CLAUDE_CONFIG_DIR: profile } });
+  const pending = new Map();
+  let failure = null;
+  let received = 0;
+  const closed = new Promise(resolve => child.once('close', resolve));
+  const fail = error => {
+    failure ??= error;
+    for (const call of pending.values()) call.reject(error);
+    pending.clear();
+    child.kill();
+  };
+  child.on('error', error => fail(new ReleaseError('native-host-unavailable', error.message)));
+  child.stdin.on('error', error => fail(new ReleaseError('native-host-unavailable', error.message)));
+  child.stderr.resume();
+  child.once('close', () => {
+    for (const call of pending.values()) call.reject(failure ?? new ReleaseError('native-host-unavailable', 'Native Claude exited before reporting its settings'));
+    pending.clear();
+  });
+  readline.createInterface({ input: child.stdout }).on('line', line => {
+    try {
+      received += Buffer.byteLength(line);
+      requireValue(received <= 32 * 1024 * 1024, 'native-host-response-limit', 'Native Claude response exceeds its bound');
+      const message = JSON.parse(line);
+      if (message.type === 'control_request' && message.request_id) {
+        // Decline rather than ignore: an unanswered inbound request would stall this probe
+        // until its timer fires and fail admission instead of being refused, which is the
+        // behaviour the sibling Codex session already has.
+        child.stdin.write(JSON.stringify({ type: 'control_response', response: { request_id: message.request_id, subtype: 'error', error: 'Host resource management does not approve interactive requests' } }) + '\n');
+        return;
+      }
+      if (message.type !== 'control_response') return;
+      const call = pending.get(message.response?.request_id);
+      if (!call) return;
+      pending.delete(message.response.request_id);
+      if (message.response.subtype === 'error') call.reject(new ReleaseError('native-host-request-failed', `Native Claude could not complete ${call.subtype}`));
+      else call.resolve(message.response.response);
+    } catch (error) { fail(error); }
+  });
+  const request = subtype => {
+    requireValue(CONTROL_SUBTYPES.has(subtype), 'invalid-host-operation', 'Unsupported retained-resource host operation');
+    if (failure) return Promise.reject(failure);
+    return new Promise((resolve, reject) => {
+      const id = randomUUID();
+      pending.set(id, { subtype, resolve, reject });
+      child.stdin.write(JSON.stringify({ type: 'control_request', request_id: id, request: { subtype } }) + '\n');
+    });
+  };
+  // Hook handling runs this inspection and a plugin listing in sequence inside a 60 second
+  // hook timeout, so the default leaves room for the second call and for the handler to
+  // report a recovery instead of being killed mid-diagnosis. A live resolution is ~1.5s.
+  const timer = setTimeout(() => fail(new ReleaseError('native-host-timeout', 'Native Claude settings inspection timed out')), options.timeoutMs ?? 20000);
+  try {
+    await new Promise((resolve, reject) => { child.once('spawn', resolve); child.once('error', reject); });
+    await request('initialize');
+    return await request('get_settings');
+  } finally {
+    child.stdin.end();
+    child.kill();
+    await closed;
+    clearTimeout(timer);
+    requireValue(child.jobEmpty === true, 'native-host-termination-unverified', 'Native resource helper termination could not be established');
+  }
+}
+
 function claudeEntry(profile, pluginId, cwd) {
     const result = spawnSync(executable('claude', cwd), ['plugin', 'list', '--json'], { cwd, env: { ...process.env, CLAUDE_CONFIG_DIR: profile }, windowsHide: true, timeout: 30000, maxBuffer: 8 * 1024 * 1024 });
     requireValue(!result.error && result.status === 0, 'installation-unavailable', 'Native Claude plugin listing failed');
@@ -127,4 +198,4 @@ async function discover(host, profile, pluginId, cwd) {
   });
 }
 
-module.exports = { discover, executable, isEnabled, withCodex };
+module.exports = { claudeSettings, discover, executable, isEnabled, withCodex };

@@ -91,10 +91,7 @@ async function main() {
     requireValue(routes.some(route => route.bootstrap === fs.realpathSync.native(__filename) && route.bootstrapHash === hash(fs.readFileSync(__filename))), 'Nightshift bootstrap registration changed');
     const session = hook ? input.session_id : input.session;
     const binding = typeof session === 'string' ? readRecord(database, 'session', hash(JSON.stringify([registrationKey, session]))) : null;
-    // Current admission can run an old bound Ready parser without changing its
-    // identity. Runtime and hook dispatch still use the original bound release.
-    const currentAdmission = !hook && (input.action === 'prepare' || input.entry === 'ready' && ['resolve', 'run'].includes(input.action));
-    let record = !currentAdmission && binding?.state === 'bound' ? readRecord(database, 'bundle', binding.bundle) : null;
+    let record = binding?.state === 'bound' ? readRecord(database, 'bundle', binding.bundle) : null;
     let selected;
     let selectedRecord;
     if (record) {

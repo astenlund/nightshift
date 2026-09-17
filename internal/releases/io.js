@@ -2,6 +2,7 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
+const os = require('node:os');
 const { randomUUID, createHash } = require('node:crypto');
 const { stableOpenFile } = require('../filesystem-primitives');
 
@@ -74,10 +75,24 @@ function replaceFile(file, bytes, expected) {
   } finally { if (fs.existsSync(temporary)) fs.unlinkSync(temporary); }
 }
 
+function hostProfile(host, value) {
+  return value ?? (host === 'codex' ? process.env.CODEX_HOME ?? path.join(os.homedir(), '.codex') : process.env.CLAUDE_CONFIG_DIR ?? path.join(os.homedir(), '.claude'));
+}
+
+function requireConsistentRunId(request) {
+  requireValue(!request.runId || !request.request?.runId || request.runId === request.request.runId, 'resource-run-conflict', 'Conflicting run identities were supplied');
+}
+
+function projectRoot(value) {
+  const root = fs.realpathSync.native(text(value, 'project root'));
+  requireValue(fs.statSync(root).isDirectory(), 'invalid-release-project', 'Project root must be a directory');
+  return root;
+}
+
 function processAlive(pid) {
   if (!Number.isSafeInteger(pid) || pid <= 0) return null;
   try { process.kill(pid, 0); return true; }
   catch (error) { return error.code === 'ESRCH' ? false : null; }
 }
 
-module.exports = { ReleaseError, digest, directory, parseJson, processAlive, readBytes, relativePath, replaceFile, requireValue, text, writeNew };
+module.exports = { ReleaseError, digest, directory, hostProfile, parseJson, processAlive, projectRoot, readBytes, relativePath, replaceFile, requireConsistentRunId, requireValue, text, writeNew };

@@ -5,7 +5,7 @@ description: "Use when the user requests Nightshift project setup or migration t
 
 # Initialize or migrate Nightshift
 
-Follow [shared resource binding](../../internal/releases/REFERENCE.md#skill-activation) before this skill. Claude native session marker: `${CLAUDE_SESSION_ID}`.
+Use [automatic preparation and resource binding](../../internal/releases/REFERENCE.md#skill-activation) before this skill. Claude native session marker: `${CLAUDE_SESSION_ID}`.
 
 Use the bound launcher with entry `setup`, the absolute project root and `setupAction` of `inspect` or `apply`. Inspect existing .claude and .nightshift content, host configuration, tracking/ignore choices, unfinished runs and writers before applying. The deterministic setup preserves source content and staged/working differences, relocates Nightshift-owned files to .nightshift, repairs navigable references, and validates the result with the actual ready parser. When files would move, inspect also runs that parser against the legacy .claude backlog and reports its structural errors and notices as backlog; apply refuses with backlog-validation before writing the journal or moving anything while structural errors remain, so repair the legacy backlog first. Validation failures print only the structural errors and notices. A relocated tracked file whose content the reference rewrite changed is restaged when its working tree still matched its index as the rewrite began, so its rename and new content are staged together; a file with a staged/working difference, including an edit made while a migration was interrupted, keeps that difference with only its working tree rewritten, and rewritten files that were not relocated are left as unstaged modifications to stage after inspecting the diff.
 

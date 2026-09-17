@@ -3,18 +3,23 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
-const { ReleaseService, defaultStore } = require('./service');
-const { parseJson, requireValue } = require('./io');
+const { ReleaseService, defaultStore, locatorState } = require('./service');
+const { hostProfile, parseJson, projectRoot, requireValue } = require('./io');
 
 async function route(request, context = {}) {
   requireValue(request && typeof request.action === 'string', 'invalid-release-request', 'A retained-resource action is required');
   if (request.action === 'hook') requireValue(context.nativeHook === true, 'native-hook-required', 'Hook input belongs to the registered native hook path');
-  const service = new ReleaseService(context.store ?? request.store ?? defaultStore(), {}, context);
+  const profile = hostProfile(request.host, request.profile);
+  const locator = request.action === 'prepare' ? locatorState(profile).value : null;
+  const service = new ReleaseService(context.store ?? request.store ?? locator?.store ?? defaultStore(), {}, context);
   const key = context.registration ?? request.registration;
-  if (!context.registration) requireValue(['setup', 'status'].includes(request.action), 'retained-launcher-required', 'Use the registered cache-independent bootstrap for resource operations');
+  if (!context.registration) requireValue(['prepare', 'setup', 'status'].includes(request.action), 'retained-launcher-required', 'Use the registered cache-independent bootstrap for resource operations');
   let result;
-  if (request.action === 'setup') result = await service.setup(request);
-  else if (request.action === 'status') result = await service.status(key, request.session);
+  if (request.action === 'prepare') result = await service.prepare({ ...request, profile, registration: key });
+  else if (request.action === 'setup') result = await service.setup(request);
+  // Status is the documented recovery surface, so it resolves host settings against the
+  // operating project like every admission path, and validates it like every other entry.
+  else if (request.action === 'status') result = await service.status(key, request.session, request.project === undefined ? undefined : projectRoot(request.project));
   else if (request.action === 'resolve') {
     const resolved = await service.resolve(key, request);
     result = { registration: key, session: request.session, identity: resolved.bundle.identity, root: resolved.bundle.root, version: resolved.bundle.version };

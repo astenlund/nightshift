@@ -6,11 +6,12 @@ const { randomUUID } = require('node:crypto');
 const { isDeepStrictEqual } = require('node:util');
 const { spawnSync } = require('node:child_process');
 const { resolveTrustedExecutable } = require('../filesystem-primitives');
-const { withCodex } = require('./native-host');
+const { claudeSettings, withCodex } = require('./native-host');
 const { digest, parseJson, readBytes, requireValue, writeNew } = require('./io');
 
 const EVENTS = Object.freeze({ SessionStart: 'sessionStart', PreCompact: 'preCompact', Stop: 'stop' });
 const EVENT_KEYS = Object.freeze({ SessionStart: 'session_start', PreCompact: 'pre_compact', Stop: 'stop' });
+const DISABLED_MESSAGE = 'Nightshift hooks are disabled; enable them explicitly before using Nightshift';
 
 function quotedCommandPath(value) {
   requireValue(!['"', '$', '`', '%', '!', '\r', '\n'].some(character => value.includes(character)), 'unsupported-host-command-path', 'Choose a retained store path without shell expansion characters');
@@ -114,20 +115,76 @@ function claudeSnapshot(profile) {
   return { file, bytes, value, hooks: value.hooks ?? {} };
 }
 
-async function inspectHooks(registration, cwd) {
-  if (registration.host === 'codex') {
-    const snapshot = await codexSnapshot(registration.profile, cwd);
-    const entries = Object.entries(registration.definitions).map(([event, definition]) => snapshot.native.filter(item => item.eventName === EVENTS[event] && item.command === definition.command));
-    return { usable: entries.every(items => items.length === 1 && items[0].enabled && items[0].trustStatus === 'trusted'), entries: entries.flat().map(item => ({ key: item.key, currentHash: item.currentHash, trustStatus: item.trustStatus, enabled: item.enabled })) };
-  }
-  const snapshot = claudeSnapshot(registration.profile);
-  return { usable: snapshot.value.disableAllHooks !== true && Object.entries(registration.definitions).every(([event, definition]) => flatten(snapshot.hooks, event).filter(item => isDeepStrictEqual(item.definition, definition)).length === 1), entries: [] };
+// The directory host settings resolve against. Every inspection resolves it once, so two
+// admission paths cannot consult different roots for the same session.
+function inspectionContext(cwd, options = {}) {
+  return options.project ?? cwd;
 }
 
-async function reconcileCodexJournal(registration, cwd) {
+// Claude applies managed, command-line, project local, shared project and user settings
+// in that order. A project opt-out therefore overrides the user profile, and a project
+// can equally re-enable hooks the user profile disabled, so the layers cannot simply be
+// combined. Only the host resolves that precedence, and it alone can see the managed and
+// command-line layers. An inspection that cannot run is a distinct recoverable condition,
+// never an enabled result.
+async function claudeHooksDisabled(profile, context, options = {}) {
+  const readSettings = options.readSettings ?? claudeSettings;
+  // The separator is built rather than written literally: a raw control byte in source
+  // makes the whole module read as binary to content search and byte sweeps.
+  const key = profile + String.fromCharCode(0) + context;
+  if (options.cache?.has(key)) return options.cache.get(key);
+  const settings = await readSettings(profile, context);
+  requireValue(settings?.effective && typeof settings.effective === 'object' && !Array.isArray(settings.effective), 'host-configuration-unavailable', 'Native Claude did not expose its effective settings');
+  const value = settings.effective.disableAllHooks;
+  // An absent key is the host reporting that nothing set it. A value the host does report
+  // but that is not boolean is an inspection that did not run, never an enabled result.
+  requireValue(value === undefined || typeof value === 'boolean', 'host-configuration-unavailable', 'Native Claude reported an unrecognized disableAllHooks value');
+  const disabled = value === true;
+  options.cache?.set(key, disabled);
+  return disabled;
+}
+
+// One classification of a hook inspection. Admission and guidance both consume this
+// verdict rather than re-deriving one from the raw fields, so a state cannot be split at
+// one call site and merged at another.
+function classifyHooks(nativeState) {
+  if (nativeState.disabled === true) {
+    return { state: 'disabled', code: 'nightshift-disabled', message: DISABLED_MESSAGE, guidance: 'Nightshift hooks are disabled for this profile or project; enable them explicitly, then open or reopen a native session.' };
+  }
+  if (nativeState.configured === false) {
+    return { state: 'unconfigured', code: 'nightshift-disabled', message: 'Nightshift hooks were removed or changed; reconcile them explicitly before using Nightshift', guidance: 'Reconcile the registered hook definitions, then open or reopen a native session.' };
+  }
+  if (!nativeState.usable) {
+    return { state: 'untrusted', code: 'hook-activation-required', message: 'Nightshift hooks are not trusted on this host; restore native trust and reopen the session', guidance: 'Review and trust the installed hook definitions, then open or reopen a native session.' };
+  }
+  return { state: 'usable', code: null, message: null, guidance: 'Use a native session that has observed this generation; open or reopen if yours has not.' };
+}
+
+async function inspectHooks(registration, cwd, options = {}) {
+  const context = inspectionContext(cwd, options);
+  if (registration.host === 'codex') {
+    const snapshot = await codexSnapshot(registration.profile, context);
+    const entries = Object.entries(registration.definitions).map(([event, definition]) => snapshot.native.filter(item => item.eventName === EVENTS[event] && item.command === definition.command));
+    return { configured: entries.every(items => items.length === 1), disabled: entries.some(items => items.some(item => item.enabled === false)), usable: entries.every(items => items.length === 1 && items[0].enabled && items[0].trustStatus === 'trusted'), entries: entries.flat().map(item => ({ key: item.key, currentHash: item.currentHash, trustStatus: item.trustStatus, enabled: item.enabled })) };
+  }
+  const snapshot = claudeSnapshot(registration.profile);
+  const configured = Object.entries(registration.definitions).every(([event, definition]) => flatten(snapshot.hooks, event).filter(item => isDeepStrictEqual(item.definition, definition)).length === 1);
+  const disabled = await claudeHooksDisabled(registration.profile, context, options);
+  return { configured, disabled, usable: !disabled && configured, entries: [] };
+}
+
+async function reconcileCodexJournal(registration, cwd, options = {}) {
   const pending = registration.pending;
   requireValue(pending?.journal?.type === 'codex', 'invalid-settings-journal', 'No Codex configuration journal is available');
-  const snapshot = await codexSnapshot(registration.profile, cwd);
+  // Survivors were listed against the writing operation's directory, so the comparison
+  // prefers that directory over the recovering caller's, which can differ: recovery runs
+  // from the next skill invocation's project, or from none at all during removal. When
+  // that directory no longer exists, or the journal predates recording it, the caller's
+  // context is used instead: survivors are keyed by the user configuration file, so the
+  // comparison below still decides, and removal never waits on a deleted checkout.
+  const recorded = pending.journal.context;
+  const readSnapshot = options.readSnapshot ?? codexSnapshot;
+  const snapshot = await readSnapshot(registration.profile, recorded && fs.existsSync(recorded) ? recorded : inspectionContext(cwd, options));
   if (snapshot.version === pending.journal.expectedVersion) return 'not-written';
   const matches = Object.entries(pending.definitions).every(([event, definition]) => {
     const count = flatten(snapshot.hooks, event).filter(item => isDeepStrictEqual(item.definition, definition)).length;
@@ -141,14 +198,20 @@ async function reconcileCodexJournal(registration, cwd) {
   return 'written';
 }
 
-async function applyHooks(registration, cwd, remove = false, beforeWrite = () => {}) {
+async function applyHooks(registration, cwd, remove = false, beforeWrite = () => {}, options = {}) {
+  const context = inspectionContext(cwd, options);
   if (registration.host === 'codex') {
-    const snapshot = await codexSnapshot(registration.profile, cwd);
+    const snapshot = await codexSnapshot(registration.profile, context);
     const plan = planHooks(snapshot.hooks, registration.definitions, registration.previousDefinitions, remove, snapshot.file, snapshot.native);
+    if (registration.automatic) {
+      const commands = [registration.definitions, ...(registration.previousDefinitions ?? [])].flatMap(definitions => Object.values(definitions).map(definition => definition.command));
+      requireValue(!snapshot.native.some(item => commands.includes(item.command) && item.enabled === false), 'nightshift-disabled', DISABLED_MESSAGE);
+    }
     if (isDeepStrictEqual(snapshot.hooks, plan.hooks)) return;
-    beforeWrite({ type: 'codex', expectedVersion: snapshot.version, survivors: plan.survivors });
-    await withCodex(registration.profile, cwd, request => request('config/batchWrite', { filePath: snapshot.file, expectedVersion: snapshot.version, reloadUserConfig: true, edits: [{ keyPath: 'hooks', value: plan.hooks, mergeStrategy: 'replace' }] }));
-    const after = await codexSnapshot(registration.profile, cwd);
+    beforeWrite({ type: 'codex', expectedVersion: snapshot.version, survivors: plan.survivors, context });
+    await withCodex(registration.profile, context, request => request('config/batchWrite', { filePath: snapshot.file, expectedVersion: snapshot.version, reloadUserConfig: true, edits: [{ keyPath: 'hooks', value: plan.hooks, mergeStrategy: 'replace' }] }));
+    // The survivor comparison is only meaningful against the same listing scope.
+    const after = await codexSnapshot(registration.profile, context);
     for (const survivor of plan.survivors) {
       const current = after.native.find(item => item.key === survivor.key);
       requireValue(current && current.currentHash === survivor.currentHash && current.trustStatus === survivor.trustStatus && current.enabled === survivor.enabled, 'hook-trust-conflict', 'A surviving user hook changed identity or trust during configuration');
@@ -156,6 +219,7 @@ async function applyHooks(registration, cwd, remove = false, beforeWrite = () =>
     return;
   }
   const snapshot = claudeSnapshot(registration.profile);
+  if (registration.automatic) requireValue(await claudeHooksDisabled(registration.profile, context, options) === false, 'nightshift-disabled', DISABLED_MESSAGE);
   const plan = planHooks(snapshot.hooks, registration.definitions, registration.previousDefinitions, remove, null);
   if (isDeepStrictEqual(snapshot.hooks, plan.hooks)) return;
   const bytes = Buffer.from(JSON.stringify({ ...snapshot.value, hooks: plan.hooks }, null, 2) + '\r\n');
@@ -192,4 +256,4 @@ function discardJournal(journal) {
   }
 }
 
-module.exports = { EVENTS, applyHooks, claudeSnapshot, codexSnapshot, definitions, discardJournal, flatten, inspectHooks, planHooks, reconcileCodexJournal, recoverClaude };
+module.exports = { EVENTS, applyHooks, classifyHooks, claudeHooksDisabled, claudeSnapshot, codexSnapshot, definitions, discardJournal, flatten, inspectHooks, inspectionContext, planHooks, reconcileCodexJournal, recoverClaude };

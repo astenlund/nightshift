@@ -5,7 +5,7 @@ description: "Use to inspect and discuss Exploring drafts in the .nightshift bac
 
 # Exploring drafts
 
-Follow [shared resource binding](../../internal/releases/REFERENCE.md#skill-activation) before this skill. Claude native session marker: `${CLAUDE_SESSION_ID}`.
+Use [automatic preparation and resource binding](../../internal/releases/REFERENCE.md#skill-activation) before this skill. Claude native session marker: `${CLAUDE_SESSION_ID}`.
 
 Run the bound launcher with entry `ready` against the absolute project root. Render every exploring draft in full, including its title, excerpt and breakout link; keep it separate from the ready set. Read source breakouts as discussion requires. A draft is not authorized implementation work.
 

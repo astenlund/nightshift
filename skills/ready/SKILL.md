@@ -5,7 +5,7 @@ description: "Use to inspect dependency-resolved ready work in a project with th
 
 # Ready work
 
-Follow [shared resource binding](../../internal/releases/REFERENCE.md#skill-activation) before this skill. Claude native session marker: `${CLAUDE_SESSION_ID}`.
+Use [automatic preparation and resource binding](../../internal/releases/REFERENCE.md#skill-activation) before this skill. Claude native session marker: `${CLAUDE_SESSION_ID}`.
 
 Run the bound launcher with entry `ready` and the absolute project root. It returns ready, blocked, external and exploring work plus structural errors and notices. Report parser failures as failures, not an empty or clean backlog.
 

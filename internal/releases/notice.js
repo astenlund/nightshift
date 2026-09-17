@@ -1,10 +1,8 @@
 'use strict';
 
-const path = require('node:path');
-const os = require('node:os');
 const { ReleaseService, locatorState, readRun } = require('./service');
 const { registrationKey } = require('./registry');
-const { requireValue } = require('./io');
+const { hostProfile, requireValue } = require('./io');
 
 async function handleNotice(input, host, dependencies = {}) {
   if (!input?.cwd || !input.session_id || !['codex', 'claude'].includes(host)) return {};
@@ -16,13 +14,13 @@ async function handleNotice(input, host, dependencies = {}) {
     // A setup notice must not turn an unrelated session's activation failure into
     // a warning through the sibling hook path.
     if (run?.controller?.session !== input.session_id || run.status !== 'running') return {};
-    const profile = dependencies.profile ?? (host === 'codex' ? process.env.CODEX_HOME ?? path.join(os.homedir(), '.codex') : process.env.CLAUDE_CONFIG_DIR ?? path.join(os.homedir(), '.claude'));
+    const profile = hostProfile(host, dependencies.profile);
     const key = registrationKey(host, profile);
     const locator = locatorState(profile).value;
     requireValue(locator?.state === 'registered' && locator.registration === key, 'release-setup-required', 'The host resource locator is missing or does not match this profile');
     const service = dependencies.createService ? dependencies.createService(locator.store) : new ReleaseService(locator.store);
     registration = service.registration(key);
-    const status = await service.status(key, input.session_id);
+    const status = await service.status(key, input.session_id, root);
     if (status.activationUsable) return {};
   } catch { /* The owned run receives a prerequisite diagnosis, never mutation. */ }
   return run?.controller?.session === input.session_id && run.status === 'running'
