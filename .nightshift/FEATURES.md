@@ -8,11 +8,15 @@ Upcoming work and deferred extensions to the delivered v3 MVP. Its delivery is r
 
 Invoking any public skill prepares Nightshift automatically and continues the requested work, with no setup conversation on success. Ready and Exploring run on retained resources without an observed continuation activation, while every dependent operation still checks native trust and session activation afresh, and deliberate disabling or removal continues to win over automatic preparation. Claude hook disabling is taken from the host's own effective settings, so the managed, command-line, project local, shared project and user layers all apply in their documented precedence rather than the user profile alone. The agreed outcome is recorded in [the governing design](specs/automatic-plugin-preparation.md), and the delivery evidence, including its qualifications, in [the acceptance report](reports/automatic-plugin-preparation-20260915.md).
 
-Implementation and deterministic verification are complete in run `c675a074-6431-46e2-85b7-e3b8616e9220`. The supported strong cumulative assessment, the session retrospective and follow-up triage remain outstanding, and the 3.1.1 candidate is unpublished. Readiness here records delivery state; it is not implementation or publication authority.
+Implementation, deterministic verification, the supported strong cumulative assessment (Fable receipt `694f7f33`, complete, no critical or important findings), documentation, the session retrospective and follow-up triage are complete in run `c675a074-6431-46e2-85b7-e3b8616e9220`; the 3.1.1 candidate is committed locally and unpublished. Readiness here records delivery state; it is not implementation or publication authority.
 
 **Requires:** none.
 
 ## Exploring
+
+### [Degraded assessment mode](features/degraded-assessment-mode.md)
+
+Let a weaker model carry an independent assessment when no supported strong reviewer is available, clearly labeled as degraded and refused at the gates that require strength. Raised by the user during the automatic-preparation run, which was the live case: both admissible reviewers were unavailable at once and the lifecycle had no recordable fallback. The open design question is which gates a degraded assessment may satisfy on its own; it absorbs the earlier opus-review-gate follow-up.
 
 ### [Project inboxes](features/project-inboxes.md)
 

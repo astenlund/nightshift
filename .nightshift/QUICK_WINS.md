@@ -4,6 +4,70 @@ V2 entries are preserved in [the historical index](migration/v2/QUICK_WINS.md) a
 
 ## Current
 
+### Private review copies fail at Windows path depth
+
+Observed throughout run `c675a074-6431-46e2-85b7-e3b8616e9220` on 2026-09-15 to 17. Every deterministic suite executed as a reviewer probe inside a private review copy failed exactly one case: the recovery suite's nested probe-inside-probe Git initialization refused with `probe-git-boundary` at that depth, and in one run the EOL autocrlf case failed with `Filename too long`. Both pass at ordinary checkout depth, which the recorded check `probe-isolation-at-supported-checkout-depth` exists to prove, so every strong reviewer had to be told the failure was environmental. The acceptance report already records process-only Git long-path support as the workaround for the EOL case.
+
+Make private copies survive their own depth: shorten the copy path under the review directory, or enable process-only long-path support for the copy's Git operations, and make the nested-probe recovery case skip with a stated reason when it cannot establish a Git boundary rather than fail. Runtime code, so it ships with a version increase. Tracking does not authorize implementation.
+
+**Requires:** none.
+
+### Acceptance harness waits on controller approval without a bound
+
+Observed in run `c675a074-6431-46e2-85b7-e3b8616e9220`: a Claude acceptance run timed out while awaiting controller tool approval, and two earlier interrupted attempts each retain a 750,000-token uncertainty allowance because their usage could not be finalized. The user's aggregate budget, the harness's operational thresholds and the reserves for unreported usage are three different quantities that the harness currently blurs.
+
+Give the private acceptance harness a bounded approval wait with a recorded outcome, finalize usage accounting on interruption, and report the three quantities separately. Tracking does not authorize implementation.
+
+**Requires:** none.
+
+### Shared native control session helper
+
+Found by several strong assessments of the automatic-preparation change in run `c675a074-6431-46e2-85b7-e3b8616e9220`: `claudeSettings` in `internal/releases/native-host.js` reproduces the Codex control-session scaffold of `withCodex`, the pending map, failure latch, byte bound, timer and termination assertion, so a future transport fix must be made twice. It was deferred because the extraction rewrites the Codex transport and neither transport has deterministic coverage; a reviewer probe later showed Codex app-server inspection needs no model allowance, so a Codex-side verification probe is available at any time.
+
+Extract one native session helper parameterized by request framing and default timeout, with an injected-process seam so both framings gain deterministic coverage, and verify the Codex side with an app-server probe. Runtime code, so it ships with a version increase under its own cumulative assessment. Tracking does not authorize implementation.
+
+**Requires:** none.
+
+### Settings inspection cleanup
+
+Residual structural and coverage observations from the strong assessments in run `c675a074-6431-46e2-85b7-e3b8616e9220`, all confirmed minor: `preparation.js` reaches into ten service members and takes `locatorState` as an injected parameter to avoid a require cycle that moving `locatorState` beside the store primitives would remove; preparation capability is detected by the existence of `administration.js` rather than by the verified bootstrap bytes or a named constant; retained bootstrap routes and their launcher directories are never collected, so the set of permanently accepted entry points grows without a retirement rule; `claudeSettings` has no deterministic coverage of its own control framing, error subtype or timeout, which a fake child could pin; `resolve`'s unknown-entry guard has no test; and the Codex branch treats a non-boolean `enabled` field as untrusted where the Claude sibling fails closed, pending verification of the host's field contract.
+
+Apply as one cleanup under its own cumulative assessment, deciding the route retention policy explicitly and stating it in the retained resource reference. Tracking does not authorize implementation.
+
+**Requires:** none.
+
+### Hook-path native settings resolution cost
+
+Established by execution in run `c675a074-6431-46e2-85b7-e3b8616e9220`: resolving Claude's effective settings costs 1.4 to 1.7 seconds per call. Every SessionStart, PreCompact and Stop of a bound Claude session now pays one such call from the registered hook, and a session owning a running run pays a second from the bundled notice hook in a separate process that cannot share the memo, alongside the pre-existing plugin listing; a Codex skill invocation performs about seven app-server launches before the Ready parser runs where 3.1.0 performed four. The 20 second inspection bound plus the 30 second listing bound leave little of the 60 second hook budget on a loaded machine. This is operating cost, not correctness, and it is the one residual a user feels.
+
+Decide the design: carry enablement and discovery results from prepare into resolve within one operation; drop the pre-registration Codex inspection whose only possible negative outcome is an inspection failure setup would surface anyway; and examine whether a firing hook is itself evidence that hooks are enabled on that host, separated carefully from the configured and trusted conditions, which would remove the resolution from the hook path entirely. Tracking does not authorize implementation.
+
+**Requires:** none.
+
+### Post-review minor repairs
+
+Two of the three findings left by the clean strong assessment of the automatic-preparation change (Fable receipt `694f7f33`, run `c675a074-6431-46e2-85b7-e3b8616e9220`), each confirmed by a fresh skeptic and deferred only so the verdict stayed fresh: the `release-setup-required` guard defined in both `resolve` and `requireActivation`, the retired-binding message shared by `resolve`, `preparation.js` and, with different wording, `hook()`, and the `preparation-unavailable` message repeated in `setup` and `prepare`; and a missing test for the guard that maps a non-boolean `disableAllHooks` value to `host-configuration-unavailable`, which every fixture leaves boolean or absent so a regression to a truthiness check would pass the suite. The launch-count finding from the same receipt is carried by [the hook-path cost item](#hook-path-native-settings-resolution-cost).
+
+Hoist the two messages and the predicate beside `REMOVED_MESSAGE`, deciding whether `hook()` shares the retired-binding wording, and add one rejection case to the unavailable-inspection test supplying a string value. Runtime code, so it ships with a version increase under its own cumulative assessment. Tracking does not authorize implementation.
+
+**Requires:** none.
+
+### Paused strong gate pauses repair application
+
+Retrospective finding from run `c675a074-6431-46e2-85b7-e3b8616e9220`, confirmed by two independent assessments of the proposal. A repair batch larger than the repair it fixed was applied inside the revise-code lifecycle and left unreviewed while the strong reviewer was rate-limited, although an advisory reviewer was available and the cross-host strong substitute was the prescribed path. [The operating brief](../internal/workflow.md) already forbids applying a batch without a following strong assessment and names Fable and Astra interchangeable, but its assignment text lets a paused strong gate be read as pausing the gate while batches continue to be applied. The global review-loop routine was tightened separately, but the lifecycle is told not to consult that routine, so the fix for where recall failed belongs here.
+
+State in the brief's review-and-repair and model-role sections that a paused strong gate either pauses further repair application or triggers the interchangeable cross-host strong reviewer, and that an advisory read of a batch is never recorded as review coverage. Shipped guidance, so it takes its own version increase and assessment. Tracking does not authorize implementation.
+
+**Requires:** none.
+
+### Codex inline-script guard parity
+
+On 2026-09-17 the user's global inline-script rule gained mechanical enforcement on Claude Code: a `PreToolUse` hook on the Bash and PowerShell tools refuses heredoc, pipe and inline script bodies, verified live in auto mode with a 48-case deterministic suite beside it. Codex sessions, including unattended Nightshift workers on Codex, have no equivalent and rely on the prose rule alone, which run `c675a074-6431-46e2-85b7-e3b8616e9220` showed is not recalled at typing time. Nightshift already registers Codex hooks through `internal/releases`; whether Codex hooks can refuse a tool call before it runs is unverified.
+
+Establish whether Codex hooks support a pre-call deny. If they do, port the guard and its tests; if not, record the asymmetry as permanent in the rule. Tracking does not authorize implementation.
+
+**Requires:** none.
+
 ### Acknowledge accepted handovers clearly
 
 Proposed by the user during retained-release delivery in this repository, run `2a89bde5-9c0c-4ba5-b67f-dadc545bfcc4`, Codex session `01a09c60-dd6e-7d42-b8a0-7333fd211d92`: a clear "Handover accepted" message would tell the user when they can leave the keyboard. The idea was preserved as the `clear-handover-acceptance` run follow-up, and the user chose to track it on 2026-09-15.
@@ -49,6 +113,8 @@ Extend `skills/handover/SKILL.md` so every implementation run presents that defa
 ### Probe proposals with implausible timeouts run as specified
 
 Observed in this repository on 2026-09-12 during an unattended run. An independent assessor returned a `deterministic-regressions` probe with `timeoutMs` 600 for five test suites that take about a minute; the `probe` operation executed it as written, `spawnSync` reported `ETIMEDOUT` after 613 ms, and the spurious failure cost a full re-dispatch to explain. The runtime accepts any positive timeout, and neither the reference nor the dispatch rules state the unit or a floor.
+
+Recurred in run `c675a074-6431-46e2-85b7-e3b8616e9220` on 2026-09-15 to 17: two independent assessors again returned probe proposals with sub-second `timeoutMs` while their prose meant minutes; supplying the producer schema's 120000 cap explicitly produced usable split probes, which confirms the floor and the stated unit are what is missing.
 
 Make the `probe` operation reject a proposal whose `timeoutMs` is below a plausible floor (for example 5000) with an error naming the unit, state in `internal/runtime/REFERENCE.md` that `timeoutMs` is milliseconds, and add a runtime fixture for the rejection. Runtime code, so it ships with a version increase.
 
