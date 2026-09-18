@@ -17,25 +17,34 @@ function projectRoot(cwd) {
   }
 }
 
-// A closed handed-over run still owes its owner the morning report and any pending decisions; nothing else is restored for it.
-function withReportNotice(sessionBinding, notice) {
-  if (!notice) return sessionBinding;
-  const context = `${sessionBinding.hookSpecificOutput.additionalContext}\nNightshift morning report. Present the saved report, ending with the first pending follow-up as a host question, and record its delivery once the user replies.\n${JSON.stringify(notice)}`;
+function reportInstruction(notice) {
+  if (!notice.current) return 'The saved report is missing or changed. Rewrite it and record the report again before presenting it.';
+  if (!notice.delivered) return 'Present the saved report, ending with the first pending follow-up as a host question, and record its delivery from the user\'s reply.';
+  return 'The report was delivered. Continue the follow-up triage with the first pending follow-up as a host question.';
+}
+
+// The morning report and its pending decisions are owed to the owner of a handed-over run whether or not the run has closed.
+function withReportNotice(context, notice) {
+  return notice ? `${context}\nNightshift morning report. ${reportInstruction(notice)}\n${JSON.stringify(notice)}` : context;
+}
+
+function sessionStartContext(context) {
   return { hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext: context } };
 }
 
 function handleHook(input) {
   if (!input.cwd || !input.session_id) return {};
-  const sessionBinding = input.hook_event_name === 'SessionStart'
-    ? { hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext: `Nightshift session binding: ${input.session_id}. Use this actual session identity when starting an explicitly authorized Nightshift run.` } }
-    : {};
+  const starting = input.hook_event_name === 'SessionStart';
+  const bindingText = `Nightshift session binding: ${input.session_id}. Use this actual session identity when starting an explicitly authorized Nightshift run.`;
+  const sessionBinding = starting ? sessionStartContext(bindingText) : {};
   const root = projectRoot(input.cwd);
   if (!root || !fs.existsSync(path.join(root, '.nightshift/runs/state.sqlite'))) return sessionBinding;
   const store = new RunStore(root);
   try {
     const state = store.read(undefined, { hydrate: false });
     if (!state || state.controller.session !== input.session_id) return sessionBinding;
-    if (['complete', 'stopped'].includes(state.status)) return input.hook_event_name === 'SessionStart' ? withReportNotice(sessionBinding, reportNotice(state, root)) : sessionBinding;
+    // Nothing else is restored for a closed run.
+    if (['complete', 'stopped'].includes(state.status)) return starting ? sessionStartContext(withReportNotice(bindingText, reportNotice(state, root))) : sessionBinding;
     const exhausted = exhaustedLimit(state);
     if (exhausted) {
       store.update(state.controller, state.revision, 'limit-reached', current => transition(current, { action: 'stop', kind: 'resource-limit', reason: exhausted }));
@@ -65,7 +74,7 @@ function handleHook(input) {
       });
       return { decision: 'block', reason: context };
     }
-    if (input.hook_event_name === 'SessionStart') return { hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext: context } };
+    if (starting) return sessionStartContext(withReportNotice(context, reportNotice(state, root)));
     if (input.hook_event_name === 'PreCompact') return { systemMessage: 'Nightshift saved state is authoritative for outstanding commitments, findings, evidence and ownership. Reconcile it after compaction.' };
     return {};
   } finally { store.close(); }

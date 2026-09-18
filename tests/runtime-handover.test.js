@@ -31,6 +31,12 @@ function fixture(t, options = {}) {
   return { root, store, act, writeReport, finish, hook };
 }
 
+// The notice is always the last line of the SessionStart context, after a marker line naming it.
+function noticeOf(result) {
+  const lines = (result.hookSpecificOutput?.additionalContext ?? '').split('\n');
+  return lines.some(line => line.startsWith('Nightshift morning report.')) ? JSON.parse(lines.at(-1)) : null;
+}
+
 test('handover without a mechanism records the handover and leaves an attended run attended', t => {
   const f = fixture(t);
   assert.equal(obligationBrief(f.store.read()).handover, null);
@@ -88,6 +94,9 @@ test('handover is refused on a stopped run and for another controller', t => {
 test('a run created unattended carries the same handover record and can verify through handover', t => {
   const f = fixture(t, { mode: 'unattended', authority: 'User handed the queue over' });
   assert.deepEqual(f.store.read().handover, { authority: 'User handed the queue over', revision: 0 });
+  assert.throws(() => f.finish(), { code: 'unverified-continuation' });
+  // A mechanism-less handover cannot unblock an unattended run, which is why an unverifiable handover starts attended.
+  assert.equal(f.act({ action: 'handover', authority: 'Still unverified' }).mode, 'unattended');
   assert.throws(() => f.finish(), { code: 'unverified-continuation' });
   f.act({ action: 'handover', authority: 'Renewed', mechanism: MECHANISM });
   f.finish();
@@ -188,30 +197,37 @@ test('delivery is recorded on running, stopped and complete runs, is idempotent,
 
 test('SessionStart carries the morning-report notice for a closed handed-over run until the hand-off is finished', t => {
   const f = fixture(t);
-  const noticeOf = result => {
-    const context = result.hookSpecificOutput?.additionalContext ?? '';
-    const line = context.split('\n').find(candidate => candidate.startsWith('{'));
-    return context.includes('Nightshift morning report') ? JSON.parse(line) : null;
-  };
   f.act({ action: 'handover', authority: 'User handover' });
   f.act({ action: 'followup', item: { id: 'decision', context: 'Optional cleanup', recommendation: 'Track' } });
   f.finish();
   f.act({ action: 'retrospective', evidence: 'Considered' });
+  assert.equal(noticeOf(f.hook('SessionStart')), null);
   f.act({ action: 'report', path: f.writeReport() });
+  const running = f.hook('SessionStart');
+  assert.match(running.hookSpecificOutput.additionalContext, /^Nightshift continuation\./);
+  assert.deepEqual(noticeOf(running), { recorded: true, delivered: false, path: REPORT_PATH, current: true, followups: ['decision'] });
   f.act({ action: 'triage', evidence: 'Deferred for the absent user' });
   f.act({ action: 'complete' });
 
-  assert.deepEqual(noticeOf(f.hook('SessionStart')), { recorded: true, delivered: false, path: REPORT_PATH, current: true, followups: ['decision'] });
+  const undelivered = f.hook('SessionStart');
+  assert.deepEqual(noticeOf(undelivered), { recorded: true, delivered: false, path: REPORT_PATH, current: true, followups: ['decision'] });
+  assert.match(undelivered.hookSpecificOutput.additionalContext, /Present the saved report, ending with the first pending follow-up/);
+  assert.doesNotMatch(undelivered.hookSpecificOutput.additionalContext, /Nightshift continuation\./);
   assert.equal(noticeOf(f.hook('SessionStart', 'another-session')), null);
   assert.deepEqual(f.hook('Stop'), {});
   assert.deepEqual(f.hook('PreCompact'), {});
 
   f.writeReport('# Tampered\n');
-  assert.equal(noticeOf(f.hook('SessionStart')).current, false);
+  const stale = f.hook('SessionStart');
+  assert.equal(noticeOf(stale).current, false);
+  assert.match(stale.hookSpecificOutput.additionalContext, /Rewrite it and record the report again before presenting it/);
+  assert.doesNotMatch(stale.hookSpecificOutput.additionalContext, /Present the saved report/);
   f.act({ action: 'report', path: f.writeReport() });
 
   f.act({ action: 'report-delivered', authority: 'User replied: track it' });
-  assert.deepEqual(noticeOf(f.hook('SessionStart')), { recorded: true, delivered: true, path: REPORT_PATH, current: true, followups: ['decision'] });
+  const delivered = f.hook('SessionStart');
+  assert.deepEqual(noticeOf(delivered), { recorded: true, delivered: true, path: REPORT_PATH, current: true, followups: ['decision'] });
+  assert.match(delivered.hookSpecificOutput.additionalContext, /The report was delivered\. Continue the follow-up triage/);
   f.act({ action: 'resolve-followup', followupId: 'decision', decision: 'track', authority: 'User replied: track it' });
   assert.equal(noticeOf(f.hook('SessionStart')), null);
   assert.match(f.hook('SessionStart').hookSpecificOutput.additionalContext, /Nightshift session binding/);
