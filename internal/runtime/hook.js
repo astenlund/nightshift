@@ -4,7 +4,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { RunStore } = require('./store');
-const { obligationBrief, transition } = require('./lifecycle');
+const { obligationBrief, reportNotice, transition } = require('./lifecycle');
 const { exhaustedLimit } = require('./limits');
 
 function projectRoot(cwd) {
@@ -17,6 +17,13 @@ function projectRoot(cwd) {
   }
 }
 
+// A closed handed-over run still owes its owner the morning report and any pending decisions; nothing else is restored for it.
+function withReportNotice(sessionBinding, notice) {
+  if (!notice) return sessionBinding;
+  const context = `${sessionBinding.hookSpecificOutput.additionalContext}\nNightshift morning report. Present the saved report, ending with the first pending follow-up as a host question, and record its delivery once the user replies.\n${JSON.stringify(notice)}`;
+  return { hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext: context } };
+}
+
 function handleHook(input) {
   if (!input.cwd || !input.session_id) return {};
   const sessionBinding = input.hook_event_name === 'SessionStart'
@@ -27,7 +34,8 @@ function handleHook(input) {
   const store = new RunStore(root);
   try {
     const state = store.read(undefined, { hydrate: false });
-    if (!state || state.controller.session !== input.session_id || ['complete', 'stopped'].includes(state.status)) return sessionBinding;
+    if (!state || state.controller.session !== input.session_id) return sessionBinding;
+    if (['complete', 'stopped'].includes(state.status)) return input.hook_event_name === 'SessionStart' ? withReportNotice(sessionBinding, reportNotice(state, root)) : sessionBinding;
     const exhausted = exhaustedLimit(state);
     if (exhausted) {
       store.update(state.controller, state.revision, 'limit-reached', current => transition(current, { action: 'stop', kind: 'resource-limit', reason: exhausted }));

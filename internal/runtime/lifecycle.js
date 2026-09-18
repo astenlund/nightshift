@@ -1,16 +1,19 @@
 'use strict';
 
+const fs = require('node:fs');
 const { workerIsActive } = require('./workers');
 const { isDeepStrictEqual } = require('node:util');
 
 const { requireCondition, text } = require('./store');
-const { fresh, projectFile } = require('./evidence');
+const { fresh, projectFile, snapshot } = require('./evidence');
 const { exhaustedLimit } = require('./limits');
 
 const DIMENSIONS = Object.freeze({
   spec: ['intent-scope-acceptance', 'soundness-integration', 'failure-safety-recovery', 'clarity-consistency-proportionality'],
   code: ['requirements-ux', 'correctness-integration', 'security-data-safety', 'design-maintainability', 'performance-resources', 'tests-evidence'],
 });
+
+const REPORT_DIRECTORY = '.nightshift/runs/reports/';
 
 function taskById(state, id) {
   text(id, 'taskId');
@@ -41,12 +44,60 @@ function closingReady(state) {
 }
 
 function resetClosing(state) {
-  state.closing = { retrospectiveEvidence: null, triageEvidence: null };
+  state.closing = { retrospectiveEvidence: null, reportEvidence: null, reportDelivery: null, triageEvidence: null };
 }
 
 function recordRetrospective(state, evidence) {
   text(evidence, 'retrospective.evidence');
-  state.closing = { retrospectiveEvidence: evidence, triageEvidence: null };
+  resetClosing(state);
+  state.closing.retrospectiveEvidence = evidence;
+}
+
+function closingStage(state) {
+  if (!state.closing?.retrospectiveEvidence) return 'retrospective';
+  if (!reportSatisfied(state)) return 'report';
+  return state.closing.triageEvidence ? 'complete' : 'triage';
+}
+
+function reportSatisfied(state) {
+  return !state.handover || Boolean(state.closing?.reportEvidence);
+}
+
+function reportFileHash(root, relative) {
+  const [file] = snapshot(root, [relative]).files;
+  return file.sha256;
+}
+
+function reportEvidenceFor(root, relative) {
+  text(relative, 'report.path');
+  requireCondition(relative.startsWith(REPORT_DIRECTORY) && relative.endsWith('.md'), 'invalid-report', `The morning report is a Markdown file under ${REPORT_DIRECTORY}`);
+  const sha256 = reportFileHash(root, relative);
+  requireCondition(sha256 !== null && fs.statSync(projectFile(root, relative)).size > 0, 'invalid-report', 'The morning report file is missing or empty');
+  return { path: relative, sha256 };
+}
+
+function reportIsCurrent(root, evidence) {
+  try {
+    return reportFileHash(root, evidence.path) === evidence.sha256;
+  } catch {
+    // An unreadable or unsafe report path is a stale report, never a current one.
+    return false;
+  }
+}
+
+function reportStatus(state, root = state.root) {
+  if (!state.handover) return null;
+  const evidence = state.closing?.reportEvidence ?? null;
+  if (!evidence) return { recorded: false, delivered: false, path: null, current: null };
+  return { recorded: true, delivered: state.closing.reportDelivery?.sha256 === evidence.sha256, path: evidence.path, current: reportIsCurrent(root, evidence) };
+}
+
+// The report and the follow-up triage are one hand-off, so the notice outlives delivery while a decision is pending.
+function reportNotice(state, root = state.root) {
+  const report = reportStatus(state, root);
+  if (!report?.recorded) return null;
+  const followups = state.followups.filter(item => item.status !== 'resolved').map(item => item.id);
+  return report.delivered && followups.length === 0 ? null : { ...report, followups };
 }
 
 function specReady(state, task) {
@@ -83,6 +134,7 @@ function obligationBrief(state, root = state.root, options = {}) {
   return {
     id: state.id, revision: state.revision, status: state.status, controller: state.controller,
     objective: state.objective, authority: state.authority, limits: state.limits, publication: state.publication,
+    mode: state.mode, handover: state.handover ?? null, report: reportStatus(state, root),
     resourceMode: state.resourceMode ?? 'legacy', resources: state.resources ?? null,
     next: ready.map(task => ({
       id: task.id, title: task.title,
@@ -92,22 +144,23 @@ function obligationBrief(state, root = state.root, options = {}) {
       reviewCurrent: options.verifyFreshness === false ? 'reconcile at acceptance' : reviewGate(root, task, state),
     })),
     finalReconciliationPending: state.status === 'running' && active.length === 0,
-    closing: { ready: closingReady(state), stage: state.closing?.triageEvidence ? 'complete' : state.closing?.retrospectiveEvidence ? 'triage' : 'retrospective' },
+    closing: { ready: closingReady(state), stage: closingStage(state) },
     blockers: active.filter(task => task.blocker).map(task => ({ id: task.id, blocker: task.blocker })),
     workers: state.workers.filter(workerIsActive),
     followups: state.followups.filter(item => item.status !== 'resolved'),
-    rules: 'Continue authorized independent work and recovery. Every repair needs cumulative strong broad review. Validate every finding with a fresh skeptic before disposition. Preserve writer ownership. Update documentation, then retrospective, then follow-up triage. Missing or stale evidence is incomplete. Publication requires authority. Reconcile this record with actual files after compaction.',
+    rules: 'Continue authorized independent work and recovery. Every repair needs cumulative strong broad review. Validate every finding with a fresh skeptic before disposition. Preserve writer ownership. Update documentation, then retrospective, then follow-up triage; a handed-over run records its morning report before triage. Missing or stale evidence is incomplete. Publication requires authority. Reconcile this record with actual files after compaction.',
   };
 }
 
 function assertAction(state, request) {
   const taskActions = ['start-task', 'add-spec-review', 'check', 'dispatch', 'probe', 'review', 'validate', 'dispose', 'repair', 'advance', 'block', 'unblock'];
   const task = taskActions.includes(request.action) ? taskById(state, request.taskId) : null;
-  const bookkeeping = ['worker-finished', 'followup', 'resolve-followup', 'resume', 'stop', 'block', 'retrospective', 'triage'];
+  const bookkeeping = ['worker-finished', 'followup', 'resolve-followup', 'resume', 'stop', 'block', 'retrospective', 'report', 'report-delivered', 'triage'];
   requireCondition(state.status === 'running' || bookkeeping.includes(request.action), 'run-stopped', 'The run is stopped; explicit resumption is required before more work');
   if (!bookkeeping.includes(request.action)) {
     requireCondition(!exhaustedLimit(state, { dispatch: request.action === 'dispatch' }), 'resource-limit', exhaustedLimit(state, { dispatch: request.action === 'dispatch' }));
-    if (state.mode === 'unattended' && request.action !== 'continuation') requireCondition(state.continuation?.verified === true, 'unverified-continuation', 'Verify the actual host continuation mechanism before unattended execution');
+    // A handover validates the mechanism it carries, as continuation does, so neither waits on an earlier verification.
+    if (state.mode === 'unattended' && !['continuation', 'handover'].includes(request.action)) requireCondition(state.continuation?.verified === true, 'unverified-continuation', 'Verify the actual host continuation mechanism before unattended execution');
   }
   if (task && !['block', 'unblock', 'add-spec-review'].includes(request.action)) {
     requireCondition(!task.blocker, 'task-blocked', 'Resolve the recorded blocker before dependent work');
@@ -270,8 +323,24 @@ function transition(state, request) {
       requireCondition(state.status !== 'complete' && closingReady(state), 'closing-before-work', 'Finish actionable engineering and reconcile workers before session retrospective');
       recordRetrospective(state, request.evidence);
       break;
+    case 'report':
+      requireCondition(state.handover, 'report-not-due', 'A morning report is due only after a recorded handover');
+      requireCondition(closingReady(state) && state.closing?.retrospectiveEvidence, 'retrospective-required', 'Session retrospective must precede the morning report');
+      state.closing.reportEvidence = reportEvidenceFor(state.root, request.path);
+      // A replaced report has not been delivered.
+      state.closing.reportDelivery = null;
+      break;
+    case 'report-delivered': {
+      const evidence = state.handover && state.closing?.reportEvidence;
+      requireCondition(evidence, 'report-required', 'Record the morning report before its delivery');
+      text(request.authority, 'report-delivered.authority');
+      requireCondition(reportIsCurrent(state.root, evidence), 'report-stale', 'The saved morning report is missing or changed; rewrite it and record the report again');
+      if (state.closing.reportDelivery?.sha256 !== evidence.sha256) state.closing.reportDelivery = { authority: request.authority, revision: state.revision + 1, sha256: evidence.sha256 };
+      break;
+    }
     case 'triage':
       requireCondition(state.status !== 'complete' && closingReady(state) && state.closing?.retrospectiveEvidence, 'retrospective-required', 'Session retrospective must precede follow-up triage');
+      requireCondition(reportSatisfied(state), 'report-required', 'A handed-over run records its morning report before follow-up triage');
       text(request.evidence, 'triage.evidence');
       state.closing.triageEvidence = request.evidence;
       break;
@@ -302,6 +371,16 @@ function transition(state, request) {
       requireCondition(request.mechanism?.verified === true, 'unverified-continuation', 'Unattended continuation requires observed host evidence');
       text(request.mechanism.evidence, 'continuation.evidence');
       state.continuation = request.mechanism;
+      break;
+    case 'handover':
+      text(request.authority, 'handover.authority');
+      if (request.mechanism !== undefined) {
+        // The mechanism travels with the handover so an earlier verified flag is never reused as proof, and one write leaves no partial transition.
+        requireCondition(request.mechanism?.verified === true && typeof request.mechanism.evidence === 'string' && request.mechanism.evidence.trim(), 'unverified-continuation', 'Unattended continuation requires observed host evidence');
+        state.continuation = request.mechanism;
+        state.mode = 'unattended';
+      }
+      state.handover ??= { authority: request.authority, revision: state.revision + 1 };
       break;
     case 'worker': {
       const worker = request.worker;
@@ -350,6 +429,8 @@ function transition(state, request) {
       requireCondition(state.tasks.every(candidate => !requiresReview(candidate) || reviewGate(state.root, candidate, state)), 'stale-review', 'Final reviewed inputs changed');
       requireCondition(state.tasks.every(candidate => verificationGate(state.root, candidate)), 'verification-required', 'Every registered check must pass on current inputs before final acceptance');
       requireCondition(state.closing?.retrospectiveEvidence && state.closing?.triageEvidence, 'closing-required', 'Complete session retrospective and follow-up triage before final acceptance');
+      // Checked here as well as at triage: a handover can arrive after triage was already recorded.
+      requireCondition(reportSatisfied(state), 'report-required', 'A handed-over run records its morning report before final acceptance');
       state.status = 'complete';
       break;
     default:
@@ -357,4 +438,4 @@ function transition(state, request) {
   }
 }
 
-module.exports = { DIMENSIONS, assertAction, commitmentsFor, obligationBrief, reviewGate, taskById, transition, unresolvedFindings };
+module.exports = { DIMENSIONS, assertAction, commitmentsFor, obligationBrief, reportNotice, reviewGate, taskById, transition, unresolvedFindings };

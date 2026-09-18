@@ -341,6 +341,10 @@ test('blocked sessions can record closing work without claiming unfinished engin
   f.act({ action: 'block', taskId: 'a', blocker: { kind: 'capability', reason: 'Continuation could not be verified', recoveryAttempted: 'Checked the actual host mechanism' } });
   assert.equal(obligationBrief(f.store.read()).closing.ready, true);
   f.act({ action: 'retrospective', evidence: 'Capability limitation captured without inventing delivered work' });
+  assert.equal(obligationBrief(f.store.read()).closing.stage, 'report');
+  fs.mkdirSync(path.join(f.root, '.nightshift/runs/reports'), { recursive: true });
+  fs.writeFileSync(path.join(f.root, '.nightshift/runs/reports/blocked.md'), '# Morning report\n');
+  f.act({ action: 'report', path: '.nightshift/runs/reports/blocked.md' });
   f.act({ action: 'triage', evidence: 'Await the user decision; preserve both tasks' });
   assert.equal(obligationBrief(f.store.read()).closing.stage, 'complete');
   assert.notEqual(f.store.read().status, 'complete');

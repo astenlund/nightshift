@@ -9,6 +9,14 @@ const { RunStore } = require('../internal/runtime/store');
 const { handleHook } = require('../internal/runtime/hook');
 const { transition } = require('../internal/runtime/lifecycle');
 
+const REPORT_PATH = '.nightshift/runs/reports/morning.md';
+
+function writeReport(root, content = '# Morning report\n') {
+  fs.mkdirSync(path.join(root, path.dirname(REPORT_PATH)), { recursive: true });
+  fs.writeFileSync(path.join(root, REPORT_PATH), content);
+  return REPORT_PATH;
+}
+
 test('malformed bundled-notice input stays silent without an identifiable owner', () => {
   const result = spawnSync(process.execPath, [path.resolve(__dirname, '../internal/runtime/hook.js')], { input: '{invalid', windowsHide: true, encoding: 'utf8' });
   assert.equal(result.status, 0);
@@ -70,7 +78,7 @@ test('unattended Stop permits a pause on user decisions and keeps resisting ever
     store.create({ objective: 'Work', authority: 'User handover', mode: 'unattended', controller: actor, tasks: ids.map(id => ({ id, title: id, agreement, requires: id === 'follow' ? ['work'] : [] })) });
     const update = request => store.update(actor, store.read().revision, request.action, state => transition(state, request));
     update({ action: 'continuation', mechanism: { verified: true, evidence: 'Actual recovery observed in fixture' } });
-    return { store, update, stop: () => handleHook({ cwd: root, session_id: actor.session, hook_event_name: 'Stop' }) };
+    return { store, update, report: () => update({ action: 'report', path: writeReport(root) }), stop: () => handleHook({ cwd: root, session_id: actor.session, hook_event_name: 'Stop' }) };
   };
   const block = (run, taskId, kind) => run.update({ action: 'block', taskId, blocker: { kind, reason: 'Fixture blocker', recoveryAttempted: 'Checked prior agreement' } });
 
@@ -86,6 +94,9 @@ test('unattended Stop permits a pause on user decisions and keeps resisting ever
   paused.update({ action: 'retrospective', evidence: 'Retrospective recorded before the pause' });
   assert.equal(paused.stop().decision, undefined);
   assert.equal(paused.store.read().closing.retrospectiveEvidence, 'Retrospective recorded before the pause');
+  assert.throws(() => paused.update({ action: 'triage', evidence: 'Too early' }), { code: 'report-required' });
+  paused.report();
+  assert.equal(paused.stop().decision, undefined);
   paused.update({ action: 'triage', evidence: 'Triage recorded' });
   assert.doesNotMatch(paused.stop().systemMessage, /closing remains due/);
 
@@ -101,6 +112,8 @@ test('unattended Stop permits a pause on user decisions and keeps resisting ever
   block(capability, 'work', 'capability');
   assert.equal(capability.stop().decision, 'block');
   capability.update({ action: 'retrospective', evidence: 'Retrospective recorded' });
+  assert.equal(capability.stop().decision, 'block');
+  capability.report();
   assert.equal(capability.stop().decision, 'block');
   capability.update({ action: 'triage', evidence: 'Triage recorded' });
   assert.match(capability.stop().systemMessage, /unfinished blocked work/);

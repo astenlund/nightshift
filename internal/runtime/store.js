@@ -177,6 +177,8 @@ class RunStore {
       requireCondition(available.length === tasks.length, 'invalid-queue', 'Queue contains a dependency cycle');
       const now = new Date().toISOString();
       const state = { schema: 1, id: randomUUID(), root: this.root, revision: 0, createdAt: now, updatedAt: now, objective: input.objective, authority: input.authority, controller: input.controller, publication: input.publication ?? { authorized: false }, limits: input.limits ?? {}, mode: input.mode ?? 'attended', resourceMode: input.resourceMode ?? 'development', resources: input.resources ?? null, dispatches: 0, status: 'running', tasks, workers: [], followups: [], continuation: null };
+      // A run created unattended was handed over at creation, so it carries the same record the handover action writes.
+      if (state.mode === 'unattended') state.handover = { authority: input.authority, revision: state.revision };
       this.save(state, 'created');
       this.db.prepare('INSERT INTO active VALUES (1, ?) ON CONFLICT(singleton) DO UPDATE SET id=excluded.id').run(state.id);
       return state;
