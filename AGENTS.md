@@ -1,9 +1,5 @@
 # Nightshift repository instructions
 
-## Work in progress
-
-The automatic plugin preparation change is delivered through run `c675a074-6431-46e2-85b7-e3b8616e9220`. Its current state, evidence locations and remaining obligations live in [the acceptance report](.nightshift/reports/automatic-plugin-preparation-20260915.md) and the runtime record, not here; consult those before continuing it, and preserve the runtime records and any local `.tmp` evidence where they exist.
-
 ## Purpose and workflow
 
 Nightshift is a Claude Code and Codex plugin for carrying agreed engineering work through implementation, independent review, verification, documentation, session retrospective and follow-up triage. Its invariant priorities are autonomy first, quality second, then speed and economy, within the user's authority and limits.
