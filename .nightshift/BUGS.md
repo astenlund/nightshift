@@ -4,6 +4,14 @@ V2 entries are preserved in [the historical index](migration/v2/BUGS.md) and [MI
 
 ## Current
 
+### Missing session activation blocks agreed work until restart
+
+Observed once on 2026-09-18 in this repository on Claude Code with installed Nightshift 3.1.1. After `/clear`, Ready preparation and parsing succeeded, but creating the subsequently agreed attended run was refused because the native session had no recorded activation for the current hook generation. Status reported the hooks configured, enabled and usable, while activation was absent for this window; another window had an activation for the same registration and generation. Quitting and resuming restored activation, and the unchanged create request succeeded with the same session ID. The missing activation and recovery are recorded observations; whether `/clear` caused the failure, whether the hook ran at startup or clear, and whether it failed or its record was removed remain unverified. The detailed incident and evidence limitations are preserved in [the report](bugs/missing-session-activation-blocks-agreed-work.md).
+
+Investigate how activation was missed and repair the confirmed cause or recovery gap without treating Ready success or configured hooks as proof of native activation. Distinguish startup, clear and resume behavior, preserve actionable failure evidence, and verify that genuinely missing activation still prevents dependent operations. Compare with [hook inspection cost](QUICK_WINS.md#hook-path-native-settings-resolution-cost) and [the Codex launcher hypothesis](#codex-hook-launcher-may-lose-the-plugin-root-under-powershell) without assuming a shared cause. Tracking does not authorize implementation.
+
+**Requires:** none.
+
 ### Stop hook resists a pause the user asked for after handover
 
 Observed on 2026-09-19 on installed Claude Code 2.1.277 with plugin 3.2.0, fixture `claude-ed2c0a87` of the handover acceptance campaign, recorded in [the acceptance report](reports/handover-transition-and-morning-report-20260919.md). A user who was still present handed an attended run over and asked the controller to stop for a moment until they confirmed. The in-place `handover` had just made the run unattended, so the Stop hook blocked the yield: the fixture history shows three `continuation-reminder` entries before the three-reminder bound released it, and each blocked stop re-read a large context; that pass, which also covered both handovers and closing out the worker, cost about 2,500,000 tokens. The controller held correctly through all three reminders and edited nothing, but it did not record the hold as a user decision, which is the only pause the hook permits. On Codex CLI 0.154.0 the same request led the controller to record the handover without a mechanism and tell the user not to leave yet, so no hook resistance occurred. The hook behaved as designed; what is missing is a sanctioned way to express a user-requested hold after handover.
