@@ -4,11 +4,29 @@ V2 entries are preserved in [the historical index](migration/v2/QUICK_WINS.md) a
 
 ## Current
 
+### Codex sandbox blocks the launcher from starting the host
+
+Observed on 2026-09-19 in every Codex fixture of the handover acceptance campaign (Codex CLI 0.154.0, plugin 3.2.0), recorded in [the acceptance report](reports/handover-transition-and-morning-report-20260919.md). Inside the Codex sandbox the launcher cannot start the host process it inspects, at two sites. Preparation fails with `{"error":"EPERM","message":"spawn EPERM"}` at first use and again in some later sessions of the same, already prepared profile (the new-run handover and refused-admission sessions). Resolving resources through the retained bootstrap fails with `{"error":"retained-bootstrap-unavailable","message":"spawn EPERM"}` in later sessions (new-run handover, in-place handover and refused admission). The resumed returning-user session showed no fresh failure. Each time the model has to request an out-of-sandbox retry. With the escalation approved, preparation is silent and the operation proceeds; with it denied at first use, the Ready report correctly says the parser never ran and does not present an empty backlog. A real Codex user therefore sees approval prompts that work against preparation needing no setup conversation; whether every session prompts, or only the first command of each, was not separately established, because the harness answered these requests automatically. Claude Code shows no equivalent prompt.
+
+Establish whether the launcher can start the host inside the Codex sandbox or avoid doing so on that host at both sites, for example by carrying an earlier result, which [Hook-path native settings resolution cost](#hook-path-native-settings-resolution-cost) already considers. If it cannot, document the approval and how often it recurs in the README installation guidance so the prompt is expected. Verify first use and a later session on an installed Codex host in a fresh profile. Tracking does not authorize implementation.
+
+**Requires:** none.
+
+### Acceptance reports carry a checkable evidence digest
+
+Three lessons from the handover acceptance campaign of 2026-09-18 to 19, recorded in [the acceptance report](reports/handover-transition-and-morning-report-20260919.md). First, the final independent assessor could not verify the report, because all campaign evidence lived in the ignored `.tmp` directory; once a script-generated, credential-free digest (ledger, staged payload hashes, each fixture's saved run history and closing state, verbatim final assistant text) was supplied through `artifactPaths`, it found a real overstatement in the per-host table. Second, copying a host credential into an isolated profile races with token refresh: the production credential refreshed during the first attempt and invalidated the copy, and the reverse order could have logged out production sessions; the harness now copies a Claude credential only with more than three hours of token life left and removes every copy at the end. Third, a handover scenario costs roughly one to two and a half million tokens per host process, almost all of it context re-reading, so the agreed 4,000,000 allowance had to become 16,000,000 mid-campaign.
+
+State in the shared brief that an acceptance report's installed-host claims are backed by a generated evidence digest supplied to the assessor as a selected artifact, derived per host from that host's own record. Record the credential-copy guard and the measured per-scenario costs where live budgets are settled, reconciling with [Settle the installed-host evidence budget before handover](#settle-the-installed-host-evidence-budget-before-handover) and [Settle a spare token allowance for every implementation run at handover](#settle-a-spare-token-allowance-for-every-implementation-run-at-handover). Decide whether the multi-turn harness retained under `.tmp/handover-live` (drivers for both hosts, scoped approvals, ledger, reconciliation and digest scripts) graduates into the repository's test tooling. Tracking does not authorize implementation.
+
+**Requires:** none.
+
 ### Private review copies fail at Windows path depth
 
 Observed throughout run `c675a074-6431-46e2-85b7-e3b8616e9220` on 2026-09-15 to 17. Every deterministic suite executed as a reviewer probe inside a private review copy failed exactly one case: the recovery suite's nested probe-inside-probe Git initialization refused with `probe-git-boundary` at that depth, and in one run the EOL autocrlf case failed with `Filename too long`. Both pass at ordinary checkout depth, which the recorded check `probe-isolation-at-supported-checkout-depth` exists to prove, so every strong reviewer had to be told the failure was environmental. The acceptance report already records process-only Git long-path support as the workaround for the EOL case.
 
 Make private copies survive their own depth: shorten the copy path under the review directory, or enable process-only long-path support for the copy's Git operations, and make the nested-probe recovery case skip with a stated reason when it cannot establish a Git boundary rather than fail. Runtime code, so it ships with a version increase. Tracking does not authorize implementation.
+
+Recurred in run `d4a44daa-96be-4ac4-bcaa-d16d8596584f` on 2026-09-18 to 19, the handover transition and morning report delivery, which spent 14,869,844 review tokens across 18 dispatches, summed from that run's review receipts, and 14,445,999 live-verification tokens on a change of roughly 400 lines, with four already tracked defects firing during it. Here, a requested probe of `tests/runtime-review.test.js` and `tests/runtime-probes.test.js` failed 39 cases with git's `Filename too long`, because those suites nest review copies inside an already deep probe copy, and the assessor had to be given the environmental explanation to weigh.
 
 **Requires:** none.
 
@@ -109,6 +127,8 @@ Observed in this repository on 2026-09-12 during an unattended run. An independe
 Recurred in run `c675a074-6431-46e2-85b7-e3b8616e9220` on 2026-09-15 to 17: two independent assessors again returned probe proposals with sub-second `timeoutMs` while their prose meant minutes; supplying the producer schema's 120000 cap explicitly produced usable split probes, which confirms the floor and the stated unit are what is missing.
 
 Make the `probe` operation reject a proposal whose `timeoutMs` is below a plausible floor (for example 5000) with an error naming the unit, state in `internal/runtime/REFERENCE.md` that `timeoutMs` is milliseconds, and add a runtime fixture for the rejection. Runtime code, so it ships with a version increase.
+
+Recurred in run `d4a44daa-96be-4ac4-bcaa-d16d8596584f` on 2026-09-18 to 19, the handover transition and morning report delivery, which spent 14,869,844 review tokens across 18 dispatches, summed from that run's review receipts, and 14,445,999 live-verification tokens on a change of roughly 400 lines, with four already tracked defects firing during it. Here, the third occurrence: an independent assessor proposed `timeoutMs` 180 for four test suites, the operation offers no override, and stating the unit and the 120000 cap in the next dispatch again produced usable probes.
 
 **Requires:** none.
 

@@ -8,6 +8,10 @@ No active feature deliveries.
 
 ## Exploring
 
+### [Ready offers to pick up an interrupted run](features/ready-interrupted-run-pickup.md)
+
+When a new session opens in a project with an interrupted, stopped or undelivered Nightshift run, Ready tells the user about the unfinished work and offers to pick it up, after which everything behaves as in the original session, with no pointing at report files. Raised by the user on 2026-09-19. It builds on adoption of a run by another session, tracked as the bug "Run ownership is locked to the creating host session"; the open questions include whether an undelivered morning report counts as unfinished work and how Ready learns about runs without continuation activation; the record lists all four.
+
 ### [Degraded assessment mode](features/degraded-assessment-mode.md)
 
 Let a weaker model carry an independent assessment when no supported strong reviewer is available, clearly labeled as degraded and refused at the gates that require strength. Raised by the user during the automatic-preparation run, which was the live case: both admissible reviewers were unavailable at once and the lifecycle had no recordable fallback. The open design question is which gates a degraded assessment may satisfy on its own; it absorbs the earlier opus-review-gate follow-up.
