@@ -57,7 +57,8 @@ function handleHook(input) {
     const brief = obligationBrief(state, root, { verifyFreshness: false });
     const context = 'Nightshift continuation. Reconcile the saved state and actual files before dependent actions.\n' + JSON.stringify(brief);
     if (input.hook_event_name === 'Stop') {
-      if (state.mode !== 'unattended') return { systemMessage: 'Nightshift attended work remains saved. Reconcile its outstanding obligations before resuming or claiming completion.' };
+      const protectedRun = state.handover || state.mode === 'unattended';
+      if (!protectedRun) return { systemMessage: 'Nightshift attended work remains saved. Reconcile its outstanding obligations before resuming or claiming completion.' };
       const idle = brief.next.length === 0 && brief.workers.length === 0 && !brief.finalReconciliationPending;
       const closingDue = brief.closing.ready && brief.closing.stage !== 'complete';
       const awaitingUser = brief.blockers.length > 0 && brief.blockers.every(entry => entry.blocker.kind === 'user-decision');

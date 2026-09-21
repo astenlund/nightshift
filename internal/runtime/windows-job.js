@@ -71,7 +71,12 @@ function spawnWindowsJob(executable, args, options) {
   runner.on('error', fail);
   runner.stderr.on('data', bytes => child.stderr.write(bytes));
   runner.once('spawn', () => {
-    try { send({ kind: 'start', executable, args, cwd: options.cwd, environment: options.env ?? process.env }); }
+    try {
+      send({ kind: 'start', executable, args, cwd: options.cwd, environment: options.env ?? process.env });
+      // Noninteractive commands can exit while process-observation callbacks run.
+      // Queue EOF before those callbacks, while the runner still owns its input pipe.
+      if (options.closeInput === true) child.stdin.end();
+    }
     catch (error) { fail(error); }
   });
   readline.createInterface({ input: runner.stdout }).on('line', line => {

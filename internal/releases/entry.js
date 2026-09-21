@@ -20,6 +20,9 @@ function validateContext(context, executingRoot, target, exactProject = false) {
       const operation = registry.get('operation', context.operation);
       requireValue((registration?.state === 'registered' || operation?.maintenance === true) && binding?.state === 'bound' && operation?.kind === 'entry' && operation.state === 'running' && processAlive(operation.pid) === true, 'resource-context-expired', 'Nightshift operation context is absent, stale or retired');
       requireValue(operation.registration === context.registration && operation.session === context.session && operation.bundle === context.bundle && operation.project === context.project && operation.identity === context.identity && binding.identity === context.identity && binding.registration === context.registration && binding.session === context.session, 'resource-context-mismatch', 'Nightshift operation does not match its bound session');
+      if (operation.runtimeAction === 'adopt') {
+        requireValue(binding.runs.some(reference => reference.project === context.project && reference.id === operation.runId && reference.retired === false), 'adoption-reference-required', 'Adoption requires a protected target run reference before ownership changes');
+      }
       const bundle = verifiedRecord(registry, context.bundle);
       requireValue(bundle.identity === context.identity && fs.realpathSync.native(executingRoot) === bundle.root, 'resource-root-mismatch', 'Execute this operation from the verified bound bundle, not a plugin cache or another checkout');
       if (target) {
@@ -66,6 +69,18 @@ function savedResources(context) {
   return context ? { schema: 1, store: context.store, registration: context.registration, session: context.session, identity: context.identity } : null;
 }
 
+function executionResources(run) {
+  const resources = Object.hasOwn(run, 'executionResources') ? run.executionResources : run.resources ?? null;
+  if (run.resourceMode === 'bound') {
+    requireValue(resources?.schema === 1 && typeof resources.store === 'string' && path.isAbsolute(resources.store) && /^[a-f0-9]{64}$/.test(resources.registration) && typeof resources.session === 'string' && resources.session.trim().length > 0 && /^\d+\.\d+\.\d+-[a-f0-9]{64}$/.test(resources.identity), 'invalid-execution-resources', 'Bound runs require a complete current execution binding');
+    let canonical;
+    try { canonical = fs.realpathSync.native(resources.store); }
+    catch { /* Unavailable stores are not evidence of a valid execution binding. */ }
+    requireValue(canonical === resources.store, 'invalid-execution-resources', 'The execution store must be available at its canonical path');
+  }
+  return resources;
+}
+
 function unboundEnvironment() {
   const env = { ...process.env };
   delete env[CONTEXT_ENV];
@@ -88,4 +103,4 @@ function workerEnvironment(context) {
   return env;
 }
 
-module.exports = { CONTEXT_ENV, MODE_ENV, WORKER_ENV, admitEntry, contextFromEnvironment, helperArguments, savedResources, validateContext, verificationEnvironment, workerEnvironment };
+module.exports = { CONTEXT_ENV, MODE_ENV, WORKER_ENV, admitEntry, contextFromEnvironment, executionResources, helperArguments, savedResources, validateContext, verificationEnvironment, workerEnvironment };

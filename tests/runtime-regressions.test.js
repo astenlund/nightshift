@@ -5,7 +5,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const test = require('node:test');
 const { RunStore } = require('../internal/runtime/store');
-const { execute } = require('../internal/runtime/cli');
+const { fixtureControllerClaim, executeWithFixtureController: execute } = require('./fixtures/controller-claim');
 const { DIMENSIONS, commitmentsFor, obligationBrief, reviewGate, transition } = require('../internal/runtime/lifecycle');
 const { fresh, snapshot, verifyCommand } = require('../internal/runtime/evidence');
 const { handleHook } = require('../internal/runtime/hook');
@@ -124,7 +124,7 @@ function fixture(t, options = {}, prepare) {
   t.after(() => { store.close(); fs.rmSync(root, { recursive: true, force: true }); });
   for (const file of ['a.txt', 'b.txt']) fs.writeFileSync(path.join(root, file), file + '\r\n');
   prepare?.(root);
-  store.create({ objective: 'Deliver both accepted tasks', authority: 'User handover', controller: actor, tasks: ['a', 'b'].map(id => ({ id, title: id, agreement: { source: 'User', outcome: 'Required ' + id }, requires: id === 'b' ? ['a'] : [] })), ...options });
+  store.create({ objective: 'Deliver both accepted tasks', authority: 'User handover', controller: actor, controllerClaim: fixtureControllerClaim(actor), tasks: ['a', 'b'].map(id => ({ id, title: id, agreement: { source: 'User', outcome: 'Required ' + id }, requires: id === 'b' ? ['a'] : [] })), ...options });
   const act = request => {
     if (request.action === 'review') request.review.commitments ??= commitmentsFor(store.read().tasks);
     return store.update(actor, store.read().revision, request.action, state => transition(state, request));

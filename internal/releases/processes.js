@@ -30,7 +30,7 @@ function ownerAlive(owner, cwd) {
 }
 
 async function runContained(executable, args, options) {
-  const child = spawnWindowsJob(executable, args, { cwd: options.cwd, protectedRoot: options.cwd, env: options.env });
+  const child = spawnWindowsJob(executable, args, { cwd: options.cwd, protectedRoot: options.cwd, env: options.env, closeInput: true });
   let stdout = '';
   let stderr = '';
   let failure = null;
@@ -49,7 +49,7 @@ async function runContained(executable, args, options) {
   child.on('error', fail);
   child.stdin.on('error', fail);
   child.once('spawn', () => {
-    try { options.onStarted?.({ pid: child.pid, runnerPid: child.runnerPid, contained: true }); child.stdin.end(); }
+    try { options.onStarted?.({ pid: child.pid, runnerPid: child.runnerPid, contained: true }); }
     catch (error) { fail(error); }
   });
   try { options.onPrepared?.({ runnerPid: child.runnerPid }); }
@@ -60,8 +60,11 @@ async function runContained(executable, args, options) {
   const exit = { ...result, stdout, stderr, descendantsReclaimed: child.jobEmpty === true, error: failure?.message ?? null };
   options.onFinished?.(exit);
   requireValue(exit.descendantsReclaimed, 'operation-termination-unverified', 'Guarded operation descendants could not be reconciled');
-  if (failure) throw failure;
+  if (failure) {
+    failure.descendantsReclaimed = exit.descendantsReclaimed;
+    throw failure;
+  }
   return exit;
 }
 
-module.exports = { nativeOwner, ownerAlive, runContained };
+module.exports = { information, nativeOwner, ownerAlive, runContained };

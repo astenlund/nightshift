@@ -1,5 +1,7 @@
 # Retained Nightshift releases
 
+Related agreed scope: [Run adoption and renewed continuation](run-adoption-and-continuation.md) specifies changes to controller bindings and retention after adoption under its executive governing scope. Those amendments remain pending delivery; this document continues to describe the existing contract.
+
 Governing design. Acceptance and delivery state are recorded in the runtime run, not inferred from this document's presence. The user agreed the retained-release direction, granted 16,000,000 aggregate live-probing tokens, and approved host-level setup with "host-level sounds good". The run began attended and the user subsequently handed it over for unattended delivery. There is no publication authority.
 
 The [automatic preparation design](automatic-plugin-preparation.md) amends first-use preparation and Ready/Exploring admission. The corresponding commitments below reflect that change; the original acceptance report remains historical evidence.

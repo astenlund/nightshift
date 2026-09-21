@@ -46,7 +46,7 @@ function verify(root, record) {
   return actualRoot;
 }
 
-function ownsRun(input) {
+function ownsRun(input, registration, store) {
   if (!input?.cwd || !input.session_id) return false;
   let current = path.resolve(input.cwd);
   while (true) {
@@ -57,7 +57,8 @@ function ownsRun(input) {
         database = new DatabaseSync(file, { readOnly: true });
         const row = database.prepare('SELECT r.state FROM runs r JOIN active a ON a.id=r.id WHERE a.singleton=1').get();
         const state = row && JSON.parse(row.state);
-        return state?.controller?.session === input.session_id && state.status === 'running';
+        const resources = state && (Object.hasOwn(state, 'executionResources') ? state.executionResources : state.resources);
+        return state?.controller?.session === input.session_id && state.status === 'running' && resources?.registration === registration && resources.store === store;
       } catch { return false; }
       finally { database?.close(); }
     }
@@ -119,7 +120,7 @@ async function main() {
     const handler = require(path.join(selected, 'internal/releases/launcher.js'));
     await handler.route({ ...input, action: hook ? 'hook' : input.action, hookInput: hook ? input : undefined }, { store: root, registration: registrationKey, implementationBundle: selectedRecord.key, bootstrapOperation: lease, nativeHook: hook });
   } catch (error) {
-    if (hook) process.stdout.write(JSON.stringify(ownsRun(input) ? { systemMessage: `Nightshift retained resources are unavailable: ${error.message}. Saved work remains incomplete; recover its bound resources before dependent operations.` } : {}) + '\n');
+    if (hook) process.stdout.write(JSON.stringify(ownsRun(input, registrationKey, root) ? { systemMessage: `Nightshift retained resources are unavailable: ${error.message}. Saved work remains incomplete; recover its bound resources before dependent operations.` } : {}) + '\n');
     else { process.stderr.write(JSON.stringify({ error: 'retained-bootstrap-unavailable', message: error.message }) + '\n'); process.exitCode = 1; }
   } finally {
     database?.close();

@@ -19,7 +19,7 @@ jobs:
       - run: node skills/ready/ready.test.js
       - run: node skills/init-backlog/unwrap.test.js
       - run: node --test tests/unwrap-recovery.test.js
-      - run: node --test tests/runtime.test.js tests/runtime-hooks.test.js tests/runtime-review.test.js tests/runtime-hosts.test.js tests/runtime-regressions.test.js tests/runtime-probes.test.js tests/runtime-handover.test.js tests/setup.test.js tests/package.test.js tests/release-gate.test.js
-      - run: node --test tests/releases.test.js tests/release-hosts.test.js tests/release-eol.test.js tests/release-recovery.test.js
+      - run: node --test tests/runtime.test.js tests/runtime-hooks.test.js tests/runtime-review.test.js tests/runtime-hosts.test.js tests/runtime-regressions.test.js tests/runtime-probes.test.js tests/runtime-handover.test.js tests/runtime-adoption.test.js tests/runtime-continuation.test.js tests/setup.test.js tests/package.test.js tests/release-gate.test.js
+      - run: node --test tests/releases.test.js tests/release-hosts.test.js tests/release-eol.test.js tests/release-recovery.test.js tests/release-adoption.test.js
       - if: github.event_name != 'workflow_dispatch'
         run: node tools/release-gate.js --baseline ${{ github.event.pull_request.base.sha || github.event.before }}

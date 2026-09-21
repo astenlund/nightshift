@@ -59,7 +59,11 @@ function simulatedService(value, source, version = '1.0.0') {
     runContained: async (executable, args, options) => {
       options.onPrepared?.({ runnerPid: process.pid });
       options.onStarted?.({ pid: process.pid, runnerPid: process.pid, contained: true });
-      const result = spawnSync(executable, args, { cwd: options.cwd, env: options.env, windowsHide: true, encoding: 'utf8', timeout: 30000, maxBuffer: 8 * 1024 * 1024 });
+      // These tests simulate both native hosts; child execution keeps real entry
+      // admission while injecting deterministic process observations for claims.
+      const runtime = path.basename(args[0]) === 'cli.js' && path.basename(path.dirname(args[0])) === 'runtime';
+      const childArgs = runtime ? [path.join(__dirname, 'fixtures/releases/runtime-with-claims.cjs'), ...args] : args;
+      const result = spawnSync(executable, childArgs, { cwd: options.cwd, env: options.env, windowsHide: true, encoding: 'utf8', timeout: 30000, maxBuffer: 8 * 1024 * 1024 });
       const exit = { code: result.status, signal: result.signal, stdout: result.stdout, stderr: result.stderr, descendantsReclaimed: !result.error, error: result.error?.message };
       options.onFinished?.(exit);
       if (result.error) throw result.error;

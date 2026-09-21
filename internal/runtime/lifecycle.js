@@ -134,8 +134,9 @@ function obligationBrief(state, root = state.root, options = {}) {
   return {
     id: state.id, revision: state.revision, status: state.status, controller: state.controller,
     objective: state.objective, authority: state.authority, limits: state.limits, publication: state.publication,
-    mode: state.mode, handover: state.handover ?? null, report: reportStatus(state, root),
+    mode: state.mode, handover: state.handover ?? null, report: reportStatus(state, root), continuation: state.continuation ?? null,
     resourceMode: state.resourceMode ?? 'legacy', resources: state.resources ?? null,
+    executionResources: require('../releases/entry').executionResources(state), controllerClaim: state.controllerClaim ?? null, adoption: state.adoption ?? null,
     next: ready.map(task => ({
       id: task.id, title: task.title,
       stage: options.verifyFreshness !== false && !specReady(state, task) ? 'governing-spec-review' : task.stage,
@@ -155,12 +156,12 @@ function obligationBrief(state, root = state.root, options = {}) {
 function assertAction(state, request) {
   const taskActions = ['start-task', 'add-spec-review', 'check', 'dispatch', 'probe', 'review', 'validate', 'dispose', 'repair', 'advance', 'block', 'unblock'];
   const task = taskActions.includes(request.action) ? taskById(state, request.taskId) : null;
-  const bookkeeping = ['worker-finished', 'followup', 'resolve-followup', 'resume', 'stop', 'block', 'retrospective', 'report', 'report-delivered', 'triage'];
+  const bookkeeping = ['worker-finished', 'followup', 'resolve-followup', 'resume', 'stop', 'block', 'retrospective', 'report', 'report-delivered', 'triage', 'invalidate-continuation'];
   requireCondition(state.status === 'running' || bookkeeping.includes(request.action), 'run-stopped', 'The run is stopped; explicit resumption is required before more work');
   if (!bookkeeping.includes(request.action)) {
     requireCondition(!exhaustedLimit(state, { dispatch: request.action === 'dispatch' }), 'resource-limit', exhaustedLimit(state, { dispatch: request.action === 'dispatch' }));
     // A handover validates the mechanism it carries, as continuation does, so neither waits on an earlier verification.
-    if (state.mode === 'unattended' && !['continuation', 'handover'].includes(request.action)) requireCondition(state.continuation?.verified === true, 'unverified-continuation', 'Verify the actual host continuation mechanism before unattended execution');
+    if (state.mode === 'unattended' && !['continuation', 'handover', 'claim-controller'].includes(request.action)) requireCondition(state.continuation?.verified === true, 'unverified-continuation', 'Verify the actual host continuation mechanism before unattended execution');
   }
   if (task && !['block', 'unblock', 'add-spec-review'].includes(request.action)) {
     requireCondition(!task.blocker, 'task-blocked', 'Resolve the recorded blocker before dependent work');
@@ -366,18 +367,30 @@ function transition(state, request) {
       state.status = 'running';
       state.resumedBy = request.authority;
       delete state.stop;
+      transition(state, { action: 'invalidate-continuation', reason: 'Resumption requires a current observation of the native continuation mechanism' });
       break;
+    case 'claim-controller':
+      requireCondition(request.claim && isDeepStrictEqual(request.claim.controller, state.controller), 'invalid-controller-claim', 'A claim must be observed for the current controller');
+      state.controllerClaim = request.claim;
+      break;
+    case 'invalidate-continuation': {
+      text(request.reason, 'invalidate-continuation.reason');
+      const same = state.mode === 'attended' && state.continuation?.verified === false && state.continuation.reason === request.reason && state.continuation.runId === state.id && isDeepStrictEqual(state.continuation.controller, state.controller);
+      if (!same) state.continuation = { verified: false, reason: request.reason, runId: state.id, controller: { ...state.controller }, observedAt: new Date().toISOString() };
+      state.mode = 'attended';
+      break;
+    }
     case 'continuation':
       requireCondition(request.mechanism?.verified === true, 'unverified-continuation', 'Unattended continuation requires observed host evidence');
       text(request.mechanism.evidence, 'continuation.evidence');
-      state.continuation = request.mechanism;
+      state.continuation = { ...request.mechanism, runId: state.id, controller: { ...state.controller }, observedAt: new Date().toISOString() };
       break;
     case 'handover':
       text(request.authority, 'handover.authority');
       if (request.mechanism !== undefined) {
         // The mechanism travels with the handover so an earlier verified flag is never reused as proof, and one write leaves no partial transition.
         requireCondition(request.mechanism?.verified === true && typeof request.mechanism.evidence === 'string' && request.mechanism.evidence.trim(), 'unverified-continuation', 'Unattended continuation requires observed host evidence');
-        state.continuation = request.mechanism;
+        state.continuation = { ...request.mechanism, runId: state.id, controller: { ...state.controller }, observedAt: new Date().toISOString() };
         state.mode = 'unattended';
       }
       state.handover ??= { authority: request.authority, revision: state.revision + 1 };
@@ -387,6 +400,7 @@ function transition(state, request) {
       text(worker?.id, 'worker.id');
       text(worker.session, 'worker.session');
       text(worker.assignment, 'worker.assignment');
+      requireCondition(worker.host === undefined || ['claude', 'codex'].includes(worker.host), 'unsupported-host', 'Worker host must be a supported native host');
       requireCondition(['implementer', 'reviewer', 'skeptic', 'supervisor', 'peer'].includes(worker.role), 'invalid-worker', 'Unknown worker role');
       requireCondition(!state.workers.some(existing => existing.id === worker.id), 'duplicate-worker', 'Worker identity already exists');
       requireCondition(Array.isArray(worker.writes), 'invalid-worker', 'Worker must declare write ownership, including an empty list for reviewers');
@@ -404,7 +418,8 @@ function transition(state, request) {
         const lead = state.workers.find(existing => existing.id === worker.lead);
         requireCondition(lead?.role === 'reviewer' && lead.model === worker.model && lead.effort === worker.effort, 'peer-mismatch', 'Review peers must clone their lead model and effort');
       }
-      state.workers.push({ ...worker, status: 'running' });
+      if (['reviewer', 'skeptic', 'peer'].includes(worker.role)) requireCondition(!require('./ownership').forbiddenReviewSessions(state).has(worker.session), 'nonindependent-worker', 'A current or former controller cannot be assigned independent review of this run');
+      state.workers.push({ ...worker, host: worker.host ?? state.controller.host, status: 'running' });
       break;
     }
     case 'worker-finished': {

@@ -8,7 +8,7 @@ const { requireCondition, text } = require('./store');
 const { executeCommand, fresh, hash, projectFile } = require('./evidence');
 const { writeJson } = require('./artifacts');
 
-function runProbe(root, receipt, probe) {
+function runProbe(root, receipt, probe, runner) {
   text(probe?.id, 'probe.id');
   text(probe.purpose, 'probe.purpose');
   const inputs = receipt.contextSnapshot ?? receipt.snapshot;
@@ -36,21 +36,26 @@ function runProbe(root, receipt, probe) {
   requireCondition(!initialized.error && initialized.status === 0, 'probe-git-boundary', 'Could not establish an independent Git repository for the probe');
   const boundary = spawnSync('git', ['rev-parse', '--show-toplevel'], { cwd: project, windowsHide: true, encoding: 'utf8', timeout: 30000 });
   requireCondition(!boundary.error && boundary.status === 0 && fs.realpathSync.native(boundary.stdout.trim()) === fs.realpathSync.native(project), 'probe-git-boundary', 'Probe Git discovery does not resolve to its private copy');
-  const check = executeCommand(project, { name: probe.purpose, executable: probe.executable, args: probe.args, timeoutMs: probe.timeoutMs, resourceMode: 'development' });
-  // This is controller-authorized execution with normal user privileges, not a sandbox.
-  // Drift detection covers the reviewed inventory, not every writable file on the machine.
-  const canonicalUnchanged = fresh(root, inputs);
-  const result = {
-    requestId: receipt.requestId, runId: receipt.runId, taskId: receipt.taskId,
-    probeId: probe.id, purpose: probe.purpose, probe,
-    snapshotDigest: receipt.snapshot.digest, contextDigest: inputs.digest, canonicalUnchanged,
-    exitCode: check.exitCode, error: check.error, output: check.output, resourceMode: check.resourceMode,
-    startedAt: check.startedAt, finishedAt: check.finishedAt,
+  const check = (runner ?? executeCommand)(project, { name: probe.purpose, executable: probe.executable, args: probe.args, timeoutMs: probe.timeoutMs, resourceMode: 'development' });
+  const finish = check => {
+    // This is controller-authorized execution with normal user privileges, not a sandbox.
+    // Drift detection covers the reviewed inventory, not every writable file on the machine.
+    const canonicalUnchanged = fresh(root, inputs);
+    const result = {
+      requestId: receipt.requestId, runId: receipt.runId, taskId: receipt.taskId,
+      probeId: probe.id, purpose: probe.purpose, probe,
+      snapshotDigest: receipt.snapshot.digest, contextDigest: inputs.digest, canonicalUnchanged,
+      exitCode: check.exitCode, error: check.error, output: check.output, resourceMode: check.resourceMode,
+      startedAt: check.startedAt, finishedAt: check.finishedAt,
+    };
+    const file = path.join(directory, 'result.json');
+    writeJson(file, result);
+    requireCondition(canonicalUnchanged, 'probe-input-drift', 'Canonical reviewed inputs changed during the isolated probe; do not accept its result');
+
+    return { path: path.relative(root, file).split(path.sep).join('/'), sha256: hash(fs.readFileSync(file)), snapshotDigest: receipt.snapshot.digest };
   };
-  const file = path.join(directory, 'result.json');
-  writeJson(file, result);
-  requireCondition(canonicalUnchanged, 'probe-input-drift', 'Canonical reviewed inputs changed during the isolated probe; do not accept its result');
-  return { path: path.relative(root, file).split(path.sep).join('/'), sha256: hash(fs.readFileSync(file)), snapshotDigest: receipt.snapshot.digest };
+
+  return check && typeof check.then === 'function' ? check.then(finish) : finish(check);
 }
 
 function loadProbeEvidence(root, references, expectedSnapshot, contextSnapshot = expectedSnapshot) {

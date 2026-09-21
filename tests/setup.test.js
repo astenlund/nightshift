@@ -8,7 +8,7 @@ const test = require('node:test');
 const { Setup, initialize, rewriteReferences } = require('../internal/setup');
 const { RunStore } = require('../internal/runtime/store');
 const { DIMENSIONS, transition } = require('../internal/runtime/lifecycle');
-const { execute } = require('../internal/runtime/cli');
+const { executeWithFixtureController: execute } = require('./fixtures/controller-claim');
 
 function git(root, args, statuses = [0]) {
   const result = spawnSync('git', args, { cwd: root, windowsHide: true, encoding: 'utf8' });

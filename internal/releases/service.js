@@ -12,7 +12,7 @@ const native = require('./native-host');
 const configuration = require('./host-config');
 const processes = require('./processes');
 const { CHANGED_CONCURRENTLY, REMOVED_MESSAGE, ownerFree, pluginIdentity, publishBootstrap, retainedRoutes, supportsPreparation } = require('./administration');
-const { CONTEXT_ENV, MODE_ENV } = require('./entry');
+const { CONTEXT_ENV, MODE_ENV, executionResources } = require('./entry');
 const { isReadOnlyAction } = require('../runtime/actions');
 const { workerIsActive } = require('../runtime/workers');
 const { digest, directory, hostProfile, parseJson, processAlive, projectRoot, readBytes, replaceFile, requireConsistentRunId, requireValue, text, writeNew } = require('./io');
@@ -64,6 +64,18 @@ function readRuns(root, required = false) {
 }
 
 function activeWorkers(run) { return (run?.workers ?? []).some(workerIsActive); }
+
+function projectOperationActive(registry, project) {
+  return registry.list('operation').some(entry => entry.value.kind === 'entry' && entry.value.project === project && !isReadOnlyAction(entry.value.runtimeAction));
+}
+
+function matchesBinding(resources, binding, store) {
+  return resources?.schema === 1 && resources.store === store && resources.registration === binding.registration && resources.session === binding.session && resources.identity === binding.identity;
+}
+
+function historicalBinding(run, binding, store) {
+  return (run.adoptions ?? []).some(adoption => matchesBinding(adoption.previousExecutionResources, binding, store));
+}
 
 function cleanOperationFiles(project, operation) {
   const relative = `.tmp/nightshift/${operation}`;
@@ -289,6 +301,12 @@ class ReleaseService {
     const session = text(request.session, 'native session');
     const project = projectRoot(request.project);
     const skey = sessionKey(key, session);
+    const adoption = request.entry === 'runtime' && request.request?.action === 'adopt';
+    if (adoption) {
+      requireValue(!maintenance && !preparing, 'adoption-admission-required', 'Adoption requires current authenticated runtime admission');
+      requireValue(typeof request.request.runId === 'string' && request.request.runId.length > 0 && Number.isSafeInteger(request.request.revision) && request.request.revision >= 0, 'invalid-adoption-request', 'Adoption must identify the run and observed revision');
+      text(request.request.authority, 'adoption authority');
+    }
     const binding = this.registry(registry => registry.get('session', skey));
     requireValue(!binding || binding.state === 'bound', 'retired-release-binding', 'This session was retired; explicitly recover its exact identity before resuming');
     const needsActivation = !maintenance && !preparing && !ACTIVATION_EXEMPT.has(request.entry);
@@ -301,11 +319,18 @@ class ReleaseService {
       if (!['usable', 'untrusted'].includes(verdict.state)) requireValue(false, verdict.code, verdict.message);
     }
     await this.requireActivation(registration, session, !needsActivation, project);
-    const requestedRun = request.runId ? this.dependencies.readRun(project, request.runId) : this.dependencies.readRun(project);
+    const runId = request.runId ?? request.request?.runId;
+    const requestedRun = runId ? this.dependencies.readRun(project, runId) : this.dependencies.readRun(project);
     const newRun = request.entry === 'runtime' && request.request?.action === 'create' && !request.runId && ['complete', 'stopped'].includes(requestedRun?.status) && !activeWorkers(requestedRun);
-    const relevantRun = !newRun && (request.runId || request.entry === 'runtime' || requestedRun?.controller?.session === session) ? requestedRun : null;
-    if (relevantRun && !relevantRun.resources && relevantRun.status !== 'complete') requireValue(false, 'legacy-release-reconciliation', 'This run has no retained release identity; reconcile it explicitly instead of adopting the newest runtime');
-    const wanted = relevantRun?.resources?.identity;
+    const relevantRun = !newRun && (runId || request.entry === 'runtime' || requestedRun?.controller?.session === session) ? requestedRun : null;
+    const runResources = relevantRun ? executionResources(relevantRun) : null;
+    if (relevantRun && !runResources && relevantRun.status !== 'complete') requireValue(false, 'legacy-release-reconciliation', 'This run has no retained release identity; reconcile it explicitly instead of adopting the newest runtime');
+    if (adoption) {
+      requireValue(relevantRun && relevantRun.id === this.dependencies.readRun(project)?.id && relevantRun.status !== 'complete', 'adoption-run-unavailable', 'Only the current unfinished run can be adopted');
+      requireValue(relevantRun.resourceMode === 'bound' && runResources?.store === this.store, 'adoption-resource-conflict', 'Adoption requires the same retained store and bound resource mode');
+      this.registry(registry => this.requireAdoptionSource(registry, project, relevantRun));
+    }
+    const wanted = runResources?.identity;
     requireValue(!wanted || !binding || binding.identity === wanted, 'run-release-conflict', 'The requested run uses another release; reconcile its binding before resuming');
     const identity = binding?.identity ?? wanted;
     const bundle = identity ? this.registry(registry => bundles.availableIdentity(registry, identity)) : null;
@@ -320,10 +345,14 @@ class ReleaseService {
       const actual = registry.get('session', skey);
       requireValue(!actual || actual.state === 'bound' && actual.identity === selected.identity, 'release-binding-conflict', 'Session binding changed during resource acquisition');
       bundles.verifiedRecord(registry, selected.key);
+      if (adoption) requireValue(require(path.join(selected.root, ENTRIES.runtime)).ADOPTION_PROTOCOL === 1, 'adoption-release-incompatible', 'The exact retained runtime does not support adoption; older runs cannot be silently upgraded');
       const value = actual ?? { schema: 1, registration: key, session, identity: selected.identity, state: 'bound', projects: [], runs: [], createdAt: new Date().toISOString() };
       value.bundle = selected.key;
       if (!value.projects.includes(project)) value.projects.push(project);
-      if (relevantRun && !value.runs.some(run => run.project === project && run.id === relevantRun.id)) value.runs.push({ project, id: relevantRun.id, retired: false });
+      if (relevantRun && (adoption || matchesBinding(runResources, value, registry.root)) && !value.runs.some(run => run.project === project && run.id === relevantRun.id)) {
+        requireValue(!relevantRun.adoptions?.length || !matchesBinding(runResources, value, registry.root), 'adoption-reference-unavailable', 'Committed adoption lost its protected target reference; reconcile retained state before dependent work');
+        value.runs.push({ project, id: relevantRun.id, retired: false, ...(adoption ? { pendingAdoption: true } : {}) });
+      }
       registry.put('session', skey, value);
       registry.put('project', digest(project), { schema: 1, root: project });
       // Only a genuinely new selection can advance administration; an existing
@@ -357,12 +386,70 @@ class ReleaseService {
     // reference even when a crash prevented the later run-id attachment.
     for (const project of binding.projects) {
       for (const run of readRuns(project, project === requiredProject || binding.runs.some(reference => reference.project === project))) {
-        if (run.resources?.store !== registry.root || run.resources.registration !== binding.registration || run.resources.session !== binding.session) continue;
-        requireValue(run.resources.identity === binding.identity, 'run-resource-state-unavailable', 'Registered run and session resource identities differ');
-        if (!binding.runs.some(reference => reference.project === project && reference.id === run.id)) binding.runs.push({ project, id: run.id, retired: false });
+        const resources = executionResources(run);
+        const owns = matchesBinding(resources, binding, registry.root);
+        const historical = !owns && historicalBinding(run, binding, registry.root);
+        if (!owns && !historical) continue;
+        let reference = binding.runs.find(reference => reference.project === project && reference.id === run.id);
+        if (!reference) {
+          requireValue(!owns || !run.adoptions?.length, 'adoption-reference-unavailable', 'Committed adoption lost its protected target reference; retain resources until reconciled');
+          reference = { project, id: run.id, retired: false };
+          binding.runs.push(reference);
+        }
+        if (historical) this.reconcileAdoptedTarget(registry, project, run);
+        reference.historical = historical;
+        delete reference.pendingAdoption;
       }
     }
     registry.put('session', sessionKey(binding.registration, binding.session), binding);
+  }
+
+  reconcileAdoptedTarget(registry, project, run) {
+    const resources = executionResources(run);
+    requireValue(resources?.store === registry.root, 'adoption-reference-unavailable', 'Adopted run current resources are missing or belong to another store');
+    const target = registry.get('session', sessionKey(resources.registration, resources.session));
+    requireValue(target && matchesBinding(resources, target, registry.root) && target.projects.includes(project), 'adoption-reference-unavailable', 'Adopted run target session is missing or incompatible; retain its source references');
+    const reference = target.runs.find(reference => reference.project === project && reference.id === run.id);
+    requireValue(reference && (target.state === 'bound' && !reference.retired || target.state === 'retired' && reference.retired), 'adoption-reference-unavailable', 'Adopted run target reference is incomplete; retain its source references');
+    reference.historical = false;
+    delete reference.pendingAdoption;
+    registry.put('session', sessionKey(target.registration, target.session), target);
+  }
+
+  requireAdoptionSource(registry, project, run) {
+    const resources = executionResources(run);
+    const source = registry.get('session', sessionKey(resources.registration, resources.session));
+    requireValue(source?.state === 'bound' && matchesBinding(resources, source, registry.root), 'adoption-source-retired', 'The current execution binding is missing or retired; recover its exact resources before adoption');
+    this.reconcileRunReferences(registry, source, project);
+    requireValue(source.runs.some(reference => reference.project === project && reference.id === run.id && !reference.retired), 'adoption-source-retired', 'The current run reference was retired; recover its exact resources before adoption');
+  }
+
+  requireUnownedAdoption(registry, binding, reference, run) {
+    requireValue(run && run.resourceMode === 'bound' && !activeWorkers(run), 'run-resource-state-unavailable', 'Pending adoption cancellation requires readable bound run state and reconciled workers');
+    requireValue(!projectOperationActive(registry, reference.project), 'resource-operation-busy', 'A project operation may still commit or depend on the pending adoption');
+    requireValue(run.adoptions === undefined || Array.isArray(run.adoptions), 'run-resource-state-unavailable', 'Adoption history is unavailable or unsupported');
+    const history = run.adoptions ?? [];
+    requireValue(history.every(adoption => adoption && typeof adoption === 'object' && !Array.isArray(adoption)), 'run-resource-state-unavailable', 'Adoption history contains an unsupported record');
+    requireValue(history.length ? isDeepStrictEqual(run.adoption, history.at(-1)) : run.adoption === undefined, 'run-resource-state-unavailable', 'Current adoption and ownership history do not agree');
+    const registration = registry.get('registration', binding.registration);
+    requireValue(registration, 'run-resource-state-unavailable', 'The pending target registration is unavailable');
+    const controllers = [run.controller, ...history.flatMap(adoption => [adoption.previousController, adoption.controller])];
+    requireValue(controllers.every(controller => ['claude', 'codex'].includes(controller?.host) && typeof controller.session === 'string' && controller.session.length > 0), 'run-resource-state-unavailable', 'Ownership history has missing controller attribution');
+    const resources = [run.resources, executionResources(run), ...history.flatMap(adoption => [adoption.previousExecutionResources, adoption.executionResources])];
+    for (const resource of resources) {
+      const checked = executionResources({ resourceMode: 'bound', executionResources: resource });
+      requireValue(checked.store === registry.root && checked.identity === binding.identity, 'run-resource-state-unavailable', 'Ownership history has incompatible retained resources');
+    }
+    let previousResources = run.resources;
+    const originalRegistration = registry.get('registration', previousResources.registration);
+    let previousController = { host: originalRegistration?.host, session: previousResources.session };
+    for (const adoption of history) {
+      requireValue(isDeepStrictEqual(adoption.previousExecutionResources, previousResources) && isDeepStrictEqual(adoption.previousController, previousController), 'run-resource-state-unavailable', 'Adoption ownership history is incomplete');
+      previousResources = adoption.executionResources;
+      previousController = adoption.controller;
+    }
+    requireValue(isDeepStrictEqual(previousResources, executionResources(run)) && isDeepStrictEqual(previousController, run.controller), 'run-resource-state-unavailable', 'Current ownership is not explained by its saved history');
+    requireValue(!resources.some(resource => matchesBinding(resource, binding, registry.root)) && !controllers.some(controller => controller.host === registration.host && controller.session === binding.session), 'adoption-cancellation-owned', 'A current or historical owner reference cannot be cancelled as an uncommitted adoption');
   }
 
   async run(key, request) {
@@ -378,9 +465,20 @@ class ReleaseService {
     const operation = randomUUID();
     const context = this.registry(registry => {
       this.reconcileOperations(registry);
-      requireValue(readOnly || !registry.list('operation').some(entry => entry.value.kind === 'entry' && entry.value.project === resolved.project && !isReadOnlyAction(entry.value.runtimeAction)), 'resource-operation-busy', 'A project operation is active or its termination is uncertain');
+      requireValue(readOnly || !projectOperationActive(registry, resolved.project), 'resource-operation-busy', 'A project operation is active or its termination is uncertain');
+      const binding = registry.get('session', sessionKey(key, request.session));
+      this.reconcileRunReferences(registry, binding);
+      const run = this.dependencies.readRun(resolved.project);
+      if (request.entry === 'runtime' && request.request.action === 'adopt') {
+        requireValue(run?.id === request.request.runId, 'adoption-run-unavailable', 'The current run changed during adoption admission');
+        this.requireAdoptionSource(registry, resolved.project, run);
+      }
+      if (!readOnly && request.entry === 'runtime' && !['create', 'adopt'].includes(request.request.action) && run) {
+        requireValue(matchesBinding(executionResources(run), binding, registry.root) && run.controller.host === resolved.registration.host && run.controller.session === request.session, 'resource-owner-mismatch', 'Only the current execution binding and controller can mutate this run');
+      }
+      if (!readOnly && run?.adoptions?.length && matchesBinding(executionResources(run), binding, registry.root)) this.reconcileAdoptedTarget(registry, resolved.project, run);
       const value = { schema: 1, mode: 'bound', store: registry.root, registration: key, session: request.session, identity: resolved.bundle.identity, bundle: resolved.bundle.key, project: resolved.project, operation };
-      registry.put('operation', operation, { ...value, kind: 'entry', state: 'running', phase: 'prepared', pid: process.pid, implementationBundle: this.context.implementationBundle ?? resolved.bundle.key, maintenance, runtimeAction: request.entry === 'runtime' ? request.request.action : null });
+      registry.put('operation', operation, { ...value, kind: 'entry', state: 'running', phase: 'prepared', pid: process.pid, implementationBundle: this.context.implementationBundle ?? resolved.bundle.key, maintenance, runtimeAction: request.entry === 'runtime' ? request.request.action : null, runId: request.request?.runId ?? null });
       return value;
     });
     let temporary;
@@ -422,10 +520,10 @@ class ReleaseService {
       });
       const run = request.entry === 'runtime' ? this.dependencies.readRun(resolved.project, request.request?.runId) : null;
       if (request.entry === 'runtime' && request.request.action === 'create') readRuns(resolved.project, true);
-      if (run?.resources?.identity === resolved.binding.identity) this.registry(registry => {
-        const binding = registry.get('session', sessionKey(key, request.session));
-        if (!binding.runs.some(item => item.project === resolved.project && item.id === run.id)) binding.runs.push({ project: resolved.project, id: run.id, retired: false });
-        registry.put('session', sessionKey(key, request.session), binding);
+      if (run && matchesBinding(executionResources(run), resolved.binding, this.store)) this.registry(registry => {
+        for (const { value: binding } of registry.list('session')) {
+          if (binding.projects.includes(resolved.project)) this.reconcileRunReferences(registry, binding, resolved.project);
+        }
       });
       referencesReconciled = true;
       return exit;
@@ -439,13 +537,15 @@ class ReleaseService {
 
   async hook(key, input) {
     let ownerRun = null;
+    let ownerResources = null;
     let project;
     let registration;
     try {
       project = require('../runtime/hook').projectRoot(input.cwd);
       if (project) ownerRun = this.dependencies.readRun(project);
-      const identifiable = ownerRun?.controller?.session === input.session_id && ownerRun.status === 'running';
+      if (ownerRun) ownerResources = Object.hasOwn(ownerRun, 'executionResources') ? ownerRun.executionResources : ownerRun.resources;
       registration = this.registration(key);
+      const identifiable = ownerRun?.controller?.host === registration.host && ownerRun.controller.session === input.session_id && ownerRun.status === 'running';
       if (identifiable && ownerRun.resourceMode === 'development') return {};
       if (registration.state !== 'registered' || registration.pending) return identifiable ? { systemMessage: 'Nightshift host setup is incomplete; saved work remains incomplete.' } : {};
       if (input.hook_event_name === 'SessionStart') {
@@ -456,7 +556,10 @@ class ReleaseService {
       const binding = this.registry(registry => registry.get('session', sessionKey(key, input.session_id)), { nonblocking: !identifiable });
       if (!binding) return project && fs.existsSync(path.join(project, '.nightshift')) ? { hookSpecificOutput: input.hook_event_name === 'SessionStart' ? { hookEventName: 'SessionStart', additionalContext: `Nightshift native session: ${input.session_id}. Retained launcher: ${registration.bootstrap}. Registration: ${key}. Resolve resources through this launcher before using Nightshift.` } : undefined } : {};
       requireValue(binding.state === 'bound', 'retired-release-binding', 'This Nightshift session was retired');
-      if (identifiable) requireValue(ownerRun.resources?.identity === binding.identity && ownerRun.resources.registration === key, 'legacy-release-reconciliation', 'The owned run does not match this retained resource binding');
+      if (identifiable) {
+        requireValue(matchesBinding(executionResources(ownerRun), binding, this.store), 'legacy-release-reconciliation', 'The owned run does not match this retained resource binding');
+        if (ownerRun.adoptions?.length) this.registry(registry => this.reconcileAdoptedTarget(registry, project, ownerRun));
+      }
       // Claude scopes project settings to the working directory, so an unresolvable
       // Nightshift project root still inspects the actual cwd rather than the profile.
       await this.requireActivation(registration, input.session_id, false, project ?? input.cwd);
@@ -470,7 +573,7 @@ class ReleaseService {
       }
       return result;
     } catch (error) {
-      return ownerRun?.controller?.session === input.session_id && ownerRun.status === 'running' ? { systemMessage: `Nightshift could not reconcile protected resources: ${error.message}. Saved work remains incomplete.${registration ? ` Recovery launcher: ${registration.bootstrap}. Registration: ${key}.` : ''}` } : {};
+      return ownerRun?.controller?.session === input.session_id && ownerRun.status === 'running' && ownerResources?.registration === key && (!registration || ownerRun.controller.host === registration.host) ? { systemMessage: `Nightshift could not reconcile protected resources: ${error.message}. Saved work remains incomplete.${registration ? ` Recovery launcher: ${registration.bootstrap}. Registration: ${key}.` : ''}` } : {};
     }
   }
 
@@ -520,24 +623,44 @@ class ReleaseService {
     return this.registry(registry => {
       this.reconcileOperations(registry);
       const target = text(request.targetSession, 'session selected for retirement');
+      const cancellations = request.cancelAdoptions === undefined ? [] : request.cancelAdoptions;
+      requireValue(Array.isArray(cancellations) && cancellations.every(id => typeof id === 'string' && id.trim().length > 0) && new Set(cancellations).size === cancellations.length, 'invalid-adoption-cancellation', 'cancelAdoptions must list unique pending run identities');
       requireValue(!registry.list('operation').some(entry => entry.key !== this.context.bootstrapOperation && entry.value.registration === key && entry.value.session === target), 'resource-operation-busy', 'The session has active or unreconciled operations');
       const skey = sessionKey(key, target);
       const binding = registry.get('session', skey);
       const activation = registry.get('activation', skey);
       requireValue(binding || activation, 'unknown-release-session', 'No activation or work binding exists for that session');
+      const cancelled = new Set();
       if (binding) {
         this.reconcileRunReferences(registry, binding);
+        requireValue(cancellations.every(id => binding.runs.some(reference => reference.id === id && reference.pendingAdoption === true)), 'adoption-cancellation-unavailable', 'Select only pending adoptions that have not become current or historical ownership');
         for (const reference of binding.runs) {
           const run = this.dependencies.readRun(reference.project, reference.id);
+          if (reference.pendingAdoption) {
+            requireValue(cancellations.includes(reference.id), 'adoption-cancellation-required', 'Explicitly select the failed pending run in cancelAdoptions to abandon its uncommitted target reference');
+            this.requireUnownedAdoption(registry, binding, reference, run);
+            cancelled.add(reference);
+            continue;
+          }
+          if (reference.historical) {
+            requireValue(run && historicalBinding(run, binding, registry.root), 'run-resource-state-unavailable', 'Historical source ownership cannot be verified');
+            this.reconcileAdoptedTarget(registry, reference.project, run);
+            reference.retired = true;
+            continue;
+          }
+          requireValue(!projectOperationActive(registry, reference.project), 'resource-operation-busy', 'A project operation may still depend on this current run reference');
           requireValue(run && !activeWorkers(run), 'run-resource-state-unavailable', 'Associated run/worker state is missing or active');
           if (run.status !== 'complete' && !reference.retired) requireValue(request.retireRuns?.includes(reference.id) && run.status === 'stopped', 'run-retirement-required', 'Stop and explicitly select unfinished runs before abandoning their retained resources');
           reference.retired = true;
         }
+        // Cancelled attempts never owned this run. Removing their provisional
+        // references prevents ordinary session recovery from reviving them.
+        binding.runs = binding.runs.filter(reference => !cancelled.has(reference));
         binding.state = 'retired'; binding.retiredAt = new Date().toISOString();
         registry.put('session', skey, binding);
-      }
+      } else requireValue(cancellations.length === 0, 'adoption-cancellation-unavailable', 'Activation-only sessions have no pending adoptions to cancel');
       registry.remove('activation', skey);
-      return { retired: target, resourcesDeleted: false };
+      return { retired: target, resourcesDeleted: false, ...(cancelled.size ? { cancelledAdoptions: [...cancelled].map(reference => reference.id) } : {}) };
     });
   }
 
@@ -570,6 +693,11 @@ class ReleaseService {
         for (const reference of binding.runs) {
           const run = this.dependencies.readRun(reference.project, reference.id);
           requireValue(run, 'run-resource-state-unavailable', 'A registered run cannot be read; collection retains all resources');
+          if (reference.historical) {
+            requireValue(historicalBinding(run, binding, registry.root), 'run-resource-state-unavailable', 'Historical source ownership cannot be verified');
+            this.reconcileAdoptedTarget(registry, reference.project, run);
+            continue;
+          }
           if (!reference.retired && (run.status !== 'complete' || activeWorkers(run))) keepIdentity.add(binding.identity);
         }
       }

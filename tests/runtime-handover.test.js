@@ -56,7 +56,8 @@ test('handover with a verified mechanism switches to unattended in the same writ
   const before = f.store.read();
   const state = f.act({ action: 'handover', authority: 'User handover', mechanism: MECHANISM });
   assert.equal(state.mode, 'unattended');
-  assert.deepEqual(state.continuation, MECHANISM);
+  assert.deepEqual(state.continuation, { ...MECHANISM, controller: state.controller, runId: state.id, observedAt: state.continuation.observedAt });
+  assert.match(state.continuation.observedAt, /^\d{4}-\d{2}-\d{2}T.*Z$/);
   assert.equal(state.handover.revision, state.revision);
   for (const key of ['id', 'tasks', 'workers', 'followups', 'limits', 'publication', 'controller', 'objective', 'authority', 'closing']) assert.deepEqual(state[key], before[key], key);
 });
@@ -79,7 +80,7 @@ test('repeated handover keeps the original record, can upgrade and never downgra
   const repeated = f.act({ action: 'handover', authority: 'Third handover' });
   assert.deepEqual(repeated.handover, first.handover);
   assert.equal(repeated.mode, 'unattended');
-  assert.deepEqual(repeated.continuation, MECHANISM);
+  assert.deepEqual(repeated.continuation, upgraded.continuation);
 });
 
 test('handover is refused on a stopped run and for another controller', t => {

@@ -210,7 +210,7 @@ async function dispatchReview(root, options, dependencies = {}) {
     }
     // A repository boundary prevents host discovery from walking into the controller's checkout.
     git(workspace, ['init', '--quiet']);
-    const request = { id, runId: options.runId, taskId: options.taskId, coveredTaskIds: options.coveredTaskIds ?? [options.taskId], commitments: options.commitments ?? {}, resources: options.resources ?? null, kind: options.kind ?? 'code', requirements: text(options.requirements, 'review requirements'), dimensions: DIMENSIONS[options.kind === 'spec' ? 'spec' : 'code'], findings: options.findings ?? [], snapshot: captured, contextSnapshot, baseSha: options.baseSha };
+    const request = { id, runId: options.runId, taskId: options.taskId, coveredTaskIds: options.coveredTaskIds ?? [options.taskId], commitments: options.commitments ?? {}, resources: options.resources ?? null, controller: options.controller ?? null, kind: options.kind ?? 'code', requirements: text(options.requirements, 'review requirements'), dimensions: DIMENSIONS[options.kind === 'spec' ? 'spec' : 'code'], findings: options.findings ?? [], snapshot: captured, contextSnapshot, baseSha: options.baseSha };
     writeJson(path.join(target, 'request.json'), request);
     options.onPrepared?.(request);
     const systemFile = path.join(target, 'system.md');
@@ -232,6 +232,8 @@ async function dispatchReview(root, options, dependencies = {}) {
         result = await (dependencies.runAgent ?? runAgent)({ ...candidate, cwd: workspace, protectedRoot: canonical, artifacts, systemFile, env: workerEnvironment(options.resourceContext), prompt: buildPrompt(request), schema: schemaFor(request.kind, id, request.findings), timeoutMs: Math.min(options.timeoutMs ?? 900000, remaining), onProcess: pid => { processStarted = true; options.onProcess?.(pid); }, onSession: options.onSession });
         attempt.tokens = result.tokens ?? null;
         terminationProven = result.exit?.descendantsReclaimed === true;
+        options.onFinalizing?.();
+        requireCondition(!(options.forbiddenSessions ?? []).includes(result.session), 'nonindependent-worker', 'A current or former controller cannot supply a newly dispatched independent assessment');
         const { events, ...record } = result;
         writeJson(path.join(artifacts, 'result.json'), record);
         requireCondition(result.exit?.descendantsReclaimed !== false, 'termination-unverified', 'The agent process tree did not provide complete termination evidence');
@@ -282,11 +284,12 @@ function readReceipt(root, relative, state, taskId) {
   const assignmentFile = path.posix.join(path.posix.dirname(relative), 'request.json');
   const assignment = JSON.parse(fs.readFileSync(projectFile(root, assignmentFile), 'utf8'));
   requireCondition(assignment.id === receipt.requestId && assignment.runId === receipt.runId && assignment.taskId === receipt.taskId && assignment.kind === receipt.kind && isDeepStrictEqual(assignment.snapshot, receipt.snapshot) && isDeepStrictEqual(assignment.contextSnapshot, receipt.contextSnapshot) && isDeepStrictEqual(assignment.coveredTaskIds, receipt.coveredTaskIds), 'changed-assignment', 'Receipt no longer matches the saved dispatch assignment and inputs');
-  requireCondition(isDeepStrictEqual(assignment.resources ?? null, receipt.resources ?? null) && isDeepStrictEqual(state.resources ?? null, receipt.resources ?? null), 'changed-assignment', 'Receipt resource binding does not match its run and assignment');
+  requireCondition(isDeepStrictEqual(assignment.resources ?? null, receipt.resources ?? null), 'changed-assignment', 'Receipt resource binding does not match its immutable assignment');
   if (state.workers) {
     const worker = state.workers.find(candidate => candidate.id === receipt.requestId);
     requireCondition(worker?.snapshotDigest === receipt.snapshot.digest && worker.taskId === taskId && isDeepStrictEqual(worker.coveredTaskIds, receipt.coveredTaskIds), 'changed-assignment', 'Receipt differs from the controller-owned dispatch record');
     requireCondition(isDeepStrictEqual(worker.resources ?? null, receipt.resources ?? null), 'changed-assignment', 'Receipt differs from the worker resource binding');
+    requireCondition(isDeepStrictEqual(worker.controller ?? null, assignment.controller ?? null), 'changed-assignment', 'Receipt assignment changed its dispatch controller provenance');
     requireCondition(isDeepStrictEqual(worker.commitments, receipt.commitments) && isDeepStrictEqual(assignment.commitments, receipt.commitments), 'changed-assignment', 'Receipt differs from the commitments bound when it was dispatched');
     requireCondition(receipt.coveredTaskIds.every(id => {
       const task = state.tasks.find(candidate => candidate.id === id);
@@ -294,6 +297,7 @@ function readReceipt(root, relative, state, taskId) {
     }), 'stale-commitments', 'Accepted commitments changed during assessment; reassess them before importing this report');
   }
   requireCondition(receipt.runId === state.id && receipt.taskId === taskId && receipt.session !== state.controller.session, 'wrong-result', 'Report belongs to another run, task or controller');
+  if (assignment.controller && isDeepStrictEqual(assignment.controller, state.controller)) requireCondition(!require('./ownership').forbiddenReviewSessions(state).has(receipt.session), 'nonindependent-worker', 'A former controller cannot author a new independent assessment');
   requireCondition(hash(fs.readFileSync(projectFile(root, receipt.eventFile))) === receipt.eventHash, 'changed-result', 'Native host result changed after collection');
   requireCondition(STRONG_MODELS[receipt.host]?.includes(receipt.model) && receipt.attributionVerified === true && fresh(root, receipt.snapshot) && fresh(root, receipt.contextSnapshot), 'invalid-receipt', 'Review attribution, strength or input freshness is invalid');
   const events = fs.readFileSync(projectFile(root, receipt.eventFile), 'utf8').trim().split('\n').map(line => JSON.parse(line));

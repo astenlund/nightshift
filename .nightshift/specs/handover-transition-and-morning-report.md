@@ -1,5 +1,7 @@
 # Handover transition, acknowledgment and morning report
 
+Related agreed scope: [Run adoption and renewed continuation](run-adoption-and-continuation.md) specifies adopted-owner continuity and explicit continuation invalidation under its executive governing scope. Those amendments remain pending delivery; this document continues to describe the existing contract.
+
 Status: commitments agreed by the user on 2026-09-18; revised after five independent assessments, whose confirmed findings are corrected here, and after implementation and installed-host evidence added the new-run fallback, the state-specific notice and the full-report final message. On the same day the user chose recorded report delivery over untracked delivery, and directed that cross-session continuity come from resuming the run, never from pointing the user at report files.
 
 ## Agreement and outcome

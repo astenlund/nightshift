@@ -6,11 +6,11 @@ const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 const test = require('node:test');
 const { dispatchReview, readReceipt, schemaFor, validateReport } = require('../internal/runtime/review');
-const { DIMENSIONS } = require('../internal/runtime/lifecycle');
+const { DIMENSIONS, reviewGate } = require('../internal/runtime/lifecycle');
 const { fileIdentity, fresh, hash } = require('../internal/runtime/evidence');
 const { runAgent } = require('../internal/runtime/hosts');
 const { RunStore } = require('../internal/runtime/store');
-const { execute } = require('../internal/runtime/cli');
+const { fixtureControllerClaim, executeWithFixtureController } = require('./fixtures/controller-claim');
 
 function git(root, args) {
   const result = spawnSync('git', args, { cwd: root, windowsHide: true, encoding: 'utf8' });
@@ -95,19 +95,91 @@ test('skeptic producer schemas bind assigned ids and count while consumer valida
   assert.equal(validateReport(probe, request(1)).findings[0].verdict, 'unverified');
 });
 
-test('invalid skeptic assignments reject before workers or model attempts are created', async t => {
+test('injected native observations do not grant a missing or mismatched controller claim', async t => {
   const f = fixture(t);
   const store = new RunStore(f.root, { create: true });
   const actor = { host: 'codex', session: 'controller' };
   store.create({ objective: f.requirements, authority: 'User', controller: actor, tasks: [{ id: f.taskId, title: 'Work', agreement: { source: 'User', outcome: f.requirements } }] });
   let calls = 0;
+  const dispatch = dependencies => executeWithFixtureController(f.root, { action: 'dispatch', actor, revision: store.read().revision, taskId: f.taskId, review: { ...f, kind: 'code' } }, { runAgent: () => { calls++; throw new Error('Unexpected model call'); }, ...dependencies });
+  try {
+    await assert.rejects(dispatch(), { code: 'controller-claim-required' });
+    assert.equal(store.read().revision, 0);
+    store.update(actor, 0, 'fixture-claim', state => { state.controllerClaim = fixtureControllerClaim(actor); });
+    const claimed = store.read();
+    await assert.rejects(dispatch({ nativeOwner: () => ({ ...claimed.controllerClaim.process, created: 'different-incarnation' }) }), { code: 'controller-claim-required' });
+    await assert.rejects(dispatch({ ownerAlive: () => null }), { code: 'controller-claim-required' });
+    assert.deepEqual(store.read(), claimed);
+    assert.equal(calls, 0);
+    assert.equal(store.read().workers.length, 0);
+  } finally { store.close(); }
+});
+
+test('invalid skeptic assignments reject before workers or model attempts are created', async t => {
+  const f = fixture(t);
+  const store = new RunStore(f.root, { create: true });
+  const actor = { host: 'codex', session: 'controller' };
+  store.create({ objective: f.requirements, authority: 'User', controller: actor, controllerClaim: fixtureControllerClaim(actor), tasks: [{ id: f.taskId, title: 'Work', agreement: { source: 'User', outcome: f.requirements } }] });
+  let calls = 0;
   try {
     for (const [findings, code] of [['not-an-array', 'invalid-skeptic-assignment'], [[{ id: 'same' }, { id: 'same' }], 'invalid-skeptic-assignment'], [[{ id: '' }], 'invalid-request']]) {
-      await assert.rejects(execute(f.root, { action: 'dispatch', actor, revision: store.read().revision, taskId: f.taskId, review: { ...f, kind: 'skeptic', findings } }, { runAgent: () => { calls++; throw new Error('Unexpected model call'); } }), { code });
+      await assert.rejects(executeWithFixtureController(f.root, { action: 'dispatch', actor, revision: store.read().revision, taskId: f.taskId, review: { ...f, kind: 'skeptic', findings } }, { runAgent: () => { calls++; throw new Error('Unexpected model call'); } }), { code });
     }
     assert.equal(calls, 0);
     assert.equal(store.read().workers.length, 0);
     assert.equal(fs.existsSync(path.join(f.root, '.nightshift/runs/reviews')), false);
+  } finally { store.close(); }
+});
+
+for (const adoptionCase of ['historical-import', 'adopter-authored', 'already-imported']) {
+  test(`review attribution survives adoption: ${adoptionCase}`, async t => {
+    const f = fixture(t);
+    const store = new RunStore(f.root, { create: true });
+    const actor = { host: 'codex', session: 'controller' };
+    const adopter = { host: 'claude', session: adoptionCase === 'historical-import' ? 'adopter' : 'fresh-session' };
+    const created = store.create({ objective: f.requirements, authority: 'User', controller: actor, controllerClaim: fixtureControllerClaim(actor), tasks: [{ id: f.taskId, title: 'Work', kind: 'docs', agreement: { source: 'User', outcome: f.requirements } }] });
+    const act = (request, owner = store.read().controller) => executeWithFixtureController(f.root, { actor: owner, revision: store.read().revision, taskId: f.taskId, ...request });
+    try {
+      const lead = await executeWithFixtureController(f.root, { action: 'dispatch', actor, revision: store.read().revision, taskId: f.taskId, review: { ...f, kind: 'code' } }, { runAgent: options => mockAgent(options) });
+      const receipt = path.relative(f.root, lead.receiptFile).split(path.sep).join('/');
+      if (adoptionCase === 'already-imported') await act({ action: 'review', receipt });
+      await act({ action: 'stop', kind: 'user-stop', reason: 'User switches host' });
+      await act({ action: 'adopt', runId: created.id, previousController: actor, authority: 'User adopts preserved fixture work' }, adopter);
+      await act({ action: 'resume', authority: 'User resumes adopted work' });
+      if (adoptionCase === 'adopter-authored') {
+        await assert.rejects(act({ action: 'review', receipt }), { code: 'wrong-result' });
+      } else {
+        if (adoptionCase === 'historical-import') await act({ action: 'review', receipt });
+        const state = store.read();
+        assert.equal(state.tasks[0].reviews.length, 1);
+        assert.equal(reviewGate(f.root, state.tasks[0], state), true);
+        assert.equal(state.tasks[0].reviews[0].session, 'fresh-session');
+      }
+      await assert.rejects(executeWithFixtureController(f.root, { action: 'dispatch', actor: adopter, revision: store.read().revision, taskId: f.taskId, review: { ...f, kind: 'code' } }, { runAgent: options => mockAgent(options, DIMENSIONS.code, { session: actor.session }) }), { code: 'nonindependent-worker' });
+    } finally { store.close(); }
+  });
+}
+
+test('receipt maintenance can import produced evidence without acquiring a new engineering claim', async t => {
+  const f = fixture(t);
+  const store = new RunStore(f.root, { create: true });
+  const actor = { host: 'codex', session: 'controller' };
+  store.create({ objective: f.requirements, authority: 'User', controller: actor, controllerClaim: fixtureControllerClaim(actor), tasks: [{ id: f.taskId, title: 'Work', agreement: { source: 'User', outcome: f.requirements } }] });
+  const relative = result => path.relative(f.root, result.receiptFile).split(path.sep).join('/');
+  const invoke = (request, overrides) => executeWithFixtureController(f.root, { actor, revision: store.read().revision, taskId: f.taskId, ...request }, overrides);
+  const unavailable = { nativeOwner: () => { throw new Error('Maintenance must not require native controller inspection'); } };
+  try {
+    const finding = { id: 'fixture-finding', severity: 'minor', required: false, consequence: 'Alleged fixture issue', evidence: 'Concrete fixture claim' };
+    const lead = await invoke({ action: 'dispatch', review: { ...f, kind: 'code' } }, { runAgent: options => mockAgent(options, DIMENSIONS.code, { findings: [finding], session: 'lead' }) });
+    const claim = store.read().controllerClaim;
+    await invoke({ action: 'review', receipt: relative(lead) }, unavailable);
+    const assigned = store.read().tasks[0].findings;
+    const skeptic = await invoke({ action: 'dispatch', review: { ...f, kind: 'skeptic', findings: assigned } }, { runAgent: options => mockAgent(options, DIMENSIONS.code, { session: 'skeptic', findings: assigned.map(item => ({ id: item.id, verdict: 'refuted', evidence: 'Deciding fixture evidence', value: 'No repair needed' })) }) });
+    await invoke({ action: 'validate', receipt: relative(skeptic), findingId: assigned[0].id }, unavailable);
+    assert.equal(store.read().tasks[0].findings[0].validation.verdict, 'refuted');
+    assert.deepEqual(store.read().controllerClaim, claim);
+    await assert.rejects(invoke({ action: 'start-task' }, unavailable), { code: 'controller-claim-required' });
+    await assert.rejects(invoke({ action: 'review', receipt: relative(lead), actor: { host: 'codex', session: 'intruder' } }, unavailable), { code: 'stale-owner' });
   } finally { store.close(); }
 });
 
@@ -116,10 +188,10 @@ for (const hasFinding of [false, true]) {
     const f = fixture(t);
     const store = new RunStore(f.root, { create: true });
     const actor = { host: 'codex', session: 'controller' };
-    store.create({ objective: f.requirements, authority: 'User', controller: actor, tasks: [{ id: f.taskId, title: 'Work', agreement: { source: 'User', outcome: f.requirements } }] });
-    const act = request => execute(f.root, { actor, revision: store.read().revision, taskId: f.taskId, ...request });
+    store.create({ objective: f.requirements, authority: 'User', controller: actor, controllerClaim: fixtureControllerClaim(actor), tasks: [{ id: f.taskId, title: 'Work', agreement: { source: 'User', outcome: f.requirements } }] });
+    const act = request => executeWithFixtureController(f.root, { actor, revision: store.read().revision, taskId: f.taskId, ...request });
     const receiptPath = result => path.relative(f.root, result.receiptFile).split(path.sep).join('/');
-    const dispatch = (kind, assigned, output) => execute(f.root, { action: 'dispatch', actor, revision: store.read().revision, taskId: f.taskId, review: { ...f, kind, findings: assigned } }, { runAgent: options => mockAgent(options, DIMENSIONS.code, { findings: output, session: kind === 'skeptic' ? 'skeptic' : 'lead' }) });
+    const dispatch = (kind, assigned, output) => executeWithFixtureController(f.root, { action: 'dispatch', actor, revision: store.read().revision, taskId: f.taskId, review: { ...f, kind, findings: assigned } }, { runAgent: options => mockAgent(options, DIMENSIONS.code, { findings: output, session: kind === 'skeptic' ? 'skeptic' : 'lead' }) });
     try {
       const claims = hasFinding ? [{ id: 'boundary', severity: 'minor', required: false, consequence: 'Alleged boundary issue', evidence: 'Concrete claim for validation' }] : [];
       const lead = await dispatch('code', [], claims);
@@ -161,10 +233,10 @@ for (const fallback of [false, true]) {
     const f = fixture(t);
     const store = new RunStore(f.root, { create: true });
     const actor = { host: 'codex', session: 'controller' };
-    store.create({ objective: f.requirements, authority: 'User', controller: actor, tasks: [{ id: f.taskId, title: 'Work', agreement: { source: 'User', outcome: f.requirements } }] });
+    store.create({ objective: f.requirements, authority: 'User', controller: actor, controllerClaim: fixtureControllerClaim(actor), tasks: [{ id: f.taskId, title: 'Work', agreement: { source: 'User', outcome: f.requirements } }] });
     try {
       const candidates = fallback ? [{ host: 'codex', model: 'gpt-6-astra', effort: 'medium' }, ...f.candidates] : f.candidates;
-      const result = await execute(f.root, { action: 'dispatch', actor, revision: store.read().revision, taskId: f.taskId, review: { ...f, kind: 'code', candidates, substitutionReason: 'First permitted host unavailable in fixture' } }, { runAgent: options => {
+      const result = await executeWithFixtureController(f.root, { action: 'dispatch', actor, revision: store.read().revision, taskId: f.taskId, review: { ...f, kind: 'code', candidates, substitutionReason: 'First permitted host unavailable in fixture' } }, { runAgent: options => {
         if (fallback && options.host === 'codex') throw new Error('Fixture host unavailable before process launch');
         return mockAgent(options);
       } });
@@ -172,9 +244,9 @@ for (const fallback of [false, true]) {
       assert.equal(lead.host, 'claude');
       assert.equal(lead.model, 'claude-fable-5-1');
       assert.equal(lead.effort, 'high');
-      await execute(f.root, { action: 'worker', actor, revision: store.read().revision, worker: { id: 'peer', session: 'peer-session', role: 'peer', assignment: 'Investigate a bounded part of the assessment', lead: lead.id, host: lead.host, model: lead.model, effort: lead.effort, writes: [] } });
+      await executeWithFixtureController(f.root, { action: 'worker', actor, revision: store.read().revision, worker: { id: 'peer', session: 'peer-session', role: 'peer', assignment: 'Investigate a bounded part of the assessment', lead: lead.id, host: lead.host, model: lead.model, effort: lead.effort, writes: [] } });
       assert.equal(store.read().workers.at(-1).id, 'peer');
-      await assert.rejects(execute(f.root, { action: 'worker', actor, revision: store.read().revision, worker: { id: 'wrong-peer', session: 'wrong-session', role: 'peer', assignment: 'Different effort', lead: lead.id, model: lead.model, effort: 'low', writes: [] } }), { code: 'peer-mismatch' });
+      await assert.rejects(executeWithFixtureController(f.root, { action: 'worker', actor, revision: store.read().revision, worker: { id: 'wrong-peer', session: 'wrong-session', role: 'peer', assignment: 'Different effort', lead: lead.id, model: lead.model, effort: 'low', writes: [] } }), { code: 'peer-mismatch' });
     } finally { store.close(); }
   });
 }
@@ -252,10 +324,10 @@ for (const failure of ['returned-failed', 'unattributed', 'malformed', 'thrown-e
     const f = fixture(t);
     const store = new RunStore(f.root, { create: true });
     const actor = { host: 'codex', session: 'controller' };
-    store.create({ objective: f.requirements, authority: 'User', controller: actor, tasks: [{ id: f.taskId, title: 'Work', agreement: { source: 'User', outcome: f.requirements } }] });
+    store.create({ objective: f.requirements, authority: 'User', controller: actor, controllerClaim: fixtureControllerClaim(actor), tasks: [{ id: f.taskId, title: 'Work', agreement: { source: 'User', outcome: f.requirements } }] });
     let calls = 0;
     try {
-      const result = await execute(f.root, { action: 'dispatch', actor, revision: 0, taskId: f.taskId, review: { ...f, candidates: [...f.candidates, { host: 'codex', model: 'gpt-6-astra', effort: 'high' }], substitutionReason: 'First permitted candidate failed' } }, { runAgent: options => {
+      const result = await executeWithFixtureController(f.root, { action: 'dispatch', actor, revision: 0, taskId: f.taskId, review: { ...f, candidates: [...f.candidates, { host: 'codex', model: 'gpt-6-astra', effort: 'high' }], substitutionReason: 'First permitted candidate failed' } }, { runAgent: options => {
         calls++;
         if (options.host === 'claude' && failure === 'thrown-error') throw new Error('Host failed without a usage result');
         const response = mockAgent(options, DIMENSIONS.code, { session: options.host + '-session' });
@@ -276,7 +348,7 @@ for (const failure of ['returned-failed', 'unattributed', 'malformed', 'thrown-e
       ]);
       assert.ok(result.receipt.attempts[0].error);
       const relative = path.relative(f.root, result.receiptFile).split(path.sep).join('/');
-      await execute(f.root, { action: 'review', actor, revision: store.read().revision, taskId: f.taskId, receipt: relative });
+      await executeWithFixtureController(f.root, { action: 'review', actor, revision: store.read().revision, taskId: f.taskId, receipt: relative });
       assert.equal(store.read().tasks[0].reviews[0].host, 'codex');
     } finally { store.close(); }
   });
@@ -310,13 +382,13 @@ test('dispatch is durable before the agent starts, and a skeptic receipt cannot 
   const f = fixture(t);
   const store = new RunStore(f.root, { create: true });
   const actor = { host: 'codex', session: 'controller' };
-  store.create({ objective: f.requirements, authority: 'User handover', controller: actor, tasks: [{ id: f.taskId, title: 'Review fixture', agreement: { source: 'User', outcome: f.requirements } }] });
+  store.create({ objective: f.requirements, authority: 'User handover', controller: actor, controllerClaim: fixtureControllerClaim(actor), tasks: [{ id: f.taskId, title: 'Review fixture', agreement: { source: 'User', outcome: f.requirements } }] });
   let release;
   let started;
   const startedPromise = new Promise(resolve => { started = resolve; });
   const paused = new Promise(resolve => { release = resolve; });
   try {
-    const dispatch = execute(f.root, { action: 'dispatch', actor, revision: 0, taskId: f.taskId, review: { ...f, kind: 'skeptic', findings: [] } }, { runAgent: async options => {
+    const dispatch = executeWithFixtureController(f.root, { action: 'dispatch', actor, revision: 0, taskId: f.taskId, review: { ...f, kind: 'skeptic', findings: [] } }, { runAgent: async options => {
       started();
       await paused;
       return mockAgent(options);
@@ -330,8 +402,11 @@ test('dispatch is durable before the agent starts, and a skeptic receipt cannot 
     release();
     const result = await dispatch;
     assert.equal(store.read().workers[0].status, 'complete');
+    const phases = store.history(store.read().id).map(entry => entry.state.workers[0]?.phase).filter(Boolean);
+    assert.ok(phases.indexOf('preparing') < phases.indexOf('launching'));
+    assert.ok(phases.indexOf('finalizing') > phases.indexOf('launching'));
     const relative = path.relative(f.root, result.receiptFile).split(path.sep).join('/');
-    await assert.rejects(execute(f.root, { action: 'review', actor, revision: store.read().revision, taskId: f.taskId, receipt: relative }), { code: 'wrong-review-kind' });
+    await assert.rejects(executeWithFixtureController(f.root, { action: 'review', actor, revision: store.read().revision, taskId: f.taskId, receipt: relative }), { code: 'wrong-review-kind' });
   } finally { release?.(); store.close(); }
 });
 
@@ -339,9 +414,9 @@ test('missing required dispatch text is rejected before workers or copies are cr
   const f = fixture(t);
   const store = new RunStore(f.root, { create: true });
   const actor = { host: 'codex', session: 'controller' };
-  store.create({ objective: f.requirements, authority: 'User', controller: actor, tasks: [{ id: f.taskId, title: 'Work', agreement: { source: 'User', outcome: f.requirements } }] });
+  store.create({ objective: f.requirements, authority: 'User', controller: actor, controllerClaim: fixtureControllerClaim(actor), tasks: [{ id: f.taskId, title: 'Work', agreement: { source: 'User', outcome: f.requirements } }] });
   try {
-    for (const field of ['requirements', 'rules']) await assert.rejects(execute(f.root, { action: 'dispatch', actor, revision: 0, taskId: f.taskId, review: { ...f, [field]: undefined } }, { runAgent: mockAgent }), { code: 'invalid-request' });
+    for (const field of ['requirements', 'rules']) await assert.rejects(executeWithFixtureController(f.root, { action: 'dispatch', actor, revision: 0, taskId: f.taskId, review: { ...f, [field]: undefined } }, { runAgent: mockAgent }), { code: 'invalid-request' });
     assert.equal(store.read().workers.length, 0);
     assert.equal(store.read().revision, 0);
     assert.equal(fs.existsSync(path.join(f.root, '.nightshift/runs/reviews')), false);
@@ -352,13 +427,13 @@ test('a Codex-shaped native receipt imports through the actual controller bounda
   const f = fixture(t);
   const store = new RunStore(f.root, { create: true });
   const actor = { host: 'claude', session: 'controller' };
-  store.create({ objective: f.requirements, authority: 'User', controller: actor, tasks: [{ id: f.taskId, title: 'Work', agreement: { source: 'User', outcome: f.requirements } }] });
+  store.create({ objective: f.requirements, authority: 'User', controller: actor, controllerClaim: fixtureControllerClaim(actor), tasks: [{ id: f.taskId, title: 'Work', agreement: { source: 'User', outcome: f.requirements } }] });
   try {
-    const result = await execute(f.root, { action: 'dispatch', actor, revision: 0, taskId: f.taskId, review: { ...f, candidates: [{ host: 'codex', model: 'gpt-6-astra' }] } }, { runAgent: options => {
+    const result = await executeWithFixtureController(f.root, { action: 'dispatch', actor, revision: 0, taskId: f.taskId, review: { ...f, candidates: [{ host: 'codex', model: 'gpt-6-astra' }] } }, { runAgent: options => {
       assert.equal(options.protectedRoot, fs.realpathSync.native(f.root));
       return mockAgent(options);
     } });
-    await execute(f.root, { action: 'review', actor, revision: store.read().revision, taskId: f.taskId, receipt: path.relative(f.root, result.receiptFile).split(path.sep).join('/') });
+    await executeWithFixtureController(f.root, { action: 'review', actor, revision: store.read().revision, taskId: f.taskId, receipt: path.relative(f.root, result.receiptFile).split(path.sep).join('/') });
     assert.equal(store.read().tasks[0].reviews[0].model, 'gpt-6-astra');
   } finally { store.close(); }
 });
@@ -367,10 +442,10 @@ test('dispatch allowance counts attempts and prevents an otherwise valid fallbac
   const f = fixture(t);
   const store = new RunStore(f.root, { create: true });
   const actor = { host: 'codex', session: 'controller' };
-  store.create({ objective: f.requirements, authority: 'User', controller: actor, limits: { maxDispatches: 1 }, tasks: [{ id: f.taskId, title: 'Work', agreement: { source: 'User', outcome: f.requirements } }] });
+  store.create({ objective: f.requirements, authority: 'User', controller: actor, controllerClaim: fixtureControllerClaim(actor), limits: { maxDispatches: 1 }, tasks: [{ id: f.taskId, title: 'Work', agreement: { source: 'User', outcome: f.requirements } }] });
   let calls = 0;
   try {
-    await assert.rejects(execute(f.root, { action: 'dispatch', actor, revision: 0, taskId: f.taskId, review: { ...f, candidates: [{ host: 'codex', model: 'gpt-6-astra' }, ...f.candidates], substitutionReason: 'First host unavailable' } }, { runAgent: () => { calls++; throw new Error('Host unavailable'); } }), { code: 'resource-limit' });
+    await assert.rejects(executeWithFixtureController(f.root, { action: 'dispatch', actor, revision: 0, taskId: f.taskId, review: { ...f, candidates: [{ host: 'codex', model: 'gpt-6-astra' }, ...f.candidates], substitutionReason: 'First host unavailable' } }, { runAgent: () => { calls++; throw new Error('Host unavailable'); } }), { code: 'resource-limit' });
     assert.equal(calls, 1);
     assert.equal(store.read().dispatches, 1);
   } finally { store.close(); }
@@ -381,9 +456,9 @@ test('spec receipt freshness distinguishes pending acceptance from accepted engi
   fs.writeFileSync(path.join(f.root, 'spec.md'), '# Accepted behavior\n');
   const store = new RunStore(f.root, { create: true });
   const actor = { host: 'codex', session: 'controller' };
-  store.create({ objective: f.requirements, authority: 'User', controller: actor, tasks: [{ id: 'spec', title: 'Spec', kind: 'spec', agreement: { source: 'User', outcome: f.requirements, spec: 'spec.md' } }, { id: 'code', title: 'Code', agreement: { source: 'User', outcome: f.requirements, spec: 'spec.md', specReviewTaskId: 'spec' } }] });
-  const act = request => execute(f.root, { actor, revision: store.read().revision, ...request });
-  const dispatch = () => execute(f.root, { action: 'dispatch', actor, revision: store.read().revision, taskId: 'spec', review: { ...f, kind: 'spec' } }, { runAgent: options => mockAgent(options, DIMENSIONS.spec) });
+  store.create({ objective: f.requirements, authority: 'User', controller: actor, controllerClaim: fixtureControllerClaim(actor), tasks: [{ id: 'spec', title: 'Spec', kind: 'spec', agreement: { source: 'User', outcome: f.requirements, spec: 'spec.md' } }, { id: 'code', title: 'Code', agreement: { source: 'User', outcome: f.requirements, spec: 'spec.md', specReviewTaskId: 'spec' } }] });
+  const act = request => executeWithFixtureController(f.root, { actor, revision: store.read().revision, ...request });
+  const dispatch = () => executeWithFixtureController(f.root, { action: 'dispatch', actor, revision: store.read().revision, taskId: 'spec', review: { ...f, kind: 'spec' } }, { runAgent: options => mockAgent(options, DIMENSIONS.spec) });
   try {
     const stale = await dispatch();
     fs.writeFileSync(path.join(f.root, 'subject.txt'), 'Independent context edit\n');
@@ -404,10 +479,10 @@ for (const interleaved of [true, false]) {
     const f = fixture(t);
     const store = new RunStore(f.root, { create: true });
     const actor = { host: 'codex', session: 'controller' };
-    store.create({ objective: f.requirements, authority: 'User', controller: actor, tasks: [{ id: f.taskId, title: 'Work', agreement: { source: 'User', outcome: f.requirements } }] });
-    const act = request => execute(f.root, { actor, revision: store.read().revision, taskId: f.taskId, ...request });
+    store.create({ objective: f.requirements, authority: 'User', controller: actor, controllerClaim: fixtureControllerClaim(actor), tasks: [{ id: f.taskId, title: 'Work', agreement: { source: 'User', outcome: f.requirements } }] });
+    const act = request => executeWithFixtureController(f.root, { actor, revision: store.read().revision, taskId: f.taskId, ...request });
     const receiptPath = result => path.relative(f.root, result.receiptFile).split(path.sep).join('/');
-    const dispatch = (kind, assigned, output) => execute(f.root, { action: 'dispatch', actor, revision: store.read().revision, taskId: f.taskId, review: { ...f, kind, findings: assigned } }, { runAgent: options => mockAgent(options, DIMENSIONS.code, { findings: output, session: kind === 'skeptic' ? 'skeptic-session' : 'lead-session' }) });
+    const dispatch = (kind, assigned, output) => executeWithFixtureController(f.root, { action: 'dispatch', actor, revision: store.read().revision, taskId: f.taskId, review: { ...f, kind, findings: assigned } }, { runAgent: options => mockAgent(options, DIMENSIONS.code, { findings: output, session: kind === 'skeptic' ? 'skeptic-session' : 'lead-session' }) });
     try {
       const claims = ['first', 'second'].map(id => ({ id, severity: 'important', required: true, consequence: 'Fixture boundary needs correction', evidence: 'Concrete fixture branch' }));
       const lead = await dispatch('code', [], claims);
@@ -583,14 +658,14 @@ test('rejected initial bases cannot pin an unusable cumulative scope', async t =
   const f = fixture(t);
   const store = new RunStore(f.root, { create: true });
   const actor = { host: 'codex', session: 'controller' };
-  store.create({ objective: f.requirements, authority: 'User', controller: actor, tasks: [{ id: f.taskId, title: 'Work', agreement: { source: 'User', outcome: f.requirements } }] });
+  store.create({ objective: f.requirements, authority: 'User', controller: actor, controllerClaim: fixtureControllerClaim(actor), tasks: [{ id: f.taskId, title: 'Work', agreement: { source: 'User', outcome: f.requirements } }] });
   try {
     for (const baseSha of ['invalid', 'f'.repeat(40)]) {
-      await assert.rejects(execute(f.root, { action: 'dispatch', actor, revision: store.read().revision, taskId: f.taskId, review: { ...f, baseSha } }, { runAgent: mockAgent }));
+      await assert.rejects(executeWithFixtureController(f.root, { action: 'dispatch', actor, revision: store.read().revision, taskId: f.taskId, review: { ...f, baseSha } }, { runAgent: mockAgent }));
       assert.equal(store.read().baseSha, undefined);
       assert.equal(store.read().workers.length, 0);
     }
-    const result = await execute(f.root, { action: 'dispatch', actor, revision: store.read().revision, taskId: f.taskId, review: f }, { runAgent: mockAgent });
+    const result = await executeWithFixtureController(f.root, { action: 'dispatch', actor, revision: store.read().revision, taskId: f.taskId, review: f }, { runAgent: mockAgent });
     assert.equal(result.receipt.status, 'complete');
     assert.equal(store.read().baseSha, f.baseSha);
   } finally { store.close(); }
@@ -601,25 +676,25 @@ for (const changedId of ['current', 'earlier']) {
     const f = fixture(t);
     const store = new RunStore(f.root, { create: true });
     const actor = { host: 'codex', session: 'controller' };
-    store.create({ objective: 'Accepted fixture outcomes', authority: 'User', controller: actor, tasks: ['earlier', 'current'].map(id => ({ id, title: id, agreement: { source: 'User', outcome: 'Original ' + id } })) });
+    store.create({ objective: 'Accepted fixture outcomes', authority: 'User', controller: actor, controllerClaim: fixtureControllerClaim(actor), tasks: ['earlier', 'current'].map(id => ({ id, title: id, agreement: { source: 'User', outcome: 'Original ' + id } })) });
     store.update(actor, store.read().revision, 'fixture-prior-work', state => { state.tasks[0].status = 'complete'; });
     let start;
     let release;
     const started = new Promise(resolve => { start = resolve; });
     const paused = new Promise(resolve => { release = resolve; });
     try {
-      const pending = execute(f.root, { action: 'dispatch', actor, revision: store.read().revision, taskId: 'current', review: { ...f, kind: 'code' } }, { runAgent: async options => {
+      const pending = executeWithFixtureController(f.root, { action: 'dispatch', actor, revision: store.read().revision, taskId: 'current', review: { ...f, kind: 'code' } }, { runAgent: async options => {
         assert.equal(options.prompt.includes('Newly required behavior'), false);
         start();
         await paused;
         return mockAgent(options);
       } });
       await started;
-      await execute(f.root, { action: 'block', actor, revision: store.read().revision, taskId: changedId, blocker: { kind: 'user-decision', reason: 'Consequential behavior needs clarification', recoveryAttempted: 'Inspected actual boundary' } });
-      await execute(f.root, { action: 'unblock', actor, revision: store.read().revision, taskId: changedId, evidence: 'User explicitly confirmed the revised outcome', updatedOutcome: 'Newly required behavior' });
+      await executeWithFixtureController(f.root, { action: 'block', actor, revision: store.read().revision, taskId: changedId, blocker: { kind: 'user-decision', reason: 'Consequential behavior needs clarification', recoveryAttempted: 'Inspected actual boundary' } });
+      await executeWithFixtureController(f.root, { action: 'unblock', actor, revision: store.read().revision, taskId: changedId, evidence: 'User explicitly confirmed the revised outcome', updatedOutcome: 'Newly required behavior' });
       release();
       const result = await pending;
-      await assert.rejects(execute(f.root, { action: 'review', actor, revision: store.read().revision, taskId: 'current', receipt: path.relative(f.root, result.receiptFile).split(path.sep).join('/') }), { code: 'stale-commitments' });
+      await assert.rejects(executeWithFixtureController(f.root, { action: 'review', actor, revision: store.read().revision, taskId: 'current', receipt: path.relative(f.root, result.receiptFile).split(path.sep).join('/') }), { code: 'stale-commitments' });
       assert.equal(store.read().tasks[1].reviews.length, 0);
     } finally { release?.(); store.close(); }
   });
@@ -630,10 +705,10 @@ for (const kind of ['docs', 'lore']) {
     const f = fixture(t);
     const actor = { host: 'codex', session: 'controller' };
     const store = new RunStore(f.root, { create: true });
-    store.create({ objective: 'Assess the standalone artifact', authority: 'User requested standalone maintenance', controller: actor, tasks: [{ id: f.taskId, title: 'Standalone maintenance', kind, agreement: { source: 'User', outcome: 'Review the requested artifact and retain any instruction approval as pending' } }] });
-    const act = request => execute(f.root, { actor, revision: store.read().revision, taskId: f.taskId, ...request });
+    store.create({ objective: 'Assess the standalone artifact', authority: 'User requested standalone maintenance', controller: actor, controllerClaim: fixtureControllerClaim(actor), tasks: [{ id: f.taskId, title: 'Standalone maintenance', kind, agreement: { source: 'User', outcome: 'Review the requested artifact and retain any instruction approval as pending' } }] });
+    const act = request => executeWithFixtureController(f.root, { actor, revision: store.read().revision, taskId: f.taskId, ...request });
     const assess = async () => {
-      const result = await execute(f.root, { action: 'dispatch', actor, revision: store.read().revision, taskId: f.taskId, review: { ...f, kind: 'code' } }, { runAgent: options => mockAgent(options) });
+      const result = await executeWithFixtureController(f.root, { action: 'dispatch', actor, revision: store.read().revision, taskId: f.taskId, review: { ...f, kind: 'code' } }, { runAgent: options => mockAgent(options) });
       await act({ action: 'review', receipt: path.relative(f.root, result.receiptFile).split(path.sep).join('/') });
     };
     try {

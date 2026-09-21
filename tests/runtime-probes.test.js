@@ -8,7 +8,7 @@ const test = require('node:test');
 const { randomUUID } = require('node:crypto');
 const { runProbe } = require('../internal/runtime/probes');
 const { snapshot } = require('../internal/runtime/evidence');
-const { execute } = require('../internal/runtime/cli');
+const { fixtureControllerClaim, executeWithFixtureController } = require('./fixtures/controller-claim');
 const { RunStore } = require('../internal/runtime/store');
 const { DIMENSIONS } = require('../internal/runtime/lifecycle');
 
@@ -52,7 +52,7 @@ for (const withSelectedArtifact of [false, true]) {
     const store = new RunStore(root, { create: true });
     t.after(() => { store.close(); fs.rmSync(root, { recursive: true, force: true }); });
     const actor = { host: 'claude', session: 'controller' };
-    store.create({ objective: 'Verify the private probe path', authority: 'User test request', controller: actor, tasks: [{ id: 'work', title: 'Work', agreement: { source: 'User', outcome: 'Canonical inputs remain untouched while independent probes execute' } }] });
+    store.create({ objective: 'Verify the private probe path', authority: 'User test request', controller: actor, controllerClaim: fixtureControllerClaim(actor), tasks: [{ id: 'work', title: 'Work', agreement: { source: 'User', outcome: 'Canonical inputs remain untouched while independent probes execute' } }] });
     const review = { kind: 'code', baseSha, artifactPaths: withSelectedArtifact ? ['.tmp/material.txt'] : [], requirements: 'Canonical inputs remain untouched', rules: 'Independent reviewer cannot modify canonical project inputs.', candidates: [{ host: 'claude', model: 'claude-fable-5-1', effort: 'high' }] };
     const selectedCheck = withSelectedArtifact ? "const assert = require('node:assert/strict');\nassert.equal(fs.readFileSync('.tmp/material.txt', 'utf8').trim(), 'Explicit deciding material');\nassert.equal(fs.existsSync('.tmp/unrelated.txt'), false);\n" : '';
     const probe = { id: 'mutation', purpose: 'Observe behavior before and after a private fixture mutation', executable: process.execPath, args: ['probe.cjs'], timeoutMs: 10000, files: [{ path: 'probe.cjs', content: "const fs = require('node:fs');\n" + selectedCheck + "const before = require('./answer.cjs');\nfs.writeFileSync('answer.cjs', 'module.exports = 42;\\n');\nconsole.log(JSON.stringify({ before, after: 42 }));\n" }] };
@@ -70,15 +70,15 @@ for (const withSelectedArtifact of [false, true]) {
       fs.writeFileSync(path.join(options.artifacts, 'events.jsonl'), events.map(event => JSON.stringify(event)).join('\n') + '\n');
       return { host: options.host, model: options.model, effort: options.effort, session, attributionVerified: true, status: 'complete', output, tokens: 0 };
     };
-    const dispatch = async (complete, hasEvidence = complete) => execute(root, { action: 'dispatch', actor, revision: store.read().revision, taskId: 'work', review }, { runAgent: agent(complete, hasEvidence) });
+    const dispatch = async (complete, hasEvidence = complete) => executeWithFixtureController(root, { action: 'dispatch', actor, revision: store.read().revision, taskId: 'work', review }, { runAgent: agent(complete, hasEvidence) });
     const first = await dispatch(false);
     assert.equal(first.receipt.status, 'incomplete');
-    await execute(root, { action: 'probe', actor, revision: store.read().revision, taskId: 'work', receipt: path.relative(root, first.receiptFile).split(path.sep).join('/'), probeId: 'mutation' });
+    await executeWithFixtureController(root, { action: 'probe', actor, revision: store.read().revision, taskId: 'work', receipt: path.relative(root, first.receiptFile).split(path.sep).join('/'), probeId: 'mutation' });
     assert.equal(fs.readFileSync(path.join(root, 'answer.cjs'), 'utf8'), 'module.exports = 41;\n');
     const second = await dispatch(true);
     assert.equal(second.receipt.status, 'complete');
     assert.equal(second.receipt.probes.length, 0);
-    const act = request => execute(root, { actor, revision: store.read().revision, taskId: 'work', ...request });
+    const act = request => executeWithFixtureController(root, { actor, revision: store.read().revision, taskId: 'work', ...request });
     const importReview = result => act({ action: 'review', receipt: path.relative(root, result.receiptFile).split(path.sep).join('/') });
     const check = () => act({ action: 'check', check: { name: 'Current fixture verification', executable: process.execPath, args: ['--version'], paths: ['answer.cjs', 'README.md'] } });
     await importReview(second);
