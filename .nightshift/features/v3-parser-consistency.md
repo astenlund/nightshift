@@ -26,6 +26,8 @@ Characterize each remaining difference before changing it. Verify malformed and 
 
 Coordinate with [overlapping-root collection](../bugs/overlapping-markdown-root-deduplication.md) and [invalid template instructions](../bugs/init-backlog-parser-invalid-empty-requires.md).
 
+The [customized backlog repair feature](v3-setup-compatibility.md) owns the approved lettered-list compatibility behavior: compact simple flat lists into inline lettered items and preserve hierarchy around nested content. Its [FeatherPod incident](../reports/inbox-triage-20260921.md#unwrapping-collapses-lettered-workflow-steps) supplies the concrete case. Coordinate scanner recognition and ambiguity handling there; this cross-reference does not broaden the supported grammar by itself.
+
 ## Triage and provenance
 
 Selected for tracking during the 2026-09-20 to 2026-09-21 triage. Related obligations share this outcome while retaining their own deciding cases:

@@ -140,11 +140,13 @@ Add to `skills/handover/SKILL.md`, directly after the sentence about settling kn
 
 **Requires:** none.
 
-### Ready selection proceeds to implementation without asking where the work runs
+### Continue agreed Ready work in the current session
 
 Reported from a `/ready` run in this repository on 2026-09-11. After the user picked two entries and the agent produced an agreed readback, the agent closed by asking whether to hand the selection to Nightshift or implement it in the session. The user's direction is that a selection plus agreed readback is the go-ahead for direct implementation in the session, and that a handover happens only when the user says so; asking which is ceremony that costs a turn.
 
-Revise `skills/ready/SKILL.md` so that once a selection is agreed the agent proceeds to implementation in the session unless the user hands over, and keep the readback itself free of the handover question. The behavior is model-owned, so check the result with an installed-host probe.
+The [separate-task incident](reports/inbox-triage-20260921.md#ready-selection-prompts-an-unnecessary-separate-task-choice) recurred in this repository on 2026-09-21 with bound version 3.2.0. After selection and scope readback, the controller asked whether work should continue in the current task or a separate task. The user had requested no new task; the question caused an unnecessary clarification exchange. No separate task was created. The controller's account that it confused execution context with a new conversation is a hypothesis, not an independently established cause.
+
+Revise `skills/ready/SKILL.md` so that once a selection and scope readback are agreed the agent proceeds to implementation in the current session unless the user directs otherwise, and keep the readback itself free of unsolicited handover or separate-task questions. Selecting an item still starts investigation and readback; agreement on scope and explicit handover remain distinct decisions. The behavior is model-owned, so verify ordinary in-session continuation and explicit user-directed handover or new-task cases with installed-host evidence.
 
 **Requires:** none.
 

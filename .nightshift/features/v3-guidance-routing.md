@@ -16,7 +16,9 @@ The shipped deterministic setup supported canonical guidance ownership, includin
 
 ## Evidence and limits
 
-`internal/setup.js` implements migration inventory, references and index templates; `excludedReference` excludes root instruction files from automatic rewriting. `skills/init-backlog/SKILL.md` reserves instruction edits for separately assessed proposals. This is a missing supported setup flow, not authority to overwrite guidance.
+`internal/setup.js` implements migration inventory, references and index templates; `excludedReference` excludes root instruction files from automatic rewriting. `skills/init-backlog/SKILL.md` reserves changes beyond mechanical authorized references for separately assessed proposals. The unconditional code exclusion therefore also omits mechanical root references. This is a missing supported setup flow, not authority to overwrite guidance.
+
+The [FeatherPod migration incident](../reports/inbox-triage-20260921.md#migration-leaves-root-backlog-references-unchanged) supplies a concrete case: installed 3.2.1 moved 42 backlog files and reported completion while ordinary tracked AGENTS.md still named the old indexes, histories and record directories; CLAUDE.md imported AGENTS.md. The source report records a later manual repair and no backlog content loss. Current code confirms the unconditional exclusion; the original invocation was not replayed during triage.
 
 The [independent shipped-capability audit](../reports/pre-v3-shipped-capability-audit-20260921.md) distinguishes actual code/probe evidence, instruction policy and unverified installed-host behavior. No capability in this entry is declared delivered by its restoration to the backlog.
 
@@ -25,6 +27,8 @@ The [independent shipped-capability audit](../reports/pre-v3-shipped-capability-
 Settle the supported discovery inputs and traversal limits, conflict handling and proposal/application boundary. Verify imports, custom instruction names, missing files, conflicting owners, exhausted discovery and both installed hosts.
 
 Include user-facing ownership decisions and bounded traversal. The separate [current-home inspection bug](../bugs/setup-current-home-inspection.md) owns its concrete detection failure; observed facts must remain distinct from proposed changes.
+
+Include the FeatherPod case in acceptance: migration of indexes, histories and record directories with literal references in a canonical root instruction file and an unchanged import adapter. Reconcile mechanical authorized reference repair with the proposal boundary for broader guidance edits, and ensure completion reporting exposes any unresolved references.
 
 ## Triage and provenance
 

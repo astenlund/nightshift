@@ -14,11 +14,11 @@ Introduce one BACKLOG.md meta-index linking the four backlog indexes and holding
 
 ### [Restore setup guidance discovery and instruction routing](features/v3-guidance-routing.md)
 
-Restore canonical instruction-source discovery and approved backlog guidance updates on both hosts, with bounded traversal and explicit handling of conflicting or missing sources. The v3 setup currently relocates files and scaffolds indexes but does not expose the earlier guidance-resolution flow.
+Restore canonical instruction-source discovery and approved backlog guidance updates on both hosts, with bounded traversal and explicit handling of conflicting or missing sources. Include the reported migration that left literal root instruction references unchanged after moving backlog files. The v3 setup currently relocates files and scaffolds indexes but does not expose the earlier guidance-resolution flow.
 
 ### [Restore customized backlog and legacy-guidance repair](features/v3-setup-compatibility.md)
 
-Restore scoped proposals and approved repairs for customized backlog content and legacy guidance. Preserve user content, identify ambiguity and keep the repair boundary explicit.
+Restore scoped proposals and approved repairs for customized backlog content and legacy guidance. Preserve user content, identify ambiguity and keep the repair boundary explicit. Include compact inline conversion of simple lettered lists while preserving hierarchy when items contain nested content, coordinated with parser consistency.
 
 ### [Define and preserve consequential filesystem metadata](features/v3-filesystem-metadata.md)
 
