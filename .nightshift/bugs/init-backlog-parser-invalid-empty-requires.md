@@ -1,6 +1,32 @@
-> V2 design/diagnostic archive. The agreed disposition and surviving needs are recorded in [MIGRATION_STATUS.md](../MIGRATION_STATUS.md). Current implementation is governed by [the v3 MVP](../features/nightshift-v3.md); this historical design is not a separate active work item.
-
 # Init-backlog templates prescribe parser-invalid empty Requires syntax
+
+## Current evidence
+
+Current feature and bug template archive-cleanup prose still prescribes bare Requires: none., while the parser recognizes the bold **Requires:** label. Fresh scaffold success does not exercise the invalid later edit. The independent audit confirms this retained defect remains.
+
+Evidence was examined during the 2026-09-20 migration reconciliation and [independent shipped-capability audit](../reports/pre-v3-shipped-capability-audit-20260921.md); the code baseline was f032030, plugin 3.2.0. Native-host behavior is not inferred from deterministic probes.
+
+## Required outcome
+
+Make every current shipped empty-dependency instruction use the parser-valid complete line. Keep producer and consumer consistent without changing the established dependency grammar.
+
+## Verification and related work
+
+Validate the actual retained template instructions against the parser and inspect sibling guidance. Historical root-guidance paths below are provenance; they are not proof that removed assets still exist.
+
+Coordinate with [shared parser maintenance](../features/v3-parser-consistency.md).
+
+## Triage
+
+The user selected tracking during migration triage. The source decision and its scope remain recorded:
+
+- [Init-backlog templates prescribe parser-invalid empty Requires syntax](../reports/v3-migration-followups-20260920.md#init-backlog-templates-prescribe-parser-invalid-empty-requires-syntax).
+
+Tracking is not implementation authority.
+
+## Historical diagnosis
+
+The earlier diagnosis follows for provenance. References to removed assets and the old controller are historical; the current outcome above governs the retained repair.
 
 Bug: shipped init-backlog guidance tells maintainers to write `Requires: none.` after removing the final dependency, while the ready parser recognizes only a line beginning with `**Requires:**`.
 

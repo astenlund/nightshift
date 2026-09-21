@@ -4,6 +4,94 @@ V2 entries are preserved in [the historical index](migration/v2/BUGS.md) and [MI
 
 ## Current
 
+### [Setup unwrap can lose existing backlog content after a partial write](bugs/setup-unwrap-partial-write-data-loss.md)
+
+The independent actual init-backlog CLI probe injected ENOSPC during an unwrap write. An existing 115-byte backlog file became 6 bytes, no recovery copy remained, and a subsequent run succeeded with no ready entries, errors or notices. The path delegates through unwrapBacklog to stableRewriteFile, which truncates the only target before writing.
+
+Make supported mechanical repair recoverable after partial writes and prevent a truncated retry from being reported as a clean empty backlog. Preserve original bytes and owned recovery evidence through failure without overwriting unrelated user changes. Exercise partial writes through the actual setup/unwrap entry, interruption at each durable write boundary, failed recovery and rerun. Verify preserved content and honest incomplete status; successful normal unwrap tests do not establish these paths. [The report](bugs/setup-unwrap-partial-write-data-loss.md) preserves evidence and related work. Tracking does not authorize implementation.
+
+**Requires:** none.
+
+### [Interrupted template creation is accepted as a complete existing file](bugs/setup-partial-template-recovery.md)
+
+The audit partial-template probe injected a failed FEATURES.md write leaving only "# Feat". On retry initialize skipped the existing file, created the other targets and reported completion with no parser error or notice.
+
+Recognize and recover owned incomplete template creation instead of accepting existence as completion. Preserve genuinely customized pre-existing content and refuse ambiguous ownership rather than overwriting it. Cover partial creation, response loss, retry, changed partial output, genuine customized content and unavailable recovery evidence. Keep this new-file failure distinct from damage to an existing file during unwrap. [The report](bugs/setup-partial-template-recovery.md) preserves evidence and related work. Tracking does not authorize implementation.
+
+**Requires:** none.
+
+### [Exploring and Ready omit explicit parser problem reporting requirements](bugs/exploring-parser-diagnostics.md)
+
+The shipped-feature audit found that Exploring no longer explicitly requires presentation of structuralErrors, notices and indexes.missing, or conditions its empty-draft message on a clean parse. Ready also lacks an explicit missing-index requirement. Parser data and existing visibility tests survive; current installed-host rendering of these branches was not tested.
+
+Restore complete, truthful problem-channel reporting in the skill instructions while preserving complete draft visibility and the distinction between failed parsing, missing indexes and a genuinely empty set. Use appropriate installed-host evidence for parser failure, structural errors, notices, missing indexes and clean empty results on both hosts. The earlier Ready link-rendering campaign does not establish Exploring diagnostic behavior. [The report](bugs/exploring-parser-diagnostics.md) preserves evidence and related work. Tracking does not authorize implementation.
+
+**Requires:** none.
+
+### [Migration turns private exclusions into shared ignore rules](bugs/migration-private-ignore-source.md)
+
+The audit private-ignore-source probe began with .git/info/exclude owning the legacy file exclusion. After migration the new destination was ignored by a root .gitignore rule. The ignored boolean survived, but its private storage choice did not.
+
+Preserve the effective private/shared policy choice when relocating backlog content. Do not convert clone-local exclusions into shared repository rules merely to restore an ignored flag. Cover local, shared and global sources, masking parent rules, tracked exceptions, interrupted relocation and reruns. Distinguish preservation of an existing choice from choosing a destination for new exclusions. [The report](bugs/migration-private-ignore-source.md) preserves evidence and related work. Tracking does not authorize implementation.
+
+**Requires:** none.
+
+### [New setup templates ignore effective project newline policy](bugs/setup-template-newline-policy.md)
+
+In the audit git-newline-policy probe Git reported text:set and eol:lf, but new FEATURES.md bytes used CRLF. Current initialize converts template text unconditionally to CRLF.
+
+Materialize missing templates according to the effective supported project newline policy, keeping logical template content and existing files intact. Resolve genuine ambiguity rather than silently overriding an established convention. Cover explicit LF and CRLF policies, defaults, existing files, missing targets and interruption. This concerns new-file creation, not normalization of an existing mixed-ending file. [The report](bugs/setup-template-newline-policy.md) preserves evidence and related work. Tracking does not authorize implementation.
+
+**Requires:** none.
+
+### [Setup inspection omits current backlog completeness](bugs/setup-current-home-inspection.md)
+
+The audit existing-current-inspection probe used malformed .nightshift/FEATURES.md. Inspect returned backlog:null because no legacy files would move; apply later rejected it after creating other missing files. Current-home missing targets and repair opportunities are not part of the migration-only inspection result.
+
+Inspect the current supported scaffold and expose its completeness and parser problems before apply. Keep observed project facts separate from repair proposals and make the reduced meaning of migration status explicit. Cover fresh, partial and existing current-home catalogs, malformed entries, missing targets, no legacy inventory and failed probes. Validate current state before dependent writes; do not treat creation of owned inspection recovery storage as inherently a product defect. [The report](bugs/setup-current-home-inspection.md) preserves evidence and related work. Tracking does not authorize implementation.
+
+**Requires:** none.
+
+### [Setup does not diagnose actual pre-v3 recovery residue](bugs/setup-legacy-recovery-residue.md)
+
+The audit legacy-recovery-residue probe left old root setup lock/election names and .tmp/revise-state.md unclassified while inspect and initialize returned normally. Its sentinels establish missing diagnosis, not a live old writer. The existing unfinished-run migration fixture constructs current SQLite state at a legacy path, not real pre-v3 state.
+
+Identify relevant legacy recovery formats before dependent migration and define safe preservation, supported transition or explicit refusal. Never grant old records new write authority merely because their names are familiar. Use real historical record shapes for missing, complete, interrupted, conflicting and potentially live-owner cases. Preserve evidence and require sound ownership before transition or cleanup; keep unverified historical state explicit. [The report](bugs/setup-legacy-recovery-residue.md) preserves evidence and related work. Tracking does not authorize implementation.
+
+**Requires:** none.
+
+### [Fresh setup does not distinguish non-Git roots from broken Git metadata](bugs/setup-repository-classification.md)
+
+The independent fresh-non-git probe succeeded but wrote root and setup Git policy files. A malformed .git indirection also succeeded. The probes used GIT_CEILING_DIRECTORIES so the containing checkout could not be mistaken for the fixture repository.
+
+Distinguish absent Git from failed or malformed repository discovery before applying Git policy. Preserve supported fresh non-Git initialization while keeping unusable Git metadata an explicit diagnosis. Cover genuine non-Git roots, normal repositories, broken .git indirections, unavailable Git and enclosing repositories. Do not conflate this fresh-path classification gap with legacy non-Git migration. [The report](bugs/setup-repository-classification.md) preserves evidence and related work. Tracking does not authorize implementation.
+
+**Requires:** none.
+
+### [Legacy backlog migration fails in non-Git projects](bugs/setup-nongit-migration.md)
+
+The independent legacy-non-git probe failed with git-failed when a valid legacy FEATURES.md was present; the source remained unchanged. Fresh non-Git initialization succeeds, correcting the earlier blanket missing-support claim.
+
+Support safe legacy backlog migration without a Git repository, preserving content and references without requiring Git index or ignore operations. The user explicitly narrowed restoration to this migration gap. Cover fresh and existing non-Git roots, migration conflicts, interrupted relocation and byte preservation. Repository detection and unnecessary policy-file writes are separate tracked behavior. [The report](bugs/setup-nongit-migration.md) preserves evidence and related work. Tracking does not authorize implementation.
+
+**Requires:** none.
+
+### [Init-backlog templates prescribe parser-invalid empty Requires syntax](bugs/init-backlog-parser-invalid-empty-requires.md)
+
+Current feature and bug template archive-cleanup prose still prescribes bare Requires: none., while the parser recognizes the bold **Requires:** label. Fresh scaffold success does not exercise the invalid later edit. The independent audit confirms this retained defect remains.
+
+Make every current shipped empty-dependency instruction use the parser-valid complete line. Keep producer and consumer consistent without changing the established dependency grammar. Validate the actual retained template instructions against the parser and inspect sibling guidance. Historical root-guidance paths below are provenance; they are not proof that removed assets still exist. [The report](bugs/init-backlog-parser-invalid-empty-requires.md) preserves evidence and related work. Tracking does not authorize implementation.
+
+**Requires:** none.
+
+### [Overlapping Markdown roots can lose or duplicate collected files](bugs/overlapping-markdown-root-deduplication.md)
+
+A fresh two-file collector probe emitted a repeated direct file twice, duplicated the index when the root was repeated and omitted the child record when its directory preceded the parent root. Parent-before-child and normal single-root collection retained both files.
+
+Return every eligible file once while preserving its accepted authority. Track traversal coverage separately from emitted-file identity so deduplication cannot create omissions. Cover repeated files and roots, both nested-root orders, aliases and ordinary single-root behavior. Preserve the relevant mutation authority and compare complete outputs, not only counts. [The report](bugs/overlapping-markdown-root-deduplication.md) preserves evidence and related work. Tracking does not authorize implementation.
+
+**Requires:** none.
+
 ### Missing session activation blocks agreed work until restart
 
 Observed once on 2026-09-18 in this repository on Claude Code with installed Nightshift 3.1.1. After `/clear`, Ready preparation and parsing succeeded, but creating the subsequently agreed attended run was refused because the native session had no recorded activation for the current hook generation. Status reported the hooks configured, enabled and usable, while activation was absent for this window; another window had an activation for the same registration and generation. Quitting and resuming restored activation, and the unchanged create request succeeded with the same session ID. The missing activation and recovery are recorded observations; whether `/clear` caused the failure, whether the hook ran at startup or clear, and whether it failed or its record was removed remain unverified. The detailed incident and evidence limitations are preserved in [the report](bugs/missing-session-activation-blocks-agreed-work.md).
@@ -32,6 +120,8 @@ Let settled evidence about host behavior reach the next reviewer across edits th
 
 Recurred in run `d4a44daa-96be-4ac4-bcaa-d16d8596584f` on 2026-09-18 to 19, the handover transition and morning report delivery, which spent 14,869,844 review tokens across 18 dispatches, summed from that run's review receipts, and 14,445,999 live-verification tokens on a change of roughly 400 lines, with four already tracked defects firing during it. Here, supplying an evidence digest as a selected artifact changed the reviewed inputs, so the probe records an incomplete assessment had just requested were not attached to the next dispatch, and an earlier incomplete assessment's probes were lost the same way after a repair.
 
+The related [decision-and-experiment evidence feature](features/v3-review-decision-context.md) owns the broader delivery of relevant prior decisions and conclusions to later reviews. This bug remains the concrete owner of host-probe invalidation behavior; neither entry is declared fixed by tracking the other.
+
 **Requires:** none.
 
 ### Run ownership is locked to the creating host session
@@ -40,7 +130,9 @@ Observed on 2026-09-16 in this repository on the development runtime at the 3.1.
 
 The immediate case was resolved outside the supported surface. A one-off script, retained in the ignored `.tmp/switch-run-host.js`, went through `RunStore.update` with the recorded previous owner as actor, so the change was revisioned and written to the history table, and it refuses to run unless the run is stopped, matches the expected previous owner and has no active workers. The Claude Code auto-mode classifier first denied it as a shared-resource modification; the run was then adopted under explicit user authority, as [the acceptance report](reports/automatic-plugin-preparation-20260915.md) records. That script is the interim workaround, not a supported operation.
 
-Let a stopped run with no active workers be adopted by another host session under explicit user authority, recording the previous owner, the adopting identity and that authority, and treating the new identity as the run's controller from then on. Settle these before choosing a shape. Controller identity also carries the negative half of independence attribution: receipt import in `internal/runtime/review.js` rejects a receipt whose session equals the controller's, and the lifecycle requires reviewer and skeptic sessions to differ from it, so a transfer changes which session counts as non-independent from that point. Already imported assessments appear unaffected, since `reviewGate` does not re-derive attribution from the current controller, but that reading comes from static tracing, not an executed case. The observed run was `resourceMode: development` with `resources: null`; a bound run also passes the `bound-runtime-required` check in the CLI, so its transfer constraints are likely different and were not assessed. Whether the boundary is an explicit operation, an extension of `resume` or something narrower is open. Transferring a run that is still active, with workers alive, is the broader sibling kept in [V3 continuations](features/v3-continuations.md) and is outside this entry. Verify adoption from another host and from a fresh session on the same host, refusal while workers are active or without user authority, the history record, and independence attribution for assessments dispatched after the transfer. Original inbox report: `2026-09-16-run-ownership-locked-to-creating-host-session.md`. Tracking does not authorize implementation.
+Let a stopped run with no active workers be adopted by another host session under explicit user authority, recording the previous owner, the adopting identity and that authority, and treating the new identity as the run's controller from then on. Settle these before choosing a shape. Controller identity also carries the negative half of independence attribution: receipt import in `internal/runtime/review.js` rejects a receipt whose session equals the controller's, and the lifecycle requires reviewer and skeptic sessions to differ from it, so a transfer changes which session counts as non-independent from that point. Already imported assessments appear unaffected, since `reviewGate` does not re-derive attribution from the current controller, but that reading comes from static tracing, not an executed case. The observed run was `resourceMode: development` with `resources: null`; a bound run also passes the `bound-runtime-required` check in the CLI, so its transfer constraints are likely different and were not assessed. Whether the boundary is an explicit operation, an extension of `resume` or something narrower is open. Transferring a run that is still active, with workers alive, is outside this entry and was declined during [migration triage](features/v3-continuations.md). Verify adoption from another host and from a fresh session on the same host, refusal while workers are active or without user authority, the history record, and independence attribution for assessments dispatched after the transfer. Original inbox report: `2026-09-16-run-ownership-locked-to-creating-host-session.md`. Tracking does not authorize implementation.
+
+During migration triage the user identified post-switch adoption as the real use case and declined active-controller transfer. The retained durable-run identity obligation is routed here, with accepted work and evidence preserved when another session adopts a safe, quiescent run. The earlier larger active-transfer proposal is not a prerequisite or an implementation mandate. The [recorded decision](reports/v3-migration-followups-20260920.md#durable-run-identity-and-concurrency-protection) preserves that distinction; any necessary adjustment to the stopped-versus-quiescent boundary must be settled in the design rather than inferred from this tracking update.
 
 **Requires:** none.
 
@@ -61,6 +153,8 @@ Observed during retained-release delivery in this repository, run `2a89bde5-9c0c
 Distinguish permission or capability recovery from consequential changes to the agreed engineering requirements. Preserve valid spec agreement and assessment evidence when only the ability to perform authorized work changes; continue to invalidate affected evidence when scope or requirements actually change. Verify both cases, including a permission-only review-export approval and a genuine change of commitments, without weakening ownership, approval or evidence-freshness checks. This is separate from the external approval rejection itself, tracked in [Review-transfer approval interrupts an authorized handover](#review-transfer-approval-interrupts-an-authorized-handover). Tracking does not authorize implementation.
 
 Recurred in run `d4a44daa-96be-4ac4-bcaa-d16d8596584f` on 2026-09-18 to 19, the handover transition and morning report delivery, which spent 14,869,844 review tokens across 18 dispatches, summed from that run's review receipts, and 14,445,999 live-verification tokens on a change of roughly 400 lines, with four already tracked defects firing during it. Here, `unblock` on a budget blocker, resolved by the user raising the live-verification allowance, reopened the accepted governing-spec task and staled the clean code assessment. It was partly legitimate, since the spec named the old allowance, but it cost a sixth whole-spec assessment and a further code cycle.
+
+The [agreement-continuity feature](features/v3-agreement-continuity.md) carries related qualified-assent, compatible wording, archival and repeated-revision acceptance cases. This bug retains its specific permission/capability recovery repair.
 
 **Requires:** none.
 
@@ -122,14 +216,6 @@ Observed on 2026-09-12 in `C:/Git/FeatherPod-Private`, run `288d395f-2cb9-4d7f-b
 The latest skeptic launch, `3afeb191-0666-4e50-b1a7-e12df1919817`, Codex session `01a0977a-28ce-7f43-b671-e3df366d79a3`, failed at `2026-09-12T21:18:11Z` after approximately 130 seconds of model-access retries with "stream disconnected before completion: Unable to verify model access right now. Please retry." Dispatch returned `unusable-review`, and runtime revision 91 showed no active workers. The controller collected the failure after the user's stall message and selected the other configured host for recovery. At the time of the report, the first task had passed 23 tests but a newly reported snapshot-remerge race still awaited independent validation; neither clean assessment nor completion was established.
 
 Investigate and repair continuation-state reconciliation after renewed handover and premature yielding with unfinished authorized work. Reconcile the native goal, durable queue and surviving workers before relying on unattended continuation, recover failed reviewers within the user's authority and limits, and distinguish user-resumed goals from automatic recovery. When the host cannot restore continuation, make that capability limitation and the required user action explicit rather than claiming autonomous recovery; continue independent authorized work that remains possible in the active turn. Verify the installed-host paths for a still-blocked goal, a manually resumed goal and failed workers, preserving existing stop and limit rules. Original inbox report: `2026-09-12-featherpod-autonomous-continuation-stall.md`. The preceding approval rejection is tracked in [Review-transfer approval interrupts an authorized handover](#review-transfer-approval-interrupts-an-authorized-handover); plugin-cache replacement is a separate incident.
-
-**Requires:** none.
-
-### Retained v3 continuation needs lack actionable backlog visibility
-
-Observed in this repository on 2026-09-12 when ready reported ten ready entries after a migration of 122 original work units. The migration ledger records 39 retired proposals and 83 retained needs, but marks retained needs as consolidated rather than individually distinguishing delivered work from unfinished work. FEATURES.md points to an Exploring V3 continuations umbrella, whose record sends other surviving needs back to the migration ledger. The ready parser reads active indexes, so retained needs represented only in that ledger cannot appear as individually actionable work. Consolidation is explicitly not delivery; the number of unfinished retained needs has not yet been established.
-
-Reconcile every retained need in MIGRATION_STATUS.md and V3-MIGRATION.md against MVP implementation and acceptance evidence. Restore unfinished needs to active tracking with explicit readiness, dependencies or unsettled design decisions, preserving useful grouping and source traceability. Record delivery only where evidence supports it, preserve retirement separately, and keep indexes and breakout records consistent. Verify the resulting visibility with the actual ready parser; do not promote all retained needs to ready automatically.
 
 **Requires:** none.
 

@@ -23,3 +23,5 @@ Autonomy comes first, quality second, and speed and economy third. Recovery must
 Warning signals, session discovery and messaging, checkpoint contents, trust boundaries, and recovery behavior need design and host verification. Automatic host relaunch is related work in [V3 continuations](v3-continuations.md); tracking Night Guard does not settle that policy or authorize implementation.
 
 The [acceptance report](../reports/v3-acceptance-272m-20260910.md) records the campaign that prompted this capture. The original idea and its multi-session and continuous-persistence refinements remain in the local `night-guard-reboot-watchdog` follow-up in `.tmp/v3-work-queue.json`.
+
+Automatic execution after host exit or restart is separately tracked in [host relaunch](v3-host-relaunch.md), selected during migration triage. Coordinate its recovery boundaries with checkpointing and shutdown handling here without treating a saved checkpoint as proof that execution restarted.

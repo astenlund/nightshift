@@ -1,6 +1,32 @@
-> V2 design/diagnostic archive. The agreed disposition and surviving needs are recorded in [MIGRATION_STATUS.md](../MIGRATION_STATUS.md). Current implementation is governed by [the v3 MVP](../features/nightshift-v3.md); this historical design is not a separate active work item.
-
 # Overlapping Markdown roots can lose or duplicate collected files
+
+## Current evidence
+
+A fresh two-file collector probe emitted a repeated direct file twice, duplicated the index when the root was repeated and omitted the child record when its directory preceded the parent root. Parent-before-child and normal single-root collection retained both files.
+
+Evidence was examined during the 2026-09-20 migration reconciliation and [independent shipped-capability audit](../reports/pre-v3-shipped-capability-audit-20260921.md); the code baseline was f032030, plugin 3.2.0. Native-host behavior is not inferred from deterministic probes.
+
+## Required outcome
+
+Return every eligible file once while preserving its accepted authority. Track traversal coverage separately from emitted-file identity so deduplication cannot create omissions.
+
+## Verification and related work
+
+Cover repeated files and roots, both nested-root orders, aliases and ordinary single-root behavior. Preserve the relevant mutation authority and compare complete outputs, not only counts.
+
+Coordinate with [shared parser maintenance](../features/v3-parser-consistency.md).
+
+## Triage
+
+The user selected tracking during migration triage. The source decision and its scope remain recorded:
+
+- [Overlapping Markdown roots can lose or duplicate collected files](../reports/v3-migration-followups-20260920.md#overlapping-markdown-roots-can-lose-or-duplicate-collected-files).
+
+Tracking is not implementation authority.
+
+## Historical diagnosis
+
+The earlier diagnosis follows for provenance. References to removed assets and the old controller are historical; the current outcome above governs the retained repair.
 
 Bug: Markdown collection can emit duplicate files or omit files when its inputs repeat or alias the same paths, or when one root contains another.
 

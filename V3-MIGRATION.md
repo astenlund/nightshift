@@ -744,6 +744,12 @@ Status: all five reports triaged and removed on 2026-09-07 after their contents 
 
 The reports are accounts from earlier sessions. Their execution histories, recurrence claims, cost figures, and counterfactual savings were not reproduced during this triage. Closing a report here means its substance is routed or its proposed legacy repair is retired, not that a runtime bug has been fixed. References in the inbox, ignore-shape, progress, and cell-reactivation feature captures now point to this durable record. Inbox clearing did not settle the MVP boundary; the agreed foundation above and the subsequent feature draft record the later scope and acceptance decisions.
 
+## Current capability reconciliation
+
+The [2026-09-20 accounting](.nightshift/reports/v3-capability-reconciliation-20260920.md) and [independent shipped-capability audit](.nightshift/reports/pre-v3-shipped-capability-audit-20260921.md) separate current support, partial work, verification gaps and deliberate replacement for the original 122 units and the separately shipped history. On 2026-09-21, all [63 follow-ups](.nightshift/reports/v3-migration-followups-20260920.md) had user decisions and applied tracking routes: 56 tracked, three skipped and four superseded targets. [MIGRATION_STATUS.md](.nightshift/MIGRATION_STATUS.md) links every original row to evidence or its selected destination.
+
+The user declined active-controller transfer, independent same-checkout runs and additional-platform verification, retaining post-switch adoption as the ownership use case. Automatic relaunch and the selected restoration work now have explicit feature entries. The visibility bug is closed as an accounting repair only; these dispositions neither implement missing capabilities nor rewrite the original migration history.
+
 ## Applied source tracking
 
 Applied during v3 implementation on 2026-09-07: the project-owned files moved to .nightshift, the four original active indexes were archived under .nightshift/migration/v2 with navigable references, and all 122 original work-unit dispositions were enumerated in [MIGRATION_STATUS.md](.nightshift/MIGRATION_STATUS.md). The active backlog now tracks the agreed MVP and its deferred extensions. This applies tracking decisions, not a claim of successful runtime acceptance or delivery; retained needs remain traceable and retirement is separate from shipping.

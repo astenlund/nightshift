@@ -1,6 +1,28 @@
-> V2 design/diagnostic archive. The agreed disposition and surviving needs are recorded in [MIGRATION_STATUS.md](../MIGRATION_STATUS.md). Current implementation is governed by [the v3 MVP](../features/nightshift-v3.md); this historical design is not a separate active work item.
+---
+name: init-backlog-ignore-shape-election
+description: Choose shared or clone-local destinations for new backlog exclusions
+metadata:
+  type: feature
+status: exploring
+---
 
 # Init-backlog ignore-shape election
+
+When new backlog exclusions are needed, let the user choose shared .gitignore rules or clone-local .git/info/exclude rules. Inspect effective policy first, preserve existing tracking and rule-source choices, and recognize the selected destination on reruns. This extends the separate fresh-scaffold track, ignore or defer feature.
+
+## Current v3 direction
+
+The user chose to track this retained proposal on 2026-09-20 during [migration triage](../reports/v3-migration-followups-20260920.md#init-backlog-ignore-shape-election). It remains unimplemented design work. The [fresh-scaffold choice](setup-tracking-choice.md) decides whether to track, ignore or defer; this feature decides where newly authorized exclusions belong. Tracking neither feature authorizes implementation.
+
+Use the actual tracked state and effective shared, private, global and parent-directory rules for backlog and applicable instruction files. Explain which effects are shared with other clones and which are local. Existing policy should be recognized rather than prompting again or converting a private choice to a shared one. A failed policy probe is uncertainty, not evidence that no rule exists.
+
+Settle whether the destination is chosen for the whole path set or per path, how mixed existing policies are handled, and what completion means when parent rules mask narrower rules. Support missing and empty ignore files, preserve unrelated content and conventions, and make interrupted application recoverable. A track or defer decision does not authorize an exclusion write.
+
+Verify both destinations, existing rule sources, tracked files, masking parent rules, missing and empty targets, repeated runs, probe failures and interrupted writes. Current setup primarily writes .gitignore through Setup.preservePolicies. The independent audit confirmed that ignored status can survive migration while a private rule source becomes shared; the linked preservation bug tracks that outcome.
+
+## Historical v2 proposal
+
+The original proposal and incident context follow for traceability. Its old module paths, mandatory plans-directory policy and controller mechanics are historical, not current v3 requirements. The current direction above and [agreed migration disposition](../../V3-MIGRATION.md#git-tracking-choices-and-concrete-defects) govern the retained outcome.
 
 Extends `/nightshift:init-backlog`'s track-versus-ignore election with a second choice: when the user elects to ignore rather than track, and the paths are not already ignored, the user picks which ignore shape to use, the tracked `.gitignore` or the clone-local `.git/info/exclude`.
 
@@ -34,3 +56,10 @@ The choice is presented only when it is live: the user has elected to ignore, an
 ## Verification
 
 Fixtures cover an ignore election in a clone with no existing rules under each shape, an election in a clone whose paths are already ignored by a repository-local rule, one already ignored by a private rule, a clone with a masking parent-directory rule (the election reports complete under the settled classifier semantics), a re-run over a clone that previously elected the private shape, and a track election (unchanged behavior). Every cautionary probe fails closed rather than classifying an unreadable git state as absence of a rule.
+
+## Applied migration triage
+
+Keep Git evidence gathering separate from policy assembly and preserve failed-probe uncertainty. The audit reproduced migration converting a private exclusion to a shared rule; [that preservation bug](../bugs/migration-private-ignore-source.md) has its own acceptance case. Choosing new exclusions is not proof that migration preserves an existing source.
+
+- [Separate Git-policy probes from policy assembly](../reports/v3-migration-followups-20260920.md#separate-git-policy-probes-from-policy-assembly).
+- [Init-backlog ignore-shape election](../reports/v3-migration-followups-20260920.md#init-backlog-ignore-shape-election).
