@@ -8,6 +8,10 @@ No active feature deliveries.
 
 ## Exploring
 
+### [Shared BACKLOG.md meta-index](features/backlog-meta-index.md)
+
+Introduce one BACKLOG.md meta-index linking the four backlog indexes and holding their shared instructions to avoid repetition. Include it in every hook that consumes those indexes. Settle its location, instruction ownership and migration of existing guidance before implementation.
+
 ### [Restore setup guidance discovery and instruction routing](features/v3-guidance-routing.md)
 
 Restore canonical instruction-source discovery and approved backlog guidance updates on both hosts, with bounded traversal and explicit handling of conflicting or missing sources. The v3 setup currently relocates files and scaffolds indexes but does not expose the earlier guidance-resolution flow.
