@@ -70,14 +70,6 @@ Hoist the two messages and the predicate beside `REMOVED_MESSAGE`, deciding whet
 
 **Requires:** none.
 
-### Paused strong gate pauses repair application
-
-Retrospective finding from run `c675a074-6431-46e2-85b7-e3b8616e9220`, confirmed by two independent assessments of the proposal. A repair batch larger than the repair it fixed was applied inside the revise-code lifecycle and left unreviewed while the strong reviewer was rate-limited, although an advisory reviewer was available and the cross-host strong substitute was the prescribed path. [The operating brief](../internal/workflow.md) already forbids applying a batch without a following strong assessment and names Fable and Astra interchangeable, but its assignment text lets a paused strong gate be read as pausing the gate while batches continue to be applied. The global review-loop routine was tightened separately, but the lifecycle is told not to consult that routine, so the fix for where recall failed belongs here.
-
-State in the brief's review-and-repair and model-role sections that a paused strong gate either pauses further repair application or triggers the interchangeable cross-host strong reviewer, and that an advisory read of a batch is never recorded as review coverage. Shipped guidance, so it takes its own version increase and assessment. Tracking does not authorize implementation.
-
-**Requires:** none.
-
 ### Codex inline-script guard parity
 
 On 2026-09-17 the user's global inline-script rule gained mechanical enforcement on Claude Code: a `PreToolUse` hook on the Bash and PowerShell tools refuses heredoc, pipe and inline script bodies, verified live in auto mode with a 48-case deterministic suite beside it. Codex sessions, including unattended Nightshift workers on Codex, have no equivalent and rely on the prose rule alone, which run `c675a074-6431-46e2-85b7-e3b8616e9220` showed is not recalled at typing time. Nightshift already registers Codex hooks through `internal/releases`; whether Codex hooks can refuse a tool call before it runs is unverified.
