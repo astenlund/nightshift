@@ -16,7 +16,7 @@ The user selected physical identity and safe destination binding, with filesyste
 
 ## Evidence and limits
 
-Current migration recovery checks existence and hashes, uses exclusive copying and preserves tested staged/working distinctions. The audit confirms some link and substitution guards while leaving full journal and artifact ownership unverified. Its separate unwrap and partial-template data-loss probes do not become fixed by this design entry.
+Current migration recovery checks existence and hashes, uses exclusive copying and preserves tested staged/working distinctions. The audit confirms some link and substitution guards while leaving full journal and artifact ownership unverified. The separate [unwrap data-loss repair](../reports/recoverable-unwrap-20260921.md) now supplies bounded recovery for mechanical unwrap; partial-template data loss and the broader migration ownership contract remain unfinished.
 
 The [independent shipped-capability audit](../reports/pre-v3-shipped-capability-audit-20260921.md) distinguishes actual code/probe evidence, instruction policy and unverified installed-host behavior. No capability in this entry is declared delivered by its restoration to the backlog.
 
@@ -24,7 +24,7 @@ The [independent shipped-capability audit](../reports/pre-v3-shipped-capability-
 
 Inventory actual artifacts and durable crash states, choose physical identity evidence, and keep validation distinct from its owning mutation. Verify partial creation, same-byte substitution, aliases, stale state, failure and deterministic retry. Preserve unrelated files and existing recovery evidence.
 
-Implement with the separate [unwrap data-loss](../bugs/setup-unwrap-partial-write-data-loss.md), [partial-template recovery](../bugs/setup-partial-template-recovery.md) and [legacy-residue diagnosis](../bugs/setup-legacy-recovery-residue.md) obligations. No old transaction schema is mandated.
+Preserve the delivered [unwrap recovery boundary](../specs/recoverable-unwrap.md) while addressing the separate [partial-template recovery](../bugs/setup-partial-template-recovery.md) and [legacy-residue diagnosis](../bugs/setup-legacy-recovery-residue.md) obligations. No old transaction schema is mandated.
 
 ## Triage and provenance
 

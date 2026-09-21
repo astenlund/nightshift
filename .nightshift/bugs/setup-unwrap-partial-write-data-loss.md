@@ -6,6 +6,10 @@ The independent actual init-backlog CLI probe injected ENOSPC during an unwrap w
 
 Evidence was examined during the 2026-09-20 migration reconciliation and [independent shipped-capability audit](../reports/pre-v3-shipped-capability-audit-20260921.md); the code baseline was f032030, plugin 3.2.0. Native-host behavior is not inferred from deterministic probes.
 
+## Resolution
+
+Implemented locally in candidate 3.2.2 on 2026-09-21. Original-byte recovery, writer ownership, safe retry and incomplete-state diagnostics are covered by the [governing spec](../specs/recoverable-unwrap.md) and [acceptance report](../reports/recoverable-unwrap-20260921.md). The evidence above describes the original defect; broader setup recovery remains separate.
+
 ## Required outcome
 
 Make supported mechanical repair recoverable after partial writes and prevent a truncated retry from being reported as a clean empty backlog. Preserve original bytes and owned recovery evidence through failure without overwriting unrelated user changes.

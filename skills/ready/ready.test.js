@@ -2370,7 +2370,8 @@ test('CLI reports nested traversal disappearance without claiming the backlog ro
     runCli(tmpRoot);
     const result = JSON.parse(stdout);
     assert.strictEqual(fs.statSync(backlogDir).isDirectory(), true, 'the backlog root remains present');
-    assert.strictEqual(process.exitCode, undefined);
+    assert.strictEqual(process.exitCode, 1);
+    assert.ok(result.structuralErrors.some(error => error.title === 'Unwrap recovery discovery'));
     assert.ok(result.notices.includes('backlog tree changed during traversal; retry; unlinked backlog files were not checked this run'));
     assert.strictEqual(Object.hasOwn(result, 'error'), false);
   } finally {
@@ -2408,7 +2409,8 @@ test('CLI reports an unreadable backlog directory as a controlled traversal noti
   try {
     runCli(tmpRoot);
     const result = JSON.parse(stdout);
-    assert.strictEqual(process.exitCode, undefined);
+    assert.strictEqual(process.exitCode, 1);
+    assert.ok(result.structuralErrors.some(error => error.title === 'Unwrap recovery discovery'));
     assert.ok(result.notices.includes('backlog tree could not be fully traversed (EACCES); retry; unlinked backlog files were not checked this run'));
     assert.strictEqual(Object.hasOwn(result, 'error'), false);
   } finally {

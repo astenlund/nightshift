@@ -592,7 +592,8 @@ test('the unwrap CLI preserves valid UTF-8, byte-order marks, and line endings',
       const completion = spawnSync(process.execPath, [path.join(__dirname, 'unwrap.js'), '--development', '--write', target], { encoding: 'utf8' });
 
       assert.equal(completion.status, 0);
-      assert.equal(completion.stderr, '');
+      const sqliteWarning = /\(node:\d+\) ExperimentalWarning: SQLite is an experimental feature and might change at any time\r?\n\(Use `node --trace-warnings \.\.\.` to show where the warning was created\)\r?\n/;
+      assert.equal(completion.stderr.replace(sqliteWarning, ''), '');
       assert.deepEqual(JSON.parse(completion.stdout), [{ file: target, wraps: 1, firstLine: 2, rewritten: true }]);
       assert.deepEqual(fs.readFileSync(target), fixture.after);
     }

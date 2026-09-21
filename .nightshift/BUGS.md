@@ -4,14 +4,6 @@ V2 entries are preserved in [the historical index](migration/v2/BUGS.md) and [MI
 
 ## Current
 
-### [Setup unwrap can lose existing backlog content after a partial write](bugs/setup-unwrap-partial-write-data-loss.md)
-
-The independent actual init-backlog CLI probe injected ENOSPC during an unwrap write. An existing 115-byte backlog file became 6 bytes, no recovery copy remained, and a subsequent run succeeded with no ready entries, errors or notices. The path delegates through unwrapBacklog to stableRewriteFile, which truncates the only target before writing.
-
-Make supported mechanical repair recoverable after partial writes and prevent a truncated retry from being reported as a clean empty backlog. Preserve original bytes and owned recovery evidence through failure without overwriting unrelated user changes. Exercise partial writes through the actual setup/unwrap entry, interruption at each durable write boundary, failed recovery and rerun. Verify preserved content and honest incomplete status; successful normal unwrap tests do not establish these paths. [The report](bugs/setup-unwrap-partial-write-data-loss.md) preserves evidence and related work. Tracking does not authorize implementation.
-
-**Requires:** none.
-
 ### [Interrupted template creation is accepted as a complete existing file](bugs/setup-partial-template-recovery.md)
 
 The audit partial-template probe injected a failed FEATURES.md write leaving only "# Feat". On retry initialize skipped the existing file, created the other targets and reported completion with no parser error or notice.

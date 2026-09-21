@@ -25,7 +25,9 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { TextDecoder } = require('node:util');
-const { comparableIdentity, stableRewriteFile } = require('./filesystem-primitives');
+const { comparableIdentity } = require('./filesystem-primitives');
+const { RECOVERY_SUFFIX, exists, recordPath, recoverableRewrite, readUnwrapSnapshot, verifyUnwrapRead } = require('./unwrap-recovery');
+const { isLockName } = require('./unwrap-lock');
 
 const BOM = String.fromCharCode(0xfeff);
 const LIST_MARKER = /^\s*(?:[-*+]|\d+[.)])\s+/;
@@ -391,6 +393,7 @@ function sortedEntries(directory) {
     const code = error?.code ?? 'unknown';
     const wrapped = new CatalogError(`cannot enumerate backlog directory ${directory} (${code})`, { cause: error });
     wrapped.code = code;
+    wrapped.target = directory;
 
     throw wrapped;
   }
@@ -423,6 +426,13 @@ function isContainedPath(root, target) {
   const relative = path.relative(root, target);
 
   return relative === '' || (relative !== '..' && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative));
+}
+
+function isBacklogContentPath(root, target) {
+  if (!isContainedPath(root, target)) return false;
+  const parts = path.relative(root, target).split(path.sep).map(part => process.platform === 'win32' ? part.toLowerCase() : part);
+  // Runtime evidence and setup journals cannot become prose through a catalog alias.
+  return !['runs', 'setup'].includes(parts[0]) && !parts.includes('.git');
 }
 
 function canonicalBacklogRootIdentity(root) {
@@ -500,11 +510,11 @@ function collectMarkdownFilesFromStattedTargets(targets, options = {}) {
   const visitedDirectories = new Set();
   const isMarkdown = (name) => path.extname(name).toLowerCase() === '.md';
   const addMarkdown = (rootIdentity, target, name) => {
-    if (isMarkdown(name) && isContainedPath(rootIdentity, canonicalPath(target))) files.push(options.captureAuthorities === true ? mutationAuthority(rootIdentity, target) : target);
+    if (isMarkdown(name) && isBacklogContentPath(rootIdentity, canonicalPath(target))) files.push(options.captureAuthorities === true ? mutationAuthority(rootIdentity, target) : target);
   };
   const visitAll = (directory, rootIdentity) => {
     const identity = canonicalPath(directory);
-    if (!isContainedPath(rootIdentity, identity)) return;
+    if (!isBacklogContentPath(rootIdentity, identity)) return;
     if (visitedDirectories.has(identity)) return;
     visitedDirectories.add(identity);
     for (const entry of sortedEntries(directory)) {
@@ -561,6 +571,93 @@ function collectMarkdownFiles(targets) {
   return collectMarkdownFilesFromStattedTargets(statted);
 }
 
+function discoverUnwrapArtifacts(targets, options = {}) {
+  const records = new Map();
+  const locks = new Set();
+  const visited = new Set();
+  const suffixMatches = name => process.platform === 'win32' ? name.toLowerCase().endsWith(RECOVERY_SUFFIX) : name.endsWith(RECOVERY_SUFFIX);
+  const visit = (directory, root, top) => {
+    const canonical = fs.realpathSync.native(directory);
+    if (!isContainedPath(root, canonical) || options.recursive !== true && !isBacklogContentPath(root, canonical) || visited.has(canonical)) return;
+    visited.add(canonical);
+    for (const entry of sortedEntries(directory)) {
+      const child = path.join(directory, entry.name);
+      if (options.exclude?.(child)) continue;
+      const targetName = suffixMatches(entry.name) ? entry.name.slice(0, -RECOVERY_SUFFIX.length) : null;
+      // A recovery target can outlive the catalog alias that originally selected it.
+      if (targetName !== null && !entry.isDirectory()) {
+        const file = path.join(canonical, entry.name);
+        records.set(file, { file, target: path.join(canonical, targetName), root });
+        continue;
+      }
+      if (isLockName(entry.name)) { locks.add(canonical); continue; }
+      const stat = statOrNull(child);
+      if (stat?.isDirectory()) visit(child, root, false);
+      else if (stat?.isFile() && (!top || BACKLOG_FILES.includes(entry.name))) {
+        const target = fs.realpathSync.native(child);
+        if ((options.recursive === true ? isContainedPath(root, target) : isBacklogContentPath(root, target)) && exists(recordPath(target))) records.set(recordPath(target), { file: recordPath(target), target, root });
+      }
+    }
+  };
+  for (const input of targets) {
+    const target = path.resolve(input);
+    if (options.exclude?.(target)) continue;
+    const stat = statOrNull(target);
+    if (stat?.isDirectory()) {
+      const root = canonicalBacklogRootIdentity(target);
+      if (root === null) throw new CatalogError(`backlog root escapes its repository authority: ${target}`);
+      visit(target, root, true);
+    } else {
+      const root = canonicalPath(path.dirname(target));
+      const canonical = canonicalPath(target);
+      if (isContainedPath(root, canonical) && exists(recordPath(canonical))) records.set(recordPath(canonical), { file: recordPath(canonical), target: canonical, root });
+    }
+  }
+  return { records: [...records.values()], locks: [...locks].sort(compareTargets) };
+}
+
+function recoveryDiagnostics(targets, options = {}) {
+  return discoverUnwrapArtifacts(targets, options).records.map(({ file, target }) => ({ file: target, error: 'unwrap-recovery-required', recoveryFile: file, message: `Unfinished unwrap for ${target}; preserve ${file} and retry an authorized unwrap write to resolve safe states.` }));
+}
+
+function rewriteCatalogItem(item, options = {}) {
+  let result = null;
+  const outcome = recoverableRewrite(item.rootIdentity, item.targetIdentity, bytes => {
+    const analysis = analyzeText(decodeUtf8(bytes));
+    if (analysis.wraps.length === 0) return null;
+    result = { file: item.file, wraps: analysis.wraps.length, firstLine: analysis.wraps[0].line, rewritten: true };
+    return Buffer.from(joinContinuations(analysis), 'utf8');
+  }, {
+    authority: item,
+    validateAuthority: validateMutationAuthority,
+    beforeWrite: () => { options.beforeWrite?.({ file: item.file }); validateMutationAuthority(item); },
+  });
+  if (!outcome.changed) return null;
+  return outcome.recovered ? { ...result, recovered: true } : result;
+}
+
+function recoverPendingUnwrap(targets, options = {}) {
+  const report = [];
+  for (const { target, root, file } of discoverUnwrapArtifacts(targets, options).records) {
+    try {
+      const item = mutationAuthority(options.recursive === true ? path.dirname(target) : root, target);
+      const result = rewriteCatalogItem(item, options);
+      if (result !== null) report.push(result);
+    } catch (cause) {
+      cause.code ??= 'unwrap-recovery-required';
+      if (!cause.recoveryFile) { cause.recoveryFile = file; cause.message += `; pending recovery: ${file}`; }
+      cause.completed = report;
+      cause.target = target;
+      throw cause;
+    }
+  }
+  return report;
+}
+
+function errorReport(file, error) {
+  return { file, error: error?.code ?? 'unknown', ...(error.recoveryFile ? { recoveryFile: error.recoveryFile } : {}), ...(error.recoveryFile || error.code?.startsWith('unwrap-') ? { message: error.message } : {}) };
+}
+
 function runCli(argv, options = {}) {
   const stdout = options.stdout ?? process.stdout;
   const stderr = options.stderr ?? process.stderr;
@@ -571,14 +668,29 @@ function runCli(argv, options = {}) {
     process.exitCode = 2;
     return;
   }
+  const report = [];
+  const reads = [];
+  try {
+    if (!write) report.push(...recoveryDiagnostics(targets));
+  } catch (error) {
+    report.push(...(error.completed ?? []), errorReport(error.target ?? targets[0], error));
+  }
+  if (report.some(entry => entry.error !== undefined)) {
+    stdout.write(`${JSON.stringify(report, null, 2)}\n`);
+    process.exitCode = 1;
+    return;
+  }
   const statted = targets.map((target) => ({ path: target, stat: statOrNull(path.resolve(target)) }));
   const missing = statted.find((entry) => entry.stat === null);
   if (missing !== undefined) {
+    try {
+      const pending = recoveryDiagnostics([missing.path]);
+      if (pending.length > 0) stdout.write(`${JSON.stringify(pending, null, 2)}\n`);
+    } catch (error) { stdout.write(`${JSON.stringify([errorReport(missing.path, error)], null, 2)}\n`); }
     stderr.write(`unwrap.js: no such file or directory: ${missing.path}\n`);
     process.exitCode = 2;
     return;
   }
-  const report = [];
   let files;
   try {
     files = collectMarkdownFilesFromStattedTargets(statted, { captureAuthorities: write });
@@ -589,39 +701,37 @@ function runCli(argv, options = {}) {
 
     return;
   }
+  // Complete input preflight before recovery can change any file.
+  if (write) {
+    try { report.push(...recoverPendingUnwrap(targets, options)); }
+    catch (error) { report.push(...(error.completed ?? []), errorReport(error.target ?? targets[0], error)); }
+    if (report.some(entry => entry.error !== undefined)) {
+      stdout.write(`${JSON.stringify(report, null, 2)}\n`);
+      process.exitCode = 1;
+      return;
+    }
+  }
   for (const item of files) {
     const file = write ? item.file : item;
     let text;
     if (write) {
-      let result = null;
       try {
-        stableRewriteFile(item.rootIdentity, item.targetIdentity, (bytes) => {
-          text = decodeUtf8(bytes);
-          const analysis = analyzeText(text);
-          const wraps = analysis.wraps;
-          if (wraps.length === 0) return null;
-          result = { file, wraps: wraps.length, firstLine: wraps[0].line, rewritten: true };
-
-          return Buffer.from(joinContinuations(analysis), 'utf8');
-        }, {
-          beforeWrite: () => {
-            options.beforeWrite?.({ file });
-            validateMutationAuthority(item);
-          },
-          expectedParentIdentity: item.parentIdentityToken,
-          expectedRootIdentity: item.rootIdentityToken,
-          expectedTargetIdentity: item.targetIdentityToken,
-        });
+        const result = rewriteCatalogItem(item, options);
         if (result !== null) report.push(result);
       } catch (error) {
-        report.push({ file, error: error?.code ?? 'unknown' });
+        report.push(errorReport(file, error));
+        break;
       }
       continue;
     }
     try {
-      text = decodeUtf8(fs.readFileSync(file));
+      const target = canonicalPath(file);
+      const root = path.dirname(target);
+      const snapshot = readUnwrapSnapshot(root, target);
+      reads.push({ root, target, snapshot });
+      text = decodeUtf8(snapshot.bytes);
     } catch (error) {
-      report.push({ file, error: error?.code ?? 'unknown' });
+      report.push(errorReport(file, error));
       continue;
     }
     const analysis = analyzeText(text);
@@ -629,9 +739,18 @@ function runCli(argv, options = {}) {
     if (wraps.length === 0) continue;
     report.push({ file, wraps: wraps.length, firstLine: wraps[0].line, rewritten: false });
   }
+  if (!write) {
+    try {
+      for (const read of reads) verifyUnwrapRead(read.root, read.target, read.snapshot);
+    } catch (error) { report.push(errorReport(error.target ?? targets[0], error)); }
+  }
+  if (!report.some(entry => entry.error !== undefined)) {
+    try { report.push(...recoveryDiagnostics(targets)); }
+    catch (error) { report.push(errorReport(error.target ?? targets[0], error)); }
+  }
   stdout.write(`${JSON.stringify(report, null, 2)}\n`);
   const unreadable = report.some((entry) => entry.error !== undefined);
   process.exitCode = unreadable || (report.length > 0 && !write) ? 1 : 0;
 }
 
-module.exports = { LABEL_AT_START, REQUIRES_LABEL, EXTERNAL_LABEL, CatalogError, canonicalBacklogRootIdentity, canonicalPath, compareTargets, decodeUtf8, detectHardWraps, unwrapText, collectMarkdownFiles, isContainedPath, maskRawHtmlBlocks, normalizeCatalogItems, analyzeText, joinContinuations, analyzeUnwrapCatalog, runCli };
+module.exports = { LABEL_AT_START, REQUIRES_LABEL, EXTERNAL_LABEL, CatalogError, canonicalBacklogRootIdentity, canonicalPath, compareTargets, decodeUtf8, detectHardWraps, unwrapText, collectMarkdownFiles, isContainedPath, isBacklogContentPath, maskRawHtmlBlocks, normalizeCatalogItems, analyzeText, joinContinuations, analyzeUnwrapCatalog, discoverUnwrapArtifacts, recoveryDiagnostics, recoverPendingUnwrap, runCli };

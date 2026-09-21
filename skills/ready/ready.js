@@ -20,7 +20,8 @@
 
 const fs = require('fs');
 const path = require('path');
-const { stableOpenFile } = require('../../internal/filesystem-primitives.js');
+const { readUnwrapSnapshot, verifyUnwrapRead } = require('../../internal/unwrap-recovery.js');
+const { recoveryDiagnostics, isBacklogContentPath } = require('../../internal/backlog-catalog.js');
 const { scanMarkdown } = require('../../internal/markdown.js');
 const { LABEL_AT_START, REQUIRES_LABEL, EXTERNAL_LABEL, CatalogError, canonicalBacklogRootIdentity, canonicalPath, compareTargets, decodeUtf8, detectHardWraps, collectMarkdownFiles, isContainedPath, maskRawHtmlBlocks: sharedMaskRawHtmlBlocks, normalizeCatalogItems } = require('../../internal/backlog-catalog.js');
 
@@ -66,10 +67,12 @@ const HEADING = /^#{2,3} /;
 const BULLET = /^- /;
 const ANALYSIS_EVIDENCE = Symbol('analysisEvidence');
 
-function readCanonicalText(rootIdentity, target) {
+function readCanonicalText(rootIdentity, target, observe) {
   try {
     try {
-      return decodeUtf8(stableOpenFile(rootIdentity, target, { requireSingleLink: false }).bytes);
+      const snapshot = readUnwrapSnapshot(rootIdentity, target);
+      observe?.(target, snapshot);
+      return decodeUtf8(snapshot.bytes);
     } catch (error) {
       if (error?.code === 'invalid-utf8') {
         error.catalogTarget = path.relative(rootIdentity, target).replace(/\\/g, '/');
@@ -1318,7 +1321,7 @@ function scanBreakoutTargetsWith(breakoutTargets, load, collectEvidence) {
 
 function createBreakoutLoader(backlogDir, rootIdentity, options = {}) {
   const canonicalize = options.canonicalize ?? canonicalPath;
-  const contains = options.contains ?? isContainedPath;
+  const contains = options.contains ?? isBacklogContentPath;
   const readFile = options.readFile ?? ((target) => readCanonicalText(rootIdentity, target));
   const resolvePath = options.resolvePath ?? path.resolve;
   const identitiesByResolved = new Map();
@@ -1367,7 +1370,7 @@ function scanBreakoutTargets(breakoutTargets, backlogDir, options = {}) {
   if (rootIdentity === null) {
     throw new CatalogError(`backlog root escapes its repository authority: ${backlogDir}`);
   }
-  const { notices, structuralErrors, scanned } = scanBreakoutTargetsWith(breakoutTargets, createBreakoutLoader(backlogDir, rootIdentity), false);
+  const { notices, structuralErrors, scanned } = scanBreakoutTargetsWith(breakoutTargets, createBreakoutLoader(backlogDir, rootIdentity, options), false);
 
   return { notices, structuralErrors, scannedFiles: scanned };
 }
@@ -1604,7 +1607,7 @@ function analyzeCatalog(items) {
 // Absence is folded into the result; every other read error still throws.
 function readFileIfPresent(p, rootIdentity, options = {}) {
   const canonicalize = options.canonicalize ?? canonicalPath;
-  const contains = options.contains ?? isContainedPath;
+  const contains = options.contains ?? isBacklogContentPath;
   const readFile = options.readFile ?? ((target) => readCanonicalText(rootIdentity, target));
   try {
     const identity = canonicalize(p);
@@ -1701,6 +1704,12 @@ function runCli(argRoot) {
     return;
   }
   const rootIdentity = acquired.identity;
+  const observations = new Map();
+  const readFile = target => readCanonicalText(rootIdentity, target, (file, snapshot) => {
+    const previous = observations.get(file);
+    if (previous && (previous.identity !== snapshot.identity || previous.rawSha256 !== snapshot.rawSha256)) throw Object.assign(new Error(`Backlog changed during assessment; retry: ${file}`), { code: 'backlog-changed' });
+    observations.set(file, snapshot);
+  });
   const rootRemainsAcquired = () => {
     const current = revalidateBacklogRootIdentity(acquired);
     if (current.kind === 'ok') return true;
@@ -1710,18 +1719,27 @@ function runCli(argRoot) {
     return false;
   };
   try {
+    let pending;
+    let recoveryFailure = null;
+    try { pending = recoveryDiagnostics([backlogDir]); }
+    catch (error) { pending = []; recoveryFailure = { index: 'backlog', title: 'Unwrap recovery discovery', message: `Recovery evidence could not be fully checked: ${error.message}` }; }
+    if (pending.length > 0) {
+      process.stdout.write(JSON.stringify({ error: 'Unfinished unwrap prevents backlog assessment', structuralErrors: pending }, null, 2) + '\n');
+      process.exitCode = 1;
+      return;
+    }
     const files = {};
     for (const name of [...WORK_INDEX_NAMES, 'PATTERNS']) {
-      files[name] = readFileIfPresent(path.join(backlogDir, `${name}.md`), rootIdentity);
+      files[name] = readFileIfPresent(path.join(backlogDir, `${name}.md`), rootIdentity, { readFile });
     }
     const result = analyze(files);
     if (!rootRemainsAcquired()) return;
 
-    const scanned = scanBreakoutTargets(result.breakoutTargets, backlogDir, { rootIdentity });
+    const scanned = scanBreakoutTargets(result.breakoutTargets, backlogDir, { rootIdentity, readFile });
     if (!rootRemainsAcquired()) return;
     let unlinkedNotices;
     try {
-      unlinkedNotices = scanUnlinkedBacklogFiles(backlogDir, scanned.scannedFiles, { rootIdentity });
+      unlinkedNotices = scanUnlinkedBacklogFiles(backlogDir, scanned.scannedFiles, { rootIdentity, readFile });
     } catch (error) {
       if (error?.code === 'invalid-utf8') throw error;
       if (!rootRemainsAcquired()) return;
@@ -1732,10 +1750,24 @@ function runCli(argRoot) {
     if (!rootRemainsAcquired()) return;
     result.notices.push(...scanned.notices, ...unlinkedNotices);
     result.structuralErrors.push(...scanned.structuralErrors);
+    if (recoveryFailure !== null) result.structuralErrors.push(recoveryFailure);
+    for (const [target, snapshot] of observations) verifyUnwrapRead(rootIdentity, target, snapshot);
+    try { result.structuralErrors.push(...recoveryDiagnostics([backlogDir])); }
+    catch (error) {
+      if (!rootRemainsAcquired()) return;
+      result.structuralErrors.push({ index: 'backlog', title: 'Unwrap recovery discovery', message: `Recovery evidence could not be fully checked: ${error.message}` });
+      process.exitCode = 1;
+    }
+    if (recoveryFailure !== null || result.structuralErrors.some(error => error.error === 'unwrap-recovery-required')) process.exitCode = 1;
     delete result.breakoutTargets;
 
     process.stdout.write(JSON.stringify(result, null, 2) + '\n');
   } catch (error) {
+    if (error?.code?.startsWith('unwrap-') || error?.code === 'backlog-changed') {
+      process.stdout.write(JSON.stringify({ error: error.message, structuralErrors: [{ file: error.target, error: error.code, recoveryFile: error.recoveryFile, message: error.message }] }, null, 2) + '\n');
+      process.exitCode = 1;
+      return;
+    }
     if (error?.code === 'invalid-utf8') {
       writeInvalidUtf8BacklogFile(error.catalogTarget ?? 'unknown');
 

@@ -9,6 +9,9 @@ const { spawnSync } = require('node:child_process');
 const { hash, projectFile } = require('./runtime/evidence');
 const { RunStore, requireCondition, safeDirectory } = require('./runtime/store');
 const { UnresolvedPathError, hasUnsupportedPathLiterals, relocated, relocationMoves, rewriteReferences } = require('./migration-references');
+const { discoverUnwrapArtifacts, recoveryDiagnostics, recoverPendingUnwrap } = require('./backlog-catalog');
+const { isLockName, acquireLock, inspectLock } = require('./unwrap-lock');
+const { RECOVERY_SUFFIX } = require('./unwrap-recovery');
 
 const BACKLOG_FILES = ['FEATURES.md', 'BUGS.md', 'QUICK_WINS.md', 'PATTERNS.md', 'FEATURES_HISTORY.md', 'BUGS_HISTORY.md', 'QUICK_WINS_HISTORY.md'];
 const OWNED_DIRECTORIES = ['features', 'bugs', 'patterns', 'inbox', 'plans', 'specs', 'runs'];
@@ -61,22 +64,59 @@ function restageRewritten(root, move) {
   git(root, ['add', '--', move.destination]);
 }
 
+function ownershipDecision(ownership, relative) {
+  return Object.entries(ownership).filter(([name]) => relative === name || relative.startsWith(name + '/')).sort((a, b) => b[0].length - a[0].length)[0]?.[1];
+}
+
+function unwrapOwnershipSubject(root, relative) {
+  // Coordination artifacts belong to the directory or target they protect.
+  if (isLockName(path.posix.basename(relative))) return path.posix.dirname(relative);
+  return relative.toLowerCase().endsWith(RECOVERY_SUFFIX) && !fs.lstatSync(path.join(root, relative)).isDirectory()
+    ? relative.slice(0, -RECOVERY_SUFFIX.length) : relative;
+}
+
+function validateOwnership(root, ownership) {
+  for (const [relative, value] of Object.entries(ownership)) {
+    requireCondition(relative.startsWith('.claude/') && ['nightshift', 'preserve'].includes(value), 'invalid-ownership', 'Ownership entries need .claude project paths and nightshift or preserve decisions');
+    projectFile(root, relative);
+  }
+}
+
+function migrationUnwrapOptions(root, ownership) {
+  validateOwnership(root, ownership);
+  const selected = [...BACKLOG_FILES, ...OWNED_DIRECTORIES].map(name => '.claude/' + name).concat(Object.keys(ownership));
+  const overrides = Object.entries(ownership).filter(([, choice]) => choice === 'nightshift').map(([name]) => name);
+  return {
+    recursive: true,
+    exclude(target) {
+      const relative = path.relative(root, target).split(path.sep).join('/');
+      const subject = unwrapOwnershipSubject(root, relative);
+      if (ownershipDecision(ownership, subject) === 'preserve' && !overrides.some(name => name.startsWith(subject + '/'))) return true;
+      if (subject === '.claude') return false;
+      if (path.posix.dirname(relative) === '.claude' && (isLockName(path.basename(target)) || target.toLowerCase().endsWith(RECOVERY_SUFFIX))) return false;
+      return !selected.some(name => subject === name || subject.startsWith(name + '/') || name.startsWith(subject + '/'));
+    },
+  };
+}
+
 function inventory(root, ownership = {}) {
   const files = [];
   const directories = [];
   const preserved = [];
   const undecided = [];
   const visited = new Set();
-  const decision = relative => Object.entries(ownership).filter(([name]) => relative === name || relative.startsWith(name + '/')).sort((a, b) => b[0].length - a[0].length)[0]?.[1];
-  for (const [relative, value] of Object.entries(ownership)) {
-    requireCondition(relative.startsWith('.claude/') && ['nightshift', 'preserve'].includes(value), 'invalid-ownership', 'Ownership entries need .claude project paths and nightshift or preserve decisions');
-    projectFile(root, relative);
-  }
+  const decision = relative => ownershipDecision(ownership, unwrapOwnershipSubject(root, relative));
+  validateOwnership(root, ownership);
   const visit = relative => {
     if (visited.has(relative)) return;
     visited.add(relative);
     const target = projectFile(root, relative);
     if (!fs.existsSync(target)) return;
+    if (isLockName(path.basename(target))) {
+      if (decision(relative) === 'preserve') { preserved.push(relative); return; }
+      inspectLock(path.dirname(target));
+      return;
+    }
     if (fs.statSync(target).isDirectory()) {
       const keptBefore = preserved.length;
       const unknownBefore = undecided.length;
@@ -149,8 +189,20 @@ class Setup {
     this.db.prepare('UPDATE migration SET body=? WHERE singleton=1').run(JSON.stringify(state));
   }
 
+  unwrapScope(options) {
+    const ownership = this.saved()?.policy?.ownership ?? migrationPolicy(options).ownership;
+    return { targets: [path.join(this.root, '.claude')], options: migrationUnwrapOptions(this.root, ownership) };
+  }
+
+  pendingUnwrap(options) {
+    const scope = this.unwrapScope(options);
+    return [...recoveryDiagnostics(scope.targets, scope.options), ...recoveryDiagnostics([path.join(this.root, '.nightshift')])];
+  }
+
   inspect(options = {}) {
     assertQuiescent(this.root);
+    const unwrapRecovery = this.pendingUnwrap(options);
+    if (unwrapRecovery.length > 0) return { root: this.root, status: 'unwrap-recovery-required', unwrapRecovery };
     const saved = this.saved();
     if (saved) return saved;
     const policy = migrationPolicy(options);
@@ -169,7 +221,18 @@ class Setup {
   }
 
   apply(options = {}) {
+    const locks = [];
+    try {
+      const scope = this.unwrapScope(options);
+      for (const parent of discoverUnwrapArtifacts(scope.targets, scope.options).locks) locks.push(acquireLock(parent, { create: false }));
+      return this.applyLocked(options);
+    } finally { for (const lock of locks.reverse()) lock?.close(); }
+  }
+
+  applyLocked(options = {}) {
     assertQuiescent(this.root);
+    const pending = this.pendingUnwrap(options);
+    requireCondition(pending.length === 0, 'unwrap-recovery-required', 'Resolve unfinished unwrap before migration: ' + JSON.stringify(pending));
     let state = this.saved();
     if (!state) {
       // The parser report is a pre-relocation snapshot for the caller; the journal keeps only the migration inventory.
@@ -404,7 +467,7 @@ function runBundledScript(script, args) {
 
 function validateBacklog(root, home) {
   const parser = runBundledScript('skills/ready/ready.js', [path.join(root, home)]);
-  requireCondition(!parser.error && parser.status === 0 && parser.json !== null, 'backlog-validation', parser.error?.message ?? parser.json?.error ?? parser.stderr);
+  requireCondition(!parser.error && parser.status === 0 && parser.json !== null, 'backlog-validation', parser.error?.message ?? (parser.json ? JSON.stringify(parser.json) : parser.stderr));
   return parser.json;
 }
 
@@ -415,14 +478,29 @@ function requireValidBacklog(report, home) {
 
 function unwrapBacklog(root) {
   const unwrap = runBundledScript('skills/init-backlog/unwrap.js', ['--write', path.join(root, '.nightshift')]);
-  requireCondition(!unwrap.error && unwrap.status === 0 && Array.isArray(unwrap.json), 'backlog-unwrap', unwrap.error?.message ?? (unwrap.json ? JSON.stringify(unwrap.json) : unwrap.stderr));
+  try {
+    requireCondition(!unwrap.error && unwrap.status === 0 && Array.isArray(unwrap.json), 'backlog-unwrap', unwrap.error?.message ?? (unwrap.json ? JSON.stringify(unwrap.json) : unwrap.stderr));
+  } catch (error) {
+    error.completed = Array.isArray(unwrap.json) ? unwrap.json.filter(entry => entry.rewritten === true) : [];
+    throw error;
+  }
   return unwrap.json;
 }
 
 function initialize(root, options = {}) {
   requireCondition(options.unwrap === undefined || typeof options.unwrap === 'boolean', 'invalid-policy', 'unwrap must be true or false');
+  root = fs.realpathSync.native(root);
+  assertQuiescent(root);
   const setup = new Setup(root);
+  const completed = [];
   try {
+    const pending = setup.pendingUnwrap(options);
+    requireCondition(options.unwrap === true || pending.length === 0, 'unwrap-recovery-required', 'Unfinished unwrap must be resolved before setup: ' + JSON.stringify(pending));
+    const scope = setup.unwrapScope(options);
+    if (options.unwrap === true) {
+      completed.push(...recoverPendingUnwrap(scope.targets, scope.options));
+      completed.push(...recoverPendingUnwrap([path.join(root, '.nightshift')]));
+    }
     const migration = setup.apply(options);
     for (const directory of ['features', 'bugs', 'patterns', 'runs']) safeDirectory(setup.root, '.nightshift/' + directory, true);
     for (const file of BACKLOG_FILES) {
@@ -432,10 +510,14 @@ function initialize(root, options = {}) {
       const content = fs.readFileSync(path.resolve(__dirname, '../skills/init-backlog/templates', template), 'utf8').replace(/\r?\n/g, '\r\n');
       fs.writeFileSync(target, content, { flag: 'wx' });
     }
-    const unwrapped = options.unwrap === true ? unwrapBacklog(setup.root) : null;
+    if (options.unwrap === true) completed.push(...unwrapBacklog(setup.root));
+    const unwrapped = options.unwrap === true ? completed : null;
     const backlog = validateBacklog(setup.root, '.nightshift');
     requireValidBacklog(backlog, '.nightshift');
     return { migration, unwrapped, backlog };
+  } catch (error) {
+    error.completed = [...completed, ...(error.completed ?? [])];
+    throw error;
   } finally { setup.close(); }
 }
 

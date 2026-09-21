@@ -20,7 +20,7 @@ if (require.main === module) {
     const admitted = require('../../internal/releases/entry').admitEntry(path.resolve(__dirname, '../..'), process.argv.slice(2), 1, { exactProject: true });
     process.stdout.write(JSON.stringify(main(admitted.args), null, 2) + String.fromCharCode(10));
   }
-  catch (error) { process.stderr.write(JSON.stringify({ error: error.code ?? 'setup-failed', message: error.message }) + String.fromCharCode(10)); process.exitCode = 1; }
+  catch (error) { process.stderr.write(JSON.stringify({ error: error.code ?? 'setup-failed', message: error.message, ...(error.completed?.length ? { completed: error.completed } : {}) }) + String.fromCharCode(10)); process.exitCode = 1; }
 }
 
 module.exports = { main };
