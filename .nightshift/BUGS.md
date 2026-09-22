@@ -4,6 +4,62 @@ V2 entries are preserved in [the historical index](migration/v2/BUGS.md) and [MI
 
 ## Current
 
+### Executive governing scope is missing during early review
+
+During the run-adoption specification work on 2026-09-21, the controller expanded and repeatedly reviewed a technical draft before creating and presenting the concise executive governing artifact. The user reported waiting roughly ninety minutes, and the conversation reached compaction first. Without that agreed baseline, review additions could not reliably be classified as refinements or scope expansion. Later creation and approval do not retroactively settle that question. No particular addition has been established as scope creep. [Triage evidence](reports/adoption-session-triage-20260922.md#missing-executive-governing-scope) preserves the user's corrections and the two run identities.
+
+Investigate why the existing requirement for prompt, concise scope presentation did not produce the expected artifact and interaction. Preserve the distinction between a governing commitment and its technical elaboration, and between a small agreed readback and substantial work. Do not reinstate retired approval machinery or assume another rule is needed before distinguishing guidance, sequencing, presentation and controller-compliance failures. Tracking does not authorize implementation.
+
+**Requires:** none.
+
+### Available recovery is mistaken for a terminal blocker
+
+In the run-adoption delivery, the controller reported acceptance blocked while an identified, authorized accounting investigation remained available. Automatic continuation pursued that investigation without a new grant or changed authority and produced actionable driver evidence. The earlier report had treated unfinished recovery work as an impasse. This is distinct from repeated reporting of an unchanged outcome and from whether the eventual custom tooling was proportionate. [Triage evidence](reports/adoption-session-triage-20260922.md#premature-blocker-classification) retains those boundaries.
+
+Investigate how blocker classification accounts for remaining authorized investigation and recovery. Preserve genuine user, capability and resource boundaries, and keep recovery within the agreed outcome rather than treating autonomy as authority to expand tooling indefinitely. Coordinate with the existing [internal-ceiling authority issue](#controller-treats-internal-token-ceilings-as-user-owned-budget-decisions). Tracking does not authorize implementation.
+
+**Requires:** none.
+
+### Automatic blocker checks repeat handover reports
+
+After the blocked-delivery report for run adoption was presented, two automatic goal continuations revalidated unchanged barriers. The controller emitted another blocker-status final and then repeated the full report without a new delivery result. The user described this as triple reports and could not distinguish it from the earlier premature-blocker incident. The duplication and unnecessary reporting/bookkeeping are observed; the respective roles of controller behavior, reporting guidance and goal continuation remain unverified. [Triage evidence](reports/adoption-session-triage-20260922.md#repeated-handover-reports) preserves the sequence.
+
+Investigate how repeated blocker audits interact with report presentation and delivery acknowledgement. Preserve a complete initial handover and meaningful changes in outcome without treating every unchanged continuation as another handover. Do not infer receipt or a triage answer from an automatic continuation. Tracking does not authorize implementation.
+
+**Requires:** none.
+
+### Acceptance tooling expands beyond demonstrated verification needs
+
+The run-adoption scope required reliable aggregate token accounting and evidence from real native sessions. The controller chose a substantial temporary harness under `.tmp/adoption-live`, then incurred repeated repair and independent-review work for that new machinery before obtaining any positive acceptance result. It also introduced a model restriction that was not a user requirement. The custom architecture and added restriction are established choices; whether the entire harness was avoidable or earlier tooling could have been reused remains unassessed. [Triage evidence](reports/adoption-session-triage-20260922.md#acceptance-tooling-expansion) records the accepted distinction.
+
+Investigate proportionality, reuse and requirement discipline in selecting verification tooling. A review required after an introduced change does not by itself justify the change that created that burden. Preserve reliable accounting and native evidence without presuming a replacement framework or weakening acceptance. Coordinate with [verification infrastructure](features/v3-verification-infrastructure.md) and the existing [acceptance-evidence tooling question](QUICK_WINS.md#acceptance-reports-carry-a-checkable-evidence-digest). Keep general plugin guidance about capabilities and required strength rather than proliferating model-specific instructions. Tracking does not authorize implementation.
+
+**Requires:** none.
+
+### Report edits invalidate unrelated regression checks
+
+Saved check snapshots in the run-adoption delivery covered 279 inputs. Two changes confined to the candidate report triggered 306-test source checks, with two intervening retries on unchanged inputs. The four executions totaled about 1,008 seconds of command runtime; equivalent added wall-clock delay is not established. The retries had a local failure-recovery rationale, but the broad input declaration coupled prose edits to behavioral regression checks without code changes. The cleanup-test failure they exposed has [its own entry](#windows-job-pipe-and-containment-fixtures-fail-outside-the-code-they-cover). [Triage evidence](reports/adoption-session-triage-20260922.md#report-triggered-regression-reruns) preserves the timestamps and snapshot comparison.
+
+Investigate how verification obligations are scoped to their actual inputs and how unrelated edits invalidate them. Relevant changes must still invalidate evidence; avoiding unnecessary reruns must not turn missing coverage into a pass. Keep this registered-check issue distinct from [host-probe invalidation](#probe-evidence-about-the-host-is-discarded-on-any-edit) and [documentation ordering around assessment](QUICK_WINS.md#documentation-and-backlog-edits-land-before-the-first-cumulative-assessment). Tracking does not authorize implementation.
+
+**Requires:** none.
+
+### Permitted validation fallbacks are lost between runs
+
+Prior specifications and executed campaigns already permitted Opus for Claude-specific checks and Astra for strong assessment. The run-adoption driver nevertheless hardcoded Fable on the Claude path and excluded the permitted validation fallback. With an availability warning already known, two actual Fable attempts produced no acceptance evidence and left 2,256,000 tokens conservatively held, not proven consumed. The user later identified the weekly cap and reset timing and reaffirmed the existing role distinction. The operational choice and exposure are separate from the broader harness-design issue. [Triage evidence](reports/adoption-session-triage-20260922.md#missed-validation-fallback) cites the prior agreement and observations.
+
+Investigate why applicable model-role decisions were not carried into current selection and recovery. Distinguish host-specific behavioral validation from roles requiring a strong independent assessor; do not lower the strong-review gate or silently substitute contrary to an explicit user requirement. Generalize by capabilities, strength and availability, retaining concrete identities in configuration and evidence where necessary. This is separate from the older [worker-role acceptance-gate defect](#fable-only-acceptance-gate-rejects-supported-worker-roles). Tracking does not authorize implementation.
+
+**Requires:** none.
+
+### Retrospectives omit work-selection and policy failures
+
+The recorded run-adoption retrospective described driver repairs, test failures and passing checks without assessing the proportionality of the machinery, why report edits triggered broad reruns, or why the existing validation fallback was not applied. The user identified these omissions afterward. Revise-lore already requests examination of workflow failures and ineffective rules, but independent review is specified for proposed instruction diffs rather than the conclusion that no proposal is needed. The runtime records nonempty retrospective evidence without assessing reflective quality. The later duplicate-report episode occurred after this retrospective and is not retroactively attributed to it. [Triage evidence](reports/adoption-session-triage-20260922.md#retrospective-coverage) preserves the bounded assessment.
+
+Investigate the coverage failure and distinguish controller execution, skill framing and orchestration. Existing instructions covering a principle do not establish that they were followed or effective, and successful repairs do not establish that the work generating them was proportionate. Do not presume that more mandatory reviews or duplicate instructions are the remedy. Coordinate with [retrospective treatment of tool warnings](#tool-warnings-dismissed-without-assessing-their-retrospective-value) while preserving the distinct evidence. Tracking does not authorize implementation.
+
+**Requires:** none.
+
 ### [Interrupted template creation is accepted as a complete existing file](bugs/setup-partial-template-recovery.md)
 
 The audit partial-template probe injected a failed FEATURES.md write leaving only "# Feat". On retry initialize skipped the existing file, created the other targets and reported completion with no parser error or notice.
@@ -263,7 +319,11 @@ Establish which part of the invocation triggers the classifier (the CLI path, th
 
 Observed on 2026-09-12 in this repository on Windows 11 with Node v26.6.0 while running the deterministic suite for an unrelated runtime change. In `tests/runtime-hosts.test.js`, the `--no-input-leaf` case of "Windows pipes keep output and cancellation live while stdin is pending" fails deterministically, also on a checkout without the unrelated change: the test writes 256 KiB to a child that reads no input and kills it after 500 ms, and the assertion that the job emptied fails with the collected error `write EOF`. The case "Windows job containment carries the actual host protocol and proves descendants have ended" fails only when the whole CI file list runs in one `node --test` invocation: the `descendant` fixture's `descendant.pid` does not exist when the test reads it after a 2.5 second timeout, and the same case passes when the file runs alone. Both cases are skipped off Windows, so CI on `windows-latest` is where they can surface.
 
+A related failure recurred on 2026-09-22 under Node 22.23.2 during run-adoption verification: two default-concurrency runs passed 305 of 306 tests but the same `--no-input-leaf` case reported "Windows job closed without verified descendant cleanup" with `jobEmpty` false. Both cancellation variants passed in isolation, and the complete set passed sequentially without source edits or timeout changes. One failing run overlapped other native fixtures; the other did not. Actual process leakage, the precise cause and identity with the earlier Node 26 failure remain unverified. The [triage evidence](reports/adoption-session-triage-20260922.md#cancellation-cleanup-verification) preserves this recurrence separately from the unnecessary trigger for those broad reruns.
+
 Establish whether the `write EOF` comes from the job runner closing the child's stdin before the 256 KiB write drains under Node 26, or from a Node change in pipe semantics, and make the fixture assert the intended containment property rather than the incidental write outcome; give the descendant fixture a start-up signal or a longer budget so the containment case does not depend on scheduler load. Evidence: full-suite run and isolated reruns on 2026-09-12, recorded in the session that shipped the unattended wait and pause change.
+
+Investigate the newer Node 22 failure without assuming those earlier explanations apply. Distinguish actual containment failure from missing verification, pipe behavior and fixture timing; a successful sequential run does not explain the concurrent failures. Tracking this recurrence does not authorize implementation.
 
 **Requires:** none.
 

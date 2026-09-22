@@ -28,6 +28,8 @@ Make private copies survive their own depth: shorten the copy path under the rev
 
 Recurred in run `d4a44daa-96be-4ac4-bcaa-d16d8596584f` on 2026-09-18 to 19, the handover transition and morning report delivery, which spent 14,869,844 review tokens across 18 dispatches, summed from that run's review receipts, and 14,445,999 live-verification tokens on a change of roughly 400 lines, with four already tracked defects firing during it. Here, a requested probe of `tests/runtime-review.test.js` and `tests/runtime-probes.test.js` failed 39 cases with git's `Filename too long`, because those suites nest review copies inside an already deep probe copy, and the assessor had to be given the environmental explanation to weigh.
 
+The run-adoption delivery on 2026-09-21 to 22 added a controlled comparison: the same saved source passed all three probe cases at a short project path and failed all three at the original deeper layout. Failing Git working directories were 272 or 280 characters; `spawnSync` returned null status, `ENOENT` and no output before Git started, despite process-local `core.longpaths=true`. Baseline and candidate also matched in separate shorter/deeper comparisons. Verification recovered through a shorter private copy. The exact Windows/process-launch cause and broader impact remain unknown. Distinguish this launch failure from the earlier Git-level error: Git configuration cannot repair a process that never starts, and a skipped or unavailable probe is not successful acceptance evidence. The user chose to track this recurrence; [triage evidence](reports/adoption-session-triage-20260922.md#deep-private-probe-paths) preserves its limits.
+
 **Requires:** none.
 
 ### Acceptance harness waits on controller approval without a bound
