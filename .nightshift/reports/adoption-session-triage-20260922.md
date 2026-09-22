@@ -1,6 +1,6 @@
 # Run-adoption session triage
 
-The user completed one-at-a-time triage on 2026-09-22: nine incidents are tracked and two are skipped. Tracking does not authorize implementation or publication. This report preserves the decisions and evidence independently of the ignored run files. It does not declare the run-adoption candidate accepted or complete.
+The user completed one-at-a-time triage on 2026-09-22: ten incidents are tracked and two are skipped, including the later publication-review follow-up. Tracking does not authorize implementation or publication. This report preserves the decisions and evidence independently of the ignored run files. It does not declare the run-adoption candidate accepted or complete.
 
 Source project: `C:/Git/nightshift`. The controller used retained Nightshift 3.2.1 while developing candidate 3.2.3. The specification run was `5286ec74-ec0d-4ba8-a1cc-48877625a834`; the delivery run is `b9b654ea-0368-40da-93dc-b212899db003`. Raw receipts, check output and detailed incident records remain under `.nightshift/runs`; private experiments remain under `.tmp`. Statements below distinguish observations, user reports and unresolved causes.
 
@@ -19,8 +19,9 @@ Source project: `C:/Git/nightshift`. The controller used retained Nightshift 3.2
 | Report-triggered regression reruns | Track in [Bugs](../BUGS.md#report-edits-invalidate-unrelated-regression-checks) |
 | Missed validation fallback | Track in [Bugs](../BUGS.md#permitted-validation-fallbacks-are-lost-between-runs) |
 | Retrospective coverage | Track in [Bugs](../BUGS.md#retrospectives-omit-work-selection-and-policy-failures) |
+| Adoption replay after an intervening revision | Track in [Bugs](../BUGS.md#adoption-replay-bypasses-fresh-reconciliation-after-an-intervening-revision) |
 
-The two existing backlog owners were enriched rather than duplicated. The other seven tracked concerns received separate entries. The user's design constraint is to keep model-specific plugin instructions minimal: describe general roles by capabilities and required strength, preserving explicit user choices and actual model identities in evidence.
+The initial batch enriched two existing backlog owners and gave seven concerns separate entries. The later adoption-replay follow-up received one additional entry. The user's design constraint is to keep model-specific plugin instructions minimal: describe general roles by capabilities and required strength, preserving explicit user choices and actual model identities in evidence.
 
 ## Skipped attachment incident
 
@@ -77,3 +78,9 @@ The user later identified the weekly cap, said it resets Thursday morning and re
 The retrospective recorded at delivery revision 331 identified some genuine incidents, including the missing governing artifact and premature blocker. Its driver discussion nevertheless emphasized repairs and passing checks without assessing machinery proportionality, report-only verification triggers or the missed validation fallback. Existing instructions covering a principle did not establish their application or effectiveness.
 
 The actual retained revise-lore skill already asks for workflow failures and ineffective rules to be examined. Independent assessment is required for proposed instruction diffs; the no-proposal conclusion has no equivalent required challenge. The runtime records nonempty retrospective evidence rather than evaluating reflection quality. The immediate observed problem is incomplete controller reflection. Whether execution, skill framing or orchestration should change remains open, and another mandatory review is not presumed to be the remedy. The duplicate-report episode happened after that retrospective, so it is not retroactively treated as an omission. The detailed bounded assessment remains in `.nightshift/runs/reports/revise-lore-assessment-20260922.md`.
+
+## Adoption replay after an intervening revision
+
+The independent publication reviewer reported a minor mismatch in `internal/runtime/store.js`: a stopped revision 1 run was adopted at revision 2, resumed at revision 3, and an old revision 1 adoption request was then replayed. It returned current running state instead of requiring fresh reconciliation. The reproduction observed no second ownership mutation or data loss. The technical design requires fresh reconciliation after an intervening revision. Evidence is retained in `.tmp/adoption-publication-review/verdict.md` and `probe.cjs`; no fresh skeptical assessment or repair has been performed.
+
+After a standalone explanation offered track, fix now or skip, the user replied: "track. claude logged in again." The replay issue is tracked for later work, without implementation authority. The login statement records user-reported restoration, not independently verified access lifetime or a renewed token grant. The remaining acceptance allowance is still 566,000 unreserved, below the next conservative request reservation. This minor finding is separate from the important missing-acceptance publication blocker.

@@ -4,6 +4,14 @@ V2 entries are preserved in [the historical index](migration/v2/BUGS.md) and [MI
 
 ## Current
 
+### Adoption replay bypasses fresh reconciliation after an intervening revision
+
+Independent publication review of the local 3.2.3 candidate reported a minor mismatch in the lost-response replay shortcut in `internal/runtime/store.js`. Its isolated reproduction adopted a stopped revision 1 run at revision 2, resumed it at revision 3, then replayed the revision 1 adoption request. The shortcut returned the current running revision 3 state, while the [governing design](specs/run-adoption-and-continuation.md) requires fresh reconciliation after an intervening revision. No second ownership mutation or data loss was observed. Fresh skeptical validation and repair remain outstanding. [Triage evidence](reports/adoption-session-triage-20260922.md#adoption-replay-after-an-intervening-revision) preserves the user decision and reproduction.
+
+Reconcile lost-response replay with the governing revision boundary while preserving safe retries when no intervening transition occurred. Validate the reported behavior and cover changed state before choosing a repair. Keep this minor contract issue separate from the important missing installed-acceptance evidence that blocks publication. Tracking does not authorize implementation.
+
+**Requires:** none.
+
 ### Executive governing scope is missing during early review
 
 During the run-adoption specification work on 2026-09-21, the controller expanded and repeatedly reviewed a technical draft before creating and presenting the concise executive governing artifact. The user reported waiting roughly ninety minutes, and the conversation reached compaction first. Without that agreed baseline, review additions could not reliably be classified as refinements or scope expansion. Later creation and approval do not retroactively settle that question. No particular addition has been established as scope creep. [Triage evidence](reports/adoption-session-triage-20260922.md#missing-executive-governing-scope) preserves the user's corrections and the two run identities.
