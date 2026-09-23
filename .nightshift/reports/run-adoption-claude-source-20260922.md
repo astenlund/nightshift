@@ -1,5 +1,7 @@
 # Installed Claude source-run evidence
 
+Historical 8M checkpoint. The same source run was subsequently adopted and completed; [the current adoption report](run-adoption-and-continuation-20260921.md) supersedes the remaining-work and accounting status below. These original observations and counters are preserved.
+
 Under the user-doubled 8,000,000-token aggregate grant, an actual Opus session used the installed 3.2.3 candidate to create a bound run, obtain its initial native controller claim, change the requested label and record a passing check. This is positive evidence for the Claude creation/initial-claim branch. It is not evidence of adoption, cross-host transfer, a later-turn claim or renewed continuation.
 
 | Evidence | Observed value |
