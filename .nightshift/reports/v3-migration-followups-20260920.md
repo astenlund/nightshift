@@ -382,7 +382,7 @@ Recommendation at triage: Use the existing stopped-run ownership bug for its con
 
 Decision and durable route: the user chose "track" on 2026-09-20. No implementation is authorized.
 
-Applied on 2026-09-21: [tracking destination](../BUGS.md#run-ownership-is-locked-to-the-creating-host-session). The tracking edit is complete; the capability or repair remains open.
+Applied on 2026-09-21: [tracking destination](../BUGS_HISTORY.md#run-ownership-is-locked-to-the-creating-host-session). The tracking edit is complete; the capability or repair remains open.
 
 ## Agent-host-agnostic Nightshift: Host-neutral scaffolding and instruction routing
 

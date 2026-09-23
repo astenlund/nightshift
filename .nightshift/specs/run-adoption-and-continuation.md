@@ -6,7 +6,7 @@ Status: supporting technical design under the executive scope approved on 2026-0
 
 ## Outcome and scope
 
-Resume the same authorized work after an interruption or a change of controller session, preserving its commitments and evidence. Fix [Run ownership is locked to the creating host session](../BUGS.md#run-ownership-is-locked-to-the-creating-host-session) and [Renewed handover yields with blocked native continuation](../BUGS.md#renewed-handover-yields-with-blocked-native-continuation). Autonomy comes first, independent quality second, efficiency third, within the user's authority and limits.
+Resume the same authorized work after an interruption or a change of controller session, preserving its commitments and evidence. Fix [Run ownership is locked to the creating host session](../BUGS_HISTORY.md#run-ownership-is-locked-to-the-creating-host-session) and [Renewed handover yields with blocked native continuation](../BUGS_HISTORY.md#renewed-handover-yields-with-blocked-native-continuation). Autonomy comes first, independent quality second, efficiency third, within the user's authority and limits.
 
 Add an explicit adoption operation for the checkout's current unfinished run. Support another session on the same host and a switch between Claude Code and Codex on the same Windows machine and project. Adoption requires the user's actual direction to resume that run in the adopting session. It does not require renewed agreement on unchanged work. A renewed handover likewise preserves agreement and resumes useful authorized work while establishing what can continue after the turn ends.
 

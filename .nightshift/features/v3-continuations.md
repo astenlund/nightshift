@@ -13,7 +13,7 @@ This was the umbrella for capabilities deliberately outside [the v3 MVP](nightsh
 | Capability | Current user disposition |
 |---|---|
 | Verify macOS and Linux | Skipped. No additional-platform feature is planned by this triage; those platforms remain unverified. |
-| Transfer active control between hosts | Skipped. The user identified post-switch adoption as the actual use case, retained in [the ownership bug](../BUGS.md#run-ownership-is-locked-to-the-creating-host-session). |
+| Transfer active control between hosts | Skipped. The user identified post-switch adoption as the actual use case, retained in [the ownership bug](../BUGS_HISTORY.md#run-ownership-is-locked-to-the-creating-host-session). |
 | Multiple independent runs in one checkout | Skipped. The supported single coordinated run and its helpers remain unchanged. |
 | Relaunch after host exit or restart | Tracked in [automatic host relaunch](v3-host-relaunch.md), linked to [Night Guard](night-guard.md). |
 | Broader guidance conversion and structural repair | Tracked in [scoped setup repair](v3-setup-compatibility.md), with [canonical instruction routing](v3-guidance-routing.md) and concrete setup bugs separately visible. |

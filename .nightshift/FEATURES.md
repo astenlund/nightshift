@@ -98,7 +98,7 @@ Restore the fresh-project setup choice to track the backlog in Git, ignore it, o
 
 ### [Ready offers to pick up an interrupted run](features/ready-interrupted-run-pickup.md)
 
-When a new session opens in a project with an interrupted, stopped or undelivered Nightshift run, Ready tells the user about the unfinished work and offers to pick it up, after which everything behaves as in the original session, with no pointing at report files. Raised by the user on 2026-09-19. It builds on adoption of a run by another session, tracked as the bug "Run ownership is locked to the creating host session"; the open questions include whether an undelivered morning report counts as unfinished work and how Ready learns about runs without continuation activation; the record lists all four.
+When a new session opens in a project with an interrupted, stopped or undelivered Nightshift run, Ready tells the user about the unfinished work and offers to pick it up, after which everything behaves as in the original session, with no pointing at report files. Raised by the user on 2026-09-19. It builds on explicit run adoption, now implemented in the local 3.2.3 candidate with [qualified installed evidence](reports/run-adoption-and-continuation-20260921.md); the open questions include whether an undelivered morning report counts as unfinished work and how Ready learns about runs without continuation activation; the record lists all four.
 
 ### [Degraded assessment mode](features/degraded-assessment-mode.md)
 

@@ -86,7 +86,7 @@ The brief requires visible progress and investigation after three successive rel
 
 ## Continuity and deferred capabilities
 
-The current single-run baseline rejects foreign/stale owners and preserves commitments across reopening. Fresh checks passed for `overlapping runs, foreign owners and stale writes cannot replace progress` and `persisted commitments, findings and ownership survive closing and reopening`. The existing [post-switch adoption and ownership bug](../BUGS.md#run-ownership-is-locked-to-the-creating-host-session) is still open. The user declined active-controller transfer and independent overlapping runs, identifying post-switch adoption as the real use case. Additional platforms were also skipped; automatic relaunch and broader setup repair now have explicit Exploring entries. These later decisions preserve the original MVP exclusions without presenting every exclusion as future planned work.
+The current single-run baseline rejects foreign/stale owners and preserves commitments across reopening. Fresh checks passed for `overlapping runs, foreign owners and stale writes cannot replace progress` and `persisted commitments, findings and ownership survive closing and reopening`. The existing [post-switch adoption and ownership bug](../BUGS_HISTORY.md#run-ownership-is-locked-to-the-creating-host-session) is still open. The user declined active-controller transfer and independent overlapping runs, identifying post-switch adoption as the real use case. Additional platforms were also skipped; automatic relaunch and broader setup repair now have explicit Exploring entries. These later decisions preserve the original MVP exclusions without presenting every exclusion as future planned work.
 
 ## Retired proposals
 
