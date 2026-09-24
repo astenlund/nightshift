@@ -4,7 +4,11 @@ Upcoming work and deferred extensions to the delivered v3 MVP. Its delivery is r
 
 ## Current work
 
-No active feature deliveries.
+### [Closing tracking review](features/closing-tracking-review.md)
+
+Give triage tracking edits an official scoped independent review: a `tracking` review kind over backlog-only changes, whose clean receipt lets the completion gate accept task reviews made stale only by those edits and covers them at publication, including tracking applied after a handed-over run completes. Raised by the user on 2026-09-24 after run `46fc13f1-98fc-4a3e-953c-958a31261ae4` needed a completion workaround and a separate review-loop for its tracking commit; the readback is agreed and recorded in the linked record. Not started; it needs a concise governing spec and a decision on installed-host evidence before implementation.
+
+**Requires:** none.
 
 ## Exploring
 
