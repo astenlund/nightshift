@@ -6,7 +6,8 @@ const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 const test = require('node:test');
 const { randomUUID } = require('node:crypto');
-const { runProbe } = require('../internal/runtime/probes');
+const { PROBE_TIMEOUT_CAP_MS, PROBE_TIMEOUT_FLOOR_MS, runProbe } = require('../internal/runtime/probes');
+const { buildPrompt, schemaFor } = require('../internal/runtime/review');
 const { snapshot } = require('../internal/runtime/evidence');
 const { fixtureControllerClaim, executeWithFixtureController } = require('./fixtures/controller-claim');
 const { RunStore } = require('../internal/runtime/store');
@@ -29,21 +30,62 @@ test('ordinary probe Git commands resolve to the private copy and preserve canon
   assert.equal(git(['config', '--local', '--get', 'nightshift.probeBoundary']).stdout.trim(), 'canonical');
 });
 
+function committedProject() {
+  const parent = path.resolve(__dirname, '../.tmp/probe-integration');
+  fs.mkdirSync(parent, { recursive: true });
+  const root = fs.mkdtempSync(path.join(parent, 'case-'));
+  const git = args => {
+    const result = spawnSync('git', args, { cwd: root, windowsHide: true, encoding: 'utf8' });
+    assert.equal(result.status, 0, result.stderr);
+    return result.stdout.trim();
+  };
+  git(['init', '--quiet']);
+  fs.writeFileSync(path.join(root, 'answer.cjs'), 'module.exports = 41;\n');
+  git(['add', 'answer.cjs']);
+  git(['-c', 'user.name=Nightshift fixture', '-c', 'user.email=a.stenlund@gmail.com', 'commit', '--quiet', '-m', 'test(fixture): establish probe input']);
+  return { root, baseSha: git(['rev-parse', 'HEAD']) };
+}
+
+function assessment(options, output) {
+  const session = output.status === 'complete' ? 'final-assessor' : 'requesting-assessor';
+  const events = [{ type: 'assistant', session_id: session, message: { model: options.model, content: [] } }, { type: 'result', session_id: session, subtype: 'success', is_error: false, structured_output: output }];
+  fs.mkdirSync(options.artifacts, { recursive: true });
+  fs.writeFileSync(path.join(options.artifacts, 'events.jsonl'), events.map(event => JSON.stringify(event)).join('\n') + '\n');
+  return { host: options.host, model: options.model, effort: options.effort, session, attributionVerified: true, status: 'complete', output, tokens: 0 };
+}
+
+test('the reviewer brief and report schema state the probe timeout unit and range', () => {
+  const schema = schemaFor('code', randomUUID()).properties.probes.items.properties.timeoutMs;
+  assert.equal(schema.minimum, PROBE_TIMEOUT_FLOOR_MS);
+  assert.equal(schema.maximum, PROBE_TIMEOUT_CAP_MS);
+  assert.match(schema.description, /milliseconds, from 5000 to 120000/);
+  assert.match(buildPrompt({ id: randomUUID(), kind: 'code', requirements: 'Fixture', dimensions: DIMENSIONS.code }), /timeoutMs is in milliseconds, from 5000 to 120000/);
+});
+
+test('unusable probes are refused before reservation and a pre-launch refusal leaves a failed worker', async t => {
+  const { root, baseSha } = committedProject();
+  const store = new RunStore(root, { create: true });
+  t.after(() => { store.close(); fs.rmSync(root, { recursive: true, force: true }); });
+  const actor = { host: 'claude', session: 'controller' };
+  store.create({ objective: 'Refuse unusable probes', authority: 'User test request', controller: actor, controllerClaim: fixtureControllerClaim(actor), tasks: [{ id: 'work', title: 'Work', agreement: { source: 'User', outcome: 'An unusable probe leaves no uncertain worker' } }] });
+  const probe = { purpose: 'Observe the fixture', executable: process.execPath, args: ['--version'], timeoutMs: 10000, files: [] };
+  const probes = [{ ...probe, id: 'missing-executable', executable: 'nightshift-absent-probe-tool' }, { ...probe, id: 'seconds-timeout', timeoutMs: 240 }, { ...probe, id: 'non-ascii-fixture', files: [{ path: 'fixture.txt', content: 'caf' + String.fromCharCode(0xe9) }] }];
+  const runAgent = options => assessment(options, { requestId: options.schema.properties.requestId.enum[0], status: 'incomplete', coverage: [], findings: [], summary: 'Need deciding execution evidence', probes });
+  const requested = await executeWithFixtureController(root, { action: 'dispatch', actor, revision: store.read().revision, taskId: 'work', review: { kind: 'code', baseSha, requirements: 'Fixture', rules: 'Fixture rules', candidates: [{ host: 'claude', model: 'claude-fable-5-1', effort: 'high' }] } }, { runAgent });
+  const act = probeId => executeWithFixtureController(root, { action: 'probe', actor, revision: store.read().revision, taskId: 'work', receipt: path.relative(root, requested.receiptFile).split(path.sep).join('/'), probeId });
+  const workers = store.read().workers.length;
+  await assert.rejects(act('missing-executable'), { code: 'executable-not-found' });
+  await assert.rejects(act('seconds-timeout'), { code: 'invalid-probe-timeout', message: /milliseconds/ });
+  assert.equal(store.read().workers.length, workers);
+  await assert.rejects(act('non-ascii-fixture'), { code: 'invalid-probe' });
+  const refused = store.read().workers.at(-1);
+  assert.equal(store.read().workers.length, workers + 1);
+  assert.deepEqual([refused.role, refused.status], ['operation', 'failed']);
+});
+
 for (const withSelectedArtifact of [false, true]) {
   test(`a read-only assessor receives private execution evidence with selected artifact=${withSelectedArtifact}`, async t => {
-    const parent = path.resolve(__dirname, '../.tmp/probe-integration');
-    fs.mkdirSync(parent, { recursive: true });
-    const root = fs.mkdtempSync(path.join(parent, 'case-'));
-    const git = args => {
-      const result = spawnSync('git', args, { cwd: root, windowsHide: true, encoding: 'utf8' });
-      assert.equal(result.status, 0, result.stderr);
-      return result.stdout.trim();
-    };
-    git(['init', '--quiet']);
-    fs.writeFileSync(path.join(root, 'answer.cjs'), 'module.exports = 41;\n');
-    git(['add', 'answer.cjs']);
-    git(['-c', 'user.name=Nightshift fixture', '-c', 'user.email=a.stenlund@gmail.com', 'commit', '--quiet', '-m', 'test(fixture): establish probe input']);
-    const baseSha = git(['rev-parse', 'HEAD']);
+    const { root, baseSha } = committedProject();
     if (withSelectedArtifact) {
       fs.mkdirSync(path.join(root, '.tmp'));
       fs.writeFileSync(path.join(root, '.tmp/material.txt'), 'Explicit deciding material\r\n');
@@ -57,18 +99,13 @@ for (const withSelectedArtifact of [false, true]) {
     const selectedCheck = withSelectedArtifact ? "const assert = require('node:assert/strict');\nassert.equal(fs.readFileSync('.tmp/material.txt', 'utf8').trim(), 'Explicit deciding material');\nassert.equal(fs.existsSync('.tmp/unrelated.txt'), false);\n" : '';
     const probe = { id: 'mutation', purpose: 'Observe behavior before and after a private fixture mutation', executable: process.execPath, args: ['probe.cjs'], timeoutMs: 10000, files: [{ path: 'probe.cjs', content: "const fs = require('node:fs');\n" + selectedCheck + "const before = require('./answer.cjs');\nfs.writeFileSync('answer.cjs', 'module.exports = 42;\\n');\nconsole.log(JSON.stringify({ before, after: 42 }));\n" }] };
     const agent = (complete, hasEvidence = complete) => options => {
-      fs.mkdirSync(options.artifacts, { recursive: true });
       if (hasEvidence) {
         const evidence = JSON.parse(fs.readFileSync(path.join(options.cwd, 'context/probes/1.json'), 'utf8'));
         assert.equal(evidence.canonicalUnchanged, true);
         assert.equal(evidence.exitCode, 0);
         assert.deepEqual(JSON.parse(evidence.output), { before: 41, after: 42 });
       } else assert.equal(fs.existsSync(path.join(options.cwd, 'context/probes')), false);
-      const output = { requestId: options.schema.properties.requestId.enum[0], status: complete ? 'complete' : 'incomplete', coverage: DIMENSIONS.code.map(dimension => ({ dimension, evidence: 'Fixture evidence assessed' })), findings: [], summary: complete ? 'Execution evidence resolves the question' : 'Need deciding execution evidence', probes: complete ? [] : [probe] };
-      const session = complete ? 'final-assessor' : 'requesting-assessor';
-      const events = [{ type: 'assistant', session_id: session, message: { model: options.model, content: [] } }, { type: 'result', session_id: session, subtype: 'success', is_error: false, structured_output: output }];
-      fs.writeFileSync(path.join(options.artifacts, 'events.jsonl'), events.map(event => JSON.stringify(event)).join('\n') + '\n');
-      return { host: options.host, model: options.model, effort: options.effort, session, attributionVerified: true, status: 'complete', output, tokens: 0 };
+      return assessment(options, { requestId: options.schema.properties.requestId.enum[0], status: complete ? 'complete' : 'incomplete', coverage: DIMENSIONS.code.map(dimension => ({ dimension, evidence: 'Fixture evidence assessed' })), findings: [], summary: complete ? 'Execution evidence resolves the question' : 'Need deciding execution evidence', probes: complete ? [] : [probe] });
     };
     const dispatch = async (complete, hasEvidence = complete) => executeWithFixtureController(root, { action: 'dispatch', actor, revision: store.read().revision, taskId: 'work', review }, { runAgent: agent(complete, hasEvidence) });
     const first = await dispatch(false);

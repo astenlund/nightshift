@@ -23,10 +23,6 @@ function resolveExecutable(root, executable, env) {
   }
 }
 
-function resolveCommand(root, check) {
-  return { ...check, executable: resolveExecutable(root, check.executable, verificationEnvironment(check.resourceMode ?? 'inherit')) };
-}
-
 function validateCommand(check) {
   text(check?.name, 'check.name');
   text(check.executable, 'check.executable');
@@ -35,6 +31,12 @@ function validateCommand(check) {
   requireCondition(check.timeoutMs === undefined || Number.isSafeInteger(check.timeoutMs) && check.timeoutMs > 0, 'invalid-check', 'Check timeout must be positive');
   verificationEnvironment(check.resourceMode ?? 'inherit');
   requireCondition(check.resourceMode !== null, 'invalid-check-resource-mode', 'Check resource mode cannot be null');
+}
+
+// Validates a command and resolves its executable, so callers can refuse it before reserving a worker.
+function prepareCommand(root, check) {
+  validateCommand(check);
+  return { ...check, executable: resolveExecutable(root, check.executable, verificationEnvironment(check.resourceMode ?? 'inherit')) };
 }
 
 async function reservedOperation(store, request, work, dependencies = {}) {
@@ -54,6 +56,7 @@ async function reservedOperation(store, request, work, dependencies = {}) {
     Object.assign(worker, change);
   });
   let termination = null;
+  let launchAttempted = false;
   const writeTermination = result => {
     termination = { runId: registered.id, workerId: id, helperProcess, descendantsReclaimed: result.descendantsReclaimed === true, exitCode: result.code ?? null, observedAt: new Date().toISOString() };
     const file = projectFile(store.root, terminationPath);
@@ -61,11 +64,11 @@ async function reservedOperation(store, request, work, dependencies = {}) {
     fs.writeFileSync(file, JSON.stringify(termination) + '\n', { flag: 'wx' });
   };
   const run = async (root, requested) => {
-    validateCommand(requested);
-    const check = resolveCommand(root, requested);
+    const check = prepareCommand(root, requested);
     update({ phase: 'launching' });
     const startedAt = new Date().toISOString();
     try {
+      launchAttempted = true;
       const result = await (dependencies.runContained ?? processes.runContained)(check.executable, check.args, {
         cwd: root, env: verificationEnvironment(check.resourceMode ?? 'inherit'), timeoutMs: check.timeoutMs ?? 120000,
         onPrepared: info => update({ runnerPid: info.runnerPid, runnerProcess: (dependencies.information ?? processes.information)(info.runnerPid, null, root) }),
@@ -100,17 +103,18 @@ async function reservedOperation(store, request, work, dependencies = {}) {
       Object.assign(worker, { status: 'complete', phase: 'terminated', terminationEvidence: termination, evidence: 'Command result and terminal worker state committed together' });
     });
   } catch (error) {
+    // A refusal before the contained launch leaves no process to account for; only an attempted launch without termination evidence is uncertain.
+    const settled = !launchAttempted || termination?.descendantsReclaimed === true;
     store.update(request.actor, store.read().revision, 'operation-failed', state => {
       const worker = state.workers.find(item => item.id === id);
-      Object.assign(worker, { status: termination?.descendantsReclaimed === true ? 'failed' : 'unverified', terminationEvidence: termination, evidence: error.message });
+      Object.assign(worker, { status: settled ? 'failed' : 'unverified', terminationEvidence: termination, evidence: error.message });
     });
     throw error;
   }
 }
 
 async function reservedCheck(store, request, dependencies) {
-  validateCommand(request.check);
-  const check = resolveCommand(store.root, request.check);
+  const check = prepareCommand(store.root, request.check);
   const before = snapshot(store.root, check.paths);
 
   return reservedOperation(store, request, async run => {
@@ -122,4 +126,4 @@ async function reservedCheck(store, request, dependencies) {
   }, dependencies);
 }
 
-module.exports = { reservedCheck, reservedOperation };
+module.exports = { prepareCommand, reservedCheck, reservedOperation };

@@ -9,7 +9,7 @@ const { RunStore, requireCondition } = require('./store');
 const { assertAction, commitmentsFor, obligationBrief, transition } = require('./lifecycle');
 const { dispatchReview, readReceipt, validateBase, validateRequest } = require('./review');
 const { exhaustedLimit, remainingTime } = require('./limits');
-const { runProbe } = require('./probes');
+const { prepareProbe, runProbe } = require('./probes');
 const { awaitWorker } = require('./wait');
 const { admitEntry, executionResources, savedResources } = require('../releases/entry');
 const { isReadOnlyAction } = require('./actions');
@@ -117,7 +117,8 @@ async function execute(root, request, dependencies = {}) {
       const receipt = readReceipt(store.root, request.receipt, state, request.taskId);
       const probe = receipt.probes.find(candidate => candidate.id === request.probeId);
       requireCondition(probe, 'unknown-probe', 'The independent assessor did not request this probe');
-      const result = await reservedOperation(store, request, run => runProbe(store.root, receipt, { ...probe, timeoutMs: remainingTime(state, probe.timeoutMs) }, run), dependencies);
+      const command = prepareProbe(store.root, probe);
+      const result = await reservedOperation(store, request, run => runProbe(store.root, receipt, { ...command, timeoutMs: remainingTime(state, command.timeoutMs) }, run), dependencies);
 
       return obligationBrief(result);
     }

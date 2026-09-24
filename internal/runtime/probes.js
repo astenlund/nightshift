@@ -7,6 +7,19 @@ const { spawnSync } = require('node:child_process');
 const { requireCondition, text } = require('./store');
 const { executeCommand, fresh, hash, projectFile } = require('./evidence');
 const { writeJson } = require('./artifacts');
+const { prepareCommand } = require('./operations');
+
+// Assessors have repeatedly proposed seconds as milliseconds; a timeout below the floor cannot be what they meant.
+const PROBE_TIMEOUT_FLOOR_MS = 5000;
+const PROBE_TIMEOUT_CAP_MS = 120000;
+
+// Refuses an unusable probe before any worker is reserved and resolves its executable as checks do.
+function prepareProbe(root, probe) {
+  requireCondition(Number.isSafeInteger(probe.timeoutMs) && probe.timeoutMs >= PROBE_TIMEOUT_FLOOR_MS && probe.timeoutMs <= PROBE_TIMEOUT_CAP_MS, 'invalid-probe-timeout', `Probe timeoutMs is in milliseconds and must be from ${PROBE_TIMEOUT_FLOOR_MS} to ${PROBE_TIMEOUT_CAP_MS}; ${probe.timeoutMs} is outside that range, so request a corrected probe`);
+  const command = prepareCommand(root, { name: probe.purpose, executable: probe.executable, args: probe.args, timeoutMs: probe.timeoutMs, resourceMode: 'development' });
+
+  return { ...probe, executable: command.executable };
+}
 
 function runProbe(root, receipt, probe, runner) {
   text(probe?.id, 'probe.id');
@@ -71,4 +84,4 @@ function loadProbeEvidence(root, references, expectedSnapshot, contextSnapshot =
   });
 }
 
-module.exports = { loadProbeEvidence, runProbe };
+module.exports = { PROBE_TIMEOUT_CAP_MS, PROBE_TIMEOUT_FLOOR_MS, loadProbeEvidence, prepareProbe, runProbe };

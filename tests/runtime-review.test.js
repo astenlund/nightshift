@@ -75,7 +75,8 @@ test('skeptic producer schemas bind assigned ids and count while consumer valida
   const schemas = [0, 1, 2].map(count => schemaFor('skeptic', 'schema-request', ids.slice(0, count).map(id => ({ id }))));
   const duplicate = report([verdict(ids[0]), verdict(ids[0], 'Different evidence for the repeated id')]);
   const blank = report([verdict(ids[0], '')]);
-  const probe = { ...report([{ ...verdict(ids[0]), verdict: 'unverified' }]), status: 'incomplete', probes: [{ id: 'deciding-probe', purpose: 'Resolve missing evidence', executable: process.execPath, args: ['--version'], timeoutMs: 1000, files: [] }] };
+  const probe = { ...report([{ ...verdict(ids[0]), verdict: 'unverified' }]), status: 'incomplete', probes: [{ id: 'deciding-probe', purpose: 'Resolve missing evidence', executable: process.execPath, args: ['--version'], timeoutMs: 10000, files: [] }] };
+  const secondsTimeout = { ...probe, probes: [{ ...probe.probes[0], timeoutMs: 240 }] };
   const cases = [
     { name: 'empty-assignment', count: 0, document: report([]), valid: true },
     { name: 'extra-on-empty', count: 0, document: report([verdict('new-claim')]), valid: false },
@@ -84,6 +85,7 @@ test('skeptic producer schemas bind assigned ids and count while consumer valida
     { name: 'wrong-id', count: 1, document: report([verdict('unassigned-readme-note')]), valid: false },
     { name: 'omitted-verdict', count: 1, document: report([]), valid: false },
     { name: 'unverified-with-probe', count: 1, document: probe, valid: true },
+    { name: 'probe-timeout-in-seconds', count: 1, document: secondsTimeout, valid: false },
     { name: 'complete-batch', count: 2, document: report(ids.map(id => verdict(id))), valid: true },
     { name: 'duplicate-id-needs-consumer-check', count: 2, document: duplicate, valid: true },
     { name: 'blank-evidence-needs-consumer-check', count: 1, document: blank, valid: true },

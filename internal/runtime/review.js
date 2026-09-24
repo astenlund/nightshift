@@ -10,10 +10,11 @@ const { requireCondition, safeDirectory, text } = require('./store');
 const { fileIdentity, fresh, hash, projectFile, projectInventory, snapshot } = require('./evidence');
 const { codexModelContradiction, runAgent } = require('./hosts');
 const { writeJson, writeText } = require('./artifacts');
-const { loadProbeEvidence } = require('./probes');
+const { PROBE_TIMEOUT_CAP_MS, PROBE_TIMEOUT_FLOOR_MS, loadProbeEvidence } = require('./probes');
 const { workerEnvironment } = require('../releases/entry');
 
 const STRONG_MODELS = Object.freeze({ claude: ['claude-fable-5-1'], codex: ['gpt-6-astra'] });
+const PROBE_TIMEOUT_RULE = `timeoutMs is in milliseconds, from ${PROBE_TIMEOUT_FLOOR_MS} to ${PROBE_TIMEOUT_CAP_MS}; allow for the command's full expected duration.`;
 
 const DIMENSION_BRIEFS = Object.freeze({
   'intent-scope-acceptance': 'Does the spec express the desired outcome, consequential behavior, boundaries and evidence of success?',
@@ -95,7 +96,7 @@ function schemaFor(kind, requestId, assignedFindings = []) {
       coverage: { type: 'array', items: { type: 'object', additionalProperties: false, properties: { dimension: scalar, evidence: scalar }, required: ['dimension', 'evidence'] } },
       findings: { type: 'array', items: finding, ...(kind === 'skeptic' ? { minItems: assignedIds.length, maxItems: assignedIds.length } : {}) }, summary: scalar,
       probes: { type: 'array', items: { type: 'object', additionalProperties: false, properties: {
-        id: scalar, purpose: scalar, executable: scalar, args: { type: 'array', items: scalar }, timeoutMs: { type: 'integer', minimum: 1, maximum: 120000 },
+        id: scalar, purpose: scalar, executable: scalar, args: { type: 'array', items: scalar }, timeoutMs: { type: 'integer', minimum: PROBE_TIMEOUT_FLOOR_MS, maximum: PROBE_TIMEOUT_CAP_MS, description: PROBE_TIMEOUT_RULE },
         files: { type: 'array', items: { type: 'object', additionalProperties: false, properties: { path: scalar, content: scalar }, required: ['path', 'content'] } },
       }, required: ['id', 'purpose', 'executable', 'args', 'timeoutMs', 'files'] } },
     },
@@ -152,7 +153,7 @@ function buildPrompt(request) {
     ? `The assigned finding set is closed: return exactly one verdict for each supplied full id and retain that id verbatim. Validate each claim against concrete evidence, attempting refutation. Separate factual validity and practical value. Missing evidence is unverified. Evaluate whether it is worthwhile to implement, defer or skip, preserving agreed obligations. Unassigned observations belong in summary for separate controller routing and independent assessment before disposition; they are not assigned verdicts. Findings:\n${JSON.stringify(request.findings, null, 2)}\n`
     : 'Evaluate all dimensions without quotas or equal-depth narration. The author has not selected relevant dimensions. If the assignment is too large for credible coverage, return incomplete and describe the needed peer coverage. One underlying problem is one finding.\n';
   const definitions = request.dimensions.map(dimension => `${dimension}: ${DIMENSION_BRIEFS[dimension]}`).join('\n');
-  const execution = 'If a deciding claim needs execution unavailable in your read-only tools, request a bounded probe in probes, with its purpose, exact executable/args, timeout and ASCII fixture files. The controller executes it in a separate private copy and returns raw command/output evidence for your independent assessment. Remain incomplete/unverified until that evidence is sufficient. A probe never authorizes canonical project repairs. Available returned probe evidence is under context/probes/.\n';
+  const execution = `If a deciding claim needs execution unavailable in your read-only tools, request a bounded probe in probes, with its purpose, exact executable/args, timeout and ASCII fixture files. ${PROBE_TIMEOUT_RULE} The controller executes it in a separate private copy and returns raw command/output evidence for your independent assessment. Remain incomplete/unverified until that evidence is sufficient. A probe never authorizes canonical project repairs. Available returned probe evidence is under context/probes/.\n`;
   return common + definitions + '\n\n' + role + execution + '\nReturn the requested structured report with requestId, status, coverage, findings, probes and summary. Use an empty probes array when no execution evidence is missing.\n';
 }
 
