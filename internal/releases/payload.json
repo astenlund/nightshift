@@ -1,17 +1,17 @@
 {
   "schema": 1,
   "name": "nightshift",
-  "version": "3.2.4",
+  "version": "3.2.5",
   "files": [
     {
       "path": ".claude-plugin/plugin.json",
       "bytes": 640,
-      "sha256": "3ab25700f9066d1505977e1244b30eff0c969371997c9ada3602f093e04e145d"
+      "sha256": "136c2200d3d60ea7407003185e81b70c02b1fc8b5b10880c63610d6acf655c7c"
     },
     {
       "path": ".codex-plugin/plugin.json",
       "bytes": 1160,
-      "sha256": "483de146cc71531ad4490fed4d32a624f94d905faebc3f8cda10414c3da40b17"
+      "sha256": "1dade6078b4835e0f4ed96428d802577eee44045518de84d597d8ce6c924ef8a"
     },
     {
       "path": "LICENSE",
