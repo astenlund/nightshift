@@ -132,6 +132,10 @@ Deferred exploration of stronger enforcement for explicit command restrictions. 
 
 Policy for the initial spec/code lead: Fable or Astra only, prefer the other host, preserve the author or implementer effort floor, and use hard when effort is unknown. Strong same-host fallback takes precedence over a weaker cross-host reviewer. Additional enforcement style, if any, remains open.
 
+### [Model choice per role: Opus 5.5 versus Fable](features/opus-versus-fable-role-choice.md)
+
+Investigate which roles could use Opus 5.5 instead of Fable without falling below their required capability and strength, and at what cost difference. Unmeasured user impression so far; settle measurement and pricing evidence before any policy change.
+
 ### [Structured model teams](features/structured-model-teams.md)
 
 Later deliberate model-role arrangements. The MVP uses task-fit preferences and controller judgment, with interchangeable strong roles and equivalent-strength cross-host review when suitable.
