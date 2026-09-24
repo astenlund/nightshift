@@ -1,17 +1,17 @@
 {
   "schema": 1,
   "name": "nightshift",
-  "version": "3.2.5",
+  "version": "3.2.6",
   "files": [
     {
       "path": ".claude-plugin/plugin.json",
       "bytes": 640,
-      "sha256": "136c2200d3d60ea7407003185e81b70c02b1fc8b5b10880c63610d6acf655c7c"
+      "sha256": "4192cd379f5e92f060b02522863dc431da28a2dab251c2b1ff5e832ff051e192"
     },
     {
       "path": ".codex-plugin/plugin.json",
       "bytes": 1160,
-      "sha256": "1dade6078b4835e0f4ed96428d802577eee44045518de84d597d8ce6c924ef8a"
+      "sha256": "8b94d51f03598b3e3b59b3389ac1cb7e4433bf5347775f5b11211b9344cfb6e2"
     },
     {
       "path": "LICENSE",
@@ -140,8 +140,8 @@
     },
     {
       "path": "internal/runtime/REFERENCE.md",
-      "bytes": 40769,
-      "sha256": "34183b4ff336472075b369c7365f7ec5a89123263af4a0ce7876483a512522d7"
+      "bytes": 41277,
+      "sha256": "48e5d0d273aa7f5cdae8d13a0e30f27933687a53119bc625b4df1e02750bc8ad"
     },
     {
       "path": "internal/runtime/actions.js",
@@ -155,8 +155,8 @@
     },
     {
       "path": "internal/runtime/cli.js",
-      "bytes": 12089,
-      "sha256": "32a8cf193d90f2a4ce3de2303ad7b3521a1500590b81f41b501dc6bcbcfb9ab6"
+      "bytes": 12162,
+      "sha256": "f39ea37e3124a518f544f172072a62f1cfe70f54b0c399d0c5859b18ee5db7be"
     },
     {
       "path": "internal/runtime/evidence.js",
@@ -165,8 +165,8 @@
     },
     {
       "path": "internal/runtime/hook.js",
-      "bytes": 6084,
-      "sha256": "cdf29b8307e5d9e359f64bd5dc630faf65af46ac6024e89e78bfb610e457fa94"
+      "bytes": 6046,
+      "sha256": "0fb4dad712ab3d741cd88c5d698cb72c426d8c0fa48487700bbaa1728d6865f0"
     },
     {
       "path": "internal/runtime/hosts.js",
@@ -190,8 +190,8 @@
     },
     {
       "path": "internal/runtime/operations.js",
-      "bytes": 7848,
-      "sha256": "65acd911c54e5efc3148f63aebba20c4f954199dc95eece68552707cc86f94a1"
+      "bytes": 8185,
+      "sha256": "0daeb87fc21e0200de169876afc4dac06747b1e45642803d9e85d5b12ce21224"
     },
     {
       "path": "internal/runtime/ownership.js",
@@ -200,13 +200,13 @@
     },
     {
       "path": "internal/runtime/probes.js",
-      "bytes": 4846,
-      "sha256": "70b5915e45e91cf85b8a077971afb199467cd3b1bf6ffc364f4e9338ee888f2b"
+      "bytes": 5868,
+      "sha256": "b2861450ebd3ca543227f4ebf3b432946b82c80ce5dc296e3d0e64c9b8dd44f3"
     },
     {
       "path": "internal/runtime/review.js",
-      "bytes": 28130,
-      "sha256": "18b7a24b5c3098c790ad8532f188ec4b598bd684fb36f4d4e48247d1933f3237"
+      "bytes": 28433,
+      "sha256": "2119eef51a302f05ae797122d504f38471bc4f3df4f9c059ae88e48b1883ff96"
     },
     {
       "path": "internal/runtime/store.js",
