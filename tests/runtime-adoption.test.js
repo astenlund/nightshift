@@ -268,6 +268,70 @@ test('real contained check produces attributable termination evidence', { skip: 
   assert.equal(JSON.parse(fs.readFileSync(path.join(f.root, worker.terminationPath), 'utf8')).workerId, worker.id);
 });
 
+// Puts the running node first on PATH, keeping the rest for helpers the runtime itself launches.
+function nodeFirstOnPath(t) {
+  const previous = process.env.PATH;
+  process.env.PATH = path.dirname(process.execPath) + path.delimiter + previous;
+  t.after(() => { process.env.PATH = previous; });
+
+  return path.basename(process.execPath, path.extname(process.execPath));
+}
+
+const recordingLaunch = launched => ({
+  information: () => ({ found: true, pid: 7101, created: 'helper', name: 'node.exe' }),
+  runContained: async (executable, args, options) => {
+    launched.push(executable);
+    const result = { code: 0, stdout: '', stderr: '', descendantsReclaimed: true };
+    options.onFinished(result);
+
+    return result;
+  },
+});
+
+test('a check resolves a bare executable name from PATH before launch and records the resolved path', async t => {
+  const f = await fixture(t);
+  fs.writeFileSync(path.join(f.root, 'subject.txt'), 'input\n');
+  const name = nodeFirstOnPath(t);
+  const launched = [];
+  await f.call({ action: 'check', taskId: 'change', check: { name: 'Bare command', executable: name, args: ['--version'], paths: ['subject.txt'] } }, source, recordingLaunch(launched));
+  assert.equal(launched.length, 1);
+  assert.equal(path.isAbsolute(launched[0]), true);
+  assert.equal(path.dirname(launched[0]).toLowerCase(), fs.realpathSync.native(path.dirname(process.execPath)).toLowerCase());
+  const check = f.store.read().tasks[0].checks.at(-1);
+  assert.equal(check.executable, launched[0]);
+  assert.equal(check.passed, true);
+});
+
+test('an unresolvable bare executable is refused before any reservation', async t => {
+  const f = await fixture(t);
+  fs.writeFileSync(path.join(f.root, 'subject.txt'), 'input\n');
+  nodeFirstOnPath(t);
+  const before = f.store.read();
+  const launched = [];
+  await assert.rejects(f.call({ action: 'check', taskId: 'change', check: { name: 'Missing command', executable: 'nightshift-missing-command', args: [], paths: ['subject.txt'] } }, source, recordingLaunch(launched)), { code: 'executable-not-found', message: /nightshift-missing-command/ });
+  assert.deepEqual(f.store.read(), before);
+  assert.deepEqual(launched, []);
+});
+
+test('an executable named by path is launched unchanged', async t => {
+  const f = await fixture(t);
+  fs.writeFileSync(path.join(f.root, 'subject.txt'), 'input\n');
+  const launched = [];
+  await f.call({ action: 'check', taskId: 'change', check: { name: 'Relative command', executable: 'tools/fixture-command.exe', args: [], paths: ['subject.txt'] } }, source, recordingLaunch(launched));
+  await f.call({ action: 'check', taskId: 'change', check: { name: 'Absolute command', executable: process.execPath, args: [], paths: ['subject.txt'] } }, source, recordingLaunch(launched));
+  assert.deepEqual(launched, ['tools/fixture-command.exe', process.execPath]);
+});
+
+test('real contained check launches a bare executable name', { skip: process.platform !== 'win32' }, async t => {
+  const f = await fixture(t);
+  fs.writeFileSync(path.join(f.root, 'subject.txt'), 'input\n');
+  const name = nodeFirstOnPath(t);
+  await f.call({ action: 'check', taskId: 'change', check: { name: 'Native bare command', executable: name, args: ['--version'], paths: ['subject.txt'], resourceMode: 'development', timeoutMs: 15000 } });
+  const check = f.store.read().tasks[0].checks.at(-1);
+  assert.equal(check.passed, true);
+  assert.equal(path.isAbsolute(check.executable), true);
+});
+
 test('resumption preserves handover but cannot reuse a previously verified continuation observation', async t => {
   const f = await fixture(t);
   await f.call({ action: 'handover', authority: 'User hands over fixture', mechanism: { verified: true, evidence: 'Earlier native mechanism observation' } });

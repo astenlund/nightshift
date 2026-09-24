@@ -3,11 +3,29 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { randomUUID } = require('node:crypto');
-const { requireCondition, text } = require('./store');
+const { RunError, requireCondition, text } = require('./store');
+const { resolveTrustedExecutable } = require('../filesystem-primitives');
 const { assertAction } = require('./lifecycle');
 const { projectFile, snapshot } = require('./evidence');
 const { verificationEnvironment } = require('../releases/entry');
 const processes = require('../releases/processes');
+
+// A bare name resolves from the check environment's PATH, outside the project, because the contained launcher performs no search.
+function resolveExecutable(root, executable, env) {
+  if (path.isAbsolute(executable) || /[\\/]/.test(executable)) return executable;
+  const basename = process.platform === 'win32' && !path.extname(executable) ? executable + '.exe' : executable;
+  const pathKey = Object.keys(env).find(key => key.toUpperCase() === 'PATH');
+  try {
+    return resolveTrustedExecutable({ root, basename, pathValue: pathKey ? env[pathKey] : '' });
+  } catch {
+    // The resolver reports only that no qualifying entry exists; the refusal below names the requested executable.
+    throw new RunError('executable-not-found', `No executable named ${basename} was found on PATH outside the project; name it by path`);
+  }
+}
+
+function resolveCommand(root, check) {
+  return { ...check, executable: resolveExecutable(root, check.executable, verificationEnvironment(check.resourceMode ?? 'inherit')) };
+}
 
 function validateCommand(check) {
   text(check?.name, 'check.name');
@@ -42,8 +60,9 @@ async function reservedOperation(store, request, work, dependencies = {}) {
     fs.mkdirSync(path.dirname(file), { recursive: true });
     fs.writeFileSync(file, JSON.stringify(termination) + '\n', { flag: 'wx' });
   };
-  const run = async (root, check) => {
-    validateCommand(check);
+  const run = async (root, requested) => {
+    validateCommand(requested);
+    const check = resolveCommand(root, requested);
     update({ phase: 'launching' });
     const startedAt = new Date().toISOString();
     try {
@@ -91,11 +110,12 @@ async function reservedOperation(store, request, work, dependencies = {}) {
 
 async function reservedCheck(store, request, dependencies) {
   validateCommand(request.check);
-  const before = snapshot(store.root, request.check.paths);
+  const check = resolveCommand(store.root, request.check);
+  const before = snapshot(store.root, check.paths);
 
   return reservedOperation(store, request, async run => {
-    const result = await run(store.root, request.check);
-    const after = snapshot(store.root, request.check.paths);
+    const result = await run(store.root, check);
+    const after = snapshot(store.root, check.paths);
     const inputsUnchanged = before.digest === after.digest;
 
     return { ...result, snapshot: after, inputsUnchanged, passed: !result.error && result.exitCode === 0 && inputsUnchanged };
