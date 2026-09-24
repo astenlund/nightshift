@@ -8,6 +8,7 @@ const { createHash } = require('node:crypto');
 const { executable, pluginVersion, runAgent } = require('../internal/runtime/hosts');
 const { resolveTrustedExecutable } = require('../internal/filesystem-primitives');
 const { spawnWindowsJob } = require('../internal/runtime/windows-job');
+const { OUTPUT_LOOP_MIN_DELTAS, OUTPUT_LOOP_MIN_MS, outputLoopDetector, outputLoopMessage } = require('../internal/runtime/output-loop');
 
 function fixture(t, host, mode = 'success') {
   const parent = path.resolve(__dirname, '../.tmp/host-protocol-tests');
@@ -89,6 +90,29 @@ for (const mode of ['reroute-away', 'reroute-back', 'reroute-return-only', 'rero
     assert.equal(result.tokens, 17);
   });
 }
+
+test('output-loop detection needs both the duration and the delta count of one whitespace-only run', () => {
+  const feed = (detect, deltas) => deltas.map(delta => detect(delta)).filter(Boolean);
+  const whitespace = (count, start, spanMs, itemId = 'message') => Array.from({ length: count }, (_, index) => ({ itemId, delta: '\n', at: start + Math.round(index * spanMs / Math.max(1, count - 1)) }));
+  // The longest whitespace stretch in a completed recorded review: 220 deltas over 6.6 s.
+  assert.deepEqual(feed(outputLoopDetector(), [{ itemId: 'message', delta: '{', at: 0 }, ...whitespace(220, 1, 6618)]), []);
+  assert.deepEqual(feed(outputLoopDetector(), whitespace(5000, 0, OUTPUT_LOOP_MIN_MS - 1)), []);
+  assert.deepEqual(feed(outputLoopDetector(), whitespace(OUTPUT_LOOP_MIN_DELTAS - 1, 0, 600000)), []);
+  const detected = feed(outputLoopDetector(), [{ itemId: 'message', delta: 'text', at: 1000 }, ...whitespace(OUTPUT_LOOP_MIN_DELTAS, 2000, OUTPUT_LOOP_MIN_MS)]);
+  assert.deepEqual(detected, [{ deltas: OUTPUT_LOOP_MIN_DELTAS, durationMs: OUTPUT_LOOP_MIN_MS, lastTextAt: 1000 }]);
+  assert.match(outputLoopMessage(detected[0]), /only whitespace for 120 s \(1000 deltas\) after its last text at 1970-01-01T00:00:01.000Z/);
+  const interrupted = [...whitespace(900, 0, 100000), { itemId: 'message', delta: 'x', at: 100001 }, ...whitespace(900, 100002, 100000)];
+  assert.deepEqual(feed(outputLoopDetector(), interrupted), []);
+  const newMessage = [...whitespace(900, 0, 100000), ...whitespace(900, 100001, 100000, 'next-message')];
+  assert.deepEqual(feed(outputLoopDetector(), newMessage), []);
+});
+
+test('Codex attempts end on a sustained whitespace-only message but tolerate a brief whitespace burst', async t => {
+  const outputLoop = { minMs: 200, minDeltas: 10 };
+  await assert.rejects(runAgent({ ...fixture(t, 'codex', 'whitespace-loop'), outputLoop }), { code: 'output-loop', message: /only whitespace for \d+ s \(\d+ deltas\) after its last text at / });
+  const burst = await runAgent({ ...fixture(t, 'codex', 'whitespace-burst'), outputLoop });
+  assert.equal(burst.status, 'complete');
+});
 
 test('server request ids cannot collide with pending client response ids', async t => {
   const result = await runAgent(fixture(t, 'codex', 'colliding-request'));

@@ -9,7 +9,7 @@ const { dispatchReview, readReceipt, schemaFor, validateReport } = require('../i
 const { DIMENSIONS, reviewGate } = require('../internal/runtime/lifecycle');
 const { fileIdentity, fresh, hash } = require('../internal/runtime/evidence');
 const { runAgent } = require('../internal/runtime/hosts');
-const { RunStore } = require('../internal/runtime/store');
+const { RunError, RunStore } = require('../internal/runtime/store');
 const { fixtureControllerClaim, executeWithFixtureController } = require('./fixtures/controller-claim');
 
 function git(root, args) {
@@ -370,6 +370,22 @@ test('exhausted returned failures retain one failure record per candidate', asyn
   assert.equal(failure.attempts.length, 2);
   assert.ok(failure.attempts.every(attempt => attempt.status === 'failed' && attempt.tokens === 7 && attempt.error));
   assert.equal(fs.existsSync(path.join(directory, 'receipt.json')), false);
+});
+
+test('an attempt ended as an output loop passes to the listed fallback and keeps its evidence', async t => {
+  const f = fixture(t);
+  const loop = 'Reviewer streamed only whitespace for 120 s (1000 deltas) after its last text at 2026-09-24T00:00:00.000Z; the attempt was ended as an output loop';
+  const hosts = [];
+  const result = await dispatchReview(f.root, { ...f, candidates: [{ host: 'codex', model: 'gpt-6-astra', effort: 'high' }, ...f.candidates], substitutionReason: 'Preferred candidate ended in an output loop' }, { runAgent: options => {
+    hosts.push(options.host);
+    if (options.host === 'codex') throw new RunError('output-loop', loop);
+    return mockAgent(options);
+  } });
+  assert.deepEqual(hosts, ['codex', 'claude']);
+  assert.deepEqual(result.receipt.attempts.map(attempt => ({ host: attempt.host, status: attempt.status, error: attempt.error })), [
+    { host: 'codex', status: 'failed', error: loop },
+    { host: 'claude', status: 'complete', error: undefined },
+  ]);
 });
 
 test('skeptic reports must address every finding; missing evidence stays unverified', () => {

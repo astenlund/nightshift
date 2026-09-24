@@ -4,9 +4,10 @@ const fs = require('node:fs');
 const path = require('node:path');
 const readline = require('node:readline');
 const { spawn } = require('node:child_process');
-const { requireCondition } = require('./store');
+const { RunError, requireCondition } = require('./store');
 const { resolveTrustedExecutable } = require('../filesystem-primitives');
 const { spawnWindowsJob } = require('./windows-job');
+const { outputLoopDetector, outputLoopMessage } = require('./output-loop');
 
 function executable(host, root) {
   requireCondition(['codex', 'claude'].includes(host), 'unsupported-host', 'Unknown agent host');
@@ -124,6 +125,8 @@ async function runCodex(options) {
   let ended = false;
   let outcome;
   let thrown;
+  let outputLoop = null;
+  const detectOutputLoop = outputLoopDetector(options.outputLoop);
   const pending = new Map();
   let resolveTurn;
   const turn = new Promise(resolve => { resolveTurn = resolve; });
@@ -160,6 +163,9 @@ async function runCodex(options) {
         // Codex totalTokens already includes cached input and reasoning output.
         tokens = event.params.tokenUsage.total.totalTokens;
         options.onUsage?.(tokens);
+      } else if (event.method === 'item/agentMessage/delta' && event.params.threadId === session && typeof event.params.delta === 'string' && !outputLoop) {
+        outputLoop = detectOutputLoop({ itemId: event.params.itemId, delta: event.params.delta, at: Date.now() });
+        if (outputLoop) execution.fail(new RunError('output-loop', outputLoopMessage(outputLoop)));
       } else if (event.method === 'item/completed' && event.params.threadId === session && event.params.item.type === 'agentMessage') {
         output = event.params.item.text;
       } else if (event.method === 'turn/completed' && event.params.threadId === session) {
@@ -181,6 +187,7 @@ async function runCodex(options) {
     actualModel = started.model;
     await request('turn/start', { threadId: session, input: [{ type: 'text', text: options.prompt }], ...(options.schema ? { outputSchema: options.schema } : {}) });
     const result = await turn;
+    requireCondition(!outputLoop, 'output-loop', outputLoop && outputLoopMessage(outputLoop));
     const finalModel = reroutes.findLast(event => event.params?.threadId === session)?.params.toModel ?? actualModel;
     const attributionVerified = actualModel === options.model && !reroutes.some(event => codexModelContradiction(event, session, options.model));
     outcome = { host: 'codex', model: finalModel, effort: options.effort ?? 'high', session, attributionVerified, status: !malformed && result.status === 'completed' ? 'complete' : 'failed', output, tokens };

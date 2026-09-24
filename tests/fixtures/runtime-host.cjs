@@ -75,6 +75,17 @@ else if (args.includes('--print')) {
       if (mode === 'missing-params') send({ method: 'item/completed' });
       if (mode === 'missing-item') send({ method: 'item/completed', params: { threadId: 'fixture-session' } });
       if (mode === 'missing-usage') send({ method: 'thread/tokenUsage/updated', params: { threadId: 'fixture-session', tokenUsage: {} } });
+      const delta = text => send({ method: 'item/agentMessage/delta', params: { threadId: 'fixture-session', turnId: 'fixture-turn', itemId: 'fixture-message', delta: text } });
+      if (mode === 'whitespace-loop') {
+        delta('{');
+        setInterval(() => delta('\n'), 5);
+        return;
+      }
+      if (mode === 'whitespace-burst') {
+        delta('{');
+        for (let index = 0; index < 30; index++) delta('  ');
+        delta('}');
+      }
       completeTurn();
     }
   });
