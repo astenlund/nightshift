@@ -78,7 +78,7 @@ A focused search over current tests, internal modules, skills, tools and CI foun
 
 ## Backlog and inbox evidence
 
-The [Ready skill](../../skills/ready/SKILL.md) uses project goals and invariant priorities; [repository instructions](../../AGENTS.md) define maintainer inbox capture and triage. The MVP now explicitly describes a maintainer-only inbox. General [Project inboxes](../features/project-inboxes.md) is an existing separate draft. The current [recommendation omission bug](../BUGS.md#ready-reports-omit-actionable-recommendations) prevents treating prose policy as universally verified model behavior.
+The [Ready skill](../../skills/ready/SKILL.md) uses project goals and invariant priorities; [repository instructions](../../AGENTS.md) define maintainer inbox capture and triage. The MVP now explicitly describes a maintainer-only inbox. General [Project inboxes](../features/project-inboxes.md) is an existing separate draft. The current [recommendation omission bug](../BUGS_HISTORY.md#ready-reports-omit-actionable-recommendations) prevents treating prose policy as universally verified model behavior.
 
 ## Progress and convergence evidence
 

@@ -36,7 +36,7 @@ Nested content must retain hierarchy rather than being flattened into a precedin
 
 ## Ready selection prompts an unnecessary separate-task choice
 
-Disposition: merge the incident into the existing quick win and rename it [Continue agreed Ready work in the current session](../QUICK_WINS.md#continue-agreed-ready-work-in-the-current-session). The user replied "agree" to the merge and rename, preserving the distinction between agreeing scope and explicitly handing work over.
+Disposition: merge the incident into the existing quick win and rename it [Continue agreed Ready work in the current session](../QUICK_WINS_HISTORY.md). The user replied "agree" to the merge and rename, preserving the distinction between agreeing scope and explicitly handing work over.
 
 Source: `2026-09-21-ready-selection-unnecessary-separate-task-question.md`, reporting Ready selection of Paused strong gate pauses repair application in this repository and session, installed and bound 3.2.0. After investigation and readback, the controller asked whether work should occur in the current task or a separate task. The user had not requested a new conversation, asked what that meant, then chose to continue here and questioned whether the option was improvised. No separate task was created and implementation had not yet begun.
 
