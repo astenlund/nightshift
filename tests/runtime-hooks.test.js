@@ -55,7 +55,8 @@ test('delegation preserves writes, reviewer strength and controller judgment', t
   t.after(() => { store.close(); fs.rmSync(root, { recursive: true, force: true }); });
   const actor = { host: 'claude', session: 'owner' };
   store.create({ objective: 'Work', authority: 'User', controller: actor, tasks: [{ id: 'work', title: 'Work', agreement: { source: 'User', outcome: 'Behavior' } }] });
-  assert.equal(handleHook({ cwd: root, session_id: actor.session, hook_event_name: 'Stop' }).decision, undefined);
+  assert.deepEqual(handleHook({ cwd: root, session_id: actor.session, hook_event_name: 'Stop' }), {});
+  assert.match(handleHook({ cwd: root, session_id: actor.session, hook_event_name: 'PreCompact' }).systemMessage, /Reconcile it after compaction/);
   const update = request => store.update(actor, store.read().revision, request.action, state => transition(state, request));
   const implementer = { id: 'writer', session: 'writer-session', assignment: 'Repair component', role: 'implementer', writes: ['src/component'] };
   update({ action: 'worker', worker: implementer });
