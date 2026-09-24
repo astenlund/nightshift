@@ -4,6 +4,22 @@ V2 entries are preserved in [the historical index](migration/v2/QUICK_WINS.md) a
 
 ## Current
 
+### Windows job start failures omit the executable and the Windows error
+
+Observed on 2026-09-24 in this repository, run `bf8200ce-157c-416f-98a0-fd4016ebfc35`: an assessor's proposed probe failed with only "Windows job could not start the host: spawn". The session's bound runtime was release 3.2.3, which launches a probe executable exactly as named, so the bare `node` could not start, and finding that out needed a check of the bound bundle's version. `internal/runtime/windows-job-runner.ps1` sends its start-failed frame with the detail code `spawn` only, and `internal/runtime/windows-job.js` builds the error from that code, so neither the executable nor the Windows error reaches the worker evidence. Since 3.2.6 a bare name is resolved before reservation, but an explicit path that cannot start (missing, blocked or not executable) still gives the same message for checks, probes and reviewer host launches. The user chose to track this at triage on 2026-09-24.
+
+Include the requested executable and the Win32 error code or message in the start-failed frame and in the resulting error, keeping the frame grammar validated. Runtime code changes ship with a version increase. Tracking does not authorize implementation.
+
+**Requires:** none.
+
+### Wait deadline test depends on fixture setup time
+
+Observed on 2026-09-24 in this repository, run `bf8200ce-157c-416f-98a0-fd4016ebfc35`: the recorded runtime suite failed once (188 of 189) on `tests/runtime.test.js` "wait ends at the run deadline instead of the requested timeout". The test computes a run deadline 400 ms ahead before its fixture is created, so fixture setup counts against it; under the concurrent full suite the setup took longer, so registering the worker was itself refused with `resource-limit` "The authorized run deadline has been reached" before `wait` ran. The same test passed in a direct run and on the immediate re-run of the recorded check (189 of 189). The user chose to track this at triage on 2026-09-24.
+
+Make the deadline independent of setup time, for example by setting it after the worker is registered or allowing a larger margin, while keeping the assertion that `wait` ends at the deadline rather than at the requested timeout. Test-only change. Tracking does not authorize implementation.
+
+**Requires:** none.
+
 ### Codex sandbox blocks the launcher from starting the host
 
 Observed on 2026-09-19 in every Codex fixture of the handover acceptance campaign (Codex CLI 0.154.0, plugin 3.2.0), recorded in [the acceptance report](reports/handover-transition-and-morning-report-20260919.md). Inside the Codex sandbox the launcher cannot start the host process it inspects, at two sites. Preparation fails with `{"error":"EPERM","message":"spawn EPERM"}` at first use and again in some later sessions of the same, already prepared profile (the new-run handover and refused-admission sessions). Resolving resources through the retained bootstrap fails with `{"error":"retained-bootstrap-unavailable","message":"spawn EPERM"}` in later sessions (new-run handover, in-place handover and refused admission). The resumed returning-user session showed no fresh failure. Each time the model has to request an out-of-sandbox retry. With the escalation approved, preparation is silent and the operation proceeds; with it denied at first use, the Ready report correctly says the parser never ran and does not present an empty backlog. A real Codex user therefore sees approval prompts that work against preparation needing no setup conversation; whether every session prompts, or only the first command of each, was not separately established, because the harness answered these requests automatically. Claude Code shows no equivalent prompt.
