@@ -134,7 +134,7 @@ Policy for the initial spec/code lead: Fable or Astra only, prefer the other hos
 
 ### [Model choice per role: Opus 5.5 versus Fable](features/opus-versus-fable-role-choice.md)
 
-Investigate which roles could use Opus 5.5 instead of Fable without falling below their required capability and strength, and at what cost difference. Unmeasured user impression so far; settle measurement and pricing evidence before any policy change.
+Investigate which roles could use Opus 5.5 instead of Fable without falling below their required capability and strength, and at what cost difference. The user reports Opus working well as default controller, unmeasured; live testing and pricing evidence settle any policy change.
 
 ### [Structured model teams](features/structured-model-teams.md)
 
