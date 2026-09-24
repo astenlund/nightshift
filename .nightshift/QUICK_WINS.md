@@ -4,14 +4,6 @@ V2 entries are preserved in [the historical index](migration/v2/QUICK_WINS.md) a
 
 ## Current
 
-### Dispatch timeout applies per attempt while the launcher bound is total
-
-Observed on 2026-09-24 in this repository, run `0c326496-62f7-4eb1-a9e0-1a7a412933bf`, dispatch `0fc72873-32d2-4ae1-ae4a-c678ca5d4c47`. `internal/runtime/review.js` gives each candidate attempt `Math.min(timeoutMs, remaining)`, and without a run deadline `remaining` is the full `timeoutMs` again, so a dispatch with a fallback can run for the number of candidates times `timeoutMs`. The retained launcher separately bounds the whole guarded operation (the envelope `timeoutMs`, at most one hour). The controller set that bound to 1500000 ms with a review `timeoutMs` of 1200000 and two candidates. The Codex Astra attempt looped until its 20-minute timeout (see the bug "Dispatch does not detect a reviewer stuck in an output loop"), and the Fable fallback was composing its final report when the launcher ended the dispatch helper at 19:43:15Z. No receipt was written, the reviewer worker stayed `running` with its runner gone, and it was reconciled by hand with `wait` (`runner-missing`) and `worker-finished`. A re-dispatch with a 3000000 ms bound completed. `internal/runtime/REFERENCE.md` does not say that dispatch `timeoutMs` applies per attempt, and nothing relates it to the launcher bound. The user chose to track this at triage on 2026-09-24.
-
-State in the runtime reference that dispatch `timeoutMs` bounds each attempt and that the launcher bound must cover every candidate attempt, or make the budget total across attempts; consider refusing a dispatch whose candidates cannot fit within the launcher bound. Runtime code changes ship with a version increase. Tracking does not authorize implementation.
-
-**Requires:** none.
-
 ### Codex sandbox blocks the launcher from starting the host
 
 Observed on 2026-09-19 in every Codex fixture of the handover acceptance campaign (Codex CLI 0.154.0, plugin 3.2.0), recorded in [the acceptance report](reports/handover-transition-and-morning-report-20260919.md). Inside the Codex sandbox the launcher cannot start the host process it inspects, at two sites. Preparation fails with `{"error":"EPERM","message":"spawn EPERM"}` at first use and again in some later sessions of the same, already prepared profile (the new-run handover and refused-admission sessions). Resolving resources through the retained bootstrap fails with `{"error":"retained-bootstrap-unavailable","message":"spawn EPERM"}` in later sessions (new-run handover, in-place handover and refused admission). The resumed returning-user session showed no fresh failure. Each time the model has to request an out-of-sandbox retry. With the escalation approved, preparation is silent and the operation proceeds; with it denied at first use, the Ready report correctly says the parser never ran and does not present an empty backlog. A real Codex user therefore sees approval prompts that work against preparation needing no setup conversation; whether every session prompts, or only the first command of each, was not separately established, because the harness answered these requests automatically. Claude Code shows no equivalent prompt.
@@ -143,14 +135,6 @@ Add to `skills/handover/SKILL.md`, directly after the sentence about settling kn
 Observed in this repository on 2026-09-11 during an unattended run. The agreed outcome committed to archiving two fixed BUGS.md entries, the controller left that for the documentation stage, the first cumulative assessment raised it as a minor finding, and the archive edit then invalidated the review snapshot, so a second full dispatch was needed for a change the reviewer had already covered. The lifecycle places documentation after review, but the runtime requires the cumulative assessment to be fresh at task completion and any tracked-file edit invalidates it, so every documentation or backlog edit made in that stage forces a reassessment. `internal/workflow.md` "Close and report" currently reads as if those edits belong after review.
 
 Add one sentence to the brief, under Durable execution or Review and repair, stating that documentation, skill text and backlog closure the agreed outcome commits to are part of implementation and land before the first cumulative assessment, so the documentation stage only records evidence and a reassessment is needed only when findings change files; mirror it in `skills/handover/SKILL.md` if the handover text implies the later ordering. Shipped text changes model-owned behavior, so it rides with the next version increase.
-
-**Requires:** none.
-
-### Runtime CLI rejects an unrecognized request action with a clear error
-
-Observed in this repository on 2026-09-11. `internal/runtime/REFERENCE.md` names the operations (`status`, `inspect`, `create` and so on) but never states the request key, and `internal/runtime/cli.js` dispatches on `request.action`. A request written as `{"operation": "status"}` fell through every branch to the owner check and failed with `stale-owner`, a message about controller identity, on a read-only status call; the controller spent two calls and a read of the CLI source to find the cause.
-
-Make the CLI reject a request whose `action` is missing or unrecognized with an `invalid-request` error that names the key and lists the accepted actions, before any state check; the `unknown-action` default in `transition` (`internal/runtime/lifecycle.js`) already rejects unrecognized actions but only after the owner and run-state checks, so the new guard should precede it and the two should share one error code. Add one sentence at the top of the reference giving the request shape (`{action, actor, revision, ...}`), and a runtime fixture for the missing-key case. Runtime code, so it ships with a version increase.
 
 **Requires:** none.
 
