@@ -4,6 +4,22 @@ V2 entries are preserved in [the historical index](migration/v2/QUICK_WINS.md) a
 
 ## Current
 
+### Attended runs show a Stop message after every reply
+
+Raised by the user on 2026-09-24 in this repository during attended run `46fc13f1-98fc-4a3e-953c-958a31261ae4`, asking whether the "Stop says" messages are needed in the chat. Claude Code runs the Stop hook at the end of every assistant turn, and for an attended run without a handover `internal/runtime/hook.js` returns the user-facing `systemMessage` "Nightshift attended work remains saved. Reconcile its outstanding obligations before resuming or claiming completion." after every reply. It blocks nothing, carries no decision for the user and tells the controller nothing that saved state does not. The continuation block for handed-over or unattended runs and the paused-on-decision messages are separate cases. Codex registers the same Stop hook, so the message probably appears there too; that was not observed. The user chose to track this at triage on 2026-09-24.
+
+Return no `systemMessage` from Stop for an attended run without a handover, and review whether the other `systemMessage` returns in `internal/runtime/hook.js` (PreCompact and the idle Stop cases) say anything the user needs, keeping continuation blocks for protected runs unchanged. The setup and resource failure notices under `internal/releases` are out of scope, since they report an actual failure. Hook behavior ships with a version increase. Tracking does not authorize implementation.
+
+**Requires:** none.
+
+### Unresolvable probe executables leave an unverified worker
+
+Traced on 2026-09-24 by cumulative review `7a3f4c82-512f-4f7c-9691-b0d6507edc65` in run `46fc13f1-98fc-4a3e-953c-958a31261ae4` and confirmed by a fresh skeptic. Since 3.2.5 a runtime check resolves a bare executable name before reservation, but an assessor probe resolves it at launch inside its already reserved operation (`internal/runtime/cli.js` enters `reservedOperation` before `runProbe`). An unresolvable probe executable therefore fails with `executable-not-found` after the worker is committed, and because no termination evidence exists the worker is left unverified although nothing launched, which needs reconciliation and can block adoption or resumption. How often assessors propose such a probe is unknown. The user chose to track this at triage on 2026-09-24.
+
+Resolve and validate a probe's executable before reserving its operation, as checks do, so a refused probe leaves no uncertain worker, with a runtime fixture for the refusal. Runtime code, so it ships with a version increase. Tracking does not authorize implementation.
+
+**Requires:** none.
+
 ### Codex sandbox blocks the launcher from starting the host
 
 Observed on 2026-09-19 in every Codex fixture of the handover acceptance campaign (Codex CLI 0.154.0, plugin 3.2.0), recorded in [the acceptance report](reports/handover-transition-and-morning-report-20260919.md). Inside the Codex sandbox the launcher cannot start the host process it inspects, at two sites. Preparation fails with `{"error":"EPERM","message":"spawn EPERM"}` at first use and again in some later sessions of the same, already prepared profile (the new-run handover and refused-admission sessions). Resolving resources through the retained bootstrap fails with `{"error":"retained-bootstrap-unavailable","message":"spawn EPERM"}` in later sessions (new-run handover, in-place handover and refused admission). The resumed returning-user session showed no fresh failure. Each time the model has to request an out-of-sandbox retry. With the escalation approved, preparation is silent and the operation proceeds; with it denied at first use, the Ready report correctly says the parser never ran and does not present an empty backlog. A real Codex user therefore sees approval prompts that work against preparation needing no setup conversation; whether every session prompts, or only the first command of each, was not separately established, because the harness answered these requests automatically. Claude Code shows no equivalent prompt.
@@ -120,9 +136,11 @@ Observed in this repository on 2026-09-12 during an unattended run. An independe
 
 Recurred in run `c675a074-6431-46e2-85b7-e3b8616e9220` on 2026-09-15 to 17: two independent assessors again returned probe proposals with sub-second `timeoutMs` while their prose meant minutes; supplying the producer schema's 120000 cap explicitly produced usable split probes, which confirms the floor and the stated unit are what is missing.
 
-Make the `probe` operation reject a proposal whose `timeoutMs` is below a plausible floor (for example 5000) with an error naming the unit, state in `internal/runtime/REFERENCE.md` that `timeoutMs` is milliseconds, and add a runtime fixture for the rejection. Runtime code, so it ships with a version increase.
-
 Recurred in run `d4a44daa-96be-4ac4-bcaa-d16d8596584f` on 2026-09-18 to 19, the handover transition and morning report delivery, which spent 14,869,844 review tokens across 18 dispatches, summed from that run's review receipts, and 14,445,999 live-verification tokens on a change of roughly 400 lines, with four already tracked defects firing during it. Here, the third occurrence: an independent assessor proposed `timeoutMs` 180 for four test suites, the operation offers no override, and stating the unit and the 120000 cap in the next dispatch again produced usable probes.
+
+Recurred a fourth time on 2026-09-24 in run `46fc13f1-98fc-4a3e-953c-958a31261ae4`: Codex `gpt-6-astra` review `229d5019-1d54-429b-aa30-8366b4676b6f` found no defect but returned incomplete with a probe of `timeoutMs` 240 for five runtime test files that take about a minute. Because `probe` has no timeout override, the controller did not run it and re-dispatched with the recorded check output as current-input evidence, which produced a clean review; the incomplete attempt cost 572,891 tokens. The user chose to track this evidence here at triage on 2026-09-24.
+
+Make the `probe` operation reject a proposal whose `timeoutMs` is below a plausible floor (for example 5000) with an error naming the unit, state in `internal/runtime/REFERENCE.md` that `timeoutMs` is milliseconds, and add a runtime fixture for the rejection. Runtime code, so it ships with a version increase.
 
 **Requires:** none.
 
