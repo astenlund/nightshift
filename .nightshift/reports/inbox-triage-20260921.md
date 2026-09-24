@@ -1,6 +1,6 @@
 # Maintainer inbox triage, 2026-09-21
 
-The user reviewed four reports individually in Codex session `01a0c16c-8778-7a20-9e72-0da0148879f8`. Every disposition below was explicitly agreed. This report preserves the decisions and evidence needed by the destination entries; the original reports are retained under the ignored `.nightshift/inbox/triaged` directory. These are tracking decisions, not implementation or publication authority.
+The user reviewed four reports individually in Codex session `01a0c16c-8778-7a20-9e72-0da0148879f8`. Every disposition below was explicitly agreed. This report preserves the decisions and evidence needed by the destination entries; the original reports were retained under the ignored `.nightshift/inbox/triaged` directory until their deletion on 2026-09-24. These are tracking decisions, not implementation or publication authority.
 
 ## Migration leaves root backlog references unchanged
 
