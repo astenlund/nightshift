@@ -6,6 +6,7 @@ const { randomUUID } = require('node:crypto');
 const { RunError, requireCondition, text } = require('./store');
 const { resolveTrustedExecutable } = require('../filesystem-primitives');
 const { assertAction } = require('./lifecycle');
+const { timeLeft } = require('./limits');
 const { projectFile, snapshot } = require('./evidence');
 const { verificationEnvironment } = require('../releases/entry');
 const processes = require('../releases/processes');
@@ -65,12 +66,14 @@ async function reservedOperation(store, request, work, dependencies = {}) {
   };
   const run = async (root, requested) => {
     const check = prepareCommand(root, requested);
+    // Preparation such as snapshots and private copies takes time, so the deadlines bound the command from its launch.
+    const timeoutMs = timeLeft({ deadlineUtc: store.read().limits?.deadlineUtc, operationDeadlineUtc: dependencies.resourceContext?.operationDeadlineUtc }, check.timeoutMs ?? 120000);
     update({ phase: 'launching' });
     const startedAt = new Date().toISOString();
     try {
       launchAttempted = true;
       const result = await (dependencies.runContained ?? processes.runContained)(check.executable, check.args, {
-        cwd: root, env: verificationEnvironment(check.resourceMode ?? 'inherit'), timeoutMs: check.timeoutMs ?? 120000,
+        cwd: root, env: verificationEnvironment(check.resourceMode ?? 'inherit'), timeoutMs,
         onPrepared: info => update({ runnerPid: info.runnerPid, runnerProcess: (dependencies.information ?? processes.information)(info.runnerPid, null, root) }),
         onStarted: info => update({ phase: 'contained', status: 'running', pid: info.pid, runnerPid: info.runnerPid, childProcess: (dependencies.information ?? processes.information)(info.pid, null, root) }),
         onFinished: writeTermination,
@@ -78,7 +81,7 @@ async function reservedOperation(store, request, work, dependencies = {}) {
 
       update({ phase: 'finalizing' });
 
-      return { ...check, resourceMode: check.resourceMode ?? 'inherit', startedAt, finishedAt: new Date().toISOString(), exitCode: result.code, error: result.error ?? null, output: (result.stdout ?? '') + (result.stderr ?? '') };
+      return { ...check, timeoutMs, resourceMode: check.resourceMode ?? 'inherit', startedAt, finishedAt: new Date().toISOString(), exitCode: result.code, error: result.error ?? null, output: (result.stdout ?? '') + (result.stderr ?? '') };
     } catch (error) {
       if (!termination && error.descendantsReclaimed === true) writeTermination({ descendantsReclaimed: true, code: null });
       throw error;

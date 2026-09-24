@@ -6,6 +6,8 @@ const { resolveTrustedExecutable } = require('../filesystem-primitives');
 const { spawnWindowsJob } = require('../runtime/windows-job');
 const { ReleaseError, processAlive, requireValue } = require('./io');
 
+const MAX_OPERATION_TIMEOUT_MS = 3600000;
+
 function information(pid, host, cwd) {
   try {
     const executable = resolveTrustedExecutable({ root: cwd, basename: 'pwsh.exe' });
@@ -54,7 +56,7 @@ async function runContained(executable, args, options) {
   });
   try { options.onPrepared?.({ runnerPid: child.runnerPid }); }
   catch (error) { fail(error); }
-  const timer = setTimeout(() => fail(new ReleaseError('operation-timeout', 'Guarded operation exceeded its time bound')), options.timeoutMs ?? 3600000);
+  const timer = setTimeout(() => fail(new ReleaseError('operation-timeout', 'Guarded operation exceeded its time bound')), options.timeoutMs ?? MAX_OPERATION_TIMEOUT_MS);
   const result = await new Promise(resolve => child.once('close', (code, signal) => resolve({ code, signal })));
   clearTimeout(timer);
   const exit = { ...result, stdout, stderr, descendantsReclaimed: child.jobEmpty === true, error: failure?.message ?? null };
@@ -67,4 +69,4 @@ async function runContained(executable, args, options) {
   return exit;
 }
 
-module.exports = { information, nativeOwner, ownerAlive, runContained };
+module.exports = { MAX_OPERATION_TIMEOUT_MS, information, nativeOwner, ownerAlive, runContained };

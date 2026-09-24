@@ -6,7 +6,9 @@ const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 const test = require('node:test');
 const { randomUUID } = require('node:crypto');
-const { PROBE_TIMEOUT_CAP_MS, PROBE_TIMEOUT_FLOOR_MS, runProbe } = require('../internal/runtime/probes');
+const { PROBE_TIMEOUT_CAP_MS, PROBE_TIMEOUT_FLOOR_MS, prepareProbe, runProbe } = require('../internal/runtime/probes');
+const { OPERATION_EXIT_MARGIN_MS, remainingTime } = require('../internal/runtime/limits');
+const { reservedOperation } = require('../internal/runtime/operations');
 const { buildPrompt, schemaFor } = require('../internal/runtime/review');
 const { snapshot } = require('../internal/runtime/evidence');
 const { fixtureControllerClaim, executeWithFixtureController } = require('./fixtures/controller-claim');
@@ -134,4 +136,68 @@ for (const withSelectedArtifact of [false, true]) {
     assert.equal(store.read().status, 'complete');
     assert.equal(store.read().tasks[0].probeEvidence.length, 1);
   });
+}
+
+// Preparation time is simulated by advancing a mocked clock when the check snapshot or the probe copy reads the input.
+for (const kind of ['check', 'probe']) {
+  for (const delayMs of [20000, 70000]) {
+    test(`a ${kind} whose preparation takes ${delayMs} ms is bounded by the launcher deadline from its launch`, async t => {
+      const parent = path.resolve(__dirname, '../.tmp/probe-deadline');
+      fs.mkdirSync(parent, { recursive: true });
+      const root = fs.realpathSync.native(fs.mkdtempSync(path.join(parent, 'case-')));
+      const input = path.join(root, 'input.txt');
+      fs.writeFileSync(input, 'fixture input\n');
+      const actor = { host: 'codex', session: 'controller' };
+      const resources = { schema: 1, store: root, registration: 'a'.repeat(64), session: actor.session, identity: '3.2.7-' + 'b'.repeat(64) };
+      const store = new RunStore(root, { create: true });
+      t.after(() => { store.close(); fs.rmSync(root, { recursive: true, force: true }); });
+      const state = store.create({ objective: 'Deadline fixture', authority: 'User', controller: actor, controllerClaim: fixtureControllerClaim(actor), resources, resourceMode: 'bound', tasks: [{ id: 'work', title: 'Work', agreement: { source: 'User', outcome: 'Bounded execution' } }] });
+      let now = Date.parse('2026-09-24T00:00:00.000Z');
+      const deadline = now + 90000;
+      const context = { ...resources, mode: 'bound', bundle: 'fixture', operation: 'fixture', operationDeadlineUtc: new Date(deadline).toISOString() };
+      t.mock.method(Date, 'now', () => now);
+      let delayed = false;
+      const delayOnce = () => { if (!delayed) { delayed = true; now += delayMs; } };
+      let launched = null;
+      const dependencies = {
+        resourceContext: context,
+        information: pid => ({ found: true, pid, created: 'fixture', name: 'node.exe' }),
+        runContained: async (executable, args, options) => {
+          launched = { timeoutMs: options.timeoutMs, cutoff: deadline - OPERATION_EXIT_MARGIN_MS - now };
+          const result = { code: 0, stdout: '', stderr: '', descendantsReclaimed: true };
+          options.onFinished(result);
+          return result;
+        },
+      };
+      let outcome;
+      if (kind === 'check') {
+        const read = fs.readFileSync;
+        t.mock.method(fs, 'readFileSync', function readAndDelay(file, ...args) {
+          const bytes = read.call(fs, file, ...args);
+          if (file === input) delayOnce();
+          return bytes;
+        });
+        outcome = executeWithFixtureController(root, { action: 'check', actor, revision: state.revision, taskId: 'work', check: { name: 'Deadline check', executable: process.execPath, args: ['--version'], paths: ['input.txt'], resourceMode: 'development', timeoutMs: 120000 } }, dependencies);
+      } else {
+        const receipt = { requestId: randomUUID(), runId: state.id, taskId: 'work', snapshot: snapshot(root, ['input.txt']) };
+        const command = prepareProbe(root, { id: 'deadline', purpose: 'Deadline probe', executable: process.execPath, args: ['--version'], timeoutMs: 120000, files: [] });
+        const copy = fs.copyFileSync;
+        t.mock.method(fs, 'copyFileSync', function copyAndDelay(source, ...args) {
+          const result = copy.call(fs, source, ...args);
+          if (source === input) delayOnce();
+          return result;
+        });
+        outcome = reservedOperation(store, { action: 'probe', actor, revision: state.revision, taskId: 'work', probeId: 'deadline' }, run => runProbe(root, receipt, { ...command, timeoutMs: remainingTime(state, command.timeoutMs, context) }, run), dependencies);
+      }
+      if (delayMs > 30000) {
+        await assert.rejects(outcome, { code: 'operation-time-limit' });
+        assert.equal(launched, null);
+        assert.equal(store.read().workers.at(-1).status, 'failed');
+      } else {
+        await outcome;
+        assert.ok(launched.timeoutMs <= launched.cutoff, JSON.stringify(launched));
+      }
+      assert.equal(delayed, true);
+    });
+  }
 }

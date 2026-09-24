@@ -10,6 +10,8 @@ const { MANIFEST_PATH, loadManifest, validateManifest, verifyBundle } = require(
 const { validateDependencies } = require('../tools/release-manifest');
 const { activate, claudeInspection, fixture, packageCopy, refreshPackage, settingsReader, simulatedService } = require('./release-fixtures');
 const { inspectionContext } = require('../internal/releases/host-config');
+const { CONTEXT_ENV } = require('../internal/releases/entry');
+const { MAX_OPERATION_TIMEOUT_MS } = require('../internal/releases/processes');
 const { spawnSync } = require('node:child_process');
 const os = require('node:os');
 
@@ -340,6 +342,39 @@ test('bound runtime state carries identity and blocks development mutations', as
   const { execute } = require('../internal/runtime/cli');
   await assert.rejects(execute(value.project, { action: 'start-task', taskId: 'work', actor: run.controller, revision: run.revision }), /exact retained resource binding/);
   assert.throws(() => service.retire(setup.registration, { targetSession: 'owner' }), /Stop and explicitly select/);
+});
+
+test('the launcher refuses an unknown runtime action before launch and passes its operation deadline', async t => {
+  const value = fixture(t);
+  const source = packageCopy(value.root, '1.0.0');
+  const { service } = simulatedService(value, source);
+  const setup = await service.setup({ host: 'codex', profile: value.profile });
+  await activate(service, setup.registration, value.project, 'owner');
+  const created = await service.run(setup.registration, { session: 'owner', project: value.project, entry: 'runtime', request: { action: 'create', objective: 'fixture', authority: 'test', tasks: [{ id: 'work', title: 'Work', agreement: { source: 'test', outcome: 'fixture' } }] } });
+  assert.equal(created.code, 0, created.stderr);
+  const launches = [];
+  service.dependencies.runContained = async (executable, args, options) => {
+    options.onPrepared({ runnerPid: process.pid });
+    options.onStarted({ pid: process.pid, runnerPid: process.pid, contained: true });
+    launches.push({ context: JSON.parse(options.env[CONTEXT_ENV]), timeoutMs: options.timeoutMs });
+    const exit = { code: 0, stdout: '{}\n', stderr: '', descendantsReclaimed: true };
+    options.onFinished(exit);
+    return exit;
+  };
+  const request = runtime => ({ session: 'owner', project: value.project, entry: 'runtime', request: runtime });
+  await assert.rejects(service.run(setup.registration, request({ action: 'statuss' })), { code: 'invalid-runtime-request', message: /"statuss" is not a runtime action; accepted actions: status, / });
+  await assert.rejects(service.run(setup.registration, request({ operation: 'status' })), { code: 'invalid-runtime-request', message: /action is missing/ });
+  assert.equal(launches.length, 0);
+  for (const timeoutMs of [undefined, 1500000]) {
+    const before = Date.now();
+    await service.run(setup.registration, { ...request({ action: 'status' }), timeoutMs });
+    const after = Date.now();
+    const launch = launches.at(-1);
+    const bound = timeoutMs ?? MAX_OPERATION_TIMEOUT_MS;
+    assert.equal(launch.timeoutMs, timeoutMs);
+    const deadline = Date.parse(launch.context.operationDeadlineUtc);
+    assert.ok(deadline >= before + bound && deadline <= after + bound, `${deadline} outside ${before + bound}..${after + bound}`);
+  }
 });
 
 test('initial capture may select a newer complete release after a missing-file failure', async t => {

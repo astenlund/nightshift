@@ -469,6 +469,80 @@ test('dispatch allowance counts attempts and prevents an otherwise valid fallbac
   } finally { store.close(); }
 });
 
+test('fallback prerequisites and the attempt timeout are refused before any worker is reserved', async t => {
+  const f = fixture(t);
+  const store = new RunStore(f.root, { create: true });
+  const actor = { host: 'codex', session: 'controller' };
+  store.create({ objective: f.requirements, authority: 'User', controller: actor, controllerClaim: fixtureControllerClaim(actor), tasks: [{ id: f.taskId, title: 'Work', agreement: { source: 'User', outcome: f.requirements } }] });
+  const withFallback = [{ host: 'codex', model: 'gpt-6-astra', effort: 'high' }, ...f.candidates];
+  let calls = 0;
+  try {
+    for (const [review, code] of [
+      [{ candidates: withFallback }, 'invalid-request'],
+      [{ candidates: withFallback, substitutionReason: '  ' }, 'invalid-request'],
+      [{ timeoutMs: 0 }, 'invalid-request'],
+      [{ timeoutMs: 1.5 }, 'invalid-request'],
+      [{ timeoutMs: '600000' }, 'invalid-request'],
+      [{ candidates: [null] }, 'invalid-model-selection'],
+    ]) {
+      await assert.rejects(executeWithFixtureController(f.root, { action: 'dispatch', actor, revision: 0, taskId: f.taskId, review: { ...f, ...review } }, { runAgent: () => { calls++; throw new Error('Unexpected model call'); } }), { code });
+    }
+    assert.equal(calls, 0);
+    assert.equal(store.read().workers.length, 0);
+    assert.equal(store.read().revision, 0);
+    assert.equal(fs.existsSync(path.join(f.root, '.nightshift/runs/reviews')), false);
+  } finally { store.close(); }
+});
+
+function boundRun(t, f, operationDeadlineUtc) {
+  const directory = fs.mkdtempSync(f.root + '-store-');
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const resources = { schema: 1, store: fs.realpathSync.native(directory), registration: 'a'.repeat(64), session: 'controller', identity: '1.0.0-' + 'b'.repeat(64) };
+  const actor = { host: 'codex', session: 'controller' };
+  const store = new RunStore(f.root, { create: true });
+  store.create({ objective: f.requirements, authority: 'User', controller: actor, controllerClaim: fixtureControllerClaim(actor), resources, resourceMode: 'bound', tasks: [{ id: f.taskId, title: 'Work', agreement: { source: 'User', outcome: f.requirements } }] });
+  return { store, actor, context: { ...resources, mode: 'bound', bundle: 'fixture-bundle', operation: 'fixture-operation', operationDeadlineUtc } };
+}
+
+test('a dispatch whose attempts cannot fit the launcher operation bound is refused before reservation', async t => {
+  const f = fixture(t);
+  const { store, actor, context } = boundRun(t, f, new Date(Date.now() + 600000).toISOString());
+  const candidates = [{ host: 'codex', model: 'gpt-6-astra', effort: 'high' }, ...f.candidates];
+  const timeouts = [];
+  const dispatch = timeoutMs => executeWithFixtureController(f.root, { action: 'dispatch', actor, revision: store.read().revision, taskId: f.taskId, review: { ...f, candidates, substitutionReason: 'First host unavailable', timeoutMs } }, { resourceContext: context, runAgent: options => {
+    timeouts.push(options.timeoutMs);
+    if (options.host === 'codex') throw new Error('Fixture host unavailable before process launch');
+    return mockAgent(options);
+  } });
+  try {
+    await assert.rejects(dispatch(300000), { code: 'operation-time-limit', message: /2 attempt\(s\) of up to 300000 ms each, needing 660000 ms including a 60000 ms exit margin/ });
+    assert.equal(store.read().workers.length, 0);
+    assert.equal(fs.existsSync(path.join(f.root, '.nightshift/runs/reviews')), false);
+    assert.deepEqual(timeouts, []);
+    const result = await dispatch(240000);
+    assert.equal(result.receipt.attempts.length, 2);
+    assert.deepEqual(timeouts, [240000, 240000]);
+  } finally { store.close(); }
+});
+
+test('each attempt ends before the launcher operation deadline and a spent bound stops the fallback', async t => {
+  const f = fixture(t);
+  const timeouts = [];
+  const { receipt } = await dispatchReview(f.root, { ...f, timeoutMs: 900000, operationDeadlineUtc: new Date(Date.now() + 160000).toISOString() }, { runAgent: options => {
+    timeouts.push(options.timeoutMs);
+    return mockAgent(options);
+  } });
+  assert.equal(receipt.status, 'complete');
+  assert.equal(timeouts.length, 1);
+  assert.ok(timeouts[0] <= 100000 && timeouts[0] > 90000, String(timeouts[0]));
+  let requestId;
+  let calls = 0;
+  await assert.rejects(dispatchReview(f.root, { ...f, candidates: [{ host: 'codex', model: 'gpt-6-astra', effort: 'high' }, ...f.candidates], substitutionReason: 'First candidate failed', operationDeadlineUtc: new Date(Date.now() + 30000).toISOString(), onPrepared: request => { requestId = request.id; } }, { runAgent: () => { calls++; throw new Error('Unexpected model call'); } }), { code: 'operation-time-limit' });
+  assert.equal(calls, 0);
+  const failure = JSON.parse(fs.readFileSync(path.join(f.root, '.nightshift/runs/reviews', requestId, 'failure.json'), 'utf8'));
+  assert.equal(failure.attempts.length, 1);
+});
+
 test('spec receipt freshness distinguishes pending acceptance from accepted engineering context', async t => {
   const f = fixture(t);
   fs.writeFileSync(path.join(f.root, 'spec.md'), '# Accepted behavior\n');

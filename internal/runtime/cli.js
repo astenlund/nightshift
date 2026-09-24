@@ -7,8 +7,8 @@ const { randomUUID } = require('node:crypto');
 const { isDeepStrictEqual } = require('node:util');
 const { RunStore, requireCondition } = require('./store');
 const { assertAction, commitmentsFor, obligationBrief, transition } = require('./lifecycle');
-const { dispatchReview, readReceipt, validateBase, validateRequest } = require('./review');
-const { exhaustedLimit, remainingTime } = require('./limits');
+const { DEFAULT_REVIEW_TIMEOUT_MS, dispatchReview, readReceipt, validateBase, validateRequest } = require('./review');
+const { exhaustedLimit, remainingTime, requireDispatchFits } = require('./limits');
 const { prepareProbe, runProbe } = require('./probes');
 const { awaitWorker } = require('./wait');
 const { admitEntry, executionResources, savedResources } = require('../releases/entry');
@@ -70,7 +70,9 @@ async function execute(root, request, dependencies = {}) {
     assertControllerClaim(state, request, dependencies);
     if (request.action === 'dispatch') {
       validateRequest(request.review);
-      validateBase(store.root, request.review?.baseSha);
+      validateBase(store.root, request.review.baseSha);
+      const attemptTimeoutMs = request.review.timeoutMs ?? DEFAULT_REVIEW_TIMEOUT_MS;
+      requireDispatchFits(state, dependencies.resourceContext, request.review.candidates.length, attemptTimeoutMs);
       const id = randomUUID();
       const task = state.tasks.find(candidate => candidate.id === request.taskId);
       const helperProcess = (dependencies.information ?? information)(process.pid, null, store.root);
@@ -109,7 +111,8 @@ async function execute(root, request, dependencies = {}) {
             current.workers.find(worker => worker.id === id).phase = 'launching';
           }),
           deadlineUtc: state.limits?.deadlineUtc,
-          timeoutMs: remainingTime(state, request.review.timeoutMs ?? 900000),
+          operationDeadlineUtc: dependencies.resourceContext?.operationDeadlineUtc,
+          timeoutMs: attemptTimeoutMs,
         }, dependencies);
         updateWorker({ host: result.receipt.host, model: result.receipt.model, effort: result.receipt.effort, session: result.receipt.session, status: 'complete', receipt: result.receiptFile });
         return result;
@@ -123,12 +126,12 @@ async function execute(root, request, dependencies = {}) {
       const probe = receipt.probes.find(candidate => candidate.id === request.probeId);
       requireCondition(probe, 'unknown-probe', 'The independent assessor did not request this probe');
       const command = prepareProbe(store.root, probe);
-      const result = await reservedOperation(store, request, run => runProbe(store.root, receipt, { ...command, timeoutMs: remainingTime(state, command.timeoutMs) }, run), dependencies);
+      const result = await reservedOperation(store, request, run => runProbe(store.root, receipt, { ...command, timeoutMs: remainingTime(state, command.timeoutMs, dependencies.resourceContext) }, run), dependencies);
 
       return obligationBrief(result);
     }
     if (request.action === 'check') {
-      const result = await reservedCheck(store, { ...request, check: { ...request.check, timeoutMs: remainingTime(state, request.check?.timeoutMs ?? 120000) } }, dependencies);
+      const result = await reservedCheck(store, { ...request, check: { ...request.check, timeoutMs: remainingTime(state, request.check?.timeoutMs ?? 120000, dependencies.resourceContext) } }, dependencies);
 
       return obligationBrief(result);
     }

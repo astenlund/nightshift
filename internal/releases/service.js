@@ -454,7 +454,7 @@ class ReleaseService {
 
   async run(key, request) {
     requireValue(Object.hasOwn(ENTRIES, request.entry), 'unknown-release-entry', ENTRY_CHOICE);
-    requireValue(request.timeoutMs === undefined || Number.isSafeInteger(request.timeoutMs) && request.timeoutMs > 0 && request.timeoutMs <= 3600000, 'invalid-operation-timeout', 'Operation timeout must be a positive integer no greater than one hour');
+    requireValue(request.timeoutMs === undefined || Number.isSafeInteger(request.timeoutMs) && request.timeoutMs > 0 && request.timeoutMs <= processes.MAX_OPERATION_TIMEOUT_MS, 'invalid-operation-timeout', 'Operation timeout must be a positive integer no greater than one hour');
     if (request.entry === 'runtime') {
       requireValue(request.request && typeof request.request === 'object' && !Array.isArray(request.request), 'invalid-runtime-request', 'Supply a runtime request object with action');
       requireValue(isRuntimeAction(request.request.action), 'invalid-runtime-request', unknownActionMessage(request.request.action));
@@ -480,7 +480,9 @@ class ReleaseService {
         requireValue(matchesBinding(executionResources(run), binding, registry.root) && run.controller.host === resolved.registration.host && run.controller.session === request.session, 'resource-owner-mismatch', 'Only the current execution binding and controller can mutate this run');
       }
       if (!readOnly && run?.adoptions?.length && matchesBinding(executionResources(run), binding, registry.root)) this.reconcileAdoptedTarget(registry, resolved.project, run);
-      const value = { schema: 1, mode: 'bound', store: registry.root, registration: key, session: request.session, identity: resolved.bundle.identity, bundle: resolved.bundle.key, project: resolved.project, operation };
+      // Taken before the contained launch starts its timer, so the runtime sees a deadline no later than the actual one.
+      const operationDeadlineUtc = new Date(Date.now() + (request.timeoutMs ?? processes.MAX_OPERATION_TIMEOUT_MS)).toISOString();
+      const value = { schema: 1, mode: 'bound', store: registry.root, registration: key, session: request.session, identity: resolved.bundle.identity, bundle: resolved.bundle.key, project: resolved.project, operation, operationDeadlineUtc };
       registry.put('operation', operation, { ...value, kind: 'entry', state: 'running', phase: 'prepared', pid: process.pid, implementationBundle: this.context.implementationBundle ?? resolved.bundle.key, maintenance, runtimeAction: request.entry === 'runtime' ? request.request.action : null, runId: request.request?.runId ?? null });
       return value;
     });

@@ -12,8 +12,10 @@ const { codexModelContradiction, runAgent } = require('./hosts');
 const { writeJson, writeText } = require('./artifacts');
 const { PROBE_TIMEOUT_CAP_MS, PROBE_TIMEOUT_FLOOR_MS, loadProbeEvidence } = require('./probes');
 const { workerEnvironment } = require('../releases/entry');
+const { timeLeft } = require('./limits');
 
 const STRONG_MODELS = Object.freeze({ claude: ['claude-fable-5-1'], codex: ['gpt-6-astra'] });
+const DEFAULT_REVIEW_TIMEOUT_MS = 900000;
 const PROBE_TIMEOUT_RULE = `timeoutMs is in milliseconds, from ${PROBE_TIMEOUT_FLOOR_MS} to ${PROBE_TIMEOUT_CAP_MS}; allow for the command's full expected duration.`;
 
 const DIMENSION_BRIEFS = Object.freeze({
@@ -75,6 +77,16 @@ function validateRequest(options) {
     requireCondition(options[field] === undefined || Array.isArray(options[field]) && options[field].every(file => typeof file === 'string' && file.trim()), 'invalid-review-paths', `${field} must contain project-relative file paths`);
   }
   requireCondition(!(options.artifactPaths ?? []).some(file => options.excludedPaths?.includes(file)), 'conflicting-review-paths', 'An explicitly selected artifact cannot also be excluded');
+  requireCondition(options.timeoutMs === undefined || Number.isSafeInteger(options.timeoutMs) && options.timeoutMs > 0, 'invalid-request', 'review.timeoutMs is the per-attempt limit in milliseconds and must be a positive integer');
+  const candidates = options.candidates;
+  requireCondition(Array.isArray(candidates) && candidates.length > 0, 'missing-model', 'Controller must choose a permitted reviewer host and model');
+  for (const candidate of candidates) {
+    requireCondition(candidate !== null && typeof candidate === 'object' && Object.keys(candidate).every(key => ['host', 'model', 'effort'].includes(key)), 'invalid-model-selection', 'Model selection cannot replace the trusted host executable or its process policy');
+    requireCondition(STRONG_MODELS[candidate.host]?.includes(candidate.model), 'review-strength', 'This gate requires a supported strong reviewer model');
+  }
+  requireCondition(!options.requiredModel || candidates.every(candidate => candidate.model === options.requiredModel), 'model-requirement', 'Explicit model requirements prohibit fallback to another model');
+  // A fallback records why it replaced the preferred reviewer, so the reason must exist before any attempt starts.
+  if (candidates.length > 1) text(options.substitutionReason, 'review.substitutionReason');
   if (options.kind === 'skeptic') {
     const findings = options.findings ?? [];
     requireCondition(Array.isArray(findings), 'invalid-skeptic-assignment', 'Skeptic findings must be an array');
@@ -162,12 +174,6 @@ async function dispatchReview(root, options, dependencies = {}) {
   validateRequest(options);
   validateBase(canonical, options.baseSha);
   const candidates = options.candidates;
-  requireCondition(Array.isArray(candidates) && candidates.length > 0, 'missing-model', 'Controller must choose a permitted reviewer host and model');
-  for (const candidate of candidates) {
-    requireCondition(Object.keys(candidate).every(key => ['host', 'model', 'effort'].includes(key)), 'invalid-model-selection', 'Model selection cannot replace the trusted host executable or its process policy');
-    requireCondition(STRONG_MODELS[candidate.host]?.includes(candidate.model), 'review-strength', 'This gate requires a supported strong reviewer model');
-  }
-  requireCondition(!options.requiredModel || candidates.every(candidate => candidate.model === options.requiredModel), 'model-requirement', 'Explicit model requirements prohibit fallback to another model');
   const directory = safeDirectory(canonical, '.nightshift/runs/reviews', true);
   const id = options.id ?? randomUUID();
   requireCondition(/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(id), 'invalid-dispatch', 'Dispatch identity must be a UUID');
@@ -219,18 +225,17 @@ async function dispatchReview(root, options, dependencies = {}) {
     const attempts = [];
     for (let index = 0; index < candidates.length; index++) {
       const candidate = candidates[index];
-      if (index > 0) text(options.substitutionReason, 'substitution reason');
       const artifacts = path.join(target, `attempt-${index + 1}`);
       const attempt = { host: candidate.host, model: candidate.model, status: 'failed', tokens: null };
       attempts.push(attempt);
       let result;
       try {
         options.onAttempt?.();
-        const remaining = options.deadlineUtc ? Date.parse(options.deadlineUtc) - Date.now() : options.timeoutMs ?? 900000;
-        requireCondition(remaining > 0, 'resource-limit', 'The authorized run deadline has been reached');
+        // timeoutMs applies to each attempt; the run and launcher deadlines bound the dispatch as a whole.
+        const timeoutMs = timeLeft({ deadlineUtc: options.deadlineUtc, operationDeadlineUtc: options.operationDeadlineUtc }, options.timeoutMs ?? DEFAULT_REVIEW_TIMEOUT_MS);
         processStarted = false;
         terminationProven = false;
-        result = await (dependencies.runAgent ?? runAgent)({ ...candidate, cwd: workspace, protectedRoot: canonical, artifacts, systemFile, env: workerEnvironment(options.resourceContext), prompt: buildPrompt(request), schema: schemaFor(request.kind, id, request.findings), timeoutMs: Math.min(options.timeoutMs ?? 900000, remaining), onProcess: pid => { processStarted = true; options.onProcess?.(pid); }, onSession: options.onSession });
+        result = await (dependencies.runAgent ?? runAgent)({ ...candidate, cwd: workspace, protectedRoot: canonical, artifacts, systemFile, env: workerEnvironment(options.resourceContext), prompt: buildPrompt(request), schema: schemaFor(request.kind, id, request.findings), timeoutMs, onProcess: pid => { processStarted = true; options.onProcess?.(pid); }, onSession: options.onSession });
         attempt.tokens = result.tokens ?? null;
         terminationProven = result.exit?.descendantsReclaimed === true;
         options.onFinalizing?.();
@@ -262,7 +267,7 @@ async function dispatchReview(root, options, dependencies = {}) {
         terminationProven ||= error.descendantsReclaimed === true;
         Object.assign(attempt, { status: 'failed', error: error.message });
         if (processStarted && !terminationProven) error.code = 'termination-unverified';
-        if (index === candidates.length - 1 || ['review-input-drift', 'snapshot-drift', 'unsafe-path', 'inventory-failed', 'file-identity-unavailable', 'conflicting-review-paths', 'invalid-review-paths', 'resource-limit', 'termination-unverified'].includes(error.code)) {
+        if (index === candidates.length - 1 || ['review-input-drift', 'snapshot-drift', 'unsafe-path', 'inventory-failed', 'file-identity-unavailable', 'conflicting-review-paths', 'invalid-review-paths', 'resource-limit', 'operation-time-limit', 'termination-unverified'].includes(error.code)) {
           writeJson(path.join(target, 'failure.json'), { requestId: id, attempts });
           throw error;
         }
@@ -317,4 +322,4 @@ function readReceipt(root, relative, state, taskId) {
   return receipt;
 }
 
-module.exports = { STRONG_MODELS, buildPrompt, contextFiles, dispatchReview, parseReport, readReceipt, schemaFor, validateBase, validateReport, validateRequest };
+module.exports = { DEFAULT_REVIEW_TIMEOUT_MS, STRONG_MODELS, buildPrompt, contextFiles, dispatchReview, parseReport, readReceipt, schemaFor, validateBase, validateReport, validateRequest };
