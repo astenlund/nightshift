@@ -4,6 +4,22 @@ V2 entries are preserved in [the historical index](migration/v2/QUICK_WINS.md) a
 
 ## Current
 
+### Documentation edits after review import stale the review before advance
+
+Observed on 2026-09-24 in this repository, run `0a2dceee-1692-41f6-86bc-bc5c7b272a61`. After importing a clean code review, the controller wrote the acceptance report and moved backlog entries, then called `advance` to documentation; it was refused with `review-required` ("A complete strong broad assessment and resolved findings are required") because the edits made the imported review stale. `internal/runtime/REFERENCE.md` says "Land backlog and documentation edits before dispatch or after import", which reads as permitting that order. The same class of slip, an edit invalidating review evidence still needed, occurred once before on 2026-09-18, so the guidance is not being recalled where it matters. Recovered with a path-scoped stash, advance and pop. The user chose to track this at triage on 2026-09-24.
+
+State in the runtime reference and the operating brief that documentation edits land after the task advances to documentation, and make the `review-required` refusal say when an imported review exists but is stale because its inputs changed. Tracking does not authorize implementation.
+
+**Requires:** none.
+
+### Runtime checks cannot launch a bare executable name
+
+Observed on 2026-09-24 in this repository, run `0a2dceee-1692-41f6-86bc-bc5c7b272a61`. A runtime `check` with executable `node` failed with "Windows job could not start the host: spawn" and left a pending reserved attempt with no collected result; the same check with the absolute path to `node.exe` succeeded. `internal/runtime/REFERENCE.md` does not say that check executables must be absolute paths. The user chose to track this at triage on 2026-09-24.
+
+Either resolve a bare executable from PATH before launch, or document the absolute-path requirement and reject a bare name up front with a clear error. Tracking does not authorize implementation.
+
+**Requires:** none.
+
 ### Codex sandbox blocks the launcher from starting the host
 
 Observed on 2026-09-19 in every Codex fixture of the handover acceptance campaign (Codex CLI 0.154.0, plugin 3.2.0), recorded in [the acceptance report](reports/handover-transition-and-morning-report-20260919.md). Inside the Codex sandbox the launcher cannot start the host process it inspects, at two sites. Preparation fails with `{"error":"EPERM","message":"spawn EPERM"}` at first use and again in some later sessions of the same, already prepared profile (the new-run handover and refused-admission sessions). Resolving resources through the retained bootstrap fails with `{"error":"retained-bootstrap-unavailable","message":"spawn EPERM"}` in later sessions (new-run handover, in-place handover and refused admission). The resumed returning-user session showed no fresh failure. Each time the model has to request an out-of-sandbox retry. With the escalation approved, preparation is silent and the operation proceeds; with it denied at first use, the Ready report correctly says the parser never ran and does not present an empty backlog. A real Codex user therefore sees approval prompts that work against preparation needing no setup conversation; whether every session prompts, or only the first command of each, was not separately established, because the harness answered these requests automatically. Claude Code shows no equivalent prompt.
@@ -128,7 +144,7 @@ Recurred in run `d4a44daa-96be-4ac4-bcaa-d16d8596584f` on 2026-09-18 to 19, the 
 
 ### Agent-directed rules leak into user-facing prose
 
-Reported from a `/ready` run in another project on 2026-09-11 and repaired for that skill in plugin 3.0.4; the pattern is broader than one skill. Skill texts state constraints for the agent, such as readiness not being agreement, a draft not being authorized implementation work, or a previous review not authorizing a narrowed new pass, and agents echo them to the user as stiff rule quotations, for example "Readiness is not a selection". The user wrote these conventions and does not need them restated.
+Reported from a `/ready` run in another project on 2026-09-11 and repaired for that skill in plugin 3.0.4; the pattern is broader than one skill. Skill texts state constraints for the agent, such as readiness not being agreement, a draft not being authorized implementation work, or a previous review not authorizing a narrowed new pass, and agents echo them to the user as stiff rule quotations, for example "Readiness is not a selection". The user wrote these conventions and does not need them restated. Fresh evidence on 2026-09-24 from [the Ready selection campaign](reports/ready-selection-boundary-20260924.md): with the 3.2.4 candidate, the Codex controller told the user in two turns what the Ready skill "says" and "requires" ("The Ready skill says to propose a concrete selection by ready-set number ...", "... requires that nothing is edited before the user agrees that readback"), although the skill states those constraints are guidance for the agent; the Claude controller did not. Evidence: `.tmp/ready-live/codex-work-f3c5d95f/live-2026-09-24T02-19-21-251Z-c-work/events.jsonl`.
 
 Add a shared rule to `internal/workflow.md` that separates agent-directed constraints from user-facing phrasing, sweep all eight skills for constraint sentences that read as user-facing prose and rephrase them as closing offers or actions, and check the result with an installed-host probe, since the behavior is model-owned.
 

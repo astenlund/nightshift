@@ -104,6 +104,10 @@ When a new session opens in a project with an interrupted, stopped or undelivere
 
 Let a weaker model carry an independent assessment when no supported strong reviewer is available, clearly labeled as degraded and refused at the gates that require strength. Raised by the user during the automatic-preparation run, which was the live case: both admissible reviewers were unavailable at once and the lifecycle had no recordable fallback. The open design question is which gates a degraded assessment may satisfy on its own; it absorbs the earlier opus-review-gate follow-up.
 
+### [User proxy consultation and opt-in user profile](features/user-proxy-consultation.md)
+
+When the controller is uncertain and the user is absent, consult the strongest available model reasoning as the user from recorded knowledge, and route its labelled answer and confidence to morning triage; with high confidence the controller might proceed. An opt-in user profile would accumulate priorities and sensibilities for it. Reserved decisions, confidence thresholds, labelling and profile consent remain open.
+
 ### [Project inboxes](features/project-inboxes.md)
 
 Give every Nightshift project a `.nightshift/inbox/` for suggestions and reports about that project. `init-backlog` creates it, and `ready` lists untriaged reports separately from actionable work. Reports about Nightshift itself continue to belong in Nightshift's maintainer inbox.
