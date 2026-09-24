@@ -111,21 +111,34 @@ function specReady(state, task) {
   return spec?.kind === 'spec' && spec.status === 'complete' && spec.agreement.spec === task.agreement.spec && reviewGate(state.root, spec, state);
 }
 
-function reviewGate(root, task, state) {
+// Returns null when the gate holds, 'stale' when the latest otherwise acceptable assessment no longer matches current inputs, and 'unmet' otherwise.
+function reviewGateFailure(root, task, state) {
   const candidates = state
     ? state.tasks.flatMap(owner => owner.reviews.filter(review => owner.id === task.id || task.kind === 'code' && owner.kind === 'code' && review.kind === 'code' && review.coveredTaskIds?.includes(task.id)))
     : task.reviews;
   const review = [...candidates].sort((left, right) => (right.revision ?? 0) - (left.revision ?? 0))[0];
-  if (task.requirementsRevision !== undefined && (review?.revision ?? -1) < task.requirementsRevision) return false;
-  if (!isDeepStrictEqual(review?.commitments?.[task.id], commitmentsFor([task])[task.id])) return false;
-  if (!review || review.status !== 'complete' || review.strength !== 'strong' || review.independent !== true || review.broad !== true || !review.coverageEvidence?.trim() || !fresh(root, review.snapshot)) return false;
+  if (task.requirementsRevision !== undefined && (review?.revision ?? -1) < task.requirementsRevision) return 'unmet';
+  if (!isDeepStrictEqual(review?.commitments?.[task.id], commitmentsFor([task])[task.id])) return 'unmet';
+  if (!review || review.status !== 'complete' || review.strength !== 'strong' || review.independent !== true || review.broad !== true || !review.coverageEvidence?.trim()) return 'unmet';
+  if (!fresh(root, review.snapshot)) return 'stale';
   const dimensions = DIMENSIONS[task.kind === 'spec' ? 'spec' : 'code'];
-  if (!dimensions.every(dimension => review.dimensions.includes(dimension))) return false;
-  if (!verificationGate(root, task)) return false;
-  if (task.findings.some(finding => !finding.validation || finding.validation.verdict === 'unverified' || !finding.disposition)) return false;
-  if (state && state.tasks.flatMap(owner => owner.findings).some(finding => finding.reviewRevision === review.revision && (!finding.validation || finding.validation.verdict === 'unverified' || !finding.disposition || finding.disposition === 'implement' && !finding.repaired))) return false;
-  if (unresolvedFindings(task).length > 0) return false;
-  return !task.findings.some(finding => finding.repaired && finding.repairRevision >= review.revision);
+  if (!dimensions.every(dimension => review.dimensions.includes(dimension))) return 'unmet';
+  if (!verificationGate(root, task)) return 'unmet';
+  if (task.findings.some(finding => !finding.validation || finding.validation.verdict === 'unverified' || !finding.disposition)) return 'unmet';
+  if (state && state.tasks.flatMap(owner => owner.findings).some(finding => finding.reviewRevision === review.revision && (!finding.validation || finding.validation.verdict === 'unverified' || !finding.disposition || finding.disposition === 'implement' && !finding.repaired))) return 'unmet';
+  if (unresolvedFindings(task).length > 0) return 'unmet';
+  return task.findings.some(finding => finding.repaired && finding.repairRevision >= review.revision) ? 'unmet' : null;
+}
+
+function reviewGate(root, task, state) {
+  return reviewGateFailure(root, task, state) === null;
+}
+
+const STALE_REVIEW = 'The latest assessment is stale: reviewed inputs changed after its import. Dispatch a current cumulative assessment that covers the changes';
+
+function requireReviewGate(root, task, state, message) {
+  const failure = reviewGateFailure(root, task, state);
+  requireCondition(failure === null, 'review-required', failure === 'stale' ? STALE_REVIEW : message);
 }
 
 function obligationBrief(state, root = state.root, options = {}) {
@@ -271,9 +284,9 @@ function transition(state, request) {
       if (task.stage === 'implementation' && task.kind === 'code') {
         requireCondition(verificationGate(state.root, task), 'verification-required', 'Implementation requires current passing verification for each named check');
       }
-      if (task.stage === 'review') requireCondition(reviewGate(state.root, task, state), 'review-required', 'A complete strong broad assessment and resolved findings are required');
+      if (task.stage === 'review') requireReviewGate(state.root, task, state, 'A complete strong broad assessment and resolved findings are required');
       if (['documentation', 'retrospective'].includes(task.stage)) {
-        if (requiresReview(task)) requireCondition(reviewGate(state.root, task, state), 'review-required', 'Reviewed work needs current cumulative assessment and applicable verification before task completion');
+        if (requiresReview(task)) requireReviewGate(state.root, task, state, 'Reviewed work needs current cumulative assessment and applicable verification before task completion');
         requireCondition(verificationGate(state.root, task), 'verification-required', 'Every registered check must pass on current inputs before task completion');
         text(request.evidence, `${task.stage}.evidence`);
       }

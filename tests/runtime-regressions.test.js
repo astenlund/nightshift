@@ -116,6 +116,26 @@ test('missing run state yields the same precise diagnosis with absent and empty 
   for (const owner of [undefined, {}, { session: '', host: '' }]) await assert.rejects(execute(f.root, { action: 'start-task', taskId: 'a', actor: owner, revision: 0 }), { code: 'missing-state' });
 });
 
+test('review-required names an assessment made stale by later edits at both gated advances', t => {
+  const stale = { code: 'review-required', message: /latest assessment is stale/ };
+  const f = fixture(t);
+  assert.throws(() => f.act({ action: 'advance', taskId: 'a' }), { code: 'verification-required' });
+  f.check('a');
+  f.act({ action: 'advance', taskId: 'a' });
+  assert.throws(() => f.act({ action: 'advance', taskId: 'a' }), { code: 'review-required', message: /complete strong broad assessment/ });
+  f.review('a');
+  fs.writeFileSync(path.join(f.root, 'b.txt'), 'Documentation edited after import\r\n');
+  assert.throws(() => f.act({ action: 'advance', taskId: 'a' }), stale);
+  f.review('a');
+  f.act({ action: 'advance', taskId: 'a' });
+  assert.equal(f.store.read().tasks[0].stage, 'documentation');
+  fs.writeFileSync(path.join(f.root, 'b.txt'), 'Documentation edited during the documentation stage\r\n');
+  assert.throws(() => f.act({ action: 'advance', taskId: 'a', evidence: 'Documentation updated' }), stale);
+  f.review('a');
+  f.finish('a');
+  assert.equal(f.store.read().tasks[0].status, 'complete');
+});
+
 function fixture(t, options = {}, prepare) {
   const parent = path.resolve(__dirname, '../.tmp/runtime-regressions');
   fs.mkdirSync(parent, { recursive: true });
