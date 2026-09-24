@@ -12,12 +12,17 @@ const { exhaustedLimit, remainingTime } = require('./limits');
 const { prepareProbe, runProbe } = require('./probes');
 const { awaitWorker } = require('./wait');
 const { admitEntry, executionResources, savedResources } = require('../releases/entry');
-const { isReadOnlyAction } = require('./actions');
+const { isReadOnlyAction, isRuntimeAction, unknownActionMessage } = require('./actions');
 const { ADOPTION_PROTOCOL, assertControllerClaim, controllerClaim, forbiddenReviewSessions, observeController } = require('./ownership');
 const { reservedCheck, reservedOperation } = require('./operations');
 const { information } = require('../releases/processes');
 
+function requireRuntimeAction(request) {
+  requireCondition(isRuntimeAction(request?.action), 'invalid-request', unknownActionMessage(request?.action));
+}
+
 async function execute(root, request, dependencies = {}) {
+  requireRuntimeAction(request);
   const store = new RunStore(root, { create: request.action === 'create' });
   try {
     if (request.action === 'create') {
@@ -158,6 +163,7 @@ async function main() {
   const [root, requestFile] = args[0] === '--development' ? args.slice(1) : args;
   requireCondition(root && requestFile, 'usage', `Usage: node ${path.basename(__filename)} <project-root> <request.json>`);
   const request = JSON.parse(fs.readFileSync(requestFile, 'utf8').replace(/^\uFEFF/, ''));
+  requireRuntimeAction(request);
   const admitted = admitEntry(path.resolve(__dirname, '../..'), args, 0, { exactProject: true, diagnostic: isReadOnlyAction(request.action) });
   process.stdout.write(JSON.stringify(await execute(root, request, { resourceContext: admitted.context }), null, 2) + '\n');
 }

@@ -268,3 +268,27 @@ test('wait ends at the run deadline instead of the requested timeout', async t =
   assert.equal(expired.reason, 'deadline');
   assert.ok(expired.elapsedMs < 1000);
 });
+
+test('a missing or unknown request action is refused before any store or ownership check', async t => {
+  const empty = fs.mkdtempSync(path.join(scratch, 'case-'));
+  t.after(() => fs.rmSync(empty, { recursive: true, force: true }));
+  const refusal = { code: 'invalid-request', message: /request key action .*accepted actions: status, inspect, history, wait, create/ };
+  await assert.rejects(execute(empty, { operation: 'status' }), { ...refusal, message: /action is missing/ });
+  await assert.rejects(execute(empty, { action: 'statuss' }), { ...refusal, message: /"statuss" is not a runtime action/ });
+  assert.equal(fs.existsSync(path.join(empty, '.nightshift')), false);
+  const f = fixture(t);
+  const revision = f.store.read().revision;
+  await assert.rejects(execute(f.root, { action: 'advnce', actor: { host: 'codex', session: 'intruder' }, revision: revision - 1 }), refusal);
+  assert.equal(f.store.read().revision, revision);
+  assert.throws(() => transition(f.store.read(), { action: 'advnce' }), refusal);
+});
+
+test('the accepted runtime actions are exactly the lifecycle transitions and the CLI-only operations', () => {
+  const { RUNTIME_ACTIONS, isRuntimeAction } = require('../internal/runtime/actions');
+  const source = fs.readFileSync(path.resolve(__dirname, '../internal/runtime/lifecycle.js'), 'utf8');
+  const handled = [...source.matchAll(/^ {4}case '([a-z-]+)':/gm)].map(match => match[1]);
+  assert.ok(handled.length > 20);
+  assert.deepEqual(handled.filter(action => !isRuntimeAction(action)), []);
+  const cliOnly = ['adopt', 'create', 'dispatch', 'history', 'inspect', 'probe', 'status', 'wait'];
+  assert.deepEqual([...RUNTIME_ACTIONS].filter(action => !handled.includes(action)).sort(), cliOnly);
+});

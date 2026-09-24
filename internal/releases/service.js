@@ -13,7 +13,7 @@ const configuration = require('./host-config');
 const processes = require('./processes');
 const { CHANGED_CONCURRENTLY, REMOVED_MESSAGE, ownerFree, pluginIdentity, publishBootstrap, retainedRoutes, supportsPreparation } = require('./administration');
 const { CONTEXT_ENV, MODE_ENV, executionResources } = require('./entry');
-const { isReadOnlyAction } = require('../runtime/actions');
+const { isReadOnlyAction, isRuntimeAction, unknownActionMessage } = require('../runtime/actions');
 const { workerIsActive } = require('../runtime/workers');
 const { digest, directory, hostProfile, parseJson, processAlive, projectRoot, readBytes, replaceFile, requireConsistentRunId, requireValue, text, writeNew } = require('./io');
 
@@ -455,7 +455,10 @@ class ReleaseService {
   async run(key, request) {
     requireValue(Object.hasOwn(ENTRIES, request.entry), 'unknown-release-entry', ENTRY_CHOICE);
     requireValue(request.timeoutMs === undefined || Number.isSafeInteger(request.timeoutMs) && request.timeoutMs > 0 && request.timeoutMs <= 3600000, 'invalid-operation-timeout', 'Operation timeout must be a positive integer no greater than one hour');
-    if (request.entry === 'runtime') requireValue(request.request && typeof request.request === 'object' && !Array.isArray(request.request) && typeof request.request.action === 'string', 'invalid-runtime-request', 'Supply a runtime request object with action');
+    if (request.entry === 'runtime') {
+      requireValue(request.request && typeof request.request === 'object' && !Array.isArray(request.request), 'invalid-runtime-request', 'Supply a runtime request object with action');
+      requireValue(isRuntimeAction(request.request.action), 'invalid-runtime-request', unknownActionMessage(request.request.action));
+    }
     if (request.entry === 'setup') requireValue(request.options === undefined || request.options && typeof request.options === 'object' && !Array.isArray(request.options), 'invalid-setup-options', 'Setup options must be an object');
     if (request.entry === 'unwrap') requireValue((request.target === undefined || typeof request.target === 'string' && request.target.length > 0) && (request.write === undefined || typeof request.write === 'boolean'), 'invalid-unwrap-options', 'Unwrap target and write options have invalid types');
     requireConsistentRunId(request);
@@ -498,7 +501,6 @@ class ReleaseService {
         const file = path.join(temporary, 'request.json');
         const value = structuredClone(request.entry === 'runtime' ? request.request : request.options ?? {});
         if (request.entry === 'runtime') {
-          requireValue(value && typeof value.action === 'string', 'invalid-runtime-request', 'A runtime request is required');
           const identityField = value.action === 'create' ? 'controller' : !isReadOnlyAction(value.action) ? 'actor' : null;
           if (identityField) {
             const identity = { host: resolved.registration.host, session: request.session };

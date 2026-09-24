@@ -7,6 +7,7 @@ const { isDeepStrictEqual } = require('node:util');
 const { requireCondition, text } = require('./store');
 const { fresh, projectFile, snapshot } = require('./evidence');
 const { exhaustedLimit } = require('./limits');
+const { unknownActionMessage } = require('./actions');
 
 const DIMENSIONS = Object.freeze({
   spec: ['intent-scope-acceptance', 'soundness-integration', 'failure-safety-recovery', 'clarity-consistency-proportionality'],
@@ -462,7 +463,7 @@ function transition(state, request) {
       state.status = 'complete';
       break;
     default:
-      requireCondition(false, 'unknown-action', 'Unknown lifecycle action');
+      requireCondition(false, 'invalid-request', unknownActionMessage(request.action));
   }
 }
 
