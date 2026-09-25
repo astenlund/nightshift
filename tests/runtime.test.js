@@ -259,8 +259,10 @@ test('wait reports uncertain runners, unverified results and stopped runs for re
 });
 
 test('wait ends at the run deadline instead of the requested timeout', async t => {
-  const f = fixture(t, undefined, { limits: { deadlineUtc: new Date(Date.now() + 400).toISOString() } });
+  const f = fixture(t);
   registerWorker(f, 'lead');
+  // Setting the deadline after registration keeps fixture setup time from consuming it.
+  f.store.update(actor, f.store.read().revision, 'fixture-limits', state => { state.limits = { deadlineUtc: new Date(Date.now() + 400).toISOString() }; });
   const reached = await wait(f, { workerId: 'lead', timeoutMs: 5000 });
   assert.equal(reached.reason, 'deadline');
   assert.ok(reached.elapsedMs < 5000);
