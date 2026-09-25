@@ -22,15 +22,17 @@ A whole-backlog mode of `revise-docs` that walks every active index, breakout an
 
 **Requires:** none.
 
+### [Separate run-time guidance from reference material](features/runtime-guidance-separation.md)
+
+Keep what agents follow during a run in instruction files, separate from reference material that only informs design. The operating brief stays run-time guidance; the operating passages of both REFERENCE files move to a run-time operations guide the skills link to, and the REFERENCE files remain as design references that no run loads. Implementation starts with a one-for-one inventory of directing sentences, verified by independent review. Raised and settled by the user on 2026-09-25; it needs a concise governing spec and an evidence decision before implementation.
+
+**Requires:** none.
+
 ## Exploring
 
 ### [Shared BACKLOG.md meta-index](features/backlog-meta-index.md)
 
 Introduce one BACKLOG.md meta-index linking the four backlog indexes and holding their shared instructions to avoid repetition. Include it in every hook that consumes those indexes. Settle its location, instruction ownership and migration of existing guidance before implementation.
-
-### [Separate run-time guidance from reference material](features/runtime-guidance-separation.md)
-
-Keep what agents follow during a run in instruction files, separate from reference material that only informs how features are defined and implemented, so behavior and description can be reviewed separately. Today the skills direct agents to the operating brief and both REFERENCE files during runs, so those files mix the two. Raised by the user on 2026-09-25; the inventory of directing versus descriptive passages and their destinations remain to be settled.
 
 ### [Restore setup guidance discovery and instruction routing](features/v3-guidance-routing.md)
 
