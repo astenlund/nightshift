@@ -3133,6 +3133,8 @@ test('link notices follow rendered Markdown at block boundaries', () => {
       notices: [unreachableOrphan],
     },
     { name: 'named and numeric character references in headings', items: fixture('[Accent](features/record.md#caf%C3%A9) [Numeric](features/record.md#na%C3%AFve)', '## Caf&eacute;\n\n## Na&#239;ve'), notices: [] },
+    { name: 'shortcut reference before a colon', items: [...fixture('Related [Child]: see the record.\n\n[child]: features/child.md'), { target: 'features/child.md', contents: '# Child\n' }], notices: [] },
+    { name: 'named references with digits', items: [...fixture('[Scan](features/record.md#on-scan) [Squared](features/n&sup2;.md)', '## O(n&sup2;) scan'), { target: `features/n${String.fromCharCode(0xb2)}.md`, contents: '# Squared\n' }], notices: [] },
     {
       name: 'reference link on a dependency line',
       items: [

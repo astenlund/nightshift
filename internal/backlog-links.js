@@ -53,7 +53,7 @@ const LINK_REFERENCE_DEFINITION = /^ {0,3}\[([^\]]+)\]:[ \t]*(<[^>\n]*>|\S+)/;
 const EXPLICIT_ANCHOR = /<a\s[^>]*?\b(?:id|name)\s*=\s*["']([^"']+)["']/gi;
 const URI_SCHEME = /^[A-Za-z][A-Za-z0-9+.-]*:/;
 // A character reference, unless a backslash escapes its ampersand.
-const HTML_ENTITY = /(?<!\\)&(?:#(\d+)|#[xX]([0-9A-Fa-f]+)|([A-Za-z]+));/g;
+const HTML_ENTITY = /(?<!\\)&(?:#(\d+)|#[xX]([0-9A-Fa-f]+)|([A-Za-z][A-Za-z0-9]*));/g;
 const LIST_ITEM = /^([ \t]*)([-*+]|\d{1,9}[.)])([ \t]+|$)/;
 // The named character references decoded: the Latin-1 set, in code point order
 // from U+00A0, plus the markup and common punctuation names. Any other name is
@@ -224,7 +224,9 @@ function inlineReferences(line, chars) {
       const label = chars.slice(close + 2, labelClose).join('');
       labels.push(normalizeLabel(label.trim() === '' ? text : label));
       destinationEnds.set(close, labelClose);
-    } else if (next !== ':') {
+    } else {
+      // A definition only opens a line and is read before this scan, so a
+      // bracket followed by a colon here is still a shortcut reference.
       labels.push(normalizeLabel(text));
     }
   }
@@ -275,13 +277,15 @@ function plainText(markdown) {
   return decodeEntities(text).replace(CODE_SPAN_TOKEN, (match, index) => spans[Number(index)]).trim();
 }
 
-// GitHub's heading anchor: lowercase text content with punctuation removed and
-// each space turned into a hyphen; repeated slugs gain -1, -2 and so on.
+// GitHub's heading anchor: lowercase text content keeping only letters, marks,
+// decimal digits, connector punctuation, spaces and hyphens (so superscripts
+// and fractions drop), each space turned into a hyphen; repeated slugs gain
+// -1, -2 and so on.
 function slugAnchors(headings) {
   const anchors = new Set();
   const counts = new Map();
   for (const heading of headings) {
-    const base = plainText(heading.title).toLowerCase().replace(/[^\p{L}\p{M}\p{N}\p{Pc} -]/gu, '').replace(/ /g, '-');
+    const base = plainText(heading.title).toLowerCase().replace(/[^\p{L}\p{M}\p{Nd}\p{Pc} -]/gu, '').replace(/ /g, '-');
     let slug = base;
     while (anchors.has(slug)) {
       const next = (counts.get(base) ?? 0) + 1;
