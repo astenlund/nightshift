@@ -140,8 +140,8 @@
     },
     {
       "path": "internal/runtime/REFERENCE.md",
-      "bytes": 42726,
-      "sha256": "d4748b3a8bc3a64f73f2eb7b36581537d62945e2262a0c303d0ea443d14a2a8c"
+      "bytes": 43246,
+      "sha256": "1c434ce2443f0ef3b94177cb9fcb19c8a40769044aa2ee9f90dff196b138f75b"
     },
     {
       "path": "internal/runtime/actions.js",
@@ -170,8 +170,8 @@
     },
     {
       "path": "internal/runtime/hosts.js",
-      "bytes": 11977,
-      "sha256": "c37ac5434c5cbbbbdfdb7734bf303e8926af462043b668bc70a0b08044088c4c"
+      "bytes": 12531,
+      "sha256": "142675885666823f089968fedd2eb1aaecbc8c987880c12d39ccde7686df456f"
     },
     {
       "path": "internal/runtime/lifecycle.js",
@@ -225,13 +225,13 @@
     },
     {
       "path": "internal/runtime/windows-job-runner.ps1",
-      "bytes": 36024,
-      "sha256": "439aff9d480616f9ffec1e3c10f5dbd59689208a488f7c1b739336b50d27d59c"
+      "bytes": 36342,
+      "sha256": "68a09c900c036324d02997a75a373e05f6672d2539a65b926750fff144192d98"
     },
     {
       "path": "internal/runtime/windows-job.js",
-      "bytes": 7269,
-      "sha256": "bf31e4c65142f127723823ee39ab538cdb5ec57e0b711b0eb050e8b96226a429"
+      "bytes": 7503,
+      "sha256": "618c582c9301370ac193522b55e4ddb1edf8962513adb029efd14c316b0c195a"
     },
     {
       "path": "internal/runtime/workers.js",
