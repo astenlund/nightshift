@@ -11,7 +11,7 @@ Raised by the user on 2026-09-25 and shaped in discussion the same day; the user
 
 ## Problem
 
-`revise-docs` reconciles the backlog against one change: it finds what that change made stale. Nothing audits the active backlog as a whole, so drift that accumulates between changes goes unnoticed. Active entries depend on prose relationships ("coordinate with", "separate from", "already considers", "carried by") and on anchors into sibling indexes, breakouts and history files, while the parser validates only `Requires` and `External`. Entries also make claims about the current code ("the current `cli.js` probe branch still returns ...") that go stale when the code changes.
+`revise-docs` reconciles the backlog against one change: it finds what that change made stale. Nothing audits the active backlog as a whole, so drift that accumulates between changes goes unnoticed. Active entries depend on prose relationships ("coordinate with", "separate from", "already considers", "carried by") and on anchors into sibling indexes, breakouts and history files, while the parser checks only dependency metadata, missing linked breakout files and hard wrapping. Entries also make claims about the current code ("the current `cli.js` probe branch still returns ...") that go stale when the code changes.
 
 ## Agreed direction
 
