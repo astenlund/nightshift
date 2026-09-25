@@ -4,6 +4,22 @@ V2 entries are preserved in [the historical index](migration/v2/BUGS.md) and [MI
 
 ## Current
 
+### Unwrap joins adjacent link reference definitions
+
+Found on 2026-09-25 while writing fixtures in run `6e70931a-3760-46e2-b628-fdaa4a29f0e3`. The shared unwrap scanner (`scanWraps` in `internal/backlog-catalog.js`) treats two adjacent link reference definition lines (`[a]: x` followed by `[b]: y`) as one hard-wrapped paragraph. Ready then reports a hard-wrap notice, and `unwrap.js --write` would join them into one line (`[a]: x [b]: y`). Under CommonMark that line is no longer a definition, so both definitions are lost as paragraph text, while Ready's definition pattern, which has no end anchor, would still read the first as defined. The repository backlog has no reference definitions today, so nothing is affected yet. Pre-existing; the user chose to track it at triage.
+
+Treat a link reference definition line as its own block in the unwrap scanner, so adjacent definitions are neither noticed nor joined, with unwrap and Ready fixtures. Shared catalog code, so keep the Ready link notices coherent and ship with a version increase. Tracking does not authorize implementation.
+
+**Requires:** none.
+
+### Shared block model misreads a fence opened on a list item's marker line
+
+Found on 2026-09-25 in run `6e70931a-3760-46e2-b628-fdaa4a29f0e3`. The shared block model (`describeLines` in `internal/backlog-catalog.js`, used by unwrap and by Ready's link notices) does not recognize a fence opened on a list item's marker line (`- ```md`). It reads the fenced lines as list continuation and the closing fence as an opener, so every later line reads as fenced code. `unwrapText` on such a record joins the code onto the marker line and breaks the fence, which `--write` would persist. Ready inherits the misreading: the example link inside the fence is reported as broken, genuine broken links after the fence go unchecked, and a heading anchor or a record linked after the fence draws a false broken-anchor or unreachable notice. `internal/backlog-links.js` declares the construct unmodeled. The user chose to track it at triage.
+
+Give the shared block model list-item context for a fence opened on a marker line, with unwrap and Ready fixtures, then remove the documented link-notice limitation. Behavior changes for both consumers ship with a version increase. Tracking does not authorize implementation.
+
+**Requires:** none.
+
 ### Unattended mode requires a native goal on hosts that do not need one
 
 Observed on 2026-09-24 in this repository, run `0a2dceee-1692-41f6-86bc-bc5c7b272a61`, Claude Code with bound plugin 3.2.3, and again in both Claude acceptance fixtures of [the Ready selection campaign](reports/ready-selection-boundary-20260924.md). After an explicit handover the runtime recorded the run attended, because Claude exposes no native persistent goal that the controller can observe or set, although the registered Stop hook kept the controller working until the queue settled and the morning report was owed as for any handover. The acknowledgement followed the handover skill's branch for that case and told the user the handover was "recorded" and the run "attended, not unattended". The user found that confusing and expected "accepted". The user explained the goal requirement's origin: it counters Codex models (Astra, Sol) that tend to yield their turn early for no apparent reason and need nudging, a behavior not seen with Claude; resuming after a session crash is Night Guard's job, which is not implemented, and unattended mode should not depend on it. The user chose to track this at triage on 2026-09-24.
