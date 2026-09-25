@@ -4,6 +4,14 @@ V2 entries are preserved in [the historical index](migration/v2/BUGS.md) and [MI
 
 ## Current
 
+### Contained-process tests fail intermittently on the Windows CI runner
+
+Observed on 2026-09-25 in CI run `36188878030` for the 3.2.9 push (`14303b8`), whose diff changed no runtime or process code. Two tests failed on the first attempt and passed on a re-run of the failed job, and both files pass locally. `real contained check produces attributable termination evidence` (`tests/runtime-adoption.test.js`) runs `node --version` as a contained check with a 15-second timeout; it failed after 23.8 seconds with `operation-termination-unverified` from `runContained` in `internal/releases/processes.js`. `a read-only assessor receives private execution evidence with selected artifact=false` (`tests/runtime-probes.test.js`) failed after 14.3 seconds with `operation-timeout` from the same function, while its `selected artifact=true` sibling passed in 10.7 seconds. The CI auto-retry workflow left the run for a human because the failures do not match its infrastructure signature. The cause is unconfirmed. A plausible hypothesis is slow contained-process startup under runner load exceeding the fixtures' 10- and 15-second bounds; the adoption test's duration is consistent with a timeout firing first, because `runContained` checks descendant termination before rethrowing an already recorded failure, so a fired timeout followed by an unreconciled job surfaces as `operation-termination-unverified`, but a timeout firing in that run was not observed directly.
+
+Establish the cause from the failure evidence before changing bounds, then make the tests deterministic on a loaded runner without weakening the containment assertions they exist to prove. Tracking does not authorize implementation.
+
+**Requires:** none.
+
 ### Unwrap joins adjacent link reference definitions
 
 Found on 2026-09-25 while writing fixtures in run `6e70931a-3760-46e2-b628-fdaa4a29f0e3`. The shared unwrap scanner (`scanWraps` in `internal/backlog-catalog.js`) treats two adjacent link reference definition lines (`[a]: x` followed by `[b]: y`) as one hard-wrapped paragraph. Ready then reports a hard-wrap notice, and `unwrap.js --write` would join them into one line (`[a]: x [b]: y`). Under CommonMark that line is no longer a definition, so both definitions are lost as paragraph text, while Ready's definition pattern, which has no end anchor, would still read the first as defined. The repository backlog has no reference definitions today, so nothing is affected yet. Pre-existing; the user chose to track it at triage.
