@@ -57,3 +57,5 @@ Every shipped instruction that describes the empty dependency form spells the co
 ## Status
 
 Confirmed on 2026-09-01 against Nightshift 2.6.20 source and the installed 2.6.20 package. The defect is in shipped template guidance, not in ready parser behavior.
+
+Fixed on 2026-09-25 in the 3.2.9 candidate (commit `61a663e`): every shipped empty-dependency instruction spells `**Requires:** none.`, guarded by a template regression in `tests/setup.test.js`. See [the history entry](../BUGS_HISTORY.md#init-backlog-templates-prescribe-parser-invalid-empty-requires-syntax).

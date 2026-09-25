@@ -158,14 +158,6 @@ Support safe legacy backlog migration without a Git repository, preserving conte
 
 **Requires:** none.
 
-### [Init-backlog templates prescribe parser-invalid empty Requires syntax](bugs/init-backlog-parser-invalid-empty-requires.md)
-
-Current feature and bug template archive-cleanup prose still prescribes bare Requires: none., while the parser recognizes the bold **Requires:** label. Fresh scaffold success does not exercise the invalid later edit. The independent audit confirms this retained defect remains.
-
-Make every current shipped empty-dependency instruction use the parser-valid complete line. Keep producer and consumer consistent without changing the established dependency grammar. Validate the actual retained template instructions against the parser and inspect sibling guidance. Historical root-guidance paths below are provenance; they are not proof that removed assets still exist. [The report](bugs/init-backlog-parser-invalid-empty-requires.md) preserves evidence and related work. Tracking does not authorize implementation.
-
-**Requires:** none.
-
 ### [Overlapping Markdown roots can lose or duplicate collected files](bugs/overlapping-markdown-root-deduplication.md)
 
 A fresh two-file collector probe emitted a repeated direct file twice, duplicated the index when the root was repeated and omitted the child record when its directory preceded the parent root. Parent-before-child and normal single-root collection retained both files.

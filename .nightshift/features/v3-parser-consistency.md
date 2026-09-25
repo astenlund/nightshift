@@ -24,7 +24,7 @@ The [independent shipped-capability audit](../reports/pre-v3-shipped-capability-
 
 Characterize each remaining difference before changing it. Verify malformed and duplicate labels, indentation, fences, raw HTML, protected blocks, idempotence and unchanged dependency meaning. Keep actual defect fixes traceable to their linked bug records.
 
-Coordinate with [overlapping-root collection](../bugs/overlapping-markdown-root-deduplication.md) and [invalid template instructions](../bugs/init-backlog-parser-invalid-empty-requires.md).
+Coordinate with [overlapping-root collection](../bugs/overlapping-markdown-root-deduplication.md). The [invalid template instructions](../bugs/init-backlog-parser-invalid-empty-requires.md) were fixed in 3.2.9.
 
 The [customized backlog repair feature](v3-setup-compatibility.md) owns the approved lettered-list compatibility behavior: compact simple flat lists into inline lettered items and preserve hierarchy around nested content. Its [FeatherPod incident](../reports/inbox-triage-20260921.md#unwrapping-collapses-lettered-workflow-steps) supplies the concrete case. Coordinate scanner recognition and ambiguity handling there; this cross-reference does not broaden the supported grammar by itself.
 

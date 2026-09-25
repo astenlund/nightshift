@@ -6,7 +6,7 @@ The feature breakout file at `features/<slug>.md` stays in place as the historic
 
 ## Cross-reference resolution
 
-`/nightshift:ready` does **not** parse this file for work; only the line-discipline check reads it. When a feature ships, every other `**Requires:**` line in `FEATURES.md` / `BUGS.md` that referenced it is edited at the same time to drop the now-satisfied reference (see [the repository backlog conventions](../AGENTS.md#project-artifacts-and-backlog)). The active `Requires:` lines therefore describe what is *currently* blocking and the dependency graph settles as work ships. This file is purely archaeological; read it when you want to know what already shipped, not to resolve dependencies.
+`/nightshift:ready` does **not** parse this file for work; it reads it only for the line-discipline check and the link checks, which verify links into it and count its links as keeping the records they name reachable. When a feature ships, every other `**Requires:**` line in `FEATURES.md` / `BUGS.md` that referenced it is edited at the same time to drop the now-satisfied reference (see [the repository backlog conventions](../AGENTS.md#project-artifacts-and-backlog)). The active `Requires:` lines therefore describe what is *currently* blocking and the dependency graph settles as work ships. This file is purely archaeological; read it when you want to know what already shipped, not to resolve dependencies.
 
 ## Entries
 

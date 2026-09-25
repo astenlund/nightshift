@@ -6,7 +6,7 @@ The bug breakout file at `bugs/<slug>.md` (when present) stays in place as the h
 
 ## Cross-reference resolution
 
-`/nightshift:ready` does **not** parse this file for work; only the line-discipline check reads it. When a bug is fixed, every other `**Requires:**` line in `FEATURES.md` / `BUGS.md` that referenced it is edited at the same time to drop the now-satisfied reference (mirror of the `FEATURES.md` convention). The active `Requires:` lines therefore describe what is *currently* blocking; this file is purely archaeological.
+`/nightshift:ready` does **not** parse this file for work; it reads it only for the line-discipline check and the link checks, which verify links into it and count its links as keeping the records they name reachable. When a bug is fixed, every other `**Requires:**` line in `FEATURES.md` / `BUGS.md` that referenced it is edited at the same time to drop the now-satisfied reference (mirror of the `FEATURES.md` convention). The active `Requires:` lines therefore describe what is *currently* blocking; this file is purely archaeological.
 
 ## Entries
 
@@ -134,3 +134,7 @@ Observed on 2026-09-24 in this repository, run `0a2dceee-1692-41f6-86bc-bc5c7b27
 Recurred later on 2026-09-24 in run `0c326496-62f7-4eb1-a9e0-1a7a412933bf`, dispatch `0fc72873-32d2-4ae1-ae4a-c678ca5d4c47`, Codex `gpt-6-astra`: attempt 1 began its final JSON report at 19:20:51Z, emitted its last text at 19:21:06Z, then streamed only whitespace (35,279 of its 35,793 message deltas) until its 20-minute review timeout at 19:38:44Z, the same shape as the first occurrence, and produced no report. The Fable fallback was then cut off by the launcher's total bound before finishing, as recorded in the quick win "Dispatch timeout applies per attempt while the launcher bound is total". The run's first Astra review, `858926d7-7e05-494f-9cf4-5f591a3271d4`, had completed cleanly, so the loop is intermittent. The user chose to track this recurrence at triage on 2026-09-24.
 
 Investigate detecting a sustained non-progressing agent message during dispatch, such as whitespace-only output, and failing the attempt with the evidence preserved, without penalizing genuine long reasoning. Validate fallback prerequisites such as the substitution reason when the dispatch request is accepted. Tracking does not authorize implementation.
+
+### [Init-backlog templates prescribe parser-invalid empty Requires syntax](bugs/init-backlog-parser-invalid-empty-requires.md)
+
+Fixed on 2026-09-25 in the 3.2.9 candidate, run `6e70931a-3760-46e2-b628-fdaa4a29f0e3`, commit `61a663e`. The four walk-and-remove instructions in `skills/init-backlog/templates/features.md` and `bugs.md` now spell `**Requires:** none.`, the line the parser accepts; the root-guidance template named in the original diagnosis no longer exists. A regression in `tests/setup.test.js` reads every template, rejects the bare `Requires: none.` form and parses each empty-form instruction with the real parser, which must classify the entry as ready. The dependency grammar is unchanged; the frozen 2.4.5 legacy fixture and historical prose quoting the old form stay as they were.

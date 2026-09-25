@@ -4,14 +4,6 @@ V2 entries are preserved in [the historical index](migration/v2/QUICK_WINS.md) a
 
 ## Current
 
-### Ready reports broken backlog links and drifting excerpts
-
-Split out on 2026-09-25 from the [whole-backlog coherence audit](features/backlog-coherence-audit.md) at the user's direction. Some backlog drift is decidable without model judgment: a link or anchor from an active index, breakout or pattern file that no longer resolves (including links into history files), a breakout record that no index links to, and an index excerpt that no longer matches its record. Ready already validates dependency metadata and reports missing linked breakout files and hard-wrapped lines, but it does not check prose links and anchors, orphaned breakouts or excerpt drift, so those surface only when someone happens to notice.
-
-Extend Ready's existing notices to report these on every run, keeping them notices rather than structural errors so drift never hides ready work, and leave judgment about relationships and claims to the audit. Settle what counts as excerpt drift before implementation. Keep setup and unwrap consumers of the shared catalog modules coherent and add fixture coverage for each notice. Parser changes ship with a version increase. Tracking does not authorize implementation.
-
-**Requires:** none.
-
 ### Codex sandbox blocks the launcher from starting the host
 
 Observed on 2026-09-19 in every Codex fixture of the handover acceptance campaign (Codex CLI 0.154.0, plugin 3.2.0), recorded in [the acceptance report](reports/handover-transition-and-morning-report-20260919.md). Inside the Codex sandbox the launcher cannot start the host process it inspects, at two sites. Preparation fails with `{"error":"EPERM","message":"spawn EPERM"}` at first use and again in some later sessions of the same, already prepared profile (the new-run handover and refused-admission sessions). Resolving resources through the retained bootstrap fails with `{"error":"retained-bootstrap-unavailable","message":"spawn EPERM"}` in later sessions (new-run handover, in-place handover and refused admission). The resumed returning-user session showed no fresh failure. Each time the model has to request an out-of-sandbox retry. With the escalation approved, preparation is silent and the operation proceeds; with it denied at first use, the Ready report correctly says the parser never ran and does not present an empty backlog. A real Codex user therefore sees approval prompts that work against preparation needing no setup conversation; whether every session prompts, or only the first command of each, was not separately established, because the harness answered these requests automatically. Claude Code shows no equivalent prompt.
