@@ -16,6 +16,10 @@ Give triage tracking edits an official scoped independent review: a `tracking` r
 
 Introduce one BACKLOG.md meta-index linking the four backlog indexes and holding their shared instructions to avoid repetition. Include it in every hook that consumes those indexes. Settle its location, instruction ownership and migration of existing guidance before implementation.
 
+### [Whole-backlog coherence audit](features/backlog-coherence-audit.md)
+
+A whole-backlog mode of `revise-docs` that walks every active index, breakout and pattern file and checks that relationships between entries, excerpts against their records, and claims about the current code still hold. It repairs when attended and writes a report for later triage when unattended. Raised by the user on 2026-09-25; where a scheduled run executes and where its report lands remain open.
+
 ### [Restore setup guidance discovery and instruction routing](features/v3-guidance-routing.md)
 
 Restore canonical instruction-source discovery and approved backlog guidance updates on both hosts, with bounded traversal and explicit handling of conflicting or missing sources. Include the reported migration that left literal root instruction references unchanged after moving backlog files. The v3 setup currently relocates files and scaffolds indexes but does not expose the earlier guidance-resolution flow.
