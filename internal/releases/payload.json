@@ -1,17 +1,17 @@
 {
   "schema": 1,
   "name": "nightshift",
-  "version": "3.2.7",
+  "version": "3.2.8",
   "files": [
     {
       "path": ".claude-plugin/plugin.json",
       "bytes": 640,
-      "sha256": "e85f50c4616b637a7e8482c21606a0508f21323f108a199f1fe0160af3154fea"
+      "sha256": "115e2b402319b616d099157c14f716f1e935f0ab73a8dcf91c2c74d06fb33b0f"
     },
     {
       "path": ".codex-plugin/plugin.json",
       "bytes": 1160,
-      "sha256": "f8912b8abad682834dc86a812644d7fbe0ae84debbe12147f6052fe10ed4a9e6"
+      "sha256": "fbba53126d617316ab3cace6883819d63684a921a8d5caecd61fc974f1f22e43"
     },
     {
       "path": "LICENSE",
@@ -170,8 +170,8 @@
     },
     {
       "path": "internal/runtime/hosts.js",
-      "bytes": 11918,
-      "sha256": "ee560bf717302a29f6125ad94177e6866e90b93485af9eb0d126d6dff2fa3f61"
+      "bytes": 11977,
+      "sha256": "c37ac5434c5cbbbbdfdb7734bf303e8926af462043b668bc70a0b08044088c4c"
     },
     {
       "path": "internal/runtime/lifecycle.js",
@@ -225,13 +225,13 @@
     },
     {
       "path": "internal/runtime/windows-job-runner.ps1",
-      "bytes": 35005,
-      "sha256": "b3250863b670d6ae262bb656a262d2342a32c01936efa9bbe7a8d37e2bce2876"
+      "bytes": 36024,
+      "sha256": "439aff9d480616f9ffec1e3c10f5dbd59689208a488f7c1b739336b50d27d59c"
     },
     {
       "path": "internal/runtime/windows-job.js",
-      "bytes": 5847,
-      "sha256": "4bff6761478fc9bc1f647ee4053fdf62265006ca80a81cd9b4fb7540fc39d06f"
+      "bytes": 7269,
+      "sha256": "bf31e4c65142f127723823ee39ab538cdb5ec57e0b711b0eb050e8b96226a429"
     },
     {
       "path": "internal/runtime/workers.js",

@@ -2,7 +2,7 @@
   "name": "nightshift",
   "displayName": "Nightshift",
   "description": "An autonomous engineering workflow for Claude Code and Codex: direct implementation from agreed commitments, independent review and skeptical finding validation, durable continuation, and a host-neutral project backlog.",
-  "version": "3.2.7",
+  "version": "3.2.8",
   "author": {
     "name": "Andreas Stenlund"
   },
