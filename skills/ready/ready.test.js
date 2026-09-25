@@ -32,6 +32,7 @@ const {
   scanBreakoutLines,
   scanBreakoutTargets,
 } = require('./ready.js');
+const { analyzeBacklogLinks, extractLinks, headingAnchors, resolveLink } = require('../../internal/backlog-links.js');
 
 let passed = 0;
 const failures = [];
@@ -280,8 +281,8 @@ test('analyzeCatalog carries parser-owned structural, breakout, cycle, and notic
 `;
   const result = analyzeCatalog([
     { target: 'FEATURES.md', contents: features },
-    { target: 'features/a.md', contents: '# A\n' },
-    { target: 'features/b.md', contents: '# B\n' },
+    { target: 'features/a.md', contents: '# Cycle A\n' },
+    { target: 'features/b.md', contents: '# Cycle B\n' },
     { target: 'features/bad.md', contents: '# Bad\n\n**Requires:** none.\n' },
   ]);
 
@@ -313,7 +314,9 @@ test('analyzeCatalog preserves recursively discovered nested catalog identities 
   assert.deepStrictEqual(result.evidence.notices, [
     { kind: 'notices', ordinal: 0, evidencePaths: ['features/deep/nested.md'] },
     { kind: 'notices', ordinal: 1, evidencePaths: ['features/deep/unlinked.md'] },
+    { kind: 'notices', ordinal: 2, evidencePaths: ['features/deep/unlinked.md'] },
   ]);
+  assert.match(result.notices[2], /^1 backlog record is not reachable by links from any backlog index: features\/deep\/unlinked\.md;/);
 });
 
 test('analyzeCatalog requires whitespace before an ATX trailing closure', () => {
@@ -2372,7 +2375,7 @@ test('CLI reports nested traversal disappearance without claiming the backlog ro
     assert.strictEqual(fs.statSync(backlogDir).isDirectory(), true, 'the backlog root remains present');
     assert.strictEqual(process.exitCode, 1);
     assert.ok(result.structuralErrors.some(error => error.title === 'Unwrap recovery discovery'));
-    assert.ok(result.notices.includes('backlog tree changed during traversal; retry; unlinked backlog files were not checked this run'));
+    assert.ok(result.notices.includes('backlog tree changed during traversal; retry; unlinked backlog files and backlog links were not checked this run'));
     assert.strictEqual(Object.hasOwn(result, 'error'), false);
   } finally {
     fs.readdirSync = originalReaddirSync;
@@ -2411,7 +2414,7 @@ test('CLI reports an unreadable backlog directory as a controlled traversal noti
     const result = JSON.parse(stdout);
     assert.strictEqual(process.exitCode, 1);
     assert.ok(result.structuralErrors.some(error => error.title === 'Unwrap recovery discovery'));
-    assert.ok(result.notices.includes('backlog tree could not be fully traversed (EACCES); retry; unlinked backlog files were not checked this run'));
+    assert.ok(result.notices.includes('backlog tree could not be fully traversed (EACCES); retry; unlinked backlog files and backlog links were not checked this run'));
     assert.strictEqual(Object.hasOwn(result, 'error'), false);
   } finally {
     fs.readdirSync = originalReaddirSync;
@@ -2921,6 +2924,304 @@ test('malformed long HTML tag candidates remain bounded and preserve later entri
 
   assert.ok(elapsedMs < 2000, `malformed HTML probing took ${elapsedMs.toFixed(1)}ms`);
   assert.ok(findByTitle(result.ready, 'Ready'), JSON.stringify(result));
+});
+
+// ---------- backlog link notices ----------
+
+const LINK_FIXTURE = [
+  { target: 'QUICK_WINS.md', contents: `# Quick wins
+
+## Current
+
+### [Linked win](features/win-record.md)
+
+See [the missing record](features/absent.md) and [a report](reports/elsewhere.md) and [the web](https://example.test/x.md).
+
+### [Unlinked heading win](features/missing-win.md)
+` },
+  { target: 'FEATURES.md', contents: `# Features
+
+## Area
+
+### [Alpha](features/alpha.md)
+
+Alpha links [its section](features/alpha.md#design-notes), [a bad section](features/alpha.md#no-such-section), [shipped work](FEATURES_HISTORY.md#shipped-thing) and [the area](#area). Code \`[not a link](features/code.md)\` stays literal.
+
+**Requires:** [Missing dependency](features/gone.md).
+
+### [Drifted title](features/drift.md)
+
+**Requires:** none.
+
+### [Missing record](features/missing.md)
+
+**Requires:** none.
+
+## Exploring
+
+### [Draft](features/draft.md)
+
+A draft.
+` },
+  { target: 'BUGS.md', contents: '# Bugs\n\n## Current\n\nNothing tracked yet.\n' },
+  { target: 'PATTERNS.md', contents: '# Patterns\n\n## Current\n\n### [Pattern name](patterns/shared.md)\n' },
+  { target: 'FEATURES_HISTORY.md', contents: '# Features history\n\n## Entries\n\n### Shipped thing\n\n- [Shipped thing](features/shipped.md): shipped. [Dead history link](features/long-gone.md) is not checked.\n' },
+  { target: 'features/win-record.md', contents: '# `Linked` win\n' },
+  { target: 'features/alpha.md', contents: '# Alpha\n\n## Design notes\n\nBack to [the index entry](../FEATURES.md#alpha) and [a sibling](child/leaf.md) and [a stale sibling](child/stale.md).\n' },
+  { target: 'features/child/leaf.md', contents: '# Leaf\n' },
+  { target: 'features/drift.md', contents: '# Original title\n' },
+  { target: 'features/draft.md', contents: '# Draft idea\n' },
+  { target: 'features/shipped.md', contents: '# Shipped thing\n' },
+  { target: 'features/orphan.md', contents: '# Orphan\n' },
+  { target: 'bugs/lonely.md', contents: '# Lonely\n' },
+  { target: 'patterns/shared.md', contents: '# Different pattern\n' },
+];
+
+const LINK_FIXTURE_NOTICES = [
+  'FEATURES.md entry "Missing record" links to features/missing.md, which does not exist; remove the broken link or create the file (its Requires line still resolves normally)',
+  'FEATURES.md line 7 links to features/alpha.md#no-such-section, but features/alpha.md has no heading with that anchor; fix the anchor or the heading',
+  'QUICK_WINS.md line 7 links to features/absent.md, which does not exist; fix or remove the link',
+  'QUICK_WINS.md line 9 links to features/missing-win.md, which does not exist; fix or remove the link',
+  'features/alpha.md line 5 links to child/stale.md, which does not exist; fix or remove the link',
+  'FEATURES.md entry "Drifted title" links to features/drift.md, whose title is "Original title"; align the entry title and the record heading',
+  'FEATURES.md entry "Draft" links to features/draft.md, whose title is "Draft idea"; align the entry title and the record heading',
+  'PATTERNS.md entry "Pattern name" links to patterns/shared.md, whose title is "Different pattern"; align the entry title and the record heading',
+  '2 backlog records are not reachable by links from any backlog index: bugs/lonely.md, features/orphan.md; link each from the index entry, history entry or parent record that tracks it, or move it out of the backlog directories',
+];
+
+test('link notices report broken links and anchors, title drift and unreachable records without duplicating existing checks', () => {
+  const result = analyzeCatalog(LINK_FIXTURE);
+
+  assert.deepStrictEqual(result.notices, LINK_FIXTURE_NOTICES);
+  assert.deepStrictEqual(result.evidence.notices.map((item) => item.evidencePaths), [
+    ['FEATURES.md'],
+    ['FEATURES.md', 'features/alpha.md'],
+    ['QUICK_WINS.md'],
+    ['QUICK_WINS.md'],
+    ['features/alpha.md'],
+    ['FEATURES.md', 'features/drift.md'],
+    ['FEATURES.md', 'features/draft.md'],
+    ['PATTERNS.md', 'patterns/shared.md'],
+    ['bugs/lonely.md', 'features/orphan.md'],
+  ]);
+  assert.ok(result.structuralErrors.some((error) => error.title === 'Alpha' && error.problem.includes('features/gone.md')), 'the Requires link stays a structural error');
+  assert.ok(!result.notices.some((notice) => notice.includes('features/gone.md') || notice.includes('long-gone') || notice.includes('reports/') || notice.includes('example.test') || notice.includes('code.md')), 'dependency, history, out-of-scope and code-span links are not link notices');
+});
+
+test('link notices from the CLI match the catalog adapter exactly', () => {
+  const tmpRoot = path.join(__dirname, '..', '..', '.tmp', `ready-links-${process.pid}`);
+  const backlogDir = path.join(tmpRoot, '.nightshift');
+  try {
+    for (const item of LINK_FIXTURE) {
+      fs.mkdirSync(path.dirname(path.join(backlogDir, item.target)), { recursive: true });
+      fs.writeFileSync(path.join(backlogDir, item.target), item.contents);
+    }
+    const cli = JSON.parse(execFileSync(process.execPath, [path.join(__dirname, 'ready.js'), '--development', tmpRoot], { encoding: 'utf8' }));
+    const { evidence, ...catalog } = analyzeCatalog(LINK_FIXTURE);
+
+    assert.ok(evidence);
+    assert.deepStrictEqual(catalog, cli);
+    assert.deepStrictEqual(cli.notices, LINK_FIXTURE_NOTICES);
+  } finally {
+    fs.rmSync(tmpRoot, { recursive: true, force: true });
+  }
+});
+
+test('records stay reachable through parent records, history entries and dependency lines', () => {
+  const result = analyzeCatalog([
+    { target: 'FEATURES.md', contents: '## Area\n\n### [Parent](features/parent.md)\n\n**Requires:** [Other](features/other.md).\n\n### [Other](features/other.md)\n\n**Requires:** none.\n' },
+    { target: 'BUGS_HISTORY.md', contents: '# Bugs history\n\n- [Fixed](bugs/fixed.md): fixed.\n' },
+    { target: 'features/parent.md', contents: '# Parent\n\nSee [the child](parent/child.md).\n' },
+    { target: 'features/parent/child.md', contents: '# Child\n\nSee [the grandchild](grandchild.md).\n' },
+    { target: 'features/parent/grandchild.md', contents: '# Grandchild\n' },
+    { target: 'features/other.md', contents: '# Other\n' },
+    { target: 'bugs/fixed.md', contents: '# Fixed\n' },
+  ]);
+
+  assert.deepStrictEqual(result.notices, []);
+});
+
+test('link extraction reads rendered inline and used reference links, and marks dependency declarations', () => {
+  const links = extractLinks([
+    '[![badge](img/badge.png)](features/a.md) [spaced](<features/a b.md>) [titled](features/t.md "Title") [paren](features/p(1).md)',
+    'Escaped \\[not](features/no.md) and `[code](features/code.md)` stay literal; see [the full][Ref], [ref][] and [ref].',
+    '',
+    '[ref]: features/ref.md',
+    '[unused]: features/unused.md',
+    '',
+    '```',
+    '[fenced](features/fenced.md)',
+    '```',
+    '',
+    '    [indented](features/indented.md)',
+    '',
+    '**Requires:** [dep](features/dep.md),',
+    '  [wrapped dep](features/wrapped.md).',
+    '',
+    'After [prose](features/prose.md), a mid-line **External:** label opens nothing: [still prose](features/still.md).',
+  ].join('\n'));
+
+  assert.deepStrictEqual(links.map(({ line, raw, dependency }) => [line, raw, dependency]), [
+    [1, 'features/a.md', false],
+    [1, 'img/badge.png', false],
+    [1, 'features/a b.md', false],
+    [1, 'features/t.md', false],
+    [1, 'features/p(1).md', false],
+    [4, 'features/ref.md', false],
+    [13, 'features/dep.md', true],
+    [14, 'features/wrapped.md', true],
+    [16, 'features/prose.md', false],
+    [16, 'features/still.md', false],
+  ]);
+});
+
+test('heading anchors follow GitHub slugs for ATX and setext headings, entities, duplicates and explicit anchors', () => {
+  const anchors = headingAnchors([
+    '# Whole-backlog coherence audit: MVP - manual audit',
+    '',
+    '## Repeat',
+    '',
+    '## Repeat',
+    '',
+    '### [`Linked` **title**](features/x.md)',
+    '',
+    'Setext title',
+    '============',
+    '',
+    'Fish &amp; Chips',
+    '----------------',
+    '',
+    '```',
+    '## Fenced',
+    '<a id="fenced-anchor"></a>',
+    '```',
+    '',
+    '    ## Indented code',
+    '',
+    '<a id="Custom-Anchor"></a>',
+  ].join('\n'));
+
+  assert.deepStrictEqual([...anchors].sort(), ['custom-anchor', 'fish--chips', 'linked-title', 'repeat', 'repeat-1', 'setext-title', 'whole-backlog-coherence-audit-mvp---manual-audit']);
+});
+
+test('link notices follow rendered Markdown at block boundaries', () => {
+  const fixture = (prose, body = '') => [
+    { target: 'FEATURES.md', contents: `## Area\n\n### [Record](features/record.md)\n\n**Requires:** none.\n\n${prose}\n` },
+    { target: 'features/record.md', contents: `# Record\n\n${body}\n` },
+  ];
+  const orphan = { target: 'features/orphan.md', contents: '# Orphan\n' };
+  const unreachableOrphan = '1 backlog record is not reachable by links from any backlog index: features/orphan.md; link each from the index entry, history entry or parent record that tracks it, or move it out of the backlog directories';
+  const cases = [
+    { name: 'setext and entity headings', items: fixture('[One](features/record.md#detail) [Two](features/record.md#fish--chips)', 'Detail\n------\n\n## Fish &amp; Chips'), notices: [] },
+    { name: 'unused reference definitions', items: [...fixture('[unused]: features/orphan.md\n\n[dead]: features/missing.md'), orphan], notices: [unreachableOrphan] },
+    { name: 'indented code', items: [...fixture('    [Example](features/missing.md) [Orphan](features/orphan.md)'), orphan], notices: [unreachableOrphan] },
+    { name: 'fenced explicit anchor', items: fixture('[Ghost](features/record.md#ghost)', '```html\n<a id="ghost"></a>\n```'), notices: ['FEATURES.md line 7 links to features/record.md#ghost, but features/record.md has no heading with that anchor; fix the anchor or the heading'] },
+    { name: 'commented explicit anchor and link', items: fixture('[Ghost](features/record.md#ghost) and <!-- [hidden](features/missing.md) -->', '<!--\n<a id="ghost"></a>\n-->'), notices: ['FEATURES.md line 7 links to features/record.md#ghost, but features/record.md has no heading with that anchor; fix the anchor or the heading'] },
+    { name: 'reference link inside a heading', items: fixture('[Design](features/record.md#design)', '## [Design][section]\n\n[section]: https://example.test/'), notices: [] },
+    { name: 'shadowed reference definition', items: [...fixture('', '[Child][ref]\n\n[ref]: child.md\n\n[ref]: orphan.md\n\n[Gone][gone]\n\n[gone]: child.md\n\n[gone]: missing.md'), { target: 'features/child.md', contents: '# Child\n' }, orphan], notices: [unreachableOrphan] },
+    { name: 'quoted heading and quoted fence', items: fixture('[Design](features/record.md#design)', '> ## Design\n>\n> ```md\n> [Example](missing.md)\n> ```'), notices: [] },
+    // Block structure precedes inline parsing, so a heading ends the paragraph an unclosed inline comment opened in.
+    { name: 'inline comments in headings and paragraphs', items: fixture('[Top](features/record.md#details) [Ghost](features/record.md#ghost)', '## Details<!-- hidden -->\n\nIntro <!--\n## Ghost\n-->'), notices: [] },
+    {
+      name: 'blank-separated nested list items and code inside an item',
+      items: [...fixture('', '- Parent\n\n    - [Child](child.md)\n    - [Sibling](sibling.md)\n\n- Other\n\n        [Code example](missing.md)'), { target: 'features/child.md', contents: '# Child\n' }, { target: 'features/sibling.md', contents: '# Sibling\n' }],
+      notices: [],
+    },
+    {
+      name: 'fence and heading inside list items',
+      items: [...fixture('[Details](features/record.md#details) [More](features/record.md#more)', '- ## Details\n\n  Details prose.\n\n- Parent\n\n    ## More\n\n- Example\n\n    ```md\n    [Example](missing.md) [Orphan](orphan.md)\n    ```'), orphan],
+      notices: [unreachableOrphan],
+    },
+    { name: 'named and numeric character references in headings', items: fixture('[Accent](features/record.md#caf%C3%A9) [Numeric](features/record.md#na%C3%AFve)', '## Caf&eacute;\n\n## Na&#239;ve'), notices: [] },
+    {
+      name: 'reference link on a dependency line',
+      items: [
+        { target: 'FEATURES.md', contents: '## Area\n\n### [Record](features/record.md)\n\n**Requires:** [Ghost][ghost].\n\n[ghost]: features/ghost.md\n' },
+        { target: 'features/record.md', contents: '# Record\n' },
+      ],
+      notices: [],
+      structural: true,
+    },
+    {
+      name: 'character references in destinations',
+      items: [...fixture('[Child](features/a&amp;b.md) [Literal](features/c\\&amp;d.md)'), { target: 'features/a&b.md', contents: '# Child\n' }],
+      notices: ['FEATURES.md line 7 links to features/c&amp;d.md, which does not exist; fix or remove the link'],
+    },
+    {
+      name: 'entry heading linking another index',
+      items: [
+        { target: 'QUICK_WINS.md', contents: '## Current\n\n### [Inspect bug backlog](BUGS.md)\n' },
+        { target: 'BUGS.md', contents: '# Bugs\n' },
+      ],
+      notices: [],
+    },
+    {
+      name: 'escaped destinations',
+      items: [...fixture('[Missing](features/missing\\(old\\).md) [Child](features/child\\_one.md)'), { target: 'features/child_one.md', contents: '# Child\n' }],
+      notices: ['FEATURES.md line 7 links to features/missing(old).md, which does not exist; fix or remove the link'],
+    },
+    {
+      name: 'literal and paired emphasis in titles',
+      items: [
+        { target: 'FEATURES.md', contents: '## Area\n\n### [Import *.csv](features/import.md)\n\n**Requires:** none.\n\n### [**Bold** title](features/bold.md)\n\n**Requires:** none.\n' },
+        { target: 'features/import.md', contents: '# Import .csv\n' },
+        { target: 'features/bold.md', contents: '# Bold title<!-- note -->\n' },
+      ],
+      notices: ['FEATURES.md entry "Import *.csv" links to features/import.md, whose title is "Import .csv"; align the entry title and the record heading'],
+    },
+    {
+      name: 'anchored title drift',
+      items: [
+        { target: 'FEATURES.md', contents: '## Area\n\n### [Wrong title](features/record.md#detail)\n\n**Requires:** none.\n' },
+        { target: 'features/record.md', contents: '# Record\n\n## Detail\n' },
+      ],
+      notices: ['FEATURES.md entry "Wrong title" links to features/record.md, whose title is "Record"; align the entry title and the record heading'],
+    },
+  ];
+  for (const { name, items, notices, structural = false } of cases) {
+    const result = analyzeCatalog(items);
+
+    assert.strictEqual(result.structuralErrors.length > 0, structural, `${name}: ${JSON.stringify(result.structuralErrors)}`);
+    assert.deepStrictEqual(result.notices, notices, name);
+  }
+
+  for (const [name, contents] of [
+    ['wrapped Requires', '## Area\n\n### [Record](features/record.md)\n\n**Requires:**\n  [Ghost](features/ghost.md).\n'],
+    ['wrapped External', '## Area\n\n### [Record](features/record.md)\n\n**Requires:** none.\n\n**External:** vendor SDK,\n  [Ghost](features/ghost.md).\n'],
+  ]) {
+    const result = analyzeCatalog([{ target: 'FEATURES.md', contents }, { target: 'features/record.md', contents: '# Record\n' }]);
+
+    assert.ok(result.structuralErrors.some((error) => error.problem.includes('Ghost')), `${name}: ${JSON.stringify(result.structuralErrors)}`);
+    assert.ok(!result.notices.some((notice) => notice.includes('features/ghost.md')), `${name}: ${JSON.stringify(result.notices)}`);
+  }
+});
+
+test('link resolution keeps only targets inside the backlog catalog scope', () => {
+  assert.deepStrictEqual(resolveLink('features/a.md', '../FEATURES.md#Entry'), { file: 'FEATURES.md', anchor: 'Entry' });
+  assert.deepStrictEqual(resolveLink('FEATURES.md', '#area'), { file: 'FEATURES.md', anchor: 'area' });
+  assert.deepStrictEqual(resolveLink('FEATURES.md', 'features/a%20b.md'), { file: 'features/a b.md', anchor: null });
+  for (const raw of ['../AGENTS.md', 'reports/r.md', 'MIGRATION_STATUS.md', 'features/image.png', 'https://example.test/FEATURES.md', 'mailto:x@example.test', '/FEATURES.md', 'features\\a.md', 'features/a.md?x', '#', '']) {
+    assert.strictEqual(resolveLink('FEATURES.md', raw), null, raw);
+  }
+});
+
+test('an unreadable backlog file skips its own links and the reachability check with a notice', () => {
+  const notices = analyzeBacklogLinks({
+    files: [
+      { target: 'FEATURES.md', contents: '## Area\n\n[missing](features/missing.md)\n' },
+      { target: 'features/locked.md', contents: undefined },
+      { target: 'features/open.md', contents: '[broken](gone.md)\n' },
+    ],
+    linkedEntries: [{ index: 'FEATURES.md', title: 'Locked', target: 'features/locked.md' }],
+    coveredTargets: new Set(),
+    normalizeTitle: (title) => title.toLowerCase(),
+  });
+
+  assert.deepStrictEqual(notices.map((item) => item.notice), [
+    'FEATURES.md line 3 links to features/missing.md, which does not exist; fix or remove the link',
+    'features/open.md line 1 links to gone.md, which does not exist; fix or remove the link',
+    'backlog records were not checked for reachability this run because a backlog file could not be read; retry',
+  ]);
 });
 
 // ---------- summary ----------

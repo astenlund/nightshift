@@ -158,7 +158,8 @@ function classify(line, probe) {
 
 // Tracks the multi-line constructs whose interior is never joined. Takes the
 // open block, the probe (see classify), and the previous physical line (a
-// table header sits there). Returns true while the line belongs to one of them.
+// table header sits there). Returns the kind of construct the line belongs to
+// ('html', 'table', 'indented-code' or 'fence'), or null outside them.
 function createBlockTracker() {
   let fence = null;
   let html = null;
@@ -172,22 +173,22 @@ function createBlockTracker() {
         html = null;
       } else {
         if (html.type <= 5 && rawHtmlBlockTerminated(html, line)) html = null;
-        return true;
+        return 'html';
       }
     }
     if (inTable) {
       inTable = inTable && !blank;
 
-      return !blank;
+      return blank ? null : 'table';
     }
     if (inIndentedCode) {
       inIndentedCode = blank || INDENTED_CODE.test(line);
-      if (inIndentedCode) return true;
+      if (inIndentedCode) return 'indented-code';
     }
     if (previous === null && INDENTED_CODE.test(line)) {
       inIndentedCode = true;
 
-      return true;
+      return 'indented-code';
     }
     const fenceMatch = FENCE.exec(probe);
     // CommonMark forbids a backtick anywhere in a backtick fence's info
@@ -198,7 +199,7 @@ function createBlockTracker() {
     if (fence === null && fenceMatch && !(fenceMatch[1][0] === '`' && fenceMatch[2].includes('`'))) {
       fence = { char: fenceMatch[1][0], length: fenceMatch[1].length };
 
-      return true;
+      return 'fence';
     }
     if (fence !== null) {
       const closer = FENCE.exec(line.trimStart());
@@ -206,64 +207,84 @@ function createBlockTracker() {
         fence = null;
       }
 
-      return true;
+      return 'fence';
     }
     const htmlStart = rawHtmlBlockStart(probe);
     if (htmlStart !== null) {
       html = htmlStart.type >= 6 || !rawHtmlBlockTerminated(htmlStart, probe) ? htmlStart : null;
-      return true;
+      return 'html';
     }
     if (TABLE_DELIMITER.test(line) && lastLine !== null && lastLine.includes('|')) {
       inTable = true;
 
-      return true;
+      return 'table';
     }
 
-    return false;
+    return null;
   };
 }
 
-// Walks the lines and reports, per physical line, whether it continues the
-// block started on the previous line. Returns 1-based line numbers.
-function scanWraps(lines) {
-  const wraps = [];
+// Walks the lines once and describes each one: `block` names the construct
+// it sits in ('frontmatter' or a createBlockTracker kind, else null),
+// `continuation` says whether it continues the paragraph or list item above
+// ('paragraph', 'list-item' or null), and `setext` marks a setext underline
+// with its heading level and the index of the paragraph line it underlines.
+function describeLines(lines) {
+  const described = [];
   const frontmatterClose = frontmatterEnd(lines);
   const insideBlock = createBlockTracker();
   let previous = null;
   for (let index = 0; index < lines.length; index += 1) {
     const line = lines[index];
+    const entry = { block: null, continuation: null, setext: null };
+    described.push(entry);
     if (index <= frontmatterClose) {
+      entry.block = 'frontmatter';
       previous = null;
       continue;
     }
     const probe = previous?.kind === 'paragraph' ? line : line.trimStart();
-    if (insideBlock(line, previous, probe, index > 0 ? lines[index - 1] : null)) {
+    entry.block = insideBlock(line, previous, probe, index > 0 ? lines[index - 1] : null);
+    if (entry.block !== null) {
       // A table header is the line above its delimiter row; it is never a
       // continuation of the paragraph above it.
-      if (TABLE_DELIMITER.test(line) && wraps.length > 0 && wraps[wraps.length - 1].line === index) {
-        wraps.pop();
-      }
+      if (TABLE_DELIMITER.test(line) && index > 0) described[index - 1].continuation = null;
       previous = null;
       continue;
     }
     const kind = classify(line, probe);
     if (previous?.kind === 'paragraph' && SETEXT_UNDERLINE.test(line)) {
+      entry.setext = { level: line.trim().startsWith('=') ? 1 : 2, from: previous.start };
       previous = null;
       continue;
     }
     const continuesParagraph = previous?.kind === 'paragraph' && (kind === 'paragraph' || kind === 'indented');
     const continuesListItem = previous?.kind === 'list-item' && kind === 'indented';
     if ((continuesParagraph || continuesListItem) && !HARD_BREAK.test(previous.line)) {
-      wraps.push({ line: index + 1, kind: continuesListItem ? 'list-item' : 'paragraph' });
-      previous = { kind: previous.kind, line };
+      entry.continuation = continuesListItem ? 'list-item' : 'paragraph';
+      previous = { kind: previous.kind, line, start: previous.start };
       continue;
     }
     previous = kind === 'blank' || kind === 'heading' || kind === 'break' || kind === 'table' || kind === 'quote'
       ? null
-      : { kind: kind === 'indented' || kind === 'label' ? 'paragraph' : kind, line };
+      : { kind: kind === 'indented' || kind === 'label' ? 'paragraph' : kind, line, start: index };
   }
 
-  return wraps;
+  return described;
+}
+
+// Reports, per physical line, whether it continues the block started on the
+// previous line. Returns 1-based line numbers.
+function scanWraps(lines) {
+  return describeLines(lines).flatMap((entry, index) => (entry.continuation === null ? [] : [{ line: index + 1, kind: entry.continuation }]));
+}
+
+// The lines of a markdown text, without their endings or a leading byte-order
+// mark, each with its describeLines entry.
+function describeBlocks(text) {
+  const { lines } = splitLines(text);
+
+  return { lines, described: describeLines(lines) };
 }
 
 // Private single-scan core: one splitLines + scanWraps pass per text, shared
@@ -753,4 +774,4 @@ function runCli(argv, options = {}) {
   process.exitCode = unreadable || (report.length > 0 && !write) ? 1 : 0;
 }
 
-module.exports = { LABEL_AT_START, REQUIRES_LABEL, EXTERNAL_LABEL, CatalogError, canonicalBacklogRootIdentity, canonicalPath, compareTargets, decodeUtf8, detectHardWraps, unwrapText, collectMarkdownFiles, isContainedPath, isBacklogContentPath, maskRawHtmlBlocks, normalizeCatalogItems, analyzeText, joinContinuations, analyzeUnwrapCatalog, discoverUnwrapArtifacts, recoveryDiagnostics, recoverPendingUnwrap, runCli };
+module.exports = { LABEL_AT_START, REQUIRES_LABEL, EXTERNAL_LABEL, BACKLOG_FILES, CatalogError, canonicalBacklogRootIdentity, canonicalPath, compareTargets, decodeUtf8, describeBlocks, detectHardWraps, unwrapText, collectMarkdownFiles, isCatalogTarget, isContainedPath, isBacklogContentPath, maskRawHtmlBlocks, normalizeCatalogItems, analyzeText, joinContinuations, analyzeUnwrapCatalog, discoverUnwrapArtifacts, recoveryDiagnostics, recoverPendingUnwrap, runCli };

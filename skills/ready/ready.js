@@ -12,18 +12,20 @@
 //
 // History archives are never parsed for work: the walk-and-remove convention
 // keeps active Requires lines authoritative. PATTERNS.md is a pattern
-// registry, not a work backlog, so it is not parsed either. Every backlog
-// file is still read once for the hard-wrap notice, since the line
-// discipline covers the whole .nightshift/ backlog.
+// registry, not a work backlog, so it is not parsed for work either. Every
+// backlog file is still read once for the hard-wrap notice, since the line
+// discipline covers the whole .nightshift/ backlog, and for the link notices
+// of internal/backlog-links.js, in which history archives are link targets
+// and reachability roots.
 //
 // Usage: node ready.js [repo-root, .nightshift dir, or legacy .claude dir]   (defaults to cwd)
 
 const fs = require('fs');
 const path = require('path');
 const { readUnwrapSnapshot, verifyUnwrapRead } = require('../../internal/unwrap-recovery.js');
-const { recoveryDiagnostics, isBacklogContentPath } = require('../../internal/backlog-catalog.js');
 const { scanMarkdown } = require('../../internal/markdown.js');
-const { LABEL_AT_START, REQUIRES_LABEL, EXTERNAL_LABEL, CatalogError, canonicalBacklogRootIdentity, canonicalPath, compareTargets, decodeUtf8, detectHardWraps, collectMarkdownFiles, isContainedPath, maskRawHtmlBlocks: sharedMaskRawHtmlBlocks, normalizeCatalogItems } = require('../../internal/backlog-catalog.js');
+const { analyzeBacklogLinks, atxHeading, resolveLink: resolveBacklogLink } = require('../../internal/backlog-links.js');
+const { LABEL_AT_START, REQUIRES_LABEL, EXTERNAL_LABEL, CatalogError, canonicalBacklogRootIdentity, canonicalPath, compareTargets, decodeUtf8, detectHardWraps, collectMarkdownFiles, isBacklogContentPath, isContainedPath, maskRawHtmlBlocks: sharedMaskRawHtmlBlocks, normalizeCatalogItems, recoveryDiagnostics } = require('../../internal/backlog-catalog.js');
 
 const INDEX_FILE_STEMS = new Set([
   'QUICK_WINS', 'FEATURES', 'BUGS', 'PATTERNS',
@@ -66,6 +68,7 @@ const DUPLICATE_SLICES_PROBLEM = 'duplicate **Slices:** labels; keep all work un
 const HEADING = /^#{2,3} /;
 const BULLET = /^- /;
 const ANALYSIS_EVIDENCE = Symbol('analysisEvidence');
+const LINKED_ENTRIES = Symbol('linkedEntries');
 
 function readCanonicalText(rootIdentity, target, observe) {
   try {
@@ -973,6 +976,8 @@ function parseIndexes(files, out) {
     out.indexes.found.push('PATTERNS.md (registry only, not parsed for work items)');
     const notice = hardWrapNotice('PATTERNS.md', files.PATTERNS);
     if (notice !== null) pushNotice(out, notice, ['PATTERNS.md']);
+    // Pattern headings are read only for their record links, never as work.
+    parsed.PATTERNS = extractEntries(files.PATTERNS, []);
   } else {
     out.indexes.missing.push('PATTERNS.md');
   }
@@ -1236,7 +1241,34 @@ function analyze(files) {
   addDuplicatePathErrors(out, registry);
 
   out.breakoutTargets = breakoutTargets;
+  Object.defineProperty(out, LINKED_ENTRIES, { configurable: true, value: linkedIndexEntries(parsed) });
   return out;
+}
+
+// Active index entries whose heading links a record, in index order, for the
+// title-drift notice. Exploring drafts count; bullet quick wins carry no link.
+function linkedIndexEntries(parsed) {
+  return [...WORK_INDEX_NAMES, 'PATTERNS'].flatMap((name) => {
+    if (!parsed[name]) return [];
+    const entries = [...parsed[name].entries, ...parsed[name].collectedEntries];
+
+    return entries.filter((entry) => entry.selfTarget).map((entry) => ({ index: `${name}.md`, title: entry.title, target: entry.selfTarget }));
+  });
+}
+
+// The link notices for one complete backlog: every file's { target, contents }
+// and the analysis they complete. A missing record that an entry heading
+// links is already reported by the breakout scan, so it is not reported twice.
+// Coverage is keyed by the link analysis's own resolution, because the breakout
+// scan also reports spellings its stricter reference grammar refuses.
+function linkNotices(result, backlogFiles) {
+  const coveredTargets = new Set();
+  for (const rec of result.breakoutTargets) {
+    const resolved = resolveBacklogLink(rec.index, rec.target);
+    if (resolved !== null) coveredTargets.add(`${rec.index}\0${resolved.file}`);
+  }
+
+  return analyzeBacklogLinks({ files: backlogFiles, linkedEntries: result[LINKED_ENTRIES], coveredTargets, normalizeTitle });
 }
 
 // Lines in a breakout file that carry a dependency label: outside any
@@ -1403,31 +1435,43 @@ function scanUnlinkedWith(entries, alreadyScanned, indexKeys, collectEvidence) {
   return notices;
 }
 
-function scanUnlinkedBacklogFiles(backlogDir, alreadyScanned, options = {}) {
+// Enumerates every backlog file on disk once. Each entry's load reads the file
+// at most once, so the hard-wrap sweep and the link analysis share one read.
+function discoverBacklogFiles(backlogDir, options = {}) {
   const canonicalize = options.canonicalize ?? canonicalPath;
   const collectFiles = options.collectFiles ?? collectMarkdownFiles;
   const rootIdentity = options.rootIdentity ?? canonicalBacklogRootIdentity(backlogDir);
   if (rootIdentity === null) throw new CatalogError(`backlog root escapes its repository authority: ${backlogDir}`);
   const readFile = options.readFile ?? ((target) => readCanonicalText(rootIdentity, target));
-  const indexFiles = new Set([...WORK_INDEX_NAMES, 'PATTERNS'].map((name) => canonicalize(path.resolve(backlogDir, `${name}.md`))));
+  const indexKeys = new Set([...WORK_INDEX_NAMES, 'PATTERNS'].map((name) => canonicalize(path.resolve(backlogDir, `${name}.md`))));
   const entries = collectFiles([backlogDir]).map((file) => {
     const identity = canonicalize(file);
+    let read;
 
     return {
       identity,
       label: path.relative(backlogDir, file).replace(/\\/g, '/'),
       load: () => {
+        if (read !== undefined) return read;
         try {
-          return { contents: readFile(identity) };
+          read = { contents: readFile(identity) };
         } catch (error) {
           if (error?.code === 'invalid-utf8') throw error;
-          return { errorCode: error?.code ?? 'unknown' };
+          read = { errorCode: error?.code ?? 'unknown' };
         }
+
+        return read;
       },
     };
   });
 
-  return scanUnlinkedWith(entries, alreadyScanned, indexFiles, false);
+  return { entries, indexKeys };
+}
+
+function scanUnlinkedBacklogFiles(backlogDir, alreadyScanned, options = {}) {
+  const { entries, indexKeys } = discoverBacklogFiles(backlogDir, options);
+
+  return scanUnlinkedWith(entries, alreadyScanned, indexKeys, false);
 }
 
 const MISSING_BREAKOUT_TAILS = {
@@ -1478,12 +1522,9 @@ function commonMarkHeadings(contents) {
 
   return parsed.lines.flatMap((record) => {
     if (masked.has(record)) return [];
-    const match = /^ {0,3}(#{1,6})(?:[ \t]+|$)(.*)$/.exec(record.content);
-    if (match === null) return [];
-    let title = match[2].trim();
-    title = title.replace(/[ \t]+#+[ \t]*$/, '').trim();
+    const heading = atxHeading(record.content);
 
-    return [{ level: match[1].length, title, rawStart: record.rawStart, rawEnd: record.rawEnd }];
+    return heading === null ? [] : [{ ...heading, rawStart: record.rawStart, rawEnd: record.rawEnd }];
   });
 }
 
@@ -1582,7 +1623,8 @@ function analyzeCatalog(items) {
   const result = analyze(files);
   const scanned = scanCatalogBreakoutTargets(result.breakoutTargets, new Map(catalogItems.map((item) => [item.target, item.contents])));
   const unlinkedNotices = scanUnlinkedCatalogItems(catalog, scanned.scannedTargets);
-  result.notices.push(...scanned.notices, ...unlinkedNotices);
+  const links = linkNotices(result, catalogItems);
+  result.notices.push(...scanned.notices, ...unlinkedNotices, ...links.map((link) => link.notice));
   result.structuralErrors.push(...scanned.structuralErrors);
   const coreEvidence = result[ANALYSIS_EVIDENCE];
   const evidence = {
@@ -1594,6 +1636,7 @@ function analyzeCatalog(items) {
       coreEvidence.notices,
       scanned[ANALYSIS_EVIDENCE].notices.map((evidencePaths) => ({ evidencePaths })),
       [...unlinkedNotices[ANALYSIS_EVIDENCE]].map((evidencePaths) => ({ evidencePaths })),
+      links.map(({ evidencePaths }) => ({ evidencePaths })),
     ]),
     legacyHistory: legacyHistoryFactsFromCatalog(catalog),
   };
@@ -1738,17 +1781,21 @@ function runCli(argRoot) {
     const scanned = scanBreakoutTargets(result.breakoutTargets, backlogDir, { rootIdentity, readFile });
     if (!rootRemainsAcquired()) return;
     let unlinkedNotices;
+    let backlogFiles = null;
     try {
-      unlinkedNotices = scanUnlinkedBacklogFiles(backlogDir, scanned.scannedFiles, { rootIdentity, readFile });
+      const discovered = discoverBacklogFiles(backlogDir, { rootIdentity, readFile });
+      unlinkedNotices = scanUnlinkedWith(discovered.entries, scanned.scannedFiles, discovered.indexKeys, false);
+      backlogFiles = discovered.entries.map((entry) => ({ target: entry.label, contents: entry.load().contents }));
     } catch (error) {
       if (error?.code === 'invalid-utf8') throw error;
       if (!rootRemainsAcquired()) return;
       unlinkedNotices = errorChainHasCode(error, 'ENOENT')
-        ? ['backlog tree changed during traversal; retry; unlinked backlog files were not checked this run']
-        : [`backlog tree could not be fully traversed (${error?.code ?? 'unknown'}); retry; unlinked backlog files were not checked this run`];
+        ? ['backlog tree changed during traversal; retry; unlinked backlog files and backlog links were not checked this run']
+        : [`backlog tree could not be fully traversed (${error?.code ?? 'unknown'}); retry; unlinked backlog files and backlog links were not checked this run`];
     }
     if (!rootRemainsAcquired()) return;
-    result.notices.push(...scanned.notices, ...unlinkedNotices);
+    const links = backlogFiles === null ? [] : linkNotices(result, backlogFiles);
+    result.notices.push(...scanned.notices, ...unlinkedNotices, ...links.map((link) => link.notice));
     result.structuralErrors.push(...scanned.structuralErrors);
     if (recoveryFailure !== null) result.structuralErrors.push(recoveryFailure);
     for (const [target, snapshot] of observations) verifyUnwrapRead(rootIdentity, target, snapshot);

@@ -327,6 +327,7 @@ test('fresh and partial initialization is idempotent and validated by the real p
   const root = fixture(t);
   const first = initialize(root);
   assert.deepEqual(first.backlog.structuralErrors, []);
+  assert.deepEqual(first.backlog.notices, []);
   assert.ok(fs.existsSync(path.join(root, '.nightshift/FEATURES.md')));
   assert.equal(git(root, ['check-ignore', '-q', '.nightshift/runs/state.sqlite'], [0, 1]).status, 0);
   assert.equal(fs.existsSync(path.join(root, '.nightshift/inbox')), false);
