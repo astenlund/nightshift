@@ -30,5 +30,5 @@ Verify fresh setup for each decision, refusal to infer an unanswered choice, ide
 
 Treat missing and empty ignore targets as normal election cases, preserving conventions and safe reruns. The independent audit found fresh non-Git setup succeeds; its legacy migration and repository-classification defects have separate bug entries.
 
-- [Ignore election cannot initialize a missing .gitignore](../reports/v3-migration-followups-20260920.md#ignore-election-cannot-initialize-a-missing-gitignore).
+- [Ignore election cannot initialize a missing .gitignore](../reports/v3-migration-followups-20260920.md#ignore-election-cannot-initialize-a-missing-gitignore), whose original diagnosis is [the v2 bug record](../bugs/ignore-election-missing-gitignore.md).
 - [Restore fresh-scaffold track, ignore or defer choice](../reports/v3-migration-followups-20260920.md#restore-fresh-scaffold-track-ignore-or-defer-choice).

@@ -6,7 +6,7 @@ metadata:
 status: exploring
 ---
 
-> V2 design/diagnostic archive. The agreed disposition and surviving needs are recorded in [MIGRATION_STATUS.md](../MIGRATION_STATUS.md). Current implementation is governed by [the v3 MVP](../features/nightshift-v3.md); this historical design is not a separate active work item.
+> V2 design/diagnostic archive. The agreed disposition and surviving needs are recorded in [MIGRATION_STATUS.md](../../../MIGRATION_STATUS.md). Current implementation is governed by [the v3 MVP](../../../features/nightshift-v3.md); this historical design is not a separate active work item.
 
 # Night manager and shift supervisor
 
@@ -166,7 +166,7 @@ The Night Manager may devise, authorize, and direct bounded experiments without 
 - Low-risk variants may participate in real work only when every arm remains compliant and useful. A variant that could jeopardize the primary result runs in shadow mode or waits for user authority.
 - Experimental output never promotes itself. The morning report states the hypothesis, method, sample, observed effects, costs, limitations, side effects, conclusion, and recommendation, then offers routing such as adopt, repeat, revise, track, or discard for the user to decide.
 
-The neighboring [Controller-owned session experiment ledger](controller-owned-session-experiment-ledger.md) draft owns the durable evidence-record mechanics. This umbrella owns the Night Manager's authority to initiate experiments, the Shift Supervisor's execution role, the safety boundary, and morning-report responsibility.
+The neighboring [Controller-owned session experiment ledger](../../../features/controller-owned-session-experiment-ledger.md) draft owns the durable evidence-record mechanics. This umbrella owns the Night Manager's authority to initiate experiments, the Shift Supervisor's execution role, the safety boundary, and morning-report responsibility.
 
 ## Same-role second opinions
 
@@ -179,7 +179,7 @@ Until Nightshift has a formal cross-host or cross-provider consultation contract
 - Responsibility stays with the requester. A Shift Supervisor that cannot resolve disagreement within its authority escalates to the Night Manager. A Night Manager decides within delegated authority or involves the user.
 - If a matching peer cannot be created, the Shift Supervisor escalates rather than silently substituting another model. The Night Manager either proceeds cautiously when the decision permits it or records the unavailable consultation and stops or involves the user when independent judgment is necessary.
 
-This temporary policy is distinct from [Second-opinion gates](second-opinion-gates.md). That feature owns future lifecycle checkpoints whose active ingredient is a different model family and whose channels include another provider or host. Once a formal consultation interface can discover capabilities, transfer bounded context, protect privacy, account for cost, recover failures, and normalize results, Nightshift must revisit managerial second-opinion routing explicitly. The later policy should seek qualitative improvement from a differently trained system rather than merely buying another sample of the same capability.
+This temporary policy is distinct from [Second-opinion gates](../../../features/second-opinion-gates.md). That feature owns future lifecycle checkpoints whose active ingredient is a different model family and whose channels include another provider or host. Once a formal consultation interface can discover capabilities, transfer bounded context, protect privacy, account for cost, recover failures, and normalize results, Nightshift must revisit managerial second-opinion routing explicitly. The later policy should seek qualitative improvement from a differently trained system rather than merely buying another sample of the same capability.
 
 ## Model routing and host boundary
 
@@ -203,12 +203,12 @@ The report remains concise and decision-ready. Detailed worker transcripts stay 
 
 ## Relationships to neighboring work
 
-- [Communicate for technically sophisticated, time-constrained users](sophisticated-user-communication.md) owns the phase-sensitive boundary between autonomous decisions, follow-up flags, and user consultation. This feature assigns those decisions and the morning report to the Night Manager.
+- [Communicate for technically sophisticated, time-constrained users](../../../features/sophisticated-user-communication.md) owns the phase-sensitive boundary between autonomous decisions, follow-up flags, and user consultation. This feature assigns those decisions and the morning report to the Night Manager.
 - [Controller-owned revise convergence recovery](controller-owned-revise-convergence-recovery.md) owns longitudinal finding provenance, non-convergence detection, and revise recovery mechanics. This feature assigns observation and minute-by-minute response to the Shift Supervisor and executive disposition to the Night Manager.
-- [Controller-owned session experiment ledger](controller-owned-session-experiment-ledger.md) owns persistent experiment evidence and disposition mechanics. This feature owns experiment authority and role separation.
-- [Second-opinion gates](second-opinion-gates.md) owns future cross-family lifecycle reads. Managerial peer consultation stays same-role and same-model until the required external consultation contract exists.
-- [Agent-host-agnostic Nightshift](agent-host-agnostic-nightshift.md) owns host adapters, semantic model roles, dispatch identities, and capability boundaries. This feature must consume that adapter contract rather than embed one host's tools in canonical workflow logic.
-- [Durable run identity and concurrency protection](durable-run-identity-concurrency.md) owns the existing artifact and review-scoped identity, concurrent-review exclusion, and scratch home. This feature introduces a lifecycle-stable outer identity and must define the parent-child binding without changing the existing review identity's artifact path, scope, base commit, fingerprint, or provenance fields.
+- [Controller-owned session experiment ledger](../../../features/controller-owned-session-experiment-ledger.md) owns persistent experiment evidence and disposition mechanics. This feature owns experiment authority and role separation.
+- [Second-opinion gates](../../../features/second-opinion-gates.md) owns future cross-family lifecycle reads. Managerial peer consultation stays same-role and same-model until the required external consultation contract exists.
+- [Agent-host-agnostic Nightshift](../../../features/agent-host-agnostic-nightshift.md) owns host adapters, semantic model roles, dispatch identities, and capability boundaries. This feature must consume that adapter contract rather than embed one host's tools in canonical workflow logic.
+- [Durable run identity and concurrency protection](../../../features/durable-run-identity-concurrency.md) owns the existing artifact and review-scoped identity, concurrent-review exclusion, and scratch home. This feature introduces a lifecycle-stable outer identity and must define the parent-child binding without changing the existing review identity's artifact path, scope, base commit, fingerprint, or provenance fields.
 - [Pre-implementation context reset](pre-implementation-context-reset.md) is one planned compaction boundary. This feature generalizes recovery so correctness does not depend on planned compaction alone.
 
 ## Open design questions before graduation

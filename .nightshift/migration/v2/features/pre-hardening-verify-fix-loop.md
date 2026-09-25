@@ -1,4 +1,4 @@
-> V2 design/diagnostic archive. The agreed disposition and surviving needs are recorded in [MIGRATION_STATUS.md](../MIGRATION_STATUS.md). Current implementation is governed by [the v3 MVP](../features/nightshift-v3.md); this historical design is not a separate active work item.
+> V2 design/diagnostic archive. The agreed disposition and surviving needs are recorded in [MIGRATION_STATUS.md](../../../MIGRATION_STATUS.md). Current implementation is governed by [the v3 MVP](../../../features/nightshift-v3.md); this historical design is not a separate active work item.
 
 # Pre-hardening verify-fix loop
 
@@ -22,7 +22,7 @@ Open at pick-up: whether the loop has its own round cap, what it does when a fix
 
 The step uses the strongest model available, Fable at high effort. This is an explicit exception to the engine's current pins, which reserve Fable for the controller and pin reviewers, skeptics, and verifiers to opus, and it must be written as an exception rather than as a general relaxation of those pins.
 
-If [Run-shaping settings: round cap and review lanes](run-shaping-settings.md) lands first, this step becomes another lane in that surface with its own default rather than a hardcoded exception; the two designs must be reconciled in whichever order they ship, so the pin is stated once.
+If [Run-shaping settings: round cap and review lanes](../../../features/run-shaping-settings.md) lands first, this step becomes another lane in that surface with its own default rather than a hardcoded exception; the two designs must be reconciled in whichever order they ship, so the pin is stated once.
 
 ## Lifecycle integration
 

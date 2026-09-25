@@ -99,11 +99,11 @@ Draft exploring explicit multi-model team arrangements, such as a Fable controll
 
 Draft exploring how to pair Codex and Claude Code in separate interactive terminals so they exchange messages and collaborate on a project. Both sessions stay visible side by side in Windows Terminal, and the user can steer either directly. Explore reusing a confirmed idle shell in the same project, asking an existing AI session whether it is available, or splitting a pane to launch a partner. Initial documentation and local-CLI checks identify candidate interfaces; pane inspection, safe reuse, live integration, and coordination remain unverified. Captured 2026-09-07 during v3 MVP discussion and deferred beyond that MVP.
 
-### [Light revise mode](../../features/light-revise-mode.md)
+### [Light revise mode](features/light-revise-mode.md)
 
 Draft exploring a lightened variant of the revise review workflows: one fresh reviewer per iteration instead of the full per-dimension swarm, and a curated dimension set that skips the least-relevant dimensions. Prompted by the single-reviewer revise-spec run over `.nightshift/features/dependency-cycle-detection.md` (2026-08-11). A candidate automatic path applies Light revise to a selected Quick Win only after a scope validator confirms the item is genuinely small; failed or uncertain validation keeps normal review rather than trusting the backlog label.
 
-### [Wave round economy](../../features/wave-round-economy.md)
+### [Wave round economy](features/wave-round-economy.md)
 
 Draft exploring how to cut the round count a revise run consumes to converge, prompted by the 2026-08-20 spec run needing three user cap raises. Observed amplifiers: whole-artifact fingerprint granularity, single-finding tail rounds, fix-authored surface, and verifier rounds inside the round cap (the last already a queued quick win). Candidate directions include delta-scoped re-review, convergence-aware batching, and round-economy telemetry first; none committed.
 
@@ -111,15 +111,15 @@ Draft exploring how to cut the round count a revise run consumes to converge, pr
 
 Draft exploring a controller-owned immutable agreement baseline for compatible review fixes. After agreement, confirmed findings either fit the accepted product shape, route to follow-up when they would expand it, or block only when a necessary correction cannot fit and progress cannot safely continue; routine tweaks never trigger renewed user agreement.
 
-### [Controller-owned revise convergence recovery](../../features/controller-owned-revise-convergence-recovery.md)
+### [Controller-owned revise convergence recovery](features/controller-owned-revise-convergence-recovery.md)
 
 Draft exploring longitudinal run-health reflection in the revise controller: persist finding provenance, detect review-induced expansion or non-convergence before mutation, recover against immutable accepted authority, and distinguish issues introduced by, exposed by, or independent of earlier fixes.
 
-### [Review dimension deferral](../../features/review-dimension-deferral.md)
+### [Review dimension deferral](features/review-dimension-deferral.md)
 
 Draft exploring a dimension-resolution step at review setup: adopt review dimensions from another installed skill carrying rigorous review specs, falling back to the nightshift defaults when none qualifies. Open questions at capture: the detection contract, precedence among qualifying skills, mid-run stability (the resolved set freezes at run start), and fixture impact. Captured 2026-08-20.
 
-### [Authoring guidance overlay](../../features/authoring-guidance-overlay.md)
+### [Authoring guidance overlay](features/authoring-guidance-overlay.md)
 
 Draft exploring a dimension-derived authoring overlay for specs and plans: nightshift's hard-earned lessons (dimension criteria, catch-earlier levers, plan-contract requirements) applied on top of superpowers' authoring process whenever it is installed, and inverted into a native authoring fallback when it is not, so planning never silently degrades to model defaults. Single source of truth is the existing dimension files. Captured 2026-08-21.
 
@@ -131,11 +131,11 @@ Draft exploring a JSON schema that review agents validate their final report aga
 
 Draft exploring reviewer-to-controller streaming of individual findings so each can enter same-round deduplication and skeptic dispatch before the reviewer finishes. The design must preserve the whole-round adjudication barrier while defining bounded frames, stable identities, completion, correction, backpressure, checkpoint recovery, and Workflow/manual/supervisor parity.
 
-### [Backlog index version](../../features/backlog-index-version.md)
+### [Backlog index version](features/backlog-index-version.md)
 
 Draft exploring a durable version marker on each backlog index file (a "backlog index version", distinct from the plugin version), with an instruction and an on-demand check that compares it against the plugin's latest and notifies the user to run `init-backlog` when an index predates the current template.
 
-### [Revise prompt-prefix caching](../../features/revise-prompt-prefix-caching.md)
+### [Revise prompt-prefix caching](features/revise-prompt-prefix-caching.md)
 
 Draft exploring two mechanisms for sharing the revise engine's common context across its N concurrent reviewers at cache-read prices with zero independence loss: a byte-identical prompt prefix (identical system prompt and first message, dimension criteria only in the divergent tail; hinges on unprobed cache-boundary mechanics) and a fork-of-primer variant (a fresh agent ingests only the common payload, then forks per dimension; provably caches today but reroutes attribution, repair, and model pinning through the primer). Fork-of-controller is the recorded anti-goal: it would contaminate fresh-eyes review with the controller's context.
 
@@ -143,11 +143,11 @@ Draft exploring two mechanisms for sharing the revise engine's common context ac
 
 Draft exploring how to bound or scope the revise engine's whole-run acknowledgement context so retry rounds cannot grow every later reviewer and verifier payload without limit. The design must preserve the evidence that suppresses repeated findings while defining compaction, persistence, invalidation, verifier visibility, failure behavior, and parity between Workflow and manual dispatch.
 
-### [Pre-implementation context reset](../../features/pre-implementation-context-reset.md)
+### [Pre-implementation context reset](features/pre-implementation-context-reset.md)
 
 Draft exploring an explicit compaction boundary after plan hardening and before implementation, followed by a mandatory full re-read of the governing spec and hardened plan before implementation dispatch.
 
-### [Lifecycle shape proposal](../../features/lifecycle-shape-proposal.md)
+### [Lifecycle shape proposal](features/lifecycle-shape-proposal.md)
 
 Draft exploring a lifecycle-shape proposal presented right after the user accepts the decision-complete digest: the controller proposes which lifecycle steps the work warrants (the full ladder of harden spec, write plan, harden plan, implement, review code, verify, docs, lore for a complex feature; a direct jump to implement then revise-code for a trivial bug or quick win), and the user accepts or tweaks that shape before any work begins. Captured 2026-08-23 while a quick-win handover was running the full ladder over a twelve-line backlog bullet.
 
@@ -155,19 +155,19 @@ Draft exploring a lifecycle-shape proposal presented right after the user accept
 
 Draft exploring a controller-owned, run-scoped experiment ledger that persists only material decisions and evidence at revise-round adjudication and other evidence-producing boundaries, then feeds complete morning-report disposition. `.tmp/handover-report-notes.md` remains the low-noise run-local implementation until the lifecycle is agreed and hardened.
 
-### [Night manager and shift supervisor](../../features/night-manager-shift-supervisor.md)
+### [Night manager and shift supervisor](features/night-manager-shift-supervisor.md)
 
 Draft exploring a two-level management hierarchy for autonomous Nightshift runs: the Night Manager owns intent, executive judgment, convergence and stop authority, controlled experiments, recovery governance, and the morning report, while an on-demand Shift Supervisor manages workers and minute-by-minute orchestration. Long revise waves produce hourly convergence packets, clean crash or compaction recovery continues automatically, and managerial second opinions remain same-role and same-model until a formal cross-host or cross-provider consultation contract exists. Graduation must also bind task scratch directories to assignment and attempt identity, validate their physical root, discover cross-session ownership, and define race-free deferred cleanup.
 
-### [Class-level review deferral valve](../../features/class-level-review-deferral-valve.md)
+### [Class-level review deferral valve](features/class-level-review-deferral-valve.md)
 
 Draft exploring a controller-owned diminishing-returns valve for a fuzzy issue family reported in a second consecutive round. The controller may designate the class deferrable then and there, route and log the current finding with a narrow boundary, and acknowledge only that family while every review, staleness, convergence, and verifier gate continues normally.
 
-### [Stage-altitude finding routing](../../features/stage-altitude-finding-routing.md)
+### [Stage-altitude finding routing](features/stage-altitude-finding-routing.md)
 
 Draft exploring controller-owned routing of valid review findings to the pipeline stage that owns their altitude, including durable `valid-but-plan-altitude` seeds that plan authoring must consume or explicitly reject with a verified record.
 
-### [Code simplifier workflow placement](../../features/code-simplifier-workflow-placement.md)
+### [Code simplifier workflow placement](features/code-simplifier-workflow-placement.md)
 
 Draft exploring whether code simplification belongs in each implementation task, in a Nightshift-owned lifecycle boundary, or in a host-side workflow. The design must select one owner and entry condition without duplicating revise-code's Code Quality dimension or `/simplify`.
 
@@ -179,13 +179,13 @@ Draft exploring mechanical enforcement that blocks prohibited controller-suite e
 
 Draft exploring an explicit, tested policy for which repository paths ship in marketplace installations, prompted by backlog files appearing in the installed plugin. The design must separate runtime resources from repository-maintenance and development-only content, preserve `${CLAUDE_PLUGIN_ROOT}` dependencies, and keep Claude Code and Codex installation surfaces equivalent.
 
-### [Overarching backlog goals](../../features/overarching-backlog-goals.md)
+### [Overarching backlog goals](features/overarching-backlog-goals.md)
 
 Draft exploring an `## Overarching goals` section for absolute invariants, mutable directional goals, and north-star vision. `/nightshift:ready` would explain how recommendations advance current goals while keeping them separate from dependency resolution, readiness, authorization, and same-session agreement.
 
 ## Review hardening
 
-### [Bundled revise controller](../../features/bundled-revise-controller.md)
+### [Bundled revise controller](features/bundled-revise-controller.md)
 
 Ship a deterministic revise-state controller under `internal/revise/` (fingerprint, init with pre-seeded acknowledgements, start-round, persist-result with the drift guard, boundary adjudication, and a staleness sweep that refuses to run unless every applicable cell is inactive) so a session stops hand-rolling one per artifact type. The engine prose is already exact; the gap is that the state machine has no executable guard. Prompted by the 2026-08-22 handover, which hand-rolled three near-identical controllers and ran two premature sweeps the prose forbids.
 
@@ -195,9 +195,9 @@ Ship a deterministic revise-state controller under `internal/revise/` (fingerpri
 
 The spec's rigor tier becomes an executable budget every lifecycle step reads: a five-tier scale (minimal, low, medium, high, max) where max is today's full machinery and each lower tier is defined by what it subtracts (count gates and verbatim blocks from the plan, wording dimensions from the spec loop, the plan loop, per-task reviews, the code loop), a severity floor so only behavior-changing findings reopen certified cells, and derivation that starts at minimal and climbs one step per uplift, with an existing safety net and change size as new inputs. Prompted by the 2026-08-22 breakout-dependency-drift handover, a 12-hour run for a 150-line parser fix. Sits above Light revise mode, Wave round economy, and Authoring guidance overlay as their selector.
 
-**Requires:** [Bundled revise controller](../../features/bundled-revise-controller.md).
+**Requires:** [Bundled revise controller](features/bundled-revise-controller.md).
 
-### [Audience-category recalibration](../../features/audience-category-recalibration.md)
+### [Audience-category recalibration](features/audience-category-recalibration.md)
 
 Sharpen the audience component-to-category judgment so a repository that is merely public on GitHub does not read as category `public` and earn the top baseline tier: `public` requires actual external adoption signals (forks, stars, known downstream installs), and an unadopted open-source repo maps to `personal use`. Decide whether `AUDIENCE_BASELINE` needs a distinct category or only sharper judgment prose, and sweep the recorded judgments in existing Operating context sections. Uplift predicates stay as-is. Promoted from a quick win on 2026-08-22 because the baseline table it edits is rebased by Rigor-steered lifecycle.
 
@@ -271,13 +271,13 @@ Narrows the round 2+ payload for a dimension whose own admitted findings produce
 
 **Requires:** [Contract-calibrated revise admission](../../features/contract-calibrated-revise-admission.md).
 
-### [Same-session validation skip and validation stamp](../../features/same-session-validation-skip.md)
+### [Same-session validation skip and validation stamp](features/same-session-validation-skip.md)
 
 Narrows or skips handover's fresh validation agent when the governing agreement was bound in the current session and the governing bytes have not moved since that digest, and records a validation stamp (the commit plus a content hash over the governing set) when a validation does run, so a later shift start can reuse it while both still match. Any mismatch, unreadable stamp, or unrecognized recipe version fails closed to a full validation, and a skipped validation is never reported as a passed one.
 
 **Requires:** none.
 
-### [Pre-hardening verify-fix loop](../../features/pre-hardening-verify-fix-loop.md)
+### [Pre-hardening verify-fix loop](features/pre-hardening-verify-fix-loop.md)
 
 Runs a verify-fix loop as a lifecycle step before `revise-spec`, one fresh strongest-model agent per iteration, so the macro-level reshaping of a spec happens before the multi-agent hardening loop starts accumulating micro-detail findings and re-certifying the whole cell set after each structural change. Uses Fable at high effort as an explicit exception to the engine's reviewer, skeptic, and verifier pins, and is deliberately not the multi-agent engine: no dimension fan-out, no skeptics, no certification bookkeeping.
 
@@ -365,7 +365,7 @@ Bounds recursive guidance discovery deterministically so dependency and build tr
 
 **Requires:** none.
 
-### [Publication lock and resume lifecycle](../../features/publication-lock-resume-lifecycle.md)
+### [Publication lock and resume lifecycle](features/publication-lock-resume-lifecycle.md)
 
 Settles whether publication acquires its runtime lock before durable-state resume detection so one protected inspection can be reused, or formally retains the current safe double read. Any single-pass design must reconcile bootstrap-lock creation and every recoverable crash state before reducing the existing validation work.
 

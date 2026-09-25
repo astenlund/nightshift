@@ -6,7 +6,7 @@ metadata:
 status: exploring
 ---
 
-> V2 design/diagnostic archive. The agreed disposition and surviving needs are recorded in [MIGRATION_STATUS.md](../MIGRATION_STATUS.md). Current implementation is governed by [the v3 MVP](../features/nightshift-v3.md); this historical design is not a separate active work item.
+> V2 design/diagnostic archive. The agreed disposition and surviving needs are recorded in [MIGRATION_STATUS.md](../../../MIGRATION_STATUS.md). Current implementation is governed by [the v3 MVP](../../../features/nightshift-v3.md); this historical design is not a separate active work item.
 
 # Class-level review deferral valve
 
