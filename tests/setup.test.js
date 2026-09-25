@@ -6,6 +6,7 @@ const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 const test = require('node:test');
 const { Setup, initialize, rewriteReferences } = require('../internal/setup');
+const { analyze } = require('../skills/ready/ready');
 const { RunStore } = require('../internal/runtime/store');
 const { DIMENSIONS, transition } = require('../internal/runtime/lifecycle');
 const { executeWithFixtureController: execute } = require('./fixtures/controller-claim');
@@ -335,6 +336,22 @@ test('fresh and partial initialization is idempotent and validated by the real p
   const second = initialize(root);
   assert.deepEqual(fs.readFileSync(path.join(root, '.nightshift/FEATURES.md')), bytes);
   assert.deepEqual(second.backlog.structuralErrors, []);
+});
+
+test('template guidance spells the empty Requires form the parser accepts', () => {
+  const templates = path.resolve(__dirname, '../skills/init-backlog/templates');
+  const instructions = [];
+  for (const name of fs.readdirSync(templates)) {
+    const content = fs.readFileSync(path.join(templates, name), 'utf8');
+    assert.doesNotMatch(content, /Requires: none\./, `${name} prescribes the bare label, which the parser does not recognize`);
+    for (const match of content.matchAll(/set the line to `([^`]+)`/g)) instructions.push({ name, line: match[1] });
+  }
+  assert.deepEqual(instructions.map(({ name }) => name).sort(), ['bugs.md', 'bugs.md', 'features.md', 'features.md']);
+  for (const { name, line } of instructions) {
+    const result = analyze({ FEATURES: `## Area\n\n### [Item](features/item.md)\n\n${line}\n` });
+    assert.deepEqual(result.structuralErrors, [], `${name}: ${line}`);
+    assert.deepEqual(result.ready.map(entry => entry.title), ['Item'], `${name}: ${line}`);
+  }
 });
 
 test('migration repairs reference definitions, moved relative links and explicitly scoped active consumers', t => {
