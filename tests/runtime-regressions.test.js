@@ -351,7 +351,7 @@ test('a linked database is rejected before SQLite opens it', t => {
 test('unattended execution requires verified continuation but attended work remains available', t => {
   const f = fixture(t, { mode: 'unattended' });
   assert.throws(() => f.act({ action: 'start-task', taskId: 'a' }), { code: 'unverified-continuation' });
-  f.act({ action: 'continuation', mechanism: { verified: true, evidence: 'Fixture native continuation receipt' } });
+  f.act({ action: 'continuation', mechanism: { verified: true, kind: 'goal', evidence: 'Fixture native continuation receipt' } });
   f.act({ action: 'start-task', taskId: 'a' });
   assert.equal(f.store.read().tasks[0].status, 'active');
 });

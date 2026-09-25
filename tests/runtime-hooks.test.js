@@ -40,7 +40,7 @@ test('hooks recover obligations after compaction and premature yield without tak
   assert.equal(handleHook({ ...input, stop_hook_active: true }).decision, 'block');
   assert.equal(handleHook({ ...input, stop_hook_active: true }).continue, false);
   assert.equal(store.read().status, 'running');
-  store.update(actor, store.read().revision, 'recovered-continuation', state => transition(state, { action: 'continuation', mechanism: { verified: true, evidence: 'Actual recovery observed in fixture' } }));
+  store.update(actor, store.read().revision, 'recovered-continuation', state => transition(state, { action: 'continuation', mechanism: { verified: true, kind: 'goal', evidence: 'Actual recovery observed in fixture' } }));
   assert.equal(handleHook(input).decision, 'block');
   handleHook({ ...input, hook_event_name: 'Interrupt' });
   assert.equal(store.read().status, 'stopped');
@@ -78,7 +78,7 @@ test('unattended Stop permits a pause on user decisions and keeps resisting ever
     t.after(() => { store.close(); fs.rmSync(root, { recursive: true, force: true }); });
     store.create({ objective: 'Work', authority: 'User handover', mode: 'unattended', controller: actor, tasks: ids.map(id => ({ id, title: id, agreement, requires: id === 'follow' ? ['work'] : [] })) });
     const update = request => store.update(actor, store.read().revision, request.action, state => transition(state, request));
-    update({ action: 'continuation', mechanism: { verified: true, evidence: 'Actual recovery observed in fixture' } });
+    update({ action: 'continuation', mechanism: { verified: true, kind: 'goal', evidence: 'Actual recovery observed in fixture' } });
     return { store, update, report: () => update({ action: 'report', path: writeReport(root) }), stop: () => handleHook({ cwd: root, session_id: actor.session, hook_event_name: 'Stop' }) };
   };
   const block = (run, taskId, kind) => run.update({ action: 'block', taskId, blocker: { kind, reason: 'Fixture blocker', recoveryAttempted: 'Checked prior agreement' } });

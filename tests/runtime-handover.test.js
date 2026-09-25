@@ -11,7 +11,8 @@ const { handleHook } = require('../internal/runtime/hook');
 
 const actor = { host: 'claude', session: 'controller' };
 const REPORT_PATH = '.nightshift/runs/reports/morning.md';
-const MECHANISM = { verified: true, evidence: 'Observed native goal and Stop hook in fixture' };
+const MECHANISM = { verified: true, kind: 'goal', evidence: 'Observed native goal and Stop hook in fixture' };
+const STOP_HOOK = { verified: true, kind: 'stop-hook', evidence: 'Observed registered, enabled and trusted Stop hook with session activation in fixture' };
 
 function fixture(t, options = {}) {
   const parent = path.resolve(__dirname, '../.tmp/runtime-handover');
@@ -67,8 +68,41 @@ test('an unverified mechanism is rejected and writes nothing', t => {
   const before = f.store.read();
   for (const mechanism of [{ verified: false, evidence: 'Not observed' }, { verified: true }, { verified: true, evidence: '   ' }, null]) {
     assert.throws(() => f.act({ action: 'handover', authority: 'User handover', mechanism }), { code: 'unverified-continuation' });
+    assert.throws(() => f.act({ action: 'continuation', mechanism }), { code: 'unverified-continuation' });
   }
   assert.deepEqual(f.store.read(), before);
+});
+
+test('a verified mechanism without a known kind is rejected and writes nothing', t => {
+  const f = fixture(t);
+  const before = f.store.read();
+  for (const kind of [undefined, null, '', 'hook', 'Goal', 'toString']) {
+    const mechanism = { ...MECHANISM, kind };
+    assert.throws(() => f.act({ action: 'handover', authority: 'User handover', mechanism }), { code: 'invalid-continuation-kind' });
+    assert.throws(() => f.act({ action: 'continuation', mechanism }), { code: 'invalid-continuation-kind' });
+  }
+  assert.deepEqual(f.store.read(), before);
+});
+
+test('a verified Stop hook carries unattended work for a Claude controller', t => {
+  const f = fixture(t);
+  const state = f.act({ action: 'handover', authority: 'User handover', mechanism: STOP_HOOK });
+  assert.equal(state.mode, 'unattended');
+  assert.equal(state.continuation.kind, 'stop-hook');
+  f.finish();
+  assert.equal(f.store.read().tasks[0].status, 'complete');
+});
+
+test('a Codex controller needs a verified goal because a Stop hook alone is refused', t => {
+  const codex = { host: 'codex', session: 'codex-controller' };
+  const f = fixture(t, { controller: codex });
+  const before = f.store.read();
+  assert.throws(() => f.act({ action: 'handover', authority: 'User handover', mechanism: STOP_HOOK }, codex), { code: 'unsupported-continuation' });
+  assert.throws(() => f.act({ action: 'continuation', mechanism: STOP_HOOK }, codex), { code: 'unsupported-continuation' });
+  assert.deepEqual(f.store.read(), before);
+  const state = f.act({ action: 'handover', authority: 'User handover', mechanism: MECHANISM }, codex);
+  assert.equal(state.mode, 'unattended');
+  assert.equal(state.continuation.kind, 'goal');
 });
 
 test('repeated handover keeps the original record, can upgrade and never downgrades', t => {

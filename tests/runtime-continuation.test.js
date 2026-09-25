@@ -9,7 +9,7 @@ const { handleHook } = require('../internal/runtime/hook');
 const { transition } = require('../internal/runtime/lifecycle');
 
 const actor = { host: 'codex', session: 'continuation-owner' };
-const mechanism = { verified: true, evidence: 'Observed active native goal in isolated fixture' };
+const mechanism = { verified: true, kind: 'goal', evidence: 'Observed active native goal in isolated fixture' };
 
 function fixture(t, options = {}) {
   const parent = path.resolve(__dirname, '../.tmp/continuation-tests');

@@ -31,6 +31,17 @@ function commitmentsFor(tasks) {
   return Object.fromEntries(tasks.map(task => [task.id, { agreement: structuredClone(task.agreement), revision: task.requirementsRevision ?? 0 }]));
 }
 
+// A native goal re-engages a controller whose models yield early; a Stop hook only resists a yield, which suffices where the host's models do not yield early.
+const CONTINUATION_KINDS = Object.freeze({ goal: ['claude', 'codex'], 'stop-hook': ['claude'] });
+
+function verifiedContinuation(state, mechanism) {
+  requireCondition(mechanism?.verified === true && typeof mechanism.evidence === 'string' && mechanism.evidence.trim(), 'unverified-continuation', 'Unattended continuation requires observed host evidence');
+  requireCondition(Object.hasOwn(CONTINUATION_KINDS, mechanism.kind), 'invalid-continuation-kind', `Continuation mechanism kind must be one of ${Object.keys(CONTINUATION_KINDS).join(', ')}`);
+  requireCondition(CONTINUATION_KINDS[mechanism.kind].includes(state.controller.host), 'unsupported-continuation', `A ${mechanism.kind} mechanism cannot carry unattended work for a ${state.controller.host} controller; verify its native goal instead`);
+
+  return { ...mechanism, runId: state.id, controller: { ...state.controller }, observedAt: new Date().toISOString() };
+}
+
 function verificationGate(root, task) {
   const latest = new Map(task.checks.map(check => [check.name, check]));
   return (task.kind !== 'code' || latest.size > 0) && [...latest.values()].every(check => check.passed && fresh(root, check.snapshot));
@@ -395,16 +406,13 @@ function transition(state, request) {
       break;
     }
     case 'continuation':
-      requireCondition(request.mechanism?.verified === true, 'unverified-continuation', 'Unattended continuation requires observed host evidence');
-      text(request.mechanism.evidence, 'continuation.evidence');
-      state.continuation = { ...request.mechanism, runId: state.id, controller: { ...state.controller }, observedAt: new Date().toISOString() };
+      state.continuation = verifiedContinuation(state, request.mechanism);
       break;
     case 'handover':
       text(request.authority, 'handover.authority');
       if (request.mechanism !== undefined) {
         // The mechanism travels with the handover so an earlier verified flag is never reused as proof, and one write leaves no partial transition.
-        requireCondition(request.mechanism?.verified === true && typeof request.mechanism.evidence === 'string' && request.mechanism.evidence.trim(), 'unverified-continuation', 'Unattended continuation requires observed host evidence');
-        state.continuation = { ...request.mechanism, runId: state.id, controller: { ...state.controller }, observedAt: new Date().toISOString() };
+        state.continuation = verifiedContinuation(state, request.mechanism);
         state.mode = 'unattended';
       }
       state.handover ??= { authority: request.authority, revision: state.revision + 1 };

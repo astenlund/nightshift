@@ -334,7 +334,7 @@ test('real contained check launches a bare executable name', { skip: process.pla
 
 test('resumption preserves handover but cannot reuse a previously verified continuation observation', async t => {
   const f = await fixture(t);
-  await f.call({ action: 'handover', authority: 'User hands over fixture', mechanism: { verified: true, evidence: 'Earlier native mechanism observation' } });
+  await f.call({ action: 'handover', authority: 'User hands over fixture', mechanism: { verified: true, kind: 'goal', evidence: 'Earlier native mechanism observation' } });
   await f.call({ action: 'stop', kind: 'user-stop', reason: 'User pauses host' });
   const before = f.store.read();
   const resumed = await f.call({ action: 'resume', authority: 'User resumes same work' });
