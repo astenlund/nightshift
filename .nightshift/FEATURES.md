@@ -16,6 +16,10 @@ Give triage tracking edits an official scoped independent review: a `tracking` r
 
 Introduce one BACKLOG.md meta-index linking the four backlog indexes and holding their shared instructions to avoid repetition. Include it in every hook that consumes those indexes. Settle its location, instruction ownership and migration of existing guidance before implementation.
 
+### [Separate run-time guidance from reference material](features/runtime-guidance-separation.md)
+
+Keep what agents follow during a run in instruction files, separate from reference material that only informs how features are defined and implemented, so behavior and description can be reviewed separately. Today the skills direct agents to the operating brief and both REFERENCE files during runs, so those files mix the two. Raised by the user on 2026-09-25; the inventory of directing versus descriptive passages and their destinations remain to be settled.
+
 ### [Whole-backlog coherence audit](features/backlog-coherence-audit.md)
 
 A whole-backlog mode of `revise-docs` that walks every active index, breakout and pattern file and checks that relationships between entries, excerpts against their records, and claims about the current code still hold. It repairs when attended and writes a report for later triage when unattended. Raised by the user on 2026-09-25; where a scheduled run executes and where its report lands remain open.
