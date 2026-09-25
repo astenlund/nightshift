@@ -4,6 +4,22 @@ V2 entries are preserved in [the historical index](migration/v2/QUICK_WINS.md) a
 
 ## Current
 
+### Honor escaped punctuation in heading anchors
+
+Found by the final assessment of run `6e70931a-3760-46e2-b628-fdaa4a29f0e3` on 2026-09-25 and confirmed by a skeptic. `plainText` in `internal/backlog-links.js` ignores backslash escapes in heading text, so several escaped headings slug differently from GitHub and a correct link to them draws a false broken-anchor notice: `## \_private\_` slugs to `private` (GitHub `_private_`), `## \_\_init\_\_` to `_init_` (GitHub `__init__`), `## \<b\> tag` to `-tag` (GitHub `b-tag`) and `## \[text\](url)` to `text` (GitHub `texturl`), because the link, tag and emphasis passes all run on the raw, still-escaped text. Escaped asterisks, `#` and backticks already match. Notices only; no heading in this repository contains an escape. The user chose to track it at triage rather than extend the 3.2.9 review.
+
+Honor backslash escapes in heading and title text before every markup pass in `plainText` (links, tags and emphasis), as destinations already do, with fixtures for escaped underscores, tags and brackets in both Ready front ends. Parser changes ship with a version increase. Tracking does not authorize implementation.
+
+**Requires:** none.
+
+### Reviewers re-request checks the controller already recorded
+
+Observed throughout run `6e70931a-3760-46e2-b628-fdaa4a29f0e3` on 2026-09-25. After every repair, the read-only code reviewer (Codex `gpt-6-astra`) returned `incomplete` and requested probes of the same deterministic suites (Ready fixtures, unwrap fixtures, setup, package and release-gate tests) that the controller had just recorded as passing runtime checks on identical inputs. In 13 of the Codex reviewer's 15 incomplete returns the request also carried a genuinely new boundary probe, and only two asked for the suites alone, so handing over the recorded checks would mainly save the repeated suite executions in private copies (three or four suites per round, with the setup suite failing on path depth every time) rather than whole dispatches. Whether dispatch should hand reviewers the recorded check evidence, or reviewers should accept it, is undecided. The user chose to track it at triage.
+
+Supply each task's latest passing named checks (command, exit status, input hashes) to the reviewer as evidence when their inputs match the reviewed snapshot, and state in the review brief when a probe rerun is still warranted. Runtime and review-brief changes ship with a version increase. Tracking does not authorize implementation.
+
+**Requires:** none.
+
 ### Codex sandbox blocks the launcher from starting the host
 
 Observed on 2026-09-19 in every Codex fixture of the handover acceptance campaign (Codex CLI 0.154.0, plugin 3.2.0), recorded in [the acceptance report](reports/handover-transition-and-morning-report-20260919.md). Inside the Codex sandbox the launcher cannot start the host process it inspects, at two sites. Preparation fails with `{"error":"EPERM","message":"spawn EPERM"}` at first use and again in some later sessions of the same, already prepared profile (the new-run handover and refused-admission sessions). Resolving resources through the retained bootstrap fails with `{"error":"retained-bootstrap-unavailable","message":"spawn EPERM"}` in later sessions (new-run handover, in-place handover and refused admission). The resumed returning-user session showed no fresh failure. Each time the model has to request an out-of-sandbox retry. With the escalation approved, preparation is silent and the operation proceeds; with it denied at first use, the Ready report correctly says the parser never ran and does not present an empty backlog. A real Codex user therefore sees approval prompts that work against preparation needing no setup conversation; whether every session prompts, or only the first command of each, was not separately established, because the harness answered these requests automatically. Claude Code shows no equivalent prompt.
@@ -31,6 +47,8 @@ Recurred in run `d4a44daa-96be-4ac4-bcaa-d16d8596584f` on 2026-09-18 to 19, the 
 The run-adoption delivery on 2026-09-21 to 22 added a controlled comparison: the same saved source passed all three probe cases at a short project path and failed all three at the original deeper layout. Failing Git working directories were 272 or 280 characters; `spawnSync` returned null status, `ENOENT` and no output before Git started, despite process-local `core.longpaths=true`. Baseline and candidate also matched in separate shorter/deeper comparisons. Verification recovered through a shorter private copy. The exact Windows/process-launch cause and broader impact remain unknown. Distinguish this launch failure from the earlier Git-level error: Git configuration cannot repair a process that never starts, and a skipped or unavailable probe is not successful acceptance evidence. The user chose to track this recurrence; [triage evidence](reports/adoption-session-triage-20260922.md#deep-private-probe-paths) preserves its limits.
 
 Recurred on 2026-09-25 in run `ff195382-31a4-4fea-bb48-ca56d20507bb`: an assessor probe running `tests/runtime-probes.test.js` inside a private copy failed six cases with "Could not establish an independent Git repository for the probe" (review `a108b64d-72ab-4e40-afb5-9bfe91da179c`), while the same file passed 9 of 9 at checkout depth as a recorded check, which the assessor accepted as the environmental explanation. The user chose to track this recurrence at triage.
+
+Recurred again later on 2026-09-25 in run `6e70931a-3760-46e2-b628-fdaa4a29f0e3`: all 11 probes of `tests/setup.test.js` in private review copies failed one case, "a migrated stopped run resumes default spec assessment with current paths and original history", with git's `Filename too long`, while the recorded `setup-package-gate-tests` check passed in the canonical checkout. Every assessment in that run had to qualify its setup evidence as environmental. The user chose to add this recurrence at triage.
 
 **Requires:** none.
 
