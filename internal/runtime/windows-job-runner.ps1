@@ -2,8 +2,9 @@ param()
 
 $ErrorActionPreference = 'Stop'
 
-# Framing limit shared with internal/runtime/windows-job.js.
+# Framing limits shared with internal/runtime/windows-job.js.
 $script:MaxRunnerFrameBytes = 5592576
+$script:MaxWin32MessageLength = 1024
 $script:MaxPendingInputBytes = 33554432
 $script:RunnerCreationFlags = [long](0x4 -bor 0x400 -bor 0x80000 -bor 0x08000000)
 
@@ -128,6 +129,8 @@ namespace NightshiftRunner
     public class Interop
     {
         private Dictionary<long, IntPtr> attributeBuffers = new Dictionary<long, IntPtr>();
+
+        public int LastCreateProcessError;
 
         [DllImport("kernel32.dll", SetLastError = true)]
         private static extern bool CreatePipe(out IntPtr hReadPipe, out IntPtr hWritePipe, ref SECURITY_ATTRIBUTES lpPipeAttributes, uint nSize);
@@ -276,10 +279,15 @@ namespace NightshiftRunner
             PROCESS_INFORMATION processInformation;
             IntPtr environmentPointer = Marshal.StringToHGlobalUni(environmentBlock);
             bool created;
+            LastCreateProcessError = 0;
             try
             {
                 StringBuilder mutableCommandLine = new StringBuilder(commandLine);
                 created = CreateProcessW(applicationName, mutableCommandLine, IntPtr.Zero, IntPtr.Zero, true, (uint)creationFlags, environmentPointer, workingDirectory, ref startupInformation, out processInformation);
+                if (!created)
+                {
+                    LastCreateProcessError = Marshal.GetLastWin32Error();
+                }
             }
             finally
             {
@@ -495,13 +503,17 @@ function Close-RunnerHandleSet($Interop, $Handles) {
     }
 }
 
+function New-RunnerSpawnFailure([string]$Stage, $Win32Error) {
+    return New-Object psobject -Property @{ Stage = $Stage; Status = 'spawn-failed'; Win32Error = $Win32Error }
+}
+
 function Start-RunnerChild {
     param($Interop, [string]$Executable, [string[]]$ArgumentList, $EnvironmentPairs, [string]$WorkingDirectory)
     try {
         $commandLine = ConvertTo-RunnerCommandLine (@($Executable) + @($ArgumentList))
         $environmentBlock = ConvertTo-RunnerEnvironmentBlock $EnvironmentPairs
     } catch {
-        return New-Object psobject -Property @{ Status = 'spawn-failed' }
+        return New-RunnerSpawnFailure 'command' $null
     }
     $jobHandle = [long]0
     $attributeList = [long]0
@@ -555,11 +567,15 @@ function Start-RunnerChild {
         $handles += $jobHandle
         Close-RunnerHandleSet $Interop $handles
 
-        return New-Object psobject -Property @{ Status = 'spawn-failed' }
+        return New-RunnerSpawnFailure 'setup' $null
     }
     $child = $null
+    $createError = $null
     try {
         $child = $Interop.CreateSuspendedProcess($Executable, $commandLine, $environmentBlock, $WorkingDirectory, $stdinPipe.ReadHandle, $stdoutPipe.WriteHandle, $stderrPipe.WriteHandle, $attributeList, $script:RunnerCreationFlags)
+        if ($null -eq $child) {
+            $createError = $Interop.LastCreateProcessError
+        }
     } catch {
         $child = $null
     }
@@ -567,7 +583,7 @@ function Start-RunnerChild {
         [void]$Interop.DeleteAttributeList($attributeList)
         Close-RunnerHandleSet $Interop @($stdinPipe.ReadHandle, $stdinPipe.WriteHandle, $stdoutPipe.ReadHandle, $stdoutPipe.WriteHandle, $stderrPipe.ReadHandle, $stderrPipe.WriteHandle, $jobHandle)
 
-        return New-Object psobject -Property @{ Status = 'spawn-failed' }
+        return New-RunnerSpawnFailure 'create-process' $createError
     }
     $preAssignmentFailed = $false
     foreach ($childCopy in @($stdinPipe.ReadHandle, $stdoutPipe.WriteHandle, $stderrPipe.WriteHandle)) {
@@ -593,7 +609,7 @@ function Start-RunnerChild {
         [void]$Interop.DeleteAttributeList($attributeList)
         Close-RunnerHandleSet $Interop @($child.ProcessHandle, $child.ThreadHandle, $stdinPipe.WriteHandle, $stdoutPipe.ReadHandle, $stderrPipe.ReadHandle, $jobHandle)
 
-        return New-Object psobject -Property @{ Status = 'spawn-failed' }
+        return New-RunnerSpawnFailure 'job-assignment' $null
     }
     $resumeResult = $Interop.Resume($child.ThreadHandle)
     if ($resumeResult -lt 0) {
@@ -604,7 +620,7 @@ function Start-RunnerChild {
         [void]$Interop.DeleteAttributeList($attributeList)
         Close-RunnerHandleSet $Interop @($child.ProcessHandle, $child.ThreadHandle, $stdinPipe.WriteHandle, $stdoutPipe.ReadHandle, $stderrPipe.ReadHandle, $jobHandle)
 
-        return New-Object psobject -Property @{ Status = 'spawn-failed' }
+        return New-RunnerSpawnFailure 'resume' $null
     }
     [void]$Interop.DeleteAttributeList($attributeList)
 
@@ -623,6 +639,22 @@ function Start-RunnerChild {
 function Send-RunnerFrame([string]$Json) {
     [Console]::Out.Write($Json + "`n")
     [Console]::Out.Flush()
+}
+
+# The system message can be localized, so the frame escapes non-ASCII text.
+# Some system messages exceed the frame's message bound; truncation keeps the rest of the diagnosis.
+function ConvertTo-RunnerStartFailedFrame($Failure) {
+    $frame = [ordered]@{ detailCode = 'spawn'; kind = 'start-failed'; stage = $Failure.Stage }
+    if ($null -ne $Failure.Win32Error -and $Failure.Win32Error -ne 0) {
+        $message = (New-Object System.ComponentModel.Win32Exception -ArgumentList ([int]$Failure.Win32Error)).Message
+        if ($message.Length -gt $script:MaxWin32MessageLength) {
+            $message = $message.Substring(0, $script:MaxWin32MessageLength)
+        }
+        $frame.win32Error = [int]$Failure.Win32Error
+        $frame.win32Message = $message
+    }
+
+    return ConvertTo-Json -InputObject $frame -Compress -EscapeHandling EscapeNonAscii
 }
 
 function Read-RunnerTaskCount($Task) {
@@ -744,7 +776,7 @@ function Invoke-NightshiftJobRunner {
         }
         $started = Start-RunnerChild -Interop $interop -Executable $request.executable -ArgumentList $argumentList -EnvironmentPairs $environmentPairs -WorkingDirectory $request.cwd
         if ($started.Status -eq 'spawn-failed') {
-            Send-RunnerFrame '{"detailCode":"spawn","kind":"start-failed"}'
+            Send-RunnerFrame (ConvertTo-RunnerStartFailedFrame $started)
             exit 0
         }
         if ($started.Status -eq 'termination-unproven') {

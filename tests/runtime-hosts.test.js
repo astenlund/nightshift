@@ -7,7 +7,8 @@ const test = require('node:test');
 const { createHash } = require('node:crypto');
 const { executable, pluginVersion, runAgent } = require('../internal/runtime/hosts');
 const { resolveTrustedExecutable } = require('../internal/filesystem-primitives');
-const { spawnWindowsJob } = require('../internal/runtime/windows-job');
+const { spawnWindowsJob, startFailure } = require('../internal/runtime/windows-job');
+const { runContained } = require('../internal/releases/processes');
 const { OUTPUT_LOOP_MIN_DELTAS, OUTPUT_LOOP_MIN_MS, outputLoopDetector, outputLoopMessage } = require('../internal/runtime/output-loop');
 
 function fixture(t, host, mode = 'success') {
@@ -174,6 +175,90 @@ for (const leaf of ['--duplex-leaf', '--no-input-leaf']) {
     assert.throws(() => process.kill(child.pid, 0), { code: 'ESRCH' });
   });
 }
+
+test('Windows job start failures name the executable, the failing stage and the Windows error', { skip: process.platform !== 'win32' }, async t => {
+  // Arrange
+  const options = fixture(t, 'codex');
+  const missing = path.join(options.cwd, 'missing-host.exe');
+  const expected = new RegExp(`could not start the host ${missing.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} \\(create-process\\): Windows error 2: \\S`);
+
+  // Act
+  const child = spawnWindowsJob(missing, [], { cwd: options.cwd, env: process.env });
+  const errors = [];
+  child.on('error', error => errors.push(error.message));
+  await new Promise(resolve => child.once('close', resolve));
+  const hostFailures = [];
+  for (const host of ['claude', 'codex']) hostFailures.push(await runAgent({ ...fixture(t, host), executable: missing, commandPrefix: [], directProcess: false }).then(() => null, error => error));
+  let contained;
+  const operation = await runContained(missing, [], { cwd: options.cwd, env: process.env, timeoutMs: 15000, onFinished: exit => { contained = exit; } }).then(() => null, error => error);
+
+  // Assert
+  assert.equal(errors.length, 1);
+  assert.match(errors[0], expected);
+  assert.equal(child.jobEmpty, true);
+  assert.deepEqual(child.diagnostics.map(item => item.kind), ['start-failed']);
+  for (const failure of hostFailures) {
+    assert.equal(failure?.code, 'host-start-failed');
+    assert.match(failure.message, expected);
+    assert.equal(failure.descendantsReclaimed, true);
+  }
+  assert.match(operation?.message, expected);
+  assert.match(contained.error, expected);
+  assert.equal(contained.descendantsReclaimed, true);
+});
+
+test('a host whose job runner cannot start reports unproven cleanup with its cause on both hosts', { skip: process.platform !== 'win32' }, async t => {
+  // Arrange
+  const hosts = ['claude', 'codex'].map(host => {
+    const options = fixture(t, host);
+
+    return { ...options, cwd: path.join(options.cwd, 'missing-directory'), commandPrefix: [], directProcess: false };
+  });
+
+  // Act
+  const failures = [];
+  for (const options of hosts) failures.push(await runAgent(options).then(() => null, error => error));
+
+  // Assert
+  for (const failure of failures) {
+    assert.equal(failure?.code, 'termination-unverified');
+    assert.match(failure.message, /did not provide termination evidence; the host failed: \S/);
+  }
+});
+
+test('Windows job start failure frames are validated before they become errors', () => {
+  // Arrange
+  const executablePath = 'C:\\tools\\host.exe';
+  const basic = { detailCode: 'spawn', kind: 'start-failed', stage: 'create-process' };
+  const detailed = { ...basic, win32Error: 193, win32Message: '%1 is not a valid Win32 application.' };
+  const invalid = [
+    { detailCode: 'spawn', kind: 'start-failed' },
+    { ...basic, stage: 'unknown' },
+    { ...basic, extra: true },
+    { ...basic, win32Error: 2 },
+    { ...basic, win32Message: 'orphan' },
+    { ...detailed, win32Error: 0 },
+    { ...detailed, win32Error: -1 },
+    { ...detailed, win32Error: 1.5 },
+    { ...detailed, win32Message: null },
+    { ...detailed, win32Message: 'x'.repeat(1025) },
+    { detailCode: 'termination', kind: 'start-failed', pid: 0 },
+    { detailCode: 'termination', kind: 'start-failed', pid: 42, stage: 'resume' },
+  ];
+
+  // Act
+  const staged = ['command', 'setup', 'create-process', 'job-assignment', 'resume'].map(stage => startFailure(executablePath, { ...basic, stage }).message);
+  const windows = startFailure(executablePath, detailed).message;
+  const termination = startFailure(executablePath, { detailCode: 'termination', kind: 'start-failed', pid: 42 }).message;
+  const share = startFailure('C:\\odd$&dir\\host.exe', detailed).message;
+
+  // Assert
+  for (const message of staged) assert.ok(message.startsWith(`Windows job could not start the host ${executablePath} (`));
+  assert.equal(windows, `Windows job could not start the host ${executablePath} (create-process): Windows error 193: ${executablePath} is not a valid Win32 application.`);
+  assert.ok(share.endsWith('Windows error 193: C:\\odd$&dir\\host.exe is not a valid Win32 application.'));
+  assert.ok(termination.includes(executablePath));
+  for (const frame of invalid) assert.throws(() => startFailure(executablePath, frame), /Invalid Windows job start failure/);
+});
 
 for (const mode of ['missing-params', 'missing-item', 'missing-usage']) {
   test(`Codex malformed ${mode} is bounded failure evidence and reclaims the host`, async t => {

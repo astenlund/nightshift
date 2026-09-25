@@ -8,6 +8,30 @@ const { spawn } = require('node:child_process');
 const { resolveTrustedExecutable } = require('../filesystem-primitives');
 
 const MAX_FRAME_BYTES = 5592576;
+const START_STAGES = ['command', 'setup', 'create-process', 'job-assignment', 'resume'];
+// Shared with internal/runtime/windows-job-runner.ps1, which truncates longer system messages.
+const MAX_WIN32_MESSAGE_LENGTH = 1024;
+
+function hasExactKeys(frame, keys) {
+  const actual = Object.keys(frame).sort();
+  return actual.length === keys.length && [...keys].sort().every((key, index) => key === actual[index]);
+}
+
+// Validates a start-failed frame and returns the error naming the executable, stage and any Windows error.
+function startFailure(executable, frame) {
+  const prefix = `Windows job could not start the host ${executable}`;
+  if (frame.detailCode === 'termination') {
+    if (!hasExactKeys(frame, ['detailCode', 'kind', 'pid']) || !Number.isSafeInteger(frame.pid) || frame.pid <= 0) throw new Error('Invalid Windows job start failure');
+    return new Error(`${prefix} (termination of the partially started process is unproven)`);
+  }
+  const win32 = Object.hasOwn(frame, 'win32Error');
+  const valid = frame.detailCode === 'spawn' && START_STAGES.includes(frame.stage)
+    && hasExactKeys(frame, win32 ? ['detailCode', 'kind', 'stage', 'win32Error', 'win32Message'] : ['detailCode', 'kind', 'stage'])
+    && (!win32 || (Number.isSafeInteger(frame.win32Error) && frame.win32Error > 0 && typeof frame.win32Message === 'string' && frame.win32Message.length <= MAX_WIN32_MESSAGE_LENGTH));
+  if (!valid) throw new Error('Invalid Windows job start failure');
+  // Some system messages carry an unfilled %1 insert for the file that could not start.
+  return new Error(win32 ? `${prefix} (${frame.stage}): Windows error ${frame.win32Error}: ${frame.win32Message.replaceAll('%1', () => executable)}` : `${prefix} (${frame.stage})`);
+}
 
 function spawnWindowsJob(executable, args, options) {
   const child = new EventEmitter();
@@ -102,12 +126,13 @@ function spawnWindowsJob(executable, args, options) {
         hostExit = frame.exitCode;
       } else if (frame.kind === 'job-empty') child.jobEmpty = true;
       else if (frame.kind === 'start-failed') {
+        const error = startFailure(executable, frame);
         if (frame.detailCode === 'spawn') child.jobEmpty = true;
-        if (frame.detailCode === 'termination' && Number.isSafeInteger(frame.pid) && frame.pid > 0) {
+        else {
           child.pid = frame.pid;
           child.emit('spawn');
         }
-        fail(new Error('Windows job could not start the host: ' + frame.detailCode));
+        fail(error);
       } else throw new Error('Unknown Windows job frame');
     } catch (error) { fail(error); }
   });
@@ -128,4 +153,4 @@ function spawnWindowsJob(executable, args, options) {
   return child;
 }
 
-module.exports = { MAX_FRAME_BYTES, spawnWindowsJob };
+module.exports = { MAX_FRAME_BYTES, spawnWindowsJob, startFailure };

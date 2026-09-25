@@ -36,6 +36,15 @@ function codexModelContradiction(event, session, expectedModel) {
   return event.method === 'model/rerouted' && event.params?.threadId === session && (event.params.fromModel !== expectedModel || event.params.toModel !== expectedModel);
 }
 
+function hostStartError(failure) {
+  return new RunError('host-start-failed', `Agent host failed to start: ${failure.message}`);
+}
+
+// Unproven cleanup outranks every other host failure, which is kept in the message as its cause.
+function requireReclaimed(exit, failure) {
+  requireCondition(exit.descendantsReclaimed !== false, 'termination-unverified', `The native host process tree did not provide termination evidence${failure ? `; the host failed: ${failure.message}` : ''}`);
+}
+
 function startProcess(file, args, options) {
   fs.mkdirSync(options.artifacts, { recursive: true });
   const launch = process.platform === 'win32' && !options.directProcess ? spawnWindowsJob : spawn;
@@ -80,7 +89,7 @@ function startProcess(file, args, options) {
   const finish = async () => {
     try { return await exited; } finally { clearTimeout(timer); }
   };
-  return { child, ready, finish, fail, failed: () => failure !== null };
+  return { child, ready, finish, fail, failure: () => failure };
 }
 
 
@@ -101,9 +110,16 @@ async function runClaude(options) {
     } catch { malformed = true; }
   });
   await execution.ready;
-  if (!execution.failed()) execution.child.stdin.end(options.prompt);
+  const startFailure = execution.failure();
+  if (!startFailure) execution.child.stdin.end(options.prompt);
   const exit = await execution.finish();
   await new Promise(resolve => log.end(resolve));
+  if (startFailure) {
+    requireReclaimed(exit, startFailure);
+    const error = hostStartError(startFailure);
+    error.descendantsReclaimed = exit.descendantsReclaimed;
+    throw error;
+  }
   const result = events.findLast(event => event.type === 'result');
   const authored = events.filter(event => event.type === 'assistant' && event.message?.model && event.message.model !== '<synthetic>');
   const attributionVerified = authored.length > 0 && authored.every(event => event.message.model === options.model && event.session_id === result?.session_id);
@@ -178,7 +194,8 @@ async function runCodex(options) {
   });
   try {
     await execution.ready;
-    requireCondition(!execution.failed(), 'host-start-failed', 'Agent host failed to start');
+    const startFailure = execution.failure();
+    if (startFailure) throw hostStartError(startFailure);
     await request('initialize', { clientInfo: { name: 'nightshift', version }, capabilities: { experimentalApi: true } });
     execution.child.stdin.write(JSON.stringify({ method: 'initialized', params: {} }) + '\n');
     const started = await request('thread/start', { cwd: options.cwd, model: options.model, approvalPolicy: 'never', sandbox: 'read-only', allowProviderModelFallback: false, baseInstructions: fs.readFileSync(options.systemFile, 'utf8'), config: { project_doc_max_bytes: 0, model_reasoning_effort: options.effort ?? 'high', features: { multi_agent: false, plugins: false, hooks: false, apps: false } } });
@@ -204,7 +221,7 @@ async function runCodex(options) {
       if (exit.error || exit.descendantsReclaimed === false) outcome.status = 'failed';
     }
     await new Promise(resolve => log.end(resolve));
-    requireCondition(exit.descendantsReclaimed !== false, 'termination-unverified', 'The native host process tree did not provide termination evidence');
+    requireReclaimed(exit, execution.failure());
   }
 }
 
