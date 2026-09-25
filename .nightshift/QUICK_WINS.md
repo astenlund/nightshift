@@ -30,6 +30,8 @@ Recurred in run `d4a44daa-96be-4ac4-bcaa-d16d8596584f` on 2026-09-18 to 19, the 
 
 The run-adoption delivery on 2026-09-21 to 22 added a controlled comparison: the same saved source passed all three probe cases at a short project path and failed all three at the original deeper layout. Failing Git working directories were 272 or 280 characters; `spawnSync` returned null status, `ENOENT` and no output before Git started, despite process-local `core.longpaths=true`. Baseline and candidate also matched in separate shorter/deeper comparisons. Verification recovered through a shorter private copy. The exact Windows/process-launch cause and broader impact remain unknown. Distinguish this launch failure from the earlier Git-level error: Git configuration cannot repair a process that never starts, and a skipped or unavailable probe is not successful acceptance evidence. The user chose to track this recurrence; [triage evidence](reports/adoption-session-triage-20260922.md#deep-private-probe-paths) preserves its limits.
 
+Recurred on 2026-09-25 in run `ff195382-31a4-4fea-bb48-ca56d20507bb`: an assessor probe running `tests/runtime-probes.test.js` inside a private copy failed six cases with "Could not establish an independent Git repository for the probe" (review `a108b64d-72ab-4e40-afb5-9bfe91da179c`), while the same file passed 9 of 9 at checkout depth as a recorded check, which the assessor accepted as the environmental explanation. The user chose to track this recurrence at triage.
+
 **Requires:** none.
 
 ### Acceptance harness waits on controller approval without a bound
