@@ -11,7 +11,7 @@ Source project: `C:/Git/nightshift`. The controller used retained Nightshift 3.2
 | Unrelated attachment disrupted review | Skip further work; project memory saved, revisit on recurrence |
 | Whitespace stream exhausted the review timeout | Skip; existing detection and recovery accepted |
 | Missing executive governing scope | Track in [Bugs](../BUGS.md#executive-governing-scope-is-missing-during-early-review) |
-| Deep private-probe paths | Add recurrence to [Private review copies fail at Windows path depth](../QUICK_WINS.md#private-review-copies-fail-at-windows-path-depth) |
+| Deep private-probe paths | Add recurrence to [Private review copies fail at Windows path depth](../QUICK_WINS_HISTORY.md#private-review-copies-fail-at-windows-path-depth) |
 | Premature blocker classification | Track in [Bugs](../BUGS.md#available-recovery-is-mistaken-for-a-terminal-blocker) |
 | Cancellation cleanup verification | Add recurrence to [Windows job pipe and containment fixtures](../BUGS.md#windows-job-pipe-and-containment-fixtures-fail-outside-the-code-they-cover) |
 | Repeated handover reports and bookkeeping | Track in [Bugs](../BUGS.md#automatic-blocker-checks-repeat-handover-reports) |
