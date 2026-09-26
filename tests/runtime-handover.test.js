@@ -272,7 +272,7 @@ test('SessionStart carries the morning-report notice for a closed handed-over ru
   f.act({ action: 'report-delivered', authority: 'User replied: track it' });
   const delivered = f.hook('SessionStart');
   assert.deepEqual(noticeOf(delivered), { recorded: true, delivered: true, path: REPORT_PATH, current: true, followups: ['decision'] });
-  assert.match(delivered.hookSpecificOutput.additionalContext, /The report was delivered\. Continue the follow-up triage one item at a time through the host's question tool/);
+  assert.match(delivered.hookSpecificOutput.additionalContext, /The report was delivered and follow-ups are pending\. If the user has asked to triage them, present them one at a time through the host's question tool, .*otherwise ask whether the user is ready to triage them/);
   f.act({ action: 'resolve-followup', followupId: 'decision', decision: 'track', authority: 'User replied: track it' });
   assert.equal(noticeOf(f.hook('SessionStart')), null);
   assert.match(f.hook('SessionStart').hookSpecificOutput.additionalContext, /Nightshift session binding/);

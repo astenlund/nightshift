@@ -20,7 +20,7 @@ function projectRoot(cwd) {
 function reportInstruction(notice) {
   if (!notice.current) return 'The saved report is missing or changed. Rewrite it and record the report again before presenting it.';
   if (!notice.delivered) return 'Present the saved report, ending with its pending follow-ups and a plain question asking whether the user is ready to triage them, or with a plain statement that no decision is pending, record its delivery from the user\'s reply, then present each follow-up through the host\'s question tool, or leave them pending if the user is not ready.';
-  return 'The report was delivered. Continue the follow-up triage one item at a time through the host\'s question tool, starting with the first pending follow-up.';
+  return 'The report was delivered and follow-ups are pending. If the user has asked to triage them, present them one at a time through the host\'s question tool, starting with the first pending follow-up; otherwise ask whether the user is ready to triage them.';
 }
 
 // The morning report and its pending decisions are owed to the owner of a handed-over run whether or not the run has closed.

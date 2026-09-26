@@ -145,8 +145,8 @@
     },
     {
       "path": "internal/runtime/REFERENCE.md",
-      "bytes": 45306,
-      "sha256": "d28641525a78e2f2130741e8b4964d7ae9cf79b6426085b2674cb28ede901ecb"
+      "bytes": 45409,
+      "sha256": "9fa4d3d0b5268d91e357325db0751a969848550029a6ffe2cf4cc5c4939eb394"
     },
     {
       "path": "internal/runtime/actions.js",
@@ -175,8 +175,8 @@
     },
     {
       "path": "internal/runtime/hook.js",
-      "bytes": 6297,
-      "sha256": "1aa11d698584d2d4b7f35d023e6dc8a89fdbd69e2377fada4ddf9880d404cec4"
+      "bytes": 6396,
+      "sha256": "2d3577ab5fc00fd2c6369973e798271cbd4b4265328bc40651a702037b232661"
     },
     {
       "path": "internal/runtime/hosts.js",
