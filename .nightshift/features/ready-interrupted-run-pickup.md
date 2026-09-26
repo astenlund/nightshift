@@ -16,7 +16,7 @@ The original baseline bound a run to the host session that created it. The local
 
 ## Shape to explore
 
-Ready already lists untriaged inbox reports beside the ready set in this repository; an interrupted or undelivered run is the same kind of notice. When the project has a run that is not complete, or is stopped, or is a completed handed-over run whose report was never delivered, Ready says so with enough context to decide, and offers to pick it up. Picking it up is the adoption the ownership bug describes, under explicit user authority, after which the adopting session is the owner and every existing mechanism (obligation brief, Stop protection, morning-report notice, single-reply hand-off) applies unchanged. Ready stays read-only: the offer is a question, and adoption is a separate authorized operation.
+Ready already lists untriaged inbox reports beside the ready set in this repository; an interrupted or undelivered run is the same kind of notice. When the project has a run that is not complete, or is stopped, or is a completed handed-over run whose report was never delivered, Ready says so with enough context to decide, and offers to pick it up. Picking it up is the adoption the ownership bug describes, under explicit user authority, after which the adopting session is the owner and every existing mechanism (obligation brief, Stop protection, morning-report notice, report hand-off and follow-up triage) applies unchanged. Ready stays read-only: the offer is a question, and adoption is a separate authorized operation.
 
 ## Open questions
 
