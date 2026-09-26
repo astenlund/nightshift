@@ -275,7 +275,10 @@ test('the review copy sits one short segment below the run directory while its e
   assert.equal(path.relative(path.join(canonical, '.nightshift/runs/reviews'), dispatch).includes(path.sep), false);
   assert.equal(JSON.parse(fs.readFileSync(path.join(dispatch, 'request.json'), 'utf8')).workspace, workspace);
   assert.equal(fs.existsSync(path.join(canonical, workspace, 'project')), false);
-  assert.equal(fs.existsSync(path.join(canonical, workspace, 'context/diff.patch')), true);
+  // The diff and manifest the reviewer read stay with the receipt, so clearing the copies loses no evidence.
+  for (const file of ['diff.patch', 'manifest.json']) assert.deepEqual(fs.readFileSync(path.join(dispatch, 'context', file)), fs.readFileSync(path.join(canonical, workspace, 'context', file)));
+  fs.rmSync(path.join(canonical, '.nightshift/runs/c'), { recursive: true });
+  assert.match(fs.readFileSync(path.join(dispatch, 'context/diff.patch'), 'utf8'), /new sibling/);
 });
 
 test('a receipt cannot change the findings in the native report', async t => {

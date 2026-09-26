@@ -209,8 +209,13 @@ async function dispatchReview(root, options, dependencies = {}) {
       fs.copyFileSync(projectFile(canonical, file.path), destination, fs.constants.COPYFILE_EXCL);
     }
     requireCondition(fresh(canonical, contextSnapshot), 'snapshot-drift', 'Project changed while preparing the review');
-    fs.writeFileSync(path.join(context, 'diff.patch'), diff);
-    writeJson(path.join(context, 'manifest.json'), contextSnapshot);
+    // The reviewer reads its own copy; the one beside the receipt survives clearing the disposable copies.
+    const retained = path.join(target, 'context');
+    fs.mkdirSync(retained);
+    for (const directory of [context, retained]) {
+      fs.writeFileSync(path.join(directory, 'diff.patch'), diff);
+      writeJson(path.join(directory, 'manifest.json'), contextSnapshot);
+    }
     const probeEvidence = loadProbeEvidence(canonical, options.probeEvidence, captured, contextSnapshot);
     if (probeEvidence.length > 0) {
       fs.mkdirSync(path.join(context, 'probes'));
