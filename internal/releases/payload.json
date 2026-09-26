@@ -180,8 +180,8 @@
     },
     {
       "path": "internal/runtime/lifecycle.js",
-      "bytes": 33307,
-      "sha256": "d285e7d16beca0676f6f0d5b25abcf8dffa6dd09ff8bac0d2083e388b011fef3"
+      "bytes": 33305,
+      "sha256": "33f6e1fee09902c52c945f19f52fdcda02835360c5bc4b28a3cc9faeef2a7c42"
     },
     {
       "path": "internal/runtime/limits.js",

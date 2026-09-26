@@ -392,7 +392,7 @@ function transition(state, request) {
       state.status = 'running';
       state.resumedBy = request.authority;
       delete state.stop;
-      transition(state, { action: 'invalidate-continuation', reason: 'Resumption requires a current observation of the native continuation mechanism' });
+      transition(state, { action: 'invalidate-continuation', reason: 'Resumption requires a current observation of the host continuation mechanism' });
       break;
     case 'claim-controller':
       requireCondition(request.claim && isDeepStrictEqual(request.claim.controller, state.controller), 'invalid-controller-claim', 'A claim must be observed for the current controller');
