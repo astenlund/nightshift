@@ -145,8 +145,8 @@
     },
     {
       "path": "internal/runtime/REFERENCE.md",
-      "bytes": 45187,
-      "sha256": "d93df022280feec8e683c7fd7aa3ef74b64fff597122aa1d5e5670338a2a370b"
+      "bytes": 45306,
+      "sha256": "d28641525a78e2f2130741e8b4964d7ae9cf79b6426085b2674cb28ede901ecb"
     },
     {
       "path": "internal/runtime/actions.js",
@@ -265,8 +265,8 @@
     },
     {
       "path": "internal/workflow.md",
-      "bytes": 23296,
-      "sha256": "6ff6673de59ebb00bd707607ab59432cfe8a28340a79dd2964fb9abb08121f0c"
+      "bytes": 23558,
+      "sha256": "d414a5b9eee4ac5b7280bd2e65a1acd7cd8ec783475e68b5d7267b771d365cab"
     },
     {
       "path": "skills/exploring/SKILL.md",
