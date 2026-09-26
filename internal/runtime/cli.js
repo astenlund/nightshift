@@ -6,7 +6,7 @@ const path = require('node:path');
 const { randomUUID } = require('node:crypto');
 const { isDeepStrictEqual } = require('node:util');
 const { RunStore, requireCondition } = require('./store');
-const { assertAction, commitmentsFor, obligationBrief, transition } = require('./lifecycle');
+const { assertAction, commitmentsFor, obligationBrief, sharesCumulativeAssessment, transition } = require('./lifecycle');
 const { DEFAULT_REVIEW_TIMEOUT_MS, dispatchReview, readReceipt, validateBase, validateRequest } = require('./review');
 const { exhaustedLimit, remainingTime, requireDispatchFits } = require('./limits');
 const { prepareProbe, runProbe } = require('./probes');
@@ -77,7 +77,7 @@ async function execute(root, request, dependencies = {}) {
       const task = state.tasks.find(candidate => candidate.id === request.taskId);
       const helperProcess = (dependencies.information ?? information)(process.pid, null, store.root);
       requireCondition(helperProcess?.found === true, 'operation-owner-unavailable', 'Cannot dispatch without identifying its actual helper process');
-      const coveredTasks = state.tasks.filter(candidate => candidate.id === task.id || task.kind === 'code' && candidate.kind === 'code' && candidate.status === 'complete');
+      const coveredTasks = state.tasks.filter(candidate => candidate.id === task.id || sharesCumulativeAssessment(task) && sharesCumulativeAssessment(candidate) && candidate.status === 'complete');
       const registered = store.update(request.actor, state.revision, 'dispatch-started', current => {
         requireCondition(!current.baseSha || current.baseSha === request.review.baseSha, 'changed-base', 'Cumulative run review must retain its original base');
         current.baseSha = request.review.baseSha;

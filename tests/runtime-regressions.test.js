@@ -252,6 +252,72 @@ test('a later integrated cumulative review covers earlier completed work without
   assert.equal(state.tasks[0].status, 'complete');
 });
 
+for (const [first, second] of [['code', 'docs'], ['docs', 'code']]) {
+  test(`a covering code review owned by a ${second} task satisfies the completed ${first} task it lists`, t => {
+    const f = fixture(t, { tasks: [
+      { id: 'a', title: 'First', kind: first, agreement: { source: 'User', outcome: 'Required a' } },
+      { id: 'b', title: 'Second', kind: second, requires: ['a'], agreement: { source: 'User', outcome: 'Required b' } },
+    ] });
+    if (first === 'code') f.check('a');
+    else f.act({ action: 'start-task', taskId: 'a' });
+    f.review('a');
+    f.finish('a');
+    f.act({ action: 'start-task', taskId: 'b' });
+    fs.writeFileSync(path.join(f.root, 'b.txt'), 'Second task changed what the first review covered\r\n');
+    if (second === 'code') f.check('b');
+    assert.equal(reviewGate(f.root, f.store.read().tasks[0], f.store.read()), false);
+    f.review('b', ['a', 'b']);
+    f.finish('b');
+    const state = f.store.read();
+    assert.equal(reviewGate(f.root, state.tasks[0], state), true);
+    f.act({ action: 'retrospective', evidence: 'Whole queue considered once' });
+    f.act({ action: 'triage', evidence: 'No pending follow-ups' });
+    f.act({ action: 'complete' });
+    assert.equal(f.store.read().status, 'complete');
+    assert.equal(f.store.read().tasks[0].reviews.length, 1);
+  });
+}
+
+for (const kind of ['spec', 'lore']) {
+  test(`a covering code review that lists a completed ${kind} task does not replace its own assessment`, t => {
+    const own = kind === 'spec'
+      ? { kind: 'spec', session: 'spec-reviewer', attributionVerified: true, status: 'complete', strength: 'strong', independent: true, broad: true, dimensions: DIMENSIONS.spec, coverageEvidence: 'Complete governing artifact assessed', snapshot: null, findings: [] }
+      : null;
+    const f = fixture(t, { tasks: [
+      { id: 'a', title: 'Excluded', kind, agreement: { source: 'User', outcome: 'Required a', ...(kind === 'spec' ? { spec: 'a.txt' } : {}) } },
+      { id: 'b', title: 'Code', requires: ['a'], agreement: { source: 'User', outcome: 'Required b' } },
+    ] });
+    if (own) f.act({ action: 'review', taskId: 'a', review: { ...own, snapshot: snapshot(f.root, ['a.txt']) } });
+    else f.review('a');
+    f.finish('a');
+    // A spec gate stays on its own spec assessment; a lore gate, whose own review this edit makes stale, is not refreshed by the covering review.
+    if (kind === 'lore') fs.writeFileSync(path.join(f.root, 'b.txt'), 'Code task changed the proposal inputs\r\n');
+    f.act({ action: 'start-task', taskId: 'b' });
+    f.check('b');
+    f.review('b', ['a', 'b']);
+    const state = f.store.read();
+    assert.equal(reviewGate(f.root, state.tasks[0], state), kind === 'spec');
+    assert.equal(reviewGate(f.root, state.tasks[1], state), true);
+  });
+}
+
+test('a covering review does not refresh a covered task whose own check the other task made stale', t => {
+  const f = fixture(t, { tasks: [
+    { id: 'a', title: 'Code', agreement: { source: 'User', outcome: 'Required a' } },
+    { id: 'b', title: 'Docs', kind: 'docs', requires: ['a'], agreement: { source: 'User', outcome: 'Required b' } },
+  ] });
+  f.check('a');
+  f.review('a');
+  f.finish('a');
+  f.act({ action: 'start-task', taskId: 'b' });
+  fs.writeFileSync(path.join(f.root, 'a.txt'), 'Docs task edited the code task check input\r\n');
+  f.review('b', ['a', 'b']);
+  f.finish('b');
+  assert.equal(reviewGate(f.root, f.store.read().tasks[0], f.store.read()), false);
+  f.check('a');
+  assert.equal(reviewGate(f.root, f.store.read().tasks[0], f.store.read()), true);
+});
+
 test('refreshing assurance preserves completed documentation, retrospective and triage', t => {
   const f = fixture(t, { tasks: [{ id: 'a', title: 'A', agreement: { source: 'User', outcome: 'A' } }] });
   f.check('a');

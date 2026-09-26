@@ -27,6 +27,14 @@ function unresolvedFindings(task) {
   return task.findings.filter(finding => !finding.disposition || finding.disposition === 'implement' && !finding.repaired);
 }
 
+// Code and docs tasks share one cumulative code assessment. A spec task keeps its own whole-spec assessment, which a
+// later covering code review would otherwise displace, and a lore task's assessment covers its instruction proposal.
+const CUMULATIVE_TASK_KINDS = Object.freeze(['code', 'docs']);
+
+function sharesCumulativeAssessment(task) {
+  return CUMULATIVE_TASK_KINDS.includes(task.kind);
+}
+
 function commitmentsFor(tasks) {
   return Object.fromEntries(tasks.map(task => [task.id, { agreement: structuredClone(task.agreement), revision: task.requirementsRevision ?? 0 }]));
 }
@@ -126,7 +134,7 @@ function specReady(state, task) {
 // Returns null when the gate holds, 'stale' when the latest otherwise acceptable assessment no longer matches current inputs, and 'unmet' otherwise.
 function reviewGateFailure(root, task, state) {
   const candidates = state
-    ? state.tasks.flatMap(owner => owner.reviews.filter(review => owner.id === task.id || task.kind === 'code' && owner.kind === 'code' && review.kind === 'code' && review.coveredTaskIds?.includes(task.id)))
+    ? state.tasks.flatMap(owner => owner.reviews.filter(review => owner.id === task.id || sharesCumulativeAssessment(task) && sharesCumulativeAssessment(owner) && review.kind === 'code' && review.coveredTaskIds?.includes(task.id)))
     : task.reviews;
   const review = [...candidates].sort((left, right) => (right.revision ?? 0) - (left.revision ?? 0))[0];
   if (task.requirementsRevision !== undefined && (review?.revision ?? -1) < task.requirementsRevision) return 'unmet';
@@ -475,4 +483,4 @@ function transition(state, request) {
   }
 }
 
-module.exports = { DIMENSIONS, assertAction, commitmentsFor, obligationBrief, reportNotice, reviewGate, taskById, transition, unresolvedFindings };
+module.exports = { DIMENSIONS, assertAction, commitmentsFor, obligationBrief, reportNotice, reviewGate, sharesCumulativeAssessment, taskById, transition, unresolvedFindings };

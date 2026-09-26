@@ -117,6 +117,31 @@ test('injected native observations do not grant a missing or mismatched controll
   } finally { store.close(); }
 });
 
+for (const owner of ['docs', 'code']) {
+  test(`a cumulative dispatch on a ${owner} task covers completed code and docs tasks but not spec or lore tasks`, async t => {
+    const f = fixture(t);
+    const store = new RunStore(f.root, { create: true });
+    const actor = { host: 'codex', session: 'controller' };
+    const other = owner === 'docs' ? 'code' : 'docs';
+    const tasks = [
+      { id: 'finished', title: 'Finished ' + other, kind: other },
+      { id: 'plan', title: 'Governing spec', kind: 'spec' },
+      { id: 'lessons', title: 'Retrospective proposal', kind: 'lore' },
+      { id: f.taskId, title: 'Current ' + owner, kind: owner },
+    ].map(task => ({ ...task, agreement: { source: 'User', outcome: task.title } }));
+    store.create({ objective: f.requirements, authority: 'User', controller: actor, controllerClaim: fixtureControllerClaim(actor), tasks });
+    store.update(actor, store.read().revision, 'fixture-completed-tasks', state => { for (const task of state.tasks) if (task.id !== f.taskId) task.status = 'complete'; });
+    let requirements;
+    try {
+      const { receipt } = await executeWithFixtureController(f.root, { action: 'dispatch', actor, revision: store.read().revision, taskId: f.taskId, review: { ...f, kind: 'code' } }, { runAgent: options => { requirements = options.prompt; return mockAgent(options); } });
+      assert.deepEqual([...receipt.coveredTaskIds].sort(), ['finished', f.taskId].sort());
+      assert.deepEqual(Object.keys(receipt.commitments).sort(), ['finished', f.taskId].sort());
+      assert.match(requirements, /Finished /);
+      assert.doesNotMatch(requirements, /Governing spec|Retrospective proposal/);
+    } finally { store.close(); }
+  });
+}
+
 test('invalid skeptic assignments reject before workers or model attempts are created', async t => {
   const f = fixture(t);
   const store = new RunStore(f.root, { create: true });
