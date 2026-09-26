@@ -175,8 +175,8 @@
     },
     {
       "path": "internal/runtime/hook.js",
-      "bytes": 6046,
-      "sha256": "0fb4dad712ab3d741cd88c5d698cb72c426d8c0fa48487700bbaa1728d6865f0"
+      "bytes": 6160,
+      "sha256": "0e616d03903e2d6dc9ff3aca74986fb477b512cd186ad380292670333c558a67"
     },
     {
       "path": "internal/runtime/hosts.js",
@@ -265,8 +265,8 @@
     },
     {
       "path": "internal/workflow.md",
-      "bytes": 23558,
-      "sha256": "d414a5b9eee4ac5b7280bd2e65a1acd7cd8ec783475e68b5d7267b771d365cab"
+      "bytes": 24021,
+      "sha256": "0d8acbf89b4348cab27e94020d809c7042a87e83175a8d98d98f200b1c62f026"
     },
     {
       "path": "skills/exploring/SKILL.md",
@@ -275,8 +275,8 @@
     },
     {
       "path": "skills/handover/SKILL.md",
-      "bytes": 7063,
-      "sha256": "c645db85e79a77a3824654e7af9ff12e2699d6ffca343f46b895fdf6cb4db9b8"
+      "bytes": 7175,
+      "sha256": "ae74bc1a51e5ef4c9a29021d00d70d009f5d06bc73f12e22c5022e97b7081e52"
     },
     {
       "path": "skills/init-backlog/SKILL.md",

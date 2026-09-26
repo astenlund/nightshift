@@ -256,7 +256,7 @@ test('SessionStart carries the morning-report notice for a closed handed-over ru
 
   const undelivered = f.hook('SessionStart');
   assert.deepEqual(noticeOf(undelivered), { recorded: true, delivered: false, path: REPORT_PATH, current: true, followups: ['decision'] });
-  assert.match(undelivered.hookSpecificOutput.additionalContext, /Present the saved report, ending with the first pending follow-up/);
+  assert.match(undelivered.hookSpecificOutput.additionalContext, /Present the saved report, ending with the first pending follow-up as a plain-text question, .*each later follow-up through the host's question tool/);
   assert.doesNotMatch(undelivered.hookSpecificOutput.additionalContext, /Nightshift continuation\./);
   assert.equal(noticeOf(f.hook('SessionStart', 'another-session')), null);
   assert.deepEqual(f.hook('Stop'), {});
@@ -272,7 +272,7 @@ test('SessionStart carries the morning-report notice for a closed handed-over ru
   f.act({ action: 'report-delivered', authority: 'User replied: track it' });
   const delivered = f.hook('SessionStart');
   assert.deepEqual(noticeOf(delivered), { recorded: true, delivered: true, path: REPORT_PATH, current: true, followups: ['decision'] });
-  assert.match(delivered.hookSpecificOutput.additionalContext, /The report was delivered\. Continue the follow-up triage/);
+  assert.match(delivered.hookSpecificOutput.additionalContext, /The report was delivered\. Continue the follow-up triage one item at a time through the host's question tool/);
   f.act({ action: 'resolve-followup', followupId: 'decision', decision: 'track', authority: 'User replied: track it' });
   assert.equal(noticeOf(f.hook('SessionStart')), null);
   assert.match(f.hook('SessionStart').hookSpecificOutput.additionalContext, /Nightshift session binding/);
