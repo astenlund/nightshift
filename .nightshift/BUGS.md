@@ -4,6 +4,14 @@ V2 entries are preserved in [the historical index](migration/v2/BUGS.md) and [MI
 
 ## Current
 
+### Checks hang until their time bound when dotnet leaves build servers running
+
+Reported on 2026-09-26 from FeatherPod-Private, run `4fdb32fd-e2b4-4e17-8225-cf49a31247fd`, installed 3.2.8. A bound runtime `check` running `pwsh -NoProfile -File .tmp/verify-ffmpeg.ps1`, which runs `dotnet build <tests project> --no-incremental -warnaserror` and then a filtered `dotnet test --no-build`, did not finish within its 600000 ms `timeoutMs`: the launcher returned `operation-timeout` ("Guarded operation exceeded its time bound"), the check recorded "Reserved execution has no collected result" and its operation worker ended `failed`. Run directly in a terminal, the same build took about 9 seconds and the tests about 2 seconds. Adding `--disable-build-servers` to the build made the identical check pass promptly under the runtime, and an equivalent check without it passed promptly in an earlier run of the same session, so the hang is not deterministic. The reporter's hypothesis, unconfirmed: persistent MSBuild worker nodes or the Roslyn compiler server started inside the check's Windows job keep it alive, and descendant-completion waiting holds the check until its time bound. No process list was captured during the hang, and why the earlier check did not hang is unexplained. The user chose to track it at inbox triage.
+
+Reproduce the hang and establish whether lingering build servers are the cause, then either let a check complete once its top-level command exits without weakening containment, or make the failure name the lingering descendant processes so the controller recognizes the cause without a full timeout. Tracking does not authorize implementation.
+
+**Requires:** none.
+
 ### Runtime claims through Git Bash lose the host process
 
 Observed on 2026-09-26 in the final Opus fixture of run `36aad5de-2825-4818-ba8c-e1ea8c8e72a4` (installed candidate 3.2.10, Claude Code 2.1.283). After the Stop hook resumed the turn that ended with the handover acknowledgement, the fixture controller's `claim-controller` calls made through Claude Code's Bash tool (Git Bash) returned `process: null` with "The current native controller process could not be positively identified and observed alive"; the same claim through the PowerShell tool succeeded and the run completed. Since 3.2.10 every Claude Code handover resumes through a fresh claim, so a controller that prefers Bash meets this on every handover. Whether the failure predates 3.2.10 was not established, and the cause (plausibly the native process-ancestry walk through `bash.exe`) is unconfirmed. Evidence: `.tmp/handover-live/claude-443f4b3f/live-2026-09-26T01-19-18-510Z-t26-claude-new-run-handover/events.jsonl`. The user chose to track it at triage.
