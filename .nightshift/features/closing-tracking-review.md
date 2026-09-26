@@ -31,4 +31,5 @@ The user chose to let the completion gate recognize a tracking-only change revie
 ## Before implementation
 
 - The change adds a review kind, a run-level record and a gate change, so it needs a concise governing spec in `.nightshift/specs` with independent spec review before code, and a plugin version increase.
+- Since 3.2.10 the completion gate also admits a covering code-kind review owned by another code or docs task that lists the task, through `sharesCumulativeAssessment` in `internal/runtime/lifecycle.js` (see [Let one cumulative assessment cover code and docs tasks together](../QUICK_WINS_HISTORY.md#let-one-cumulative-assessment-cover-code-and-docs-tasks-together)). The spec reconciles the tracking exception with that admission rule.
 - The runtime behavior is covered by deterministic tests. The guidance changes model-owned closing behavior, so the user decides at start between a budgeted installed-host campaign on both hosts (one attended close with triage and tracking edits, one handover close) and deterministic evidence only, with the model-owned behavior marked unverified.
