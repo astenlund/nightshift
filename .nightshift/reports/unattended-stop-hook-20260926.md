@@ -33,7 +33,7 @@ An Opus attempt ran the wording that made the acknowledgement the turn-ending me
 
 ## Evidence
 
-Raw native records, decisions and results are retained under `.tmp/handover-live/`, with the ledger in `.tmp/handover-live/budget.json`. SHA-256 digests of every attempt's event log, oldest first; the two handover entries marked Opus and Fable at the end are the acknowledgement evidence:
+Raw native records, decisions and results are retained under `.tmp/handover-live/`, with the ledger in `.tmp/handover-live/budget.json`. Each fixture staged the candidate with its shipped payload manifest `internal/releases/payload.json`, which hashes every shipped file. The Fable acknowledgement fixture `claude-ca2cf3ce` staged manifest `a1406a4582f737b4782707d460970f2c1da646f979513be0e96641affc93b7a1`, identical to the committed candidate's; the Opus acknowledgement fixture `claude-443f4b3f` staged `5a7821264e6fe51b7f5a5d3b75d363761a177e821308ed51d3bd869204fe61a3`, the manifest before the turn-ending yield was scoped to Claude Code. SHA-256 digests of every attempt's event log, oldest first; the two handover entries marked Opus and Fable at the end are the acknowledgement evidence:
 
 - `2229829c014e2bf6cc50796e6015186f653ab8bd63a6ca84202811eb0f448c1e` `claude-343f0e02/live-2026-09-25T22-52-00-160Z-t26-claude-new-run-handover/events.jsonl` (refused admission)
 - `e91ea75bd15f3bd199d7d457da5b0545f2116cf777864009a1bcae6174bbbc8d` `claude-343f0e02/live-2026-09-25T22-53-44-994Z-t26-claude-new-run-handover/events.jsonl`
