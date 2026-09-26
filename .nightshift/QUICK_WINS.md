@@ -4,6 +4,14 @@ V2 entries are preserved in [the historical index](migration/v2/QUICK_WINS.md) a
 
 ## Current
 
+### Name the host's own failure in review attempt errors
+
+Reported on 2026-09-26 from FeatherPod-Private, run `5081dcdc-8956-4ff9-9870-4672f39a17f8`, installed 3.2.8. The first Codex review dispatch of the run completed; every later Codex attempt (workers `33bf017f`, `79fa6d05` and `cba72102`) failed, and each receipt attempt recorded only the generic `unusable-review` message "Host did not return an attributable completed assessment" from `dispatchReview` in `internal/runtime/review.js`. The actual cause was visible only in the attempt's native `events.jsonl`: a `systemError` status and a failed turn carrying `unexpected status 401 Unauthorized: Incorrect API key provided`, while `result.json` showed exit code 0. The Fable fallback completed every assessment, so the run was not blocked, but its review silently degraded from cross-host to same-host for the rest of the run. The timing matches the evening the acceptance harness revoked the production Codex login, as [Codex acceptance fixtures copy the live credential](#codex-acceptance-fixtures-copy-the-live-credential) records, but that link is a hypothesis; whether the credential changed between the first and second dispatch was not investigated. The user chose to track it at inbox triage.
+
+Carry the host-reported terminal failure, such as an authentication error and its re-login recovery, into the attempt error and the dispatch result, so a controller can tell a credential problem from a model or attribution failure without reading raw events, and can say when a fallback cost the review its cross-host independence. Runtime code, so it ships with a version increase. Tracking does not authorize implementation.
+
+**Requires:** none.
+
 ### Codex acceptance fixtures copy the live credential
 
 Observed on 2026-09-25 in run `36aad5de-2825-4818-ba8c-e1ea8c8e72a4` (candidate 3.2.10). The retained `.tmp/handover-live` harness copies the production Codex ChatGPT-mode `auth.json` into every Codex fixture profile, with no remaining-life guard like the one it applies to Claude credentials. One fixture refreshed its copied token, rotating the shared refresh token; the fixture then failed with 401 and a production `codex exec` failed with `refresh_token_reused` until the user ran `codex login`. The Codex lane of that campaign produced no evidence, and cross-host Codex review was unavailable for the rest of the run. The user chose to track it at triage on 2026-09-26.
