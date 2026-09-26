@@ -256,7 +256,7 @@ test('SessionStart carries the morning-report notice for a closed handed-over ru
 
   const undelivered = f.hook('SessionStart');
   assert.deepEqual(noticeOf(undelivered), { recorded: true, delivered: false, path: REPORT_PATH, current: true, followups: ['decision'] });
-  assert.match(undelivered.hookSpecificOutput.additionalContext, /Present the saved report, ending with its pending follow-ups and a plain question asking whether the user is ready to triage them, or with a plain statement that no decision is pending, .*each follow-up through the host's question tool/);
+  assert.match(undelivered.hookSpecificOutput.additionalContext, /Present the saved report, ending with its pending follow-ups and a plain question asking whether the user is ready to triage them, or with a plain statement that no decision is pending, .*each follow-up through the host's question tool, or leave them pending if the user is not ready/);
   assert.doesNotMatch(undelivered.hookSpecificOutput.additionalContext, /Nightshift continuation\./);
   assert.equal(noticeOf(f.hook('SessionStart', 'another-session')), null);
   assert.deepEqual(f.hook('Stop'), {});
