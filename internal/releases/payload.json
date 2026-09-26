@@ -260,8 +260,8 @@
     },
     {
       "path": "internal/workflow.md",
-      "bytes": 23288,
-      "sha256": "51762f2a9cf43ab8693758207410c3677a3f1789670ffa2b470a79a04774fc4e"
+      "bytes": 23296,
+      "sha256": "6ff6673de59ebb00bd707607ab59432cfe8a28340a79dd2964fb9abb08121f0c"
     },
     {
       "path": "skills/exploring/SKILL.md",
@@ -270,8 +270,8 @@
     },
     {
       "path": "skills/handover/SKILL.md",
-      "bytes": 7078,
-      "sha256": "42b761327b864c3cf77112a1045a8c11fec990289fcde605e4da4aa39fec97b5"
+      "bytes": 7063,
+      "sha256": "c645db85e79a77a3824654e7af9ff12e2699d6ffca343f46b895fdf6cb4db9b8"
     },
     {
       "path": "skills/init-backlog/SKILL.md",
