@@ -11,6 +11,7 @@ const { fileIdentity, fresh, hash, projectFile, projectInventory, snapshot } = r
 const { codexModelContradiction, runAgent } = require('./hosts');
 const { writeJson, writeText } = require('./artifacts');
 const { PROBE_TIMEOUT_CAP_MS, PROBE_TIMEOUT_FLOOR_MS, loadProbeEvidence } = require('./probes');
+const { createPrivateCopyDirectory, isPrivateCopyDirectory } = require('./copies');
 const { workerEnvironment } = require('../releases/entry');
 const { timeLeft } = require('./limits');
 
@@ -179,7 +180,7 @@ async function dispatchReview(root, options, dependencies = {}) {
   requireCondition(/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(id), 'invalid-dispatch', 'Dispatch identity must be a UUID');
   const target = path.join(directory, id);
   fs.mkdirSync(target);
-  const workspace = path.join(target, 'workspace');
+  const workspace = createPrivateCopyDirectory(canonical);
   const project = path.join(workspace, 'project');
   const context = path.join(workspace, 'context');
   let processStarted = false;
@@ -217,7 +218,7 @@ async function dispatchReview(root, options, dependencies = {}) {
     }
     // A repository boundary prevents host discovery from walking into the controller's checkout.
     git(workspace, ['init', '--quiet']);
-    const request = { id, runId: options.runId, taskId: options.taskId, coveredTaskIds: options.coveredTaskIds ?? [options.taskId], commitments: options.commitments ?? {}, resources: options.resources ?? null, controller: options.controller ?? null, kind: options.kind ?? 'code', requirements: text(options.requirements, 'review requirements'), dimensions: DIMENSIONS[options.kind === 'spec' ? 'spec' : 'code'], findings: options.findings ?? [], snapshot: captured, contextSnapshot, baseSha: options.baseSha };
+    const request = { id, workspace: path.relative(canonical, workspace).split(path.sep).join('/'), runId: options.runId, taskId: options.taskId, coveredTaskIds: options.coveredTaskIds ?? [options.taskId], commitments: options.commitments ?? {}, resources: options.resources ?? null, controller: options.controller ?? null, kind: options.kind ?? 'code', requirements: text(options.requirements, 'review requirements'), dimensions: DIMENSIONS[options.kind === 'spec' ? 'spec' : 'code'], findings: options.findings ?? [], snapshot: captured, contextSnapshot, baseSha: options.baseSha };
     writeJson(path.join(target, 'request.json'), request);
     options.onPrepared?.(request);
     const systemFile = path.join(target, 'system.md');
@@ -277,7 +278,7 @@ async function dispatchReview(root, options, dependencies = {}) {
     // Keep uncertain live-worker residue. The diff, manifest and native logs retain
     // assessment evidence after a safely ended attempt's source copy is discarded.
     if ((!processStarted || terminationProven) && fs.existsSync(project)) {
-      requireCondition(path.relative(target, project) === path.join('workspace', 'project'), 'unsafe-path', 'Disposable review copy escaped its assignment');
+      requireCondition(isPrivateCopyDirectory(canonical, workspace) && path.relative(workspace, project) === 'project', 'unsafe-path', 'Disposable review copy escaped its assignment');
       try { fs.rmSync(project, { recursive: true }); }
       catch (error) { writeJson(path.join(target, 'cleanup.json'), { pending: true, error: error.message }); }
     }

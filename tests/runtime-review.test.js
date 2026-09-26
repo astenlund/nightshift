@@ -264,6 +264,20 @@ test('review receives cumulative tracked and new content; imported result is bou
   assert.throws(() => readReceipt(f.root, relative, state, f.taskId), { code: 'invalid-receipt' });
 });
 
+test('the review copy sits one short segment below the run directory while its evidence stays with the dispatch', async t => {
+  const f = fixture(t);
+  const canonical = fs.realpathSync.native(f.root);
+  let workspace;
+  const { receiptFile } = await dispatchReview(f.root, f, { runAgent: options => { workspace = path.relative(canonical, options.cwd).split(path.sep).join('/'); return mockAgent(options); } });
+  // 27 characters below the project root, against 71 when the copy lived under the dispatch directory.
+  assert.match(workspace, /^\.nightshift\/runs\/c\/[0-9a-f]{8}$/);
+  const dispatch = path.dirname(receiptFile);
+  assert.equal(path.relative(path.join(canonical, '.nightshift/runs/reviews'), dispatch).includes(path.sep), false);
+  assert.equal(JSON.parse(fs.readFileSync(path.join(dispatch, 'request.json'), 'utf8')).workspace, workspace);
+  assert.equal(fs.existsSync(path.join(canonical, workspace, 'project')), false);
+  assert.equal(fs.existsSync(path.join(canonical, workspace, 'context/diff.patch')), true);
+});
+
 test('a receipt cannot change the findings in the native report', async t => {
   const f = fixture(t);
   const { receiptFile, receipt } = await dispatchReview(f.root, f, { runAgent: mockAgent });

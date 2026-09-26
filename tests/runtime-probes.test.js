@@ -30,6 +30,11 @@ test('ordinary probe Git commands resolve to the private copy and preserve canon
   assert.equal(result.exitCode, 0);
   assert.equal(result.canonicalUnchanged, true);
   assert.equal(git(['config', '--local', '--get', 'nightshift.probeBoundary']).stdout.trim(), 'canonical');
+  // The copy is 27 characters below the project root, against 113 when it lived under the dispatch directory; the result stays with the dispatch.
+  assert.match(result.copy, /^\.nightshift\/runs\/c\/[0-9a-f]{8}$/);
+  assert.match(reference.path, new RegExp(`^\\.nightshift/runs/reviews/${receipt.requestId}/probes/[0-9a-f-]{36}/result\\.json$`));
+  assert.equal(fs.readFileSync(path.join(root, result.copy, 'subject.txt'), 'utf8'), 'Fixture\n');
+  assert.equal(spawnSync('git', ['config', '--local', '--get', 'nightshift.probeBoundary'], { cwd: path.join(root, result.copy), windowsHide: true, encoding: 'utf8' }).stdout.trim(), 'private');
 });
 
 function committedProject() {

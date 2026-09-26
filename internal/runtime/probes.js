@@ -8,6 +8,7 @@ const { requireCondition, text } = require('./store');
 const { executeCommand, fresh, hash, projectFile } = require('./evidence');
 const { writeJson } = require('./artifacts');
 const { prepareCommand } = require('./operations');
+const { createPrivateCopyDirectory } = require('./copies');
 
 // Assessors have repeatedly proposed seconds as milliseconds; a timeout below the floor cannot be what they meant.
 const PROBE_TIMEOUT_FLOOR_MS = 5000;
@@ -29,8 +30,7 @@ function runProbe(root, receipt, probe, runner) {
   requireCondition(Array.isArray(probe.files), 'invalid-probe', 'Probe must declare its isolated fixture files');
   const directory = projectFile(root, `.nightshift/runs/reviews/${receipt.requestId}/probes/${randomUUID()}`);
   fs.mkdirSync(directory, { recursive: true });
-  const project = path.join(directory, 'project');
-  fs.mkdirSync(project);
+  const project = createPrivateCopyDirectory(root);
   for (const file of inputs.files) {
     if (file.sha256 === null) continue;
     const destination = projectFile(project, file.path);
@@ -56,7 +56,7 @@ function runProbe(root, receipt, probe, runner) {
     const canonicalUnchanged = fresh(root, inputs);
     const result = {
       requestId: receipt.requestId, runId: receipt.runId, taskId: receipt.taskId,
-      probeId: probe.id, purpose: probe.purpose, probe,
+      probeId: probe.id, purpose: probe.purpose, probe, copy: path.relative(fs.realpathSync.native(root), project).split(path.sep).join('/'),
       snapshotDigest: receipt.snapshot.digest, contextDigest: inputs.digest, canonicalUnchanged,
       exitCode: check.exitCode, error: check.error, output: check.output, resourceMode: check.resourceMode,
       startedAt: check.startedAt, finishedAt: check.finishedAt,

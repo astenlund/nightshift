@@ -145,8 +145,8 @@
     },
     {
       "path": "internal/runtime/REFERENCE.md",
-      "bytes": 44148,
-      "sha256": "a2890a4ef09dced4e2f60f92f9ffbad515d7c5022b71fccba4368c773374847a"
+      "bytes": 44682,
+      "sha256": "ae378b683592be1a5a0f5fdd6e9ba15b780f1a883ad7ebcd94410e15e3c88a68"
     },
     {
       "path": "internal/runtime/actions.js",
@@ -162,6 +162,11 @@
       "path": "internal/runtime/cli.js",
       "bytes": 12776,
       "sha256": "d37a309e5be698cf81100815e20d6437753f9dda8a83a48bf4a34eef237adf52"
+    },
+    {
+      "path": "internal/runtime/copies.js",
+      "bytes": 1376,
+      "sha256": "76950a48c5ed7afd7ab16f6a70faeb5d292ae9d3190da81dd71549363bf52a1e"
     },
     {
       "path": "internal/runtime/evidence.js",
@@ -210,13 +215,13 @@
     },
     {
       "path": "internal/runtime/probes.js",
-      "bytes": 5868,
-      "sha256": "b2861450ebd3ca543227f4ebf3b432946b82c80ce5dc296e3d0e64c9b8dd44f3"
+      "bytes": 5990,
+      "sha256": "08385325dc55f52706200f8b5b35b265c3ab52fb737c3d299575b1f3859dab30"
     },
     {
       "path": "internal/runtime/review.js",
-      "bytes": 29027,
-      "sha256": "5c366406500bd1467068c0ed8a46a9a58df0140491d37d4d9a83f6ac6cd37217"
+      "bytes": 29219,
+      "sha256": "d479cec444ad7ef47e70561b149c26e3504ad1cef07a80a54e455cf49e7251ef"
     },
     {
       "path": "internal/runtime/store.js",
