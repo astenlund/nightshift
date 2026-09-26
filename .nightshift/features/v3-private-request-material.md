@@ -16,7 +16,7 @@ The original request-spool DACL proposal was conditional on retaining that trans
 
 ## Evidence and limits
 
-`dispatchReview` writes request.json, a complete project copy and attempt evidence below `.nightshift/runs/reviews`; host transports also persist event and error output. No cross-principal access probe was performed in this reconciliation.
+`dispatchReview` writes request.json and attempt evidence below `.nightshift/runs/reviews`, and since 3.2.10 writes the complete project copy, like every probe copy, below `.nightshift/runs/c`; host transports also persist event and error output. No cross-principal access probe was performed in this reconciliation.
 
 The [independent shipped-capability audit](../reports/pre-v3-shipped-capability-audit-20260921.md) distinguishes actual code/probe evidence, instruction policy and unverified installed-host behavior. No capability in this entry is declared delivered by its restoration to the backlog.
 
