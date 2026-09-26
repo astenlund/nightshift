@@ -36,7 +36,7 @@ const CONTINUATION_KINDS = Object.freeze({ goal: ['claude', 'codex'], 'stop-hook
 
 function verifiedContinuation(state, mechanism) {
   requireCondition(mechanism?.verified === true && typeof mechanism.evidence === 'string' && mechanism.evidence.trim(), 'unverified-continuation', 'Unattended continuation requires observed host evidence');
-  requireCondition(Object.hasOwn(CONTINUATION_KINDS, mechanism.kind), 'invalid-continuation-kind', `Continuation mechanism kind must be one of ${Object.keys(CONTINUATION_KINDS).join(', ')}`);
+  requireCondition(typeof mechanism.kind === 'string' && Object.hasOwn(CONTINUATION_KINDS, mechanism.kind), 'invalid-continuation-kind', `Continuation mechanism kind must be one of ${Object.keys(CONTINUATION_KINDS).join(', ')}`);
   requireCondition(CONTINUATION_KINDS[mechanism.kind].includes(state.controller.host), 'unsupported-continuation', `A ${mechanism.kind} mechanism cannot carry unattended work for a ${state.controller.host} controller; verify its native goal instead`);
 
   return { ...mechanism, runId: state.id, controller: { ...state.controller }, observedAt: new Date().toISOString() };

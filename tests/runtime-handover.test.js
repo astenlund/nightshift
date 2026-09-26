@@ -76,7 +76,7 @@ test('an unverified mechanism is rejected and writes nothing', t => {
 test('a verified mechanism without a known kind is rejected and writes nothing', t => {
   const f = fixture(t);
   const before = f.store.read();
-  for (const kind of [undefined, null, '', 'hook', 'Goal', 'toString']) {
+  for (const kind of [undefined, null, '', 'hook', 'Goal', 'toString', ['goal']]) {
     const mechanism = { ...MECHANISM, kind };
     assert.throws(() => f.act({ action: 'handover', authority: 'User handover', mechanism }), { code: 'invalid-continuation-kind' });
     assert.throws(() => f.act({ action: 'continuation', mechanism }), { code: 'invalid-continuation-kind' });
@@ -87,6 +87,16 @@ test('a verified mechanism without a known kind is rejected and writes nothing',
 test('a verified Stop hook carries unattended work for a Claude controller', t => {
   const f = fixture(t);
   const state = f.act({ action: 'handover', authority: 'User handover', mechanism: STOP_HOOK });
+  assert.equal(state.mode, 'unattended');
+  assert.equal(state.continuation.kind, 'stop-hook');
+  f.finish();
+  assert.equal(f.store.read().tasks[0].status, 'complete');
+});
+
+test('a Claude run created unattended executes once continuation records a verified Stop hook', t => {
+  const f = fixture(t, { mode: 'unattended', authority: 'User handed the queue over' });
+  assert.throws(() => f.finish(), { code: 'unverified-continuation' });
+  const state = f.act({ action: 'continuation', mechanism: STOP_HOOK });
   assert.equal(state.mode, 'unattended');
   assert.equal(state.continuation.kind, 'stop-hook');
   f.finish();
