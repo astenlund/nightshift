@@ -16,7 +16,7 @@ The old tier-derived caps and verifier lanes remain retired. Current runtime lim
 
 ## Evidence and limits
 
-`limits.js` accepts only deadlineUtc and maxDispatches; dispatch accepts candidates, requiredModel and substitutionReason per request. Existing budget bugs and handover quick wins own concrete accounting and allowance-settlement repairs.
+`limits.js` accepts only deadlineUtc and maxDispatches; dispatch accepts candidates, requiredModel and substitutionReason per request. Existing budget bugs own concrete accounting repairs, and [Verify faked boundaries live](live-boundary-verification.md) owns allowance settlement at handover.
 
 The [independent shipped-capability audit](../reports/pre-v3-shipped-capability-audit-20260921.md) distinguishes actual code/probe evidence, instruction policy and unverified installed-host behavior. No capability in this entry is declared delivered by its restoration to the backlog.
 
@@ -24,7 +24,7 @@ The [independent shipped-capability audit](../reports/pre-v3-shipped-capability-
 
 Decide the preference source, scope and refresh rules, and which additional budget metrics can actually be enforced. Verify continuation, allowed substitution, unavailable required models, delayed usage and real exhaustion. Coordinate with existing budget entries instead of declaring their problems solved.
 
-Coordinate with the [budget-controls bug](../BUGS.md#controller-treats-internal-token-ceilings-as-user-owned-budget-decisions) and the existing handover allowance/evidence-budget quick wins. Their separate defects are not declared resolved.
+Coordinate with the [budget-controls bug](../BUGS.md#controller-treats-internal-token-ceilings-as-user-owned-budget-decisions) and the handover allowance and evidence-budget decisions that [Verify faked boundaries live](live-boundary-verification.md) carries. Their separate defects are not declared resolved.
 
 ## Triage and provenance
 
