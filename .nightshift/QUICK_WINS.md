@@ -4,6 +4,38 @@ V2 entries are preserved in [the historical index](migration/v2/QUICK_WINS.md) a
 
 ## Current
 
+### Codex acceptance fixtures copy the live credential
+
+Observed on 2026-09-25 in run `36aad5de-2825-4818-ba8c-e1ea8c8e72a4` (candidate 3.2.10). The retained `.tmp/handover-live` harness copies the production Codex ChatGPT-mode `auth.json` into every Codex fixture profile, with no remaining-life guard like the one it applies to Claude credentials. One fixture refreshed its copied token, rotating the shared refresh token; the fixture then failed with 401 and a production `codex exec` failed with `refresh_token_reused` until the user ran `codex login`. The Codex lane of that campaign produced no evidence, and cross-host Codex review was unavailable for the rest of the run. The user chose to track it at triage on 2026-09-26.
+
+Give Codex acceptance fixtures their own login or an API key and never copy the live Codex credential, and state the rule beside the Claude credential-copy guard that [Acceptance reports carry a checkable evidence digest](#acceptance-reports-carry-a-checkable-evidence-digest) records. Tracking does not authorize implementation.
+
+**Requires:** none.
+
+### Verify the Codex handover path of 3.2.10
+
+Raised at triage of run `36aad5de-2825-4818-ba8c-e1ea8c8e72a4` on 2026-09-26. 3.2.10 requires a Codex controller to record its goal with `kind: "goal"` and changes the handover acknowledgement text, but its installed-host evidence covers Claude Code only: the Codex lane was blocked when the production Codex login was revoked, as recorded in [the acceptance report](reports/unattended-stop-hook-20260926.md). The runtime rules are covered by deterministic tests on both hosts. The user chose to track the verification.
+
+Run a Codex first-use and new-run handover scenario against 3.2.10, with a fixture-owned login or API key per [Codex acceptance fixtures copy the live credential](#codex-acceptance-fixtures-copy-the-live-credential), before or right after publishing 3.2.10, and record the goal kind, the acknowledgement wording and continuation in the acceptance report. Tracking does not authorize implementation.
+
+**Requires:** none.
+
+### Stop hook resume context carries a stale revision
+
+Found by the cumulative assessments of run `36aad5de-2825-4818-ba8c-e1ea8c8e72a4` on 2026-09-26 and confirmed by a skeptic. When the Stop hook blocks a yield, `internal/runtime/hook.js` builds the continuation context from the state it read before its own `continuation-reminder` write, which advances the revision, so the resumed controller sees a revision one behind. Since 3.2.10 every Claude Code handover passes through this path, because the acknowledgement ends the turn and the Stop hook resumes it; in both live acknowledgement runs the first `claim-controller` was refused with `stale-owner` before the controller re-read status. The prescribed status read recovers it, so the cost is one refused call per handover. The user chose to track it at triage.
+
+Have the Stop hook's block context carry the revision its own reminder write produced, with a hook test that parses the block reason and compares its revision with the saved state. Runtime code, so it ships with a version increase. Tracking does not authorize implementation.
+
+**Requires:** none.
+
+### Create silently ignores unknown request fields
+
+Observed on 2026-09-25 in an installed 3.2.10 fixture of run `36aad5de-2825-4818-ba8c-e1ea8c8e72a4`. The fixture controller passed its verified Stop hook mechanism to the runtime `create` operation in a `continuation` field; `create` created the run unattended with the handover recorded and silently dropped the field, so continuation stayed empty until a separate `continuation` operation. Execution is refused until continuation is verified, so nothing ran unverified. The runtime reference sentence that invited the reading was clarified in 3.2.10; unknown `action` values are already refused with the accepted list, unknown fields inside a request are not. The user chose to track it at triage.
+
+Make `create` reject unknown request fields with the accepted field list, as unknown actions already are, and consider the same for other operations. Runtime code, so it ships with a version increase. Tracking does not authorize implementation.
+
+**Requires:** none.
+
 ### Honor escaped punctuation in heading anchors
 
 Found by the final assessment of run `6e70931a-3760-46e2-b628-fdaa4a29f0e3` on 2026-09-25 and confirmed by a skeptic. `plainText` in `internal/backlog-links.js` ignores backslash escapes in heading text, so several escaped headings slug differently from GitHub and a correct link to them draws a false broken-anchor notice: `## \_private\_` slugs to `private` (GitHub `_private_`), `## \_\_init\_\_` to `_init_` (GitHub `__init__`), `## \<b\> tag` to `-tag` (GitHub `b-tag`) and `## \[text\](url)` to `text` (GitHub `texturl`), because the link, tag and emphasis passes all run on the raw, still-escaped text. Escaped asterisks, `#` and backticks already match. Notices only; no heading in this repository contains an escape. The user chose to track it at triage rather than extend the 3.2.9 review.
