@@ -4,6 +4,14 @@ V2 entries are preserved in [the historical index](migration/v2/QUICK_WINS.md) a
 
 ## Current
 
+### Make a readback ask plainly to begin the work
+
+Observed on 2026-09-27 before run `c0645b3f-eb97-45d6-8790-d2ba6dfe55e9`. The user raised the idea of renaming the second priority, and the controller replied with a scope list ending "Does this scope and wording work for you, or do you want to adjust the Trust paragraph first?" The user answered "looks good to me, and it seems you agree with this change?", and the controller answered the question, created an attended run and implemented in the same reply. The user later said the reply "didn't look like a Nightshift readback", so "looks good to me" was not an acknowledgement to start work: "in my mind we were still bouncing ideas." The user kept the result. [The operating brief](../internal/workflow.md) requires "a short understanding readback and confirmation" but does not say the readback must ask plainly to begin the work, nor that agreement with an idea, wording or direction during discussion differs from implementation agreement; the Ready skill's selection rules cover only items chosen from the ready set. The user chose to track it at triage.
+
+State in the operating brief that a readback says plainly it is asking to begin the agreed work, that only an answer to that question starts implementation, and that agreement with an idea, wording or direction while discussing it is not implementation agreement. Shipped text, so it rides with the next version increase. Tracking does not authorize implementation.
+
+**Requires:** none.
+
 ### Document how to record a changed agreement mid-run
 
 Observed on 2026-09-27 in run `c0645b3f-eb97-45d6-8790-d2ba6dfe55e9`. Mid-implementation the user widened the agreed rename of the second priority into a reshape of the invariant priorities. The only runtime path that replaces a task's agreed outcome is a `user-decision` block followed by `unblock` with an `updatedOutcome` field (the `unblock` case in `internal/runtime/lifecycle.js`), so the controller had to record a block for a decision the user had already made. `updatedOutcome` appears only in `lifecycle.js` and `tests/runtime-review.test.js`; neither [the runtime reference](../internal/runtime/REFERENCE.md) nor [the operating brief](../internal/workflow.md) mentions it, and the controller found it by reading source. A controller that misses it can continue under a stale agreement, which later reviews would assess against the wrong commitments. The user chose to track it at triage.
