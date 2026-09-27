@@ -4,6 +4,14 @@ V2 entries are preserved in [the historical index](migration/v2/QUICK_WINS.md) a
 
 ## Current
 
+### Tell reviewers the bound release's probe copy layout
+
+Observed on 2026-09-27 in run `b6ca7513-7450-4d3d-9e5d-ec8fcf0da095`, bound to installed 3.2.8 while the checkout carried the 3.2.10 runtime. An Astra reviewer (receipt `bc46bddc-9684-4497-b556-5801f00da3ef`) returned `incomplete` and proposed an evidence probe that asserted its working directory matched `.nightshift/runs/c/<eight hex digits>`, the private-copy layout the checkout's 3.2.10 runtime defines in `internal/runtime/copies.js`, which is where that reviewer read the pattern. The bound 3.2.8 runtime placed the copy under the dispatch directory, so the probe failed its own assertion with exit code 1, and the evidence was then supplied as selected artifacts at the cost of another assessment round of 659,428 tokens. Reviewers read the checkout's runtime source and documentation rather than the bound release's, so this recurs whenever the two differ, which is routine in this repository while a candidate is unpublished or not yet installed. The user chose to track it at triage as low priority.
+
+Tell reviewers the executing release's probe working-directory layout, or its version, in the assessment request, so a probe does not hardcode a layout taken from the checkout. Tracking does not authorize implementation.
+
+**Requires:** none.
+
 ### State the enforced run-creation condition in the runtime reference
 
 Raised on 2026-09-27 by an Astra skeptic (receipt `165f9a65-742e-43eb-b24c-5f23f5391b86`, run `b6ca7513-7450-4d3d-9e5d-ec8fcf0da095`) as a side observation, not an assessed finding. [The runtime reference](../internal/runtime/REFERENCE.md) says "Another run cannot take the checkout while the current run is unfinished or has active workers." The condition `create` in `internal/runtime/store.js` actually enforces is that the previous run is complete or stopped with no active workers, so a stopped run with pending tasks can be replaced; never replacing an unfinished run is a rule of [the operating brief](../internal/workflow.md), not a runtime guarantee. The reference's next sentence mentions stopped runs, so it may read correctly if "unfinished" means neither complete nor stopped, but it is ambiguous, and the same misreading reached a feature record in that run before review corrected it. The user chose to track it at triage.
