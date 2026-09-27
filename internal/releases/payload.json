@@ -1,17 +1,17 @@
 {
   "schema": 1,
   "name": "nightshift",
-  "version": "3.2.11",
+  "version": "3.2.12",
   "files": [
     {
       "path": ".claude-plugin/plugin.json",
       "bytes": 641,
-      "sha256": "a2b7966c9e7537c0577aa7049339bd4684bdbf86c9d661c63cf9c833d780a7b3"
+      "sha256": "838da6d3d078e7ecc89f3859f78ae9165fd09f9455283f22efc145f4a0f19f45"
     },
     {
       "path": ".codex-plugin/plugin.json",
       "bytes": 1161,
-      "sha256": "87a5e5435f37e5ad22d372b13ef765ed83c4543d39947adb92683bd834fae2be"
+      "sha256": "35ddb1b54574e97559ee363c908a38a1aedbab6a3121c43855445d70a509789a"
     },
     {
       "path": "LICENSE",
@@ -170,13 +170,13 @@
     },
     {
       "path": "internal/runtime/evidence.js",
-      "bytes": 6210,
-      "sha256": "70dc910e675f392d253ee041b156aaefbbb2bf7cab23295fe8f2cbe54f96d177"
+      "bytes": 10432,
+      "sha256": "35b3ddad5710c8eac676d6fb548c89c99fb5f317a189ca9276785cd5dcd63eb9"
     },
     {
       "path": "internal/runtime/hook.js",
-      "bytes": 6396,
-      "sha256": "2d3577ab5fc00fd2c6369973e798271cbd4b4265328bc40651a702037b232661"
+      "bytes": 6654,
+      "sha256": "02ee473475589463b5f52bbf39afabaf49ba9e06e63ec707b2b707839a4575f4"
     },
     {
       "path": "internal/runtime/hosts.js",
@@ -185,8 +185,8 @@
     },
     {
       "path": "internal/runtime/lifecycle.js",
-      "bytes": 33794,
-      "sha256": "c97a545ef3873991aad6dd2f86b56500e29758197a36a2561ca6893992d460b2"
+      "bytes": 33670,
+      "sha256": "8308342bb9ba6a4bc7358acc33066785dee4fd9f17c48c21bc8d1adaaa4f0f4a"
     },
     {
       "path": "internal/runtime/limits.js",
@@ -195,8 +195,8 @@
     },
     {
       "path": "internal/runtime/native-worker-evidence.js",
-      "bytes": 5495,
-      "sha256": "821f3d71b9cf0f3eef07c5b6e81925810ade6d0038ba8aa822ad7bb66f3c6fa7"
+      "bytes": 5451,
+      "sha256": "1a05860c6c17ff9085b3c3e9b97c51e9af35966b3df7b9adbd208d4880716c2c"
     },
     {
       "path": "internal/runtime/operations.js",
@@ -265,8 +265,8 @@
     },
     {
       "path": "internal/workflow.md",
-      "bytes": 24424,
-      "sha256": "aea0d606ac43709c060a7783e54ed9976a7adc05002264ce7beaa71877f62a6b"
+      "bytes": 24759,
+      "sha256": "5cd0c6e7e354fa143e471299c74c671e95e229bd4788b89a04919e3faab13106"
     },
     {
       "path": "skills/exploring/SKILL.md",
@@ -330,8 +330,8 @@
     },
     {
       "path": "skills/ready/SKILL.md",
-      "bytes": 3107,
-      "sha256": "aaf7227f10609708e896867dbc897bbf52baa871ede1bf6d99bc2951c46dc6ae"
+      "bytes": 3247,
+      "sha256": "c812d5c361661dbbf1f91f42b041478051430f0caf1c68f614e0374fd69e3224"
     },
     {
       "path": "skills/ready/ready.js",
