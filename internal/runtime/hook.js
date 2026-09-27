@@ -28,6 +28,10 @@ function withReportNotice(context, notice) {
   return notice ? `${context}\nNightshift morning report. ${reportInstruction(notice)}\n${JSON.stringify(notice)}` : context;
 }
 
+function continuationContext(brief) {
+  return 'Nightshift continuation. Reconcile the saved state and actual files before dependent actions.\n' + JSON.stringify(brief);
+}
+
 function sessionStartContext(context) {
   return { hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext: context } };
 }
@@ -55,7 +59,6 @@ function handleHook(input) {
       return {};
     }
     const brief = obligationBrief(state, root, { verifyFreshness: false });
-    const context = 'Nightshift continuation. Reconcile the saved state and actual files before dependent actions.\n' + JSON.stringify(brief);
     if (input.hook_event_name === 'Stop') {
       const protectedRun = state.handover || state.mode === 'unattended';
       // Stop follows every reply, so an attended run without a handover ends its turns silently.
@@ -71,12 +74,13 @@ function handleHook(input) {
       const previous = state.stopRecovery;
       const reminders = previous?.revision === state.revision ? previous.reminders + 1 : 1;
       if (reminders > 3) return { continue: false, stopReason: 'Nightshift continuation made no recorded progress after three reminders. Work remains incomplete. Reconcile the saved state and repair the continuation mechanism before unattended resumption.' };
-      store.update(state.controller, state.revision, 'continuation-reminder', current => {
+      const reminded = store.update(state.controller, state.revision, 'continuation-reminder', current => {
         current.stopRecovery = { reminders, revision: current.revision + 1 };
       });
-      return { decision: 'block', reason: context };
+      // The reminder write advances the revision, so the resumed controller's brief is built from the state it wrote.
+      return { decision: 'block', reason: continuationContext(obligationBrief(reminded, root, { verifyFreshness: false })) };
     }
-    if (starting) return sessionStartContext(withReportNotice(context, reportNotice(state, root)));
+    if (starting) return sessionStartContext(withReportNotice(continuationContext(brief), reportNotice(state, root)));
     if (input.hook_event_name === 'PreCompact') return { systemMessage: 'Nightshift saved state is authoritative for outstanding commitments, findings, evidence and ownership. Reconcile it after compaction.' };
     return {};
   } finally { store.close(); }

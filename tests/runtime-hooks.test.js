@@ -47,6 +47,22 @@ test('hooks recover obligations after compaction and premature yield without tak
   assert.deepEqual(handleHook(input), {});
 });
 
+test('a Stop reminder resumes the controller at the revision the reminder wrote', t => {
+  const parent = path.resolve(__dirname, '../.tmp/hook-tests');
+  fs.mkdirSync(parent, { recursive: true });
+  const root = fs.mkdtempSync(path.join(parent, 'revision-'));
+  const store = new RunStore(root, { create: true });
+  t.after(() => { store.close(); fs.rmSync(root, { recursive: true, force: true }); });
+  const actor = { host: 'claude', session: 'owner' };
+  store.create({ objective: 'Deliver accepted work', authority: 'User handover', mode: 'unattended', controller: actor, tasks: [{ id: 'work', title: 'Work', agreement: { source: 'User', outcome: 'Preserve the selection' } }] });
+  for (let reminder = 1; reminder <= 2; reminder++) {
+    const result = handleHook({ cwd: root, session_id: actor.session, hook_event_name: 'Stop' });
+    assert.equal(result.decision, 'block');
+    const brief = JSON.parse(result.reason.slice(result.reason.indexOf('\n') + 1));
+    assert.equal(brief.revision, store.read().revision, `reminder ${reminder} carries the stored revision`);
+  }
+});
+
 test('delegation preserves writes, reviewer strength and controller judgment', t => {
   const parent = path.resolve(__dirname, '../.tmp/hook-tests');
   fs.mkdirSync(parent, { recursive: true });
