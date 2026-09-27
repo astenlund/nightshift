@@ -33,24 +33,87 @@ function projectFile(root, relative) {
   return current;
 }
 
-function snapshot(root, paths) {
-  requireCondition(Array.isArray(paths) && paths.length > 0, 'empty-evidence', 'Snapshot requires artifact paths');
-  const files = [...new Set(paths)].sort().map(relative => {
+const GIT_OPTIONS = { windowsHide: true, encoding: 'utf8', maxBuffer: 32 * 1024 * 1024, timeout: 30000 };
+
+const gitObjectId = (bytes, format) => createHash(format).update(`blob ${bytes.length}\0`).update(bytes).digest('hex');
+
+// The Git object ids these exact bytes would have as committed content: as read, and with CRLF line endings converted to LF.
+function normalizedCandidates(bytes, format) {
+  const candidates = [gitObjectId(bytes, format)];
+  if (bytes.includes(13)) candidates.push(gitObjectId(Buffer.from(bytes.toString('latin1').replaceAll('\r\n', '\n'), 'latin1'), format));
+  return candidates;
+}
+
+// Every write moves a file's change time, so an unchanged stamp shows that no write landed between two observations.
+function writeStamp(target) {
+  const metadata = fs.statSync(target, { bigint: true, throwIfNoEntry: false });
+  return metadata ? `${metadata.size}:${metadata.mtimeNs}:${metadata.ctimeNs}` : null;
+}
+
+// With an object format, each existing file also carries its normalized candidates, computed from the same bytes as its raw hash, and the write stamp taken before those bytes were read.
+function readIdentities(root, paths, format = null) {
+  return [...new Set(paths)].sort().map(relative => {
     const target = projectFile(root, relative);
     if (!fs.existsSync(target)) return { path: relative, sha256: null };
     requireCondition(fs.statSync(target).isFile(), 'unsafe-path', `Unsupported reviewed entry ${relative}: snapshots require regular files; submodule directories need explicit reconciliation`);
-    return { path: relative, sha256: hash(fs.readFileSync(target)) };
+    const stamp = format ? writeStamp(target) : null;
+    const bytes = fs.readFileSync(target);
+    return format ? { path: relative, sha256: hash(bytes), candidates: normalizedCandidates(bytes, format), target, stamp } : { path: relative, sha256: hash(bytes) };
   });
+}
+
+function fileSha256(root, relative) {
+  return readIdentities(root, [relative])[0].sha256;
+}
+
+// The worktree's object format, or null outside a Git worktree or when Git cannot report it.
+function gitObjectFormat(root) {
+  const result = spawnSync('git', ['rev-parse', '--is-inside-work-tree', '--show-object-format'], { ...GIT_OPTIONS, cwd: root });
+  if (result.error || result.status !== 0) return null;
+  const [inside, format] = result.stdout.split('\n').map(line => line.trim());
+  return inside === 'true' && ['sha1', 'sha256'].includes(format) ? format : null;
+}
+
+// Git rereads each file from disk, so its id can describe other content than the bytes read here. Keep it only when the file's write stamp shows no write between the two reads and the id is one of that file's own candidates.
+function verifiedBlobs(root, files) {
+  const verified = new Map();
+  if (files.length === 0 || files.some(file => file.path.includes('\n'))) return verified;
+  const result = spawnSync('git', ['hash-object', '--stdin-paths'], { ...GIT_OPTIONS, cwd: root, input: files.map(file => file.path).join('\n') + '\n' });
+  if (result.error || result.status !== 0) return verified;
+  const ids = result.stdout.split('\n').map(line => line.trim()).filter(Boolean);
+  if (ids.length !== files.length) return verified;
+  files.forEach((file, index) => { if (file.candidates.includes(ids[index]) && writeStamp(file.target) === file.stamp) verified.set(file.path, ids[index]); });
+  return verified;
+}
+
+// The digest covers each recorded blob id, so evidence cannot gain a normalized identity that its dispatch did not record.
+function snapshot(root, paths) {
+  requireCondition(Array.isArray(paths) && paths.length > 0, 'empty-evidence', 'Snapshot requires artifact paths');
+  const format = gitObjectFormat(root);
+  const read = readIdentities(root, paths, format);
+  const blobs = format ? verifiedBlobs(root, read.filter(file => file.sha256 !== null)) : new Map();
+  const files = read.map(({ candidates, target, stamp, ...file }) => blobs.has(file.path) ? { ...file, blob: blobs.get(file.path) } : file);
   return { digest: hash(JSON.stringify(files)), files };
 }
 
+// Unchanged bytes are fresh. Changed bytes are fresh only when Git would commit the same content, as after a line-ending renormalization; evidence recorded without blob ids keeps the byte comparison.
 function fresh(root, evidence) {
   if (!evidence || !Array.isArray(evidence.files) || evidence.files.length === 0) return false;
+  if (hash(JSON.stringify(evidence.files)) !== evidence.digest) return false;
   if (evidence.inventory) {
     const current = projectInventory(root, evidence.excludedPaths ?? [], evidence.includedPaths ?? []);
     if (JSON.stringify(current) !== JSON.stringify(evidence.files.map(file => file.path))) return false;
   }
-  return snapshot(root, evidence.files.map(file => file.path)).digest === evidence.digest;
+  const current = new Map(readIdentities(root, evidence.files.map(file => file.path)).map(file => [file.path, file.sha256]));
+  const changed = evidence.files.filter(file => current.get(file.path) !== file.sha256);
+  if (changed.length === 0) return true;
+  if (changed.some(file => file.sha256 === null || current.get(file.path) === null || typeof file.blob !== 'string')) return false;
+  const format = gitObjectFormat(root);
+  if (!format) return false;
+  const reread = readIdentities(root, changed.map(file => file.path), format);
+  if (reread.some(file => file.sha256 === null)) return false;
+  const blobs = verifiedBlobs(root, reread);
+  return changed.every(file => blobs.get(file.path) === file.blob);
 }
 
 function projectInventory(root, excluded = [], included = []) {
@@ -102,4 +165,4 @@ function verifyCommand(root, request) {
   return { ...result, snapshot: after, inputsUnchanged, passed: !result.error && result.exitCode === 0 && inputsUnchanged };
 }
 
-module.exports = { executeCommand, fileIdentity, fresh, hash, projectFile, projectInventory, snapshot, verifyCommand };
+module.exports = { executeCommand, fileIdentity, fileSha256, fresh, hash, projectFile, projectInventory, snapshot, verifyCommand };

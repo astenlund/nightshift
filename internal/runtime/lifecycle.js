@@ -5,7 +5,7 @@ const { workerIsActive } = require('./workers');
 const { isDeepStrictEqual } = require('node:util');
 
 const { requireCondition, text } = require('./store');
-const { fresh, projectFile, snapshot } = require('./evidence');
+const { fileSha256, fresh, projectFile } = require('./evidence');
 const { exhaustedLimit } = require('./limits');
 const { unknownActionMessage } = require('./actions');
 
@@ -83,22 +83,17 @@ function reportSatisfied(state) {
   return !state.handover || Boolean(state.closing?.reportEvidence);
 }
 
-function reportFileHash(root, relative) {
-  const [file] = snapshot(root, [relative]).files;
-  return file.sha256;
-}
-
 function reportEvidenceFor(root, relative) {
   text(relative, 'report.path');
   requireCondition(relative.startsWith(REPORT_DIRECTORY) && relative.endsWith('.md'), 'invalid-report', `The morning report is a Markdown file under ${REPORT_DIRECTORY}`);
-  const sha256 = reportFileHash(root, relative);
+  const sha256 = fileSha256(root, relative);
   requireCondition(sha256 !== null && fs.statSync(projectFile(root, relative)).size > 0, 'invalid-report', 'The morning report file is missing or empty');
   return { path: relative, sha256 };
 }
 
 function reportIsCurrent(root, evidence) {
   try {
-    return reportFileHash(root, evidence.path) === evidence.sha256;
+    return fileSha256(root, evidence.path) === evidence.sha256;
   } catch {
     // An unreadable or unsafe report path is a stale report, never a current one.
     return false;

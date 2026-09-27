@@ -4,8 +4,9 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const test = require('node:test');
+const { spawnSync } = require('node:child_process');
 const { RunStore } = require('../internal/runtime/store');
-const { snapshot, fresh, verifyCommand } = require('../internal/runtime/evidence');
+const { hash, snapshot, fresh, verifyCommand } = require('../internal/runtime/evidence');
 const { DIMENSIONS, commitmentsFor, obligationBrief, reviewGate, transition } = require('../internal/runtime/lifecycle');
 const { execute } = require('../internal/runtime/cli');
 
@@ -186,6 +187,93 @@ test('failed checks and changed inputs cannot count as verification', t => {
   fs.writeFileSync(path.join(f.root, 'subject.txt'), 'changed\r\n');
   assert.equal(fresh(f.root, check.snapshot), false);
   assert.throws(() => apply(f, { action: 'check', evidence: check }), { code: 'stale-evidence' });
+});
+
+function gitFixture(t) {
+  const root = fs.mkdtempSync(path.join(scratch, 'git-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const init = spawnSync('git', ['init', '-q'], { cwd: root, windowsHide: true, encoding: 'utf8' });
+  assert.equal(init.status, 0, init.stderr);
+  fs.writeFileSync(path.join(root, '.gitattributes'), '*.txt text eol=lf\n');
+  fs.writeFileSync(path.join(root, 'subject.txt'), 'original\r\nsecond\r\n');
+  return root;
+}
+
+test('a line-ending renormalization that leaves Git content unchanged keeps evidence fresh', t => {
+  const root = gitFixture(t);
+  const evidence = snapshot(root, ['subject.txt']);
+  assert.match(evidence.files[0].blob, /^[0-9a-f]{40,64}$/);
+  fs.writeFileSync(path.join(root, 'subject.txt'), 'original\nsecond\n');
+  assert.equal(fresh(root, evidence), true);
+  const withoutBlob = evidence.files.map(({ blob, ...file }) => file);
+  assert.equal(fresh(root, { digest: hash(JSON.stringify(withoutBlob)), files: withoutBlob }), false, 'evidence recorded without blob ids keeps the byte comparison');
+  const forged = evidence.files.map(file => ({ ...file, blob: '0'.repeat(40) }));
+  assert.equal(fresh(root, { ...evidence, files: forged }), false, 'blob ids outside the recorded digest are not trusted');
+  fs.writeFileSync(path.join(root, 'subject.txt'), 'changed\nsecond\n');
+  assert.equal(fresh(root, evidence), false);
+});
+
+test('a blob Git reports for anything but a line-ending normalization of the bytes read is not recorded', t => {
+  const root = gitFixture(t);
+  fs.writeFileSync(path.join(root, 'mark.cjs'), "'use strict';\nconst chunks = [];\nprocess.stdin.on('data', chunk => chunks.push(chunk)).on('end', () => process.stdout.write(Buffer.concat([...chunks, Buffer.from('marked\\n')])));\n");
+  const filter = spawnSync('git', ['config', 'filter.mark.clean', `"${process.execPath.split(path.sep).join('/')}" mark.cjs`], { cwd: root, windowsHide: true, encoding: 'utf8' });
+  assert.equal(filter.status, 0, filter.stderr);
+  fs.writeFileSync(path.join(root, '.gitattributes'), '*.txt text eol=lf filter=mark\n');
+  const evidence = snapshot(root, ['subject.txt']);
+  assert.equal(evidence.files[0].blob, undefined);
+  assert.equal(fresh(root, evidence), true);
+  fs.writeFileSync(path.join(root, 'subject.txt'), 'original\nsecond\n');
+  assert.equal(fresh(root, evidence), false);
+});
+
+test('a line-ending rewrite between the raw read and Git hashing binds no second content', t => {
+  const evidencePath = JSON.stringify(path.resolve(__dirname, '../internal/runtime/evidence.js'));
+  const race = [
+    "'use strict';",
+    "const fs = require('node:fs');",
+    "const path = require('node:path');",
+    "const cp = require('node:child_process');",
+    'const spawnSync = cp.spawnSync;',
+    "const subject = path.join(__dirname, 'subject.txt');",
+    'let rewrite = true;',
+    "cp.spawnSync = (executable, args, options) => {",
+    "  if (rewrite && executable === 'git' && args[0] === 'hash-object') { rewrite = false; fs.writeFileSync(subject, 'original\\nsecond\\n'); }",
+    '  return spawnSync(executable, args, options);',
+    '};',
+    `const { snapshot, fresh } = require(${evidencePath});`,
+    "const evidence = snapshot(__dirname, ['subject.txt']);",
+    'const freshRewritten = fresh(__dirname, evidence);',
+    "fs.writeFileSync(subject, 'original\\r\\nsecond\\r\\n');",
+    "process.stdout.write(JSON.stringify({ blob: evidence.files[0].blob ?? null, freshRewritten, freshOriginal: fresh(__dirname, evidence) }));",
+  ].join('\n') + '\n';
+  for (const attributes of ['*.txt -text\n', '']) {
+    const root = gitFixture(t);
+    spawnSync('git', ['config', 'core.autocrlf', 'false'], { cwd: root, windowsHide: true });
+    fs.writeFileSync(path.join(root, '.gitattributes'), attributes);
+    fs.writeFileSync(path.join(root, 'race.cjs'), race);
+    const result = spawnSync(process.execPath, ['race.cjs'], { cwd: root, windowsHide: true, encoding: 'utf8' });
+    assert.equal(result.status, 0, result.stderr);
+    assert.deepEqual(JSON.parse(result.stdout), { blob: null, freshRewritten: false, freshOriginal: true }, `attributes ${JSON.stringify(attributes)}`);
+  }
+});
+
+test('a check still compares raw bytes, and evidence outside a Git worktree records none', t => {
+  const root = gitFixture(t);
+  const renormalize = path.join(root, 'renormalize.cjs');
+  fs.writeFileSync(renormalize, "require('node:fs').writeFileSync(require('node:path').join(__dirname, 'subject.txt'), 'original\\nsecond\\n');\n");
+  const check = verifyCommand(root, { name: 'renormalizing check', executable: process.execPath, args: [renormalize], paths: ['subject.txt'] });
+  assert.equal(check.inputsUnchanged, false);
+  assert.equal(check.passed, false);
+  const outside = fs.mkdtempSync(path.join(scratch, 'plain-'));
+  t.after(() => fs.rmSync(outside, { recursive: true, force: true }));
+  fs.writeFileSync(path.join(outside, 'subject.txt'), 'original\r\n');
+  const previous = process.env.GIT_CEILING_DIRECTORIES;
+  process.env.GIT_CEILING_DIRECTORIES = scratch;
+  t.after(() => { if (previous === undefined) delete process.env.GIT_CEILING_DIRECTORIES; else process.env.GIT_CEILING_DIRECTORIES = previous; });
+  const evidence = snapshot(outside, ['subject.txt']);
+  assert.equal(evidence.files[0].blob, undefined);
+  fs.writeFileSync(path.join(outside, 'subject.txt'), 'original\n');
+  assert.equal(fresh(outside, evidence), false);
 });
 
 test('independent tasks remain actionable when another item needs the user', t => {

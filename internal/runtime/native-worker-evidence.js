@@ -1,7 +1,7 @@
 'use strict';
 
 const fs = require('node:fs');
-const { hash, projectFile, snapshot } = require('./evidence');
+const { fileSha256, hash, projectFile } = require('./evidence');
 const { requireCondition, text } = require('./store');
 const { workerIsActive } = require('./workers');
 const { codexModelContradiction } = require('./hosts');
@@ -72,15 +72,15 @@ function nativeWorkerTermination(root, relative, worker, state) {
   try {
     const file = projectFile(root, relative);
     if (fs.statSync(file).size > 32 * 1024 * 1024) return null;
-    const before = snapshot(root, [relative]);
+    const before = fileSha256(root, relative);
     const bytes = fs.readFileSync(file);
     if (bytes[0] === 239 && bytes[1] === 187 && bytes[2] === 191) return null;
-    if (hash(bytes) !== before.files[0].sha256) return null;
+    if (hash(bytes) !== before) return null;
     const events = bytes.toString('utf8').trim().split(/\r?\n/).map(line => JSON.parse(line));
     const terminal = worker.host === 'claude' ? claudeTerminal(events, state, worker) : codexTerminal(events, state, worker);
-    if (!terminal || snapshot(root, [relative]).digest !== before.digest) return null;
+    if (!terminal || fileSha256(root, relative) !== before) return null;
 
-    return { workerId: worker.id, kind: 'native-terminal-result', host: worker.host, session: worker.session, path: relative, sha256: before.files[0].sha256, runId: state.id, requestId: worker.id, observedAt: new Date().toISOString(), ...terminal };
+    return { workerId: worker.id, kind: 'native-terminal-result', host: worker.host, session: worker.session, path: relative, sha256: before, runId: state.id, requestId: worker.id, observedAt: new Date().toISOString(), ...terminal };
   } catch {
     // Missing, malformed, changing or unattributable native evidence remains unknown.
     return null;
