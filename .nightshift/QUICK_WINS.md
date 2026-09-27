@@ -4,6 +4,22 @@ V2 entries are preserved in [the historical index](migration/v2/QUICK_WINS.md) a
 
 ## Current
 
+### Hand stored probe results over after a line-ending renormalization
+
+Found on 2026-09-27 by the cumulative assessment of run `d42fe76e-3954-4ef8-99db-727790f12ee2` and confirmed by a skeptic. Review freshness now tolerates a line-ending renormalization, so a probe still runs after a commit or rebase renormalizes a reviewed file, but `loadProbeEvidence` in `internal/runtime/probes.js` hands a stored result to the next assessment only when the stored snapshot and context digests equal the new ones exactly. The result is then withheld with no diagnostic, costing a wasted dispatch and a repeated probe; the skeptic found it neither unsafe nor a stall. [The runtime reference](../internal/runtime/REFERENCE.md) and the README state the limit. The user chose to track it at triage.
+
+Let the handoff accept a stored result whose recorded snapshot is equivalent under the same Git-normalized identity `fresh()` uses, which needs the originating snapshot files rather than only digests, report withheld probe references to the controller, and add a handoff test after a renormalization. Runtime code, so it ships with a version increase. Tracking does not authorize implementation.
+
+**Requires:** none.
+
+### Say at handover when the session runs an older release than the installed one
+
+Observed on 2026-09-27 in run `d42fe76e-3954-4ef8-99db-727790f12ee2`. The session was bound to release 3.2.8 when the user handed over, although 3.2.11 was installed and reloaded, because an existing session keeps its exact bound release. Under 3.2.8 rules a Claude Code handover is recorded attended, since only a native goal counts as continuation, so the run stayed attended under Stop hook protection. Nothing told the user at handover that a fresh session would have run it unattended with the newer behavior. The user chose to track it at triage.
+
+When a handover or run creation happens in a session bound to an older release than the installed one, say so plainly in the acknowledgement or readback and name the fresh-session recovery, so the user can choose before leaving. Shipped skill or runtime text, so it ships with a version increase. Tracking does not authorize implementation.
+
+**Requires:** none.
+
 ### Document how to record a changed agreement mid-run
 
 Observed on 2026-09-27 in run `c0645b3f-eb97-45d6-8790-d2ba6dfe55e9`. Mid-implementation the user widened the agreed rename of the second priority into a reshape of the invariant priorities. The only runtime path that replaces a task's agreed outcome is a `user-decision` block followed by `unblock` with an `updatedOutcome` field (the `unblock` case in `internal/runtime/lifecycle.js`), so the controller had to record a block for a decision the user had already made. `updatedOutcome` appears only in `lifecycle.js` and `tests/runtime-review.test.js`; neither [the runtime reference](../internal/runtime/REFERENCE.md) nor [the operating brief](../internal/workflow.md) mentions it, and the controller found it by reading source. A controller that misses it can continue under a stale agreement, which later reviews would assess against the wrong commitments. The user chose to track it at triage.
@@ -81,6 +97,8 @@ Honor backslash escapes in heading and title text before every markup pass in `p
 Observed throughout run `6e70931a-3760-46e2-b628-fdaa4a29f0e3` on 2026-09-25. After every repair, the read-only code reviewer (Codex `gpt-6-astra`) returned `incomplete` and requested probes of the same deterministic suites (Ready fixtures, unwrap fixtures, setup, package and release-gate tests) that the controller had just recorded as passing runtime checks on identical inputs. In 13 of the Codex reviewer's 15 incomplete returns the request also carried a genuinely new boundary probe, and only two asked for the suites alone, so handing over the recorded checks would mainly save the repeated suite executions in private copies (three or four suites per round, with the setup suite failing on path depth every time) rather than whole dispatches. Whether dispatch should hand reviewers the recorded check evidence, or reviewers should accept it, is undecided. The user chose to track it at triage.
 
 Supply each task's latest passing named checks (command, exit status, input hashes) to the reviewer as evidence when their inputs match the reviewed snapshot, and state in the review brief when a probe rerun is still warranted. Runtime and review-brief changes ship with a version increase. Tracking does not authorize implementation.
+
+Recurred on 2026-09-27 in run `d42fe76e-3954-4ef8-99db-727790f12ee2`: the Astra lead returned `incomplete` with probe requests on 11 of its 20 completed passes (a 21st failed), and nine of those asked to rerun suites the controller had already recorded as passing checks on the same inputs, while boundary fixtures in five of them exposed real issues. The run spent 26 review and skeptic dispatches and about 18.1M reported tokens (15.7M Astra lead, 2.4M Fable skeptic; two failed attempts reported none) on a change of a few hundred lines. The user chose to add this recurrence at triage.
 
 **Requires:** none.
 
