@@ -4,14 +4,6 @@ V2 entries are preserved in [the historical index](migration/v2/QUICK_WINS.md) a
 
 ## Current
 
-### Make a readback ask plainly to begin the work
-
-Observed on 2026-09-27 before run `c0645b3f-eb97-45d6-8790-d2ba6dfe55e9`. The user raised the idea of renaming the second priority, and the controller replied with a scope list ending "Does this scope and wording work for you, or do you want to adjust the Trust paragraph first?" The user answered "looks good to me, and it seems you agree with this change?", and the controller answered the question, created an attended run and implemented in the same reply. The user later said the reply "didn't look like a Nightshift readback", so "looks good to me" was not an acknowledgement to start work: "in my mind we were still bouncing ideas." The user kept the result. [The operating brief](../internal/workflow.md) requires "a short understanding readback and confirmation" but does not say the readback must ask plainly to begin the work, nor that agreement with an idea, wording or direction during discussion differs from implementation agreement; the Ready skill's selection rules cover only items chosen from the ready set. The user chose to track it at triage.
-
-State in the operating brief that a readback says plainly it is asking to begin the agreed work, that only an answer to that question starts implementation, and that agreement with an idea, wording or direction while discussing it is not implementation agreement. Shipped text, so it rides with the next version increase. Tracking does not authorize implementation.
-
-**Requires:** none.
-
 ### Document how to record a changed agreement mid-run
 
 Observed on 2026-09-27 in run `c0645b3f-eb97-45d6-8790-d2ba6dfe55e9`. Mid-implementation the user widened the agreed rename of the second priority into a reshape of the invariant priorities. The only runtime path that replaces a task's agreed outcome is a `user-decision` block followed by `unblock` with an `updatedOutcome` field (the `unblock` case in `internal/runtime/lifecycle.js`), so the controller had to record a block for a decision the user had already made. `updatedOutcome` appears only in `lifecycle.js` and `tests/runtime-review.test.js`; neither [the runtime reference](../internal/runtime/REFERENCE.md) nor [the operating brief](../internal/workflow.md) mentions it, and the controller found it by reading source. A controller that misses it can continue under a stale agreement, which later reviews would assess against the wrong commitments. The user chose to track it at triage.
@@ -65,14 +57,6 @@ Give Codex acceptance fixtures their own login or an API key and never copy the 
 Raised at triage of run `36aad5de-2825-4818-ba8c-e1ea8c8e72a4` on 2026-09-26. 3.2.10 requires a Codex controller to record its goal with `kind: "goal"` and changes the handover acknowledgement text, but its installed-host evidence covers Claude Code only: the Codex lane was blocked when the production Codex login was revoked, as recorded in [the acceptance report](reports/unattended-stop-hook-20260926.md). The runtime rules are covered by deterministic tests on both hosts. The user chose to track the verification.
 
 Run a Codex first-use and new-run handover scenario against 3.2.10, with a fixture-owned login or API key per [Codex acceptance fixtures copy the live credential](#codex-acceptance-fixtures-copy-the-live-credential), before or right after publishing 3.2.10, and record the goal kind, the acknowledgement wording and continuation in the acceptance report. Tracking does not authorize implementation.
-
-**Requires:** none.
-
-### Stop hook resume context carries a stale revision
-
-Found by the cumulative assessments of run `36aad5de-2825-4818-ba8c-e1ea8c8e72a4` on 2026-09-26 and confirmed by a skeptic. When the Stop hook blocks a yield, `internal/runtime/hook.js` builds the continuation context from the state it read before its own `continuation-reminder` write, which advances the revision, so the resumed controller sees a revision one behind. Since 3.2.10 every Claude Code handover passes through this path, because the acknowledgement ends the turn and the Stop hook resumes it; in both live acknowledgement runs the first `claim-controller` was refused with `stale-owner` before the controller re-read status. The prescribed status read recovers it, so the cost is one refused call per handover. The user chose to track it at triage.
-
-Have the Stop hook's block context carry the revision its own reminder write produced, with a hook test that parses the block reason and compares its revision with the saved state. Runtime code, so it ships with a version increase. Tracking does not authorize implementation.
 
 **Requires:** none.
 
