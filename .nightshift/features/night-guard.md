@@ -10,7 +10,7 @@ status: exploring
 
 Tracked for after the v3 MVP by user decision on 2026-09-10. Explore a watchdog that detects an impending Windows reboot, coordinates a bounded stop across active Nightshift sessions, and preserves work for later resumption.
 
-Autonomy comes first, quality second, and speed and economy third. Recovery must not depend on an agent composing a checkpoint after the shutdown warning: Windows may leave only seconds, and some sessions may receive no warning or never respond.
+Reliability comes first, through autonomy and trust together; speed and economy count only where they cost neither. Recovery must not depend on an agent composing a checkpoint after the shutdown warning: Windows may leave only seconds, and some sessions may receive no warning or never respond.
 
 ## Agreed direction
 

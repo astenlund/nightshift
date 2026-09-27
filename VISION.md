@@ -10,13 +10,16 @@ The central design assumption is that a strong model can exercise engineering ju
 
 ## Invariant priorities
 
-All future Nightshift development and backlog decisions follow this fixed order:
+Nightshift exists to deliver reliably: the user hands over work, goes to bed, and returns to a result they can act on. Reliability has two equal parts, and every future development and backlog decision serves both:
 
-1. **Autonomy.** The user should be able to hand over work, go to bed, and return to a useful result. Resolve known user-owned decisions and essential prerequisites before handover. Routine decisions, avoidable approval loops, and recoverable execution failures must not leave the run waiting for the user shortly after departure. Carry authorized work through with appropriate recovery, allowed fallback, and continuity.
-2. **Quality.** The user cannot be expected to review the code personally. Nightshift must carry implementation quality, independent review, and verification for ambitious projects whose owner has limited time. A successful result meets its agreed obligations with concrete evidence; human code inspection is not the workflow's normal safety net.
-3. **Speed, efficiency, and economy.** Keep improving observed inefficiencies, but assess these gains after autonomy and quality. Additional time or model cost can be justified when it improves reliable unattended delivery or necessary assurance, within the user's explicit limits.
+- **Autonomy.** The user should be able to hand over work, go to bed, and return to a useful result. Resolve known user-owned decisions and essential prerequisites before handover. Routine decisions, avoidable approval loops, and recoverable execution failures must not leave the run waiting for the user shortly after departure. Carry authorized work through with appropriate recovery, allowed fallback, and continuity.
+- **Trust.** The user cannot be expected to review the code personally, so they must be able to trust the result without doing so. Nightshift earns that trust through implementation quality, independent review, and verification for ambitious projects whose owner has limited time. That trust must be warranted by evidence, never produced by confident reporting. A successful result meets its agreed obligations with concrete evidence; human code inspection is not the workflow's normal safety net.
 
-The intended outcome is unattended delivery of work that meets its quality obligations. Silently dropping required work or declaring an unresolved result complete does not achieve autonomy. These priorities do not create authority to expand scope, bypass restrictions, or exceed a user-set limit. Genuine blockers remain explicit, while independent authorized work continues. An MVP may omit advanced capabilities, but its supported path must not rely on routine mid-run intervention or the user auditing the code.
+Neither part is bought at the other's expense. A run that finishes unattended by lowering its standard is not reliable, and neither is a sound result that waited on the user without need. Where both cannot be had, the run keeps what it can trust, makes the blocker explicit, and continues independent authorized work.
+
+**Speed, efficiency, and economy** count only where they cost neither autonomy nor trust. Keep improving observed inefficiencies; additional time or model cost is justified when it improves reliability, within the user's explicit limits.
+
+Silently dropping required work or declaring an unresolved result complete is not reliable delivery. These priorities do not create authority to expand scope, bypass restrictions, or exceed a user-set limit. An MVP may omit advanced capabilities, but its supported path must not rely on routine mid-run intervention or the user auditing the code.
 
 ## Built around capable, interchangeable models
 
@@ -59,7 +62,7 @@ Implementation plans are not a routine artifact or lifecycle stage. The implemen
 
 A written implementation plan is an exception when the controller assigns work to a weaker or cheaper implementer that needs more explicit guidance. It supplies the context, boundaries, interfaces, and proof obligations that recipient needs. Producing and reviewing nearly complete code for another agent to transcribe must justify its total cost. Delegating to another strong model does not create a planning stage.
 
-Subagents serve bounded purposes and independent review. Parallel implementation is useful where ownership is clear and integration is manageable; tightly coupled work can stay with one strong implementer. When coordination load warrants it, the controller may delegate operational detail to a lower-tier shift supervisor while retaining consequential engineering decisions, scope and authority judgments, finding dispositions, and final acceptance. The trigger is coordination load, not merely having subagents, and direct coordination remains available. Evaluate that delegation under the invariant priorities; a cost reduction is not a prerequisite for improved autonomy or quality. No fixed hierarchy or number of workers is required by this vision.
+Subagents serve bounded purposes and independent review. Parallel implementation is useful where ownership is clear and integration is manageable; tightly coupled work can stay with one strong implementer. When coordination load warrants it, the controller may delegate operational detail to a lower-tier shift supervisor while retaining consequential engineering decisions, scope and authority judgments, finding dispositions, and final acceptance. The trigger is coordination load, not merely having subagents, and direct coordination remains available. Evaluate that delegation under the invariant priorities; a cost reduction is not a prerequisite for improved reliability. No fixed hierarchy or number of workers is required by this vision.
 
 Verification happens during implementation as well as at the end. Tests, builds, targeted experiments, and live use of the affected flow resolve uncertainties against the actual system. The evidence should address realistic failure consequences and agreed acceptance criteria. Additional testing or repeated checks need a reason tied to changed code, a failure, or an unresolved concern.
 
@@ -107,7 +110,7 @@ For each candidate, ask what user outcome it serves, which observed failure it p
 
 The backlog should help choose valuable work and retain worthwhile ideas. An incidental review observation should not automatically become a feature, and an experimental workflow adjustment should not silently become a permanent instruction. Learnings need evidence of continuing usefulness, including whether an existing rule can be removed or simplified.
 
-Evaluate the transformation in the invariant order: first reliable unattended delivery and avoidable stalls or user interventions, then escaped defects and avoidable rework, then elapsed time and model cost within explicit limits. Finding counts and document length alone cannot establish success. Compare representative real tasks before treating a new workflow shape as better, and do not optimize a lower priority by undermining a higher one.
+Evaluate the transformation by the invariant priorities: first reliability, meaning avoidable stalls or user interventions together with escaped defects and avoidable rework, then elapsed time and model cost within explicit limits. Finding counts and document length alone cannot establish success. Compare representative real tasks before treating a new workflow shape as better, and do not optimize a lower priority by undermining a higher one.
 
 ## Decisions still open
 

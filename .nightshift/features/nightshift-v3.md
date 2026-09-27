@@ -11,7 +11,7 @@ Implementation was authorized on 2026-09-07. Version 3.0.0 was published to `mai
 
 ## Outcome and priorities
 
-Hand over an agreed task or finite queue, go to bed, and return to useful work supported by independent review and execution evidence. The fixed priority order is autonomy, quality, then speed, efficiency, and economy, within explicit user authority and limits. Routine decisions and recoverable failures must not require the user's return. The user must not need to audit the code personally. Genuine blockers remain explicit, and incomplete obligations cannot be declared complete.
+Hand over an agreed task or finite queue, go to bed, and return to useful work supported by independent review and execution evidence. The fixed priority is reliability, through autonomy and trust together, with speed, efficiency, and economy counting only where they cost neither, within explicit user authority and limits. Routine decisions and recoverable failures must not require the user's return. The user must not need to audit the code personally. Genuine blockers remain explicit, and incomplete obligations cannot be declared complete.
 
 The MVP supports the complete lifecycle independently in Claude Code and Codex on Windows. Fable 5.1 and GPT-6 Astra are interchangeable reference models for strong roles; either alone must support the workflow through independent contexts. Cross-model collaboration is optional.
 

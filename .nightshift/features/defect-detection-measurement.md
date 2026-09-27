@@ -18,7 +18,7 @@ Nightshift's central claim is that independent review, skeptic validation and cu
 
 ## Proposal
 
-Build a small fixed suite of tasks with seeded defects of known kinds across the code dimensions. Run the lifecycle against the suite and record detection rate, false-positive rate after skeptic validation, and time and model cost per task. Repeat the measurement when models or review guidance change. It verifies the quality priority instead of asserting it, and provides the baseline that efficiency work needs before claiming savings.
+Build a small fixed suite of tasks with seeded defects of known kinds across the code dimensions. Run the lifecycle against the suite and record detection rate, false-positive rate after skeptic validation, and time and model cost per task. Repeat the measurement when models or review guidance change. It measures whether the trust that reliability rests on is warranted instead of asserting it, and provides the baseline that efficiency work needs before claiming savings.
 
 ## Open questions
 

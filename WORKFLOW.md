@@ -4,7 +4,7 @@ Working draft, updated 2026-09-07, developing [the vision](VISION.md). The workf
 
 ## Governing priorities
 
-The [vision's invariant priorities](VISION.md#invariant-priorities) govern every workflow decision: autonomy first, quality second, speed, efficiency, and economy third. Handover should support the user going to bed without routine stalls, and independent review and verification must carry quality without depending on the user auditing the code. Efficiency improvements remain valuable when they preserve those higher priorities and respect explicit limits.
+The [vision's invariant priorities](VISION.md#invariant-priorities) govern every workflow decision: reliability, through autonomy and trust as equal parts, with speed, efficiency, and economy counting only where they cost neither. Handover should support the user going to bed without routine stalls, and independent review and verification must earn trust in the result without depending on the user auditing the code. Efficiency improvements remain valuable when they preserve reliability and respect explicit limits.
 
 ## Project files
 
@@ -30,7 +30,7 @@ A capable model implements from the agreed request or spec, using the repository
 
 The controller chooses assignments using task fit, observed model strengths, availability, context, and cost within the invariant priorities. The user's reported tendencies inform that judgment without prescribing a fixed team or a fixed model for each stage; structured model teams are deferred beyond the MVP. Respect explicit model choices and preserve control of an existing run. Investigation establishes the problem before editing regardless of the implementer.
 
-When coordination load warrants it, the controller may use a lower-tier shift supervisor for assignments, progress, result collection, and routine recovery. The controller retains consequential engineering decisions, scope and authority judgments, finding dispositions, and final acceptance. Direct coordination remains available, with ownership and activity reconciled before a handoff. The optional layer is justified by autonomy and quality before cost savings.
+When coordination load warrants it, the controller may use a lower-tier shift supervisor for assignments, progress, result collection, and routine recovery. The controller retains consequential engineering decisions, scope and authority judgments, finding dispositions, and final acceptance. Direct coordination remains available, with ownership and activity reconciled before a handoff. The optional layer is justified by reliability before cost savings.
 
 Tests, builds, and live verification establish the agreed behavior and meaningful failure handling throughout implementation. A repair includes investigating the shared cause and relevant sibling occurrences. Additional checks need a reason tied to the change or unresolved evidence.
 

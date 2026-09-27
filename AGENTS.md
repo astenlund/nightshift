@@ -2,7 +2,7 @@
 
 ## Purpose and workflow
 
-Nightshift is a Claude Code and Codex plugin for carrying agreed engineering work through implementation, independent review, verification, documentation, session retrospective and follow-up triage. Its invariant priorities are autonomy first, quality second, then speed and economy, within the user's authority and limits.
+Nightshift is a Claude Code and Codex plugin for carrying agreed engineering work through implementation, independent review, verification, documentation, session retrospective and follow-up triage. Its invariant priority is reliability, through autonomy and trust together; speed and economy count only where they cost neither, within the user's authority and limits.
 
 Use [VISION.md](VISION.md) and [WORKFLOW.md](WORKFLOW.md) for the agreed direction, [the v3 feature](.nightshift/features/nightshift-v3.md) for supported scope, and [the operating brief](internal/workflow.md) for execution. Historical proposals and migration records preserve reasoning; they do not reinstate retired requirements or authorize implementation.
 

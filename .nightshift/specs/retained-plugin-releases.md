@@ -12,7 +12,7 @@ An installed-plugin update must not remove the workflow resources needed by an a
 
 The governing bug is "Installed plugin-cache replacement disrupts active runs" in the [active bug index](../BUGS.md), moved to [bug history](../BUGS_HISTORY.md) when fixed. On 2026-09-13, Codex session `01a09c60-dd6e-7d42-b8a0-7333fd211d92` read the 3.0.11 Ready skill, then failed to execute its script after that cache disappeared and 3.0.12 became available. The bug record carries this incident alongside the earlier active-review and receipt-import reports. The separate Ready recommendation bug is outside this implementation.
 
-Autonomy comes first, independent quality second, then speed and economy, within authority and resource limits. A disappearing source is recoverable when the required complete release can still be established. Neither choosing the largest version string nor successfully opening the SQLite database proves runtime compatibility.
+Reliability comes first, through autonomy and trust earned by independent assurance; speed and economy count only where they cost neither, within authority and resource limits. A disappearing source is recoverable when the required complete release can still be established. Neither choosing the largest version string nor successfully opening the SQLite database proves runtime compatibility.
 
 ## Release identity and complete capture
 
