@@ -4,6 +4,14 @@ V2 entries are preserved in [the historical index](migration/v2/QUICK_WINS.md) a
 
 ## Current
 
+### State the enforced run-creation condition in the runtime reference
+
+Raised on 2026-09-27 by an Astra skeptic (receipt `165f9a65-742e-43eb-b24c-5f23f5391b86`, run `b6ca7513-7450-4d3d-9e5d-ec8fcf0da095`) as a side observation, not an assessed finding. [The runtime reference](../internal/runtime/REFERENCE.md) says "Another run cannot take the checkout while the current run is unfinished or has active workers." The condition `create` in `internal/runtime/store.js` actually enforces is that the previous run is complete or stopped with no active workers, so a stopped run with pending tasks can be replaced; never replacing an unfinished run is a rule of [the operating brief](../internal/workflow.md), not a runtime guarantee. The reference's next sentence mentions stopped runs, so it may read correctly if "unfinished" means neither complete nor stopped, but it is ambiguous, and the same misreading reached a feature record in that run before review corrected it. The user chose to track it at triage.
+
+State the enforced condition precisely in the runtime reference and attribute the no-replacement rule to the operating brief. Shipped text, so it rides with the next version increase. Tracking does not authorize implementation.
+
+**Requires:** none.
+
 ### Name the host's own failure in review attempt errors
 
 Reported on 2026-09-26 from FeatherPod-Private, run `5081dcdc-8956-4ff9-9870-4672f39a17f8`, installed 3.2.8. The first Codex review dispatch of the run completed; every later Codex attempt (workers `33bf017f`, `79fa6d05` and `cba72102`) failed, and each receipt attempt recorded only the generic `unusable-review` message "Host did not return an attributable completed assessment" from `dispatchReview` in `internal/runtime/review.js`. The actual cause was visible only in the attempt's native `events.jsonl`: a `systemError` status and a failed turn carrying `unexpected status 401 Unauthorized: Incorrect API key provided`, while `result.json` showed exit code 0. The Fable fallback completed every assessment, so the run was not blocked, but its review silently degraded from cross-host to same-host for the rest of the run. The timing matches the evening the acceptance harness revoked the production Codex login, as [Codex acceptance fixtures copy the live credential](#codex-acceptance-fixtures-copy-the-live-credential) records, but that link is a hypothesis; whether the credential changed between the first and second dispatch was not investigated. The user chose to track it at inbox triage.
