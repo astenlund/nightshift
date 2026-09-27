@@ -12,6 +12,14 @@ Document the agreement-change route, including `updatedOutcome`, in the runtime 
 
 **Requires:** none.
 
+### State the accepted review base and check path forms
+
+Observed on 2026-09-27 in run `c0645b3f-eb97-45d6-8790-d2ba6dfe55e9`, each costing one refused call. `dispatch` refused an abbreviated `baseSha` with `invalid-base` "Review needs an immutable cumulative Git base", while `validateBase` in `internal/runtime/review.js` accepts only a full lowercase 40- or 64-digit hexadecimal object name; neither that message nor the `dispatch` description in [the runtime reference](../internal/runtime/REFERENCE.md), which calls the base immutable, states that form. `check` refused a plain directory in `paths` with "Unsupported reviewed entry .claude-plugin: snapshots require regular files; submodule directories need explicit reconciliation" (`internal/runtime/evidence.js`). That message does name the regular-file requirement, and the reference's closing paragraph says reviewed project inventory requires regular, singly linked files, but the `check` description calls its paths only the project inputs covered by the check, so a caller reading it has no reason to expect a directory to be refused. The user chose to track it at triage.
+
+Name the full object-name form in the `invalid-base` refusal and in the `dispatch` description, and state in the `check` description that its paths name regular files. Shipped code and text, so it rides with the next version increase. Tracking does not authorize implementation.
+
+**Requires:** none.
+
 ### Tell reviewers the bound release's probe copy layout
 
 Observed on 2026-09-27 in run `b6ca7513-7450-4d3d-9e5d-ec8fcf0da095`, bound to installed 3.2.8 while the checkout carried the 3.2.10 runtime. An Astra reviewer (receipt `bc46bddc-9684-4497-b556-5801f00da3ef`) returned `incomplete` and proposed an evidence probe that asserted its working directory matched `.nightshift/runs/c/<eight hex digits>`, the private-copy layout the checkout's 3.2.10 runtime defines in `internal/runtime/copies.js`, which is where that reviewer read the pattern. The bound 3.2.8 runtime placed the copy under the dispatch directory, so the probe failed its own assertion with exit code 1, and the evidence was then supplied as selected artifacts at the cost of another assessment round of 659,428 tokens. Reviewers read the checkout's runtime source and documentation rather than the bound release's, so this recurs whenever the two differ, which is routine in this repository while a candidate is unpublished or not yet installed. The user chose to track it at triage as low priority.
