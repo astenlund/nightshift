@@ -136,6 +136,18 @@ Let a weaker model carry an independent assessment when no supported strong revi
 
 Have revise-lore route lessons by who the user is: a Nightshift maintainer to the Nightshift backlog or inbox, a regular user to the global or project-local instruction files, and let global and project instructions take precedence over plugin instructions when they conflict. Raised by the user on 2026-09-27. Open: how a maintainer is recognized, and how precedence interacts with gates the plugin treats as mandatory.
 
+### [Deliver each run on its own branch or worktree](features/run-worktree-delivery.md)
+
+Implement each run in a dedicated Git worktree on a run-owned branch, so the morning report points at a reviewable diff and the user keeps working in the main checkout. From the user's 2026-09-26 ideas document comparing other agent tools. Open: the checkout lease, the recorded project path and adoption, review-copy source, worktree lifecycle and uncommitted user changes, and branch or draft pull request publication.
+
+### [Reproduce a bug with a failing check before repairing it](features/reproduce-before-repair.md)
+
+For defect work, record a check that fails before the repair and passes after it under the same name, which the existing check evidence already supports. From the user's 2026-09-26 ideas document. Open: runtime enforcement or guidance, how defect work is marked, and exemptions for host-only or timing-dependent behavior, to be settled with [Verify faked boundaries live](features/live-boundary-verification.md).
+
+### [Measure whether the lifecycle catches defects](features/defect-detection-measurement.md)
+
+Run the lifecycle against a small fixed suite of seeded defects and record detection rate, false-positive rate after skeptic validation, and time and model cost, repeating when models or review guidance change. From the user's 2026-09-26 ideas document. Open: budget and usage accounting, keeping the suite out of reviewer context, and how many runs a meaningful rate needs.
+
 ### [User proxy consultation and opt-in user profile](features/user-proxy-consultation.md)
 
 When the controller is uncertain and the user is absent, consult the strongest available model reasoning as the user from recorded knowledge, and route its labelled answer and confidence to morning triage; with high confidence the controller might proceed. An opt-in user profile would accumulate priorities and sensibilities for it. Reserved decisions, confidence thresholds, labelling and profile consent remain open.

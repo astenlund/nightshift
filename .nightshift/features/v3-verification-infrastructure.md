@@ -24,7 +24,7 @@ The [independent shipped-capability audit](../reports/pre-v3-shipped-capability-
 
 Inventory current fixture and evidence ownership, candidate binding and startup costs. Verify safe cleanup, uncertain liveness, stale/partial evidence, reproducibility and supported update paths before removing obsolete fixtures. The user closed the old import-generator and registrar refactors as superseded.
 
-Coordinate with the existing acceptance-evidence digest, bounded approval-wait and deep review-copy entries. Native transport structure and timer/buffer work have [their own outcome](v3-transport-maintenance.md).
+Coordinate with the existing acceptance-evidence digest, bounded approval-wait and deep review-copy entries. Native transport structure and timer/buffer work have [their own outcome](v3-transport-maintenance.md), and measuring the lifecycle's defect detection is [a separate exploration](defect-detection-measurement.md).
 
 ## Triage and provenance
 
