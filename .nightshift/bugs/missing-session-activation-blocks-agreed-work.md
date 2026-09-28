@@ -48,6 +48,6 @@ The user exited and resumed the conversation. SessionStart context then carried 
 
 ## Evidence
 
-The status output quoted above was read from a scratch file that has since been removed; its relevant fields are reproduced here. The saved create request remains at `.tmp/ns-create.json`. The initial refused attempt created no run; the later successful recovery created the run identified above.
+The status output quoted above was read from a scratch file that has since been removed; its relevant fields are reproduced here. The saved create request file `.tmp/ns-create.json` was later overwritten and deleted during scratch cleanup on 2026-09-28; the content it created survives as the first history record (revision 0) of run `d4a44daa-96be-4ac4-bcaa-d16d8596584f` in `.nightshift/runs/state.sqlite`. The initial refused attempt created no run; the later successful recovery created the run identified above.
 
 Timing qualification: the original inbox narrative described process startup as "a few minutes earlier" than Ready and the refused attempt as "about three hours later". Those intervals conflict with the recorded timestamps: process start at 11:57:27+02:00 converts to 09:57:27Z, about two hours before recorded Ready preparation, while successful recovery at 13:11:08Z is only 1:11:36 after it. The original timestamps are preserved above; the elapsed intervals and any timestamp or timezone error remain unresolved.
