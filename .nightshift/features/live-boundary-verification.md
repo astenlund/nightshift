@@ -33,6 +33,17 @@ Proposed by the controller on 2026-09-26 and accepted by the user for tracking; 
 - Live verification that consumes model tokens is paid from the allowance settled at handover, as carried below.
 - This repository's AGENTS.md sentence on installed-host evidence shrinks to a pointer at the brief's rule.
 
+### Collecting live evidence from ordinary runs (proposed 2026-09-28)
+
+Proposed by the controller after run `7f0cb8e1-8a73-4a4c-b5f9-f8ec62661471` and accepted by the user for this record; like the rest of the direction, it is not yet agreed for implementation. The principle above covers deliberate live exercise; this is its passive half. Ordinary runs exercise the installed release constantly, and that run showed the 3.2.12 stale-revision fix working in passing: its first `claim-controller` after the Stop hook resumed the work succeeded at the revision the hook supplied, a path the earlier hook failed deterministically. The observation reached only the run's retrospective and morning report, while [the fix's history entry](../QUICK_WINS_HISTORY.md#stop-hook-resume-context-carries-a-stale-revision) still read as covered by a regression test alone until it was added by hand, so evidence that runs produce was not collected where a reader would look.
+
+- A fix or behavior change that ships without installed-host evidence carries a pending marker in its history entry that names the firing condition, the concrete observation that would count, so a later sighting is recognizable.
+- The session retrospective asks whether the run exercised any pending marker, and when it did, the observation (run id, host, installed version and what happened) is appended to that entry.
+- Claims are per host: each host's claim rests on that host's own evidence, so an observation on Claude Code does not settle Codex, and an unobserved host stays marked pending.
+- Each observation states its strength: an incidental sighting shows the ordinary path works in reality but not the negative case, and it never stands in for a designed probe with a control or an acceptance campaign.
+
+This costs no model tokens beyond the retrospective's reading of evidence it already holds, so it needs no allowance; deliberate live verification remains governed by the principle and the allowance below.
+
 ## Carried decisions
 
 ### Installed-host evidence budget (approved 2026-09-11)
@@ -53,5 +64,7 @@ Extend `skills/handover/SKILL.md` so every implementation run presents that defa
 
 - Decide whether the principle's trigger stays with boundaries the tests fake or widens to real inputs and environment conditions the tests do not reproduce: as proposed it covers the Git Bash case, the credential and toolchain cases arguably, and neither the unknown-field nor the path-depth case.
 - Reconcile the two carried decisions with each other and with the proposed principle: the allowance becomes the one aggregate that pays for live verification, and the 2026-09-11 sentence's model-owned trigger widens or yields to the boundary principle, which is the user's decision.
-- The change alters the operating brief and the handover skill, so it needs a concise governing spec in `.nightshift/specs` with independent spec review, a plugin version increase, and a decision at start between a budgeted installed-host campaign and deterministic evidence only with the model-owned behavior marked unverified.
+- Decide the pending marker's form (a grammar the history files and their init-backlog templates share, or prose) and whether revise-lore's question lives in that skill or in the operating brief's closing rules; the marker convention changes shipped templates too.
+- Resolve the ordering of the passive half's history write: revise-docs and revise-lore place the retrospective after documentation and backlog reconciliation, and the brief requires documentation edits to carry a current cumulative assessment before task completion, so recording a sighting after the retrospective needs either a place in the documentation stage, where the run's sightings would be identified before the retrospective, or an explicit allowance for a backlog write after it.
+- The change alters the operating brief and the handover skill, and with the passive half also revise-lore and the init-backlog history templates, so it needs a concise governing spec in `.nightshift/specs` with independent spec review, a plugin version increase, and a decision at start between a budgeted installed-host campaign and deterministic evidence only with the model-owned behavior marked unverified.
 - No dependency blocks it. Coordinate with [Acceptance reports carry a checkable evidence digest](../QUICK_WINS.md#acceptance-reports-carry-a-checkable-evidence-digest), which records the credential-copy guard and per-scenario costs where live budgets are settled, with [Separate run-time guidance from reference material](runtime-guidance-separation.md), which decides where run-time rules live, and with [Preserve run preferences and enforce supported resource budgets](v3-run-preferences.md), which leaves allowance settlement at handover to this entry. Settle the exemption for defects without an automated reproduction together with [Reproduce a bug with a failing check before repairing it](reproduce-before-repair.md).
