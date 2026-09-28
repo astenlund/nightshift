@@ -46,6 +46,12 @@ Let revise-code, revise-spec, revise-docs and revise-lore run without creating a
 
 **Requires:** none.
 
+### [Project inboxes](features/project-inboxes.md)
+
+Give every project that uses Nightshift a `.nightshift/inbox/` for raw suggestions and reports about that project, owned by the report's subject. Whoever creates an inbox, setup or an agent filing a report, is to create it ignored through its own `.gitignore`, and setup is to create one when absent while leaving an existing inbox's contents and policy unchanged. Reports are to be dated Markdown files that never overwrite each other and leave design to triage. During a run, observations about the run's own project stay follow-ups, while those about another Nightshift project whose location is known go to its inbox and are named in the run's report. Ready is to list untriaged reports in their own section, omitted when the inbox is empty or absent, and triage runs only at the user's request, deleting each report once its disposition is recorded. Reports about Nightshift itself go to the Nightshift project's own inbox, located through the maintainer's instructions. Requested by the user on 2026-09-13; the commitments were agreed with the user on 2026-09-28 and are recorded in the linked record. It reverses the v3 decision that setup creates no inbox in other projects, so it needs a concise governing spec, a version increase and a decision on installed-host evidence before implementation.
+
+**Requires:** none.
+
 ## Exploring
 
 ### [Shared BACKLOG.md meta-index](features/backlog-meta-index.md)
@@ -159,10 +165,6 @@ Run the lifecycle against a small fixed suite of seeded defects and record detec
 ### [User proxy consultation and opt-in user profile](features/user-proxy-consultation.md)
 
 When the controller is uncertain and the user is absent, consult the strongest available model reasoning as the user from recorded knowledge, and route its labelled answer and confidence to morning triage; with high confidence the controller might proceed. An opt-in user profile would accumulate priorities and sensibilities for it. Reserved decisions, confidence thresholds, labelling and profile consent remain open.
-
-### [Project inboxes](features/project-inboxes.md)
-
-Give every Nightshift project a `.nightshift/inbox/` for suggestions and reports about that project. `init-backlog` creates it, and `ready` lists untriaged reports separately from actionable work. Reports about Nightshift itself continue to belong in Nightshift's maintainer inbox.
 
 ### [Orchestration efficiency](features/orchestration-efficiency.md)
 

@@ -34,7 +34,7 @@ The guidance-ignore-state report, preserved in the [v3 inbox triage](../../V3-MI
 
 ## Scope of the election
 
-The election covers the durable backlog files and anything else the controller ignores on the user's behalf, including `.nightshift/plans/`, whose git-ignored status is unconditional but whose shape is not. The [Nightshift inbox](nightshift-inbox.md) folder is one more path in the same set once it exists.
+The election covers the durable backlog files and anything else the controller ignores on the user's behalf, including `.nightshift/plans/`, whose git-ignored status is unconditional but whose shape is not. Inboxes are to stay outside the set: [Project inboxes](project-inboxes.md) settled on 2026-09-28 that each inbox is to be created ignoring itself through its own `.gitignore`, the shape setup already uses for its recovery journal, so no rule for it is written to either location. This repository's existing `/.nightshift/inbox/` rule for the [Nightshift inbox](nightshift-inbox.md) predates that decision.
 
 The choice is presented only when it is live: the user has elected to ignore, and the paths are not already ignored by an existing rule. When the paths are already ignored, the controller reports the matching source and its classification rather than asking again.
 
