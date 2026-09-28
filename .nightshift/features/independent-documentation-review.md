@@ -24,7 +24,7 @@ Standalone revise-docs has the same gap without any triage. A docs task may impo
 
 1. **One documentation review kind.** The planned `tracking` kind becomes a documentation review kind, performed by one strong independent reviewer over the documentation change with the relevant code supplied as context. Its brief is the accuracy of each claim against the code and records it cites, the completeness of the sweep (documentation, changed or not, that the change left stale or missing), backlog grammar and conventions, consistency with sibling entries and history files, and proportionality, without the six code dimensions. Its findings still receive fresh skeptic validation, a disposition, repair and a further documentation review.
 2. **revise-docs requires it.** revise-docs obtains this assessment of its complete change, with the same skeptic validation and cumulative repair loop as revise-code. Purely mechanical changes, such as a regenerated file or a version string, need none. It works on today's run-bound machinery and moves to the run-less review path when [Run-free revise](run-free-revise.md) ships.
-3. **Closing tracking is one use of it.** Items 1, 3, 4 and 5 of the tracking direction below apply unchanged with this kind in place of `tracking`, so the completion-gate exception stays limited to the tracking scope of backlog paths.
+3. **Closing tracking is one use of it.** The tracking direction's Tracking scope, Completion gate, Handed-over runs and Guidance decisions below apply unchanged with this kind in place of `tracking`, so the completion-gate exception stays limited to the tracking scope of backlog paths.
 
 ## Tracking direction (agreed 2026-09-24)
 
