@@ -22,15 +22,26 @@ function processIdentity(value) {
 
 function observeController(root, actor, dependencies = {}) {
   requireCondition(identity(actor), 'invalid-controller', 'A supported host and actual nonempty session identity are required');
+  let observed = null;
   try {
-    const observed = (dependencies.nativeOwner ?? processes.nativeOwner)(actor.host, root);
+    // The observation is an owner record, a not-found observation that may name where the ancestry broke, or null.
+    observed = (dependencies.nativeOwner ?? processes.observeNativeOwner)(actor.host, root);
     const alive = processIdentity(observed) && (dependencies.ownerAlive ?? processes.ownerAlive)(observed, root);
     if (alive === true) return { process: { pid: observed.pid, created: observed.created, name: observed.name }, reason: null };
   } catch {
     // A failed native observation never grants controller authority.
   }
 
-  return { process: null, reason: 'The current native controller process could not be positively identified and observed alive' };
+  return { process: null, reason: unobservedReason(observed) };
+}
+
+function unobservedReason(observed) {
+  const child = observed?.found === false ? observed.exitedParent?.child : null;
+  if (typeof child !== 'string' || child.length === 0) return 'The current native controller process could not be positively identified and observed alive';
+
+  return `The current native controller process could not be positively identified: its process ancestry reaches an exited parent above ${child}. `
+    + 'A likely cause is a shell such as Git Bash starting the launcher through another MSYS program, for example sh or bash running a script, because that program replaces its Windows process. '
+    + 'If so, invoke node directly from the tool shell or run the command through PowerShell 7.';
 }
 
 function controllerClaim(actor, observation, revision) {

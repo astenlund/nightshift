@@ -16,12 +16,19 @@ function information(pid, host, cwd) {
     const result = spawnSync(executable, args, { cwd, windowsHide: true, timeout: 10000, encoding: 'utf8', maxBuffer: 8192 });
     if (result.error || result.status !== 0) return null;
     const value = JSON.parse(result.stdout);
-    if (value.found === false) return { found: false };
+    if (value.found === false) return exitedParent(value.exitedParent) ? { found: false, exitedParent: { pid: value.exitedParent.pid, child: value.exitedParent.child } } : { found: false };
     return value.found === true && Number.isSafeInteger(value.pid) && typeof value.created === 'string' && typeof value.name === 'string' ? value : null;
   } catch { return null; }
 }
 
-function nativeOwner(host, cwd) { const value = information(process.pid, host, cwd); return value?.found ? value : null; }
+function exitedParent(value) {
+  return Number.isSafeInteger(value?.pid) && value.pid > 0 && typeof value.child === 'string' && value.child.length > 0;
+}
+
+// Returns the owner record, a not-found observation that may name where the ancestry broke, or null when inspection failed.
+function observeNativeOwner(host, cwd) { return information(process.pid, host, cwd); }
+
+function nativeOwner(host, cwd) { const value = observeNativeOwner(host, cwd); return value?.found ? value : null; }
 
 function ownerAlive(owner, cwd) {
   if (!owner || !Number.isSafeInteger(owner.pid) || typeof owner.created !== 'string') return null;
@@ -69,4 +76,4 @@ async function runContained(executable, args, options) {
   return exit;
 }
 
-module.exports = { MAX_OPERATION_TIMEOUT_MS, information, nativeOwner, ownerAlive, runContained };
+module.exports = { MAX_OPERATION_TIMEOUT_MS, information, nativeOwner, observeNativeOwner, ownerAlive, runContained };

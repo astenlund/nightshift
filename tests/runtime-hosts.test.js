@@ -4,11 +4,12 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const test = require('node:test');
+const { spawnSync } = require('node:child_process');
 const { createHash } = require('node:crypto');
 const { executable, pluginVersion, runAgent } = require('../internal/runtime/hosts');
 const { resolveTrustedExecutable } = require('../internal/filesystem-primitives');
 const { spawnWindowsJob, startFailure } = require('../internal/runtime/windows-job');
-const { runContained } = require('../internal/releases/processes');
+const { information, runContained } = require('../internal/releases/processes');
 const { OUTPUT_LOOP_MIN_DELTAS, OUTPUT_LOOP_MIN_MS, outputLoopDetector, outputLoopMessage } = require('../internal/runtime/output-loop');
 
 function fixture(t, host, mode = 'success') {
@@ -143,6 +144,23 @@ test('the canonical project is excluded from host and PowerShell executable reso
     assert.equal(resolveTrustedExecutable({ root: workspace, basename: 'pwsh.exe' }), path.join(toolsDirectory, 'pwsh.exe'));
     assertProtected(() => resolveTrustedExecutable({ root: canonical, basename: 'pwsh.exe' }), path.join(toolsDirectory, 'pwsh.exe'));
   } finally { process.env.PATH = previousPath; }
+});
+
+test('the native ancestry walk names where it reached an exited parent and still identifies live owners', { skip: process.platform !== 'win32' }, t => {
+  const root = path.resolve(__dirname, '..');
+  const started = spawnSync(process.execPath, [path.join(__dirname, 'fixtures/orphan-parent.js')], { encoding: 'utf8', windowsHide: true, timeout: 30000 });
+  assert.equal(started.status, 0, started.stderr);
+  const orphan = Number(started.stdout.trim());
+  t.after(() => { try { process.kill(orphan); } catch { /* The orphan already ended. */ } });
+  const observed = information(orphan, 'claude', root);
+  assert.equal(observed.found, false);
+  assert.equal(observed.exitedParent.child, 'node.exe');
+  assert.ok(Number.isSafeInteger(observed.exitedParent.pid) && observed.exitedParent.pid > 0);
+  assert.deepEqual(Object.keys(observed).sort(), ['exitedParent', 'found']);
+  const self = information(process.pid, 'node', root);
+  assert.equal(self.found, true);
+  assert.equal(self.pid, process.pid);
+  assert.equal(information(orphan, null, root).found, true);
 });
 
 for (const leaf of ['--duplex-leaf', '--no-input-leaf']) {

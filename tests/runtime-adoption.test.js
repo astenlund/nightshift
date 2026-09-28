@@ -109,6 +109,27 @@ test('claim refresh fences an old process and a failed refresh cannot reuse the 
   assert.equal(Object.hasOwn(await f.call({ action: 'status' }), 'controllerReady'), false);
 });
 
+test('a claim whose ancestry reaches an exited parent names the cause and grants nothing', async t => {
+  const f = await fixture(t);
+  const broken = { nativeOwner: () => ({ found: false, exitedParent: { pid: 4999, child: 'sh.exe' } }) };
+  const claimed = await f.call({ action: 'claim-controller' }, source, broken);
+  const claim = f.store.read().controllerClaim;
+  const plain = await f.call({ action: 'claim-controller' }, source, { nativeOwner: () => ({ found: false }) });
+  const plainReason = f.store.read().controllerClaim.reason;
+  const refused = await f.call({ action: 'start-task', taskId: 'change' }, source, broken).catch(error => error);
+  await f.call({ action: 'stop', kind: 'user-stop', reason: 'User paused' });
+  const created = await execute(f.root, f.input, { ...f.dependencies, ...broken }).catch(error => error);
+  assert.equal(claimed.controllerReady, false);
+  assert.equal(claim.process, null);
+  assert.match(claim.reason, /exited parent above sh\.exe/);
+  assert.match(claim.reason, /PowerShell 7/);
+  assert.equal(plain.controllerReady, false);
+  assert.equal(plainReason, 'The current native controller process could not be positively identified and observed alive');
+  assert.equal(refused.code, 'controller-claim-required');
+  assert.equal(created.code, 'controller-claim-unavailable');
+  assert.match(created.message, /exited parent above sh\.exe/);
+});
+
 test('active and unknown helpers block adoption, while attributable terminated work is reconciled after transfer', async t => {
   const f = await fixture(t);
   const helper = { pid: 6001, created: 'helper-incarnation', name: 'node.exe', found: true };
