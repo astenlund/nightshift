@@ -20,7 +20,7 @@ If a locator is absent after interrupted setup, the current installed `internal/
 
 ## Automatic preparation and explicit maintenance
 
-Write request JSON in the target project's ignored `.tmp` directory. Run commands in PowerShell 7 (`pwsh -NoProfile` when invoking PowerShell), with absolute paths passed as separate quoted arguments:
+Write request JSON in the target project's ignored `.tmp` directory. Run commands in PowerShell 7 (`pwsh -NoProfile` when invoking PowerShell), with absolute paths passed as separate quoted arguments. Controller claims and native activation identify the host by walking the Windows parent processes up to its executable. A shell such as Git Bash breaks that walk when it starts the launcher through another MSYS program, for example `sh` or `bash` running a script or `bash -c`: the started program replaces its Windows process, leaving a parent that has exited. The claim then fails, and its reason names the last live process below the exited parent. Running `node` directly from Git Bash, or invoking `pwsh` from it, keeps the walk intact:
 
 ```text
 node <CURRENT_PLUGIN>/internal/releases/launcher.js <setup-request.json>
