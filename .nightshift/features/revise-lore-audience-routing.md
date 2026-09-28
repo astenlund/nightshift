@@ -24,5 +24,5 @@ Raised by the user on 2026-09-27, mid-run in run `f87356d8-8613-45a8-93e5-d79c48
 
 ## Open questions
 
-- How revise-lore tells a maintainer from a regular user, for example whether the operating project is the Nightshift clone itself or the maintainer's inbox exists.
+- How revise-lore tells a maintainer from a regular user, for example whether the operating project is the Nightshift clone itself or the maintainer's inbox exists. [Project inboxes](project-inboxes.md) is to give every project that uses Nightshift an inbox and leaves recognizing a maintainer to this entry, so once it ships, the existence of an inbox alone will not identify a maintainer.
 - How the precedence rule interacts with gates the plugin treats as mandatory, such as independent review before task completion, and whether the rule belongs in every skill rather than in revise-lore alone.
