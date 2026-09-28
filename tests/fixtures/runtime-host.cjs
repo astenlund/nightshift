@@ -25,7 +25,8 @@ if (args.includes('--duplex-leaf')) {
 else if (mode === 'descendant') {
   process.stdin.resume();
   process.stdin.on('end', () => {
-    const child = require('node:child_process').spawn(process.execPath, [__filename, '--descendant-leaf'], { stdio: 'ignore', windowsHide: true });
+    // Detached, so only the Windows job, not libuv's own kill-on-close job, can end it.
+    const child = require('node:child_process').spawn(process.execPath, [__filename, '--descendant-leaf'], { detached: true, stdio: 'ignore', windowsHide: true });
     require('node:fs').writeFileSync('descendant.pid', String(child.pid) + '\n');
     setInterval(() => {}, 1000);
   });

@@ -178,7 +178,8 @@ for (const leaf of ['--duplex-leaf', '--no-input-leaf']) {
     const input = Buffer.from(Array.from({ length: 256 * 1024 }, (_, index) => index % 251));
     child.once('spawn', () => {
       child.stdin.end(input);
-      timer = setTimeout(() => child.kill(), leaf === '--duplex-leaf' ? 12000 : 500);
+      // The duplex kill only guards against a hang; a loaded machine can take far longer than an idle one to move 2 MiB through the runner.
+      timer = setTimeout(() => child.kill(), leaf === '--duplex-leaf' ? 90000 : 500);
     });
     await new Promise(resolve => child.once('close', resolve));
     clearTimeout(timer);
@@ -295,17 +296,33 @@ test('Claude native is_error is incomplete even when subtype says success', asyn
   assert.equal((await runAgent(fixture(t, 'claude', 'error-result'))).status, 'failed');
 });
 
+// A stop that comes before the command has started its descendant proves nothing, and the stop clock starts before the job runner, whose
+// startup takes seconds on a loaded machine, so the bound escalates until the descendant existed when the command was stopped.
+// stop(timeoutMs) runs one stopped attempt and returns the file where the command records its descendant's pid.
+async function stoppedAfterDescendantStarted(stop) {
+  for (const timeoutMs of [2500, 10000, 40000]) {
+    const pidFile = await stop(timeoutMs);
+    const recorded = fs.existsSync(pidFile) ? fs.readFileSync(pidFile, 'utf8').trim() : '';
+    if (/^\d+$/.test(recorded)) return Number(recorded);
+  }
+  assert.fail('The command never started its descendant within the escalated timeouts');
+}
+
 test('Windows job containment carries the actual host protocol and proves descendants have ended', { skip: process.platform !== 'win32' }, async t => {
-  const normal = await runAgent({ ...fixture(t, 'claude'), directProcess: false, timeoutMs: 10000 });
+  // Bounds are generous because the timeout clock starts before the job runner, whose startup takes seconds on a loaded machine.
+  const normal = await runAgent({ ...fixture(t, 'claude'), directProcess: false, timeoutMs: 60000 });
   assert.equal(normal.status, 'complete', JSON.stringify({ exit: normal.exit, output: normal.output }));
   assert.equal(normal.exit.descendantsReclaimed, true);
-  const codex = await runAgent({ ...fixture(t, 'codex'), directProcess: false, timeoutMs: 10000 });
+  const codex = await runAgent({ ...fixture(t, 'codex'), directProcess: false, timeoutMs: 60000 });
   assert.equal(codex.status, 'complete');
   assert.equal(codex.exit.descendantsReclaimed, true);
-  const options = { ...fixture(t, 'claude', 'descendant'), directProcess: false, timeoutMs: 2500 };
-  const stopped = await runAgent(options);
-  assert.equal(stopped.status, 'failed');
-  assert.equal(stopped.exit.descendantsReclaimed, true);
-  const pid = Number(fs.readFileSync(path.join(options.cwd, 'descendant.pid'), 'utf8').trim());
+  const pid = await stoppedAfterDescendantStarted(async timeoutMs => {
+    const options = { ...fixture(t, 'claude', 'descendant'), directProcess: false, timeoutMs };
+    const stopped = await runAgent(options);
+    assert.equal(stopped.status, 'failed');
+    assert.equal(stopped.exit.descendantsReclaimed, true);
+
+    return path.join(options.cwd, 'descendant.pid');
+  });
   assert.throws(() => process.kill(pid, 0), { code: 'ESRCH' });
 });

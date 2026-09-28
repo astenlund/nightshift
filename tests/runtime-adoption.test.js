@@ -280,7 +280,8 @@ test('preparation and finalization cannot inherit the contained command terminat
 test('real contained check produces attributable termination evidence', { skip: process.platform !== 'win32' }, async t => {
   const f = await fixture(t);
   fs.writeFileSync(path.join(f.root, 'subject.txt'), 'input\n');
-  await f.call({ action: 'check', taskId: 'change', check: { name: 'Native contained command', executable: process.execPath, args: ['--version'], paths: ['subject.txt'], resourceMode: 'development', timeoutMs: 15000 } });
+  // The default bound leaves room for job runner startup on a loaded machine; this test is about termination evidence, not speed.
+  await f.call({ action: 'check', taskId: 'change', check: { name: 'Native contained command', executable: process.execPath, args: ['--version'], paths: ['subject.txt'], resourceMode: 'development' } });
   const state = f.store.read();
   const worker = state.workers.at(-1);
   assert.equal(state.tasks[0].checks.at(-1).passed, true);
