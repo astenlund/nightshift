@@ -1,17 +1,17 @@
 {
   "schema": 1,
   "name": "nightshift",
-  "version": "3.2.13",
+  "version": "3.2.14",
   "files": [
     {
       "path": ".claude-plugin/plugin.json",
       "bytes": 641,
-      "sha256": "1a620ae9c8d58c653b74a97b6a31ec45f11cf95094403d8dc27d4d15e6da6a5b"
+      "sha256": "ab78868e39eac1e2634d13af73e2a04ecd0fa4a9085282eea927284b7033979f"
     },
     {
       "path": ".codex-plugin/plugin.json",
       "bytes": 1161,
-      "sha256": "f0a214001b9400b208c7569ab754395e34acc84bb873d51ba1e2b9e28f490d53"
+      "sha256": "f830e4a8db15198218d7f82b9953eb0991cf568e7a894b0b46999fe32f42d9b9"
     },
     {
       "path": "LICENSE",
@@ -145,8 +145,8 @@
     },
     {
       "path": "internal/runtime/REFERENCE.md",
-      "bytes": 46781,
-      "sha256": "59e2cd90ab429e1a081b1d944e248b41cffe207fe78bfa3a3e94f3655847cb45"
+      "bytes": 48037,
+      "sha256": "c11cd73029ee70ad04ff328caafd16ce0410bbd9fa879fd4e486f1e4c537922d"
     },
     {
       "path": "internal/runtime/actions.js",
@@ -220,8 +220,8 @@
     },
     {
       "path": "internal/runtime/review.js",
-      "bytes": 29471,
-      "sha256": "65636a153b79da00ca6ccb86c4daf620f04753ebc5bb22da9a07ccf091391cae"
+      "bytes": 29559,
+      "sha256": "604564787c78e2489a73c4470de82139c61520abc15d4a4b51ef2f79be2a33d3"
     },
     {
       "path": "internal/runtime/store.js",
