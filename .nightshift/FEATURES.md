@@ -34,6 +34,12 @@ Have the operating brief ask for a change that crosses a boundary the determinis
 
 **Requires:** none.
 
+### [Reproduce a bug with a failing check before repairing it](features/reproduce-before-repair.md)
+
+For defect work, the operating brief asks the controller to run a check that reproduces the failure before the repair, confirm it fails for the defect's reason, and rerun it under the same name after the repair; its Tests and evidence code dimension asks whether a fix carries that pair. This is guidance only: the existing check evidence already keeps both runs and gates acceptance on the latest, so the runtime stays unchanged. Defect work follows the agreed scope, and a defect without a practical automated reproduction records why and what evidence stands in, reported as a verification limit. From the user's 2026-09-26 ideas document; the commitments were agreed with the user on 2026-09-28 and are recorded in the linked record. It changes model-owned behavior, so it needs a version increase and a decision on installed-host evidence before implementation.
+
+**Requires:** none.
+
 ## Exploring
 
 ### [Shared BACKLOG.md meta-index](features/backlog-meta-index.md)
@@ -139,10 +145,6 @@ Have revise-lore route lessons by who the user is: a Nightshift maintainer to th
 ### [Deliver each run on its own branch or worktree](features/run-worktree-delivery.md)
 
 Implement each run in a dedicated Git worktree on a run-owned branch, so the morning report points at a reviewable diff and the user keeps working in the main checkout. From the user's 2026-09-26 ideas document comparing other agent tools. Open: the checkout lease, the recorded project path and adoption, review-copy source, worktree lifecycle and uncommitted user changes, and branch or draft pull request publication.
-
-### [Reproduce a bug with a failing check before repairing it](features/reproduce-before-repair.md)
-
-For defect work, record a check that fails before the repair and passes after it under the same name, which the existing check evidence already supports. From the user's 2026-09-26 ideas document. Open: runtime enforcement or guidance, how defect work is marked, and exemptions for host-only or timing-dependent behavior, to be settled with [Verify faked boundaries live](features/live-boundary-verification.md).
 
 ### [Measure whether the lifecycle catches defects](features/defect-detection-measurement.md)
 
