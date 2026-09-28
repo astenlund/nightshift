@@ -166,6 +166,10 @@ Run the lifecycle against a small fixed suite of seeded defects and record detec
 
 When the controller is uncertain and the user is absent, consult the strongest available model reasoning as the user from recorded knowledge, and route its labelled answer and confidence to morning triage; with high confidence the controller might proceed. An opt-in user profile would accumulate priorities and sensibilities for it. Reserved decisions, confidence thresholds, labelling and profile consent remain open.
 
+### [Review mode for someone else's implementation](features/review-mode.md)
+
+Validate a feature implementation made by someone else, a human or an AI not participating in the session, against whatever material the user provides, such as links, Word documents or text in chat. It takes a local branch, commit range or worktree, a GitHub pull request or uncommitted changes; beyond reviewing the code it runs checks and tests, verifies faked boundaries live, checks documentation and backlog accuracy, and can post its verdict to the pull request with the user's explicit go-ahead each time. It reports first, then offers repairs as patch files or direct edits, taking the findings one at a time once repair is initiated. Raised by the user on 2026-09-28. Open questions include whether it is a skill or a revise-code mode distinct from plain review requests, whether it creates a run, how baseline material is ingested and confirmed, the trust boundary for running someone else's code, and how the change is checked out without disturbing the user's work; the record lists them all.
+
 ### [Orchestration efficiency](features/orchestration-efficiency.md)
 
 Post-MVP investigation of measured controller overhead: repeated context reads, polling, bookkeeping and mechanical tool round trips. Preserve autonomy, independent review, skeptical validation and cumulative review after fixes; verify actual time and cost improvements before claiming savings.
