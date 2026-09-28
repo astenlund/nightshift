@@ -172,11 +172,13 @@ Expose the project-relative receipt path consistently for controllers consuming 
 
 **Requires:** none.
 
-### Standardize the probe response and expose its recorded result
+### Standardize the probe and check responses and expose their recorded results
 
 Reported on 2026-09-12 from an unattended Claude handover in FeatherPod-Private, run prefix `216f01e8`, plugin 3.0.6. Unlike ordinary lifecycle mutations that return an obligation brief, `probe` returns the complete `store.update` result. A controller helper expecting `next`, `closing` and summarized workers consequently printed the full worker list and raw closing state. The current `internal/runtime/cli.js` probe branch still returns `store.update(...)` directly. Stored probe evidence contains `{path, sha256, snapshotDigest}`, while the command, exit code and output require a separate read of the referenced `result.json`. Evidence in the source project: `.nightshift/runs/reviews/e5be77fd-cdf1-46b9-850f-841524931038/probes/01699ed2-8463-45ca-9df0-dbd5bbc80865/result.json`. Original inbox report: observation 1 of `2026-09-12-probe-returns-full-state-and-foreground-wait-recurrence.md`.
 
-Align the probe response with the runtime's focused obligation brief and expose the recorded result clearly enough for the controller to locate and interpret the evidence without inspecting full run state. Settle the result metadata and update the runtime reference and affected consumers together, preserving the saved raw command/output and independent interpretation requirement. Add focused coverage for the response shape and result reference, including a probe whose command exits unsuccessfully. Runtime behavior changes ship with a version increase.
+The `check` operation has the same gap from the other side, observed on 2026-09-28 in run `a0eaaee7-6c97-4261-960d-346c6a4654aa` on installed 3.2.15: it returns the focused obligation brief with no exit code, output or pass flag, so the controller read every check result through a full `inspect` of run state. The user chose at triage to widen this entry to cover it.
+
+Align the probe response with the runtime's focused obligation brief, and for both probe and check expose the recorded result clearly enough for the controller to locate and interpret the evidence without inspecting full run state. Settle the result metadata and update the runtime reference and affected consumers together, preserving the saved raw command/output and independent interpretation requirement. Add focused coverage for both response shapes and result references, including a probe and a check whose command exits unsuccessfully. Runtime behavior changes ship with a version increase.
 
 **Requires:** none.
 
