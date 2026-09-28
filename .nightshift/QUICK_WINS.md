@@ -28,35 +28,11 @@ When a handover or run creation happens in a session bound to an older release t
 
 **Requires:** none.
 
-### Document how to record a changed agreement mid-run
-
-Observed on 2026-09-27 in run `c0645b3f-eb97-45d6-8790-d2ba6dfe55e9`. Mid-implementation the user widened the agreed rename of the second priority into a reshape of the invariant priorities. The only runtime path that replaces a task's agreed outcome is a `user-decision` block followed by `unblock` with an `updatedOutcome` field (the `unblock` case in `internal/runtime/lifecycle.js`), so the controller had to record a block for a decision the user had already made. `updatedOutcome` appears only in `lifecycle.js` and `tests/runtime-review.test.js`; neither [the runtime reference](../internal/runtime/REFERENCE.md) nor [the operating brief](../internal/workflow.md) mentions it, and the controller found it by reading source. A controller that misses it can continue under a stale agreement, which later reviews would assess against the wrong commitments. The user chose to track it at triage.
-
-Document the agreement-change route, including `updatedOutcome`, in the runtime reference. Whether a direct amend operation is warranted stays open. Shipped text, so it rides with the next version increase. Tracking does not authorize implementation.
-
-**Requires:** none.
-
-### State the accepted review base and check path forms
-
-Observed on 2026-09-27 in run `c0645b3f-eb97-45d6-8790-d2ba6dfe55e9`, each costing one refused call. `dispatch` refused an abbreviated `baseSha` with `invalid-base` "Review needs an immutable cumulative Git base", while `validateBase` in `internal/runtime/review.js` accepts only a full lowercase 40- or 64-digit hexadecimal object name; neither that message nor the `dispatch` description in [the runtime reference](../internal/runtime/REFERENCE.md), which calls the base immutable, states that form. `check` refused a plain directory in `paths` with "Unsupported reviewed entry .claude-plugin: snapshots require regular files; submodule directories need explicit reconciliation" (`internal/runtime/evidence.js`). That message does name the regular-file requirement, and the reference's closing paragraph says reviewed project inventory requires regular, singly linked files, but the `check` description calls its paths only the project inputs covered by the check, so a caller reading it has no reason to expect a directory to be refused. The user chose to track it at triage.
-
-Name the full object-name form in the `invalid-base` refusal and in the `dispatch` description, and state in the `check` description that its paths name regular files. Shipped code and text, so it rides with the next version increase. Tracking does not authorize implementation.
-
-**Requires:** none.
-
 ### Tell reviewers the bound release's probe copy layout
 
 Observed on 2026-09-27 in run `b6ca7513-7450-4d3d-9e5d-ec8fcf0da095`, bound to installed 3.2.8 while the checkout carried the 3.2.10 runtime. An Astra reviewer (receipt `bc46bddc-9684-4497-b556-5801f00da3ef`) returned `incomplete` and proposed an evidence probe that asserted its working directory matched `.nightshift/runs/c/<eight hex digits>`, the private-copy layout the checkout's 3.2.10 runtime defines in `internal/runtime/copies.js`, which is where that reviewer read the pattern. The bound 3.2.8 runtime placed the copy under the dispatch directory, so the probe failed its own assertion with exit code 1, and the evidence was then supplied as selected artifacts at the cost of another assessment round of 659,428 tokens. Reviewers read the checkout's runtime source and documentation rather than the bound release's, so this recurs whenever the two differ, which is routine in this repository while a candidate is unpublished or not yet installed. The user chose to track it at triage as low priority.
 
 Tell reviewers the executing release's probe working-directory layout, or its version, in the assessment request, so a probe does not hardcode a layout taken from the checkout. Tracking does not authorize implementation.
-
-**Requires:** none.
-
-### State the enforced run-creation condition in the runtime reference
-
-Raised on 2026-09-27 by an Astra skeptic (receipt `165f9a65-742e-43eb-b24c-5f23f5391b86`, run `b6ca7513-7450-4d3d-9e5d-ec8fcf0da095`) as a side observation, not an assessed finding. [The runtime reference](../internal/runtime/REFERENCE.md) says "Another run cannot take the checkout while the current run is unfinished or has active workers." The condition `create` in `internal/runtime/store.js` actually enforces is that the previous run is complete or stopped with no active workers, so a stopped run with pending tasks can be replaced; never replacing an unfinished run is a rule of [the operating brief](../internal/workflow.md), not a runtime guarantee. The reference's next sentence mentions stopped runs, so it may read correctly if "unfinished" means neither complete nor stopped, but it is ambiguous, and the same misreading reached a feature record in that run before review corrected it. The user chose to track it at triage.
-
-State the enforced condition precisely in the runtime reference and attribute the no-replacement rule to the operating brief. Shipped text, so it rides with the next version increase. Tracking does not authorize implementation.
 
 **Requires:** none.
 
