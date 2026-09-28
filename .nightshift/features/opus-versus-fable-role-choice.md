@@ -29,4 +29,4 @@ As of 2026-09-24 the user runs Opus (in this session's context, Opus 5.5) as the
 
 - The capability gap is unmeasured; no comparison has been run. Settle a comparison method and budget.
 - Current pricing for both models has not been checked.
-- Whether any change should widen the runtime strong-model gate, add a separately labeled role, or leave strong roles unchanged is undecided.
+- Whether any change should widen the runtime strong-model gate, add a separately labeled role, or leave strong roles unchanged is undecided. [User-configurable model policy file](model-policy-file.md) proposes moving the strong-model list into a file the user can edit.

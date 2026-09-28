@@ -200,6 +200,10 @@ Policy for the initial spec/code lead: Fable or Astra only, prefer the other hos
 
 Investigate which roles could use Opus 5.5 instead of Fable without falling below their required capability and strength, and at what cost difference. The user reports Opus working well as default controller, unmeasured; live testing and pricing evidence settle any policy change.
 
+### [User-configurable model policy file](features/model-policy-file.md)
+
+Move the supported strong-model list, today a constant in the runtime's review module, into a file the user can edit, which can also hold a general allow list, a deny list, or both. Raised by the user on 2026-09-29 while graduating Degraded assessment mode. Open questions include where the file lives and whether a project's copy may widen the strong list, what happens when it is missing or malformed, and what the allow and deny lists govern; the record lists them all.
+
 ### [Structured model teams](features/structured-model-teams.md)
 
 Later deliberate model-role arrangements. The MVP uses task-fit preferences and controller judgment, with interchangeable strong roles and equivalent-strength cross-host review when suitable.

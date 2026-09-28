@@ -31,7 +31,7 @@ Agreed with the user on 2026-09-29, when the entry graduated from Exploring. The
 
 The first three points are the ones the agreement left open; the rest were found while recording it.
 
-- Settle whether a minimum model applies or any permitted model qualifies. Coordinate with [Model choice per role: Opus 5.5 versus Fable](opus-versus-fable-role-choice.md), which could widen the strong list instead.
+- Settle whether a minimum model applies or any permitted model qualifies. Coordinate with [Model choice per role: Opus 5.5 versus Fable](opus-versus-fable-role-choice.md), which could widen the strong list instead, and with [User-configurable model policy file](model-policy-file.md), whose allow list could bound it.
 - Settle how the selection rule relates to [Initial reviewer selection](initial-reviewer-selection.md), the natural home for it, whose agreed policy restricts the initial lead to Fable or Astra and keeps the review gate pending when no eligible strong reviewer is available.
 - Settle the runtime representation: the receipt's strength field, where the degraded label surfaces in status, and how the task gate (`reviewGateFailure` in `internal/runtime/lifecycle.js`) and the run's `complete` operation, which applies that gate again to every reviewed task, diverge on strength. The same split reaches governing specs: a linked spec prerequisite completes on its assessment and releases implementation, and `complete` separately requires every governing spec's assessment to be current (`specReady`).
 - Amend every statement of the rule this reverses, listed under Amendment targets below, which widens the agreed update of the brief and runtime reference to the governing documents, skills, runtime text and tests.
