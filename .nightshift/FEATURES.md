@@ -52,6 +52,12 @@ Give every project that uses Nightshift a `.nightshift/inbox/` for raw suggestio
 
 **Requires:** none.
 
+### [Degraded assessment mode](features/degraded-assessment-mode.md)
+
+Let a weaker model carry an independent assessment when no supported strong model can take a reviewer role, or when the user explicitly selects one, using the strongest permitted model available and never overriding an explicit model requirement; attended, the controller asks first, and unattended, it proceeds on recorded unavailability evidence. A degraded assessment covers lead review, skeptic validation and reassessment, is recorded like any other so tasks can advance past review, and is labeled as degraded in the review gate, status, obligation brief and reports, with no gate treating it as strong. The run cannot complete, and nothing is published, until a supported strong assessment covers the same content, reviewing the whole change fresh; unrecorded advisory feedback still never counts. Raised by the user during the automatic-preparation run, which was the live case: both admissible reviewers were unavailable at once and the lifecycle had no recordable fallback. It absorbs the earlier opus-review-gate follow-up; the commitments were agreed with the user on 2026-09-29 and are recorded in the linked record. It reverses the governing rule that no task advances past review without a strong assessment, so it needs a concise governing spec, a version increase and a decision on installed-host evidence before implementation.
+
+**Requires:** none.
+
 ## Exploring
 
 ### [Shared BACKLOG.md meta-index](features/backlog-meta-index.md)
@@ -145,10 +151,6 @@ Restore the fresh-project setup choice to track the backlog in Git, ignore it, o
 ### [Ready offers to pick up an interrupted run](features/ready-interrupted-run-pickup.md)
 
 When a new session opens in a project with an interrupted, stopped or undelivered Nightshift run, Ready tells the user about the unfinished work and offers to pick it up, after which everything behaves as in the original session, with no pointing at report files. Raised by the user on 2026-09-19. It builds on explicit run adoption, now implemented in the local 3.2.3 candidate with [qualified installed evidence](reports/run-adoption-and-continuation-20260921.md); the open questions include whether an undelivered morning report counts as unfinished work and how Ready learns about runs without continuation activation; the record lists all four.
-
-### [Degraded assessment mode](features/degraded-assessment-mode.md)
-
-Let a weaker model carry an independent assessment when no supported strong reviewer is available, clearly labeled as degraded and refused at the gates that require strength. Raised by the user during the automatic-preparation run, which was the live case: both admissible reviewers were unavailable at once and the lifecycle had no recordable fallback. The open design question is which gates a degraded assessment may satisfy on its own; it absorbs the earlier opus-review-gate follow-up.
 
 ### [Retrospective routing by audience and instruction precedence](features/revise-lore-audience-routing.md)
 
