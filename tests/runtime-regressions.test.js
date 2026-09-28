@@ -350,6 +350,20 @@ test('dependency and explicit-stop prerequisites apply before launching commands
   assert.equal(f.store.read().status, 'running');
 });
 
+test('a check path naming a directory is refused before a worker is reserved or the command runs', async t => {
+  const f = fixture(t);
+  fs.mkdirSync(path.join(f.root, 'inputs'));
+  fs.writeFileSync(path.join(f.root, 'inputs/child.txt'), 'nested\r\n');
+  fs.writeFileSync(path.join(f.root, 'writer.cjs'), "require('node:fs').writeFileSync('ran.txt', 'ran');\n");
+  const request = { action: 'check', taskId: 'a', actor, revision: 0, check: { name: 'Directory input', executable: process.execPath, args: ['writer.cjs'], paths: ['a.txt', 'inputs'], resourceMode: 'development' } };
+  await assert.rejects(execute(f.root, request), { code: 'unsafe-path', message: /inputs: snapshots require regular files/ });
+  assert.equal(fs.existsSync(path.join(f.root, 'ran.txt')), false);
+  assert.equal(f.store.read().workers.length, 0);
+  assert.equal(f.store.read().tasks[0].checks.length, 0);
+  await execute(f.root, { ...request, check: { ...request.check, paths: ['a.txt', 'inputs/child.txt'] } });
+  assert.equal(fs.existsSync(path.join(f.root, 'ran.txt')), true);
+});
+
 test('repeated review-local finding names retain both paid reports, and revalidation reopens repair obligations', t => {
   const f = fixture(t);
   const finding = { id: 'same-name', consequence: 'Wrong behavior', evidence: 'Concrete branch path', required: true };

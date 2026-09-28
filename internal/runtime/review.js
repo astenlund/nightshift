@@ -66,7 +66,7 @@ function resolveExclusions(root, excluded, baseSha) {
 }
 
 function validateBase(root, baseSha) {
-  requireCondition(/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(baseSha), 'invalid-base', 'Review needs an immutable cumulative Git base');
+  requireCondition(/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(baseSha), 'invalid-base', 'Review needs an immutable cumulative Git base: the full 40- or 64-digit lowercase hexadecimal object name, not an abbreviation or ref');
   git(root, ['cat-file', '-e', baseSha + '^{tree}']);
 }
 

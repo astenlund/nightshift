@@ -5,7 +5,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 const test = require('node:test');
-const { dispatchReview, readReceipt, schemaFor, validateReport } = require('../internal/runtime/review');
+const { dispatchReview, readReceipt, schemaFor, validateBase, validateReport } = require('../internal/runtime/review');
 const { DIMENSIONS, reviewGate } = require('../internal/runtime/lifecycle');
 const { fileIdentity, fresh, hash } = require('../internal/runtime/evidence');
 const { runAgent } = require('../internal/runtime/hosts');
@@ -155,6 +155,22 @@ test('invalid skeptic assignments reject before workers or model attempts are cr
     assert.equal(calls, 0);
     assert.equal(store.read().workers.length, 0);
     assert.equal(fs.existsSync(path.join(f.root, '.nightshift/runs/reviews')), false);
+  } finally { store.close(); }
+});
+
+test('dispatch refuses an abbreviated, symbolic or uppercase base and names the accepted form', async t => {
+  const f = fixture(t);
+  const store = new RunStore(f.root, { create: true });
+  const actor = { host: 'codex', session: 'controller' };
+  store.create({ objective: f.requirements, authority: 'User', controller: actor, controllerClaim: fixtureControllerClaim(actor), tasks: [{ id: f.taskId, title: 'Work', agreement: { source: 'User', outcome: f.requirements } }] });
+  let calls = 0;
+  try {
+    assert.doesNotThrow(() => validateBase(f.root, f.baseSha));
+    for (const baseSha of [f.baseSha.slice(0, 7), 'HEAD', f.baseSha.toUpperCase()]) {
+      await assert.rejects(executeWithFixtureController(f.root, { action: 'dispatch', actor, revision: store.read().revision, taskId: f.taskId, review: { ...f, kind: 'code', baseSha } }, { runAgent: () => { calls++; throw new Error('Unexpected model call'); } }), { code: 'invalid-base', message: /full 40- or 64-digit lowercase hexadecimal object name, not an abbreviation or ref/ }, baseSha);
+    }
+    assert.equal(calls, 0);
+    assert.equal(store.read().workers.length, 0);
   } finally { store.close(); }
 });
 
