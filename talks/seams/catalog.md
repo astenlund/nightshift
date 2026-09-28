@@ -593,7 +593,7 @@ The campaign's final usage of 210,220,926 tokens (`v3-acceptance-272m:64`) inclu
 
 ## Gaps in the evidence
 
-- The refusal codes `review-required`, `invalid-receipt`, `report-required`, `report-stale` and `unverified-continuation` never appear by name in the reports; the behaviors are described (S3.1, S3.2, S7.3). Named codes that do appear are `stale-owner`, `controller-activity-unknown` and `output-loop`. To show real refusal output on a slide, capture it from a fixture run rather than implying these incidents printed it.
+- The refusal codes `review-required`, `invalid-receipt`, `report-required`, `report-stale` and `unverified-continuation` never appear by name in the reports; the behaviors are described (S3.1, S3.2, S7.3). Named codes that do appear are `stale-owner`, `controller-activity-unknown` and `output-loop`. Real refusal output for every seam has since been captured from a test project; see [captured-output.md](captured-output.md). Present it as triggered deliberately, not as printed during these incidents.
 - S1 has no example of the seam refusing a premature handover; its strongest material is a leak (S1.1).
 - No incident shows a same-named check superseding an earlier pass, a commitment change staling a running review, a refused force-adopt, or an attempt to skip a required finding.
 - No real overnight run with a human asleep is quoted; morning-report evidence comes from scripted fixtures (S6.1, S7.3).
@@ -605,7 +605,7 @@ The campaign's final usage of 210,220,926 tokens (`v3-acceptance-272m:64`) inclu
 - Production credentials were copied into test fixtures (`unattended-stop-hook:29`, `handover-transition-and-morning-report:61`); do not quote those passages.
 - Account quota details appear in `adoption-session-triage:76` and `ready-selection-boundary:7`.
 - `v3-acceptance-272m:3` and `:5` carry a GitHub username, a commit URL and a timezone.
-- Model names (Fable, Astra, Opus) appear throughout; decide whether to name them.
+- Model names: framing says "strong models", and examples may name Fable and Astra. Keep the advisory model in S2.2 unnamed.
 - Remove run, session, review and probe UUIDs, hashes and `.tmp` paths from anything shown.
 - Jargon to translate on slides: controller (the session running the work), receipt (a saved review result), principal (an operating-system user), ENOSPC (disk full).
 
