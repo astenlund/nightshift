@@ -1,17 +1,17 @@
 {
   "schema": 1,
   "name": "nightshift",
-  "version": "3.2.14",
+  "version": "3.2.15",
   "files": [
     {
       "path": ".claude-plugin/plugin.json",
       "bytes": 641,
-      "sha256": "ab78868e39eac1e2634d13af73e2a04ecd0fa4a9085282eea927284b7033979f"
+      "sha256": "7731ce2dd571da13374b3bfe0692c2d3a76cd8c12cb5335313640c6a9ba1e6e0"
     },
     {
       "path": ".codex-plugin/plugin.json",
       "bytes": 1161,
-      "sha256": "f830e4a8db15198218d7f82b9953eb0991cf568e7a894b0b46999fe32f42d9b9"
+      "sha256": "eb7d2b8ae384562b01282d178e75c6f32977ec79e73e33b27e0fadcf8d30929e"
     },
     {
       "path": "LICENSE",
@@ -125,8 +125,8 @@
     },
     {
       "path": "internal/releases/processes.js",
-      "bytes": 4099,
-      "sha256": "92495df030ade2ef62fc16837f78dea1f5183dcdee79748cdc438940023e8229"
+      "bytes": 4167,
+      "sha256": "5b2563982ca2aa86c88ebce626ef126089abf83520b7cf63b313a36efb2f8a71"
     },
     {
       "path": "internal/releases/registry.js",
@@ -145,8 +145,8 @@
     },
     {
       "path": "internal/runtime/REFERENCE.md",
-      "bytes": 48037,
-      "sha256": "c11cd73029ee70ad04ff328caafd16ce0410bbd9fa879fd4e486f1e4c537922d"
+      "bytes": 48975,
+      "sha256": "9b26b2a23e5a62d2317d44b3b0822882d6b55efacb2b7a030283dc180d0e0304"
     },
     {
       "path": "internal/runtime/actions.js",
@@ -200,8 +200,8 @@
     },
     {
       "path": "internal/runtime/operations.js",
-      "bytes": 8515,
-      "sha256": "751589890c1ba89c40445b5336be7d177480c238dbed2749f31f71a39521fe49"
+      "bytes": 8743,
+      "sha256": "573766439258ca94b9aa535482f46e6bfcdf33e04ff47443cdf84d61ec8e8742"
     },
     {
       "path": "internal/runtime/output-loop.js",
@@ -215,8 +215,8 @@
     },
     {
       "path": "internal/runtime/probes.js",
-      "bytes": 5990,
-      "sha256": "08385325dc55f52706200f8b5b35b265c3ab52fb737c3d299575b1f3859dab30"
+      "bytes": 6103,
+      "sha256": "0deb4b71d211706a567f41e0313f05ae80d5051f4aed0e951479f908828d84fc"
     },
     {
       "path": "internal/runtime/review.js",
@@ -235,13 +235,13 @@
     },
     {
       "path": "internal/runtime/windows-job-runner.ps1",
-      "bytes": 36342,
-      "sha256": "68a09c900c036324d02997a75a373e05f6672d2539a65b926750fff144192d98"
+      "bytes": 41353,
+      "sha256": "ece20891547d4b00d7930c7f92f9ad39449d413080dc888f41f3a237e4150cc4"
     },
     {
       "path": "internal/runtime/windows-job.js",
-      "bytes": 7503,
-      "sha256": "618c582c9301370ac193522b55e4ddb1edf8962513adb029efd14c316b0c195a"
+      "bytes": 9580,
+      "sha256": "7c4035b82ffd630e4c26b870a7e52cde6757e8ab41cf95c0f5162cd2987eab80"
     },
     {
       "path": "internal/runtime/workers.js",
