@@ -11,6 +11,9 @@ const MAX_FRAME_BYTES = 5592576;
 const START_STAGES = ['command', 'setup', 'create-process', 'job-assignment', 'resume'];
 // Shared with internal/runtime/windows-job-runner.ps1, which truncates longer system messages.
 const MAX_WIN32_MESSAGE_LENGTH = 1024;
+// A loaded runner can still be starting PowerShell or compiling its interop when termination is requested, and killing it forfeits the job-empty proof.
+// The grace stays inside the launcher's 60-second exit margin in internal/runtime/limits.js.
+const TERMINATION_GRACE_MS = 30000;
 
 function hasExactKeys(frame, keys) {
   const actual = Object.keys(frame).sort();
@@ -88,7 +91,7 @@ function spawnWindowsJob(executable, args, options) {
     terminating = true;
     child.signalCode = 'SIGTERM';
     try { send({ kind: 'terminate' }); } catch (error) { failure ??= error; }
-    terminateTimer = setTimeout(() => runner.kill(), 5000);
+    terminateTimer = setTimeout(() => runner.kill(), TERMINATION_GRACE_MS);
     return true;
   };
   runner.stdin.on('error', fail);
