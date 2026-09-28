@@ -4,9 +4,9 @@ Upcoming work and deferred extensions to the delivered v3 MVP. Its delivery is r
 
 ## Current work
 
-### [Closing tracking review](features/closing-tracking-review.md)
+### [Independent documentation review](features/independent-documentation-review.md)
 
-Give triage tracking edits an official scoped independent review: a `tracking` review kind over backlog-only changes, whose clean receipt lets the completion gate accept task reviews made stale only by those edits and covers them at publication, including tracking applied after a handed-over run completes. Raised by the user on 2026-09-24 after run `46fc13f1-98fc-4a3e-953c-958a31261ae4` needed a completion workaround and a separate review-loop for its tracking commit; the readback is agreed and recorded in the linked record. Not started; it needs a concise governing spec and a decision on installed-host evidence before implementation.
+Add one strong independent documentation review kind, whose brief covers claim accuracy against the cited code and records, sweep completeness, backlog grammar, sibling consistency and proportionality instead of the six code dimensions, with the same skeptic, disposition and repair loop. Have revise-docs require it for its complete change, purely mechanical changes excepted, and have closing tracking use it over backlog-only changes, whose clean receipt lets the completion gate accept task reviews made stale only by those edits and covers them at publication, including tracking applied after a handed-over run completes. Raised by the user on 2026-09-24 as the closing tracking review, after run `46fc13f1-98fc-4a3e-953c-958a31261ae4` needed a completion workaround and a separate review-loop for its tracking commit, and widened by the user on 2026-09-28 after a standalone revise-docs pass completed with no independent review; both readbacks are agreed and recorded in the linked record. Not started; it needs a concise governing spec and a decision on installed-host evidence before implementation.
 
 **Requires:** none.
 
@@ -37,6 +37,12 @@ Have the operating brief ask for a change that crosses a boundary the determinis
 ### [Reproduce a bug with a failing check before repairing it](features/reproduce-before-repair.md)
 
 Have the operating brief ask the controller, for defect work, to run a check that reproduces the failure before the repair, confirm it fails for the defect's reason, and rerun it under the same name after the repair, and have its Tests and evidence code dimension ask whether a fix carries that pair. This is guidance only: the existing check evidence already keeps both runs and gates acceptance on the latest, so the runtime stays unchanged. The agreed scope identifies defect work, and for a defect without a practical automated reproduction the controller is to record why and what evidence stands in, reported as a verification limit. From the user's 2026-09-26 ideas document; the commitments were agreed with the user on 2026-09-28 and are recorded in the linked record. It changes model-owned behavior, so it needs a version increase and a decision on installed-host evidence before implementation.
+
+**Requires:** none.
+
+### [Run-free revise](features/run-free-revise.md)
+
+Let revise-code, revise-spec, revise-docs and revise-lore run without creating a runtime run when invoked on their own, while inside an active run they keep using its tasks. Runs stay with agreed implementation delivery: the attended run a project lifecycle requirement starts, and a handed-over run. Make the review operations usable without a run through a lightweight review record holding receipts, skeptic verdicts, dispositions and repairs, with no controller claim, continuation, closing stages or completion gate, so isolated read-only review copies, cross-host dispatch and attributed receipts are kept; a run-free invocation lists its follow-ups in its final message. Raised and agreed by the user on 2026-09-28 after a standalone revise-docs pass created run `a0eaaee7-6c97-4261-960d-346c6a4654aa`, which then needed a retrospective and triage to close. It amends the v3 decision that standalone revision uses the shared lifecycle machinery, so it needs a concise governing spec, a version increase and a decision on installed-host evidence before implementation.
 
 **Requires:** none.
 

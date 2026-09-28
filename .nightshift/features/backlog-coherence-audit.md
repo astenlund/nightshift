@@ -19,7 +19,7 @@ Raised by the user on 2026-09-25 and shaped in discussion the same day; the user
 - Scope covers relationships between entries (stated separations and coordinations still holding, overlapping or duplicate entries, missing or satisfied `Requires`), consistency between index excerpts and their records, and entries' claims about the current code.
 - Every finding receives fresh skeptic validation against concrete evidence before it is repaired or reported, as in the rest of the revise family.
 - When attended, the audit repairs what it confirms, under the existing revise-docs rules. When unattended, it edits nothing and writes a report to the inbox for later triage, since backlog content reflects the user's triage decisions.
-- Under the user's global review rules the backlog is documentation, so the audit's repairs are reviewed with the documentation lens: accuracy against what each entry describes.
+- Under the user's global review rules the backlog is documentation, so the audit's repairs are reviewed with the documentation lens: accuracy against what each entry describes. [Independent documentation review](independent-documentation-review.md) is to supply that lens as a runtime review kind.
 
 ## Slices
 
