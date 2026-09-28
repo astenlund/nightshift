@@ -8,7 +8,7 @@ const { spawnSync } = require('node:child_process');
 const { createHash } = require('node:crypto');
 const { executable, pluginVersion, runAgent } = require('../internal/runtime/hosts');
 const { resolveTrustedExecutable } = require('../internal/filesystem-primitives');
-const { spawnWindowsJob, startFailure } = require('../internal/runtime/windows-job');
+const { lingeringProcesses, spawnWindowsJob, startFailure } = require('../internal/runtime/windows-job');
 const { information, runContained } = require('../internal/releases/processes');
 const { OUTPUT_LOOP_MIN_DELTAS, OUTPUT_LOOP_MIN_MS, outputLoopDetector, outputLoopMessage } = require('../internal/runtime/output-loop');
 
@@ -325,4 +325,81 @@ test('Windows job containment carries the actual host protocol and proves descen
     return path.join(options.cwd, 'descendant.pid');
   });
   assert.throws(() => process.kill(pid, 0), { code: 'ESRCH' });
+});
+
+const lingeringFixture = path.join(__dirname, 'fixtures/lingering-descendant.cjs');
+
+for (const [mode, exitCode] of [['holds-output', 0], ['ignores-output', 7]]) {
+  test(`a contained command whose descendant outlives it completes with its exit code and names the reclaimed descendant: ${mode}`, { skip: process.platform !== 'win32' }, async t => {
+    // Arrange
+    const options = fixture(t, 'claude');
+
+    // Act
+    // Without the reclaim the descendant would hold the job until this bound, so completing at all shows it was reclaimed.
+    const exit = await runContained(process.execPath, [lingeringFixture, mode, String(exitCode)], { cwd: options.cwd, env: process.env, timeoutMs: 60000, reclaimAfterMs: 500 });
+
+    // Assert
+    const leaf = Number(fs.readFileSync(path.join(options.cwd, 'lingering.pid'), 'utf8').trim());
+    assert.equal(exit.code, exitCode);
+    assert.equal(exit.descendantsReclaimed, true);
+    assert.equal(exit.error, null);
+    assert.match(exit.stdout, /command finished/);
+    const named = exit.lingering.processes.find(item => item.pid === leaf);
+    assert.ok(named, JSON.stringify(exit.lingering));
+    assert.equal(path.basename(named.image).toLowerCase(), path.basename(process.execPath).toLowerCase());
+    assert.ok(exit.lingering.total >= exit.lingering.processes.length);
+    assert.throws(() => process.kill(leaf, 0), { code: 'ESRCH' });
+  });
+}
+
+test('a contained command without a reclaim grace still waits for its job to empty', { skip: process.platform !== 'win32' }, async t => {
+  // Arrange
+  const attempts = [];
+
+  // Act
+  const leaf = await stoppedAfterDescendantStarted(async timeoutMs => {
+    const options = fixture(t, 'claude');
+    let finished;
+    const failure = await runContained(process.execPath, [lingeringFixture, 'ignores-output', '0'], { cwd: options.cwd, env: process.env, timeoutMs, onFinished: exit => { finished = exit; } }).then(() => null, error => error);
+    attempts.push({ failure, finished });
+
+    return path.join(options.cwd, 'lingering.pid');
+  });
+
+  // Assert
+  for (const { failure, finished } of attempts) {
+    assert.equal(failure?.code, 'operation-timeout');
+    assert.equal(failure.descendantsReclaimed, true);
+    assert.equal(finished.lingering, null);
+  }
+  assert.throws(() => process.kill(leaf, 0), { code: 'ESRCH' });
+});
+
+test('Windows job lingering reports and reclaim graces are validated', () => {
+  // Arrange
+  const valid = { kind: 'lingering', processes: [{ image: 'C:\\tools\\server.exe', pid: 42 }, { image: null, pid: 43 }], total: 3 };
+  const invalid = [
+    { kind: 'lingering', processes: [] },
+    { ...valid, extra: true },
+    { ...valid, total: 1 },
+    { ...valid, total: -1 },
+    { ...valid, total: 2.5 },
+    { ...valid, processes: {} },
+    { ...valid, processes: [null] },
+    { ...valid, processes: [{ image: 'x.exe' }] },
+    { ...valid, processes: [{ image: 'x.exe', pid: 0 }] },
+    { ...valid, processes: [{ image: 7, pid: 42 }] },
+    { ...valid, processes: [{ image: 'x.exe', pid: 42, name: 'x' }] },
+    { ...valid, processes: Array.from({ length: 65 }, (_, index) => ({ image: null, pid: index + 1 })), total: 65 },
+  ];
+
+  // Act
+  const accepted = lingeringProcesses(valid);
+  const unknownTotal = lingeringProcesses({ ...valid, total: null });
+
+  // Assert
+  assert.deepEqual(accepted, { total: 3, processes: [{ pid: 42, image: 'C:\\tools\\server.exe' }, { pid: 43, image: null }] });
+  assert.equal(unknownTotal.total, null);
+  for (const frame of invalid) assert.throws(() => lingeringProcesses(frame), /Invalid Windows job lingering report/);
+  for (const reclaimAfterMs of [-1, 1.5, 3600001, '500']) assert.throws(() => spawnWindowsJob(process.execPath, [], { cwd: __dirname, reclaimAfterMs }), /reclaim grace/);
 });

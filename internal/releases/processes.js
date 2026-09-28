@@ -39,7 +39,7 @@ function ownerAlive(owner, cwd) {
 }
 
 async function runContained(executable, args, options) {
-  const child = spawnWindowsJob(executable, args, { cwd: options.cwd, protectedRoot: options.cwd, env: options.env, closeInput: true });
+  const child = spawnWindowsJob(executable, args, { cwd: options.cwd, protectedRoot: options.cwd, env: options.env, closeInput: true, reclaimAfterMs: options.reclaimAfterMs });
   let stdout = '';
   let stderr = '';
   let failure = null;
@@ -66,7 +66,7 @@ async function runContained(executable, args, options) {
   const timer = setTimeout(() => fail(new ReleaseError('operation-timeout', 'Guarded operation exceeded its time bound')), options.timeoutMs ?? MAX_OPERATION_TIMEOUT_MS);
   const result = await new Promise(resolve => child.once('close', (code, signal) => resolve({ code, signal })));
   clearTimeout(timer);
-  const exit = { ...result, stdout, stderr, descendantsReclaimed: child.jobEmpty === true, error: failure?.message ?? null };
+  const exit = { ...result, stdout, stderr, descendantsReclaimed: child.jobEmpty === true, lingering: child.lingering, error: failure?.message ?? null };
   options.onFinished?.(exit);
   requireValue(exit.descendantsReclaimed, 'operation-termination-unverified', 'Guarded operation descendants could not be reconciled');
   if (failure) {

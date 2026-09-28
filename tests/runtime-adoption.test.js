@@ -290,6 +290,28 @@ test('real contained check produces attributable termination evidence', { skip: 
   assert.equal(JSON.parse(fs.readFileSync(path.join(f.root, worker.terminationPath), 'utf8')).workerId, worker.id);
 });
 
+test('a check whose descendant outlives its command passes and records the reclaimed descendant', { skip: process.platform !== 'win32' }, async t => {
+  // Arrange
+  const f = await fixture(t);
+  fs.writeFileSync(path.join(f.root, 'subject.txt'), 'input\n');
+
+  // Act
+  // Without the reclaim the descendant would hold the check until its bound, so a passing check shows it was reclaimed.
+  await f.call({ action: 'check', taskId: 'change', check: { name: 'Command leaving a build-server-like descendant', executable: process.execPath, args: [path.join(__dirname, 'fixtures/lingering-descendant.cjs'), 'holds-output', '0'], paths: ['subject.txt'], resourceMode: 'development', timeoutMs: 60000 } });
+
+  // Assert
+  const state = f.store.read();
+  const check = state.tasks[0].checks.at(-1);
+  const worker = state.workers.at(-1);
+  const leaf = Number(fs.readFileSync(path.join(f.root, 'lingering.pid'), 'utf8').trim());
+  assert.equal(check.passed, true);
+  assert.equal(check.exitCode, 0);
+  assert.ok(check.lingeringDescendants.processes.some(item => item.pid === leaf), JSON.stringify(check.lingeringDescendants));
+  assert.equal(worker.status, 'complete');
+  assert.equal(worker.terminationEvidence.descendantsReclaimed, true);
+  assert.throws(() => process.kill(leaf, 0), { code: 'ESRCH' });
+});
+
 // Puts the running node first on PATH, keeping the rest for helpers the runtime itself launches.
 function nodeFirstOnPath(t) {
   const previous = process.env.PATH;

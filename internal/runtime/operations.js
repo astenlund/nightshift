@@ -11,6 +11,9 @@ const { projectFile, snapshot } = require('./evidence');
 const { verificationEnvironment } = require('../releases/entry');
 const processes = require('../releases/processes');
 
+// How long a check or probe's descendants may outlive its top-level command before they are named and ended.
+const LINGERING_GRACE_MS = 5000;
+
 // A bare name resolves from the check environment's PATH, outside the project, because the contained launcher performs no search.
 function resolveExecutable(root, executable, env) {
   if (path.isAbsolute(executable) || /[\\/]/.test(executable)) return executable;
@@ -73,7 +76,7 @@ async function reservedOperation(store, request, work, dependencies = {}) {
     try {
       launchAttempted = true;
       const result = await (dependencies.runContained ?? processes.runContained)(check.executable, check.args, {
-        cwd: root, env: verificationEnvironment(check.resourceMode ?? 'inherit'), timeoutMs,
+        cwd: root, env: verificationEnvironment(check.resourceMode ?? 'inherit'), timeoutMs, reclaimAfterMs: LINGERING_GRACE_MS,
         onPrepared: info => update({ runnerPid: info.runnerPid, runnerProcess: (dependencies.information ?? processes.information)(info.runnerPid, null, root) }),
         onStarted: info => update({ phase: 'contained', status: 'running', pid: info.pid, runnerPid: info.runnerPid, childProcess: (dependencies.information ?? processes.information)(info.pid, null, root) }),
         onFinished: writeTermination,
@@ -81,7 +84,7 @@ async function reservedOperation(store, request, work, dependencies = {}) {
 
       update({ phase: 'finalizing' });
 
-      return { ...check, timeoutMs, resourceMode: check.resourceMode ?? 'inherit', startedAt, finishedAt: new Date().toISOString(), exitCode: result.code, error: result.error ?? null, output: (result.stdout ?? '') + (result.stderr ?? '') };
+      return { ...check, timeoutMs, resourceMode: check.resourceMode ?? 'inherit', startedAt, finishedAt: new Date().toISOString(), exitCode: result.code, error: result.error ?? null, output: (result.stdout ?? '') + (result.stderr ?? ''), lingeringDescendants: result.lingering ?? null };
     } catch (error) {
       if (!termination && error.descendantsReclaimed === true) writeTermination({ descendantsReclaimed: true, code: null });
       throw error;

@@ -6,6 +6,8 @@ $ErrorActionPreference = 'Stop'
 $script:MaxRunnerFrameBytes = 5592576
 $script:MaxWin32MessageLength = 1024
 $script:MaxPendingInputBytes = 33554432
+$script:MaxLingeringListed = 64
+$script:MaxReclaimAfterMs = 3600000
 $script:RunnerCreationFlags = [long](0x4 -bor 0x400 -bor 0x80000 -bor 0x08000000)
 
 $script:RunnerInteropSource = @'
@@ -27,6 +29,12 @@ namespace NightshiftRunner
         public long ProcessHandle;
         public long ThreadHandle;
         public long ProcessId;
+    }
+
+    public class JobProcessList
+    {
+        public long Total;
+        public long[] Ids;
     }
 
     [StructLayout(LayoutKind.Sequential)]
@@ -179,6 +187,15 @@ namespace NightshiftRunner
 
         [DllImport("kernel32.dll", SetLastError = true)]
         private static extern bool CloseHandle(IntPtr hObject);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        private static extern IntPtr OpenProcess(uint dwDesiredAccess, bool bInheritHandle, uint dwProcessId);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        private static extern bool IsProcessInJob(IntPtr ProcessHandle, IntPtr JobHandle, out bool Result);
+
+        [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+        private static extern bool QueryFullProcessImageNameW(IntPtr hProcess, uint dwFlags, StringBuilder lpExeName, ref uint lpdwSize);
 
         public PipePair CreateInheritablePipe()
         {
@@ -361,6 +378,63 @@ namespace NightshiftRunner
         public bool TerminateJob(long job, long exitCode)
         {
             return TerminateJobObject(new IntPtr(job), (uint)exitCode);
+        }
+
+        // Lists up to capacity process ids of the job; Total counts every assigned process even when the list is truncated.
+        public JobProcessList QueryJobProcessIds(long job, int capacity)
+        {
+            // JOBOBJECT_BASIC_PROCESS_ID_LIST: two DWORD counts, then ULONG_PTR ids at offset 8 on both pointer sizes.
+            int size = 8 + capacity * IntPtr.Size;
+            IntPtr buffer = Marshal.AllocHGlobal(size);
+            try
+            {
+                if (!QueryInformationJobObject(new IntPtr(job), 3, buffer, (uint)size, IntPtr.Zero) && Marshal.GetLastWin32Error() != 234)
+                {
+                    return null;
+                }
+                int listed = Math.Min(Marshal.ReadInt32(buffer, 4), capacity);
+                JobProcessList list = new JobProcessList();
+                list.Total = (long)(uint)Marshal.ReadInt32(buffer, 0);
+                list.Ids = new long[listed];
+                for (int index = 0; index < listed; index++)
+                {
+                    list.Ids[index] = Marshal.ReadIntPtr(buffer, 8 + index * IntPtr.Size).ToInt64();
+                }
+                return list;
+            }
+            finally
+            {
+                Marshal.FreeHGlobal(buffer);
+            }
+        }
+
+        // Returns the image path of a process only while it still belongs to the job, so a reused id is not misnamed.
+        public string QueryJobProcessImage(long job, long processId)
+        {
+            IntPtr process = OpenProcess(0x1000, false, (uint)processId);
+            if (process == IntPtr.Zero)
+            {
+                return null;
+            }
+            try
+            {
+                bool member;
+                if (!IsProcessInJob(process, new IntPtr(job), out member) || !member)
+                {
+                    return null;
+                }
+                StringBuilder image = new StringBuilder(32768);
+                uint length = (uint)image.Capacity;
+                if (!QueryFullProcessImageNameW(process, 0, image, ref length))
+                {
+                    return null;
+                }
+                return image.ToString(0, (int)length);
+            }
+            finally
+            {
+                CloseHandle(process);
+            }
         }
 
         public bool CloseHandle64(long handle)
@@ -657,6 +731,22 @@ function ConvertTo-RunnerStartFailedFrame($Failure) {
     return ConvertTo-Json -InputObject $frame -Compress -EscapeHandling EscapeNonAscii
 }
 
+# Names the processes still in the job after its top-level command exited; image is null when it cannot be read.
+function ConvertTo-RunnerLingeringFrame($Interop, [long]$JobHandle) {
+    $listing = $Interop.QueryJobProcessIds($JobHandle, $script:MaxLingeringListed)
+    $processes = New-Object 'System.Collections.Generic.List[object]'
+    $total = $null
+    if ($null -ne $listing) {
+        $total = $listing.Total
+        foreach ($processId in $listing.Ids) {
+            $processes.Add([ordered]@{ image = $Interop.QueryJobProcessImage($JobHandle, $processId); pid = $processId })
+        }
+    }
+    $frame = [ordered]@{ kind = 'lingering'; processes = $processes.ToArray(); total = $total }
+
+    return ConvertTo-Json -InputObject $frame -Compress -Depth 4 -EscapeHandling EscapeNonAscii
+}
+
 function Read-RunnerTaskCount($Task) {
     if ($Task.IsCanceled) {
         throw (New-Object System.Threading.Tasks.TaskCanceledException -ArgumentList 'Runner stream read task was canceled')
@@ -751,10 +841,15 @@ function Invoke-NightshiftJobRunner {
             Start-Sleep -Milliseconds 15
         }
         $request = $utf8Strict.GetString($startLine) | ConvertFrom-Json
-        if (-not (Test-RunnerExactKeys $request @('args', 'cwd', 'environment', 'executable', 'kind')) -or $request.kind -cne 'start') {
+        if (-not (Test-RunnerExactKeys $request @('args', 'cwd', 'environment', 'executable', 'kind', 'reclaimAfterMs')) -or $request.kind -cne 'start') {
             exit 2
         }
         if ($request.executable -isnot [string] -or $request.cwd -isnot [string] -or $request.args -isnot [array]) {
+            exit 2
+        }
+        # Null keeps waiting for the job to empty; a grace reclaims what remains that long after the top-level command exits.
+        $reclaimAfterMs = $request.reclaimAfterMs
+        if ($null -ne $reclaimAfterMs -and (($reclaimAfterMs -isnot [long] -and $reclaimAfterMs -isnot [int]) -or $reclaimAfterMs -lt 0 -or $reclaimAfterMs -gt $script:MaxReclaimAfterMs)) {
             exit 2
         }
         $argumentList = @()
@@ -799,7 +894,9 @@ function Invoke-NightshiftJobRunner {
         $pendingInputBytes = 0
         $nextInputOrdinal = 1
         $processSignaled = $false
+        $exitClock = $null
         $terminated = $false
+        $reclaimed = $false
         while ($true) {
             Update-RunnerChildStream $streams.Stdout
             Update-RunnerChildStream $streams.Stderr
@@ -870,12 +967,22 @@ function Invoke-NightshiftJobRunner {
             if (-not $processSignaled) {
                 if ($interop.WaitForProcess($started.ProcessHandle, 0) -eq 0) {
                     $processSignaled = $true
+                    $exitClock = [System.Diagnostics.Stopwatch]::StartNew()
                 }
             }
             if ($processSignaled -and $streams.Stdout.Eof -and $streams.Stderr.Eof) {
                 if ($interop.QueryActiveProcessCount($started.JobHandle) -eq 0) {
                     break
                 }
+            }
+            # Build servers and similar descendants outlive the command by design; naming and ending them keeps the job contained without waiting for their idle timeout.
+            if ($processSignaled -and $null -ne $reclaimAfterMs -and $exitClock.ElapsedMilliseconds -ge $reclaimAfterMs -and $interop.QueryActiveProcessCount($started.JobHandle) -gt 0) {
+                Send-RunnerFrame (ConvertTo-RunnerLingeringFrame $interop $started.JobHandle)
+                if (-not $interop.TerminateJob($started.JobHandle, 1)) {
+                    exit 2
+                }
+                $reclaimed = $true
+                break
             }
             Start-Sleep -Milliseconds 15
         }
@@ -903,7 +1010,7 @@ function Invoke-NightshiftJobRunner {
             try {
                 $childStdin.Dispose()
             } catch {
-                if (-not $terminated) {
+                if (-not ($terminated -or $reclaimed)) {
                     throw
                 }
                 # A terminated child can close its pipe before queued writes flush.

@@ -11,6 +11,9 @@ const MAX_FRAME_BYTES = 5592576;
 const START_STAGES = ['command', 'setup', 'create-process', 'job-assignment', 'resume'];
 // Shared with internal/runtime/windows-job-runner.ps1, which truncates longer system messages.
 const MAX_WIN32_MESSAGE_LENGTH = 1024;
+// Shared with internal/runtime/windows-job-runner.ps1, which lists at most this many lingering processes and accepts at most this grace.
+const MAX_LINGERING_LISTED = 64;
+const MAX_RECLAIM_AFTER_MS = 3600000;
 // A loaded runner can still be starting PowerShell or compiling its interop when termination is requested, and killing it forfeits the job-empty proof.
 // The grace stays inside the launcher's 60-second exit margin in internal/runtime/limits.js.
 const TERMINATION_GRACE_MS = 30000;
@@ -36,7 +39,19 @@ function startFailure(executable, frame) {
   return new Error(win32 ? `${prefix} (${frame.stage}): Windows error ${frame.win32Error}: ${frame.win32Message.replaceAll('%1', () => executable)}` : `${prefix} (${frame.stage})`);
 }
 
+// Validates the runner's report of processes still in the job after the top-level command exited.
+function lingeringProcesses(frame) {
+  const valid = hasExactKeys(frame, ['kind', 'processes', 'total']) && Array.isArray(frame.processes) && frame.processes.length <= MAX_LINGERING_LISTED
+    && (frame.total === null || Number.isSafeInteger(frame.total) && frame.total >= frame.processes.length)
+    && frame.processes.every(item => item !== null && typeof item === 'object' && hasExactKeys(item, ['image', 'pid']) && Number.isSafeInteger(item.pid) && item.pid > 0 && (item.image === null || typeof item.image === 'string'));
+  if (!valid) throw new Error('Invalid Windows job lingering report');
+  return { total: frame.total, processes: frame.processes.map(item => ({ pid: item.pid, image: item.image })) };
+}
+
+// options.reclaimAfterMs, when set, ends processes still in the job that long after the top-level command exits and reports them as child.lingering.
 function spawnWindowsJob(executable, args, options) {
+  const reclaimAfterMs = options.reclaimAfterMs ?? null;
+  if (reclaimAfterMs !== null && !(Number.isSafeInteger(reclaimAfterMs) && reclaimAfterMs >= 0 && reclaimAfterMs <= MAX_RECLAIM_AFTER_MS)) throw new Error(`Windows job reclaim grace must be an integer from 0 to ${MAX_RECLAIM_AFTER_MS} ms`);
   const child = new EventEmitter();
   child.stdout = new PassThrough();
   child.stderr = new PassThrough();
@@ -44,6 +59,7 @@ function spawnWindowsJob(executable, args, options) {
   child.exitCode = null;
   child.signalCode = null;
   child.jobEmpty = false;
+  child.lingering = null;
   child.diagnostics = [];
   let closed = false;
   let terminating = false;
@@ -99,7 +115,7 @@ function spawnWindowsJob(executable, args, options) {
   runner.stderr.on('data', bytes => child.stderr.write(bytes));
   runner.once('spawn', () => {
     try {
-      send({ kind: 'start', executable, args, cwd: options.cwd, environment: options.env ?? process.env });
+      send({ kind: 'start', executable, args, cwd: options.cwd, environment: options.env ?? process.env, reclaimAfterMs });
       // Noninteractive commands can exit while process-observation callbacks run.
       // Queue EOF before those callbacks, while the runner still owns its input pipe.
       if (options.closeInput === true) child.stdin.end();
@@ -127,6 +143,9 @@ function spawnWindowsJob(executable, args, options) {
       } else if (frame.kind === 'host-exit') {
         if (!Number.isInteger(frame.exitCode) || hostExit !== null) throw new Error('Invalid Windows job exit');
         hostExit = frame.exitCode;
+      } else if (frame.kind === 'lingering') {
+        if (reclaimAfterMs === null || child.lingering !== null || hostExit !== null) throw new Error('Unexpected Windows job lingering report');
+        child.lingering = lingeringProcesses(frame);
       } else if (frame.kind === 'job-empty') child.jobEmpty = true;
       else if (frame.kind === 'start-failed') {
         const error = startFailure(executable, frame);
@@ -156,4 +175,4 @@ function spawnWindowsJob(executable, args, options) {
   return child;
 }
 
-module.exports = { MAX_FRAME_BYTES, spawnWindowsJob, startFailure };
+module.exports = { MAX_FRAME_BYTES, lingeringProcesses, spawnWindowsJob, startFailure };

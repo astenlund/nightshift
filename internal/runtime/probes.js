@@ -60,6 +60,7 @@ function runProbe(root, receipt, probe, runner) {
       snapshotDigest: receipt.snapshot.digest, contextDigest: inputs.digest, canonicalUnchanged,
       exitCode: check.exitCode, error: check.error, output: check.output, resourceMode: check.resourceMode,
       startedAt: check.startedAt, finishedAt: check.finishedAt,
+      ...(check.lingeringDescendants === undefined ? {} : { lingeringDescendants: check.lingeringDescendants }),
     };
     const file = path.join(directory, 'result.json');
     writeJson(file, result);
