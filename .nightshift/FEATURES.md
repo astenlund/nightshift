@@ -58,6 +58,12 @@ Let a weaker model carry an independent assessment when no supported strong mode
 
 **Requires:** none.
 
+### [Background review and assessment of selected work](features/selection-review-and-assessment.md)
+
+When a readback or spec that asks whether to begin implementation is presented, dispatch two background agents at once, each on the strongest model available and preferring the other host: an independent review agent, which a plain readback does not get today, and a separate assessment agent that gives short, prioritized feedback on the selected work with suggested tweaks, as advice rather than a gate and without the controller's reasoning. The draft is shown without waiting; the user may say yes before the results arrive, but implementation and handover acceptance wait until both have been presented and any tweaks the user wants are settled. Raised by the user on 2026-09-29 so that the user gets the model's feedback before work starts, even on an entry written without any AI input; the commitments were agreed with the user on 2026-09-29 and are recorded in the linked record. It changes the agreement rules, the Ready selection path and the handover acceptance condition, so it needs a concise governing spec, a version increase and a decision on installed-host evidence before implementation.
+
+**Requires:** none.
+
 ## Exploring
 
 ### [Shared BACKLOG.md meta-index](features/backlog-meta-index.md)
@@ -155,10 +161,6 @@ When a new session opens in a project with an interrupted, stopped or undelivere
 ### [Size-aware Ready recommendations](features/ready-sized-recommendations.md)
 
 Besides the few high-value entries Ready recommends today, also recommend one or two smaller entries for a quick session and a larger entry, or a group of entries, sized for a longer session such as a night's worth of work. Raised by the user on 2026-09-29, who settled that size is the model's rough judgment from what it reads; what makes a group coherent, how a pick for a night fits the settlement that handover requires first, and how a group is cited and selected are among the questions the record lists as open.
-
-### [Background review and assessment of selected work](features/selection-review-and-assessment.md)
-
-When the readback or spec for selected work is presented, dispatch in the background both an independent review agent, which a plain readback does not get today, and a separate agent that gives a short assessment of the selected entries with suggested tweaks, so the user gets the model's feedback before work starts, even on an entry written without any AI input. Raised by the user on 2026-09-29, who settled that readbacks get a review agent too and that the assessment comes from a separate agent; what each agent covers, when their results must arrive relative to the user's yes and to handover, and how they are recorded before any run exists are among the questions the record lists as open.
 
 ### [Retrospective routing by audience and instruction precedence](features/revise-lore-audience-routing.md)
 

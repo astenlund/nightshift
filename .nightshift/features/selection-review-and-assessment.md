@@ -1,9 +1,8 @@
 ---
 name: selection-review-and-assessment
-description: When the readback or spec for selected work is presented, dispatch a review agent and a separate assessment agent that suggests tweaks, both running while the user reads
+description: When a readback or spec that asks whether to begin implementation is presented, dispatch a review agent and a separate assessment agent that suggests tweaks, both running while the user reads
 metadata:
   type: feature
-status: exploring
 ---
 
 # Background review and assessment of selected work
@@ -16,7 +15,7 @@ Asked how the second sentence was meant, the user explained: "not sure if it wor
 
 ## Current behavior
 
-[The Ready skill](../../skills/ready/SKILL.md) turns a confirmed selection into interactive investigation and a readback that ends with a plain question asking whether to begin the work. [The operating brief](../../internal/workflow.md#priorities-and-authority) asks for a short understanding readback and confirmation for small work, and a concise spec for substantial work. Only the spec gets an independent review while the user reads it: the controller starts the spec assessment through a nonblocking dispatch and promptly presents the same draft, and implementation waits for agreed commitments and a resolved assessment, as [revise-spec](../../skills/revise-spec/SKILL.md) also states; its lead assesses meaningful commitments, soundness, failure and recovery, and proportionality. A plain readback gets no review agent, only the user's confirmation. Neither path asks for a separate assessment of the selected entries themselves with suggested tweaks. [The handover skill](../../skills/handover/SKILL.md) accepts a handover only once every queued item has its readback or concise-spec agreement and known user-owned decisions are settled before the user leaves. Investigation without implementation agreement does not create a delivery run.
+[The Ready skill](../../skills/ready/SKILL.md) turns a confirmed selection into interactive investigation and a readback that ends with a plain question asking whether to begin the work. [The operating brief](../../internal/workflow.md#priorities-and-authority) asks for a short understanding readback and confirmation for small work, and a concise spec for substantial work. Only the spec gets an independent review while the user reads it: the controller starts the spec assessment through a nonblocking dispatch and promptly presents the same draft, and implementation waits for agreed commitments and a resolved assessment, as [revise-spec](../../skills/revise-spec/SKILL.md) also states; its lead assesses meaningful commitments, soundness, failure and recovery, and proportionality. A plain readback gets no review agent, only the user's confirmation. Neither path dispatches a separate assessment of the selected entries themselves. On 2026-09-06 the v3 migration did agree that the controller integrate a proportionate assessment into the normal readback or spec presentation, in [its disposition](../../V3-MIGRATION.md#agreement-and-informed-user-decisions) of the v2 quick win "[Present the controller's assessment of the governing text before the digest](../migration/v2/QUICK_WINS.md#agreement-presentation)": "Investigate the proposal and explain material concerns, recommended changes, and accepted tradeoffs before asking for agreement. Existing backlog entries receive scrutiny." [The migration status](../MIGRATION_STATUS.md) records that policy as present, carried by the concise intake and shared brief, but a search on 2026-09-29 found no sentence in the operating brief or the skills that asks for material concerns, recommended changes or scrutiny of existing entries. [The handover skill](../../skills/handover/SKILL.md) accepts a handover only once every queued item has its readback or concise-spec agreement and known user-owned decisions are settled before the user leaves. Investigation without implementation agreement does not create a delivery run.
 
 ## Settled questions
 
@@ -25,17 +24,35 @@ Answered by the user on 2026-09-29, after being told that today only a spec gets
 - **Readbacks too.** Every readback, like every spec, is to get a background review agent while the user reads it, with the new assessment running alongside.
 - **Separate agent.** The assessment is to come from a second background agent, dispatched at the same time as the review agent.
 
+The When commitment below later scoped both agents to readbacks and specs that ask whether to begin implementation.
+
+The commitments below were agreed with the user on 2026-09-29, when the entry graduated from Exploring. None of this is implemented yet.
+
+- **When.** Presenting a readback or spec that asks whether to begin implementation, whether the work was selected through Ready or requested directly, dispatches two background agents at once, the review agent and the assessment agent, and the draft is presented promptly without waiting for either. Plain readbacks gain the review a spec already gets; for a spec, the existing spec assessment is the review agent. Graduations and other agreements that only change the backlog are out of scope.
+- **Review.** The review agent checks the readback against the selected entries, the user's words and the actual code: whether the commitments are captured faithfully, whether its factual claims hold, and whether anything consequential is missing.
+- **Assessment.** The assessment agent gives short, prioritized feedback on the selected work itself: its value, scope, simpler alternatives, risks and concrete tweaks. It is advice, not a gate, and does not go through the finding-validation machinery the review uses. It receives the selected entries, their records and the presented draft, never the controller's reasoning, and the controller checks the factual premise of each suggestion before relaying it.
+- **Timing.** Results are presented as they arrive, and the user may say yes before they do. Implementation and handover acceptance wait until both have been presented and the user has settled any tweaks they want. An accepted tweak follows the existing rule: compatible corrections preserve agreement, and material changes need the user's decision.
+- **Failure.** If background dispatch is unavailable, the controller says so and runs both before implementation. If an agent fails or no suitable model is available, it reports that and the user decides whether to proceed without it.
+- **Models.** Both agents use the strongest model available, preferring the other host, and fall back to a weaker model only when no top-strength model is available, so Fable or Astra is not strictly required. The reason, in the user's words, is that "the user is there (revise runs without the user)".
+
 ## Direction
+
+The idea as first captured; the commitments above govern where they differ.
 
 - When the readback or spec for the selected entries is presented, dispatch the review agent and the assessment agent together, so both run while the user reads.
 - The assessment is short: a view of the selected entries with suggested tweaks where appropriate, giving the user the model's feedback before work starts, since an entry may have been written by the user without any AI input.
 
-## Open questions
+## Before implementation
 
-- What each agent covers and how they differ: what the readback review checks the readback against, how far the assessment of an entry's value and shape overlaps the spec dimensions, and whether one agent covers several selected entries or each gets its own.
-- When results must arrive relative to the user's yes and to handover. The user expects issues to reach them "without much delay after the readback is accepted by the user and handover is invoked", while handover is accepted only once decisions are settled before the user leaves: whether the yes or the handover waits for both results, and what happens to results that arrive after the user has left.
-- How findings and tweaks are handled: whether assessment suggestions get skeptical validation like review findings or reach the user as advice, and how an accepted tweak changes the agreement, given that compatible corrections preserve it and material changes need the user's decision.
-- Scope: selections from Ready, as the idea's first words say, or every readback, including graduations and requests from outside the backlog.
-- How the review and the assessment are recorded, since no run exists before implementation agreement; compare [Run-free revise](run-free-revise.md), and `create`, which records a governing spec as reviewed only for an already observed valid independent assessment.
-- Models, strength and cost for each agent, especially for small work, and the installed-host evidence this model-owned behavior needs.
-- Relations: [Size-aware Ready recommendations](ready-sized-recommendations.md) shapes the selections this would assess, and the v2 design archive [Second-opinion gates](second-opinion-gates.md) proposed a similar fresh-eyes read, its requirements gate, before the spec was written, which [the migration status](../MIGRATION_STATUS.md) records as replaced by the supported review path.
+The first four points are the ones the agreement left open; the rest were found while recording it.
+
+- Settle how both are recorded, since no run exists before implementation agreement. Coordinate with [Run-free revise](run-free-revise.md), and with `create`, which records a governing spec as reviewed only for an already observed valid independent assessment.
+- Settle what each agent's brief contains: how far the assessment overlaps the spec dimensions, how the single assessment agent covers several selected entries, and what it receives for a direct request that has no backlog entry.
+- Keep it proportionate for very small work, in cost and in latency, since implementation waits for both results.
+- It changes shipped instructions, including the operating brief's agreement rules, the Ready skill's selection path and the handover skill's acceptance condition, so it needs a concise governing spec, a version increase and a decision on installed-host evidence.
+- Settle whether the Models and Failure commitments also reach a spec's existing assessment, which the When commitment makes the review agent for a spec. Today [revise-spec](../../skills/revise-spec/SKILL.md) gives that assessment to a fresh strong lead and implementation waits until it is resolved. Inside a run, the runtime also enforces its supported strong models (`STRONG_MODELS` in `internal/runtime/review.js`) at dispatch and at receipt import, while an assessment observed before any run exists is recorded by `create` without a model check. Coordinate with [Degraded assessment mode](degraded-assessment-mode.md), [Initial reviewer selection](initial-reviewer-selection.md), [User-configurable model policy file](model-policy-file.md) and [Model choice per role: Opus 5.5 versus Fable](opus-versus-fable-role-choice.md).
+- Settle whether the assessment agent replaces or complements the controller's own integrated assessment that the v3 migration agreed, described under Current behavior.
+- Settle how the readback review's findings are validated before they reach the user. The agreement gives plain readbacks the review a spec already gets, which points to the skeptical validation revise-spec requires for a spec's findings; a spec's findings keep that validation.
+- Sweep the governing documents, skills and runtime text by claim for every statement that a readback needs only the user's confirmation, that only a spec is reviewed before agreement, that a yes to the readback's question starts implementation or what implementation waits for, or that states the handover acceptance condition, together with the v3 migration's disposition of the controller's assessment, and amend each.
+
+Related: [Size-aware Ready recommendations](ready-sized-recommendations.md) shapes the selections this would assess; [Verify compatible agreement continuity across representation changes](v3-agreement-continuity.md) collects evidence for the rule an accepted tweak follows, that compatible edits preserve accepted commitments; and the v2 design archive [Second-opinion gates](second-opinion-gates.md) proposed a similar fresh-eyes read, its requirements gate, before the spec was written, which [the migration status](../MIGRATION_STATUS.md) records as replaced by the supported review path.
