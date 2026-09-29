@@ -104,7 +104,7 @@ Complete the retained minimal-report contract with narrow correction or clarific
 
 ### [Carry settled decisions and experiment evidence into later reviews](features/v3-review-decision-context.md)
 
-Complete the retained concise decision and experiment record so subsequent independent reviews receive relevant settled facts and unresolved obligations after edits or compaction. Preserve the ability for new evidence to reopen a decision.
+Complete the retained concise decision and experiment record so subsequent independent reviews receive relevant settled facts and unresolved obligations after edits or compaction. Preserve the ability for new evidence to reopen a decision. The migration accounting audit of 2026-09-29 added two recording gaps: capturing a material investigation's conclusion and limits when established, and preserving implementation discoveries in working notes.
 
 ### [Complete the spec-review safeguard and authoring guidance](features/spec-review-safeguard.md)
 
