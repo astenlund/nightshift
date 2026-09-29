@@ -202,6 +202,10 @@ Post-MVP exploration of consistent handling for assistant messages missing model
 
 Deferred beyond the MVP. Streaming could overlap validation with the remaining review, while preserving corrections, withdrawal, attribution and input stability. Completed reports remain the baseline.
 
+### [Resumable reviewer and adversarial repair dialogue](features/resumable-reviewer-dialogue.md)
+
+Keep the reviewer that found an issue available through its repair instead of always dispatching a fresh one, and restore the dialogue between skeptic and reviewer that the v3 migration kept for findings whose consequence, value or repair quality stays unclear or disputed; today the runtime cannot resume a reviewer, and only the governing documents mention the dialogue. Raised by the user on 2026-09-29, who has seen strong evidence that continuity helps when repairing brittle code; whether the reviewer and skeptic exchange directly, whether small fixes move to the skeptic with escalation for bigger ones, and how continuity fits the required fresh reviews are among the questions the record lists as open.
+
 ### [Review-run command enforcement](features/review-run-command-enforcement.md)
 
 Deferred exploration of stronger enforcement for explicit command restrictions. Existing restrictions remain binding; no general protected-shell mode is claimed.
