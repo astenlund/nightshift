@@ -174,6 +174,10 @@ Show a run as a graph of its whole workflow in a page hosted by a local web serv
 
 Have revise-lore route lessons by who the user is: a Nightshift maintainer to the Nightshift backlog or inbox, a regular user to the global or project-local instruction files, and let global and project instructions take precedence over plugin instructions when they conflict. Raised by the user on 2026-09-27. Open: how a maintainer is recognized, and how precedence interacts with gates the plugin treats as mandatory.
 
+### [Review retrospective instruction proposals like any other change](features/lore-proposal-review-gate.md)
+
+Apply the common strong review, skeptic validation and disposition process, with cumulative reassessment after each revision, to the instruction proposals a session retrospective makes, as the v3 migration agreed. Found on 2026-09-29 by the migration accounting audit: revise-lore asks only for a fresh independent reviewer, nothing gates proposals made in a lifecycle retrospective, and a standalone lore task without an assessment completes directly.
+
 ### [Deliver each run on its own branch or worktree](features/run-worktree-delivery.md)
 
 Implement each run in a dedicated Git worktree on a run-owned branch, so the morning report points at a reviewable diff and the user keeps working in the main checkout. From the user's 2026-09-26 ideas document comparing other agent tools. Open: the checkout lease, the recorded project path and adoption, review-copy source, worktree lifecycle and uncommitted user changes, and branch or draft pull request publication.
