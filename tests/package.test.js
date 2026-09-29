@@ -3,6 +3,7 @@
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
+const { spawnSync } = require('node:child_process');
 const test = require('node:test');
 const { README_STATUS } = require('../tools/release-gate');
 
@@ -59,6 +60,59 @@ test('the pre-push release gate is wired to the shipped script', () => {
   assert.equal(hook.includes('\r'), false, 'shell hooks must stay LF-only');
   assert.match(hook, /tools\/release-gate\.js" --pre-push/);
   assert.ok(fs.statSync(path.join(root, 'tools/release-gate.js')).isFile());
+});
+
+test('the repository hooks run the shared hooks that core.hooksPath would otherwise bypass', t => {
+  const parent = path.join(root, '.tmp/package-tests');
+  fs.mkdirSync(parent, { recursive: true });
+  const scratch = fs.mkdtempSync(path.join(parent, 'hooks-'));
+  t.after(() => fs.rmSync(scratch, { recursive: true, force: true }));
+  const hooks = path.join(root, '.githooks');
+  for (const name of ['pre-commit', 'commit-msg', 'run-shared-hook']) {
+    assert.equal(fs.readFileSync(path.join(hooks, name), 'utf8').includes('\r'), false, `${name} must stay LF-only`);
+  }
+  const slash = value => value.replaceAll('\\', '/');
+  const marker = path.join(scratch, 'shared-ran');
+  const folder = (name, hook, text, mode) => {
+    const dir = path.join(scratch, name);
+    fs.mkdirSync(dir);
+    fs.writeFileSync(path.join(dir, hook), text, { mode });
+    return dir;
+  };
+  const failing = hook => `#!/bin/sh\necho ${hook} > "${slash(marker)}"\nexit 1\n`;
+  const preCommit = folder('pre-commit', 'pre-commit', failing('pre-commit'), 0o755);
+  const commitMsg = folder('commit-msg', 'commit-msg', failing('commit-msg'), 0o755);
+  // No shebang and no execute bit: Git would not run this hook on Windows or POSIX.
+  const inert = folder('inert', 'pre-commit', `echo pre-commit > "${slash(marker)}"\nexit 1\n`, 0o644);
+  const project = path.join(scratch, 'project');
+  fs.mkdirSync(project);
+  const globalConfig = path.join(scratch, 'global.gitconfig');
+  const systemConfig = path.join(scratch, 'system.gitconfig');
+  const hooksPath = dir => (dir === null ? '' : `[core]\n\thooksPath = ${slash(dir)}\n`);
+  fs.writeFileSync(globalConfig, '');
+  fs.writeFileSync(systemConfig, '');
+  const base = { ...process.env, GIT_CONFIG_GLOBAL: globalConfig, GIT_CONFIG_SYSTEM: systemConfig, GIT_AUTHOR_NAME: 'Test', GIT_AUTHOR_EMAIL: 'test@example.invalid', GIT_COMMITTER_NAME: 'Test', GIT_COMMITTER_EMAIL: 'test@example.invalid' };
+  delete base.GIT_CONFIG_NOSYSTEM;
+  const git = (env, ...args) => spawnSync('git', args, { cwd: project, env, windowsHide: true, encoding: 'utf8' });
+  assert.equal(git(base, 'init', '--quiet').status, 0);
+  assert.equal(git(base, 'config', 'core.hooksPath', slash(hooks)).status, 0);
+  const commit = ({ global = null, system = null, noSystem = null } = {}) => {
+    fs.writeFileSync(globalConfig, hooksPath(global));
+    fs.writeFileSync(systemConfig, hooksPath(system));
+    fs.rmSync(marker, { force: true });
+    const result = git(noSystem === null ? base : { ...base, GIT_CONFIG_NOSYSTEM: noSystem }, 'commit', '--allow-empty', '--quiet', '-m', 'probe');
+    return { passed: result.status === 0, ran: fs.existsSync(marker) ? fs.readFileSync(marker, 'utf8').trim() : null };
+  };
+
+  assert.deepEqual(commit({ global: preCommit }), { passed: false, ran: 'pre-commit' }, 'a failing global pre-commit hook must run and block the commit');
+  assert.deepEqual(commit({ system: preCommit }), { passed: false, ran: 'pre-commit' }, 'a system hooks folder applies when no global one is set');
+  assert.deepEqual(commit({ system: preCommit, noSystem: '1' }), { passed: true, ran: null }, 'GIT_CONFIG_NOSYSTEM disables the system hooks folder');
+  assert.deepEqual(commit({ system: preCommit, noSystem: 'FALSE' }), { passed: false, ran: 'pre-commit' }, 'a false GIT_CONFIG_NOSYSTEM in any case keeps the system hooks folder, as in Git');
+  assert.deepEqual(commit({ global: '', system: preCommit }), { passed: true, ran: null }, 'an explicitly empty global hooksPath overrides the system one, as in Git');
+  assert.deepEqual(commit({ global: commitMsg }), { passed: false, ran: 'commit-msg' }, 'a failing global commit-msg hook must run and block the commit');
+  assert.deepEqual(commit({ global: inert }), { passed: true, ran: null }, 'a shared hook Git would not execute is skipped');
+  assert.deepEqual(commit(), { passed: true, ran: null }, 'without a shared hooks folder the commit proceeds');
+  assert.deepEqual(commit({ global: hooks }), { passed: true, ran: null }, 'a shared hooks folder equal to .githooks must not recurse');
 });
 
 test('active deterministic entry points load without the retired workflow machinery', () => {

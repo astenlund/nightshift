@@ -1,0 +1,14 @@
+#!/bin/sh
+# core.hooksPath=.githooks replaces the user's global or system hooks folder for this
+# clone. Run that folder's hook named $1, with the remaining arguments, when Git would
+# run it there: the folder is configured, the hook exists and is executable, and it is
+# not this folder. Git's own lookup lists the values by scope, so GIT_CONFIG_NOSYSTEM,
+# includes and precedence behave as in Git; the last global or system value wins, and an
+# explicitly empty one prevents fallback to the system value and turns forwarding off.
+hook=$1
+shift
+shared=$(git config --show-scope --type=path --get-all core.hooksPath 2>/dev/null |
+    awk -F '\t' '$1 == "system" || $1 == "global" { value = substr($0, length($1) + 2) } END { print value }')
+[ -n "$shared" ] && [ -x "$shared/$hook" ] || exit 0
+[ "$(cd "$shared" && pwd -P)" = "$(cd "$(dirname "$0")" && pwd -P)" ] && exit 0
+exec "$shared/$hook" "$@"
