@@ -149,7 +149,7 @@ Preserve the effective private/shared policy choice when relocating backlog cont
 
 In the audit git-newline-policy probe Git reported text:set and eol:lf, but new FEATURES.md bytes used CRLF. Current initialize converts template text unconditionally to CRLF.
 
-Materialize missing templates according to the effective supported project newline policy, keeping logical template content and existing files intact. Resolve genuine ambiguity rather than silently overriding an established convention. Cover explicit LF and CRLF policies, defaults, existing files, missing targets and interruption. This concerns new-file creation, not normalization of an existing mixed-ending file. [The report](bugs/setup-template-newline-policy.md) preserves evidence and related work. Tracking does not authorize implementation.
+Materialize missing templates according to the effective supported project newline policy, keeping logical template content and existing files intact. Resolve genuine ambiguity rather than silently overriding an established convention. Cover explicit LF and CRLF policies, defaults, existing files, missing targets and interruption. This concerns new-file creation, not normalization of an existing mixed-ending file. The migration accounting audit of 2026-09-29 found the same fault in setup's always-on `.gitignore` write for the runs exclusion, described in the report. [The report](bugs/setup-template-newline-policy.md) preserves evidence and related work. Tracking does not authorize implementation.
 
 **Requires:** none.
 

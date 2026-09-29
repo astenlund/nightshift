@@ -4,6 +4,8 @@
 
 In the audit git-newline-policy probe Git reported text:set and eol:lf, but new FEATURES.md bytes used CRLF. Current initialize converts template text unconditionally to CRLF.
 
+The migration accounting audit of 2026-09-29 found the same fault in setup's always-on `.gitignore` write for the runs exclusion, which the retained need Ignore election cannot initialize a missing .gitignore covers. `internal/setup.js` picks CRLF unless the existing file uses LF alone, with no look at Git attributes or configuration, so probes in fresh repositories with `* text eol=lf` created a missing or empty `.gitignore` as `/.nightshift/runs/` followed by CRLF. A `.gitignore` with mixed endings had the rule appended with CRLF, although the agreed disposition says "Genuine unresolved write ambiguity still prevents mutation." A test covers creating a missing `.gitignore` only through a check-ignore assertion; none pins the created bytes or covers an existing empty file.
+
 Evidence was examined during the 2026-09-20 migration reconciliation and [independent shipped-capability audit](../reports/pre-v3-shipped-capability-audit-20260921.md); the code baseline was f032030, plugin 3.2.0. Native-host behavior is not inferred from deterministic probes.
 
 ## Required outcome
