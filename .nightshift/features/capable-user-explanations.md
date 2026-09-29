@@ -10,7 +10,7 @@ status: exploring
 
 ## Origin
 
-Found on 2026-09-29 by the audit of the v3 migration accounting that the user asked for after finding capabilities recorded as delivered that were never shipped. [MIGRATION_STATUS.md](../MIGRATION_STATUS.md) recorded "Communicate for technically sophisticated, time-constrained users" as Policy present. The bug [Migration status may overstate two retained policies as present](../BUGS.md#migration-status-may-overstate-two-retained-policies-as-present) had already flagged the row, and independent auditors and verifiers confirmed that the communication part of its agreed disposition is not carried. Drafted overnight for the user's triage.
+Found on 2026-09-29 by the audit of the v3 migration accounting that the user asked for after finding capabilities recorded as delivered that were never shipped. [MIGRATION_STATUS.md](../MIGRATION_STATUS.md) recorded "Communicate for technically sophisticated, time-constrained users" as Policy present. The bug [Migration status may overstate two retained policies as present](../BUGS_HISTORY.md#migration-status-may-overstate-two-retained-policies-as-present) had already flagged the row, and independent auditors and verifiers confirmed that the communication part of its agreed disposition is not carried. Drafted overnight for the user's triage.
 
 ## Agreed disposition
 
@@ -33,4 +33,4 @@ State the audience and altitude where a run loads them: concise, precise explana
 
 - Where the rule belongs: once in the brief, or also in the skills whose output the user reads directly (Ready, handover, the closing report).
 - Whether follow-up triage applies to the interactive phases before a run.
-- Relations: this entry becomes the tracked destination for the communication row of the bug above. [Background review and assessment of selected work](selection-review-and-assessment.md) covers stating concerns and tradeoffs before agreement.
+- Relations: this entry is the tracked destination for the communication row of the bug above, now resolved. [Background review and assessment of selected work](selection-review-and-assessment.md) covers stating concerns and tradeoffs before agreement.
