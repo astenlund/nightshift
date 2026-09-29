@@ -2,7 +2,7 @@
 
 ## Current evidence
 
-Current feature and bug template archive-cleanup prose still prescribes bare Requires: none., while the parser recognizes the bold **Requires:** label. Fresh scaffold success does not exercise the invalid later edit. The independent audit confirms this retained defect remains.
+This section records the evidence as examined on 2026-09-20; the defect was fixed in 3.2.9, as recorded under Status below. At that time, feature and bug template archive-cleanup prose still prescribed bare Requires: none., while the parser recognizes the bold **Requires:** label. Fresh scaffold success does not exercise the invalid later edit. The independent audit confirms this retained defect remains.
 
 Evidence was examined during the 2026-09-20 migration reconciliation and [independent shipped-capability audit](../reports/pre-v3-shipped-capability-audit-20260921.md); the code baseline was f032030, plugin 3.2.0. Native-host behavior is not inferred from deterministic probes.
 
