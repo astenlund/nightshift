@@ -244,7 +244,7 @@ Make the agreed peer staffing executable: bounded peer assignments of the lead's
 
 ### [Review-run command enforcement](features/review-run-command-enforcement.md)
 
-Deferred exploration of stronger enforcement for explicit command restrictions. Existing restrictions remain binding; no general protected-shell mode is claimed.
+Deferred exploration of stronger enforcement for explicit command restrictions. Existing restrictions remain binding; no general protected-shell mode is claimed. The record, written for retired v2 entry points, now carries the agreed v3 question of which restrictions need enforcement and where, without a general shell-interception framework.
 
 ### [Initial reviewer selection](features/initial-reviewer-selection.md)
 
