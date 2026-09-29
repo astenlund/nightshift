@@ -32,6 +32,7 @@ The user's own global review-loop routine, outside the plugin, already retains o
 
 - Keep the reviewer that found an issue available through its repair, resuming it rather than always starting fresh, because continuity helps when repairing brittle code and a fresh reviewer might miss what the first one found partly by luck.
 - Restore the escalation the v3 disposition kept: extend the dialogue when consequence, value or repair quality remains unclear or disputed.
+- Restore the repair reasoning the same disposition kept, which the migration accounting audit of 2026-09-29 found missing: "Require enough repair reasoning to judge the approach without a complete patch proposal for every finding." Today no instruction or report field asks for it before a repair is applied, so a repair's approach is judged only afterwards, by the cumulative reassessment.
 
 ## Open questions
 
@@ -39,5 +40,4 @@ The user's own global review-loop routine, outside the plugin, already retains o
 - Whether responsibility for small fixes moves to the skeptic, escalating to the controller only when a fix would need a bigger change; how small is judged; and how that fits the skeptic's independence and the rule that reviewers and skeptics cannot edit reviewed inputs. The v2 design kept edits away from both, with the skeptic proposing a repair and the reviewer checking its closure.
 - How continuity coexists with the fresh reviews the brief requires: whether a resumed reviewer can supply the cumulative strong broad assessment after a repair batch, or verifies its own findings' repairs with a fresh assessment still owed, and whether skeptic validation stays fresh.
 - Runtime support on both hosts: resuming a session through dispatch, how a resumed session's receipt is attributed and checked for fresh inputs, the context limits of a long-lived reviewer, and the fallback when a session cannot be resumed.
-- Whether the migration status row for the v2 design stays Present once this entry tracks its missing dialogue.
 - Relations: [Initial reviewer selection](initial-reviewer-selection.md) already says subsequent passes can resume the initial lead, and [Background review and assessment of selected work](selection-review-and-assessment.md) adds agents whose findings would face the same question.
