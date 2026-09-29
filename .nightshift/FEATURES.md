@@ -182,6 +182,10 @@ Have Ready use the project's durable direction, such as an existing vision docum
 
 Show a run as a graph of its whole workflow in a page hosted by a local web server and viewable on the same computer, highlighting the current step and animating smoothly as things happen, such as subagents spawning and files being edited. Raised by the user on 2026-09-29, who sketched later slices that add old runs and then clickable elements such as nodes with details about each step; where the file-edit and subagent events come from, who starts and stops the server, and how it stays local-only and read-only are among the questions the record lists as open.
 
+### [Show review progress without being asked](features/visible-revise-progress.md)
+
+Keep review and repair progress visible without a user request: what review established, what was repaired, what remains and why another pass is needed, with recurring problems visible through continuation and in the final report, as the v3 migration agreed. Found on 2026-09-29 by the migration accounting audit: the brief never contained the visible-progress rule that the migration reconciliation relied on.
+
 ### [Retrospective routing by audience and instruction precedence](features/revise-lore-audience-routing.md)
 
 Have revise-lore route lessons by who the user is: a Nightshift maintainer to the Nightshift backlog or inbox, a regular user to the global or project-local instruction files, and let global and project instructions take precedence over plugin instructions when they conflict. Raised by the user on 2026-09-27. Open: how a maintainer is recognized, and how precedence interacts with gates the plugin treats as mandatory.
