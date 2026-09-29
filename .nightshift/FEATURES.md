@@ -228,7 +228,7 @@ Post-MVP exploration of consistent handling for assistant messages missing model
 
 ### [Incremental revise finding delivery](features/incremental-revise-finding-delivery.md)
 
-Deferred beyond the MVP. Streaming could overlap validation with the remaining review, while preserving corrections, withdrawal, attribution and input stability. Completed reports remain the baseline.
+Deferred beyond the MVP. Streaming could overlap validation with the remaining review, while preserving corrections, withdrawal, attribution and input stability. Completed reports remain the baseline. Host support and worthwhile latency savings still require verification, as the agreed boundary says.
 
 ### [Keep every affected surface when merging findings](features/finding-affected-surfaces.md)
 

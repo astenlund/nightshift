@@ -6,7 +6,7 @@ metadata:
 status: exploring
 ---
 
-> Deferred beyond the v3 MVP. The retained need and its agreed boundary are in [MIGRATION_STATUS.md](../MIGRATION_STATUS.md). The original sketch below is design context; a v3 implementation still needs a scoped agreement and independent assessment.
+> Deferred beyond the v3 MVP. The agreed boundary is under [Finding delivery and retained context](../../V3-MIGRATION.md#finding-delivery-and-retained-context) in V3-MIGRATION.md, and the current accounting is in [MIGRATION_STATUS.md](../MIGRATION_STATUS.md). The original sketch below is design context; a v3 implementation still needs a scoped agreement and independent assessment.
 
 # Incremental revise finding delivery
 
@@ -17,3 +17,5 @@ This extends [Immediate Skeptic Dispatch](immediate-skeptic-dispatch.md), which 
 The design must define a bounded finding-frame protocol, stable reviewer and finding identities, sequence and duplicate handling, an explicit reviewer-complete record, checkpoint and crash recovery for every partial state, backpressure when skeptic work outpaces review, malformed or lost frame behavior, and parity across Workflow, capable manual dispatch, and supervisor-owned orchestration. It must also decide whether a reviewer can revise or withdraw an earlier finding and how the controller represents that without letting a late correction race an in-flight skeptic verdict.
 
 Captured 2026-09-02 during a long revise-plan convergence run.
+
+The agreed v3 boundary adds a condition this sketch did not name, which the migration accounting audit of 2026-09-29 found: "Host support and worthwhile latency savings still require verification." Deciding whether to build this therefore starts by showing that the supported hosts can stream findings from a dispatched reviewer and that the saving is worth the added machinery.
