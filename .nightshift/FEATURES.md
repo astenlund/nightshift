@@ -4,12 +4,6 @@ Upcoming work and deferred extensions to the delivered v3 MVP. Its delivery is r
 
 ## Current work
 
-### [Independent documentation review](features/independent-documentation-review.md)
-
-Add one strong independent documentation review kind, whose brief covers claim accuracy against the cited code and records, sweep completeness, backlog grammar, sibling consistency and proportionality instead of the six code dimensions, with the same skeptic, disposition and repair loop. Have revise-docs require it for its complete change, purely mechanical changes excepted, and have closing tracking use it over backlog-only changes, whose clean receipt lets the completion gate accept task reviews made stale only by those edits and covers them at publication, including tracking applied after a handed-over run completes. Raised by the user on 2026-09-24 as the closing tracking review, after run `46fc13f1-98fc-4a3e-953c-958a31261ae4` needed a completion workaround and a separate review-loop for its tracking commit, and widened by the user on 2026-09-28 after a standalone revise-docs pass completed with no independent review; both readbacks are agreed and recorded in the linked record. Not started; it needs a concise governing spec and a decision on installed-host evidence before implementation.
-
-**Requires:** none.
-
 ### [Whole-backlog coherence audit](features/backlog-coherence-audit.md)
 
 A whole-backlog mode of `revise-docs` that walks every active index, breakout and pattern file and checks that relationships between entries, excerpts against their records, and claims about the current code still hold. Every finding gets fresh skeptic validation; the audit repairs when attended and writes an inbox report for later triage when unattended. Raised and settled by the user on 2026-09-25; the MVP is manual only.
