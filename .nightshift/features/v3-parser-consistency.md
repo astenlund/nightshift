@@ -24,6 +24,8 @@ The [independent shipped-capability audit](../reports/pre-v3-shipped-capability-
 
 Characterize each remaining difference before changing it. Verify malformed and duplicate labels, indentation, fences, raw HTML, protected blocks, idempotence and unchanged dependency meaning. Keep actual defect fixes traceable to their linked bug records.
 
+The migration accounting audit of 2026-09-29 found two parts of the retained need Unify cross-skill backlog parsing sources that this entry did not name. The backlog file vocabulary is still defined three times: `BACKLOG_FILES` in `internal/setup.js` and `internal/backlog-catalog.js`, and `INDEX_FILE_STEMS` in `skills/ready/ready.js`. Link targets share one catalog-target predicate, but the entry filters in front of it still differ without a recorded reconciliation: Ready rejects only http and https targets and then drive letters and dot segments, while the link notices in `internal/backlog-links.js` reject any URI scheme and normalize source-relative paths.
+
 Coordinate with [overlapping-root collection](../bugs/overlapping-markdown-root-deduplication.md). The [invalid template instructions](../bugs/init-backlog-parser-invalid-empty-requires.md) were fixed in 3.2.9.
 
 The [customized backlog repair feature](v3-setup-compatibility.md) owns the approved lettered-list compatibility behavior: compact simple flat lists into inline lettered items and preserve hierarchy around nested content. Its [FeatherPod incident](../reports/inbox-triage-20260921.md#unwrapping-collapses-lettered-workflow-steps) supplies the concrete case. Coordinate scanner recognition and ambiguity handling there; this cross-reference does not broaden the supported grammar by itself.

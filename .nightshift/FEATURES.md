@@ -112,7 +112,7 @@ Have a spec finding justify demanded detail by naming the consequential gap, con
 
 ### [Complete shared backlog parsing and template consistency](features/v3-parser-consistency.md)
 
-Complete shared dependency metadata and continuation handling across Ready, setup and unwrap, preserving justified grammar differences and protected content.
+Complete shared dependency metadata and continuation handling across Ready, setup and unwrap, preserving justified grammar differences and protected content. This includes one shared backlog file vocabulary and reconciled link-target filters, which the migration accounting audit of 2026-09-29 found still duplicated and divergent.
 
 ### [Complete release-gate history diagnostics and checkout verification](features/v3-release-gate-diagnostics.md)
 
