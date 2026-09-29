@@ -20,4 +20,6 @@ Proposed by the user during the recoverable-unwrap handover on 2026-09-21 and ap
 
 Choose the file's project location and link-resolution convention. Inventory the shared instructions and all consumers before deciding which text moves and how each reader reaches the meta-index; that inventory has not yet been established. Define setup and migration behavior for existing projects, preserving customized guidance and handling a missing or conflicting meta-index explicitly. Coordinate with [guidance discovery and routing](v3-guidance-routing.md) and [customized backlog repair](v3-setup-compatibility.md) without assuming either feature is already delivered.
 
+On 2026-09-29, triaging [Ground Ready recommendations in the project's direction](ready-project-direction.md), the user suggested this file as one more place to put the project's goals or direction, in their words: "one more place to put project goals or directions might be in the shared BACKLOG.md meta-index."
+
 Tracking preserves the idea for design; it does not authorize implementation or publication.
