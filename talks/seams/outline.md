@@ -9,7 +9,7 @@ The audience is software developers who have used AI assistants, in chat or as a
 - **Build vocabulary before using it.** The primer section introduces every term the zooms rely on.
 - **Start each zoom from their experience.** Each seam is introduced by a failure the audience has probably seen.
 - **Show real output.** Where a refusal was captured, the zoom shows the runtime refusing, edited for the slide as described in [captured-output.md](captured-output.md).
-- **Say "strong models".** Headlines and explanations say "strong model"; concrete examples may name Fable (a Claude model) and Astra (a GPT model). The model in S2.2 that was recorded as advisory stays unnamed: call it "a capable model outside the approved strong set".
+- **Say "strong models".** Headlines and explanations say "strong model"; concrete examples may name Fable (a Claude model) and Astra (a GPT model). The model in S2.2 whose review was used as advisory only stays unnamed: call it "a capable model outside the approved strong set".
 
 Terms to use on slides, defined at first use:
 
@@ -223,7 +223,7 @@ Each zoom follows the same rhythm: the card, the mechanism in one picture, a rea
 
 - **On slide:** the loop: review, skeptic, decide, fix, then back to "review the whole change", not "review the patch".
 - **Build:** the return arrow lands on the whole change. Hold it. Then the fix box opens: for a bug, first a check that fails for the bug's reason, and after the fix the same check passing.
-- **Say:** after every fix, however small, a strong reviewer re-examines everything changed since the run began, including neighbouring code and earlier fixes. The earlier version of Nightshift ran a fixed number of rounds and stopped at a literal "LGTM" (S4.10). Now any fix voids the review, and only a new review of the whole change restores it. A bug fix starts with a check that fails for the bug's reason and ends with the same check passing. "Keep this loop in mind; in a few minutes you'll see it catch something the tests missed."
+- **Say:** after every fix, however small, a strong reviewer re-examines everything changed since the run began, including neighbouring code and earlier fixes. The earlier version of Nightshift ran a fixed number of rounds and stopped at a literal "LGTM" (S4.10). Now any fix voids the review, and only a new review of the whole change restores it. A bug fix starts with a check that fails for the bug's reason and ends with the same check passing, and each fix starts from the files as they are now. "Keep this loop in mind; in a few minutes you'll see it catch something the tests missed."
 
 ### 25. "It forgot what you agreed" (Continuity)
 
@@ -378,8 +378,8 @@ The companion animated demo, a scripted run drawn as a live graph, is described 
 
 ## If the slot shrinks
 
-- To 45 minutes: drop slides 9, 13, 15, 16, 21, 23, 27 and 29, show only the headline of slide 33, and keep questions to 3 minutes. Sections: open 3, from chat to handover 6, the whole workflow 4, the inversion 3, zooms 15, one run 5, limits and cost 3, take-home and close 3, questions 3.
-- To 30 minutes: also drop slides 3, 6, 25 and 26, merge slides 18 and 19, run the case study as slide 31 alone, drop the last sentence of slide 32 and skip slide 33. Sections: open 2, from chat to handover 4, the whole workflow 3, the inversion 2, zooms 10, one run 3, limits and cost 2, take-home and close 2, questions 2.
+- To 45 minutes: drop slides 9, 13, 15, 16, 21, 23, 27 and 29, start slide 10's Magic Move from slide 8, drop the last sentence of slide 32, show only the headline of slide 33, trim the prepared answers that point at dropped slides, and keep questions to 3 minutes. Sections: open 3, from chat to handover 6, the whole workflow 4, the inversion 3, zooms 15, one run 5, limits and cost 3, take-home and close 3, questions 3.
+- To 30 minutes: also drop slides 3, 6, 25 and 26, merge slides 18 and 19, run the case study as slide 31 alone and skip slide 33. Sections: open 2, from chat to handover 4, the whole workflow 3, the inversion 2, zooms 10, one run 3, limits and cost 2, take-home and close 2, questions 2.
 
 ## Decisions applied
 

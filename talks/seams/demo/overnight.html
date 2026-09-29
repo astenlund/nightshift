@@ -219,7 +219,7 @@ body { margin: 0; background: var(--sky); color: var(--ink); font: 14px/1.5 var(
           <li>Review content is captured once per operation.</li>
         </ul></div>
         <div><h4>Packaging and release</h4><ul>
-          <li>The installed package holds what runs and your docs, leaving out maintenance material where the host allows.</li>
+          <li>The installed package holds what runs and the user docs, leaving out maintenance material where the host allows.</li>
           <li>The release gate tells a stale branch from a real version decrease.</li>
           <li>Run-time guidance lives apart from design reference material.</li>
         </ul></div>
@@ -548,7 +548,7 @@ const BEATS = [
   { at: '05:05', step: 9, headline: 'The retrospective, routed by audience',
     body: 'Two lessons. One is about this project: date math needs month-end tests, so the lead agent drafts a change to AGENTS.md for your approval. The other is about Nightshift, which you maintain: both hosts ran out at once. That goes to Nightshift\'s inbox as a dated report.',
     set: s => { actor(s, 'reviewer', 'gone'); actor(s, 'lead', 'active', 'retrospective'); file(s, 'agents', 'proposal'); file(s, 'nsinbox', 'new'); s.rev = 60; s.budget = 5.2; footer(s, 'Retrospective: 2 lessons · 1 proposal', 'drafted'); },
-    edges: [{ from: 'run', to: 'lead', kind: 'handoff', label: 'the night' }, { from: 'lead', to: 'agents', kind: 'write', label: 'proposal' }, { from: 'lead', to: 'nsinbox', kind: 'write' }] },
+    edges: [{ from: 'run', to: 'lead', kind: 'handoff', label: 'the night' }, { from: 'lead', to: 'agents', kind: 'write', dashed: true, label: 'draft, not applied', labelAt: 0.3 }, { from: 'lead', to: 'nsinbox', kind: 'write' }] },
   { at: '05:20', step: 9, headline: 'Instruction proposals are reviewed like code',
     body: 'A proposed instruction change gets the same fresh review and skeptic as any other change. It passes, and it stays a proposal: nothing is written to AGENTS.md without your approval.',
     set: s => { actor(s, 'lorerev', 'active', 'proposal review'); actor(s, 'skeptic', 'active', 'fresh session'); actor(s, 'lead', 'idle'); s.rev = 62; s.budget = 5.3; footer(s, 'Retrospective: 2 lessons · 1 proposal', 'reviewed', 'yes'); },
@@ -557,7 +557,7 @@ const BEATS = [
     body: 'The lead agent records the morning report, records triage evidence that the F3 deferral and the AGENTS.md proposal stay open for you, and asks to complete the run. Its last message is the report itself.',
     set: s => { ['lorerev', 'skeptic'].forEach(id => actor(s, id, 'gone')); actor(s, 'lead', 'active', 'closing'); s.rev = 64; s.budget = 5.4; footer(s, 'Morning report recorded · 2 decisions pending', 'closing'); },
     edges: [{ from: 'lead', to: 'run', kind: 'write', label: 'report · triage evidence' }],
-    gate: { id: 'close', evidence: ['Astra · rev 58 · docs included', 'npm test · 31 passed', 'AGENTS.md proposal · reviewed', 'report · 05:31', 'F3 deferral · AGENTS.md proposal'] } },
+    gate: { id: 'close', evidence: ['Astra · rev 58 · docs included', 'npm test · 31 passed', 'AGENTS.md proposal · reviewed', 'report · 05:31', 'F3 deferral · AGENTS.md proposal'], tones: [null, null, null, null, 'judgment'] } },
 
   // 11. Morning report
   { at: '07:30', step: 10, headline: 'The morning report',
@@ -681,7 +681,7 @@ function renderGraph(s) {
     if (e.kind === 'write') stroke = target === 'new' ? C.new : target === 'edit' || target === 'proposal' ? C.edit : C.moon;
     el('path', {
       d: g.d, fill: 'none', stroke, 'stroke-width': e.history ? 1.3 : 2, opacity: e.history ? 0.13 : 0.95,
-      'stroke-dasharray': e.kind === 'read' ? '1.5 5' : 'none', 'stroke-linecap': 'round',
+      'stroke-dasharray': e.kind === 'read' ? '1.5 5' : e.dashed ? '6 5' : 'none', 'stroke-linecap': 'round',
       'marker-end': e.kind === 'handoff' ? (e.history ? 'url(#arrow-dim)' : 'url(#arrow-moon)') : 'none',
     }, edgeLayer);
     if (e.history) continue;
