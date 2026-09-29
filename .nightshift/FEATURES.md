@@ -106,6 +106,10 @@ Complete the retained minimal-report contract with narrow correction or clarific
 
 Complete the retained concise decision and experiment record so subsequent independent reviews receive relevant settled facts and unresolved obligations after edits or compaction. Preserve the ability for new evidence to reopen a decision.
 
+### [Complete the spec-review safeguard and authoring guidance](features/spec-review-safeguard.md)
+
+Have a spec finding justify demanded detail by naming the consequential gap, contradiction or defect in the spec's commitments or approach, have spec review challenge unnecessary complexity and whether a simpler approach would serve, and have specs record important tradeoffs. Found on 2026-09-29 by the migration accounting audit: four retained needs recorded as Policy present are carried only in part, since the reviewer prompt and the brief bar unnecessary prescription and check feasibility but ask for none of these.
+
 ### [Complete shared backlog parsing and template consistency](features/v3-parser-consistency.md)
 
 Complete shared dependency metadata and continuation handling across Ready, setup and unwrap, preserving justified grammar differences and protected content.
