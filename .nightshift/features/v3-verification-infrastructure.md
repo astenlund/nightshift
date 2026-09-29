@@ -8,7 +8,7 @@ status: exploring
 
 # Maintain verification evidence, fixtures and measured efficiency
 
-Improve current verification tooling through explicit fixture ownership, safe evidence storage and measured reduction of unnecessary startup. Retire the unused 2.4.5 fixture only after reconciling supported upgrade checks.
+Improve current verification tooling through explicit fixture ownership, safe evidence storage and measured reduction of unnecessary startup. Retire the 2.4.5 fixture only after reconciling supported upgrade checks.
 
 ## Selected outcome
 
@@ -16,13 +16,20 @@ The user selected current verification outcomes, not reconstruction of the remov
 
 ## Evidence and limits
 
-Current tests directly create v3 fixtures, and the old import/evaluator/registrar consumers were removed. The legacy 2.4.5 fixture still exists without current consumers found by the audit. Existing live acceptance drivers are retained under ignored .tmp; their graduation remains a separate recorded decision.
+Current tests directly create v3 fixtures, and the old import/evaluator/registrar consumers were removed. The legacy 2.4.5 fixture still exists; the migration accounting audit of 2026-09-29 found that the ignored upgrade driver `.tmp/v3-upgrade-candidate.cjs` still loads it, so it is not unused. Existing live acceptance drivers are retained under ignored .tmp; their graduation remains a separate recorded decision.
 
 The [independent shipped-capability audit](../reports/pre-v3-shipped-capability-audit-20260921.md) distinguishes actual code/probe evidence, instruction policy and unverified installed-host behavior. No capability in this entry is declared delivered by its restoration to the backlog.
 
 ## Decisions and acceptance
 
 Inventory current fixture and evidence ownership, candidate binding and startup costs. Verify safe cleanup, uncertain liveness, stale/partial evidence, reproducibility and supported update paths before removing obsolete fixtures. The user closed the old import-generator and registrar refactors as superseded.
+
+The migration accounting audit of 2026-09-29 found agreed requirements this entry did not name, under [Test execution and fixture custody](../../V3-MIGRATION.md#test-execution-and-fixture-custody) and [Protocol and evidence boundaries](../../V3-MIGRATION.md#protocol-and-evidence-boundaries):
+
+- "Distinguish buffered output from verified process failure or a hang." Nothing does so today.
+- Clean fixtures after "supported cancellation, and preserve useful diagnostics when cleanup fails". A probe found no SIGINT or SIGTERM listener inside a `node --test` child, so an interrupted run skips its `t.after` cleanup. A failed cleanup leaves no durable record, and nothing reclaims owned residue after a forced termination.
+- Host and release verification evidence storage. Nothing in shipped or tracked code stores or reads it with ownership, stable identity, bounded reads, exclusive writes, accurate status and binding to the examined candidate; the live acceptance tooling exists only as ignored scripts under `.tmp`, so this part is open rather than awaiting reconciliation.
+- Removal of stale entry points after an upgrade is tracked by [Define and verify marketplace installation contents](v3-marketplace-surface.md).
 
 Coordinate with the existing acceptance-evidence digest, bounded approval-wait and deep review-copy entries. Native transport structure and timer/buffer work have [their own outcome](v3-transport-maintenance.md), and measuring the lifecycle's defect detection is [a separate exploration](defect-detection-measurement.md).
 
