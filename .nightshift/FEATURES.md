@@ -144,7 +144,7 @@ State and handle the agreed limit that a matching content digest does not show u
 
 ### [Verify compatible agreement continuity across representation changes](features/v3-agreement-continuity.md)
 
-Complete evidence for retained agreement behavior: qualified assent, compatible title or description edits, archival moves and repeated spec refinements preserve accepted commitments without enlarging the approval burden.
+Complete evidence for retained agreement behavior: qualified assent, compatible title or description edits, archival moves and repeated spec refinements preserve accepted commitments without enlarging the approval burden. The migration accounting audit of 2026-09-29 found that acting on a qualified yes and presenting material changes as understandable deltas are not yet instructions a run loads, so delivery needs instruction changes as well as evidence.
 
 ### [Relaunch unfinished work after host exit or restart](features/v3-host-relaunch.md)
 

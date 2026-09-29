@@ -26,6 +26,13 @@ Verify qualified assent, unchanged commitments under representation-only edits, 
 
 The existing [permission-only recovery bug](../BUGS.md#permission-only-recovery-invalidates-accepted-specs) retains its concrete repair. The [earlier digest-drift diagnosis](../bugs/agreement-digest-revision-detail-drift.md) remains provenance for repeated-revision acceptance; the old digest protocol is retired.
 
+## Instruction gaps found by the migration accounting audit
+
+The audit of 2026-09-29 found that two agreed behaviors this entry verifies are not yet instructions a run loads, so delivery needs instruction changes as well as evidence:
+
+- Qualified assent. The agreed disposition under [Agreement and informed user decisions](../../V3-MIGRATION.md#agreement-and-informed-user-decisions) says: "Clear agreement with an explicit adjustment authorizes the adjusted commitments. Reflect the resulting change back to the user and continue, while preserving independent review of a revised spec before implementation. Clarify genuine ambiguity or consequences requiring another decision." [The operating brief](../../internal/workflow.md) says only that a yes to the plain question is agreement, that compatible corrections preserve it and that material changes need the user's decision; nothing says a yes with an adjustment authorizes the adjusted commitments, that the controller reflects the change back and continues, or that clarification is kept for genuine ambiguity or consequences requiring another decision.
+- Understandable deltas. The disposition in the same section says "material changes are presented as understandable deltas, with the full spec and supporting evidence accessible." No instruction directs how a material change to the agreement is presented.
+
 ## Triage and provenance
 
 Selected for tracking during the 2026-09-20 to 2026-09-21 triage. Related obligations share this outcome while retaining their own deciding cases:
