@@ -1,9 +1,6 @@
 # Review snapshots and retained payloads must keep stable bytes across checkouts.
 * text=auto eol=lf
 # These fixtures exercise byte preservation, including deliberate CRLF input.
-tests/fixtures/init-backlog-prompt-baseline/** -text !eol
 tests/fixtures/init-backlog-host/** -text !eol
-tests/fixtures/init-backlog-import/** -text !eol
-tests/fixtures/init-backlog-eval/** -text !eol
 # Shell hooks run under sh, which rejects carriage returns.
 .githooks/* text eol=lf
