@@ -16,7 +16,7 @@ The elaborate transaction engine and routine checkpoint autosquash remain retire
 
 ## Evidence and limits
 
-`internal/workflow.md` delegates coherent commits and publication to project policy. The runtime records publication authority but exposes no repair-commit validation operation. This is an assurance/integration gap, not a requirement to build the old transaction engine.
+`internal/workflow.md` delegates coherent commits and publication to project policy. The runtime records publication authority but exposes no repair-commit validation operation. No shipped instruction or check covers repair commits, as described below; closing that gap is not a requirement to build the old transaction engine.
 
 The [independent shipped-capability audit](../reports/pre-v3-shipped-capability-audit-20260921.md) distinguishes actual code/probe evidence, instruction policy and unverified installed-host behavior. No capability in this entry is declared delivered by its restoration to the backlog.
 
@@ -24,7 +24,7 @@ The [independent shipped-capability audit](../reports/pre-v3-shipped-capability-
 
 Establish the minimal shared checks and actual remaining failure cases. Verify blame-based targeting, intervening edits, hook failure, authorized autosquash and interrupted operations using isolated repositories; never infer rewrite or publication authority from a review checkpoint.
 
-
+The migration accounting audit of 2026-09-29 found that this is missing instruction as well as missing evidence: [the operating brief](../../internal/workflow.md) says only "Commit coherent local work under the user's Git policy and required hooks", and no instruction or check a run loads mentions fixups, autosquash, a follow-up commit or history rewriting. The agreed disposition under [Repair commits and history rewriting](../../V3-MIGRATION.md#repair-commits-and-history-rewriting) also retains two rules this entry did not name: where fixup form is unsafe, "use an ordinary follow-up commit only when policy and current state permit it; otherwise preserve the repair and report the affected blocker while continuing independent work", and "Do not defer accepted repairs merely for tidier history."
 
 ## Triage and provenance
 

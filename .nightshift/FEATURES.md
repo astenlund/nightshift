@@ -128,7 +128,7 @@ Complete the retained run-settings outcome across continuation: durable model an
 
 ### [Verify repair-commit and autosquash safety in ordinary delivery](features/v3-git-repair-evidence.md)
 
-Complete the retained reliable repair-commit outcome using ordinary Git and project policy: establish ownership and the current safe fixup target, preserve unrelated work, honor hooks and verify the intended autosquash.
+Complete the retained reliable repair-commit outcome using ordinary Git and project policy: establish ownership and the current safe fixup target, preserve unrelated work, honor hooks and verify the intended autosquash. The migration accounting audit of 2026-09-29 found that no repair-commit instruction or check ships, so this needs instructions as well as evidence.
 
 ### [Repairs start from current contents and respect helper ownership](features/repair-current-contents.md)
 
