@@ -18,6 +18,8 @@ The old tier-derived caps and verifier lanes remain retired. Current runtime lim
 
 `limits.js` accepts only deadlineUtc and maxDispatches; dispatch accepts candidates, requiredModel and substitutionReason per request. Existing budget bugs own concrete accounting repairs, and [Verify faked boundaries live](live-boundary-verification.md) owns allowance settlement at handover.
 
+The agreed model rule under [Supported hosts](../../V3-MIGRATION.md#supported-hosts) allows a permitted substitute "with the substitution and reason reported". The migration accounting audit found on 2026-09-29 that the review receipt records the substitution and its reason, but no instruction reports them to the user, and the brief says only that the reason is recorded.
+
 The [independent shipped-capability audit](../reports/pre-v3-shipped-capability-audit-20260921.md) distinguishes actual code/probe evidence, instruction policy and unverified installed-host behavior. No capability in this entry is declared delivered by its restoration to the backlog.
 
 ## Decisions and acceptance

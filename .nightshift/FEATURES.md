@@ -214,6 +214,10 @@ Deferred beyond the MVP. Streaming could overlap validation with the remaining r
 
 Keep the reviewer that found an issue available through its repair instead of always dispatching a fresh one, and restore the dialogue between skeptic and reviewer that the v3 migration kept for findings whose consequence, value or repair quality stays unclear or disputed; today the runtime cannot resume a reviewer, and only the governing documents mention the dialogue. Raised by the user on 2026-09-29, who has seen strong evidence that continuity helps when repairing brittle code; whether the reviewer and skeptic exchange directly, whether small fixes move to the skeptic with escalation for bigger ones, and how continuity fits the required fresh reviews are among the questions the record lists as open.
 
+### [Dispatch reviewer peers and return their evidence to the lead](features/reviewer-peer-dispatch.md)
+
+Make the agreed peer staffing executable: bounded peer assignments of the lead's model and effort, dispatched on either host, with their evidence returned for the lead's integrated assessment. Found on 2026-09-29 by the migration accounting audit: the brief and runtime reference describe the flow, but the runtime can only register a peer, every dispatch runs as a full lead, and a finished lead cannot be resumed to integrate peer evidence.
+
 ### [Review-run command enforcement](features/review-run-command-enforcement.md)
 
 Deferred exploration of stronger enforcement for explicit command restrictions. Existing restrictions remain binding; no general protected-shell mode is claimed.
