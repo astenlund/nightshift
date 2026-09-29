@@ -30,6 +30,13 @@ Include user-facing ownership decisions and bounded traversal. The separate [cur
 
 Include the FeatherPod case in acceptance: migration of indexes, histories and record directories with literal references in a canonical root instruction file and an unchanged import adapter. Reconcile mechanical authorized reference repair with the proposal boundary for broader guidance edits, and ensure completion reporting exposes any unresolved references.
 
+## Gaps found by the migration accounting audit
+
+The audit of 2026-09-29 found retained requirements that this entry's text did not name:
+
+- Bounded discovery. V3 ships no guidance discovery at all; the v2 walk was removed. Besides bounded traversal and accurate reporting of exclusions, the agreed disposition under [Launches and discovery](../../V3-MIGRATION.md#launches-and-discovery) retains using "reliable host-provided context where available", preserving "applicable instruction precedence and explicitly referenced sources", resolving "essential gaps before dependent writes while allowing unrelated authorized work to continue", and that "Routine exclusions do not require a new user approval step."
+- Documentation and lore. The agreed disposition under [Portability umbrella and continuations](../../V3-MIGRATION.md#portability-umbrella-and-continuations) retains "editing the durable source behind any host adapter" and "Unclear destinations become follow-up questions; do not guess a destination, replace an adapter, or automatically turn session observations into rules." [revise-lore](../../skills/revise-lore/SKILL.md) names a canonical source only for cross-project conventions, neither revise-lore nor [revise-docs](../../skills/revise-docs/SKILL.md) directs resolving the durable source behind a project-level adapter before editing, and nothing turns an unclear destination into a follow-up question. This part is not setup work; it could instead join [Retrospective routing by audience and instruction precedence](revise-lore-audience-routing.md) or become its own entry.
+
 ## Triage and provenance
 
 Selected for tracking during the 2026-09-20 to 2026-09-21 triage. Related obligations share this outcome while retaining their own deciding cases:

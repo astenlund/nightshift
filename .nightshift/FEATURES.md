@@ -72,7 +72,7 @@ Introduce one BACKLOG.md meta-index linking the four backlog indexes and holding
 
 ### [Restore setup guidance discovery and instruction routing](features/v3-guidance-routing.md)
 
-Restore canonical instruction-source discovery and approved backlog guidance updates on both hosts, with bounded traversal and explicit handling of conflicting or missing sources. Include the reported migration that left literal root instruction references unchanged after moving backlog files. The v3 setup currently relocates files and scaffolds indexes but does not expose the earlier guidance-resolution flow.
+Restore canonical instruction-source discovery and approved backlog guidance updates on both hosts, with bounded traversal and explicit handling of conflicting or missing sources. The migration accounting audit of 2026-09-29 added the retained precedence, host-context, gap and exclusion rules for discovery, and, for revise-docs and revise-lore, editing the durable source behind a project adapter and asking when a destination is unclear. Include the reported migration that left literal root instruction references unchanged after moving backlog files. The v3 setup currently relocates files and scaffolds indexes but does not expose the earlier guidance-resolution flow.
 
 ### [Restore customized backlog and legacy-guidance repair](features/v3-setup-compatibility.md)
 
