@@ -8,7 +8,7 @@ The audience is software developers who have used AI assistants, in chat or as a
 
 - **Build vocabulary before using it.** The primer section introduces every term the zooms rely on.
 - **Start each zoom from their experience.** Each seam is introduced by a failure the audience has probably seen.
-- **Show real output.** Each zoom shows the runtime refusing, edited for the slide as described in [captured-output.md](captured-output.md).
+- **Show real output.** Where a refusal was captured, the zoom shows the runtime refusing, edited for the slide as described in [captured-output.md](captured-output.md).
 - **Say "strong models".** Headlines and explanations say "strong model"; concrete examples may name Fable (a Claude model) and Astra (a GPT model). The model in S2.2 that was recorded as advisory stays unnamed: call it "a capable model outside the approved strong set".
 
 Terms to use on slides, defined at first use:
@@ -144,14 +144,14 @@ Each zoom follows the same rhythm: the card, the mechanism in one picture, a rea
 - **On slide:** "Shall I begin?" / "Yes." Beneath: "Only a yes to a plain question counts. The readback or spec goes to you while an independent reviewer reads the same draft."
 - **Story:** S1.1. A lead agent spent about 90 minutes polishing a technical draft before showing the user the short scope, and the user could no longer tell refinements from additions. The report says the later approval "does not prove that earlier additions were agreed". That is why the draft now reaches you straight away, while its review runs alongside.
 - **Runtime:** C1. Implementation of a spec'd task is refused until the spec has a resolved independent review.
-- **Say:** after a related bug, the fix was accepted from the hosts' own event logs, "not the model's prose": edits appeared only in the turn after the user said yes (S1.2). A yes with an explicit adjustment counts as a yes to the adjusted plan. The lead agent says back what changed and carries on, and asks again only when something is genuinely ambiguous. A later material change comes back to you as a short delta you can follow, with the full spec and its evidence still at hand.
+- **Say:** after a related bug, the fix was accepted from the hosts' own event logs, "not the model's prose": edits appeared only in the turn after the user said yes (S1.2). A yes with a change counts as a yes to the changed plan, and a later material change comes back to you as a short delta.
 
 ### 13. "I asked for the wrong thing" (Agreement, continued)
 
 - **On slide:** the draft in the middle, and two agents starting beside it the moment it appears. The reviewer asks "Does this match what you said and what the code does?" The second opinion asks "Is this worth doing, and is there a simpler way?"
 - **Build:** the draft appears first. Review findings and suggested tweaks arrive while you read. Your yes can come early; the work and the handover wait until you have seen both and settled the tweaks you want.
 - **Story:** S1.4. Review before agreement has caught a real defect before any code existed. The skeptic could not settle an encoding finding by reading, so a private probe decided it, and a rejection rule entered the spec before agreement.
-- **Say:** a backlog entry may have been written without any AI input, and this is the last chance for feedback before work starts. The reviewer checks the draft against your words and the actual code. The second opinion is advice without a gate. It gives short, prioritized notes on value, scope, simpler alternatives and risks, from an agent that never saw the lead agent's reasoning. The lead agent checks the facts behind each suggestion before passing it on. Both agents run on the strongest model available, preferably on the other host. For a spec, a reviewer who asks for more detail must name the gap it closes, and it asks whether a simpler approach would do; the spec records its important tradeoffs.
+- **Say:** a backlog entry may have been written without any AI input, and this is the last chance for feedback before work starts. The reviewer checks the draft against your words and the code. The second opinion is advice without a gate, from an agent that never saw the lead agent's reasoning, and the lead agent checks its facts before passing it on. A spec reviewer who asks for more detail must name the gap it closes, and asks whether something simpler would do.
 
 ### 14. "It stopped halfway" (Handover)
 
@@ -188,9 +188,9 @@ Each zoom follows the same rhythm: the card, the mechanism in one picture, a rea
 ### 19. "What if the good reviewer is unavailable?" (Independent review)
 
 - **On slide:** the strong reviewers greyed out and a third labelled "degraded". Its review is recorded and the tasks move on. Completing the run and publishing stay shut until a strong review of the same content arrives.
-- **Story:** S2.2, from real work. Neither strong model was available: one allowance was used up and the host refused the other for exceeding its limit. A capable model outside the approved strong set reviewed the work, but its review was recorded as advisory only, and publication waited for a strong review, as the user required. Degraded review exists to make that improvised split a mechanism the run record holds.
-- **Runtime:** C2, a weaker review that was not started as a degraded review does not pass the gate; C3, a required model cannot quietly fall back to another, and a degraded review never overrides one.
-- **Say:** a degraded review starts only when no strong model can take the role, with the evidence recorded, or when you choose a weaker model yourself. Attended, the lead agent asks you first; unattended, it proceeds and the morning report says so. The label follows the review into the gate, the status, the lead agent's brief and every report, and no gate treats it as strong. When a strong reviewer is back, it reviews the whole change fresh. The list of models that count as strong lives in a policy file you can edit, which can also allow or deny models.
+- **Story:** S2.2, from real work. Neither strong model was available: one allowance was used up and the host refused the other for exceeding its limit. A capable model outside the approved strong set reviewed the work, but its review was used as advisory only, outside the run record, and publication waited for a strong review, as the user required. Degraded review exists to make that improvised split a mechanism the run record holds.
+- **Runtime:** C2, moving on from review with only a below-strength review on record is refused; C3, a required model cannot quietly fall back to another.
+- **Say:** a degraded review starts only when no strong model can take the role, or when you choose a weaker model yourself, and it never overrides a model you required. Its label follows it into every gate and report, and no gate treats it as strong. When a strong reviewer is back, it reviews the whole change fresh. The list of strong models lives in a policy file you can edit.
 
 ### 20. "Something changed after you approved it" (Staleness)
 
@@ -223,7 +223,7 @@ Each zoom follows the same rhythm: the card, the mechanism in one picture, a rea
 
 - **On slide:** the loop: review, skeptic, decide, fix, then back to "review the whole change", not "review the patch".
 - **Build:** the return arrow lands on the whole change. Hold it. Then the fix box opens: for a bug, first a check that fails for the bug's reason, and after the fix the same check passing.
-- **Say:** after every fix, however small, a strong reviewer re-examines everything changed since the run began, including neighbouring code and earlier fixes. The earlier version of Nightshift ran a fixed number of rounds and stopped at a literal "LGTM" (S4.10). Now any fix voids the review, and only a new review of the whole change restores it. Before fixing a bug, the lead agent runs a check that fails for the bug's reason, and the same check has to pass after the fix. Where a bug has no practical automated reproduction, the report says why and names what stood in. Each fix starts from the files as they are now and keeps what earlier fixes established, and a file a helper owns is fixed through that helper. After each pass you get a short note on what was established, what was fixed, what is left and why another pass is needed. "Keep this loop in mind; in a few minutes you'll see it catch something the tests missed."
+- **Say:** after every fix, however small, a strong reviewer re-examines everything changed since the run began, including neighbouring code and earlier fixes. The earlier version of Nightshift ran a fixed number of rounds and stopped at a literal "LGTM" (S4.10). Now any fix voids the review, and only a new review of the whole change restores it. A bug fix starts with a check that fails for the bug's reason and ends with the same check passing. "Keep this loop in mind; in a few minutes you'll see it catch something the tests missed."
 
 ### 25. "It forgot what you agreed" (Continuity)
 
@@ -251,7 +251,7 @@ Each zoom follows the same rhythm: the card, the mechanism in one picture, a rea
 - **On slide:** the closing gates in order: reviewed docs, retrospective, morning report, triage, complete. Delivery counts only when you reply.
 - **Runtime:** C12, the run cannot be completed before the retrospective; C13, triage cannot start before the morning report is written.
 - **Story:** S7.2. A report admitted that the work had skipped the required review, documentation and retrospective workflows, and that doing them later does not count backwards. And S7.3: a lead agent ended with "The morning report is saved in this session" instead of showing it, and the rule was tightened so the final message is the report itself.
-- **Say:** the documentation gets its own independent review, with every claim checked against the code and records it cites and anything the change left stale or missing, through the same skeptic and fix loop as code. The backlog edits that triage produces get the same review before they are published. The retrospective's proposed rule changes go through that loop too, and still wait for your approval. A Nightshift maintainer's lessons go to Nightshift's backlog or inbox, and anyone else's go to their own global or project instruction files, which take precedence over the plugin's when they conflict.
+- **Say:** the documentation gets its own independent review, with every claim checked against the code and records it cites, through the same skeptic and fix loop as code, and so do the backlog edits triage produces. The retrospective's proposed rule changes go through that loop too, and still wait for your approval. Lessons go to their audience: a Nightshift maintainer's to Nightshift's backlog or inbox, anyone else's to their own instruction files.
 
 ### 29. What the morning report must say
 
@@ -330,8 +330,11 @@ One slide with builds, or a short Magic Move sequence, on the running example [R
 | Isn't the skeptic just another model that can be wrong? | Yes, which is why missing evidence stays unresolved and running the code decides disputes (S1.4, S4.4); a disputed finding goes back to the reviewer that found it (slide 23) |
 | Couldn't the agent tamper with the run record? | L9: the checks catch ordinary mistakes, not deliberate manipulation; it is not a security boundary |
 | Why not just write more tests? | S2.4 and R: green tests missed both the data loss and the regression; faked boundaries are also run for real (slide 17) |
-| Can it use cheaper models? | For implementation, with a written plan. For review, only as a labelled degraded review when no strong model can take the role or you choose one, and the run cannot complete or publish until a strong review covers the same content (S2.2, C2, slide 19). Each role's model is chosen by live tests and price (slide 33) |
+| Can it use cheaper models? | For implementation, with a written plan. For review, only as a labelled degraded review when no strong model can take the role or you choose one, and the run cannot complete or publish until a strong review covers the same content (slide 19; S2.2 is why). Each role's model is chosen by live tests and price (slide 33) |
 | What happens when it gets stuck? | S6.2, S6.3, S6.4; decisions while you are away, slide 15; restarts, slide 27 |
+| How does a fix avoid undoing an earlier one? | Each fix starts from the files as they are now and keeps what earlier fixes established; a file a helper owns is fixed through that helper. After each pass, a short note says what was established, what was fixed, what is left and why another pass is needed (slide 24) |
+| What if a bug can't be reproduced by a test? | The report says why and names the evidence that stood in, as a verification limit (slide 24) |
+| Can my own instructions override the plugin's? | Where they conflict, your global and project instruction files take precedence over the plugin's instructions. The runtime's gates are code, so they still apply (slide 28) |
 | Will it get in the way of my own work? | Slide 7: the run works in its own worktree on its own branch, and the morning report points at the diff |
 
 ## Appendix
@@ -350,7 +353,7 @@ Keep these for questions; they are detail, not mechanism.
     - Guidance discovery: setup finds the instruction files that really govern a project, within set bounds, and routes guidance updates to them for your approval, asking when the right file is unclear.
     - Customized backlog repair: setup proposes repairs for customized backlog content and old guidance, and applies only what you approve.
     - Safe setup recovery: setup recovery touches only files it can show it owns, never overwrites, and recognizes its own partial writes.
-    - One backlog grammar: Ready, setup and unwrap share the same parsing rules and file vocabulary.
+    - One backlog grammar: Ready, setup and unwrap share one parser and file vocabulary, keeping the grammar differences that have a reason.
     - Line endings: setup normalizes mixed LF and CRLF endings in the backlog to the project's convention, recoverably.
     - Where ignore rules go: when setup needs new exclusions, you choose the shared .gitignore or the clone-local exclude file.
     - Track, ignore or defer: fresh setup asks whether to track the backlog in Git, ignore it or decide later.
@@ -360,7 +363,7 @@ Keep these for questions; they are detail, not mechanism.
     - Private review material: review requests, copies and event logs get restricted Windows access, which still does not isolate agents running as the same user.
     - Host connections: bounded buffers and frames, one owner for every timer, and runner state tested apart from process wiring.
   - **Packaging, release and guidance files**
-    - Installation contents: each marketplace installs the runtime and user docs without the repository's maintenance material.
+    - Installation contents: each marketplace installs the runtime and user docs, without the repository's maintenance material where the host allows it.
     - Release gate: tells a stale branch from a real version decrease and checks that the checkout has enough history.
     - Run-time guidance: what agents follow during a run lives in an operations guide, apart from design references that no run loads.
   - **Verification infrastructure**
@@ -375,8 +378,8 @@ The companion animated demo, a scripted run drawn as a live graph, is described 
 
 ## If the slot shrinks
 
-- To 45 minutes: drop slides 13, 15, 16, 21 and 29, and trim the prepared answers.
-- To 30 minutes: also drop slides 3, 6, 9, 23 and 27 and the last sentence of slide 32, merge slides 18 and 19, and run the case study as slide 31 alone.
+- To 45 minutes: drop slides 9, 13, 15, 16, 21, 23, 27 and 29, show only the headline of slide 33, and keep questions to 3 minutes. Sections: open 3, from chat to handover 6, the whole workflow 4, the inversion 3, zooms 15, one run 5, limits and cost 3, take-home and close 3, questions 3.
+- To 30 minutes: also drop slides 3, 6, 25 and 26, merge slides 18 and 19, run the case study as slide 31 alone, drop the last sentence of slide 32 and skip slide 33. Sections: open 2, from chat to handover 4, the whole workflow 3, the inversion 2, zooms 10, one run 3, limits and cost 2, take-home and close 2, questions 2.
 
 ## Decisions applied
 

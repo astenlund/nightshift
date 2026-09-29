@@ -199,18 +199,18 @@ body { margin: 0; background: var(--sky); color: var(--ink); font: 14px/1.5 var(
         <div class="kicker">Also in this Nightshift</div>
         <h3>Not every feature has a moment in one night</h3>
       </div>
-      <p>These run too, in setup, on the platform, in packaging and in other ways of working. None of them needed a beat in tonight's run.</p>
+      <p>These run too: in setup, on the platform, in packaging and release, in verification, and in other ways of working. None of them needed a beat in tonight's run.</p>
       <div class="groups">
         <div><h4>Setup and backlog tooling</h4><ul>
           <li>Setup finds your instruction files and routes backlog guidance to them.</li>
           <li>Setup proposes repairs for customized backlogs and legacy guidance.</li>
-          <li>Ready, setup and unwrap share one backlog parser and vocabulary.</li>
+          <li>Ready, setup and unwrap share one backlog parser and vocabulary, keeping the grammar differences that have a reason.</li>
           <li>A fresh project chooses to track, ignore or defer its backlog.</li>
           <li>You choose shared .gitignore rules or clone-local excludes.</li>
           <li>Mixed line endings in the backlog are repaired under inspection.</li>
         </ul></div>
         <div><h4>Windows platform and runtime</h4><ul>
-          <li>File metadata that matters survives every write and recovery.</li>
+          <li>File metadata that matters is kept through writes and recovery, or its limits are stated.</li>
           <li>Setup recovery touches only files it provably owns.</li>
           <li>Every launched executable, Git included, has its identity verified.</li>
           <li>Request files and review copies are protected before anything sensitive is written.</li>
@@ -219,18 +219,18 @@ body { margin: 0; background: var(--sky); color: var(--ink); font: 14px/1.5 var(
           <li>Review content is captured once per operation.</li>
         </ul></div>
         <div><h4>Packaging and release</h4><ul>
-          <li>The installed package holds what runs, plus user documentation.</li>
+          <li>The installed package holds what runs and your docs, leaving out maintenance material where the host allows.</li>
           <li>The release gate tells a stale branch from a real version decrease.</li>
           <li>Run-time guidance lives apart from design reference material.</li>
         </ul></div>
         <div><h4>Verification and measurement</h4><ul>
           <li>Verification evidence and fixtures have owners and safe storage.</li>
           <li>A seeded-defect suite measures how often the lifecycle catches bugs.</li>
-          <li>Controller overhead is measured before any saving is claimed.</li>
+          <li>Lead agent overhead is measured before any saving is claimed.</li>
           <li>Command restrictions you set are enforced where they matter.</li>
         </ul></div>
         <div><h4>Other ways to work</h4><ul>
-          <li>Revise runs on its own, without a run.</li>
+          <li>Revise can run on its own, outside any run.</li>
           <li>Review mode checks someone else's branch or pull request.</li>
           <li>A whole-backlog audit checks every entry against the code.</li>
           <li>Codex and Claude Code sessions pair up in visible panes.</li>
@@ -280,7 +280,7 @@ const STEPS = [
 const ACTORS = {
   you: { label: 'You', x: 92, y: 92, r: 28 },
   lead: { label: 'Lead', sub: 'Claude Code · Fable', x: 330, y: 222, r: 42, side: 'top' },
-  assessor: { label: 'Assessor', sub: 'Codex · Astra', x: 540, y: 104, r: 32, side: 'top' },
+  assessor: { label: 'Advisor', sub: 'Codex · Astra', x: 540, y: 104, r: 32, side: 'top' },
   supervisor: { label: 'Supervisor', sub: 'Claude Code · lower tier', x: 540, y: 104, r: 34, side: 'top' },
   proxy: { label: 'Proxy', sub: 'reasons as you · Fable', x: 96, y: 300, r: 28 },
   specrev: { label: 'Reviewer', sub: 'Codex · Astra', x: 112, y: 430, r: 34 },
@@ -290,6 +290,7 @@ const ACTORS = {
   peer: { label: 'Peer', sub: 'Codex · Astra', x: 112, y: 552, r: 26 },
   degraded: { label: 'Reviewer', sub: 'Claude Code · weaker model', x: 112, y: 552, r: 32, degraded: true },
   skeptic: { label: 'Skeptic', sub: 'Claude Code · Fable', x: 432, y: 430, r: 36 },
+  dskeptic: { label: 'Skeptic', sub: 'Claude Code · weaker model', x: 432, y: 430, r: 36, degraded: true },
   guard: { label: 'Guard', sub: 'Night Guard', x: 528, y: 574, r: 24, side: 'left' },
 };
 
@@ -330,7 +331,7 @@ const GATES = {
     open: ['Gate open', 'The work can be handed over.'],
   },
   handover: {
-    at: 4, style: 'authority', kicker: 'Authority gate · handover', claim: 'Claim: the run can go on without you', source: 'runtime · handover',
+    at: 4, kicker: 'Authority gate · handover', claim: 'Claim: the run can go on without you', source: 'runtime · handover',
     caption: { kicker: 'SEAM · HANDOVER', headline: 'Going to bed is a claim too', body: '"I\'m going to bed" is accepted only with evidence that the run will keep going on its own, within the limits you set.' },
     checks: ['Every queued task has your agreement', 'The Stop hook is registered, trusted and seen working', 'The model team and the budget are recorded', 'The run has its own worktree and branch', 'Night Guard is saving recovery state'],
     open: ['Handover accepted', 'The lead agent says so plainly, and the night begins.'],
@@ -354,10 +355,10 @@ const GATES = {
     open: ['Gate open', 'The degraded label travels with the work. The run cannot finish without a strong review.'],
   },
   close: {
-    at: 10, kicker: 'Evidence gate · closing the night', claim: 'Claim: the night\'s work is done', source: 'runtime · closing',
-    caption: { kicker: 'SEAM · CLOSING', headline: '"Done" is a checked state', body: 'Closing waits for the retrospective, and every earlier obligation must still hold on the current files.' },
-    checks: ['A strong review covers everything the degraded ones saw', 'The documentation was reviewed independently', 'Every check passes on the current files', 'The retrospective ran, and its proposal was reviewed'],
-    open: ['Gate open', 'The morning report is saved. Triage waits for you.'],
+    at: 10, kicker: 'Evidence gate · completing the run', claim: 'Claim: the night\'s work is done', source: 'runtime · retrospective, report, triage, complete',
+    caption: { kicker: 'SEAM · CLOSING', headline: '"Done" is a checked state', body: 'Completion waits for the retrospective, the report and the triage evidence, and every earlier obligation must still hold on the current files.' },
+    checks: ['A strong review covers the whole change, docs included', 'Every check passes on the current files', 'The retrospective ran, and its proposal was reviewed', 'The morning report is recorded', 'Triage evidence names every decision left for you'],
+    open: ['Run complete', 'Two decisions wait for your reply in the morning.'],
   },
 };
 
@@ -365,7 +366,7 @@ const GATES = {
 // The storyboard. Each beat changes the saved state (set), names the edges active during it, and may end at a gate.
 const actor = (s, id, state, note) => { s.actors[id] = state; if (note) s.notes[id] = note; };
 const file = (s, id, state, diff) => { s.files[id] = { state, diff }; };
-const stampAll = (s, label, tone) => CHANGED.forEach(id => { s.stamps[id] = { label, tone }; });
+const stampAll = (s, label, tone, extra = []) => [...CHANGED, ...extra].forEach(id => { s.stamps[id] = { label, tone }; });
 const finding = (s, id, patch) => {
   const existing = s.findings.find(f => f.id === id);
   if (existing) Object.assign(existing, patch); else s.findings.push({ id, ...patch });
@@ -375,7 +376,7 @@ const footer = (s, text, value, tone = 'moon') => { s.footer = { text, value, to
 const BEATS = [
   // 1. Pick work
   { at: '20:05', step: 0, headline: 'Ready reads the backlog and the project\'s direction',
-    body: 'You ask what to work on tonight. Ready opens every index through BACKLOG.md and reads VISION.md, so it can explain its picks against where the project is going. No unfinished run is waiting to be picked up.',
+    body: 'You ask what to work on tonight. Ready opens every index through BACKLOG.md and reads VISION.md, so it can explain its picks against where the project is going. It also checks for an unfinished run to offer you, and finds none.',
     set: s => { actor(s, 'you', 'active'); actor(s, 'lead', 'active', 'running Ready'); ['backlog', 'features', 'quick'].forEach(id => file(s, id, 'read')); file(s, 'vision', 'read'); },
     edges: [{ from: 'you', to: 'lead', kind: 'handoff', label: 'what next?' }, { from: 'backlog', to: 'lead', kind: 'read' }, { from: 'features', to: 'lead', kind: 'read' }, { from: 'quick', to: 'lead', kind: 'read' }, { from: 'vision', to: 'lead', kind: 'read' }] },
   { at: '20:07', step: 0, headline: 'Picks sized for an evening and for a night',
@@ -393,15 +394,15 @@ const BEATS = [
     set: s => { actor(s, 'you', 'idle'); actor(s, 'lead', 'active', 'investigating'); ['cli', 'store', 'dates'].forEach(id => file(s, id, 'read')); file(s, 'readme', 'read'); },
     edges: [{ from: 'cli', to: 'lead', kind: 'read' }, { from: 'store', to: 'lead', kind: 'read' }, { from: 'dates', to: 'lead', kind: 'read' }, { from: 'readme', to: 'lead', kind: 'read' }, { from: 'lead', to: 'you', kind: 'handoff', label: 'how it works today' }] },
   { at: '20:31', step: 1, headline: 'A short spec, read by two agents at once',
-    body: 'The feature needs a spec. As the lead agent shows you the draft, it starts two agents on the other host: an independent spec reviewer, and an assessor that gives you short, prioritized advice.',
-    set: s => { file(s, 'spec', 'new'); actor(s, 'lead', 'active', 'presenting the draft'); actor(s, 'specrev', 'active', 'spec review'); actor(s, 'assessor', 'active', 'advice for you'); },
+    body: 'The feature needs a spec. As the lead agent shows you the draft, it starts two agents on the other host: an independent spec reviewer, and a second opinion that gives you short, prioritized advice.',
+    set: s => { file(s, 'spec', 'new'); actor(s, 'lead', 'active', 'presenting the draft'); actor(s, 'specrev', 'active', 'spec review'); actor(s, 'assessor', 'active', 'second opinion'); },
     edges: [{ from: 'lead', to: 'spec', kind: 'write' }, { from: 'lead', to: 'you', kind: 'handoff', label: 'draft spec' }, { from: 'lead', to: 'specrev', kind: 'handoff' }, { from: 'lead', to: 'assessor', kind: 'handoff' }, { from: 'spec', to: 'specrev', kind: 'read' }, { from: 'spec', to: 'assessor', kind: 'read' }] },
 
   // 3. Spec review
   { at: '20:48', step: 2, headline: 'The review challenges complexity',
-    body: 'The spec reviewer asks whether the new scheduler module is needed, since computing the next date when a task is completed would be simpler. The assessor suggests a --every flag and starting with weekly and monthly.',
-    set: s => { actor(s, 'lead', 'idle', 'waiting'); actor(s, 'specrev', 'active', 'finding S1'); actor(s, 'assessor', 'active', 'advice'); },
-    edges: [{ from: 'specrev', to: 'lead', kind: 'handoff', label: 'S1 · simpler approach' }, { from: 'assessor', to: 'you', kind: 'handoff', label: 'advice' }] },
+    body: 'The spec reviewer asks whether the new scheduler module is needed, since computing the next date on completion would be simpler. The second opinion suggests a --every flag and starting with weekly and monthly. The lead agent checks its facts and passes it on.',
+    set: s => { actor(s, 'lead', 'active', 'checking the advice'); actor(s, 'specrev', 'active', 'finding S1'); actor(s, 'assessor', 'active', 'second opinion'); },
+    edges: [{ from: 'specrev', to: 'lead', kind: 'handoff', label: 'S1 · simpler approach' }, { from: 'assessor', to: 'lead', kind: 'handoff', label: 'advice' }, { from: 'lead', to: 'you', kind: 'handoff', label: 'advice · facts checked' }] },
   { at: '20:52', step: 2, headline: 'A skeptic checks the spec finding',
     body: 'Spec findings get the same treatment as code findings. A fresh skeptic confirms that completing a task is the only place a next date is needed.',
     set: s => { actor(s, 'specrev', 'done'); actor(s, 'assessor', 'done'); actor(s, 'skeptic', 'active', 'fresh session'); },
@@ -409,12 +410,12 @@ const BEATS = [
   { at: '21:05', step: 2, headline: 'You say yes, with a change',
     body: 'Your answer is a qualified yes. The lead agent acts on it: it drops the scheduler module and daily repeats, and shows you the change as a short delta instead of starting a new approval round.',
     set: s => { actor(s, 'skeptic', 'done'); actor(s, 'you', 'active'); actor(s, 'lead', 'active', 'revising the spec'); },
-    edges: [{ from: 'you', to: 'lead', kind: 'handoff', label: 'yes, weekly and monthly only' }, { from: 'lead', to: 'spec', kind: 'write' }, { from: 'lead', to: 'you', kind: 'handoff', label: 'delta' }] },
+    edges: [{ from: 'you', to: 'lead', kind: 'handoff', label: 'yes, weekly + monthly' }, { from: 'lead', to: 'spec', kind: 'write' }, { from: 'lead', to: 'you', kind: 'handoff', label: 'delta' }] },
   { at: '21:20', step: 2, headline: 'The revised spec goes back for a whole review',
     body: 'A revised spec is reviewed as a whole, never as a patch. It comes back clean.',
     set: s => { actor(s, 'you', 'idle'); actor(s, 'lead', 'idle'); actor(s, 'skeptic', 'gone'); actor(s, 'specrev', 'active', 'whole spec'); },
     edges: [{ from: 'lead', to: 'specrev', kind: 'handoff', label: 'whole spec' }, { from: 'spec', to: 'specrev', kind: 'read' }],
-    gate: { id: 'agree', evidence: ['21:05 · "yes, weekly and monthly only"', 'spec reviewer · assessor · 20:48', '− scheduler module · − daily repeats', 'whole spec · clean'], tones: ['judgment'] } },
+    gate: { id: 'agree', evidence: ['21:05 · "yes, weekly and monthly only"', 'spec reviewer · second opinion · 20:48', '− scheduler module · − daily repeats', 'whole spec · clean'], tones: ['judgment'] } },
 
   // 4. Handover
   { at: '22:40', step: 3, headline: 'You hand over the night',
@@ -444,7 +445,7 @@ const BEATS = [
     body: 'All 29 tests pass. The tests fake the filesystem, so the change also runs once against a real data file. Each check records the Node version it ran on.',
     set: s => { actor(s, 'supervisor', 'active', 'running checks'); s.pills.store = { text: 'live ✓', tone: 'yes' }; s.rev = 14; s.budget = 1.6; footer(s, 'npm test · node 22.23.0 · live data file', '29 passed', 'yes'); },
     edges: [{ from: 'store', to: 'supervisor', kind: 'read' }, { from: 'supervisor', to: 'lead', kind: 'handoff', label: 'all green' }, { from: 'lead', to: 'run', kind: 'write', label: 'check results' }],
-    gate: { id: 'verify', evidence: ['npm test · 29 passed', 'node 22.23.0 · unchanged', 'data file written and read back'] } },
+    gate: { id: 'verify', evidence: ['npm test · 29 passed', 'node 22.23.0 · unchanged', 'data file written and read back'], tones: [null, null, 'judgment'] } },
 
   // 6. Code review
   { at: '01:30', step: 5, headline: 'A reviewer on the other host',
@@ -478,21 +479,21 @@ const BEATS = [
     set: s => { actor(s, 'reviewer', 'done'); actor(s, 'skeptic', 'done'); actor(s, 'proxy', 'active', 'medium confidence'); actor(s, 'lead', 'active', 'deciding F3'); s.rev = 26; s.budget = 2.9; },
     edges: [{ from: 'lead', to: 'proxy', kind: 'handoff', label: 'F3: now or later?' }, { from: 'proxy', to: 'lead', kind: 'handoff', label: 'defer' }] },
   { at: '02:36', step: 6, headline: 'Every finding gets a decision',
-    body: 'F1 is required by the agreement and will be fixed. F2 is refuted, with the probe as evidence. F3 is deferred to QUICK_WINS.md, with the proxy\'s answer marked for your morning triage.',
-    set: s => { actor(s, 'proxy', 'done'); actor(s, 'lead', 'active', 'deciding'); finding(s, 'F1', { status: 'to fix' }); finding(s, 'F3', { status: 'deferred', where: 'QUICK_WINS.md' }); file(s, 'quick', 'edit', '+1'); s.rev = 29; s.budget = 3.0; footer(s, 'Gate: repairs wait until every finding has a decision', '3 / 3', 'yes'); },
-    edges: [{ from: 'lead', to: 'run', kind: 'write', label: 'decisions' }, { from: 'lead', to: 'quick', kind: 'write' }],
-    gate: { id: 'dispose', evidence: ['F1 · F2 · F3', 'F2 · probe · 1 copy', 'F3 → QUICK_WINS.md', 'F1 required · will be fixed', 'F3 · medium confidence'] } },
+    body: 'F1 is required by the agreement and will be fixed. F2 is refuted, with the probe as evidence. F3 is deferred with QUICK_WINS.md as its route, and the proxy\'s answer is marked for your morning triage.',
+    set: s => { actor(s, 'proxy', 'done'); actor(s, 'lead', 'active', 'deciding'); finding(s, 'F1', { status: 'to fix' }); finding(s, 'F3', { status: 'deferred', where: 'route: QUICK_WINS.md' }); s.rev = 29; s.budget = 3.0; footer(s, 'Gate: repairs wait until every finding has a decision', '3 / 3', 'yes'); },
+    edges: [{ from: 'lead', to: 'run', kind: 'write', label: 'decisions' }],
+    gate: { id: 'dispose', evidence: ['F1 · F2 · F3', 'F2 · probe · 1 copy', 'F3 → QUICK_WINS.md', 'F1 required · will be fixed', 'F3 · medium confidence'], tones: [null, 'judgment'] } },
 
   // 8. Repair and re-review
   { at: '02:45', step: 7, headline: 'First, reproduce the bug',
     body: 'Before the fix, the lead agent adds a check named month-end that fails for F1\'s reason: a task repeating from 31 January lands on 3 March. The same check must pass after the repair.',
-    set: s => { actor(s, 'proxy', 'gone'); actor(s, 'skeptic', 'gone'); actor(s, 'reviewer', 'gone'); actor(s, 'lead', 'active', 'reproducing F1'); s.pills.rectest = { text: 'month-end ✕', tone: 'no' }; finding(s, 'F1', { status: 'reproduced' }); s.rev = 31; s.budget = 3.1; },
+    set: s => { actor(s, 'proxy', 'gone'); actor(s, 'skeptic', 'gone'); actor(s, 'reviewer', 'gone'); actor(s, 'lead', 'active', 'reproducing F1'); s.pills.rectest = { text: 'month-end ✕', tone: 'no' }; s.stamps.rectest = { label: 'stale', tone: 'no' }; finding(s, 'F1', { status: 'reproduced' }); s.rev = 31; s.budget = 3.1; },
     edges: [{ from: 'lead', to: 'rectest', kind: 'write' }] },
   { at: '02:58', step: 7, headline: 'The fix, from the current file',
     body: 'The repair starts from the file as it is now. month-end passes, all 30 tests pass, and the repair is committed as a fixup on the run\'s branch. It changed two reviewed files, so their review stamps are stale.',
     set: s => { actor(s, 'lead', 'active', 'asks to leave review'); s.pills.rectest = { text: 'month-end ✓', tone: 'yes' }; s.stamps.rec = { label: 'stale', tone: 'no' }; s.stamps.rectest = { label: 'stale', tone: 'no' }; finding(s, 'F1', { status: 'fixed' }); s.rev = 33; s.budget = 3.2; footer(s, 'Review on record: rev 20 · Codex · Astra', 'stale', 'no'); },
     edges: [{ from: 'lead', to: 'rec', kind: 'write', label: 'fixup! F1', labelAt: 0.24 }, { from: 'lead', to: 'run', kind: 'write' }],
-    gate: { id: 'review', evidence: ['rev 20 · recurring-tasks.md', 'Codex · Astra · 6/6 dimensions', 'recurrence.js sha256 9c07e1… → a41f3b…'], failAt: 2,
+    gate: { id: 'review', evidence: ['rev 20 · recurring-tasks.md', 'Codex · Astra · complete', 'recurrence.js sha256 9c07e1… → a41f3b…'], failAt: 2,
       refusal: '→ move on from review\n← <span class="code">review-required</span>\n  The latest review is stale: files it reviewed have changed.\n  Run a new review of the whole change.' } },
   { at: '03:05', step: 7, headline: 'No strong reviewer is available',
     body: 'Codex has hit its usage limit, and the host refuses a fresh Fable reviewer. The lead agent records that evidence and gives the whole change to the strongest permitted model outside the strong list, as a review labelled degraded. It also passes on the settled decisions, so F2 is not raised again.',
@@ -503,28 +504,28 @@ const BEATS = [
     set: s => { actor(s, 'degraded', 'done', 'report corrected'); actor(s, 'lead', 'active', 'recording F4'); finding(s, 'F4', { text: 'After the fix, March repeats land on the 28th', where: 'recurrence.js:47', status: 'awaiting' }); stampAll(s, 'rev 38', 'warn'); s.rev = 38; s.budget = 3.6; footer(s, 'Review on record: rev 38 · weaker model', 'degraded', 'warn'); },
     edges: [{ from: 'degraded', to: 'lead', kind: 'handoff', label: 'F4 · corrected report' }, { from: 'lead', to: 'run', kind: 'write' }] },
   { at: '03:30', step: 7, headline: 'A fresh skeptic confirms F4',
-    body: 'F4 holds, and the agreement requires it: a monthly task keeps its day of the month.',
-    set: s => { actor(s, 'skeptic', 'active', 'F4 · fresh session'); actor(s, 'lead', 'idle'); finding(s, 'F4', { status: 'confirmed' }); s.rev = 40; s.budget = 3.7; },
-    edges: [{ from: 'lead', to: 'skeptic', kind: 'handoff', label: 'F4' }, { from: 'rec', to: 'skeptic', kind: 'read' }, { from: 'skeptic', to: 'lead', kind: 'handoff', label: 'confirmed · required' }] },
+    body: 'No strong model can take the skeptic role either, so a fresh skeptic on the weaker model checks F4, labelled degraded like the review. F4 holds, and the agreement requires it: a monthly task keeps its day of the month.',
+    set: s => { actor(s, 'dskeptic', 'active', 'F4 · degraded'); actor(s, 'lead', 'idle'); finding(s, 'F4', { status: 'confirmed' }); s.rev = 40; s.budget = 3.7; },
+    edges: [{ from: 'lead', to: 'dskeptic', kind: 'handoff', label: 'F4' }, { from: 'rec', to: 'dskeptic', kind: 'read' }, { from: 'dskeptic', to: 'lead', kind: 'handoff', label: 'confirmed · required' }] },
   { at: '03:36', step: 7, headline: 'Reproduce, then repair again',
     body: 'A new check named anchor fails for F4\'s reason. It passes once the next date is computed from the series\' first date instead of from the previous one. All 31 tests pass.',
-    set: s => { actor(s, 'skeptic', 'gone'); actor(s, 'lead', 'active', 'repairing F4'); s.pills.rectest = { text: 'anchor ✓', tone: 'yes' }; s.stamps.rec = { label: 'stale', tone: 'no' }; s.stamps.rectest = { label: 'stale', tone: 'no' }; finding(s, 'F4', { status: 'fixed' }); s.rev = 43; s.budget = 3.8; },
+    set: s => { actor(s, 'dskeptic', 'gone'); actor(s, 'lead', 'active', 'repairing F4'); s.pills.rectest = { text: 'anchor ✓', tone: 'yes' }; s.stamps.rec = { label: 'stale', tone: 'no' }; s.stamps.rectest = { label: 'stale', tone: 'no' }; finding(s, 'F4', { status: 'fixed' }); s.rev = 43; s.budget = 3.8; },
     edges: [{ from: 'lead', to: 'rectest', kind: 'write' }, { from: 'lead', to: 'rec', kind: 'write', label: 'fixup! F4', labelAt: 0.24 }] },
   { at: '03:52', step: 7, headline: 'The whole change, reviewed again',
-    body: 'Another degraded review of the whole change comes back clean. The review stamps are current again, and still marked degraded.',
+    body: 'Another degraded review of the whole change comes back clean, and the stamps are current again, marked degraded. A progress note records what the passes established, what was repaired and why a strong review is still owed.',
     set: s => { actor(s, 'degraded', 'active', 'whole change'); actor(s, 'lead', 'active', 'asks to leave review'); stampAll(s, 'rev 46', 'warn'); s.rev = 46; s.budget = 4.1; footer(s, 'Review on record: rev 46 · weaker model', 'degraded', 'warn'); },
     edges: [{ from: 'lead', to: 'degraded', kind: 'handoff', label: 'whole change' }, { from: 'degraded', to: 'lead', kind: 'handoff', label: 'clean' }],
     gate: { id: 'review', evidence: ['rev 46 · recurring-tasks.md', 'weaker model · degraded · strong review owed', '7 files · every sha256 matches', 'npm test · 31 passed', 'F1 · F2 · F3 · F4 decided', 'F4 fixed at rev 43 · review at rev 46'], tones: [null, 'warn'] } },
 
   // 9. Docs
   { at: '04:00', step: 8, headline: 'A strong review covers the degraded ones',
-    body: 'Codex\'s limit resets. A fresh Astra reviewer reviews the whole change, so a strong review now covers everything the degraded reviews saw. It finds nothing new.',
+    body: 'Codex\'s limit resets and Fable launches again. A fresh Astra reviewer reviews the whole change, so a strong review now covers everything the degraded reviews and skeptic saw. It finds nothing new.',
     set: s => { actor(s, 'degraded', 'gone'); actor(s, 'reviewer', 'active', 'fresh session'); actor(s, 'lead', 'idle'); s.pills = {}; stampAll(s, 'rev 49', 'moon'); s.rev = 49; s.budget = 4.4; footer(s, 'Strong review on record: rev 49 · Codex · Astra', 'current'); },
     edges: [{ from: 'lead', to: 'reviewer', kind: 'handoff', label: 'whole change' }, { from: 'rec', to: 'reviewer', kind: 'read' }, { from: 'store', to: 'reviewer', kind: 'read' }, { from: 'rectest', to: 'reviewer', kind: 'read' }, { from: 'reviewer', to: 'lead', kind: 'handoff', label: 'clean' }] },
   { at: '04:12', step: 8, headline: 'Documentation and the backlog',
-    body: 'The lead agent documents the --every flag in the README and moves the feature from FEATURES.md to FEATURES_HISTORY.md.',
-    set: s => { actor(s, 'reviewer', 'gone'); actor(s, 'lead', 'active', 'updating the docs'); file(s, 'readme', 'edit', '+6'); file(s, 'features', 'edit', '−3'); file(s, 'history', 'edit', '+3'); s.rev = 51; s.budget = 4.6; },
-    edges: [{ from: 'lead', to: 'readme', kind: 'write' }, { from: 'lead', to: 'features', kind: 'write' }, { from: 'lead', to: 'history', kind: 'write' }] },
+    body: 'Now in the documentation stage, the lead agent documents the --every flag in the README, moves the feature to FEATURES_HISTORY.md and files F3 in QUICK_WINS.md.',
+    set: s => { actor(s, 'reviewer', 'gone'); actor(s, 'lead', 'active', 'updating the docs'); file(s, 'readme', 'edit', '+6'); file(s, 'features', 'edit', '−3'); file(s, 'history', 'edit', '+3'); file(s, 'quick', 'edit', '+1'); finding(s, 'F3', { where: 'QUICK_WINS.md' }); s.rev = 51; s.budget = 4.6; },
+    edges: [{ from: 'lead', to: 'readme', kind: 'write' }, { from: 'lead', to: 'features', kind: 'write' }, { from: 'lead', to: 'history', kind: 'write' }, { from: 'lead', to: 'quick', kind: 'write' }] },
   { at: '04:20', step: 8, headline: 'Windows restarts for an update',
     body: 'Night Guard gets a few seconds of warning. It tells the running sessions to stop cleanly and saves the recovery state.',
     set: s => { actor(s, 'lead', 'down', 'restarting'); actor(s, 'supervisor', 'down'); actor(s, 'guard', 'active', 'shutdown window'); s.restart = true; footer(s, 'Night Guard: recovery state saved', '04:20'); },
@@ -538,29 +539,38 @@ const BEATS = [
     set: s => { actor(s, 'docsrev', 'active', 'documentation'); actor(s, 'skeptic', 'active', 'D1 · fresh session'); actor(s, 'lead', 'active', 'fixing D1'); finding(s, 'D1', { text: 'README says --every monthly; the flag takes month', where: 'README.md:41', status: 'fixed' }); s.rev = 56; s.budget = 4.9; footer(s, 'Documentation review: D1 fixed', 'clean', 'yes'); },
     edges: [{ from: 'readme', to: 'docsrev', kind: 'read' }, { from: 'history', to: 'docsrev', kind: 'read' }, { from: 'cli', to: 'docsrev', kind: 'read' }, { from: 'docsrev', to: 'lead', kind: 'handoff', label: 'D1' }, { from: 'lead', to: 'skeptic', kind: 'handoff', label: 'D1' }, { from: 'lead', to: 'readme', kind: 'write' }] },
 
+  { at: '04:50', step: 8, headline: 'The whole change, docs included, reviewed again',
+    body: 'The documentation edits changed files after the last strong review, so a fresh Astra reviewer reviews the whole change once more, docs included. It is clean, and every stamp is current.',
+    set: s => { actor(s, 'docsrev', 'gone'); actor(s, 'skeptic', 'gone'); actor(s, 'reviewer', 'active', 'fresh session · whole change'); actor(s, 'lead', 'idle'); stampAll(s, 'rev 58', 'moon', ['readme', 'features', 'history', 'quick']); s.rev = 58; s.budget = 5.1; footer(s, 'Strong review on record: rev 58 · whole change, docs included', 'current'); },
+    edges: [{ from: 'lead', to: 'reviewer', kind: 'handoff', label: 'whole change' }, { from: 'readme', to: 'reviewer', kind: 'read' }, { from: 'rec', to: 'reviewer', kind: 'read' }, { from: 'quick', to: 'reviewer', kind: 'read' }, { from: 'reviewer', to: 'lead', kind: 'handoff', label: 'clean' }] },
+
   // 10. Retrospective
   { at: '05:05', step: 9, headline: 'The retrospective, routed by audience',
     body: 'Two lessons. One is about this project: date math needs month-end tests, so the lead agent drafts a change to AGENTS.md for your approval. The other is about Nightshift, which you maintain: both hosts ran out at once. That goes to Nightshift\'s inbox as a dated report.',
-    set: s => { actor(s, 'docsrev', 'gone'); actor(s, 'skeptic', 'gone'); actor(s, 'lead', 'active', 'retrospective'); file(s, 'agents', 'proposal'); file(s, 'nsinbox', 'new'); s.rev = 58; s.budget = 5.1; footer(s, 'Retrospective: 2 lessons · 1 proposal', 'drafted'); },
+    set: s => { actor(s, 'reviewer', 'gone'); actor(s, 'lead', 'active', 'retrospective'); file(s, 'agents', 'proposal'); file(s, 'nsinbox', 'new'); s.rev = 60; s.budget = 5.2; footer(s, 'Retrospective: 2 lessons · 1 proposal', 'drafted'); },
     edges: [{ from: 'run', to: 'lead', kind: 'handoff', label: 'the night' }, { from: 'lead', to: 'agents', kind: 'write', label: 'proposal' }, { from: 'lead', to: 'nsinbox', kind: 'write' }] },
   { at: '05:20', step: 9, headline: 'Instruction proposals are reviewed like code',
-    body: 'A proposed instruction change gets the same fresh review and skeptic as any other change. It passes and waits for your decision in the morning.',
-    set: s => { actor(s, 'lorerev', 'active', 'proposal review'); actor(s, 'skeptic', 'active', 'fresh session'); actor(s, 'lead', 'idle'); s.rev = 60; s.budget = 5.3; footer(s, 'Retrospective: 2 lessons · 1 proposal', 'reviewed', 'yes'); },
-    edges: [{ from: 'lead', to: 'lorerev', kind: 'handoff', label: 'proposal' }, { from: 'agents', to: 'lorerev', kind: 'read' }, { from: 'lorerev', to: 'lead', kind: 'handoff', label: 'clean' }, { from: 'agents', to: 'skeptic', kind: 'read' }],
-    gate: { id: 'close', evidence: ['Astra · rev 49 · whole change', 'D1 fixed · second pass clean', 'npm test · 31 passed', 'AGENTS.md proposal · reviewed'] } },
+    body: 'A proposed instruction change gets the same fresh review and skeptic as any other change. It passes, and it stays a proposal: nothing is written to AGENTS.md without your approval.',
+    set: s => { actor(s, 'lorerev', 'active', 'proposal review'); actor(s, 'skeptic', 'active', 'fresh session'); actor(s, 'lead', 'idle'); s.rev = 62; s.budget = 5.3; footer(s, 'Retrospective: 2 lessons · 1 proposal', 'reviewed', 'yes'); },
+    edges: [{ from: 'lead', to: 'lorerev', kind: 'handoff', label: 'proposal' }, { from: 'agents', to: 'lorerev', kind: 'read' }, { from: 'lorerev', to: 'lead', kind: 'handoff', label: 'clean' }, { from: 'agents', to: 'skeptic', kind: 'read' }] },
+  { at: '05:31', step: 9, headline: 'The report, the pending decisions, then done',
+    body: 'The lead agent records the morning report, records triage evidence that the F3 deferral and the AGENTS.md proposal stay open for you, and asks to complete the run. Its last message is the report itself.',
+    set: s => { ['lorerev', 'skeptic'].forEach(id => actor(s, id, 'gone')); actor(s, 'lead', 'active', 'closing'); s.rev = 64; s.budget = 5.4; footer(s, 'Morning report recorded · 2 decisions pending', 'closing'); },
+    edges: [{ from: 'lead', to: 'run', kind: 'write', label: 'report · triage evidence' }],
+    gate: { id: 'close', evidence: ['Astra · rev 58 · docs included', 'npm test · 31 passed', 'AGENTS.md proposal · reviewed', 'report · 05:31', 'F3 deferral · AGENTS.md proposal'] } },
 
   // 11. Morning report
   { at: '07:30', step: 10, headline: 'The morning report',
-    body: 'It covers what was delivered, how it was verified and what stayed test-only, which workflows ran, and the restart the run came through. The change waits on branch nightshift/recurring-tasks, fixups squashed, having used 5.4M of the 8M budget. The decisions waiting for you come last.',
-    set: s => { ['lorerev', 'skeptic', 'supervisor', 'guard'].forEach(id => actor(s, id, 'gone')); actor(s, 'you', 'active'); actor(s, 'lead', 'active', 'reporting'); s.rev = 62; s.budget = 5.4; footer(s, 'Morning report saved · triage waits for you', '2 decisions'); },
-    edges: [{ from: 'lead', to: 'you', kind: 'handoff', label: 'morning report' }] },
+    body: 'It covers what was delivered, how it was verified and what stayed test-only, which workflows ran, and the restart the run came through. The change waits on branch nightshift/recurring-tasks, fixups squashed, having used 5.4M of the 8M budget. Your first reply records it as delivered.',
+    set: s => { ['supervisor', 'guard'].forEach(id => actor(s, id, 'gone')); actor(s, 'you', 'active'); actor(s, 'lead', 'active', 'report delivered'); s.rev = 65; footer(s, 'Run complete · report delivered · 2 decisions', 'triage'); },
+    edges: [{ from: 'lead', to: 'you', kind: 'handoff', label: 'morning report' }, { from: 'you', to: 'lead', kind: 'handoff', label: 'reply' }, { from: 'lead', to: 'run', kind: 'write', label: 'delivered' }] },
   { at: '07:34', step: 10, headline: 'Triage, one item at a time',
     body: 'First, F3 with the proxy\'s answer: defer, medium confidence. You agree and keep it tracked in QUICK_WINS.md.',
-    set: s => { footer(s, 'Triage', '1 of 2'); },
+    set: s => { s.rev = 66; footer(s, 'Triage', '1 of 2'); },
     edges: [{ from: 'lead', to: 'you', kind: 'handoff', label: 'F3 · proxy: defer' }, { from: 'you', to: 'lead', kind: 'handoff', label: 'track it' }] },
   { at: '07:36', step: 10, headline: 'Then the proposed instruction',
-    body: 'You approve the month-end instruction, and it is applied to AGENTS.md. The run is complete, and the next session starts from what this night learned.',
-    set: s => { file(s, 'agents', 'edit', '+2'); actor(s, 'lead', 'done', 'run complete'); s.rev = 64; footer(s, 'Run complete', '07:36', 'yes'); },
+    body: 'You approve the month-end instruction, and the lead agent applies it to AGENTS.md as a follow-up. The next session starts from what this night learned.',
+    set: s => { file(s, 'agents', 'edit', '+2'); actor(s, 'lead', 'done', 'triage done'); s.rev = 67; footer(s, 'Triage done · run completed at 05:31', '07:36', 'yes'); },
     edges: [{ from: 'you', to: 'lead', kind: 'handoff', label: 'approve' }, { from: 'lead', to: 'agents', kind: 'write' }] },
 ];
 
@@ -589,6 +599,7 @@ const $ = id => document.getElementById(id);
 const rail = $('rail'), stage = $('stage'), svg = $('graph'), seam = $('seam'), gateInner = $('gateInner'), card = $('card');
 const NS = 'http://www.w3.org/2000/svg';
 const C = { moon: '#cdd6ff', dim: '#8791ab', faint: '#525c78', ink: '#e4e8f3', new: '#59cf9f', edit: '#efb259', read: '#7f8db3', no: '#ff8f7d', panel: '#131c30', line: '#27324d', deep: '#0f1729' };
+const REDUCED = matchMedia('(prefers-reduced-motion: reduce)');
 const TONE = { moon: C.moon, yes: C.new, no: C.no, warn: C.edit, faint: C.faint, dim: C.dim };
 
 function renderRail(current) {
@@ -658,8 +669,11 @@ function renderGraph(s) {
   const drawn = [...s.history.map(e => ({ ...e, history: true })), ...s.active];
   for (const e of drawn) {
     if (!visible(s, e.from) || !visible(s, e.to)) continue;
-    // Edges into the run record curve up and away from the skeptic's slot.
-    const g = curve(e.from, e.to, e.bend ?? (e.to === 'run' ? -1 : 1));
+    // Edges into the run record curve up and away from the skeptic's slot. Two actors answering each other in one beat
+    // get wider curves, so their labels separate; your short edges to the lead agent keep their labels mid-curve.
+    const reverse = !e.history && s.active.some(o => o.from === e.to && o.to === e.from && o.label);
+    const withYou = e.from === 'you' || e.to === 'you';
+    const g = curve(e.from, e.to, (e.bend ?? (e.to === 'run' ? -1 : 1)) * (reverse ? (withYou ? 1.8 : 1.4) : 1));
     const target = s.files[e.to]?.state;
     let stroke = C.dim;
     if (e.kind === 'handoff') stroke = C.moon;
@@ -672,11 +686,17 @@ function renderGraph(s) {
     }, edgeLayer);
     if (e.history) continue;
     for (let i = 0; i < 3; i++) {
+      if (REDUCED.matches) {
+        const pt = at(g, 0.25 + i * 0.25);
+        el('circle', { cx: pt.x, cy: pt.y, r: 3, fill: stroke }, edgeLayer);
+        continue;
+      }
       const dot = el('circle', { r: 3, fill: stroke, filter: 'url(#glow)' }, edgeLayer);
       el('animateMotion', { dur: '1.8s', repeatCount: 'indefinite', begin: `${-i * 0.6}s`, path: g.d }, dot);
     }
     if (e.label) {
-      const pt = at(g, e.labelAt ?? 0.5);
+      // Labels sit toward you on your edges, and toward their own source when two agents answer each other.
+      const pt = at(g, e.labelAt ?? (reverse ? (withYou ? 0.5 : 0.3) : e.to === 'you' ? 0.6 : e.from === 'you' ? 0.4 : 0.5));
       const w = e.label.length * 6.6 + 16;
       const chip = el('g', { transform: `translate(${pt.x - w / 2} ${pt.y - 10})` }, edgeLayer);
       el('rect', { width: w, height: 20, rx: 10, fill: '#19243c', stroke, 'stroke-opacity': 0.6 }, chip);
@@ -794,18 +814,24 @@ function renderGraph(s) {
 // ---------------------------------------------------------------------------------------------------------------
 // Playback: every wait goes through sleep(), which honours pause, speed and navigation.
 let runId = 0, paused = false, speed = 1, index = 0;
-const sleep = ms => new Promise((resolve, reject) => {
+// A forced wait runs through a pause, so stepping while paused still draws the next beat.
+const sleep = (ms, force = false) => new Promise((resolve, reject) => {
   const id = runId;
   let left = ms / speed, last = performance.now();
   const tick = now => {
     if (id !== runId) return reject(new Error('interrupted'));
-    if (!paused) left -= now - last;
+    if (!paused || force) left -= now - last;
     last = now;
     left <= 0 ? resolve() : requestAnimationFrame(tick);
   };
   requestAnimationFrame(tick);
 });
 const reflow = node => void node.offsetWidth;
+// On a short screen the gate panel scrolls; keep the newest row or the verdict in view.
+const reveal = node => {
+  const bottom = node.offsetTop + node.offsetHeight + 16 - gateInner.clientHeight;
+  if (bottom > gateInner.scrollTop) gateInner.scrollTop = bottom;
+};
 const SUN = '<circle cx="10" cy="10" r="4.5" fill="#f2c46b"/><g stroke="#f2c46b" stroke-width="1.6" stroke-linecap="round"><path d="M10 1.5v2.2M10 16.3v2.2M1.5 10h2.2M16.3 10h2.2M4 4l1.6 1.6M14.4 14.4 16 16M4 16l1.6-1.6M14.4 5.6 16 4"/></g>';
 const MOON = '<path d="M13.5 2.5a8 8 0 1 0 4 11.2A6.5 6.5 0 0 1 13.5 2.5z" fill="#cdd6ff"/>';
 
@@ -817,7 +843,7 @@ function setCaption({ kicker, headline, body }, seamStyle = false) {
 }
 async function fadeCaption(content, seamStyle) {
   $('captionText').classList.add('fade');
-  await sleep(280);
+  await sleep(280, true);
   setCaption(content, seamStyle);
   $('captionText').classList.remove('fade');
 }
@@ -845,6 +871,7 @@ function resetGate() {
   gateInner.className = 'gate-inner';
   gateInner.innerHTML = '';
   stage.classList.remove('zoom', 'swap');
+  $('captionText').classList.remove('fade');
   reflow(seam);
   seam.style.transition = '';
 }
@@ -876,7 +903,7 @@ async function runGate(b) {
   seam.style.width = `${pw}px`;
   seam.classList.add('wide');
   if (gate.style) seam.classList.add(gate.style);
-  fadeCaption(gate.caption, true);
+  fadeCaption(gate.caption, true).catch(() => {});
   await sleep(1100);
   gateInner.innerHTML = `<div class="gate-head"><div class="kicker">${gate.kicker}</div><h3>${gate.claim}</h3><code>${gate.source}</code></div><ol class="checks"></ol><div class="verdict"></div>`;
   const list = gateInner.querySelector('.checks');
@@ -897,6 +924,7 @@ async function runGate(b) {
     const ev = row.querySelector('.ev');
     if (failed) { row.classList.add('in', 'skip'); ev.textContent = 'not reached'; continue; }
     row.classList.add('in', 'pending');
+    reveal(row);
     await sleep(700);
     row.classList.remove('pending');
     ev.textContent = attempt.evidence[i];
@@ -922,6 +950,7 @@ async function runGate(b) {
     verdict.innerHTML = `<div class="open"><span>✓ ${gate.open[0]}</span><small>${gate.open[1]}</small></div>`;
   }
   verdict.classList.add('show');
+  reveal(verdict);
   await sleep(failed ? 3600 : 2400);
   // 4. Zoom back out: the gate folds back into a line and the graph fades back in.
   gateInner.classList.remove('show');
@@ -946,7 +975,7 @@ async function playFrom(i) {
     for (; index < BEATS.length; index++) {
       if (id !== runId) return;
       stage.classList.add('swap');
-      await sleep(220);
+      await sleep(220, true);
       render(index);
       stage.classList.remove('swap');
       await fadeCaption(beatCaption(index));
@@ -960,6 +989,7 @@ async function playFrom(i) {
 }
 function showCard() {
   index = BEATS.length;
+  $('captionText').classList.remove('fade');
   stage.classList.add('carded');
   card.classList.add('show');
   $('beatLabel').textContent = 'end';
@@ -975,6 +1005,8 @@ function updatePauseIcon() {
 }
 const togglePause = () => { paused = !paused; updatePauseIcon(); };
 const go = delta => playFrom(Math.max(0, Math.min(BEATS.length - 1, (index >= BEATS.length ? BEATS.length : index) + delta)));
+// A mouse click leaves no focus behind, so Space keeps meaning play or pause; keyboard focus stays for keyboard users.
+document.querySelectorAll('.controls button').forEach(button => button.addEventListener('click', event => { if (event.detail > 0) button.blur(); }));
 $('pause').addEventListener('click', togglePause);
 $('restart').addEventListener('click', () => playFrom(0));
 $('prev').addEventListener('click', () => go(-1));
