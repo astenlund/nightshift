@@ -156,7 +156,7 @@ Restore inspected normalization of mixed LF/CRLF endings on the controlled backl
 
 ### [Maintain bounded host transports and explicit runtime ownership](features/v3-transport-maintenance.md)
 
-Assess current host transports for bounded efficient buffering, independently testable protocol decisions and one owner for every live timer. Preserve cancellation, stream closure and termination guarantees.
+Assess current host transports for bounded efficient buffering, independently testable protocol decisions and one owner for every live timer. Preserve cancellation, stream closure and termination guarantees. The migration accounting audit of 2026-09-29 found the remaining work: repository verification across chunk boundaries, prompt rejection of oversized frames, a per-line output bound, and runner state decisions separated from process wiring with direct state tests.
 
 ### [Init-backlog ignore-shape election](features/init-backlog-ignore-shape-election.md)
 

@@ -12,7 +12,7 @@ Assess current host transports for bounded efficient buffering, independently te
 
 ## Selected outcome
 
-The user selected the surviving transport outcomes without requiring the old Windows runner layout or inert timer fields. Separate sequencing, budgets and completion decisions from process wiring where useful; keep byte and fragment bounds, framing and failure behavior intact.
+The user selected the surviving transport outcomes without requiring the old Windows runner layout or inert timer fields. Separate protocol validation, sequencing, budgets and completion decisions from process wiring, as the agreed disposition requires; keep byte and fragment bounds, framing and failure behavior intact.
 
 ## Evidence and limits
 
@@ -25,6 +25,13 @@ The [independent shipped-capability audit](../reports/pre-v3-shipped-capability-
 Measure fragmentation/copying costs before optimizing. Verify malformed and partial frames, limits, timeout replacement, completion/cancellation and stale callbacks, plus process-tree closure. Share mechanics with existing native-control helper work only when their contracts agree.
 
 Coordinate with [Shared native control session helper](../QUICK_WINS.md#shared-native-control-session-helper) and [Windows containment fixtures](../BUGS.md#windows-job-pipe-and-containment-fixtures-fail-outside-the-code-they-cover).
+
+## Found by the migration accounting audit
+
+The audit of 2026-09-29 characterized part of the current implementation:
+
+- Streaming buffers. All shipped framing now uses Node's `readline`, and a probe outside the repository fed it one 16 MiB line in 64 KiB fragments (26 ms) and in 256-byte fragments (42 ms), so the whole-frame recopying the retained need targeted does not appear to occur. What remains of [its agreed disposition](../../V3-MIGRATION.md#reuse-and-streaming-cost): no repository test shows unchanged output across chunk boundaries or reduced copying, the Windows runner checks a frame against `MAX_FRAME_BYTES` only after a whole line has been assembled, so an oversized frame is not rejected promptly, and host output lines have only the 32 MiB aggregate bound, not a per-line bound.
+- Runner protocol state. Two frame validators are extracted and tested directly, but sequencing, output budgets and completion decisions still live inside the process wiring of `internal/runtime/windows-job.js`, with no direct state tests of failure precedence, termination, stream closure or cancellation. [The agreed disposition](../../V3-MIGRATION.md#protocol-and-evidence-boundaries) asks for that separation and for direct state tests; this entry's outcome used to add a "where useful" qualifier the disposition does not have, and now states the separation as agreed.
 
 ## Triage and provenance
 
