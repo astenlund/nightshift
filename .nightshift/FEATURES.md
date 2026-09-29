@@ -88,7 +88,7 @@ Complete physical artifact ownership and no-overwrite recovery for supported set
 
 ### [Complete executable identity assurance for Windows launches](features/v3-launch-identity.md)
 
-Reconcile retained launch roles with the selected executable identity and trust boundary, including replacement and path retargeting between discovery and launch. Verify the boundary rather than inferring it from a resolved path.
+Reconcile retained launch roles with the selected executable identity and trust boundary, including replacement and path retargeting between discovery and launch. Verify the boundary rather than inferring it from a resolved path. The roles include the runtime's own Git launches, which the migration accounting audit of 2026-09-29 found unnamed.
 
 ### [Protect private request and review artifacts on Windows](features/v3-private-request-material.md)
 

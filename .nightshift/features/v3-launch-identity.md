@@ -24,7 +24,7 @@ The [independent shipped-capability audit](../reports/pre-v3-shipped-capability-
 
 Choose the per-role contract and document residual race limits. Verify retargeting, replacement, permitted updates and unavailable proof on the supported Windows host without treating a last-moment path check as atomic launch binding.
 
-
+The migration accounting audit of 2026-09-29 found a launch role this entry did not name: the runtime's own Git launches, which run `git` by bare name with no identity check, in `internal/runtime/evidence.js` (repository detection, blob hashing and the file inventory), `internal/runtime/review.js` (the cumulative diff and new-file diffs) and `internal/runtime/probes.js` (initializing and checking a probe copy). The per-role contract needs to cover them as well as setup Git.
 
 ## Triage and provenance
 
