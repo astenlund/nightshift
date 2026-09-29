@@ -130,6 +130,10 @@ Complete the retained run-settings outcome across continuation: durable model an
 
 Complete the retained reliable repair-commit outcome using ordinary Git and project policy: establish ownership and the current safe fixup target, preserve unrelated work, honor hooks and verify the intended autosquash.
 
+### [Repairs start from current contents and respect helper ownership](features/repair-current-contents.md)
+
+Direct every repair, by the controller or a helper, to start from the current contents and keep earlier repairs' constraints, and state that the controller routes a fix to a helper-owned artifact through that helper. Found on 2026-09-29 by the migration accounting audit: write ownership and handoffs are recorded, but a reverted fix would be caught only afterwards, by verification or the next cumulative review, and the controller's own exclusion from helper-owned paths is implied rather than stated.
+
 ### [Capture review content once within an operation](features/v3-review-snapshot-reuse.md)
 
 Complete the retained operation-local snapshot reuse requirement while preserving freshness and exact reviewed bytes. Reuse captured source and identity for governing artifacts and review copies where valid, without introducing a persistent cache.
