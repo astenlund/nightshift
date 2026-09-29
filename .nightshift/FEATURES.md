@@ -162,6 +162,10 @@ When a new session opens in a project with an interrupted, stopped or undelivere
 
 Besides the few high-value entries Ready recommends today, also recommend one or two smaller entries for a quick session and a larger entry, or a group of entries, sized for a longer session such as a night's worth of work. Raised by the user on 2026-09-29, who settled that size is the model's rough judgment from what it reads; what makes a group coherent, how a pick for a night fits the settlement that handover requires first, and how a group is cited and selected are among the questions the record lists as open.
 
+### [Graphical run view](features/run-graph-view.md)
+
+Show a run as a graph of its whole workflow in a page hosted by a local web server and viewable on the same computer, highlighting the current step and animating smoothly as things happen, such as subagents spawning and files being edited. Raised by the user on 2026-09-29, who sketched later slices that add old runs and then clickable elements such as nodes with details about each step; where the file-edit and subagent events come from, who starts and stops the server, and how it stays local-only and read-only are among the questions the record lists as open.
+
 ### [Retrospective routing by audience and instruction precedence](features/revise-lore-audience-routing.md)
 
 Have revise-lore route lessons by who the user is: a Nightshift maintainer to the Nightshift backlog or inbox, a regular user to the global or project-local instruction files, and let global and project instructions take precedence over plugin instructions when they conflict. Raised by the user on 2026-09-27. Open: how a maintainer is recognized, and how precedence interacts with gates the plugin treats as mandatory.
