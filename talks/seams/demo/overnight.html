@@ -3,18 +3,17 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,650&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
 <style>
-/* Layout: header, the night's step rail, the graph stage, then the caption and controls. The stage's sky follows the story (day, dusk, night, morning), so the page commits to that look instead of the viewer's theme. Gates open from the rail into the stage as a widening seam. */
+/* Layout: header, the night's step rail, the graph stage, then the caption and controls. The rail's sky follows the story (day, dusk, night, morning), so the page commits to that look instead of the viewer's theme. Gates open from the rail into the stage as a widening seam. */
 :root {
   --sky: #0c1322;          /* night ground */
   --panel: #131c30;        /* node and card fill */
-  --panel-2: #19243c;
   --line: #27324d;
   --ink: #e4e8f3;
   --ink-dim: #8791ab;
   --ink-faint: #525c78;
   --moon: #cdd6ff;         /* attention: current step, active actor, gate */
   --new: #59cf9f;          /* created file; also a passed check */
-  --edit: #efb259;         /* edited file */
+  --edit: #efb259;         /* edited file; also a degraded review */
   --read: #7f8db3;         /* read-only touch */
   --no: #ff8f7d;           /* confirmed finding, failed check, stale evidence */
   --day: #e7edf6;
@@ -27,7 +26,7 @@
 }
 html, body { height: 100%; }
 body { margin: 0; background: var(--sky); color: var(--ink); font: 14px/1.5 var(--font-body); }
-.app { box-sizing: border-box; height: 100%; min-height: 640px; display: grid; grid-template-rows: auto auto 1fr auto; gap: 14px; padding-inline: 24px; padding-block: 18px 20px; max-width: 1480px; margin: 0 auto; }
+.app { box-sizing: border-box; height: 100%; min-height: 660px; display: grid; grid-template-rows: auto auto 1fr auto; gap: 12px; padding-inline: 24px; padding-block: 16px 18px; max-width: 1560px; margin: 0 auto; }
 
 /* Header */
 .top { display: flex; flex-wrap: wrap; align-items: baseline; gap: 10px 18px; }
@@ -39,8 +38,8 @@ body { margin: 0; background: var(--sky); color: var(--ink); font: 14px/1.5 var(
 .clock small { color: var(--ink-dim); font-size: 12px; }
 
 /* Step rail */
-.rail { position: relative; display: grid; grid-template-columns: repeat(10, minmax(0, 1fr)); border-radius: 10px; overflow: hidden; background: linear-gradient(90deg, var(--day) 0%, var(--day) 19.5%, #4a4a72 20.5%, #222c4c 29%, #111a2e 40%, #111a2e 84%, #34385e 89.5%, #f3e6cf 90.5%, var(--day) 100%); }
-.step { position: relative; padding: 10px 10px 11px 16px; min-width: 0; color: var(--ink-dim); transition: background 0.5s, color 0.5s, box-shadow 0.5s; }
+.rail { position: relative; display: grid; grid-template-columns: repeat(11, minmax(0, 1fr)); border-radius: 10px; overflow: hidden; background: linear-gradient(90deg, var(--day) 0%, var(--day) 26.8%, #4a4a72 28%, #222c4c 35%, #111a2e 44%, #111a2e 86%, #34385e 90.2%, #f3e6cf 91.3%, var(--day) 100%); }
+.step { position: relative; padding: 9px 8px 10px 14px; min-width: 0; color: var(--ink-dim); transition: background 0.5s, color 0.5s, box-shadow 0.5s; }
 .step .n { font: 500 11px var(--font-mono); font-variant-numeric: tabular-nums; opacity: 0.8; }
 .step .name { display: block; font: 600 12.5px/1.25 var(--font-body); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .step.day { color: #56627c; }
@@ -51,20 +50,23 @@ body { margin: 0; background: var(--sky); color: var(--ink); font: 14px/1.5 var(
 .step.day.later { color: #6b7690; }
 /* Gates sit between steps: solid where the runtime refuses to continue, dashed where the gate is your agreement. */
 .gate { position: absolute; z-index: 1; top: 7px; bottom: 7px; left: 0; width: 0; border-left: 2px solid rgba(205, 214, 255, 0.55); transition: border-color 0.3s, box-shadow 0.3s; }
-.gate.agreement { border-left-style: dashed; border-left-color: rgba(31, 42, 64, 0.55); }
+.gate.agreement { border-left-style: dashed; border-left-color: rgba(205, 214, 255, 0.7); }
 .step.day .gate { border-left-color: rgba(31, 42, 64, 0.5); }
 .step.now .gate, .step.now + .step .gate { border-left-color: var(--moon); }
 .gate.lit { top: 0; bottom: 0; left: -2px; border-left-width: 4px; border-left-color: var(--moon); box-shadow: 0 0 18px 5px rgba(205, 214, 255, 0.85); }
-.gate.lit.no { border-left-color: var(--no); box-shadow: 0 0 14px 2px rgba(255, 143, 125, 0.8); }
-.gate.lit.yes { border-left-color: var(--new); box-shadow: 0 0 14px 2px rgba(89, 207, 159, 0.8); }
+.gate.lit.no { border-left-color: var(--no); box-shadow: 0 0 18px 5px rgba(255, 143, 125, 0.85); }
+.gate.lit.yes { border-left-color: var(--new); box-shadow: 0 0 18px 5px rgba(89, 207, 159, 0.85); }
 
 /* Stage */
-.stage { position: relative; min-height: 360px; border: 1px solid var(--line); border-radius: 12px; background: radial-gradient(120% 90% at 20% 0%, #15203a 0%, var(--sky) 60%); overflow: hidden; }
+.stage { position: relative; min-height: 380px; border: 1px solid var(--line); border-radius: 12px; background: radial-gradient(120% 90% at 20% 0%, #15203a 0%, var(--sky) 60%); overflow: hidden; transition: background 1s; }
+.stage.day { background: radial-gradient(120% 100% at 85% 0%, #283356 0%, #151d33 45%, var(--sky) 80%); }
 .stage svg { position: absolute; inset: 0; display: block; width: 100%; height: 100%; transition: transform 1.1s var(--ease), opacity 1.1s var(--ease), filter 1.1s var(--ease); }
 .stage.zoom svg { transform: scale(2.6); opacity: 0.1; filter: blur(2px); }
 .stage.swap svg { opacity: 0; transition-duration: 0.25s; }
-.legend { position: absolute; top: 12px; right: 14px; display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 11.5px; color: var(--ink-dim); transition: opacity 0.5s; }
-.stage.zoom .legend { opacity: 0; }
+.stage.dim svg { opacity: 0.35; filter: grayscale(0.6); }
+.stage.carded svg { opacity: 0.12; filter: blur(3px); }
+.legend { position: absolute; top: 10px; right: 14px; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px 14px; font-size: 11.5px; color: var(--ink-dim); transition: opacity 0.5s; }
+.stage.zoom .legend, .stage.carded .legend { opacity: 0; }
 .legend span { display: inline-flex; align-items: center; gap: 6px; }
 .sw { width: 18px; height: 12px; border-radius: 3px; border: 1.5px solid; box-sizing: border-box; }
 .sw.new { border-color: var(--new); background: rgba(89, 207, 159, 0.12); }
@@ -80,11 +82,12 @@ body { margin: 0; background: var(--sky); color: var(--ink); font: 14px/1.5 var(
   transition: clip-path 0.45s var(--ease), opacity 0.3s, left 1.1s var(--ease), width 1.1s var(--ease), top 1.1s var(--ease), bottom 1.1s var(--ease), border-radius 1.1s var(--ease), background 0.6s, box-shadow 0.6s, border-color 0.4s; }
 .seam.drop { clip-path: inset(0 0 0 0); opacity: 1; }
 .seam.wide { top: max(22px, calc(50% - 240px)); bottom: max(22px, calc(50% - 240px)); border-radius: 14px; background: var(--panel); border: 1px solid var(--moon); box-shadow: 0 0 70px rgba(205, 214, 255, 0.18); pointer-events: auto; }
+.seam.wide.authority { border-style: dashed; }
 .seam.no { border-color: var(--no); box-shadow: 0 0 70px rgba(255, 143, 125, 0.16); }
 .seam.yes { border-color: var(--new); box-shadow: 0 0 70px rgba(89, 207, 159, 0.16); }
 .seam.drop.no:not(.wide) { background: var(--no); box-shadow: 0 0 18px 3px rgba(255, 143, 125, 0.6); }
 .seam.drop.yes:not(.wide) { background: var(--new); box-shadow: 0 0 18px 3px rgba(89, 207, 159, 0.6); }
-.gate-inner { box-sizing: border-box; height: 100%; width: 100%; min-width: 520px; padding: 22px 26px; display: flex; flex-direction: column; gap: 14px; opacity: 0; transition: opacity 0.35s; overflow: auto; }
+.gate-inner { box-sizing: border-box; height: 100%; width: 100%; min-width: 540px; padding: 22px 26px; display: flex; flex-direction: column; gap: 14px; opacity: 0; transition: opacity 0.35s; overflow: auto; }
 .gate-inner.show { opacity: 1; }
 .gate-head .kicker { font: 600 10.5px var(--font-body); letter-spacing: 0.12em; text-transform: uppercase; color: var(--moon); }
 .gate-head h3 { margin: 4px 0 2px; font: 650 21px/1.2 var(--font-display); text-wrap: balance; }
@@ -96,42 +99,65 @@ body { margin: 0; background: var(--sky); color: var(--ink); font: 14px/1.5 var(
 .check.pending { background: rgba(205, 214, 255, 0.06); }
 .check.pending .dot { border-color: var(--moon); border-top-color: transparent; animation: spin 0.7s linear infinite; }
 .check.pass .dot { border-color: var(--new); background: var(--new); color: var(--sky); }
+.check.warn .dot { border-color: var(--edit); background: var(--edit); color: var(--sky); }
+.check.warn .ev { color: var(--edit); }
+.check.judgment .dot { border-style: dashed; }
 .check.fail { background: rgba(255, 143, 125, 0.1); }
 .check.fail .dot { border-color: var(--no); background: var(--no); color: var(--sky); }
 .check.skip { opacity: 0.38; }
 .check .label { font-size: 14px; color: var(--ink); }
 .check .ev { font: 11.5px var(--font-mono); color: var(--ink-dim); text-align: right; opacity: 0; transition: opacity 0.3s; white-space: nowrap; }
 .check.fail .ev { color: var(--no); }
-.check.pass .ev, .check.fail .ev, .check.skip .ev { opacity: 1; }
+.check.pass .ev, .check.fail .ev, .check.warn .ev, .check.skip .ev { opacity: 1; }
 .verdict { margin-top: auto; opacity: 0; transform: translateY(8px); transition: opacity 0.4s, transform 0.4s; }
 .verdict.show { opacity: 1; transform: none; }
 .term { margin: 0; padding: 12px 14px; border-radius: 8px; background: #0a101d; border: 1px solid var(--line); font: 12.5px/1.6 var(--font-mono); color: var(--ink-dim); white-space: pre-wrap; }
 .term .code { color: var(--no); font-weight: 500; }
-.open { display: flex; align-items: baseline; gap: 12px; font: 650 18px var(--font-display); color: var(--new); }
+.open { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; font: 650 18px var(--font-display); color: var(--new); }
 .open small { font: 400 13.5px var(--font-body); color: var(--ink-dim); }
 @keyframes spin { to { transform: rotate(360deg); } }
 
+/* Closing card: features that run without a visible moment in one night. */
+.card { position: absolute; inset: 18px; display: flex; flex-direction: column; gap: 14px; padding: 22px 26px; box-sizing: border-box; border: 1px solid var(--moon); border-radius: 14px; background: rgba(19, 28, 48, 0.94); overflow: auto; opacity: 0; transform: translateY(10px); transition: opacity 0.5s, transform 0.5s; pointer-events: none; }
+.card.show { opacity: 1; transform: none; pointer-events: auto; }
+.card .kicker { font: 600 10.5px var(--font-body); letter-spacing: 0.12em; text-transform: uppercase; color: var(--moon); }
+.card h3 { margin: 2px 0 0; font: 650 24px/1.2 var(--font-display); }
+.card > p { margin: 0; color: var(--ink-dim); max-width: 80ch; }
+.card .groups { display: grid; grid-template-columns: repeat(auto-fit, minmax(215px, 1fr)); gap: 16px 22px; }
+.card h4 { margin: 0 0 6px; font: 600 11px var(--font-body); letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-dim); }
+.card ul { margin: 0; padding: 0; list-style: none; display: grid; gap: 5px; }
+.card li { font-size: 12.5px; line-height: 1.4; color: #c3c9da; padding-left: 14px; position: relative; }
+.card li::before { content: ""; position: absolute; left: 0; top: 0.55em; width: 5px; height: 5px; border-radius: 50%; background: var(--moon); }
+
 /* Caption and controls */
-.caption { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 24px; align-items: end; min-height: 128px; }
+.caption { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 24px; align-items: end; min-height: 124px; }
 .caption .kicker { font: 500 12px var(--font-mono); color: var(--moon); letter-spacing: 0.04em; }
 .caption.seamcap .kicker { letter-spacing: 0.12em; }
 .caption h2 { margin: 2px 0 6px; font: 650 24px/1.15 var(--font-display); text-wrap: balance; }
-.caption p { margin: 0; max-width: 74ch; color: #c3c9da; font-size: 15px; line-height: 1.55; }
+.caption p { margin: 0; max-width: 78ch; color: #c3c9da; font-size: 15px; line-height: 1.55; }
 .caption p b { color: var(--ink); font-weight: 600; }
-.caption .text { transition: opacity 0.3s; }
+.caption .text { min-width: 0; transition: opacity 0.3s; }
 .caption .text.fade { opacity: 0; }
+.side { display: grid; justify-items: end; gap: 10px; }
 .controls { display: flex; align-items: center; gap: 8px; }
 .controls button { width: 38px; height: 38px; border-radius: 50%; border: 1px solid var(--line); background: var(--panel); color: var(--ink); display: grid; place-items: center; cursor: pointer; padding: 0; }
 .controls button.play { width: 46px; height: 46px; background: var(--moon); color: var(--sky); border-color: var(--moon); }
 .controls button:hover { border-color: var(--moon); }
 .controls button:focus-visible { outline: 2px solid var(--moon); outline-offset: 2px; }
 .controls .speed { font: 500 12px var(--font-mono); color: var(--ink-dim); }
+.progress { display: flex; align-items: center; gap: 10px; font: 500 11.5px var(--font-mono); color: var(--ink-dim); font-variant-numeric: tabular-nums; }
+.progress .bar { width: 160px; height: 3px; border-radius: 2px; background: var(--line); overflow: hidden; }
+.progress .bar i { display: block; height: 100%; width: 0; background: var(--moon); transition: width 0.4s; }
 
 @media (max-width: 760px) {
   .app { padding-inline: 16px; height: auto; }
-  .stage { min-height: 420px; }
-  .rail { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+  .stage { min-height: 440px; }
+  .rail { grid-template-columns: repeat(4, minmax(0, 1fr)); background: #111a2e; }
+  .step.phase-day:not(.now) { background: var(--day); }
+  .step.phase-dusk:not(.now) { background: #34385e; }
+  .legend { display: none; }
   .caption { grid-template-columns: 1fr; }
+  .side { justify-items: start; }
   .clock { margin-left: 0; }
   .gate-inner { min-width: 0; padding: 16px; }
   .check { grid-template-columns: 22px minmax(0, 1fr); }
@@ -148,16 +174,16 @@ body { margin: 0; background: var(--sky); color: var(--ink); font: 14px/1.5 var(
     <span class="project">tasks · add recurring tasks</span>
     <span class="tag">Illustrative run</span>
     <div class="clock">
-      <svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true"><path d="M13.5 2.5a8 8 0 1 0 4 11.2A6.5 6.5 0 0 1 13.5 2.5z" fill="#cdd6ff"/></svg>
-      <time id="clock">03:05</time>
-      <small>handed over 22:40</small>
+      <svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true" id="clockIcon"></svg>
+      <time id="clock">20:05</time>
+      <small id="clockNote"></small>
     </div>
   </header>
 
   <nav class="rail" id="rail" aria-label="Workflow steps"></nav>
 
   <div class="stage" id="stage">
-    <svg id="graph" viewBox="0 0 1240 600" role="img" aria-label="Actors and files at the current step"></svg>
+    <svg id="graph" viewBox="0 0 1400 630" role="img" aria-label="Actors and files at the current beat"></svg>
     <div class="legend">
       <span><i class="sw new"></i>New file</span>
       <span><i class="sw edit"></i>Edited file</span>
@@ -165,9 +191,53 @@ body { margin: 0; background: var(--sky); color: var(--ink); font: 14px/1.5 var(
       <span><i class="ln read"></i>Reads</span>
       <span><i class="ln"></i>Writes</span>
       <span><i class="ln handoff"></i>Handoff</span>
-      <span><i class="stamp">rev 38</i>Review stamp</span>
+      <span><i class="stamp">rev 20</i>Review stamp</span>
     </div>
     <div class="seam" id="seam" aria-live="polite"><div class="gate-inner" id="gateInner"></div></div>
+    <section class="card" id="card" aria-label="Also in this Nightshift">
+      <div>
+        <div class="kicker">Also in this Nightshift</div>
+        <h3>Not every feature has a moment in one night</h3>
+      </div>
+      <p>These run too, in setup, on the platform, in packaging and in other ways of working. None of them needed a beat in tonight's run.</p>
+      <div class="groups">
+        <div><h4>Setup and backlog tooling</h4><ul>
+          <li>Setup finds your instruction files and routes backlog guidance to them.</li>
+          <li>Setup proposes repairs for customized backlogs and legacy guidance.</li>
+          <li>Ready, setup and unwrap share one backlog parser and vocabulary.</li>
+          <li>A fresh project chooses to track, ignore or defer its backlog.</li>
+          <li>You choose shared .gitignore rules or clone-local excludes.</li>
+          <li>Mixed line endings in the backlog are repaired under inspection.</li>
+        </ul></div>
+        <div><h4>Windows platform and runtime</h4><ul>
+          <li>File metadata that matters survives every write and recovery.</li>
+          <li>Setup recovery touches only files it provably owns.</li>
+          <li>Every launched executable, Git included, has its identity verified.</li>
+          <li>Request files and review copies are protected before anything sensitive is written.</li>
+          <li>Host transports stay bounded, and every timer has one owner.</li>
+          <li>Malformed host events are handled without weakening model checks.</li>
+          <li>Review content is captured once per operation.</li>
+        </ul></div>
+        <div><h4>Packaging and release</h4><ul>
+          <li>The installed package holds what runs, plus user documentation.</li>
+          <li>The release gate tells a stale branch from a real version decrease.</li>
+          <li>Run-time guidance lives apart from design reference material.</li>
+        </ul></div>
+        <div><h4>Verification and measurement</h4><ul>
+          <li>Verification evidence and fixtures have owners and safe storage.</li>
+          <li>A seeded-defect suite measures how often the lifecycle catches bugs.</li>
+          <li>Controller overhead is measured before any saving is claimed.</li>
+          <li>Command restrictions you set are enforced where they matter.</li>
+        </ul></div>
+        <div><h4>Other ways to work</h4><ul>
+          <li>Revise runs on its own, without a run.</li>
+          <li>Review mode checks someone else's branch or pull request.</li>
+          <li>A whole-backlog audit checks every entry against the code.</li>
+          <li>Codex and Claude Code sessions pair up in visible panes.</li>
+          <li>The graphical run view shows a run like this one, live.</li>
+        </ul></div>
+      </div>
+    </section>
   </div>
 
   <section class="caption" id="caption">
@@ -176,18 +246,26 @@ body { margin: 0; background: var(--sky); color: var(--ink); font: 14px/1.5 var(
       <h2 id="headline"></h2>
       <p id="body"></p>
     </div>
-    <div class="controls" aria-label="Playback">
-      <button id="restart" aria-label="Play from the start"><svg width="14" height="14" viewBox="0 0 14 14"><path d="M3 2v10M12 2 5 7l7 5z" fill="currentColor" stroke="currentColor" stroke-width="1.5"/></svg></button>
-      <button class="play" id="pause" aria-label="Pause"><svg width="16" height="16" viewBox="0 0 16 16" id="pauseIcon"><rect x="3" y="2" width="3.5" height="12" rx="1" fill="currentColor"/><rect x="9.5" y="2" width="3.5" height="12" rx="1" fill="currentColor"/></svg></button>
-      <button id="speed" aria-label="Change speed"><span class="speed" id="speedLabel">1×</span></button>
+    <div class="side">
+      <div class="progress"><span id="beatLabel"></span><span class="bar"><i id="beatBar"></i></span></div>
+      <div class="controls" aria-label="Playback">
+        <button id="restart" aria-label="Play from the start" title="Start over (Home)"><svg width="14" height="14" viewBox="0 0 14 14"><path d="M2 2v10M12 2 5 7l7 5z" fill="currentColor" stroke="currentColor" stroke-width="1.5"/></svg></button>
+        <button id="prev" aria-label="Previous beat" title="Previous beat (←)"><svg width="14" height="14" viewBox="0 0 14 14"><path d="M11 2 4 7l7 5z" fill="currentColor"/></svg></button>
+        <button class="play" id="pause" aria-label="Pause" title="Play or pause (space)"><svg width="16" height="16" viewBox="0 0 16 16" id="pauseIcon"></svg></button>
+        <button id="next" aria-label="Next beat" title="Next beat (→)"><svg width="14" height="14" viewBox="0 0 14 14"><path d="M3 2l7 5-7 5z" fill="currentColor"/></svg></button>
+        <button id="speed" aria-label="Change speed" title="Speed"><span class="speed" id="speedLabel">1×</span></button>
+      </div>
     </div>
   </section>
 </div>
 
 <script>
+// ---------------------------------------------------------------------------------------------------------------
+// The story's structure: steps on the rail, and the gates between them. A gate sits on the left edge of its step.
 const STEPS = [
+  { name: 'Pick work', phase: 'day' },
   { name: 'Agree', phase: 'day' },
-  { name: 'Spec and review', phase: 'day' },
+  { name: 'Spec review', phase: 'day' },
   { name: 'Handover', phase: 'dusk', gate: 'agreement' },
   { name: 'Implement', phase: 'night', gate: 'runtime' },
   { name: 'Code review', phase: 'night', gate: 'runtime' },
@@ -198,145 +276,328 @@ const STEPS = [
   { name: 'Morning report', phase: 'day', gate: 'runtime' },
 ];
 
-// Fixed geometry. Files join the graph when first touched.
-const POS = {
-  user: { x: 92, y: 80, r: 27 }, lead: { x: 304, y: 188, r: 42 }, reviewer: { x: 112, y: 384, r: 34 }, skeptic: { x: 420, y: 384, r: 36 },
-  spec: { x: 716, y: 128 }, readme: { x: 716, y: 204 }, quick: { x: 716, y: 280 },
-  rec: { x: 924, y: 128 }, cli: { x: 924, y: 204 }, store: { x: 924, y: 280 }, dates: { x: 924, y: 356 },
-  rectest: { x: 1132, y: 128 }, clitest: { x: 1132, y: 204 },
+// Actors are circles in the left part of the stage. Several share a slot because they never appear together.
+const ACTORS = {
+  you: { label: 'You', x: 92, y: 92, r: 28 },
+  lead: { label: 'Lead', sub: 'Claude Code · Fable', x: 330, y: 222, r: 42, side: 'top' },
+  assessor: { label: 'Assessor', sub: 'Codex · Astra', x: 540, y: 104, r: 32, side: 'top' },
+  supervisor: { label: 'Supervisor', sub: 'Claude Code · lower tier', x: 540, y: 104, r: 34, side: 'top' },
+  proxy: { label: 'Proxy', sub: 'reasons as you · Fable', x: 96, y: 300, r: 28 },
+  specrev: { label: 'Reviewer', sub: 'Codex · Astra', x: 112, y: 430, r: 34 },
+  reviewer: { label: 'Reviewer', sub: 'Codex · Astra', x: 112, y: 430, r: 34 },
+  docsrev: { label: 'Reviewer', sub: 'Codex · Astra', x: 112, y: 430, r: 34 },
+  lorerev: { label: 'Reviewer', sub: 'Codex · Astra', x: 112, y: 430, r: 34 },
+  peer: { label: 'Peer', sub: 'Codex · Astra', x: 112, y: 552, r: 26 },
+  degraded: { label: 'Reviewer', sub: 'Claude Code · weaker model', x: 112, y: 552, r: 32, degraded: true },
+  skeptic: { label: 'Skeptic', sub: 'Claude Code · Fable', x: 432, y: 430, r: 36 },
+  guard: { label: 'Guard', sub: 'Night Guard', x: 528, y: 574, r: 24, side: 'left' },
 };
-const FILE_INFO = {
-  spec: ['.nightshift/specs/', 'recurring-tasks.md'], readme: ['./', 'README.md'], quick: ['.nightshift/', 'QUICK_WINS.md'],
-  rec: ['src/', 'recurrence.js'], cli: ['src/', 'cli.js'], store: ['src/', 'store.js'], dates: ['src/', 'dates.js'],
-  rectest: ['test/', 'recurrence.test.js'], clitest: ['test/', 'cli.test.js'],
-};
-const GROUPS = [{ label: 'Docs and backlog', x: 716 }, { label: 'Source', x: 924 }, { label: 'Tests', x: 1132 }];
-const RUN = { x: 612, y: 424, w: 608, h: 140 };
 
-const HISTORY = [
-  { from: 'user', to: 'lead', kind: 'handoff', history: true },
-  { from: 'readme', to: 'lead', kind: 'read', history: true },
-  { from: 'dates', to: 'lead', kind: 'read', history: true },
-  { from: 'lead', to: 'spec', kind: 'write', history: true },
-  { from: 'lead', to: 'cli', kind: 'write', history: true },
-  { from: 'lead', to: 'store', kind: 'write', history: true },
-  { from: 'lead', to: 'clitest', kind: 'write', history: true },
-  { from: 'lead', to: 'skeptic', kind: 'handoff', history: true },
-  { from: 'lead', to: 'run', kind: 'write', history: true },
-];
-const FINDINGS_DECIDED = [
-  { id: 'F1', text: 'Monthly repeat from 31 Jan skips February', where: 'src/recurrence.js:42', status: 'fixed' },
-  { id: 'F2', text: 'Completing a task twice spawns two copies', where: 'src/store.js:67', status: 'refuted' },
-  { id: 'F3', text: 'No way to stop a series without deleting it', where: 'QUICK_WINS.md', status: 'deferred' },
-];
+// Files join the graph when first touched, in four columns: backlog, docs, source and tests.
+const COLS = [700, 890, 1080, 1270];
+const ROWS = [120, 190, 260, 330, 400];
+const FILES = {
+  backlog: { col: 0, row: 0, dir: '.nightshift/', name: 'BACKLOG.md' },
+  features: { col: 0, row: 1, dir: '.nightshift/', name: 'FEATURES.md' },
+  quick: { col: 0, row: 2, dir: '.nightshift/', name: 'QUICK_WINS.md' },
+  history: { col: 0, row: 3, dir: '.nightshift/', name: 'FEATURES_HISTORY.md' },
+  inbox: { col: 0, row: 4, dir: '.nightshift/inbox/', name: '2026-09-27-export.md' },
+  vision: { col: 1, row: 0, dir: './', name: 'VISION.md' },
+  readme: { col: 1, row: 1, dir: './', name: 'README.md' },
+  spec: { col: 1, row: 2, dir: '.nightshift/specs/', name: 'recurring-tasks.md' },
+  agents: { col: 1, row: 3, dir: './', name: 'AGENTS.md' },
+  rec: { col: 2, row: 0, dir: 'src/', name: 'recurrence.js' },
+  cli: { col: 2, row: 1, dir: 'src/', name: 'cli.js' },
+  store: { col: 2, row: 2, dir: 'src/', name: 'store.js' },
+  dates: { col: 2, row: 3, dir: 'src/', name: 'dates.js' },
+  rectest: { col: 3, row: 0, dir: 'test/', name: 'recurrence.test.js' },
+  clitest: { col: 3, row: 1, dir: 'test/', name: 'cli.test.js' },
+  nsinbox: { col: 3, row: 4, dir: '.nightshift/inbox/', name: '2026-09-30-limits.md' },
+};
+const GROUPS = ['Backlog', 'Docs', 'Source', 'Tests'];
+const W = 172, H = 50;
+const RUN = { x: 614, y: 452, w: 742, h: 160 };
 const CHANGED = ['rec', 'cli', 'store', 'rectest', 'clitest'];
-const stamps = (rev, stale = []) => Object.fromEntries(CHANGED.map(id => [id, { rev, state: stale.includes(id) ? 'stale' : 'current' }]));
-const FILES_TOUCHED = { spec: 'new', readme: 'read', quick: 'edit', rec: 'new', cli: 'edit', store: 'edit', dates: 'read', rectest: 'new', clitest: 'edit' };
-const DIFFS = { quick: '+1', cli: '+18 −4', store: '+9 −2', clitest: '+22' };
 
-// Scenes: what the graph shows between gate moments.
-const SCENES = {
-  fixed: {
-    step: 6, clock: '03:05', kicker: 'STEP 07 / 10 · 03:05',
-    headline: 'The fix is in and the tests pass',
-    body: 'The lead agent fixed F1 and added a test for it, and all 31 tests pass. The fix changed two files the reviewer had already stamped, so those stamps are now stale. <b>The lead agent asks to move on from review.</b>',
-    actors: { user: 'asleep', lead: 'active', reviewer: 'done', skeptic: 'done' },
-    notes: { lead: 'asks to leave review' },
-    files: FILES_TOUCHED, diffs: DIFFS,
-    stamps: stamps(38, ['rec', 'rectest']),
-    edges: [
-      { from: 'lead', to: 'rec', kind: 'write', active: true, label: 'fix F1', labelAt: 0.36 },
-      { from: 'lead', to: 'rectest', kind: 'write', active: true, bend: -1 },
-      { from: 'lead', to: 'quick', kind: 'write', recent: true },
-    ],
-    findings: FINDINGS_DECIDED, rev: 44, review: { text: 'Review on record: rev 38 · Codex · Astra', state: 'stale' },
+// ---------------------------------------------------------------------------------------------------------------
+// Gates. Each check list simplifies the runtime's own check where one exists (for the review gate,
+// reviewGateFailure() in internal/runtime/lifecycle.js), extended with the checks the backlog's features add.
+const GATES = {
+  agree: {
+    at: 3, style: 'authority', kicker: 'Authority gate · starting the work', claim: 'Claim: you agreed to this work', source: 'your answer · the recorded agreement',
+    caption: { kicker: 'SEAM · AGREEMENT', headline: 'Only your words open this gate', body: 'The first check is judgment: whether a real yes was given to a plain question. The others are checked against the record.' },
+    checks: ['You said yes to a plain question to begin', 'Background review and assessment were shown to you', 'Changes after your answer were shown as a delta', 'The spec has a resolved independent review'],
+    open: ['Gate open', 'The work can be handed over.'],
   },
-  rereview: {
-    step: 6, clock: '03:09', kicker: 'STEP 07 / 10 · 03:09',
-    headline: 'A fresh review of the whole change',
-    body: 'Refused: the review no longer matches the files. The lead agent sends <b>everything changed since the run began</b>, not just the fix, to a fresh reviewer on the other host.',
-    actors: { user: 'asleep', lead: 'idle', reviewer: 'active', skeptic: 'done' },
-    notes: { lead: 'waiting for the review', reviewer: 'fresh session' },
-    files: FILES_TOUCHED, diffs: DIFFS,
-    stamps: Object.fromEntries(CHANGED.map(id => [id, { rev: 38, state: 'reviewing' }])),
-    edges: [
-      { from: 'lead', to: 'reviewer', kind: 'handoff', active: true, label: 'whole change' },
-      { from: 'rec', to: 'reviewer', kind: 'read', active: true },
-      { from: 'cli', to: 'reviewer', kind: 'read', active: true },
-      { from: 'store', to: 'reviewer', kind: 'read', active: true },
-      { from: 'rectest', to: 'reviewer', kind: 'read', active: true },
-      { from: 'clitest', to: 'reviewer', kind: 'read', active: true },
-    ],
-    findings: FINDINGS_DECIDED, rev: 45, review: { text: 'Review on record: rev 38 · Codex · Astra', state: 'stale' },
+  handover: {
+    at: 4, style: 'authority', kicker: 'Authority gate · handover', claim: 'Claim: the run can go on without you', source: 'runtime · handover',
+    caption: { kicker: 'SEAM · HANDOVER', headline: 'Going to bed is a claim too', body: '"I\'m going to bed" is accepted only with evidence that the run will keep going on its own, within the limits you set.' },
+    checks: ['Every queued task has your agreement', 'The Stop hook is registered, trusted and seen working', 'The model team and the budget are recorded', 'The run has its own worktree and branch', 'Night Guard is saving recovery state'],
+    open: ['Handover accepted', 'The lead agent says so plainly, and the night begins.'],
   },
-  reviewed: {
-    step: 6, clock: '03:41', kicker: 'STEP 07 / 10 · 03:41',
-    headline: 'Every file carries a current stamp again',
-    body: 'The new review covers all seven files changed since the run began and raises nothing new. The lead agent records it in the run record and <b>asks again to move on.</b>',
-    actors: { user: 'asleep', lead: 'active', reviewer: 'done', skeptic: 'done' },
-    notes: { lead: 'asks to leave review', reviewer: 'no new findings' },
-    files: FILES_TOUCHED, diffs: DIFFS,
-    stamps: stamps(47),
-    edges: [
-      { from: 'reviewer', to: 'lead', kind: 'handoff', active: true, label: 'review record' },
-      { from: 'lead', to: 'run', kind: 'write', active: true },
-    ],
-    findings: FINDINGS_DECIDED, rev: 47, review: { text: 'Review on record: rev 47 · Codex · Astra', state: 'current' },
+  verify: {
+    at: 5, kicker: 'Evidence gate · leaving implementation', claim: 'Claim: the implementation works', source: 'runtime · verification gate',
+    caption: { kicker: 'SEAM · VERIFICATION', headline: 'Green tests count only for what they touch', body: 'A check stays current only while its files and its toolchain are unchanged. A boundary the tests fake has to be exercised for real.' },
+    checks: ['Every named check passes on the current files', 'The toolchain matches the one the checks ran on', 'Faked boundaries were exercised for real'],
+    open: ['Gate open', 'The whole change goes to review.'],
   },
-  docs: {
-    step: 7, clock: '03:43', kicker: 'STEP 08 / 10 · 03:43',
-    headline: 'The work moves on to documentation',
-    body: 'The gate opened because the evidence held, not because the lead agent said so. Next the lead agent updates the README and moves the feature to the shipped history.',
-    actors: { user: 'asleep', lead: 'active', reviewer: 'done', skeptic: 'done' },
-    notes: { lead: 'updating the docs' },
-    files: { ...FILES_TOUCHED, readme: 'edit' }, diffs: { ...DIFFS, readme: '+6' },
-    stamps: stamps(47),
-    edges: [{ from: 'lead', to: 'readme', kind: 'write', active: true }],
-    findings: FINDINGS_DECIDED, rev: 48, review: { text: 'Review on record: rev 47 · Codex · Astra', state: 'current' },
+  dispose: {
+    at: 7, kicker: 'Evidence gate · deciding findings', claim: 'Claim: every finding is settled', source: 'runtime · validate and dispose',
+    caption: { kicker: 'SEAM · FINDINGS', headline: 'Nothing is fixed until everything is decided', body: 'A decision on a finding that no skeptic has checked is refused, and so is skipping anything the agreement requires.' },
+    checks: ['Every finding was checked by a fresh skeptic', 'Disputes were settled by running the code', 'Every decision has a reason, and every deferral a place', 'No agreed requirement was waived', 'Proxy answers are labelled for your triage'],
+    open: ['Gate open', 'Repairs can start.'],
+  },
+  review: {
+    at: 8, kicker: 'Evidence gate · leaving review', claim: 'Claim: the whole change is reviewed', source: 'internal/runtime/lifecycle.js · reviewGateFailure()',
+    caption: { kicker: 'SEAM · LEAVING REVIEW', headline: 'The runtime checks the claim', body: 'The lead agent\'s word is not evidence. The runtime reads the run record and the files themselves, <b>and stops at the first check that fails.</b>' },
+    checks: ['The review covers the agreed commitments', 'A complete review by a strong, independent reviewer', 'Nothing it reviewed has changed since', 'Every check passes on the current files', 'Every finding was checked by a skeptic and decided', 'Accepted fixes were made before this review'],
+    open: ['Gate open', 'The degraded label travels with the work. The run cannot finish without a strong review.'],
+  },
+  close: {
+    at: 10, kicker: 'Evidence gate · closing the night', claim: 'Claim: the night\'s work is done', source: 'runtime · closing',
+    caption: { kicker: 'SEAM · CLOSING', headline: '"Done" is a checked state', body: 'Closing waits for the retrospective, and every earlier obligation must still hold on the current files.' },
+    checks: ['A strong review covers everything the degraded ones saw', 'The documentation was reviewed independently', 'Every check passes on the current files', 'The retrospective ran, and its proposal was reviewed'],
+    open: ['Gate open', 'The morning report is saved. Triage waits for you.'],
   },
 };
 
-// The review gate, simplified from reviewGateFailure() in internal/runtime/lifecycle.js. It stops at the first failing check.
-const REVIEW_GATE = {
-  after: 6, kicker: 'Evidence gate · leaving review', claim: 'Claim: the whole change is reviewed', source: 'internal/runtime/lifecycle.js · reviewGateFailure()',
-  caption: { kicker: 'SEAM · LEAVING REVIEW', headline: 'The runtime checks the claim', body: 'The lead agent’s word is not evidence. The runtime reads the run record and the files themselves, <b>and stops at the first check that fails.</b>' },
-  checks: [
-    'The review covers the agreed commitments',
-    'A complete review by a strong, independent reviewer',
-    'Nothing it reviewed has changed since',
-    'Every check passes on the current files',
-    'Every finding checked by a skeptic and decided',
-    'Accepted fixes were made before this review',
-  ],
+// ---------------------------------------------------------------------------------------------------------------
+// The storyboard. Each beat changes the saved state (set), names the edges active during it, and may end at a gate.
+const actor = (s, id, state, note) => { s.actors[id] = state; if (note) s.notes[id] = note; };
+const file = (s, id, state, diff) => { s.files[id] = { state, diff }; };
+const stampAll = (s, label, tone) => CHANGED.forEach(id => { s.stamps[id] = { label, tone }; });
+const finding = (s, id, patch) => {
+  const existing = s.findings.find(f => f.id === id);
+  if (existing) Object.assign(existing, patch); else s.findings.push({ id, ...patch });
 };
-const ATTEMPTS = {
-  stale: {
-    evidence: ['rev 38 · recurring-tasks.md', 'Codex · Astra · 6/6 dimensions', 'recurrence.js  sha256 9c07e1… → a41f3b…'],
-    failAt: 2,
-    refusal: '→ move on from review\n← <span class="code">review-required</span>\n  The latest review is stale: files it reviewed have changed.\n  Run a new review of the whole change.',
-  },
-  pass: {
-    evidence: ['rev 47 · recurring-tasks.md', 'Codex · Astra · fresh session', '7 files · every sha256 matches', 'npm test · 31 passed', 'F1 fixed · F2 refuted · F3 deferred', 'F1 fixed at rev 44 · review at rev 47'],
-    failAt: -1,
-  },
-};
+const footer = (s, text, value, tone = 'moon') => { s.footer = { text, value, tone }; };
 
-const rail = document.getElementById('rail');
-const stage = document.getElementById('stage');
-const svg = document.getElementById('graph');
-const seam = document.getElementById('seam');
-const gateInner = document.getElementById('gateInner');
+const BEATS = [
+  // 1. Pick work
+  { at: '20:05', step: 0, headline: 'Ready reads the backlog and the project\'s direction',
+    body: 'You ask what to work on tonight. Ready opens every index through BACKLOG.md and reads VISION.md, so it can explain its picks against where the project is going. No unfinished run is waiting to be picked up.',
+    set: s => { actor(s, 'you', 'active'); actor(s, 'lead', 'active', 'running Ready'); ['backlog', 'features', 'quick'].forEach(id => file(s, id, 'read')); file(s, 'vision', 'read'); },
+    edges: [{ from: 'you', to: 'lead', kind: 'handoff', label: 'what next?' }, { from: 'backlog', to: 'lead', kind: 'read' }, { from: 'features', to: 'lead', kind: 'read' }, { from: 'quick', to: 'lead', kind: 'read' }, { from: 'vision', to: 'lead', kind: 'read' }] },
+  { at: '20:07', step: 0, headline: 'Picks sized for an evening and for a night',
+    body: 'Ready recommends two small entries for a quick session and one larger entry sized for a night: recurring tasks, which the vision puts first. It lists the one untriaged report in the project\'s inbox separately.',
+    set: s => { actor(s, 'you', 'idle'); file(s, 'inbox', 'read'); },
+    edges: [{ from: 'inbox', to: 'lead', kind: 'read' }, { from: 'lead', to: 'you', kind: 'handoff', label: '3 picks · 1 inbox report' }] },
+  { at: '20:09', step: 0, headline: 'You pick the night-sized entry',
+    body: 'You choose recurring tasks: completing a task that repeats should schedule its next occurrence.',
+    set: s => { actor(s, 'you', 'active'); actor(s, 'lead', 'idle'); },
+    edges: [{ from: 'you', to: 'lead', kind: 'handoff', label: 'recurring tasks' }] },
+
+  // 2. Agree
+  { at: '20:12', step: 1, headline: 'The lead agent investigates first',
+    body: 'It reads how tasks are stored and dated, then explains it at the level you need: where the next date would be computed and what could go wrong, without walking you through the source.',
+    set: s => { actor(s, 'you', 'idle'); actor(s, 'lead', 'active', 'investigating'); ['cli', 'store', 'dates'].forEach(id => file(s, id, 'read')); file(s, 'readme', 'read'); },
+    edges: [{ from: 'cli', to: 'lead', kind: 'read' }, { from: 'store', to: 'lead', kind: 'read' }, { from: 'dates', to: 'lead', kind: 'read' }, { from: 'readme', to: 'lead', kind: 'read' }, { from: 'lead', to: 'you', kind: 'handoff', label: 'how it works today' }] },
+  { at: '20:31', step: 1, headline: 'A short spec, read by two agents at once',
+    body: 'The feature needs a spec. As the lead agent shows you the draft, it starts two agents on the other host: an independent spec reviewer, and an assessor that gives you short, prioritized advice.',
+    set: s => { file(s, 'spec', 'new'); actor(s, 'lead', 'active', 'presenting the draft'); actor(s, 'specrev', 'active', 'spec review'); actor(s, 'assessor', 'active', 'advice for you'); },
+    edges: [{ from: 'lead', to: 'spec', kind: 'write' }, { from: 'lead', to: 'you', kind: 'handoff', label: 'draft spec' }, { from: 'lead', to: 'specrev', kind: 'handoff' }, { from: 'lead', to: 'assessor', kind: 'handoff' }, { from: 'spec', to: 'specrev', kind: 'read' }, { from: 'spec', to: 'assessor', kind: 'read' }] },
+
+  // 3. Spec review
+  { at: '20:48', step: 2, headline: 'The review challenges complexity',
+    body: 'The spec reviewer asks whether the new scheduler module is needed, since computing the next date when a task is completed would be simpler. The assessor suggests a --every flag and starting with weekly and monthly.',
+    set: s => { actor(s, 'lead', 'idle', 'waiting'); actor(s, 'specrev', 'active', 'finding S1'); actor(s, 'assessor', 'active', 'advice'); },
+    edges: [{ from: 'specrev', to: 'lead', kind: 'handoff', label: 'S1 · simpler approach' }, { from: 'assessor', to: 'you', kind: 'handoff', label: 'advice' }] },
+  { at: '20:52', step: 2, headline: 'A skeptic checks the spec finding',
+    body: 'Spec findings get the same treatment as code findings. A fresh skeptic confirms that completing a task is the only place a next date is needed.',
+    set: s => { actor(s, 'specrev', 'done'); actor(s, 'assessor', 'done'); actor(s, 'skeptic', 'active', 'fresh session'); },
+    edges: [{ from: 'lead', to: 'skeptic', kind: 'handoff', label: 'S1' }, { from: 'spec', to: 'skeptic', kind: 'read' }, { from: 'store', to: 'skeptic', kind: 'read' }] },
+  { at: '21:05', step: 2, headline: 'You say yes, with a change',
+    body: 'Your answer is a qualified yes. The lead agent acts on it: it drops the scheduler module and daily repeats, and shows you the change as a short delta instead of starting a new approval round.',
+    set: s => { actor(s, 'skeptic', 'done'); actor(s, 'you', 'active'); actor(s, 'lead', 'active', 'revising the spec'); },
+    edges: [{ from: 'you', to: 'lead', kind: 'handoff', label: 'yes, weekly and monthly only' }, { from: 'lead', to: 'spec', kind: 'write' }, { from: 'lead', to: 'you', kind: 'handoff', label: 'delta' }] },
+  { at: '21:20', step: 2, headline: 'The revised spec goes back for a whole review',
+    body: 'A revised spec is reviewed as a whole, never as a patch. It comes back clean.',
+    set: s => { actor(s, 'you', 'idle'); actor(s, 'lead', 'idle'); actor(s, 'skeptic', 'gone'); actor(s, 'specrev', 'active', 'whole spec'); },
+    edges: [{ from: 'lead', to: 'specrev', kind: 'handoff', label: 'whole spec' }, { from: 'spec', to: 'specrev', kind: 'read' }],
+    gate: { id: 'agree', evidence: ['21:05 · "yes, weekly and monthly only"', 'spec reviewer · assessor · 20:48', '− scheduler module · − daily repeats', 'whole spec · clean'], tones: ['judgment'] } },
+
+  // 4. Handover
+  { at: '22:40', step: 3, headline: 'You hand over the night',
+    body: 'You say you are going to bed. The lead agent records the model team and an 8M-token budget, creates a worktree on its own branch so your checkout stays free, and arms Night Guard.',
+    set: s => { actor(s, 'specrev', 'gone'); actor(s, 'assessor', 'gone'); actor(s, 'you', 'active'); actor(s, 'lead', 'active', 'handover'); actor(s, 'guard', 'active', 'saving state'); s.run = true; s.rev = 1; s.budget = 0; s.worktree = true; footer(s, 'Handover requested', '22:40'); },
+    edges: [{ from: 'you', to: 'lead', kind: 'handoff', label: 'I\'m going to bed' }, { from: 'lead', to: 'run', kind: 'write', label: 'run created' }, { from: 'guard', to: 'run', kind: 'read' }],
+    gate: { id: 'handover', evidence: ['1 task · recurring-tasks', 'observed in this session', 'Fable leads · Astra reviews · 8M', 'nightshift/recurring-tasks', 'armed · last save 22:41'] } },
+
+  // 5. Implement
+  { at: '22:45', step: 4, headline: 'Implementation starts',
+    body: 'You are asleep. The lead agent writes the recurrence rules in a new module, then wires them into completing a task and into the command line.',
+    set: s => { actor(s, 'you', 'asleep'); actor(s, 'guard', 'idle', 'saving state'); actor(s, 'lead', 'active', 'implementing'); file(s, 'rec', 'new'); file(s, 'store', 'edit', '+9 −2'); file(s, 'cli', 'edit', '+18 −4'); s.rev = 3; s.budget = 0.2; s.context = 0.35; footer(s, 'Checks', 'not run yet', 'faint'); },
+    edges: [{ from: 'lead', to: 'rec', kind: 'write' }, { from: 'lead', to: 'store', kind: 'write' }, { from: 'lead', to: 'cli', kind: 'write' }, { from: 'dates', to: 'lead', kind: 'read' }] },
+  { at: '23:40', step: 4, headline: 'Tests for the rules and the new flag',
+    body: 'It adds tests for weekly and monthly repeats and for the --every flag.',
+    set: s => { file(s, 'rectest', 'new'); file(s, 'clitest', 'edit', '+22'); s.rev = 7; s.budget = 0.8; s.context = 0.85; },
+    edges: [{ from: 'lead', to: 'rectest', kind: 'write' }, { from: 'lead', to: 'clitest', kind: 'write' }] },
+  { at: '00:40', step: 4, headline: 'Compaction, and the record hands back the brief',
+    body: 'The lead agent\'s history fills up and is compacted. Before its next edit it rereads the run record: the agreed outcome, the open work and the settled decisions, including why the scheduler module was dropped.',
+    set: s => { actor(s, 'lead', 'active', 'compacted'); s.rev = 9; s.budget = 1.1; s.context = 0.12; },
+    edges: [{ from: 'run', to: 'lead', kind: 'handoff', label: 'brief · settled decisions' }] },
+  { at: '01:05', step: 4, headline: 'Admin work moves to a shift supervisor',
+    body: 'Collecting check output and tracking progress starts to fill the lead agent\'s context, so it hands that work to a shift supervisor on a less expensive model, one that meets the role\'s required strength. Decisions stay with the lead agent.',
+    set: s => { actor(s, 'supervisor', 'active', 'assignments · results'); actor(s, 'lead', 'idle'); s.rev = 11; s.budget = 1.3; s.context = 0.3; },
+    edges: [{ from: 'lead', to: 'supervisor', kind: 'handoff', label: 'admin work' }] },
+  { at: '01:20', step: 4, headline: 'Checks, and one live run across a faked boundary',
+    body: 'All 29 tests pass. The tests fake the filesystem, so the change also runs once against a real data file. Each check records the Node version it ran on.',
+    set: s => { actor(s, 'supervisor', 'active', 'running checks'); s.pills.store = { text: 'live ✓', tone: 'yes' }; s.rev = 14; s.budget = 1.6; footer(s, 'npm test · node 22.23.0 · live data file', '29 passed', 'yes'); },
+    edges: [{ from: 'store', to: 'supervisor', kind: 'read' }, { from: 'supervisor', to: 'lead', kind: 'handoff', label: 'all green' }, { from: 'lead', to: 'run', kind: 'write', label: 'check results' }],
+    gate: { id: 'verify', evidence: ['npm test · 29 passed', 'node 22.23.0 · unchanged', 'data file written and read back'] } },
+
+  // 6. Code review
+  { at: '01:30', step: 5, headline: 'A reviewer on the other host',
+    body: 'The lead agent picks a strong model on the other host, at no lower effort than its own. Your model policy file lists the strong models. The reviewer reads the whole change, not a summary.',
+    set: s => { actor(s, 'supervisor', 'idle'); actor(s, 'lead', 'idle', 'waiting for findings'); actor(s, 'reviewer', 'active', 'whole change'); s.pills = {}; s.rev = 16; s.budget = 1.8; footer(s, 'Review: whole change · Codex · Astra', 'running'); },
+    edges: [{ from: 'lead', to: 'reviewer', kind: 'handoff', label: 'whole change' }, { from: 'rec', to: 'reviewer', kind: 'read' }, { from: 'cli', to: 'reviewer', kind: 'read' }, { from: 'store', to: 'reviewer', kind: 'read' }, { from: 'spec', to: 'reviewer', kind: 'read' }] },
+  { at: '01:38', step: 5, headline: 'The reviewer recruits a peer',
+    body: 'The change spans code and tests, so the reviewer hands the tests to a peer on the same model and effort. The peer\'s evidence comes back to the reviewer, which keeps the integrated view.',
+    set: s => { actor(s, 'peer', 'active', 'tests'); },
+    edges: [{ from: 'reviewer', to: 'peer', kind: 'handoff', label: 'tests' }, { from: 'rectest', to: 'peer', kind: 'read' }, { from: 'clitest', to: 'peer', kind: 'read' }] },
+  { at: '01:52', step: 5, headline: 'Findings arrive while the review runs',
+    body: 'F1 arrives before the review is finished: a task repeating monthly from 31 January skips February. The lead agent records it and starts a fresh skeptic on it right away.',
+    set: s => { actor(s, 'peer', 'done'); actor(s, 'lead', 'active', 'recording F1'); actor(s, 'skeptic', 'active', 'F1 · fresh session'); finding(s, 'F1', { text: 'Monthly repeat from 31 Jan skips February', where: 'recurrence.js:42', status: 'awaiting' }); s.rev = 18; s.budget = 2.2; footer(s, 'Findings arrive as the review runs', '1 so far'); },
+    edges: [{ from: 'peer', to: 'reviewer', kind: 'handoff', label: 'evidence' }, { from: 'reviewer', to: 'lead', kind: 'handoff', label: 'F1' }, { from: 'lead', to: 'skeptic', kind: 'handoff', label: 'F1' }, { from: 'lead', to: 'run', kind: 'write' }] },
+  { at: '02:04', step: 5, headline: 'The review completes',
+    body: 'F2 says completing a task twice spawns two copies, and it names both places that path runs. F3 says a series cannot be stopped. Progress is recorded as it happens, so you can follow it in the morning without asking.',
+    set: s => { actor(s, 'peer', 'gone'); actor(s, 'reviewer', 'done', 'review returned'); actor(s, 'lead', 'active'); finding(s, 'F2', { text: 'Completing a task twice spawns two copies', where: 'store.js:67 · cli.js:112', status: 'awaiting' }); finding(s, 'F3', { text: 'No way to stop a series without deleting it', where: 'cli.js', status: 'awaiting' }); stampAll(s, 'rev 20', 'moon'); s.rev = 20; s.budget = 2.5; footer(s, 'Review on record: rev 20 · Codex · Astra', 'current'); },
+    edges: [{ from: 'reviewer', to: 'lead', kind: 'handoff', label: 'F2 · F3 · review record' }, { from: 'lead', to: 'run', kind: 'write' }] },
+
+  // 7. Validate findings
+  { at: '02:10', step: 6, headline: 'The skeptic checks each finding',
+    body: 'F1 holds, and so does F3. F2 does not: completing a task that is already done returns early in both places the reviewer named.',
+    set: s => { actor(s, 'lead', 'idle'); actor(s, 'skeptic', 'active', 'F1 · F2 · F3'); finding(s, 'F1', { status: 'confirmed' }); finding(s, 'F2', { status: 'refuted' }); finding(s, 'F3', { status: 'confirmed' }); s.rev = 23; s.budget = 2.7; footer(s, 'Gate: repairs wait until every finding has a decision', '0 / 3'); },
+    edges: [{ from: 'lead', to: 'skeptic', kind: 'handoff', label: 'F2 · F3' }, { from: 'store', to: 'skeptic', kind: 'read' }, { from: 'cli', to: 'skeptic', kind: 'read' }, { from: 'skeptic', to: 'lead', kind: 'handoff', label: 'verdicts' }] },
+  { at: '02:18', step: 6, headline: 'The reviewer disputes the refutation',
+    body: 'The reviewer that found F2 is still available. It argues that a retry after a timeout reaches the second path. The skeptic proposes a probe, the lead agent runs it in a private copy, and running the code settles it: one copy. F2 stays refuted.',
+    set: s => { actor(s, 'reviewer', 'active', 'resumed · same session'); actor(s, 'lead', 'active', 'running the probe'); s.rev = 25; s.budget = 2.8; },
+    edges: [{ from: 'reviewer', to: 'skeptic', kind: 'handoff', label: 'F2 dispute' }, { from: 'skeptic', to: 'lead', kind: 'handoff', label: 'probe' }, { from: 'lead', to: 'run', kind: 'write', label: 'probe: 1 copy' }] },
+  { at: '02:30', step: 6, headline: 'A question you would normally answer',
+    body: 'F3 is real, but does a stop command belong in tonight\'s work? You are asleep, so the lead agent asks the user proxy, which reasons as you from your opt-in profile. It answers defer, with medium confidence, so the lead agent takes the cautious route.',
+    set: s => { actor(s, 'reviewer', 'done'); actor(s, 'skeptic', 'done'); actor(s, 'proxy', 'active', 'medium confidence'); actor(s, 'lead', 'active', 'deciding F3'); s.rev = 26; s.budget = 2.9; },
+    edges: [{ from: 'lead', to: 'proxy', kind: 'handoff', label: 'F3: now or later?' }, { from: 'proxy', to: 'lead', kind: 'handoff', label: 'defer' }] },
+  { at: '02:36', step: 6, headline: 'Every finding gets a decision',
+    body: 'F1 is required by the agreement and will be fixed. F2 is refuted, with the probe as evidence. F3 is deferred to QUICK_WINS.md, with the proxy\'s answer marked for your morning triage.',
+    set: s => { actor(s, 'proxy', 'done'); actor(s, 'lead', 'active', 'deciding'); finding(s, 'F1', { status: 'to fix' }); finding(s, 'F3', { status: 'deferred', where: 'QUICK_WINS.md' }); file(s, 'quick', 'edit', '+1'); s.rev = 29; s.budget = 3.0; footer(s, 'Gate: repairs wait until every finding has a decision', '3 / 3', 'yes'); },
+    edges: [{ from: 'lead', to: 'run', kind: 'write', label: 'decisions' }, { from: 'lead', to: 'quick', kind: 'write' }],
+    gate: { id: 'dispose', evidence: ['F1 · F2 · F3', 'F2 · probe · 1 copy', 'F3 → QUICK_WINS.md', 'F1 required · will be fixed', 'F3 · medium confidence'] } },
+
+  // 8. Repair and re-review
+  { at: '02:45', step: 7, headline: 'First, reproduce the bug',
+    body: 'Before the fix, the lead agent adds a check named month-end that fails for F1\'s reason: a task repeating from 31 January lands on 3 March. The same check must pass after the repair.',
+    set: s => { actor(s, 'proxy', 'gone'); actor(s, 'skeptic', 'gone'); actor(s, 'reviewer', 'gone'); actor(s, 'lead', 'active', 'reproducing F1'); s.pills.rectest = { text: 'month-end ✕', tone: 'no' }; finding(s, 'F1', { status: 'reproduced' }); s.rev = 31; s.budget = 3.1; },
+    edges: [{ from: 'lead', to: 'rectest', kind: 'write' }] },
+  { at: '02:58', step: 7, headline: 'The fix, from the current file',
+    body: 'The repair starts from the file as it is now. month-end passes, all 30 tests pass, and the repair is committed as a fixup on the run\'s branch. It changed two reviewed files, so their review stamps are stale.',
+    set: s => { actor(s, 'lead', 'active', 'asks to leave review'); s.pills.rectest = { text: 'month-end ✓', tone: 'yes' }; s.stamps.rec = { label: 'stale', tone: 'no' }; s.stamps.rectest = { label: 'stale', tone: 'no' }; finding(s, 'F1', { status: 'fixed' }); s.rev = 33; s.budget = 3.2; footer(s, 'Review on record: rev 20 · Codex · Astra', 'stale', 'no'); },
+    edges: [{ from: 'lead', to: 'rec', kind: 'write', label: 'fixup! F1', labelAt: 0.24 }, { from: 'lead', to: 'run', kind: 'write' }],
+    gate: { id: 'review', evidence: ['rev 20 · recurring-tasks.md', 'Codex · Astra · 6/6 dimensions', 'recurrence.js sha256 9c07e1… → a41f3b…'], failAt: 2,
+      refusal: '→ move on from review\n← <span class="code">review-required</span>\n  The latest review is stale: files it reviewed have changed.\n  Run a new review of the whole change.' } },
+  { at: '03:05', step: 7, headline: 'No strong reviewer is available',
+    body: 'Codex has hit its usage limit, and the host refuses a fresh Fable reviewer. The lead agent records that evidence and gives the whole change to the strongest permitted model outside the strong list, as a review labelled degraded. It also passes on the settled decisions, so F2 is not raised again.',
+    set: s => { actor(s, 'lead', 'idle', 'waiting'); actor(s, 'reviewer', 'unavailable', 'usage limit'); actor(s, 'degraded', 'active', 'degraded review'); CHANGED.forEach(id => { s.stamps[id] = { label: 'reviewing', tone: 'dim' }; }); s.rev = 35; s.budget = 3.3; footer(s, 'Codex: usage limit · Fable launch refused', 'degraded', 'warn'); },
+    edges: [{ from: 'lead', to: 'degraded', kind: 'handoff', label: 'whole change · decisions' }, { from: 'rec', to: 'degraded', kind: 'read' }, { from: 'cli', to: 'degraded', kind: 'read' }, { from: 'store', to: 'degraded', kind: 'read' }, { from: 'rectest', to: 'degraded', kind: 'read' }, { from: 'clitest', to: 'degraded', kind: 'read' }] },
+  { at: '03:24', step: 7, headline: 'The re-review catches a regression',
+    body: 'Its first report is missing a field, so the runtime asks for a narrow correction instead of a new review. The corrected report has F4: once 31 January clamps to 28 February, March lands on the 28th too. Every test is green.',
+    set: s => { actor(s, 'degraded', 'done', 'report corrected'); actor(s, 'lead', 'active', 'recording F4'); finding(s, 'F4', { text: 'After the fix, March repeats land on the 28th', where: 'recurrence.js:47', status: 'awaiting' }); stampAll(s, 'rev 38', 'warn'); s.rev = 38; s.budget = 3.6; footer(s, 'Review on record: rev 38 · weaker model', 'degraded', 'warn'); },
+    edges: [{ from: 'degraded', to: 'lead', kind: 'handoff', label: 'F4 · corrected report' }, { from: 'lead', to: 'run', kind: 'write' }] },
+  { at: '03:30', step: 7, headline: 'A fresh skeptic confirms F4',
+    body: 'F4 holds, and the agreement requires it: a monthly task keeps its day of the month.',
+    set: s => { actor(s, 'skeptic', 'active', 'F4 · fresh session'); actor(s, 'lead', 'idle'); finding(s, 'F4', { status: 'confirmed' }); s.rev = 40; s.budget = 3.7; },
+    edges: [{ from: 'lead', to: 'skeptic', kind: 'handoff', label: 'F4' }, { from: 'rec', to: 'skeptic', kind: 'read' }, { from: 'skeptic', to: 'lead', kind: 'handoff', label: 'confirmed · required' }] },
+  { at: '03:36', step: 7, headline: 'Reproduce, then repair again',
+    body: 'A new check named anchor fails for F4\'s reason. It passes once the next date is computed from the series\' first date instead of from the previous one. All 31 tests pass.',
+    set: s => { actor(s, 'skeptic', 'gone'); actor(s, 'lead', 'active', 'repairing F4'); s.pills.rectest = { text: 'anchor ✓', tone: 'yes' }; s.stamps.rec = { label: 'stale', tone: 'no' }; s.stamps.rectest = { label: 'stale', tone: 'no' }; finding(s, 'F4', { status: 'fixed' }); s.rev = 43; s.budget = 3.8; },
+    edges: [{ from: 'lead', to: 'rectest', kind: 'write' }, { from: 'lead', to: 'rec', kind: 'write', label: 'fixup! F4', labelAt: 0.24 }] },
+  { at: '03:52', step: 7, headline: 'The whole change, reviewed again',
+    body: 'Another degraded review of the whole change comes back clean. The review stamps are current again, and still marked degraded.',
+    set: s => { actor(s, 'degraded', 'active', 'whole change'); actor(s, 'lead', 'active', 'asks to leave review'); stampAll(s, 'rev 46', 'warn'); s.rev = 46; s.budget = 4.1; footer(s, 'Review on record: rev 46 · weaker model', 'degraded', 'warn'); },
+    edges: [{ from: 'lead', to: 'degraded', kind: 'handoff', label: 'whole change' }, { from: 'degraded', to: 'lead', kind: 'handoff', label: 'clean' }],
+    gate: { id: 'review', evidence: ['rev 46 · recurring-tasks.md', 'weaker model · degraded · strong review owed', '7 files · every sha256 matches', 'npm test · 31 passed', 'F1 · F2 · F3 · F4 decided', 'F4 fixed at rev 43 · review at rev 46'], tones: [null, 'warn'] } },
+
+  // 9. Docs
+  { at: '04:00', step: 8, headline: 'A strong review covers the degraded ones',
+    body: 'Codex\'s limit resets. A fresh Astra reviewer reviews the whole change, so a strong review now covers everything the degraded reviews saw. It finds nothing new.',
+    set: s => { actor(s, 'degraded', 'gone'); actor(s, 'reviewer', 'active', 'fresh session'); actor(s, 'lead', 'idle'); s.pills = {}; stampAll(s, 'rev 49', 'moon'); s.rev = 49; s.budget = 4.4; footer(s, 'Strong review on record: rev 49 · Codex · Astra', 'current'); },
+    edges: [{ from: 'lead', to: 'reviewer', kind: 'handoff', label: 'whole change' }, { from: 'rec', to: 'reviewer', kind: 'read' }, { from: 'store', to: 'reviewer', kind: 'read' }, { from: 'rectest', to: 'reviewer', kind: 'read' }, { from: 'reviewer', to: 'lead', kind: 'handoff', label: 'clean' }] },
+  { at: '04:12', step: 8, headline: 'Documentation and the backlog',
+    body: 'The lead agent documents the --every flag in the README and moves the feature from FEATURES.md to FEATURES_HISTORY.md.',
+    set: s => { actor(s, 'reviewer', 'gone'); actor(s, 'lead', 'active', 'updating the docs'); file(s, 'readme', 'edit', '+6'); file(s, 'features', 'edit', '−3'); file(s, 'history', 'edit', '+3'); s.rev = 51; s.budget = 4.6; },
+    edges: [{ from: 'lead', to: 'readme', kind: 'write' }, { from: 'lead', to: 'features', kind: 'write' }, { from: 'lead', to: 'history', kind: 'write' }] },
+  { at: '04:20', step: 8, headline: 'Windows restarts for an update',
+    body: 'Night Guard gets a few seconds of warning. It tells the running sessions to stop cleanly and saves the recovery state.',
+    set: s => { actor(s, 'lead', 'down', 'restarting'); actor(s, 'supervisor', 'down'); actor(s, 'guard', 'active', 'shutdown window'); s.restart = true; footer(s, 'Night Guard: recovery state saved', '04:20'); },
+    edges: [{ from: 'run', to: 'guard', kind: 'read', label: 'checkpoint' }] },
+  { at: '04:27', step: 8, headline: 'The run relaunches itself',
+    body: 'After the restart the run relaunches without you. The new session reconciles the run record with the files on disk, then continues where it stopped.',
+    set: s => { s.restart = false; actor(s, 'lead', 'active', 'relaunched'); actor(s, 'supervisor', 'idle'); actor(s, 'guard', 'idle', 'saving state'); s.rev = 52; s.budget = 4.7; s.context = 0.1; footer(s, 'Relaunched · reconciled with the files', '04:27'); },
+    edges: [{ from: 'guard', to: 'lead', kind: 'handoff', label: 'relaunch' }, { from: 'run', to: 'lead', kind: 'handoff', label: 'brief' }] },
+  { at: '04:35', step: 8, headline: 'The documentation gets its own review',
+    body: 'A fresh documentation reviewer checks each claim against the code and the backlog\'s grammar. It finds D1: the README says --every monthly, but the flag takes month. A skeptic confirms it, the README is fixed, and a second pass is clean.',
+    set: s => { actor(s, 'docsrev', 'active', 'documentation'); actor(s, 'skeptic', 'active', 'D1 · fresh session'); actor(s, 'lead', 'active', 'fixing D1'); finding(s, 'D1', { text: 'README says --every monthly; the flag takes month', where: 'README.md:41', status: 'fixed' }); s.rev = 56; s.budget = 4.9; footer(s, 'Documentation review: D1 fixed', 'clean', 'yes'); },
+    edges: [{ from: 'readme', to: 'docsrev', kind: 'read' }, { from: 'history', to: 'docsrev', kind: 'read' }, { from: 'cli', to: 'docsrev', kind: 'read' }, { from: 'docsrev', to: 'lead', kind: 'handoff', label: 'D1' }, { from: 'lead', to: 'skeptic', kind: 'handoff', label: 'D1' }, { from: 'lead', to: 'readme', kind: 'write' }] },
+
+  // 10. Retrospective
+  { at: '05:05', step: 9, headline: 'The retrospective, routed by audience',
+    body: 'Two lessons. One is about this project: date math needs month-end tests, so the lead agent drafts a change to AGENTS.md for your approval. The other is about Nightshift, which you maintain: both hosts ran out at once. That goes to Nightshift\'s inbox as a dated report.',
+    set: s => { actor(s, 'docsrev', 'gone'); actor(s, 'skeptic', 'gone'); actor(s, 'lead', 'active', 'retrospective'); file(s, 'agents', 'proposal'); file(s, 'nsinbox', 'new'); s.rev = 58; s.budget = 5.1; footer(s, 'Retrospective: 2 lessons · 1 proposal', 'drafted'); },
+    edges: [{ from: 'run', to: 'lead', kind: 'handoff', label: 'the night' }, { from: 'lead', to: 'agents', kind: 'write', label: 'proposal' }, { from: 'lead', to: 'nsinbox', kind: 'write' }] },
+  { at: '05:20', step: 9, headline: 'Instruction proposals are reviewed like code',
+    body: 'A proposed instruction change gets the same fresh review and skeptic as any other change. It passes and waits for your decision in the morning.',
+    set: s => { actor(s, 'lorerev', 'active', 'proposal review'); actor(s, 'skeptic', 'active', 'fresh session'); actor(s, 'lead', 'idle'); s.rev = 60; s.budget = 5.3; footer(s, 'Retrospective: 2 lessons · 1 proposal', 'reviewed', 'yes'); },
+    edges: [{ from: 'lead', to: 'lorerev', kind: 'handoff', label: 'proposal' }, { from: 'agents', to: 'lorerev', kind: 'read' }, { from: 'lorerev', to: 'lead', kind: 'handoff', label: 'clean' }, { from: 'agents', to: 'skeptic', kind: 'read' }],
+    gate: { id: 'close', evidence: ['Astra · rev 49 · whole change', 'D1 fixed · second pass clean', 'npm test · 31 passed', 'AGENTS.md proposal · reviewed'] } },
+
+  // 11. Morning report
+  { at: '07:30', step: 10, headline: 'The morning report',
+    body: 'It covers what was delivered, how it was verified and what stayed test-only, which workflows ran, and the restart the run came through. The change waits on branch nightshift/recurring-tasks, fixups squashed, having used 5.4M of the 8M budget. The decisions waiting for you come last.',
+    set: s => { ['lorerev', 'skeptic', 'supervisor', 'guard'].forEach(id => actor(s, id, 'gone')); actor(s, 'you', 'active'); actor(s, 'lead', 'active', 'reporting'); s.rev = 62; s.budget = 5.4; footer(s, 'Morning report saved · triage waits for you', '2 decisions'); },
+    edges: [{ from: 'lead', to: 'you', kind: 'handoff', label: 'morning report' }] },
+  { at: '07:34', step: 10, headline: 'Triage, one item at a time',
+    body: 'First, F3 with the proxy\'s answer: defer, medium confidence. You agree and keep it tracked in QUICK_WINS.md.',
+    set: s => { footer(s, 'Triage', '1 of 2'); },
+    edges: [{ from: 'lead', to: 'you', kind: 'handoff', label: 'F3 · proxy: defer' }, { from: 'you', to: 'lead', kind: 'handoff', label: 'track it' }] },
+  { at: '07:36', step: 10, headline: 'Then the proposed instruction',
+    body: 'You approve the month-end instruction, and it is applied to AGENTS.md. The run is complete, and the next session starts from what this night learned.',
+    set: s => { file(s, 'agents', 'edit', '+2'); actor(s, 'lead', 'done', 'run complete'); s.rev = 64; footer(s, 'Run complete', '07:36', 'yes'); },
+    edges: [{ from: 'you', to: 'lead', kind: 'handoff', label: 'approve' }, { from: 'lead', to: 'agents', kind: 'write' }] },
+];
+
+// ---------------------------------------------------------------------------------------------------------------
+// State: every beat's state is the initial state with beats 0..i applied, so any beat can be shown directly.
+const INITIAL = () => ({ actors: {}, notes: {}, files: {}, stamps: {}, pills: {}, findings: [], run: false, rev: 0, budget: null, worktree: false, context: 0.2, restart: false, footer: null, history: [], active: [] });
+const edgeKey = e => `${e.from}>${e.to}>${e.kind}`;
+function stateAt(index) {
+  const s = INITIAL();
+  for (let i = 0; i <= index; i++) {
+    for (const e of s.active) {
+      s.history = s.history.filter(h => edgeKey(h) !== edgeKey(e));
+      s.history.push({ from: e.from, to: e.to, kind: e.kind });
+    }
+    s.history = s.history.slice(-18);
+    s.notes = {};
+    BEATS[i].set?.(s);
+    s.active = BEATS[i].edges ?? [];
+  }
+  return s;
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// Rendering
+const $ = id => document.getElementById(id);
+const rail = $('rail'), stage = $('stage'), svg = $('graph'), seam = $('seam'), gateInner = $('gateInner'), card = $('card');
 const NS = 'http://www.w3.org/2000/svg';
-const W = 178, H = 50;
-const C = { moon: '#cdd6ff', dim: '#8791ab', faint: '#525c78', ink: '#e4e8f3', new: '#59cf9f', edit: '#efb259', read: '#7f8db3', no: '#ff8f7d', panel: '#131c30', line: '#27324d' };
+const C = { moon: '#cdd6ff', dim: '#8791ab', faint: '#525c78', ink: '#e4e8f3', new: '#59cf9f', edit: '#efb259', read: '#7f8db3', no: '#ff8f7d', panel: '#131c30', line: '#27324d', deep: '#0f1729' };
+const TONE = { moon: C.moon, yes: C.new, no: C.no, warn: C.edit, faint: C.faint, dim: C.dim };
 
 function renderRail(current) {
   rail.innerHTML = '';
-  STEPS.forEach((s, i) => {
+  STEPS.forEach((step, i) => {
     const node = document.createElement('div');
     const when = i < current ? 'done' : i === current ? 'now' : 'later';
-    node.className = `step ${s.phase === 'day' ? 'day' : ''} ${when}`;
-    node.innerHTML = `${s.gate ? `<i class="gate ${s.gate}"></i>` : ''}<span class="n">${String(i + 1).padStart(2, '0')}</span><span class="name">${s.name}</span>`;
+    node.className = `step phase-${step.phase} ${step.phase === 'day' ? 'day' : ''} ${when}`;
+    node.innerHTML = `${step.gate ? `<i class="gate ${step.gate}"></i>` : ''}<span class="n">${String(i + 1).padStart(2, '0')}</span><span class="name">${step.name}</span>`;
     rail.appendChild(node);
   });
 }
@@ -348,19 +609,21 @@ const el = (tag, attrs, parent) => {
   return n;
 };
 const text = (str, attrs, parent) => { const t = el('text', attrs, parent); t.textContent = str; return t; };
+const filePos = id => ({ x: COLS[FILES[id].col], y: ROWS[FILES[id].row] });
+const center = id => id === 'run' ? { x: RUN.x + RUN.w / 2, y: RUN.y + RUN.h / 2 } : ACTORS[id] ?? filePos(id);
 
 function port(id, toward) {
-  if (id === 'run') return toward.x < RUN.x ? { x: RUN.x - 3, y: RUN.y + 48 } : { x: Math.min(Math.max(toward.x, RUN.x + 40), RUN.x + RUN.w - 40), y: RUN.y - 3 };
-  const n = POS[id];
-  if (n.r) {
-    const a = Math.atan2(toward.y - n.y, toward.x - n.x);
-    return { x: n.x + Math.cos(a) * (n.r + 5), y: n.y + Math.sin(a) * (n.r + 5) };
+  if (id === 'run') return toward.x < RUN.x ? { x: RUN.x - 3, y: RUN.y + RUN.h / 2 } : { x: Math.min(Math.max(toward.x, RUN.x + 40), RUN.x + RUN.w - 40), y: RUN.y - 3 };
+  const a = ACTORS[id];
+  if (a) {
+    const angle = Math.atan2(toward.y - a.y, toward.x - a.x);
+    return { x: a.x + Math.cos(angle) * (a.r + 5), y: a.y + Math.sin(angle) * (a.r + 5) };
   }
+  const n = filePos(id);
   const dx = toward.x - n.x;
   if (Math.abs(dx) > W / 2) return { x: n.x + Math.sign(dx) * (W / 2 + 3), y: n.y };
   return { x: n.x, y: n.y + Math.sign(toward.y - n.y) * (H / 2 + 3) };
 }
-const center = id => id === 'run' ? { x: RUN.x + RUN.w / 2, y: RUN.y + RUN.h / 2 } : POS[id];
 function curve(a, b, sign = 1) {
   const p = port(a, center(b)), q = port(b, center(a));
   const mx = (p.x + q.x) / 2, my = (p.y + q.y) / 2;
@@ -370,40 +633,49 @@ function curve(a, b, sign = 1) {
   return { p, q, c, d: `M${p.x.toFixed(1)} ${p.y.toFixed(1)} Q${c.x.toFixed(1)} ${c.y.toFixed(1)} ${q.x.toFixed(1)} ${q.y.toFixed(1)}` };
 }
 const at = ({ p, c, q }, t) => ({ x: (1 - t) ** 2 * p.x + 2 * (1 - t) * t * c.x + t * t * q.x, y: (1 - t) ** 2 * p.y + 2 * (1 - t) * t * c.y + t * t * q.y });
+const visible = (s, id) => id === 'run' ? s.run : ACTORS[id] ? s.actors[id] && s.actors[id] !== 'gone' : !!s.files[id];
+function pill(parent, x, y, label, color, dashed) {
+  const w = label.length * 6.3 + 14;
+  const g = el('g', { transform: `translate(${x} ${y})` }, parent);
+  el('rect', { width: w, height: 16, rx: 8, fill: C.deep, stroke: color, 'stroke-dasharray': dashed ? '2 2' : 'none' }, g);
+  text(label, { x: w / 2, y: 11.5, 'text-anchor': 'middle', fill: color, 'font-size': 10, 'font-family': 'IBM Plex Mono, monospace' }, g);
+  return w;
+}
 
-function renderGraph(scene) {
+function renderGraph(s) {
   svg.innerHTML = `<defs>
     <filter id="glow" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="7" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
     <marker id="arrow-moon" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 1 9 5 0 9z" fill="${C.moon}"/></marker>
     <marker id="arrow-dim" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 1 9 5 0 9z" fill="${C.faint}"/></marker></defs>`;
-  for (const g of GROUPS) text(g.label.toUpperCase(), { x: g.x - W / 2, y: 78, fill: C.faint, 'font-size': 10.5, 'letter-spacing': '0.1em', 'font-family': 'IBM Plex Sans, sans-serif', 'font-weight': 600 }, svg);
 
-  const shown = new Set(Object.keys(scene.files));
+  // Where the files live: your checkout before handover, the run's own worktree after it.
+  text(s.worktree ? 'WORKTREE · branch nightshift/recurring-tasks' : 'CHECKOUT · main', { x: COLS[0] - W / 2, y: 46, fill: s.worktree ? C.moon : C.faint, 'font-size': 10.5, 'letter-spacing': '0.1em', 'font-family': 'IBM Plex Sans, sans-serif', 'font-weight': 600 }, svg);
+  GROUPS.forEach((label, i) => text(label.toUpperCase(), { x: COLS[i] - W / 2, y: 80, fill: C.faint, 'font-size': 10.5, 'letter-spacing': '0.1em', 'font-family': 'IBM Plex Sans, sans-serif', 'font-weight': 600 }, svg));
+  if (s.files.nsinbox) text('IN THE NIGHTSHIFT PROJECT', { x: COLS[3] - W / 2, y: ROWS[4] - 36, fill: C.faint, 'font-size': 10.5, 'letter-spacing': '0.1em', 'font-family': 'IBM Plex Sans, sans-serif', 'font-weight': 600 }, svg);
+
+  // Edges: faint history first, then this beat's active edges with particles and labels.
   const edgeLayer = el('g', {}, svg);
-  for (const e of [...HISTORY, ...scene.edges]) {
-    if (![e.from, e.to].every(id => id === 'run' || POS[id].r || shown.has(id))) continue;
-    const g = curve(e.from, e.to, e.bend ?? 1);
-    const target = scene.files[e.to];
+  const drawn = [...s.history.map(e => ({ ...e, history: true })), ...s.active];
+  for (const e of drawn) {
+    if (!visible(s, e.from) || !visible(s, e.to)) continue;
+    // Edges into the run record curve up and away from the skeptic's slot.
+    const g = curve(e.from, e.to, e.bend ?? (e.to === 'run' ? -1 : 1));
+    const target = s.files[e.to]?.state;
     let stroke = C.dim;
     if (e.kind === 'handoff') stroke = C.moon;
     if (e.kind === 'read') stroke = C.read;
-    if (e.kind === 'write' && target === 'new') stroke = C.new;
-    if (e.kind === 'write' && target === 'edit') stroke = C.edit;
-    if (e.kind === 'write' && e.to === 'run') stroke = C.moon;
-    const opacity = e.history ? 0.14 : e.active ? 0.95 : 0.45;
+    if (e.kind === 'write') stroke = target === 'new' ? C.new : target === 'edit' || target === 'proposal' ? C.edit : C.moon;
     el('path', {
-      d: g.d, fill: 'none', stroke, 'stroke-width': e.active ? 2 : 1.5, opacity,
+      d: g.d, fill: 'none', stroke, 'stroke-width': e.history ? 1.3 : 2, opacity: e.history ? 0.13 : 0.95,
       'stroke-dasharray': e.kind === 'read' ? '1.5 5' : 'none', 'stroke-linecap': 'round',
       'marker-end': e.kind === 'handoff' ? (e.history ? 'url(#arrow-dim)' : 'url(#arrow-moon)') : 'none',
     }, edgeLayer);
-    if (e.active) {
-      // Particles flow from source to target along the edge.
-      for (let i = 0; i < 3; i++) {
-        const dot = el('circle', { r: 3, fill: stroke, filter: 'url(#glow)' }, edgeLayer);
-        el('animateMotion', { dur: '1.8s', repeatCount: 'indefinite', begin: `${-i * 0.6}s`, path: g.d }, dot);
-      }
+    if (e.history) continue;
+    for (let i = 0; i < 3; i++) {
+      const dot = el('circle', { r: 3, fill: stroke, filter: 'url(#glow)' }, edgeLayer);
+      el('animateMotion', { dur: '1.8s', repeatCount: 'indefinite', begin: `${-i * 0.6}s`, path: g.d }, dot);
     }
-    if (e.label && !e.history) {
+    if (e.label) {
       const pt = at(g, e.labelAt ?? 0.5);
       const w = e.label.length * 6.6 + 16;
       const chip = el('g', { transform: `translate(${pt.x - w / 2} ${pt.y - 10})` }, edgeLayer);
@@ -412,98 +684,121 @@ function renderGraph(scene) {
     }
   }
 
-  for (const [id, state] of Object.entries(scene.files)) {
-    const { x, y } = POS[id];
-    const [dir, name] = FILE_INFO[id];
+  // Files
+  for (const [id, info] of Object.entries(s.files)) {
+    const { x, y } = filePos(id);
+    const { dir, name } = FILES[id];
+    const state = info.state;
     const g = el('g', { transform: `translate(${x - W / 2} ${y - H / 2})` }, svg);
-    const border = { new: C.new, edit: C.edit, read: '#3a4666' }[state];
-    const fill = { new: 'rgba(89,207,159,0.10)', edit: 'rgba(239,178,89,0.10)', read: C.panel }[state];
+    const border = { new: C.new, edit: C.edit, read: '#3a4666', proposal: C.edit }[state];
+    const fill = { new: 'rgba(89,207,159,0.10)', edit: 'rgba(239,178,89,0.10)', read: C.panel, proposal: 'rgba(239,178,89,0.05)' }[state];
     const shape = `M8 0H${W - 12}L${W} 12V${H - 8}Q${W} ${H} ${W - 8} ${H}H8Q0 ${H} 0 ${H - 8}V8Q0 0 8 0Z`;
     el('path', { d: shape, fill: C.panel }, g);
-    el('path', { d: shape, fill, stroke: border, 'stroke-width': 1.6, 'stroke-dasharray': state === 'read' ? '3 3' : 'none' }, g);
+    el('path', { d: shape, fill, stroke: border, 'stroke-width': 1.6, 'stroke-dasharray': state === 'read' ? '3 3' : state === 'proposal' ? '5 3' : 'none' }, g);
     el('path', { d: `M${W - 12} 0V12H${W}`, fill: 'none', stroke: border, 'stroke-width': 1.2 }, g);
     text(dir, { x: 12, y: 18, fill: C.dim, 'font-size': 10, 'font-family': 'IBM Plex Mono, monospace' }, g);
     text(name, { x: 12, y: 36, fill: C.ink, 'font-size': 12.5, 'font-family': 'IBM Plex Mono, monospace', 'font-weight': 500 }, g);
-    if (state === 'new') {
-      el('rect', { x: W - 54, y: 7, width: 36, height: 15, rx: 7.5, fill: C.new }, g);
-      text('NEW', { x: W - 36, y: 18, 'text-anchor': 'middle', fill: '#0c1322', 'font-size': 9.5, 'font-weight': 700, 'letter-spacing': '0.08em', 'font-family': 'IBM Plex Sans, sans-serif' }, g);
+    if (state === 'new' || state === 'proposal') {
+      const label = state === 'new' ? 'NEW' : 'PROPOSAL';
+      const bw = label.length * 7 + 12;
+      el('rect', { x: W - 18 - bw, y: 7, width: bw, height: 15, rx: 7.5, fill: state === 'new' ? C.new : C.edit }, g);
+      text(label, { x: W - 18 - bw / 2, y: 18, 'text-anchor': 'middle', fill: '#0c1322', 'font-size': 9.5, 'font-weight': 700, 'letter-spacing': '0.08em', 'font-family': 'IBM Plex Sans, sans-serif' }, g);
     } else if (state === 'edit') {
-      text(scene.diffs[id] ?? '', { x: W - 18, y: 18, 'text-anchor': 'end', fill: C.edit, 'font-size': 11, 'font-family': 'IBM Plex Mono, monospace' }, g);
+      text(info.diff ?? '', { x: W - 18, y: 18, 'text-anchor': 'end', fill: C.edit, 'font-size': 11, 'font-family': 'IBM Plex Mono, monospace' }, g);
     } else {
       text('read', { x: W - 18, y: 18, 'text-anchor': 'end', fill: C.read, 'font-size': 10.5, 'font-family': 'IBM Plex Sans, sans-serif' }, g);
     }
-    // Review stamp: pinned to the file's contents at review time.
-    const stamp = scene.stamps[id];
+    const stamp = s.stamps[id];
     if (stamp) {
-      const label = stamp.state === 'stale' ? 'stale' : stamp.state === 'reviewing' ? 'reviewing' : `rev ${stamp.rev}`;
-      const color = stamp.state === 'stale' ? C.no : stamp.state === 'reviewing' ? C.dim : C.moon;
-      const sw = label.length * 6.4 + 14;
-      const s = el('g', { transform: `translate(${W - sw - 8} ${H - 8})` }, g);
-      el('rect', { width: sw, height: 16, rx: 8, fill: '#0f1729', stroke: color, 'stroke-dasharray': stamp.state === 'reviewing' ? '2 2' : 'none' }, s);
-      text(label, { x: sw / 2, y: 11.5, 'text-anchor': 'middle', fill: color, 'font-size': 10, 'font-family': 'IBM Plex Mono, monospace' }, s);
+      const w = stamp.label.length * 6.3 + 14;
+      pill(g, W - w - 8, H - 8, stamp.label, TONE[stamp.tone], stamp.tone === 'dim');
     }
+    const check = s.pills[id];
+    if (check) pill(g, 8, H - 8, check.text, TONE[check.tone]);
   }
 
-  const ACTOR_INFO = {
-    user: { label: 'You', sub: 'asleep since 22:40' },
-    lead: { label: 'Lead', sub: 'Claude Code · Fable', side: 'left' },
-    reviewer: { label: 'Reviewer', sub: 'Codex · Astra' },
-    skeptic: { label: 'Skeptic', sub: 'Claude Code · Fable' },
-  };
-  for (const [id, state] of Object.entries(scene.actors)) {
-    const a = { ...POS[id], ...ACTOR_INFO[id], note: scene.notes[id] };
+  // Actors
+  for (const [id, state] of Object.entries(s.actors)) {
+    if (state === 'gone') continue;
+    const a = ACTORS[id];
+    const note = s.notes[id];
     const g = el('g', { transform: `translate(${a.x} ${a.y})` }, svg);
     const active = state === 'active';
+    const accent = a.degraded ? C.edit : C.moon;
     if (active) {
-      el('circle', { r: a.r + 12, fill: 'none', stroke: C.moon, 'stroke-width': 1, opacity: 0.35 }, g);
-      el('circle', { r: a.r + 4, fill: C.moon, opacity: 0.25, filter: 'url(#glow)' }, g);
+      el('circle', { r: a.r + 12, fill: 'none', stroke: accent, 'stroke-width': 1, opacity: 0.35 }, g);
+      el('circle', { r: a.r + 4, fill: accent, opacity: 0.25, filter: 'url(#glow)' }, g);
     }
-    const ring = { active: C.moon, idle: C.dim, done: '#3a4666', asleep: C.line }[state];
-    el('circle', { r: a.r, fill: active ? '#1d2946' : C.panel, stroke: ring, 'stroke-width': active ? 2 : 1.5, 'stroke-dasharray': state === 'done' ? '4 4' : 'none' }, g);
-    const faded = state === 'asleep' || state === 'done';
-    text(a.label, { y: 5, 'text-anchor': 'middle', fill: faded ? '#6c7692' : C.ink, 'font-size': a.r > 38 ? 17 : 13.5, 'font-weight': 650, 'font-family': 'Bricolage Grotesque, sans-serif' }, g);
-    const left = a.side === 'left';
-    const lx = left ? -a.r - 14 : 0, anchor = left ? 'end' : 'middle';
-    text(a.sub, { x: lx, y: left ? -2 : a.r + 19, 'text-anchor': anchor, fill: faded ? C.faint : C.dim, 'font-size': 11, 'font-family': 'IBM Plex Sans, sans-serif' }, g);
-    if (a.note) text(a.note, { x: lx, y: left ? 14 : a.r + 34, 'text-anchor': anchor, fill: active ? C.moon : C.faint, 'font-size': 11, 'font-style': 'italic', 'font-family': 'IBM Plex Sans, sans-serif' }, g);
+    const ring = { active: accent, idle: a.degraded ? C.edit : C.dim, done: '#3a4666', asleep: C.line, down: C.faint, unavailable: '#3a4666' }[state];
+    el('circle', { r: a.r, fill: active ? '#1d2946' : C.panel, stroke: ring, 'stroke-width': active ? 2 : 1.5, 'stroke-dasharray': state === 'done' || state === 'down' ? '4 4' : 'none' }, g);
+    const faded = ['asleep', 'done', 'down', 'unavailable'].includes(state);
+    const size = Math.min(a.r > 38 ? 17 : 13.5, (2 * a.r - 14) / (a.label.length * 0.56));
+    text(a.label, { y: size * 0.36, 'text-anchor': 'middle', fill: faded ? '#6c7692' : C.ink, 'font-size': size.toFixed(1), 'font-weight': 650, 'font-family': 'Bricolage Grotesque, sans-serif' }, g);
+    const side = a.side ?? 'bottom';
+    const lx = side === 'left' ? -a.r - 12 : 0;
+    const anchor = side === 'left' ? 'end' : 'middle';
+    const subY = side === 'top' ? -a.r - 26 : side === 'left' ? -2 : a.r + 19;
+    const noteY = side === 'top' ? -a.r - 11 : side === 'left' ? 14 : a.r + 34;
+    const sub = a.degraded ? `${a.sub} · degraded` : a.sub;
+    if (sub) text(sub, { x: lx, y: subY, 'text-anchor': anchor, fill: faded ? C.faint : a.degraded ? C.edit : C.dim, 'font-size': 11, 'font-family': 'IBM Plex Sans, sans-serif' }, g);
+    if (note) text(note, { x: lx, y: noteY, 'text-anchor': anchor, fill: active ? accent : C.faint, 'font-size': 11, 'font-style': 'italic', 'font-family': 'IBM Plex Sans, sans-serif' }, g);
     if (state === 'asleep') text('z z', { x: a.r - 2, y: -a.r + 2, fill: C.faint, 'font-size': 11, 'font-family': 'IBM Plex Sans, sans-serif' }, g);
-    if (state === 'done') {
-      el('circle', { cx: a.r * 0.72, cy: -a.r * 0.72, r: 8, fill: '#19243c', stroke: '#3a4666' }, g);
-      el('path', { d: `M${a.r * 0.72 - 3.5} ${-a.r * 0.72} l2.5 2.5 l4.5 -5`, fill: 'none', stroke: C.dim, 'stroke-width': 1.5 }, g);
+    if (state === 'done' || state === 'unavailable') {
+      const bx = a.r * 0.72, by = -a.r * 0.72;
+      el('circle', { cx: bx, cy: by, r: 8, fill: '#19243c', stroke: state === 'unavailable' ? C.no : '#3a4666' }, g);
+      el('path', { d: state === 'unavailable' ? `M${bx - 3} ${by - 3}l6 6m0 -6l-6 6` : `M${bx - 3.5} ${by} l2.5 2.5 l4.5 -5`, fill: 'none', stroke: state === 'unavailable' ? C.no : C.dim, 'stroke-width': 1.5 }, g);
+    }
+    // The lead agent's context: an arc that fills as its history grows and empties at compaction.
+    if (id === 'lead' && state !== 'down') {
+      const r = a.r + 7, p = Math.min(0.999, s.context);
+      const end = -Math.PI / 2 + p * 2 * Math.PI;
+      const large = p > 0.5 ? 1 : 0;
+      el('circle', { r, fill: 'none', stroke: C.line, 'stroke-width': 2 }, g);
+      el('path', { d: `M0 ${-r} A${r} ${r} 0 ${large} 1 ${(Math.cos(end) * r).toFixed(2)} ${(Math.sin(end) * r).toFixed(2)}`, fill: 'none', stroke: s.context > 0.8 ? C.edit : C.read, 'stroke-width': 2, 'stroke-linecap': 'round' }, g);
     }
   }
 
   // Run record: the durable state outside any model.
   const g = el('g', { transform: `translate(${RUN.x} ${RUN.y})` }, svg);
-  el('rect', { width: RUN.w, height: RUN.h, rx: 10, fill: '#0f1729', stroke: '#3a4666', 'stroke-width': 1.2 }, g);
+  el('rect', { width: RUN.w, height: RUN.h, rx: 10, fill: C.deep, stroke: s.run ? '#3a4666' : C.line, 'stroke-width': 1.2, 'stroke-dasharray': s.run ? 'none' : '5 4' }, g);
+  if (!s.run) {
+    text('RUN RECORD', { x: 14, y: 17, fill: C.faint, 'font-size': 10.5, 'font-weight': 600, 'letter-spacing': '0.1em', 'font-family': 'IBM Plex Sans, sans-serif' }, g);
+    text('Created at handover, when the night\'s work starts.', { x: RUN.w / 2, y: RUN.h / 2 + 4, 'text-anchor': 'middle', fill: C.faint, 'font-size': 12.5, 'font-family': 'IBM Plex Sans, sans-serif' }, g);
+    return;
+  }
   el('path', { d: `M0 26H${RUN.w}`, stroke: C.line }, g);
   text('RUN RECORD', { x: 14, y: 17, fill: C.moon, 'font-size': 10.5, 'font-weight': 600, 'letter-spacing': '0.1em', 'font-family': 'IBM Plex Sans, sans-serif' }, g);
-  text(`.nightshift/runs/state.sqlite · rev ${scene.rev}`, { x: RUN.w - 14, y: 17, 'text-anchor': 'end', fill: '#6c7692', 'font-size': 10.5, 'font-family': 'IBM Plex Mono, monospace' }, g);
-  scene.findings.forEach((f, i) => {
-    const y = 46 + i * 24;
-    const color = { confirmed: C.no, awaiting: C.moon, fixed: C.new, refuted: C.faint, deferred: '#9fb0e0' }[f.status];
+  text(`.nightshift/runs/state.sqlite · rev ${s.rev} · budget ${s.budget.toFixed(1)}M / 8M tokens`, { x: RUN.w - 14, y: 17, 'text-anchor': 'end', fill: '#6c7692', 'font-size': 10.5, 'font-family': 'IBM Plex Mono, monospace' }, g);
+  const rows = s.findings.slice(-4);
+  if (rows.length === 0) text('No findings yet.', { x: 14, y: 50, fill: C.faint, 'font-size': 12, 'font-family': 'IBM Plex Sans, sans-serif' }, g);
+  rows.forEach((f, i) => {
+    const y = 48 + i * 23;
+    const color = { awaiting: C.moon, confirmed: C.no, refuted: C.faint, deferred: '#9fb0e0', 'to fix': C.edit, reproduced: C.edit, fixed: C.new }[f.status];
     text(f.id, { x: 14, y, fill: color, 'font-size': 11.5, 'font-weight': 500, 'font-family': 'IBM Plex Mono, monospace' }, g);
-    text(f.text, { x: 42, y, fill: f.status === 'refuted' ? '#6c7692' : C.ink, 'font-size': 12, 'font-family': 'IBM Plex Sans, sans-serif' }, g);
-    text(f.where, { x: 332, y, fill: '#6c7692', 'font-size': 10.5, 'font-family': 'IBM Plex Mono, monospace' }, g);
+    text(f.text, { x: 44, y, fill: f.status === 'refuted' ? '#6c7692' : C.ink, 'font-size': 12, 'font-family': 'IBM Plex Sans, sans-serif' }, g);
+    text(f.where, { x: 370, y, fill: '#6c7692', 'font-size': 10.5, 'font-family': 'IBM Plex Mono, monospace' }, g);
     const label = f.status === 'awaiting' ? 'awaiting verdict' : f.status;
     const w = label.length * 6.9 + 18;
     el('rect', { x: RUN.w - 14 - w, y: y - 12, width: w, height: 17, rx: 8.5, fill: f.status === 'refuted' ? 'none' : color, 'fill-opacity': 0.14, stroke: color, 'stroke-opacity': 0.6 }, g);
     text(label, { x: RUN.w - 14 - w / 2, y: y + 0.5, 'text-anchor': 'middle', fill: color, 'font-size': 10.5, 'font-family': 'IBM Plex Sans, sans-serif', 'font-weight': 500 }, g);
   });
-  el('path', { d: `M0 ${RUN.h - 30}H${RUN.w}`, stroke: C.line }, g);
-  const rc = scene.review.state === 'stale' ? C.no : C.moon;
-  el('rect', { x: 14, y: RUN.h - 19, width: 3, height: 10, fill: rc }, g);
-  text(scene.review.text, { x: 26, y: RUN.h - 10.5, fill: '#aab3cb', 'font-size': 11.5, 'font-family': 'IBM Plex Sans, sans-serif' }, g);
-  text(scene.review.state, { x: RUN.w - 14, y: RUN.h - 10.5, 'text-anchor': 'end', fill: rc, 'font-size': 11.5, 'font-family': 'IBM Plex Mono, monospace' }, g);
+  if (s.footer) {
+    el('path', { d: `M0 ${RUN.h - 30}H${RUN.w}`, stroke: C.line }, g);
+    const tone = TONE[s.footer.tone];
+    el('rect', { x: 14, y: RUN.h - 19, width: 3, height: 10, fill: tone }, g);
+    text(s.footer.text, { x: 26, y: RUN.h - 10.5, fill: '#aab3cb', 'font-size': 11.5, 'font-family': 'IBM Plex Sans, sans-serif' }, g);
+    text(s.footer.value, { x: RUN.w - 14, y: RUN.h - 10.5, 'text-anchor': 'end', fill: tone, 'font-size': 11.5, 'font-family': 'IBM Plex Mono, monospace' }, g);
+  }
 }
 
-// Playback: every wait goes through sleep(), which honours pause, speed and restart.
-let runId = 0, paused = false, speed = 1;
+// ---------------------------------------------------------------------------------------------------------------
+// Playback: every wait goes through sleep(), which honours pause, speed and navigation.
+let runId = 0, paused = false, speed = 1, index = 0;
 const sleep = ms => new Promise((resolve, reject) => {
   const id = runId;
   let left = ms / speed, last = performance.now();
   const tick = now => {
-    if (id !== runId) return reject(new Error('restarted'));
+    if (id !== runId) return reject(new Error('interrupted'));
     if (!paused) left -= now - last;
     last = now;
     left <= 0 ? resolve() : requestAnimationFrame(tick);
@@ -511,33 +806,54 @@ const sleep = ms => new Promise((resolve, reject) => {
   requestAnimationFrame(tick);
 });
 const reflow = node => void node.offsetWidth;
+const SUN = '<circle cx="10" cy="10" r="4.5" fill="#f2c46b"/><g stroke="#f2c46b" stroke-width="1.6" stroke-linecap="round"><path d="M10 1.5v2.2M10 16.3v2.2M1.5 10h2.2M16.3 10h2.2M4 4l1.6 1.6M14.4 14.4 16 16M4 16l1.6-1.6M14.4 5.6 16 4"/></g>';
+const MOON = '<path d="M13.5 2.5a8 8 0 1 0 4 11.2A6.5 6.5 0 0 1 13.5 2.5z" fill="#cdd6ff"/>';
 
 function setCaption({ kicker, headline, body }, seamStyle = false) {
-  document.getElementById('kicker').textContent = kicker;
-  document.getElementById('headline').textContent = headline;
-  document.getElementById('body').innerHTML = body;
-  document.getElementById('caption').classList.toggle('seamcap', seamStyle);
+  $('kicker').textContent = kicker;
+  $('headline').textContent = headline;
+  $('body').innerHTML = body;
+  $('caption').classList.toggle('seamcap', seamStyle);
 }
-async function showCaption(content, seamStyle) {
-  const t = document.getElementById('captionText');
-  t.classList.add('fade');
-  await sleep(300);
+async function fadeCaption(content, seamStyle) {
+  $('captionText').classList.add('fade');
+  await sleep(280);
   setCaption(content, seamStyle);
-  t.classList.remove('fade');
+  $('captionText').classList.remove('fade');
 }
-async function showScene(name) {
-  const s = SCENES[name];
-  stage.classList.add('swap');
-  await sleep(250);
-  renderRail(s.step);
+function beatCaption(i) {
+  const b = BEATS[i];
+  return { kicker: `STEP ${String(b.step + 1).padStart(2, '0')} / ${STEPS.length} · ${b.at}`, headline: b.headline, body: b.body };
+}
+function render(i) {
+  const b = BEATS[i];
+  const s = stateAt(i);
+  renderRail(b.step);
   renderGraph(s);
-  document.getElementById('clock').textContent = s.clock;
-  stage.classList.remove('swap');
-  await showCaption(s);
+  const day = STEPS[b.step].phase === 'day';
+  stage.classList.toggle('day', day);
+  stage.classList.toggle('dim', s.restart);
+  $('clock').textContent = b.at;
+  $('clockIcon').innerHTML = day ? SUN : MOON;
+  $('clockNote').textContent = b.step >= 3 ? 'handed over 22:40' : 'evening';
+  $('beatLabel').textContent = `${i + 1} / ${BEATS.length}`;
+  $('beatBar').style.width = `${((i + 1) / BEATS.length) * 100}%`;
 }
+function resetGate() {
+  seam.style.transition = 'none';
+  seam.className = 'seam';
+  gateInner.className = 'gate-inner';
+  gateInner.innerHTML = '';
+  stage.classList.remove('zoom', 'swap');
+  reflow(seam);
+  seam.style.transition = '';
+}
+const holdFor = b => 2200 + (b.body.length + b.headline.length) * 26;
 
-async function runGate(gate, attempt) {
-  const gateEl = rail.children[gate.after + 1].querySelector('.gate');
+async function runGate(b) {
+  const gate = GATES[b.gate.id];
+  const attempt = b.gate;
+  const gateEl = rail.children[gate.at].querySelector('.gate');
   const sr = stage.getBoundingClientRect(), gr = gateEl.getBoundingClientRect();
   const x = gr.left - sr.left;
   gateEl.classList.add('lit');
@@ -555,37 +871,36 @@ async function runGate(gate, attempt) {
   // 2. Zoom into the seam while it widens into the gate.
   svg.style.transformOrigin = `${x}px ${sr.height / 2}px`;
   stage.classList.add('zoom');
-  const pw = Math.min(660, sr.width - 48);
+  const pw = Math.min(680, sr.width - 48);
   seam.style.left = `${(sr.width - pw) / 2}px`;
   seam.style.width = `${pw}px`;
   seam.classList.add('wide');
-  showCaption(gate.caption, true);
+  if (gate.style) seam.classList.add(gate.style);
+  fadeCaption(gate.caption, true);
   await sleep(1100);
   gateInner.innerHTML = `<div class="gate-head"><div class="kicker">${gate.kicker}</div><h3>${gate.claim}</h3><code>${gate.source}</code></div><ol class="checks"></ol><div class="verdict"></div>`;
   const list = gateInner.querySelector('.checks');
-  const rows = gate.checks.map(label => {
+  const rows = gate.checks.map((label, i) => {
     const li = document.createElement('li');
-    li.className = 'check';
+    li.className = `check ${attempt.tones?.[i] === 'judgment' ? 'judgment' : ''}`;
     li.innerHTML = `<span class="dot"></span><span class="label">${label}</span><span class="ev"></span>`;
     list.appendChild(li);
     return li;
   });
   gateInner.classList.add('show');
-  await sleep(500);
+  await sleep(450);
   // 3. Step through the checks one by one; the first failure ends the walk.
+  const failAt = attempt.failAt ?? -1;
   let failed = false;
   for (let i = 0; i < rows.length; i++) {
     const row = rows[i];
-    if (failed) {
-      row.classList.add('in', 'skip');
-      row.querySelector('.ev').textContent = 'not reached';
-      continue;
-    }
+    const ev = row.querySelector('.ev');
+    if (failed) { row.classList.add('in', 'skip'); ev.textContent = 'not reached'; continue; }
     row.classList.add('in', 'pending');
-    await sleep(750);
+    await sleep(700);
     row.classList.remove('pending');
-    row.querySelector('.ev').textContent = attempt.evidence[i];
-    if (i === attempt.failAt) {
+    ev.textContent = attempt.evidence[i];
+    if (i === failAt) {
       row.classList.add('fail');
       row.querySelector('.dot').textContent = '✕';
       failed = true;
@@ -593,9 +908,9 @@ async function runGate(gate, attempt) {
       gateEl.classList.add('no');
       await sleep(500);
     } else {
-      row.classList.add('pass');
-      row.querySelector('.dot').textContent = '✓';
-      await sleep(320);
+      row.classList.add(attempt.tones?.[i] === 'warn' ? 'warn' : 'pass');
+      row.querySelector('.dot').textContent = attempt.tones?.[i] === 'warn' ? '!' : '✓';
+      await sleep(300);
     }
   }
   const verdict = gateInner.querySelector('.verdict');
@@ -604,61 +919,81 @@ async function runGate(gate, attempt) {
   } else {
     seam.classList.add('yes');
     gateEl.classList.add('yes');
-    verdict.innerHTML = `<div class="open"><span>✓ Gate open</span><small>The work moves on to documentation.</small></div>`;
+    verdict.innerHTML = `<div class="open"><span>✓ ${gate.open[0]}</span><small>${gate.open[1]}</small></div>`;
   }
   verdict.classList.add('show');
-  await sleep(failed ? 3600 : 2200);
-  // 4. Zoom back out: the gate folds back into a line and the graph fades in.
+  await sleep(failed ? 3600 : 2400);
+  // 4. Zoom back out: the gate folds back into a line and the graph fades back in.
   gateInner.classList.remove('show');
   await sleep(300);
   seam.classList.remove('wide');
   seam.style.left = `${x - 1}px`;
   seam.style.width = '2px';
   stage.classList.remove('zoom');
-  await sleep(1200);
+  await sleep(1150);
   seam.classList.remove('drop');
   await sleep(450);
   gateEl.classList.remove('lit', 'no', 'yes');
-  return !failed;
 }
 
-async function play() {
-  ++runId;
-  paused = false;
-  updatePauseIcon();
-  stage.classList.remove('zoom', 'swap');
-  seam.className = 'seam';
+async function playFrom(i) {
+  const id = ++runId;
+  resetGate();
+  card.classList.remove('show');
+  stage.classList.remove('carded');
+  index = Math.max(0, Math.min(i, BEATS.length));
   try {
-    await showScene('fixed');
-    await sleep(4200);
-    await runGate(REVIEW_GATE, ATTEMPTS.stale);
-    await showScene('rereview');
-    await sleep(4500);
-    await showScene('reviewed');
-    await sleep(4200);
-    await runGate(REVIEW_GATE, ATTEMPTS.pass);
-    await showScene('docs');
+    for (; index < BEATS.length; index++) {
+      if (id !== runId) return;
+      stage.classList.add('swap');
+      await sleep(220);
+      render(index);
+      stage.classList.remove('swap');
+      await fadeCaption(beatCaption(index));
+      await sleep(holdFor(BEATS[index]));
+      if (BEATS[index].gate) await runGate(BEATS[index]);
+    }
+    showCard();
   } catch (e) {
-    if (e.message !== 'restarted') throw e;
+    if (e.message !== 'interrupted') throw e;
   }
+}
+function showCard() {
+  index = BEATS.length;
+  stage.classList.add('carded');
+  card.classList.add('show');
+  $('beatLabel').textContent = 'end';
+  $('beatBar').style.width = '100%';
+  setCaption({ kicker: 'AFTER THE NIGHT', headline: 'Everything else in the box', body: 'The run above used 35 of Nightshift\'s features. The card lists the rest. Press ← to go back, or start over.' });
 }
 
 function updatePauseIcon() {
-  document.getElementById('pause').setAttribute('aria-label', paused ? 'Play' : 'Pause');
-  document.getElementById('pauseIcon').innerHTML = paused
+  $('pause').setAttribute('aria-label', paused ? 'Play' : 'Pause');
+  $('pauseIcon').innerHTML = paused
     ? '<path d="M4 2.5v11l9.5-5.5z" fill="currentColor"/>'
     : '<rect x="3" y="2" width="3.5" height="12" rx="1" fill="currentColor"/><rect x="9.5" y="2" width="3.5" height="12" rx="1" fill="currentColor"/>';
 }
-document.getElementById('pause').addEventListener('click', () => { paused = !paused; updatePauseIcon(); });
-document.getElementById('restart').addEventListener('click', () => play());
-document.getElementById('speed').addEventListener('click', () => {
+const togglePause = () => { paused = !paused; updatePauseIcon(); };
+const go = delta => playFrom(Math.max(0, Math.min(BEATS.length - 1, (index >= BEATS.length ? BEATS.length : index) + delta)));
+$('pause').addEventListener('click', togglePause);
+$('restart').addEventListener('click', () => playFrom(0));
+$('prev').addEventListener('click', () => go(-1));
+$('next').addEventListener('click', () => { if (index < BEATS.length - 1) go(1); else { runId++; resetGate(); showCard(); } });
+$('speed').addEventListener('click', () => {
   speed = speed === 1 ? 2 : speed === 2 ? 0.5 : 1;
-  document.getElementById('speedLabel').textContent = `${speed}×`;
+  $('speedLabel').textContent = `${speed}×`;
+});
+document.addEventListener('keydown', event => {
+  if (event.target.closest?.('button') && (event.key === ' ' || event.key === 'Enter')) return;
+  if (event.key === 'ArrowRight') { event.preventDefault(); $('next').click(); }
+  else if (event.key === 'ArrowLeft') { event.preventDefault(); go(-1); }
+  else if (event.key === ' ') { event.preventDefault(); togglePause(); }
+  else if (event.key === 'Home') { event.preventDefault(); playFrom(0); }
 });
 
-// Render the opening frame at once so the page is complete at rest, then start playback.
-renderRail(SCENES.fixed.step);
-renderGraph(SCENES.fixed);
-setCaption(SCENES.fixed);
-play();
+// Render the first beat at once so the page is complete at rest, then start playback.
+updatePauseIcon();
+render(0);
+setCaption(beatCaption(0));
+playFrom(0);
 </script>

@@ -1,30 +1,70 @@
-# Overnight demo: work in progress
+# Overnight demo
 
-An animated graph of one Nightshift run on a dummy project, for the [seams talk](../outline.md). Actors (you, the lead agent, reviewer, skeptic) and artifacts (files, docs, the run record) are nodes; reads, writes and handoffs are edges; the workflow steps run along a rail above the graph, with a caption per beat. The point to land is the talk's: trust lives in the seams, so the gates get the most visual weight.
+An animated graph of one Nightshift night on a dummy project, as a companion to the [seams talk](../outline.md). It is not part of the slides. Actors (you, the lead agent, reviewers, skeptics, a shift supervisor, the user proxy and Night Guard) and artifacts (files, docs and the run record) are nodes. Reads, writes and handoffs are edges. The workflow steps run along a rail above the graph, with a caption for each beat. The point to land is the talk's: trust lives in the seams, so the gates get the most visual weight.
 
-Status: a prototype of one stretch of the run, parked for visual tweaks. It has not been through the Nightshift review, documentation or retrospective workflows.
+Like the talk, this version presents every feature in [FEATURES.md](../../../.nightshift/FEATURES.md) as of 2026-09-29 as shipped, as an exercise. The run itself is scripted and labelled "Illustrative run": its times, revisions, token counts and findings are invented for the story, and nothing in it is recorded evidence.
 
 ## Files
 
-- [overnight.html](overnight.html): the playable prototype. It covers step 7 only: the review gate refuses a stale review, a fresh reviewer checks the whole change, then the gate opens and the rail moves on to Docs. About 40 seconds, with restart, pause and speed controls.
-- [still-step6.html](still-step6.html): a static frame from step 6, where the skeptic checks the reviewer's three findings.
-- [preview.js](preview.js): renders frames of either page at chosen times, into `.tmp/demo-frames`.
+- [overnight.html](overnight.html): the demo, 40 beats across 11 steps, with seven gate zooms and a closing card. It plays for about seven minutes at 1×. Use ← and → to step between beats, space to pause and Home to start over; the speed button cycles 1×, 2× and 0.5×.
+- [preview.js](preview.js): renders frames of the page at chosen times into `.tmp/demo-frames`.
 
-Both pages are Artifact page bodies: they carry no `<!doctype>`, `<html>` or `<body>` tags because the Artifact publisher adds them. `preview.js` adds the same wrapper. The prototype is also published as a private Artifact at https://claude.ai/artifact/QtNrtYHTrDUxsQFb3vZEcR.
+The page is an Artifact page body: it carries no `<!doctype>`, `<html>` or `<body>` tags because the Artifact publisher adds them. `preview.js` adds the same wrapper. It is also published as a private Artifact at https://claude.ai/artifact/QtNrtYHTrDUxsQFb3vZEcR.
 
-## Agreed so far
+## How it works
 
-- **Scripted, not a real run.** The story is a scripted sequence that follows [WORKFLOW.md](../../../WORKFLOW.md), labelled "Illustrative run". Its data format could later take a captured real run.
-- **The story.** A small `tasks` command-line app gets recurring tasks, a feature big enough for a spec. Ten steps: Agree, Spec and review, Handover, Implement, Code review, Validate findings, Repair and re-review, Docs, Retrospective, Morning report. The reviewer raises three findings: F1 (a monthly repeat from 31 January skips February) is confirmed and fixed, F2 (completing a task twice spawns two copies) is refuted, and F3 (no way to stop a series) is deferred to `QUICK_WINS.md`.
-- **Who talks to whom.** The lead agent makes every handoff and is the only writer of the run record. The reviewer returns its report to the lead agent; the lead agent gives the findings to the skeptic; the skeptic returns all verdicts in one report, which the lead agent records before deciding anything. Reviewers and skeptics only read.
-- **Encoding.** Day, dusk, night and morning on the rail sky. Actors are circles (active glows, idle is plain, done is dashed with a check, you are dim while asleep). Files are page shapes that join the graph when first touched: green outline and NEW badge for created, amber with a line count for edited, dashed for read only. Dotted edges are reads; solid edges are writes and handoffs; particles flow along active edges; earlier edges stay faint. Review stamps on files show the review revision and turn to "stale" when the file changes after review.
-- **Gates.** Solid rail lines are gates the runtime enforces; the dashed one after Spec and review is your agreement. At a gate, the line drops from the rail into the graph, the graph zooms in and blurs while the line widens into a panel, and the checks appear one at a time. The first failure stops the walk, marks the rest "not reached" and shows the refusal in the talk's terminal style with the real error code. Then the panel folds back into the line and the graph returns.
-- **The review gate's checks** simplify `reviewGateFailure()` in [lifecycle.js](../../../internal/runtime/lifecycle.js) in its order: the review covers the agreed commitments; a complete review by a strong, independent reviewer (dimension coverage folded in); nothing it reviewed has changed since (per-file sha256, as `fresh()` in [evidence.js](../../../internal/runtime/evidence.js) compares); every check passes on the current files; every finding checked by a skeptic and decided; accepted fixes were made before this review.
+- **The story.** A small `tasks` command-line app gets recurring tasks. The steps are Pick work, Agree, Spec review, Handover, Implement, Code review, Validate findings, Repair and re-review, Docs, Retrospective and Morning report. The review raises F1 (a monthly repeat from 31 January skips February), F2 (completing a task twice spawns two copies) and F3 (no way to stop a series). F2 is refuted, F3 is deferred on the user proxy's advice, and fixing F1 causes F4 (March lands on the 28th), which the re-review catches. The documentation review raises D1.
+- **Who writes what.** Only the lead agent writes the run record and edits project files, as the runtime accepts writes only from the run's owner. Reviewers, skeptics, the supervisor and Night Guard read and report back.
+- **Encoding.** Day, dusk, night and morning on the rail sky. Actors are circles: active glows, idle is plain, done is dashed with a check, unavailable has a red cross, a restarting session is dashed, and you are dim while asleep. A degraded reviewer is drawn in amber. The ring around the lead agent shows how full its context is. Files are page shapes that join the graph when first touched: green outline and NEW badge for created, amber with a line count for edited, dashed for read only, and dashed amber with a PROPOSAL badge for a proposed instruction change. Review stamps on files show the review revision, turn red and "stale" when the file changes after review, and turn amber while only a degraded review covers them. Check pills show named checks such as month-end.
+- **Gates.** Solid rail lines are gates the runtime enforces; the dashed one before Handover is your agreement. At a gate, the line drops from the rail into the graph, the graph zooms in and blurs while the line widens into a panel, and the checks appear one at a time. The first failure stops the walk, marks the rest "not reached" and shows the refusal in the talk's terminal style with the real error code. Then the panel folds back into the line and the graph returns. Authority gates have a dashed panel, and a check that is judgment rather than record has a dashed dot.
+- **The review gate's checks** simplify `reviewGateFailure()` in [lifecycle.js](../../../internal/runtime/lifecycle.js), in its order. The staleness check compares per-file sha256, as `fresh()` in [evidence.js](../../../internal/runtime/evidence.js) does. The closing order follows the [runtime reference](../../../internal/runtime/REFERENCE.md): retrospective, then the morning report, then triage. The other gates list the checks the backlog's features add.
+- **Engine.** Each beat's state is computed by applying beats 1 to n to an empty state, so any beat can be shown directly. Edges from earlier beats stay as faint history.
+
+## Where each feature appears
+
+Beat numbers match the counter under the controls. The 35 features with a moment in the night:
+
+| Feature | Beats |
+|---|---|
+| Independent documentation review | 35, closing gate at 37 |
+| Verify faked boundaries live | 15 and its gate, 38 |
+| Reproduce a bug with a failing check before repairing it | 24, 25, 29 |
+| Project inboxes | 2, 36 |
+| Degraded assessment mode | 26, 27, 30 and its gate, 31, closing gate at 37 |
+| Background review and assessment of selected work | 5, 6, agreement gate at 9 |
+| Shared BACKLOG.md meta-index | 1 |
+| Recover review report formatting without repeating the assessment | 27 |
+| Carry settled decisions and experiment evidence into later reviews | 13, 26 |
+| Complete the spec-review safeguard and authoring guidance | 6 |
+| Preserve run preferences and enforce supported resource budgets | handover gate at 10, the run record's budget, 38 |
+| Verify repair-commit and autosquash safety in ordinary delivery | 25, 29, 38 |
+| Repairs start from current contents and respect helper ownership | 25 |
+| Check currency and external dependencies | verification gate at 15 |
+| Verify compatible agreement continuity across representation changes | 8, agreement gate at 9 |
+| Relaunch unfinished work after host exit or restart | 34 |
+| Ready offers to pick up an interrupted run | 1 |
+| Size-aware Ready recommendations | 2 |
+| Ground Ready recommendations in the project's direction | 1, 2 |
+| Show review progress without being asked | 19 |
+| Retrospective routing by audience and instruction precedence | 36 |
+| Review retrospective instruction proposals like any other change | 37 |
+| Deliver each run on its own branch or worktree | 10, 38 |
+| User proxy consultation and opt-in user profile | 22, dispose gate at 23, 39 |
+| Explain for a capable user who may not know the codebase | 4 |
+| Spawn a shift supervisor when admin work fills the controller's context | 14 |
+| Night Guard | 10, 33 |
+| Incremental revise finding delivery | 18 |
+| Keep every affected surface when merging findings | 19 |
+| Resumable reviewer and adversarial repair dialogue | 21 |
+| Dispatch reviewer peers and return their evidence to the lead | 17 |
+| Initial reviewer selection | 16 |
+| Model choice per role: Opus 5.5 versus Fable | 14 |
+| User-configurable model policy file | 16 |
+| Structured model teams | handover gate at 10 |
+
+The closing card lists the other 25, grouped: setup and backlog tooling (guidance discovery and routing, customized backlog repair, shared parsing, the fresh-scaffold tracking choice, ignore-shape election, mixed line-ending repair); Windows platform and runtime (filesystem metadata, recovery artifact ownership, launch identity, private request artifacts, bounded host transports, native event validation, review snapshot reuse); packaging and release (marketplace contents, release-gate diagnostics, run-time guidance separation); verification and measurement (verification infrastructure, defect detection measurement, orchestration efficiency, review-run command enforcement); and other ways to work (run-free revise, review mode, the whole-backlog coherence audit, interactive collaboration, the graphical run view).
 
 ## Next
 
-- Visual tweaks to the prototype, which the user will direct.
-- Rearrange the layout so active edges from the lead agent stop passing behind the docs column.
+- Rearrange the layout so active edges from the lead agent stop passing behind the backlog and docs columns.
 - Make the rail gate flash more visibly before its line drops.
-- Build the full storyboard across all ten steps, with a gate beat at each seam. Planned beats: `unverified-continuation` at handover until the Stop hook is observed; the re-review that catches a regression in the F1 fix after green tests (the fix moves 31 January to 28 February, and March then lands on the 28th too), mirroring the talk's `[10]` became `[15]` story; the closing gates `closing-required` and `report-required`. Error codes come from [captured-output.md](../captured-output.md).
-- Consider marking the talk's three gate kinds (authority, evidence, continuity), an optional compaction beat around 01:30 where the run record hands the lead agent its brief, and an ending that fades the steps and lights every seam crossed, as on slide 32.
