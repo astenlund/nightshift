@@ -138,6 +138,10 @@ Direct every repair, by the controller or a helper, to start from the current co
 
 Complete the retained operation-local snapshot reuse requirement while preserving freshness and exact reviewed bytes. Reuse captured source and identity for governing artifacts and review copies where valid, without introducing a persistent cache.
 
+### [Check currency and external dependencies](features/check-external-dependencies.md)
+
+State and handle the agreed limit that a matching content digest does not show unchanged external dependencies, so a check does not stay current across a changed toolchain or environment. Found on 2026-09-29 by the migration accounting audit: a check stays current on its project-file digests alone, and nothing states the limit or asks for a rerun after an outside change.
+
 ### [Verify compatible agreement continuity across representation changes](features/v3-agreement-continuity.md)
 
 Complete evidence for retained agreement behavior: qualified assent, compatible title or description edits, archival moves and repeated spec refinements preserve accepted commitments without enlarging the approval burden.
