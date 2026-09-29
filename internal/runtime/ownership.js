@@ -5,6 +5,7 @@ const { isDeepStrictEqual } = require('node:util');
 const { requireCondition, text } = require('./store');
 const { projectFile } = require('./evidence');
 const { workerIsActive } = require('./workers');
+const { CLOSING_TARGET } = require('./actions');
 const processes = require('../releases/processes');
 const { nativeEvidenceRequests, nativeWorkerTermination } = require('./native-worker-evidence');
 
@@ -50,6 +51,8 @@ function controllerClaim(actor, observation, revision) {
 
 function assertControllerClaim(state, request, dependencies) {
   if (CLAIM_EXEMPT.has(request.action)) return;
+  // A complete run admits no engineering claim, so its closing docs review is owner bookkeeping like the report operations.
+  if (state.status === 'complete' && request.taskId === CLOSING_TARGET) return;
   const observation = observeController(state.root, request.actor, dependencies);
   requireCondition(observation.process && isDeepStrictEqual(state.controllerClaim?.controller, request.actor) && isDeepStrictEqual(state.controllerClaim?.process, observation.process), 'controller-claim-required', 'Obtain a successful claim-controller in this turn before engineering; a missing, failed or previous process claim grants no work');
 }

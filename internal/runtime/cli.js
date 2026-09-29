@@ -6,7 +6,7 @@ const path = require('node:path');
 const { randomUUID } = require('node:crypto');
 const { isDeepStrictEqual } = require('node:util');
 const { RunStore, requireCondition } = require('./store');
-const { assertAction, commitmentsFor, obligationBrief, sharesCumulativeAssessment, transition } = require('./lifecycle');
+const { assertAction, commitmentsFor, findingKind, obligationBrief, sharesCumulativeAssessment, targetById, transition } = require('./lifecycle');
 const { DEFAULT_REVIEW_TIMEOUT_MS, dispatchReview, readReceipt, validateBase, validateRequest } = require('./review');
 const { exhaustedLimit, remainingTime, requireDispatchFits } = require('./limits');
 const { prepareProbe, runProbe } = require('./probes');
@@ -21,6 +21,14 @@ function requireRuntimeAction(request) {
   requireCondition(isRuntimeAction(request?.action), 'invalid-request', unknownActionMessage(request?.action));
 }
 
+// Lead assessments a target accepts: a spec task its spec review, a lore task its code review, code and docs tasks either
+// lens, and the closing record docs reviews only.
+function leadKindsFor(target) {
+  if (target.kind === 'closing') return ['docs'];
+  if (target.kind === 'spec') return ['spec'];
+  return target.kind === 'lore' ? ['code'] : ['code', 'docs'];
+}
+
 async function execute(root, request, dependencies = {}) {
   requireRuntimeAction(request);
   const store = new RunStore(root, { create: request.action === 'create' });
@@ -30,7 +38,8 @@ async function execute(root, request, dependencies = {}) {
       if (resources) requireCondition(request.controller?.session === resources.session, 'resource-owner-mismatch', 'Controller identity does not match its admitted session');
       const observation = observeController(store.root, request.controller, dependencies);
       requireCondition(observation.process, 'controller-claim-unavailable', observation.reason);
-      const created = store.create({ ...request, resources, resourceMode: resources ? 'bound' : 'development', controllerClaim: controllerClaim(request.controller, observation, 0) });
+      // Every run created through the runtime carries the docs gate; only fixtures reproducing earlier releases create one without it.
+      const created = store.create({ ...request, resources, resourceMode: resources ? 'bound' : 'development', controllerClaim: controllerClaim(request.controller, observation, 0), docsGate: true });
 
       return { ...created, controllerReady: true };
     }
@@ -74,14 +83,21 @@ async function execute(root, request, dependencies = {}) {
       const attemptTimeoutMs = request.review.timeoutMs ?? DEFAULT_REVIEW_TIMEOUT_MS;
       requireDispatchFits(state, dependencies.resourceContext, request.review.candidates.length, attemptTimeoutMs);
       const id = randomUUID();
-      const task = state.tasks.find(candidate => candidate.id === request.taskId);
+      const task = targetById(state, request.taskId);
+      const closing = task.kind === 'closing';
+      requireCondition(!closing || ['docs', 'skeptic'].includes(request.review.kind), 'wrong-review-kind', 'The closing record takes docs reviews and their skeptics only');
       const helperProcess = (dependencies.information ?? information)(process.pid, null, store.root);
       requireCondition(helperProcess?.found === true, 'operation-owner-unavailable', 'Cannot dispatch without identifying its actual helper process');
-      const coveredTasks = state.tasks.filter(candidate => candidate.id === task.id || sharesCumulativeAssessment(task) && sharesCumulativeAssessment(candidate) && candidate.status === 'complete');
+      // The closing review covers every task whose assessment tracking edits can stale; a task review covers its cumulative siblings.
+      const coveredTasks = closing
+        ? state.tasks.filter(candidate => ['code', 'docs', 'lore'].includes(candidate.kind))
+        : state.tasks.filter(candidate => candidate.id === task.id || sharesCumulativeAssessment(task) && sharesCumulativeAssessment(candidate) && candidate.status === 'complete');
+      const assigned = request.review.kind === 'skeptic' ? (request.review.findings ?? []).map(finding => task.findings.find(saved => saved.id === finding?.id)) : [];
+      const lens = assigned.length > 0 && assigned.every(finding => finding && findingKind(finding, task) === 'docs') ? 'docs' : undefined;
       const registered = store.update(request.actor, state.revision, 'dispatch-started', current => {
         requireCondition(!current.baseSha || current.baseSha === request.review.baseSha, 'changed-base', 'Cumulative run review must retain its original base');
         current.baseSha = request.review.baseSha;
-        current.workers.push({ id, session: null, role: request.review.kind === 'skeptic' ? 'skeptic' : 'reviewer', assignment: 'Assess ' + task.title, taskId: task.id, writes: [], status: 'starting', phase: 'reserved', artifactDirectory: `.nightshift/runs/reviews/${id}`, runnerPid: process.pid, helperProcess, resources: currentResources, controller: { ...state.controller } });
+        current.workers.push({ id, session: null, role: request.review.kind === 'skeptic' ? 'skeptic' : 'reviewer', assignment: closing ? 'Assess the closing tracking edits' : 'Assess ' + task.title, taskId: task.id, writes: [], status: 'starting', phase: 'reserved', artifactDirectory: `.nightshift/runs/reviews/${id}`, runnerPid: process.pid, helperProcess, resources: currentResources, controller: { ...state.controller } });
       });
       const updateWorker = change => store.update(request.actor, store.read().revision, 'dispatch-progress', current => {
         const worker = current.workers.find(candidate => candidate.id === id);
@@ -90,12 +106,12 @@ async function execute(root, request, dependencies = {}) {
       try {
         updateWorker({ phase: 'preparing' });
         const result = await dispatchReview(store.root, {
-          ...request.review, id, runId: registered.id, taskId: task.id,
+          ...request.review, id, runId: registered.id, taskId: task.id, lens,
           resources: currentResources,
           controller: state.controller,
           forbiddenSessions: [...forbiddenReviewSessions(state)],
           resourceContext: dependencies.resourceContext,
-          artifactPaths: request.review.artifactPaths ?? (task.agreement.spec ? [task.agreement.spec] : undefined),
+          artifactPaths: request.review.artifactPaths ?? (task.agreement?.spec ? [task.agreement.spec] : undefined),
           probeEvidence: task.probeEvidence ?? [],
           coveredTaskIds: coveredTasks.map(candidate => candidate.id),
           commitments: commitmentsFor(coveredTasks),
@@ -138,8 +154,8 @@ async function execute(root, request, dependencies = {}) {
     let prepared = request;
     if (request.action === 'review') {
       const review = readReceipt(store.root, request.receipt, state, request.taskId);
-      const task = state.tasks.find(candidate => candidate.id === request.taskId);
-      requireCondition(review.kind === (task.kind === 'spec' ? 'spec' : 'code'), 'wrong-review-kind', 'Receipt kind does not match the lead-assessment boundary');
+      const task = targetById(state, request.taskId);
+      requireCondition(leadKindsFor(task).includes(review.kind), 'wrong-review-kind', 'Receipt kind does not match the lead-assessment boundary');
       const existing = task.reviews.find(candidate => candidate.requestId === review.requestId);
       if (existing) {
         const accepted = { ...existing };

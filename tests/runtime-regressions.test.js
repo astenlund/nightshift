@@ -144,7 +144,8 @@ function fixture(t, options = {}, prepare) {
   t.after(() => { store.close(); fs.rmSync(root, { recursive: true, force: true }); });
   for (const file of ['a.txt', 'b.txt']) fs.writeFileSync(path.join(root, file), file + '\r\n');
   prepare?.(root);
-  store.create({ objective: 'Deliver both accepted tasks', authority: 'User handover', controller: actor, controllerClaim: fixtureControllerClaim(actor), tasks: ['a', 'b'].map(id => ({ id, title: id, agreement: { source: 'User', outcome: 'Required ' + id }, requires: id === 'b' ? ['a'] : [] })), ...options });
+  // These regressions exercise the code gate as runs created before the docs gate did; runtime-docs-review.test.js covers the docs gate.
+  store.create({ objective: 'Deliver both accepted tasks', authority: 'User handover', controller: actor, controllerClaim: fixtureControllerClaim(actor), docsGate: false, tasks: ['a', 'b'].map(id => ({ id, title: id, agreement: { source: 'User', outcome: 'Required ' + id }, requires: id === 'b' ? ['a'] : [] })), ...options });
   const act = request => {
     if (request.action === 'review') request.review.commitments ??= commitmentsFor(store.read().tasks);
     return store.update(actor, store.read().revision, request.action, state => transition(state, request));

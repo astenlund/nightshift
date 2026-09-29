@@ -3,6 +3,7 @@
 const path = require('node:path');
 const { requireCondition } = require('./store');
 const { workerIsActive } = require('./workers');
+const { CLOSING_TARGET } = require('./actions');
 
 const POLLING_STATUSES = ['starting', 'running'];
 const DEFAULT_WAIT_MS = 300000;
@@ -25,6 +26,11 @@ function projectRelative(root, file) {
 
 function deadlineReached(state, now) {
   return Boolean(state.limits?.deadlineUtc) && now >= Date.parse(state.limits.deadlineUtc);
+}
+
+// A stopped run has ended its work, and so has a complete one, except for the closing record, whose work a complete run still admits.
+function runEnded(state, worker) {
+  return state.status === 'stopped' || state.status === 'complete' && worker.taskId !== CLOSING_TARGET;
 }
 
 // Read-only: observes the saved worker until it leaves its polling statuses, its runner process is gone,
@@ -59,7 +65,7 @@ async function awaitWorker(store, request, dependencies = {}) {
     const elapsedMs = now() - startedAt;
     const reason = !polling ? 'worker-result'
       : runnerAlive === false ? 'runner-missing'
-      : ['complete', 'stopped'].includes(state.status) ? 'run-stopped'
+      : runEnded(state, worker) ? 'run-stopped'
       : deadlineReached(state, now()) ? 'deadline'
       : elapsedMs >= timeoutMs ? 'timeout'
       : null;

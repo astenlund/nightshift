@@ -4,8 +4,9 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { randomUUID } = require('node:crypto');
 const { RunError, requireCondition, text } = require('./store');
+const { CLOSING_TARGET } = require('./actions');
 const { resolveTrustedExecutable } = require('../filesystem-primitives');
-const { assertAction } = require('./lifecycle');
+const { assertAction, targetById } = require('./lifecycle');
 const { timeLeft } = require('./limits');
 const { projectFile, snapshot } = require('./evidence');
 const { verificationEnvironment } = require('../releases/entry');
@@ -52,7 +53,7 @@ async function reservedOperation(store, request, work, dependencies = {}) {
   const registered = store.update(request.actor, request.revision, 'operation-reserved', state => {
     assertAction(state, request);
     state.workers.push({ id, session: null, role: 'operation', assignment: request.action, action: request.action, taskId: request.taskId, operationName: request.check?.name ?? request.probeId, writes: [], status: 'starting', phase: 'reserved', helperProcess, terminationPath });
-    if (pending) state.tasks.find(task => task.id === request.taskId).checks.push(pending);
+    if (pending) targetById(state, request.taskId).checks.push(pending);
   });
   const update = change => store.update(request.actor, store.read().revision, 'operation-progress', state => {
     const worker = state.workers.find(item => item.id === id);
@@ -97,7 +98,7 @@ async function reservedOperation(store, request, work, dependencies = {}) {
 
     return store.update(request.actor, store.read().revision, 'operation-completed', state => {
       const worker = state.workers.find(item => item.id === id);
-      const task = state.tasks.find(item => item.id === request.taskId);
+      const task = request.taskId === CLOSING_TARGET ? state.closing?.docs : state.tasks.find(item => item.id === request.taskId);
       requireCondition(worker && task, 'operation-not-active', 'Execution ownership or task is missing');
       if (request.action === 'check') {
         // Completion order must not replace a newer invocation's result.

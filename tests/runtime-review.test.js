@@ -632,7 +632,7 @@ for (const interleaved of [true, false]) {
     store.create({ objective: f.requirements, authority: 'User', controller: actor, controllerClaim: fixtureControllerClaim(actor), tasks: [{ id: f.taskId, title: 'Work', agreement: { source: 'User', outcome: f.requirements } }] });
     const act = request => executeWithFixtureController(f.root, { actor, revision: store.read().revision, taskId: f.taskId, ...request });
     const receiptPath = result => path.relative(f.root, result.receiptFile).split(path.sep).join('/');
-    const dispatch = (kind, assigned, output) => executeWithFixtureController(f.root, { action: 'dispatch', actor, revision: store.read().revision, taskId: f.taskId, review: { ...f, kind, findings: assigned } }, { runAgent: options => mockAgent(options, DIMENSIONS.code, { findings: output, session: kind === 'skeptic' ? 'skeptic-session' : 'lead-session' }) });
+    const dispatch = (kind, assigned, output) => executeWithFixtureController(f.root, { action: 'dispatch', actor, revision: store.read().revision, taskId: f.taskId, review: { ...f, kind, findings: assigned } }, { runAgent: options => mockAgent(options, DIMENSIONS[kind === 'docs' ? 'docs' : 'code'], { findings: output, session: { skeptic: 'skeptic-session', docs: 'docs-session' }[kind] ?? 'lead-session' }) });
     try {
       const claims = ['first', 'second'].map(id => ({ id, severity: 'important', required: true, consequence: 'Fixture boundary needs correction', evidence: 'Concrete fixture branch' }));
       const lead = await dispatch('code', [], claims);
@@ -653,6 +653,9 @@ for (const interleaved of [true, false]) {
       await act({ action: 'check', check: { name: 'Fixture verification', executable: process.execPath, args: ['--version'], paths: ['subject.txt', 'new.txt'] } });
       const assessed = await dispatch('code', [], []);
       await act({ action: 'review', receipt: receiptPath(assessed) });
+      await act({ action: 'advance' });
+      const documented = await dispatch('docs', [], []);
+      await act({ action: 'review', receipt: receiptPath(documented) });
       await act({ action: 'advance' });
       await act({ action: 'advance', evidence: 'No additional fixture documentation needed' });
       await act({ action: 'retrospective', evidence: 'Batch ordering considered' });
@@ -857,8 +860,8 @@ for (const kind of ['docs', 'lore']) {
     const store = new RunStore(f.root, { create: true });
     store.create({ objective: 'Assess the standalone artifact', authority: 'User requested standalone maintenance', controller: actor, controllerClaim: fixtureControllerClaim(actor), tasks: [{ id: f.taskId, title: 'Standalone maintenance', kind, agreement: { source: 'User', outcome: 'Review the requested artifact and retain any instruction approval as pending' } }] });
     const act = request => executeWithFixtureController(f.root, { actor, revision: store.read().revision, taskId: f.taskId, ...request });
-    const assess = async () => {
-      const result = await executeWithFixtureController(f.root, { action: 'dispatch', actor, revision: store.read().revision, taskId: f.taskId, review: { ...f, kind: 'code' } }, { runAgent: options => mockAgent(options) });
+    const assess = async (lens = 'code') => {
+      const result = await executeWithFixtureController(f.root, { action: 'dispatch', actor, revision: store.read().revision, taskId: f.taskId, review: { ...f, kind: lens } }, { runAgent: options => mockAgent(options, DIMENSIONS[lens]) });
       await act({ action: 'review', receipt: path.relative(f.root, result.receiptFile).split(path.sep).join('/') });
     };
     try {
@@ -866,6 +869,12 @@ for (const kind of ['docs', 'lore']) {
       await assess();
       await act({ action: 'advance' });
       assert.equal(store.read().tasks[0].stage, kind === 'lore' ? 'retrospective' : 'documentation');
+      if (kind === 'docs') {
+        // A direct code assessment does not replace the docs review a docs task needs to complete.
+        await assert.rejects(act({ action: 'advance', evidence: 'Reviewed maintenance completed without applying instructions' }), { code: 'docs-review-required' });
+        await assess('docs');
+        await act({ action: 'advance' });
+      }
       await act({ action: 'advance', evidence: 'Reviewed maintenance completed without applying instructions' });
       if (kind === 'docs') await act({ action: 'retrospective', evidence: 'No additional instruction proposal' });
       await act({ action: 'followup', item: { id: 'approval', context: 'The reviewed instruction proposal is awaiting the user', recommendation: 'Consider the unchanged reviewed proposal', decisionTerms: ['approve', 'adjust', 'revert'] } });

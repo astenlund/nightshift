@@ -7,6 +7,9 @@ const RUNTIME_ACTIONS = new Set([
   'triage', 'followup', 'resolve-followup', 'invalidate-continuation', 'continuation', 'handover', 'worker', 'worker-finished', 'stop', 'complete',
 ]);
 
+// Tracking edits applied after triage are reviewed by a run-level record, which task operations address by this reserved identity.
+const CLOSING_TARGET = '#closing';
+
 function isReadOnlyAction(action) { return READ_ONLY_ACTIONS.has(action); }
 
 function isRuntimeAction(action) { return RUNTIME_ACTIONS.has(action); }
@@ -17,4 +20,4 @@ function unknownActionMessage(action) {
   return `The request key action ${supplied}; accepted actions: ${[...RUNTIME_ACTIONS].join(', ')}`;
 }
 
-module.exports = { RUNTIME_ACTIONS, isReadOnlyAction, isRuntimeAction, unknownActionMessage };
+module.exports = { CLOSING_TARGET, RUNTIME_ACTIONS, isReadOnlyAction, isRuntimeAction, unknownActionMessage };

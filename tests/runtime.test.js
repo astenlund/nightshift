@@ -42,6 +42,8 @@ function review(fixture, findings = [], overrides = {}) {
   return { status: 'complete', commitments: commitmentsFor(fixture.store.read().tasks), strength: 'strong', session: 'independent-reviewer', independent: true, broad: true, attributionVerified: true, dimensions: [...DIMENSIONS.code], coverageEvidence: 'Read complete diff and both surrounding paths; checked sibling integration and error handling', snapshot: snapshot(fixture.root, ['subject.txt', 'sibling.txt']), findings, ...overrides };
 }
 
+const DOCS_LENS = { kind: 'docs', dimensions: [...DIMENSIONS.docs], session: 'independent-docs-reviewer' };
+
 test('state and history commit together, rollback preserves the previous revision', t => {
   const f = fixture(t);
   assert.throws(() => f.store.update(actor, 0, 'failure', state => { state.objective = 'corrupted'; throw new Error('simulated interruption'); }), /simulated interruption/);
@@ -152,6 +154,11 @@ test('documentation, retrospective and triage occur in order; unanswered follow-
   apply(f, { action: 'advance' });
   assert.equal(f.store.read().tasks[0].stage, 'documentation');
   assert.throws(() => apply(f, { action: 'advance' }), { code: 'invalid-request' });
+  assert.throws(() => apply(f, { action: 'advance', evidence: 'Documentation matches the resulting behavior' }), { code: 'docs-review-required' });
+  apply(f, { action: 'review', review: review(f, [], DOCS_LENS) });
+  assert.equal(f.store.read().tasks[0].stage, 'review');
+  apply(f, { action: 'advance' });
+  assert.equal(f.store.read().tasks[0].stage, 'documentation');
   apply(f, { action: 'advance', evidence: 'Documentation matches the resulting behavior' });
   assert.equal(f.store.read().tasks[0].status, 'complete');
   assert.equal(obligationBrief(f.store.read()).closing.stage, 'retrospective');
@@ -167,6 +174,12 @@ test('documentation, retrospective and triage occur in order; unanswered follow-
 for (const kind of ['docs', 'lore']) {
   test(`standalone ${kind} retains its work and one session closing sequence`, t => {
     const f = fixture(t, [{ id: 'subject', title: 'Standalone work', kind, agreement: { source: 'User', outcome: 'Complete this standalone operation' } }]);
+    if (kind === 'docs') {
+      // A docs task has no direct completion path: its complete change needs an independent docs review first.
+      assert.throws(() => apply(f, { action: 'advance', evidence: 'Requested standalone work completed without an instruction change' }), { code: 'docs-review-required' });
+      apply(f, { action: 'review', review: review(f, [], DOCS_LENS) });
+      apply(f, { action: 'advance' });
+    }
     apply(f, { action: 'advance', evidence: 'Requested standalone work completed without an instruction change' });
     assert.equal(f.store.read().tasks[0].status, 'complete');
     if (kind === 'docs') apply(f, { action: 'retrospective', evidence: 'No worthwhile instruction proposal' });

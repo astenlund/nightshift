@@ -3,6 +3,7 @@
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
+const { spawnSync } = require('node:child_process');
 const test = require('node:test');
 const { execute } = require('../internal/runtime/cli');
 const { RunStore } = require('../internal/runtime/store');
@@ -391,8 +392,12 @@ test('resumption preserves handover but cannot reuse a previously verified conti
 for (const adopted of [false, true]) {
   test(`closed report bookkeeping needs ownership but no new engineering grant: adopted=${adopted}`, async t => {
     const f = await fixture(t, { tasks: [{ id: 'docs', title: 'Docs', kind: 'docs', agreement: { source: 'User', outcome: 'Preserve reports' } }] });
+    // The maintenance task completes through its mechanical exemption, which binds to the inventory of a repository.
+    const initialized = spawnSync('git', ['init', '--quiet'], { cwd: f.root, windowsHide: true, encoding: 'utf8' });
+    assert.equal(initialized.status, 0, initialized.stderr);
+    fs.writeFileSync(path.join(f.root, 'notes.md'), '# Fixture notes\n');
     await f.call({ action: 'handover', authority: 'User hands over documentation' });
-    await f.call({ action: 'advance', taskId: 'docs', evidence: 'Fixture documentation completed' });
+    await f.call({ action: 'advance', taskId: 'docs', evidence: 'Fixture documentation completed', docsExemption: 'Fixture maintenance changes nothing by judgment' });
     await f.call({ action: 'retrospective', evidence: 'Fixture retrospective completed' });
     const report = '.nightshift/runs/reports/fixture.md';
     fs.mkdirSync(path.dirname(path.join(f.root, report)), { recursive: true });

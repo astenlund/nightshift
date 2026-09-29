@@ -96,7 +96,52 @@ function snapshot(root, paths) {
   return { digest: hash(JSON.stringify(files)), files };
 }
 
-// Unchanged bytes are fresh. Changed bytes are fresh only when Git would commit the same content, as after a line-ending renormalization; evidence recorded without blob ids keeps the byte comparison.
+// The recorded files whose bytes changed, and among them those whose recorded blob id lets a renormalization be recognized:
+// both versions exist and the record carries a blob id; evidence recorded without blob ids keeps the byte comparison.
+function byteChanges(root, files) {
+  const current = new Map(readIdentities(root, files.map(file => file.path)).map(file => [file.path, file.sha256]));
+  const changed = files.filter(file => current.get(file.path) !== file.sha256);
+  return { changed, candidates: changed.filter(file => file.sha256 !== null && current.get(file.path) !== null && typeof file.blob === 'string') };
+}
+
+// The candidates Git would commit with their recorded content, as after a line-ending renormalization, established with one
+// object-format query and one batched hash however many files changed. Anything unverifiable is left out, never counted as unchanged.
+function renormalizedPaths(root, candidates) {
+  if (candidates.length === 0) return new Set();
+  const format = gitObjectFormat(root);
+  if (!format) return new Set();
+  const blobs = verifiedBlobs(root, readIdentities(root, candidates.map(file => file.path), format).filter(file => file.sha256 !== null));
+  return new Set(candidates.filter(file => blobs.get(file.path) === file.blob).map(file => file.path));
+}
+
+// Git's refusal when discovery found no repository at all. An unusable GIT_DIR or .git file draws a different refusal that names
+// the path it could not use, so only this wording is evidence of a project outside Git.
+const NO_REPOSITORY = /not a git repository \(or any of the parent directories\)/i;
+
+function samePath(left, right) {
+  return process.platform === 'win32' ? left.toLowerCase() === right.toLowerCase() : left === right;
+}
+
+// Whether root or an ancestor Git would search holds a .git entry of any kind; discovery never enters a ceiling directory.
+function gitEntryInDiscovery(root) {
+  const ceilings = (process.env.GIT_CEILING_DIRECTORIES ?? '').split(path.delimiter).filter(Boolean).map(entry => path.resolve(entry));
+  for (let directory = path.resolve(root); ; directory = path.dirname(directory)) {
+    if (fs.lstatSync(path.join(directory, '.git'), { throwIfNoEntry: false })) return true;
+    const parent = path.dirname(directory);
+    if (parent === directory || ceilings.some(ceiling => samePath(ceiling, parent))) return false;
+  }
+}
+
+// True only when every sign shows root outside any Git worktree: no GIT_DIR or GIT_WORK_TREE redirects discovery, no .git entry
+// of any kind lies on the discovery path, even a broken one Git would skip, and Git itself refuses with its no-repository wording.
+// Anything else, including a Git failure, is no evidence and returns false. Messages are forced untranslated for that match.
+function outsideGitWorktree(root) {
+  if (process.env.GIT_DIR || process.env.GIT_WORK_TREE || gitEntryInDiscovery(root)) return false;
+  const result = spawnSync('git', ['rev-parse', '--is-inside-work-tree'], { ...GIT_OPTIONS, cwd: root, env: { ...process.env, LC_ALL: 'C', LANGUAGE: 'C' } });
+  return !result.error && result.status === 128 && NO_REPOSITORY.test(result.stderr ?? '');
+}
+
+// Unchanged bytes are fresh. Changed bytes are fresh only when Git would commit the same content, as after a line-ending renormalization.
 function fresh(root, evidence) {
   if (!evidence || !Array.isArray(evidence.files) || evidence.files.length === 0) return false;
   if (hash(JSON.stringify(evidence.files)) !== evidence.digest) return false;
@@ -104,16 +149,35 @@ function fresh(root, evidence) {
     const current = projectInventory(root, evidence.excludedPaths ?? [], evidence.includedPaths ?? []);
     if (JSON.stringify(current) !== JSON.stringify(evidence.files.map(file => file.path))) return false;
   }
-  const current = new Map(readIdentities(root, evidence.files.map(file => file.path)).map(file => [file.path, file.sha256]));
-  const changed = evidence.files.filter(file => current.get(file.path) !== file.sha256);
+  const { changed, candidates } = byteChanges(root, evidence.files);
   if (changed.length === 0) return true;
-  if (changed.some(file => file.sha256 === null || current.get(file.path) === null || typeof file.blob !== 'string')) return false;
-  const format = gitObjectFormat(root);
-  if (!format) return false;
-  const reread = readIdentities(root, changed.map(file => file.path), format);
-  if (reread.some(file => file.sha256 === null)) return false;
-  const blobs = verifiedBlobs(root, reread);
-  return changed.every(file => blobs.get(file.path) === file.blob);
+  // A change that no blob id can explain decides the answer without consulting Git.
+  if (candidates.length !== changed.length) return false;
+  return renormalizedPaths(root, candidates).size === changed.length;
+}
+
+// A snapshot of the whole reviewable project inventory, in the form a review's context snapshot takes.
+function inventorySnapshot(root, excluded = [], included = []) {
+  return { ...snapshot(root, projectInventory(root, excluded, included)), inventory: true, excludedPaths: excluded, includedPaths: included };
+}
+
+// The paths that appeared, disappeared or changed content since an inventory snapshot, sorted; null when that cannot be established.
+function changedPaths(root, evidence) {
+  if (evidence?.inventory !== true || !Array.isArray(evidence.files) || hash(JSON.stringify(evidence.files)) !== evidence.digest) return null;
+  try {
+    const current = projectInventory(root, evidence.excludedPaths ?? [], evidence.includedPaths ?? []);
+    const recorded = new Set(evidence.files.map(file => file.path));
+    const present = new Set(current);
+    const changed = new Set([...current.filter(file => !recorded.has(file)), ...[...recorded].filter(file => !present.has(file))]);
+    const { changed: altered, candidates } = byteChanges(root, evidence.files.filter(file => present.has(file.path)));
+    const renormalized = renormalizedPaths(root, candidates);
+    for (const file of altered) if (!renormalized.has(file.path)) changed.add(file.path);
+
+    return [...changed].sort();
+  } catch {
+    // An unreadable or unsafe entry means the difference cannot be established, which never counts as confined.
+    return null;
+  }
 }
 
 function projectInventory(root, excluded = [], included = []) {
@@ -165,4 +229,4 @@ function verifyCommand(root, request) {
   return { ...result, snapshot: after, inputsUnchanged, passed: !result.error && result.exitCode === 0 && inputsUnchanged };
 }
 
-module.exports = { executeCommand, fileIdentity, fileSha256, fresh, hash, projectFile, projectInventory, snapshot, verifyCommand };
+module.exports = { changedPaths, executeCommand, fileIdentity, fileSha256, fresh, hash, inventorySnapshot, outsideGitWorktree, projectFile, projectInventory, snapshot, verifyCommand };

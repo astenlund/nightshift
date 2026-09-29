@@ -1,6 +1,7 @@
 'use strict';
 
 const { workerIsActive } = require('./workers');
+const { CLOSING_TARGET } = require('./actions');
 
 const fs = require('node:fs');
 const path = require('node:path');
@@ -98,17 +99,21 @@ class RunStore {
       this.db.prepare('INSERT OR IGNORE INTO artifacts VALUES (?, ?)').run(id, body);
       return { $artifact: id };
     };
-    for (const task of copy.tasks) {
-      for (const check of task.checks) {
+    const closing = copy.closing?.docs;
+    for (const target of closing ? [...copy.tasks, closing] : copy.tasks) {
+      for (const check of target.checks) {
         if (check.snapshot) check.snapshot = stash(check.snapshot);
         if (typeof check.output === 'string' && check.output.length > 4096) check.output = stash(check.output);
       }
-      for (const review of task.reviews) {
+      for (const review of target.reviews) {
         if (review.snapshot) review.snapshot = stash(review.snapshot);
         if (review.contextSnapshot) review.contextSnapshot = stash(review.contextSnapshot);
       }
-      for (const finding of task.findings) if (finding.validation?.snapshot) finding.validation.snapshot = stash(finding.validation.snapshot);
+      for (const finding of target.findings) if (finding.validation?.snapshot) finding.validation.snapshot = stash(finding.validation.snapshot);
+      if (target.docsExemption?.snapshot) target.docsExemption.snapshot = stash(target.docsExemption.snapshot);
     }
+    if (closing?.baseline) closing.baseline = stash(closing.baseline);
+    if (copy.closing?.carriedBaseline) copy.closing.carriedBaseline = stash(copy.closing.carriedBaseline);
     return copy;
   }
 
@@ -148,6 +153,7 @@ class RunStore {
       requireCondition(Array.isArray(input.tasks) && input.tasks.length > 0, 'empty-queue', 'An authorized finite queue is required');
       const ids = input.tasks.map(task => text(task.id, 'task.id'));
       requireCondition(new Set(ids).size === ids.length, 'invalid-queue', 'Task identities must be unique');
+      requireCondition(!ids.includes(CLOSING_TARGET), 'invalid-queue', `The task identity ${CLOSING_TARGET} is reserved for the closing record`);
       const tasks = input.tasks.map(task => {
         text(task.title, 'task.title');
         text(task.agreement?.source, 'task.agreement.source');
@@ -176,7 +182,7 @@ class RunStore {
       }
       requireCondition(available.length === tasks.length, 'invalid-queue', 'Queue contains a dependency cycle');
       const now = new Date().toISOString();
-      const state = { schema: 1, id: randomUUID(), root: this.root, revision: 0, createdAt: now, updatedAt: now, objective: input.objective, authority: input.authority, controller: input.controller, publication: input.publication ?? { authorized: false }, limits: input.limits ?? {}, mode: input.mode ?? 'attended', resourceMode: input.resourceMode ?? 'development', resources: input.resources ?? null, executionResources: input.resources ?? null, controllerClaim: input.controllerClaim ?? null, operationReservations: 1, dispatches: 0, status: 'running', tasks, workers: [], followups: [], continuation: null };
+      const state = { schema: 1, id: randomUUID(), root: this.root, revision: 0, createdAt: now, updatedAt: now, objective: input.objective, authority: input.authority, controller: input.controller, publication: input.publication ?? { authorized: false }, limits: input.limits ?? {}, mode: input.mode ?? 'attended', resourceMode: input.resourceMode ?? 'development', resources: input.resources ?? null, executionResources: input.resources ?? null, controllerClaim: input.controllerClaim ?? null, operationReservations: 1, dispatches: 0, status: 'running', docsGate: input.docsGate !== false, tasks, workers: [], followups: [], continuation: null };
       // A run created unattended was handed over at creation, so it carries the same record the handover action writes.
       if (state.mode === 'unattended') state.handover = { authority: input.authority, revision: state.revision };
       this.save(state, 'created');

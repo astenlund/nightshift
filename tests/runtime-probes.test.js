@@ -135,6 +135,10 @@ for (const withSelectedArtifact of [false, true]) {
     await importReview(refreshed);
     await check();
     await act({ action: 'advance' });
+    await assert.rejects(act({ action: 'advance', evidence: 'Documentation updated' }), { code: 'docs-review-required' });
+    const documentation = await executeWithFixtureController(root, { action: 'dispatch', actor, revision: store.read().revision, taskId: 'work', review: { ...review, kind: 'docs' } }, { runAgent: options => assessment(options, { requestId: options.schema.properties.requestId.enum[0], status: 'complete', coverage: DIMENSIONS.docs.map(dimension => ({ dimension, evidence: 'Documentation assessed against the change' })), findings: [], summary: 'Documentation matches the change', probes: [] }) });
+    await importReview(documentation);
+    await act({ action: 'advance' });
     await act({ action: 'advance', evidence: 'Documentation updated' });
     await act({ action: 'retrospective', evidence: 'Retrospective completed' });
     await act({ action: 'triage', evidence: 'Triage completed' });

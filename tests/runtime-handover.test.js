@@ -3,6 +3,7 @@
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
+const { spawnSync } = require('node:child_process');
 const test = require('node:test');
 const { RunStore } = require('../internal/runtime/store');
 const { execute } = require('../internal/runtime/cli');
@@ -18,6 +19,10 @@ function fixture(t, options = {}) {
   const parent = path.resolve(__dirname, '../.tmp/runtime-handover');
   fs.mkdirSync(parent, { recursive: true });
   const root = fs.mkdtempSync(path.join(parent, 'case-'));
+  // A repository of its own gives the docs gate a project inventory to bind the maintenance task's mechanical exemption to.
+  const initialized = spawnSync('git', ['init', '--quiet'], { cwd: root, windowsHide: true, encoding: 'utf8' });
+  assert.equal(initialized.status, 0, initialized.stderr);
+  fs.writeFileSync(path.join(root, 'notes.md'), '# Maintained notes\n');
   const store = new RunStore(root, { create: true });
   t.after(() => { store.close(); fs.rmSync(root, { recursive: true, force: true }); });
   store.create({ objective: 'Deliver accepted maintenance', authority: 'User agreed the scope', controller: actor, limits: { maxDispatches: 7 }, publication: { authorized: false }, tasks: [{ id: 'docs', title: 'Maintenance', kind: 'docs', agreement: { source: 'User', outcome: 'Reconciled documentation' } }], ...options });
@@ -27,7 +32,7 @@ function fixture(t, options = {}) {
     fs.writeFileSync(path.join(root, relative), content);
     return relative;
   };
-  const finish = () => act({ action: 'advance', taskId: 'docs', evidence: 'Documentation matches delivered behavior' });
+  const finish = () => act({ action: 'advance', taskId: 'docs', evidence: 'Documentation matches delivered behavior', docsExemption: 'Fixture maintenance changes no documentation by judgment' });
   const hook = (event, session = actor.session) => handleHook({ cwd: root, session_id: session, hook_event_name: event });
   return { root, store, act, writeReport, finish, hook };
 }

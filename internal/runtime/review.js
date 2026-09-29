@@ -7,7 +7,7 @@ const { spawnSync } = require('node:child_process');
 const { isDeepStrictEqual } = require('node:util');
 const { DIMENSIONS, commitmentsFor } = require('./lifecycle');
 const { requireCondition, safeDirectory, text } = require('./store');
-const { fileIdentity, fresh, hash, projectFile, projectInventory, snapshot } = require('./evidence');
+const { fileIdentity, fresh, hash, inventorySnapshot, projectFile, snapshot } = require('./evidence');
 const { codexModelContradiction, runAgent } = require('./hosts');
 const { writeJson, writeText } = require('./artifacts');
 const { PROBE_TIMEOUT_CAP_MS, PROBE_TIMEOUT_FLOOR_MS, loadProbeEvidence } = require('./probes');
@@ -30,16 +30,23 @@ const DIMENSION_BRIEFS = Object.freeze({
   'design-maintainability': 'Are local code and overall system decomposition proportionate and understandable? Check local clarity, ownership, reuse and duplication, and system module boundaries, dependency direction, shared contracts and coupling.',
   'performance-resources': 'Does the change avoid consequential latency, throughput, resource or operating-cost problems under realistic conditions?',
   'tests-evidence': 'Do meaningful assertions and realistic execution establish the behavior across the other lenses, and expose remaining uncertainty without mandating a separate verifier?',
+  'claim-accuracy': 'Does each changed or affected claim match the code, records and evidence it describes, at the version it names?',
+  'sweep-completeness': 'Which documentation, changed or not, did the cumulative change leave stale, contradictory or missing, including navigable references and history moves?',
+  'backlog-conventions': 'Do backlog changes follow the project\'s documented grammar, dependency, history and retirement conventions? Parser validity itself is evidenced by the controller\'s recorded ready parser check.',
+  'sibling-consistency': 'Does the documentation agree with sibling entries, index excerpts and their records, and history files?',
+  'proportionality': 'Is depth proportionate to importance, with useful reasoning and evidence preserved and nothing overstated or described as current before it exists?',
 });
+
+// The assessment lens: a skeptic takes the lens of the findings it validates, so docs findings are judged as documentation.
+function lensFor(options) {
+  if (options.kind === 'skeptic') return options.lens ?? 'code';
+  return options.kind === 'spec' || options.kind === 'docs' ? options.kind : 'code';
+}
 
 function git(root, args) {
   const result = spawnSync('git', args, { cwd: root, windowsHide: true, encoding: 'utf8', maxBuffer: 32 * 1024 * 1024, timeout: 30000 });
   requireCondition(!result.error && result.status === 0, 'git-failed', result.error?.message ?? result.stderr);
   return result.stdout;
-}
-
-function contextFiles(root, excluded = [], included = []) {
-  return projectInventory(root, excluded, included);
 }
 
 function resolveExclusions(root, excluded, baseSha) {
@@ -73,7 +80,7 @@ function validateBase(root, baseSha) {
 function validateRequest(options) {
   text(options?.requirements, 'review.requirements');
   text(options?.rules, 'review.rules');
-  requireCondition(options.kind === undefined || ['code', 'spec', 'skeptic'].includes(options.kind), 'invalid-review-kind', 'Unknown independent assessment kind');
+  requireCondition(options.kind === undefined || ['code', 'spec', 'docs', 'skeptic'].includes(options.kind), 'invalid-review-kind', 'Unknown independent assessment kind');
   for (const field of ['artifactPaths', 'excludedPaths']) {
     requireCondition(options[field] === undefined || Array.isArray(options[field]) && options[field].every(file => typeof file === 'string' && file.trim()), 'invalid-review-paths', `${field} must contain project-relative file paths`);
   }
@@ -162,9 +169,11 @@ function buildPrompt(request) {
   const scope = skeptic ? 'Use the complete supplied artifact and cumulative change as context for validating the assigned claims and their affected siblings.' : 'Assess the complete supplied artifact and cumulative change, surrounding code and sibling paths.';
   const purpose = skeptic ? 'deciding each assigned claim' : 'a credible broad assessment';
   const common = `You are a fresh independent ${skeptic ? 'skeptic' : 'strong lead reviewer'}. ${scope} Reviewed files are immutable. Do not edit them, commit, or publish. Mutating probes require a separate isolated fixture; if tools cannot support a deciding check, report the missing evidence. Do not delegate unless the assignment explicitly includes peer dispatch. Report only concrete consequences with evidence; do not manufacture findings or prescribe unnecessary implementation detail.\n\nRequest: ${request.id}\nRequirements:\n${request.requirements}\n\nAll applicable review dimensions:\n${request.dimensions.join('\n')}\n\nRead context/diff.patch, context/manifest.json and the files in project/ as needed for ${purpose}. The full source snapshot is available. Prior fixes are included in the cumulative change and need surrounding/sibling coverage.\n`;
+  const lead = 'Evaluate all dimensions without quotas or equal-depth narration. The author has not selected relevant dimensions. If the assignment is too large for credible coverage, return incomplete and describe the needed peer coverage. One underlying problem is one finding.\n';
+  const documentation = 'This is a documentation review. The code in the cumulative change is context: judge what the documentation, including the backlog, says about it, not whether the code is correct. Report as a finding any changed file you judge to be operating instructions that agents load or are directed to follow during a run, such as skills, instruction files or runtime reference guidance, so the controller routes it to code assessment.\n';
   const role = request.kind === 'skeptic'
     ? `The assigned finding set is closed: return exactly one verdict for each supplied full id and retain that id verbatim. Validate each claim against concrete evidence, attempting refutation. Separate factual validity and practical value. Missing evidence is unverified. Evaluate whether it is worthwhile to implement, defer or skip, preserving agreed obligations. Unassigned observations belong in summary for separate controller routing and independent assessment before disposition; they are not assigned verdicts. Findings:\n${JSON.stringify(request.findings, null, 2)}\n`
-    : 'Evaluate all dimensions without quotas or equal-depth narration. The author has not selected relevant dimensions. If the assignment is too large for credible coverage, return incomplete and describe the needed peer coverage. One underlying problem is one finding.\n';
+    : request.kind === 'docs' ? documentation + lead : lead;
   const definitions = request.dimensions.map(dimension => `${dimension}: ${DIMENSION_BRIEFS[dimension]}`).join('\n');
   const execution = `If a deciding claim needs execution unavailable in your read-only tools, request a bounded probe in probes, with its purpose, exact executable/args, timeout and ASCII fixture files. ${PROBE_TIMEOUT_RULE} The controller executes it in a separate private copy and returns raw command/output evidence for your independent assessment. Remain incomplete/unverified until that evidence is sufficient. A probe never authorizes canonical project repairs. Available returned probe evidence is under context/probes/.\n`;
   return common + definitions + '\n\n' + role + execution + '\nReturn the requested structured report with requestId, status, coverage, findings, probes and summary. Use an empty probes array when no execution evidence is missing.\n';
@@ -190,8 +199,8 @@ async function dispatchReview(root, options, dependencies = {}) {
     fs.mkdirSync(context);
     const excludedPaths = resolveExclusions(canonical, options.excludedPaths ?? [], options.baseSha);
     const includedPaths = [...new Set(options.artifactPaths ?? [])].sort();
-    const files = contextFiles(canonical, excludedPaths, includedPaths);
-    const contextSnapshot = { ...snapshot(canonical, files), inventory: true, excludedPaths, includedPaths };
+    const contextSnapshot = inventorySnapshot(canonical, excludedPaths, includedPaths);
+    const files = contextSnapshot.files.map(file => file.path);
     const captured = options.kind === 'spec' ? snapshot(canonical, options.artifactPaths) : contextSnapshot;
     if (options.kind === 'spec') requireCondition(captured.files.every(file => file.sha256 !== null), 'missing-spec', 'Whole-spec assessment requires the governing artifact to exist');
     const exclusionArgs = excludedPaths.map(file => `:(exclude,literal)${file}`);
@@ -223,7 +232,7 @@ async function dispatchReview(root, options, dependencies = {}) {
     }
     // A repository boundary prevents host discovery from walking into the controller's checkout.
     git(workspace, ['init', '--quiet']);
-    const request = { id, workspace: path.relative(canonical, workspace).split(path.sep).join('/'), runId: options.runId, taskId: options.taskId, coveredTaskIds: options.coveredTaskIds ?? [options.taskId], commitments: options.commitments ?? {}, resources: options.resources ?? null, controller: options.controller ?? null, kind: options.kind ?? 'code', requirements: text(options.requirements, 'review requirements'), dimensions: DIMENSIONS[options.kind === 'spec' ? 'spec' : 'code'], findings: options.findings ?? [], snapshot: captured, contextSnapshot, baseSha: options.baseSha };
+    const request = { id, workspace: path.relative(canonical, workspace).split(path.sep).join('/'), runId: options.runId, taskId: options.taskId, coveredTaskIds: options.coveredTaskIds ?? [options.taskId], commitments: options.commitments ?? {}, resources: options.resources ?? null, controller: options.controller ?? null, kind: options.kind ?? 'code', requirements: text(options.requirements, 'review requirements'), dimensions: DIMENSIONS[lensFor(options)], findings: options.findings ?? [], snapshot: captured, contextSnapshot, baseSha: options.baseSha };
     writeJson(path.join(target, 'request.json'), request);
     options.onPrepared?.(request);
     const systemFile = path.join(target, 'system.md');
@@ -328,4 +337,4 @@ function readReceipt(root, relative, state, taskId) {
   return receipt;
 }
 
-module.exports = { DEFAULT_REVIEW_TIMEOUT_MS, STRONG_MODELS, buildPrompt, contextFiles, dispatchReview, parseReport, readReceipt, schemaFor, validateBase, validateReport, validateRequest };
+module.exports = { DEFAULT_REVIEW_TIMEOUT_MS, STRONG_MODELS, buildPrompt, dispatchReview, parseReport, readReceipt, schemaFor, validateBase, validateReport, validateRequest };
