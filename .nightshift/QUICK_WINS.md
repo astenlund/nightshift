@@ -114,6 +114,8 @@ A contrasting observation on 2026-09-28 in run `7f0cb8e1-8a73-4a4c-b5f9-f8ec6266
 
 A second observation on 2026-09-28 in run `f6288235-b263-4394-8f83-4d0474cb6708`, on a larger change (a Windows job runner protocol change with runtime and test code across about ten files, plus documentation): every dispatch's rules named the recorded passing checks (the CI runtime file list, the release tests, the manifest check, a live dotnet check and later the backlog parser check), stated that rerunning those suites as probes adds nothing, and asked for a probe only for evidence the checks could not supply. Across four Codex `gpt-6-astra` assessments (`678cd7c0`, 656,424 tokens; `195d85f0`, 572,295; `1ac2cdd5`, 681,653; `336224cb`, 833,115) and one Claude Fable skeptic (`7a402328`, 312,477), none requested a suite rerun or any probe; the one incomplete return asked for investigation evidence instead. It is still a single run without a control. The user chose at triage to record it here.
 
+A third observation on 2026-09-30 in run `7969bab6-360c-4bd5-a5bd-33dfe3ef28d9`, a change of 183 inserted lines across runtime code, tests, guidance and packaging, plus backlog edits: every dispatch's rules again named the recorded passing checks (the runtime suites, the packaging tests, the release manifest and, once recorded, a strict ready parser check and the backlog line check) and said rerunning them as probes adds nothing. None of the eight dispatches, five Codex `gpt-6-astra` code and docs assessments of 661,511 to 1,000,908 tokens each and three Claude Fable skeptics, requested a probe or a suite rerun, and every one returned complete. Still no control. The user chose at triage to record it here.
+
 **Requires:** none.
 
 ### Codex sandbox blocks the launcher from starting the host
@@ -197,6 +199,8 @@ Reported on 2026-09-12 from an unattended Claude handover in FeatherPod-Private,
 The `check` operation has the same remaining gap, observed on 2026-09-28 in run `a0eaaee7-6c97-4261-960d-346c6a4654aa` on installed 3.2.15: like `probe`, it returns the focused obligation brief, which carries no exit code, output or pass flag, so the controller read every check result through a full `inspect` of run state. The user chose at triage to widen this entry to cover it.
 
 For both probe and check, expose the recorded result in the response clearly enough for the controller to locate and interpret the evidence without inspecting full run state. Settle the result metadata and update the runtime reference and affected consumers together, preserving the saved raw command/output and independent interpretation requirement. Add focused coverage for both response shapes and result references, including a probe and a check whose command exits unsuccessfully. Runtime behavior changes ship with a version increase.
+
+Recurred on 2026-09-30 in run `7969bab6-360c-4bd5-a5bd-33dfe3ef28d9` on installed 3.2.16: each of its eleven `check` operations again returned only the obligation brief, so the controller read every exit code and pass flag through a full `inspect` of run state. The user chose at triage to record it here.
 
 **Requires:** none.
 
