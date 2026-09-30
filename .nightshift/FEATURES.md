@@ -94,6 +94,12 @@ Keep the reviewer that found an issue available through its repair instead of al
 
 **Requires:** none.
 
+### [Dispatch reviewer peers and return their evidence to the lead](features/reviewer-peer-dispatch.md)
+
+Make the agreed peer staffing executable: a lead that needs peers says so by returning `incomplete` with the peer coverage it needs, the controller dispatches bounded peer assignments of the lead's model and effort on either host, and their evidence returns to the same lead, resumed, which keeps the integrated assessment; peer coverage counts only through that assessment. Found on 2026-09-29 by the migration accounting audit; the commitments were agreed with the user on 2026-10-01 and are recorded in the linked record. Returning evidence to the same lead needs resumable reviewers, and the change adds runtime dispatch and changes the review prompts, so it needs a concise governing spec, a version increase and a decision on installed-host evidence for each host before implementation.
+
+**Requires:** [Resumable reviewer and adversarial repair dialogue](features/resumable-reviewer-dialogue.md).
+
 ## Exploring
 
 ### [Shared BACKLOG.md meta-index](features/backlog-meta-index.md)
@@ -271,10 +277,6 @@ Post-MVP exploration of consistent handling for assistant messages missing model
 ### [Incremental revise finding delivery](features/incremental-revise-finding-delivery.md)
 
 Deferred beyond the MVP. Streaming could overlap validation with the remaining review, while preserving corrections, withdrawal, attribution and input stability. Completed reports remain the baseline. Host support and worthwhile latency savings still require verification, as the agreed boundary says.
-
-### [Dispatch reviewer peers and return their evidence to the lead](features/reviewer-peer-dispatch.md)
-
-Make the agreed peer staffing executable: bounded peer assignments of the lead's model and effort, dispatched on either host, with their evidence returned for the lead's integrated assessment. Found on 2026-09-29 by the migration accounting audit: the brief and runtime reference describe the flow, but the runtime can only register a peer, every dispatch runs as a full lead, and a finished lead cannot be resumed to integrate peer evidence.
 
 ### [Review-run command enforcement](features/review-run-command-enforcement.md)
 
