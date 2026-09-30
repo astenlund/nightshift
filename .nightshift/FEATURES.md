@@ -178,6 +178,10 @@ Besides the few high-value entries Ready recommends today, also recommend one or
 
 Have Ready use the project's durable direction, such as an existing vision document, to explain its recommendations and their tradeoffs, as the v3 migration agreed. Found on 2026-09-29 by the migration accounting audit: Ready cites only the user's goals and Nightshift's own priorities, and the migration row's claim of project goals and its cited bug were stale.
 
+### [Name durability and evidence in the reliability priority](features/reliability-parts.md)
+
+Decide whether durability (durable records) and evidence (skeptic-validated findings, recorded checks) join autonomy and trust as named parts of the reliability priority, or are the means by which trust is earned, and whether trust and reliability are too adjacent to each other. Raised by the user on 2026-09-30 and tracked as Exploring at triage; the priority is stated in the repository instructions, the vision, the workflow, the README, the operating brief and the Ready and handover skills.
+
 ### [Graphical run view](features/run-graph-view.md)
 
 Show a run as a graph of its whole workflow in a page hosted by a local web server and viewable on the same computer, highlighting the current step and animating smoothly as things happen, such as subagents spawning and files being edited. Raised by the user on 2026-09-29, who sketched later slices that add old runs and then clickable elements such as nodes with details about each step; where the file-edit and subagent events come from, who starts and stops the server, and how it stays local-only and read-only are among the questions the record lists as open. On 2026-09-30 the user added a later slice that makes it an operational UI, an alternative to the CLI, whose permitted operations and ownership rules are also open.
