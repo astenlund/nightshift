@@ -88,6 +88,12 @@ Have Ready use the project's durable direction to explain its recommendations an
 
 **Requires:** none.
 
+### [Resumable reviewer and adversarial repair dialogue](features/resumable-reviewer-dialogue.md)
+
+Keep the reviewer that found an issue available through its repair instead of always dispatching a fresh one, and restore the dialogue between skeptic and reviewer that the v3 migration kept for findings whose consequence, value or repair quality stays unclear or disputed, along with its requirement of enough repair reasoning to judge an approach before the repair. The controller relays that dialogue and keeps every fix decision, with the skeptic proposing repairs and the resumed reviewer checking their closure; the resumed reviewer supplies the cumulative reassessment during a review loop, one final fresh review follows once it returns clean, and a reviewer that cannot be resumed is replaced by a fresh one given the full cumulative change and the prior findings. Raised by the user on 2026-09-29, who has seen strong evidence that continuity helps when repairing brittle code; the commitments were agreed with the user on 2026-10-01 and are recorded in the linked record. It adds session resumption to review dispatch on both hosts, changes the brief and the review prompts, and its final fresh review reverses the agreed rule that a separate final reviewer is not mandatory, so it needs a concise governing spec, a version increase and a decision on installed-host evidence for each host before implementation.
+
+**Requires:** none.
+
 ## Exploring
 
 ### [Shared BACKLOG.md meta-index](features/backlog-meta-index.md)
@@ -265,10 +271,6 @@ Post-MVP exploration of consistent handling for assistant messages missing model
 ### [Incremental revise finding delivery](features/incremental-revise-finding-delivery.md)
 
 Deferred beyond the MVP. Streaming could overlap validation with the remaining review, while preserving corrections, withdrawal, attribution and input stability. Completed reports remain the baseline. Host support and worthwhile latency savings still require verification, as the agreed boundary says.
-
-### [Resumable reviewer and adversarial repair dialogue](features/resumable-reviewer-dialogue.md)
-
-Keep the reviewer that found an issue available through its repair instead of always dispatching a fresh one, and restore the dialogue between skeptic and reviewer that the v3 migration kept for findings whose consequence, value or repair quality stays unclear or disputed, along with its requirement of enough repair reasoning to judge an approach before the repair; today the runtime cannot resume a reviewer, and only the governing documents mention the dialogue. Raised by the user on 2026-09-29, who has seen strong evidence that continuity helps when repairing brittle code; whether the reviewer and skeptic exchange directly, whether small fixes move to the skeptic with escalation for bigger ones, and how continuity fits the required fresh reviews are among the questions the record lists as open.
 
 ### [Dispatch reviewer peers and return their evidence to the lead](features/reviewer-peer-dispatch.md)
 
