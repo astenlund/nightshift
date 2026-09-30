@@ -58,6 +58,12 @@ When a readback or spec that asks whether to begin implementation is presented, 
 
 **Requires:** none.
 
+### [Keep a handed-over run open for triage after delivery](features/handover-open-for-triage.md)
+
+After delivery a handed-over run is to stay open rather than closed, with the Stop hook no longer resisting a yield, so follow-up triage, its tracking edits, their rerun checks and their closing docs review happen in the running run under the normal gates, and the run completes after them. Today it completes with follow-ups pending, triage evidence cannot be recorded afterwards, and tracking edits after completion are reviewed only as bookkeeping. Raised by the user on 2026-09-30 in run `f440497c-a0cc-4375-bada-e834e32b49a6`, where the user settled that direction. Which boundary counts as delivery, how a native persistent goal is released, the guidance that assumes completion before triage, interaction with `overlapping-run` and interrupted-run pickup, and a defined end for runs never triaged remain open, so it needs a concise governing spec, a version increase and a decision on installed-host evidence before implementation.
+
+**Requires:** none.
+
 ## Exploring
 
 ### [Shared BACKLOG.md meta-index](features/backlog-meta-index.md)
