@@ -188,6 +188,10 @@ Besides the few high-value entries Ready recommends today, also recommend one or
 
 Have Ready use the project's durable direction, such as an existing vision document, to explain its recommendations and their tradeoffs, as the v3 migration agreed. Found on 2026-09-29 by the migration accounting audit: Ready cites only the user's goals and Nightshift's own priorities, and the migration row's claim of project goals and its cited bug were stale.
 
+### [Make Ready and Exploring links open at their target](features/source-link-targets.md)
+
+Have Ready and Exploring write local links with absolute targets, which open when clicked in Claude Code's terminal UI where relative ones do not, and link an entry held in an index at that entry's line through `NIGHTSHIFT_LINE_LINK_FORMAT`, the user's `subl://` protocol form set up for Nightshift v2 and confirmed working on 2026-09-30. v3 dropped line links with the spec-agreement skill, their only consumer, when it replaced the agreement digest's presentation, and no migration disposition names them; links with a `:207` or `#L207` suffix do not open at all. Moved from the quick wins on 2026-09-30.
+
 ### [Name durability and evidence in the reliability priority](features/reliability-parts.md)
 
 Decide whether durability (durable records) and evidence (skeptic-validated findings, recorded checks) join autonomy and trust as named parts of the reliability priority, or are the means by which trust is earned, and whether trust and reliability are too adjacent to each other. Raised by the user on 2026-09-30 and tracked as Exploring at triage; the priority is stated in the repository instructions, the vision, the workflow, the README, the operating brief and the Ready and handover skills.
