@@ -3,7 +3,6 @@ name: finding-affected-surfaces
 description: When one finding covers a problem that appears in several places, keep every affected surface and its evidence, as the v3 migration agreed for consolidating findings
 metadata:
   type: feature
-status: exploring
 ---
 
 # Keep every affected surface when merging findings
@@ -27,7 +26,13 @@ Checked on 2026-09-29:
 
 Have a consolidated finding list every affected surface with its evidence, so validation, disposition and repair reach each one.
 
-## Open questions
+## Settled questions
 
-- Whether this is an instruction alone or also a structured field in the finding schema, and how a skeptic's verdict covers several surfaces with different evidence.
-- How it applies to peer staffing, where a lead would merge its peers' findings into its integrated assessment.
+The user agreed these answers at triage on 2026-09-30, and the entry graduated from Exploring to current work on 2026-10-01. Each question is kept with its answer.
+
+- Whether this is an instruction alone or also a structured field in the finding schema, and how a skeptic's verdict covers several surfaces with different evidence. Settled as a structured field: the reviewer's finding schema in `internal/runtime/review.js` gains a list of affected surfaces, each with its location and its own evidence, beside the instruction that a consolidated finding lists every surface it covers. The skeptic addresses every listed surface, and a surface it cannot confirm is split off as its own finding or marked unverified, so validation, disposition and repair reach each one; the spec settles the exact verdict shape.
+- How it applies to peer staffing, where a lead would merge its peers' findings into its integrated assessment. Settled: the same rule covers a lead merging its peers' findings once [peer dispatch](reviewer-peer-dispatch.md) exists, and this entry does not depend on it.
+
+## Before implementation
+
+The change alters the runtime's finding schema, possibly its verdict schema, and the reviewer and skeptic prompts, so it needs a concise governing spec, a plugin version increase, and a decision at the start of the work between a budgeted installed-host check and deterministic evidence only with the model-owned behavior marked unverified. Tracking and readiness do not authorize implementation.

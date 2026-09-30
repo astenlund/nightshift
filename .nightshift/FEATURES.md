@@ -70,6 +70,12 @@ Have Ready end with a three-choice question, through the host's native question 
 
 **Requires:** none.
 
+### [Keep every affected surface when merging findings](features/finding-affected-surfaces.md)
+
+When one finding covers a problem that appears in several places, keep every affected surface and its evidence, as the v3 migration agreed for consolidating findings: the reviewer's finding schema gains a structured list of affected surfaces, each with its location and evidence, and the skeptic addresses every listed surface, splitting off or marking unverified any it cannot confirm. The same rule covers a lead merging its peers' findings once peer dispatch exists, without depending on it. Found on 2026-09-29 by the migration accounting audit; the commitments were agreed with the user on 2026-09-30 and are recorded in the linked record. It changes the runtime's finding schema and the reviewer and skeptic prompts, so it needs a concise governing spec, a version increase and a decision on installed-host evidence before implementation.
+
+**Requires:** none.
+
 ## Exploring
 
 ### [Shared BACKLOG.md meta-index](features/backlog-meta-index.md)
@@ -255,10 +261,6 @@ Post-MVP exploration of consistent handling for assistant messages missing model
 ### [Incremental revise finding delivery](features/incremental-revise-finding-delivery.md)
 
 Deferred beyond the MVP. Streaming could overlap validation with the remaining review, while preserving corrections, withdrawal, attribution and input stability. Completed reports remain the baseline. Host support and worthwhile latency savings still require verification, as the agreed boundary says.
-
-### [Keep every affected surface when merging findings](features/finding-affected-surfaces.md)
-
-When one finding covers a problem that appears in several places, keep every affected surface and its evidence, as the v3 migration agreed for consolidating findings. Found on 2026-09-29 by the migration accounting audit: one problem is one finding, but nothing asks for the surfaces it covers, and the finding schema has no place for them.
 
 ### [Resumable reviewer and adversarial repair dialogue](features/resumable-reviewer-dialogue.md)
 
