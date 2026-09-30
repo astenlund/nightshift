@@ -1,9 +1,8 @@
 ---
 name: ready-project-direction
-description: Have Ready use the project's durable direction, such as an existing vision document, to explain its recommendations and their tradeoffs, as the v3 migration agreed
+description: Have Ready use the project's durable direction, where the project names or states it, to explain its recommendations and their tradeoffs, as the v3 migration agreed
 metadata:
   type: feature
-status: exploring
 ---
 
 # Ground Ready recommendations in the project's direction
@@ -27,9 +26,15 @@ Checked on 2026-09-29:
 
 ## Direction
 
-Have Ready find and use the project's durable direction where it exists, and explain each recommendation and its tradeoffs against it, briefly.
+Have Ready use the project's durable direction where the project names or states it, and explain each recommendation and its tradeoffs against it, briefly.
 
-## Open questions
+## Settled questions
 
-- How Ready finds the direction (a vision document by convention, a link from the backlog indexes, the project instructions), and what it does when there is none. At triage the user suggested [the shared BACKLOG.md meta-index](backlog-meta-index.md) as one more place for project goals or direction.
-- How this relates to [Size-aware Ready recommendations](ready-sized-recommendations.md), which adds picks sized for a quick or a long session.
+The user agreed these answers at triage on 2026-09-30, and the entry graduated from Exploring to current work on 2026-10-01. Each question is kept with its answer.
+
+- How Ready finds the direction (a vision document by convention, a link from the backlog indexes, the project instructions), and what it does when there is none. At triage the user suggested [the shared BACKLOG.md meta-index](backlog-meta-index.md) as one more place for project goals or direction. Settled: Ready reads the documents that the project's instruction files or backlog indexes name as its direction, such as this repository's instructions naming VISION.md and WORKFLOW.md, and, if it ships, the BACKLOG.md meta-index as one more direction source. There is no filename convention, so a vision document nothing names is not read, and no new registry is added. When Ready finds no direction source, it recommends on the invariant priorities alone and says briefly that it found no stated direction.
+- How this relates to [Size-aware Ready recommendations](ready-sized-recommendations.md), which adds picks sized for a quick or a long session. Settled as independent: neither depends on the other. Direction explains why an item is picked, and sizing decides how many and how large.
+
+## Before implementation
+
+The change is shipped Ready skill text that alters model-owned behavior, so it rides with a plugin version increase, and the start of the work decides between a budgeted installed-host check and deterministic evidence only with the model-owned behavior marked unverified. Tracking and readiness do not authorize implementation.
