@@ -76,6 +76,12 @@ When one finding covers a problem that appears in several places, keep every aff
 
 **Requires:** none.
 
+### [Repairs start from current contents and respect helper ownership](features/repair-current-contents.md)
+
+Direct every repair, by the controller or a helper, to start from the current contents and keep earlier repairs' constraints, and state that the controller routes a fix to a helper-owned artifact through that helper. The controller gives each repair assignment the earlier resolved findings and repairs on the same artifact from the run's recorded state, and the operating brief states the rules; the runtime stays unchanged, with no file lease or per-fix record format. Found on 2026-09-29 by the migration accounting audit; the commitments were agreed with the user on 2026-09-30 and are recorded in the linked record. It changes model-owned behavior, so it needs a version increase and a decision on installed-host evidence before implementation.
+
+**Requires:** none.
+
 ## Exploring
 
 ### [Shared BACKLOG.md meta-index](features/backlog-meta-index.md)
@@ -141,10 +147,6 @@ Complete the retained run-settings outcome across continuation: durable model an
 ### [Verify repair-commit and autosquash safety in ordinary delivery](features/v3-git-repair-evidence.md)
 
 Complete the retained reliable repair-commit outcome using ordinary Git and project policy: establish ownership and the current safe fixup target, preserve unrelated work, honor hooks and verify the intended autosquash. The migration accounting audit of 2026-09-29 found that no repair-commit instruction or check ships, so this needs instructions as well as evidence.
-
-### [Repairs start from current contents and respect helper ownership](features/repair-current-contents.md)
-
-Direct every repair, by the controller or a helper, to start from the current contents and keep earlier repairs' constraints, and state that the controller routes a fix to a helper-owned artifact through that helper. Found on 2026-09-29 by the migration accounting audit: write ownership and handoffs are recorded, but a reverted fix would be caught only afterwards, by verification or the next cumulative review, and the controller's own exclusion from helper-owned paths is implied rather than stated.
 
 ### [Capture review content once within an operation](features/v3-review-snapshot-reuse.md)
 
