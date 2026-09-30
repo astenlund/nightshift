@@ -217,6 +217,16 @@ function reportNotice(state, root = state.root) {
   return report.delivered && followups.length === 0 ? null : { ...report, followups };
 }
 
+// The user's acceptance of a governing spec counts while the spec still has the content it was recorded against.
+function specAcceptanceCurrent(root, task) {
+  return Boolean(task.specAcceptance) && fresh(root, task.specAcceptance.snapshot);
+}
+
+function specAcceptanceStatus(root, task, options) {
+  if (!task.specAcceptance) return { recorded: false, current: null };
+  return { recorded: true, current: options.verifyFreshness === false ? 'reconcile at acceptance' : specAcceptanceCurrent(root, task) };
+}
+
 function specReady(state, task) {
   if (task.kind !== 'code' || !Object.hasOwn(task.agreement, 'spec')) return true;
   if (typeof task.agreement.spec !== 'string' || !task.agreement.spec.trim()) return false;
@@ -383,6 +393,7 @@ function obligationBrief(state, root = state.root, options = {}) {
       id: task.id, title: task.title,
       stage: options.verifyFreshness !== false && !specReady(state, task) ? 'governing-spec-review' : task.stage,
       agreement: { source: task.agreement.source, outcome: task.agreement.outcome, decisions: task.agreement.decisions, spec: task.agreement.spec, specReviewTaskId: task.agreement.specReviewTaskId },
+      ...(typeof task.agreement.spec === 'string' ? { specAcceptance: specAcceptanceStatus(root, task, options) } : {}),
       unresolvedFindings: unresolvedFindings(task).map(finding => ({ id: finding.id, consequence: finding.consequence, verdict: finding.validation?.verdict ?? null, disposition: finding.disposition, evidence: finding.evidence.slice(0, 600) })),
       reviewCurrent: options.verifyFreshness === false ? 'reconcile at acceptance' : reviewGate(root, task, state),
       ...(state.docsGate && sharesCumulativeAssessment(task) ? { docsReviewCurrent: options.verifyFreshness === false ? 'reconcile at acceptance' : docsGateFailure(root, task, state) === null } : {}),
@@ -433,17 +444,17 @@ function closingScopeFailure(root, record, review) {
 }
 
 function assertAction(state, request) {
-  const taskActions = ['start-task', 'add-spec-review', 'check', 'dispatch', 'probe', 'review', 'validate', 'dispose', 'repair', 'advance', 'block', 'unblock'];
+  const taskActions = ['start-task', 'add-spec-review', 'check', 'dispatch', 'probe', 'review', 'validate', 'dispose', 'repair', 'advance', 'block', 'unblock', 'spec-accepted'];
   if (taskActions.includes(request.action) && request.taskId === CLOSING_TARGET) return assertClosingAction(state, request);
   const task = taskActions.includes(request.action) ? taskById(state, request.taskId) : null;
-  const bookkeeping = ['worker-finished', 'followup', 'resolve-followup', 'resume', 'stop', 'block', 'retrospective', 'report', 'report-delivered', 'triage', 'invalidate-continuation'];
+  const bookkeeping = ['worker-finished', 'followup', 'resolve-followup', 'resume', 'stop', 'block', 'retrospective', 'report', 'report-delivered', 'spec-accepted', 'triage', 'invalidate-continuation'];
   requireCondition(state.status === 'running' || bookkeeping.includes(request.action), 'run-stopped', 'The run is stopped; explicit resumption is required before more work');
   if (!bookkeeping.includes(request.action)) {
     requireCondition(!exhaustedLimit(state, { dispatch: request.action === 'dispatch' }), 'resource-limit', exhaustedLimit(state, { dispatch: request.action === 'dispatch' }));
     // A handover validates the mechanism it carries, as continuation does, so neither waits on an earlier verification.
     if (state.mode === 'unattended' && !['continuation', 'handover', 'claim-controller'].includes(request.action)) requireCondition(state.continuation?.verified === true, 'unverified-continuation', 'Verify the actual host continuation mechanism before unattended execution');
   }
-  if (task && !['block', 'unblock', 'add-spec-review'].includes(request.action)) {
+  if (task && !['block', 'unblock', 'add-spec-review', 'spec-accepted'].includes(request.action)) {
     requireCondition(!task.blocker, 'task-blocked', 'Resolve the recorded blocker before dependent work');
     requireCondition(task.requires.every(id => taskById(state, id).status === 'complete'), 'dependency-blocked', 'An upstream task remains incomplete');
     requireCondition(specReady(state, task), 'spec-review-required', 'Substantial implementation requires resolved independent spec assessment');
@@ -645,6 +656,16 @@ function transition(state, request) {
       text(request.authority, 'report-delivered.authority');
       requireCondition(reportIsCurrent(state.root, evidence), 'report-stale', 'The saved morning report is missing or changed; rewrite it and record the report again');
       if (state.closing.reportDelivery?.sha256 !== evidence.sha256) state.closing.reportDelivery = { authority: request.authority, revision: state.revision + 1, sha256: evidence.sha256 };
+      break;
+    }
+    case 'spec-accepted': {
+      requireCondition(state.status !== 'complete', 'run-complete', 'A spec acceptance belongs to unfinished work, and this run is complete');
+      requireCondition(typeof task.agreement.spec === 'string' && task.agreement.spec.trim(), 'missing-spec', 'This task names no governing spec to accept');
+      text(request.authority, 'spec-accepted.authority');
+      const evidence = snapshot(state.root, [task.agreement.spec]);
+      requireCondition(evidence.files[0].sha256 !== null, 'missing-spec', 'The governing spec file is missing');
+      // Beside the agreement, never inside it: assessments bind the agreement, so acceptance there would stale every one of them.
+      if (!specAcceptanceCurrent(state.root, task)) task.specAcceptance = { authority: request.authority, revision: state.revision + 1, snapshot: evidence };
       break;
     }
     case 'triage':

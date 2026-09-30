@@ -53,6 +53,19 @@ test('stopped open-chat adoption preserves work and fences the former owner', as
   assert.equal(f.store.history(before.id).filter(entry => entry.kind === 'adopt').length, 1);
 });
 
+test('adoption preserves a recorded spec acceptance, which the new owner can record again without an engineering claim', async t => {
+  const f = await fixture(t, { tasks: [{ id: 'change', title: 'Change', agreement: { source: 'fixture user', outcome: 'Preserve work', spec: 'spec.md' } }] });
+  fs.writeFileSync(path.join(f.root, 'spec.md'), '# Accepted commitments\n');
+  await f.call({ action: 'spec-accepted', taskId: 'change', authority: 'User replied: spec accepted' });
+  await f.call({ action: 'stop', kind: 'user-stop', reason: 'User paused' });
+  const before = f.store.read().tasks[0].specAcceptance;
+  await f.adopt();
+  assert.deepEqual(f.store.read().tasks[0].specAcceptance, before);
+  const again = await f.call({ action: 'spec-accepted', taskId: 'change', authority: 'A later reply to the new owner' });
+  assert.deepEqual(again.next[0].specAcceptance, { recorded: true, current: true });
+  assert.deepEqual(f.store.read().tasks[0].specAcceptance, before);
+});
+
 test('running adoption needs the exact former claimed process to be confirmed ended', async t => {
   const f = await fixture(t);
   await assert.rejects(f.adopt(), { code: 'controller-not-inactive' });

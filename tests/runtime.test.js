@@ -386,6 +386,77 @@ test('a missing or unknown request action is refused before any store or ownersh
   assert.throws(() => transition(f.store.read(), { action: 'advnce' }), refusal);
 });
 
+// A Git worktree whose governing spec has CRLF endings that Git normalizes, so acceptance evidence records a blob identity.
+function specFixture(t, tasks) {
+  const root = fs.mkdtempSync(path.join(scratch, 'spec-'));
+  const init = spawnSync('git', ['init', '-q'], { cwd: root, windowsHide: true, encoding: 'utf8' });
+  assert.equal(init.status, 0, init.stderr);
+  fs.writeFileSync(path.join(root, '.gitattributes'), '*.md text eol=lf\n');
+  fs.writeFileSync(path.join(root, 'spec.md'), '# Commitments\r\nKeep both paths correct\r\n');
+  const store = new RunStore(root, { create: true });
+  t.after(() => { store.close(); fs.rmSync(root, { recursive: true, force: true }); });
+  store.create({ controller: actor, authority: 'User agreed the scope', objective: 'Deliver the governed work', tasks });
+  const act = request => store.update(actor, store.read().revision, request.action, state => transition(state, request));
+  return { root, store, act };
+}
+
+test('spec acceptance is bound to the spec content, idempotent while it holds and replaced after an amendment', t => {
+  const f = specFixture(t, [{ id: 'code', title: 'Substantial work', agreement: { source: 'User', outcome: 'Accepted behavior', spec: 'spec.md' } }]);
+  const status = () => obligationBrief(f.store.read()).next[0].specAcceptance;
+  assert.deepEqual(status(), { recorded: false, current: null });
+  const accepted = f.act({ action: 'spec-accepted', taskId: 'code', authority: 'User replied: spec accepted' });
+  assert.equal(accepted.tasks[0].specAcceptance.authority, 'User replied: spec accepted');
+  assert.equal(accepted.tasks[0].specAcceptance.revision, accepted.revision);
+  assert.match(accepted.tasks[0].specAcceptance.snapshot.files[0].blob, /^[0-9a-f]{40,64}$/);
+  assert.deepEqual(status(), { recorded: true, current: true });
+  const again = f.act({ action: 'spec-accepted', taskId: 'code', authority: 'A later reply' });
+  assert.deepEqual(again.tasks[0].specAcceptance, accepted.tasks[0].specAcceptance);
+  fs.writeFileSync(path.join(f.root, 'spec.md'), '# Commitments\nKeep both paths correct\n');
+  assert.deepEqual(status(), { recorded: true, current: true }, 'a line-ending renormalization keeps the acceptance current');
+  fs.writeFileSync(path.join(f.root, 'spec.md'), '# Commitments\nKeep every path correct\n');
+  assert.deepEqual(status(), { recorded: true, current: false });
+  const amended = f.act({ action: 'spec-accepted', taskId: 'code', authority: 'User replied: amendment accepted' });
+  assert.equal(amended.tasks[0].specAcceptance.authority, 'User replied: amendment accepted');
+  assert.equal(amended.tasks[0].specAcceptance.revision, amended.revision);
+  assert.deepEqual(status(), { recorded: true, current: true });
+  fs.rmSync(path.join(f.root, 'spec.md'));
+  assert.deepEqual(status(), { recorded: true, current: false });
+  assert.throws(() => f.act({ action: 'spec-accepted', taskId: 'code', authority: 'User replied' }), { code: 'missing-spec' });
+});
+
+test('recording spec acceptance leaves the bound commitments and an imported assessment current', t => {
+  const f = specFixture(t, [{ id: 'code', title: 'Substantial work', agreement: { source: 'User', outcome: 'Accepted behavior', spec: 'spec.md', specReviewed: true } }]);
+  f.act({ action: 'start-task', taskId: 'code' });
+  f.act({ action: 'check', taskId: 'code', evidence: verifyCommand(f.root, { name: 'fixture validation', executable: process.execPath, args: ['--version'], paths: ['spec.md'] }) });
+  const commitments = commitmentsFor(f.store.read().tasks);
+  f.act({ action: 'review', taskId: 'code', review: { status: 'complete', commitments, strength: 'strong', session: 'independent-reviewer', independent: true, broad: true, attributionVerified: true, dimensions: [...DIMENSIONS.code], coverageEvidence: 'Read the governing spec and the implementation it governs', snapshot: snapshot(f.root, ['spec.md']), findings: [] } });
+  const gate = () => {
+    const state = f.store.read();
+    return reviewGate(f.root, state.tasks[0], state);
+  };
+  assert.equal(gate(), true);
+  const accepted = f.act({ action: 'spec-accepted', taskId: 'code', authority: 'User replied: spec accepted' });
+  assert.deepEqual(commitmentsFor(accepted.tasks), commitments);
+  assert.equal(gate(), true);
+});
+
+test('spec acceptance needs a governing spec and unfinished work, and is bookkeeping on a blocked task or stopped run', t => {
+  const f = specFixture(t, [{ id: 'code', title: 'Substantial work', agreement: { source: 'User', outcome: 'Accepted behavior', spec: 'spec.md' } }, { id: 'notes', title: 'Notes', kind: 'docs', agreement: { source: 'User', outcome: 'Reconciled notes' } }]);
+  assert.throws(() => f.act({ action: 'spec-accepted', taskId: 'notes', authority: 'User replied' }), { code: 'missing-spec' });
+  assert.throws(() => f.act({ action: 'spec-accepted', taskId: 'code', authority: '  ' }), error => error.code !== undefined);
+  assert.throws(() => f.act({ action: 'spec-accepted', taskId: '#closing', authority: 'User replied' }), { code: 'invalid-closing-action' });
+  f.act({ action: 'block', taskId: 'code', blocker: { kind: 'user-decision', reason: 'Awaiting the user', recoveryAttempted: 'Asked the user' } });
+  f.act({ action: 'stop', kind: 'user-stop', reason: 'User paused' });
+  assert.equal(f.act({ action: 'spec-accepted', taskId: 'code', authority: 'User replied: spec accepted' }).tasks[0].specAcceptance.authority, 'User replied: spec accepted');
+
+  const done = specFixture(t, [{ id: 'notes', title: 'Notes', kind: 'docs', agreement: { source: 'User', outcome: 'Reconciled notes', spec: 'spec.md' } }]);
+  done.act({ action: 'advance', taskId: 'notes', evidence: 'Notes match the spec', docsExemption: 'Fixture changes no documentation by judgment' });
+  done.act({ action: 'retrospective', evidence: 'Considered' });
+  done.act({ action: 'triage', evidence: 'Nothing pending' });
+  assert.equal(done.act({ action: 'complete' }).status, 'complete');
+  assert.throws(() => done.act({ action: 'spec-accepted', taskId: 'notes', authority: 'User replied' }), { code: 'run-complete' });
+});
+
 test('the accepted runtime actions are exactly the lifecycle transitions and the CLI-only operations', () => {
   const { RUNTIME_ACTIONS, isRuntimeAction } = require('../internal/runtime/actions');
   const source = fs.readFileSync(path.resolve(__dirname, '../internal/runtime/lifecycle.js'), 'utf8');
