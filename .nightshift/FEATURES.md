@@ -64,6 +64,12 @@ After delivery a handed-over run is to stay open rather than closed, with the St
 
 **Requires:** none.
 
+### [Choose how agreed work proceeds](features/agreed-work-choice.md)
+
+Have Ready end with a three-choice question, through the host's native question tool where available: hand over, implement without creating a runtime run, or pause with the agreed task kept ready for discussion. Raised by the user on 2026-09-30 in run `7969bab6-360c-4bd5-a5bd-33dfe3ef28d9`, who now always hands over and first asked for unattended as the standard mode, then settled on this choice. It reverses the Ready rule against asking about handover. Where the question is asked (the user suggested it could be a separate step after the readback is acknowledged), whether an attended run with the full lifecycle stays a choice, what pause keeps, how implementing without a run is reported and offered, and the unverified-continuation case remain open, so it needs a concise governing spec, a version increase and a decision on installed-host evidence before implementation.
+
+**Requires:** none.
+
 ## Exploring
 
 ### [Shared BACKLOG.md meta-index](features/backlog-meta-index.md)
