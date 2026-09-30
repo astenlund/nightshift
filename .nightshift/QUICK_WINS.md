@@ -4,6 +4,30 @@ V2 entries are preserved in [the historical index](migration/v2/QUICK_WINS.md) a
 
 ## Current
 
+### State that project edits during a dispatch discard its result
+
+Observed on 2026-09-30 in run `f440497c-a0cc-4375-bada-e834e32b49a6`. While the seventh whole-spec assessment (request `7a6fddbb`) ran, the controller edited the runtime reference and the acceptance report and committed fixups, assuming a spec assessment watches only its spec file. The runtime captures the whole project inventory as review context for every assessment kind, so the dispatch failed at its end with `review-input-drift`: its Codex `gpt-6-astra` attempt had spent 938,943 tokens and returned a complete report with no findings, which was discarded, and the assessment was dispatched again. [The runtime reference](../internal/runtime/REFERENCE.md) says that an inventory change between dispatch and receipt import makes the import fail with `invalid-receipt`, but not that the dispatch itself fails at its end with `review-input-drift` once the reviewer's usage is spent, and its sentence that for spec assessment the selected artifacts "define the governing snapshot" invites the narrower reading the controller took.
+
+State in the runtime reference's dispatch paragraph that any change to the reviewed inventory (tracked files, unignored untracked files and selected artifacts) while a dispatch of any kind runs, spec assessment included, fails it at its end with `review-input-drift` after the reviewer's usage is spent, so the controller holds such edits until the result returns, and decide whether the runtime should also detect drift before the reviewer finishes. Reference and runtime changes ship with a version increase. Tracking does not authorize implementation.
+
+**Requires:** none.
+
+### Keep spec acceptance bookkeeping outside the reviewed bytes
+
+Raised by the user on 2026-09-29 in run `f440497c-a0cc-4375-bada-e834e32b49a6` when accepting the governing spec. Recording the acceptance in the spec's status sentence changed the spec's bytes, so the clean fifth whole-spec assessment went stale, and a sixth full assessment, which cost 962,332 Codex `gpt-6-astra` tokens, was needed for that one-sentence bookkeeping edit. The user suggested exempting the status line from freshness, or something else. The seventh and eighth assessments of the same spec on 2026-09-30 reviewed substantive amendments (the status sentence also changed alongside the seventh's), so they are not further instances.
+
+Decide where acceptance and decision bookkeeping for a governing spec lives: outside the reviewed bytes, for example in the runtime agreement record that already stores user decisions, or in a narrowly recognized status line that freshness ignores, without weakening exact review of the spec's commitments. Runtime or guidance changes ship with a version increase. Tracking does not authorize implementation.
+
+**Requires:** none.
+
+### Present a governing spec as a link with a change list
+
+Raised by the user on 2026-09-29 in run `f440497c-a0cc-4375-bada-e834e32b49a6` during the spec review: to make a governing spec and its amendments easier to read, link to the spec file instead of writing it out in a message, clickable in the CLI and in the web app over Remote Control, and let a helper agent apply spec edits so their diffs do not bury the spec. Windows Terminal rendered a relative link as invalid, so the session used absolute `file:///` links and also sent the file for the web app, presenting each revision as a link with a short change list. After acceptance the user said "edit it directly. the helper is not needed at this point, it's mostly useful to reduce noise before the user accepts", and later amendments were edited directly.
+
+Have the operating brief and revise-spec present a governing spec and each amendment as a link with a concise change list, plus a sent copy where the host supports it, and let edits before acceptance be applied by a registered helper that owns only the spec file while the controller keeps every disposition. Settle how this fits the brief's requirement to "present that same complete stable draft for the user's review". Guidance changes ship with a version increase. Tracking does not authorize implementation.
+
+**Requires:** none.
+
 ### Confirm when marketplace auto-update applies a pushed release
 
 Observed on 2026-09-28 in run `7f0cb8e1-8a73-4a4c-b5f9-f8ec62661471`. The user restarted Claude Code expecting the published 3.2.13 release, but the `astenlund` marketplace snapshot under `~/.claude/plugins/marketplaces/` stayed at `5b24ffa`, the last commit pushed before 3.2.13, `known_marketplaces.json` kept `lastUpdated` 2026-09-28T00:16:19Z with `autoUpdate: true`, and `installed_plugins.json` still named 3.2.12, although 3.2.13 was pushed at 07:40:53Z (the `origin/main` reflog), before the restart, whose session activation was observed at 08:38Z. The snapshot was still unrefreshed when the run ended. Earlier refreshes did happen: 3.2.12, pushed at 19:07Z on 2026-09-27, was installed by 20:15Z (`installed_plugins.json` `lastUpdated`; whether by startup auto-update or a manual update is not recorded), and the marketplace refreshed again at 00:16Z. The user's global AGENTS.md says a pushed release propagates to the installed copy at the next Claude Code or Codex startup; this observation covers Claude Code only, and Codex is unobserved. The cause is unverified: the refresh may be throttled, or may run in the background and apply only on a later start. Separately, the resumed session kept its 3.2.12 binding, which is intended. The user chose to track it at triage.
