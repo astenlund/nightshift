@@ -120,7 +120,7 @@ Finish the retained release-gate follow-ups for stale-branch versus genuine vers
 
 ### [Maintain verification evidence, fixtures and measured efficiency](features/v3-verification-infrastructure.md)
 
-Improve current verification tooling through explicit fixture ownership, safe evidence storage and measured reduction of unnecessary startup. Retire the 2.4.5 fixture only after reconciling supported upgrade checks and the ignored upgrade driver that still loads it. The migration accounting audit of 2026-09-29 added telling buffered output from a failure or hang, cleanup on cancellation with diagnostics when cleanup fails, and verification evidence storage, which does not exist yet.
+Improve current verification tooling through explicit fixture ownership, safe evidence storage and measured reduction of unnecessary startup. Retire the 2.4.5 fixture only after reconciling supported upgrade checks and the ignored upgrade driver that still loads it. The migration accounting audit of 2026-09-29 added telling buffered output from a failure or hang, cleanup on cancellation with diagnostics when cleanup fails, and verification evidence storage, which does not exist yet. Triage on 2026-09-30 added how a live fixture's nested Claude reviewer can authenticate without a copied credential.
 
 ### [Preserve run preferences and enforce supported resource budgets](features/v3-run-preferences.md)
 

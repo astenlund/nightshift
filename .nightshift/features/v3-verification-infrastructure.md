@@ -20,6 +20,8 @@ Current tests directly create v3 fixtures, and the old import/evaluator/registra
 
 The [independent shipped-capability audit](../reports/pre-v3-shipped-capability-audit-20260921.md) distinguishes actual code/probe evidence, instruction policy and unverified installed-host behavior. No capability in this entry is declared delivered by its restoration to the backlog.
 
+Run `f440497c-a0cc-4375-bada-e834e32b49a6` authenticated its live acceptance fixtures with a long-lived token the user created once with `claude setup-token`, supplied through `CLAUDE_CODE_OAUTH_TOKEN`, with no credential file in any fixture. Claude Code removes that variable from the environment of commands its tools start, so a Fable fallback reviewer dispatched inside a fixture could not authenticate, and [the acceptance report](../reports/independent-documentation-review-20260929.md) marks the Fable fallback path as not live-verified. At that run's triage on 2026-09-30 the user chose to track the open question here: how a fixture's nested Claude reviewer authenticates without a copied credential, so a future campaign can exercise the fallback. Its counterpart for credential copying on both hosts is the quick win [Codex acceptance fixtures copy the live credential](../QUICK_WINS.md#codex-acceptance-fixtures-copy-the-live-credential).
+
 ## Decisions and acceptance
 
 Inventory current fixture and evidence ownership, candidate binding and startup costs. Verify safe cleanup, uncertain liveness, stale/partial evidence, reproducibility and supported update paths before removing obsolete fixtures. The user closed the old import-generator and registrar refactors as superseded.
