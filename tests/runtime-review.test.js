@@ -355,15 +355,40 @@ for (const scoped of [true, false]) {
   });
 }
 
-test('review input writes and stale inputs are rejected without restoring another writer over their changes', async t => {
-  const f = fixture(t);
-  await assert.rejects(dispatchReview(f.root, f, { runAgent: options => {
-    const result = mockAgent(options);
-    fs.writeFileSync(path.join(options.cwd, 'project/subject.txt'), 'reviewer wrote input\r\n');
-    return result;
-  } }), { code: 'review-input-drift' });
-  assert.equal(fs.readFileSync(path.join(f.root, 'subject.txt'), 'utf8'), 'after\r\n');
-});
+for (const kind of ['code', 'spec']) {
+  test(`review input writes and stale inputs are rejected without restoring another writer over their changes: ${kind}`, async t => {
+    const f = fixture(t);
+    fs.writeFileSync(path.join(f.root, 'spec.md'), '# Accepted behavior\r\n');
+    await assert.rejects(dispatchReview(f.root, { ...f, kind, artifactPaths: ['spec.md'] }, { runAgent: options => {
+      const result = mockAgent(options, DIMENSIONS[kind]);
+      fs.writeFileSync(path.join(options.cwd, 'project/subject.txt'), 'reviewer wrote input\r\n');
+      return result;
+    } }), { code: 'review-input-drift' });
+    assert.equal(fs.readFileSync(path.join(f.root, 'subject.txt'), 'utf8'), 'after\r\n');
+  });
+}
+
+for (const kind of ['spec', 'code', 'docs', 'skeptic']) {
+  test(`a project edit outside the governing artifacts while a ${kind} assessment runs ${kind === 'spec' ? 'keeps' : 'discards'} its result`, async t => {
+    const f = fixture(t);
+    fs.writeFileSync(path.join(f.root, 'spec.md'), '# Accepted behavior\r\n');
+    let attempts = 0;
+    const fallback = { candidates: [...f.candidates, { host: 'codex', model: 'gpt-6-astra', effort: 'high' }], substitutionReason: 'Fixture fallback that input drift must not reach' };
+    const dispatched = dispatchReview(f.root, { ...f, ...fallback, kind, findings: [], artifactPaths: ['spec.md'] }, { runAgent: options => {
+      attempts++;
+      const result = mockAgent(options, DIMENSIONS[kind === 'skeptic' ? 'code' : kind]);
+      fs.writeFileSync(path.join(f.root, 'subject.txt'), 'Controller edit during assessment\r\n');
+      return result;
+    } });
+    if (kind === 'spec') {
+      const { receiptFile } = await dispatched;
+      assert.doesNotThrow(() => readReceipt(f.root, path.relative(f.root, receiptFile).split(path.sep).join('/'), { id: f.runId, controller: { session: 'controller' } }, f.taskId));
+    } else {
+      await assert.rejects(dispatched, { code: 'review-input-drift' });
+    }
+    assert.equal(attempts, 1);
+  });
+}
 
 test('fallback remains strong, honors explicit model requirements, and records its reason', async t => {
   const f = fixture(t);
@@ -601,7 +626,7 @@ test('each attempt ends before the launcher operation deadline and a spent bound
   assert.equal(failure.attempts.length, 1);
 });
 
-test('spec receipt freshness distinguishes pending acceptance from accepted engineering context', async t => {
+test('spec receipt freshness follows the governing spec before and after acceptance, not the surrounding context', async t => {
   const f = fixture(t);
   fs.writeFileSync(path.join(f.root, 'spec.md'), '# Accepted behavior\n');
   const store = new RunStore(f.root, { create: true });
@@ -611,9 +636,10 @@ test('spec receipt freshness distinguishes pending acceptance from accepted engi
   const dispatch = () => executeWithFixtureController(f.root, { action: 'dispatch', actor, revision: store.read().revision, taskId: 'spec', review: { ...f, kind: 'spec' } }, { runAgent: options => mockAgent(options, DIMENSIONS.spec) });
   try {
     const stale = await dispatch();
-    fs.writeFileSync(path.join(f.root, 'subject.txt'), 'Independent context edit\n');
+    fs.writeFileSync(path.join(f.root, 'spec.md'), '# Amended behavior\n');
     await assert.rejects(act({ action: 'review', taskId: 'spec', receipt: path.relative(f.root, stale.receiptFile).split(path.sep).join('/') }), { code: 'invalid-receipt' });
     const current = await dispatch();
+    fs.writeFileSync(path.join(f.root, 'subject.txt'), 'Independent context edit\n');
     await act({ action: 'review', taskId: 'spec', receipt: path.relative(f.root, current.receiptFile).split(path.sep).join('/') });
     await act({ action: 'advance', taskId: 'spec' });
     assert.equal(store.read().tasks[0].status, 'complete');

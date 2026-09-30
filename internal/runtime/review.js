@@ -179,6 +179,13 @@ function buildPrompt(request) {
   return common + definitions + '\n\n' + role + execution + '\nReturn the requested structured report with requestId, status, coverage, findings, probes and summary. Use an empty probes array when no execution evidence is missing.\n';
 }
 
+// Whether the inputs an assessment judged are unchanged, before its dispatch returns and again at import. A spec assessment judged
+// its governing artifacts, so edits elsewhere while it runs keep it, as they already do once it is imported; every other kind
+// judged the whole context, which for them is the same evidence as their snapshot and so is read once.
+function inputsUnchanged(root, kind, snapshot, contextSnapshot) {
+  return fresh(root, snapshot) && (kind === 'spec' || isDeepStrictEqual(snapshot, contextSnapshot) || fresh(root, contextSnapshot));
+}
+
 async function dispatchReview(root, options, dependencies = {}) {
   const canonical = fs.realpathSync.native(root);
   validateRequest(options);
@@ -260,7 +267,7 @@ async function dispatchReview(root, options, dependencies = {}) {
         requireCondition(result.exit?.descendantsReclaimed !== false, 'termination-unverified', 'The agent process tree did not provide complete termination evidence');
         requireCondition(result.status === 'complete' && result.attributionVerified, 'unusable-review', 'Host did not return an attributable completed assessment');
         const report = validateReport(parseReport(result.output), request);
-        requireCondition(fresh(canonical, contextSnapshot) && fresh(project, { ...contextSnapshot, inventory: false }), 'review-input-drift', 'Reviewed project inputs changed during assessment');
+        requireCondition(inputsUnchanged(canonical, request.kind, captured, contextSnapshot) && fresh(project, { ...contextSnapshot, inventory: false }), 'review-input-drift', 'Reviewed project inputs changed during assessment');
         attempt.status = 'complete';
         const receipt = {
           requestId: id, runId: request.runId, taskId: request.taskId,
@@ -320,7 +327,7 @@ function readReceipt(root, relative, state, taskId) {
   requireCondition(receipt.runId === state.id && receipt.taskId === taskId && receipt.session !== state.controller.session, 'wrong-result', 'Report belongs to another run, task or controller');
   if (assignment.controller && isDeepStrictEqual(assignment.controller, state.controller)) requireCondition(!require('./ownership').forbiddenReviewSessions(state).has(receipt.session), 'nonindependent-worker', 'A former controller cannot author a new independent assessment');
   requireCondition(hash(fs.readFileSync(projectFile(root, receipt.eventFile))) === receipt.eventHash, 'changed-result', 'Native host result changed after collection');
-  requireCondition(STRONG_MODELS[receipt.host]?.includes(receipt.model) && receipt.attributionVerified === true && fresh(root, receipt.snapshot) && fresh(root, receipt.contextSnapshot), 'invalid-receipt', 'Review attribution, strength or input freshness is invalid');
+  requireCondition(STRONG_MODELS[receipt.host]?.includes(receipt.model) && receipt.attributionVerified === true && inputsUnchanged(root, receipt.kind, receipt.snapshot, receipt.contextSnapshot), 'invalid-receipt', 'Review attribution, strength or input freshness is invalid');
   const events = fs.readFileSync(projectFile(root, receipt.eventFile), 'utf8').trim().split('\n').map(line => JSON.parse(line));
   let output;
   if (receipt.host === 'claude') {
