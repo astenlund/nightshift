@@ -32,6 +32,16 @@ function tokenTotal(usage) {
   return ['inputTokens', 'outputTokens', 'cacheReadInputTokens', 'cacheCreationInputTokens'].reduce((sum, key) => sum + (usage[key] ?? 0), 0);
 }
 
+// A resumed Codex thread reports cumulative totals, so the attempt's own usage is its turn's last total less the thread total before
+// it: the last total tagged with an earlier turn, which Codex reports on resume, or else the total recorded when the session last
+// ended. Without both figures the usage is unknown rather than the whole thread's.
+function resumedUsage(samples, turnId, priorThreadTokens) {
+  const own = samples.filter(sample => sample.turnId === turnId).at(-1)?.total;
+  const before = samples.filter(sample => sample.turnId !== turnId).at(-1)?.total ?? priorThreadTokens;
+
+  return Number.isFinite(own) && Number.isFinite(before) && own >= before ? own - before : null;
+}
+
 function codexModelContradiction(event, session, expectedModel) {
   return event.method === 'model/rerouted' && event.params?.threadId === session && (event.params.fromModel !== expectedModel || event.params.toModel !== expectedModel);
 }
@@ -45,6 +55,16 @@ function requireReclaimed(exit, failure) {
   requireCondition(exit.descendantsReclaimed !== false, 'termination-unverified', `The native host process tree did not provide termination evidence${failure ? `; the host failed: ${failure.message}` : ''}`);
 }
 
+// A failure to write the attempt's own artifacts after the host started, such as a full disk, is the controller's infrastructure
+// failing rather than the host or its session, so the attempt ends with that operating-system error once cleanup is proven.
+function requireArtifactsWritten(execution, exit) {
+  const failure = execution.artifactFailure();
+  if (!failure) return;
+  requireReclaimed(exit, failure);
+  failure.descendantsReclaimed = exit.descendantsReclaimed;
+  throw failure;
+}
+
 function startProcess(file, args, options) {
   fs.mkdirSync(options.artifacts, { recursive: true });
   const launch = process.platform === 'win32' && !options.directProcess ? spawnWindowsJob : spawn;
@@ -54,22 +74,30 @@ function startProcess(file, args, options) {
     stdio: ['pipe', 'pipe', 'pipe'], env: options.env ?? process.env,
   });
   let failure = null;
+  let artifactFailure = null;
   let timedOut = false;
   let resolveReady;
   let timer;
   const ready = new Promise(resolve => { resolveReady = resolve; });
   const errors = fs.createWriteStream(path.join(options.artifacts, 'stderr.txt'), { flags: 'wx' });
+  // A Windows job reports its pid only once its runner starts the host, so a failure before then still requests termination; the
+  // attempt timer is cleared here, and nothing else would end that host.
   const fail = error => {
     failure ??= error;
     clearTimeout(timer);
     resolveReady();
-    if (child.pid && child.exitCode === null && child.signalCode === null) child.kill();
+    if (child.exitCode === null && child.signalCode === null) child.kill();
+  };
+  // Failures of the host's own pipes can follow from the host closing them; only the attempt's artifact files are the controller's.
+  const failArtifact = error => {
+    artifactFailure ??= error;
+    fail(error);
   };
   child.on('error', fail);
   child.stdin.on('error', fail);
   child.stdout.on('error', fail);
   child.stderr.on('error', fail);
-  errors.on('error', fail);
+  errors.on('error', failArtifact);
   child.stderr.pipe(errors);
   child.once('spawn', () => {
     try { options.onProcess?.(child.pid); } catch (error) { fail(error); }
@@ -89,7 +117,13 @@ function startProcess(file, args, options) {
   const finish = async () => {
     try { return await exited; } finally { clearTimeout(timer); }
   };
-  return { child, ready, finish, fail, failure: () => failure };
+  return { child, ready, finish, fail, failArtifact, failure: () => failure, artifactFailure: () => artifactFailure };
+}
+
+function eventLog(execution, artifacts) {
+  const log = fs.createWriteStream(path.join(artifacts, 'events.jsonl'), { flags: 'wx' });
+  log.on('error', execution.failArtifact);
+  return log;
 }
 
 
@@ -99,7 +133,7 @@ async function runClaude(options) {
   if (options.schema) args.push('--json-schema', JSON.stringify(options.schema));
   const execution = startProcess(options.executable ?? executable('claude', options.protectedRoot ?? options.cwd), args, options);
   const events = [];
-  const log = fs.createWriteStream(path.join(options.artifacts, 'events.jsonl'), { flags: 'wx' });
+  const log = eventLog(execution, options.artifacts);
   let malformed = false;
   readline.createInterface({ input: execution.child.stdout }).on('line', line => {
     log.write(line + '\n');
@@ -120,9 +154,12 @@ async function runClaude(options) {
     error.descendantsReclaimed = exit.descendantsReclaimed;
     throw error;
   }
+  requireArtifactsWritten(execution, exit);
   const result = events.findLast(event => event.type === 'result');
   const authored = events.filter(event => event.type === 'assistant' && event.message?.model && event.message.model !== '<synthetic>');
-  const attributionVerified = authored.length > 0 && authored.every(event => event.message.model === options.model && event.session_id === result?.session_id);
+  // A resumed attempt is attributable only when the host continued the session it was asked to resume.
+  const continuedSession = !options.session || result?.session_id === options.session;
+  const attributionVerified = continuedSession && authored.length > 0 && authored.every(event => event.message.model === options.model && event.session_id === result?.session_id);
   const tokens = result?.modelUsage ? Object.values(result.modelUsage).reduce((sum, usage) => sum + tokenTotal(usage), 0) : null;
   return { host: 'claude', model: options.model, effort: options.effort ?? 'high', session: result?.session_id ?? null, attributionVerified, status: !malformed && !exit.error && !exit.timedOut && exit.code === 0 && result?.subtype === 'success' && result.is_error === false ? 'complete' : 'failed', output: result?.structured_output ?? result?.result ?? null, tokens, exit, events };
 }
@@ -130,13 +167,16 @@ async function runClaude(options) {
 async function runCodex(options) {
   const version = pluginVersion();
   const execution = startProcess(options.executable ?? executable('codex', options.protectedRoot ?? options.cwd), ['app-server', '--stdio'], options);
-  const log = fs.createWriteStream(path.join(options.artifacts, 'events.jsonl'), { flags: 'wx' });
+  const log = eventLog(execution, options.artifacts);
+  let startFailure = null;
   let sequence = 0;
   let session = null;
   let actualModel = null;
   const reroutes = [];
   let output = null;
   let tokens = null;
+  // Codex reports the thread's cumulative total, tagged with the turn it belongs to.
+  const usage = [];
   let malformed = false;
   let ended = false;
   let outcome;
@@ -178,6 +218,7 @@ async function runCodex(options) {
       } else if (event.method === 'thread/tokenUsage/updated' && event.params.threadId === session) {
         // Codex totalTokens already includes cached input and reasoning output.
         tokens = event.params.tokenUsage.total.totalTokens;
+        usage.push({ turnId: event.params.turnId ?? null, total: tokens });
         options.onUsage?.(tokens);
       } else if (event.method === 'item/agentMessage/delta' && event.params.threadId === session && typeof event.params.delta === 'string' && !outputLoop) {
         outputLoop = detectOutputLoop({ itemId: event.params.itemId, delta: event.params.delta, at: Date.now() });
@@ -194,20 +235,28 @@ async function runCodex(options) {
   });
   try {
     await execution.ready;
-    const startFailure = execution.failure();
+    startFailure = execution.failure();
     if (startFailure) throw hostStartError(startFailure);
     await request('initialize', { clientInfo: { name: 'nightshift', version }, capabilities: { experimentalApi: true } });
     execution.child.stdin.write(JSON.stringify({ method: 'initialized', params: {} }) + '\n');
-    const started = await request('thread/start', { cwd: options.cwd, model: options.model, approvalPolicy: 'never', sandbox: 'read-only', allowProviderModelFallback: false, baseInstructions: fs.readFileSync(options.systemFile, 'utf8'), config: { project_doc_max_bytes: 0, model_reasoning_effort: options.effort ?? 'high', features: { multi_agent: false, plugins: false, hooks: false, apps: false } } });
+    const thread = { cwd: options.cwd, model: options.model, approvalPolicy: 'never', sandbox: 'read-only', baseInstructions: fs.readFileSync(options.systemFile, 'utf8'), config: { project_doc_max_bytes: 0, model_reasoning_effort: options.effort ?? 'high', features: { multi_agent: false, plugins: false, hooks: false, apps: false } } };
+    // A resumed thread keeps its history but takes the new copy as its working directory and the same read-only policy. Its id is
+    // known before the host answers, so usage the host reports in the same output as its answer is not dropped.
+    if (options.session) session = options.session;
+    const started = options.session
+      ? await request('thread/resume', { ...thread, threadId: options.session, excludeTurns: true })
+      : await request('thread/start', { ...thread, allowProviderModelFallback: false });
     session = started.thread.id;
     options.onSession?.(session);
     actualModel = started.model;
-    await request('turn/start', { threadId: session, input: [{ type: 'text', text: options.prompt }], ...(options.schema ? { outputSchema: options.schema } : {}) });
+    const turnStarted = await request('turn/start', { threadId: session, input: [{ type: 'text', text: options.prompt }], ...(options.schema ? { outputSchema: options.schema } : {}) });
     const result = await turn;
     requireCondition(!outputLoop, 'output-loop', outputLoop && outputLoopMessage(outputLoop));
     const finalModel = reroutes.findLast(event => event.params?.threadId === session)?.params.toModel ?? actualModel;
-    const attributionVerified = actualModel === options.model && !reroutes.some(event => codexModelContradiction(event, session, options.model));
-    outcome = { host: 'codex', model: finalModel, effort: options.effort ?? 'high', session, attributionVerified, status: !malformed && result.status === 'completed' ? 'complete' : 'failed', output, tokens };
+    const continuedSession = !options.session || session === options.session;
+    const attributionVerified = continuedSession && actualModel === options.model && !reroutes.some(event => codexModelContradiction(event, session, options.model));
+    const attemptUsage = options.session ? resumedUsage(usage, turnStarted?.turn?.id ?? result.id, options.priorThreadTokens) : tokens;
+    outcome = { host: 'codex', model: finalModel, effort: options.effort ?? 'high', session, attributionVerified, status: !malformed && result.status === 'completed' ? 'complete' : 'failed', output, tokens: attemptUsage, threadTokens: tokens };
     return outcome;
   } catch (error) {
     thrown = error;
@@ -222,6 +271,8 @@ async function runCodex(options) {
     }
     await new Promise(resolve => log.end(resolve));
     requireReclaimed(exit, execution.failure());
+    // An artifact failure replaces the closed-host error or failed turn it caused; one before the host started stays a start failure.
+    if (!startFailure) requireArtifactsWritten(execution, exit);
   }
 }
 
@@ -231,4 +282,4 @@ async function runAgent(options) {
   return options.host === 'claude' ? runClaude(options) : options.host === 'codex' ? runCodex(options) : Promise.reject(new Error('Unknown host'));
 }
 
-module.exports = { codexModelContradiction, executable, pluginVersion, runAgent, runClaude, runCodex, tokenTotal };
+module.exports = { codexModelContradiction, executable, pluginVersion, resumedUsage, runAgent, runClaude, runCodex, tokenTotal };

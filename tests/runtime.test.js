@@ -128,11 +128,16 @@ test('a small repair invalidates review until the complete cumulative input is a
   apply(f, { action: 'review', review: review(f, [{ id: 'repair', consequence: 'Wrong result', evidence: 'subject returns original', required: true }]) });
   assert.throws(() => apply(f, { action: 'dispose', findingId: 'repair', disposition: 'implement', reason: 'Correct required behavior' }), { code: 'unvalidated-finding' });
   assert.throws(() => apply(f, { action: 'validate', findingId: 'repair', validation: { session: 'independent-reviewer', attributionVerified: true, verdict: 'confirmed', evidence: 'reproduced' } }), { code: 'skeptic-required' });
-  apply(f, { action: 'validate', findingId: 'repair', validation: { session: 'skeptic', attributionVerified: true, verdict: 'confirmed', evidence: 'Traced input through the wrong branch' } });
+  apply(f, { action: 'validate', findingId: 'repair', validation: { session: 'skeptic', attributionVerified: true, verdict: 'confirmed', evidence: 'Traced input through the wrong branch', repairProposal: 'Take the correct branch for this input' } });
   assert.throws(() => apply(f, { action: 'dispose', findingId: 'repair', disposition: 'skip', reason: 'Too expensive', obligation: { classification: 'required', basis: 'Accepted required outcome' } }), { code: 'required-obligation' });
   apply(f, { action: 'dispose', findingId: 'repair', disposition: 'implement', reason: 'Required outcome', obligation: { classification: 'required', basis: 'Accepted required outcome' } });
   fs.writeFileSync(path.join(f.root, 'subject.txt'), 'fixed\r\n');
   apply(f, { action: 'repair', findingIds: ['repair'] });
+  assert.equal(reviewGate(f.root, f.store.read().tasks[0]), false);
+  // The raising reviewer's closure ends the pending obligation, but its continued assessment passes no gate on its own.
+  const repaired = f.store.read().tasks[0].findings.find(finding => finding.localId === 'repair');
+  apply(f, { action: 'review', review: review(f, [], { continues: { kind: 'resumed', requestId: 'earlier', session: 'independent-reviewer' }, closures: [{ id: repaired.id, closed: true, evidence: 'Input now takes the correct branch' }] }) });
+  assert.equal(f.store.read().tasks[0].findings.find(finding => finding.id === repaired.id).pendingClosure, undefined);
   assert.equal(reviewGate(f.root, f.store.read().tasks[0]), false);
   apply(f, { action: 'review', review: review(f) });
   assert.equal(reviewGate(f.root, f.store.read().tasks[0]), true);

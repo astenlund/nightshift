@@ -49,15 +49,21 @@ function validateSchemas(cases, directory) {
   return JSON.parse(checked.stdout);
 }
 
-function assessment(options, dimensions = DIMENSIONS.code, findings = []) {
-  return { requestId: options.schema.properties.requestId.enum[0], status: 'complete', coverage: dimensions.map(dimension => ({ dimension, evidence: 'Assessed both concrete paths' })), findings, probes: [], summary: 'Fixture assessment completed' };
+// A continued lead's schema names the findings pending closure; by default the fixture reviewer closes each of them.
+function assessment(options, dimensions = DIMENSIONS.code, findings = [], closures) {
+  const pending = options.schema.properties.closures?.items.properties.id.enum ?? [];
+  const report = { requestId: options.schema.properties.requestId.enum[0], status: 'complete', coverage: dimensions.map(dimension => ({ dimension, evidence: 'Assessed both concrete paths' })), findings, probes: [], summary: 'Fixture assessment completed' };
+  if (options.schema.properties.closures) report.closures = closures ?? pending.map(id => ({ id, closed: true, evidence: 'The repair resolves the fixture finding' }));
+  return report;
 }
 
-function mockAgent(options, dimensions = DIMENSIONS.code, { findings = [], session = 'fresh-session' } = {}) {
+function mockAgent(options, dimensions = DIMENSIONS.code, { findings = [], session = 'fresh-session', closures } = {}) {
   fs.mkdirSync(options.artifacts, { recursive: true });
   assert.match(options.prompt, /complete supplied artifact and cumulative change/);
   assert.match(fs.readFileSync(path.join(options.cwd, 'context/diff.patch'), 'utf8'), /new sibling/);
-  const report = assessment(options, dimensions, findings);
+  // A resumed attempt continues the session it was asked to resume.
+  session = options.session ?? session;
+  const report = assessment(options, dimensions, findings, closures);
   if (process.platform === 'win32') assert.deepEqual(validateSchemas([{ name: 'host-report', schema: options.schema, document: report }], path.join(options.artifacts, 'schema-check')), [{ name: 'host-report', valid: true }]);
   const events = options.host === 'codex'
     ? [{ id: 2, result: { thread: { id: session }, model: options.model } }, { method: 'item/completed', params: { threadId: session, item: { type: 'agentMessage', text: JSON.stringify(report) } } }, { method: 'turn/completed', params: { threadId: session, turn: { status: 'completed' } } }]
@@ -70,7 +76,7 @@ test('skeptic producer schemas bind assigned ids and count while consumer valida
   const f = fixture(t);
   const directory = path.join(f.root, '.tmp/schema');
   const ids = ['first-request:claim', 'second-request:claim'];
-  const verdict = (id, evidence = 'Deciding fixture evidence') => ({ id, verdict: 'confirmed', evidence, value: 'Required behavior assessed independently' });
+  const verdict = (id, evidence = 'Deciding fixture evidence') => ({ id, verdict: 'confirmed', evidence, value: 'Required behavior assessed independently', repairProposal: 'Correct the fixture boundary at its single caller' });
   const report = findings => ({ requestId: 'schema-request', status: 'complete', coverage: [], findings, probes: [], summary: 'Assigned claims evaluated' });
   const schemas = [0, 1, 2].map(count => schemaFor('skeptic', 'schema-request', ids.slice(0, count).map(id => ({ id }))));
   const duplicate = report([verdict(ids[0]), verdict(ids[0], 'Different evidence for the repeated id')]);
@@ -94,6 +100,8 @@ test('skeptic producer schemas bind assigned ids and count while consumer valida
   const request = count => ({ id: 'schema-request', kind: 'skeptic', findings: ids.slice(0, count).map(id => ({ id })), dimensions: DIMENSIONS.code });
   assert.throws(() => validateReport(duplicate, request(2)), { code: 'duplicate-finding' });
   assert.throws(() => validateReport(blank, request(1)), { code: 'invalid-request' });
+  assert.throws(() => validateReport(report([{ ...verdict(ids[0]), repairProposal: ' ' }]), request(1)), { code: 'invalid-request', message: /repairProposal/ });
+  assert.equal(validateReport(report([{ ...verdict(ids[0]), verdict: 'refuted', repairProposal: '' }]), request(1)).findings[0].verdict, 'refuted');
   assert.equal(validateReport(probe, request(1)).findings[0].verdict, 'unverified');
 });
 
@@ -217,7 +225,7 @@ test('receipt maintenance can import produced evidence without acquiring a new e
     const claim = store.read().controllerClaim;
     await invoke({ action: 'review', receipt: relative(lead) }, unavailable);
     const assigned = store.read().tasks[0].findings;
-    const skeptic = await invoke({ action: 'dispatch', review: { ...f, kind: 'skeptic', findings: assigned } }, { runAgent: options => mockAgent(options, DIMENSIONS.code, { session: 'skeptic', findings: assigned.map(item => ({ id: item.id, verdict: 'refuted', evidence: 'Deciding fixture evidence', value: 'No repair needed' })) }) });
+    const skeptic = await invoke({ action: 'dispatch', review: { ...f, kind: 'skeptic', findings: assigned } }, { runAgent: options => mockAgent(options, DIMENSIONS.code, { session: 'skeptic', findings: assigned.map(item => ({ id: item.id, verdict: 'refuted', evidence: 'Deciding fixture evidence', value: 'No repair needed', repairProposal: '' })) }) });
     await invoke({ action: 'validate', receipt: relative(skeptic), findingId: assigned[0].id }, unavailable);
     assert.equal(store.read().tasks[0].findings[0].validation.verdict, 'refuted');
     assert.deepEqual(store.read().controllerClaim, claim);
@@ -248,7 +256,7 @@ for (const hasFinding of [false, true]) {
       assert.equal(store.history(imported.id).length, historyCount);
       if (hasFinding) {
         const findings = store.read().tasks[0].findings;
-        const skeptic = await dispatch('skeptic', findings, findings.map(finding => ({ id: finding.id, verdict: 'refuted', evidence: 'Deciding fixture control refutes the claim', value: 'No repair required' })));
+        const skeptic = await dispatch('skeptic', findings, findings.map(finding => ({ id: finding.id, verdict: 'refuted', evidence: 'Deciding fixture control refutes the claim', value: 'No repair required', repairProposal: '' })));
         await act({ action: 'validate', receipt: receiptPath(skeptic), findingId: findings[0].id });
         await act({ action: 'dispose', findingId: findings[0].id, disposition: 'refuted', reason: 'Deciding independent evidence' });
         const resolved = store.read();
@@ -658,13 +666,13 @@ for (const interleaved of [true, false]) {
     store.create({ objective: f.requirements, authority: 'User', controller: actor, controllerClaim: fixtureControllerClaim(actor), tasks: [{ id: f.taskId, title: 'Work', agreement: { source: 'User', outcome: f.requirements } }] });
     const act = request => executeWithFixtureController(f.root, { actor, revision: store.read().revision, taskId: f.taskId, ...request });
     const receiptPath = result => path.relative(f.root, result.receiptFile).split(path.sep).join('/');
-    const dispatch = (kind, assigned, output) => executeWithFixtureController(f.root, { action: 'dispatch', actor, revision: store.read().revision, taskId: f.taskId, review: { ...f, kind, findings: assigned } }, { runAgent: options => mockAgent(options, DIMENSIONS[kind === 'docs' ? 'docs' : 'code'], { findings: output, session: { skeptic: 'skeptic-session', docs: 'docs-session' }[kind] ?? 'lead-session' }) });
+    const dispatch = (kind, assigned, output, { review = {}, session } = {}) => executeWithFixtureController(f.root, { action: 'dispatch', actor, revision: store.read().revision, taskId: f.taskId, review: { ...f, kind, findings: assigned, ...review } }, { runAgent: options => mockAgent(options, DIMENSIONS[kind === 'docs' ? 'docs' : 'code'], { findings: output, session: session ?? { skeptic: 'skeptic-session', docs: 'docs-session' }[kind] ?? 'lead-session' }) });
     try {
       const claims = ['first', 'second'].map(id => ({ id, severity: 'important', required: true, consequence: 'Fixture boundary needs correction', evidence: 'Concrete fixture branch' }));
       const lead = await dispatch('code', [], claims);
       await act({ action: 'review', receipt: receiptPath(lead) });
       const findings = store.read().tasks[0].findings;
-      const skeptic = await dispatch('skeptic', findings, findings.map(finding => ({ id: finding.id, verdict: 'confirmed', evidence: 'Fixture counterexample checked', value: 'Required accepted behavior' })));
+      const skeptic = await dispatch('skeptic', findings, findings.map(finding => ({ id: finding.id, verdict: 'confirmed', evidence: 'Fixture counterexample checked', value: 'Required accepted behavior', repairProposal: 'Correct the fixture boundary where both branches meet' })));
       for (const finding of findings) await act({ action: 'validate', receipt: receiptPath(skeptic), findingId: finding.id });
       const dispose = finding => act({ action: 'dispose', findingId: finding.id, disposition: 'implement', reason: 'Required accepted behavior', obligation: { classification: 'required', basis: 'The accepted fixture outcome' } });
       await dispose(findings[0]);
@@ -675,9 +683,17 @@ for (const interleaved of [true, false]) {
       }
       await dispose(findings[1]);
       fs.writeFileSync(path.join(f.root, 'subject.txt'), 'Repair edit\n');
-      await act({ action: 'repair', findingIds: findings.map(finding => finding.id) });
+      const repaired = await act({ action: 'repair', findingIds: findings.map(finding => finding.id) });
+      assert.equal(repaired.next[0].review.next, 'resume');
+      assert.deepEqual(repaired.next[0].review.resumeTargets.map(target => target.requestId), [lead.receipt.requestId]);
       await act({ action: 'check', check: { name: 'Fixture verification', executable: process.execPath, args: ['--version'], paths: ['subject.txt', 'new.txt'] } });
-      const assessed = await dispatch('code', [], []);
+      // The reviewer that raised the findings verifies their repair in its own session; its clean result still needs a fresh lead.
+      const resumed = await dispatch('code', [], [], { review: { resume: lead.receipt.requestId, candidates: undefined } });
+      const closed = await act({ action: 'review', receipt: receiptPath(resumed) });
+      assert.equal(store.read().tasks[0].findings.some(finding => finding.pendingClosure), false);
+      assert.equal(closed.next[0].review.next, 'fresh-assessment');
+      await assert.rejects(act({ action: 'advance' }), { code: 'review-required' });
+      const assessed = await dispatch('code', [], [], { session: 'fresh-lead-session' });
       await act({ action: 'review', receipt: receiptPath(assessed) });
       await act({ action: 'advance' });
       const documented = await dispatch('docs', [], []);

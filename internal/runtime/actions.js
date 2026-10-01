@@ -2,7 +2,7 @@
 
 const READ_ONLY_ACTIONS = new Set(['status', 'inspect', 'history', 'wait']);
 const RUNTIME_ACTIONS = new Set([
-  ...READ_ONLY_ACTIONS, 'create', 'adopt', 'claim-controller', 'resume', 'dispatch', 'probe', 'check', 'review', 'validate',
+  ...READ_ONLY_ACTIONS, 'create', 'adopt', 'claim-controller', 'resume', 'dispatch', 'probe', 'check', 'review', 'validate', 'dialogue',
   'add-spec-review', 'start-task', 'dispose', 'repair', 'advance', 'block', 'unblock', 'spec-accepted', 'retrospective', 'report', 'report-delivered',
   'triage', 'followup', 'resolve-followup', 'invalidate-continuation', 'continuation', 'handover', 'worker', 'worker-finished', 'stop', 'complete',
 ]);

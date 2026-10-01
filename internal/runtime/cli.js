@@ -15,6 +15,7 @@ const { admitEntry, executionResources, savedResources } = require('../releases/
 const { isReadOnlyAction, isRuntimeAction, unknownActionMessage } = require('./actions');
 const { ADOPTION_PROTOCOL, assertControllerClaim, controllerClaim, forbiddenReviewSessions, observeController } = require('./ownership');
 const { reservedCheck, reservedOperation } = require('./operations');
+const { continuesRecord, lineageOf, resolveContinuation } = require('./continuation');
 const { information } = require('../releases/processes');
 
 function requireRuntimeAction(request) {
@@ -78,12 +79,16 @@ async function execute(root, request, dependencies = {}) {
     }
     assertControllerClaim(state, request, dependencies);
     if (request.action === 'dispatch') {
+      // The runtime resolves a continuation from the run record; a request cannot supply it, which would skip the resume refusals.
+      requireCondition(request.review?.continuation === undefined && request.review?.continuationContext === undefined, 'invalid-continuation', 'continuation and continuationContext are resolved by the runtime, not supplied with a request');
       validateRequest(request.review);
       validateBase(store.root, request.review.baseSha);
-      const attemptTimeoutMs = request.review.timeoutMs ?? DEFAULT_REVIEW_TIMEOUT_MS;
-      requireDispatchFits(state, dependencies.resourceContext, request.review.candidates.length, attemptTimeoutMs);
-      const id = randomUUID();
       const task = targetById(state, request.taskId);
+      const continued = resolveContinuation(store.root, state, task, request.review);
+      const candidates = continued?.candidates ?? request.review.candidates;
+      const attemptTimeoutMs = request.review.timeoutMs ?? DEFAULT_REVIEW_TIMEOUT_MS;
+      requireDispatchFits(state, dependencies.resourceContext, candidates.length, attemptTimeoutMs);
+      const id = randomUUID();
       const closing = task.kind === 'closing';
       requireCondition(!closing || ['docs', 'skeptic'].includes(request.review.kind), 'wrong-review-kind', 'The closing record takes docs reviews and their skeptics only');
       const helperProcess = (dependencies.information ?? information)(process.pid, null, store.root);
@@ -92,12 +97,16 @@ async function execute(root, request, dependencies = {}) {
       const coveredTasks = closing
         ? state.tasks.filter(candidate => ['code', 'docs', 'lore'].includes(candidate.kind))
         : state.tasks.filter(candidate => candidate.id === task.id || sharesCumulativeAssessment(task) && sharesCumulativeAssessment(candidate) && candidate.status === 'complete');
-      const assigned = request.review.kind === 'skeptic' ? (request.review.findings ?? []).map(finding => task.findings.find(saved => saved.id === finding?.id)) : [];
+      const skepticFindings = continued?.findings.length ? continued.findings : request.review.findings;
+      const assigned = request.review.kind === 'skeptic' ? (skepticFindings ?? []).map(finding => task.findings.find(saved => saved.id === finding?.id)) : [];
       const lens = assigned.length > 0 && assigned.every(finding => finding && findingKind(finding, task) === 'docs') ? 'docs' : undefined;
+      const continuation = continued?.continuation;
       const registered = store.update(request.actor, state.revision, 'dispatch-started', current => {
         requireCondition(!current.baseSha || current.baseSha === request.review.baseSha, 'changed-base', 'Cumulative run review must retain its original base');
         current.baseSha = request.review.baseSha;
-        current.workers.push({ id, session: null, role: request.review.kind === 'skeptic' ? 'skeptic' : 'reviewer', assignment: closing ? 'Assess the closing tracking edits' : 'Assess ' + task.title, taskId: task.id, writes: [], status: 'starting', phase: 'reserved', artifactDirectory: `.nightshift/runs/reviews/${id}`, runnerPid: process.pid, helperProcess, resources: currentResources, controller: { ...state.controller } });
+        // A resumed dispatch holds its known session from the start, so a concurrent resume of the same session is refused.
+        const held = continuation?.kind === 'resumed' ? { session: continuation.session, host: candidates[0].host } : { session: null };
+        current.workers.push({ id, ...held, role: request.review.kind === 'skeptic' ? 'skeptic' : 'reviewer', assignment: closing ? 'Assess the closing tracking edits' : 'Assess ' + task.title, taskId: task.id, writes: [], status: 'starting', phase: 'reserved', artifactDirectory: `.nightshift/runs/reviews/${id}`, runnerPid: process.pid, helperProcess, resources: currentResources, controller: { ...state.controller }, continues: continuesRecord(continuation), lineage: continuation?.lineage ?? id });
       });
       const updateWorker = change => store.update(request.actor, store.read().revision, 'dispatch-progress', current => {
         const worker = current.workers.find(candidate => candidate.id === id);
@@ -106,7 +115,8 @@ async function execute(root, request, dependencies = {}) {
       try {
         updateWorker({ phase: 'preparing' });
         const result = await dispatchReview(store.root, {
-          ...request.review, id, runId: registered.id, taskId: task.id, lens,
+          ...request.review, id, runId: registered.id, taskId: task.id, lens, candidates,
+          continuation, continuationContext: continued?.continuationContext, findings: skepticFindings,
           resources: currentResources,
           controller: state.controller,
           forbiddenSessions: [...forbiddenReviewSessions(state)],
@@ -117,7 +127,8 @@ async function execute(root, request, dependencies = {}) {
           commitments: commitmentsFor(coveredTasks),
           requirements: request.review.requirements + '\n\nAccepted commitments covered by this cumulative assessment:\n' + JSON.stringify(coveredTasks.map(candidate => ({ id: candidate.id, agreement: candidate.agreement }))),
           onProcess: pid => updateWorker({ pid, status: 'running', phase: 'launched', childProcess: (dependencies.information ?? information)(pid, null, store.root) }),
-          onSession: session => updateWorker({ session }),
+          // A resumed dispatch holds its known session from registration; a host reporting another one must not release that hold.
+          onSession: continuation?.kind === 'resumed' ? undefined : session => updateWorker({ session }),
           onFinalizing: () => updateWorker({ phase: 'finalizing' }),
           onPrepared: assignment => updateWorker({ snapshotDigest: assignment.snapshot.digest, coveredTaskIds: assignment.coveredTaskIds, commitments: assignment.commitments, baseSha: assignment.baseSha }),
           onAttempt: () => store.update(request.actor, store.read().revision, 'model-attempt', current => {
@@ -156,6 +167,7 @@ async function execute(root, request, dependencies = {}) {
       const review = readReceipt(store.root, request.receipt, state, request.taskId);
       const task = targetById(state, request.taskId);
       requireCondition(leadKindsFor(task).includes(review.kind), 'wrong-review-kind', 'Receipt kind does not match the lead-assessment boundary');
+      requireCondition(!review.dialogue, 'dialogue-receipt', 'A dialogue reply is evidence, not an assessment: import a reviewer reply with dialogue and a skeptic reply with validate');
       const existing = task.reviews.find(candidate => candidate.requestId === review.requestId);
       if (existing) {
         const accepted = { ...existing };
@@ -170,7 +182,13 @@ async function execute(root, request, dependencies = {}) {
       requireCondition(receipt.kind === 'skeptic', 'skeptic-required', 'Validation needs a skeptic assignment');
       const verdict = receipt.findings.find(finding => finding.id === request.findingId);
       requireCondition(verdict, 'missing-validation', 'Skeptic report did not validate this finding');
-      prepared = { ...request, validation: { ...verdict, session: receipt.session, attributionVerified: true, snapshot: receipt.snapshot } };
+      // The validate transition refuses a confirmed verdict whose proposal is missing or blank.
+      prepared = { ...request, validation: { ...verdict, repairProposal: verdict.repairProposal?.trim() ? verdict.repairProposal : null, session: receipt.session, requestId: receipt.requestId, lineage: lineageOf(receipt), dialogue: receipt.dialogue?.message ?? null, attributionVerified: true, snapshot: receipt.snapshot } };
+    }
+    if (request.action === 'dialogue') {
+      const receipt = readReceipt(store.root, request.receipt, state, request.taskId);
+      requireCondition(receipt.dialogue && receipt.kind !== 'skeptic', 'dialogue-receipt-required', 'The dialogue operation imports a reviewer\'s dialogue reply; a skeptic\'s reply is imported with validate');
+      prepared = { ...request, reply: { requestId: receipt.requestId, lineage: lineageOf(receipt), session: receipt.session, message: receipt.dialogue.message, positions: receipt.positions, snapshot: receipt.snapshot } };
     }
     const result = store.update(request.actor, request.revision, request.action, state => transition(state, prepared));
     return obligationBrief(result);

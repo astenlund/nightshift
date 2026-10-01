@@ -11,6 +11,7 @@ const { resolveTrustedExecutable } = require('../internal/filesystem-primitives'
 const { lingeringProcesses, spawnWindowsJob, startFailure } = require('../internal/runtime/windows-job');
 const { information, runContained } = require('../internal/releases/processes');
 const { OUTPUT_LOOP_MIN_DELTAS, OUTPUT_LOOP_MIN_MS, outputLoopDetector, outputLoopMessage } = require('../internal/runtime/output-loop');
+const { artifactFailure } = require('./fixtures/artifact-failure');
 
 function fixture(t, host, mode = 'success') {
   const parent = path.resolve(__dirname, '../.tmp/host-protocol-tests');
@@ -68,6 +69,82 @@ for (const host of ['claude', 'codex']) {
     }
   });
 }
+
+test('Claude resumes the named session from the new copy and attributes only that session', async t => {
+  // Arrange
+  const options = fixture(t, 'claude');
+
+  // Act
+  const resumed = await runAgent({ ...options, session: 'earlier-session' });
+  const args = JSON.parse(fs.readFileSync(path.join(options.cwd, 'claude-args.json'), 'utf8'));
+  const switched = await runAgent({ ...fixture(t, 'claude', 'resume-new-session'), session: 'earlier-session' });
+  const missing = await runAgent({ ...fixture(t, 'claude', 'resume-missing'), session: 'earlier-session' });
+
+  // Assert
+  assert.equal(args[args.indexOf('--resume') + 1], 'earlier-session');
+  for (const flag of ['--print', '--safe-mode', '--strict-mcp-config', '--system-prompt-file', '--tools']) assert.ok(args.includes(flag), flag);
+  assert.equal(resumed.status, 'complete');
+  assert.equal(resumed.session, 'earlier-session');
+  assert.equal(resumed.attributionVerified, true);
+  assert.equal(resumed.tokens, 14);
+  assert.equal(switched.session, 'unrequested-session');
+  assert.equal(switched.attributionVerified, false);
+  assert.equal(missing.status, 'failed');
+});
+
+test('Codex resumes the thread in the new copy with the dispatch policy and charges only its own turn', async t => {
+  // Arrange
+  const options = fixture(t, 'codex');
+
+  // Act
+  const resumed = await runAgent({ ...options, session: 'earlier-thread' });
+  const params = JSON.parse(fs.readFileSync(path.join(options.cwd, 'resume-params.json'), 'utf8'));
+  const fromPrior = await runAgent({ ...fixture(t, 'codex', 'resume-no-baseline'), session: 'earlier-thread', priorThreadTokens: 100 });
+  const unknown = await runAgent({ ...fixture(t, 'codex', 'resume-no-baseline'), session: 'earlier-thread' });
+  const switched = await runAgent({ ...fixture(t, 'codex', 'resume-new-session'), session: 'earlier-thread' });
+  const fresh = await runAgent(fixture(t, 'codex'));
+
+  // Assert
+  assert.deepEqual({ threadId: params.threadId, cwd: params.cwd, model: params.model, approvalPolicy: params.approvalPolicy, sandbox: params.sandbox, excludeTurns: params.excludeTurns }, { threadId: 'earlier-thread', cwd: options.cwd, model: 'gpt-6-astra', approvalPolicy: 'never', sandbox: 'read-only', excludeTurns: true });
+  assert.deepEqual(params.config, { project_doc_max_bytes: 0, model_reasoning_effort: 'high', features: { multi_agent: false, plugins: false, hooks: false, apps: false } });
+  assert.equal(params.baseInstructions, 'Fixture instructions.\r\n');
+  assert.equal(Object.hasOwn(params, 'allowProviderModelFallback'), false);
+  assert.equal(resumed.status, 'complete');
+  assert.equal(resumed.session, 'earlier-thread');
+  assert.equal(resumed.attributionVerified, true);
+  assert.deepEqual({ tokens: resumed.tokens, threadTokens: resumed.threadTokens }, { tokens: 30, threadTokens: 130 });
+  assert.equal(fromPrior.tokens, 30);
+  assert.equal(unknown.tokens, null);
+  assert.equal(switched.attributionVerified, false);
+  assert.deepEqual({ tokens: fresh.tokens, threadTokens: fresh.threadTokens }, { tokens: 17, threadTokens: 17 });
+});
+
+for (const basename of ['stderr.txt', 'events.jsonl']) {
+  test(`a ${basename} write failure after the host starts ends the attempt with its operating-system error on both hosts`, async t => {
+    // Arrange
+    const inject = artifactFailure(t, basename);
+    const failures = {};
+
+    // Act
+    for (const host of ['claude', 'codex']) failures[host] = await runAgent({ ...fixture(t, host, 'timeout'), onProcess: inject }).then(() => null, error => error);
+
+    // Assert
+    for (const host of ['claude', 'codex']) assert.deepEqual({ code: failures[host]?.code, errno: failures[host]?.errno }, { code: 'ENOSPC', errno: -4055 }, host);
+  });
+}
+
+// A direct spawn reports its start before any artifact file can fail to open; a Windows job reports it later, through its runner.
+test('an artifact write failure before the host starts stays a start failure on both hosts', { skip: process.platform !== 'win32' }, async t => {
+  // Arrange
+  artifactFailure(t, 'stderr.txt', { onCreate: true });
+  const failures = {};
+
+  // Act
+  for (const host of ['claude', 'codex']) failures[host] = await runAgent({ ...fixture(t, host, 'timeout'), directProcess: false, timeoutMs: 60000 }).then(() => null, error => error);
+
+  // Assert
+  for (const host of ['claude', 'codex']) assert.equal(failures[host]?.code, 'host-start-failed', host);
+});
 
 test('Codex handshake identifies the plugin with the manifest version', async t => {
   const manifest = JSON.parse(fs.readFileSync(path.resolve(__dirname, '../.codex-plugin/plugin.json'), 'utf8'));

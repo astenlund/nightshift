@@ -98,7 +98,7 @@ test('controller authority is distinct from reviewer obligation assessment', t =
   const f = fixture(t);
   f.review('a', ['a'], [{ id: 'scope', required: true, consequence: 'Real pre-existing behavior', evidence: 'Concrete case' }]);
   const findingId = f.store.read().tasks[0].findings[0].id;
-  f.act({ action: 'validate', taskId: 'a', findingId, validation: { session: 'skeptic', attributionVerified: true, verdict: 'confirmed', evidence: 'Reproduced existing behavior', snapshot: snapshot(f.root, ['a.txt', 'b.txt']) } });
+  f.act({ action: 'validate', taskId: 'a', findingId, validation: { session: 'skeptic', attributionVerified: true, verdict: 'confirmed', evidence: 'Reproduced existing behavior', repairProposal: 'Change the pre-existing behavior at its source', snapshot: snapshot(f.root, ['a.txt', 'b.txt']) } });
   const dispose = { action: 'dispose', taskId: 'a', findingId, reason: 'Outside accepted behavior and repair authority' };
   assert.throws(() => f.act({ ...dispose, disposition: 'skip' }), { code: 'missing-authority-assessment' });
   assert.throws(() => f.act({ ...dispose, disposition: 'implement', obligation: { classification: 'out-of-scope', basis: 'Accepted scope excludes this behavior' } }), { code: 'unauthorized-repair' });
@@ -151,11 +151,19 @@ function fixture(t, options = {}, prepare) {
     return store.update(actor, store.read().revision, request.action, state => transition(state, request));
   };
   const check = id => act({ action: 'check', taskId: id, evidence: verifyCommand(root, { name: 'Fixture evidence', executable: process.execPath, args: ['--version'], paths: [id + '.txt'] }) });
-  const review = (id, coveredTaskIds = [id], findings = [], paths = ['a.txt', 'b.txt']) => act({ action: 'review', taskId: id, review: { requestId: 'request-' + store.read().revision, taskId: id, coveredTaskIds, kind: 'code', session: 'reviewer', attributionVerified: true, strength: 'strong', independent: true, broad: true, status: 'complete', dimensions: [...DIMENSIONS.code], coverageEvidence: 'Assessed both paths and their integration', snapshot: snapshot(root, paths), findings } });
+  const review = (id, coveredTaskIds = [id], findings = [], paths = ['a.txt', 'b.txt'], overrides = {}) => act({ action: 'review', taskId: id, review: { requestId: 'request-' + store.read().revision, taskId: id, coveredTaskIds, kind: 'code', session: 'reviewer', attributionVerified: true, strength: 'strong', independent: true, broad: true, status: 'complete', dimensions: [...DIMENSIONS.code], coverageEvidence: 'Assessed both paths and their integration', snapshot: snapshot(root, paths), findings, ...overrides } });
+  // The reviewer that raised each repaired finding records its closure in a continued review.
+  const closeRepairs = id => {
+    const pending = store.read().tasks.find(task => task.id === id).findings.filter(finding => finding.pendingClosure);
+    for (const lineage of new Set(pending.map(finding => finding.pendingClosure.lineage))) {
+      const closures = pending.filter(finding => finding.pendingClosure.lineage === lineage).map(finding => ({ id: finding.id, closed: true, evidence: 'The repair resolves the finding' }));
+      review(id, [id], [], undefined, { continues: { kind: 'resumed', requestId: lineage, session: 'reviewer' }, lineage, closures });
+    }
+  };
   const finish = id => {
     while (store.read().tasks.find(task => task.id === id).status !== 'complete') act({ action: 'advance', taskId: id, evidence: 'Observed closing obligation satisfied' });
   };
-  return { root, store, act, check, review, finish };
+  return { root, store, act, check, review, closeRepairs, finish };
 }
 
 for (const [kind, assessed] of [['docs', false], ['lore', false], ['docs', true], ['lore', true], ['spec', true]]) {
@@ -189,12 +197,13 @@ for (const kind of ['docs', 'lore']) {
     const f = fixture(t, { tasks: [{ id: 'a', title: 'Standalone maintenance', kind, agreement: { source: 'User', outcome: 'Prepare the reviewed artifact without applying instructions' } }] });
     f.review('a', ['a'], [{ id: 'draft', consequence: 'The proposed artifact omits an agreed boundary', evidence: 'Concrete missing boundary in the draft' }]);
     const findingId = f.store.read().tasks[0].findings[0].id;
-    f.act({ action: 'validate', taskId: 'a', findingId, validation: { session: 'skeptic', attributionVerified: true, verdict: 'confirmed', evidence: 'Independent boundary reproduction', snapshot: snapshot(f.root, ['a.txt', 'b.txt']) } });
+    f.act({ action: 'validate', taskId: 'a', findingId, validation: { session: 'skeptic', attributionVerified: true, verdict: 'confirmed', evidence: 'Independent boundary reproduction', repairProposal: 'Add the agreed boundary to the draft', snapshot: snapshot(f.root, ['a.txt', 'b.txt']) } });
     f.act({ action: 'dispose', taskId: 'a', findingId, disposition: 'implement', reason: 'Repair the authorized draft', obligation: { classification: 'required', basis: 'The accepted draft must cover this boundary' } });
     fs.writeFileSync(path.join(f.root, 'a.txt'), 'Draft boundary repaired\r\n');
     f.act({ action: 'repair', taskId: 'a', findingIds: [findingId] });
     f.check('a');
     assert.throws(() => f.act({ action: 'advance', taskId: 'a' }), { code: 'review-required' });
+    f.closeRepairs('a');
     f.review('a');
     f.act({ action: 'advance', taskId: 'a' });
     assert.equal(f.store.read().tasks[0].stage, kind === 'lore' ? 'retrospective' : 'documentation');
@@ -371,7 +380,7 @@ test('repeated review-local finding names retain both paid reports, and revalida
   f.check('a');
   f.review('a', ['a'], [finding]);
   const first = f.store.read().tasks[0].findings[0];
-  f.act({ action: 'validate', taskId: 'a', findingId: first.id, validation: { session: 'skeptic', attributionVerified: true, verdict: 'confirmed', evidence: 'Concrete reproduction', snapshot: snapshot(f.root, ['a.txt', 'b.txt']) } });
+  f.act({ action: 'validate', taskId: 'a', findingId: first.id, validation: { session: 'skeptic', attributionVerified: true, verdict: 'confirmed', evidence: 'Concrete reproduction', repairProposal: 'Correct the branch the reproduction takes', snapshot: snapshot(f.root, ['a.txt', 'b.txt']) } });
   f.act({ action: 'dispose', taskId: 'a', findingId: first.id, disposition: 'implement', reason: 'Required behavior', obligation: { classification: 'required', basis: 'Accepted required behavior' } });
   f.act({ action: 'repair', taskId: 'a', findingIds: [first.id] });
   f.review('a', ['a'], [finding]);
@@ -379,9 +388,11 @@ test('repeated review-local finding names retain both paid reports, and revalida
   assert.equal(state.tasks[0].reviews.length, 2);
   assert.notEqual(state.tasks[0].findings[0].id, state.tasks[0].findings[1].id);
   assert.deepEqual(state.tasks[0].findings[1].relatedTo, [first.id]);
-  f.act({ action: 'validate', taskId: 'a', findingId: first.id, validation: { session: 'new-skeptic', attributionVerified: true, verdict: 'confirmed', evidence: 'New evidence reopens the earlier issue', snapshot: snapshot(f.root, ['a.txt', 'b.txt']) } });
+  f.act({ action: 'validate', taskId: 'a', findingId: first.id, validation: { session: 'new-skeptic', attributionVerified: true, verdict: 'confirmed', evidence: 'New evidence reopens the earlier issue', repairProposal: 'Repair the reopened branch again', snapshot: snapshot(f.root, ['a.txt', 'b.txt']) } });
   state = f.store.read();
   assert.equal(state.tasks[0].findings[0].repaired, false);
+  // The earlier repair is still in the change, so its closure stays owed through the new verdict.
+  assert.equal(state.tasks[0].findings[0].pendingClosure.lineage, first.raisedBy.lineage);
   assert.equal(reviewGate(f.root, state.tasks[0]), false);
 });
 

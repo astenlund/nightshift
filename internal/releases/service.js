@@ -18,7 +18,7 @@ const { workerIsActive } = require('../runtime/workers');
 const { digest, directory, hostProfile, parseJson, processAlive, projectRoot, readBytes, replaceFile, requireConsistentRunId, requireValue, text, writeNew } = require('./io');
 
 const ENTRIES = Object.freeze({ ready: 'skills/ready/ready.js', unwrap: 'skills/init-backlog/unwrap.js', setup: 'skills/init-backlog/init-backlog.js', runtime: 'internal/runtime/cli.js' });
-const MAINTENANCE = new Set(['worker-finished', 'review', 'validate', 'stop']);
+const MAINTENANCE = new Set(['worker-finished', 'review', 'validate', 'dialogue', 'stop']);
 // The closed list of entries admitted without observed continuation activation.
 const ACTIVATION_EXEMPT = new Set(['ready']);
 const ENTRY_CHOICE = 'Choose ready, unwrap, setup or runtime';

@@ -99,6 +99,9 @@ class RunStore {
       this.db.prepare('INSERT OR IGNORE INTO artifacts VALUES (?, ?)').run(id, body);
       return { $artifact: id };
     };
+    const stashFindings = findings => {
+      for (const finding of findings) if (finding.validation?.snapshot) finding.validation.snapshot = stash(finding.validation.snapshot);
+    };
     const closing = copy.closing?.docs;
     for (const target of closing ? [...copy.tasks, closing] : copy.tasks) {
       for (const check of target.checks) {
@@ -109,9 +112,10 @@ class RunStore {
         if (review.snapshot) review.snapshot = stash(review.snapshot);
         if (review.contextSnapshot) review.contextSnapshot = stash(review.contextSnapshot);
       }
-      for (const finding of target.findings) if (finding.validation?.snapshot) finding.validation.snapshot = stash(finding.validation.snapshot);
+      stashFindings(target.findings);
       if (target.docsExemption?.snapshot) target.docsExemption.snapshot = stash(target.docsExemption.snapshot);
     }
+    stashFindings(copy.closing?.carriedFindings ?? []);
     if (closing?.baseline) closing.baseline = stash(closing.baseline);
     if (copy.closing?.carriedBaseline) copy.closing.carriedBaseline = stash(copy.closing.carriedBaseline);
     return copy;

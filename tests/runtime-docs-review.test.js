@@ -53,12 +53,22 @@ function fixture(t, tasks = [CODE_TASK], options = {}) {
   const review = (taskId, kind, covered = [taskId], findings = [], overrides = {}) => act({ action: 'review', taskId, review: assessment(kind, covered, findings, overrides) });
   const check = (taskId, paths = ['src.js'], name = 'Fixture check') => act({ action: 'check', taskId, evidence: verifyCommand(root, { name, executable: process.execPath, args: ['--version'], paths }) });
   const confirm = (taskId, findingId, disposition = 'implement', classification = 'required', extra = {}) => {
-    act({ action: 'validate', taskId, findingId, validation: { session: 'skeptic-' + findingId, attributionVerified: true, verdict: 'confirmed', evidence: 'Checked against the change', snapshot: snapshot(root, ['src.js']) } });
+    act({ action: 'validate', taskId, findingId, validation: { session: 'skeptic-' + findingId, attributionVerified: true, verdict: 'confirmed', evidence: 'Checked against the change', repairProposal: 'Correct the passage the finding names', snapshot: snapshot(root, ['src.js']) } });
     return act({ action: 'dispose', taskId, findingId, disposition, reason: 'Decided against the accepted scope', obligation: { classification, basis: 'The accepted outcome' }, ...extra });
   };
-  const findingId = (localId, owner = 'code') => (owner === CLOSING_TARGET ? store.read().closing.docs : store.read().tasks.find(task => task.id === owner)).findings.findLast(finding => finding.localId === localId).id;
+  const target = id => (id === CLOSING_TARGET ? store.read().closing.docs : store.read().tasks.find(task => task.id === id));
+  // The reviewer that raised each repaired finding records its closure in a continued review of its own kind.
+  const closeRepairs = (taskId, covered = [taskId]) => {
+    const pending = target(taskId).findings.filter(item => item.pendingClosure);
+    for (const lineage of new Set(pending.map(item => item.pendingClosure.lineage))) {
+      const raised = target(taskId).reviews.find(item => (item.lineage ?? item.requestId) === lineage);
+      const closures = pending.filter(item => item.pendingClosure.lineage === lineage).map(item => ({ id: item.id, closed: true, evidence: 'The repair resolves the finding' }));
+      review(taskId, raised.kind, covered, [], { continues: { kind: 'resumed', requestId: lineage, session: raised.session }, lineage, session: raised.session, closures });
+    }
+  };
+  const findingId = (localId, owner = 'code') => target(owner).findings.findLast(finding => finding.localId === localId).id;
   const task = (id = 'code') => store.read().tasks.find(item => item.id === id);
-  return { root, baseSha, store, act, write, assessment, review, check, confirm, findingId, task };
+  return { root, baseSha, store, act, write, assessment, review, check, confirm, closeRepairs, findingId, task };
 }
 
 // Runs work with one environment variable set, restoring its previous value or absence afterwards.
@@ -133,7 +143,7 @@ test('a docs review is dispatched with the documentation lens, and its skeptic t
   const saved = f.task().findings.find(item => item.localId === 'claim');
   assert.equal(saved.reviewKind, 'docs');
   assert.equal(f.task().stage, 'review');
-  const verdict = { id: saved.id, verdict: 'confirmed', evidence: 'Reproduced the misstatement', value: 'Worth correcting' };
+  const verdict = { id: saved.id, verdict: 'confirmed', evidence: 'Reproduced the misstatement', value: 'Worth correcting', repairProposal: 'Restate the claim from the changed code' };
   const skeptic = await run({ action: 'dispatch', taskId: 'code', review: { ...review, kind: 'skeptic', findings: [saved] } }, { runAgent: agent(calls, [], [verdict]) });
   assert.match(calls[2].prompt, /claim-accuracy/);
   assert.doesNotMatch(calls[2].prompt, /requirements-ux/);
@@ -152,6 +162,7 @@ test('a code task needs a current docs review to complete, and a backlog-only do
   f.write(BACKLOG, '# Bugs\n\nCorrected entry.\n');
   f.act({ action: 'repair', taskId: 'code', findingIds: [f.findingId('stale-entry')] });
   assert.throws(() => f.act({ action: 'advance', taskId: 'code' }), { code: 'review-required' });
+  f.closeRepairs('code');
   f.review('code', 'docs');
   f.act({ action: 'advance', taskId: 'code' });
   f.act({ action: 'advance', taskId: 'code', evidence: 'Documentation reconciled' });
@@ -166,6 +177,7 @@ test('a docs repair outside the backlog needs code reassessment, and a code repa
   f.confirm('code', f.findingId('readme'));
   f.write('README.md', '# Project\n\nThe new option.\n');
   f.act({ action: 'repair', taskId: 'code', findingIds: [f.findingId('readme')] });
+  f.closeRepairs('code');
   f.review('code', 'docs');
   assert.throws(() => f.act({ action: 'advance', taskId: 'code' }), { code: 'review-required', message: /latest assessment is stale/ });
   f.review('code', 'code', ['code'], [finding('logic', 'The code mishandles the boundary')]);
@@ -173,6 +185,7 @@ test('a docs repair outside the backlog needs code reassessment, and a code repa
   f.write('src.js', 'module.exports = 2;\n');
   f.act({ action: 'repair', taskId: 'code', findingIds: [f.findingId('logic')] });
   f.check('code');
+  f.closeRepairs('code');
   f.review('code', 'code');
   assert.throws(() => f.act({ action: 'advance', taskId: 'code' }), { code: 'docs-review-required', message: /latest docs review is stale/ });
   f.review('code', 'docs');
@@ -253,6 +266,7 @@ test('repair and a changed agreement clear a mechanical exemption', t => {
   f.confirm('docs', f.findingId('wording', 'docs'));
   f.write('README.md', '# Project\n\nReworded.\n');
   f.act({ action: 'repair', taskId: 'docs', findingIds: [f.findingId('wording', 'docs')] });
+  f.closeRepairs('docs');
   f.review('docs', 'code');
   f.act({ action: 'advance', taskId: 'docs' });
   f.act({ action: 'advance', taskId: 'docs', evidence: 'Reworded', docsExemption: 'Fixture treats the rewording as mechanical' });
@@ -328,6 +342,7 @@ test('closing findings are validated, repaired and reassessed on the record with
   assert.equal(f.task().status, 'complete');
   assert.ok(f.store.read().closing.triageEvidence);
   assert.throws(() => f.act({ action: 'complete' }), { code: 'closing-review-unresolved' });
+  f.closeRepairs(CLOSING_TARGET, ['code']);
   f.act({ action: 'review', taskId: CLOSING_TARGET, review: f.assessment('docs', ['code']) });
   assert.throws(() => f.act({ action: 'advance', taskId: CLOSING_TARGET }), { code: 'invalid-closing-action' });
   assert.equal(f.act({ action: 'complete' }).status, 'complete');
