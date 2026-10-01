@@ -4,11 +4,35 @@ V2 entries are preserved in [the historical index](migration/v2/QUICK_WINS.md) a
 
 ## Current
 
-### Audit capabilities that left v2 without a disposition naming them
+### Protect projects from committed scratch files
 
-Found on 2026-09-30: line links, which v2's spec-agreement skill built from the user's `NIGHTSHIFT_LINE_LINK_FORMAT` so that a backlog entry opened at its line, left with that skill in the v3 change 8ca3cb4. No row of [the v3 migration](../V3-MIGRATION.md) or [the migration status](MIGRATION_STATUS.md) names them; they went with the agreement digest's presentation, which the migration replaced by decision, and the loss surfaced only when a session could not find the format the user remembered, as [Make Ready and Exploring links open at their target](features/source-link-targets.md) records. The 2026-09-29 migration accounting audit checked the rows of the migration status against current behavior, so a capability that shipped inside a v2 skill without a row of its own was outside its method. The earlier [shipped capability audit](reports/pre-v3-shipped-capability-audit-20260921.md) enumerated capabilities from the historical feature records and judged the removal of the digest machinery deliberate, but no feature record mentions line links, so its method missed them as well. The user chose on 2026-09-30 to track an audit for more such cases.
+Found on 2026-10-01 by [the audit of capabilities that left v2 without a disposition](reports/v2-capability-audit-20261001.md). v2's implementation dispatch (`skills/handover/implementation-dispatch.js` at `8ca3cb4^`, shipped in 2.6.21) refused to start when the project's root `.gitignore` lacked the `/.tmp/` rule, refused staged `.tmp/` paths, audited every commit since the plan for committed `.tmp/` paths, and gave each dispatch a fresh scratch directory. The v3 change `8ca3cb4` removed all of it, and no disposition names the removal. v3 still writes its own request files under the project's `.tmp/nightshift`, assuming the directory is ignored ([the retained resource interface](../internal/releases/REFERENCE.md)), and excludes `.tmp` from review inventories, but nothing checks the ignore rule or keeps scratch out of commits. The user chose to restore it as a quick win at the audit's triage.
 
-Audit what the v3 change removed, starting with the non-test files it deleted, under `skills/spec-agreement`, `skills/revise-plan`, `skills/handover`, `skills/init-backlog` and `internal`, for user-facing capabilities and integrations with the user's environment that neither a migration disposition nor a feature record names, reuse the 2026-09-21 audit's verdicts where they apply, and bring each remaining case to the user to restore, record as retired or accept as replaced. Search the history by each capability's identifiers, such as with `git log -S`, as well as by its description, and state the scope searched. Tracking does not authorize implementation.
+Confirm that `.tmp` is ignored before Nightshift or its agents write scratch there, and flag staged or committed `.tmp` paths before delivery completes, naming the exact policy or commits to repair rather than editing the user's ignore policy. The `.superpowers/` half of the v2 check went with the Superpowers dependency. Guidance and runtime changes ship with a version increase. Tracking does not authorize implementation.
+
+**Requires:** none.
+
+### Block unattended work before destructive or outward-facing actions
+
+Found on 2026-10-01 by [the audit of capabilities that left v2 without a disposition](reports/v2-capability-audit-20261001.md). v2's handover stopped a handed-over run "for destructive, irreversible, or outward-facing actions" (`skills/handover/SKILL.md` at `8ca3cb4^`). The v3 operating brief gates publication on recorded authority but names neither destructive nor irreversible actions, and no disposition names the change. [VISION.md](../VISION.md) says "deployment or other external actions require the user's authorization", but runs do not load it, so what remains are host permission modes and each user's own rules. The user chose to restore it as a quick win at the audit's triage.
+
+Have [the operating brief](../internal/workflow.md) tell unattended work to block with a user-decision blocker before any destructive, irreversible or outward-facing action that recorded authority does not cover, and to continue independent work meanwhile. Guidance changes ship with a version increase. Tracking does not authorize implementation.
+
+**Requires:** none.
+
+### Restore the revise-docs writing rules
+
+Found on 2026-10-01 by [the audit of capabilities that left v2 without a disposition](reports/v2-capability-audit-20261001.md). v2's revise-docs (`skills/revise-docs/SKILL.md` at `8ca3cb4^`) verified landed claims against Git and, after a revert or a `DROPME` drop, swept the session's tracking files for claims recording reverted work as landed; kept `CLAUDE.md` for constraints and traps rather than descriptions of the code; added no new documentation sections; and asked the user before balance adjustments or cleanups beyond the immediate scope. [The v3 revise-docs](../skills/revise-docs/SKILL.md) asks for proportionate updates of stale claims, and its docs review checks claim accuracy and proportionality afterwards, but none of those writing rules survives and no disposition names their removal; the coarse-and-stable anchors rule survives in the init-backlog templates. The user chose to restore them as a quick win at the audit's triage.
+
+Carry the missing rules into revise-docs: the revert sweep for landed claims, instruction files holding constraints rather than descriptions of the code, no new sections without need, and balance or beyond-scope adjustments asked first, or recorded as follow-ups when no user is available. Skill changes ship with a version increase. Tracking does not authorize implementation.
+
+**Requires:** none.
+
+### Confirm commits land on the run's intended branch
+
+Found on 2026-10-01 by the verification of [the audit of capabilities that left v2 without a disposition](reports/v2-capability-audit-20261001.md), whose draft had listed it as accounted for. v2's handover had the controller verify after each implementation batch that its commits landed on the intended branch (`skills/handover/SKILL.md` at `8ca3cb4^`). The check went with the v3 change; the retirement of the Superpowers dispatch skill beside it does not name the check, and [the operating brief](../internal/workflow.md) still lets the controller dispatch helpers that can commit. The user chose to restore it as a quick win at the audit's triage.
+
+Have the operating brief ask the controller to confirm, after it or a helper commits, that the commits landed on the run's intended branch and checkout, and to treat a mismatch as a blocker to reconcile. Relates to [Deliver each run on its own branch or worktree](features/run-worktree-delivery.md) (Exploring). Guidance changes ship with a version increase. Tracking does not authorize implementation.
 
 **Requires:** none.
 
