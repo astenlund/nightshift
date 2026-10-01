@@ -1,17 +1,17 @@
 {
   "schema": 1,
   "name": "nightshift",
-  "version": "3.3.0",
+  "version": "3.3.1",
   "files": [
     {
       "path": ".claude-plugin/plugin.json",
       "bytes": 640,
-      "sha256": "42973c2b901d727135d91e4024681783db6296687aa30d0948ebd4a4237e9b3f"
+      "sha256": "953d16b18a838d4b22c52d896da5f4d2100ff2e5735b77014e39d3a4bed1adc0"
     },
     {
       "path": ".codex-plugin/plugin.json",
       "bytes": 1160,
-      "sha256": "6df09a17d2fd89e6bbac68da8fecfc17a30908e11c2c78072d7f9f21942bd5bd"
+      "sha256": "97c617300b8df016a36c9b510a2b0e02deb502f3c3f3edd68b57c5df874cb531"
     },
     {
       "path": "LICENSE",
@@ -225,8 +225,8 @@
     },
     {
       "path": "internal/runtime/review.js",
-      "bytes": 47098,
-      "sha256": "2923e273bff1404b46b65f4bcbc6d15b988b5c42602473f0117c584d1e42fc54"
+      "bytes": 47253,
+      "sha256": "a6a30e0bb77a9b6ebb6022e307987c5c98dc456ec43aa069a22d5b49aea7f44e"
     },
     {
       "path": "internal/runtime/store.js",
@@ -270,8 +270,8 @@
     },
     {
       "path": "internal/workflow.md",
-      "bytes": 29599,
-      "sha256": "c4fa088d7593ab26094ed31ac8d0b50a5cf9d1825eeae5f4415d8b18e227b6f6"
+      "bytes": 29948,
+      "sha256": "e649a6d8138bf3018aa13d5bd86252cbee9d0ade1cb227ab3b9bde01b813fe0d"
     },
     {
       "path": "skills/exploring/SKILL.md",
@@ -340,8 +340,8 @@
     },
     {
       "path": "skills/ready/ready.js",
-      "bytes": 78748,
-      "sha256": "b1f5aac1eaaf88dd60e6bbc3a82ff8724a59cf668f346aa41174ca6a6843f26e"
+      "bytes": 79618,
+      "sha256": "323db1e71ba872af7c15f2787334fc2c6dd3687c7a44f82b1ffda07b7b0c9061"
     },
     {
       "path": "skills/revise-code/SKILL.md",
@@ -350,8 +350,8 @@
     },
     {
       "path": "skills/revise-docs/SKILL.md",
-      "bytes": 2707,
-      "sha256": "f9b9e663643c542c385130b201763ae4980133e157860e32779f07a14468be64"
+      "bytes": 2791,
+      "sha256": "c8de0c36793eb405881281e175b0f075e07e410c3a3c5461889273594a0d8838"
     },
     {
       "path": "skills/revise-lore/SKILL.md",
