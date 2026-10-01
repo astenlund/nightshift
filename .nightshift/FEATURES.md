@@ -212,7 +212,7 @@ Besides the few high-value entries Ready recommends today, also recommend one or
 
 ### [Execution plan for a multi-item selection](features/multi-item-execution-plan.md)
 
-When the user picks more than one item, the controller or the runtime proposes an execution plan that works them in parallel, in sequence, together as a unit, or a mix of the three, and includes it in the readback so the user agrees to it before any work starts. Raised by the user on 2026-10-01 during a two-item Ready selection. Who builds the plan, what a unit means for runs and reviews, and how parallel items share one checkout under the review input drift rule are open.
+When the user picks more than one item, the controller or the runtime proposes an execution plan that works them in parallel, in sequence, together as a unit, or a mix of the three, and includes it in the readback so the user agrees to it before any work starts. Raised by the user on 2026-10-01 during a two-item Ready selection. Who builds the plan, what a unit means for runs and reviews, and how parallel items share one checkout under the review input drift rule are open; the user suggested Git worktrees on separate branches for the last.
 
 ### [Make Ready and Exploring links open at their target](features/source-link-targets.md)
 

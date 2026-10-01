@@ -24,5 +24,5 @@ It came during a Ready selection in this repository. The user picked [Resumable 
 
 - Who builds the plan: controller judgment, the runtime from dependency declarations and the files each item touches, or both.
 - What "together as a unit" means for runs, tasks, agreement and review, such as one task with one cumulative review.
-- How parallel items coexist in one checkout and one active run, given the review input drift rule.
+- How parallel items coexist in one checkout and one active run, given the review input drift rule. The user added the same day: "you could use git worktrees and separate branches", which ties parallel items to [Deliver each run on its own branch or worktree](run-worktree-delivery.md) and leaves how their branches come back together open.
 - How the plan is presented in the readback, how a change to it during the work is agreed, and how it interacts with handover.
