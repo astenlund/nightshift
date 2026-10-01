@@ -66,6 +66,8 @@ Found on 2026-09-28 in run `32ce50cd-22de-4211-a488-b82ed9726ec0`. The history f
 
 Decide whether entries written before publication cite a run id or scope, optionally with commit subjects, or record hashes only after publication, then align the three history headers, the affected templates and the anchor advice in `quick-wins.md`. The templates ship with the plugin, so that change needs a version increase. Tracking does not authorize implementation.
 
+An observation on 2026-10-02 in run `c9ea0003-a82c-4fb3-8d66-b5a341c39f43` supports the commit-subject option: the docs review flagged the run's new `BUGS_HISTORY.md` entry for lacking the commit its header asks for, the repair named the fix commit by its subject rather than its unpushed hash, the resumed reviewer closed the finding on that form, and an autosquash later in the session rewrote the archive commit's hash while the subject reference stayed valid. The user chose at triage to record it here.
+
 **Requires:** none.
 
 ### Hand stored probe results over after a line-ending renormalization
@@ -147,6 +149,8 @@ A contrasting observation on 2026-09-28 in run `7f0cb8e1-8a73-4a4c-b5f9-f8ec6266
 A second observation on 2026-09-28 in run `f6288235-b263-4394-8f83-4d0474cb6708`, on a larger change (a Windows job runner protocol change with runtime and test code across about ten files, plus documentation): every dispatch's rules named the recorded passing checks (the CI runtime file list, the release tests, the manifest check, a live dotnet check and later the backlog parser check), stated that rerunning those suites as probes adds nothing, and asked for a probe only for evidence the checks could not supply. Across four Codex `gpt-6-astra` assessments (`678cd7c0`, 656,424 tokens; `195d85f0`, 572,295; `1ac2cdd5`, 681,653; `336224cb`, 833,115) and one Claude Fable skeptic (`7a402328`, 312,477), none requested a suite rerun or any probe; the one incomplete return asked for investigation evidence instead. It is still a single run without a control. The user chose at triage to record it here.
 
 A third observation on 2026-09-30 in run `7969bab6-360c-4bd5-a5bd-33dfe3ef28d9`, a change of 183 inserted lines across runtime code, tests, guidance and packaging, plus backlog edits: every dispatch's rules again named the recorded passing checks (the runtime suites, the packaging tests, the release manifest and, once recorded, a strict ready parser check and the backlog line check) and said rerunning them as probes adds nothing. None of the eight dispatches, five Codex `gpt-6-astra` code and docs assessments of 661,511 to 1,000,908 tokens each and three Claude Fable skeptics, requested a probe or a suite rerun, and every one returned complete. Still no control. The user chose at triage to record it here.
+
+A fourth observation on 2026-10-02 in run `c9ea0003-a82c-4fb3-8d66-b5a341c39f43`, the closest to a control so far: the same change, a parser fix of 98 inserted lines across code, tests and guidance plus the release preparation, was assessed twice in a row by Codex `gpt-6-astra`. The first dispatch (`52878c03`, 492,117 tokens), whose requirements did not list the recorded checks, returned `incomplete` with no finding and two probes rerunning `skills/ready/ready.test.js` and one test of `tests/release-recovery.test.js`, both already recorded as passing checks on the same inputs; both probes passed. The next fresh dispatch (`293fe988`, 830,632 tokens) listed the recorded passing checks in its requirements and also received those probe results, and it returned complete and clean with no probe request. Because the second dispatch also had the probe results, this is a near control rather than a clean one. The user chose at triage to record it here.
 
 **Requires:** none.
 
@@ -281,6 +285,14 @@ Narrow the wording to a receipt that cannot be parsed in all four places, or fol
 Found on 2026-10-01 in run `edb0199e-f5f3-4fab-a55f-8fa909a08289`, from the independent review of that run's retrospective proposal. The user approved a `~/AGENTS.md` rule: before a repair batch is declared done, when it changed which record, status or case a decision or obligation reads, list every reader and writer of that state and every form it can take, and on a second missed case fix the property the decision keys on. Two repairs in that run each broke a reader nobody traced. [revise-code](../skills/revise-code/SKILL.md) is read at exactly that moment and already asks for the shared cause after repeated related findings, but says nothing about the controller tracing readers and writers before closing a batch, and a global rule reaches only this user.
 
 Add that habit as one clause to revise-code and the matching sentence of [the operating brief](../internal/workflow.md). Skill and guidance changes ship with a version increase. Tracking does not authorize implementation.
+
+**Requires:** none.
+
+### Bound status refuses a completed run bound to another release
+
+Observed on 2026-10-02 at the start of run `c9ea0003-a82c-4fb3-8d66-b5a341c39f43` on installed 3.3.0. Before the run was created, a runtime `status` read through the bound launcher in the new session failed with `retained-bootstrap-unavailable`, "The requested run uses another release; reconcile its binding before resuming", because the project's current run (`edb0199e-f5f3-4fab-a55f-8fa909a08289`) was a completed run bound to release 3.2.17. The read-only status of the development CLI described that run as complete, and `create` then proceeded normally. [The operating brief](../internal/workflow.md) asks for a status read when beginning work, and the refusal asks for reconciliation of a run that is complete and needs none, which a controller could take as a blocker. The user chose to track it at triage.
+
+Let bound `status` describe a completed run from another release, or word the refusal to say that a completed run needs no reconciliation and that creating a new run is unaffected. Runtime changes ship with a version increase. Tracking does not authorize implementation.
 
 **Requires:** none.
 
