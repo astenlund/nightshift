@@ -4,14 +4,6 @@ V2 entries are preserved in [the historical index](migration/v2/BUGS.md) and [MI
 
 ## Current
 
-### Ready parser check passes with structural errors
-
-Found on 2026-09-30 in run `7969bab6-360c-4bd5-a5bd-33dfe3ef28d9` while recording its backlog checks. `skills/ready/ready.js` exits 0 when it reports ordinary structural errors, such as grammar, dependency or link problems; it sets exit code 1 only for a missing or escaping backlog root, a backlog file that is not valid UTF-8, unwrap recovery and a few fatal paths. A runtime check that runs `node skills/ready/ready.js --development .` therefore passes with structural errors in its output, while the docs review's backlog-conventions dimension tells the reviewer that parser validity is evidenced by the controller's recorded ready parser check, so a passing check can stand in for a clean parse it did not establish. That run avoided the gap with a wrapper that failed on any structural error, notice or missing index; whether earlier runs recorded the bare command was not checked. The user chose to track it at triage.
-
-Give the parser a check mode, or a documented check command, that exits nonzero on structural errors while Ready's normal report stays unchanged, and name it as the recorded ready parser check in the operating brief or the docs-review guidance. Parser and guidance changes ship with a version increase. Tracking does not authorize implementation.
-
-**Requires:** none.
-
 ### Output-loop attempts record no token usage
 
 Found on 2026-09-30 in run `f440497c-a0cc-4375-bada-e834e32b49a6`. When the runtime ends a Codex attempt as a whitespace output loop (at least 120 seconds and 1,000 consecutive whitespace-only deltas; the recorded loops ended near 4,000), the attempt records no token usage: all ten such attempts in this repository's review records since 2026-09-25 have no tokens value, two of them (requests `4887a561` and `3c961355`) in this run. The three in this run's live acceptance fixtures recorded none either, so the campaign ledger held 1,000,000 tokens for each as unmeasured exposure. The usage was reported: the kept event logs of `4887a561` and `3c961355` carry 14 and 18 `thread/tokenUsage/updated` events, and the Codex host adapter in `internal/runtime/hosts.js` already tracks their running total, but the output-loop failure path throws before any attempt result carries it, and `internal/runtime/review.js` sets an attempt's tokens only from a returned result.
