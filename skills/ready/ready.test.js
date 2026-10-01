@@ -263,6 +263,63 @@ test('the CLI reads a legacy .claude directory as the backlog root and names the
   }
 });
 
+test('--check keeps the report and exits 1 unless the parse is clean', () => {
+  const tmpRoot = path.join(__dirname, '..', '..', '.tmp', `ready-check-${process.pid}`);
+  const backlogDir = path.join(tmpRoot, '.nightshift');
+  const cleanBacklog = {
+    'FEATURES.md': '# Features\n\n## Area\n\n### [Alpha](features/alpha.md)\n\nAlpha feature.\n\n**Requires:** none.\n',
+    'features/alpha.md': '# Alpha\n\nAlpha record.\n',
+    'BUGS.md': '# Bugs\n\n## Current\n\n### Crash\n\nA crash.\n\n**Requires:** none.\n',
+    'QUICK_WINS.md': '# Quick wins\n\n## Current\n\n### Tidy\n\nA tidy-up.\n',
+    'PATTERNS.md': '# Patterns\n',
+  };
+  const writeBacklog = (files) => {
+    fs.rmSync(tmpRoot, { recursive: true, force: true });
+    fs.mkdirSync(path.join(backlogDir, 'features'), { recursive: true });
+    for (const [target, contents] of Object.entries(files)) {
+      if (contents !== null) fs.writeFileSync(path.join(backlogDir, target), contents);
+    }
+  };
+  const run = (...args) => spawnSync(process.execPath, [path.join(__dirname, 'ready.js'), ...args], { encoding: 'utf8' });
+  const assertBothModes = (expectedCheckStatus, inspect) => {
+    const plain = run('--development', tmpRoot);
+    const checked = run('--development', tmpRoot, '--check');
+    assert.strictEqual(plain.status, 0, 'without --check the parser keeps exiting 0 after assessing the backlog');
+    assert.strictEqual(checked.status, expectedCheckStatus);
+    assert.strictEqual(checked.stdout, plain.stdout, '--check must not change the report');
+    inspect(JSON.parse(checked.stdout));
+  };
+  try {
+    writeBacklog(cleanBacklog);
+    assertBothModes(0, (report) => {
+      assert.deepStrictEqual([report.structuralErrors, report.notices, report.indexes.missing], [[], [], []]);
+    });
+    for (const args of [['--check', '--development', tmpRoot], ['--development', '--check', tmpRoot]]) {
+      assert.strictEqual(run(...args).status, 0, `the flag is accepted in position ${args.indexOf('--check')}`);
+    }
+
+    writeBacklog({ ...cleanBacklog, 'BUGS.md': '# Bugs\n\n## Current\n\n### Crash\n\nA crash.\n' });
+    assertBothModes(1, (report) => {
+      assert.deepStrictEqual(report.structuralErrors.map((error) => error.title), ['Crash']);
+      assert.deepStrictEqual([report.notices, report.indexes.missing], [[], []]);
+    });
+    assert.strictEqual(run('--check', '--development', tmpRoot).status, 1, 'a leading flag still fails an unclean parse');
+
+    writeBacklog({ ...cleanBacklog, 'features/alpha.md': null });
+    assertBothModes(1, (report) => {
+      assert.ok(report.notices.length > 0 && report.notices.every((notice) => notice.includes('features/alpha.md')), JSON.stringify(report.notices));
+      assert.deepStrictEqual([report.structuralErrors, report.indexes.missing], [[], []]);
+    });
+
+    writeBacklog({ ...cleanBacklog, 'PATTERNS.md': null });
+    assertBothModes(1, (report) => {
+      assert.deepStrictEqual([report.structuralErrors, report.notices, report.indexes.missing], [[], [], ['PATTERNS.md']]);
+    });
+  } finally {
+    fs.rmSync(tmpRoot, { recursive: true, force: true });
+  }
+});
+
 test('analyzeCatalog carries parser-owned structural, breakout, cycle, and notice evidence', () => {
   const features = `## Area
 ### [Bad](features/bad.md)

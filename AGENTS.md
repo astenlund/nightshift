@@ -54,7 +54,7 @@ The verified host target is Windows with Node.js 22.23 or later, Git, PowerShell
 
 Run commands from the repository root, using `pwsh -NoProfile` for PowerShell:
 
-- Catalog: `node skills/ready/ready.js --development .`
+- Catalog: `node skills/ready/ready.js --development .` (add `--check` to exit nonzero unless the parse is clean, as a recorded check needs).
 - Backlog line check: `node skills/init-backlog/unwrap.js --development .nightshift` (add `--write` only for an intended repair).
 - Parser fixtures: `node skills/ready/ready.test.js`
 - Unwrap fixtures: `node skills/init-backlog/unwrap.test.js`

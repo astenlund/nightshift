@@ -37,7 +37,7 @@ const DIMENSION_BRIEFS = Object.freeze({
   'tests-evidence': 'Do meaningful assertions and realistic execution establish the behavior across the other lenses, and expose remaining uncertainty without mandating a separate verifier?',
   'claim-accuracy': 'Does each changed or affected claim match the code, records and evidence it describes, at the version it names?',
   'sweep-completeness': 'Which documentation, changed or not, did the cumulative change leave stale, contradictory or missing, including navigable references and history moves?',
-  'backlog-conventions': 'Do backlog changes follow the project\'s documented grammar, dependency, history and retirement conventions? Parser validity itself is evidenced by the controller\'s recorded ready parser check.',
+  'backlog-conventions': 'Do backlog changes follow the project\'s documented grammar, dependency, history and retirement conventions? Parser validity itself is evidenced by the controller\'s recorded ready parser check run with --check; without that flag the parser exits 0 despite structural errors, notices and missing indexes, so such a check does not establish validity.',
   'sibling-consistency': 'Does the documentation agree with sibling entries, index excerpts and their records, and history files?',
   'proportionality': 'Is depth proportionate to importance, with useful reasoning and evidence preserved and nothing overstated or described as current before it exists?',
 });

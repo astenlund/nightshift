@@ -18,7 +18,13 @@
 // of internal/backlog-links.js, in which history archives are link targets
 // and reachability roots.
 //
-// Usage: node ready.js [repo-root, .nightshift dir, or legacy .claude dir]   (defaults to cwd)
+// The exit code reports whether the parser could assess the backlog, so a
+// report full of structural errors still exits 0. --check, accepted in any
+// argument position, keeps the same report and also exits 1 unless the parse
+// is clean: no structural error, no notice and no missing index. A recorded
+// check uses it, since a check passes on exit code alone.
+//
+// Usage: node ready.js [--check] [repo-root, .nightshift dir, or legacy .claude dir]   (defaults to cwd)
 
 const fs = require('fs');
 const path = require('path');
@@ -35,6 +41,7 @@ const WORK_INDEX_NAMES = ['QUICK_WINS', 'FEATURES', 'BUGS'];
 const WORK_INDEX_FILES = new Set(WORK_INDEX_NAMES.map((name) => `${name}.md`));
 // A legacy .claude backlog is read in place so init-backlog can validate it before relocating anything.
 const BACKLOG_DIRECTORY_NAMES = ['.nightshift', '.claude'];
+const CHECK_FLAG = '--check';
 
 // The one excluded section whose entries are still collected (as drafts,
 // never as work items). Named once so the exclusion and the collection
@@ -1732,7 +1739,11 @@ function writeInvalidUtf8BacklogFile(target) {
   process.exitCode = 1;
 }
 
-function runCli(argRoot) {
+function isCleanParse(result) {
+  return result.structuralErrors.length === 0 && result.notices.length === 0 && result.indexes.missing.length === 0;
+}
+
+function runCli(argRoot, options = {}) {
   const root = path.resolve(argRoot || process.cwd());
   const backlogDir = BACKLOG_DIRECTORY_NAMES.includes(path.basename(root)) ? root : path.join(root, '.nightshift');
   const acquired = acquireBacklogRootIdentity(backlogDir);
@@ -1806,6 +1817,7 @@ function runCli(argRoot) {
       process.exitCode = 1;
     }
     if (recoveryFailure !== null || result.structuralErrors.some(error => error.error === 'unwrap-recovery-required')) process.exitCode = 1;
+    if (options.check === true && !isCleanParse(result)) process.exitCode = 1;
     delete result.breakoutTargets;
 
     process.stdout.write(JSON.stringify(result, null, 2) + '\n');
@@ -2010,8 +2022,10 @@ module.exports = {
 
 if (require.main === module) {
   try {
-    const admitted = require('../../internal/releases/entry').admitEntry(path.resolve(__dirname, '../..'), process.argv.slice(2), 0);
-    runCli(admitted.args[0]);
+    const args = process.argv.slice(2);
+    // Admission reads the first remaining argument as the admitted project path, so the flag is removed first.
+    const admitted = require('../../internal/releases/entry').admitEntry(path.resolve(__dirname, '../..'), args.filter(argument => argument !== CHECK_FLAG), 0);
+    runCli(admitted.args[0], { check: args.includes(CHECK_FLAG) });
   } catch (error) {
     process.stderr.write(JSON.stringify({ error: error.code ?? 'ready-failed', message: error.message }) + '\n');
     process.exitCode = 1;

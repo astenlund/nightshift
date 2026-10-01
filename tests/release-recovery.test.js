@@ -270,11 +270,27 @@ test('development verification is explicit and genuine bound helpers still inher
   assert.deepEqual(JSON.parse(fs.readFileSync(resultFile, 'utf8')), { inheritedBinding: false, executionMode: 'development', failure: null });
   assert.equal(readRun(value.project).tasks[0].checks.at(-1).passed, true);
   const bound = await service.resolve(setup.registration, { session: 'owner', project: value.project, entry: 'ready' });
-  const inherited = await service.run(setup.registration, { session: 'owner', project: value.project, entry: 'runtime', request: { action: 'check', taskId: 'work', revision: readRun(value.project).revision, check: { name: 'Bound ready helper', executable: process.execPath, args: [path.join(bound.bundle.root, 'skills/ready/ready.js'), value.project], paths: ['subject.txt'] } } });
-  assert.equal(inherited.code, 0, inherited.stderr);
-  const recorded = readRun(value.project).tasks[0].checks.at(-1);
+  const boundReadyCheck = async (name, args) => {
+    const result = await service.run(setup.registration, { session: 'owner', project: value.project, entry: 'runtime', request: { action: 'check', taskId: 'work', revision: readRun(value.project).revision, check: { name, executable: process.execPath, args: [path.join(bound.bundle.root, 'skills/ready/ready.js'), ...args], paths: ['subject.txt'] } } });
+    assert.equal(result.code, 0, result.stderr);
+
+    return readRun(value.project).tasks[0].checks.at(-1);
+  };
+  const recorded = await boundReadyCheck('Bound ready helper', [value.project]);
   assert.equal(recorded.resourceMode, 'inherit');
   assert.equal(recorded.passed, true, recorded.output);
+  for (const args of [['--check', value.project], [value.project, '--check']]) {
+    const clean = await boundReadyCheck('Bound ready check', args);
+    assert.equal(clean.passed, true, clean.output);
+  }
+  fs.appendFileSync(path.join(value.project, '.nightshift/BUGS.md'), '\r\n## Current\r\n\r\n### Crash\r\n\r\nA crash without a Requires line.\r\n');
+  const unchecked = await boundReadyCheck('Bound ready helper', [value.project]);
+  assert.equal(unchecked.passed, true, 'without --check a structural error still exits 0');
+  for (const args of [['--check', value.project], [value.project, '--check']]) {
+    const failed = await boundReadyCheck('Bound ready check', args);
+    assert.equal(failed.passed, false, failed.output);
+    assert.equal(failed.exitCode, 1);
+  }
 });
 
 test('private probes isolate controller bindings and preserve the parent environment', t => {
