@@ -252,6 +252,38 @@ Add one sentence to the brief, under Durable execution or Review and repair, sta
 
 **Requires:** none.
 
+### Test that resumed dispatches keep the limit refusal codes
+
+Found on 2026-10-01 in run `edb0199e-f5f3-4fab-a55f-8fa909a08289` by a skeptic during the code review of [Resumable reviewer and adversarial repair dialogue](features/resumable-reviewer-dialogue.md). Its governing spec lists non-session failures keeping their codes among the deterministic evidence, but `tests/runtime-resume.test.js` has no resumed-dispatch case for the run-deadline, operation-window or dispatch-allowance refusals (`resource-limit`, `operation-time-limit`). They are raised before a host starts and listed among the session-independent failures in `internal/runtime/review.js`, so this is missing evidence, not a known defect.
+
+Add resumed-dispatch tests showing that each refusal keeps its code rather than becoming `resume-failed`. A test-only change needs no version increase. Tracking does not authorize implementation.
+
+**Requires:** none.
+
+### Name the limit that capped a review attempt
+
+Found on 2026-10-01 in run `edb0199e-f5f3-4fab-a55f-8fa909a08289` by a probe during the code review of [Resumable reviewer and adversarial repair dialogue](features/resumable-reviewer-dialogue.md). When the run deadline or the launcher operation window shortens a review attempt and the attempt then times out, its failure says only that the attempt timed out or the host closed; neither the message nor the attempt evidence names the limit, and the Codex runner, which throws when the host closes, leaves no timed-out record. A resumed attempt cut this way is reported as `resume-failed`, which the governing spec allows because it counts an attempt timeout as a session failure; the finding that it should keep a limit code was refuted.
+
+Record which limit capped an attempt in its failure message and evidence on both runners, including a timed-out record on the Codex runner, without changing the classification. Runtime changes ship with a version increase. Tracking does not authorize implementation.
+
+**Requires:** none.
+
+### Say that an unparseable receipt counts as none
+
+Found on 2026-10-01 in run `edb0199e-f5f3-4fab-a55f-8fa909a08289` by the final docs review of [Resumable reviewer and adversarial repair dialogue](features/resumable-reviewer-dialogue.md), confirmed by a skeptic and deferred to triage. [Its acceptance report](reports/resumable-reviewer-dialogue-20261001.md) (twice), [the runtime reference](../internal/runtime/REFERENCE.md) and the comment on `dispatchReceipt` in `internal/runtime/continuation.js` say a receipt that cannot be read counts as none. The code treats only a missing, unparseable or non-object receipt that way and lets other read errors surface, which is the cautious behavior.
+
+Narrow the wording to a receipt that cannot be parsed in all four places, or fold it into the next change that touches them. The reference and the code comment ship with a version increase. Tracking does not authorize implementation.
+
+**Requires:** none.
+
+### Have revise-code trace the readers of state a repair changed
+
+Found on 2026-10-01 in run `edb0199e-f5f3-4fab-a55f-8fa909a08289`, from the independent review of that run's retrospective proposal. The user approved a `~/AGENTS.md` rule: before a repair batch is declared done, when it changed which record, status or case a decision or obligation reads, list every reader and writer of that state and every form it can take, and on a second missed case fix the property the decision keys on. Two repairs in that run each broke a reader nobody traced. [revise-code](../skills/revise-code/SKILL.md) is read at exactly that moment and already asks for the shared cause after repeated related findings, but says nothing about the controller tracing readers and writers before closing a batch, and a global rule reaches only this user.
+
+Add that habit as one clause to revise-code and the matching sentence of [the operating brief](../internal/workflow.md). Skill and guidance changes ship with a version increase. Tracking does not authorize implementation.
+
+**Requires:** none.
+
 ## History
 
 Prior delivered work remains in [QUICK_WINS_HISTORY.md](QUICK_WINS_HISTORY.md).

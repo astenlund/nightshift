@@ -357,6 +357,14 @@ Establish whether the Node 22 `--no-input-leaf` failure recurs with the 30-secon
 
 **Requires:** none.
 
+### A documentation-only edit makes the code assessment stale
+
+Raised by the user on 2026-10-01 in run `edb0199e-f5f3-4fab-a55f-8fa909a08289`: "README.md and WORKFLOW.md changes don't affect the plugin's behaviour and shouldn't trigger a code review. a docs review should be enough." A code assessment stays current after an edit only when backlog paths alone changed (the four indexes, their histories and records under `features`, `bugs` and `patterns`), which `internal/runtime/lifecycle.js` grants as backlog relief once a current docs review covers the task. Any other documentation edit, such as README.md, WORKFLOW.md, VISION.md, an acceptance report or a spec, makes it stale, so a documentation stage that touches them needs a further cumulative code assessment before the task can complete; in that run it forced at least one extra code review round. This contradicts the categorical review split, under which a documentation-only change never reopens code review.
+
+Extend the relief to descriptive documentation that is neither code nor operating instructions, deciding which paths count and keeping operating instructions (skills, the operating brief, runtime references) under code assessment, with tests. Runtime and guidance changes ship with a version increase. Tracking does not authorize implementation.
+
+**Requires:** none.
+
 ## History
 
 Prior delivered work remains in [BUGS_HISTORY.md](BUGS_HISTORY.md).
