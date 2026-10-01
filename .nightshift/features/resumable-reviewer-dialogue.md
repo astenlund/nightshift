@@ -7,6 +7,8 @@ metadata:
 
 # Resumable reviewer and adversarial repair dialogue
 
+Delivered in the local 3.3.0 candidate on 2026-10-01 in run `edb0199e-f5f3-4fab-a55f-8fa909a08289`, under the [governing spec](../specs/resumable-reviewer-dialogue.md) the user accepted that day, which settles the questions listed under Before implementation below. The [acceptance report](../reports/resumable-reviewer-dialogue-20261001.md) records the review history, the deterministic evidence and the installed-host campaign on Claude Code and Codex. Current behavior below describes the state before delivery.
+
 ## Origin
 
 Raised by the user on 2026-09-29, outside any run, first as a question: "quick investigation: before the v3 migration, we had a planned feature that described an adversarial conversation between a skeptic and a resumable reviewer. what happened to that? i can't find it in the backlog."

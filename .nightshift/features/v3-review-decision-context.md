@@ -16,7 +16,7 @@ Bounded acknowledgements and the controller-owned experiment ledger were simplif
 
 ## Evidence and limits
 
-`buildPrompt` supplies requirements, the cumulative source, assigned findings and matching probes. It does not automatically project prior dispositions or experiment conclusions into review context. The active bug "Probe evidence about the host is discarded on any edit" is a concrete subset and remains its repair owner.
+`buildPrompt` supplies requirements, the cumulative source, assigned findings and matching probes. Since the local 3.3.0 candidate, a resumed or replacement lead also receives the dispositions of its own findings recorded since its last report, and any dispatch can carry controller-chosen `review.acknowledgements`. A fresh review still receives no automatic projection of prior dispositions, and no review receives experiment conclusions. The active bug "Probe evidence about the host is discarded on any edit" is a concrete subset and remains its repair owner.
 
 The [independent shipped-capability audit](../reports/pre-v3-shipped-capability-audit-20260921.md) distinguishes actual code/probe evidence, instruction policy and unverified installed-host behavior. No capability in this entry is declared delivered by its restoration to the backlog.
 

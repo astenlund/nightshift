@@ -24,7 +24,7 @@ Checked on 2026-09-29:
 - The general rules exist in [the operating brief](../../internal/workflow.md) ("Advisory assessment never supplies the required strong review coverage", "Every finding receives fresh skeptic validation", "Weak or narrow coverage cannot pass the gate") and in the status the runtime emits ("Every repair needs cumulative strong broad review"), but none names instruction proposals, and the brief's review section is written around implementation.
 - Nothing gates proposals made in a lifecycle retrospective: the retrospective records only text evidence, and no runtime operation adds a lore task mid-run. A standalone lore task without an imported assessment completes directly; one that imports an assessment does get the review loop enforced.
 - User approval is carried: revise-lore presents reviewed proposals for approval before any instruction changes.
-- Continuing a qualified existing reviewer is not possible, because the runtime cannot resume a reviewer; [Resumable reviewer and adversarial repair dialogue](resumable-reviewer-dialogue.md) tracks that.
+- Continuing a qualified existing reviewer was not possible when this was found, because the runtime could not resume a reviewer; [Resumable reviewer and adversarial repair dialogue](resumable-reviewer-dialogue.md) delivered that on 2026-10-01 in the local 3.3.0 candidate, for any review kind, so a lore assessment's reviewer can now be resumed through a repair like any other.
 
 ## Direction
 

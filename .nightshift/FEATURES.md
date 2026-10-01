@@ -88,17 +88,11 @@ Have Ready use the project's durable direction to explain its recommendations an
 
 **Requires:** none.
 
-### [Resumable reviewer and adversarial repair dialogue](features/resumable-reviewer-dialogue.md)
-
-Keep the reviewer that found an issue available through its repair instead of always dispatching a fresh one, and restore the dialogue between skeptic and reviewer that the v3 migration kept for findings whose consequence, value or repair quality stays unclear or disputed, along with its requirement of enough repair reasoning to judge an approach before the repair. The controller relays that dialogue and keeps every fix decision, with the skeptic proposing repairs and the resumed reviewer checking their closure; the resumed reviewer supplies the cumulative reassessment during a review loop, one final fresh review follows once it, or a replacement, returns clean, and a reviewer that cannot be resumed gets a replacement given the full cumulative change and the prior findings. Raised by the user on 2026-09-29, who has seen strong evidence that continuity helps when repairing brittle code; the commitments were agreed with the user on 2026-10-01 and are recorded in the linked record. It adds session resumption to review dispatch on both hosts, changes the brief and the review prompts, and its final fresh review reverses the agreed rule that a separate final reviewer is not mandatory, so it needs a concise governing spec, a version increase and a decision on installed-host evidence for each host before implementation.
-
-**Requires:** none.
-
 ### [Dispatch reviewer peers and return their evidence to the lead](features/reviewer-peer-dispatch.md)
 
-Make the agreed peer staffing executable: a lead that needs peers says so by returning `incomplete` with the peer coverage it needs, the controller dispatches bounded peer assignments of the lead's model and effort on either host, and their evidence returns to the same lead, resumed, which keeps the integrated assessment; peer coverage counts only through that assessment. Found on 2026-09-29 by the migration accounting audit; the commitments were agreed with the user on 2026-10-01 and are recorded in the linked record. Returning evidence to the same lead needs resumable reviewers, and the change adds runtime dispatch and changes the review prompts, so it needs a concise governing spec, a version increase and a decision on installed-host evidence for each host before implementation.
+Make the agreed peer staffing executable: a lead that needs peers says so by returning `incomplete` with the peer coverage it needs, the controller dispatches bounded peer assignments of the lead's model and effort on either host, and their evidence returns to the same lead, resumed, which keeps the integrated assessment; peer coverage counts only through that assessment. Found on 2026-09-29 by the migration accounting audit; the commitments were agreed with the user on 2026-10-01 and are recorded in the linked record. Returning evidence to the same lead resumes it through the reviewer resumption delivered in the local 3.3.0 candidate, and the change adds runtime dispatch and changes the review prompts, so it needs a concise governing spec, a version increase and a decision on installed-host evidence for each host before implementation.
 
-**Requires:** [Resumable reviewer and adversarial repair dialogue](features/resumable-reviewer-dialogue.md).
+**Requires:** none.
 
 ## Exploring
 
