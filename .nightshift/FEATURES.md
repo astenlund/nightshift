@@ -210,6 +210,10 @@ When a new session opens in a project with an interrupted, stopped or undelivere
 
 Besides the few high-value entries Ready recommends today, also recommend one or two smaller entries for a quick session and a larger entry, or a group of entries, sized for a longer session such as a night's worth of work. Raised by the user on 2026-09-29, who settled that size is the model's rough judgment from what it reads; what makes a group coherent, how a pick for a night fits the settlement that handover requires first, and how a group is cited and selected are among the questions the record lists as open.
 
+### [Execution plan for a multi-item selection](features/multi-item-execution-plan.md)
+
+When the user picks more than one item, the controller or the runtime proposes an execution plan that works them in parallel, in sequence, together as a unit, or a mix of the three, and includes it in the readback so the user agrees to it before any work starts. Raised by the user on 2026-10-01 during a two-item Ready selection. Who builds the plan, what a unit means for runs and reviews, and how parallel items share one checkout under the review input drift rule are open.
+
 ### [Make Ready and Exploring links open at their target](features/source-link-targets.md)
 
 Have Ready and Exploring write local links with absolute targets, which open when clicked in Claude Code's terminal UI where relative ones do not, and link an entry held in an index at that entry's line through `NIGHTSHIFT_LINE_LINK_FORMAT`, the user's `subl://` protocol form set up for Nightshift v2 and confirmed working on 2026-09-30. v3 dropped line links with the spec-agreement skill, their only consumer, when it replaced the agreement digest's presentation, and no migration disposition names them; links with a `:207` or `#L207` suffix do not open at all. Moved from the quick wins on 2026-09-30.
