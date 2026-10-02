@@ -9,11 +9,11 @@ Preserved as a durable report on 2026-10-01 for the quick win of the same name, 
 | Live-claim marker protocol (finding 1) | Restore, folded into an existing entry | [Verify faked boundaries live](../features/live-boundary-verification.md) |
 | Implementation scratch policy enforcement (finding 2) | Restore as a quick win | [Protect projects from committed scratch files](../QUICK_WINS.md#protect-projects-from-committed-scratch-files) |
 | Full test suite before the morning report (finding 3) | Restore as Exploring | [Run the full test suite before delivery](../features/full-suite-before-delivery.md) |
-| Halt for destructive, irreversible or outward-facing actions (finding 4) | Restore as a quick win | [Block unattended work before destructive or outward-facing actions](../QUICK_WINS.md#block-unattended-work-before-destructive-or-outward-facing-actions) |
+| Halt for destructive, irreversible or outward-facing actions (finding 4) | Restore as a quick win | [Block unattended work before destructive or outward-facing actions](../QUICK_WINS_HISTORY.md#block-unattended-work-before-destructive-or-outward-facing-actions) |
 | revise-code scope grammar (finding 5) | Restore, folded into an existing entry | [Run-free revise](../features/run-free-revise.md) |
 | revise-docs writing rules (finding 6) | Restore as a quick win | [Restore the revise-docs writing rules](../QUICK_WINS.md#restore-the-revise-docs-writing-rules) |
 | Gist-divergence flag (finding 7) | Retire | None: gist syncing is the maintainer's personal setup rather than plugin behavior, and the maintainer's global instructions carry the rule. |
-| Check that commits landed on the intended branch (listed as accounted for in the draft) | Restore as a quick win | [Confirm commits land on the run's intended branch](../QUICK_WINS.md#confirm-commits-land-on-the-runs-intended-branch) |
+| Check that commits landed on the intended branch (listed as accounted for in the draft) | Restore as a quick win | [Confirm commits land on the run's intended branch](../QUICK_WINS_HISTORY.md#confirm-commits-land-on-the-runs-intended-branch) |
 
 ## Verification and corrections
 
