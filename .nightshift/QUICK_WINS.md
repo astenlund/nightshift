@@ -296,6 +296,14 @@ Let the controller go straight to a fresh assessment for a review kind with no f
 
 **Requires:** none.
 
+### Rename one of the two workflow files
+
+Raised by the user on 2026-10-02 after run `61461833-3c7e-4449-8282-67b3df7dd564`, whose report named `internal/workflow.md` as a changed instruction file and prompted the question whether there are two workflow files. There are, and their names differ only in case and directory. [WORKFLOW.md](../WORKFLOW.md) at the root holds the agreed workflow direction beside [VISION.md](../VISION.md); it is not in the shipped release payload and no skill links to it. [The operating brief](../internal/workflow.md) ships in the plugin, and the handover and revise skills and [the runtime reference](../internal/runtime/REFERENCE.md) direct agents to it. [AGENTS.md](../AGENTS.md) separates them by role, but a reader or an agent can mix them up by name.
+
+Rename one of them so the two roles read apart by name. Find the references with a case-insensitive `git grep` for the renamed file's name over tracked files: Ready checks only links between backlog files, and the packaging tests check only links in the skills, AGENTS.md, the brief and the runtime reference, so neither catches a stale link elsewhere. Retarget every link to the renamed file wherever it lives, including history files, reports, specs and delivered records, so that links keep resolving, and update every other current mention, whether in prose, a code span or a code string. The sweep on 2026-10-02 found references in the skills, the runtime reference, AGENTS.md, README.md, VISION.md, V3-MIGRATION.md, `tests/package.test.js` (which lists the brief among the files whose links it checks), the release payload manifest, and backlog records, reports and specs, including entries that prescribe edits to the file. Leave unchanged only text that records the past rather than pointing at the file: quoted words, and non-link citations of the file as it stood at a past commit, such as line references in dated reports. Renaming the shipped brief changes plugin files and ships with a version increase; renaming only the root file is repository documentation. Sequence it with the current feature [Separate run-time guidance from reference material](features/runtime-guidance-separation.md), which touches every public skill and all three shared files, among them the brief. Tracking does not authorize implementation.
+
+**Requires:** none.
+
 ## History
 
 Prior delivered work remains in [QUICK_WINS_HISTORY.md](QUICK_WINS_HISTORY.md).
