@@ -296,6 +296,14 @@ Let bound `status` describe a completed run from another release, or word the re
 
 **Requires:** none.
 
+### Mid-run follow-up capture is refused while a dispatch runs
+
+Reported on 2026-10-01 from run `edb0199e-f5f3-4fab-a55f-8fa909a08289` on installed 3.2.17, in the maintainer inbox report that also carried the user's idea now recorded in [Project inboxes](features/project-inboxes.md). When the user raised an idea mid-run, the controller's runtime `followup` write was refused with `retained-bootstrap-unavailable`, "A project operation is active or its termination is uncertain", because a review dispatch held the project lease, so the idea was written to the inbox instead of the run. [The resource interface](../internal/releases/REFERENCE.md) says other project entries remain serialized, and [the runtime reference](../internal/runtime/REFERENCE.md#handover-and-the-morning-report) calls the same refusal of a bound `handover` during a dispatch temporary, to be retried after `wait`, so this may be the documented serialization rather than a defect; either way a capture held only in the conversation until the dispatch returns can be lost to compaction or the end of the turn. The user chose to track it at inbox triage on 2026-10-02.
+
+Admit `followup` writes while a dispatch holds the project lease, or have the operating brief tell the controller to hold a mid-run capture and record it once the dispatch returns. Runtime or guidance changes ship with a version increase. Tracking does not authorize implementation.
+
+**Requires:** none.
+
 ## History
 
 Prior delivered work remains in [QUICK_WINS_HISTORY.md](QUICK_WINS_HISTORY.md).
