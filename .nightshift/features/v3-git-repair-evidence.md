@@ -26,6 +26,8 @@ Establish the minimal shared checks and actual remaining failure cases. Verify b
 
 The migration accounting audit of 2026-09-29 found that this is missing instruction as well as missing evidence: [the operating brief](../../internal/workflow.md) says only "Commit coherent local work under the user's Git policy and required hooks", and no instruction or check a run loads mentions fixups, autosquash, a follow-up commit or history rewriting. The agreed disposition under [Repair commits and history rewriting](../../V3-MIGRATION.md#repair-commits-and-history-rewriting) also retains two rules this entry did not name: where fixup form is unsafe, "use an ordinary follow-up commit only when policy and current state permit it; otherwise preserve the repair and report the affected blocker while continuing independent work", and "Do not defer accepted repairs merely for tidier history."
 
+Since 3.3.2 the operating brief names history rewriting in one place: after every commit the controller confirms it landed on the run's intended branch and checkout, and a reconciliation of a mismatch that would rewrite history or discard work needs the user's decision, as does any destructive or irreversible action that recorded authority does not cover. That is an authority rule only; fixup targeting, autosquash verification and repair recovery remain uncovered, so this entry's checks and evidence obligations stand.
+
 ## Triage and provenance
 
 Selected for tracking during the 2026-09-20 to 2026-09-21 triage. Related obligations share this outcome while retaining their own deciding cases:
