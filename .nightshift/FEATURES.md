@@ -300,7 +300,7 @@ Validate a feature implementation made by someone else, a human or an AI not par
 
 ### [Dual strong review for critical work](features/dual-strong-review.md)
 
-An extra strong review mode for critical work: two strong reviewers assess the same change independently, preferably from different suppliers when both are available, and the controller waits for both reviews before making repairs, while skeptics start validating each review's findings as soon as it arrives. Raised by the user on 2026-10-03, who settled the same day that two reviewers of the same model are an acceptable fallback without a second supplier, and that the controller merges the two results into one set of findings before any repair. What counts as critical and who decides, and what passes the gate, are open, as is the roughly doubled review cost.
+An extra strong review mode for critical work: two strong reviewers assess the same change independently, preferably from different suppliers when both are available, and the controller waits for both reviews before making repairs, while skeptics start validating each review's findings as soon as it arrives. Raised by the user on 2026-10-03, who settled the same day that two reviewers of the same model are an acceptable fallback without a second supplier, and that the controller merges the two results into one set of findings before any repair; the gate passes only when both reviewers come back clean, and any repair sends both into a new round. What counts as critical and who decides is open, as are the fresh final pass for each reviewer and the roughly doubled review cost.
 
 ### [Orchestration efficiency](features/orchestration-efficiency.md)
 
