@@ -112,6 +112,12 @@ Give a technically capable user who may not know the codebase concise, precise e
 
 **Requires:** none.
 
+### [Run the full test suite before delivery](features/full-suite-before-delivery.md)
+
+Before a run that changed more than documentation or the backlog delivers, attended or handed over, run the project's full test suite once after the last review and repair round, as the explicit ask that a user's rule against unrequested full-suite runs needs, and as v2's handover did before its morning report. The command comes from the project's instructions or CI configuration and is named in the agreement before work starts; a run that finds none says so and reports the suite as not run. A failure the run caused is repaired and the suite rerun; any other failure, or a suite that does not finish, stops the run for the user instead of becoming a follow-up. Found on 2026-10-01 by the audit of capabilities v2 lost without a disposition. The commitments were agreed with the user on 2026-10-03 and are recorded in the linked record. It changes shipped guidance with model-owned behavior, so it needs a version increase and a decision on installed-host evidence before implementation.
+
+**Requires:** none.
+
 ## Exploring
 
 ### [Shared BACKLOG.md meta-index](features/backlog-meta-index.md)
@@ -181,10 +187,6 @@ Complete the retained reliable repair-commit outcome using ordinary Git and proj
 ### [Capture review content once within an operation](features/v3-review-snapshot-reuse.md)
 
 Complete the retained operation-local snapshot reuse requirement while preserving freshness and exact reviewed bytes. Reuse captured source and identity for governing artifacts and review copies where valid, without introducing a persistent cache.
-
-### [Run the full test suite before delivery](features/full-suite-before-delivery.md)
-
-Before a run delivers, at least a handed-over one, run the project's full test suite as the explicit ask that a user's rule against unrequested full-suite runs needs, and halt delivery on failure, as v2's handover did before its morning report. Found on 2026-10-01 by the audit of capabilities v2 lost without a disposition; how a run finds the suite command, its time cost and whether attended runs run it too are open.
 
 ### [Verify compatible agreement continuity across representation changes](features/v3-agreement-continuity.md)
 
