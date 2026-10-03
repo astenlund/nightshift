@@ -154,6 +154,12 @@ Move the supported strong-model list, today a constant in the runtime's review m
 
 **Requires:** none.
 
+### [Initial reviewer selection](features/initial-reviewer-selection.md)
+
+Policy for the initial spec/code lead: a model on the strong list, Fable or Astra today, prefer the other host, preserve the author or implementer effort floor, and use hard when effort is unknown. Strong same-host fallback takes precedence over a weaker cross-host reviewer. Settled with the user on 2026-10-03 and recorded in the linked record: it is enforced as guidance backed by the runtime's existing strong-model checks, with no new gate; when no strong reviewer is available and the user is present, the user chooses between widening the strong list through the model policy file's escape hatch, a labeled degraded review and waiting, each of the first two offered only once its feature has shipped, and the review gate stays pending only when degraded mode does not start. It changes the operating brief's model-owned guidance, so it needs a version increase and a decision on installed-host evidence before implementation.
+
+**Requires:** none.
+
 ## Exploring
 
 ### [Shared BACKLOG.md meta-index](features/backlog-meta-index.md)
@@ -311,10 +317,6 @@ Deferred beyond the MVP. Streaming could overlap validation with the remaining r
 ### [Review-run command enforcement](features/review-run-command-enforcement.md)
 
 Deferred exploration of stronger enforcement for explicit command restrictions. Existing restrictions remain binding; no general protected-shell mode is claimed. The record, written for retired v2 entry points, now carries the agreed v3 question of which restrictions need enforcement and where, without a general shell-interception framework.
-
-### [Initial reviewer selection](features/initial-reviewer-selection.md)
-
-Policy for the initial spec/code lead: Fable or Astra only, prefer the other host, preserve the author or implementer effort floor, and use hard when effort is unknown. Strong same-host fallback takes precedence over a weaker cross-host reviewer. Additional enforcement style, if any, remains open.
 
 ### [Model choice per role: Opus 5.5 versus Fable](features/opus-versus-fable-role-choice.md)
 

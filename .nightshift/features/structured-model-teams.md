@@ -12,4 +12,4 @@ Explore optional declared multi-model team arrangements, such as a Fable control
 
 The [v3 MVP](nightshift-v3.md) includes cross-host reviewer dispatch as a preference, leaving assignments to controller judgment and preserving a complete single-host path. This later feature would add deliberate team arrangements while respecting availability, role ownership, required review strength, independent contexts, and the invariant priorities. Configuration, selection, and fallback details remain open; no particular team layout is prescribed yet.
 
-The agreed policy for [initial spec/code reviewer selection](initial-reviewer-selection.md) is tracked separately, with additional enforcement left open. It does not prescribe the broader team arrangements explored here.
+The agreed policy for [initial spec/code reviewer selection](initial-reviewer-selection.md) is tracked separately; on 2026-10-03 its enforcement was settled as guidance backed by the existing strong-model checks. It does not prescribe the broader team arrangements explored here.
