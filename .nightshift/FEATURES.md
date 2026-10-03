@@ -118,6 +118,12 @@ Before a run that changed more than documentation or the backlog delivers, atten
 
 **Requires:** none.
 
+### [Name durability and evidence in the reliability priority](features/reliability-parts.md)
+
+Decide whether durability (durable records) and evidence (skeptic-validated findings, recorded checks) join autonomy and trust as named parts of the reliability priority, or are the means by which trust is earned, and whether trust and reliability are too adjacent to each other. Raised by the user on 2026-09-30. At graduation on 2026-10-03 the user agreed a loose leaning, recorded in the linked record, to be revisited with them when the work is picked up: durability and evidence are the means by which both parts are achieved, not new parts, both names stay, and only the vision and the operating brief's priorities sentence change. A change to the brief needs a code assessment and a version increase.
+
+**Requires:** none.
+
 ## Exploring
 
 ### [Shared BACKLOG.md meta-index](features/backlog-meta-index.md)
@@ -231,10 +237,6 @@ When the user picks more than one item, the controller or the runtime proposes a
 ### [Make Ready and Exploring links open at their target](features/source-link-targets.md)
 
 Have Ready and Exploring write local links with absolute targets, which open when clicked in Claude Code's terminal UI where relative ones do not, and link an entry held in an index at that entry's line through `NIGHTSHIFT_LINE_LINK_FORMAT`, the user's `subl://` protocol form set up for Nightshift v2 and confirmed working on 2026-09-30. v3 dropped line links with the spec-agreement skill, their only consumer, when it replaced the agreement digest's presentation, and no migration disposition names them; links with a `:207` or `#L207` suffix do not open at all. Moved from the quick wins on 2026-09-30.
-
-### [Name durability and evidence in the reliability priority](features/reliability-parts.md)
-
-Decide whether durability (durable records) and evidence (skeptic-validated findings, recorded checks) join autonomy and trust as named parts of the reliability priority, or are the means by which trust is earned, and whether trust and reliability are too adjacent to each other. Raised by the user on 2026-09-30 and tracked as Exploring at triage; the priority is stated in the repository instructions, the vision, the workflow, the README, the operating brief and the Ready and handover skills.
 
 ### [Graphical run view](features/run-graph-view.md)
 
