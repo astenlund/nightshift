@@ -100,6 +100,12 @@ Keep review and repair progress visible without a user request, as the v3 migrat
 
 **Requires:** none.
 
+### [Check currency and external dependencies](features/check-external-dependencies.md)
+
+State the agreed limit that a matching content digest does not show unchanged external dependencies, so a check does not stay current across a changed toolchain or environment: the runtime reference and the operating brief say that a current check shows only that its listed project inputs match what passed, and the controller reruns the affected checks after a change it makes or learns of outside the project, such as a Node or host CLI update, a global package or an environment variable the check reads. The runtime keeps judging currency by project inputs alone; recording or invalidating by external dependencies is a deliberate non-goal until a stale pass is observed. Found on 2026-09-29 by the migration accounting audit: a check stays current on its project-file digests alone, and nothing states the limit or asks for a rerun after an outside change. The commitments were agreed with the user on 2026-10-03 and are recorded in the linked record. It changes shipped guidance with model-owned behavior, so it needs a version increase and a decision on installed-host evidence before implementation.
+
+**Requires:** none.
+
 ## Exploring
 
 ### [Shared BACKLOG.md meta-index](features/backlog-meta-index.md)
@@ -169,10 +175,6 @@ Complete the retained reliable repair-commit outcome using ordinary Git and proj
 ### [Capture review content once within an operation](features/v3-review-snapshot-reuse.md)
 
 Complete the retained operation-local snapshot reuse requirement while preserving freshness and exact reviewed bytes. Reuse captured source and identity for governing artifacts and review copies where valid, without introducing a persistent cache.
-
-### [Check currency and external dependencies](features/check-external-dependencies.md)
-
-State and handle the agreed limit that a matching content digest does not show unchanged external dependencies, so a check does not stay current across a changed toolchain or environment. Found on 2026-09-29 by the migration accounting audit: a check stays current on its project-file digests alone, and nothing states the limit or asks for a rerun after an outside change.
 
 ### [Run the full test suite before delivery](features/full-suite-before-delivery.md)
 
