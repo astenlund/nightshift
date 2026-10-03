@@ -21,12 +21,15 @@ Checked on 2026-10-03. [The operating brief](../../internal/workflow.md) (Model 
 - One knowledge base of model observations, such as strengths, weaknesses, cost and availability, that the user can edit and Nightshift can add to.
 - Consulted when making model choices, within the limits the model policy file sets: the policy decides which models are permitted, and the knowledge base informs which permitted model fits a role.
 
+## Settled questions
+
+- Whether the brief's fixed model observations move into it, so the brief keeps only the rule to choose by task fit and observed strengths. Answered by the user on 2026-10-03, the day it was raised: "yes, they should. if the file is missing, the plugin's defaults apply. if the file is present and the user has removed certain content, only this file is used (anything missing won't be considered)". The observations the brief carries today become the plugin's shipped defaults. Without a user file, those defaults apply; with one, that file is the only source, and anything absent from it, including a default the user removed, is not considered. Unlike [the model policy file](model-policy-file.md), which records additions to and removals from its defaults so that a later release's new defaults still reach users who have a file, a present knowledge base replaces the defaults, so default observations added by a later release do not reach a user who has a file; whether and how to tell such a user about them is open.
+
 ## Open questions
 
 - Where it lives and its format: for example beside the model policy file in the Nightshift store, so that it covers both hosts, as readable Markdown or structured data, and whether a project can add observations of its own.
 - What Nightshift writes and when: for example the retrospective, which already examines the session's evidence, proposing entries with that evidence; whether an entry needs the user's approval before it lands, as instruction proposals do; and how an observation is dated, sourced and retired as models change.
 - How it is consulted: which choices read it, such as the candidates for each dispatch and helper assignments, how much of it reaches the controller's context, and how its influence on a choice is recorded in that choice's evidence.
-- Whether the brief's fixed model observations move into it, so the brief keeps only the rule to choose by task fit and observed strengths.
 - Relations: [User-configurable model policy file](model-policy-file.md), which it informs without changing what is permitted; [Model choice per role: Opus 5.5 versus Fable](opus-versus-fable-role-choice.md), whose evidence would land here; [Initial reviewer selection](initial-reviewer-selection.md); and [Structured model teams](structured-model-teams.md).
 
 Tracking does not authorize implementation.

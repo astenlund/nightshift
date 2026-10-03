@@ -322,7 +322,7 @@ Investigate which roles could use Opus 5.5 instead of Fable without falling belo
 
 ### [Model knowledge base](features/model-knowledge-base.md)
 
-Keep a user-editable knowledge base where both Nightshift and the user record observations about models, such as strengths, weaknesses, cost and availability, and consult it when making model choices, within what the model policy file permits. Raised by the user on 2026-10-03 while graduating that policy file. Today the operating brief carries fixed model observations that only a release changes; where the knowledge base lives, what Nightshift writes to it and with whose approval, and how choices consult it are open.
+Keep a user-editable knowledge base where both Nightshift and the user record observations about models, such as strengths, weaknesses, cost and availability, and consult it when making model choices, within what the model policy file permits. Raised by the user on 2026-10-03 while graduating that policy file. Today the operating brief carries fixed model observations that only a release changes; the user settled the same day that they move into the plugin's shipped defaults for the knowledge base, which apply when the user has no file, while a user's file, once present, is the only source. Where the knowledge base lives, what Nightshift writes to it and with whose approval, and how choices consult it are open.
 
 ### [Structured model teams](features/structured-model-teams.md)
 
