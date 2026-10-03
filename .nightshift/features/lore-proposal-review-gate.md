@@ -3,7 +3,6 @@ name: lore-proposal-review-gate
 description: Apply the common strong review, skeptic validation and disposition process to the instruction proposals a session retrospective makes, as the v3 migration agreed
 metadata:
   type: feature
-status: exploring
 ---
 
 # Review retrospective instruction proposals like any other change
@@ -30,8 +29,14 @@ Checked on 2026-09-29:
 
 Apply the common review, skeptic validation and disposition process, with a strong broad assessment and cumulative reassessment after each revision, to every instruction proposal, whether a standalone revise-lore or a lifecycle retrospective makes it, and have the runtime hold proposals to it.
 
-## Open questions
+## Settled questions
 
-- What a lifecycle retrospective dispatches its proposal assessment against, since no task exists for it mid-run.
-- How this fits [Run-free revise](run-free-revise.md), which would let revise-lore run on its own without a runtime run, and [Degraded assessment mode](degraded-assessment-mode.md), which changes what a weaker assessment may carry.
-- Which installed-host evidence the changed model-owned behavior needs.
+The user agreed these answers on 2026-10-03, when the entry graduated from Exploring to current work. Each question is kept with its answer.
+
+- What a lifecycle retrospective dispatches its proposal assessment against, since no task exists for it mid-run. Settled: when a lifecycle retrospective produces a worthwhile instruction proposal, the run gains a lore task for it, which imports a `code` assessment of the proposal as a standalone lore task can today, so the full review loop applies and, once assessed, its current review is required at task and run completion. A retrospective with no worthwhile proposal adds no task. Adding a task to a running run needs a runtime operation that does not exist yet; [Keep a handed-over run open for triage after delivery](handover-open-for-triage.md) needs the same operation for follow-on work, and whichever feature ships first builds it. The assessment covers the proposed diffs and their destination content, and under the agreed disposition an unchanged proposal whose assessment is complete needs no extra confirming pass.
+- How this fits [Run-free revise](run-free-revise.md), which would let revise-lore run on its own without a runtime run, and [Degraded assessment mode](degraded-assessment-mode.md), which changes what a weaker assessment may carry. Settled: once run-free revise ships, a standalone revise-lore applies the same process through its lightweight review record; until then it keeps using a lore task as today. Degraded mode applies as it does to any other assessment: a weaker assessment is labeled, the run cannot complete without strong coverage, and the user still decides whether to apply the proposal, with the label in view.
+- Which installed-host evidence the changed model-owned behavior needs. Settled as for the other entries graduated that day: the start of the work decides between a budgeted installed-host check and deterministic evidence only with that behavior marked unverified.
+
+## Before implementation
+
+Settle the add-task operation, if it does not exist by then, and how a retrospective's lore task gates completion, in a concise governing spec in `.nightshift/specs`, coordinating with [Keep a handed-over run open for triage after delivery](handover-open-for-triage.md) over that operation. Weigh each repair of a proposal against the review cycle it causes, as the quick win [Weigh minor fixes against the review cycle and keep the rest as follow-ups](../QUICK_WINS.md#weigh-minor-fixes-against-the-review-cycle-and-keep-the-rest-as-follow-ups) asks for review loops generally. The change alters the runtime, revise-lore and the operating brief, so it rides with a plugin version increase. Tracking and readiness do not authorize implementation.

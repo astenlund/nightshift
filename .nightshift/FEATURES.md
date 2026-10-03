@@ -160,6 +160,12 @@ Policy for the initial spec/code lead: a model on the strong list, Fable or Astr
 
 **Requires:** none.
 
+### [Review retrospective instruction proposals like any other change](features/lore-proposal-review-gate.md)
+
+Apply the common strong review, skeptic validation and disposition process, with cumulative reassessment after each revision, to the instruction proposals a session retrospective makes, as the v3 migration agreed. Found on 2026-09-29 by the migration accounting audit: revise-lore asks only for a fresh independent reviewer, nothing gates proposals made in a lifecycle retrospective, and a standalone lore task without an assessment completes directly. The commitments agreed with the user on 2026-10-03, recorded in the linked record: a lifecycle retrospective with a worthwhile proposal adds a lore task for it, whose assessment then gates task and run completion, through an add-task operation shared with [Keep a handed-over run open for triage after delivery](features/handover-open-for-triage.md); standalone revise-lore keeps a lore task until [Run-free revise](features/run-free-revise.md) supplies its review record; and degraded mode applies as to any assessment. It changes the runtime, revise-lore and the operating brief, so it needs a concise governing spec, a version increase and a decision on installed-host evidence before implementation.
+
+**Requires:** none.
+
 ## Exploring
 
 ### [Shared BACKLOG.md meta-index](features/backlog-meta-index.md)
@@ -269,10 +275,6 @@ Show a run as a graph of its whole workflow in a page hosted by a local web serv
 ### [Claude Code mods for run visibility](features/claude-code-mods.md)
 
 Consider Claude Code mods, plugins of function hooks that add a live pane, band, status line, toast or hook inside Claude Code, as an optional surface for run visibility, such as run progress, review state or CI status after a push. Raised by the user on 2026-10-01 and tracked as Exploring at inbox triage on 2026-10-02; uninvestigated. Mods exist only on Claude Code, so a mod could only add optional visibility, never machinery the lifecycle depends on.
-
-### [Review retrospective instruction proposals like any other change](features/lore-proposal-review-gate.md)
-
-Apply the common strong review, skeptic validation and disposition process, with cumulative reassessment after each revision, to the instruction proposals a session retrospective makes, as the v3 migration agreed. Found on 2026-09-29 by the migration accounting audit: revise-lore asks only for a fresh independent reviewer, nothing gates proposals made in a lifecycle retrospective, and a standalone lore task without an assessment completes directly.
 
 ### [Deliver each run on its own branch or worktree](features/run-worktree-delivery.md)
 
