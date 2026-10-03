@@ -94,6 +94,12 @@ Make the agreed peer staffing executable: a lead that needs peers says so by ret
 
 **Requires:** none.
 
+### [Show review progress without being asked](features/visible-revise-progress.md)
+
+Keep review and repair progress visible without a user request, as the v3 migration agreed: after each validated review result and each repair batch, a short text update says what review established, what was repaired, what remains and why another pass is needed, with recurring problems visible through continuation and in the final report. Each update also gives the pass's token usage as uncached input, cache reads, cache writes and output, with a running total, which needs the runtime to record those categories for each attempt instead of one total; a figure it lacks shows as unknown, never zero. Showing progress graphically is left to the [Graphical run view](features/run-graph-view.md). Found on 2026-09-29 by the migration accounting audit: the brief never contained the visible-progress rule that the migration reconciliation relied on. The commitments were agreed with the user on 2026-10-03 and are recorded in the linked record. It changes the runtime, the operating brief and the revise skills, so it needs a version increase and a decision on installed-host evidence before implementation.
+
+**Requires:** none.
+
 ## Exploring
 
 ### [Shared BACKLOG.md meta-index](features/backlog-meta-index.md)
@@ -223,10 +229,6 @@ Decide whether durability (durable records) and evidence (skeptic-validated find
 ### [Graphical run view](features/run-graph-view.md)
 
 Show a run as a graph of its whole workflow in a page hosted by a local web server and viewable on the same computer, highlighting the current step and animating smoothly as things happen, such as subagents spawning and files being edited. Raised by the user on 2026-09-29, who sketched later slices that add old runs and then clickable elements such as nodes with details about each step; where the file-edit and subagent events come from, who starts and stops the server, and how it stays local-only and read-only are among the questions the record lists as open. On 2026-09-30 the user added a later slice that makes it an operational UI, an alternative to the CLI, whose permitted operations and ownership rules are also open.
-
-### [Show review progress without being asked](features/visible-revise-progress.md)
-
-Keep review and repair progress visible without a user request: what review established, what was repaired, what remains and why another pass is needed, with recurring problems visible through continuation and in the final report, as the v3 migration agreed. Found on 2026-09-29 by the migration accounting audit: the brief never contained the visible-progress rule that the migration reconciliation relied on.
 
 ### [Claude Code mods for run visibility](features/claude-code-mods.md)
 

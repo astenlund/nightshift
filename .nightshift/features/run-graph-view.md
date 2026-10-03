@@ -27,6 +27,8 @@ A search on 2026-09-29 found no backlog entry, shipped code or governing documen
 - **Step details.** A further slice could make elements such as nodes clickable, so the user can find out details about that step.
 - **Operational UI.** A later slice could let the user operate Nightshift from the page, as an alternative to the CLI.
 
+When [Show review progress without being asked](visible-revise-progress.md) graduated as text only on 2026-10-03, the user left showing review progress graphically to this view, so its graph would also show the review and repair progress that feature reports in text.
+
 ## Open questions
 
 - Where events come from, since the runtime records state transitions, registered and dispatched workers, check and probe operations and review event logs, but no file edits or unregistered subagents: new runtime events, watching the checkout, reading host-native logs, or a mix, and how both hosts supply them.
