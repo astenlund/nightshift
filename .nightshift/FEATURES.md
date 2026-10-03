@@ -166,6 +166,12 @@ Apply the common strong review, skeptic validation and disposition process, with
 
 **Requires:** none.
 
+### [Proportionate review of tracking edits](features/tracking-review-cost.md)
+
+Find proportionate ways to review backlog tracking edits after triage, keeping the review strong and independent without repeated full rounds over minor prose. Observed on 2026-09-30 in run `7969bab6-360c-4bd5-a5bd-33dfe3ef28d9`, where six closing docs reviews and five skeptics of about a hundred lines of tracking prose cost 13,599,797 reported tokens against 5,103,757 for the delivery's review dispatches, every finding minor. Unchecked claims drew findings, evidence outside the snapshot left a round incomplete, and routing notices raised as findings and output-loop fallbacks added cost to rounds. The commitments agreed with the user on 2026-10-03, recorded in the linked record: changed operating-instruction files go in a separate field of the docs report, needing no skeptic when a current code assessment covers them; claims about run records get a generated evidence record, one mechanism shared with the evidence-digest quick win and built by whichever ships first; and a closing review's scope is the tracking edits since triage, with the delivered change as reference only. It changes the runtime's review brief, report schema and closing review, so it needs a concise governing spec, a version increase and a decision on installed-host evidence before implementation.
+
+**Requires:** none.
+
 ## Exploring
 
 ### [Shared BACKLOG.md meta-index](features/backlog-meta-index.md)
@@ -291,10 +297,6 @@ When the controller is uncertain and the user is absent, consult the strongest a
 ### [Review mode for someone else's implementation](features/review-mode.md)
 
 Validate a feature implementation made by someone else, a human or an AI not participating in the session, against whatever material the user provides, such as links, Word documents or text in chat. It takes a local branch, commit range or worktree, a GitHub pull request or uncommitted changes; beyond reviewing the code it runs checks and tests, verifies faked boundaries live, checks documentation and backlog accuracy, and can post its verdict to the pull request with the user's explicit go-ahead each time. It reports first, then offers repairs as patch files or direct edits, taking the findings one at a time once repair is initiated. Raised by the user on 2026-09-28. Open questions include whether it is a skill or a revise-code mode distinct from plain review requests, whether it creates a run, how baseline material is ingested and confirmed, the trust boundary for running someone else's code, and how the change is checked out without disturbing the user's work; the record lists them all.
-
-### [Proportionate review of tracking edits](features/tracking-review-cost.md)
-
-Find proportionate ways to review backlog tracking edits after triage, keeping the review strong and independent without repeated full rounds over minor prose. Observed on 2026-09-30 in run `7969bab6-360c-4bd5-a5bd-33dfe3ef28d9`, where six closing docs reviews and five skeptics of about a hundred lines of tracking prose cost 13,599,797 reported tokens against 5,103,757 for the delivery's review dispatches, every finding minor. Unchecked claims drew findings, evidence outside the snapshot left a round incomplete, and routing notices raised as findings and output-loop fallbacks added cost to rounds. Tracked at the user's request.
 
 ### [Orchestration efficiency](features/orchestration-efficiency.md)
 

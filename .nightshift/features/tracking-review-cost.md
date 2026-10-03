@@ -3,7 +3,6 @@ name: tracking-review-cost
 description: Closing review of backlog tracking edits can cost more than reviewing the delivered change; find proportionate ways to keep it strong and independent without repeated full rounds over minor prose
 metadata:
   type: feature
-status: exploring
 ---
 
 # Proportionate review of tracking edits
@@ -33,9 +32,17 @@ Causes seen in that run:
 - **Whole-change context for every round.** Each closing review assessed the tracking edits against the complete cumulative change, at 0.85 to 1.2 million tokens per Codex round.
 - **Output-loop fallbacks.** Two Codex attempts were ended as output loops and fell back to Fable at 2.9 and 4.4 million tokens; the loop attempts recorded no usage, as [Output-loop attempts record no token usage](../BUGS_HISTORY.md#output-loop-attempts-record-no-token-usage), fixed in 3.3.3, describes.
 
-## Open questions
+## Settled questions
 
-- Whether the docs review should report operating-instruction routing in a separate field of its report rather than as a finding, so that it needs no skeptic or disposition when a current code assessment already covers the files.
-- Whether the first closing dispatch should always carry a generated evidence record for claims about run records, which overlaps the widened brief sentence of the evidence-digest quick win; whether that sentence, written for evidence backing an agreed requirement, covers claims about run records in tracking prose is open.
-- Whether a repair batch of minor wording fixes in tracking prose can be reassessed more narrowly than a full round over the whole cumulative change, and how that squares with the operating brief's rule that every repair batch gets another strong assessment of the full cumulative change.
-- How this relates to [Orchestration efficiency](orchestration-efficiency.md), whose measurements attribute almost all review-dispatch cost to context re-read on every call, the same cause as the whole-change context of every round here.
+The user agreed these answers on 2026-10-03, when the entry graduated from Exploring to current work. Each question is kept with its answer. Checked the same day: the docs-review brief in `internal/runtime/review.js` still asks the reviewer to "Report as a finding any changed file you judge to be operating instructions".
+
+- Whether the docs review should report operating-instruction routing in a separate field of its report rather than as a finding, so that it needs no skeptic or disposition when a current code assessment already covers the files. Settled: yes. The docs review reports changed operating-instruction files in a separate field, which needs no skeptic or disposition when a current code assessment covers those files; a file no current code assessment covers stays a finding.
+- Whether the first closing dispatch should always carry a generated evidence record for claims about run records, which overlaps the widened brief sentence of the evidence-digest quick win; whether that sentence, written for evidence backing an agreed requirement, covers claims about run records in tracking prose is open. Settled: when tracking text makes claims about run records, such as counts, token figures or receipts, the first closing dispatch carries a generated evidence record for them. This is read as within the evidence-digest quick win's widened sentence, so the two share one mechanism, which whichever of them ships first builds; neither waits for the other.
+- Whether a repair batch of minor wording fixes in tracking prose can be reassessed more narrowly than a full round over the whole cumulative change, and how that squares with the operating brief's rule that every repair batch gets another strong assessment of the full cumulative change. Settled, with the user's explicit agreement because it narrows what a closing reviewer reads: a closing review's scope is the tracking edits made since the triage baseline, with the delivered change available as reference rather than reassessed, since the task's own docs review already covered its documentation. A repair batch is then reassessed over that whole closing scope, not over the delivered change. This keeps each closing reassessment full and cumulative over the documentation change that no earlier review covers, so it squares with the full-reassessment rule.
+- How this relates to [Orchestration efficiency](orchestration-efficiency.md), whose measurements attribute almost all review-dispatch cost to context re-read on every call, the same cause as the whole-change context of every round here. Settled as independent: this entry cuts the rounds and the scope of closing reviews, while orchestration efficiency addresses the per-call re-reading cost in general; neither requires the other.
+
+Every finding in the observed rounds was minor, so [Weigh minor fixes against the review cycle and keep the rest as follow-ups](../QUICK_WINS.md#weigh-minor-fixes-against-the-review-cycle-and-keep-the-rest-as-follow-ups), which has confirmed optional minor findings deferred as follow-ups when a repair is not worth its review cycle, would on its own have ended most of those rounds; the two complement each other.
+
+## Before implementation
+
+Settle the docs report's routing field, the closing-review scope and its reference context, and the shared evidence record in a concise governing spec in `.nightshift/specs`, coordinating with [Acceptance reports carry a checkable evidence digest](../QUICK_WINS.md#acceptance-reports-carry-a-checkable-evidence-digest). The change alters the runtime's review brief and report schema, the closing review and the guidance, so it rides with a plugin version increase and fixture tests, and the start of the work decides between a budgeted installed-host check and deterministic evidence only. Tracking and readiness do not authorize implementation.
