@@ -308,6 +308,10 @@ Later deliberate model-role arrangements. The MVP uses task-fit preferences and 
 
 Later pairing of visible interactive sessions, including optional Windows Terminal pane launch/reuse and user steering of both. No interactive bridge is required by the MVP.
 
+### [Keep a findable record of host and model behavior](features/host-behavior-record.md)
+
+Keep observed Claude Code, Codex and model behavior in one findable record, each observation dated with its host version, model, evidence and the version at which it was last confirmed, and have instructions that rely on a behavior cite it, so a host or model change shows which claims to recheck. Raised on 2026-10-03 after the claim that Claude Code has no native goal went stale in three places unnoticed; the record seeds from that day's workshop observations. Settle its location, whether it ships, the entry format, staleness checks and who writes entries first.
+
 ## History
 
 Delivered features belong in [FEATURES_HISTORY.md](FEATURES_HISTORY.md). When shipping an entry, remove its satisfied Requires references from active indexes; retirement is recorded separately.
