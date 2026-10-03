@@ -320,6 +320,10 @@ Policy for the initial spec/code lead: Fable or Astra only, prefer the other hos
 
 Investigate which roles could use Opus 5.5 instead of Fable without falling below their required capability and strength, and at what cost difference. The user reports Opus working well as default controller, unmeasured; live testing and pricing evidence settle any policy change.
 
+### [Model knowledge base](features/model-knowledge-base.md)
+
+Keep a user-editable knowledge base where both Nightshift and the user record observations about models, such as strengths, weaknesses, cost and availability, and consult it when making model choices, within what the model policy file permits. Raised by the user on 2026-10-03 while graduating that policy file. Today the operating brief carries fixed model observations that only a release changes; where the knowledge base lives, what Nightshift writes to it and with whose approval, and how choices consult it are open.
+
 ### [Structured model teams](features/structured-model-teams.md)
 
 Later deliberate model-role arrangements. The MVP uses task-fit preferences and controller judgment, with interchangeable strong roles and equivalent-strength cross-host review when suitable.
