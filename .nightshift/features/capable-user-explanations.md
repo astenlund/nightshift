@@ -1,9 +1,8 @@
 ---
 name: capable-user-explanations
-description: Give a technically capable user who may not know the codebase concise, precise explanations of behavior, architecture, tradeoffs and risk, with the evidence needed to decide and without default source exposition
+description: Give a technically capable user who may not know the codebase concise, precise, self-contained explanations of behavior, architecture, tradeoffs and risk, with the evidence needed to decide and without default source exposition, and triage follow-ups in every phase
 metadata:
   type: feature
-status: exploring
 ---
 
 # Explain for a capable user who may not know the codebase
@@ -25,12 +24,20 @@ Checked on 2026-09-29:
 - Carried: the replaced authority policy (material changes need the user's decision, dependent work pauses on a blocked decision, an out-of-scope finding does not authorize a repair), and the removed permissions are absent.
 - Unverified: follow-up triage is carried for run phases; whether "every phase" also covers ideas and decisions raised before a run exists is a matter of reading.
 
+A further instance on 2026-10-03, outside any run: while graduating Exploring entries, the controller explained a draft in terms of runtime functions, file paths and links, and the user replied: "could you dumb this one down for me? I can't recall the details and can't open the spec file here".
+
 ## Direction
 
-State the audience and altitude where a run loads them: concise, precise explanations of behavior, architecture, tradeoffs and risk, with the evidence needed to decide and without source exposition unless asked.
+State the audience and altitude wherever explanations are written: concise, precise explanations of behavior, architecture, tradeoffs and risk in plain words, with the evidence needed to decide inside the message itself and without source exposition unless asked, and triage follow-ups in every phase.
 
-## Open questions
+## Settled questions
 
-- Where the rule belongs: once in the brief, or also in the skills whose output the user reads directly (Ready, handover, the closing report).
-- Whether follow-up triage applies to the interactive phases before a run.
-- Relations: this entry is the tracked destination for the communication row of the bug above, now resolved. [Background review and assessment of selected work](selection-review-and-assessment.md) covers stating concerns and tradeoffs before agreement.
+The user agreed these answers on 2026-10-03, when the entry graduated from Exploring to current work. Each question is kept with its answer.
+
+- Where the rule belongs: once in the brief, or also in the skills whose output the user reads directly (Ready, handover, the closing report). Settled: the rule is stated once in [the operating brief](../../internal/workflow.md), which the handover and revise skills already direct agents to, and the three public skills that do not, `ready`, `exploring` and `init-backlog`, each carry one sentence pointing to it. The rule: when explaining anything to the user, such as a readback, a recommendation, a decision question or a report, say what it does, why it matters, its tradeoffs and risks and the evidence needed to decide, in plain words; source code, function names and file paths appear only when the user asks for them or the decision depends on them. A message that asks for a decision makes sense on its own: links supplement it and never replace the facts needed to decide, since the user may be reading on another device or may not remember earlier details, as in the instance above.
+- Whether follow-up triage applies to the interactive phases before a run. Settled: it does, as the agreed disposition's "in every phase" says. During investigation and discussion before a run exists, follow-ups the agent turns up, such as out-of-scope defects or ideas, are put to the user with context and a recommended disposition before the conversation moves past them, and are never silently dropped or filed.
+- Relations: this entry is the tracked destination for the communication row of the bug above, now resolved. [Background review and assessment of selected work](selection-review-and-assessment.md) covers stating concerns and tradeoffs before agreement. Settled as independent: neither requires the other.
+
+## Before implementation
+
+The change is shipped guidance in the operating brief and three public skills, so it rides with a plugin version increase. Explanation style and pre-run triage are model-owned behavior, so the start of the work decides between a budgeted installed-host check and deterministic evidence only with that behavior marked unverified. Tracking and readiness do not authorize implementation.

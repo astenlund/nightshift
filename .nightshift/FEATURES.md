@@ -106,6 +106,12 @@ State the agreed limit that a matching content digest does not show unchanged ex
 
 **Requires:** none.
 
+### [Explain for a capable user who may not know the codebase](features/capable-user-explanations.md)
+
+Give a technically capable user who may not know the codebase concise, precise explanations of behavior, architecture, tradeoffs and risk in plain words, with the evidence needed to decide and without default source exposition, as the v3 migration agreed: the rule is stated once in the operating brief, with one pointing sentence in Ready, Exploring and init-backlog, a message that asks for a decision makes sense without its links, and follow-ups the agent turns up before a run are put to the user rather than dropped or filed. Found on 2026-09-29 by the migration accounting audit: no instruction states that audience or altitude, and decision context is asked for only in specific decisions such as follow-up triage, blocked-decision questions, the morning report and instruction proposals. The commitments were agreed with the user on 2026-10-03 and are recorded in the linked record. It changes shipped guidance with model-owned behavior, so it needs a version increase and a decision on installed-host evidence before implementation.
+
+**Requires:** none.
+
 ## Exploring
 
 ### [Shared BACKLOG.md meta-index](features/backlog-meta-index.md)
@@ -255,10 +261,6 @@ Run the lifecycle against a small fixed suite of seeded defects and record detec
 ### [User proxy consultation and opt-in user profile](features/user-proxy-consultation.md)
 
 When the controller is uncertain and the user is absent, consult the strongest available model reasoning as the user from recorded knowledge, and route its labelled answer and confidence to morning triage; with high confidence the controller might proceed. An opt-in user profile would accumulate priorities and sensibilities for it. Reserved decisions, confidence thresholds, labelling and profile consent remain open.
-
-### [Explain for a capable user who may not know the codebase](features/capable-user-explanations.md)
-
-Give a technically capable user who may not know the codebase concise, precise explanations of behavior, architecture, tradeoffs and risk, with the evidence needed to decide and without default source exposition, as the v3 migration agreed. Found on 2026-09-29 by the migration accounting audit: no instruction states that audience or altitude, and decision context is asked for only in specific decisions such as follow-up triage, blocked-decision questions, the morning report and instruction proposals.
 
 ### [Review mode for someone else's implementation](features/review-mode.md)
 
