@@ -29,7 +29,7 @@ The user's idea as captured, with the controller's reading, not yet agreed:
 ## Open questions
 
 - What counts as cheap: only evidence the session already gathered, or also small checks, and with what budget.
-- Scope: every open question in the backlog, which spans dozens of records, or only those near the session's work, and how they are found when records phrase them under different headings.
+- Scope: every open question in the backlog, which spans dozens of records, or only those near the session's work, and how they are found when records phrase them under different headings, which [A greppable format for open and settled questions](open-questions-format.md) would address with one format and a function that lists them by feature.
 - How answers land: as tracking edits applied after triage, moving a question under the record's settled questions with its evidence and date, and reviewed like other tracking edits, with [Proportionate review of tracking edits](tracking-review-cost.md) in mind.
 - How it relates to [Offer to revisit an entry's settled decisions before starting work](../QUICK_WINS.md#offer-to-revisit-an-entrys-settled-decisions-before-starting-work), its counterpart that reopens settled answers before work starts, and to the coherence audit.
 

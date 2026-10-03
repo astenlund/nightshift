@@ -328,6 +328,10 @@ Let the controller design and run bounded experiments within the authority alrea
 
 Have the session retrospective look through the open questions in the backlog's records and answer those the session's evidence or a cheap check can settle, with the evidence; questions that are the user's to decide get a proposed answer for triage, and questions needing measurement may become proposed experiments. Raised by the user on 2026-10-03; the same session answered one such question, whether Codex counts cached input inside its input count, in minutes from stored review events. What counts as cheap, the scope, how answers land and are reviewed, and its relation to revisiting settled decisions and the coherence audit are open.
 
+### [A greppable format for open and settled questions](features/open-questions-format.md)
+
+Give open and settled questions in backlog records one fixed format and a function that parses them out grouped by feature, so tools and agents can find, count and answer them. Raised by the user on 2026-10-04 for the retrospective that answers open questions cheaply; that day 25 headings in the feature records marked open questions under 8 different names, and more open items sat under "Before implementation". The format, where the function lives and what it reads, parser enforcement or a Ready count, migrating existing records and templates, and its relation to the Related field are open.
+
 ### [Night Guard](features/night-guard.md)
 
 Post-MVP reboot watchdog for multiple active agent sessions. Persist recovery state continuously, use the seconds-long shutdown window for bounded stop/flush coordination, and recover from saved state even when a session receives no warning or cannot acknowledge it.
