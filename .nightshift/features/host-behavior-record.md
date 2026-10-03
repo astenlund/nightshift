@@ -31,7 +31,7 @@ Keep observed host and model behavior in one place that is easy to find. Each ob
 
 ## Seed observations
 
-From the workshop rehearsals on 2026-10-03, outside any Nightshift run, on Linux rather than the verified Windows target, with Claude Code 2.1.288 and Opus 5.5 unless noted. Each was seen in one or a few runs.
+From the workshop rehearsals on 2026-10-03, outside any Nightshift run, on Linux rather than the verified Windows target, with Claude Code 2.1.288 and Opus 5.5, except the last, which comes from earlier Nightshift records and the user. Each was seen in one or a few runs.
 
 - Claude Code has `/goal`, which [its documentation](https://code.claude.com/docs/en/goal) calls a wrapper around a session-scoped prompt-based Stop hook. A separate small model judges the condition from the conversation and does not read files. A goal survived a manual `/compact` and two automatic compactions, and the documentation says resuming restores it; `/clear` and errors the user has to fix clear it, and an `Autocompact is thrashing` error cleared one in a probe. With a task only the user could do, the checker judged the goal not met until the block cap ended the turn; writing that exit into the condition let the goal be met on the first check.
 - Claude Code overrides a Stop hook after nine consecutive blocks, reporting "A hook blocked the turn from ending 9 consecutive times — overriding and ending turn", and `CLAUDE_CODE_STOP_HOOK_BLOCK_CAP` changes the limit.
@@ -40,7 +40,7 @@ From the workshop rehearsals on 2026-10-03, outside any Nightshift run, on Linux
 - After compaction, Claude Code re-read a file Claude had edited with its Edit tool but not one Claude had changed with `sed`, consistent with [the documented rule](https://code.claude.com/docs/en/context-window#what-survives-compaction) that it re-reads up to five files Claude read or edited.
 - SessionStart hooks matching `compact` ran after both manual and automatic compaction.
 - A crashing command hook was reported as a non-blocking error, and the turn ended normally.
-- On Codex, the user reports that a goal pauses whenever the agent yields to ask a question and has to be resumed by the user. The Codex version was not recorded.
+- On Codex, a goal that is paused or blocked while the controller waits on a user decision stays that way when Nightshift resumes, until the user reactivates it. Whether Codex pauses the goal itself or the controller has to block it is unsettled; the user suspects Nightshift may have to force the stop. In run `288d395f-2cb9-4d7f-bd8c-f4ff78d8c0c2` on 2026-09-12, with plugin 3.0.10, the controller marked the goal blocked itself after repeated continuations while waiting on a user decision ([Review-transfer approval interrupts an authorized handover](../BUGS.md#review-transfer-approval-interrupts-an-authorized-handover)). After the user renewed the handover the goal stayed blocked and the user had to resume it, because the goal interface available to the agent exposed complete and blocked updates but no resume operation ([Renewed handover yields with blocked native continuation](../BUGS_HISTORY.md#renewed-handover-yields-with-blocked-native-continuation)). In the [run adoption acceptance](../reports/run-adoption-and-continuation-20260921.md), the client restored a paused goal; the plugin did not.
 
 ## Open questions
 
