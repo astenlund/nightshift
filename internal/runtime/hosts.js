@@ -177,6 +177,8 @@ async function runCodex(options) {
   let tokens = null;
   // Codex reports the thread's cumulative total, tagged with the turn it belongs to.
   const usage = [];
+  let turnId = null;
+  const attemptUsage = () => options.session ? resumedUsage(usage, turnId, options.priorThreadTokens) : tokens;
   let malformed = false;
   let ended = false;
   let outcome;
@@ -250,13 +252,14 @@ async function runCodex(options) {
     options.onSession?.(session);
     actualModel = started.model;
     const turnStarted = await request('turn/start', { threadId: session, input: [{ type: 'text', text: options.prompt }], ...(options.schema ? { outputSchema: options.schema } : {}) });
+    turnId = turnStarted?.turn?.id ?? null;
     const result = await turn;
+    turnId ??= result.id ?? null;
     requireCondition(!outputLoop, 'output-loop', outputLoop && outputLoopMessage(outputLoop));
     const finalModel = reroutes.findLast(event => event.params?.threadId === session)?.params.toModel ?? actualModel;
     const continuedSession = !options.session || session === options.session;
     const attributionVerified = continuedSession && actualModel === options.model && !reroutes.some(event => codexModelContradiction(event, session, options.model));
-    const attemptUsage = options.session ? resumedUsage(usage, turnStarted?.turn?.id ?? result.id, options.priorThreadTokens) : tokens;
-    outcome = { host: 'codex', model: finalModel, effort: options.effort ?? 'high', session, attributionVerified, status: !malformed && result.status === 'completed' ? 'complete' : 'failed', output, tokens: attemptUsage, threadTokens: tokens };
+    outcome = { host: 'codex', model: finalModel, effort: options.effort ?? 'high', session, attributionVerified, status: !malformed && result.status === 'completed' ? 'complete' : 'failed', output, tokens: attemptUsage(), threadTokens: tokens };
     return outcome;
   } catch (error) {
     thrown = error;
@@ -264,15 +267,21 @@ async function runCodex(options) {
   } finally {
     if (!ended) { execution.child.stdin.end(); execution.child.kill(); }
     const exit = await execution.finish();
-    if (thrown) thrown.descendantsReclaimed = exit.descendantsReclaimed;
+    // Usage the host reported before the attempt failed, as when it ended as an output loop, was spent all the same.
+    if (thrown) Object.assign(thrown, { descendantsReclaimed: exit.descendantsReclaimed, tokens: attemptUsage() });
     if (outcome) {
       outcome.exit = exit;
       if (exit.error || exit.descendantsReclaimed === false) outcome.status = 'failed';
     }
     await new Promise(resolve => log.end(resolve));
-    requireReclaimed(exit, execution.failure());
-    // An artifact failure replaces the closed-host error or failed turn it caused; one before the host started stays a start failure.
-    if (!startFailure) requireArtifactsWritten(execution, exit);
+    try {
+      requireReclaimed(exit, execution.failure());
+      // An artifact failure replaces the closed-host error or failed turn it caused; one before the host started stays a start failure.
+      if (!startFailure) requireArtifactsWritten(execution, exit);
+    } catch (error) {
+      error.tokens = attemptUsage();
+      throw error;
+    }
   }
 }
 

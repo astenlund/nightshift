@@ -463,20 +463,36 @@ test('exhausted returned failures retain one failure record per candidate', asyn
   assert.equal(fs.existsSync(path.join(directory, 'receipt.json')), false);
 });
 
-test('an attempt ended as an output loop passes to the listed fallback and keeps its evidence', async t => {
+test('an attempt ended as an output loop passes to the listed fallback and keeps its evidence and usage', async t => {
   const f = fixture(t);
   const loop = 'Reviewer streamed only whitespace for 120 s (1000 deltas) after its last text at 2026-09-24T00:00:00.000Z; the attempt was ended as an output loop';
   const hosts = [];
   const result = await dispatchReview(f.root, { ...f, candidates: [{ host: 'codex', model: 'gpt-6-astra', effort: 'high' }, ...f.candidates], substitutionReason: 'Preferred candidate ended in an output loop' }, { runAgent: options => {
     hosts.push(options.host);
-    if (options.host === 'codex') throw new RunError('output-loop', loop);
+    if (options.host === 'codex') throw Object.assign(new RunError('output-loop', loop), { tokens: 1387915 });
     return mockAgent(options);
   } });
   assert.deepEqual(hosts, ['codex', 'claude']);
-  assert.deepEqual(result.receipt.attempts.map(attempt => ({ host: attempt.host, status: attempt.status, error: attempt.error })), [
-    { host: 'codex', status: 'failed', error: loop },
-    { host: 'claude', status: 'complete', error: undefined },
+  assert.deepEqual(result.receipt.attempts.map(attempt => ({ host: attempt.host, status: attempt.status, error: attempt.error, tokens: attempt.tokens })), [
+    { host: 'codex', status: 'failed', error: loop, tokens: 1387915 },
+    { host: 'claude', status: 'complete', error: undefined, tokens: 0 },
   ]);
+});
+
+test('a dispatch whose only attempt ended as an output loop records the attempt\'s usage in its failure record', async t => {
+  // Arrange
+  const f = fixture(t);
+  let requestId;
+
+  // Act
+  const failure = await dispatchReview(f.root, { ...f, candidates: [{ host: 'codex', model: 'gpt-6-astra', effort: 'high' }], onPrepared: request => { requestId = request.id; } }, { runAgent: () => {
+    throw Object.assign(new RunError('output-loop', 'Reviewer streamed only whitespace; the attempt was ended as an output loop'), { tokens: 30 });
+  } }).then(() => null, error => error.code);
+  const record = JSON.parse(fs.readFileSync(path.join(f.root, '.nightshift/runs/reviews', requestId, 'failure.json'), 'utf8'));
+
+  // Assert
+  assert.equal(failure, 'output-loop');
+  assert.deepEqual(record.attempts.map(attempt => ({ status: attempt.status, tokens: attempt.tokens })), [{ status: 'failed', tokens: 30 }]);
 });
 
 test('skeptic reports must address every finding; missing evidence stays unverified', () => {

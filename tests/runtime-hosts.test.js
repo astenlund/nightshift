@@ -193,6 +193,24 @@ test('Codex attempts end on a sustained whitespace-only message but tolerate a b
   assert.equal(burst.status, 'complete');
 });
 
+test('a Codex attempt ended as an output loop keeps the usage its host reported, as its own increment when resumed', async t => {
+  // Arrange
+  const outputLoop = { minMs: 200, minDeltas: 10 };
+  const loop = options => runAgent({ ...options, outputLoop }).then(() => null, error => error);
+
+  // Act
+  const fresh = await loop(fixture(t, 'codex', 'whitespace-loop'));
+  const resumed = await loop({ ...fixture(t, 'codex', 'whitespace-loop'), session: 'earlier-thread' });
+  const unmetered = await loop(fixture(t, 'codex', 'whitespace-loop-unmetered'));
+
+  // Assert
+  assert.deepEqual([fresh, resumed, unmetered].map(error => ({ code: error?.code, tokens: error?.tokens })), [
+    { code: 'output-loop', tokens: 17 },
+    { code: 'output-loop', tokens: 30 },
+    { code: 'output-loop', tokens: null },
+  ]);
+});
+
 test('server request ids cannot collide with pending client response ids', async t => {
   const result = await runAgent(fixture(t, 'codex', 'colliding-request'));
   assert.equal(result.status, 'complete');

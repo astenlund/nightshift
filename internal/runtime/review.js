@@ -410,6 +410,7 @@ async function dispatchReview(root, options, dependencies = {}) {
         } catch (error) {
           // A started host that fails on its own, without an operating-system error, failed in its session.
           sessionFailure = processStarted && error.errno === undefined;
+          attempt.tokens = error.tokens ?? null;
           throw error;
         }
         attempt.tokens = result.tokens ?? null;
