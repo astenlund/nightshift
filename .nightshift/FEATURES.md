@@ -124,6 +124,12 @@ Decide whether durability (durable records) and evidence (skeptic-validated find
 
 **Requires:** none.
 
+### [Retrospective routing by audience and instruction precedence](features/revise-lore-audience-routing.md)
+
+Have revise-lore route lessons by who the user is: a Nightshift maintainer to the Nightshift backlog or inbox, a regular user to the global or project-local instruction files, and let global and project instructions take precedence over plugin instructions when they conflict. Revise-lore follows the instructions rather than guessing: a destination the user's or project's instructions name comes first, then Nightshift's own backlog when the project is its source, and otherwise lessons about Nightshift reach a regular user as a report they can send upstream. Where precedence means a Nightshift requirement does not happen, the report says so; a requirement the runtime enforces is not worked around but put to the user. Raised by the user on 2026-09-27; the commitments were agreed with the user on 2026-10-03 and are recorded in the linked record. It changes the operating brief, revise-lore and three public skills, so it needs a version increase and a decision on installed-host evidence before implementation.
+
+**Requires:** none.
+
 ## Exploring
 
 ### [Shared BACKLOG.md meta-index](features/backlog-meta-index.md)
@@ -245,10 +251,6 @@ Show a run as a graph of its whole workflow in a page hosted by a local web serv
 ### [Claude Code mods for run visibility](features/claude-code-mods.md)
 
 Consider Claude Code mods, plugins of function hooks that add a live pane, band, status line, toast or hook inside Claude Code, as an optional surface for run visibility, such as run progress, review state or CI status after a push. Raised by the user on 2026-10-01 and tracked as Exploring at inbox triage on 2026-10-02; uninvestigated. Mods exist only on Claude Code, so a mod could only add optional visibility, never machinery the lifecycle depends on.
-
-### [Retrospective routing by audience and instruction precedence](features/revise-lore-audience-routing.md)
-
-Have revise-lore route lessons by who the user is: a Nightshift maintainer to the Nightshift backlog or inbox, a regular user to the global or project-local instruction files, and let global and project instructions take precedence over plugin instructions when they conflict. Raised by the user on 2026-09-27. Open: how a maintainer is recognized, and how precedence interacts with gates the plugin treats as mandatory.
 
 ### [Review retrospective instruction proposals like any other change](features/lore-proposal-review-gate.md)
 
