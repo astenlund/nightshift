@@ -31,7 +31,7 @@ Causes seen in that run:
 - **Unchecked claims in tracking prose.** Counts, absences and baselines the controller wrote without checking them drew findings in rounds 1, 2 and 4.
 - **Evidence outside the snapshot.** Round 5 could not verify claims about run records until a generated evidence record was supplied as a selected artifact, the lesson [Acceptance reports carry a checkable evidence digest](../QUICK_WINS.md#acceptance-reports-carry-a-checkable-evidence-digest) records, whose proposed brief sentence the user widened to any agreed requirement whose evidence is gathered outside recorded checks.
 - **Whole-change context for every round.** Each closing review assessed the tracking edits against the complete cumulative change, at 0.85 to 1.2 million tokens per Codex round.
-- **Output-loop fallbacks.** Two Codex attempts were ended as output loops and fell back to Fable at 2.9 and 4.4 million tokens; the loop attempts recorded no usage, as [Output-loop attempts record no token usage](../BUGS.md#output-loop-attempts-record-no-token-usage) describes.
+- **Output-loop fallbacks.** Two Codex attempts were ended as output loops and fell back to Fable at 2.9 and 4.4 million tokens; the loop attempts recorded no usage, as [Output-loop attempts record no token usage](../BUGS_HISTORY.md#output-loop-attempts-record-no-token-usage), fixed in 3.3.3, describes.
 
 ## Open questions
 
