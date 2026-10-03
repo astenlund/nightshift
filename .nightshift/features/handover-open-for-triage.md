@@ -1,6 +1,6 @@
 ---
 name: handover-open-for-triage
-description: A handed-over run stays open after delivery, with continuation lifted, so follow-up triage and its tracking edits happen in the running run under the normal gates
+description: A handed-over run stays open after delivery, with continuation lifted, so follow-up triage, its tracking edits and agreed follow-on work happen in the running run under the normal gates
 metadata:
   type: feature
 ---
@@ -15,11 +15,13 @@ A handed-over run completes before the user answers its follow-ups. [The operati
 
 - `triage` is refused on a complete run, so the recorded triage keeps saying the decisions stayed deferred while `resolve-followup` records the user's actual decisions. The handover-close fixture of run `f440497c` (fixture run `a64f7816`) shows this, and [the acceptance report](../reports/independent-documentation-review-20260929.md) lists it under its limits.
 - Triage usually brings backlog edits. Reviewing them after completion needed dedicated machinery: [Independent documentation review](independent-documentation-review.md) added a closing docs review that is admitted on a complete run as bookkeeping and gates nothing there, so its coverage matters only for publication.
+- Follow-on work agreed after the report needs a new run. On 2026-10-03, after the morning report of run `e92922e8-d20f-4674-907c-bf3277f5f184`, the user agreed a one-sentence change to the operating brief before triaging that run's seven pending follow-ups. A complete run takes no new task and runtime writes must name the checkout's current run, so the change got run `4ba1ff28-1b06-4c93-b5ff-17f6c7365e04`, which left the first run's follow-ups unresolvable and out of the SessionStart morning-report notice; the controller copied them into the new run. Asked how to track the gap, the user said: "feels to me like we shouldn't need a new run in this situation".
 
 ## Agreed direction
 
 - After delivery, a handed-over run is treated as not closed: follow-up triage, the tracking edits it calls for, their rerun checks and their closing docs review happen in the still-open run, under the same gates as an attended close, and the run completes after them.
 - After delivery, continuation stops pressing the run: the Stop hook no longer resists the controller yielding, so the run waits for the user rather than keeping a session busy.
+- Follow-on work the user agrees at the report or during triage joins the still-open run as a new task, so its pending follow-ups and the new work stay in one run. Added at triage on 2026-10-03.
 
 ## Before implementation
 
@@ -28,4 +30,5 @@ A handed-over run completes before the user answers its follow-ups. [The operati
 - Reword the guidance that assumes completion before triage: the brief's Close and report section, including the rule that optional follow-up decisions never delay a completed delivery and the instruction to complete with follow-ups pending, the handover skill, and the runtime reference, and decide how its closing record on complete runs relates to runs kept open, since a run that completes with follow-ups still pending would still need it.
 - Decide how a delivered but open run interacts with other work in the checkout. `create` refuses a new run with `overlapping-run` while an unfinished run owns the checkout, and [Ready offers to pick up an interrupted run](ready-interrupted-run-pickup.md) (Exploring) would otherwise offer it as interrupted.
 - Give a run whose follow-ups are never triaged a defined end, such as completing with them pending once the user declines or turns to other work, and state what then covers any tracking edits already made.
+- Add an operation that adds an agreed task to an open run, recording its agreement as `create` does, and decide how a run that has recorded its retrospective, report or triage returns to engineering for the new task and which closing stages it then repeats.
 - Settle these in a concise governing spec in `.nightshift/specs`. Shipped runtime, hook and skill changes need a plugin version increase, and the start of the work decides between a budgeted installed-host campaign and deterministic evidence only, with model-owned behavior marked unverified.
