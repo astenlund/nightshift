@@ -148,6 +148,12 @@ Besides the few high-value entries Ready recommends today, also recommend one or
 
 **Requires:** none.
 
+### [User-configurable model policy file](features/model-policy-file.md)
+
+Move the supported strong-model list, today a constant in the runtime's review module, into a file the user can edit, which can also hold a general allow list, a deny list, or both. Raised by the user on 2026-09-29 while graduating Degraded assessment mode. The commitments agreed with the user on 2026-10-03, recorded in the linked record: one user-wide JSON file in the Nightshift store, covering both hosts, records additions to and removals from the shipped defaults; a project's file may only narrow it; a malformed file refuses new dispatches rather than falling back; the lists govern every dispatched or registered model, with the deny list winning and a clash with an explicit user requirement put to the user; and receipts record the policy in force. It changes runtime behavior that governs the review gate, so it needs a concise governing spec, a version increase and a decision on installed-host evidence before implementation.
+
+**Requires:** none.
+
 ## Exploring
 
 ### [Shared BACKLOG.md meta-index](features/backlog-meta-index.md)
@@ -313,10 +319,6 @@ Policy for the initial spec/code lead: Fable or Astra only, prefer the other hos
 ### [Model choice per role: Opus 5.5 versus Fable](features/opus-versus-fable-role-choice.md)
 
 Investigate which roles could use Opus 5.5 instead of Fable without falling below their required capability and strength, and at what cost difference. The user reports Opus working well as default controller, unmeasured; live testing and pricing evidence settle any policy change.
-
-### [User-configurable model policy file](features/model-policy-file.md)
-
-Move the supported strong-model list, today a constant in the runtime's review module, into a file the user can edit, which can also hold a general allow list, a deny list, or both. Raised by the user on 2026-09-29 while graduating Degraded assessment mode. Open questions include where the file lives and whether a project's copy may widen the strong list, what happens when it is missing or malformed, and what the allow and deny lists govern; the record lists them all.
 
 ### [Structured model teams](features/structured-model-teams.md)
 
