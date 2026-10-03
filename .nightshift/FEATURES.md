@@ -136,6 +136,12 @@ Have Ready and Exploring write local links with absolute targets, which open whe
 
 **Requires:** none.
 
+### [Ready offers to pick up an interrupted run](features/ready-interrupted-run-pickup.md)
+
+When a new session opens in a project with a stopped run, or a running one whose controlling session has ended, Ready tells the user about the unfinished work and offers to pick it up through the existing adoption, after which everything behaves as in the original session, with no pointing at report files. Raised by the user on 2026-09-19. The commitments agreed with the user on 2026-10-03, recorded in the linked record: Ready reads the run state read-only, whatever release the run is bound to, coordinating with the quick win on bound status refusing other-release runs; it offers no pickup while the run or its workers may still be active, and never a replacement run; the notice lives only in Ready; and a delivered run kept open for triage, once [Keep a handed-over run open for triage after delivery](features/handover-open-for-triage.md) ships, is presented as waiting for triage, not as interrupted. It needs a concise governing spec, a version increase and a decision on installed-host evidence before implementation.
+
+**Requires:** none.
+
 ## Exploring
 
 ### [Shared BACKLOG.md meta-index](features/backlog-meta-index.md)
@@ -233,10 +239,6 @@ When new backlog exclusions are needed, let the user choose shared .gitignore ru
 ### [Restore fresh-scaffold track, ignore or defer choice](features/setup-tracking-choice.md)
 
 Restore the fresh-project setup choice to track the backlog in Git, ignore it, or defer the decision. Preserve existing tracking and ignore policy on reruns. This restores a previously shipped setup capability; choosing shared versus clone-local exclusions is tracked separately in [Init-backlog ignore-shape election](features/init-backlog-ignore-shape-election.md).
-
-### [Ready offers to pick up an interrupted run](features/ready-interrupted-run-pickup.md)
-
-When a new session opens in a project with an interrupted, stopped or undelivered Nightshift run, Ready tells the user about the unfinished work and offers to pick it up, after which everything behaves as in the original session, with no pointing at report files. Raised by the user on 2026-09-19. It builds on explicit run adoption, now implemented in the local 3.2.3 candidate with [qualified installed evidence](reports/run-adoption-and-continuation-20260921.md); the open questions include whether an undelivered morning report counts as unfinished work and how Ready learns about runs without continuation activation; the record lists all four.
 
 ### [Size-aware Ready recommendations](features/ready-sized-recommendations.md)
 
