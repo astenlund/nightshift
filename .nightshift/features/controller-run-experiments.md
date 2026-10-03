@@ -27,6 +27,7 @@ Restated from the v2 draft as the starting point, not yet agreed:
 - A variant joins real work only when every arm stays compliant and useful; one that could jeopardize the primary result runs in shadow or waits for the user.
 - Results never promote themselves. The report states the hypothesis, method, sample, observed effects, costs, limits, side effects, conclusion and recommendation, and offers adopting, repeating, revising, tracking or discarding the change for the user to decide.
 - In the v2 draft a shift supervisor executed experiments that dispatch workers and the run manager ran only one-step probes itself; in v3 the controller can coordinate directly, and the optional supervisor is still Exploring.
+- Added by the user the same day, in their words: "revise-lore could suggest experiments too, recorded somewhere durable for future sessions". A session retrospective may then propose experiments grounded in that session's evidence, kept where a later session can find and run them.
 
 ## Settled
 
@@ -41,6 +42,7 @@ From 2026-10-03: the reviewer model (Astra versus Fable); a reviewer guided by t
 - The 2026-09-06 migration agreed on no separate experiment framework; the user has since asked for controller-run experiments and a separate ledger, so how much further structure they need, such as a recorded design with arms and a report section, is to be settled with the user.
 - Budgets, arm assignment, contamination controls, evaluator independence, and what evidence counts as directional, conclusive or inconclusive.
 - The ledger's home and lifecycle: where it lives and whether it is scoped to one run or outlives runs; its creation, identity, refresh and invalidation, and what every reader does when it is absent, stale or malformed; atomic appends and deterministic resume after a partly persisted write; compaction without losing evidence the report needs; and whether a fully disposed ledger is archived or deleted, and what provenance remains.
+- Where experiments that a retrospective proposes are kept so that later sessions find them, such as the ledger outliving runs or a section of the backlog, and how a later session learns of them and picks one up, for example through Ready; how a proposal differs from an experiment already run, and who decides to run it.
 - How the ledger relates to [Carry settled decisions and experiment evidence into later reviews](v3-review-decision-context.md), which records material conclusions in the run record and delivers them to later reviews.
 - Whether experiments run only inside agreed runs or also on their own, and how the authority boundary is stated where a run loads it.
 - How it relates to [Measure whether the lifecycle catches defects](defect-detection-measurement.md), whose planted-bug suite is a controlled harness for comparing review arms, and to [Model knowledge base](model-knowledge-base.md), where results about models would land.
