@@ -342,6 +342,14 @@ Have `runCodex` record null usage for a resumed attempt whose host did not conti
 
 **Requires:** none.
 
+### Offer to revisit an entry's settled decisions before starting work
+
+Raised by the user on 2026-10-03, outside any run, in a backlog session that had by then graduated five Exploring entries, in their words: "idea: ready should ask the user if they want to revisit the settled questions before starting work, since both the code and the user's thinking might have changed since the feature spec was written." [The operating brief](../internal/workflow.md) asks for investigation and a short readback or concise spec that ends by asking whether to begin, and [the Ready skill](../skills/ready/SKILL.md) has a confirmed selection start that investigation and readback, but neither asks the agent to bring up the decisions the selected entry's record already marks as settled or agreed, which can be weeks old. The same session wrote such a revisit into [Name durability and evidence in the reliability priority](features/reliability-parts.md) by hand.
+
+Have the readback or concise spec for work taken from a backlog entry list the decisions its record marks as settled or agreed, with their dates, point out any that the investigation found contradicted by the current code or by work landed since, and ask once whether the user wants to revisit any before the work begins. The user added the same day that, since this is the interactive part of the work, the agent must not take too long before presenting the readback and the new question. The check therefore uses what the readback's own investigation already found, with no separate pass over every decision, and a decision it could not check quickly is listed as unchecked rather than investigated further; a deeper check, if one is worth having, belongs with the background assessment that [Background review and assessment of selected work](features/selection-review-and-assessment.md) dispatches when a readback is presented, which shows the draft without waiting. It applies to features, quick wins and bugs whose records carry agreed decisions, and to work the user starts directly as well as through Ready, so the rule belongs with the readback rule in the operating brief, with Ready's selection text consistent with it. The question is part of the readback the user answers before any handover, so it never waits on an absent user. The user agreed this shape when it was filed. Guidance changes ship with a version increase, and since the behavior is model-owned, the start of the work decides between a budgeted installed-host check and deterministic evidence only with that behavior marked unverified. Tracking does not authorize implementation.
+
+**Requires:** none.
+
 ## History
 
 Prior delivered work remains in [QUICK_WINS_HISTORY.md](QUICK_WINS_HISTORY.md).
