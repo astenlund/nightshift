@@ -142,6 +142,12 @@ When a new session opens in a project with a stopped run, or a running one whose
 
 **Requires:** none.
 
+### [Size-aware Ready recommendations](features/ready-sized-recommendations.md)
+
+Besides the few high-value entries Ready recommends today, also recommend one or two smaller entries for a quick session and a larger entry, or a group of entries, sized for a longer session. Raised by the user on 2026-09-29, who settled that size is the model's rough judgment from what it reads; on 2026-10-03 the user agreed the remaining commitments, recorded in the linked record: the picks are sizes only, with no tie to handover; a group is one the model judges can be built and reviewed together, is listed by its ready-set numbers and suggests an order; a pick notes an entry that still needs a spec; and a size with no fitting candidate gets one line instead of a pick. It changes the Ready skill's model-owned recommendations, so it needs a version increase and a decision on installed-host evidence before implementation.
+
+**Requires:** none.
+
 ## Exploring
 
 ### [Shared BACKLOG.md meta-index](features/backlog-meta-index.md)
@@ -239,10 +245,6 @@ When new backlog exclusions are needed, let the user choose shared .gitignore ru
 ### [Restore fresh-scaffold track, ignore or defer choice](features/setup-tracking-choice.md)
 
 Restore the fresh-project setup choice to track the backlog in Git, ignore it, or defer the decision. Preserve existing tracking and ignore policy on reruns. This restores a previously shipped setup capability; choosing shared versus clone-local exclusions is tracked separately in [Init-backlog ignore-shape election](features/init-backlog-ignore-shape-election.md).
-
-### [Size-aware Ready recommendations](features/ready-sized-recommendations.md)
-
-Besides the few high-value entries Ready recommends today, also recommend one or two smaller entries for a quick session and a larger entry, or a group of entries, sized for a longer session such as a night's worth of work. Raised by the user on 2026-09-29, who settled that size is the model's rough judgment from what it reads; what makes a group coherent, how a pick for a night fits the settlement that handover requires first, and how a group is cited and selected are among the questions the record lists as open.
 
 ### [Execution plan for a multi-item selection](features/multi-item-execution-plan.md)
 
