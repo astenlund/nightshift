@@ -42,6 +42,21 @@ function resumedUsage(samples, turnId, priorThreadTokens) {
   return Number.isFinite(own) && Number.isFinite(before) && own >= before ? own - before : null;
 }
 
+function claudeInvocationTokens(usage) {
+  return ['input_tokens', 'output_tokens', 'cache_read_input_tokens', 'cache_creation_input_tokens'].reduce((sum, key) => sum + (usage[key] ?? 0), 0);
+}
+
+// Claude reports modelUsage cumulatively across a resumed session, auxiliary models included, while result.usage covers only the
+// invocation's main model. A resumed attempt's own usage is therefore the session total less the total recorded when the session last
+// ended. It is unknown without both totals, or when the difference falls below the invocation's own usage, as it would if the host
+// stopped reporting cumulatively.
+function resumedClaudeUsage(threadTokens, priorThreadTokens, invocation) {
+  if (!Number.isFinite(threadTokens) || !Number.isFinite(priorThreadTokens) || invocation === null || typeof invocation !== 'object') return null;
+  const own = threadTokens - priorThreadTokens;
+
+  return own >= claudeInvocationTokens(invocation) ? own : null;
+}
+
 function codexModelContradiction(event, session, expectedModel) {
   return event.method === 'model/rerouted' && event.params?.threadId === session && (event.params.fromModel !== expectedModel || event.params.toModel !== expectedModel);
 }
@@ -160,8 +175,10 @@ async function runClaude(options) {
   // A resumed attempt is attributable only when the host continued the session it was asked to resume.
   const continuedSession = !options.session || result?.session_id === options.session;
   const attributionVerified = continuedSession && authored.length > 0 && authored.every(event => event.message.model === options.model && event.session_id === result?.session_id);
-  const tokens = result?.modelUsage ? Object.values(result.modelUsage).reduce((sum, usage) => sum + tokenTotal(usage), 0) : null;
-  return { host: 'claude', model: options.model, effort: options.effort ?? 'high', session: result?.session_id ?? null, attributionVerified, status: !malformed && !exit.error && !exit.timedOut && exit.code === 0 && result?.subtype === 'success' && result.is_error === false ? 'complete' : 'failed', output: result?.structured_output ?? result?.result ?? null, tokens, exit, events };
+  const threadTokens = result?.modelUsage ? Object.values(result.modelUsage).reduce((sum, usage) => sum + tokenTotal(usage), 0) : null;
+  const tokens = !options.session ? threadTokens : continuedSession ? resumedClaudeUsage(threadTokens, options.priorThreadTokens, result.usage) : null;
+
+  return { host: 'claude', model: options.model, effort: options.effort ?? 'high', session: result?.session_id ?? null, attributionVerified, status: !malformed && !exit.error && !exit.timedOut && exit.code === 0 && result?.subtype === 'success' && result.is_error === false ? 'complete' : 'failed', output: result?.structured_output ?? result?.result ?? null, tokens, threadTokens, exit, events };
 }
 
 async function runCodex(options) {

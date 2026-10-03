@@ -78,8 +78,9 @@ function resolveContinuation(root, state, target, review) {
   const lineage = lineageOf(receipt);
   const resumed = review.resume !== undefined;
   requireCondition(!resumed || !review.requiredModel || review.requiredModel === receipt.model, 'model-requirement', 'Explicit model requirements prohibit resuming a session of another model');
-  // The thread total the receipt recorded is the starting total only while no later attempt has used the session since.
-  const usedSince = state.workers.slice(state.workers.indexOf(worker) + 1).some(candidate => candidate.session === receipt.session);
+  // The thread total the receipt recorded is the starting total only while no later attempt has used the session since. A later
+  // dispatch holds the session from registration, but one that never launched a host, recording no pid, never used it.
+  const usedSince = state.workers.slice(state.workers.indexOf(worker) + 1).some(candidate => candidate.session === receipt.session && candidate.pid !== undefined);
   const continuation = { kind: resumed ? 'resumed' : 'replacement', requestId, lineage, ...(resumed ? { session: receipt.session, priorThreadTokens: usedSince ? null : receipt.threadTokens ?? null } : {}) };
   const candidates = resumed ? [{ host: receipt.host, model: receipt.model, effort: receipt.effort }] : review.candidates;
   const raised = finding => finding.raisedBy?.lineage === lineage;

@@ -86,7 +86,6 @@ test('Claude resumes the named session from the new copy and attributes only tha
   assert.equal(resumed.status, 'complete');
   assert.equal(resumed.session, 'earlier-session');
   assert.equal(resumed.attributionVerified, true);
-  assert.equal(resumed.tokens, 14);
   assert.equal(switched.session, 'unrequested-session');
   assert.equal(switched.attributionVerified, false);
   assert.equal(missing.status, 'failed');
@@ -117,6 +116,27 @@ test('Codex resumes the thread in the new copy with the dispatch policy and char
   assert.equal(unknown.tokens, null);
   assert.equal(switched.attributionVerified, false);
   assert.deepEqual({ tokens: fresh.tokens, threadTokens: fresh.threadTokens }, { tokens: 17, threadTokens: 17 });
+});
+
+test('Claude charges a resumed attempt only its own usage and leaves doubtful figures unknown', async t => {
+  // Arrange
+  const resume = (priorThreadTokens, mode) => runAgent({ ...fixture(t, 'claude', mode), session: 'earlier-session', priorThreadTokens });
+
+  // Act
+  const fresh = await runAgent(fixture(t, 'claude'));
+  const resumed = await resume(100);
+  const doubtful = {
+    unknownBaseline: await resume(null),
+    negative: await resume(130),
+    belowInvocation: await resume(110),
+    newSession: await resume(100, 'resume-new-session'),
+    unreportedInvocation: await resume(100, 'missing-invocation-usage'),
+  };
+
+  // Assert
+  assert.deepEqual({ tokens: fresh.tokens, threadTokens: fresh.threadTokens }, { tokens: 14, threadTokens: 14 });
+  assert.deepEqual({ tokens: resumed.tokens, threadTokens: resumed.threadTokens }, { tokens: 20, threadTokens: 120 });
+  for (const [name, result] of Object.entries(doubtful)) assert.equal(result.tokens, null, name);
 });
 
 for (const basename of ['stderr.txt', 'events.jsonl']) {

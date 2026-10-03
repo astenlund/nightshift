@@ -38,8 +38,10 @@ let sessions = 0;
 
 // A fixture host that returns the report fields a test chooses, as native Claude events. A resumed attempt continues the session it
 // was asked to resume; a continued lead closes every pending finding unless told otherwise; a lead's dialogue turn maintains each.
-function fakeAgent(options, { findings = [], closures, positions, status = 'complete', session, dimensions = DIMENSIONS.code, calls, during } = {}) {
+// A launched one reports a host process, as a real runner does, and its proven termination.
+function fakeAgent(options, { findings = [], closures, positions, status = 'complete', session, dimensions = DIMENSIONS.code, calls, during, launched = false, threadTokens } = {}) {
   calls?.push(options);
+  if (launched) options.onProcess(999999);
   fs.mkdirSync(options.artifacts, { recursive: true });
   const properties = options.schema.properties;
   const report = { requestId: properties.requestId.enum[0], status, coverage: dimensions.map(dimension => ({ dimension, evidence: 'Assessed the change' })), findings, probes: [], summary: 'Fixture report' };
@@ -51,7 +53,7 @@ function fakeAgent(options, { findings = [], closures, positions, status = 'comp
     : [{ type: 'assistant', session_id: actual, message: { model: options.model, content: [] } }, { type: 'result', session_id: actual, subtype: 'success', is_error: false, structured_output: report }];
   fs.writeFileSync(path.join(options.artifacts, 'events.jsonl'), events.map(event => JSON.stringify(event)).join('\n') + '\n');
   during?.(options);
-  return { host: options.host, model: options.model, effort: options.effort, session: actual, attributionVerified: true, status: 'complete', output: report, tokens: 0 };
+  return { host: options.host, model: options.model, effort: options.effort, session: actual, attributionVerified: true, status: 'complete', output: report, tokens: 0, ...(threadTokens === undefined ? {} : { threadTokens }), ...(launched ? { exit: { descendantsReclaimed: true } } : {}) };
 }
 
 // A committed project with an uncommitted change, and a run whose operations go through the actual runtime boundary.
@@ -281,21 +283,43 @@ test('controller bookkeeping failures during a resumed dispatch keep their own c
   assert.deepEqual({ stopped, stale, unattributed }, { stopped: 'run-stopped', stale: 'stale-state', unattributed: 'resume-failed' });
 });
 
-test('a resume after a failed attempt on the same session does not reuse the receipt\'s thread total', async t => {
+test('a resume reuses the receipt\'s thread total until a later attempt launches a host on the session', async t => {
   // Arrange
   const f = fixture(t);
-  const lead = await f.act({ action: 'dispatch', review: { ...f.base, kind: 'code', candidates: [COUNTERPART] } }, { runAgent: options => ({ ...fakeAgent(options), threadTokens: 500 }) });
+  const lead = await f.dispatch({ kind: 'code', candidates: [COUNTERPART] }, { threadTokens: 500 });
   const priors = [];
-  const resume = during => f.act({ action: 'dispatch', review: { ...f.base, kind: 'code', resume: lead.receipt.requestId } }, { runAgent: options => { priors.push(options.priorThreadTokens); return fakeAgent(options, { during }); } }).then(() => null, error => error.code);
+  const resume = runner => f.act({ action: 'dispatch', review: { ...f.base, kind: 'code', resume: lead.receipt.requestId } }, { runAgent: options => { priors.push(options.priorThreadTokens); return runner(options); } }).then(() => null, error => error.code);
 
   // Act
-  const drifted = await resume(() => fs.writeFileSync(path.join(f.root, 'subject.txt'), 'edited during the resume\r\n'));
+  const unlaunched = await resume(() => { throw new RunError('host-start-failed', 'Agent host failed to start: fixture'); });
+  const drifted = await resume(options => fakeAgent(options, { launched: true, during: () => fs.writeFileSync(path.join(f.root, 'subject.txt'), 'edited during the resume\r\n') }));
   fs.writeFileSync(path.join(f.root, 'subject.txt'), 'after\r\n');
-  await resume();
+  await resume(options => fakeAgent(options));
 
   // Assert
-  assert.equal(drifted, 'review-input-drift');
-  assert.deepEqual(priors, [500, null]);
+  assert.deepEqual({ unlaunched, drifted }, { unlaunched: 'host-start-failed', drifted: 'review-input-drift' });
+  assert.deepEqual(priors, [500, 500, null]);
+});
+
+test('a resumed Claude reviewer, chained or not, and a resumed Claude skeptic start from the thread total their receipt recorded', async t => {
+  // Arrange
+  const f = fixture(t);
+  const priors = [];
+  const resume = (review, agent) => f.act({ action: 'dispatch', review: { ...f.base, ...review } }, { runAgent: options => { priors.push(options.priorThreadTokens); return fakeAgent(options, agent); } });
+  const lead = await f.dispatch({ kind: 'code', candidates: [LEAD] }, { findings: [finding('boundary')], threadTokens: 200 });
+  await f.act({ action: 'review', receipt: f.receipt(lead) });
+  const saved = f.task().findings[0];
+  const skeptic = await f.dispatch({ kind: 'skeptic', candidates: [LEAD], findings: [saved] }, { findings: [verdict(saved.id)], threadTokens: 300 });
+  await f.act({ action: 'validate', receipt: f.receipt(skeptic), findingId: saved.id });
+
+  // Act
+  const first = await resume({ kind: 'code', resume: lead.receipt.requestId }, { threadTokens: 350 });
+  await resume({ kind: 'code', resume: first.receipt.requestId, dialogue: { findingIds: [saved.id], message: 'Does the boundary fail for zero?' } }, { dimensions: [], threadTokens: 420 });
+  await resume({ kind: 'skeptic', resume: skeptic.receipt.requestId, dialogue: { findingIds: [saved.id], message: 'Confirm your verdict' } }, { findings: [verdict(saved.id)], threadTokens: 380 });
+
+  // Assert
+  assert.deepEqual({ lead: lead.receipt.threadTokens, first: first.receipt.threadTokens }, { lead: 200, first: 350 });
+  assert.deepEqual(priors, [200, 350, 300]);
 });
 
 test('a replacement receives the reviewer\'s record, inherits its pending closures and continues its lineage', async t => {

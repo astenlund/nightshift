@@ -49,9 +49,15 @@ else if (args.includes('--print')) {
     const session = mode === 'resume-new-session' ? 'unrequested-session' : resumed ?? 'fixture-session';
     const model = mode === 'wrong-model' ? 'weaker-model' : args[args.indexOf('--model') + 1];
     if (mode === 'malformed') process.stdout.write('not-json\n');
+    // usage covers this invocation's main model. A resumed session's modelUsage is cumulative and includes an auxiliary model: the
+    // earlier invocations' 100 tokens plus this one's 14 main-model and 6 auxiliary tokens.
+    const usage = mode === 'missing-invocation-usage' ? {} : { usage: { input_tokens: 2, output_tokens: 3, cache_read_input_tokens: 4, cache_creation_input_tokens: 5 } };
+    const modelUsage = resumed
+      ? { [model]: { inputTokens: 2, outputTokens: 3, cacheReadInputTokens: 104, cacheCreationInputTokens: 5 }, 'claude-haiku-4-5-20251001': { inputTokens: 6, outputTokens: 0, cacheReadInputTokens: 0, cacheCreationInputTokens: 0 } }
+      : { [model]: { inputTokens: 2, outputTokens: 3, cacheReadInputTokens: 4, cacheCreationInputTokens: 5 } };
     send({ type: 'system', subtype: 'init', session_id: session });
     send({ type: 'assistant', session_id: session, message: { model, content: [] } });
-    send({ type: 'result', session_id: session, subtype: 'success', is_error: mode === 'error-result', result: 'Fixture assessment', modelUsage: { [model]: { inputTokens: 2, outputTokens: 3, cacheReadInputTokens: 4, cacheCreationInputTokens: 5 } } });
+    send({ type: 'result', session_id: session, subtype: 'success', is_error: mode === 'error-result', result: 'Fixture assessment', ...usage, modelUsage });
   });
 } else {
   let pendingTurn;
