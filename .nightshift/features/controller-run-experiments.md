@@ -38,6 +38,8 @@ Restated from the v2 draft as the starting point, not yet agreed:
 
 From 2026-10-03: the reviewer model (Astra versus Fable); a reviewer guided by the review lenses versus an unguided one that receives the change and the governing requirement but no lenses; dual versus single review; and compacting a Codex reviewer thread before its resume, and above which threshold. That day's manual trials are recorded in [Dual strong review for critical work](dual-strong-review.md) and [Make resumed reviewers actually cheap](resumed-reviewer-cost.md).
 
+From 2026-10-04: the keyword scoring of [A greppable format for open and settled questions](open-questions-format.md), which gives each keyword +10 for a confirmed match and -1 for a rejected one; the user suggested that experiments settle its retirement floor, starting score, the two weights and whether old credit fades, in their words: "the scoring system could be an object for the experiment feature to settle".
+
 ## Open questions
 
 - The 2026-09-06 migration agreed on no separate experiment framework; the user has since asked for controller-run experiments and a separate ledger, so how much further structure they need, such as a recorded design with arms and a report section, is to be settled with the user.
