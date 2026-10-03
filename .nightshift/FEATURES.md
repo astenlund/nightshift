@@ -330,7 +330,7 @@ Have the session retrospective look through the open questions in the backlog's 
 
 ### [A greppable format for open and settled questions](features/open-questions-format.md)
 
-Give open and settled questions in backlog records one fixed format and a function that parses them out grouped by feature, so tools and agents can find, count and answer them. Raised by the user on 2026-10-04 for the retrospective that answers open questions cheaply; that day 25 headings in the feature records marked open questions under 8 different names, and more open items sat under "Before implementation". The format, where the function lives and what it reads, parser enforcement or a Ready count, migrating existing records and templates, and its relation to the Related field are open.
+Give open and settled questions in backlog records one fixed format and a function that parses them out grouped by feature, with a keyword search and a lightweight model judging its matches to catch questions outside the format, so tools and agents can find, count and answer them. Raised by the user on 2026-10-04 for the retrospective that answers open questions cheaply; that day 25 headings in the feature records marked open questions under 8 different names, and more open items sat under "Before implementation". The format, where the function lives and what it reads, the keywords and the model that judges them, parser enforcement or a Ready count, migrating existing records and templates, and its relation to the Related field are open.
 
 ### [Night Guard](features/night-guard.md)
 
