@@ -27,6 +27,8 @@ Agreed with the user on 2026-09-29, when the entry graduated from Exploring. The
 - **Later strong assessment.** A supported strong assessment that follows reviews the full cumulative change fresh. Degraded findings and decisions stay in the record, but a finding that a degraded skeptic rejected stays within the strong reviewer's scope.
 - **The shipped pause rule.** Unrecorded advisory feedback still never counts. The operating brief's rule that repairs pause while no strong reviewer is available, and that advisory feedback does not lift the pause, is to apply only when degraded mode is not started, for example because the user declines it or an explicit model requirement rules it out. Implementation is to update every sentence in the brief and runtime reference that states the pause.
 
+Amended with the user on 2026-10-03: once [User-configurable model policy file](model-policy-file.md) has shipped, when no supported strong model can take the role and the user is present, the question the Entry commitment asks also offers that feature's escape hatch, adding a model the user can use to the strong list in their policy file, after which that model's reviews are strong rather than degraded. Until the policy file ships, the question offers a degraded review or waiting, as agreed on 2026-09-29. Degraded mode starts only when the user picks it from that question, or explicitly selects a weaker model, or, with no user available, on the recorded evidence as before.
+
 ## Before implementation
 
 The first three points are the ones the agreement left open; the rest were found while recording it.
