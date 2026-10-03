@@ -20,7 +20,7 @@ Use appropriate installed-host evidence for parser failure, structural errors, n
 
 Include a valid legacy .claude backlog with no .nightshift directory and verify that the response names and offers init-backlog while reporting that Ready did not complete. Also verify that unrelated parser failures receive their actual recovery guidance rather than an invented migration diagnosis.
 
-Coordinate with the Exploring feature [Make Ready and Exploring links open at their target](../features/source-link-targets.md), which absorbed the earlier Exploring link-guidance quick win, without treating it as coverage of diagnostic branches.
+Coordinate with the feature [Make Ready and Exploring links open at their target](../features/source-link-targets.md), which absorbed the earlier Exploring link-guidance quick win, without treating it as coverage of diagnostic branches.
 
 ## Triage
 

@@ -130,6 +130,12 @@ Have revise-lore route lessons by who the user is: a Nightshift maintainer to th
 
 **Requires:** none.
 
+### [Make Ready and Exploring links open at their target](features/source-link-targets.md)
+
+Have Ready and Exploring write local links with absolute targets, which open when clicked in Claude Code's terminal UI where relative ones do not, and link an entry held in an index at that entry's line through `NIGHTSHIFT_LINE_LINK_FORMAT`, the user's `subl://` protocol form set up for Nightshift v2 and confirmed working on 2026-09-30. v3 dropped line links with the spec-agreement skill, their only consumer, when it replaced the agreement digest's presentation, and no migration disposition names them; links with a `:207` or `#L207` suffix do not open at all. Moved from the quick wins on 2026-09-30. The commitments agreed with the user on 2026-10-03, recorded in the linked record, have the parser give every returned item its file's absolute path, its line and a finished link target, built from the variable when it is set and the plain absolute path otherwise, which the skills copy; Codex handling stays unverified until tested there, the README gains an optional note on the variable, and clicking is checked by hand. It changes the parser's output, its fixtures and both skills, so it needs a version increase and a decision on installed-host evidence before implementation.
+
+**Requires:** none.
+
 ## Exploring
 
 ### [Shared BACKLOG.md meta-index](features/backlog-meta-index.md)
@@ -239,10 +245,6 @@ Besides the few high-value entries Ready recommends today, also recommend one or
 ### [Execution plan for a multi-item selection](features/multi-item-execution-plan.md)
 
 When the user picks more than one item, the controller or the runtime proposes an execution plan that works them in parallel, in sequence, together as a unit, or a mix of the three, and includes it in the readback so the user agrees to it before any work starts. Raised by the user on 2026-10-01 during a two-item Ready selection. Who builds the plan, what a unit means for runs and reviews, and how parallel items share one checkout under the review input drift rule are open; the user suggested Git worktrees on separate branches for the last.
-
-### [Make Ready and Exploring links open at their target](features/source-link-targets.md)
-
-Have Ready and Exploring write local links with absolute targets, which open when clicked in Claude Code's terminal UI where relative ones do not, and link an entry held in an index at that entry's line through `NIGHTSHIFT_LINE_LINK_FORMAT`, the user's `subl://` protocol form set up for Nightshift v2 and confirmed working on 2026-09-30. v3 dropped line links with the spec-agreement skill, their only consumer, when it replaced the agreement digest's presentation, and no migration disposition names them; links with a `:207` or `#L207` suffix do not open at all. Moved from the quick wins on 2026-09-30.
 
 ### [Graphical run view](features/run-graph-view.md)
 
