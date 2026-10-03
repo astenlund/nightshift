@@ -37,7 +37,7 @@ On 2026-10-03 the controller ran the mode by hand, outside any run and without t
 - Overlap came later. In the rounds where the user added explicit dependency and link checks, both reviewers found the same items, including one important finding where three records offered options that exist only once another of them ships, and both final fresh passes raised the same minor finding.
 - One important finding rested partly on the controller's own brief, which had paraphrased an agreed decision more broadly than the user agreed it: the record was faithful and its index excerpt was not. A brief that quotes agreed decisions rather than paraphrasing them avoids that.
 - On verification, one of the final minor findings was refuted, and the other five were deferred into the session's next tracking batch, whose own review is to cover them, instead of starting another round.
-- Astra's seven dispatches used 15,573,219 input tokens, 95.7 percent read from cache, and 36,135 output tokens; resumes kept their cache hits but carried growing context, as [Make resumed reviewers actually cheap](../QUICK_WINS.md#make-resumed-reviewers-actually-cheap) records. Fable's usage is not observable from the parent session beyond the harness's per-run figure.
+- Astra's seven dispatches used 15,573,219 input tokens, 95.7 percent read from cache, and 36,135 output tokens; resumes kept their cache hits but carried growing context, as [Make resumed reviewers actually cheap](resumed-reviewer-cost.md) records. Fable's usage is not observable from the parent session beyond the harness's per-run figure.
 - A Fable reviewer told to stay strictly read-only still wrote a link-checking script into the session's scratch directory, outside the repository; the controller's later instructions, and the follow-up batch's brief, named that directory as the only place for scratch scripts, which avoids the ambiguity.
 
 The evidence is kept locally under `.tmp/dual-review-20261003-c6be6b01`.
@@ -45,7 +45,7 @@ The evidence is kept locally under `.tmp/dual-review-20261003-c6be6b01`.
 ## Open questions
 
 - What counts as critical and who decides: the user marking it at agreement, the controller proposing it in the readback for work such as security, data loss, review gates or releases, or both. The user left this open on 2026-10-03.
-- Cost: about twice the review cost of the work it covers, which bears on the cost work graduated on 2026-10-03, such as [Proportionate review of tracking edits](tracking-review-cost.md), and on [Make resumed reviewers actually cheap](../QUICK_WINS.md#make-resumed-reviewers-actually-cheap).
+- Cost: about twice the review cost of the work it covers, which bears on the cost work graduated on 2026-10-03, such as [Proportionate review of tracking edits](tracking-review-cost.md), and on [Make resumed reviewers actually cheap](resumed-reviewer-cost.md).
 - Relations: [Initial reviewer selection](initial-reviewer-selection.md), which picks one lead and prefers the other host; [User-configurable model policy file](model-policy-file.md), whose strong list defines the eligible models on each side; [Degraded assessment mode](degraded-assessment-mode.md); and [Dispatch reviewer peers and return their evidence to the lead](reviewer-peer-dispatch.md).
 
 Tracking does not authorize implementation.
