@@ -30,3 +30,4 @@ Build a small fixed suite of tasks with seeded defects of known kinds across the
 
 - [Maintain verification evidence, fixtures and measured efficiency](v3-verification-infrastructure.md), which covers fixture ownership and startup efficiency but not detection measurement.
 - [Orchestration efficiency](orchestration-efficiency.md), which needs measured baselines.
+- [Controller-run experiments](controller-run-experiments.md), for which this suite would be a controlled harness for comparing review arms, such as two reviewer models or a guided and an unguided reviewer.

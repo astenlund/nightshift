@@ -320,6 +320,10 @@ Post-MVP investigation of measured controller overhead: repeated context reads, 
 
 Have the controller notice when administrative work starts filling its context and spawn a lower-tier shift supervisor to carry assignments, progress, result collection and routine recovery, keeping consequential decisions and access to the underlying evidence. Raised by the user on 2026-09-29: the retained optional supervisor ships only as one brief sentence and a write-free role label, with nothing that triggers, briefs or launches one. The trigger, the supervisor's brief and reporting, and where it runs are open.
 
+### [Controller-run experiments](features/controller-run-experiments.md)
+
+Let the controller design and run bounded experiments within the authority already granted, such as comparing reviewer models, a reviewer guided by the review lenses against an unguided one, dual against single review, or compacting a Codex reviewer before its resume, with control and treatment arms, a cost limit and a separate evaluator where practical, and report each result for the user to adopt, repeat, revise, track or discard; results never promote themselves. Raised again by the user on 2026-10-03 after finding it no longer tracked: v2 carried it in an unshipped run-management draft whose 2026-09-06 migration disposition did not name it, while a sibling decision kept experiment evidence in the run record "without a separate ledger or experiment framework", which this entry asks to revisit. How much structure it needs, budgets and evaluation, where evidence lives and its authority boundary are open.
+
 ### [Night Guard](features/night-guard.md)
 
 Post-MVP reboot watchdog for multiple active agent sessions. Persist recovery state continuously, use the seconds-long shutdown window for bounded stop/flush coordination, and recover from saved state even when a session receives no warning or cannot acknowledge it.
