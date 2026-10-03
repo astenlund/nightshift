@@ -40,6 +40,8 @@ Amended with the user on 2026-10-03, while tracking [Offer to revisit an entry's
 - **Settled-decision check.** The background work also checks each decision the selected entries' records mark as settled or agreed against the current code and any work landed since, and suggests which are worth revisiting. Its results arrive while the user reads, before implementation, under the Timing commitment above.
 - **Agent count left open.** How the background work is split and how many agents run, including whether the settled-decision check belongs to the assessment agent or to an agent of its own, are left to the governing spec, in the user's words: "exactly how we should split the bg work and how many agents to use is left open." The two agents named under When, Separate agent, Timing, Failure and Models are the starting design, not a fixed count, and where those commitments say "both", they mean every background agent the design settles on.
 
+The user suggested on 2026-10-03, while shaping [Controller-run experiments](controller-run-experiments.md), that deciding whether the selected work warrants an experiment, and proposing one, could be further background work running in parallel with the readback's review, so that Ready's question about spending tokens on experiments arrives with a concrete proposal. That entry tracks it; how it is split among the background agents falls under the agent count left open above.
+
 ## Direction
 
 The idea as first captured; the commitments above govern where they differ.
