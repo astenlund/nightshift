@@ -1,6 +1,6 @@
 ---
 name: controller-run-experiments
-description: Let the controller design and run bounded experiments within the user's authority, such as comparing reviewer models or review framings, and report each result for the user to adopt, repeat, revise, track or discard
+description: Let the controller design and run bounded experiments within the user's authority, such as comparing reviewer models or review framings, record them in a separate experiments ledger, and report each result for the user to adopt, repeat, revise, track or discard
 metadata:
   type: feature
 status: exploring
@@ -28,15 +28,20 @@ Restated from the v2 draft as the starting point, not yet agreed:
 - Results never promote themselves. The report states the hypothesis, method, sample, observed effects, costs, limits, side effects, conclusion and recommendation, and offers adopting, repeating, revising, tracking or discarding the change for the user to decide.
 - In the v2 draft a shift supervisor executed experiments that dispatch workers and the run manager ran only one-step probes itself; in v3 the controller can coordinate directly, and the optional supervisor is still Exploring.
 
+## Settled
+
+- **A separate experiments ledger.** The user decided on 2026-10-03, in their words: "a separate experiments ledger would be good too, not fond of the simplification". This reverses the part of the 2026-09-06 migration decision that kept experiment evidence only in the ordinary run record "without a separate ledger". Restated as the starting point: the controller owns the ledger; it records only material conclusions and the evidence that decides them, never dialogue transcripts or routine progress; entries are written at the boundaries that produce evidence about an experiment, such as a review round's adjudication, a repair decision, a verification or a recovery; and the report disposes every retained experiment toward workflow machinery, instructions, backlog work, further experimentation or rejection, for the user to decide.
+
 ## Candidate experiments
 
 From 2026-10-03: the reviewer model (Astra versus Fable); a reviewer guided by the review lenses versus an unguided one that receives the change and the governing requirement but no lenses; dual versus single review; and compacting a Codex reviewer thread before its resume, and above which threshold. That day's manual trials are recorded in [Dual strong review for critical work](dual-strong-review.md) and [Make resumed reviewers actually cheap](resumed-reviewer-cost.md).
 
 ## Open questions
 
-- The 2026-09-06 migration agreed on no separate experiment framework; this entry asks for controller-run experiments again, so how much structure they need, from a recorded experiment with arms and a report section to less, is to be settled with the user.
+- The 2026-09-06 migration agreed on no separate experiment framework; the user has since asked for controller-run experiments and a separate ledger, so how much further structure they need, such as a recorded design with arms and a report section, is to be settled with the user.
 - Budgets, arm assignment, contamination controls, evaluator independence, and what evidence counts as directional, conclusive or inconclusive.
-- Where experiment evidence lives, given that [Carry settled decisions and experiment evidence into later reviews](v3-review-decision-context.md) records material conclusions in the run record.
+- The ledger's home and lifecycle: where it lives and whether it is scoped to one run or outlives runs; its creation, identity, refresh and invalidation, and what every reader does when it is absent, stale or malformed; atomic appends and deterministic resume after a partly persisted write; compaction without losing evidence the report needs; and whether a fully disposed ledger is archived or deleted, and what provenance remains.
+- How the ledger relates to [Carry settled decisions and experiment evidence into later reviews](v3-review-decision-context.md), which records material conclusions in the run record and delivers them to later reviews.
 - Whether experiments run only inside agreed runs or also on their own, and how the authority boundary is stated where a run loads it.
 - How it relates to [Measure whether the lifecycle catches defects](defect-detection-measurement.md), whose planted-bug suite is a controlled harness for comparing review arms, and to [Model knowledge base](model-knowledge-base.md), where results about models would land.
 

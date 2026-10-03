@@ -12,7 +12,7 @@ Complete the retained concise decision and experiment record so subsequent indep
 
 ## Selected outcome
 
-Bounded acknowledgements and the controller-owned experiment ledger were simplified into the ordinary run record, not retired. History and finding dispositions exist, but reviewers also need access to applicable prior reasoning and raw evidence without inheriting the author's correctness argument.
+Bounded acknowledgements and the controller-owned experiment ledger were simplified into the ordinary run record, not retired. History and finding dispositions exist, but reviewers also need access to applicable prior reasoning and raw evidence without inheriting the author's correctness argument. On 2026-10-03 the user reversed the ledger part of that simplification, in their words: "a separate experiments ledger would be good too, not fond of the simplification"; the ledger is now tracked by [Controller-run experiments](controller-run-experiments.md), and this entry keeps the delivery of settled decisions and evidence to later reviews.
 
 ## Evidence and limits
 
@@ -24,7 +24,7 @@ The [independent shipped-capability audit](../reports/pre-v3-shipped-capability-
 
 Settle relevance, invalidation and bounded delivery, with fuller-evidence fallback when summarization is unsafe. Verify a settled decision across an unrelated edit, changed evidence reopening it, and unresolved obligations surviving compaction. Coordinate with the existing probe-evidence bug rather than duplicating its repair.
 
-The existing [host-probe evidence bug](../BUGS.md#probe-evidence-about-the-host-is-discarded-on-any-edit) owns its concrete invalidation repair. Share supporting evidence without recreating a separate experiment ledger.
+The existing [host-probe evidence bug](../BUGS.md#probe-evidence-about-the-host-is-discarded-on-any-edit) owns its concrete invalidation repair. Share supporting evidence without recreating a separate experiment ledger; since the user's 2026-10-03 reversal noted above, experiment records belong in the separate ledger that [Controller-run experiments](controller-run-experiments.md) tracks, which later reviews can draw on.
 
 ## Recording gaps found by the migration accounting audit
 
