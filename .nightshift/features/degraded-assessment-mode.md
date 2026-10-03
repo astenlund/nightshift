@@ -31,7 +31,7 @@ Amended with the user on 2026-10-03: once [User-configurable model policy file](
 
 ## Before implementation
 
-The first three points are the ones the agreement left open; the rest were found while recording it.
+The first three points are the ones the agreement left open, and the second of them was settled on 2026-10-03 in [Initial reviewer selection](initial-reviewer-selection.md); the rest were found while recording it.
 
 - Settle whether a minimum model applies or any permitted model qualifies. Coordinate with [Model choice per role: Opus 5.5 versus Fable](opus-versus-fable-role-choice.md), which could widen the strong list instead, and with [User-configurable model policy file](model-policy-file.md), whose allow list could bound it.
 - Settle how the selection rule relates to [Initial reviewer selection](initial-reviewer-selection.md), the natural home for it, whose agreed policy restricts the initial lead to Fable or Astra and keeps the review gate pending when no eligible strong reviewer is available. Settled there on 2026-10-03: that policy chooses among strong reviewers, the strong list replaces the named pair, and when no strong reviewer is available the question in the 2026-10-03 amendment above decides, with the gate staying pending only when degraded mode does not start.

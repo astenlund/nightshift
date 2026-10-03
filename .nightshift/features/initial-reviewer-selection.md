@@ -28,7 +28,7 @@ This narrows reviewer-assignment discretion. It does not by itself prevent the a
 
 ## Relationship to degraded assessment mode
 
-[Degraded assessment mode](degraded-assessment-mode.md), graduated on 2026-09-29 and not yet implemented, is to let a weaker model carry a labeled, recorded assessment when no supported strong model can take the role or the user explicitly selects one: tasks are to advance on it, while the run is not to complete and nothing is to be published until a strong assessment covers the same content. When degraded mode starts, it departs from two points of the agreed policy above, restricting the initial lead to Fable or Astra and keeping the review gate pending when no eligible strong reviewer is available. That record leaves open how the two fit together and names this policy as the natural home for its selection rule. The settled questions below answer it.
+[Degraded assessment mode](degraded-assessment-mode.md), graduated on 2026-09-29 and not yet implemented, is to let a weaker model carry a labeled, recorded assessment when no supported strong model can take the role or the user explicitly selects one: tasks are to advance on it, while the run is not to complete and nothing is to be published until a strong assessment covers the same content. When degraded mode starts, it departs from two points of the agreed policy above, restricting the initial lead to Fable or Astra and keeping the review gate pending when no eligible strong reviewer is available. That record left open how the two fit together, naming this policy as the natural home for its selection rule, until the settled questions below answered it on 2026-10-03.
 
 ## Settled questions
 
