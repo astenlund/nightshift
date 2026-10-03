@@ -1,0 +1,12 @@
+<section id="s1-goal" style="background:#F4F5F1;color:#1A2028;font-family:'Atkinson Hyperlegible', Verdana, sans-serif;padding:128px 128px 160px;display:flex;flex-direction:column;gap:32px">
+<p style="font-size:24px;font-weight:700;letter-spacing:3px;text-transform:uppercase;color:#59626E">Step 1 · Likely question</p>
+<h2 style="font-family:'Bricolage Grotesque', Arial, sans-serif;font-size:72px;font-weight:800;line-height:1.1;letter-spacing:-1px">Why not just type /goal?</h2>
+<p style="font-size:30px;line-height:1.4;color:#3A4350">Often you can. /goal is this same mechanism, built in: a session-scoped Stop hook, where a separate small model judges your condition from the conversation after every turn.</p>
+<div style="display:flex;gap:24px">
+<div style="flex:1;display:flex;flex-direction:column;gap:12px;background:#FBFBF8;border:2px solid #D6DAD2;border-radius:16px;padding:28px 32px"><h3 style="font-size:32px;font-weight:700">/goal fits when</h3><ul style="font-size:26px;line-height:1.4"><li>the work fits one session</li><li>"done" is something Claude can show, like a passing test run</li><li>you want another model to judge it</li></ul></div>
+<div style="flex:1;display:flex;flex-direction:column;gap:12px;background:#FBFBF8;border:2px solid #D6DAD2;border-radius:16px;padding:28px 32px"><h3 style="font-size:32px;font-weight:700">A hook and a record fit when</h3><ul style="font-size:26px;line-height:1.4"><li>the rule holds in every session, for everyone</li><li>"done" is read from a file or a command</li><li>you need your own exit rules</li></ul></div>
+</div>
+<p style="font-size:28px;font-weight:700">In rehearsal, /goal looped nine times on a task only the user could do.</p>
+<p style="position:absolute;left:128px;bottom:64px;width:1664px;font-size:24px;color:#59626E">Stop Guard Cook-Along · Step 1 · Full answer: guide, Questions</p>
+<aside>Exit rules means things like pausing for questions or giving up without progress. The loop stopped only when we wrote an exit rule into the goal's condition. The questions section at the end has the full comparison.</aside>
+</section>

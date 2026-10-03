@@ -1,0 +1,14 @@
+<section id="q-early" style="background:#F4F5F1;color:#1A2028;font-family:'Atkinson Hyperlegible', Verdana, sans-serif;padding:128px 128px 160px;display:flex;flex-direction:column;gap:32px">
+<p style="font-size:24px;font-weight:700;letter-spacing:3px;text-transform:uppercase;color:#59626E">Step 6 · Questions</p>
+<h2 style="font-family:'Bricolage Grotesque', Arial, sans-serif;font-size:72px;font-weight:800;line-height:1.1;letter-spacing:-1px">Do Claude models actually stop early?</h2>
+<p style="font-size:30px;line-height:1.4;color:#3A4350">Less than you might expect: "Work through TASKS.md." finished everything in one turn. In rehearsal Claude stopped:</p>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:20px 40px;font-size:28px;line-height:1.35">
+<p><b>At the end of the scope you named,</b> to report back (step 1).</p>
+<p><b>At a decision only you can make,</b> again and again (step 2).</p>
+<p><b>When an error ended the turn,</b> such as compaction thrashing.</p>
+<p><b>To ask.</b> A reply ends the turn; the dialog holds it open.</p>
+</div>
+<p style="font-size:28px;line-height:1.4">Building Nightshift, I found that Codex models tend to end their turn early and Claude models mostly don't, so on Claude Code the Stop hook is a safety net rather than the engine.</p>
+<p style="position:absolute;left:128px;bottom:64px;width:1664px;font-size:24px;color:#59626E">Stop Guard Cook-Along · Questions</p>
+<aside>The goal docs list usage limits, exhausted credits and failed authentication as other errors that end a turn. The guard earns its keep on long runs, after compaction, when a prompt is ambiguous about scope, and at 3 a.m. when nobody is there to type "carry on".</aside>
+</section>

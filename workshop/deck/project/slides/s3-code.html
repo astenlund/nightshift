@@ -1,0 +1,14 @@
+<section id="s3-code" style="background:#F4F5F1;color:#1A2028;font-family:'Atkinson Hyperlegible', Verdana, sans-serif;padding:128px 128px 160px;display:flex;flex-direction:column;gap:24px">
+<p style="font-size:24px;font-weight:700;letter-spacing:3px;text-transform:uppercase;color:#1A2028">Step 3 · Cook along</p>
+<h2 style="font-family:'Bricolage Grotesque', Arial, sans-serif;font-size:72px;font-weight:800;line-height:1.1;letter-spacing:-1px">A handover line and a parked question</h2>
+<div style="display:flex;flex-direction:column;gap:8px;background:#EAECE6;border-radius:16px;padding:24px 32px">
+<p style="font-size:24px;font-weight:700;color:#59626E">TASKS.md · new lines</p>
+<p style="font-family:'JetBrains Mono', 'Courier New', monospace;font-size:24px;line-height:1.5">Handed over: no<br>If a task needs a decision from the user, change its `- [ ]` to `- [?]`, add your question to the end of that line, and carry on with the other tasks.</p>
+</div>
+<div style="display:flex;flex-direction:column;gap:8px;background:#EAECE6;border-radius:16px;padding:24px 32px">
+<p style="font-size:24px;font-weight:700;color:#59626E">.claude/hooks/stop-guard.js · the new parts</p>
+<p style="font-family:'JetBrains Mono', 'Courier New', monospace;font-size:24px;line-height:1.5;white-space:nowrap"><span style="color:#59626E">// Only work the user has handed over is guarded. While the user is here, Claude may stop and talk.</span><br>if (!/^Handed over: yes\s*$/m.test(tasks)) return;<br>const waiting = lines.filter(line =&gt; line.startsWith('- [?]'));<br>if (open.length === 0) {<br>&#160;&#160;<span style="color:#59626E">// Only the user can unblock a waiting task, so let Claude stop, and say the work is not complete.</span><br>&#160;&#160;if (waiting.length &gt; 0) console.log(JSON.stringify({ systemMessage: `Paused on your decision: …` }));<br>&#160;&#160;return;<br>}</p>
+</div>
+<p style="position:absolute;left:128px;bottom:64px;width:1664px;font-size:24px;color:#59626E">Replace both files from the guide, step 3 · Test: node run-hook.js stop prints nothing until Handed over: yes</p>
+<aside>Test the hook with Handed over: no (no output), then yes (the block is back), then set it to no again before running Claude.</aside>
+</section>

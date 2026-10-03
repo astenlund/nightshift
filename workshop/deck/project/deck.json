@@ -1,0 +1,34 @@
+{
+  "v": 4,
+  "createdOnFiles": { "v": 1, "at": "2026-10-03T15:30:00Z" },
+  "lists": "css",
+  "title": "Stop Guard Cook-Along Slides",
+  "cover": "cover",
+  "order": [
+    "cover", "problem", "runsheet", "rhythm",
+    "s0-idea", "s0-diagram", "s0-adds", "s0-setup",
+    "s1-idea", "s1-code", "s1-run", "s1-goal", "s1-talk",
+    "s2-break", "s2-idea", "s2-code", "s2-run", "s2-talk",
+    "s3-idea", "s3-code", "s3-run", "s3-dialog", "s3-talk",
+    "s4-before", "s4-idea", "s4-code", "s4-after", "s4-summaries", "s4-talk",
+    "s5-compare-1", "s5-compare-2", "s5-trust", "s5-takehome",
+    "q-list", "q-goal", "q-goal-compact", "q-ask", "q-prompt", "q-early", "q-cheat", "q-auto", "q-crash", "q-cost", "q-codex", "q-file",
+    "close"
+  ],
+  "sections": {
+    "opening": { "description": "The problem, the run sheet and how every step runs", "start": "cover" },
+    "step0": { "description": "Step 0: models judge, code keeps the books, and the setup", "start": "s0-idea" },
+    "step1": { "description": "Step 1: a Stop hook that blocks while tasks are open", "start": "s1-idea" },
+    "step2": { "description": "Step 2: a guard that knows when to let go", "start": "s2-break" },
+    "step3": { "description": "Step 3: guard only handed-over work, and let questions wait", "start": "s3-idea" },
+    "step4": { "description": "Step 4: put the task list back after compaction", "start": "s4-before" },
+    "step5": { "description": "Step 5: where Nightshift goes further, and why", "start": "s5-compare-1" },
+    "step6": { "description": "Step 6: the questions people ask", "start": "q-list" }
+  },
+  "faces": {
+    "bricolage-grotesque": { "family": "Bricolage Grotesque", "href": "https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600..800&display=swap" },
+    "atkinson-hyperlegible": { "family": "Atkinson Hyperlegible", "href": "https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&display=swap" },
+    "jetbrains-mono": { "family": "JetBrains Mono", "href": "https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&display=swap" }
+  },
+  "designSystems": []
+}

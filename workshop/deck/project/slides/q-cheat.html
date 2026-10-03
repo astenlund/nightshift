@@ -1,0 +1,11 @@
+<section id="q-cheat" style="background:#F4F5F1;color:#1A2028;font-family:'Atkinson Hyperlegible', Verdana, sans-serif;padding:128px 128px 160px;display:flex;flex-direction:column;gap:32px">
+<p style="font-size:24px;font-weight:700;letter-spacing:3px;text-transform:uppercase;color:#59626E">Step 6 · Questions</p>
+<h2 style="font-family:'Bricolage Grotesque', Arial, sans-serif;font-size:72px;font-weight:800;line-height:1.1;letter-spacing:-1px">Couldn't Claude just tick the boxes, or edit the hook?</h2>
+<div style="display:flex;gap:24px">
+<div style="flex:1;display:flex;flex-direction:column;gap:10px;background:#FBFBF8;border:2px solid #D6DAD2;border-radius:16px;padding:28px 32px"><h3 style="font-size:30px;font-weight:700">Tick the boxes: it could</h3><p style="font-size:26px;line-height:1.35;color:#3A4350">The guard checks the record, not the work. In rehearsal Claude refused: "ticking it would record a sign-off that nobody gave". The pressure peaks when ticking is the only way out.</p></div>
+<div style="flex:1;display:flex;flex-direction:column;gap:10px;background:#FBFBF8;border:2px solid #D6DAD2;border-radius:16px;padding:28px 32px"><h3 style="font-size:30px;font-weight:700">Edit the hook: harder</h3><p style="font-size:26px;line-height:1.35;color:#3A4350">.claude/ is a protected path. Claude must ask you in the default and accept-edits modes, a classifier decides in auto mode, and only bypassPermissions skips the check.</p></div>
+</div>
+<p style="font-size:28px;line-height:1.4">That is why, in Nightshift, the agent never edits the record directly, and nothing counts as done until an independent reviewer has looked at it.</p>
+<p style="position:absolute;left:128px;bottom:64px;width:1664px;font-size:24px;color:#59626E">Stop Guard Cook-Along · Questions · Source for protected paths: Claude Code permission modes docs</p>
+<aside>Step 2's limit and step 3's - [?] exist to give Claude honest ways out. Stronger defences: check evidence instead of ticks (take-home 1) and keep the handover line out of Claude's reach (take-home 2). An allow rule in settings does not change the protected-path check. During a handover, a prompt to edit .claude/ would hold the run until you answer it.</aside>
+</section>

@@ -1,0 +1,1202 @@
+<title>Stop Guard Cook-Along</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: one reading column with a step rail on wide screens. Theory sits on a cobalt wash, hands-on work on plain paper, hook test output in saffron. */
+:root {
+  --paper: #f4f5f1;
+  --surface: #fbfbf8;
+  --ink: #1a2028;
+  --muted: #59626e;
+  --rule: #d6dad2;
+  --rule-strong: #a9b0a6;
+  --cobalt: #2445b0;
+  --cobalt-wash: #e4e9f8;
+  --saffron: #8a5a00;
+  --saffron-wash: #fbefcf;
+  --code-bg: #eaece6;
+  --display: "Bricolage Grotesque", "Avenir Next", "Segoe UI", system-ui, sans-serif;
+  --body: "Atkinson Hyperlegible", "Segoe UI", system-ui, -apple-system, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, "Cascadia Mono", Consolas, Menlo, monospace;
+  --col: 46rem;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --paper: #12151a; --surface: #181c22; --ink: #e4e7eb; --muted: #9ba4af; --rule: #2a3039; --rule-strong: #4a535f;
+    --cobalt: #93a9ff; --cobalt-wash: #1a2142; --saffron: #f0b440; --saffron-wash: #3a2e10; --code-bg: #1c2027;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --paper: #12151a; --surface: #181c22; --ink: #e4e7eb; --muted: #9ba4af; --rule: #2a3039; --rule-strong: #4a535f;
+  --cobalt: #93a9ff; --cobalt-wash: #1a2142; --saffron: #f0b440; --saffron-wash: #3a2e10; --code-bg: #1c2027;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { background: var(--paper); color: var(--ink); font-family: var(--body); font-size: 1.0625rem; line-height: 1.6; padding-inline: 16px; padding-block: 0 4rem; }
+a { color: var(--cobalt); text-underline-offset: 0.15em; }
+a:focus-visible, button:focus-visible, summary:focus-visible { outline: 2px solid var(--cobalt); outline-offset: 2px; border-radius: 3px; }
+code { font-family: var(--mono); font-size: 0.88em; }
+p code, li code, td code, .label + p code { background: var(--code-bg); padding: 0.08em 0.3em; border-radius: 3px; overflow-wrap: anywhere; }
+h1, h2, h3 { font-family: var(--display); text-wrap: balance; line-height: 1.15; margin: 0; }
+p { margin: 0; }
+
+.shell { max-width: 72rem; margin: 0 auto; display: grid; grid-template-columns: minmax(0, 1fr); gap: 2rem; }
+@media (min-width: 1100px) { .shell { grid-template-columns: 13rem minmax(0, var(--col)); justify-content: center; gap: 3.5rem; } }
+main { min-width: 0; display: grid; gap: 4.5rem; }
+
+.rail { display: none; }
+@media (min-width: 1100px) {
+  .rail { display: block; position: sticky; top: calc(env(safe-area-inset-top, 0px) + 2rem); align-self: start; padding-top: 2rem; }
+  .rail ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.15rem; }
+  .rail a { display: grid; grid-template-columns: 1.6rem 1fr auto; gap: 0.4rem; text-decoration: none; color: var(--muted); padding: 0.35rem 0.5rem; border-radius: 4px; font-size: 0.92rem; }
+  .rail a:hover { color: var(--ink); background: var(--surface); }
+  .rail .n { font-family: var(--mono); font-size: 0.8rem; padding-top: 0.15rem; }
+  .rail .t { font-variant-numeric: tabular-nums; font-size: 0.8rem; padding-top: 0.15rem; }
+}
+
+header.top { padding-top: 3rem; display: grid; gap: 1.1rem; }
+.eyebrow { font-size: 0.8rem; letter-spacing: 0.09em; text-transform: uppercase; color: var(--muted); font-weight: 700; }
+header.top h1 { font-size: clamp(2.4rem, 7vw, 4rem); font-weight: 800; letter-spacing: -0.02em; }
+.lede { font-size: 1.2rem; max-width: 40rem; }
+
+.runsheet { width: 100%; border-collapse: collapse; font-size: 0.95rem; }
+.table-wrap { overflow-x: auto; }
+.runsheet th, .runsheet td { text-align: left; padding: 0.55rem 0.75rem 0.55rem 0; border-bottom: 1px solid var(--rule); vertical-align: top; }
+.runsheet th { font-size: 0.75rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+.runsheet td.min { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.runsheet td.s { font-family: var(--mono); font-size: 0.85rem; white-space: nowrap; }
+
+.legend { display: grid; grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr)); gap: 0.75rem 1.5rem; font-size: 0.95rem; }
+.legend div { display: grid; gap: 0.2rem; }
+
+section.step { display: grid; gap: 1.6rem; scroll-margin-top: 1.5rem; }
+.step-head { display: grid; gap: 0.5rem; border-top: 3px solid var(--ink); padding-top: 1rem; }
+.step-head .meta { display: flex; flex-wrap: wrap; gap: 0.5rem 1rem; align-items: baseline; font-size: 0.9rem; color: var(--muted); }
+.step-head .num { font-family: var(--mono); font-weight: 600; color: var(--ink); }
+.step-head h2 { font-size: clamp(1.7rem, 4.5vw, 2.4rem); font-weight: 800; letter-spacing: -0.01em; }
+.step-head .end { color: var(--muted); }
+
+.block { display: grid; gap: 0.9rem; }
+.label { font-size: 0.75rem; letter-spacing: 0.1em; text-transform: uppercase; font-weight: 700; color: var(--muted); }
+.idea { background: var(--cobalt-wash); padding: 1.3rem 1.4rem; border-radius: 4px; }
+.idea .label { color: var(--cobalt); }
+.idea h3 { font-size: 1.3rem; font-weight: 600; }
+.test .label { color: var(--saffron); }
+.run .label { color: var(--ink); }
+.talk { border-left: 3px solid var(--rule-strong); padding-left: 1.1rem; }
+.why { border-top: 1px solid var(--rule-strong); padding-top: 0.8rem; }
+.why-label { display: block; font-size: 0.75rem; letter-spacing: 0.1em; text-transform: uppercase; font-weight: 700; color: var(--cobalt); margin-bottom: 0.25rem; }
+.likely { background: var(--surface); border: 1px solid var(--rule); border-radius: 4px; padding: 1rem 1.2rem; gap: 0.6rem; }
+.likely .q { font-weight: 700; }
+.faq { display: grid; gap: 2rem; }
+.faq article { display: grid; gap: 0.7rem; scroll-margin-top: 1.5rem; }
+.faq h3 { font-size: 1.25rem; font-weight: 600; }
+.faq ul.plain { gap: 0.5rem; }
+.talk .q { font-family: var(--display); font-weight: 600; font-size: 1.25rem; line-height: 1.3; text-wrap: balance; }
+
+ol.actions { margin: 0; padding: 0; list-style: none; counter-reset: act; display: grid; gap: 1.1rem; }
+ol.actions > li { counter-increment: act; display: grid; grid-template-columns: 2rem minmax(0, 1fr); gap: 0 0.5rem; }
+ol.actions > li::before { content: counter(act); font-family: var(--mono); font-weight: 600; font-size: 0.85rem; color: var(--paper); background: var(--ink); width: 1.5rem; height: 1.5rem; border-radius: 50%; display: grid; place-items: center; margin-top: 0.15rem; }
+ol.actions > li > * { grid-column: 2; }
+ol.actions > li > * + * { margin-top: 0.6rem; }
+ul.plain { margin: 0; padding-left: 1.2rem; display: grid; gap: 0.35rem; }
+
+figure.code { margin: 0; border: 1px solid var(--rule); border-radius: 4px; background: var(--surface); min-width: 0; }
+figure.code figcaption, .catchup-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 0.3rem 0.8rem; padding: 0.45rem 0.6rem 0.45rem 0.9rem; border-bottom: 1px solid var(--rule); font-size: 0.85rem; }
+.path { font-family: var(--mono); font-weight: 600; font-size: 0.85rem; overflow-wrap: anywhere; }
+.note { color: var(--muted); flex: 1 1 auto; }
+figure.code pre, .catchup-file pre { margin: 0; padding: 0.7rem 0; overflow-x: auto; font-size: 0.82rem; line-height: 1.55; }
+figure.code code { display: block; min-width: 100%; }
+figure.code .l { display: block; white-space: pre-wrap; overflow-wrap: anywhere; padding: 0 0.9rem 0 1.6rem; text-indent: -0.7rem; position: relative; }
+figure.code .l.add { background: var(--saffron-wash); }
+figure.code .l.add::before { content: "+"; position: absolute; left: 0.45rem; text-indent: 0; color: var(--saffron); font-weight: 600; }
+.catchup-file { border: 1px solid var(--rule); border-radius: 4px; background: var(--surface); }
+.catchup-file details summary { cursor: pointer; padding: 0.5rem 0.9rem; font-size: 0.9rem; color: var(--muted); }
+.catchup-file pre { padding: 0.5rem 0.9rem 0.9rem; max-height: 28rem; overflow: auto; white-space: pre; }
+
+.cmd, .prompt { display: flex; align-items: center; gap: 0.6rem; background: var(--code-bg); border-radius: 4px; padding: 0.45rem 0.5rem 0.45rem 0.9rem; min-width: 0; }
+.cmd code, .prompt code { flex: 1 1 auto; min-width: 0; font-size: 0.88rem; overflow-wrap: anywhere; white-space: pre-wrap; }
+.prompt { background: var(--surface); border: 1px solid var(--rule-strong); }
+.prompt .caret { font-family: var(--mono); color: var(--cobalt); font-weight: 600; }
+.cmds { display: grid; gap: 0.4rem; }
+pre.out { margin: 0; background: var(--saffron-wash); border-radius: 4px; padding: 0.8rem 0.9rem; font-family: var(--mono); font-size: 0.8rem; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
+
+button.copy { font: 600 0.78rem var(--body); color: var(--ink); background: var(--paper); border: 1px solid var(--rule-strong); border-radius: 3px; padding: 0.25rem 0.6rem; cursor: pointer; flex: none; }
+button.copy:hover { border-color: var(--ink); }
+button.copy.done { color: var(--cobalt); border-color: var(--cobalt); }
+
+blockquote { margin: 0; display: grid; gap: 0.35rem; }
+blockquote cite { font-style: normal; font-size: 0.85rem; color: var(--muted); }
+blockquote.heard { border: 1px dashed var(--rule-strong); border-radius: 4px; padding: 0.8rem 1rem; background: var(--surface); }
+blockquote.heard p { font-family: var(--mono); font-size: 0.85rem; line-height: 1.55; }
+.heard-label { font-size: 0.75rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); font-weight: 700; }
+
+.catchup { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 0.8rem; font-size: 0.95rem; color: var(--muted); border-top: 1px solid var(--rule); padding-top: 0.9rem; }
+.catchup .cmd { padding-block: 0.3rem; }
+
+.diagram { overflow-x: auto; }
+.diagram svg { display: block; min-width: 640px; width: 100%; height: auto; }
+.diagram .box { fill: var(--surface); stroke: var(--rule-strong); stroke-width: 1.2; }
+.diagram .box.hook { fill: var(--cobalt-wash); stroke: var(--cobalt); stroke-width: 1.6; }
+.diagram text { fill: var(--ink); font-family: var(--body); font-size: 13px; }
+.diagram text.mono { font-family: var(--mono); font-size: 12.5px; font-weight: 600; }
+.diagram text.lane { fill: var(--muted); font-size: 11px; letter-spacing: 0.08em; font-weight: 700; }
+.diagram text.edge { fill: var(--muted); font-size: 12px; }
+.diagram .arrow { stroke: var(--muted); stroke-width: 1.4; fill: none; }
+.diagram .loop { stroke: var(--cobalt); stroke-width: 1.6; fill: none; }
+.diagram .tip { fill: var(--muted); }
+.diagram .tip.blue { fill: var(--cobalt); }
+.diagram text.edge.blue { fill: var(--cobalt); font-weight: 700; }
+
+table.map { width: 100%; border-collapse: collapse; font-size: 0.9rem; min-width: 44rem; }
+table.map td:first-child { font-weight: 700; white-space: nowrap; }
+table.map th, table.map td { text-align: left; vertical-align: top; padding: 0.6rem 0.8rem 0.6rem 0; border-bottom: 1px solid var(--rule); }
+table.map th { font-size: 0.75rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+
+.fine { font-size: 0.9rem; color: var(--muted); }
+dl.trouble { margin: 0; display: grid; gap: 1rem; }
+dl.trouble dt { font-weight: 700; }
+dl.trouble dd { margin: 0.2rem 0 0; }
+@media (prefers-reduced-motion: no-preference) { html { scroll-behavior: smooth; } }
+</style>
+
+<div class="shell">
+<nav class="rail" aria-label="Steps">
+  <ol>
+    <li><a href="#step-0"><span class="n">0</span><span>Setup</span><span class="t">13</span></a></li>
+    <li><a href="#step-1"><span class="n">1</span><span>The guard</span><span class="t">15</span></a></li>
+    <li><a href="#step-2"><span class="n">2</span><span>Letting go</span><span class="t">15</span></a></li>
+    <li><a href="#step-3"><span class="n">3</span><span>Whose turn</span><span class="t">12</span></a></li>
+    <li><a href="#step-4"><span class="n">4</span><span>Compaction</span><span class="t">15</span></a></li>
+    <li><a href="#plate"><span class="n">5</span><span>Wrap-up</span><span class="t">8</span></a></li>
+    <li><a href="#questions"><span class="n">6</span><span>Questions</span><span class="t">15</span></a></li>
+    <li><a href="#reference"><span class="n">&middot;</span><span>Reference</span><span class="t"></span></a></li>
+  </ol>
+</nav>
+
+<main>
+<header class="top">
+  <p class="eyebrow">Claude Code hooks workshop &middot; 93 minutes</p>
+  <h1>Stop Guard Cook-Along</h1>
+  <p class="lede">Hand Claude a task list and walk away, and two things go wrong: it stops before the list is done, or it loses track of the list when the conversation is compacted. You will build two small hooks against both, one idea at a time, testing each step before Claude runs it. They are simplified versions of the hooks I chose for Nightshift, my plugin for handing agreed work to Claude Code and Codex overnight.</p>
+</header>
+
+<section class="block" aria-labelledby="runsheet-h">
+  <h2 id="runsheet-h" class="label">Run sheet</h2>
+  <div class="table-wrap">
+  <table class="runsheet">
+    <thead><tr><th>Step</th><th>Min</th><th>The idea</th><th>You build</th></tr></thead>
+    <tbody>
+      <tr><td class="s">0</td><td class="min">13</td><td>Models judge, deterministic code keeps the books</td><td>The starter project and a catch-up script</td></tr>
+      <tr><td class="s">1</td><td class="min">15</td><td>Stop is the moment the work can be checked</td><td>A Stop hook that blocks while tasks are open</td></tr>
+      <tr><td class="s">2</td><td class="min">15</td><td>A guard has to know when to let go</td><td>A reminder count that only progress resets</td></tr>
+      <tr><td class="s">3</td><td class="min">12</td><td>Only handed-over work is guarded, and questions may wait</td><td>A handover switch and a parked-question state</td></tr>
+      <tr><td class="s">4</td><td class="min">15</td><td>The summary is not the record</td><td>A SessionStart hook that restores the task list</td></tr>
+      <tr><td class="s">5</td><td class="min">8</td><td>Where I went further for Nightshift, and why</td><td>Nothing new: compare, then take home an exercise</td></tr>
+      <tr><td class="s">6</td><td class="min">15</td><td>Why not just use <code>/goal</code>, and other questions</td><td>Nothing new: discussion, with answers to hand</td></tr>
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<section class="block" aria-labelledby="how-h">
+  <h2 id="how-h" class="label">How every step runs</h2>
+  <div class="legend">
+    <div><strong>The idea</strong><span>Theory, on a blue ground: the principle behind the step, and why I chose it for Nightshift.</span></div>
+    <div><strong>Cook along</strong><span>Exact files to create or replace. Changed lines are marked with a +.</span></div>
+    <div><strong>Test the hook</strong><span>Run the hook without Claude, using <code>run-hook.js</code>, and compare with the expected output.</span></div>
+    <div><strong>Run it with Claude</strong><span>The exact prompt, what you should see, and what Claude said in rehearsal.</span></div>
+    <div><strong>Talk about it</strong><span>One question for the room before moving on.</span></div>
+    <div><strong>Likely question</strong><span>What someone will ask at that point, with a short answer and a link to the full one.</span></div>
+    <div><strong>Catch up</strong><span><code>node catchup.js N</code> writes the finished files for step N, so nobody stays behind.</span></div>
+  </div>
+  <p class="fine">You need Claude Code, Node.js 18 or later, an editor and two terminals open in the same folder: one for <code>claude</code> and one for <code>node</code> commands. Everything was rehearsed on Claude Code 2.1.288 with Opus 5.5 on Linux; your model may word things differently.</p>
+</section>
+
+<!-- STEP 0 -->
+<section class="step" id="step-0" aria-labelledby="s0">
+  <div class="step-head">
+    <div class="meta"><span class="num">Step 0</span><span>13 min</span></div>
+    <h2 id="s0">Setup</h2>
+    <p class="end">At the end: a folder with a task list, a small codebase, a hook tester and a catch-up script.</p>
+  </div>
+
+  <div class="block idea">
+    <p class="label">The idea</p>
+    <h3>Models judge, deterministic code keeps the books</h3>
+    <p>Leave engineering and product judgment to the model. Give the bookkeeping to plain code wherever a mistake would lose work, corrupt state or misreport what happened: what was promised, what is done, and what is still owed.</p>
+    <p>Hooks are where that split lives in Claude Code. A hook is your own program, and the harness runs it at a fixed moment. Claude cannot skip it or talk its way past it; it can only decide what to do with the hook's answer. Today you build two of them:</p>
+    <figure class="diagram">
+      <svg viewBox="0 0 760 290" role="img" aria-label="On every turn, when Claude is about to stop, stop-guard.js either blocks with a reason, which sends Claude back to work, or prints nothing, which ends the turn. After compaction, restore-tasks.js puts the open tasks back into Claude's context.">
+        <text class="lane" x="0" y="14">EVERY TURN</text>
+        <rect class="box" x="0" y="26" width="120" height="58" rx="5"/><text x="60" y="51" text-anchor="middle">Your prompt</text><text x="60" y="68" text-anchor="middle" class="edge">or hook feedback</text>
+        <rect class="box" x="150" y="26" width="150" height="58" rx="5"/><text x="225" y="51" text-anchor="middle">Claude works</text><text x="225" y="68" text-anchor="middle" class="edge">reads, edits, runs</text>
+        <rect class="box" x="330" y="26" width="130" height="58" rx="5"/><text x="395" y="51" text-anchor="middle">About to end</text><text x="395" y="68" text-anchor="middle">its turn</text>
+        <rect class="box hook" x="490" y="26" width="150" height="58" rx="5"/><text x="565" y="51" text-anchor="middle" class="mono">stop-guard.js</text><text x="565" y="68" text-anchor="middle" class="edge">reads TASKS.md</text>
+        <rect class="box" x="680" y="26" width="80" height="58" rx="5"/><text x="720" y="51" text-anchor="middle">Turn</text><text x="720" y="68" text-anchor="middle">ends</text>
+        <path class="arrow" d="M120 55 H143"/><path class="tip" d="M150 55 l-8 -4.5 v9 z"/>
+        <path class="arrow" d="M300 55 H323"/><path class="tip" d="M330 55 l-8 -4.5 v9 z"/>
+        <path class="arrow" d="M460 55 H483"/><path class="tip" d="M490 55 l-8 -4.5 v9 z"/>
+        <path class="arrow" d="M640 55 H673"/><path class="tip" d="M680 55 l-8 -4.5 v9 z"/>
+        <text class="edge" x="660" y="18" text-anchor="middle">prints nothing</text>
+        <path class="loop" d="M565 84 V120 H225 V91"/><path class="tip blue" d="M225 84 l-4.5 8 h9 z"/>
+        <text class="edge blue" x="395" y="138" text-anchor="middle">{"decision": "block", "reason": …} sends Claude back to work</text>
+        <text class="lane" x="0" y="186">AFTER COMPACTION</text>
+        <rect class="box" x="0" y="198" width="150" height="58" rx="5"/><text x="75" y="223" text-anchor="middle" class="mono">/compact</text><text x="75" y="240" text-anchor="middle" class="edge">or automatic</text>
+        <rect class="box" x="180" y="198" width="170" height="58" rx="5"/><text x="265" y="223" text-anchor="middle">A summary replaces</text><text x="265" y="240" text-anchor="middle">the conversation</text>
+        <rect class="box hook" x="380" y="198" width="160" height="58" rx="5"/><text x="460" y="223" text-anchor="middle" class="mono">restore-tasks.js</text><text x="460" y="240" text-anchor="middle" class="edge">reads TASKS.md</text>
+        <rect class="box" x="570" y="198" width="190" height="58" rx="5"/><text x="665" y="223" text-anchor="middle">Open tasks are back</text><text x="665" y="240" text-anchor="middle">in Claude's context</text>
+        <path class="arrow" d="M150 227 H173"/><path class="tip" d="M180 227 l-8 -4.5 v9 z"/>
+        <path class="arrow" d="M350 227 H373"/><path class="tip" d="M380 227 l-8 -4.5 v9 z"/>
+        <path class="arrow" d="M540 227 H563"/><path class="tip" d="M570 227 l-8 -4.5 v9 z"/>
+        <text class="edge" x="0" y="282">The record is TASKS.md, a file both you and Claude can read. The hooks never trust the conversation.</text>
+      </svg>
+    </figure>
+    <p class="why"><span class="why-label">Why I chose this for Nightshift</span> Nightshift carries agreed work through implementation, review and verification while I sleep. I can't check on the model at 3 a.m., so the bookkeeping that decides whether a night's work counts as done lives in code the model can't skip, and the model keeps the engineering decisions.</p>
+  </div>
+
+  <div class="block likely" id="q-adds">
+    <p class="label">Likely question</p>
+    <p class="q">Simplified compared with what? What does Nightshift add?</p>
+    <p>Two things: sturdier versions of these two hooks, and a workflow around them.</p>
+    <ul class="plain">
+      <li><strong>In the hooks themselves.</strong> The record is a database of the run instead of a Markdown file, and Claude changes it only through checked operations. Progress counts only when something is recorded, such as a check that ran. Before I leave, Nightshift verifies that the hook is actually loaded and active in that session. On Codex it uses Codex's own goal instead.</li>
+      <li><strong>Before the work.</strong> Claude reads back what it understood and asks whether to begin. Larger work gets a short spec, which is reviewed too.</li>
+      <li><strong>After the work.</strong> A fresh model reviews the whole change, and every finding is checked by a second, skeptical model before anything is repaired. I prefer the reviewer to run on the other host, so Codex reviews Claude's work and the other way round.</li>
+      <li><strong>At the end.</strong> Updated docs and backlog, reviewed as well, a short retrospective, and in the morning a report of what was delivered, how it was verified and what is still waiting on me.</li>
+    </ul>
+    <p>The hooks keep a run going while I sleep. Everything around them is what lets me trust what it did without reading the code. <a href="#plate">The wrap-up</a> compares the hooks side by side.</p>
+  </div>
+
+  <div class="block cook">
+    <p class="label">Cook along</p>
+    <ol class="actions">
+      <li><p>Make an empty folder and open two terminals in it.</p>
+        <div class="cmds"><div class="cmd copyable"><code>mkdir stop-guard-workshop</code><button type="button" class="copy">Copy</button></div><div class="cmd copyable"><code>cd stop-guard-workshop</code><button type="button" class="copy">Copy</button></div></div></li>
+      <li><p>Create a file called <code>catchup.js</code> in the folder and paste the whole script into it. It holds a finished copy of every step, so you can always catch up or reset a demo.</p>
+        <div class="catchup-file"><div class="catchup-bar"><span class="path">catchup.js</span><span class="note">346 lines · holds a finished copy of every step</span><button type="button" class="copy" data-src="f11">Copy catchup.js</button></div><details><summary>Show the script</summary><pre><code>#!/usr/bin/env node
+// Here's one I prepared earlier. Run it from the workshop folder:
+//   node catchup.js 2       puts every workshop file in its state at the end of step 2 (any step from 0 to 4)
+//   node catchup.js reset   undoes a demo run: unticks TASKS.md, restores src/text.js and forgets the guard's count
+// Both overwrite the workshop files, so copy anything of your own somewhere else first.
+'use strict';
+const fs = require('node:fs');
+const path = require('node:path');
+
+const v = [
+`# Tasks
+
+Work through the tasks in order. When a task is done, change its \`- [ ]\` to \`- [x]\`.
+
+- [ ] Add \`slugify(text)\` to \`src/text.js\`: lowercase, every run of spaces or punctuation becomes one hyphen, no hyphen at either end ("Hello, World!" becomes "hello-world").
+- [ ] Add \`titleCase(text)\` to \`src/text.js\`: capitalise the first letter of every word ("the quick fox" becomes "The Quick Fox").
+- [ ] Add \`test/text.test.js\` with \`node:test\` tests for \`wordCount\`, \`slugify\` and \`titleCase\`, and make \`node --test\` pass.
+`,
+`// Small text helpers for the workshop.
+
+function wordCount(text) {
+  const trimmed = text.trim();
+  return trimmed === '' ? 0 : trimmed.split(/\\s+/).length;
+}
+
+module.exports = { wordCount };
+`,
+`#!/usr/bin/env node
+// Runs a hook the way Claude Code would and shows its answer, without starting Claude.
+// Usage: node run-hook.js stop      runs .claude/hooks/stop-guard.js
+//        node run-hook.js compact   runs .claude/hooks/restore-tasks.js
+'use strict';
+const fs = require('node:fs');
+const path = require('node:path');
+const { spawnSync } = require('node:child_process');
+
+const hooks = {
+  stop: { file: 'stop-guard.js', event: { hook_event_name: 'Stop' } },
+  compact: { file: 'restore-tasks.js', event: { hook_event_name: 'SessionStart', source: 'compact' } },
+};
+
+const chosen = hooks[process.argv[2]];
+if (!chosen) {
+  console.log('Usage: node run-hook.js stop | compact');
+  process.exit(1);
+}
+const hook = path.join(__dirname, '.claude', 'hooks', chosen.file);
+if (!fs.existsSync(hook)) {
+  console.log(\`There is no .claude/hooks/\${chosen.file} yet.\`);
+  process.exit(1);
+}
+
+const input = { session_id: 'run-hook', cwd: __dirname, ...chosen.event };
+const run = spawnSync(process.execPath, [hook], {
+  input: JSON.stringify(input),
+  encoding: 'utf8',
+  env: { ...process.env, CLAUDE_PROJECT_DIR: __dirname },
+});
+
+console.log(\`exit code \${run.status}\`);
+if (run.stderr.trim()) console.log(\`stderr: \${run.stderr.trim()}\`);
+const out = run.stdout.trim();
+if (!out) {
+  console.log('No output, so Claude Code carries on as if the hook were not there.');
+} else {
+  try {
+    console.log('Claude Code receives:');
+    show(JSON.parse(out), '  ');
+  } catch {
+    console.log(\`Output that is not JSON: \${out}\`);
+  }
+}
+
+function show(value, indent) {
+  for (const [key, v] of Object.entries(value)) {
+    if (v &amp;&amp; typeof v === 'object') {
+      console.log(\`\${indent}\${key}:\`);
+      show(v, indent + '  ');
+    } else if (typeof v === 'string' &amp;&amp; v.includes('\\n')) {
+      console.log(\`\${indent}\${key}:\`);
+      for (const line of v.split('\\n')) console.log(\`\${indent}  | \${line}\`);
+    } else {
+      console.log(\`\${indent}\${key}: \${v}\`);
+    }
+  }
+}
+`,
+`{
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          { "type": "command", "command": "node", "args": ["\${CLAUDE_PROJECT_DIR}/.claude/hooks/stop-guard.js"] }
+        ]
+      }
+    ]
+  }
+}
+`,
+`#!/usr/bin/env node
+// Stop guard: while TASKS.md has unchecked tasks, Claude may not end its turn.
+'use strict';
+const fs = require('node:fs');
+const path = require('node:path');
+
+const root = path.resolve(__dirname, '..', '..');
+
+// Claude Code describes the event as JSON on stdin. Step 2 reads it; for now we only wait for it to end.
+let raw = '';
+process.stdin.setEncoding('utf8');
+process.stdin.on('data', chunk =&gt; (raw += chunk));
+process.stdin.on('end', () =&gt; {
+  const tasks = fs.readFileSync(path.join(root, 'TASKS.md'), 'utf8');
+  const open = tasks.split(/\\r?\\n/).filter(line =&gt; line.startsWith('- [ ]'));
+
+  // Printing nothing lets Claude stop.
+  if (open.length === 0) return;
+
+  console.log(JSON.stringify({
+    decision: 'block',
+    reason: \`TASKS.md still has \${open.length} unchecked task(s):\\n\${open.join('\\n')}\\nCarry on with the next one, and tick it off in TASKS.md when it is done.\`,
+  }));
+});
+`,
+`# Tasks
+
+Work through the tasks in order. When a task is done, change its \`- [ ]\` to \`- [x]\`.
+
+- [ ] Add \`slugify(text)\` to \`src/text.js\`: lowercase, every run of spaces or punctuation becomes one hyphen, no hyphen at either end ("Hello, World!" becomes "hello-world").
+- [ ] Add \`titleCase(text)\` to \`src/text.js\`: capitalise the first letter of every word ("the quick fox" becomes "The Quick Fox").
+- [ ] Add \`test/text.test.js\` with \`node:test\` tests for \`wordCount\`, \`slugify\` and \`titleCase\`, and make \`node --test\` pass.
+- [ ] Get the product owner's sign-off on the slug format. Only the user can arrange this.
+`,
+`.claude/stop-guard-state.json
+`,
+`#!/usr/bin/env node
+// Stop guard: while TASKS.md has unchecked tasks, Claude may not end its turn,
+// until it has been reminded three times without TASKS.md changing.
+'use strict';
+const crypto = require('node:crypto');
+const fs = require('node:fs');
+const path = require('node:path');
+
+const root = path.resolve(__dirname, '..', '..');
+const stateFile = path.join(root, '.claude', 'stop-guard-state.json');
+const MAX_REMINDERS = 3;
+
+// Claude Code describes the event as JSON on stdin.
+let raw = '';
+process.stdin.setEncoding('utf8');
+process.stdin.on('data', chunk =&gt; (raw += chunk));
+process.stdin.on('end', () =&gt; {
+  const event = JSON.parse(raw);
+  const tasks = fs.readFileSync(path.join(root, 'TASKS.md'), 'utf8');
+  const open = tasks.split(/\\r?\\n/).filter(line =&gt; line.startsWith('- [ ]'));
+
+  // Printing nothing lets Claude stop.
+  if (open.length === 0) return;
+
+  // Progress means TASKS.md changed since the last reminder, not that Claude says it tried.
+  const fingerprint = crypto.createHash('sha256').update(tasks).digest('hex');
+  let last = {};
+  try { last = JSON.parse(fs.readFileSync(stateFile, 'utf8')); } catch {}
+  const stuck = last.session === event.session_id &amp;&amp; last.fingerprint === fingerprint;
+  const reminders = stuck ? last.reminders + 1 : 1;
+  fs.writeFileSync(stateFile, JSON.stringify({ session: event.session_id, fingerprint, reminders }));
+
+  if (reminders &gt; MAX_REMINDERS) {
+    // Let Claude stop, but tell the user plainly that the work is not finished.
+    console.log(JSON.stringify({
+      systemMessage: \`Stop guard gave up after \${MAX_REMINDERS} reminders without progress. Unfinished:\\n\${open.join('\\n')}\`,
+    }));
+    return;
+  }
+
+  console.log(JSON.stringify({
+    decision: 'block',
+    reason: \`TASKS.md still has \${open.length} unchecked task(s) (reminder \${reminders}):\\n\${open.join('\\n')}\\nCarry on with the next one, and tick it off in TASKS.md when it is done.\`,
+  }));
+});
+`,
+`# Tasks
+
+Handed over: no
+
+Work through the tasks in order. When a task is done, change its \`- [ ]\` to \`- [x]\`.
+If a task needs a decision from the user, change its \`- [ ]\` to \`- [?]\`, add your question to the end of that line, and carry on with the other tasks.
+
+- [ ] Add \`slugify(text)\` to \`src/text.js\`: lowercase, every run of spaces or punctuation becomes one hyphen, no hyphen at either end ("Hello, World!" becomes "hello-world").
+- [ ] Add \`titleCase(text)\` to \`src/text.js\`: capitalise the first letter of every word ("the quick fox" becomes "The Quick Fox").
+- [ ] Add \`test/text.test.js\` with \`node:test\` tests for \`wordCount\`, \`slugify\` and \`titleCase\`, and make \`node --test\` pass.
+- [ ] Get the product owner's sign-off on the slug format. Only the user can arrange this.
+`,
+`#!/usr/bin/env node
+// Stop guard: while handed-over work in TASKS.md has unchecked tasks, Claude may not end its turn,
+// until it has been reminded three times without TASKS.md changing.
+'use strict';
+const crypto = require('node:crypto');
+const fs = require('node:fs');
+const path = require('node:path');
+
+const root = path.resolve(__dirname, '..', '..');
+const stateFile = path.join(root, '.claude', 'stop-guard-state.json');
+const MAX_REMINDERS = 3;
+
+// Claude Code describes the event as JSON on stdin.
+let raw = '';
+process.stdin.setEncoding('utf8');
+process.stdin.on('data', chunk =&gt; (raw += chunk));
+process.stdin.on('end', () =&gt; {
+  const event = JSON.parse(raw);
+  const tasks = fs.readFileSync(path.join(root, 'TASKS.md'), 'utf8');
+
+  // Only work the user has handed over is guarded. While the user is here, Claude may stop and talk.
+  if (!/^Handed over: yes\\s*$/m.test(tasks)) return;
+
+  const lines = tasks.split(/\\r?\\n/);
+  const open = lines.filter(line =&gt; line.startsWith('- [ ]'));
+  const waiting = lines.filter(line =&gt; line.startsWith('- [?]'));
+
+  if (open.length === 0) {
+    // Only the user can unblock a waiting task, so let Claude stop, and say the work is not complete.
+    if (waiting.length &gt; 0) {
+      console.log(JSON.stringify({ systemMessage: \`Paused on your decision:\\n\${waiting.join('\\n')}\` }));
+    }
+    return;
+  }
+
+  // Progress means TASKS.md changed since the last reminder, not that Claude says it tried.
+  const fingerprint = crypto.createHash('sha256').update(tasks).digest('hex');
+  let last = {};
+  try { last = JSON.parse(fs.readFileSync(stateFile, 'utf8')); } catch {}
+  const stuck = last.session === event.session_id &amp;&amp; last.fingerprint === fingerprint;
+  const reminders = stuck ? last.reminders + 1 : 1;
+  fs.writeFileSync(stateFile, JSON.stringify({ session: event.session_id, fingerprint, reminders }));
+
+  if (reminders &gt; MAX_REMINDERS) {
+    // Let Claude stop, but tell the user plainly that the work is not finished.
+    console.log(JSON.stringify({
+      systemMessage: \`Stop guard gave up after \${MAX_REMINDERS} reminders without progress. Unfinished:\\n\${open.join('\\n')}\`,
+    }));
+    return;
+  }
+
+  console.log(JSON.stringify({
+    decision: 'block',
+    reason: \`TASKS.md still has \${open.length} unchecked task(s) (reminder \${reminders}):\\n\${open.join('\\n')}\\nCarry on with the next one, and tick it off in TASKS.md when it is done.\`,
+  }));
+});
+`,
+`{
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          { "type": "command", "command": "node", "args": ["\${CLAUDE_PROJECT_DIR}/.claude/hooks/stop-guard.js"] }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "matcher": "compact",
+        "hooks": [
+          { "type": "command", "command": "node", "args": ["\${CLAUDE_PROJECT_DIR}/.claude/hooks/restore-tasks.js"] }
+        ]
+      }
+    ]
+  }
+}
+`,
+`#!/usr/bin/env node
+// After compaction, put what is still owed back in front of Claude, straight from TASKS.md.
+'use strict';
+const fs = require('node:fs');
+const path = require('node:path');
+
+const root = path.resolve(__dirname, '..', '..');
+
+// Claude Code describes the event as JSON on stdin. We only need to wait for it to end.
+let raw = '';
+process.stdin.setEncoding('utf8');
+process.stdin.on('data', chunk =&gt; (raw += chunk));
+process.stdin.on('end', () =&gt; {
+  const tasks = fs.readFileSync(path.join(root, 'TASKS.md'), 'utf8');
+  const owed = tasks.split(/\\r?\\n/).filter(line =&gt; line.startsWith('- [ ]') || line.startsWith('- [?]'));
+
+  // Printing nothing adds nothing to Claude's context.
+  if (owed.length === 0) return;
+
+  console.log(JSON.stringify({
+    hookSpecificOutput: {
+      hookEventName: 'SessionStart',
+      additionalContext: \`The conversation was just compacted, so your summary may have lost details. TASKS.md is the record of what is still owed:\\n\${owed.join('\\n')}\\nBefore you continue, check TASKS.md against the actual files, since a task may be half done.\`,
+    },
+  }));
+});
+`,
+];
+
+const steps = {
+  0: { 'TASKS.md': v[0], 'src/text.js': v[1], 'run-hook.js': v[2] },
+  1: { 'TASKS.md': v[0], 'src/text.js': v[1], 'run-hook.js': v[2], '.claude/settings.json': v[3], '.claude/hooks/stop-guard.js': v[4] },
+  2: { 'TASKS.md': v[5], 'src/text.js': v[1], 'run-hook.js': v[2], '.gitignore': v[6], '.claude/settings.json': v[3], '.claude/hooks/stop-guard.js': v[7] },
+  3: { 'TASKS.md': v[8], 'src/text.js': v[1], 'run-hook.js': v[2], '.gitignore': v[6], '.claude/settings.json': v[3], '.claude/hooks/stop-guard.js': v[9] },
+  4: { 'TASKS.md': v[8], 'src/text.js': v[1], 'run-hook.js': v[2], '.gitignore': v[6], '.claude/settings.json': v[10], '.claude/hooks/stop-guard.js': v[9], '.claude/hooks/restore-tasks.js': v[11] },
+};
+
+const managed = ['.claude/settings.json', '.claude/hooks/stop-guard.js', '.claude/hooks/restore-tasks.js'];
+const here = file =&gt; path.join(__dirname, file);
+
+function write(file, text) {
+  fs.mkdirSync(path.dirname(here(file)), { recursive: true });
+  fs.writeFileSync(here(file), text);
+}
+
+// Removes what Claude and the guard leave behind after a demo run.
+function clearDemo() {
+  fs.rmSync(here('test/text.test.js'), { force: true });
+  try { fs.rmdirSync(here('test')); } catch {}
+  fs.rmSync(here('.claude/stop-guard-state.json'), { force: true });
+}
+
+const arg = process.argv[2];
+
+if (arg === 'reset') {
+  clearDemo();
+  write('src/text.js', steps[0]['src/text.js']);
+  const known = Object.values(steps).flatMap(s =&gt; s['TASKS.md'].split('\n')).filter(l =&gt; l.startsWith('- [ ] '));
+  const tasks = fs.readFileSync(here('TASKS.md'), 'utf8').split(/\r?\n/).map(line =&gt; {
+    if (line.startsWith('Handed over:')) return 'Handed over: no';
+    if (!/^- \[[x?]\] /.test(line)) return line;
+    const rest = line.slice(6);
+    return known.find(task =&gt; rest.startsWith(task.slice(6))) || '- [ ] ' + rest;
+  });
+  write('TASKS.md', tasks.join('\n'));
+  console.log('Demo reset: every task is unticked, src/text.js is back to the start, and the guard has forgotten its count.');
+} else if (Object.hasOwn(steps, arg)) {
+  clearDemo();
+  for (const file of managed) fs.rmSync(here(file), { force: true });
+  for (const [file, text] of Object.entries(steps[arg])) write(file, text);
+  console.log(`This folder now matches the end of step ${arg}: ${Object.keys(steps[arg]).join(', ')}`);
+} else {
+  console.log('Usage: node catchup.js &lt;0-4&gt;   or   node catchup.js reset');
+  process.exit(1);
+}
+</code></pre></details></div></li>
+      <li><p>Create the starter files:</p>
+        <div class="cmd copyable"><code>node catchup.js 0</code><button type="button" class="copy">Copy</button></div>
+        <p>You now have <code>TASKS.md</code> (the record), <code>src/text.js</code> (something for Claude to work on) and <code>run-hook.js</code>, which feeds a hook the same JSON Claude Code would and prints its answer.</p></li>
+      <li><p>Read the task list. Claude ticks a task by changing <code>- [ ]</code> to <code>- [x]</code>.</p>
+        <figure class="code"><figcaption><span class="path">TASKS.md</span><span class="note">New file</span><button type="button" class="copy" data-src="f0">Copy</button></figcaption><pre><code><span class="l"># Tasks</span><span class="l">&#8203;</span><span class="l">Work through the tasks in order. When a task is done, change its `- [ ]` to `- [x]`.</span><span class="l">&#8203;</span><span class="l">- [ ] Add `slugify(text)` to `src/text.js`: lowercase, every run of spaces or punctuation becomes one hyphen, no hyphen at either end ("Hello, World!" becomes "hello-world").</span><span class="l">- [ ] Add `titleCase(text)` to `src/text.js`: capitalise the first letter of every word ("the quick fox" becomes "The Quick Fox").</span><span class="l">- [ ] Add `test/text.test.js` with `node:test` tests for `wordCount`, `slugify` and `titleCase`, and make `node --test` pass.</span></code></pre></figure>
+      </li>
+      <li><p>In the first terminal, start <code>claude</code> in this folder and trust the folder when asked. Leave it running.</p></li>
+    </ol>
+  </div>
+
+  <div class="block test">
+    <p class="label">Test the hook</p>
+    <p>In the second terminal:</p>
+    <div class="cmd copyable"><code>node run-hook.js stop</code><button type="button" class="copy">Copy</button></div>
+    <pre class="out">There is no .claude/hooks/stop-guard.js yet.</pre>
+    <p>That is the expected answer for now. The guard is the first thing you build.</p>
+  </div>
+</section>
+
+<!-- STEP 1 -->
+<section class="step" id="step-1" aria-labelledby="s1">
+  <div class="step-head">
+    <div class="meta"><span class="num">Step 1</span><span>15 min</span></div>
+    <h2 id="s1">The guard</h2>
+    <p class="end">At the end: Claude cannot end its turn while <code>TASKS.md</code> has an open task.</p>
+  </div>
+
+  <div class="block idea">
+    <p class="label">The idea</p>
+    <h3>Stop is the moment the work can be checked</h3>
+    <p>Every time Claude is about to end its turn, Claude Code fires the <code>Stop</code> event. It runs your command, writes a description of the event to its stdin as JSON, and reads stdout. If you print <code>{"decision": "block", "reason": "…"}</code>, Claude receives the reason as <em>Stop hook feedback</em> and keeps working. If you print nothing, the turn ends.</p>
+    <p>The hook does not ask Claude whether it is done. It looks at the record. Claude Code now also has a built-in <code>/goal</code>, which turns out to be a Stop hook as well; <a href="#q-goal">Questions</a> compares the two.</p>
+    <p class="why"><span class="why-label">Why I chose this for Nightshift</span> When I hand work over to Nightshift on Claude Code, a Stop hook like this one keeps Claude working until the run is done. Codex models tend to end their turn early, so on Codex I rely on its own persistent goal instead.</p>
+  </div>
+
+  <div class="block cook">
+    <p class="label">Cook along</p>
+    <ol class="actions">
+      <li><p>Create the folders <code>.claude/hooks</code>, then this file. It waits for the event, counts the unchecked tasks and blocks if there are any.</p>
+        <figure class="code"><figcaption><span class="path">.claude/hooks/stop-guard.js</span><span class="note">New file</span><button type="button" class="copy" data-src="f1">Copy</button></figcaption><pre><code><span class="l">#!/usr/bin/env node</span><span class="l">// Stop guard: while TASKS.md has unchecked tasks, Claude may not end its turn.</span><span class="l">'use strict';</span><span class="l">const fs = require('node:fs');</span><span class="l">const path = require('node:path');</span><span class="l">&#8203;</span><span class="l">const root = path.resolve(__dirname, '..', '..');</span><span class="l">&#8203;</span><span class="l">// Claude Code describes the event as JSON on stdin. Step 2 reads it; for now we only wait for it to end.</span><span class="l">let raw = '';</span><span class="l">process.stdin.setEncoding('utf8');</span><span class="l">process.stdin.on('data', chunk =&gt; (raw += chunk));</span><span class="l">process.stdin.on('end', () =&gt; {</span><span class="l">  const tasks = fs.readFileSync(path.join(root, 'TASKS.md'), 'utf8');</span><span class="l">  const open = tasks.split(/\r?\n/).filter(line =&gt; line.startsWith('- [ ]'));</span><span class="l">&#8203;</span><span class="l">  // Printing nothing lets Claude stop.</span><span class="l">  if (open.length === 0) return;</span><span class="l">&#8203;</span><span class="l">  console.log(JSON.stringify({</span><span class="l">    decision: 'block',</span><span class="l">    reason: `TASKS.md still has ${open.length} unchecked task(s):\n${open.join('\n')}\nCarry on with the next one, and tick it off in TASKS.md when it is done.`,</span><span class="l">  }));</span><span class="l">});</span></code></pre></figure></li>
+      <li><p>Register it. Create <code>.claude/settings.json</code>:</p>
+        <figure class="code"><figcaption><span class="path">.claude/settings.json</span><span class="note">New file</span><button type="button" class="copy" data-src="f2">Copy</button></figcaption><pre><code><span class="l">{</span><span class="l">  "hooks": {</span><span class="l">    "Stop": [</span><span class="l">      {</span><span class="l">        "hooks": [</span><span class="l">          { "type": "command", "command": "node", "args": ["${CLAUDE_PROJECT_DIR}/.claude/hooks/stop-guard.js"] }</span><span class="l">        ]</span><span class="l">      }</span><span class="l">    ]</span><span class="l">  }</span><span class="l">}</span></code></pre></figure>
+        <p class="fine">The <code>"command": "node", "args": […]</code> form starts Node directly with no shell, so the same file works in PowerShell, Git Bash and zsh. Claude Code fills in <code>${CLAUDE_PROJECT_DIR}</code> itself.</p></li>
+    </ol>
+  </div>
+
+  <div class="block test">
+    <p class="label">Test the hook</p>
+    <div class="cmd copyable"><code>node run-hook.js stop</code><button type="button" class="copy">Copy</button></div>
+    <pre class="out">exit code 0
+Claude Code receives:
+  decision: block
+  reason:
+    | TASKS.md still has 3 unchecked task(s):
+    | - [ ] Add `slugify(text)` to `src/text.js`: lowercase, every run of spaces or punctuation becomes one hyphen, no hyphen at either end ("Hello, World!" becomes "hello-world").
+    | - [ ] Add `titleCase(text)` to `src/text.js`: capitalise the first letter of every word ("the quick fox" becomes "The Quick Fox").
+    | - [ ] Add `test/text.test.js` with `node:test` tests for `wordCount`, `slugify` and `titleCase`, and make `node --test` pass.
+    | Carry on with the next one, and tick it off in TASKS.md when it is done.</pre>
+  </div>
+
+  <div class="block run">
+    <p class="label">Run it with Claude</p>
+    <ol class="actions">
+      <li><p>In the Claude terminal, run <code>/hooks</code> and check that <strong>Stop</strong> lists your command. Claude Code normally picks up edits to <code>settings.json</code> by itself; if the hook is missing, quit and start <code>claude</code> again.</p></li>
+      <li><p>Give Claude a start, not a scope:</p>
+        <div class="prompt copyable"><span class="caret">&gt;</span><code>Start on TASKS.md with the first task.</code><button type="button" class="copy">Copy</button></div></li>
+      <li><p>Watch for this sequence: Claude adds <code>slugify</code>, ticks it and reports back. Then <em>Stop hook feedback</em> appears with the two open tasks, Claude carries on with <code>titleCase</code> and the tests, and the turn ends once every box is ticked.</p>
+        <blockquote class="heard"><span class="heard-label">Claude, first attempt to stop</span><p>The first task is done: I added `slugify(text)` to `src/text.js` and ticked it off in `TASKS.md`.</p></blockquote>
+        <blockquote class="heard"><span class="heard-label">Claude, after the guard sent it back</span><p>All three tasks in `TASKS.md` are now done and ticked off, and `node --test` passes (3 tests, 0 failures).</p></blockquote>
+        <p class="fine">If your Claude does all three tasks in one go, the guard never needed to speak. That is the guard working too.</p></li>
+    </ol>
+  </div>
+
+  <div class="block likely">
+    <p class="label">Likely question</p>
+    <p class="q">Why not just type <code>/goal</code>?</p>
+    <p>Often you can. <code>/goal</code> is this same mechanism, built in: the docs call it <q>a wrapper around a session-scoped prompt-based Stop hook</q>, where a separate small model judges your condition from the conversation after every turn.</p>
+    <ul class="plain">
+      <li><strong><code>/goal</code> fits</strong> when the work fits one session, when <em>done</em> is something Claude can show in the conversation, such as a passing test run, and when you want a model other than the worker to judge it.</li>
+      <li><strong>A hook and a record fit</strong> when the rule must hold in every session and for everyone on the project, when <em>done</em> should be read from a file or a command instead of judged from the conversation, and when you need your own exit rules, such as pausing for questions or giving up without progress.</li>
+    </ul>
+    <p>In rehearsal, <code>/goal</code> with a task only the user could do looped nine times, exactly like step 2's first guard, until we wrote an exit rule into its condition. <a href="#q-goal">The full answer</a> has the details.</p>
+  </div>
+
+  <div class="block talk">
+    <p class="label">Talk about it</p>
+    <p class="q">Who should win when your words and the hook disagree?</p>
+    <p>In rehearsal we prompted <code>Do the first task in TASKS.md.</code> instead. Claude did that one task and then refused the guard nine times in a row:</p>
+    <blockquote class="heard"><span class="heard-label">Claude, in rehearsal</span><p>I've stopped after the first task, as you asked. The Stop hook is telling me to carry on with `titleCase` and the tests. I'm treating your instruction ("Do the first task") as the scope, because the hook doesn't know you limited this run to one task.</p></blockquote>
+    <p>Claude was right. A task list says what the work is; it doesn't say you want it done now. I hold Nightshift to the same rule: a backlog entry or a spec describes the work, but only my request or my handover authorizes it. Step 3 gives the guard a way to know whether you really handed the list over. First, step 2 deals with how that loop ended.</p>
+  </div>
+
+  <p class="catchup"><span>Behind? Catch up to the end of step 1:</span><span class="cmd copyable"><code>node catchup.js 1</code><button type="button" class="copy">Copy</button></span></p>
+</section>
+
+<!-- STEP 2 -->
+<section class="step" id="step-2" aria-labelledby="s2">
+  <div class="step-head">
+    <div class="meta"><span class="num">Step 2</span><span>15 min</span></div>
+    <h2 id="s2">A guard that knows when to let go</h2>
+    <p class="end">At the end: the guard pushes while Claude makes progress, then stops pushing and tells you plainly what is unfinished.</p>
+  </div>
+
+  <div class="block cook">
+    <p class="label">Cook along: break it first</p>
+    <ol class="actions">
+      <li><p>Reset the demo. This unticks every task, restores <code>src/text.js</code> and deletes the test file:</p>
+        <div class="cmd copyable"><code>node catchup.js reset</code><button type="button" class="copy">Copy</button></div></li>
+      <li><p>Add a task Claude cannot do as the last line of <code>TASKS.md</code>:</p>
+        <div class="cmd copyable"><code>- [ ] Get the product owner's sign-off on the slug format. Only the user can arrange this.</code><button type="button" class="copy">Copy</button></div></li>
+      <li><p>In Claude, run <code>/clear</code> for a fresh conversation, then:</p>
+        <div class="prompt copyable"><span class="caret">&gt;</span><code>Work through TASKS.md.</code><button type="button" class="copy">Copy</button></div></li>
+      <li><p>Claude finishes the three coding tasks, explains that only you can arrange the sign-off, and tries to stop. The guard blocks. Claude explains again. The guard blocks again.</p>
+        <blockquote class="heard"><span class="heard-label">Claude, fourth time round</span><p>The hook blocks every stop while any box is unchecked, including tasks only you can do, so it will keep firing.</p></blockquote>
+        <p>On Claude Code 2.1.288 the loop ended after nine blocks with this warning. On older versions it never ends: press <kbd>Esc</kbd>.</p>
+        <pre class="out">A hook blocked the turn from ending 9 consecutive times — overriding and ending turn. For Stop/SubagentStop hooks, check stop_hook_active in the input and return success while it's true. Set CLAUDE_CODE_STOP_HOOK_BLOCK_CAP to raise this limit.</pre></li>
+    </ol>
+  </div>
+
+  <div class="block idea">
+    <p class="label">The idea</p>
+    <h3>Three ways to let go</h3>
+    <ul class="plain">
+      <li><strong>Check <code>stop_hook_active</code>.</strong> The event says <code>true</code> when Claude is already continuing because a Stop hook sent it back. Returning early whenever it is true is what the warning suggests. It means one nudge, ever, even while Claude is doing real work.</li>
+      <li><strong>Lean on Claude Code's cap.</strong> It overrides your hook after nine blocks in a row. That is late, nine turns spent, and the warning says nothing about what is unfinished. The built-in <code>/goal</code> ends up here too: given this task list, its checker said <q>not met</q> nine times until the cap.</li>
+      <li><strong>Count reminders that bought no progress.</strong> Any change to the record resets the count. After three reminders with nothing changed, let Claude stop and tell the user, in plain words, that the work is not done.</li>
+    </ul>
+    <p>Progress means something you can observe, here a change to <code>TASKS.md</code>, rather than something Claude says. And stopping only beats looping if the stop says plainly what is unfinished: quietly dropping work, or calling an unfinished run done, is worse than both.</p>
+    <p>Now imagine the stuck task had read <em>Publish the package to npm</em>. A guard that never lets go pushes an agent towards actions nobody authorised.</p>
+    <p class="why"><span class="why-label">Why I chose this for Nightshift</span> Nightshift uses the third way: after three reminders without recorded progress, the run stops and is reported as incomplete, never as done. For the same reason it asks before any destructive, irreversible or outward-facing action I haven't explicitly authorised, and when I'm not there it parks that task and carries on with the rest.</p>
+  </div>
+
+  <div class="block cook">
+    <p class="label">Cook along: fix it</p>
+    <ol class="actions">
+      <li><p>Replace the guard. It now reads the event, fingerprints <code>TASKS.md</code> and remembers the count in <code>.claude/stop-guard-state.json</code>.</p>
+        <figure class="code"><figcaption><span class="path">.claude/hooks/stop-guard.js</span><span class="note">Replace the whole file · 24 changed lines marked</span><button type="button" class="copy" data-src="f3">Copy</button></figcaption><pre><code><span class="l">#!/usr/bin/env node</span><span class="l add">// Stop guard: while TASKS.md has unchecked tasks, Claude may not end its turn,</span><span class="l add">// until it has been reminded three times without TASKS.md changing.</span><span class="l">'use strict';</span><span class="l add">const crypto = require('node:crypto');</span><span class="l">const fs = require('node:fs');</span><span class="l">const path = require('node:path');</span><span class="l">&#8203;</span><span class="l">const root = path.resolve(__dirname, '..', '..');</span><span class="l add">const stateFile = path.join(root, '.claude', 'stop-guard-state.json');</span><span class="l add">const MAX_REMINDERS = 3;</span><span class="l">&#8203;</span><span class="l add">// Claude Code describes the event as JSON on stdin.</span><span class="l">let raw = '';</span><span class="l">process.stdin.setEncoding('utf8');</span><span class="l">process.stdin.on('data', chunk =&gt; (raw += chunk));</span><span class="l">process.stdin.on('end', () =&gt; {</span><span class="l add">  const event = JSON.parse(raw);</span><span class="l">  const tasks = fs.readFileSync(path.join(root, 'TASKS.md'), 'utf8');</span><span class="l">  const open = tasks.split(/\r?\n/).filter(line =&gt; line.startsWith('- [ ]'));</span><span class="l">&#8203;</span><span class="l">  // Printing nothing lets Claude stop.</span><span class="l">  if (open.length === 0) return;</span><span class="l">&#8203;</span><span class="l add">  // Progress means TASKS.md changed since the last reminder, not that Claude says it tried.</span><span class="l add">  const fingerprint = crypto.createHash('sha256').update(tasks).digest('hex');</span><span class="l add">  let last = {};</span><span class="l add">  try { last = JSON.parse(fs.readFileSync(stateFile, 'utf8')); } catch {}</span><span class="l add">  const stuck = last.session === event.session_id &amp;&amp; last.fingerprint === fingerprint;</span><span class="l add">  const reminders = stuck ? last.reminders + 1 : 1;</span><span class="l add">  fs.writeFileSync(stateFile, JSON.stringify({ session: event.session_id, fingerprint, reminders }));</span><span class="l add">&#8203;</span><span class="l add">  if (reminders &gt; MAX_REMINDERS) {</span><span class="l add">    // Let Claude stop, but tell the user plainly that the work is not finished.</span><span class="l add">    console.log(JSON.stringify({</span><span class="l add">      systemMessage: `Stop guard gave up after ${MAX_REMINDERS} reminders without progress. Unfinished:\n${open.join('\n')}`,</span><span class="l add">    }));</span><span class="l add">    return;</span><span class="l add">  }</span><span class="l add">&#8203;</span><span class="l">  console.log(JSON.stringify({</span><span class="l">    decision: 'block',</span><span class="l add">    reason: `TASKS.md still has ${open.length} unchecked task(s) (reminder ${reminders}):\n${open.join('\n')}\nCarry on with the next one, and tick it off in TASKS.md when it is done.`,</span><span class="l">  }));</span><span class="l">});</span></code></pre></figure></li>
+      <li><p>If the folder is a Git repository, keep the guard's memory out of it with a <code>.gitignore</code>:</p>
+        <figure class="code"><figcaption><span class="path">.gitignore</span><span class="note">New file</span><button type="button" class="copy" data-src="f4">Copy</button></figcaption><pre><code><span class="l">.claude/stop-guard-state.json</span></code></pre></figure></li>
+    </ol>
+  </div>
+
+  <div class="block test">
+    <p class="label">Test the hook</p>
+    <p>Run it four times in a row. The first three block with <code>reminder 1</code>, <code>2</code> and <code>3</code>; the fourth lets go:</p>
+    <div class="cmd copyable"><code>node run-hook.js stop</code><button type="button" class="copy">Copy</button></div>
+    <pre class="out">exit code 0
+Claude Code receives:
+  systemMessage:
+    | Stop guard gave up after 3 reminders without progress. Unfinished:
+    | - [ ] Add `slugify(text)` to `src/text.js`: lowercase, every run of spaces or punctuation becomes one hyphen, no hyphen at either end ("Hello, World!" becomes "hello-world").
+    | - [ ] Add `titleCase(text)` to `src/text.js`: capitalise the first letter of every word ("the quick fox" becomes "The Quick Fox").
+    | - [ ] Add `test/text.test.js` with `node:test` tests for `wordCount`, `slugify` and `titleCase`, and make `node --test` pass.
+    | - [ ] Get the product owner's sign-off on the slug format. Only the user can arrange this.</pre>
+    <p>Now change anything in <code>TASKS.md</code>, save, and run it again: the count starts over at <code>reminder 1</code>. Run <code>node catchup.js reset</code> when you are done.</p>
+  </div>
+
+  <div class="block run">
+    <p class="label">Run it with Claude</p>
+    <ol class="actions">
+      <li><div class="cmd copyable"><code>node catchup.js reset</code><button type="button" class="copy">Copy</button></div><p>Your fourth task stays; only the ticks go.</p></li>
+      <li><p><code>/clear</code>, then the same prompt:</p>
+        <div class="prompt copyable"><span class="caret">&gt;</span><code>Work through TASKS.md.</code><button type="button" class="copy">Copy</button></div></li>
+      <li><p>You should see three rounds of feedback marked <code>(reminder 1)</code> to <code>(reminder 3)</code>, then the turn ends with the guard's message to you.</p>
+        <blockquote class="heard"><span class="heard-label">Claude, final message</span><p>I'm stopping here, still waiting on you for the product owner's sign-off on the slug format. That task stays unchecked in TASKS.md until you have it.</p></blockquote>
+        <pre class="out">Stop guard gave up after 3 reminders without progress. Unfinished:
+- [ ] Get the product owner's sign-off on the slug format. Only the user can arrange this.</pre></li>
+    </ol>
+  </div>
+
+  <div class="block talk">
+    <p class="label">Talk about it</p>
+    <p class="q">What could fool a guard that counts any change to TASKS.md as progress?</p>
+    <p>Rewording a line resets the count. Ticking a box costs one keystroke whether or not the work was done. That is why, in Nightshift, I count only progress that Nightshift records itself, such as a check that ran or a review that came back.</p>
+  </div>
+
+  <p class="catchup"><span>Behind? Catch up to the end of step 2, fourth task included:</span><span class="cmd copyable"><code>node catchup.js 2</code><button type="button" class="copy">Copy</button></span></p>
+</section>
+
+<!-- STEP 3 -->
+<section class="step" id="step-3" aria-labelledby="s3">
+  <div class="step-head">
+    <div class="meta"><span class="num">Step 3</span><span>12 min</span></div>
+    <h2 id="s3">Whose turn is it?</h2>
+    <p class="end">At the end: the guard only acts on work you handed over, and Claude can park a question for you and carry on with the rest.</p>
+  </div>
+
+  <div class="block idea">
+    <p class="label">The idea</p>
+    <h3>Autonomy bought with trust is not reliability</h3>
+    <p>Stop fires after every reply: a finished task, a plain answer, a question only you can answer. A guard that blocks a question forces Claude to guess. You get a run that never waits for you, and a result you can no longer trust.</p>
+    <p>Handing work over has two halves. The run should not wait for you without need, and it should not lower its standard to avoid waiting. Neither half is worth having at the other's expense. Two rules keep both:</p>
+    <ul class="plain">
+      <li><strong>Guard only what was handed over.</strong> Stop follows every reply, so while you are at the keyboard the guard stays quiet. And only you decide that the work is handed over.</li>
+      <li><strong>Park decisions, keep working.</strong> While you are away, Claude records the question, sets that task aside and carries on with everything that does not depend on the answer.</li>
+    </ul>
+    <p class="why"><span class="why-label">Why I chose this for Nightshift</span> Nightshift's Stop hook follows both rules, because I want to come back in the morning to work that is either done or clearly waiting on me, never guessed.</p>
+  </div>
+
+  <div class="block cook">
+    <p class="label">Cook along</p>
+    <ol class="actions">
+      <li><p>Replace <code>TASKS.md</code>. It gains a handover line, which only you change, and a <code>- [?]</code> state for tasks waiting on you.</p>
+        <figure class="code"><figcaption><span class="path">TASKS.md</span><span class="note">Replace the whole file · 3 changed lines marked</span><button type="button" class="copy" data-src="f5">Copy</button></figcaption><pre><code><span class="l"># Tasks</span><span class="l">&#8203;</span><span class="l add">Handed over: no</span><span class="l add">&#8203;</span><span class="l">Work through the tasks in order. When a task is done, change its `- [ ]` to `- [x]`.</span><span class="l add">If a task needs a decision from the user, change its `- [ ]` to `- [?]`, add your question to the end of that line, and carry on with the other tasks.</span><span class="l">&#8203;</span><span class="l">- [ ] Add `slugify(text)` to `src/text.js`: lowercase, every run of spaces or punctuation becomes one hyphen, no hyphen at either end ("Hello, World!" becomes "hello-world").</span><span class="l">- [ ] Add `titleCase(text)` to `src/text.js`: capitalise the first letter of every word ("the quick fox" becomes "The Quick Fox").</span><span class="l">- [ ] Add `test/text.test.js` with `node:test` tests for `wordCount`, `slugify` and `titleCase`, and make `node --test` pass.</span><span class="l">- [ ] Get the product owner's sign-off on the slug format. Only the user can arrange this.</span></code></pre></figure></li>
+      <li><p>Replace the guard. It now returns early unless the work was handed over, and lets Claude stop with a pause message when only parked tasks remain.</p>
+        <figure class="code"><figcaption><span class="path">.claude/hooks/stop-guard.js</span><span class="note">Replace the whole file · 15 changed lines marked</span><button type="button" class="copy" data-src="f6">Copy</button></figcaption><pre><code><span class="l">#!/usr/bin/env node</span><span class="l add">// Stop guard: while handed-over work in TASKS.md has unchecked tasks, Claude may not end its turn,</span><span class="l">// until it has been reminded three times without TASKS.md changing.</span><span class="l">'use strict';</span><span class="l">const crypto = require('node:crypto');</span><span class="l">const fs = require('node:fs');</span><span class="l">const path = require('node:path');</span><span class="l">&#8203;</span><span class="l">const root = path.resolve(__dirname, '..', '..');</span><span class="l">const stateFile = path.join(root, '.claude', 'stop-guard-state.json');</span><span class="l">const MAX_REMINDERS = 3;</span><span class="l">&#8203;</span><span class="l">// Claude Code describes the event as JSON on stdin.</span><span class="l">let raw = '';</span><span class="l">process.stdin.setEncoding('utf8');</span><span class="l">process.stdin.on('data', chunk =&gt; (raw += chunk));</span><span class="l">process.stdin.on('end', () =&gt; {</span><span class="l">  const event = JSON.parse(raw);</span><span class="l">  const tasks = fs.readFileSync(path.join(root, 'TASKS.md'), 'utf8');</span><span class="l">&#8203;</span><span class="l add">  // Only work the user has handed over is guarded. While the user is here, Claude may stop and talk.</span><span class="l add">  if (!/^Handed over: yes\s*$/m.test(tasks)) return;</span><span class="l">&#8203;</span><span class="l add">  const lines = tasks.split(/\r?\n/);</span><span class="l add">  const open = lines.filter(line =&gt; line.startsWith('- [ ]'));</span><span class="l add">  const waiting = lines.filter(line =&gt; line.startsWith('- [?]'));</span><span class="l add">&#8203;</span><span class="l add">  if (open.length === 0) {</span><span class="l add">    // Only the user can unblock a waiting task, so let Claude stop, and say the work is not complete.</span><span class="l add">    if (waiting.length &gt; 0) {</span><span class="l add">      console.log(JSON.stringify({ systemMessage: `Paused on your decision:\n${waiting.join('\n')}` }));</span><span class="l add">    }</span><span class="l add">    return;</span><span class="l add">  }</span><span class="l add">&#8203;</span><span class="l">  // Progress means TASKS.md changed since the last reminder, not that Claude says it tried.</span><span class="l">  const fingerprint = crypto.createHash('sha256').update(tasks).digest('hex');</span><span class="l">  let last = {};</span><span class="l">  try { last = JSON.parse(fs.readFileSync(stateFile, 'utf8')); } catch {}</span><span class="l">  const stuck = last.session === event.session_id &amp;&amp; last.fingerprint === fingerprint;</span><span class="l">  const reminders = stuck ? last.reminders + 1 : 1;</span><span class="l">  fs.writeFileSync(stateFile, JSON.stringify({ session: event.session_id, fingerprint, reminders }));</span><span class="l">&#8203;</span><span class="l">  if (reminders &gt; MAX_REMINDERS) {</span><span class="l">    // Let Claude stop, but tell the user plainly that the work is not finished.</span><span class="l">    console.log(JSON.stringify({</span><span class="l">      systemMessage: `Stop guard gave up after ${MAX_REMINDERS} reminders without progress. Unfinished:\n${open.join('\n')}`,</span><span class="l">    }));</span><span class="l">    return;</span><span class="l">  }</span><span class="l">&#8203;</span><span class="l">  console.log(JSON.stringify({</span><span class="l">    decision: 'block',</span><span class="l">    reason: `TASKS.md still has ${open.length} unchecked task(s) (reminder ${reminders}):\n${open.join('\n')}\nCarry on with the next one, and tick it off in TASKS.md when it is done.`,</span><span class="l">  }));</span><span class="l">});</span></code></pre></figure></li>
+    </ol>
+  </div>
+
+  <div class="block test">
+    <p class="label">Test the hook</p>
+    <p>With <code>Handed over: no</code>, the guard stays out of the way:</p>
+    <div class="cmd copyable"><code>node run-hook.js stop</code><button type="button" class="copy">Copy</button></div>
+    <pre class="out">exit code 0
+No output, so Claude Code carries on as if the hook were not there.</pre>
+    <p>Change the line to <code>Handed over: yes</code>, save, run it again, and the block is back. Set it to <code>no</code> again before you go on.</p>
+  </div>
+
+  <div class="block run">
+    <p class="label">Run it with Claude</p>
+    <ol class="actions">
+      <li><div class="cmd copyable"><code>node catchup.js reset</code><button type="button" class="copy">Copy</button></div></li>
+      <li><p><code>/clear</code>, then the prompt from step 1:</p>
+        <div class="prompt copyable"><span class="caret">&gt;</span><code>Start on TASKS.md with the first task.</code><button type="button" class="copy">Copy</button></div>
+        <p>This time Claude does <code>slugify</code> and stops, and the guard says nothing. In rehearsal Claude used the turn to ask the kind of question step 1's guard would have pushed past:</p>
+        <blockquote class="heard"><span class="heard-label">Claude, in rehearsal</span><p>Decision for you: accented letters stay as they are (`smörgås`) rather than being converted to plain ASCII (`smorgas`). If URLs need to be pure ASCII, that's worth raising when you get the product owner's sign-off on the slug format (task 4).</p></blockquote></li>
+      <li><p>Now hand over. In your editor, change <code>TASKS.md</code> to <code>Handed over: yes</code> and save. The handover is your act, so you make the edit. Then tell Claude:</p>
+        <div class="prompt copyable"><span class="caret">&gt;</span><code>I've set Handed over: yes in TASKS.md. It's all yours now. I'm off to bed.</code><button type="button" class="copy">Copy</button></div></li>
+      <li><p>Claude finishes <code>titleCase</code> and the tests, turns the sign-off into <code>- [?] … Question: …</code>, and stops. The guard lets it go and tells you why:</p>
+        <blockquote class="heard"><span class="heard-label">Claude, final message</span><p>Three of the four tasks are done and `node --test` passes (7 tests, 0 failures). The last task is waiting on you, because only you can get the product owner's sign-off.</p></blockquote>
+        <pre class="out">Paused on your decision:
+- [?] Get the product owner's sign-off on the slug format. Only the user can arrange this. Question: can you get the product owner's sign-off, and should accented letters stay as they are …</pre></li>
+    </ol>
+  </div>
+
+  <div class="block likely">
+    <p class="label">Likely question</p>
+    <p class="q">What if Claude asks with the question dialog instead?</p>
+    <p>Then no Stop hook runs at all. The multiple-choice dialog (the <code>AskUserQuestion</code> tool) keeps the turn open and, by default, waits until someone answers. While you are at the keyboard that is the best way for Claude to ask. During a handover it is a trap: in rehearsal the dialog sat unanswered for four minutes while nothing ran.</p>
+    <p>Two fixes, both rehearsed. The <code>askUserQuestionTimeout</code> setting closes an unanswered question after 60 seconds, 5 or 10 minutes, but its timer does not count down while your terminal window is focused and never starts while Remote Control is connected. A <code>PreToolUse</code> hook can refuse the dialog during a handover and tell Claude to park the question instead, which works in every case. <a href="#q-ask">The full answer</a> has the hook's code.</p>
+  </div>
+
+  <div class="block talk">
+    <p class="label">Talk about it</p>
+    <p class="q">Claude can edit TASKS.md too. What stops it from handing itself work, or parking every hard task as a question?</p>
+    <p>Nothing yet, apart from its judgment. Take-home exercise 2 moves the first of those from judgment into mechanics.</p>
+  </div>
+
+  <p class="catchup"><span>Behind? Catch up to the end of step 3:</span><span class="cmd copyable"><code>node catchup.js 3</code><button type="button" class="copy">Copy</button></span></p>
+</section>
+
+<!-- STEP 4 -->
+<section class="step" id="step-4" aria-labelledby="s4">
+  <div class="step-head">
+    <div class="meta"><span class="num">Step 4</span><span>15 min</span></div>
+    <h2 id="s4">The summary is not the record</h2>
+    <p class="end">At the end: after any compaction, Claude gets the open tasks straight from <code>TASKS.md</code>.</p>
+  </div>
+
+  <div class="block run">
+    <p class="label">Run it with Claude: before</p>
+    <ol class="actions">
+      <li><div class="cmd copyable"><code>node catchup.js reset</code><button type="button" class="copy">Copy</button></div><p>This also sets <code>Handed over: no</code>, so Claude will stop after the first task.</p></li>
+      <li><p><code>/clear</code>, then:</p>
+        <div class="prompt copyable"><span class="caret">&gt;</span><code>Start on TASKS.md with the first task.</code><button type="button" class="copy">Copy</button></div></li>
+      <li><p>Squeeze the conversation hard. <code>/compact</code> takes instructions for its summary:</p>
+        <div class="prompt copyable"><span class="caret">&gt;</span><code>/compact Keep only one short sentence, and leave out every task detail.</code><button type="button" class="copy">Copy</button></div></li>
+      <li><p>Ask what is left, from memory only:</p>
+        <div class="prompt copyable"><span class="caret">&gt;</span><code>Without opening or reading any files, answer from what you already know: what is still left to do?</code><button type="button" class="copy">Copy</button></div>
+        <blockquote class="heard"><span class="heard-label">Claude, in rehearsal, without the hook</span><p>I can't tell you whether there are more tasks after task 4. The summary of our earlier conversation was cut down to one sentence, so I've lost the full list. The numbering above comes from my last message to you.</p></blockquote>
+        <p class="fine">Your Claude may still list every task. After compaction, Claude Code re-reads up to five files that Claude read or edited with its own file tools, so if Claude ticked task 1 with its Edit tool, <code>TASKS.md</code> comes back by itself. In this rehearsal Claude ticked it with a shell command (<code>sed</code>), which Claude Code does not track, so only <code>src/text.js</code> came back. Press <kbd>Ctrl</kbd>+<kbd>O</kbd> to see which tool Claude used. Either outcome makes the point: without the hook, whether the list survives depends on how Claude happened to touch the file.</p></li>
+    </ol>
+  </div>
+
+  <div class="block idea">
+    <p class="label">The idea</p>
+    <h3>Put the obligations back at the boundary</h3>
+    <p>Compaction replaces the conversation with a summary. A long handed-over run compacts many times, and each summary may drop or blur what is still owed. The fix is to keep the record outside the conversation and put a short brief of what is owed back in front of the model at the moment it needs it: right after compaction.</p>
+    <p>Claude Code already brings some things back after compaction. According to its <a href="https://code.claude.com/docs/en/context-window#what-survives-compaction">list of what survives compaction</a>, the project-root CLAUDE.md is re-read from disk, and so are up to five files Claude read or edited, most recently modified first, though a file over 5,000 tokens comes back only as a path. Everything else, including instructions you gave only in conversation and context that hooks added earlier, goes through the summary.</p>
+    <p>For anything else that must come back, the boundary is the <code>SessionStart</code> event with the matcher <code>compact</code>, which fires after both <code>/compact</code> and automatic compaction (confirmed in rehearsal for both). Whatever the hook returns as <code>additionalContext</code> is added to Claude's context. The brief should also tell Claude to check the record against the files, because a task can be half done.</p>
+    <p class="why"><span class="why-label">Why I chose this for Nightshift</span> After every compaction, Nightshift's hook hands Claude a short brief of what is still owed, built from the run's saved state, and tells it to check that against the actual files before doing anything that depends on it. A run I hand over at midnight can compact several times before morning, and I don't want its obligations to depend on how well each summary turned out.</p>
+  </div>
+
+  <div class="block cook">
+    <p class="label">Cook along</p>
+    <ol class="actions">
+      <li><p>Create the second hook:</p>
+        <figure class="code"><figcaption><span class="path">.claude/hooks/restore-tasks.js</span><span class="note">New file</span><button type="button" class="copy" data-src="f7">Copy</button></figcaption><pre><code><span class="l">#!/usr/bin/env node</span><span class="l">// After compaction, put what is still owed back in front of Claude, straight from TASKS.md.</span><span class="l">'use strict';</span><span class="l">const fs = require('node:fs');</span><span class="l">const path = require('node:path');</span><span class="l">&#8203;</span><span class="l">const root = path.resolve(__dirname, '..', '..');</span><span class="l">&#8203;</span><span class="l">// Claude Code describes the event as JSON on stdin. We only need to wait for it to end.</span><span class="l">let raw = '';</span><span class="l">process.stdin.setEncoding('utf8');</span><span class="l">process.stdin.on('data', chunk =&gt; (raw += chunk));</span><span class="l">process.stdin.on('end', () =&gt; {</span><span class="l">  const tasks = fs.readFileSync(path.join(root, 'TASKS.md'), 'utf8');</span><span class="l">  const owed = tasks.split(/\r?\n/).filter(line =&gt; line.startsWith('- [ ]') || line.startsWith('- [?]'));</span><span class="l">&#8203;</span><span class="l">  // Printing nothing adds nothing to Claude's context.</span><span class="l">  if (owed.length === 0) return;</span><span class="l">&#8203;</span><span class="l">  console.log(JSON.stringify({</span><span class="l">    hookSpecificOutput: {</span><span class="l">      hookEventName: 'SessionStart',</span><span class="l">      additionalContext: `The conversation was just compacted, so your summary may have lost details. TASKS.md is the record of what is still owed:\n${owed.join('\n')}\nBefore you continue, check TASKS.md against the actual files, since a task may be half done.`,</span><span class="l">    },</span><span class="l">  }));</span><span class="l">});</span></code></pre></figure></li>
+      <li><p>Register it next to the guard. Replace <code>.claude/settings.json</code>:</p>
+        <figure class="code"><figcaption><span class="path">.claude/settings.json</span><span class="note">Replace the whole file · 8 changed lines marked</span><button type="button" class="copy" data-src="f8">Copy</button></figcaption><pre><code><span class="l">{</span><span class="l">  "hooks": {</span><span class="l">    "Stop": [</span><span class="l">      {</span><span class="l">        "hooks": [</span><span class="l">          { "type": "command", "command": "node", "args": ["${CLAUDE_PROJECT_DIR}/.claude/hooks/stop-guard.js"] }</span><span class="l">        ]</span><span class="l">      }</span><span class="l add">    ],</span><span class="l add">    "SessionStart": [</span><span class="l add">      {</span><span class="l add">        "matcher": "compact",</span><span class="l add">        "hooks": [</span><span class="l add">          { "type": "command", "command": "node", "args": ["${CLAUDE_PROJECT_DIR}/.claude/hooks/restore-tasks.js"] }</span><span class="l add">        ]</span><span class="l add">      }</span><span class="l">    ]</span><span class="l">  }</span><span class="l">}</span></code></pre></figure></li>
+    </ol>
+  </div>
+
+  <div class="block test">
+    <p class="label">Test the hook</p>
+    <div class="cmd copyable"><code>node run-hook.js compact</code><button type="button" class="copy">Copy</button></div>
+    <pre class="out">exit code 0
+Claude Code receives:
+  hookSpecificOutput:
+    hookEventName: SessionStart
+    additionalContext:
+      | The conversation was just compacted, so your summary may have lost details. TASKS.md is the record of what is still owed:
+      | - [ ] Add `slugify(text)` to `src/text.js`: lowercase, every run of spaces or punctuation becomes one hyphen, no hyphen at either end ("Hello, World!" becomes "hello-world").
+      | - [ ] Add `titleCase(text)` to `src/text.js`: capitalise the first letter of every word ("the quick fox" becomes "The Quick Fox").
+      | - [ ] Add `test/text.test.js` with `node:test` tests for `wordCount`, `slugify` and `titleCase`, and make `node --test` pass.
+      | - [ ] Get the product owner's sign-off on the slug format. Only the user can arrange this.
+      | Before you continue, check TASKS.md against the actual files, since a task may be half done.</pre>
+  </div>
+
+  <div class="block run">
+    <p class="label">Run it with Claude: after</p>
+    <p>Check <code>/hooks</code> for <strong>SessionStart</strong>, then repeat the four steps above: reset, <code>/clear</code>, first task, the same <code>/compact</code>, the same question.</p>
+    <blockquote class="heard"><span class="heard-label">Claude, in rehearsal, with the hook</span><p>I didn't open any files this turn. My own summary after compacting had no task details, so this list comes from the copy of `TASKS.md` that the session-start hook put back into context. Three tasks are left:</p></blockquote>
+  </div>
+
+  <div class="block likely">
+    <p class="label">Likely question</p>
+    <p class="q">Aren't compaction summaries usually fine?</p>
+    <p>Often they are. In rehearsal, automatic summaries of 3,300 to 6,100 characters kept every task's status. They are not fine in these cases:</p>
+    <ul class="plain">
+      <li><strong>Something was only said in conversation.</strong> The <a href="https://code.claude.com/docs/en/glossary#compaction">docs</a> say it directly: <q>instructions given only in conversation may be lost</q>. A constraint you mentioned once, such as <q>don't touch the public API</q>, survives only if the summary keeps it. Put lasting rules in the project-root CLAUDE.md, which is re-read from disk.</li>
+      <li><strong>The exact detail matters.</strong> Claude Code's own summaries carry the warning <q>If you need specific details from before compaction (like exact code snippets, error messages, or content you generated), read the full transcript</q>. The exact wording of an acceptance criterion is that kind of detail.</li>
+      <li><strong>The run is long.</strong> Each summary squeezes everything still owed into a few thousand characters, and the next compaction summarizes that summary together with the newer work, so detail can wear away round by round. Context a hook added earlier is summarized too, which is why <code>restore-tasks.js</code> runs again after every compaction.</li>
+      <li><strong>The record did not come back from disk.</strong> Claude Code re-reads at most five files Claude touched with its own file tools, and a file over 5,000 tokens comes back only as a path. In rehearsal Claude ticked <code>TASKS.md</code> with a shell command, so the list did not come back.</li>
+      <li><strong>Work was half done.</strong> A summary records what Claude believed when it was written, not what is on disk. That is why the hook tells Claude to check <code>TASKS.md</code> against the files.</li>
+      <li><strong>Compaction itself fails.</strong> When large tool output refills the context faster than compaction can clear it, Claude Code stops with <q>Autocompact is thrashing</q> and ends the turn. In rehearsal that also cleared an active <code>/goal</code>.</li>
+      <li><strong>Someone steers the summary.</strong> <code>/compact</code> takes instructions, and a <q>Compact instructions</q> section in CLAUDE.md shapes automatic summaries too. Our demo used that to throw the list away.</li>
+    </ul>
+    <p>The hook costs one file read, does not depend on any of these, and runs after every compaction. A <code>/goal</code> also survives compaction, but it carries only its condition; <a href="#q-goal-compact">we tested that too</a>.</p>
+  </div>
+
+  <div class="block talk">
+    <p class="label">Talk about it</p>
+    <p class="q">We restore the open tasks. What else would a run you handed over at midnight need back after compaction?</p>
+    <p>My list for Nightshift: what we agreed, the decisions made since, what is done, what is still owed, the evidence, and any review findings not yet resolved.</p>
+  </div>
+
+  <p class="catchup"><span>Behind? Catch up to the end of step 4:</span><span class="cmd copyable"><code>node catchup.js 4</code><button type="button" class="copy">Copy</button></span></p>
+</section>
+
+<!-- WRAP-UP -->
+<section class="step" id="plate" aria-labelledby="s5">
+  <div class="step-head">
+    <div class="meta"><span class="num">Step 5</span><span>8 min</span></div>
+    <h2 id="s5">Wrap-up</h2>
+    <p class="end">About 80 lines of hooks. Here is where I went further for Nightshift, and why.</p>
+  </div>
+
+  <div class="block idea">
+    <p class="label">The idea</p>
+    <h3>Same shape, sturdier parts</h3>
+    <p>The same job at three sizes: Claude Code's built-in <code>/goal</code>, the hooks you just wrote, and what I chose for Nightshift, with the reason.</p>
+    <div class="table-wrap">
+    <table class="map">
+      <thead><tr><th></th><th><code>/goal</code></th><th>This workshop</th><th>Nightshift, and why</th></tr></thead>
+      <tbody>
+        <tr><td>Set by</td><td>You, with one command</td><td>You, in <code>TASKS.md</code> and <code>settings.json</code></td><td>Me, with an explicit handover, because only I decide that work may run without me</td></tr>
+        <tr><td>The record</td><td>The conversation</td><td><code>TASKS.md</code>, which anyone can edit</td><td>A database the agent changes only through checked operations, so that no box can be ticked without a check</td></tr>
+        <tr><td>Who checks</td><td>A separate small model reading the conversation</td><td>Code reading <code>TASKS.md</code></td><td>Code over the recorded state, plus independent reviewers, because I don't read the code myself in the morning</td></tr>
+        <tr><td>Letting go</td><td>Met, judged impossible, or Claude Code's block cap</td><td>Three reminders without a change to <code>TASKS.md</code></td><td>Three reminders without recorded progress, then the run is reported incomplete, never done</td></tr>
+        <tr><td>Waiting on you</td><td>Only if you write it into the condition</td><td><code>- [?]</code> plus a pause message</td><td>The question is recorded and that task set aside, while everything else carries on</td></tr>
+        <tr><td>After compaction</td><td>The condition survives and is checked again; the task list is only in the summary</td><td>Open tasks as <code>additionalContext</code></td><td>A short brief of what is still owed, checked against the files, after every compaction</td></tr>
+        <tr><td>Lifetime</td><td>One session; survives compaction and resume; <code>/clear</code> or an error you have to fix removes it</td><td>Every session in the project</td><td>The whole run, across sessions and compactions, and when another session takes it over</td></tr>
+        <tr><td>Done means</td><td>The checker is convinced</td><td>Every box ticked</td><td>Independent review and verification evidence, summed up in a morning report</td></tr>
+      </tbody>
+    </table>
+    </div>
+    <p>The last row is the part we skipped today, and for me it is the other half of the job. When I hand work over, I need to trust the result without reading the code, so that trust has to come from evidence, not from Claude telling me it is done.</p>
+  </div>
+
+  <div class="block cook">
+    <p class="label">Take home</p>
+    <ol class="actions">
+      <li><p><strong>Evidence, not ticks.</strong> When no task is open, have the guard run <code>node --test</code> and block with the failures if it fails. Done then means tested, not just claimed.</p></li>
+      <li><p><strong>Keep the handover yours.</strong> Add a <code>PreToolUse</code> hook that refuses any edit to <code>TASKS.md</code> that changes the <code>Handed over:</code> line.</p></li>
+      <li><p><strong>Restore after resume too.</strong> <code>SessionStart</code> also fires with the source <code>resume</code> when you continue a session. Register <code>restore-tasks.js</code> for it and decide whether the message should differ.</p></li>
+      <li><p><strong>Hold questions while you are away.</strong> Add the <code>PreToolUse</code> hook from <a href="#q-ask">Questions</a>, so that a question dialog cannot hold a handed-over run open all night.</p></li>
+    </ol>
+  </div>
+</section>
+
+<!-- QUESTIONS -->
+<section class="step" id="questions" aria-labelledby="sq">
+  <div class="step-head">
+    <div class="meta"><span class="num">Step 6</span><span>15 min</span></div>
+    <h2 id="sq">Questions people ask</h2>
+    <p class="end">Answers with the rehearsal evidence behind them, and when each one applies.</p>
+  </div>
+
+  <div class="faq">
+    <article id="q-goal">
+      <h3>Why not just set a goal with <code>/goal</code>?</h3>
+      <p>For a session's worth of work, do. <code>/goal</code> is the built-in version of step 1. The docs describe it as <q>a wrapper around a session-scoped prompt-based Stop hook</q>, and when we set one in rehearsal Claude Code said so itself: <q>A session-scoped Stop hook is now active</q>. It also has a real strength: <q>completion is decided by a fresh model rather than the one doing the work</q>. Three things differ from what you built today:</p>
+      <ul class="plain">
+        <li><strong>What gets checked.</strong> The checker <q>doesn't run commands or read files independently</q>, so it judges what Claude has said and shown in the conversation. In rehearsal its verdict cited <q>three Edit operations</q> in the transcript. Your guard reads <code>TASKS.md</code> itself. Neither checks that the work is right; that is take-home 1.</li>
+        <li><strong>How it lets go.</strong> With the sign-off task, <code>/goal Every task in TASKS.md is ticked off.</code> was judged not met nine times in a row, until Claude Code's block cap ended the turn: the same loop as step 2. Writing step 3's exit rule into the condition (<q>…or marked [?] with a question for me because only I can do it</q>) fixed it, and the goal was met on the first check. With <code>/goal</code>, exit rules are sentences a model interprets. In a hook, they are code.</li>
+        <li><strong>How long it lasts.</strong> One goal per session. It survives compaction and resuming the session (see <a href="#q-goal-compact">the next question</a>), but <code>/clear</code> removes it, and so does an error you have to fix, such as exhausted credits or a context overflow that compaction cannot clear. A new session or a teammate starts without it. A Stop hook in settings <q>applies to every session in its scope</q>, and the record lives in the repository.</li>
+      </ul>
+      <p>Choose <code>/goal</code> when:</p>
+      <ul class="plain">
+        <li>the work fits one session, and you will set the goal again if it is cleared;</li>
+        <li><em>done</em> is something Claude can show in the conversation, such as a test run that passes or a build that exits 0;</li>
+        <li>a task Claude cannot finish is unlikely, or you write the way out into the condition;</li>
+        <li>you would rather write a sentence than code, and want a model other than the worker to judge it.</li>
+      </ul>
+      <p>Choose a hook and a record when:</p>
+      <ul class="plain">
+        <li>the rule must hold in every session and for everyone who opens the project;</li>
+        <li><em>done</em> should be read from a file or a command, not judged from what Claude said;</li>
+        <li>you need exit rules that behave the same every time: stay quiet while you are there, park questions, give up after three reminders without progress;</li>
+        <li>the list of what is owed has to outlive the conversation, its summaries and the session.</li>
+      </ul>
+      <p>The two also combine: a goal and your hooks run side by side, and a settings hook can itself be a <a href="https://code.claude.com/docs/en/hooks-guide#prompt-based-hooks">prompt hook</a> when a judgment is what you need. Nightshift needs everything on the second list, which is why it uses a Stop hook and its own record. Sources: <a href="https://code.claude.com/docs/en/goal">Claude Code goal docs</a>, rehearsal runs on Claude Code 2.1.288.</p>
+    </article>
+
+    <article id="q-goal-compact">
+      <h3>Does a goal survive compaction?</h3>
+      <p>Yes. We tested it three ways on Claude Code 2.1.288, forcing compaction early with a 100K-token window:</p>
+      <ul class="plain">
+        <li><strong>Manual.</strong> With a goal active, <code>/compact Keep only one short sentence, and leave out every task detail.</code> squeezed the conversation into <q>Everything I can do is finished, and the one remaining item is waiting on the user.</q> <code>/goal</code> still reported <q>Goal active</q>, and once we confirmed the sign-off, the goal was judged met.</li>
+        <li><strong>Automatic.</strong> On a ten-task list the goal survived two automatic compactions. Claude finished nine tasks with all tests passing, and the checker kept judging correctly from what Claude re-read after each compaction. The automatic summaries, of 4,100 and 5,400 characters, kept every task's status.</li>
+        <li><strong>Too much compaction.</strong> When we set the threshold barely above the starting context, compaction ran every few tool calls until Claude Code stopped with <q>Autocompact is thrashing</q>. That error cleared the goal, as the docs say an error you have to fix will, with nothing ticked yet. With the hooks, nothing is cleared, because the record and the hooks never lived in the session.</li>
+      </ul>
+      <p>Claude Code keeps the condition outside the conversation and writes it back into the transcript after every compaction. So compaction is not the case for hooks over <code>/goal</code>. The case is everything a goal does not carry: your task list (only the condition survives, and the summary has to carry the rest), your exit rules, and anything beyond the session.</p>
+    </article>
+
+    <article id="q-ask">
+      <h3>What happens when Claude needs to ask me something?</h3>
+      <p>It depends on how Claude asks.</p>
+      <ul class="plain">
+        <li><strong>In a reply.</strong> The question ends Claude's turn, so the Stop hook runs and your code decides. Step 3's guard lets the question through while you are there; during a handover it sends Claude back to park the question as <code>- [?]</code> and carry on. A hook never pauses itself, so there is nothing to switch back on: once you answer, it runs again at the end of the next turn. <code>/goal</code> pushes back instead. Its checker says not met and Claude keeps working, until the goal is met, judged impossible or stopped by the block cap. After that the goal stays set, and your next message resumes it.</li>
+        <li><strong>In the question dialog.</strong> Claude can also ask through a multiple-choice dialog, the <code>AskUserQuestion</code> tool. While you are at the keyboard this is the best way to ask. The dialog does not end the turn, though, so no Stop hook or goal check runs while it waits, and by default it waits until someone answers. In rehearsal, with the work handed over, the dialog sat unanswered for four minutes while nothing ran. In a headless <code>claude -p</code> run the problem does not arise: the docs say the tool is offered there only when the run has a permission host to answer it.</li>
+      </ul>
+      <p>Two fixes, both rehearsed in an interactive session:</p>
+      <ul class="plain">
+        <li><strong>Let unanswered questions time out.</strong> Set <code>askUserQuestionTimeout</code> to <code>60s</code>, <code>5m</code> or <code>10m</code> in your user settings or under <code>/config</code>. In rehearsal a countdown appeared near the minute, the dialog closed on its own, and Claude parked the question in <code>TASKS.md</code> and stopped with the guard's pause message. The <a href="https://code.claude.com/docs/en/tools-reference#question-auto-continue-timeout">docs</a> list the catches: the timer does not count down while your terminal window is focused, and it never starts in a background session or while Remote Control is connected.</li>
+        <li><strong>Refuse the dialog while you are away.</strong> A <code>PreToolUse</code> hook can deny the tool and say what to do instead. In rehearsal Claude parked the question, and ten seconds later the Stop guard let it end with <q>Paused on your decision</q>. This works whatever the window focus, and with Remote Control connected.</li>
+      </ul>
+      <figure class="code"><figcaption><span class="path">.claude/hooks/hold-questions.js</span><span class="note">Optional extra</span><button type="button" class="copy" data-src="f9">Copy</button></figcaption><pre><code><span class="l">#!/usr/bin/env node</span><span class="l">// Question guard: while work is handed over, Claude may not open the question dialog,</span><span class="l">// because nobody is there to answer it. It parks the question in TASKS.md instead.</span><span class="l">'use strict';</span><span class="l">const fs = require('node:fs');</span><span class="l">const path = require('node:path');</span><span class="l">&#8203;</span><span class="l">const root = path.resolve(__dirname, '..', '..');</span><span class="l">&#8203;</span><span class="l">// Claude Code describes the event as JSON on stdin. We only need to wait for it to end.</span><span class="l">let raw = '';</span><span class="l">process.stdin.setEncoding('utf8');</span><span class="l">process.stdin.on('data', chunk =&gt; (raw += chunk));</span><span class="l">process.stdin.on('end', () =&gt; {</span><span class="l">  const tasks = fs.readFileSync(path.join(root, 'TASKS.md'), 'utf8');</span><span class="l">&#8203;</span><span class="l">  // While the user is here, the dialog is the best way to ask.</span><span class="l">  if (!/^Handed over: yes\s*$/m.test(tasks)) return;</span><span class="l">&#8203;</span><span class="l">  console.log(JSON.stringify({</span><span class="l">    hookSpecificOutput: {</span><span class="l">      hookEventName: 'PreToolUse',</span><span class="l">      permissionDecision: 'deny',</span><span class="l">      permissionDecisionReason: 'The user handed this work over and is not here to answer. Do not ask now: change the task to - [?], add your question to the end of its line in TASKS.md, and carry on with the other tasks.',</span><span class="l">    },</span><span class="l">  }));</span><span class="l">});</span></code></pre></figure>
+      <figure class="code"><figcaption><span class="path">.claude/settings.json</span><span class="note">Add inside "hooks", next to "Stop" and "SessionStart"</span><button type="button" class="copy" data-src="f10">Copy</button></figcaption><pre><code><span class="l">    "PreToolUse": [</span><span class="l">      {</span><span class="l">        "matcher": "AskUserQuestion",</span><span class="l">        "hooks": [</span><span class="l">          { "type": "command", "command": "node", "args": ["${CLAUDE_PROJECT_DIR}/.claude/hooks/hold-questions.js"] }</span><span class="l">        ]</span><span class="l">      }</span><span class="l">    ]</span></code></pre></figure>
+      <p>Permission prompts, including plan approval, are the same kind of trap, and they never time out. In our first attempt at this test, a prompt to approve a <code>sed</code> command held the run in exactly the same way. Give an unattended run the permissions it needs before you leave, or use auto mode.</p>
+    </article>
+
+    <article id="q-prompt">
+      <h3>Why not just tell Claude to keep going, in the prompt or in CLAUDE.md?</h3>
+      <p>An instruction is advice that Claude weighs against everything else it has been told. A hook is a check the harness runs at every stop. Where you write the instruction matters too: the project-root CLAUDE.md is re-read from disk after every compaction, while a prompt lives in the conversation and survives only as well as the summary carries it.</p>
+      <p>An instruction is enough for short work you are watching. In rehearsal, <q>Work through TASKS.md.</q> got all three tasks done without a single block. It falls short when:</p>
+      <ul class="plain">
+        <li><strong>Your words and the instruction pull different ways.</strong> Told <q>Do the first task</q>, Claude kept to those words over the hook nine times (step 1). An instruction in CLAUDE.md gets the same weighing.</li>
+        <li><strong>The work cannot be finished.</strong> <q>Never stop until TASKS.md is done</q> has no way out, so Claude must either break the rule or keep going with nothing to do (step 2).</li>
+        <li><strong>You are sometimes there.</strong> CLAUDE.md applies to every session, including the one where you only want to ask a question (step 3).</li>
+        <li><strong>Nobody checks the record.</strong> With only an instruction, <em>done</em> is Claude's own reading of the situation, not what <code>TASKS.md</code> says.</li>
+      </ul>
+    </article>
+
+    <article id="q-early">
+      <h3>Do Claude models actually stop early?</h3>
+      <p>Less than you might expect, but they stop in predictable places. Building Nightshift, I found that Codex models tend to end their turn early and Claude models mostly don't, which is why on Claude Code the Stop hook is a safety net rather than the engine. In rehearsal Claude did not stop early when the scope was the whole list: <q>Work through TASKS.md.</q> finished everything in one turn. It did stop:</p>
+      <ul class="plain">
+        <li><strong>At the end of the scope you named.</strong> <q>Start on TASKS.md with the first task.</q> stopped after task 1 to report back (step 1).</li>
+        <li><strong>At a decision only you can make.</strong> The sign-off task ended turns again and again (step 2).</li>
+        <li><strong>When an error ended the turn.</strong> Compaction thrashing did it in rehearsal; the goal docs list usage limits, exhausted credits and failed authentication as others.</li>
+        <li><strong>To ask.</strong> A question in a reply ends the turn; a question in the dialog holds it open instead (<a href="#q-ask">see above</a>).</li>
+      </ul>
+      <p>The guard earns its keep on long runs, after compaction, when a prompt is ambiguous about scope, and at 3 a.m. when nobody is there to type <q>carry on</q>.</p>
+    </article>
+
+    <article id="q-cheat">
+      <h3>Couldn't Claude just tick the boxes, or edit the hook?</h3>
+      <p>It could tick the boxes. The guard checks the record, not the work, and <code>TASKS.md</code> is an ordinary file. In rehearsal Claude refused, even under nine blocks in a row: <q>ticking it would record a sign-off that nobody gave</q>. That is judgment, not a guarantee. The pressure is highest when ticking is the only way out: a task Claude cannot do, a guard that never lets go, and no honest way to pause. Step 2's limit and step 3's <code>- [?]</code> exist to give it honest ways out. Stronger defences check evidence instead of ticks (take-home 1) and keep the handover line out of Claude's reach (take-home 2).</p>
+      <p>Editing the hook is harder. <code>.claude/</code> is a <a href="https://code.claude.com/docs/en/permission-modes#protected-paths">protected path</a>: writes there are never auto-approved. In the default and accept-edits modes Claude has to ask you first, in auto mode a classifier decides, and an allow rule in settings changes neither; only <code>bypassPermissions</code> skips the check. During a handover that prompt would simply hold the run until you answer it.</p>
+      <p>That is why, in Nightshift, the agent never edits the record directly: it changes state only through checked operations, and nothing counts as done until an independent reviewer has looked at it and the evidence is recorded.</p>
+    </article>
+
+    <article id="q-auto">
+      <h3>Isn't this what auto mode or skipping permissions is for?</h3>
+      <p>They solve a different problem, and an unattended run needs both. A permission mode decides whether Claude may act without asking; the guard decides whether it may stop. In the words of the goal docs: <q>Auto mode on its own approves tool calls within a single turn but doesn't start a new one.</q> Without the right permissions, a handed-over run stops at the first prompt it cannot answer: in rehearsal a prompt to approve a <code>sed</code> command held a run just like an unanswered question. Without a guard, Claude stops whenever it judges the work done. Before you leave, pre-approve what the work needs or use auto mode, and give the run a guard and a record.</p>
+    </article>
+
+    <article id="q-crash">
+      <h3>What happens if the hook crashes?</h3>
+      <p>It fails open: Claude stops as if the hook were not there. In rehearsal we deleted <code>TASKS.md</code>, the guard threw an error, Claude Code reported a <q>non-blocking</q> hook error, and Claude stopped normally. The same happens when <code>node</code> is not on the path Claude Code uses, when the hook prints something that is not valid JSON, or when it runs past its timeout, which for a command hook is 600 seconds by default. Only exit code 2 blocks; a crashing Node script exits with 1 (<a href="https://code.claude.com/docs/en/hooks">hooks reference</a>).</p>
+      <p>Failing open is the right default, because a broken guard should not trap a session. The risk is reading that stop as <em>done</em>. I made Nightshift's hook fail open too, and kept the question of whether a run is complete separate: that is decided from recorded evidence, never from the fact that Claude stopped. To catch a broken guard early, run <code>node run-hook.js stop</code> before you leave, and check <code>/hooks</code>.</p>
+    </article>
+
+    <article id="q-cost">
+      <h3>What does a blocked stop cost?</h3>
+      <p>Each block is another model turn with the whole conversation as input, so the cost grows with the context. The blocked turns in rehearsal were short, a few sentences each, but in a long run every one re-sends a large context. In step 2's rehearsal the same work took 22 turns with the first guard and 14 with the three-reminder rule. Costs add up fastest when:</p>
+      <ul class="plain">
+        <li>a guard never lets go and Claude Code's nine-block cap is the only limit;</li>
+        <li>the context is large, since <a href="https://code.claude.com/docs/en/costs">the docs</a> point out that compaction itself reads the whole conversation it summarizes;</li>
+        <li>a goal runs, since <code>/goal</code> adds one call to a small model per turn, which the docs call <q>typically negligible</q>.</li>
+      </ul>
+    </article>
+
+    <article id="q-codex">
+      <h3>Does this carry over to Codex or other agents?</h3>
+      <p>The idea does; the mechanism depends on the host. For Nightshift I use Codex's own persistent goal there, because Codex models tend to end their turn early, and the Stop hook on Claude Code. The hosts also differ when the agent stops to ask. In my Nightshift runs on Codex, a goal that is paused or blocked while the agent waits for an answer stays that way, even after Nightshift picks the run up again, until I reactivate it. In September 2026 the goal tools available to the agent could mark a goal complete or blocked but could not resume it, and whether Codex pauses the goal itself or Nightshift has to block it is not settled yet. On Claude Code a hook has nothing to resume, and a <code>/goal</code> stays set (<a href="#q-ask">see above</a>).</p>
+    </article>
+
+    <article id="q-file">
+      <h3>Why a Markdown file, and not a database or Claude's own to-do list?</h3>
+      <p>The record has to meet three needs: the hook can read it without trusting the conversation, you can read and edit it, and it outlives the session. A file in the repository is the simplest thing that meets all three, and changes to it show up in a diff. A file stops being enough when:</p>
+      <ul class="plain">
+        <li>several agents or sessions write to it at once, since nothing stops two writers from overwriting each other;</li>
+        <li>you need history or evidence, such as which check proved a task done and when;</li>
+        <li>an agent should not be able to rewrite it freely, which is the tick-the-box problem above.</li>
+      </ul>
+      <p>Those are the reasons I gave Nightshift a database instead of a file, changed only through checked operations.</p>
+    </article>
+  </div>
+</section>
+
+<!-- REFERENCE -->
+<section class="step" id="reference" aria-labelledby="s6">
+  <div class="step-head">
+    <div class="meta"><span class="num">Reference</span></div>
+    <h2 id="s6">Reference</h2>
+  </div>
+
+  <div class="block">
+    <p class="label">What the Stop hook receives</p>
+    <p>One real event from rehearsal, with paths and ids shortened. <code>stop_hook_active</code> was <code>true</code> on every stop after the guard had blocked once.</p>
+    <pre class="out">{
+  "session_id": "a59add70-…",
+  "transcript_path": "~/.claude/projects/…/a59add70-….jsonl",
+  "cwd": "…/stop-guard-workshop",
+  "prompt_id": "46d621b2-…",
+  "permission_mode": "acceptEdits",
+  "effort": { "level": "medium" },
+  "hook_event_name": "Stop",
+  "stop_hook_active": false,
+  "last_assistant_message": "I've added `slugify(text)` to `src/text.js` and ticked the first task off in `TASKS.md`. …"
+}</pre>
+  </div>
+
+  <div class="block">
+    <p class="label">When something does not work</p>
+    <dl class="trouble">
+      <div><dt>Claude stops and nothing happens</dt><dd>Run <code>/hooks</code> in Claude and check your hook is listed. Check <code>node --version</code> works in the terminal Claude runs in, that <code>.claude/settings.json</code> is valid JSON, and that <code>node run-hook.js stop</code> blocks. Restart <code>claude</code> if the hook still is not listed.</dd></div>
+      <div><dt>Claude did every task in one turn</dt><dd>The guard never needed to block. To watch it run anyway, add <code>fs.appendFileSync(path.join(root, 'events.log'), raw + '\n');</code> as the first line inside the <code>'end'</code> handler: every event Claude Code sends then lands in <code>events.log</code>.</dd></div>
+      <div><dt>Step 2's loop never ends</dt><dd>Older Claude Code versions have no block cap. Press <kbd>Esc</kbd> to interrupt.</dd></div>
+      <div><dt>A demo left a mess</dt><dd><code>node catchup.js reset</code> unticks every task, sets <code>Handed over: no</code>, restores <code>src/text.js</code>, deletes <code>test/text.test.js</code> and forgets the guard's count. Your hooks and settings stay as they are.</dd></div>
+      <div><dt>Your hook files are broken beyond repair</dt><dd><code>node catchup.js N</code> rewrites every workshop file as it is at the end of step N, including the hooks and <code>settings.json</code>.</dd></div>
+      <div><dt>Windows</dt><dd>The exec form in <code>settings.json</code> avoids shell quoting, which is why I use the same form for Nightshift on Windows. These exact files were rehearsed on Linux only, so try step 1 on a Windows machine before the session.</dd></div>
+    </dl>
+  </div>
+
+  <p class="fine">Rehearsed on 3 October 2026 with Claude Code 2.1.288 and Opus 5.5 in headless runs on Linux.</p>
+</section>
+</main>
+</div>
+
+<script>
+const FILES = {"f0":"# Tasks\n\nWork through the tasks in order. When a task is done, change its `- [ ]` to `- [x]`.\n\n- [ ] Add `slugify(text)` to `src/text.js`: lowercase, every run of spaces or punctuation becomes one hyphen, no hyphen at either end (\"Hello, World!\" becomes \"hello-world\").\n- [ ] Add `titleCase(text)` to `src/text.js`: capitalise the first letter of every word (\"the quick fox\" becomes \"The Quick Fox\").\n- [ ] Add `test/text.test.js` with `node:test` tests for `wordCount`, `slugify` and `titleCase`, and make `node --test` pass.\n","f1":"#!/usr/bin/env node\n// Stop guard: while TASKS.md has unchecked tasks, Claude may not end its turn.\n'use strict';\nconst fs = require('node:fs');\nconst path = require('node:path');\n\nconst root = path.resolve(__dirname, '..', '..');\n\n// Claude Code describes the event as JSON on stdin. Step 2 reads it; for now we only wait for it to end.\nlet raw = '';\nprocess.stdin.setEncoding('utf8');\nprocess.stdin.on('data', chunk => (raw += chunk));\nprocess.stdin.on('end', () => {\n  const tasks = fs.readFileSync(path.join(root, 'TASKS.md'), 'utf8');\n  const open = tasks.split(/\\r?\\n/).filter(line => line.startsWith('- [ ]'));\n\n  // Printing nothing lets Claude stop.\n  if (open.length === 0) return;\n\n  console.log(JSON.stringify({\n    decision: 'block',\n    reason: `TASKS.md still has ${open.length} unchecked task(s):\\n${open.join('\\n')}\\nCarry on with the next one, and tick it off in TASKS.md when it is done.`,\n  }));\n});\n","f2":"{\n  \"hooks\": {\n    \"Stop\": [\n      {\n        \"hooks\": [\n          { \"type\": \"command\", \"command\": \"node\", \"args\": [\"${CLAUDE_PROJECT_DIR}/.claude/hooks/stop-guard.js\"] }\n        ]\n      }\n    ]\n  }\n}\n","f3":"#!/usr/bin/env node\n// Stop guard: while TASKS.md has unchecked tasks, Claude may not end its turn,\n// until it has been reminded three times without TASKS.md changing.\n'use strict';\nconst crypto = require('node:crypto');\nconst fs = require('node:fs');\nconst path = require('node:path');\n\nconst root = path.resolve(__dirname, '..', '..');\nconst stateFile = path.join(root, '.claude', 'stop-guard-state.json');\nconst MAX_REMINDERS = 3;\n\n// Claude Code describes the event as JSON on stdin.\nlet raw = '';\nprocess.stdin.setEncoding('utf8');\nprocess.stdin.on('data', chunk => (raw += chunk));\nprocess.stdin.on('end', () => {\n  const event = JSON.parse(raw);\n  const tasks = fs.readFileSync(path.join(root, 'TASKS.md'), 'utf8');\n  const open = tasks.split(/\\r?\\n/).filter(line => line.startsWith('- [ ]'));\n\n  // Printing nothing lets Claude stop.\n  if (open.length === 0) return;\n\n  // Progress means TASKS.md changed since the last reminder, not that Claude says it tried.\n  const fingerprint = crypto.createHash('sha256').update(tasks).digest('hex');\n  let last = {};\n  try { last = JSON.parse(fs.readFileSync(stateFile, 'utf8')); } catch {}\n  const stuck = last.session === event.session_id && last.fingerprint === fingerprint;\n  const reminders = stuck ? last.reminders + 1 : 1;\n  fs.writeFileSync(stateFile, JSON.stringify({ session: event.session_id, fingerprint, reminders }));\n\n  if (reminders > MAX_REMINDERS) {\n    // Let Claude stop, but tell the user plainly that the work is not finished.\n    console.log(JSON.stringify({\n      systemMessage: `Stop guard gave up after ${MAX_REMINDERS} reminders without progress. Unfinished:\\n${open.join('\\n')}`,\n    }));\n    return;\n  }\n\n  console.log(JSON.stringify({\n    decision: 'block',\n    reason: `TASKS.md still has ${open.length} unchecked task(s) (reminder ${reminders}):\\n${open.join('\\n')}\\nCarry on with the next one, and tick it off in TASKS.md when it is done.`,\n  }));\n});\n","f4":".claude/stop-guard-state.json\n","f5":"# Tasks\n\nHanded over: no\n\nWork through the tasks in order. When a task is done, change its `- [ ]` to `- [x]`.\nIf a task needs a decision from the user, change its `- [ ]` to `- [?]`, add your question to the end of that line, and carry on with the other tasks.\n\n- [ ] Add `slugify(text)` to `src/text.js`: lowercase, every run of spaces or punctuation becomes one hyphen, no hyphen at either end (\"Hello, World!\" becomes \"hello-world\").\n- [ ] Add `titleCase(text)` to `src/text.js`: capitalise the first letter of every word (\"the quick fox\" becomes \"The Quick Fox\").\n- [ ] Add `test/text.test.js` with `node:test` tests for `wordCount`, `slugify` and `titleCase`, and make `node --test` pass.\n- [ ] Get the product owner's sign-off on the slug format. Only the user can arrange this.\n","f6":"#!/usr/bin/env node\n// Stop guard: while handed-over work in TASKS.md has unchecked tasks, Claude may not end its turn,\n// until it has been reminded three times without TASKS.md changing.\n'use strict';\nconst crypto = require('node:crypto');\nconst fs = require('node:fs');\nconst path = require('node:path');\n\nconst root = path.resolve(__dirname, '..', '..');\nconst stateFile = path.join(root, '.claude', 'stop-guard-state.json');\nconst MAX_REMINDERS = 3;\n\n// Claude Code describes the event as JSON on stdin.\nlet raw = '';\nprocess.stdin.setEncoding('utf8');\nprocess.stdin.on('data', chunk => (raw += chunk));\nprocess.stdin.on('end', () => {\n  const event = JSON.parse(raw);\n  const tasks = fs.readFileSync(path.join(root, 'TASKS.md'), 'utf8');\n\n  // Only work the user has handed over is guarded. While the user is here, Claude may stop and talk.\n  if (!/^Handed over: yes\\s*$/m.test(tasks)) return;\n\n  const lines = tasks.split(/\\r?\\n/);\n  const open = lines.filter(line => line.startsWith('- [ ]'));\n  const waiting = lines.filter(line => line.startsWith('- [?]'));\n\n  if (open.length === 0) {\n    // Only the user can unblock a waiting task, so let Claude stop, and say the work is not complete.\n    if (waiting.length > 0) {\n      console.log(JSON.stringify({ systemMessage: `Paused on your decision:\\n${waiting.join('\\n')}` }));\n    }\n    return;\n  }\n\n  // Progress means TASKS.md changed since the last reminder, not that Claude says it tried.\n  const fingerprint = crypto.createHash('sha256').update(tasks).digest('hex');\n  let last = {};\n  try { last = JSON.parse(fs.readFileSync(stateFile, 'utf8')); } catch {}\n  const stuck = last.session === event.session_id && last.fingerprint === fingerprint;\n  const reminders = stuck ? last.reminders + 1 : 1;\n  fs.writeFileSync(stateFile, JSON.stringify({ session: event.session_id, fingerprint, reminders }));\n\n  if (reminders > MAX_REMINDERS) {\n    // Let Claude stop, but tell the user plainly that the work is not finished.\n    console.log(JSON.stringify({\n      systemMessage: `Stop guard gave up after ${MAX_REMINDERS} reminders without progress. Unfinished:\\n${open.join('\\n')}`,\n    }));\n    return;\n  }\n\n  console.log(JSON.stringify({\n    decision: 'block',\n    reason: `TASKS.md still has ${open.length} unchecked task(s) (reminder ${reminders}):\\n${open.join('\\n')}\\nCarry on with the next one, and tick it off in TASKS.md when it is done.`,\n  }));\n});\n","f7":"#!/usr/bin/env node\n// After compaction, put what is still owed back in front of Claude, straight from TASKS.md.\n'use strict';\nconst fs = require('node:fs');\nconst path = require('node:path');\n\nconst root = path.resolve(__dirname, '..', '..');\n\n// Claude Code describes the event as JSON on stdin. We only need to wait for it to end.\nlet raw = '';\nprocess.stdin.setEncoding('utf8');\nprocess.stdin.on('data', chunk => (raw += chunk));\nprocess.stdin.on('end', () => {\n  const tasks = fs.readFileSync(path.join(root, 'TASKS.md'), 'utf8');\n  const owed = tasks.split(/\\r?\\n/).filter(line => line.startsWith('- [ ]') || line.startsWith('- [?]'));\n\n  // Printing nothing adds nothing to Claude's context.\n  if (owed.length === 0) return;\n\n  console.log(JSON.stringify({\n    hookSpecificOutput: {\n      hookEventName: 'SessionStart',\n      additionalContext: `The conversation was just compacted, so your summary may have lost details. TASKS.md is the record of what is still owed:\\n${owed.join('\\n')}\\nBefore you continue, check TASKS.md against the actual files, since a task may be half done.`,\n    },\n  }));\n});\n","f8":"{\n  \"hooks\": {\n    \"Stop\": [\n      {\n        \"hooks\": [\n          { \"type\": \"command\", \"command\": \"node\", \"args\": [\"${CLAUDE_PROJECT_DIR}/.claude/hooks/stop-guard.js\"] }\n        ]\n      }\n    ],\n    \"SessionStart\": [\n      {\n        \"matcher\": \"compact\",\n        \"hooks\": [\n          { \"type\": \"command\", \"command\": \"node\", \"args\": [\"${CLAUDE_PROJECT_DIR}/.claude/hooks/restore-tasks.js\"] }\n        ]\n      }\n    ]\n  }\n}\n","f9":"#!/usr/bin/env node\n// Question guard: while work is handed over, Claude may not open the question dialog,\n// because nobody is there to answer it. It parks the question in TASKS.md instead.\n'use strict';\nconst fs = require('node:fs');\nconst path = require('node:path');\n\nconst root = path.resolve(__dirname, '..', '..');\n\n// Claude Code describes the event as JSON on stdin. We only need to wait for it to end.\nlet raw = '';\nprocess.stdin.setEncoding('utf8');\nprocess.stdin.on('data', chunk => (raw += chunk));\nprocess.stdin.on('end', () => {\n  const tasks = fs.readFileSync(path.join(root, 'TASKS.md'), 'utf8');\n\n  // While the user is here, the dialog is the best way to ask.\n  if (!/^Handed over: yes\\s*$/m.test(tasks)) return;\n\n  console.log(JSON.stringify({\n    hookSpecificOutput: {\n      hookEventName: 'PreToolUse',\n      permissionDecision: 'deny',\n      permissionDecisionReason: 'The user handed this work over and is not here to answer. Do not ask now: change the task to - [?], add your question to the end of its line in TASKS.md, and carry on with the other tasks.',\n    },\n  }));\n});\n","f10":"    \"PreToolUse\": [\n      {\n        \"matcher\": \"AskUserQuestion\",\n        \"hooks\": [\n          { \"type\": \"command\", \"command\": \"node\", \"args\": [\"${CLAUDE_PROJECT_DIR}/.claude/hooks/hold-questions.js\"] }\n        ]\n      }\n    ]\n","f11":"#!/usr/bin/env node\n// Here's one I prepared earlier. Run it from the workshop folder:\n//   node catchup.js 2       puts every workshop file in its state at the end of step 2 (any step from 0 to 4)\n//   node catchup.js reset   undoes a demo run: unticks TASKS.md, restores src/text.js and forgets the guard's count\n// Both overwrite the workshop files, so copy anything of your own somewhere else first.\n'use strict';\nconst fs = require('node:fs');\nconst path = require('node:path');\n\nconst v = [\n`# Tasks\n\nWork through the tasks in order. When a task is done, change its \\`- [ ]\\` to \\`- [x]\\`.\n\n- [ ] Add \\`slugify(text)\\` to \\`src/text.js\\`: lowercase, every run of spaces or punctuation becomes one hyphen, no hyphen at either end (\"Hello, World!\" becomes \"hello-world\").\n- [ ] Add \\`titleCase(text)\\` to \\`src/text.js\\`: capitalise the first letter of every word (\"the quick fox\" becomes \"The Quick Fox\").\n- [ ] Add \\`test/text.test.js\\` with \\`node:test\\` tests for \\`wordCount\\`, \\`slugify\\` and \\`titleCase\\`, and make \\`node --test\\` pass.\n`,\n`// Small text helpers for the workshop.\n\nfunction wordCount(text) {\n  const trimmed = text.trim();\n  return trimmed === '' ? 0 : trimmed.split(/\\\\s+/).length;\n}\n\nmodule.exports = { wordCount };\n`,\n`#!/usr/bin/env node\n// Runs a hook the way Claude Code would and shows its answer, without starting Claude.\n// Usage: node run-hook.js stop      runs .claude/hooks/stop-guard.js\n//        node run-hook.js compact   runs .claude/hooks/restore-tasks.js\n'use strict';\nconst fs = require('node:fs');\nconst path = require('node:path');\nconst { spawnSync } = require('node:child_process');\n\nconst hooks = {\n  stop: { file: 'stop-guard.js', event: { hook_event_name: 'Stop' } },\n  compact: { file: 'restore-tasks.js', event: { hook_event_name: 'SessionStart', source: 'compact' } },\n};\n\nconst chosen = hooks[process.argv[2]];\nif (!chosen) {\n  console.log('Usage: node run-hook.js stop | compact');\n  process.exit(1);\n}\nconst hook = path.join(__dirname, '.claude', 'hooks', chosen.file);\nif (!fs.existsSync(hook)) {\n  console.log(\\`There is no .claude/hooks/\\${chosen.file} yet.\\`);\n  process.exit(1);\n}\n\nconst input = { session_id: 'run-hook', cwd: __dirname, ...chosen.event };\nconst run = spawnSync(process.execPath, [hook], {\n  input: JSON.stringify(input),\n  encoding: 'utf8',\n  env: { ...process.env, CLAUDE_PROJECT_DIR: __dirname },\n});\n\nconsole.log(\\`exit code \\${run.status}\\`);\nif (run.stderr.trim()) console.log(\\`stderr: \\${run.stderr.trim()}\\`);\nconst out = run.stdout.trim();\nif (!out) {\n  console.log('No output, so Claude Code carries on as if the hook were not there.');\n} else {\n  try {\n    console.log('Claude Code receives:');\n    show(JSON.parse(out), '  ');\n  } catch {\n    console.log(\\`Output that is not JSON: \\${out}\\`);\n  }\n}\n\nfunction show(value, indent) {\n  for (const [key, v] of Object.entries(value)) {\n    if (v && typeof v === 'object') {\n      console.log(\\`\\${indent}\\${key}:\\`);\n      show(v, indent + '  ');\n    } else if (typeof v === 'string' && v.includes('\\\\n')) {\n      console.log(\\`\\${indent}\\${key}:\\`);\n      for (const line of v.split('\\\\n')) console.log(\\`\\${indent}  | \\${line}\\`);\n    } else {\n      console.log(\\`\\${indent}\\${key}: \\${v}\\`);\n    }\n  }\n}\n`,\n`{\n  \"hooks\": {\n    \"Stop\": [\n      {\n        \"hooks\": [\n          { \"type\": \"command\", \"command\": \"node\", \"args\": [\"\\${CLAUDE_PROJECT_DIR}/.claude/hooks/stop-guard.js\"] }\n        ]\n      }\n    ]\n  }\n}\n`,\n`#!/usr/bin/env node\n// Stop guard: while TASKS.md has unchecked tasks, Claude may not end its turn.\n'use strict';\nconst fs = require('node:fs');\nconst path = require('node:path');\n\nconst root = path.resolve(__dirname, '..', '..');\n\n// Claude Code describes the event as JSON on stdin. Step 2 reads it; for now we only wait for it to end.\nlet raw = '';\nprocess.stdin.setEncoding('utf8');\nprocess.stdin.on('data', chunk => (raw += chunk));\nprocess.stdin.on('end', () => {\n  const tasks = fs.readFileSync(path.join(root, 'TASKS.md'), 'utf8');\n  const open = tasks.split(/\\\\r?\\\\n/).filter(line => line.startsWith('- [ ]'));\n\n  // Printing nothing lets Claude stop.\n  if (open.length === 0) return;\n\n  console.log(JSON.stringify({\n    decision: 'block',\n    reason: \\`TASKS.md still has \\${open.length} unchecked task(s):\\\\n\\${open.join('\\\\n')}\\\\nCarry on with the next one, and tick it off in TASKS.md when it is done.\\`,\n  }));\n});\n`,\n`# Tasks\n\nWork through the tasks in order. When a task is done, change its \\`- [ ]\\` to \\`- [x]\\`.\n\n- [ ] Add \\`slugify(text)\\` to \\`src/text.js\\`: lowercase, every run of spaces or punctuation becomes one hyphen, no hyphen at either end (\"Hello, World!\" becomes \"hello-world\").\n- [ ] Add \\`titleCase(text)\\` to \\`src/text.js\\`: capitalise the first letter of every word (\"the quick fox\" becomes \"The Quick Fox\").\n- [ ] Add \\`test/text.test.js\\` with \\`node:test\\` tests for \\`wordCount\\`, \\`slugify\\` and \\`titleCase\\`, and make \\`node --test\\` pass.\n- [ ] Get the product owner's sign-off on the slug format. Only the user can arrange this.\n`,\n`.claude/stop-guard-state.json\n`,\n`#!/usr/bin/env node\n// Stop guard: while TASKS.md has unchecked tasks, Claude may not end its turn,\n// until it has been reminded three times without TASKS.md changing.\n'use strict';\nconst crypto = require('node:crypto');\nconst fs = require('node:fs');\nconst path = require('node:path');\n\nconst root = path.resolve(__dirname, '..', '..');\nconst stateFile = path.join(root, '.claude', 'stop-guard-state.json');\nconst MAX_REMINDERS = 3;\n\n// Claude Code describes the event as JSON on stdin.\nlet raw = '';\nprocess.stdin.setEncoding('utf8');\nprocess.stdin.on('data', chunk => (raw += chunk));\nprocess.stdin.on('end', () => {\n  const event = JSON.parse(raw);\n  const tasks = fs.readFileSync(path.join(root, 'TASKS.md'), 'utf8');\n  const open = tasks.split(/\\\\r?\\\\n/).filter(line => line.startsWith('- [ ]'));\n\n  // Printing nothing lets Claude stop.\n  if (open.length === 0) return;\n\n  // Progress means TASKS.md changed since the last reminder, not that Claude says it tried.\n  const fingerprint = crypto.createHash('sha256').update(tasks).digest('hex');\n  let last = {};\n  try { last = JSON.parse(fs.readFileSync(stateFile, 'utf8')); } catch {}\n  const stuck = last.session === event.session_id && last.fingerprint === fingerprint;\n  const reminders = stuck ? last.reminders + 1 : 1;\n  fs.writeFileSync(stateFile, JSON.stringify({ session: event.session_id, fingerprint, reminders }));\n\n  if (reminders > MAX_REMINDERS) {\n    // Let Claude stop, but tell the user plainly that the work is not finished.\n    console.log(JSON.stringify({\n      systemMessage: \\`Stop guard gave up after \\${MAX_REMINDERS} reminders without progress. Unfinished:\\\\n\\${open.join('\\\\n')}\\`,\n    }));\n    return;\n  }\n\n  console.log(JSON.stringify({\n    decision: 'block',\n    reason: \\`TASKS.md still has \\${open.length} unchecked task(s) (reminder \\${reminders}):\\\\n\\${open.join('\\\\n')}\\\\nCarry on with the next one, and tick it off in TASKS.md when it is done.\\`,\n  }));\n});\n`,\n`# Tasks\n\nHanded over: no\n\nWork through the tasks in order. When a task is done, change its \\`- [ ]\\` to \\`- [x]\\`.\nIf a task needs a decision from the user, change its \\`- [ ]\\` to \\`- [?]\\`, add your question to the end of that line, and carry on with the other tasks.\n\n- [ ] Add \\`slugify(text)\\` to \\`src/text.js\\`: lowercase, every run of spaces or punctuation becomes one hyphen, no hyphen at either end (\"Hello, World!\" becomes \"hello-world\").\n- [ ] Add \\`titleCase(text)\\` to \\`src/text.js\\`: capitalise the first letter of every word (\"the quick fox\" becomes \"The Quick Fox\").\n- [ ] Add \\`test/text.test.js\\` with \\`node:test\\` tests for \\`wordCount\\`, \\`slugify\\` and \\`titleCase\\`, and make \\`node --test\\` pass.\n- [ ] Get the product owner's sign-off on the slug format. Only the user can arrange this.\n`,\n`#!/usr/bin/env node\n// Stop guard: while handed-over work in TASKS.md has unchecked tasks, Claude may not end its turn,\n// until it has been reminded three times without TASKS.md changing.\n'use strict';\nconst crypto = require('node:crypto');\nconst fs = require('node:fs');\nconst path = require('node:path');\n\nconst root = path.resolve(__dirname, '..', '..');\nconst stateFile = path.join(root, '.claude', 'stop-guard-state.json');\nconst MAX_REMINDERS = 3;\n\n// Claude Code describes the event as JSON on stdin.\nlet raw = '';\nprocess.stdin.setEncoding('utf8');\nprocess.stdin.on('data', chunk => (raw += chunk));\nprocess.stdin.on('end', () => {\n  const event = JSON.parse(raw);\n  const tasks = fs.readFileSync(path.join(root, 'TASKS.md'), 'utf8');\n\n  // Only work the user has handed over is guarded. While the user is here, Claude may stop and talk.\n  if (!/^Handed over: yes\\\\s*$/m.test(tasks)) return;\n\n  const lines = tasks.split(/\\\\r?\\\\n/);\n  const open = lines.filter(line => line.startsWith('- [ ]'));\n  const waiting = lines.filter(line => line.startsWith('- [?]'));\n\n  if (open.length === 0) {\n    // Only the user can unblock a waiting task, so let Claude stop, and say the work is not complete.\n    if (waiting.length > 0) {\n      console.log(JSON.stringify({ systemMessage: \\`Paused on your decision:\\\\n\\${waiting.join('\\\\n')}\\` }));\n    }\n    return;\n  }\n\n  // Progress means TASKS.md changed since the last reminder, not that Claude says it tried.\n  const fingerprint = crypto.createHash('sha256').update(tasks).digest('hex');\n  let last = {};\n  try { last = JSON.parse(fs.readFileSync(stateFile, 'utf8')); } catch {}\n  const stuck = last.session === event.session_id && last.fingerprint === fingerprint;\n  const reminders = stuck ? last.reminders + 1 : 1;\n  fs.writeFileSync(stateFile, JSON.stringify({ session: event.session_id, fingerprint, reminders }));\n\n  if (reminders > MAX_REMINDERS) {\n    // Let Claude stop, but tell the user plainly that the work is not finished.\n    console.log(JSON.stringify({\n      systemMessage: \\`Stop guard gave up after \\${MAX_REMINDERS} reminders without progress. Unfinished:\\\\n\\${open.join('\\\\n')}\\`,\n    }));\n    return;\n  }\n\n  console.log(JSON.stringify({\n    decision: 'block',\n    reason: \\`TASKS.md still has \\${open.length} unchecked task(s) (reminder \\${reminders}):\\\\n\\${open.join('\\\\n')}\\\\nCarry on with the next one, and tick it off in TASKS.md when it is done.\\`,\n  }));\n});\n`,\n`{\n  \"hooks\": {\n    \"Stop\": [\n      {\n        \"hooks\": [\n          { \"type\": \"command\", \"command\": \"node\", \"args\": [\"\\${CLAUDE_PROJECT_DIR}/.claude/hooks/stop-guard.js\"] }\n        ]\n      }\n    ],\n    \"SessionStart\": [\n      {\n        \"matcher\": \"compact\",\n        \"hooks\": [\n          { \"type\": \"command\", \"command\": \"node\", \"args\": [\"\\${CLAUDE_PROJECT_DIR}/.claude/hooks/restore-tasks.js\"] }\n        ]\n      }\n    ]\n  }\n}\n`,\n`#!/usr/bin/env node\n// After compaction, put what is still owed back in front of Claude, straight from TASKS.md.\n'use strict';\nconst fs = require('node:fs');\nconst path = require('node:path');\n\nconst root = path.resolve(__dirname, '..', '..');\n\n// Claude Code describes the event as JSON on stdin. We only need to wait for it to end.\nlet raw = '';\nprocess.stdin.setEncoding('utf8');\nprocess.stdin.on('data', chunk => (raw += chunk));\nprocess.stdin.on('end', () => {\n  const tasks = fs.readFileSync(path.join(root, 'TASKS.md'), 'utf8');\n  const owed = tasks.split(/\\\\r?\\\\n/).filter(line => line.startsWith('- [ ]') || line.startsWith('- [?]'));\n\n  // Printing nothing adds nothing to Claude's context.\n  if (owed.length === 0) return;\n\n  console.log(JSON.stringify({\n    hookSpecificOutput: {\n      hookEventName: 'SessionStart',\n      additionalContext: \\`The conversation was just compacted, so your summary may have lost details. TASKS.md is the record of what is still owed:\\\\n\\${owed.join('\\\\n')}\\\\nBefore you continue, check TASKS.md against the actual files, since a task may be half done.\\`,\n    },\n  }));\n});\n`,\n];\n\nconst steps = {\n  0: { 'TASKS.md': v[0], 'src/text.js': v[1], 'run-hook.js': v[2] },\n  1: { 'TASKS.md': v[0], 'src/text.js': v[1], 'run-hook.js': v[2], '.claude/settings.json': v[3], '.claude/hooks/stop-guard.js': v[4] },\n  2: { 'TASKS.md': v[5], 'src/text.js': v[1], 'run-hook.js': v[2], '.gitignore': v[6], '.claude/settings.json': v[3], '.claude/hooks/stop-guard.js': v[7] },\n  3: { 'TASKS.md': v[8], 'src/text.js': v[1], 'run-hook.js': v[2], '.gitignore': v[6], '.claude/settings.json': v[3], '.claude/hooks/stop-guard.js': v[9] },\n  4: { 'TASKS.md': v[8], 'src/text.js': v[1], 'run-hook.js': v[2], '.gitignore': v[6], '.claude/settings.json': v[10], '.claude/hooks/stop-guard.js': v[9], '.claude/hooks/restore-tasks.js': v[11] },\n};\n\nconst managed = ['.claude/settings.json', '.claude/hooks/stop-guard.js', '.claude/hooks/restore-tasks.js'];\nconst here = file => path.join(__dirname, file);\n\nfunction write(file, text) {\n  fs.mkdirSync(path.dirname(here(file)), { recursive: true });\n  fs.writeFileSync(here(file), text);\n}\n\n// Removes what Claude and the guard leave behind after a demo run.\nfunction clearDemo() {\n  fs.rmSync(here('test/text.test.js'), { force: true });\n  try { fs.rmdirSync(here('test')); } catch {}\n  fs.rmSync(here('.claude/stop-guard-state.json'), { force: true });\n}\n\nconst arg = process.argv[2];\n\nif (arg === 'reset') {\n  clearDemo();\n  write('src/text.js', steps[0]['src/text.js']);\n  const known = Object.values(steps).flatMap(s => s['TASKS.md'].split('\\n')).filter(l => l.startsWith('- [ ] '));\n  const tasks = fs.readFileSync(here('TASKS.md'), 'utf8').split(/\\r?\\n/).map(line => {\n    if (line.startsWith('Handed over:')) return 'Handed over: no';\n    if (!/^- \\[[x?]\\] /.test(line)) return line;\n    const rest = line.slice(6);\n    return known.find(task => rest.startsWith(task.slice(6))) || '- [ ] ' + rest;\n  });\n  write('TASKS.md', tasks.join('\\n'));\n  console.log('Demo reset: every task is unticked, src/text.js is back to the start, and the guard has forgotten its count.');\n} else if (Object.hasOwn(steps, arg)) {\n  clearDemo();\n  for (const file of managed) fs.rmSync(here(file), { force: true });\n  for (const [file, text] of Object.entries(steps[arg])) write(file, text);\n  console.log(`This folder now matches the end of step ${arg}: ${Object.keys(steps[arg]).join(', ')}`);\n} else {\n  console.log('Usage: node catchup.js \u003c0-4>   or   node catchup.js reset');\n  process.exit(1);\n}\n"};
+document.addEventListener('click', async event => {
+  const button = event.target.closest('button.copy');
+  if (!button) return;
+  const text = button.dataset.src ? FILES[button.dataset.src] : button.closest('.copyable').querySelector('code').textContent;
+  const label = button.textContent;
+  try {
+    await navigator.clipboard.writeText(text);
+    button.textContent = 'Copied';
+  } catch {
+    const target = button.dataset.src ? button.closest('figure, .catchup-file').querySelector('pre') : button.closest('.copyable').querySelector('code');
+    const details = target.closest('details');
+    if (details) details.open = true;
+    const range = document.createRange();
+    range.selectNodeContents(target);
+    const selection = window.getSelection();
+    selection.removeAllRanges();
+    selection.addRange(range);
+    button.textContent = 'Selected: press Ctrl+C';
+  }
+  button.classList.add('done');
+  setTimeout(() => { button.textContent = label; button.classList.remove('done'); }, 1800);
+});
+</script>

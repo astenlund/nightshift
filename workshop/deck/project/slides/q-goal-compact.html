@@ -1,0 +1,12 @@
+<section id="q-goal-compact" style="background:#F4F5F1;color:#1A2028;font-family:'Atkinson Hyperlegible', Verdana, sans-serif;padding:128px 128px 160px;display:flex;flex-direction:column;gap:32px">
+<p style="font-size:24px;font-weight:700;letter-spacing:3px;text-transform:uppercase;color:#59626E">Step 6 · Questions</p>
+<h2 style="font-family:'Bricolage Grotesque', Arial, sans-serif;font-size:72px;font-weight:800;line-height:1.1;letter-spacing:-1px">Does a goal survive compaction? Yes.</h2>
+<div style="display:flex;gap:24px">
+<div style="flex:1;display:flex;flex-direction:column;gap:10px;background:#FBFBF8;border:2px solid #D6DAD2;border-radius:16px;padding:28px 32px"><h3 style="font-size:30px;font-weight:700">Manual</h3><p style="font-size:26px;line-height:1.35;color:#3A4350">/compact down to one sentence. /goal still said "Goal active", and was judged met once the sign-off was confirmed.</p></div>
+<div style="flex:1;display:flex;flex-direction:column;gap:10px;background:#FBFBF8;border:2px solid #D6DAD2;border-radius:16px;padding:28px 32px"><h3 style="font-size:30px;font-weight:700">Automatic</h3><p style="font-size:26px;line-height:1.35;color:#3A4350">Ten tasks, two automatic compactions. The goal survived, and the checker kept judging correctly.</p></div>
+<div style="flex:1;display:flex;flex-direction:column;gap:10px;background:#FBFBF8;border:2px solid #D6DAD2;border-radius:16px;padding:28px 32px"><h3 style="font-size:30px;font-weight:700">Too much compaction</h3><p style="font-size:26px;line-height:1.35;color:#3A4350">Compaction every few tool calls ended in "Autocompact is thrashing", which cleared the goal.</p></div>
+</div>
+<p style="font-size:30px;line-height:1.4;font-weight:700">Compaction is not the case for hooks over /goal. The case is what a goal does not carry: your list, your exit rules, and anything beyond the session.</p>
+<p style="position:absolute;left:128px;bottom:64px;width:1664px;font-size:24px;color:#59626E">Stop Guard Cook-Along · Questions · Rehearsed on Claude Code 2.1.288 with a 100K-token window</p>
+<aside>Claude Code keeps the condition outside the conversation and writes it back into the transcript after every compaction. The thrashing error is one of the errors you have to fix, which the docs say clear a goal. With the hooks nothing is cleared, because the record and the hooks never lived in the session. The automatic summaries in that run were 4,100 and 5,400 characters and kept every task's status.</aside>
+</section>

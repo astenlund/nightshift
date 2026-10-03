@@ -1,0 +1,20 @@
+<section id="s2-run" style="background:#F4F5F1;color:#1A2028;font-family:'Atkinson Hyperlegible', Verdana, sans-serif;padding:128px 128px 160px;display:flex;flex-direction:column;gap:28px">
+<p style="font-size:24px;font-weight:700;letter-spacing:3px;text-transform:uppercase;color:#8A5A00">Step 2 · Test the hook, then run it with Claude</p>
+<h2 style="font-family:'Bricolage Grotesque', Arial, sans-serif;font-size:72px;font-weight:800;line-height:1.1;letter-spacing:-1px">Three reminders, then an honest stop</h2>
+<div style="display:flex;gap:24px">
+<div style="flex:1;display:flex;flex-direction:column;gap:12px">
+<p style="font-size:28px;font-weight:700">Test it four times</p>
+<p style="font-family:'JetBrains Mono', 'Courier New', monospace;font-size:26px">node run-hook.js stop</p>
+<p style="font-size:26px;line-height:1.4;color:#3A4350">reminder 1, 2, 3, then it lets go. Change TASKS.md and the count starts over. Finish with node catchup.js reset.</p>
+</div>
+<div style="flex:1;display:flex;flex-direction:column;gap:12px">
+<p style="font-size:28px;font-weight:700">Run it with Claude</p>
+<p style="font-family:'JetBrains Mono', 'Courier New', monospace;font-size:26px">/clear, then &gt; Work through TASKS.md.</p>
+<p style="font-size:26px;line-height:1.4;color:#3A4350">Three rounds of feedback marked (reminder 1) to (reminder 3), then the turn ends.</p>
+</div>
+</div>
+<div style="background:#FBEFCF;border-radius:16px;padding:24px 32px"><p style="font-family:'JetBrains Mono', 'Courier New', monospace;font-size:24px;line-height:1.5">Stop guard gave up after 3 reminders without progress. Unfinished:<br>- [ ] Get the product owner's sign-off on the slug format. Only the user can arrange this.</p></div>
+<div style="background:#FBFBF8;border:2px dashed #A9B0A6;border-radius:16px;padding:24px 32px"><p style="font-family:'JetBrains Mono', 'Courier New', monospace;font-size:24px;line-height:1.5">I'm stopping here, still waiting on you for the product owner's sign-off on the slug format. That task stays unchecked in TASKS.md until you have it.</p></div>
+<p style="position:absolute;left:128px;bottom:64px;width:1664px;font-size:24px;color:#59626E">Stop Guard Cook-Along · Step 2 · node catchup.js reset keeps your fourth task and removes the ticks</p>
+<aside>In rehearsal the same work took 22 model turns with the first guard and 14 with the three-reminder rule.</aside>
+</section>

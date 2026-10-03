@@ -1,0 +1,20 @@
+<section id="s3-run" style="background:#F4F5F1;color:#1A2028;font-family:'Atkinson Hyperlegible', Verdana, sans-serif;padding:128px 128px 160px;display:flex;flex-direction:column;gap:28px">
+<p style="font-size:24px;font-weight:700;letter-spacing:3px;text-transform:uppercase;color:#1A2028">Step 3 · Run it with Claude</p>
+<h2 style="font-family:'Bricolage Grotesque', Arial, sans-serif;font-size:72px;font-weight:800;line-height:1.1;letter-spacing:-1px">Two turns: you are here, then you hand over</h2>
+<div style="display:flex;gap:24px">
+<div style="flex:1;display:flex;flex-direction:column;gap:14px;background:#FBFBF8;border:2px solid #D6DAD2;border-radius:16px;padding:28px 32px">
+<p style="font-size:24px;font-weight:700;color:#59626E">Turn 1 · after node catchup.js reset and /clear</p>
+<p style="font-family:'JetBrains Mono', 'Courier New', monospace;font-size:24px"><span style="color:#2445B0">&gt;</span> Start on TASKS.md with the first task.</p>
+<p style="font-size:26px;line-height:1.35">Claude does slugify and stops. The guard says nothing. In rehearsal it asked:</p>
+<p style="font-family:'JetBrains Mono', 'Courier New', monospace;font-size:24px;line-height:1.5;color:#3A4350">Decision for you: accented letters stay as they are (`smörgås`) rather than being converted to plain ASCII (`smorgas`).</p>
+</div>
+<div style="flex:1;display:flex;flex-direction:column;gap:14px;background:#FBFBF8;border:2px solid #D6DAD2;border-radius:16px;padding:28px 32px">
+<p style="font-size:24px;font-weight:700;color:#59626E">Turn 2 · you edit TASKS.md: Handed over: yes</p>
+<p style="font-family:'JetBrains Mono', 'Courier New', monospace;font-size:24px;line-height:1.4"><span style="color:#2445B0">&gt;</span> I've set Handed over: yes in TASKS.md. It's all yours now. I'm off to bed.</p>
+<p style="font-family:'JetBrains Mono', 'Courier New', monospace;font-size:24px;line-height:1.5;color:#3A4350">Three of the four tasks are done and `node --test` passes (7 tests, 0 failures).</p>
+<div style="background:#FBEFCF;border-radius:12px;padding:16px 20px"><p style="font-family:'JetBrains Mono', 'Courier New', monospace;font-size:24px;line-height:1.4">Paused on your decision:<br>- [?] Get the product owner's sign-off … Question: …</p></div>
+</div>
+</div>
+<p style="position:absolute;left:128px;bottom:64px;width:1664px;font-size:24px;color:#59626E">Stop Guard Cook-Along · Step 3 · The handover is your act, so you make the edit</p>
+<aside>Turn 1 is the step 1 prompt again, but now the guard stays quiet because nothing is handed over. Step 1's guard would have pushed past that question. In turn 2 Claude finishes titleCase and the tests, turns the sign-off into - [?] with a question, and the guard lets it stop.</aside>
+</section>

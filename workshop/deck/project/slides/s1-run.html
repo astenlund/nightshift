@@ -1,0 +1,13 @@
+<section id="s1-run" style="background:#F4F5F1;color:#1A2028;font-family:'Atkinson Hyperlegible', Verdana, sans-serif;padding:128px 128px 160px;display:flex;flex-direction:column;gap:32px">
+<p style="font-size:24px;font-weight:700;letter-spacing:3px;text-transform:uppercase;color:#1A2028">Step 1 · Run it with Claude</p>
+<h2 style="font-family:'Bricolage Grotesque', Arial, sans-serif;font-size:72px;font-weight:800;line-height:1.1;letter-spacing:-1px">Give Claude a start, not a scope</h2>
+<div style="background:#FBFBF8;border:2px solid #A9B0A6;border-radius:12px;padding:24px 32px"><p style="font-family:'JetBrains Mono', 'Courier New', monospace;font-size:30px"><span style="color:#2445B0">&gt;</span> Start on TASKS.md with the first task.</p></div>
+<div style="display:flex;gap:24px">
+<div style="flex:1;display:flex;flex-direction:column;gap:12px;background:#FBFBF8;border:2px dashed #A9B0A6;border-radius:16px;padding:28px 32px"><p style="font-size:24px;font-weight:700;color:#59626E">First stop</p><p style="font-family:'JetBrains Mono', 'Courier New', monospace;font-size:24px;line-height:1.5">The first task is done: I added `slugify(text)` to `src/text.js` and ticked it off in `TASKS.md`.</p></div>
+<div style="flex:1;display:flex;flex-direction:column;gap:12px;background:#E4E9F8;border-radius:16px;padding:28px 32px"><p style="font-size:24px;font-weight:700;color:#2445B0">The guard</p><p style="font-size:28px;line-height:1.4">Stop hook feedback: two unchecked tasks. Claude carries on with titleCase and the tests.</p></div>
+<div style="flex:1;display:flex;flex-direction:column;gap:12px;background:#FBFBF8;border:2px dashed #A9B0A6;border-radius:16px;padding:28px 32px"><p style="font-size:24px;font-weight:700;color:#59626E">Final stop</p><p style="font-family:'JetBrains Mono', 'Courier New', monospace;font-size:24px;line-height:1.5">All three tasks in `TASKS.md` are now done and ticked off, and `node --test` passes (3 tests, 0 failures).</p></div>
+</div>
+<p style="font-size:28px;color:#3A4350">Did your Claude do all three in one go? Then the guard never needed to speak. That is the guard working too.</p>
+<p style="position:absolute;left:128px;bottom:64px;width:1664px;font-size:24px;color:#59626E">Stop Guard Cook-Along · Step 1 · Check /hooks first: Stop should list your command</p>
+<aside>Run /hooks in Claude first; restart claude if the Stop hook is missing. The dashed boxes are what Claude said in rehearsal on Claude Code 2.1.288 with Opus 5.5. Your model may word it differently.</aside>
+</section>
