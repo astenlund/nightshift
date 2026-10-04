@@ -220,6 +220,12 @@ Complete the retained minimal-report contract with narrow correction or clarific
 
 **Requires:** none.
 
+### [Complete the spec-review safeguard and authoring guidance](features/spec-review-safeguard.md)
+
+Have a spec finding justify demanded detail by naming the consequential gap, contradiction or defect in the spec's commitments or approach, have spec review challenge unnecessary complexity and whether a simpler approach would serve, and have specs record important tradeoffs. Found on 2026-09-29 by the migration accounting audit: four retained needs recorded as Policy present are carried only in part, since the reviewer prompt and the brief bar unnecessary prescription and check feasibility but ask for none of these. The triage of the design-spec rules in the user's global instructions on 2026-10-03 adds repair-time guidance: one principle that a repair carries through everything it touches and removes nothing the artifact needs, applied where the runtime already separates repair proposals and continued reviews from first reviews. The section-level audit's triage on 2026-10-04 adds three authoring habits, checking restated text against its source, applying one contract across sibling surfaces and recording in the spec why review-added machinery exists. The commitments agreed with the user on 2026-10-05, recorded in the linked record: each clause has one canonical home, the safeguard in the spec lens text, the authoring habits and tradeoff clause in the operating brief, and the repair principle in the skeptic's repair-proposal prompt and the continued lead's brief; the challenge to complexity and the approach belongs to a first review or a changed approach and must name a concrete simpler alternative; the fresh lead after repairs checks the same principle against the cumulative repair delta; the `repair` operation takes an optional fixer's note that informs reviewers without determining coverage; the principle applies to code, documentation and spec reviews alike; and the operating brief gains one coordinated repair statement. It changes the runtime's review text and repair operation, the operating brief and revise-spec, so it needs a concise governing spec, a version increase and a decision on installed-host evidence before implementation.
+
+**Requires:** none.
+
 ## Exploring
 
 ### [Shared BACKLOG.md meta-index](features/backlog-meta-index.md)
@@ -257,10 +263,6 @@ Finish the retained installed-package boundary: required runtime resources and i
 ### [Carry settled decisions and experiment evidence into later reviews](features/v3-review-decision-context.md)
 
 Complete the retained concise decision and experiment record so subsequent independent reviews receive relevant settled facts and unresolved obligations after edits or compaction. Preserve the ability for new evidence to reopen a decision. The migration accounting audit of 2026-09-29 added two recording gaps: capturing a material investigation's conclusion and limits when established, and preserving implementation discoveries in working notes.
-
-### [Complete the spec-review safeguard and authoring guidance](features/spec-review-safeguard.md)
-
-Have a spec finding justify demanded detail by naming the consequential gap, contradiction or defect in the spec's commitments or approach, have spec review challenge unnecessary complexity and whether a simpler approach would serve, and have specs record important tradeoffs. Found on 2026-09-29 by the migration accounting audit: four retained needs recorded as Policy present are carried only in part, since the reviewer prompt and the brief bar unnecessary prescription and check feasibility but ask for none of these. The triage of the design-spec rules in the user's global instructions on 2026-10-03 adds repair-time guidance: one principle that a repair carries through everything it touches and removes nothing the artifact needs, applied where the runtime already separates repair proposals and continued reviews from first reviews. The section-level audit's triage on 2026-10-04 adds three authoring habits, checking restated text against its source, applying one contract across sibling surfaces and recording in the spec why review-added machinery exists, and asks whether a reviewer's input after a repair includes the fixer's note.
 
 ### [Complete shared backlog parsing and template consistency](features/v3-parser-consistency.md)
 
