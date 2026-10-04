@@ -184,6 +184,12 @@ An extra strong review mode for critical work: two strong reviewers assess the s
 
 **Requires:** none.
 
+### [Related field for non-dependency relations](features/related-field.md)
+
+Add an optional `**Related:**` field that declares relations between backlog entries that are not dependencies, such as shared work built by whichever ships first or a feature that offers more once another ships, so prose no longer has to carry them ambiguously. Raised by the user on 2026-10-03 after a review found three records whose mutual references could not be declared as `**Requires:**` without a cycle; the user settled that every Related relation is declared on both entries and that Related relations may form cycles. The commitments agreed with the user on 2026-10-04, recorded in the linked record: the field mirrors the `**Requires:**` grammar with whole-entry links only, no `none.` form and no note per reference, and sits after the dependency lines; it may appear on tracked entries in all three work indexes, quick wins included, but not on Exploring drafts; the parser checks that each reference resolves and has its counterpart, reporting problems as notices so a Related line never takes an entry out of the ready set; shipping or retiring an entry removes Related references to it; Ready names an item's related entries beside a recommendation or a pickup; and the implementing work converts the clear prose relations. It changes the parser and the init-backlog templates, so it ships with a version increase; an agreed readback is enough.
+
+**Requires:** none.
+
 ## Exploring
 
 ### [Shared BACKLOG.md meta-index](features/backlog-meta-index.md)
@@ -309,10 +315,6 @@ When the controller is uncertain and the user is absent, consult the strongest a
 ### [Review mode for someone else's implementation](features/review-mode.md)
 
 Validate a feature implementation made by someone else, a human or an AI not participating in the session, against whatever material the user provides, such as links, Word documents or text in chat. It takes a local branch, commit range or worktree, a GitHub pull request or uncommitted changes; beyond reviewing the code it runs checks and tests, verifies faked boundaries live, checks documentation and backlog accuracy, and can post its verdict to the pull request with the user's explicit go-ahead each time. It reports first, then offers repairs as patch files or direct edits, taking the findings one at a time once repair is initiated. Raised by the user on 2026-09-28. Open questions include whether it is a skill or a revise-code mode distinct from plain review requests, whether it creates a run, how baseline material is ingested and confirmed, the trust boundary for running someone else's code, and how the change is checked out without disturbing the user's work; the record lists them all.
-
-### [Related field for non-dependency relations](features/related-field.md)
-
-Add an optional `**Related:**` field that declares relations between backlog entries that are not dependencies, such as shared work built by whichever ships first or a feature that offers more once another ships, so prose no longer has to carry them ambiguously. Raised by the user on 2026-10-03 after a review found three records whose mutual references could not be declared as `**Requires:**` without a cycle; the user settled that every Related relation is declared on both entries and that Related relations may form cycles. Its grammar, what the parser checks, whether Ready shows related entries, its consumers and the conversion of existing prose are open.
 
 ### [Orchestration efficiency](features/orchestration-efficiency.md)
 
