@@ -3,7 +3,6 @@ name: v3-parser-consistency
 description: Complete shared backlog parsing and template consistency
 metadata:
   type: feature
-status: exploring
 ---
 
 # Complete shared backlog parsing and template consistency
@@ -29,6 +28,20 @@ The migration accounting audit of 2026-09-29 found two parts of the retained nee
 Coordinate with [overlapping-root collection](../bugs/overlapping-markdown-root-deduplication.md). The [invalid template instructions](../bugs/init-backlog-parser-invalid-empty-requires.md) were fixed in 3.2.9.
 
 The [customized backlog repair feature](v3-setup-compatibility.md) owns the approved lettered-list compatibility behavior: compact simple flat lists into inline lettered items and preserve hierarchy around nested content. Its [FeatherPod incident](../reports/inbox-triage-20260921.md#unwrapping-collapses-lettered-workflow-steps) supplies the concrete case. Coordinate scanner recognition and ambiguity handling there; this cross-reference does not broaden the supported grammar by itself.
+
+## Settled questions
+
+The user agreed these answers on 2026-10-05, when the entry graduated from Exploring to current work. Checked the same day: the three file vocabularies above are still separate, `BACKLOG_FILES` in `internal/setup.js` and `internal/backlog-catalog.js` listing the same seven files in different orders, and Ready's `isRepoRelativeTarget` still rejects only `http` and `https` targets while `internal/backlog-links.js` rejects any URI scheme (`URI_SCHEME`).
+
+- What happens to each remaining difference. Settled: each one, between Ready's top-level and slice continuation joining, unwrap's scanner and the shared catalog, first gets a fixture pinning its current behavior. Where consumers interpret the same syntax, it is unified; otherwise it stays, with its reason in one line at the narrowest code site. A difference that turns out to be a defect gets its own bug entry, so its fix stays traceable. No dependency meaning changes, and the existing grammar fixtures keep passing.
+- The backlog file vocabulary. Settled: `BACKLOG_FILES` in `internal/backlog-catalog.js` becomes the only definition; setup imports it and Ready derives its index stems from it.
+- The link-target filters. Settled: Ready and the link notices share one predicate, the stricter of the two, which rejects any URI scheme. Fixtures pin each target whose acceptance changes, which `isCatalogTarget` already refuses in most cases.
+- Rescanning entry bodies. Settled: Ready parses each entry's metadata once, and every consumer reads that parse instead of scanning the body again.
+- Relations. Settled: the entry requires nothing. It is best shipped before [Related field for non-dependency relations](related-field.md), [Restore controlled mixed-line-ending repair](v3-mixed-ending-repair.md) and [Ready silently ignores dependency lines on quick wins](../BUGS.md#ready-silently-ignores-dependency-lines-on-quick-wins), which change the same metadata and scanning, but that is ordering advice, not a dependency.
+
+## Before implementation
+
+The change alters shipped parser, catalog and setup code, so it rides with a plugin version increase. An agreed readback is enough, and deterministic fixtures are enough evidence, since no model-owned behavior changes. Tracking and readiness do not authorize implementation.
 
 ## Triage and provenance
 

@@ -226,6 +226,12 @@ Have a spec finding justify demanded detail by naming the consequential gap, con
 
 **Requires:** none.
 
+### [Complete shared backlog parsing and template consistency](features/v3-parser-consistency.md)
+
+Complete shared dependency metadata and continuation handling across Ready, setup and unwrap, preserving justified grammar differences and protected content. This includes one shared backlog file vocabulary and reconciled link-target filters, which the migration accounting audit of 2026-09-29 found still duplicated and divergent. The commitments agreed with the user on 2026-10-05, recorded in the linked record: each remaining scanner difference is pinned by a fixture first, then unified where consumers read the same syntax or kept with a one-line reason, with defects split into their own bug entries and no change to dependency meaning; `BACKLOG_FILES` in the shared catalog becomes the only file vocabulary; Ready and the link notices share the stricter link-target filter; and Ready parses each entry's metadata once. It is best shipped before the Related field, the mixed-ending repair and the quick-win dependency-line bug, as ordering advice rather than a dependency. It changes shipped parser and setup code, so it ships with a version increase; an agreed readback is enough.
+
+**Requires:** none.
+
 ## Exploring
 
 ### [Shared BACKLOG.md meta-index](features/backlog-meta-index.md)
@@ -263,10 +269,6 @@ Finish the retained installed-package boundary: required runtime resources and i
 ### [Carry settled decisions and experiment evidence into later reviews](features/v3-review-decision-context.md)
 
 Complete the retained concise decision and experiment record so subsequent independent reviews receive relevant settled facts and unresolved obligations after edits or compaction. Preserve the ability for new evidence to reopen a decision. The migration accounting audit of 2026-09-29 added two recording gaps: capturing a material investigation's conclusion and limits when established, and preserving implementation discoveries in working notes.
-
-### [Complete shared backlog parsing and template consistency](features/v3-parser-consistency.md)
-
-Complete shared dependency metadata and continuation handling across Ready, setup and unwrap, preserving justified grammar differences and protected content. This includes one shared backlog file vocabulary and reconciled link-target filters, which the migration accounting audit of 2026-09-29 found still duplicated and divergent.
 
 ### [Maintain verification evidence, fixtures and measured efficiency](features/v3-verification-infrastructure.md)
 
