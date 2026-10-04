@@ -378,6 +378,10 @@ Later deliberate model-role arrangements. The MVP uses task-fit preferences and 
 
 Later pairing of visible interactive sessions, including optional Windows Terminal pane launch/reuse and user steering of both. No interactive bridge is required by the MVP.
 
+### [Design principles in a reference file and a run-time file](features/design-principles.md)
+
+Collect Nightshift's reusable design principles in two files split by role, as with the workflow files: a reference `PRINCIPLES.md` beside VISION.md and WORKFLOW.md that gives each principle its reasoning and the decisions that established it, and a shipped run-time file that states each rule in one sentence for the work that makes design decisions, such as revise-spec, repairs and Exploring graduations. Raised by the user on 2026-10-05 after a session that re-derived the same rules in several graduations. The run-time file owns each rule's wording and the reference links to it through GUID anchors, which the user chose so that a rewording or retitling cannot silently break or redirect a link, with a packaging test checking that the two pair up. Each principle needs at least two decisions behind it and does not restate VISION.md. The file names, coordinated with [Rename one of the two workflow files](QUICK_WINS.md#rename-one-of-the-two-workflow-files), the anchor form, the route into what a run loads and what moves out of VISION.md are open.
+
 ## History
 
 Delivered features belong in [FEATURES_HISTORY.md](FEATURES_HISTORY.md). When shipping an entry, remove its satisfied Requires references from active indexes; retirement is recorded separately.
