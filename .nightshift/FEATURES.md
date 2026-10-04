@@ -42,7 +42,7 @@ Let revise-code, revise-spec, revise-docs and revise-lore run without creating a
 
 ### [Project inboxes](features/project-inboxes.md)
 
-Give every project that uses Nightshift a `.nightshift/inbox/` for raw suggestions and reports about that project, owned by the report's subject. Whoever creates an inbox, setup or an agent filing a report, is to create it ignored through its own `.gitignore`, and setup is to create one when absent while leaving an existing inbox's contents and policy unchanged. Reports are to be dated Markdown files that never overwrite each other and leave design to triage. During a run, observations about the run's own project stay follow-ups, while those about another Nightshift project whose location is known go to its inbox and are named in the run's report. Ready is to list untriaged reports in their own section, omitted when the inbox is empty or absent, and triage runs only at the user's request, deleting each report once its disposition is recorded. Reports about Nightshift itself go to the Nightshift project's own inbox, located through the maintainer's instructions. Requested by the user on 2026-09-13; the commitments were agreed with the user on 2026-09-28 and are recorded in the linked record. It reverses the v3 decision that setup creates no inbox in other projects, so it needs a concise governing spec, a version increase and a decision on installed-host evidence before implementation. On 2026-10-02 the user's idea that ideas raised mid-run go to the inbox instead reopened its run and follow-up commitment as an open question in the record; the user's refinement routes adjustments within the run's agreed outcome to follow-ups, and to the inbox anything that would extend it, including a related new slice, or is unrelated.
+Give every project that uses Nightshift a `.nightshift/inbox/` for raw suggestions and reports about that project, owned by the report's subject. Setup is to create an inbox when absent and leave an existing inbox's contents and choice unchanged; since 2026-10-04, instead of ignoring every inbox by default, setup asks a separate track, ignore or defer question for it, owned by [Restore fresh-scaffold track, ignore or defer choice](features/setup-tracking-choice.md), and writes nothing without an answer. Reports are to be dated Markdown files that never overwrite each other and leave design to triage. During a run, observations about the run's own project stay follow-ups, while those about another Nightshift project whose location is known go to its inbox and are named in the run's report. Ready is to list untriaged reports in their own section, omitted when the inbox is empty or absent, and triage runs only at the user's request, deleting each report once its disposition is recorded. Reports about Nightshift itself go to the Nightshift project's own inbox, located through the maintainer's instructions. Requested by the user on 2026-09-13; the commitments were agreed with the user on 2026-09-28 and are recorded in the linked record. It reverses the v3 decision that setup creates no inbox in other projects, so it needs a concise governing spec, a version increase and a decision on installed-host evidence before implementation. On 2026-10-02 the user's idea that ideas raised mid-run go to the inbox instead reopened its run and follow-up commitment as an open question in the record; the user's refinement routes adjustments within the run's agreed outcome to follow-ups, and to the inbox anything that would extend it, including a related new slice, or is unrelated.
 
 **Requires:** none.
 
@@ -190,6 +190,12 @@ Add an optional `**Related:**` field that declares relations between backlog ent
 
 **Requires:** none.
 
+### [Restore fresh-scaffold track, ignore or defer choice](features/setup-tracking-choice.md)
+
+Restore the fresh-project setup choice to track the backlog in Git, ignore it, or defer the decision. Preserve existing tracking and ignore policy on reruns. This restores a previously shipped setup capability; choosing shared versus clone-local exclusions is tracked separately in [Init-backlog ignore-shape election](features/init-backlog-ignore-shape-election.md). The commitments agreed with the user on 2026-10-04, recorded in the linked record: one choice covers the backlog under `.nightshift/` and is asked only while none of it is tracked or ignored, with an existing or mixed state reported and left unchanged; track stages the files without committing, ignore writes `.gitignore` rules that leave the inbox to its own answer, and defer writes nothing, so the Git state itself shows the choice to later runs; an unanswered question counts as defer; a non-Git folder gets no question and a failed Git check writes nothing; and the inbox gets its own track, ignore or defer question, recorded by its own `.gitignore` and also deferred without an answer, which replaces the ignored-by-default decision of [Project inboxes](features/project-inboxes.md). It changes setup and the init-backlog skill, so it needs a concise governing spec, a version increase and a decision on installed-host evidence before implementation.
+
+**Requires:** none.
+
 ## Exploring
 
 ### [Shared BACKLOG.md meta-index](features/backlog-meta-index.md)
@@ -283,10 +289,6 @@ Assess current host transports for bounded efficient buffering, independently te
 ### [Init-backlog ignore-shape election](features/init-backlog-ignore-shape-election.md)
 
 When new backlog exclusions are needed, let the user choose shared .gitignore rules or clone-local .git/info/exclude rules. Inspect effective policy first, preserve existing tracking and rule-source choices, and recognize the selected destination on reruns. This extends the separate fresh-scaffold track, ignore or defer feature.
-
-### [Restore fresh-scaffold track, ignore or defer choice](features/setup-tracking-choice.md)
-
-Restore the fresh-project setup choice to track the backlog in Git, ignore it, or defer the decision. Preserve existing tracking and ignore policy on reruns. This restores a previously shipped setup capability; choosing shared versus clone-local exclusions is tracked separately in [Init-backlog ignore-shape election](features/init-backlog-ignore-shape-election.md).
 
 ### [Execution plan for a multi-item selection](features/multi-item-execution-plan.md)
 
