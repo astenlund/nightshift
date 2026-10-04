@@ -130,7 +130,7 @@ Restore complete, truthful problem-channel reporting in the skill instructions w
 
 The audit private-ignore-source probe began with .git/info/exclude owning the legacy file exclusion. After migration the new destination was ignored by a root .gitignore rule. The ignored boolean survived, but its private storage choice did not.
 
-Preserve the effective private/shared policy choice when relocating backlog content. Do not convert clone-local exclusions into shared repository rules merely to restore an ignored flag. Cover local, shared and global sources, masking parent rules, tracked exceptions, interrupted relocation and reruns. Distinguish preservation of an existing choice from choosing a destination for new exclusions. [The report](bugs/migration-private-ignore-source.md) preserves evidence and related work. Tracking does not authorize implementation.
+Preserve the effective private/shared policy choice when relocating backlog content. Do not convert clone-local exclusions into shared repository rules merely to restore an ignored flag. Cover local, shared and global sources, masking parent rules, tracked exceptions, interrupted relocation and reruns. Distinguish preservation of an existing choice from choosing a destination for new exclusions. Since 2026-10-04 Nightshift ignores content only through self-ignoring folders, so a fix can restore an ignored flag that way rather than through any shared rule. [The report](bugs/migration-private-ignore-source.md) preserves evidence and related work. Tracking does not authorize implementation.
 
 **Requires:** none.
 
@@ -138,7 +138,7 @@ Preserve the effective private/shared policy choice when relocating backlog cont
 
 In the audit git-newline-policy probe Git reported text:set and eol:lf, but new FEATURES.md bytes used CRLF. Current initialize converts template text unconditionally to CRLF.
 
-Materialize missing templates according to the effective supported project newline policy, keeping logical template content and existing files intact. Resolve genuine ambiguity rather than silently overriding an established convention. Cover explicit LF and CRLF policies, defaults, existing files, missing targets and interruption. This concerns new-file creation, not normalization of an existing mixed-ending file. The migration accounting audit of 2026-09-29 found the same fault in setup's always-on `.gitignore` write for the runs exclusion, described in the report. [The report](bugs/setup-template-newline-policy.md) preserves evidence and related work. Tracking does not authorize implementation.
+Materialize missing templates according to the effective supported project newline policy, keeping logical template content and existing files intact. Resolve genuine ambiguity rather than silently overriding an established convention. Cover explicit LF and CRLF policies, defaults, existing files, missing targets and interruption. This concerns new-file creation, not normalization of an existing mixed-ending file. The migration accounting audit of 2026-09-29 found the same fault in setup's always-on `.gitignore` write for the runs exclusion, described in the report; since 2026-10-04 [Restore fresh-scaffold track, ignore or defer choice](features/setup-tracking-choice.md) is to replace that write with a self-ignoring runs folder. [The report](bugs/setup-template-newline-policy.md) preserves evidence and related work. Tracking does not authorize implementation.
 
 **Requires:** none.
 

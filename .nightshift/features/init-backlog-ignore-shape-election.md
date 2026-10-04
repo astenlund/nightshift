@@ -3,10 +3,11 @@ name: init-backlog-ignore-shape-election
 description: Choose shared or clone-local destinations for new backlog exclusions
 metadata:
   type: feature
-status: exploring
 ---
 
 # Init-backlog ignore-shape election
+
+Retired on 2026-10-04 without shipping, as [the feature history](../FEATURES_HISTORY.md) records. The user decided that Nightshift ignores content only through self-ignoring folders and never adds rules to the project's `.gitignore` or `.git/info/exclude`, so the choice this record describes no longer arises. Its surviving needs moved into [Restore fresh-scaffold track, ignore or defer choice](setup-tracking-choice.md). The rest of this file is a historical design record and authorizes nothing.
 
 When new backlog exclusions are needed, let the user choose shared .gitignore rules or clone-local .git/info/exclude rules. Inspect effective policy first, preserve existing tracking and rule-source choices, and recognize the selected destination on reruns. This extends the separate fresh-scaffold track, ignore or defer feature.
 

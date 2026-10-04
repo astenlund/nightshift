@@ -14,7 +14,7 @@ Preserve the effective private/shared policy choice when relocating backlog cont
 
 Cover local, shared and global sources, masking parent rules, tracked exceptions, interrupted relocation and reruns. Distinguish preservation of an existing choice from choosing a destination for new exclusions.
 
-Linked to [Init-backlog ignore-shape election](../features/init-backlog-ignore-shape-election.md); this concrete migration defect remains a distinct acceptance obligation.
+Since 2026-10-04 Nightshift ignores content only through self-ignoring folders, whose own `.gitignore` is never committed, and adds no rule to the project's `.gitignore` or `.git/info/exclude`, as [Restore fresh-scaffold track, ignore or defer choice](../features/setup-tracking-choice.md) records, so a fix can restore an ignored flag through a self-ignoring `.gitignore` beside the moved content rather than through any shared rule. The defect was linked to [Init-backlog ignore-shape election](../features/init-backlog-ignore-shape-election.md), retired that day; it remains a distinct acceptance obligation.
 
 ## Triage
 
