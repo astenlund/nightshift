@@ -178,6 +178,12 @@ Measure what a resumed reviewer costs on each host, find why runtime resumes sta
 
 **Requires:** none.
 
+### [Dual strong review for critical work](features/dual-strong-review.md)
+
+An extra strong review mode for critical work: two strong reviewers assess the same change independently, preferably from different suppliers when both are available, and the controller waits for both reviews before making repairs, while skeptics start validating each review's findings as soon as it arrives. Raised by the user on 2026-10-03, who settled the same day that two reviewers of the same model are an acceptable fallback without a second supplier, and that the controller merges the two results into one set of findings before any repair; the gate passes only when both reviewers come back clean, any repair sends both into a new round, and each side ends with a clean fresh-context assessment of its own. The commitments agreed with the user on 2026-10-04, recorded in the linked record: the user decides at agreement whether work gets the mode, which the controller may propose in the readback with its reason and which is never on by default, so the user accepts the roughly doubled review cost each time; a handed-over run keeps the agreed mode, with the controller recording any recommendation for it in the morning report; and when the work starts the user decides whether to enable it for all Nightshift work through the project-local AGENTS.md. Its gate needs two assessments where the runtime's reads one, so it needs a concise governing spec, a version increase and a decision on installed-host evidence before implementation.
+
+**Requires:** none.
+
 ## Exploring
 
 ### [Shared BACKLOG.md meta-index](features/backlog-meta-index.md)
@@ -307,10 +313,6 @@ Validate a feature implementation made by someone else, a human or an AI not par
 ### [Related field for non-dependency relations](features/related-field.md)
 
 Add an optional `**Related:**` field that declares relations between backlog entries that are not dependencies, such as shared work built by whichever ships first or a feature that offers more once another ships, so prose no longer has to carry them ambiguously. Raised by the user on 2026-10-03 after a review found three records whose mutual references could not be declared as `**Requires:**` without a cycle; the user settled that every Related relation is declared on both entries and that Related relations may form cycles. Its grammar, what the parser checks, whether Ready shows related entries, its consumers and the conversion of existing prose are open.
-
-### [Dual strong review for critical work](features/dual-strong-review.md)
-
-An extra strong review mode for critical work: two strong reviewers assess the same change independently, preferably from different suppliers when both are available, and the controller waits for both reviews before making repairs, while skeptics start validating each review's findings as soon as it arrives. Raised by the user on 2026-10-03, who settled the same day that two reviewers of the same model are an acceptable fallback without a second supplier, and that the controller merges the two results into one set of findings before any repair; the gate passes only when both reviewers come back clean, any repair sends both into a new round, and each side ends with a clean fresh-context assessment of its own. What counts as critical and who decides is open, as is the roughly doubled review cost.
 
 ### [Orchestration efficiency](features/orchestration-efficiency.md)
 
