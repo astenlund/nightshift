@@ -208,6 +208,12 @@ Finish the retained release-gate follow-ups for stale-branch versus genuine vers
 
 **Requires:** none.
 
+### [Model knowledge base](features/model-knowledge-base.md)
+
+Keep a user-editable knowledge base where both Nightshift and the user record observations about models, such as strengths, weaknesses, cost and availability, and consult it when making model choices, within what the model policy file permits. Raised by the user on 2026-10-03 while graduating that policy file. Today the operating brief carries fixed model observations that only a release changes. The commitments agreed with the user on 2026-10-04, recorded in the linked record, replacing the earlier answer that a user's file is the only source: the brief's observations move into a shipped defaults file that is always read, and each project gets `.nightshift/MODELS.md`, which init-backlog and Ready create when missing with commented-out examples copied from the defaults and which follows the backlog's track or ignore answer; a user's claim that contradicts a default wins where both cover the same version or either is unversioned; a claim naming an exact identifier or a family and version, such as "Fable 5.1", is version-specific and weighs most for that version, an unversioned claim next and a claim about another version least; the retrospective proposes dated, sourced entries that land only with the user's yes; and every model choice reads the entries for the permitted models and cites those that influenced it. It changes the operating brief, revise-lore, init-backlog and Ready, so it needs a concise governing spec, a version increase and a decision on installed-host evidence before implementation.
+
+**Requires:** none.
+
 ## Exploring
 
 ### [Shared BACKLOG.md meta-index](features/backlog-meta-index.md)
@@ -357,10 +363,6 @@ Deferred exploration of stronger enforcement for explicit command restrictions. 
 ### [Model choice per role: Opus 5.5 versus Fable](features/opus-versus-fable-role-choice.md)
 
 Investigate which roles could use Opus 5.5 instead of Fable without falling below their required capability and strength, and at what cost difference. The user reports Opus working well as default controller, unmeasured; live testing and pricing evidence settle any policy change.
-
-### [Model knowledge base](features/model-knowledge-base.md)
-
-Keep a user-editable knowledge base where both Nightshift and the user record observations about models, such as strengths, weaknesses, cost and availability, and consult it when making model choices, within what the model policy file permits. Raised by the user on 2026-10-03 while graduating that policy file. Today the operating brief carries fixed model observations that only a release changes; the user settled the same day that they move into the plugin's shipped defaults for the knowledge base, which apply when the user has no file, while a user's file, once present, is the only source. Where the knowledge base lives, what Nightshift writes to it and with whose approval, and how choices consult it are open.
 
 ### [Structured model teams](features/structured-model-teams.md)
 
