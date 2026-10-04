@@ -202,6 +202,12 @@ Restore inspected normalization of mixed LF/CRLF endings on the controlled backl
 
 **Requires:** none.
 
+### [Complete release-gate history diagnostics and checkout verification](features/v3-release-gate-diagnostics.md)
+
+Finish the retained release-gate follow-ups for stale-branch versus genuine version decreases and robust verification of required checkout depth. Preserve current release policy and avoid reviving obsolete assertion shapes. The commitments agreed with the user on 2026-10-04, recorded in the linked record: pass/fail stays as it is and only the diagnostics change; when the baseline is not an ancestor of HEAD, a failure leads with a stale-branch note naming the merge base, and only a version lower than the merge base's, or a decrease from an ancestor baseline, is reported as genuine; and the CI path confirms the baseline commit is present before comparing and names the checkout's fetch depth when it is missing, replacing v2's pinned workflow lines. It is repository tooling outside the shipped plugin, so it needs no version increase; an agreed readback is enough.
+
+**Requires:** none.
+
 ## Exploring
 
 ### [Shared BACKLOG.md meta-index](features/backlog-meta-index.md)
@@ -251,10 +257,6 @@ Have a spec finding justify demanded detail by naming the consequential gap, con
 ### [Complete shared backlog parsing and template consistency](features/v3-parser-consistency.md)
 
 Complete shared dependency metadata and continuation handling across Ready, setup and unwrap, preserving justified grammar differences and protected content. This includes one shared backlog file vocabulary and reconciled link-target filters, which the migration accounting audit of 2026-09-29 found still duplicated and divergent.
-
-### [Complete release-gate history diagnostics and checkout verification](features/v3-release-gate-diagnostics.md)
-
-Finish the retained release-gate follow-ups for stale-branch versus genuine version decreases and robust verification of required checkout depth. Preserve current release policy and avoid reviving obsolete assertion shapes.
 
 ### [Maintain verification evidence, fixtures and measured efficiency](features/v3-verification-infrastructure.md)
 
