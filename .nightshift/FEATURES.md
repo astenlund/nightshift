@@ -214,6 +214,12 @@ Keep a user-editable knowledge base where both Nightshift and the user record ob
 
 **Requires:** none.
 
+### [Recover review report formatting without repeating the assessment](features/v3-review-result-recovery.md)
+
+Complete the retained minimal-report contract with narrow correction or clarification of malformed results, preserving original substantive findings, attribution and evidence instead of automatically repeating the full review. Today a completed review whose report fails validation is discarded and the next candidate starts a fresh assessment. The commitments agreed with the user on 2026-10-05, recorded in the linked record: the runtime resumes the reviewer's own session once to re-emit the report in valid form; form faults are corrected by re-emitting, an evidence gap only by downgrading the report to incomplete, never by adding coverage evidence, and a skeptic's unevaluated finding, a session or termination failure and changed inputs keep today's handling; the receipt records the correction and keeps the original output; and a failed correction falls back to the next candidate as today. It changes the runtime's review dispatch, so it needs a concise governing spec, a version increase and a decision on installed-host evidence before implementation.
+
+**Requires:** none.
+
 ## Exploring
 
 ### [Shared BACKLOG.md meta-index](features/backlog-meta-index.md)
@@ -247,10 +253,6 @@ Carry the retained request-confidentiality requirement into current request file
 ### [Define and verify marketplace installation contents](features/v3-marketplace-surface.md)
 
 Finish the retained installed-package boundary: required runtime resources and intentional user documentation, with repository-maintenance material excluded where the host permits it. Distinguish marketplace caches from retained execution bundles.
-
-### [Recover review report formatting without repeating the assessment](features/v3-review-result-recovery.md)
-
-Complete the retained minimal-report contract with narrow correction or clarification of malformed results, preserving original substantive findings, attribution and evidence instead of automatically repeating the full review.
 
 ### [Carry settled decisions and experiment evidence into later reviews](features/v3-review-decision-context.md)
 
