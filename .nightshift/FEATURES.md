@@ -196,6 +196,12 @@ Restore the fresh-project setup choice to track the backlog in Git, ignore it, o
 
 **Requires:** none.
 
+### [Restore controlled mixed-line-ending repair](features/v3-mixed-ending-repair.md)
+
+Restore inspected normalization of mixed LF/CRLF endings on the controlled backlog surface, using the effective project convention and preserving recoverability. The commitments agreed with the user on 2026-10-04, recorded in the linked record: the repair covers the backlog files Ready and unwrap read, and only files that actually mix endings; Ready reports each such file as a notice; unwrap repairs it in the same recoverable write as its hard-wrap joins; the target ending is the one Git would write on checkout, otherwise the file's majority, with a tie put to the user or, with no user, left unchanged; and only line terminators change, with invalid encodings and stray carriage returns reported but never repaired. It changes Ready and unwrap, so it ships with a version increase; an agreed readback is enough.
+
+**Requires:** none.
+
 ## Exploring
 
 ### [Shared BACKLOG.md meta-index](features/backlog-meta-index.md)
@@ -273,10 +279,6 @@ Complete evidence for retained agreement behavior: qualified assent, compatible 
 ### [Relaunch unfinished work after host exit or restart](features/v3-host-relaunch.md)
 
 Restore unattended execution after a host exits or Windows restarts, beyond the currently supported user-driven reopen and reconciliation. Coordinate with Night Guard checkpointing without assuming it already restarts execution.
-
-### [Restore controlled mixed-line-ending repair](features/v3-mixed-ending-repair.md)
-
-Restore inspected normalization of mixed LF/CRLF endings on the controlled backlog surface, using the effective project convention and preserving recoverability.
 
 ### [Native helper for Windows process work](features/native-process-helper.md)
 

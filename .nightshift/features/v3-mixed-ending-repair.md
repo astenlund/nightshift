@@ -3,7 +3,6 @@ name: v3-mixed-ending-repair
 description: Restore controlled mixed-line-ending repair
 metadata:
   type: feature
-status: exploring
 ---
 
 # Restore controlled mixed-line-ending repair
@@ -20,11 +19,20 @@ The audit mixed-endings probe leaves mixed bytes unchanged even with unwrap enab
 
 The [independent shipped-capability audit](../reports/pre-v3-shipped-capability-audit-20260921.md) distinguishes actual code/probe evidence, instruction policy and unverified installed-host behavior. No capability in this entry is declared delivered by its restoration to the backlog.
 
-## Decisions and acceptance
+## Settled questions
 
-Settle the controlled target set, convention precedence and ambiguity handling. Verify BOM and byte preservation outside intended newline edits, hard-wrap composition, interruptions and idempotence. Keep invalid encodings and unrelated files outside silent normalization.
+The user agreed these answers on 2026-10-04, when the entry graduated from Exploring to current work. Each question is kept with its answer. Checked the same day: Ready parses entries through `scanMarkdown` in `internal/markdown.js`, which keeps each line's terminator but reports nothing about it and treats a lone carriage return as a line break, while unwrap and Ready's hard-wrap check read through `splitLines` in `internal/backlog-catalog.js`, which removes each line's carriage return before its checks and keeps the original ending for unwrap's writes, so nothing reports a mixed file today; the files Ready and unwrap read are `BACKLOG_FILES` and the Markdown under `BACKLOG_DIRECTORIES` in the same module; and this repository's `.gitattributes` sets `* text=auto eol=lf`.
 
-Dependable write/recovery behavior is tracked in the [unwrap data-loss bug](../bugs/setup-unwrap-partial-write-data-loss.md). [New-file newline policy](../bugs/setup-template-newline-policy.md) remains a distinct bug.
+- The controlled target set. Settled: the backlog files Ready and unwrap already read, meaning the seven top-level backlog files and the Markdown under `features/`, `bugs/` and `patterns/`; specs, reports and the inbox stay out. Only a file that actually mixes LF and CRLF is repaired; a file that uses one ending throughout is left alone, even when Git would check it out with the other.
+- How a mixed file is reported. Settled: Ready reports each one as a notice naming the file and the repair command, so `--check` fails on it.
+- Where the repair lives and how it composes with hard-wrap repair. Settled: in `unwrap.js`, beside the hard-wrap joins, so both repairs land in one write through unwrap's recoverable write. Without `--write` unwrap reports; with `--write` it repairs, and setup's existing `unwrap` option applies it too.
+- Convention precedence. Settled: first, the ending Git would write for that path on checkout, according to its attributes and configuration; when Git leaves the path's bytes unconverted, the ending most of the file's own lines already use.
+- Ambiguity handling. Settled: on a tie in the second step, the repair stops for that file and reports the tie, so the controller asks the user which ending to use and reruns with that choice; with no user available the file stays unchanged and the notice remains. Only line terminators change: a byte-order mark and the presence or absence of a final newline are kept, and a file with invalid UTF-8 or a carriage return not followed by a line feed is reported but never repaired.
+- How this relates to new-file line endings. Settled: [New setup templates ignore effective project newline policy](../BUGS.md#new-setup-templates-ignore-effective-project-newline-policy) remains a distinct bug, since materializing a new template is a different behavior from normalizing an existing file, but the first step of the precedence is the same rule, built once by whichever ships first.
+
+## Before implementation
+
+The change alters the Ready parser, unwrap, their fixtures and the guidance that describes unwrap, so it rides with a plugin version increase. An agreed readback is enough, since the repair reuses unwrap's recoverable write, which the fix of [Setup unwrap can lose existing backlog content after a partial write](../BUGS_HISTORY.md#setup-unwrap-can-lose-existing-backlog-content-after-a-partial-write) made dependable, and deterministic fixtures are enough evidence, since no model-owned behavior changes. Verify BOM and byte preservation outside intended newline edits, composition with hard-wrap joins, each step of the precedence and the tie with and without a user, interruptions and idempotence, and that invalid encodings and files outside the set are never normalized. Tracking and readiness do not authorize implementation.
 
 ## Triage and provenance
 
