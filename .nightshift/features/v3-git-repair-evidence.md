@@ -28,6 +28,13 @@ The migration accounting audit of 2026-09-29 found that this is missing instruct
 
 Since 3.3.2 the operating brief names history rewriting in one place: after every commit the controller confirms it landed on the run's intended branch and checkout, and a reconciliation of a mismatch that would rewrite history or discard work needs the user's decision, as does any destructive or irreversible action that recorded authority does not cover. That is an authority rule only; fixup targeting, autosquash verification and repair recovery remain uncovered, so this entry's checks and evidence obligations stand.
 
+## Added at the section-level audit's triage
+
+[The section-level audit of v2 records](../reports/v2-section-audit-20261004.md) found two parts of v2's [verified fixup transactions](verified-fixup-transactions.md) that the dispositions under [Repair commits and history rewriting](../../V3-MIGRATION.md#repair-commits-and-history-rewriting) did not carry into tracking. The user chose on 2026-10-04 to fold both into this entry and noted, in their words: "we had some autosquash conflicts yesterday".
+
+- One entry point. v2's design required that no Nightshift path create a fixup outside one checked mechanism; it never shipped, and v2's revise instructions still had the controller run `git commit --fixup` directly. The shared checks this entry establishes are to be the only way Nightshift creates a fixup, for the controller and its helpers alike, so that no fixup skips the target and autosquash checks.
+- Conditions on an authorized rewrite. The retirement of checkpoint autosquash keeps that "An authorized rewrite still needs a safe range, reconciled concurrent activity, recoverable original refs, and verification that content and required history properties are preserved." Nothing shipped or tracked states the first three. An authorized rewrite, including a pre-push autosquash the repository requires, is to confirm that its range is safe, such as holding only commits that never left the machine, that no other writer is changing the branch, and that the original refs stay recoverable, besides verifying the result.
+
 ## Triage and provenance
 
 Selected for tracking during the 2026-09-20 to 2026-09-21 triage. Related obligations share this outcome while retaining their own deciding cases:

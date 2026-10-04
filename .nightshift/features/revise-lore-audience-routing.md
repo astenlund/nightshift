@@ -32,6 +32,8 @@ The user agreed these answers on 2026-10-03, when the entry graduated from Explo
 
 Experiments a retrospective proposes, which the user asked for on 2026-10-03, are a further kind of retrospective output with their own durable destination, tracked by [Controller-run experiments](controller-run-experiments.md).
 
+Context facts the user supplied are another input, added on 2026-10-04 at the triage of [the section-level audit of v2 records](../reports/v2-section-audit-20261004.md). v2 wrote consequential facts the user supplied, such as a deployment target or a compatibility constraint, into the project's instructions so that a later session would not ask again ([Calibrate first-draft rigor to deployment context](calibrate-first-draft-rigor.md)). The migration retired that automatic writing, and its disposition under [Portability umbrella and continuations](../../V3-MIGRATION.md#portability-umbrella-and-continuations) rules out automatically turning session observations into rules, but nothing prompts a retrospective to propose recording such facts. The user chose to fold it in here: the retrospective looks for consequential context facts the user supplied during the session and proposes recording them at the destination this entry's routing chooses, through the usual approval.
+
 ## Before implementation
 
 The change is shipped guidance in the operating brief, revise-lore and three public skills, so it rides with a plugin version increase. Routing, precedence and the decision on a conflict are model-owned behavior, so the start of the work decides between a budgeted installed-host check and deterministic evidence only with that behavior marked unverified. Tracking and readiness do not authorize implementation.

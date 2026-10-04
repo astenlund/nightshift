@@ -33,7 +33,7 @@ The controller notices when administrative work (assignments, polling, result co
 ## Open questions
 
 - How the controller notices the trigger: a measure of context use, a count of administrative actions, or its own judgment against a stated threshold.
-- The supervisor's brief, model tier and reporting contract, including summaries that keep the evidence reachable, and how its results reach the run record through the controller.
+- The supervisor's brief, model tier and reporting contract, including summaries that keep the evidence reachable, and how its results reach the run record through the controller. The contract includes immediate escalation, added on 2026-10-04 at the triage of [the section-level audit of v2 records](../reports/v2-section-audit-20261004.md): v2's [night manager and shift supervisor draft](../migration/v2/features/night-manager-shift-supervisor.md) had a supervisor that met a safety, authority or repository-integrity violation pause what was safe to stop, preserve the evidence and wake the manager at once, and the migration dropped that with the executive packets without naming it. The supervisor is to do the same, escalating to the controller instead of waiting for its next routine report.
 - Whether it runs as a subagent inside the controller's session or as its own session, on each host.
 - How to evaluate it: the agreed order is reliable unattended progress and controller capacity first, then missed problems and handoff errors, then total cost.
 - Relations: [Orchestration efficiency](orchestration-efficiency.md) measures controller overhead, and [Incremental revise finding delivery](incremental-revise-finding-delivery.md) mentions a supervisor that could own finding fan-out.

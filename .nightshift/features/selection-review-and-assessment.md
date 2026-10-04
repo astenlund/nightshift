@@ -42,6 +42,10 @@ Amended with the user on 2026-10-03, while tracking [Offer to revisit an entry's
 
 The user suggested on 2026-10-03, while shaping [Controller-run experiments](controller-run-experiments.md), that deciding whether the selected work warrants an experiment, and proposing one, could be further background work running in parallel with the readback's review, so that Ready's question about spending tokens on experiments arrives with a concrete proposal. That entry tracks it; how it is split among the background agents falls under the agent count left open above.
 
+Amended on 2026-10-04 at the triage of [the section-level audit of v2 records](../reports/v2-section-audit-20261004.md). The v2 quick win this entry answers said that "a re-presentation after a requested change re-renders" the assessment "over the changed entry", while the When commitment above covers a re-presentation only by implication; [the operating brief](../../internal/workflow.md) already gives every revised spec a whole-spec assessment, but says nothing of a revised readback:
+
+- **Re-presentation.** A readback or spec presented again after a change the user requested gets fresh background work over the changed draft, under the same commitments as its first presentation.
+
 ## Direction
 
 The idea as first captured; the commitments above govern where they differ.

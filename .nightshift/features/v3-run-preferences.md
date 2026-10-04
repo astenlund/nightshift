@@ -28,6 +28,13 @@ Decide the preference source, scope and refresh rules, and which additional budg
 
 Coordinate with the [budget-controls bug](../BUGS.md#controller-treats-internal-token-ceilings-as-user-owned-budget-decisions) and the handover allowance and evidence-budget decisions that [Verify faked boundaries live](live-boundary-verification.md) carries. Their separate defects are not declared resolved.
 
+## Added at the section-level audit's triage
+
+[The section-level audit of v2 records](../reports/v2-section-audit-20261004.md) found two run-settings capabilities that left v2 without a disposition naming them, and the user chose on 2026-10-04 to fold both into this entry:
+
+- Raising a recorded limit mid-run. v2's [run-shaping settings](run-shaping-settings.md) kept that "Raising it mid-run stays possible". v3's deadline and dispatch limit are fixed at `create`, and resume, handover and adoption keep them, so a run that reaches a limit stops for good, while [the operating brief](../../internal/workflow.md) forbids replacing an unfinished run. [Run configuration](../../V3-MIGRATION.md#run-configuration) says only that limits "cannot be silently raised". Let the user raise a recorded limit of a running or stopped run on explicit authority, recorded in the run, never silently and never on the controller's own judgment.
+- Reporting the model behind each role. The v2 run-shaping proposal had the run report its resolved lanes, the host, model and effort of each role, once, so the morning report would not have to reconstruct them; v3 reports only substitutions, and even that report is the gap noted above. Have the closing report state the model and effort that ran each role, with substitutions and their reasons marked.
+
 ## Triage and provenance
 
 Selected for tracking during the 2026-09-20 to 2026-09-21 triage. Related obligations share this outcome while retaining their own deciding cases:
