@@ -341,14 +341,6 @@ Establish whether the Node 22 `--no-input-leaf` failure recurs with the 30-secon
 
 **Requires:** none.
 
-### Read-only launcher calls fail on a transient registry lock
-
-Observed on 2026-10-05 in run `5196a103-47f4-4efd-8012-a5a61ad2eb23` on installed 3.3.3. Three read-only runtime calls through the retained launcher, two `wait` and one `inspect`, failed with `retained-bootstrap-unavailable`, "database is locked", and empty stdout: twice while a long check running the runtime test files was in progress on the same project, and once as a review dispatch was starting. A retry a few seconds later succeeded each time, and no work was lost. The bootstrap opens its SQLite registry with a 5000 ms busy timeout (`internal/releases/bootstrap.js`), so something held the lock for longer; which connection held it, and whether the test files touched the retained store, is unverified. A controller that does not retry reads the failure as a lost result. The user chose to track it at the run's triage.
-
-Establish which database and connection held the lock, then let read-only status, inspect and wait ride out a transient lock held by a project operation, through a bounded retry or a busy timeout sized to the longest legitimate hold, with a fixture that holds the lock. Launcher changes ship with a version increase. Tracking does not authorize implementation.
-
-**Requires:** none.
-
 ### Resume targets reopen completed tasks
 
 Observed on 2026-10-05 in run `5196a103-47f4-4efd-8012-a5a61ad2eb23` on installed 3.3.3. After a repair in task docs-relief changed `.nightshift/QUICK_WINS.md`, status listed the completed task qw-dependency-lines' docs reviewer as a resume target with reason `stale-after-repair`. The operating brief asks the controller to resume the latest reviewer of any other review kind whose reviewed files a repair changed, so it did; importing the resumed receipt moved the completed task back to its review stage, since every task review import sets the stage to review (`internal/runtime/lifecycle.js`), and the task needed a fresh docs review and its checks rerun before it could complete again. A later docs review dispatched on the still-open task would have covered the completed task through `coveredTaskIds` without reopening it. When status later listed a second completed task's reviewer the same way, the controller did not resume it and the final covering docs review covered that task. The user chose to track it at the run's triage.
