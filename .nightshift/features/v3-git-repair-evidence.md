@@ -36,7 +36,7 @@ Since 3.3.2 the operating brief names history rewriting in one place: after ever
 
 ## Settled questions
 
-The user agreed these answers on 2026-10-05, when the entry graduated from Exploring to current work. Each question is kept with its answer. Checked the same day: [the operating brief](../../internal/workflow.md) still says only "Commit coherent local work under the user's Git policy and required hooks" about commits, and no instruction or check a run loads covers fixup targeting or autosquash verification.
+The user agreed these answers on 2026-10-05, when the entry graduated from Exploring to current work. Each question is kept with its answer. Checked the same day: about commits, [the operating brief](../../internal/workflow.md) still carries only "Commit coherent local work under the user's Git policy and required hooks" and the 3.3.2 landing-confirmation rule described above, and no instruction or check a run loads covers fixup targeting or autosquash verification.
 
 - The minimal shared checks, and how they are reached. Settled: one runtime operation is the only way Nightshift creates a fixup, for the controller and its helpers alike, and the operating brief says so. Whether a project uses fixups at all still comes from its Git policy; the checks apply whenever fixups are used.
 - How a fixup's target is chosen. Settled: by blame over the unpushed range, the commit that last touched the repaired lines, never the commit that introduced the feature, so a later commit that reshaped the region is the target. Hunks with different targets are split, or fall back as below, and a target that has already been pushed means no fixup.
