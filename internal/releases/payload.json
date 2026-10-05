@@ -1,17 +1,17 @@
 {
   "schema": 1,
   "name": "nightshift",
-  "version": "3.3.6",
+  "version": "3.3.7",
   "files": [
     {
       "path": ".claude-plugin/plugin.json",
       "bytes": 640,
-      "sha256": "6c5a1e1f944138f3bebec43cdb324b3db7711804a953f602d6cbdfee28bf8f3a"
+      "sha256": "e5f853250daf76eab87bd95d81de5460eb8254c028dd7a2de23d21ce11270402"
     },
     {
       "path": ".codex-plugin/plugin.json",
       "bytes": 1160,
-      "sha256": "152c5d3f4ea35246f612a19eb613f6837438e6688f863b75476dd40b906199bb"
+      "sha256": "1713733648d31586357d86eeb387d64adbc98933d59ed2c7e6a84e2a9e227586"
     },
     {
       "path": "LICENSE",
@@ -60,8 +60,8 @@
     },
     {
       "path": "internal/releases/REFERENCE.md",
-      "bytes": 29893,
-      "sha256": "4228977addde45ee00ed204b7cc5b63649b38740b5e23e8380a0cc8ce43ed876"
+      "bytes": 31374,
+      "sha256": "09a47c35b1394bcc6eb4226cd1a266051c8313aecbb526bcedfeaab7fe23aa1e"
     },
     {
       "path": "internal/releases/administration.js",
@@ -125,18 +125,18 @@
     },
     {
       "path": "internal/releases/processes.js",
-      "bytes": 7173,
-      "sha256": "f0cfc5e0843a926563ad90bccb4fd9473b6deca7513bb40eb0d83743260f4fe9"
+      "bytes": 7279,
+      "sha256": "9b6f29f5c42db900507abdc9a442483aadbd59f09b5d78fa135100d3460a5e9a"
     },
     {
       "path": "internal/releases/registry.js",
-      "bytes": 8457,
-      "sha256": "2789292d70b75df1915a8ff41f2dbcf847304b03c0f15f18567214a0d8cdf38c"
+      "bytes": 8850,
+      "sha256": "27089dca09440d64c895cc60105de34d56f65d07157e25f0328c5fd6a5a88fea"
     },
     {
       "path": "internal/releases/service.js",
-      "bytes": 58076,
-      "sha256": "8a5f126d3bd7b5d2bb8d46bf043f9e64e1f4c4a603778293d5ba610a8a69c2e9"
+      "bytes": 60451,
+      "sha256": "9b300ebbe2058eca856d4aaa907921086c785692a673ca021c2436118fd91228"
     },
     {
       "path": "internal/releases/settings-write.ps1",
