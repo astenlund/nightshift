@@ -17,6 +17,8 @@ Bounded acknowledgements and the controller-owned experiment ledger were simplif
 
 `buildPrompt` supplies requirements, the cumulative source, assigned findings and matching probes. Since the local 3.3.0 candidate, a resumed or replacement lead also receives the dispositions of its own findings recorded since its last report, and any dispatch can carry controller-chosen `review.acknowledgements`. A fresh review still receives no automatic projection of prior dispositions, and no review receives experiment conclusions. The active bug "Probe evidence about the host is discarded on any edit" is a concrete subset and remains its repair owner.
 
+Run `5196a103-47f4-4efd-8012-a5a61ad2eb23` on 2026-10-05 showed the cost of controller-chosen acknowledgements: a skeptic refuted a docs-review routing finding on task qw-dependency-lines, and the next fresh docs review (`3468fd47`), dispatched with acknowledgements written before the refutation, raised the same finding again as important and required, so a second skeptic (`4405d830`) had to refute it. It did not recur once the controller added the refutation to later dispatches' acknowledgements. The user chose at that run's triage to record it here as evidence for acknowledgements derived from the run record.
+
 The [independent shipped-capability audit](../reports/pre-v3-shipped-capability-audit-20260921.md) distinguishes actual code/probe evidence, instruction policy and unverified installed-host behavior. No capability in this entry is declared delivered by its restoration to the backlog.
 
 ## Decisions and acceptance
