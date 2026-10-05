@@ -357,14 +357,6 @@ Decide whether resume targets leave out reviewers of completed tasks that a cove
 
 **Requires:** none.
 
-### Runtime history fails on long runs
-
-Observed on 2026-10-05 after run `5196a103-47f4-4efd-8012-a5a61ad2eb23` completed, on installed 3.3.3: the runtime `history` operation through the retained launcher failed with `operation-failed`, "Invalid string length", and empty stdout for that run's 669 revisions. `RunStore.history` in `internal/runtime/store.js` returns every revision with its full hydrated state, and the result is written as one JSON document, which exceeded Node's maximum string length. Reading `.nightshift/runs/state.sqlite` read-only gave the timestamps the morning report needed. The user chose to track it at the run's triage.
-
-Make `history` usable on long runs, for example by returning transitions without their full state unless asked, by paging, or by streaming, with a fixture that builds a history past the string limit. Runtime changes ship with a version increase. Tracking does not authorize implementation.
-
-**Requires:** none.
-
 ## History
 
 Prior delivered work remains in [BUGS_HISTORY.md](BUGS_HISTORY.md).
