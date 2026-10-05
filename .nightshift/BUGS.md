@@ -357,6 +357,14 @@ Decide whether SessionStart's owner lookup gets a larger share of the 60-second 
 
 **Requires:** none.
 
+### [Agreement reached in ordinary chat activates the lifecycle](bugs/chat-agreement-lifecycle-activation.md)
+
+Observed on 2026-10-05 in this repository on Claude Code 2.1.289 with installed 3.3.3, run `7b7ad4bd-c137-4dc4-8300-eaab1be6e89b`. With no skill invoked, the user asked in ordinary chat for a README polish and answered "yes, go ahead" to a four-step readback that mentioned an attended run in one clause and did not say what it would cost. The controller created the run and carried the full lifecycle for about 68 minutes, with 12 review and skeptic dispatches that the incident report counts at 10,871,813 tokens, until the user stopped it: "no need for the nightshift mechanics, i just wanted the readme polished up a bit". The reviews raised seven minor findings, five of them confirmed and repaired. The controller followed five passages, in the repository `AGENTS.md`, [the operating brief](../internal/workflow.md) (twice), [the runtime reference](../internal/runtime/REFERENCE.md) and the description of [revise-code](../skills/revise-code/SKILL.md), none of which says how the agreement must be reached; all five were still present at the inbox triage of 2026-10-05, where the user chose to track this. Only this one Claude Code session was observed; Codex, other projects and the same request without the self-hosting sentence are untested.
+
+The user's direction after the stop: "this affects plugin behaviour, so any adjustments should be made in the plugin. agreed work means through the `/ready` skill. the user should be able to get things done quickly when just chatting with the main agent." Have a project's lifecycle requirement activate for work selected through Ready, and leave a request agreed in ordinary chat to be carried out directly; explicit handover and explicit revise requests are outside this entry. The user rejected narrowing the repository `AGENTS.md` sentence as the fix. [Choose how agreed work proceeds](features/agreed-work-choice.md) would let Ready-selected work be implemented without a runtime run, and how the two relate is settled when either is taken on. It changes shipped guidance with model-owned behavior, so it needs a version increase and a decision on installed-host evidence. [The record](bugs/chat-agreement-lifecycle-activation.md) preserves the incident report's evidence. Tracking does not authorize implementation.
+
+**Requires:** none.
+
 ## History
 
 Prior delivered work remains in [BUGS_HISTORY.md](BUGS_HISTORY.md).
