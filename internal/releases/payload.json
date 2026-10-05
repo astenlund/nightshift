@@ -1,17 +1,17 @@
 {
   "schema": 1,
   "name": "nightshift",
-  "version": "3.3.5",
+  "version": "3.3.6",
   "files": [
     {
       "path": ".claude-plugin/plugin.json",
       "bytes": 640,
-      "sha256": "8155b0b59629e3db64a46a01a5739ec3b8e3a5a5eda2fa82c40987fa7e871f8e"
+      "sha256": "6c5a1e1f944138f3bebec43cdb324b3db7711804a953f602d6cbdfee28bf8f3a"
     },
     {
       "path": ".codex-plugin/plugin.json",
       "bytes": 1160,
-      "sha256": "f9caa48f35e1705652f59e9a53789ba467ba3ea34a45392a028f7f739c49158b"
+      "sha256": "152c5d3f4ea35246f612a19eb613f6837438e6688f863b75476dd40b906199bb"
     },
     {
       "path": "LICENSE",
@@ -60,8 +60,8 @@
     },
     {
       "path": "internal/releases/REFERENCE.md",
-      "bytes": 28887,
-      "sha256": "c9f4bba2b9a57aa20de3ff836185f680cd5770d0e80a572b2dfe9533aeeabdbd"
+      "bytes": 29893,
+      "sha256": "4228977addde45ee00ed204b7cc5b63649b38740b5e23e8380a0cc8ce43ed876"
     },
     {
       "path": "internal/releases/administration.js",
@@ -125,8 +125,8 @@
     },
     {
       "path": "internal/releases/processes.js",
-      "bytes": 4167,
-      "sha256": "5b2563982ca2aa86c88ebce626ef126089abf83520b7cf63b313a36efb2f8a71"
+      "bytes": 7173,
+      "sha256": "f0cfc5e0843a926563ad90bccb4fd9473b6deca7513bb40eb0d83743260f4fe9"
     },
     {
       "path": "internal/releases/registry.js",
@@ -135,8 +135,8 @@
     },
     {
       "path": "internal/releases/service.js",
-      "bytes": 56916,
-      "sha256": "e75a379fb4c26307e7641c70c142c48be87fbd7dc98a8f5e1bce61395bbbfba8"
+      "bytes": 58076,
+      "sha256": "8a5f126d3bd7b5d2bb8d46bf043f9e64e1f4c4a603778293d5ba610a8a69c2e9"
     },
     {
       "path": "internal/releases/settings-write.ps1",
@@ -145,8 +145,8 @@
     },
     {
       "path": "internal/runtime/REFERENCE.md",
-      "bytes": 70441,
-      "sha256": "2ff94c9087d3d0b25c38b2880c38ec3033f13771b6c36ed219d0f449a28cccb4"
+      "bytes": 71008,
+      "sha256": "eadeeefa3759ff9deb1994e913bb883db36b36539b5a1ecb3513014a9da8a90d"
     },
     {
       "path": "internal/runtime/actions.js",
@@ -160,8 +160,8 @@
     },
     {
       "path": "internal/runtime/cli.js",
-      "bytes": 17657,
-      "sha256": "ea26b66d8b6640f317c8536fd4857005d6606870aa6c8d08ed85f852cdc19de1"
+      "bytes": 17819,
+      "sha256": "5248e105dfe793ed5dcc3e0a65bebbef32354987d2afe6f7f5356fff871aeae2"
     },
     {
       "path": "internal/runtime/continuation.js",
@@ -205,8 +205,8 @@
     },
     {
       "path": "internal/runtime/operations.js",
-      "bytes": 8843,
-      "sha256": "a535a48d4b05bf9f86e5a8fceb9ee85001c0254b0dc9c1af613d8f221bfe7618"
+      "bytes": 8986,
+      "sha256": "405496690ae6cc6ad9b8123f59105e1f7b9e5cdb0849c1eb02970369cb16aecb"
     },
     {
       "path": "internal/runtime/output-loop.js",
@@ -215,8 +215,8 @@
     },
     {
       "path": "internal/runtime/ownership.js",
-      "bytes": 10664,
-      "sha256": "eecbde2c0f07c96983be07025d4947b9d3ff070ba886c5dcb320dc65f5ec74c3"
+      "bytes": 11517,
+      "sha256": "7518d5454b32cbce85d6cb329fa8683bf13eca43d1bbb0c7c1f20d70e4359649"
     },
     {
       "path": "internal/runtime/probes.js",
