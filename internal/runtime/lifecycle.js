@@ -10,6 +10,7 @@ const { changedPaths, fileSha256, fresh, hash, inventorySnapshot, outsideGitWork
 const { exhaustedLimit } = require('./limits');
 const { CLOSING_TARGET, unknownActionMessage } = require('./actions');
 const { latestDispatchOf, lineageOf } = require('./continuation');
+const { scratchFailure, scratchStatus } = require('./scratch');
 
 const DIMENSIONS = Object.freeze({
   spec: ['intent-scope-acceptance', 'soundness-integration', 'failure-safety-recovery', 'clarity-consistency-proportionality'],
@@ -500,6 +501,7 @@ function obligationBrief(state, root = state.root, options = {}) {
     id: state.id, revision: state.revision, status: state.status, controller: state.controller,
     objective: state.objective, authority: state.authority, limits: state.limits, publication: state.publication,
     mode: state.mode, handover: state.handover ?? null, report: reportStatus(state, root), continuation: state.continuation ?? null,
+    scratch: options.verifyFreshness === false ? 'reconcile at acceptance' : scratchStatus(root, state.baseSha ?? null),
     resourceMode: state.resourceMode ?? 'legacy', resources: state.resources ?? null,
     executionResources: require('../releases/entry').executionResources(state), controllerClaim: state.controllerClaim ?? null, adoption: state.adoption ?? null,
     next: ready.map(task => ({
@@ -926,6 +928,8 @@ function transition(state, request) {
       const undocumented = state.tasks.filter(candidate => docsGateFailure(state.root, candidate, state) !== null).map(candidate => candidate.id);
       requireCondition(undocumented.length === 0, 'docs-review-required', `Every code and docs task needs a current independent docs review or a fresh mechanical exemption; tracking edits after triage need a current closing docs review. Missing for: ${undocumented.join(', ')}`);
       requireCondition(state.tasks.every(candidate => verificationGate(state.root, candidate)), 'verification-required', 'Every registered check must pass on current inputs before final acceptance');
+      const scratch = scratchFailure(state.root, state.baseSha ?? null);
+      requireCondition(scratch === null, 'committed-scratch', scratch);
       requireCondition(state.closing?.retrospectiveEvidence && state.closing?.triageEvidence, 'closing-required', 'Complete session retrospective and follow-up triage before final acceptance');
       // Checked here as well as at triage: a handover can arrive after triage was already recorded.
       requireCondition(reportSatisfied(state), 'report-required', 'A handed-over run records its morning report before final acceptance');

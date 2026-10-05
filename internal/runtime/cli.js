@@ -10,6 +10,7 @@ const { assertAction, commitmentsFor, findingKind, obligationBrief, sharesCumula
 const { DEFAULT_REVIEW_TIMEOUT_MS, dispatchReview, readReceipt, validateBase, validateRequest } = require('./review');
 const { exhaustedLimit, remainingTime, requireDispatchFits } = require('./limits');
 const { prepareProbe, runProbe } = require('./probes');
+const { scratchStatus } = require('./scratch');
 const { awaitWorker } = require('./wait');
 const { admitEntry, executionResources, savedResources } = require('../releases/entry');
 const { isReadOnlyAction, isRuntimeAction, unknownActionMessage } = require('./actions');
@@ -42,7 +43,8 @@ async function execute(root, request, dependencies = {}) {
       // Every run created through the runtime carries the docs gate; only fixtures reproducing earlier releases create one without it.
       const created = store.create({ ...request, resources, resourceMode: resources ? 'bound' : 'development', controllerClaim: controllerClaim(request.controller, observation, 0), docsGate: true });
 
-      return { ...created, controllerReady: true };
+      // The scratch status carries the warning that .tmp is not ignored before any agent writes scratch there.
+      return { ...created, controllerReady: true, scratch: scratchStatus(store.root) };
     }
     if (request.action === 'status') {
       const state = store.read(request.runId);
