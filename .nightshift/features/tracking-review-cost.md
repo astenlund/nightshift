@@ -34,6 +34,8 @@ Causes seen in that run:
 
 The routing cost recurred on 2026-10-05 in run `253965ee-2713-4140-bbd4-622bfa55eb61`, in task docs reviews rather than closing reviews: four of them (`81575dea`, `9e4dff57`, `117b81c5`, `8f5b2821`) each raised the routing notice as a finding for the operating-instruction files in the change, such as `internal/workflow.md` and the runtime references, although each review's requirements stated that a clean code assessment already covered the code change as it stood. Every imported notice needed a skeptic, which refuted it as a gap; the two skeptics dispatched for a routing notice alone cost 166,603 (`b3d0311b`) and 120,701 (`63275699`) reported tokens, and the other two notices shared a skeptic with confirmed findings. The settled separate routing field would have removed those two dispatches. Added at that run's triage.
 
+It recurred on 2026-10-06 in run `7837ca05-6458-43e3-b9b6-db5d7ffd49db`, again in a task docs review: the review `7f0af78c` raised the routing notice at important severity for `internal/releases/REFERENCE.md`, which the task's clean fresh code assessment `37d51fa2` had reviewed at the same bytes, and a skeptic dispatched for that notice alone (`a1c1d87e`, a Codex thread total of 547,730 tokens) refuted it. Added at that run's triage, after a quick win first proposed for it turned out to duplicate this entry.
+
 ## Settled questions
 
 The user agreed these answers on 2026-10-03, when the entry graduated from Exploring to current work. Each question is kept with its answer. Checked the same day: the docs-review brief in `internal/runtime/review.js` still asks the reviewer to "Report as a finding any changed file you judge to be operating instructions".
