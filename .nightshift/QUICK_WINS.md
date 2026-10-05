@@ -422,6 +422,14 @@ Reclaim run copies whose owning dispatch or probe has provably finished: remove 
 
 **Requires:** none.
 
+### Tell the init-backlog templates where retired features go
+
+Found on 2026-10-05 by the independent documentation review of the backlog session of 2026-10-04 to 2026-10-05, in which [Init-backlog ignore-shape election](features/init-backlog-ignore-shape-election.md) was retired into [FEATURES_HISTORY.md](FEATURES_HISTORY.md). This repository's FEATURES_HISTORY.md header and FEATURES.md History section now say that features retired without shipping are appended to the history file, each marked retired, but the templates init-backlog ships for new projects do not: [the history template](../skills/init-backlog/templates/features-history.md) introduces the file as "Implemented features" appended "When a feature (or a slice of a sliced feature) ships", and [the features template](../skills/init-backlog/templates/features.md) never says where a retired feature goes. The user chose to track it at the review's follow-up triage.
+
+Add the retirement convention to both templates so that a project set up from them has a stated place for a retirement, worded as this repository's two files now word it, and keep the templates consistent with the parser and their fixtures. Template changes ship with a version increase. Tracking does not authorize implementation.
+
+**Requires:** none.
+
 ## History
 
 Prior delivered work remains in [QUICK_WINS_HISTORY.md](QUICK_WINS_HISTORY.md).
