@@ -8,13 +8,15 @@ const { spawnSync } = require('node:child_process');
 const test = require('node:test');
 const { RunStore } = require('../internal/runtime/store');
 const { CLOSING_TARGET } = require('../internal/runtime/actions');
-const { DIMENSIONS, commitmentsFor, obligationBrief, transition } = require('../internal/runtime/lifecycle');
+const { DIMENSIONS, commitmentsFor, isDocumentationPath, obligationBrief, transition } = require('../internal/runtime/lifecycle');
 const { inventorySnapshot, outsideGitWorktree, snapshot, verifyCommand } = require('../internal/runtime/evidence');
 const { awaitWorker } = require('../internal/runtime/wait');
 const { fixtureControllerClaim, executeWithFixtureController } = require('./fixtures/controller-claim');
 
 const actor = { host: 'codex', session: 'controller' };
 const BACKLOG = '.nightshift/BUGS.md';
+// Prose a docs review does not cover alone, because it lies below the project root.
+const NESTED_DOC = 'docs/guide.md';
 const CODE_TASK = { id: 'code', title: 'Code change', agreement: { source: 'User', outcome: 'Accepted behavior' } };
 
 function git(root, args) {
@@ -23,7 +25,7 @@ function git(root, args) {
   return result.stdout.trim();
 }
 
-// A committed project with code, prose and backlog files, and a run over the given tasks.
+// A committed project with code, root and nested prose and backlog files, and a run over the given tasks.
 function fixture(t, tasks = [CODE_TASK], options = {}) {
   const parent = path.resolve(__dirname, '../.tmp/docs-review-tests');
   fs.mkdirSync(parent, { recursive: true });
@@ -35,6 +37,7 @@ function fixture(t, tasks = [CODE_TASK], options = {}) {
   git(root, ['init', '--quiet']);
   write('src.js', 'module.exports = 1;\n');
   write('README.md', '# Project\n');
+  write(NESTED_DOC, '# Guide\n');
   write(BACKLOG, '# Bugs\n');
   write('.nightshift/features/idea.md', '# Idea\n');
   git(root, ['add', '.']);
@@ -170,13 +173,13 @@ test('a code task needs a current docs review to complete, and a backlog-only do
   assert.equal(f.task().reviews.filter(review => review.kind === 'code').length, 1);
 });
 
-test('a docs repair outside the backlog needs code reassessment, and a code repair needs a fresh docs review too', t => {
+test('a docs repair outside the documentation a docs review covers needs code reassessment, and a code repair needs a fresh docs review too', t => {
   const f = fixture(t);
   toDocumentation(f);
-  f.review('code', 'docs', ['code'], [finding('readme')]);
-  f.confirm('code', f.findingId('readme'));
-  f.write('README.md', '# Project\n\nThe new option.\n');
-  f.act({ action: 'repair', taskId: 'code', findingIds: [f.findingId('readme')] });
+  f.review('code', 'docs', ['code'], [finding('guide')]);
+  f.confirm('code', f.findingId('guide'));
+  f.write(NESTED_DOC, '# Guide\n\nThe new option.\n');
+  f.act({ action: 'repair', taskId: 'code', findingIds: [f.findingId('guide')] });
   f.closeRepairs('code');
   f.review('code', 'docs');
   assert.throws(() => f.act({ action: 'advance', taskId: 'code' }), { code: 'review-required', message: /latest assessment is stale/ });
@@ -192,6 +195,35 @@ test('a docs repair outside the backlog needs code reassessment, and a code repa
   f.act({ action: 'advance', taskId: 'code' });
   f.act({ action: 'advance', taskId: 'code', evidence: 'Documentation reconciled' });
   assert.equal(f.task().status, 'complete');
+});
+
+test('documentation a docs review alone covers is the backlog, reports and root Markdown other than host instruction files', () => {
+  const covered = ['.nightshift/BUGS.md', '.nightshift/QUICK_WINS_HISTORY.md', '.nightshift/features/idea.md', '.nightshift/patterns/shared.md', '.nightshift/reports/acceptance.md', '.nightshift/reports/campaign/evidence.json', 'README.md', 'CHANGELOG.md', 'VISION.md', 'notes.MD'];
+  const uncovered = ['AGENTS.md', 'agents.md', 'AGENTS.override.md', 'CLAUDE.md', 'Claude.md', 'CLAUDE.local.md', '.nightshift/specs/plan.md', '.nightshift/MIGRATION_STATUS.md', '.nightshift/runs/reports/morning.md', NESTED_DOC, 'skills/ready/SKILL.md', 'internal/workflow.md', 'README.txt', 'src.js'];
+  for (const file of covered) assert.equal(isDocumentationPath(file), true, file);
+  for (const file of uncovered) assert.equal(isDocumentationPath(file), false, file);
+});
+
+test('root Markdown and report edits after the code assessment need only the docs review', t => {
+  const f = fixture(t);
+  toDocumentation(f);
+  f.write('README.md', '# Project\n\nDescribes the change.\n');
+  f.write('.nightshift/reports/acceptance.md', '# Acceptance\n');
+  f.review('code', 'docs');
+  f.act({ action: 'advance', taskId: 'code' });
+  f.act({ action: 'advance', taskId: 'code', evidence: 'Documentation reconciled' });
+  assert.equal(f.task().status, 'complete');
+  assert.equal(f.task().reviews.filter(review => review.kind === 'code').length, 1);
+});
+
+test('specs, host instruction files, operating instructions and nested prose stay under code reassessment', t => {
+  for (const file of ['.nightshift/specs/plan.md', 'AGENTS.md', 'Claude.md', 'CLAUDE.local.md', 'AGENTS.override.md', 'skills/demo/SKILL.md', NESTED_DOC, 'notes.txt']) {
+    const f = fixture(t);
+    toDocumentation(f);
+    f.write(file, '# Edited after the code assessment\n');
+    f.review('code', 'docs');
+    assert.throws(() => f.act({ action: 'advance', taskId: 'code' }), { code: 'review-required', message: /latest assessment is stale/ }, file);
+  }
 });
 
 test('a covering docs review from a later task keeps an earlier completed task current', t => {
@@ -360,17 +392,29 @@ test('an incomplete closing review neither completes the run nor reads as curren
   assert.equal(f.act({ action: 'complete' }).status, 'complete');
 });
 
-test('a closing review is refused when anything outside the backlog changed since triage, unless the user excluded it', t => {
+test('a closing review is refused when anything outside the documentation it covers changed since triage, unless the user excluded it', t => {
   const f = fixture(t);
   completeTask(f);
   close(f);
   f.write(BACKLOG, '# Bugs\n\nTracked follow-up.\n');
-  f.write('README.md', '# Project\n\nUser work in progress.\n');
-  assert.throws(() => f.act({ action: 'review', taskId: CLOSING_TARGET, review: f.assessment('docs', ['code']) }), { code: 'closing-scope', message: /README\.md/ });
-  const excluded = inventorySnapshot(f.root, ['README.md']);
+  f.write(NESTED_DOC, '# Guide\n\nUser work in progress.\n');
+  assert.throws(() => f.act({ action: 'review', taskId: CLOSING_TARGET, review: f.assessment('docs', ['code']) }), { code: 'closing-scope', message: /docs\/guide\.md/ });
+  const excluded = inventorySnapshot(f.root, [NESTED_DOC]);
   f.act({ action: 'review', taskId: CLOSING_TARGET, review: f.assessment('docs', ['code'], [], { snapshot: excluded, contextSnapshot: excluded }) });
-  // The record covers the backlog edits; the task's own gate still sees the change outside the backlog.
+  // The record covers the tracking edits; the task's own gate still sees the change outside the documentation it covers.
   assert.throws(() => f.act({ action: 'complete' }), { code: 'stale-review' });
+});
+
+test('a closing review covers report and root Markdown edits made after triage', t => {
+  const f = fixture(t);
+  completeTask(f);
+  close(f);
+  f.write(BACKLOG, '# Bugs\n\nArchived entry.\n');
+  f.write('.nightshift/reports/acceptance.md', '# Acceptance\n\nLink to the archived entry.\n');
+  f.write('README.md', '# Project\n\nLink to the archived entry.\n');
+  assert.throws(() => f.act({ action: 'complete' }), { code: 'closing-review-required' });
+  f.act({ action: 'review', taskId: CLOSING_TARGET, review: f.assessment('docs', ['code']) });
+  assert.equal(f.act({ action: 'complete' }).status, 'complete');
 });
 
 test('re-recorded triage starts a new closing record and a retrospective clears it', t => {
@@ -505,7 +549,7 @@ test('only a project with no .git entry on its discovery path and no Git redirec
   });
 });
 
-test('a Git failure never waives closing coverage, and outside Git any backlog change after triage refuses completion', t => {
+test('a Git failure never waives closing coverage, and outside Git any documentation change after triage refuses completion', t => {
   const lore = [{ id: 'lessons', title: 'Retrospective', kind: 'lore', agreement: { source: 'User', outcome: 'Reflect without an instruction proposal' } }];
   const broken = fixture(t, lore);
   broken.act({ action: 'advance', taskId: 'lessons', evidence: 'Retrospective completed' });
@@ -548,6 +592,12 @@ test('a Git failure never waives closing coverage, and outside Git any backlog c
     assert.throws(() => tracked.act({ action: 'complete' }), { code: 'closing-review-required', message: /outside Git/ });
     fs.writeFileSync(path.join(tracked.root, '.nightshift', 'features', 'idea.md'), '# Idea\n');
     assert.equal(tracked.act({ action: 'complete' }).status, 'complete');
+
+    const rooted = outside('rooted');
+    fs.writeFileSync(path.join(rooted.root, 'README.md'), '# Added after triage\n');
+    assert.throws(() => rooted.act({ action: 'complete' }), { code: 'closing-review-required', message: /outside Git/ });
+    fs.rmSync(path.join(rooted.root, 'README.md'));
+    assert.equal(rooted.act({ action: 'complete' }).status, 'complete');
   });
 });
 

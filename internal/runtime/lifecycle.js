@@ -19,13 +19,22 @@ const DIMENSIONS = Object.freeze({
 
 const REPORT_DIRECTORY = '.nightshift/runs/reports/';
 
-// The Nightshift backlog: the four indexes, their history files and the record directories. Only these paths can be
-// relieved from code reassessment by a docs review, because triage and tracking edits are confined to them.
+// Documentation a docs review alone covers: the Nightshift backlog (the four indexes, their history files and the record
+// directories), Nightshift's durable reports, and Markdown files at the project root other than host instruction files. Only
+// these paths can be relieved from code reassessment by a docs review, and a closing review covers edits to them alone.
+// Governing specs, operating instructions, Markdown below the root and every other file stay under code assessment.
 const BACKLOG_FILES = Object.freeze(['.nightshift/FEATURES.md', '.nightshift/BUGS.md', '.nightshift/QUICK_WINS.md', '.nightshift/PATTERNS.md', '.nightshift/FEATURES_HISTORY.md', '.nightshift/BUGS_HISTORY.md', '.nightshift/QUICK_WINS_HISTORY.md']);
-const BACKLOG_DIRECTORIES = Object.freeze(['.nightshift/features/', '.nightshift/bugs/', '.nightshift/patterns/']);
+const DOCUMENTATION_DIRECTORIES = Object.freeze(['.nightshift/features/', '.nightshift/bugs/', '.nightshift/patterns/', '.nightshift/reports/']);
+// The hosts load these as operating instructions; matched case-insensitively, as Windows resolves them.
+const HOST_INSTRUCTION_FILES = new Set(['agents.md', 'agents.override.md', 'claude.md', 'claude.local.md']);
 
-function isBacklogPath(file) {
-  return BACKLOG_FILES.includes(file) || BACKLOG_DIRECTORIES.some(directory => file.startsWith(directory));
+function isRootDocumentation(file) {
+  const name = file.toLowerCase();
+  return !name.includes('/') && name.endsWith('.md') && !HOST_INSTRUCTION_FILES.has(name);
+}
+
+function isDocumentationPath(file) {
+  return BACKLOG_FILES.includes(file) || DOCUMENTATION_DIRECTORIES.some(directory => file.startsWith(directory)) || isRootDocumentation(file);
 }
 
 // Operations that act on the closing record; everything else about a task, such as its stages and blockers, does not apply to it.
@@ -49,33 +58,40 @@ function closingRecord(baseline) {
   return { id: CLOSING_TARGET, kind: 'closing', baseline, reviews: [], findings: [], checks: [], probeEvidence: [] };
 }
 
-// The project inventory at triage, against which a closing review must show backlog-only changes. An empty inventory is an empty
-// baseline. When Git cannot inventory the project, only a project positively outside Git gets a baseline, read from its backlog
-// files on disk, so completion can still tell whether tracking edits followed; otherwise null, which fails closed.
+// The project inventory at triage, against which a closing review must show documentation-only changes. An empty inventory is an
+// empty baseline. When Git cannot inventory the project, only a project positively outside Git gets a baseline, read from its
+// documentation files on disk, so completion can still tell whether tracking edits followed; otherwise null, which fails closed.
 function triageBaseline(root) {
   try {
     if (projectInventory(root).length === 0) return { digest: hash(JSON.stringify([])), files: [], inventory: true, excludedPaths: [], includedPaths: [] };
     return inventorySnapshot(root);
   } catch {
     try {
-      return outsideGitWorktree(root) ? backlogBaseline(root) : null;
+      return outsideGitWorktree(root) ? documentationBaseline(root) : null;
     } catch {
-      // An unreadable or linked backlog entry leaves no baseline, which fails closed.
+      // An unreadable or linked documentation entry leaves no baseline, which fails closed.
       return null;
     }
   }
 }
 
-// The backlog files present on disk, read without Git: the index and history files, and the record directories recursively.
-function backlogFilesOnDisk(root) {
+// The documentation files present on disk, read without Git: the backlog index and history files, the root Markdown files other
+// than host instruction files, and the documentation directories recursively.
+function documentationFilesOnDisk(root) {
   const files = BACKLOG_FILES.filter(file => fs.existsSync(projectFile(root, file)));
-  for (const directory of BACKLOG_DIRECTORIES) {
+  // A linked entry could hide a change, so it makes the documentation unreadable rather than skipped.
+  const unlinked = entry => {
+    if (entry.isSymbolicLink()) throw new Error(`Linked documentation entry ${entry.name}`);
+    return entry.isFile();
+  };
+  for (const entry of fs.readdirSync(root, { withFileTypes: true })) {
+    if (isRootDocumentation(entry.name) && unlinked(entry)) files.push(entry.name);
+  }
+  for (const directory of DOCUMENTATION_DIRECTORIES) {
     const absolute = projectFile(root, directory.slice(0, -1));
     if (!fs.existsSync(absolute)) continue;
     for (const entry of fs.readdirSync(absolute, { recursive: true, withFileTypes: true })) {
-      // A linked entry could hide a change, so it makes the backlog unreadable rather than skipped.
-      if (entry.isSymbolicLink()) throw new Error(`Linked backlog entry ${entry.name}`);
-      if (entry.isFile()) files.push(path.relative(root, path.join(entry.parentPath, entry.name)).split(path.sep).join('/'));
+      if (unlinked(entry)) files.push(path.relative(root, path.join(entry.parentPath, entry.name)).split(path.sep).join('/'));
     }
   }
   return files.sort();
@@ -85,16 +101,17 @@ function identitiesOnDisk(root, files) {
   return files.length === 0 ? [] : snapshot(root, files).files;
 }
 
-function backlogBaseline(root) {
-  const files = identitiesOnDisk(root, backlogFilesOnDisk(root));
+// The marker keeps the name it had when only the backlog was read from disk, so baselines saved by earlier releases still read.
+function documentationBaseline(root) {
+  const files = identitiesOnDisk(root, documentationFilesOnDisk(root));
   return { digest: hash(JSON.stringify(files)), files, backlogOnly: true };
 }
 
-// Backlog paths that appeared, disappeared or changed bytes since a baseline read from disk; null when that cannot be established.
-function changedBacklogPaths(root, baseline) {
+// Documentation paths that appeared, disappeared or changed bytes since a baseline read from disk; null when that cannot be established.
+function changedDocumentationPaths(root, baseline) {
   try {
     const recorded = new Map(baseline.files.map(file => [file.path, file.sha256]));
-    const present = new Map(identitiesOnDisk(root, backlogFilesOnDisk(root)).map(file => [file.path, file.sha256]));
+    const present = new Map(identitiesOnDisk(root, documentationFilesOnDisk(root)).map(file => [file.path, file.sha256]));
     return [...new Set([...recorded.keys(), ...present.keys()])].filter(file => recorded.get(file) !== present.get(file)).sort();
   } catch {
     return null;
@@ -283,7 +300,7 @@ function reviewGateFailure(root, task, state) {
   const lead = leadKind(task);
   const review = leadEntry(task, state)?.review;
   if (!acceptableAssessment(review, task)) return 'unmet';
-  if (!fresh(root, review.snapshot) && !backlogRelief(root, task, state, review)) return 'stale';
+  if (!fresh(root, review.snapshot) && !documentationRelief(root, task, state, review)) return 'stale';
   if (!DIMENSIONS[lead].every(dimension => review.dimensions.includes(dimension))) return 'unmet';
   if (!verificationGate(root, task)) return 'unmet';
   const findings = task.findings.filter(finding => findingKind(finding, task) === lead);
@@ -296,12 +313,12 @@ function reviewGate(root, task, state) {
   return reviewGateFailure(root, task, state) === null;
 }
 
-// A code assessment stale only because backlog paths changed counts as current once a current docs review covers the task.
+// A code assessment stale only because documentation paths changed counts as current once a current docs review covers the task.
 // Lore tasks gain this only from the closing docs review, since task-level docs reviews never cover them; a governing spec never gains it.
-function backlogRelief(root, task, state, review) {
+function documentationRelief(root, task, state, review) {
   if (!state || task.kind === 'spec' || review.snapshot?.inventory !== true) return false;
   const changed = changedPaths(root, review.snapshot);
-  if (!changed || !changed.every(isBacklogPath)) return false;
+  if (!changed || !changed.every(isDocumentationPath)) return false;
   return docsReviewFailure(root, task, state, { closingOnly: task.kind === 'lore' }) === null;
 }
 
@@ -351,19 +368,19 @@ function closingRecordFailure(root, state) {
 
 const CLOSING_COVERAGE = Object.freeze({
   unreviewed: 'Changes since triage need a current, complete and resolved closing docs review',
-  'outside-git': 'The backlog changed after triage in a project outside Git, where no independent review can be dispatched; revert those tracking edits, or make them in a Git worktree where a closing docs review can cover them',
+  'outside-git': 'Documentation changed after triage in a project outside Git, where no independent review can be dispatched; revert those tracking edits, or make them in a Git worktree where a closing docs review can cover them',
   'no-baseline': 'The changes since triage cannot be established; record triage again once Git can inspect the project',
 });
 
 // Why completion lacks closing coverage, as a CLOSING_COVERAGE key, or null when it holds. Anything changed since triage needs a
 // current resolved closing review, whether or not a task gate depends on it. A baseline read from disk belongs to a project outside
-// Git, where no review can be dispatched, so any backlog change there fails closed; a missing or unreadable baseline fails closed too.
+// Git, where no review can be dispatched, so any documentation change there fails closed; a missing or unreadable baseline fails closed too.
 function closingCoverageFailure(root, state) {
   const record = state.closing?.docs;
   if (!record) return null;
   if (!record.baseline) return 'no-baseline';
   if (record.baseline.backlogOnly) {
-    const changed = changedBacklogPaths(root, record.baseline);
+    const changed = changedDocumentationPaths(root, record.baseline);
     return changed === null ? 'no-baseline' : changed.length === 0 ? null : 'outside-git';
   }
   const changed = changedPaths(root, record.baseline);
@@ -424,7 +441,7 @@ function latestRepair(task) {
 }
 
 // The assessments a task's code or spec gate and its docs gate read, each with its owner, that no longer match current inputs. A gate
-// judges the currency of an assessment it accepts, so backlog relief and covering assessments count; it never reports stale one it
+// judges the currency of an assessment it accepts, so documentation relief and covering assessments count; it never reports stale one it
 // does not accept, such as a continued, incomplete or narrow one, which is outdated once its reviewed inputs changed.
 function staleGateEntries(root, task, state) {
   const outdated = (failure, entry) => Boolean(entry) && (failure === 'stale' || !acceptableAssessment(entry.review, task) && !fresh(root, entry.review.snapshot));
@@ -502,7 +519,7 @@ function obligationBrief(state, root = state.root, options = {}) {
     blockers: active.filter(task => task.blocker).map(task => ({ id: task.id, blocker: task.blocker })),
     workers: state.workers.filter(workerIsActive),
     followups: state.followups.filter(item => item.status !== 'resolved'),
-    rules: `Continue authorized independent work and recovery. Every repair needs cumulative strong broad review: resume the reviewer that raised each repaired finding to record its closure, and pass a gate only on a fresh assessment. Validate every finding with a fresh skeptic before disposition. Preserve writer ownership. Update documentation and obtain its independent docs review, then retrospective, then follow-up triage; a handed-over run records its morning report before triage. Tracking edits after triage are backlog-only and need a closing docs review (task ${CLOSING_TARGET}) before completion. Missing or stale evidence is incomplete. Publication requires authority. Reconcile this record with actual files after compaction.`,
+    rules: `Continue authorized independent work and recovery. Every repair needs cumulative strong broad review: resume the reviewer that raised each repaired finding to record its closure, and pass a gate only on a fresh assessment. Validate every finding with a fresh skeptic before disposition. Preserve writer ownership. Update documentation and obtain its independent docs review, then retrospective, then follow-up triage; a handed-over run records its morning report before triage. Tracking edits after triage stay within the backlog and the other documentation a docs review alone covers, and need a closing docs review (task ${CLOSING_TARGET}) before completion. Missing or stale evidence is incomplete. Publication requires authority. Reconcile this record with actual files after compaction.`,
   };
 }
 
@@ -531,14 +548,14 @@ function assertClosingAction(state, request) {
   return record;
 }
 
-// Each changed path since the triage baseline, apart from user-owned files the review excluded, must lie in the backlog.
+// Each changed path since the triage baseline, apart from user-owned files the review excluded, must be documentation a docs review covers.
 function closingScopeFailure(root, record, review) {
-  if (!record.baseline) return 'This closing record has no triage baseline, so a closing review cannot establish that only backlog paths changed';
+  if (!record.baseline) return 'This closing record has no triage baseline, so a closing review cannot establish that only documentation paths changed';
   const excluded = new Set(review.contextSnapshot?.excludedPaths ?? []);
   const changed = changedPaths(root, record.baseline);
   if (!changed) return 'The difference from the triage baseline cannot be established';
-  const outside = changed.filter(file => !excluded.has(file) && !isBacklogPath(file));
-  return outside.length === 0 ? null : `A closing review covers backlog edits only; these paths changed outside the backlog since triage: ${outside.slice(0, 20).join(', ')}`;
+  const outside = changed.filter(file => !excluded.has(file) && !isDocumentationPath(file));
+  return outside.length === 0 ? null : `A closing review covers edits to the backlog, .nightshift/reports and root Markdown other than host instruction files only; these paths changed outside them since triage: ${outside.slice(0, 20).join(', ')}`;
 }
 
 function assertAction(state, request) {
@@ -898,7 +915,7 @@ function transition(state, request) {
       requireCondition(state.tasks.every(candidate => candidate.status === 'complete'), 'unfinished-work', 'Queue still has incomplete work');
       requireCondition(state.workers.every(worker => !workerIsActive(worker)), 'active-workers', 'Workers remain active');
       requireCondition(state.tasks.every(candidate => specReady(state, candidate)), 'spec-review-required', 'Every governing spec still requires current independent assessment');
-      // Checked first, because an unresolved closing review also withholds the backlog relief the gates below depend on.
+      // Checked first, because an unresolved closing review also withholds the documentation relief the gates below depend on.
       requireCondition(closingRecordFailure(state.root, state) === null, 'closing-review-unresolved', 'The closing docs review is unresolved: its latest review is not a complete strong docs assessment covering all five dimensions, a finding is unsettled, a repair postdates its latest review or a check fails');
       const coverage = closingCoverageFailure(state.root, state);
       requireCondition(coverage === null, 'closing-review-required', CLOSING_COVERAGE[coverage]);
@@ -920,4 +937,4 @@ function transition(state, request) {
   }
 }
 
-module.exports = { DIMENSIONS, assertAction, commitmentsFor, completeAssessment, findingKind, isBacklogPath, obligationBrief, reportNotice, reviewGate, reviewProgress, sharesCumulativeAssessment, targetById, taskById, transition, unresolvedFindings };
+module.exports = { DIMENSIONS, assertAction, commitmentsFor, completeAssessment, findingKind, isDocumentationPath, obligationBrief, reportNotice, reviewGate, reviewProgress, sharesCumulativeAssessment, targetById, taskById, transition, unresolvedFindings };
