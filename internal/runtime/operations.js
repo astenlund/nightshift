@@ -46,8 +46,9 @@ function prepareCommand(root, check) {
 
 async function reservedOperation(store, request, work, dependencies = {}) {
   const id = randomUUID();
-  const helperProcess = (dependencies.information ?? processes.information)(process.pid, null, store.root);
-  requireCondition(helperProcess?.found === true, 'operation-owner-unavailable', 'Cannot reserve execution without its actual helper process identity');
+  let inspectionFailure = null;
+  const helperProcess = (dependencies.information ?? processes.information)(process.pid, null, store.root, { onFailure: cause => { inspectionFailure = cause; } });
+  requireCondition(helperProcess?.found === true, 'operation-owner-unavailable', 'Cannot reserve execution without its actual helper process identity' + processes.inspectionFailureDetail(inspectionFailure));
   const terminationPath = `.nightshift/runs/operations/${id}/termination.json`;
   const pending = request.action === 'check' ? { attemptId: id, name: request.check.name, passed: false, pending: true, error: 'Reserved execution has no collected result', snapshot: snapshot(store.root, request.check.paths) } : null;
   const registered = store.update(request.actor, request.revision, 'operation-reserved', state => {

@@ -21,22 +21,26 @@ function processIdentity(value) {
   return value && Number.isSafeInteger(value.pid) && value.pid > 0 && typeof value.created === 'string' && value.created.length > 0 && typeof value.name === 'string' && value.name.length > 0;
 }
 
+// Returns the observed controller process, or a null process with the reason; inspectionFailed tells a failed inspection from an established absence.
 function observeController(root, actor, dependencies = {}) {
   requireCondition(identity(actor), 'invalid-controller', 'A supported host and actual nonempty session identity are required');
   let observed = null;
+  let inspectionFailure = null;
+  const options = { onFailure: cause => { inspectionFailure = cause; } };
   try {
     // The observation is an owner record, a not-found observation that may name where the ancestry broke, or null.
-    observed = (dependencies.nativeOwner ?? processes.observeNativeOwner)(actor.host, root);
-    const alive = processIdentity(observed) && (dependencies.ownerAlive ?? processes.ownerAlive)(observed, root);
-    if (alive === true) return { process: { pid: observed.pid, created: observed.created, name: observed.name }, reason: null };
+    observed = (dependencies.nativeOwner ?? processes.observeNativeOwner)(actor.host, root, options);
+    const alive = processIdentity(observed) && (dependencies.ownerAlive ?? processes.ownerAlive)(observed, root, options);
+    if (alive === true) return { process: { pid: observed.pid, created: observed.created, name: observed.name }, reason: null, inspectionFailed: false };
   } catch {
     // A failed native observation never grants controller authority.
   }
 
-  return { process: null, reason: unobservedReason(observed) };
+  return { process: null, reason: unobservedReason(observed, inspectionFailure), inspectionFailed: inspectionFailure !== null };
 }
 
-function unobservedReason(observed) {
+function unobservedReason(observed, inspectionFailure) {
+  if (inspectionFailure !== null) return `The current native controller process could not be observed because process inspection failed (${inspectionFailure}); a failed inspection grants no work, and the request can be retried`;
   const child = observed?.found === false ? observed.exitedParent?.child : null;
   if (typeof child !== 'string' || child.length === 0) return 'The current native controller process could not be positively identified and observed alive';
 
@@ -54,6 +58,8 @@ function assertControllerClaim(state, request, dependencies) {
   // A complete run admits no engineering claim, so its closing docs review is owner bookkeeping like the report operations.
   if (state.status === 'complete' && request.taskId === CLOSING_TARGET) return;
   const observation = observeController(state.root, request.actor, dependencies);
+  // A saved claim may still be valid when only the inspection failed, so that refusal names the failure instead of asking for a new claim.
+  requireCondition(!observation.inspectionFailed, 'controller-claim-required', observation.reason);
   requireCondition(observation.process && isDeepStrictEqual(state.controllerClaim?.controller, request.actor) && isDeepStrictEqual(state.controllerClaim?.process, observation.process), 'controller-claim-required', 'Obtain a successful claim-controller in this turn before engineering; a missing, failed or previous process claim grants no work');
 }
 

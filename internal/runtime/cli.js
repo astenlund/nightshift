@@ -17,7 +17,7 @@ const { isReadOnlyAction, isRuntimeAction, unknownActionMessage } = require('./a
 const { ADOPTION_PROTOCOL, assertControllerClaim, controllerClaim, forbiddenReviewSessions, observeController } = require('./ownership');
 const { reservedCheck, reservedOperation } = require('./operations');
 const { continuesRecord, lineageOf, resolveContinuation } = require('./continuation');
-const { information } = require('../releases/processes');
+const { information, inspectionFailureDetail } = require('../releases/processes');
 
 function requireRuntimeAction(request) {
   requireCondition(isRuntimeAction(request?.action), 'invalid-request', unknownActionMessage(request?.action));
@@ -108,8 +108,9 @@ async function execute(root, request, dependencies = {}) {
       const id = randomUUID();
       const closing = task.kind === 'closing';
       requireCondition(!closing || ['docs', 'skeptic'].includes(request.review.kind), 'wrong-review-kind', 'The closing record takes docs reviews and their skeptics only');
-      const helperProcess = (dependencies.information ?? information)(process.pid, null, store.root);
-      requireCondition(helperProcess?.found === true, 'operation-owner-unavailable', 'Cannot dispatch without identifying its actual helper process');
+      let inspectionFailure = null;
+      const helperProcess = (dependencies.information ?? information)(process.pid, null, store.root, { onFailure: cause => { inspectionFailure = cause; } });
+      requireCondition(helperProcess?.found === true, 'operation-owner-unavailable', 'Cannot dispatch without identifying its actual helper process' + inspectionFailureDetail(inspectionFailure));
       // The closing review covers every task whose assessment tracking edits can stale; a task review covers its cumulative siblings.
       const coveredTasks = closing
         ? state.tasks.filter(candidate => ['code', 'docs', 'lore'].includes(candidate.kind))

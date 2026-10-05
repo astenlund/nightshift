@@ -125,6 +125,24 @@ test('injected native observations do not grant a missing or mismatched controll
   } finally { store.close(); }
 });
 
+test('a dispatch whose helper inspection fails names the cause and reserves nothing', async t => {
+  const f = fixture(t);
+  const store = new RunStore(f.root, { create: true });
+  const actor = { host: 'codex', session: 'controller' };
+  store.create({ objective: f.requirements, authority: 'User', controller: actor, tasks: [{ id: f.taskId, title: 'Work', agreement: { source: 'User', outcome: f.requirements } }] });
+  store.update(actor, 0, 'fixture-claim', state => { state.controllerClaim = fixtureControllerClaim(actor); });
+  let calls = 0;
+  const information = (pid, host, root, options) => { options?.onFailure?.('PowerShell exited with code 1: Get-CimInstance failed; retry: timed out after 29600 ms'); return null; };
+  try {
+    const before = store.read();
+    const refused = await executeWithFixtureController(f.root, { action: 'dispatch', actor, revision: before.revision, taskId: f.taskId, review: { ...f, kind: 'code' } }, { runAgent: () => { calls++; throw new Error('Unexpected model call'); }, information }).catch(error => error);
+    assert.equal(refused.code, 'operation-owner-unavailable');
+    assert.equal(refused.message, 'Cannot dispatch without identifying its actual helper process: process inspection failed (PowerShell exited with code 1: Get-CimInstance failed; retry: timed out after 29600 ms); nothing was granted, and the request can be retried');
+    assert.deepEqual(store.read(), before);
+    assert.equal(calls, 0);
+  } finally { store.close(); }
+});
+
 for (const owner of ['docs', 'code']) {
   test(`a cumulative dispatch on a ${owner} task covers completed code and docs tasks but not spec or lore tasks`, async t => {
     const f = fixture(t);

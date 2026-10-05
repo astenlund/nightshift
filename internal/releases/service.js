@@ -23,6 +23,7 @@ const MAINTENANCE = new Set(['worker-finished', 'review', 'validate', 'dialogue'
 // The closed list of entries admitted without observed continuation activation.
 const ACTIVATION_EXEMPT = new Set(['ready']);
 const ENTRY_CHOICE = 'Choose ready, unwrap, setup or runtime';
+const MISSING_ACTIVATION = 'This native session has not observed the current Nightshift hook generation; open or reopen it before protected work';
 
 function defaultStore() { return path.join(process.env.LOCALAPPDATA ?? path.join(os.homedir(), 'AppData', 'Local'), 'Nightshift'); }
 
@@ -120,6 +121,11 @@ class ReleaseService {
     // snapshot that feeds a configuration write must be re-read across it and so is never
     // memoized; the read-only Codex listings are simply not shared yet.
     this.settingsCache = new Map();
+  }
+
+  // Process inspection options for this operation: a registered hook keeps the shorter budget that fits its host timeout.
+  inspection(onFailure) {
+    return { budgetMs: this.context.nativeHook ? processes.HOOK_INSPECTION_BUDGET_MS : processes.INSPECTION_BUDGET_MS, onFailure };
   }
 
   registry(action, options = {}) {
@@ -283,7 +289,7 @@ class ReleaseService {
       const nativeState = await this.dependencies.inspectHooks(registration, registration.profile, { project, cache: this.settingsCache });
       const activation = session ? this.registry(registry => registry.get('activation', sessionKey(key, session))) : null;
       saved.native = nativeState;
-      saved.activationUsable = !!activation && activation.generation === registration.generation && this.dependencies.ownerAlive(activation.owner, registration.profile) === true && nativeState.usable;
+      saved.activationUsable = !!activation && activation.generation === registration.generation && this.dependencies.ownerAlive(activation.owner, registration.profile, this.inspection()) === true && nativeState.usable;
     }
     return { state: 'configured', store: this.store, ...saved };
   }
@@ -297,7 +303,12 @@ class ReleaseService {
     const verdict = configuration.classifyHooks(nativeState);
     if (verdict.state !== 'usable') requireValue(false, verdict.code, verdict.message);
     const activation = this.registry(registry => registry.get('activation', sessionKey(registration.key, session)));
-    requireValue(activation?.generation === registration.generation && activation.session === session && this.dependencies.ownerAlive(activation.owner, registration.profile) === true, 'hook-activation-required', 'This native session has not observed the current Nightshift hook generation; open or reopen it before protected work');
+    requireValue(activation?.generation === registration.generation && activation.session === session, 'hook-activation-required', MISSING_ACTIVATION);
+    let inspectionFailure = null;
+    const alive = this.dependencies.ownerAlive(activation.owner, registration.profile, this.inspection(cause => { inspectionFailure = cause; }));
+    // An unknown owner is refused either way, but a failed inspection is not evidence that the activation is missing.
+    requireValue(alive === true || inspectionFailure === null, 'hook-activation-required', `This native session's recorded activation could not be confirmed because process inspection failed (${inspectionFailure}); that does not show the activation is missing, so retry the request before reopening the session`);
+    requireValue(alive === true, 'hook-activation-required', MISSING_ACTIVATION);
   }
 
   async resolve(key, request, maintenance = false, preparing = false) {
@@ -558,8 +569,9 @@ class ReleaseService {
       if (identifiable && ownerRun.resourceMode === 'development') return {};
       if (registration.state !== 'registered' || registration.pending) return identifiable ? { systemMessage: 'Nightshift host setup is incomplete; saved work remains incomplete.' } : {};
       if (input.hook_event_name === 'SessionStart') {
-        const owner = this.dependencies.nativeOwner(registration.host, registration.profile);
-        requireValue(owner, 'native-activation-unavailable', 'Native host process identity could not be established');
+        let inspectionFailure = null;
+        const owner = this.dependencies.nativeOwner(registration.host, registration.profile, this.inspection(cause => { inspectionFailure = cause; }));
+        requireValue(owner, 'native-activation-unavailable', 'Native host process identity could not be established' + (inspectionFailure === null ? '' : ` because process inspection failed (${inspectionFailure})`));
         this.registry(registry => registry.put('activation', sessionKey(key, input.session_id), { schema: 1, registration: key, session: input.session_id, generation: registration.generation, owner, observedAt: new Date().toISOString() }), { nonblocking: !identifiable });
       }
       const binding = this.registry(registry => registry.get('session', sessionKey(key, input.session_id)), { nonblocking: !identifiable });

@@ -144,6 +144,44 @@ test('a claim whose ancestry reaches an exited parent names the cause and grants
   assert.match(created.message, /exited parent above sh\.exe/);
 });
 
+test('a failed process inspection names its cause in claims and refusals and grants nothing', async t => {
+  const f = await fixture(t);
+  fs.writeFileSync(path.join(f.root, 'subject.txt'), 'input\n');
+  const failing = cause => (...args) => { args.at(-1)?.onFailure?.(cause); return null; };
+  const lookupFails = { nativeOwner: failing('timed out after 30000 ms') };
+  const livenessFails = { ownerAlive: failing('PowerShell exited with code 1: Get-CimInstance failed') };
+
+  const claimed = await f.call({ action: 'claim-controller' }, source, lookupFails);
+  const claim = f.store.read().controllerClaim;
+  assert.equal(claimed.controllerReady, false);
+  assert.equal(claim.process, null);
+  assert.match(claim.reason, /process inspection failed \(timed out after 30000 ms\); a failed inspection grants no work, and the request can be retried$/);
+  assert.equal((await f.call({ action: 'claim-controller' }, source)).controllerReady, true);
+
+  // A saved claim may still be valid when only the inspection failed, so the refusal names the failure instead of asking for a new claim.
+  const revision = f.store.read().revision;
+  for (const dependencies of [lookupFails, livenessFails]) {
+    const refused = await f.call({ action: 'start-task', taskId: 'change' }, source, dependencies).catch(error => error);
+    assert.equal(refused.code, 'controller-claim-required');
+    assert.match(refused.message, /^The current native controller process could not be observed because process inspection failed \((timed out after 30000 ms|PowerShell exited with code 1: Get-CimInstance failed)\)/);
+    assert.doesNotMatch(refused.message, /Obtain a successful claim-controller/);
+  }
+  // Without a reported cause the refusal keeps asking for a claim.
+  const unexplained = await f.call({ action: 'start-task', taskId: 'change' }, source, { ownerAlive: () => null }).catch(error => error);
+  assert.equal(unexplained.code, 'controller-claim-required');
+  assert.match(unexplained.message, /^Obtain a successful claim-controller/);
+  assert.equal(f.store.read().revision, revision);
+
+  await f.call({ action: 'start-task', taskId: 'change' });
+  const check = { name: 'Inspected check', executable: process.execPath, args: ['--version'], paths: ['subject.txt'] };
+  const workers = f.store.read().workers.length;
+  const reservation = await f.call({ action: 'check', taskId: 'change', check }, source, { information: failing('timed out after 30000 ms') }).catch(error => error);
+  assert.equal(reservation.code, 'operation-owner-unavailable');
+  assert.equal(reservation.message, 'Cannot reserve execution without its actual helper process identity: process inspection failed (timed out after 30000 ms); nothing was granted, and the request can be retried');
+  assert.equal(f.store.read().workers.length, workers);
+  assert.deepEqual(f.store.read().tasks[0].checks, []);
+});
+
 test('active and unknown helpers block adoption, while attributable terminated work is reconciled after transfer', async t => {
   const f = await fixture(t);
   const helper = { pid: 6001, created: 'helper-incarnation', name: 'node.exe', found: true };

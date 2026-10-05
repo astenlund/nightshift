@@ -9,7 +9,7 @@ const { createHash } = require('node:crypto');
 const { executable, pluginVersion, runAgent } = require('../internal/runtime/hosts');
 const { resolveTrustedExecutable } = require('../internal/filesystem-primitives');
 const { lingeringProcesses, spawnWindowsJob, startFailure } = require('../internal/runtime/windows-job');
-const { information, runContained } = require('../internal/releases/processes');
+const { HOOK_INSPECTION_BUDGET_MS, INSPECTION_BUDGET_MS, information, runContained } = require('../internal/releases/processes');
 const { OUTPUT_LOOP_MIN_DELTAS, OUTPUT_LOOP_MIN_MS, outputLoopDetector, outputLoopMessage } = require('../internal/runtime/output-loop');
 const { artifactFailure } = require('./fixtures/artifact-failure');
 
@@ -276,6 +276,99 @@ test('the native ancestry walk names where it reached an exited parent and still
   assert.equal(self.found, true);
   assert.equal(self.pid, process.pid);
   assert.equal(information(orphan, null, root).found, true);
+});
+
+// Simulated inspection attempts: each answer is a spawnSync-shaped result, optionally after blocking for delayMs.
+function scriptedInspection(answers) {
+  const timeouts = [];
+  const run = (executable, args, options) => {
+    timeouts.push(options.timeout);
+    const { delayMs = 0, ...answer } = answers.shift();
+    if (delayMs) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, delayMs);
+
+    return answer;
+  };
+
+  return { run, timeouts };
+}
+
+const found = { found: true, pid: 4321, created: '638000000000000000', name: 'node.exe' };
+const timedOut = () => ({ status: null, signal: 'SIGTERM', stdout: '', stderr: '', error: Object.assign(new Error('spawnSync pwsh.exe ETIMEDOUT'), { code: 'ETIMEDOUT' }) });
+
+test('a slow inspection is admitted within the budget that allows for a loaded PowerShell start', { skip: process.platform !== 'win32' }, () => {
+  const root = path.resolve(__dirname, '..');
+  const { run, timeouts } = scriptedInspection([{ delayMs: 300, status: 0, stdout: JSON.stringify(found) }]);
+  const failures = [];
+  assert.deepEqual(information(found.pid, null, root, { run, onFailure: cause => failures.push(cause) }), found);
+  assert.equal(timeouts.length, 1);
+  // The first attempt may use the whole budget, which is three times the bound that refused checks under load.
+  assert.ok(timeouts[0] > INSPECTION_BUDGET_MS - 1000 && timeouts[0] <= INSPECTION_BUDGET_MS, `first attempt allowed ${timeouts[0]} ms`);
+  assert.equal(INSPECTION_BUDGET_MS, 30000);
+  assert.deepEqual(failures, []);
+});
+
+test('an inspection that fails quickly is retried once within the remaining budget', { skip: process.platform !== 'win32' }, () => {
+  const root = path.resolve(__dirname, '..');
+  const { run, timeouts } = scriptedInspection([
+    { delayMs: 300, status: 1, stdout: '', stderr: 'Get-CimInstance : Call was canceled by the message filter.' },
+    { status: 0, stdout: JSON.stringify(found) },
+  ]);
+  const failures = [];
+  assert.deepEqual(information(found.pid, null, root, { budgetMs: 5000, run, onFailure: cause => failures.push(cause) }), found);
+  assert.equal(timeouts.length, 2);
+  assert.ok(timeouts[1] <= 5000 - 300, `the retry was allowed ${timeouts[1]} ms after a 300 ms failure`);
+  assert.deepEqual(failures, []);
+});
+
+test('a failed inspection grants nothing and reports the cause of each attempt', { skip: process.platform !== 'win32' }, async t => {
+  const root = path.resolve(__dirname, '..');
+  await t.test('a persistent failure', () => {
+    const noisy = 'Get-CimInstance :\r\n   Invalid   class ' + 'x'.repeat(400);
+    const { run, timeouts } = scriptedInspection([{ status: 1, stdout: '', stderr: noisy }, { status: 0, stdout: 'Update available\r\n{"found":true' }]);
+    const failures = [];
+    assert.equal(information(found.pid, 'claude', root, { run, onFailure: cause => failures.push(cause) }), null);
+    assert.equal(timeouts.length, 2);
+    assert.equal(failures.length, 1);
+    assert.match(failures[0], /^PowerShell exited with code 1: Get-CimInstance : Invalid class x+\.\.\.; retry: unreadable output: Update available \{"found":true$/);
+    assert.ok(failures[0].split('; retry: ')[0].length < 260, 'the excerpt of noisy output is bounded');
+  });
+  await t.test('a timeout spends the budget and is not retried', () => {
+    const { run, timeouts } = scriptedInspection([timedOut()]);
+    const failures = [];
+    assert.equal(information(found.pid, null, root, { run, onFailure: cause => failures.push(cause) }), null);
+    assert.equal(timeouts.length, 1);
+    assert.deepEqual(failures, [`timed out after ${timeouts[0]} ms`]);
+  });
+  await t.test('a malformed process record and a failed start', () => {
+    const { run } = scriptedInspection([{ status: 0, stdout: '{"found":true,"pid":"4321"}' }, { status: null, stdout: '', stderr: '', error: Object.assign(new Error('spawnSync pwsh.exe EACCES'), { code: 'EACCES' }) }]);
+    const failures = [];
+    assert.equal(information(found.pid, null, root, { run, onFailure: cause => failures.push(cause) }), null);
+    assert.deepEqual(failures, ['unreadable output: {"found":true,"pid":"4321"}; retry: could not run PowerShell: spawnSync pwsh.exe EACCES']);
+  });
+  await t.test('a not-found observation is an answer, not a failure', () => {
+    const { run, timeouts } = scriptedInspection([{ status: 0, stdout: '{"found":false}' }]);
+    const failures = [];
+    assert.deepEqual(information(found.pid, null, root, { run, onFailure: cause => failures.push(cause) }), { found: false });
+    assert.equal(timeouts.length, 1);
+    assert.deepEqual(failures, []);
+  });
+});
+
+test('a hook-path inspection keeps its shorter total, retry included', { skip: process.platform !== 'win32' }, () => {
+  const root = path.resolve(__dirname, '..');
+  const { run, timeouts } = scriptedInspection([{ delayMs: 200, status: 1, stdout: '', stderr: 'transient' }, timedOut()]);
+  const failures = [];
+  assert.equal(information(found.pid, null, root, { budgetMs: HOOK_INSPECTION_BUDGET_MS, run, onFailure: cause => failures.push(cause) }), null);
+  assert.equal(HOOK_INSPECTION_BUDGET_MS, 10000);
+  assert.ok(timeouts[0] <= HOOK_INSPECTION_BUDGET_MS && timeouts[1] <= HOOK_INSPECTION_BUDGET_MS - 200, `attempts allowed ${timeouts.join(' and ')} ms`);
+  assert.deepEqual(failures, [`PowerShell exited with code 1: transient; retry: timed out after ${timeouts[1]} ms`]);
+});
+
+test('a real inspection that runs out of time reports a timeout', { skip: process.platform !== 'win32' }, () => {
+  const failures = [];
+  assert.equal(information(process.pid, null, path.resolve(__dirname, '..'), { budgetMs: 1, onFailure: cause => failures.push(cause) }), null);
+  assert.equal(failures.length, 1);
+  assert.match(failures[0], /^timed out after \d+ ms$/);
 });
 
 for (const leaf of ['--duplex-leaf', '--no-input-leaf']) {

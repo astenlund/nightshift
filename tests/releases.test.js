@@ -11,7 +11,8 @@ const { validateDependencies } = require('../tools/release-manifest');
 const { activate, claudeInspection, fixture, packageCopy, refreshPackage, settingsReader, simulatedService } = require('./release-fixtures');
 const { inspectionContext } = require('../internal/releases/host-config');
 const { CONTEXT_ENV } = require('../internal/releases/entry');
-const { MAX_OPERATION_TIMEOUT_MS } = require('../internal/releases/processes');
+const { HOOK_INSPECTION_BUDGET_MS, INSPECTION_BUDGET_MS, MAX_OPERATION_TIMEOUT_MS } = require('../internal/releases/processes');
+const { ReleaseService } = require('../internal/releases/service');
 const { spawnSync } = require('node:child_process');
 const os = require('node:os');
 
@@ -481,6 +482,49 @@ test('dependent admission separates a deliberate opt-out from a changed registra
   state.configured = true;
   state.trusted = false;
   await assert.rejects(service.resolve(setup.registration, request), error => error.code === 'hook-activation-required' && /not trusted/.test(error.message));
+});
+
+test('a failed inspection of the activation owner is refused without asking to reopen the session', async t => {
+  const value = fixture(t);
+  const { service } = simulatedService(value, packageCopy(value.root, '1.0.0'));
+  const setup = await service.setup({ host: 'codex', profile: value.profile });
+  await activate(service, setup.registration, value.project, 'owner');
+  const request = { session: 'owner', project: value.project, entry: 'runtime', request: { action: 'create' } };
+
+  service.dependencies.ownerAlive = (owner, cwd, options) => { options.onFailure('timed out after 30000 ms'); return null; };
+  await assert.rejects(service.resolve(setup.registration, request), error => error.code === 'hook-activation-required'
+    && error.message === "This native session's recorded activation could not be confirmed because process inspection failed (timed out after 30000 ms); that does not show the activation is missing, so retry the request before reopening the session");
+
+  // An owner established as ended, or an unknown owner with no reported inspection failure, keeps the reopen guidance.
+  for (const ownerAlive of [() => false, () => null]) {
+    service.dependencies.ownerAlive = ownerAlive;
+    await assert.rejects(service.resolve(setup.registration, request), error => error.code === 'hook-activation-required' && /^This native session has not observed the current Nightshift hook generation; open or reopen it/.test(error.message));
+  }
+});
+
+test('process inspection keeps the shorter budget on the hook path and the longer one elsewhere', async t => {
+  const value = fixture(t);
+  const { service } = simulatedService(value, packageCopy(value.root, '1.0.0'));
+  const setup = await service.setup({ host: 'codex', profile: value.profile });
+  const budgets = [];
+  const overrides = {
+    ...service.overrides,
+    nativeOwner: (host, profile, options) => { budgets.push(['nativeOwner', options.budgetMs]); return service.overrides.nativeOwner(host, profile); },
+    ownerAlive: (owner, profile, options) => { budgets.push(['ownerAlive', options.budgetMs]); return service.overrides.ownerAlive(owner, profile); },
+  };
+  const launcher = new ReleaseService(value.store, overrides);
+  const hook = new ReleaseService(value.store, overrides, { nativeHook: true });
+  await launcher.resolve(setup.registration, { session: 'owner', project: value.project, entry: 'ready' });
+  budgets.length = 0;
+
+  // A bound session's SessionStart looks up its owner and then confirms the activation it recorded.
+  await activate(hook, setup.registration, value.project, 'owner');
+  assert.deepEqual(budgets.splice(0), [['nativeOwner', HOOK_INSPECTION_BUDGET_MS], ['ownerAlive', HOOK_INSPECTION_BUDGET_MS]]);
+  await launcher.resolve(setup.registration, { session: 'owner', project: value.project, entry: 'runtime', request: { action: 'status' } });
+  assert.deepEqual(budgets.splice(0), [['ownerAlive', INSPECTION_BUDGET_MS]]);
+  assert.equal((await launcher.status(setup.registration, 'owner', value.project)).activationUsable, true);
+  assert.deepEqual(budgets.splice(0), [['ownerAlive', INSPECTION_BUDGET_MS]]);
+  assert.ok(HOOK_INSPECTION_BUDGET_MS < INSPECTION_BUDGET_MS);
 });
 
 test('the launcher admits only cache-independent actions without a registration and validates the status project', async t => {
