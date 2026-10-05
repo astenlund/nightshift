@@ -397,4 +397,4 @@ Collect Nightshift's reusable design principles in two files split by role, as w
 
 ## History
 
-Delivered features belong in [FEATURES_HISTORY.md](FEATURES_HISTORY.md). When shipping an entry, remove its satisfied Requires references from active indexes; retirement is recorded separately.
+Delivered features belong in [FEATURES_HISTORY.md](FEATURES_HISTORY.md), as do features retired without shipping, each marked retired. When shipping or retiring an entry, remove references to it from the active indexes' Requires lines.
