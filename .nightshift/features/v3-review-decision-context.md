@@ -3,7 +3,6 @@ name: v3-review-decision-context
 description: Carry settled decisions and experiment evidence into later reviews
 metadata:
   type: feature
-status: exploring
 ---
 
 # Carry settled decisions and experiment evidence into later reviews
@@ -32,6 +31,22 @@ The audit of 2026-09-29 found two recording gaps that this entry also owns, besi
 
 - Capturing investigations, for the retained need Controller-owned session experiment ledger. Follow-ups, dispositions with their reasons, check output, the closing retrospective and the morning report already record much of this, but no instruction directs recording a material investigation's conclusion, deciding evidence and limits in the run record when they are established, and an attended run without a handover has no morning report.
 - Working notes, for the retained need Stage-altitude finding routing, whose agreed disposition under [Finding decisions](../../V3-MIGRATION.md#finding-decisions) begins "Preserve useful implementation discoveries in working notes and carry unresolved obligations through compaction or handoff." Unresolved obligations survive compaction and handoff, but no instruction or runtime operation preserves implementation discoveries, and a finding deferred to implementation leaves the focused status once it is disposed.
+
+## Settled questions
+
+The user agreed these answers on 2026-10-05, when the entry graduated from Exploring to current work. Each question is kept with its answer. Checked the same day: `review.acknowledgements` in `internal/runtime/review.js` carries free-text statements the controller chooses for each dispatch, delivered as "Do not raise them again; adjacent issues about how they are carried out remain in scope"; a resumed or replacement lead receives its own findings' dispositions through `dispositionsSince` in `internal/runtime/continuation.js`; a fresh review receives neither automatically; and the runtime reference records user decisions made mid-run in `agreement.decisions`, while no runtime operation records an investigation's conclusion or an implementation discovery.
+
+- Which settled facts reach later reviews. Settled: every review dispatch, fresh ones included, receives acknowledgements the runtime derives from the run record: the task's refuted, skipped and deferred findings, each as its claim in one line with its disposition and reason, and the user decisions recorded in `agreement.decisions`. They never carry the author's argument for correctness, and a fresh reviewer receives no other earlier findings. The controller can still add statements through the existing option, such as intentional choices from the agreement.
+- Relevance and invalidation. Settled: each projected acknowledgement names the paths its finding concerned. When any of them changed after the disposition, the acknowledgement is delivered marked as settled before a later change, so the reviewer judges that content afresh rather than staying silent. Acknowledgements stay scoped to the settled choice, as the existing clause on adjacent issues already does.
+- Preserving the ability for new evidence to reopen a decision. Settled: a reviewer may raise a settled point again only by citing new evidence and saying what changed, and the delivered text says so.
+- Bounded delivery, with fuller evidence where summarizing is unsafe. Settled: the projected set has a size bound; beyond it the reviewer receives compact entries and the full records in its review copy, and an acknowledgement whose summary would blur the settled choice with the mechanics around it is delivered in full.
+- Experiment conclusions. Settled: once the separate ledger that [Controller-run experiments](controller-run-experiments.md) tracks exists, its conclusions relevant to a review reach it the same way, with their evidence and limits. That entry is still exploring, so this is a later extension rather than a dependency.
+- The two recording gaps. Settled: a runtime operation records a note of kind investigation, with its conclusion, deciding evidence and limits, or kind discovery, for an implementation discovery, when it is established, and the operating brief directs recording both. Notes survive compaction and handoff with the run state, and a finding deferred to implementation stays visible in the focused status until the implementation addresses it.
+- Relations. Settled: the entry requires nothing, and [Probe evidence about the host is discarded on any edit](../BUGS.md#probe-evidence-about-the-host-is-discarded-on-any-edit) keeps its own invalidation repair.
+
+## Before implementation
+
+Settle the projected acknowledgement's form, how a finding records the paths it concerns, the size bound, the note operation and the focused-status rule in a concise governing spec in `.nightshift/specs`. The change alters the runtime's review dispatch, its records and the focused status, the operating brief and revise-code, so it rides with a plugin version increase, and the start of the work decides between a budgeted installed-host check of reviewer behavior under projected acknowledgements and deterministic evidence only. Verify a settled decision across an unrelated edit, a change to its paths reopening it, new evidence reopening it, and unresolved obligations surviving compaction. Tracking and readiness do not authorize implementation.
 
 ## Triage and provenance
 

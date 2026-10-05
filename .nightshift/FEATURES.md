@@ -238,6 +238,12 @@ Complete the retained reliable repair-commit outcome using ordinary Git and proj
 
 **Requires:** none.
 
+### [Carry settled decisions and experiment evidence into later reviews](features/v3-review-decision-context.md)
+
+Complete the retained concise decision and experiment record so subsequent independent reviews receive relevant settled facts and unresolved obligations after edits or compaction. Preserve the ability for new evidence to reopen a decision. The migration accounting audit of 2026-09-29 added two recording gaps: capturing a material investigation's conclusion and limits when established, and preserving implementation discoveries in working notes. The commitments agreed with the user on 2026-10-05, recorded in the linked record: every review dispatch, fresh ones included, receives acknowledgements derived from the run record, the task's refuted, skipped and deferred findings with their dispositions and reasons and the user's recorded decisions, never the author's argument and no other earlier findings; an acknowledgement whose paths changed after its disposition is marked as settled before a later change; a settled point is raised again only with new evidence; delivery is bounded, with full records in the review copy; experiment conclusions follow once the experiments ledger exists; and a runtime note operation records investigation conclusions and implementation discoveries, with a finding deferred to implementation kept visible until addressed. It changes the runtime's review dispatch and records, the operating brief and revise-code, so it needs a concise governing spec, a version increase and a decision on installed-host evidence before implementation.
+
+**Requires:** none.
+
 ## Exploring
 
 ### [Shared BACKLOG.md meta-index](features/backlog-meta-index.md)
@@ -271,10 +277,6 @@ Carry the retained request-confidentiality requirement into current request file
 ### [Define and verify marketplace installation contents](features/v3-marketplace-surface.md)
 
 Finish the retained installed-package boundary: required runtime resources and intentional user documentation, with repository-maintenance material excluded where the host permits it. Distinguish marketplace caches from retained execution bundles.
-
-### [Carry settled decisions and experiment evidence into later reviews](features/v3-review-decision-context.md)
-
-Complete the retained concise decision and experiment record so subsequent independent reviews receive relevant settled facts and unresolved obligations after edits or compaction. Preserve the ability for new evidence to reopen a decision. The migration accounting audit of 2026-09-29 added two recording gaps: capturing a material investigation's conclusion and limits when established, and preserving implementation discoveries in working notes.
 
 ### [Maintain verification evidence, fixtures and measured efficiency](features/v3-verification-infrastructure.md)
 
