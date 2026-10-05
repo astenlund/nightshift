@@ -1,17 +1,17 @@
 {
   "schema": 1,
   "name": "nightshift",
-  "version": "3.3.4",
+  "version": "3.3.5",
   "files": [
     {
       "path": ".claude-plugin/plugin.json",
       "bytes": 640,
-      "sha256": "c3da999e1aed72b31c3fc5e09e8aebc277991acb67da72b21fff7022fbcb2230"
+      "sha256": "8155b0b59629e3db64a46a01a5739ec3b8e3a5a5eda2fa82c40987fa7e871f8e"
     },
     {
       "path": ".codex-plugin/plugin.json",
       "bytes": 1160,
-      "sha256": "93b07b5e366aa04f01159119592a695aabfe01a8644200ec27262ea048eb7e21"
+      "sha256": "f9caa48f35e1705652f59e9a53789ba467ba3ea34a45392a028f7f739c49158b"
     },
     {
       "path": "LICENSE",
@@ -60,8 +60,8 @@
     },
     {
       "path": "internal/releases/REFERENCE.md",
-      "bytes": 27927,
-      "sha256": "9596e349b0955681cd110c4c76bccb1d26fb78b2499252841e30d4767a8caccf"
+      "bytes": 28887,
+      "sha256": "c9f4bba2b9a57aa20de3ff836185f680cd5770d0e80a572b2dfe9533aeeabdbd"
     },
     {
       "path": "internal/releases/administration.js",
@@ -70,8 +70,8 @@
     },
     {
       "path": "internal/releases/bootstrap.js",
-      "bytes": 8685,
-      "sha256": "5912d5f708b4768ce08beb527189fc6bef5f14a1729dacffed146d41df715a4a"
+      "bytes": 9174,
+      "sha256": "9bbcfc21c4409f4b2fff346ace4033a51e73d237f8fc076b0a8eda290b3c484c"
     },
     {
       "path": "internal/releases/bundles.js",
@@ -110,8 +110,8 @@
     },
     {
       "path": "internal/releases/notice.js",
-      "bytes": 1837,
-      "sha256": "3a48a1700e331dd21f05e3a094bab9affd9a3b60614f1db1473603500071d866"
+      "bytes": 2121,
+      "sha256": "41cb459ceb867b790678c926af31e8bb5646accc8f37f6aabcca8d2e8818d348"
     },
     {
       "path": "internal/releases/preparation.js",
@@ -130,13 +130,13 @@
     },
     {
       "path": "internal/releases/registry.js",
-      "bytes": 7859,
-      "sha256": "42220f6411c5df0f207acceae22ed281446626ff92fc34d33e39c1732dc5d923"
+      "bytes": 8457,
+      "sha256": "2789292d70b75df1915a8ff41f2dbcf847304b03c0f15f18567214a0d8cdf38c"
     },
     {
       "path": "internal/releases/service.js",
-      "bytes": 56320,
-      "sha256": "885c7361e22db1f73ce57b7cd48483530c7db079c7f2f20a76af5bba2485f308"
+      "bytes": 56916,
+      "sha256": "e75a379fb4c26307e7641c70c142c48be87fbd7dc98a8f5e1bce61395bbbfba8"
     },
     {
       "path": "internal/releases/settings-write.ps1",
@@ -145,8 +145,8 @@
     },
     {
       "path": "internal/runtime/REFERENCE.md",
-      "bytes": 68364,
-      "sha256": "d19be184137b29e5bae8b2c0e940500f0679854f0e778bdb7f2f7d90017ebf10"
+      "bytes": 70441,
+      "sha256": "2ff94c9087d3d0b25c38b2880c38ec3033f13771b6c36ed219d0f449a28cccb4"
     },
     {
       "path": "internal/runtime/actions.js",
@@ -160,8 +160,8 @@
     },
     {
       "path": "internal/runtime/cli.js",
-      "bytes": 16746,
-      "sha256": "dfe410996b923918b532da3ba35e77cbebdcd256778e0d82c1b692bb0a2af848"
+      "bytes": 17657,
+      "sha256": "ea26b66d8b6640f317c8536fd4857005d6606870aa6c8d08ed85f852cdc19de1"
     },
     {
       "path": "internal/runtime/continuation.js",
@@ -175,8 +175,8 @@
     },
     {
       "path": "internal/runtime/evidence.js",
-      "bytes": 14613,
-      "sha256": "86e30f84471ca004f1dd490643491d31d2430c1ca4f51361e437173c75a7bc10"
+      "bytes": 17061,
+      "sha256": "426736f3e5d8ff9d0c08b75d9db0bce2a23679d5131456dcb94c176a286edebb"
     },
     {
       "path": "internal/runtime/hook.js",
@@ -190,8 +190,8 @@
     },
     {
       "path": "internal/runtime/lifecycle.js",
-      "bytes": 68770,
-      "sha256": "c2c2a174596cf385805591dbaa0ec86b3ad644c272efc8807a7889cb15e71260"
+      "bytes": 71776,
+      "sha256": "f315517e8ec1c27f18c04c08ba65f7287b700b0dfed60f130d6cb2fd42038e4e"
     },
     {
       "path": "internal/runtime/limits.js",
@@ -235,8 +235,8 @@
     },
     {
       "path": "internal/runtime/store.js",
-      "bytes": 13928,
-      "sha256": "53eac43fe9b79548b481f7569530ad9cd13648e2448fd2e23bf339280e295c2b"
+      "bytes": 14579,
+      "sha256": "22480ddc743cd8419b7ced5f37a876b7dd3b78d03d406882561923cb6ccb8ef4"
     },
     {
       "path": "internal/runtime/wait.js",
@@ -275,8 +275,8 @@
     },
     {
       "path": "internal/workflow.md",
-      "bytes": 31928,
-      "sha256": "08894fa24d35b0d05dc0fcdc2edfec3a0bc87a9675dbffa82813b7d4da77d8d9"
+      "bytes": 32637,
+      "sha256": "6a0b4b06ee9351820430fa518dd1d65186d563f38ec220c1cd5ca5498ae9b61c"
     },
     {
       "path": "skills/exploring/SKILL.md",
