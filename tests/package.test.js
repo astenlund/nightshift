@@ -5,7 +5,6 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 const test = require('node:test');
-const { README_STATUS } = require('../tools/release-gate');
 
 const root = path.resolve(__dirname, '..');
 const publicSkills = ['exploring', 'handover', 'init-backlog', 'ready', 'revise-code', 'revise-docs', 'revise-lore', 'revise-spec'];
@@ -16,9 +15,7 @@ test('both packages expose the same intentional public skill surface', () => {
   assert.equal(claude.name, 'nightshift');
   assert.equal(codex.name, claude.name);
   assert.equal(codex.version, claude.version);
-  const status = README_STATUS.exec(fs.readFileSync(path.join(root, 'README.md'), 'utf8'));
-  assert.ok(status, 'README must carry a candidate or published version status line');
-  assert.equal(status[1], claude.version);
+  assert.doesNotMatch(fs.readFileSync(path.join(root, 'README.md'), 'utf8'), /^\*\*Status:\*\*/m, 'README announces no version: the manifests own it and CHANGELOG.md holds release notes');
   const discovered = fs.readdirSync(path.join(root, 'skills')).filter(name => fs.existsSync(path.join(root, 'skills', name, 'SKILL.md'))).sort();
   assert.deepEqual(discovered, publicSkills);
   for (const name of publicSkills) {

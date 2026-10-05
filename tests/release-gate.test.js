@@ -5,7 +5,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const test = require('node:test');
 const { spawnSync } = require('node:child_process');
-const { GateError, README_STATUS, evaluateRelease, isShipped, prePushRanges } = require('../tools/release-gate');
+const { GateError, evaluateRelease, isShipped, prePushRanges } = require('../tools/release-gate');
 
 const gate = path.resolve(__dirname, '../tools/release-gate.js');
 
@@ -29,14 +29,9 @@ function manifest(version, description = 'Nightshift') {
   return JSON.stringify({ name: 'nightshift', version, description }, null, 2) + '\n';
 }
 
-function readme(version) {
-  return `# Nightshift\n\n**Status:** Nightshift ${version} is published on \`main\`, with acceptance complete.\n`;
-}
-
 function release(root, version) {
   write(root, '.claude-plugin/plugin.json', manifest(version));
   write(root, '.codex-plugin/plugin.json', manifest(version));
-  write(root, 'README.md', readme(version));
 }
 
 function fixture(t) {
@@ -68,7 +63,7 @@ test('unchanged, documentation-only and test-only ranges pass without a version 
   assert.deepEqual(result.problems, []);
 });
 
-test('shipped code changes require a version increase and a matching README status line', t => {
+test('shipped code changes require a version increase', t => {
   const root = fixture(t);
   write(root, 'internal/runtime/hosts.js', "'use strict';\n// behavior change\n");
   commit(root, 'change runtime');
@@ -76,15 +71,9 @@ test('shipped code changes require a version increase and a matching README stat
   assert.deepEqual(unbumped.shipped, ['internal/runtime/hosts.js']);
   assert.equal(unbumped.problems.length, 1);
   assert.match(unbumped.problems[0], /without a version increase over 1\.2\.3: internal\/runtime\/hosts\.js/);
-  write(root, '.claude-plugin/plugin.json', manifest('1.2.4'));
-  write(root, '.codex-plugin/plugin.json', manifest('1.2.4'));
-  commit(root, 'bump manifests only');
-  const staleReadme = evaluateRelease(root, 'HEAD~2', 'HEAD');
-  assert.equal(staleReadme.problems.length, 1);
-  assert.match(staleReadme.problems[0], /README\.md status announces 1\.2\.3 while the manifests carry 1\.2\.4/);
-  write(root, 'README.md', readme('1.2.4'));
-  commit(root, 'move readme');
-  assert.deepEqual(evaluateRelease(root, 'HEAD~3', 'HEAD').problems, []);
+  release(root, '1.2.4');
+  commit(root, 'bump manifests');
+  assert.deepEqual(evaluateRelease(root, 'HEAD~2', 'HEAD').problems, []);
 });
 
 test('moving or test-renaming a shipped file still counts as a shipped change', t => {
@@ -123,39 +112,13 @@ test('version decreases and unequal manifests are rejected', t => {
   assert.ok(evaluateRelease(root, 'HEAD~2', 'HEAD').problems.some(problem => /Manifest versions differ/.test(problem)));
 });
 
-test('candidate status passes without claiming publication and still enforces version agreement', t => {
+test('the README is repository documentation the gate does not read', t => {
   const root = fixture(t);
-  release(root, '1.2.4');
-  write(root, 'internal/runtime/hosts.js', "'use strict';\n// changed behavior\n");
-  write(root, 'README.md', '**Status:** Nightshift 1.2.4 is in development. Version 1.2.3 is published on `main`.\n');
-  commit(root, 'prepare candidate');
-  assert.deepEqual(evaluateRelease(root, 'HEAD~1', 'HEAD').problems, []);
-  write(root, 'README.md', '**Status:** Nightshift 1.2.3 is in development.\n');
-  commit(root, 'stale candidate status');
-  assert.match(evaluateRelease(root, 'HEAD~2', 'HEAD').problems[0], /status announces 1\.2\.3 while the manifests carry 1\.2\.4/);
-});
-
-test('status parsing accepts both states and rejects malformed or unrelated declarations', () => {
-  for (const state of ['in development', 'published on `main`']) {
-    for (const ending of ['', '.', ', with evidence.', '\r\n']) {
-      assert.equal(README_STATUS.exec(`**Status:** Nightshift 1.2.3 is ${state}${ending}`)?.[1], '1.2.3');
-    }
-  }
-  for (const text of [
-    '**Status:** Nightshift 1.2.3 is in developmentally',
-    '**Status:** Nightshift 1.2.3 is published on `main`ish',
-    '**Status:** Nightshift 1.2.3-rc1 is in development.',
-    '**Status:** Nightshift 1.2 is in development.',
-    '**Status:** Nightshift 1.2.3 is pending.',
-    'Example: **Status:** Nightshift 1.2.3 is published on `main`.'
-  ]) assert.equal(README_STATUS.exec(text), null, text);
-});
-
-test('a missing README status line is a problem', t => {
-  const root = fixture(t);
-  write(root, 'README.md', '# Nightshift\n');
-  commit(root, 'drop status');
-  assert.match(evaluateRelease(root, 'HEAD~1', 'HEAD').problems[0], /no recognizable candidate or published version status line/);
+  write(root, 'README.md', '# Nightshift\n\n**Status:** Nightshift 9.9.9 is in development.\n');
+  commit(root, 'readme naming another version');
+  const result = evaluateRelease(root, 'HEAD~1', 'HEAD');
+  assert.deepEqual(result.shipped, []);
+  assert.deepEqual(result.problems, []);
 });
 
 test('unreadable baselines fail closed', t => {
