@@ -330,6 +330,12 @@ Found on 2026-10-05 in run `596ff6c2-b8f9-420d-9fcf-97865a59511c`. A runtime `ch
 
 Give this repository's standard checks, the runtime suites, release suites, release manifest and ready parser, one documented input set or a helper that builds their check requests, so a controller does not rebuild the list by hand. Settle where it lives when the work starts, keeping execution rules out of the project's AGENTS.md as the user has directed. Tracking does not authorize implementation.
 
+### Limit the docs reviewer's operating-instruction report to documentation paths
+
+Found on 2026-10-06 in run `7837ca05-6458-43e3-b9b6-db5d7ffd49db`. The docs review prompt in `internal/runtime/review.js`, following [the independent documentation review spec](specs/independent-documentation-review.md), asks the reviewer to report as a finding any changed file it judges to be operating instructions, so the controller routes it to code assessment. The runtime already holds every file outside the documentation paths under code assessment by path, so reporting such a file adds nothing: in that run the docs review reported `internal/releases/REFERENCE.md` at important severity, and a skeptic dispatch had to refute it from the snapshot hash of the clean code assessment before the gate could pass. The report helps only for a documentation path that holds operating instructions, which the runtime cannot tell apart by path. Observed once. The user chose to track it at the run's triage.
+
+Limit the report to changed documentation-path files the reviewer judges to be operating instructions, or give the reviewer the paths a current code assessment already covers, and keep the spec and the runtime reference consistent with the prompt. Runtime changes ship with a version increase. Tracking does not authorize implementation.
+
 ## History
 
 Prior delivered work remains in [QUICK_WINS_HISTORY.md](QUICK_WINS_HISTORY.md).
