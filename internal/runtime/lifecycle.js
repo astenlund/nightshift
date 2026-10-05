@@ -468,13 +468,25 @@ function staleGateEntries(root, task, state) {
     .map(([, entry]) => entry);
 }
 
+// The task on which a fresh assessment of a kind covers a stale gate of the given task: the task itself while it is open, otherwise
+// a ready open task sharing the cumulative assessment with it, the repaired target first, since a task review covers its completed
+// cumulative siblings. A stale gate that no open task can cover needs an assessment on its own completed task, which reopens it.
+function freshAssessmentTask(state, task, kind, target) {
+  if (task.status !== 'complete') return task;
+  if (!['code', 'docs'].includes(kind) || !sharesCumulativeAssessment(task)) return task;
+  const ready = candidate => candidate.status !== 'complete' && !candidate.blocker && candidate.requires.every(id => taskById(state, id).status === 'complete');
+  return [target, ...state.tasks].find(candidate => candidate.kind !== 'closing' && ready(candidate) && sharesCumulativeAssessment(candidate)) ?? task;
+}
+
 // What a target's review needs next, in order: validation and disposition, then repairs, then closures by resuming the reviewers that
 // raised the repaired findings, then a fresh assessment of each kind whose latest assessment is a continued one. resumeTargets names
-// the dispatch to resume, and the task it belongs to, for each lineage owing closures and, after a task's repair, for each latest
-// assessment of another review kind, of this or any other task, that predates the repair and no longer matches current inputs: one
-// its gate accepts and finds stale, or any other whose reviewed inputs changed. The raising reviewers reassess their own kinds, and a
-// closing repair reopens no task, so neither adds stale targets. Stale targets depend on freshness: a lightweight brief marks them
-// unevaluated.
+// the dispatch to resume, and the task it belongs to, for each lineage owing closures. After a task's repair, freshTargets names the
+// fresh assessments due because the repair left a latest assessment of another review kind, of this or any other task, predating it
+// and no longer matching current inputs: one its gate accepts and finds stale, or any other whose reviewed inputs changed. Such a
+// reviewer has nothing to close, so it is not resumed. Each entry gives the kind, the task to dispatch it on, the tasks whose stale
+// gates it covers, the stale assessments and whether the dispatch reopens a completed task. The raising reviewers reassess their own
+// kinds, and a closing repair reopens no task, so neither adds fresh targets. Fresh targets depend on freshness: a lightweight brief
+// marks them unevaluated.
 function reviewProgress(root, state, target, options = {}) {
   const findings = target.findings;
   const latest = latestByKind(target);
@@ -483,14 +495,21 @@ function reviewProgress(root, state, target, options = {}) {
   const resumeTargets = owing.map(lineage => ({ requestId: latestDispatchOf(root, state, target, lineage), taskId: target.id, lineage, reason: 'pending-closure' }));
   const repair = target.kind === 'closing' ? null : latestRepair(target);
   const evaluateStale = repair !== null && repair.revision >= 0;
-  if (evaluateStale && options.verifyFreshness !== false) {
+  let freshTargets = [];
+  if (evaluateStale && options.verifyFreshness === false) freshTargets = 'reconcile at acceptance';
+  else if (evaluateStale) {
     for (const task of [target, ...state.tasks.filter(task => task.id !== target.id)]) {
       for (const { review, owner } of staleGateEntries(root, task, state)) {
-        const lineage = lineageOf(review);
-        if (owing.includes(lineage) || repair.kinds.includes(reviewKind(review, owner)) || (review.revision ?? 0) >= repair.revision) continue;
-        // A covering assessment can be what several tasks' gates read; it is resumed once.
-        if (resumeTargets.some(item => item.lineage === lineage)) continue;
-        resumeTargets.push({ requestId: latestDispatchOf(root, state, owner, lineage), taskId: owner.id, lineage, reason: 'stale-after-repair' });
+        const kind = reviewKind(review, owner);
+        if (owing.includes(lineageOf(review)) || repair.kinds.includes(kind) || (review.revision ?? 0) >= repair.revision) continue;
+        const dispatchOn = freshAssessmentTask(state, task, kind, target);
+        // One assessment on a task covers every stale gate it reaches, such as a covering assessment several tasks' gates read.
+        const entry = freshTargets.find(item => item.kind === kind && item.taskId === dispatchOn.id);
+        if (!entry) freshTargets.push({ kind, taskId: dispatchOn.id, covers: [task.id], staleAssessments: review.requestId ? [review.requestId] : [], reopens: dispatchOn.status === 'complete' });
+        else {
+          if (!entry.covers.includes(task.id)) entry.covers.push(task.id);
+          if (review.requestId && !entry.staleAssessments.includes(review.requestId)) entry.staleAssessments.push(review.requestId);
+        }
       }
     }
   }
@@ -498,7 +517,7 @@ function reviewProgress(root, state, target, options = {}) {
     : findings.some(finding => finding.disposition === 'implement' && !finding.repaired) ? 'repair'
       : owing.length > 0 ? 'resume'
         : freshDue.length > 0 ? 'fresh-assessment' : null;
-  return { next, resumeTargets, freshDue, ...(evaluateStale && options.verifyFreshness === false ? { staleTargets: 'reconcile at acceptance' } : {}) };
+  return { next, resumeTargets, freshDue, freshTargets };
 }
 
 function requireReviewGate(root, task, state, message) {
