@@ -1,8 +1,8 @@
 # Nightshift
 
-**Hand over agreed engineering work in the evening. Come back to an account of what was built, how it was checked and what remains open.**
+**Hand over agreed engineering work and come back later to an account of what was built, how it was checked and what remains open.**
 
-Nightshift is a plugin for Claude Code and Codex. You settle the outcome and the limits. Nightshift carries the work through implementation, independent review, verification and documentation, then reports what was delivered, what was checked and what still needs your decision.
+Nightshift is a plugin for Claude Code and Codex. You agree on the outcome and the limits. Nightshift takes the work from implementation through independent review and verification, and keeps every unfinished obligation explicit along the way. It ends with a report of what was delivered, what was checked and what still needs your decision.
 
 [Get started](#getting-started), or read on for how it works.
 
@@ -11,16 +11,16 @@ Nightshift is a plugin for Claude Code and Codex. You settle the outcome and the
 Delegating work to a coding agent leaves a verification problem: how do you know the result meets the agreement without reading every diff or replaying the session yourself? Nightshift is designed around three ways delegated agent work goes wrong:
 
 - **"Done" is a claim, not evidence.** An agent can report success on work that was never checked against what was agreed.
-- **Reviewers are wrong too.** A reviewing agent can report a plausible defect that does not exist, and a reviewer that followed a repair can stop seeing the code around it.
+- **Reviewers are wrong too.** A reviewing agent can report a plausible defect that does not exist, and a reviewer that followed a repair can become anchored on the repaired finding and miss defects around it.
 - **Long sessions forget.** When the context is compacted, unfinished obligations can disappear with it.
 
-Nightshift's priority is reliability, through autonomy and trust together: the work keeps moving while you are away, and you can trust the result without auditing the code yourself, because that trust is earned with evidence, not with a confident summary. Speed and economy count only where they cost neither.
+Nightshift's priority is reliability, through autonomy and trust together. Autonomy means the work keeps moving while you are away. Trust means you can rely on the result without auditing the code yourself. That trust is earned with evidence, not with a confident summary.
 
 ## How it works
 
 ```mermaid
 flowchart TD
-    A["Agree the outcome and limits"] --> B["Implement and verify"]
+    A["Agree on the outcome and limits"] --> B["Implement and verify"]
     B --> C["Fresh independent review"]
     C --> D["A skeptic tests every finding against evidence"]
     D --> E{"Repairs needed?"}
@@ -32,6 +32,8 @@ flowchart TD
 ```
 
 Simplified. Work that cannot be finished within what you agreed stays open and appears in the report. It is never counted as done.
+
+Two reviewer roles are kept apart on purpose: the reviewer that raised a finding confirms its repair, but only a fresh reviewer can pass the review gate.
 
 ## Getting started
 
@@ -51,7 +53,7 @@ codex plugin marketplace add astenlund/nightshift
 codex plugin add nightshift@astenlund
 ```
 
-The first time you invoke a skill, Nightshift prepares itself. It keeps a manifest-verified copy of the release outside the plugin cache and registers its SessionStart, PreCompact and Stop hooks in your user profile, leaving unrelated hooks alone. It tells you when the host needs an approval or a reopened session. Then pick an entry point:
+Then pick an entry point:
 
 - **Review a change you already made.** `/nightshift:revise-code` runs independent review, skeptic validation and repair on your current work.
 - **Hand over a task.** Agree the task in conversation, then run `/nightshift:handover`. Before you leave, the agent tells you whether it can continue unattended on your host.
@@ -59,9 +61,13 @@ The first time you invoke a skill, Nightshift prepares itself. It keeps a manife
 
 Claude Code exposes the skills as `/nightshift:<skill>`. On Codex, invoke the same skills by name. Nightshift asks before it begins, and the workflow requires explicit authority before anything is pushed, released or deployed.
 
+The first time you invoke a skill, Nightshift prepares itself. It keeps a manifest-verified copy of the release outside the plugin cache and registers its SessionStart, PreCompact and Stop hooks in your user profile, leaving unrelated hooks alone. It tells you when the host needs an approval or a reopened session.
+
 To update, run `claude plugin update nightshift@astenlund` on Claude Code and restart it. On Codex, `codex plugin marketplace upgrade astenlund` refreshes the marketplace snapshot; whether that alone moves an installed plugin to a newer release is not yet verified. An open session and a resumable run keep the release they started with, and new sessions can pick up the update. Uninstalling the plugin does not remove the hooks it registered. The [release reference](internal/releases/REFERENCE.md) describes the removal operation.
 
 ## Design decisions
+
+No single agent's word is enough to call work complete: not the implementer's, not a reviewer's and not that of the agent running the workflow. Each decision below applies that to one way things go wrong.
 
 | Problem | Response |
 | --- | --- |
@@ -71,7 +77,7 @@ To update, run `claude plugin update nightshift@astenlund` on Claude Code and re
 | A review outlives the code it covered | A review is recorded with the inputs it read. Before it can count toward completion, the runtime checks those inputs against the current files. |
 | A long session loses track | Commitments, findings, evidence and follow-ups are saved in a local SQLite database, outside the conversation. After the context is compacted, hooks bring back the open obligations and the agent reconciles them with the actual files. |
 
-One release's [acceptance report](.nightshift/reports/resumable-reviewer-dialogue-20261001.md) shows why the fresh pass matters. In a scripted campaign on installed hosts, a test fixture was repaired and the repair was confirmed closed. Fresh reviewers then found two defects the repaired code still had: a NaN counted as a number, and an overflow to Infinity. One fresh reviewer missed both and the next found the overflow, so a fresh pass improves the odds without being a guarantee. While the same release was being built, a reviewer raised an important finding that a fresh skeptic refuted from the spec and the source, so no code was changed to fix a defect that did not exist.
+One release's [acceptance report](.nightshift/reports/resumable-reviewer-dialogue-20261001.md) shows why the fresh pass matters. In a scripted campaign on installed hosts, a test fixture was repaired and the repair was confirmed closed. Fresh reviewers then found two defects the repaired code still had: a NaN counted as a number, and an overflow to Infinity. One fresh reviewer missed both defects; another found the overflow. A fresh pass improves the odds without being a guarantee. While the same release was being built, a reviewer raised an important finding that a fresh skeptic refuted from the spec and the source, so no code was changed to fix a defect that did not exist.
 
 ## What you get back
 
@@ -93,7 +99,7 @@ Follow-up decisions then come to you one at a time, each with a recommendation.
 | `revise-code` | Independent review, skeptic validation and repair of code |
 | `revise-spec` | Independent assessment and repair of a spec |
 | `revise-docs` | Brings documentation and backlog in line with what was delivered, under its own review |
-| `revise-lore` | Session retrospective that may propose improvements to your agent instructions |
+| `revise-lore` | Session retrospective that draws lessons from the run and may propose improvements to your agent instructions |
 | `handover` | Takes an agreed task or queue through the whole lifecycle, unattended where the host allows |
 | `init-backlog` | Sets up or migrates the project backlog under `.nightshift/` |
 | `ready` | Lists work whose dependencies are met and recommends what to take on |
