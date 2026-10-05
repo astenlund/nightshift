@@ -1,91 +1,132 @@
 # Nightshift
 
-Nightshift carries agreed project work through implementation, independent review, verification, documentation, session retrospective and follow-up triage. You decide what matters; the controller keeps the authorized work moving while you are away.
+**Hand over agreed engineering work in the evening. Come back to an account of what was built, how it was checked and what remains open.**
 
-Its priority is reliability, through autonomy and trust together; speed and economy count only where they cost neither. The v3 workflow uses a strong controller and fresh independent reviewers. Fable and Astra are interchangeable; using both is an optional advantage.
+Nightshift is a plugin for Claude Code and Codex. You settle the outcome and the limits. Nightshift carries the work through implementation, independent review, verification and documentation, then reports what was delivered, what was checked and what still needs your decision.
 
-## Workflow
+[Get started](#getting-started), or read on for how it works.
 
-1. Investigate the request and confirm consequential behavior with a short readback that ends by asking plainly whether to begin the work; only a yes to that question starts it. Substantial work gets a concise governing spec; independent spec assessment can run alongside the user's review.
-2. Implement directly from accepted commitments. An implementation plan is optional when delegation to a less capable worker makes it useful.
-3. Have a fresh strong agent assess the cumulative change and surrounding code. Every finding goes to an independent skeptic, then the controller separates factual validity, repair authority and practical value.
-4. Apply worthwhile authorized repairs and run meaningful checks. The reviewer that raised each repaired finding then resumes its own session to record whether the repair closes it and to reassess the full cumulative change, and a replacement stands in when a session cannot be resumed; every repair needs this, including tiny fixes. A continued review never clears the gate: the loop ends with a fresh strong assessment, which does not need an extra pass solely to produce LGTM when no repair remains.
-5. Update documentation and backlog and have a fresh strong agent review them for accuracy and completeness, perform the session retrospective, then present follow-ups one at a time; backlog edits that apply triage decisions get their own closing review. Unanswered follow-ups stay saved. A missing user decision blocks dependent work while authorized independent work continues.
+## Why
 
-Publication needs explicit authority. A local handover does not authorize a push, release or deployment.
+Delegating work to a coding agent leaves a verification problem: how do you know the result meets the agreement without reading every diff or replaying the session yourself? Nightshift is designed around three ways delegated agent work goes wrong:
 
-## Public skills
+- **"Done" is a claim, not evidence.** An agent can report success on work that was never checked against what was agreed.
+- **Reviewers are wrong too.** A reviewing agent can report a plausible defect that does not exist, and a reviewer that followed a repair can stop seeing the code around it.
+- **Long sessions forget.** When the context is compacted, unfinished obligations can disappear with it.
 
-| Skill | Purpose |
-| --- | --- |
-| `handover` | Carry an authorized finite queue through the remaining lifecycle |
-| `revise-code` | Apply the Nightshift review, repair and closing workflow to code |
-| `revise-spec` | Assess and strengthen a governing spec without routine implementation planning |
-| `revise-docs` | Reconcile documentation with delivered behavior under independent documentation review |
-| `revise-lore` | Perform the session retrospective and propose durable instruction improvements |
-| `ready` | Resolve the backlog dependency graph and suggest available work |
-| `exploring` | Present unfinished drafts separately from ready work |
-| `init-backlog` | Initialize or migrate the project backlog |
+Nightshift's priority is reliability, through autonomy and trust together: the work keeps moving while you are away, and you can trust the result without auditing the code yourself, because that trust is earned with evidence, not with a confident summary. Speed and economy count only where they cost neither.
 
-Claude Code exposes these as `/nightshift:<skill>`. Other hosts can invoke the installed skill by name. Ordinary "review" and "review-loop" requests are not plugin triggers; "revise" requests the Nightshift machinery. Neither backlog readiness nor a reviewer finding grants implementation authority.
+## How it works
 
-## Independent review
+```mermaid
+flowchart TD
+    A["Agree the outcome and limits"] --> B["Implement and verify"]
+    B --> C["Fresh independent review"]
+    C --> D["A skeptic tests every finding against evidence"]
+    D --> E{"Repairs needed?"}
+    E -->|yes| F["Repair and re-check. The reviewer that raised the finding confirms closure"]
+    F --> C
+    E -->|no| G["Update documentation, with its own review"]
+    G --> H["Retrospective and report"]
+    H --> I["Follow-up decisions, one at a time"]
+```
 
-One strong reviewer can cover a small change. All code reviews consider requirements and UX, correctness and integration, security and data safety, design and maintainability, performance and resources, and tests and evidence. Specs use four lenses: intent and acceptance; soundness and integration; failure, safety and recovery; and clarity, consistency and proportionality. The reviewer decides where depth is needed rather than relying on the author's prediction of relevant dimensions.
+Simplified. Work that cannot be finished within what you agreed stays open and appears in the report. It is never counted as done.
 
-For demanding work, a review lead can use peers with the same model and effort. Only a strong agent with credible broad coverage can clear the gate. An equivalent-strength reviewer on the other host is preferred when it adds independence; same-host review remains valid. Model selection stays with the controller unless the user requires a particular model.
+## Getting started
 
-Reviewers receive immutable copies and read-only host access. When a deciding claim needs execution, they can propose a bounded probe for the controller to inspect and authorize. Probe execution uses controller privileges in a separate working copy, which is not a security sandbox. The command's full effects must fit the authorized verification scope.
+**Requirements.** Windows, Node.js 22.23 or later, Git, PowerShell 7, and a native install of Claude Code or Codex CLI. The verified baselines are Claude Code 2.1.268 and Codex CLI 0.154.0. Other operating systems are not yet verified.
 
-## Continuation and recovery
-
-The runtime saves accepted commitments, task dependencies, ownership, findings, evidence and follow-ups in a transactional local database. Focused hook context restores outstanding obligations after compaction. The controller reconciles saved state with actual files at workflow boundaries and after recovery.
-
-The continuation mechanism depends on the host: Codex needs a native persistent goal, because its models tend to yield their turn early, while on Claude Code, which has no native goal, the registered Stop hook carries unattended work once it is verified as enabled, trusted and active in the controller's session. The controller observes current continuation and host integration at handover and recovery boundaries. Handing over an existing run records the handover in place; a verified mechanism permits unattended mode. Without one, an attended run records the handover and its reporting duty while remaining attended. Losing continuation requires explicit invalidation of stale verification, preserving the work and handover. Unavailable admission is diagnosed rather than bypassed or silently restored.
-
-A handed-over run owes a morning report that stands on its own: the runtime requires it before completion, records delivery from your actual reply, and reminds the current owner while the report is undelivered or a follow-up remains. A functioning Stop hook protects a running handed-over run even after downgrade to attended mode; it does not itself restore a native goal. Three reminders without progress end in an incomplete recovery result. Explicit stops and limits take precedence, and a user-decision-only pause is permitted when no actionable work or active worker remains. Running dispatches are awaited inside the turn. Attended runs without handover may yield for conversation.
-
-One run owns a checkout. Under your direction, a compatible unfinished run may be adopted after workers and operations are confirmed inactive; a running source also requires proof that its claimed controller process has ended. Adoption preserves work and leaves the new owner stopped and attended until reconciliation and explicit resumption. Engineering requires a fresh successful native controller claim. Existing workers and legacy state must be reconciled before a competing run or migration starts. Automatic host relaunch after a crash or reboot, simultaneous independent runs in one checkout, and active control transfer remain deferred.
-
-## Project files
-
-Nightshift uses `.nightshift/` at the project root. The four indexes are `FEATURES.md`, `BUGS.md`, `QUICK_WINS.md` and `PATTERNS.md`, with breakouts and history beside them. The ready parser resolves declared dependencies and diagnoses structural problems. Drafts under `Exploring` are presented separately.
-
-Setup inspects legacy `.claude` content, preserves staged and working bytes and existing tracking choices, and resumes interrupted migration from its saved journal. Shared plans and specs require explicit ownership decisions. Unrelated host configuration stays in place, and existing plans are preserved. Runtime records are ignored by default. Bulk rewriting of legacy instructions and general backlog structural repair are outside the supported setup scope.
-
-The source backlog's v2 decisions are preserved in the [migration ledger](.nightshift/MIGRATION_STATUS.md) and [archived indexes](.nightshift/migration/v2/FEATURES.md). Consolidating an entry there does not claim its need has been delivered.
-
-## Installation and prerequisites
-
-The supported target is Windows with Node.js 22.23 or later, Git, PowerShell 7, and a native Claude Code or Codex executable. Preparation asks the host for its effective settings through the `--safe-mode` control channel on Claude Code and the app-server API on Codex; the verified baselines are Claude Code 2.1.268 and Codex CLI 0.154.0, and an older host that lacks these surfaces fails closed with a native-host diagnosis whose recovery is a host update. The current review inventory supports regular singly linked project files; linked files and submodule directories produce an explicit prerequisite diagnosis. Other operating systems and command-shim-only host installations are not yet verified.
-
-Claude Code marketplace installation:
+Claude Code:
 
 ```text
 /plugin marketplace add astenlund/nightshift
 /plugin install nightshift@astenlund
 ```
 
-These commands install the published release. Local checkout changes require a separate candidate installation. Codex packaging is included under `.codex-plugin`; isolated installation and update checks passed on both Windows hosts. The v3 implementation has no Superpowers dependency.
-
-From version 3.1.1, invoking a skill prepares Nightshift automatically. Ready and Exploring can list work before background continuation is enabled. When another operation needs host approval or a reopened session, Nightshift explains the specific action required. See [the retained resource interface](internal/releases/REFERENCE.md) for technical preparation details, native trust and activation, updates and removal. Setup preserves unrelated host hooks and retains complete manifest-verified releases outside the plugin cache. Existing sessions and resumable runs keep their exact release; new sessions can capture the updated enabled installation. Plugin uninstall does not remove these user hooks automatically: use the retained launcher removal operation. The 3.1.0 independent assessment and installed-model acceptance are recorded in its acceptance report. The [3.1.1 acceptance report](.nightshift/reports/automatic-plugin-preparation-20260915.md) records the assessments and checks, the confirmed hook-disabling defect found after them, its repair, and the clean cumulative strong assessment that preceded publication. Deterministic and zero-inference checks remain distinct from model-owned observations.
-
-## Development
-
-Runtime operations and their input contracts are documented in [internal/runtime/REFERENCE.md](internal/runtime/REFERENCE.md). Shared controller guidance lives in [internal/workflow.md](internal/workflow.md).
-
-Run checks relevant to the changed component, for example:
+Codex:
 
 ```text
-node --test tests/runtime-regressions.test.js tests/runtime-hooks.test.js
-node --test tests/runtime-review.test.js tests/runtime-probes.test.js
-node --test tests/runtime-hosts.test.js tests/setup.test.js
-node skills/ready/ready.test.js
-node skills/init-backlog/unwrap.test.js
-node --test tests/unwrap-recovery.test.js
+codex plugin marketplace add astenlund/nightshift
+codex plugin add nightshift@astenlund
 ```
 
-When issuing these checkout tests through a bound installed runtime `check`, select `check.resourceMode: "development"`; genuine installed-helper checks keep the default `inherit` mode. These are deterministic fixtures, including real process-containment checks on Windows. They do not substitute for installed-model acceptance. Real-model campaigns require an explicit aggregate token budget, native usage accounting and recorded outcomes, including genuine compaction with unfinished obligations on both hosts.
+The first time you invoke a skill, Nightshift prepares itself. It keeps a manifest-verified copy of the release outside the plugin cache and registers its SessionStart, PreCompact and Stop hooks in your user profile, leaving unrelated hooks alone. It tells you when the host needs an approval or a reopened session. Then pick an entry point:
+
+- **Review a change you already made.** `/nightshift:revise-code` runs independent review, skeptic validation and repair on your current work.
+- **Hand over a task.** Agree the task in conversation, then run `/nightshift:handover`. Before you leave, the agent tells you whether it can continue unattended on your host.
+- **Find ready work.** `/nightshift:init-backlog` sets up a backlog under `.nightshift/` in your project. `/nightshift:ready` lists the work whose dependencies are met and recommends what to take on. Listing work does not start it.
+
+Claude Code exposes the skills as `/nightshift:<skill>`. On Codex, invoke the same skills by name. Nightshift asks before it begins, and the workflow requires explicit authority before anything is pushed, released or deployed.
+
+To update, run `claude plugin update nightshift@astenlund` on Claude Code and restart it. On Codex, `codex plugin marketplace upgrade astenlund` refreshes the marketplace snapshot; whether that alone moves an installed plugin to a newer release is not yet verified. An open session and a resumable run keep the release they started with, and new sessions can pick up the update. Uninstalling the plugin does not remove the hooks it registered. The [release reference](internal/releases/REFERENCE.md) describes the removal operation.
+
+## Design decisions
+
+| Problem | Response |
+| --- | --- |
+| An agent says it is finished | Completion is a recorded state, not a message. The runtime refuses to complete a code task without current checks and a current independent assessment. |
+| A reviewer reports a defect that is not there | Every finding goes to a fresh skeptic that tests it against concrete evidence before any repair. Whether a finding is true, whether fixing it is authorized and whether it is worth fixing are three separate decisions. |
+| A reviewer that followed the repair misses the rest | The reviewer that raised a finding, or a replacement given its record, confirms the repair. Only a reviewer working in a fresh context can pass the gate. |
+| A review outlives the code it covered | A review is recorded with the inputs it read. Before it can count toward completion, the runtime checks those inputs against the current files. |
+| A long session loses track | Commitments, findings, evidence and follow-ups are saved in a local SQLite database, outside the conversation. After the context is compacted, hooks bring back the open obligations and the agent reconciles them with the actual files. |
+
+One release's [acceptance report](.nightshift/reports/resumable-reviewer-dialogue-20261001.md) shows why the fresh pass matters. In a scripted campaign on installed hosts, a test fixture was repaired and the repair was confirmed closed. Fresh reviewers then found two defects the repaired code still had: a NaN counted as a number, and an overflow to Infinity. One fresh reviewer missed both and the next found the overflow, so a fresh pass improves the odds without being a guarantee. While the same release was being built, a reviewer raised an important finding that a fresh skeptic refuted from the spec and the source, so no code was changed to fix a defect that did not exist.
+
+## What you get back
+
+A handed-over run owes you a report, and the runtime does not let the run complete without one. It is written for a reader who saw nothing of the run, and it covers, in this order:
+
+1. What was delivered and how it was verified, with stated limits.
+2. Which of the review, documentation and retrospective workflows actually ran, and any that were skipped, blocked or recovered later.
+3. Commits made, and whether anything was published.
+4. What the retrospective found.
+5. Whether the run operated unattended.
+6. Every unresolved item: what it is, where it is, what failed, its impact and the choice in front of you.
+
+Follow-up decisions then come to you one at a time, each with a recommendation.
+
+## Skills
+
+| Skill | What it does |
+| --- | --- |
+| `revise-code` | Independent review, skeptic validation and repair of code |
+| `revise-spec` | Independent assessment and repair of a spec |
+| `revise-docs` | Brings documentation and backlog in line with what was delivered, under its own review |
+| `revise-lore` | Session retrospective that may propose improvements to your agent instructions |
+| `handover` | Takes an agreed task or queue through the whole lifecycle, unattended where the host allows |
+| `init-backlog` | Sets up or migrates the project backlog under `.nightshift/` |
+| `ready` | Lists work whose dependencies are met and recommends what to take on |
+| `exploring` | Shows unfinished drafts, kept apart from ready work |
+
+A plain "review" request does not trigger the plugin. "Revise" does.
+
+## Evidence and limits
+
+- **Tests.** A deterministic suite covers the runtime, setup and packaging, including real process-containment checks, and runs in CI on Windows with Node 22. No npm dependencies are required: the code uses Node's built-in modules, including SQLite.
+- **Live evidence.** Acceptance reports under [.nightshift/reports](.nightshift/reports) record runs on installed Claude Code and Codex hosts with real models. The project distinguishes three kinds of evidence: deterministic tests, behavior observed on a real host, and behavior that depends on a model following guidance and has not been observed yet.
+- **Self-hosting.** Nightshift is built with Nightshift: this repository requires its own lifecycle for agreed implementation work.
+- **Cost.** Independent review adds real model usage. Nightshift does not claim to be the cheapest way to get a change made.
+- **Platform.** Windows is the only verified platform.
+- **Checkout.** One run owns a checkout at a time, and simultaneous independent runs in one checkout are not supported. Review covers regular, singly linked files: symbolic links, hard links and submodules get a diagnosis to reconcile first, as the [runtime reference](internal/runtime/REFERENCE.md) describes.
+- **Hosts.** Either host is meant to carry the whole workflow, and review prefers an equally strong model on the other host when one is suitable and available. Unattended operation needs a verified continuation mechanism: a persistent goal on Codex, a Stop hook on Claude Code.
+- **Recovery.** Saved state survives context compaction and a closed session. Nothing relaunches the host after a crash or reboot: unattended work stops until you reopen the session, and the agent then reconciles saved state with the actual files.
+- **Not a sandbox.** Reviewers work on private copies, which protects the files under review. Probes the agent authorizes run with your privileges and are not sandboxed.
+- **Authority.** The workflow requires explicit authority before a push, release or deployment. That is an operating rule the agent follows, not a technical lock.
+
+## Going deeper
+
+- [WORKFLOW.md](WORKFLOW.md) and [VISION.md](VISION.md): the design and its reasoning. Both are working drafts that set direction.
+- [The v3 feature](.nightshift/features/nightshift-v3.md): supported scope.
+- [Operating brief](internal/workflow.md): the instructions the agent follows.
+- [Runtime reference](internal/runtime/REFERENCE.md) and [release reference](internal/releases/REFERENCE.md): operations, setup, updates and removal.
+- [Acceptance reports](.nightshift/reports): what was verified, where and with what qualifications.
+- [Changelog](CHANGELOG.md): release notes.
+- [AGENTS.md](AGENTS.md): development and verification commands.
+
+## Author
+
+Built by Andreas Stenlund. For questions about Nightshift, or about engineering work with AI coding agents, write to a.stenlund@gmail.com.
 
 ## License
 
