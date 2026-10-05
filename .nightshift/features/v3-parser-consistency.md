@@ -37,7 +37,7 @@ The user agreed these answers on 2026-10-05, when the entry graduated from Explo
 - The backlog file vocabulary. Settled: `BACKLOG_FILES` in `internal/backlog-catalog.js` becomes the only definition; setup imports it and Ready derives its index stems from it.
 - The link-target filters. Settled: Ready and the link notices share one predicate, the stricter of the two, which rejects any URI scheme. Fixtures pin each target whose acceptance changes, which `isCatalogTarget` already refuses in most cases.
 - Rescanning entry bodies. Settled: Ready parses each entry's metadata once, and every consumer reads that parse instead of scanning the body again.
-- Relations. Settled: the entry requires nothing. It is best shipped before [Related field for non-dependency relations](related-field.md), [Restore controlled mixed-line-ending repair](v3-mixed-ending-repair.md) and [Ready silently ignores dependency lines on quick wins](../BUGS.md#ready-silently-ignores-dependency-lines-on-quick-wins), which change the same metadata and scanning, but that is ordering advice, not a dependency.
+- Relations. Settled: the entry requires nothing. It is best shipped before [Related field for non-dependency relations](related-field.md) and [Restore controlled mixed-line-ending repair](v3-mixed-ending-repair.md), which change the same metadata and scanning, but that is ordering advice, not a dependency. [Ready silently ignores dependency lines on quick wins](../BUGS_HISTORY.md#ready-silently-ignores-dependency-lines-on-quick-wins), which touched the same scanning, shipped first.
 
 ## Before implementation
 

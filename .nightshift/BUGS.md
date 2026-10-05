@@ -349,14 +349,6 @@ Extend the relief to descriptive documentation that is neither code nor operatin
 
 **Requires:** none.
 
-### Ready silently ignores dependency lines on quick wins
-
-Found on 2026-10-04 by [the section-level audit of v2 records](reports/v2-section-audit-20261004.md), outside its scope. `attachEntryMetadata` in `skills/ready/ready.js` sets every quick win's Requires and External content to null, so a quick win is always ready, and a `**Requires:**` or `**External:**` line written on one is dropped without any notice. The shipped [quick-wins template](../skills/init-backlog/templates/quick-wins.md) says "Quick wins carry neither a `**Requires:**` nor an `**External:**` line", as v2's index did, yet all 40 quick wins in this repository's index carried `**Requires:** none.` on 2026-10-04, added since about 2026-09-11, and the nine the section-level audit added that day carry it too. The silent drop has already cost a paid attempt: [the Ready selection-boundary report](reports/ready-selection-boundary-20260924.md) records an empty-backlog fixture "whose External line sat on a quick win", which therefore produced one ready item, so the case had to be corrected and rerun. The user chose to track it at the audit's triage.
-
-Decide whether quick wins may declare dependencies, in which case the parser reads and resolves them like other entries, or must not, in which case Ready reports such a line as a notice and every `**Requires:** none.` line in this repository's quick-win index is removed, recounted when the work starts; either way a declared line is never dropped silently. Keep the template, the parser and its fixtures consistent with the choice. Parser changes ship with a version increase. Tracking does not authorize implementation.
-
-**Requires:** none.
-
 ## History
 
 Prior delivered work remains in [BUGS_HISTORY.md](BUGS_HISTORY.md).
