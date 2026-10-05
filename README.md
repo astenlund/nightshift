@@ -59,7 +59,7 @@ Then pick an entry point:
 - **Hand over a task.** Agree the task in conversation, then run `/nightshift:handover`. Before you leave, the agent tells you whether it can continue unattended on your host.
 - **Find ready work.** `/nightshift:init-backlog` sets up a backlog under `.nightshift/` in your project. `/nightshift:ready` lists the work whose dependencies are met and recommends what to take on. Listing work does not start it.
 
-Claude Code exposes the skills as `/nightshift:<skill>`. On Codex, invoke the same skills by name. Nightshift asks before it begins, and the workflow requires explicit authority before anything is pushed, released or deployed.
+Claude Code exposes the skills as `/nightshift:<skill>`. On Codex they take a leading dollar sign instead, as in `$nightshift:revise-code`. Nightshift asks before it begins, and the workflow requires explicit authority before anything is pushed, released or deployed.
 
 The first time you invoke a skill, Nightshift prepares itself. It keeps a manifest-verified copy of the release outside the plugin cache and registers its SessionStart, PreCompact and Stop hooks in your user profile, leaving unrelated hooks alone. It tells you when the host needs an approval or a reopened session.
 
