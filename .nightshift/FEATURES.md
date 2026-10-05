@@ -232,6 +232,12 @@ Complete shared dependency metadata and continuation handling across Ready, setu
 
 **Requires:** none.
 
+### [Verify repair-commit and autosquash safety in ordinary delivery](features/v3-git-repair-evidence.md)
+
+Complete the retained reliable repair-commit outcome using ordinary Git and project policy: establish ownership and the current safe fixup target, preserve unrelated work, honor hooks and verify the intended autosquash. The migration accounting audit of 2026-09-29 found that no repair-commit instruction or check ships, so this needs instructions as well as evidence. Since 2026-10-04 the shared checks are to be the only way Nightshift creates a fixup, and an authorized rewrite confirms a safe range, no concurrent writer and recoverable original refs. The commitments agreed with the user on 2026-10-05, recorded in the linked record: one runtime operation creates every fixup when project policy uses them; it targets the commit that last touched the repaired lines, by blame over the unpushed range, and refuses pushed or mixed targets; it runs the autosquash against a disposable copy before writing and creates the real fixup, with hooks, only when that applies cleanly; an unsafe fixup becomes a follow-up commit when policy and state permit, or else the repair is preserved and the blocker reported; and an authorized rewrite checks its range, writers and recoverable tip first and verifies an unchanged final tree after. It changes the runtime, the operating brief and revise-code, so it needs a concise governing spec, a version increase and a decision on installed-host evidence before implementation.
+
+**Requires:** none.
+
 ## Exploring
 
 ### [Shared BACKLOG.md meta-index](features/backlog-meta-index.md)
@@ -277,10 +283,6 @@ Improve current verification tooling through explicit fixture ownership, safe ev
 ### [Preserve run preferences and enforce supported resource budgets](features/v3-run-preferences.md)
 
 Complete the retained run-settings outcome across continuation: durable model and effort preferences, explicit requirements and substitutions, plus enforceable requested budgets with accurate accounting and honest unsupported limits. Since 2026-10-04 it also covers raising a recorded limit mid-run on the user's explicit authority and a closing report of the model and effort behind each role.
-
-### [Verify repair-commit and autosquash safety in ordinary delivery](features/v3-git-repair-evidence.md)
-
-Complete the retained reliable repair-commit outcome using ordinary Git and project policy: establish ownership and the current safe fixup target, preserve unrelated work, honor hooks and verify the intended autosquash. The migration accounting audit of 2026-09-29 found that no repair-commit instruction or check ships, so this needs instructions as well as evidence. Since 2026-10-04 the shared checks are to be the only way Nightshift creates a fixup, and an authorized rewrite confirms a safe range, no concurrent writer and recoverable original refs.
 
 ### [Capture review content once within an operation](features/v3-review-snapshot-reuse.md)
 
