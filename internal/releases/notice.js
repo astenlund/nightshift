@@ -4,13 +4,19 @@ const { ReleaseService, locatorState, readRun } = require('./service');
 const { registrationKey } = require('./registry');
 const { hostProfile, requireValue } = require('./io');
 
+// The service a bundled notice hook uses: a hook's registry connections keep the hook wait bound.
+function noticeService(store) {
+  return new ReleaseService(store, {}, { nativeHook: true });
+}
+
 async function handleNotice(input, host, dependencies = {}) {
   if (!input?.cwd || !input.session_id || !['codex', 'claude'].includes(host)) return {};
   let run;
   let registration;
   try {
     const root = require('../runtime/hook').projectRoot(input.cwd);
-    run = root && readRun(root);
+    // A hook's preliminary run read keeps its earlier bound and does not wait for a commit in progress.
+    run = root && readRun(root, undefined, 0);
     // A setup notice must not turn an unrelated session's activation failure into
     // a warning through the sibling hook path.
     if (run?.controller?.session !== input.session_id || run.status !== 'running') return {};
@@ -18,7 +24,7 @@ async function handleNotice(input, host, dependencies = {}) {
     const key = registrationKey(host, profile);
     const locator = locatorState(profile).value;
     requireValue(locator?.state === 'registered' && locator.registration === key, 'release-setup-required', 'The host resource locator is missing or does not match this profile');
-    const service = dependencies.createService ? dependencies.createService(locator.store) : new ReleaseService(locator.store);
+    const service = (dependencies.createService ?? noticeService)(locator.store);
     registration = service.registration(key);
     const status = await service.status(key, input.session_id, root);
     if (status.activationUsable) return {};
@@ -28,4 +34,4 @@ async function handleNotice(input, host, dependencies = {}) {
     : {};
 }
 
-module.exports = { handleNotice };
+module.exports = { handleNotice, noticeService };

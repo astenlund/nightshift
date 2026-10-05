@@ -6,6 +6,12 @@ const { DatabaseSync } = require('node:sqlite');
 const { digest, requireValue, text } = require('./io');
 
 const KINDS = new Set(['registration', 'activation', 'session', 'bundle', 'operation', 'project']);
+// How long a blocking connection waits for another process's write transaction before failing with "database is locked".
+// Measured under load with three concurrent read-only callers, holds reached 2.8 s and one wait 4.8 s, so the earlier five
+// seconds failed calls that only had to queue; this bound is about six times the longest wait observed.
+const LOCK_WAIT_MS = 30000;
+// A hook's blocking connections keep the earlier bound, so a wait never takes most of the host's 60-second hook budget.
+const HOOK_LOCK_WAIT_MS = 5000;
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/;
 const HASH = /^[a-f0-9]{64}$/;
 const IDENTITY = /^\d+\.\d+\.\d+-[a-f0-9]{64}$/;
@@ -48,7 +54,7 @@ class Registry {
     }
     this.db = new DatabaseSync(this.file);
     try {
-      this.db.exec(`PRAGMA busy_timeout=${options.nonblocking ? 0 : 5000}; PRAGMA synchronous=FULL;`);
+      this.db.exec(`PRAGMA busy_timeout=${options.nonblocking ? 0 : options.busyTimeoutMs ?? LOCK_WAIT_MS}; PRAGMA synchronous=FULL;`);
       const version = this.db.prepare('PRAGMA user_version').get().user_version;
       requireValue(version === 1 || version === 0 && options.create, 'unsupported-release-store', 'Retained registry schema is unsupported');
       if (version === 0) this.db.exec('BEGIN IMMEDIATE; CREATE TABLE records (kind TEXT NOT NULL, key TEXT NOT NULL, value TEXT NOT NULL, PRIMARY KEY(kind,key)); PRAGMA user_version=1; COMMIT;');
@@ -93,4 +99,4 @@ class Registry {
   assertKnownKinds() { requireValue(this.db.prepare('SELECT DISTINCT kind FROM records').all().every(row => KINDS.has(row.kind)), 'unsupported-release-store', 'Unknown retained reference kinds prevent safe collection'); }
 }
 
-module.exports = { Registry, registrationKey, sessionKey };
+module.exports = { HOOK_LOCK_WAIT_MS, LOCK_WAIT_MS, Registry, registrationKey, sessionKey };

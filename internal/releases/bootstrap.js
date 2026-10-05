@@ -8,6 +8,11 @@ const path = require('node:path');
 const { createHash, randomUUID } = require('node:crypto');
 const { DatabaseSync } = require('node:sqlite');
 
+// The registry wait bounds of internal/releases/registry.js, repeated because this router imports nothing: a blocking connection
+// waits LOCK_WAIT_MS for another process's write transaction, while a hook's blocking connection keeps HOOK_LOCK_WAIT_MS.
+const LOCK_WAIT_MS = 30000;
+const HOOK_LOCK_WAIT_MS = 5000;
+
 const hash = bytes => createHash('sha256').update(bytes).digest('hex');
 const requireValue = (condition, message) => { if (!condition) throw new Error(message); };
 
@@ -85,8 +90,10 @@ async function main() {
     const registryStat = fs.lstatSync(registryFile);
     requireValue(registryStat.isFile() && !registryStat.isSymbolicLink() && registryStat.nlink === 1, 'Retained registry is not an ordinary file');
     database = new DatabaseSync(registryFile);
+    // The wait applies before the first read, since a commit in progress elsewhere keeps readers out too.
+    database.exec(`PRAGMA busy_timeout=${hook ? 0 : LOCK_WAIT_MS};`);
     requireValue(database.prepare('PRAGMA user_version').get().user_version === 1, 'Unsupported Nightshift store protocol');
-    database.exec(`PRAGMA busy_timeout=${hook ? 0 : 5000}; BEGIN IMMEDIATE;`);
+    database.exec('BEGIN IMMEDIATE;');
     const registration = readRecord(database, 'registration', registrationKey);
     const routes = registration ? [registration, ...(registration.routes ?? []), registration.pending].filter(Boolean) : [];
     requireValue(routes.some(route => route.bootstrap === fs.realpathSync.native(__filename) && route.bootstrapHash === hash(fs.readFileSync(__filename))), 'Nightshift bootstrap registration changed');
@@ -128,7 +135,7 @@ async function main() {
       let cleanup;
       try {
         cleanup = new DatabaseSync(path.join(root, 'registry.sqlite'));
-        cleanup.exec('PRAGMA busy_timeout=5000;');
+        cleanup.exec(`PRAGMA busy_timeout=${hook ? HOOK_LOCK_WAIT_MS : LOCK_WAIT_MS};`);
         cleanup.prepare('DELETE FROM records WHERE kind=? AND key=?').run('operation', lease);
       } catch { /* A dead bootstrap lease can be reconciled without discarding work. */ }
       finally { cleanup?.close(); }

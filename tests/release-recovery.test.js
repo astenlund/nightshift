@@ -4,9 +4,10 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const test = require('node:test');
+const { spawn } = require('node:child_process');
 const { activate, fixture, packageCopy, repository, simulatedService } = require('./release-fixtures');
-const { readRun } = require('../internal/releases/service');
-const { Registry } = require('../internal/releases/registry');
+const { ReleaseService, readRun } = require('../internal/releases/service');
+const { HOOK_LOCK_WAIT_MS, LOCK_WAIT_MS, Registry } = require('../internal/releases/registry');
 const bundles = require('../internal/releases/bundles');
 const { processAlive } = require('../internal/releases/io');
 const { RunStore } = require('../internal/runtime/store');
@@ -421,6 +422,107 @@ test('bound runtime observations remain admitted while a dispatch holds its leas
     }
     await assert.rejects(service.run(setup.registration, { session: 'owner', project: value.project, entry: 'runtime', request: { action: 'advance' } }), error => error.code === 'resource-operation-busy');
   } finally { held.release(); await dispatch; }
+});
+
+// Holds a fixture database's write lock from another process, immediate or exclusive. Resolves once the lock is held, with the
+// holder's exit as a separate promise, so awaiting the hold does not wait for its release.
+async function holdDatabase(file, milliseconds, mode = 'immediate') {
+  const child = spawn(process.execPath, [path.join(__dirname, 'fixtures/releases/hold-sqlite-lock.cjs'), file, String(milliseconds), mode], { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
+  const exited = new Promise(resolve => child.on('close', code => resolve(code)));
+  await new Promise((resolve, reject) => {
+    child.stdout.on('data', chunk => { if (String(chunk).includes('held')) resolve(); });
+    child.on('close', code => reject(new Error(`lock holder exited ${code} before holding the lock`)));
+  });
+  return { heldAt: Date.now(), exited };
+}
+
+// Runs one runtime request through the real retained bootstrap in its own process.
+function throughBootstrap(value, setup, name, request) {
+  const file = path.join(value.root, `${name}.json`);
+  fs.writeFileSync(file, JSON.stringify({ action: 'run', entry: 'runtime', session: 'owner', project: value.project, request }));
+  return new Promise(resolve => {
+    const child = spawn(process.execPath, [setup.bootstrap, setup.registration, file], { cwd: value.project, windowsHide: true });
+    let stdout = '';
+    let stderr = '';
+    child.stdout.on('data', chunk => { stdout += chunk; });
+    child.stderr.on('data', chunk => { stderr += chunk; });
+    child.on('close', code => resolve({ name, code, stdout, stderr }));
+  });
+}
+
+test('read-only runtime calls wait out a registry write lock held past the earlier five-second bound', async t => {
+  const value = fixture(t);
+  const { service } = simulatedService(value, packageCopy(value.root, '1.0.0'));
+  const setup = await service.setup({ host: 'codex', profile: value.profile });
+  await activate(service, setup.registration, value.project, 'owner');
+  await service.resolve(setup.registration, { session: 'owner', project: value.project, entry: 'ready' });
+  const run = request => service.run(setup.registration, { session: 'owner', project: value.project, entry: 'runtime', request });
+  const created = await run({ action: 'create', objective: 'fixture', authority: 'test', tasks: [{ id: 'work', title: 'Work', agreement: { source: 'test', outcome: 'fixture' } }] });
+  assert.equal(created.code, 0, created.stderr);
+  const registered = await run({ action: 'worker', revision: JSON.parse(created.stdout).revision, worker: { id: 'observed', session: 'observed-session', assignment: 'Observe', role: 'reviewer', writes: [] } });
+  assert.equal(registered.code, 0, registered.stderr);
+
+  const registry = path.join(value.store, 'registry.sqlite');
+  const observations = () => Promise.all([
+    throughBootstrap(value, setup, 'status', { action: 'status' }),
+    throughBootstrap(value, setup, 'inspect', { action: 'inspect' }),
+    throughBootstrap(value, setup, 'wait', { action: 'wait', workerId: 'observed', timeoutMs: 1000 }),
+  ]);
+  // A reserved lock makes the real bootstrap's own transaction wait; an exclusive one, which every registry commit takes while it
+  // writes, also keeps out the bootstrap's first read; and a commit to the project's run store keeps out the launcher's run reads.
+  for (const [file, milliseconds, mode] of [[registry, 7000, 'immediate'], [registry, 7000, 'exclusive'], [path.join(value.project, '.nightshift/runs/state.sqlite'), 3000, 'exclusive']]) {
+    const held = await holdDatabase(file, milliseconds, mode);
+    const calls = await observations();
+    assert.equal(await held.exited, 0);
+    for (const call of calls) assert.equal(call.code, 0, `${path.basename(file)} ${mode}, ${call.name}: ${call.stderr}`);
+    assert.ok(Date.now() - held.heldAt >= milliseconds, `every call outlasted the ${mode} lock on ${path.basename(file)}`);
+    assert.equal(JSON.parse(calls[2].stdout).workerId, 'observed');
+  }
+
+  // The release service's own registry connections wait in turn.
+  const serviceHeld = await holdDatabase(registry, 7000);
+  const status = await run({ action: 'status' });
+  assert.equal(await serviceHeld.exited, 0);
+  assert.equal(status.code, 0, status.stderr);
+  assert.ok(Date.now() - serviceHeld.heldAt >= 7000, 'the in-process call outlasted the held lock');
+});
+
+test('a hook\'s preliminary run read does not wait for a run store commit', async t => {
+  const value = fixture(t);
+  const { service } = simulatedService(value, packageCopy(value.root, '1.0.0'));
+  const setup = await service.setup({ host: 'codex', profile: value.profile });
+  await activate(service, setup.registration, value.project, 'owner');
+  await service.resolve(setup.registration, { session: 'owner', project: value.project, entry: 'ready' });
+  const created = await service.run(setup.registration, { session: 'owner', project: value.project, entry: 'runtime', request: { action: 'create', objective: 'fixture', authority: 'test', tasks: [{ id: 'work', title: 'Work', agreement: { source: 'test', outcome: 'fixture' } }] } });
+  assert.equal(created.code, 0, created.stderr);
+  const { handleNotice } = require('../internal/releases/notice');
+
+  const held = await holdDatabase(path.join(value.project, '.nightshift/runs/state.sqlite'), 6000, 'exclusive');
+  const started = Date.now();
+  await service.hook(setup.registration, { cwd: value.project, session_id: 'unrelated', hook_event_name: 'Stop' });
+  const hookMs = Date.now() - started;
+  const notice = await handleNotice({ cwd: value.project, session_id: 'unrelated' }, 'codex', { profile: value.profile });
+  const noticeMs = Date.now() - started - hookMs;
+  assert.equal(await held.exited, 0);
+
+  assert.ok(hookMs < 3000, `the release hook returned after ${hookMs} ms while the run store was locked`);
+  assert.ok(noticeMs < 3000, `the bundled notice returned after ${noticeMs} ms while the run store was locked`);
+  assert.deepEqual(notice, {});
+  assert.equal(readRun(value.project).id, JSON.parse(created.stdout).id, 'the run is readable once the lock is released');
+});
+
+test('blocking registry connections wait the longer bound while hook connections keep theirs', async t => {
+  const value = fixture(t);
+  const { service } = simulatedService(value, packageCopy(value.root, '1.0.0'));
+  await service.setup({ host: 'codex', profile: value.profile });
+  const timeout = (target, options) => target.registry(registry => registry.db.prepare('PRAGMA busy_timeout').get().timeout, options);
+  const hookService = new ReleaseService(value.store, service.overrides, { nativeHook: true });
+  const { noticeService } = require('../internal/releases/notice');
+  assert.deepEqual([timeout(service), timeout(service, { nonblocking: true }), timeout(hookService), timeout(hookService, { nonblocking: true }), timeout(noticeService(value.store))], [LOCK_WAIT_MS, 0, HOOK_LOCK_WAIT_MS, 0, HOOK_LOCK_WAIT_MS]);
+  assert.ok(LOCK_WAIT_MS > 5000 && HOOK_LOCK_WAIT_MS === 5000);
+  const bootstrap = fs.readFileSync(path.join(repository, 'internal/releases/bootstrap.js'), 'utf8');
+  assert.equal(Number(bootstrap.match(/const LOCK_WAIT_MS = (\d+);/)[1]), LOCK_WAIT_MS, 'the import-free bootstrap mirrors the registry bound');
+  assert.equal(Number(bootstrap.match(/const HOOK_LOCK_WAIT_MS = (\d+);/)[1]), HOOK_LOCK_WAIT_MS);
 });
 
 test('new-run selection preserves live ownership, explicit run identity and session pinning', async t => {

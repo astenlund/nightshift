@@ -6,7 +6,7 @@ const os = require('node:os');
 const { randomUUID } = require('node:crypto');
 const { isDeepStrictEqual } = require('node:util');
 const { DatabaseSync } = require('node:sqlite');
-const { Registry, registrationKey, sessionKey } = require('./registry');
+const { HOOK_LOCK_WAIT_MS, Registry, registrationKey, sessionKey } = require('./registry');
 const bundles = require('./bundles');
 const native = require('./native-host');
 const configuration = require('./host-config');
@@ -15,6 +15,7 @@ const { CHANGED_CONCURRENTLY, REMOVED_MESSAGE, ownerFree, pluginIdentity, publis
 const { CONTEXT_ENV, MODE_ENV, executionResources } = require('./entry');
 const { isReadOnlyAction, isRuntimeAction, unknownActionMessage } = require('../runtime/actions');
 const { workerIsActive } = require('../runtime/workers');
+const { RUN_STORE_WAIT_MS } = require('../runtime/store');
 const { digest, directory, hostProfile, parseJson, processAlive, projectRoot, readBytes, replaceFile, requireConsistentRunId, requireValue, text, writeNew } = require('./io');
 
 const ENTRIES = Object.freeze({ ready: 'skills/ready/ready.js', unwrap: 'skills/init-backlog/unwrap.js', setup: 'skills/init-backlog/init-backlog.js', runtime: 'internal/runtime/cli.js' });
@@ -25,12 +26,16 @@ const ENTRY_CHOICE = 'Choose ready, unwrap, setup or runtime';
 
 function defaultStore() { return path.join(process.env.LOCALAPPDATA ?? path.join(os.homedir(), 'AppData', 'Local'), 'Nightshift'); }
 
-function runDatabase(root) {
+// A run store commit keeps readers out while it writes. Launcher operations wait for it as the runtime's own store connections
+// do; a hook's preliminary read, made before it knows whether the session owns a run, passes no wait and keeps its earlier bound.
+function runDatabase(root, waitMs = RUN_STORE_WAIT_MS) {
   const file = path.join(root, '.nightshift/runs/state.sqlite');
   if (!fs.existsSync(file)) return null;
   const stat = fs.lstatSync(file);
   requireValue(stat.isFile() && !stat.isSymbolicLink() && stat.nlink === 1, 'run-resource-state-unavailable', 'Run database is not an ordinary file');
-  return new DatabaseSync(file, { readOnly: true });
+  const database = new DatabaseSync(file, { readOnly: true });
+  database.exec(`PRAGMA busy_timeout=${waitMs};`);
+  return database;
 }
 
 function parseRunState(row) {
@@ -39,8 +44,8 @@ function parseRunState(row) {
   return value;
 }
 
-function readRun(root, id) {
-  const database = runDatabase(root);
+function readRun(root, id, waitMs = RUN_STORE_WAIT_MS) {
+  const database = runDatabase(root, waitMs);
   if (!database) return null;
   try {
     const row = id ? database.prepare('SELECT state FROM runs WHERE id=?').get(id) : database.prepare('SELECT r.state FROM runs r JOIN active a ON a.id=r.id WHERE a.singleton=1').get();
@@ -118,7 +123,7 @@ class ReleaseService {
   }
 
   registry(action, options = {}) {
-    const registry = new Registry(this.store, options);
+    const registry = new Registry(this.store, this.context.nativeHook && !options.nonblocking ? { ...options, busyTimeoutMs: HOOK_LOCK_WAIT_MS } : options);
     this.store = registry.root;
     try { return registry.transaction(action); }
     finally { registry.close(); }
@@ -546,7 +551,7 @@ class ReleaseService {
     let registration;
     try {
       project = require('../runtime/hook').projectRoot(input.cwd);
-      if (project) ownerRun = this.dependencies.readRun(project);
+      if (project) ownerRun = this.dependencies.readRun(project, undefined, 0);
       if (ownerRun) ownerResources = Object.hasOwn(ownerRun, 'executionResources') ? ownerRun.executionResources : ownerRun.resources;
       registration = this.registration(key);
       const identifiable = ownerRun?.controller?.host === registration.host && ownerRun.controller.session === input.session_id && ownerRun.status === 'running';

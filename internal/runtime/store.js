@@ -8,6 +8,9 @@ const path = require('node:path');
 const { createHash, randomUUID } = require('node:crypto');
 const { DatabaseSync } = require('node:sqlite');
 
+// How long a connection to a project's run store waits for another process's commit before failing with "database is locked".
+const RUN_STORE_WAIT_MS = 5000;
+
 class RunError extends Error {
   constructor(code, message) {
     super(message);
@@ -58,7 +61,7 @@ class RunStore {
     }
     requireCondition(options.create || fs.existsSync(database), 'missing-state', 'No Nightshift run database exists');
     this.db = new DatabaseSync(database);
-    this.db.exec('PRAGMA busy_timeout=5000; PRAGMA synchronous=FULL; PRAGMA foreign_keys=ON;');
+    this.db.exec(`PRAGMA busy_timeout=${RUN_STORE_WAIT_MS}; PRAGMA synchronous=FULL; PRAGMA foreign_keys=ON;`);
     const version = this.db.prepare('PRAGMA user_version').get().user_version;
     requireCondition([0, 1, 2].includes(version), 'state-version', `Unsupported run database version ${version}`);
     if (version === 0) {
@@ -235,4 +238,4 @@ class RunStore {
   }
 }
 
-module.exports = { RunStore, RunError, requireCondition, safeDirectory, text };
+module.exports = { RUN_STORE_WAIT_MS, RunStore, RunError, requireCondition, safeDirectory, text };
