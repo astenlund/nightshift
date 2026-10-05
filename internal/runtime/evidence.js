@@ -168,8 +168,9 @@ function fresh(root, evidence) {
   return freshAll(root, [evidence])[0];
 }
 
-// Whether each snapshot still matches current inputs, as fresh decides for one, judged together: each distinct file is read once,
-// and the renormalization candidates of every snapshot cost one object-format query and one batched hash rather than two each.
+// Whether each snapshot still matches current inputs, as fresh decides for one, judged together: one byte comparison of each distinct
+// file serves every snapshot, and the renormalization candidates of all of them are then verified with one object-format query and
+// one batched hash rather than two Git processes per snapshot.
 // Judging never throws: an inventory or entry that cannot be read leaves its snapshot not fresh and the others unaffected, so a
 // status brief can name the stale evidence instead of failing, while every gate that needs fresh evidence still refuses.
 function freshAll(root, evidences) {
