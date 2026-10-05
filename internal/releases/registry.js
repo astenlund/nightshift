@@ -5,7 +5,7 @@ const path = require('node:path');
 const { DatabaseSync } = require('node:sqlite');
 const { digest, requireValue, text } = require('./io');
 
-const KINDS = new Set(['registration', 'activation', 'session', 'bundle', 'operation', 'project']);
+const KINDS = new Set(['registration', 'activation', 'activation-failure', 'session', 'bundle', 'operation', 'project']);
 // How long a blocking connection waits for another process's write transaction before failing with "database is locked".
 // Measured under load with three concurrent read-only callers, holds reached 2.8 s and one wait 4.8 s, so the earlier five
 // seconds failed calls that only had to queue; this bound is about six times the longest wait observed.
@@ -26,6 +26,7 @@ function validateRecord(kind, key, value, root) {
   }
   if (kind === 'session') requireValue(HASH.test(value.registration) && typeof value.session === 'string' && key === sessionKey(value.registration, value.session) && ['bound', 'retired'].includes(value.state) && IDENTITY.test(value.identity) && UUID.test(value.bundle) && Array.isArray(value.projects) && value.projects.every(item => typeof item === 'string' && path.isAbsolute(item)) && Array.isArray(value.runs) && value.runs.every(item => item && typeof item.id === 'string' && typeof item.project === 'string' && path.isAbsolute(item.project) && typeof item.retired === 'boolean' && (item.historical === undefined || typeof item.historical === 'boolean') && (item.pendingAdoption === undefined || item.pendingAdoption === true && item.retired === false && item.historical !== true)), 'invalid-release-record', 'Invalid session binding or reference inventory');
   if (kind === 'activation') requireValue(HASH.test(value.registration) && typeof value.session === 'string' && key === sessionKey(value.registration, value.session) && HASH.test(value.generation) && Number.isSafeInteger(value.owner?.pid) && typeof value.owner.created === 'string', 'invalid-release-record', 'Invalid native activation');
+  if (kind === 'activation-failure') requireValue(HASH.test(value.registration) && typeof value.session === 'string' && key === sessionKey(value.registration, value.session) && HASH.test(value.generation) && typeof value.cause === 'string' && value.cause.length > 0 && typeof value.observedAt === 'string', 'invalid-release-record', 'Invalid native activation failure');
   if (kind === 'operation') requireValue(UUID.test(key) && ['bootstrap', 'capture', 'entry'].includes(value.kind) && value.state === 'running' && Number.isSafeInteger(value.pid) && value.pid > 0 && UUID.test(value.bundle), 'invalid-release-record', 'Invalid active-operation inventory');
   if (kind === 'project') requireValue(typeof value.root === 'string' && path.isAbsolute(value.root) && key === digest(value.root), 'invalid-release-record', 'Invalid registered project');
   return value;

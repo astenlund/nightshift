@@ -97,7 +97,11 @@ function configurationFields(value) {
 }
 
 function removeActivations(registry, registration) {
-  for (const activation of registry.list('activation')) if (activation.value.registration === registration) registry.remove('activation', activation.key);
+  for (const kind of ['activation', 'activation-failure']) for (const entry of registry.list(kind)) if (entry.value.registration === registration) registry.remove(kind, entry.key);
+}
+
+function sameOwner(left, right) {
+  return left?.pid === right?.pid && left?.created === right?.created && left?.name === right?.name;
 }
 
 function locatorState(profile) {
@@ -123,9 +127,10 @@ class ReleaseService {
     this.settingsCache = new Map();
   }
 
-  // Process inspection options for this operation: a registered hook keeps the shorter budget that fits its host timeout.
-  inspection(onFailure) {
-    return { budgetMs: this.context.nativeHook ? processes.HOOK_INSPECTION_BUDGET_MS : processes.INSPECTION_BUDGET_MS, onFailure };
+  // Process inspection options for this operation: a registered hook keeps the shorter budget that fits its host timeout,
+  // unless the caller names another, as SessionStart's owner lookup does.
+  inspection(onFailure, budgetMs = this.context.nativeHook ? processes.HOOK_INSPECTION_BUDGET_MS : processes.INSPECTION_BUDGET_MS) {
+    return { budgetMs, onFailure };
   }
 
   registry(action, options = {}) {
@@ -279,7 +284,7 @@ class ReleaseService {
   async status(key, session, project) {
     let saved;
     try {
-      saved = this.registry(registry => ({ registrations: registry.list('registration').map(entry => ({ key: entry.key, host: entry.value.host, profile: entry.value.profile, state: entry.value.state, bootstrap: entry.value.bootstrap, generation: entry.value.generation, pending: entry.value.pending ? { remove: entry.value.pending.remove, error: entry.value.pending.error, journal: entry.value.pending.journal } : null })), sessions: registry.list('session').map(entry => ({ key: entry.key, ...entry.value })), activations: registry.list('activation').map(entry => ({ key: entry.key, ...entry.value })), operations: registry.list('operation').map(entry => ({ key: entry.key, ...entry.value })), bundles: registry.list('bundle').map(entry => ({ key: entry.key, identity: entry.value.identity, root: entry.value.root })) }));
+      saved = this.registry(registry => ({ registrations: registry.list('registration').map(entry => ({ key: entry.key, host: entry.value.host, profile: entry.value.profile, state: entry.value.state, bootstrap: entry.value.bootstrap, generation: entry.value.generation, pending: entry.value.pending ? { remove: entry.value.pending.remove, error: entry.value.pending.error, journal: entry.value.pending.journal } : null })), sessions: registry.list('session').map(entry => ({ key: entry.key, ...entry.value })), activations: registry.list('activation').map(entry => ({ key: entry.key, ...entry.value })), activationFailures: registry.list('activation-failure').map(entry => ({ key: entry.key, ...entry.value })), operations: registry.list('operation').map(entry => ({ key: entry.key, ...entry.value })), bundles: registry.list('bundle').map(entry => ({ key: entry.key, identity: entry.value.identity, root: entry.value.root })) }));
     } catch (error) {
       if (error.code === 'release-setup-required') return { state: 'not-configured', store: this.store };
       throw error;
@@ -296,19 +301,24 @@ class ReleaseService {
 
   // Dependent admission resolves host settings against the same project as the Ready
   // view, so one session cannot see hooks enabled for one entry and disabled for another.
-  async requireActivation(registration, session, skipActivation = false, project) {
+  // observedOwner is the owner SessionStart has just found among its own ancestors; an activation recording exactly that owner needs no second inspection.
+  async requireActivation(registration, session, skipActivation = false, project, observedOwner = null) {
     if (skipActivation) return;
     requireValue(registration.state === 'registered' && !registration.pending, 'release-setup-required', 'Complete host setup before starting protected Nightshift work');
     const nativeState = await this.dependencies.inspectHooks(registration, registration.profile, { project, cache: this.settingsCache });
     const verdict = configuration.classifyHooks(nativeState);
     if (verdict.state !== 'usable') requireValue(false, verdict.code, verdict.message);
-    const activation = this.registry(registry => registry.get('activation', sessionKey(registration.key, session)));
-    requireValue(activation?.generation === registration.generation && activation.session === session, 'hook-activation-required', MISSING_ACTIVATION);
+    const skey = sessionKey(registration.key, session);
+    const { activation, failure } = this.registry(registry => ({ activation: registry.get('activation', skey), failure: registry.get('activation-failure', skey) }));
+    // A failed SessionStart keeps any earlier activation, so its saved cause belongs on every refusal below, not only a missing activation's.
+    const cause = failure?.generation === registration.generation ? `. SessionStart at ${failure.observedAt} could not record an activation: ${failure.cause}` : '';
+    requireValue(activation?.generation === registration.generation && activation.session === session, 'hook-activation-required', MISSING_ACTIVATION + cause);
+    if (observedOwner && sameOwner(activation.owner, observedOwner)) return;
     let inspectionFailure = null;
-    const alive = this.dependencies.ownerAlive(activation.owner, registration.profile, this.inspection(cause => { inspectionFailure = cause; }));
+    const alive = this.dependencies.ownerAlive(activation.owner, registration.profile, this.inspection(reason => { inspectionFailure = reason; }));
     // An unknown owner is refused either way, but a failed inspection is not evidence that the activation is missing.
-    requireValue(alive === true || inspectionFailure === null, 'hook-activation-required', `This native session's recorded activation could not be confirmed because process inspection failed (${inspectionFailure}); that does not show the activation is missing, so retry the request before reopening the session`);
-    requireValue(alive === true, 'hook-activation-required', MISSING_ACTIVATION);
+    requireValue(alive === true || inspectionFailure === null, 'hook-activation-required', `This native session's recorded activation could not be confirmed because process inspection failed (${inspectionFailure}); that does not show the activation is missing, so retry the request before reopening the session${cause}`);
+    requireValue(alive === true, 'hook-activation-required', MISSING_ACTIVATION + cause);
   }
 
   async resolve(key, request, maintenance = false, preparing = false) {
@@ -555,6 +565,28 @@ class ReleaseService {
     }
   }
 
+  // SessionStart's activation depends on this owner lookup alone: before it the hook waits only for its registration read,
+  // at most HOOK_LOCK_WAIT_MS, and a later failure is caught once the activation is saved. So the lookup takes the launcher's
+  // full inspection budget inside the host's 60-second hook timeout. The hook stays silent for a session that owns no running
+  // run, so a failed lookup leaves its cause where status and dependent admission can show it; one that cannot be saved is lost.
+  recordActivation(key, registration, session, identifiable) {
+    const skey = sessionKey(key, session);
+    const lock = { nonblocking: !identifiable };
+    let inspectionFailure = null;
+    const owner = this.dependencies.nativeOwner(registration.host, registration.profile, this.inspection(cause => { inspectionFailure = cause; }, processes.INSPECTION_BUDGET_MS));
+    if (!owner) {
+      const cause = 'Native host process identity could not be established' + (inspectionFailure === null ? '' : ` because process inspection failed (${inspectionFailure})`);
+      try { this.registry(registry => registry.put('activation-failure', skey, { schema: 1, registration: key, session, generation: registration.generation, cause, observedAt: new Date().toISOString() }), lock); }
+      catch { /* The hook stays silent without the record, as it was before the record existed. */ }
+      requireValue(false, 'native-activation-unavailable', cause);
+    }
+    this.registry(registry => {
+      registry.put('activation', skey, { schema: 1, registration: key, session, generation: registration.generation, owner, observedAt: new Date().toISOString() });
+      registry.remove('activation-failure', skey);
+    }, lock);
+    return owner;
+  }
+
   async hook(key, input) {
     let ownerRun = null;
     let ownerResources = null;
@@ -568,12 +600,7 @@ class ReleaseService {
       const identifiable = ownerRun?.controller?.host === registration.host && ownerRun.controller.session === input.session_id && ownerRun.status === 'running';
       if (identifiable && ownerRun.resourceMode === 'development') return {};
       if (registration.state !== 'registered' || registration.pending) return identifiable ? { systemMessage: 'Nightshift host setup is incomplete; saved work remains incomplete.' } : {};
-      if (input.hook_event_name === 'SessionStart') {
-        let inspectionFailure = null;
-        const owner = this.dependencies.nativeOwner(registration.host, registration.profile, this.inspection(cause => { inspectionFailure = cause; }));
-        requireValue(owner, 'native-activation-unavailable', 'Native host process identity could not be established' + (inspectionFailure === null ? '' : ` because process inspection failed (${inspectionFailure})`));
-        this.registry(registry => registry.put('activation', sessionKey(key, input.session_id), { schema: 1, registration: key, session: input.session_id, generation: registration.generation, owner, observedAt: new Date().toISOString() }), { nonblocking: !identifiable });
-      }
+      const observedOwner = input.hook_event_name === 'SessionStart' ? this.recordActivation(key, registration, input.session_id, identifiable) : null;
       const binding = this.registry(registry => registry.get('session', sessionKey(key, input.session_id)), { nonblocking: !identifiable });
       if (!binding) return project && fs.existsSync(path.join(project, '.nightshift')) ? { hookSpecificOutput: input.hook_event_name === 'SessionStart' ? { hookEventName: 'SessionStart', additionalContext: `Nightshift native session: ${input.session_id}. Retained launcher: ${registration.bootstrap}. Registration: ${key}. Resolve resources through this launcher before using Nightshift.` } : undefined } : {};
       requireValue(binding.state === 'bound', 'retired-release-binding', 'This Nightshift session was retired');
@@ -583,7 +610,7 @@ class ReleaseService {
       }
       // Claude scopes project settings to the working directory, so an unresolvable
       // Nightshift project root still inspects the actual cwd rather than the profile.
-      await this.requireActivation(registration, input.session_id, false, project ?? input.cwd);
+      await this.requireActivation(registration, input.session_id, false, project ?? input.cwd, observedOwner);
       await this.dependencies.isEnabled(registration.host, registration.profile, registration.pluginId, project ?? input.cwd);
       const bundle = this.registry(registry => bundles.availableIdentity(registry, binding.identity));
       requireValue(bundle, 'release-unavailable', 'The session-bound release is unavailable; recover its exact identity');
@@ -650,7 +677,8 @@ class ReleaseService {
       const skey = sessionKey(key, target);
       const binding = registry.get('session', skey);
       const activation = registry.get('activation', skey);
-      requireValue(binding || activation, 'unknown-release-session', 'No activation or work binding exists for that session');
+      const failure = registry.get('activation-failure', skey);
+      requireValue(binding || activation || failure, 'unknown-release-session', 'No activation, recorded activation failure or work binding exists for that session');
       const cancelled = new Set();
       if (binding) {
         this.reconcileRunReferences(registry, binding);
@@ -681,6 +709,7 @@ class ReleaseService {
         registry.put('session', skey, binding);
       } else requireValue(cancellations.length === 0, 'adoption-cancellation-unavailable', 'Activation-only sessions have no pending adoptions to cancel');
       registry.remove('activation', skey);
+      registry.remove('activation-failure', skey);
       return { retired: target, resourcesDeleted: false, ...(cancelled.size ? { cancelledAdoptions: [...cancelled].map(reference => reference.id) } : {}) };
     });
   }

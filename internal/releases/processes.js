@@ -10,7 +10,8 @@ const MAX_OPERATION_TIMEOUT_MS = 3600000;
 // One inspection's total time, retry included. An idle lookup takes well under a second, but PowerShell alone can take
 // many seconds to start on a heavily loaded machine, as the job runner's termination grace allows for.
 const INSPECTION_BUDGET_MS = 30000;
-// A registered hook inspects beside its other native work inside the host's 60-second hook timeout, so it keeps a shorter total.
+// A registered hook inspects beside its other native work inside the host's 60-second hook timeout, so it keeps a shorter total,
+// except for SessionStart's owner lookup, which takes the full budget (ReleaseService.recordActivation).
 const HOOK_INSPECTION_BUDGET_MS = 10000;
 const EXCERPT_LENGTH = 200;
 

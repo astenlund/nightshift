@@ -4,7 +4,8 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const test = require('node:test');
-const { Registry } = require('../internal/releases/registry');
+const { DatabaseSync } = require('node:sqlite');
+const { Registry, sessionKey } = require('../internal/releases/registry');
 const { capture } = require('../internal/releases/bundles');
 const { MANIFEST_PATH, loadManifest, validateManifest, verifyBundle } = require('../internal/releases/manifest');
 const { validateDependencies } = require('../tools/release-manifest');
@@ -502,7 +503,7 @@ test('a failed inspection of the activation owner is refused without asking to r
   }
 });
 
-test('process inspection keeps the shorter budget on the hook path and the longer one elsewhere', async t => {
+test('process inspection keeps the shorter budget on the hook path, apart from the SessionStart owner lookup, and the longer one elsewhere', async t => {
   const value = fixture(t);
   const { service } = simulatedService(value, packageCopy(value.root, '1.0.0'));
   const setup = await service.setup({ host: 'codex', profile: value.profile });
@@ -517,14 +518,96 @@ test('process inspection keeps the shorter budget on the hook path and the longe
   await launcher.resolve(setup.registration, { session: 'owner', project: value.project, entry: 'ready' });
   budgets.length = 0;
 
-  // A bound session's SessionStart looks up its owner and then confirms the activation it recorded.
+  // A bound session's SessionStart looks up its owner with the full budget, since the activation depends on that lookup
+  // alone, and does not inspect again the owner it has just recorded.
   await activate(hook, setup.registration, value.project, 'owner');
-  assert.deepEqual(budgets.splice(0), [['nativeOwner', HOOK_INSPECTION_BUDGET_MS], ['ownerAlive', HOOK_INSPECTION_BUDGET_MS]]);
+  assert.deepEqual(budgets.splice(0), [['nativeOwner', INSPECTION_BUDGET_MS]]);
+  await hook.hook(setup.registration, { cwd: value.project, session_id: 'owner', hook_event_name: 'Stop' });
+  assert.deepEqual(budgets.splice(0), [['ownerAlive', HOOK_INSPECTION_BUDGET_MS]]);
+
+  // Only an activation recording exactly the observed owner skips the liveness check.
+  const registration = hook.registration(setup.registration);
+  const recorded = service.overrides.nativeOwner();
+  for (const observed of [{ ...recorded, pid: recorded.pid + 1 }, { ...recorded, created: 'other-incarnation' }, { ...recorded, name: 'other.exe' }]) {
+    await hook.requireActivation(registration, 'owner', false, value.project, observed);
+    assert.deepEqual(budgets.splice(0), [['ownerAlive', HOOK_INSPECTION_BUDGET_MS]]);
+  }
+  await hook.requireActivation(registration, 'owner', false, value.project, recorded);
+  assert.deepEqual(budgets.splice(0), []);
+
   await launcher.resolve(setup.registration, { session: 'owner', project: value.project, entry: 'runtime', request: { action: 'status' } });
   assert.deepEqual(budgets.splice(0), [['ownerAlive', INSPECTION_BUDGET_MS]]);
   assert.equal((await launcher.status(setup.registration, 'owner', value.project)).activationUsable, true);
   assert.deepEqual(budgets.splice(0), [['ownerAlive', INSPECTION_BUDGET_MS]]);
   assert.ok(HOOK_INSPECTION_BUDGET_MS < INSPECTION_BUDGET_MS);
+});
+
+test('a failed SessionStart owner lookup leaves its cause for status and dependent admission until an activation replaces it', async t => {
+  const value = fixture(t);
+  const { service } = simulatedService(value, packageCopy(value.root, '1.0.0'));
+  const setup = await service.setup({ host: 'codex', profile: value.profile });
+  const generation = service.registration(setup.registration).generation;
+  const failing = cause => new ReleaseService(value.store, { ...service.overrides, nativeOwner: (host, profile, options) => { options.onFailure(cause); return null; } }, { nativeHook: true });
+  const start = (hook, session) => hook.hook(setup.registration, { cwd: value.project, session_id: session, hook_event_name: 'SessionStart', source: 'startup' });
+  const failures = async () => (await service.status()).activationFailures.map(({ session, generation: saved, cause }) => ({ session, generation: saved, cause }));
+  const timedOut = 'Native host process identity could not be established because process inspection failed (timed out after 30000 ms)';
+  const request = { session: 'owner', project: value.project, entry: 'runtime', request: { action: 'create' } };
+  const missing = 'This native session has not observed the current Nightshift hook generation; open or reopen it before protected work';
+
+  // The hook stays silent for a session that owns no running run, but the cause is saved.
+  assert.deepEqual(await start(failing('timed out after 30000 ms'), 'owner'), {});
+  assert.deepEqual(await failures(), [{ session: 'owner', generation, cause: timedOut }]);
+  const named = error => error.code === 'hook-activation-required' && error.message.endsWith(` could not record an activation: ${timedOut}`);
+  await assert.rejects(service.resolve(setup.registration, request), error => named(error) && error.message.startsWith(`${missing}. SessionStart at `));
+
+  // A later failure replaces the cause, and a successful SessionStart records the activation and removes it.
+  await start(failing('PowerShell exited with code 1'), 'owner');
+  assert.deepEqual(await failures(), [{ session: 'owner', generation, cause: 'Native host process identity could not be established because process inspection failed (PowerShell exited with code 1)' }]);
+  await activate(service, setup.registration, value.project, 'owner');
+  assert.deepEqual(await failures(), []);
+  await service.resolve(setup.registration, { ...request, request: { action: 'status' } });
+
+  // A failed SessionStart keeps an earlier activation: a live earlier owner still admits work, and a refusal names the saved
+  // cause whether the earlier owner has ended or its inspection failed.
+  await start(failing('timed out after 30000 ms'), 'owner');
+  assert.equal((await service.status()).activations.some(activation => activation.session === 'owner'), true);
+  await service.resolve(setup.registration, { ...request, request: { action: 'status' } });
+  service.dependencies.ownerAlive = () => false;
+  await assert.rejects(service.resolve(setup.registration, request), error => named(error) && error.message.startsWith(`${missing}. SessionStart at `));
+  service.dependencies.ownerAlive = (owner, cwd, options) => { options.onFailure('PowerShell exited with code 1'); return null; };
+  await assert.rejects(service.resolve(setup.registration, request), error => named(error) && error.message.startsWith("This native session's recorded activation could not be confirmed because process inspection failed (PowerShell exited with code 1); that does not show the activation is missing, so retry the request before reopening the session. SessionStart at "));
+  service.dependencies.ownerAlive = service.overrides.ownerAlive;
+  await activate(service, setup.registration, value.project, 'owner');
+  assert.deepEqual(await failures(), []);
+
+  // A cause saved for an earlier generation is not presented as the current one.
+  const registry = new Registry(value.store);
+  try {
+    registry.transaction(() => registry.put('activation-failure', sessionKey(setup.registration, 'stale'), { schema: 1, registration: setup.registration, session: 'stale', generation: 'f'.repeat(64), cause: timedOut, observedAt: new Date().toISOString() }));
+  } finally { registry.close(); }
+  await assert.rejects(service.resolve(setup.registration, { ...request, session: 'stale' }), error => error.code === 'hook-activation-required' && error.message === missing);
+
+  // A cause that cannot be saved leaves the hook silent and nothing recorded.
+  const busy = new ReleaseService(value.store, { ...service.overrides, nativeOwner: (host, profile, options) => {
+    const holder = new DatabaseSync(path.join(fs.realpathSync.native(value.store), 'registry.sqlite'));
+    holder.exec('BEGIN IMMEDIATE');
+    busy.holder = holder;
+    options.onFailure('timed out after 30000 ms');
+    return null;
+  } }, { nativeHook: true });
+  try { assert.deepEqual(await start(busy, 'locked'), {}); }
+  finally { busy.holder?.exec('ROLLBACK'); busy.holder?.close(); }
+  assert.ok(busy.holder, 'The lookup ran while the registry was held');
+  assert.equal((await failures()).some(failure => failure.session === 'locked'), false);
+
+  // Retirement removes a saved cause, including for a session with nothing else recorded, and so does removal.
+  await start(failing('timed out after 30000 ms'), 'retired');
+  assert.equal(service.retire(setup.registration, { targetSession: 'retired' }).retired, 'retired');
+  assert.equal((await failures()).some(failure => failure.session === 'retired'), false);
+  await start(failing('timed out after 30000 ms'), 'removed');
+  assert.ok((await failures()).length > 0);
+  await service.remove(setup.registration);
+  assert.deepEqual(await failures(), []);
 });
 
 test('the launcher admits only cache-independent actions without a registration and validates the status project', async t => {
