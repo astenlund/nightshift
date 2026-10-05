@@ -10,15 +10,11 @@ Found on 2026-10-01 by [the audit of capabilities that left v2 without a disposi
 
 Confirm that `.tmp` is ignored before Nightshift or its agents write scratch there, and flag staged or committed `.tmp` paths before delivery completes, naming the exact policy or commits to repair rather than editing the user's ignore policy. The `.superpowers/` half of the v2 check went with the Superpowers dependency. Guidance and runtime changes ship with a version increase. Tracking does not authorize implementation.
 
-**Requires:** none.
-
 ### Restore the revise-docs writing rules
 
 Found on 2026-10-01 by [the audit of capabilities that left v2 without a disposition](reports/v2-capability-audit-20261001.md). v2's revise-docs (`skills/revise-docs/SKILL.md` at `8ca3cb4^`) verified landed claims against Git and, after a revert or a `DROPME` drop, swept the session's tracking files for claims recording reverted work as landed; kept `CLAUDE.md` for constraints and traps rather than descriptions of the code; added no new documentation sections; and asked the user before balance adjustments or cleanups beyond the immediate scope. [The v3 revise-docs](../skills/revise-docs/SKILL.md) asks for proportionate updates of stale claims, and its docs review checks claim accuracy and proportionality afterwards, but none of those writing rules survives and no disposition names their removal; the coarse-and-stable anchors rule survives in the init-backlog templates. The user chose to restore them as a quick win at the audit's triage.
 
 Carry the missing rules into revise-docs: the revert sweep for landed claims, instruction files holding constraints rather than descriptions of the code, no new sections without need, and balance or beyond-scope adjustments asked first, or recorded as follow-ups when no user is available. Skill changes ship with a version increase. Tracking does not authorize implementation.
-
-**Requires:** none.
 
 ### Detect review input drift before the reviewer's usage is spent
 
@@ -26,23 +22,17 @@ Raised in run `7969bab6-360c-4bd5-a5bd-33dfe3ef28d9` on 2026-09-30, which delive
 
 Two sizes of fix: before launching a fallback candidate, check the inputs and stop with `review-input-drift` when they changed, which saves only fallback usage; or poll the inputs during an attempt and cancel it through a new contained cancellation route on both hosts. Size the work by how often drift still occurs once the documented rule is in force. Runtime changes ship with a version increase. Tracking does not authorize implementation.
 
-**Requires:** none.
-
 ### Present a governing spec as a link with a change list
 
 Raised by the user on 2026-09-29 in run `f440497c-a0cc-4375-bada-e834e32b49a6` during the spec review: to make a governing spec and its amendments easier to read, link to the spec file instead of writing it out in a message, clickable in the CLI and in the web app over Remote Control, and let a helper agent apply spec edits so their diffs do not bury the spec. Windows Terminal rendered a relative link as invalid, so the session used absolute `file:///` links and also sent the file for the web app, presenting each revision as a link with a short change list. After acceptance the user said "edit it directly. the helper is not needed at this point, it's mostly useful to reduce noise before the user accepts", and later amendments were edited directly. On 2026-10-01 the user chose to amend the proposed change below to require absolute local targets and line links.
 
 Have the operating brief and revise-spec present a governing spec and each amendment as a link with a concise change list, written with an absolute local target and, where `NIGHTSHIFT_LINE_LINK_FORMAT` is set and non-empty, linking each amendment at its line through it, as [Make Ready and Exploring links open at their target](features/source-link-targets.md) describes for the shared link form, plus a sent copy where the host supports it, and let edits before acceptance be applied by a registered helper that owns only the spec file while the controller keeps every disposition. Settle how this fits the brief's requirement to "present that same complete stable draft for the user's review". Guidance changes ship with a version increase. Tracking does not authorize implementation.
 
-**Requires:** none.
-
 ### Confirm when marketplace auto-update applies a pushed release
 
 Observed on 2026-09-28 in run `7f0cb8e1-8a73-4a4c-b5f9-f8ec62661471`. The user restarted Claude Code expecting the published 3.2.13 release, but the `astenlund` marketplace snapshot under `~/.claude/plugins/marketplaces/` stayed at `5b24ffa`, the last commit pushed before 3.2.13, `known_marketplaces.json` kept `lastUpdated` 2026-09-28T00:16:19Z with `autoUpdate: true`, and `installed_plugins.json` still named 3.2.12, although 3.2.13 was pushed at 07:40:53Z (the `origin/main` reflog), before the restart, whose session activation was observed at 08:38Z. The snapshot was still unrefreshed when the run ended. Earlier refreshes did happen: 3.2.12, pushed at 19:07Z on 2026-09-27, was installed by 20:15Z (`installed_plugins.json` `lastUpdated`; whether by startup auto-update or a manual update is not recorded), and the marketplace refreshed again at 00:16Z. The user's global AGENTS.md says a pushed release propagates to the installed copy at the next Claude Code or Codex startup; this observation covers Claude Code only, and Codex is unobserved. The cause is unverified: the refresh may be throttled, or may run in the background and apply only on a later start. Separately, the resumed session kept its 3.2.12 binding, which is intended. The user chose to track it at triage.
 
 Establish when a startup auto-update refreshes the marketplace snapshot and installs a newer version, for example by comparing those timestamps after a later fresh start, then correct the Claude Code half of the global AGENTS.md sentence if needed, leaving the Codex half to its own evidence, and state the established timing beside the update commands in [the README](../README.md), which says nothing about automatic updates today. That README statement is the part of [Document installing and updating on both hosts](#document-installing-and-updating-on-both-hosts) that waits on this entry. Tracking does not authorize implementation.
-
-**Requires:** none.
 
 ### Backlog conventions recommend commit hashes that a pre-push rewrite invalidates
 
@@ -52,15 +42,11 @@ Decide whether entries written before publication cite a run id or scope, option
 
 An observation on 2026-10-02 in run `c9ea0003-a82c-4fb3-8d66-b5a341c39f43` supports the commit-subject option: the docs review flagged the run's new `BUGS_HISTORY.md` entry for lacking the commit its header asks for, the repair named the fix commit by its subject rather than its unpushed hash, the resumed reviewer closed the finding on that form, and an autosquash later in the session rewrote the archive commit's hash while the subject reference stayed valid. The user chose at triage to record it here.
 
-**Requires:** none.
-
 ### Hand stored probe results over after a line-ending renormalization
 
 Found on 2026-09-27 by the cumulative assessment of run `d42fe76e-3954-4ef8-99db-727790f12ee2` and confirmed by a skeptic. Review freshness now tolerates a line-ending renormalization, so a probe still runs after a commit or rebase renormalizes a reviewed file, but `loadProbeEvidence` in `internal/runtime/probes.js` hands a stored result to the next assessment only when the stored snapshot and context digests equal the new ones exactly. The result is then withheld with no diagnostic, costing a wasted dispatch and a repeated probe; the skeptic found it neither unsafe nor a stall. [The runtime reference](../internal/runtime/REFERENCE.md) and [the changelog](../CHANGELOG.md), under 3.2.12, state the limit. The user chose to track it at triage.
 
 Let the handoff accept a stored result whose recorded snapshot is equivalent under the same Git-normalized identity `fresh()` uses, which needs the originating snapshot files rather than only digests, report withheld probe references to the controller, and add a handoff test after a renormalization. Runtime code, so it ships with a version increase. Tracking does not authorize implementation.
-
-**Requires:** none.
 
 ### Say at handover when the session runs an older release than the installed one
 
@@ -68,23 +54,17 @@ Observed on 2026-09-27 in run `d42fe76e-3954-4ef8-99db-727790f12ee2`. The sessio
 
 When a handover or run creation happens in a session bound to an older release than the installed one, say so plainly in the acknowledgement or readback and name the fresh-session recovery, so the user can choose before leaving. Shipped skill or runtime text, so it ships with a version increase. Tracking does not authorize implementation.
 
-**Requires:** none.
-
 ### Tell reviewers the bound release's probe copy layout
 
 Observed on 2026-09-27 in run `b6ca7513-7450-4d3d-9e5d-ec8fcf0da095`, bound to installed 3.2.8 while the checkout carried the 3.2.10 runtime. An Astra reviewer (receipt `bc46bddc-9684-4497-b556-5801f00da3ef`) returned `incomplete` and proposed an evidence probe that asserted its working directory matched `.nightshift/runs/c/<eight hex digits>`, the private-copy layout the checkout's 3.2.10 runtime defines in `internal/runtime/copies.js`, which is where that reviewer read the pattern. The bound 3.2.8 runtime placed the copy under the dispatch directory, so the probe failed its own assertion with exit code 1, and the evidence was then supplied as selected artifacts at the cost of another assessment round of 659,428 tokens. Reviewers read the checkout's runtime source and documentation rather than the bound release's, so this recurs whenever the two differ, which is routine in this repository while a candidate is unpublished or not yet installed. The user chose to track it at triage as low priority.
 
 Tell reviewers the executing release's probe working-directory layout, or its version, in the assessment request, so a probe does not hardcode a layout taken from the checkout. Tracking does not authorize implementation.
 
-**Requires:** none.
-
 ### Name the host's own failure in review attempt errors
 
 Reported on 2026-09-26 from FeatherPod-Private, run `5081dcdc-8956-4ff9-9870-4672f39a17f8`, installed 3.2.8. The first Codex review dispatch of the run completed; every later Codex attempt (workers `33bf017f`, `79fa6d05` and `cba72102`) failed, and each receipt attempt recorded only the generic `unusable-review` message "Host did not return an attributable completed assessment" from `dispatchReview` in `internal/runtime/review.js`. The actual cause was visible only in the attempt's native `events.jsonl`: a `systemError` status and a failed turn carrying `unexpected status 401 Unauthorized: Incorrect API key provided`, while `result.json` showed exit code 0. The Fable fallback completed every assessment, so the run was not blocked, but its review silently degraded from cross-host to same-host for the rest of the run. The timing matches the evening the acceptance harness revoked the production Codex login, as [Codex acceptance fixtures copy the live credential](#codex-acceptance-fixtures-copy-the-live-credential) records, but that link is a hypothesis; whether the credential changed between the first and second dispatch was not investigated. The user chose to track it at inbox triage.
 
 Carry the host-reported terminal failure, such as an authentication error and its re-login recovery, into the attempt error and the dispatch result, so a controller can tell a credential problem from a model or attribution failure without reading raw events, and can say when a fallback cost the review its cross-host independence. Runtime code, so it ships with a version increase. Tracking does not authorize implementation.
-
-**Requires:** none.
 
 ### Codex acceptance fixtures copy the live credential
 
@@ -96,15 +76,11 @@ Widened on 2026-10-04 at the triage of [the section-level audit of v2 records](r
 
 Give Codex acceptance fixtures their own login or an API key and never copy the live Codex credential, and state the rule beside the Claude credential-copy guard that [Acceptance reports carry a checkable evidence digest](#acceptance-reports-carry-a-checkable-evidence-digest) records. Tracking does not authorize implementation.
 
-**Requires:** none.
-
 ### Verify the Codex handover path of 3.2.10
 
 Raised at triage of run `36aad5de-2825-4818-ba8c-e1ea8c8e72a4` on 2026-09-26. 3.2.10 requires a Codex controller to record its goal with `kind: "goal"` and changes the handover acknowledgement text, but its installed-host evidence covers Claude Code only: the Codex lane was blocked when the production Codex login was revoked, as recorded in [the acceptance report](reports/unattended-stop-hook-20260926.md). The runtime rules are covered by deterministic tests on both hosts. The user chose to track the verification.
 
 Run a Codex first-use and new-run handover scenario against 3.2.10, with a fixture-owned login or API key per [Codex acceptance fixtures copy the live credential](#codex-acceptance-fixtures-copy-the-live-credential), before or right after publishing 3.2.10, and record the goal kind, the acknowledgement wording and continuation in the acceptance report. Tracking does not authorize implementation.
-
-**Requires:** none.
 
 ### Create silently ignores unknown request fields
 
@@ -112,15 +88,11 @@ Observed on 2026-09-25 in an installed 3.2.10 fixture of run `36aad5de-2825-4818
 
 Make `create` reject unknown request fields with the accepted field list, as unknown actions already are, and consider the same for other operations. Runtime code, so it ships with a version increase. Tracking does not authorize implementation.
 
-**Requires:** none.
-
 ### Honor escaped punctuation in heading anchors
 
 Found by the final assessment of run `6e70931a-3760-46e2-b628-fdaa4a29f0e3` on 2026-09-25 and confirmed by a skeptic. `plainText` in `internal/backlog-links.js` ignores backslash escapes in heading text, so several escaped headings slug differently from GitHub and a correct link to them draws a false broken-anchor notice: `## \_private\_` slugs to `private` (GitHub `_private_`), `## \_\_init\_\_` to `_init_` (GitHub `__init__`), `## \<b\> tag` to `-tag` (GitHub `b-tag`) and `## \[text\](url)` to `text` (GitHub `texturl`), because the link, tag and emphasis passes all run on the raw, still-escaped text. Escaped asterisks, `#` and backticks already match. Notices only; no heading in this repository contains an escape. The user chose to track it at triage rather than extend the 3.2.9 review.
 
 Honor backslash escapes in heading and title text before every markup pass in `plainText` (links, tags and emphasis), as destinations already do, with fixtures for escaped underscores, tags and brackets in both Ready front ends. Parser changes ship with a version increase. Tracking does not authorize implementation.
-
-**Requires:** none.
 
 ### Reviewers re-request checks the controller already recorded
 
@@ -140,15 +112,11 @@ A fourth observation on 2026-10-02 in run `c9ea0003-a82c-4fb3-8d66-b5a341c39f43`
 
 A fifth observation on 2026-10-03 in run `e92922e8-d20f-4674-907c-bf3277f5f184`, a runtime fix of 143 inserted and 30 deleted lines across eight code, test and reference files plus the release preparation: the first fresh Codex `gpt-6-astra` assessment (`64361ba7`, 931,566 tokens), whose requirements did not list the recorded checks, returned `incomplete` with no finding and three probes rerunning test files already recorded as passing checks on the same inputs; all three passed. The next fresh dispatch (`bb2dd1de`, 787,484 tokens) listed the recorded checks in its requirements and also received those probe results, and it returned complete and clean with no probe request; the run's docs review, given the same list, requested none. Like the fourth, a near control rather than a clean one. The user chose at triage to record it here.
 
-**Requires:** none.
-
 ### Codex sandbox blocks the launcher from starting the host
 
 Observed on 2026-09-19 in every Codex fixture of the handover acceptance campaign (Codex CLI 0.154.0, plugin 3.2.0), recorded in [the acceptance report](reports/handover-transition-and-morning-report-20260919.md). Inside the Codex sandbox the launcher cannot start the host process it inspects, at two sites. Preparation fails with `{"error":"EPERM","message":"spawn EPERM"}` at first use and again in some later sessions of the same, already prepared profile (the new-run handover and refused-admission sessions). Resolving resources through the retained bootstrap fails with `{"error":"retained-bootstrap-unavailable","message":"spawn EPERM"}` in later sessions (new-run handover, in-place handover and refused admission). The resumed returning-user session showed no fresh failure. Each time the model has to request an out-of-sandbox retry. With the escalation approved, preparation is silent and the operation proceeds; with it denied at first use, the Ready report correctly says the parser never ran and does not present an empty backlog. A real Codex user therefore sees approval prompts that work against preparation needing no setup conversation; whether every session prompts, or only the first command of each, was not separately established, because the harness answered these requests automatically. Claude Code shows no equivalent prompt.
 
 Establish whether the launcher can start the host inside the Codex sandbox or avoid doing so on that host at both sites, for example by carrying an earlier result, which [Hook-path native settings resolution cost](#hook-path-native-settings-resolution-cost) already considers. If it cannot, document the approval and how often it recurs in the README installation guidance so the prompt is expected. Verify first use and a later session on an installed Codex host in a fresh profile. Tracking does not authorize implementation.
-
-**Requires:** none.
 
 ### Acceptance reports carry a checkable evidence digest
 
@@ -158,15 +126,11 @@ A second occurrence on 2026-09-28 in run `f6288235-b263-4394-8f83-4d0474cb6708`,
 
 State in the shared brief that evidence backing an agreed requirement that recorded checks do not carry reaches the assessor in the first dispatch as a verbatim evidence record supplied as a selected artifact; for an acceptance report's installed-host claims, that record is a generated evidence digest derived per host from that host's own record. Record the credential-copy guard and the measured per-scenario costs where live budgets are settled, reconciling with [Verify faked boundaries live](features/live-boundary-verification.md), which carries the live-evidence budget and allowance decisions. Decide whether the multi-turn harness retained under `.tmp/handover-live` (drivers for both hosts, scoped approvals, ledger, reconciliation and digest scripts) graduates into the repository's test tooling. The evidence record is one mechanism shared with [Proportionate review of tracking edits](features/tracking-review-cost.md), whose first closing dispatch is to carry one for claims about run records, as agreed with the user on 2026-10-03; whichever of the two ships first builds it, and neither waits for the other. Tracking does not authorize implementation.
 
-**Requires:** none.
-
 ### Acceptance harness waits on controller approval without a bound
 
 Observed in run `c675a074-6431-46e2-85b7-e3b8616e9220`: a Claude acceptance run timed out while awaiting controller tool approval, and two earlier interrupted attempts each retain a 750,000-token uncertainty allowance because their usage could not be finalized. The user's aggregate budget, the harness's operational thresholds and the reserves for unreported usage are three different quantities that the harness currently blurs.
 
 Give the private acceptance harness a bounded approval wait with a recorded outcome, finalize usage accounting on interruption, and report the three quantities separately. Tracking does not authorize implementation.
-
-**Requires:** none.
 
 ### Shared native control session helper
 
@@ -174,15 +138,11 @@ Found by several strong assessments of the automatic-preparation change in run `
 
 Extract one native session helper parameterized by request framing and default timeout, with an injected-process seam so both framings gain deterministic coverage, and verify the Codex side with an app-server probe. Runtime code, so it ships with a version increase under its own cumulative assessment. Tracking does not authorize implementation.
 
-**Requires:** none.
-
 ### Settings inspection cleanup
 
 Residual structural and coverage observations from the strong assessments in run `c675a074-6431-46e2-85b7-e3b8616e9220`, all confirmed minor: `preparation.js` reaches into ten service members and takes `locatorState` as an injected parameter to avoid a require cycle that moving `locatorState` beside the store primitives would remove; preparation capability is detected by the existence of `administration.js` rather than by the verified bootstrap bytes or a named constant; retained bootstrap routes and their launcher directories are never collected, so the set of permanently accepted entry points grows without a retirement rule; `claudeSettings` has no deterministic coverage of its own control framing, error subtype or timeout, which a fake child could pin; `resolve`'s unknown-entry guard has no test; and the Codex branch treats a non-boolean `enabled` field as untrusted where the Claude sibling fails closed, pending verification of the host's field contract.
 
 Apply as one cleanup under its own cumulative assessment, deciding the route retention policy explicitly and stating it in the retained resource reference. Tracking does not authorize implementation.
-
-**Requires:** none.
 
 ### Hook-path native settings resolution cost
 
@@ -190,15 +150,11 @@ Established by execution in run `c675a074-6431-46e2-85b7-e3b8616e9220`: resolvin
 
 Decide the design: carry enablement and discovery results from prepare into resolve within one operation; drop the pre-registration Codex inspection whose only possible negative outcome is an inspection failure setup would surface anyway; and examine whether a firing hook is itself evidence that hooks are enabled on that host, separated carefully from the configured and trusted conditions, which would remove the resolution from the hook path entirely. Tracking does not authorize implementation.
 
-**Requires:** none.
-
 ### Post-review minor repairs
 
 Two of the three findings left by the clean strong assessment of the automatic-preparation change (Fable receipt `694f7f33`, run `c675a074-6431-46e2-85b7-e3b8616e9220`), each confirmed by a fresh skeptic and deferred only so the verdict stayed fresh: the `release-setup-required` guard defined in both `resolve` and `requireActivation`, the retired-binding message shared by `resolve`, `preparation.js` and, with different wording, `hook()`, and the `preparation-unavailable` message repeated in `setup` and `prepare`; and a missing test for the guard that maps a non-boolean `disableAllHooks` value to `host-configuration-unavailable`, which every fixture leaves boolean or absent so a regression to a truthiness check would pass the suite. The launch-count finding from the same receipt is carried by [the hook-path cost item](#hook-path-native-settings-resolution-cost).
 
 Hoist the two messages and the predicate beside `REMOVED_MESSAGE`, deciding whether `hook()` shares the retired-binding wording, and add one rejection case to the unavailable-inspection test supplying a string value. Runtime code, so it ships with a version increase under its own cumulative assessment. Tracking does not authorize implementation.
-
-**Requires:** none.
 
 ### Codex inline-script guard parity
 
@@ -206,15 +162,11 @@ On 2026-09-17 the user's global inline-script rule gained mechanical enforcement
 
 Establish whether Codex hooks support a pre-call deny. If they do, port the guard and its tests; if not, record the asymmetry as permanent in the rule. Tracking does not authorize implementation.
 
-**Requires:** none.
-
 ### Expose a project-relative receipt path in dispatch results
 
 Reported on 2026-09-12 from an unattended Claude handover in FeatherPod-Private, run prefix `216f01e8`, plugin 3.0.6. The dispatch result supplies `receiptFile` as an absolute Windows path, while `review` and `validate` import requests need a project-relative receipt path; the controller derived it from `receipt.requestId`. The current `internal/runtime/review.js` still returns `{receiptFile, receipt}` with an absolute file path and the receipt object. The newer runtime `wait` operation supplies a project-relative `receipt` path, so the report's original claim that dispatch is the only place the path appears no longer describes the current surface; direct dispatch results still require conversion. Original inbox report: observation 3 of `2026-09-12-probe-returns-full-state-and-foreground-wait-recurrence.md`.
 
 Expose the project-relative receipt path consistently for controllers consuming a direct dispatch result. Settle an unambiguous response field without overwriting the existing `receipt` object or silently breaking its consumers; reconcile the dispatch and wait documentation and affected consumers. Add focused coverage that the returned path is accepted by receipt-import operations, including Windows paths with spaces. Runtime behavior changes ship with a version increase.
-
-**Requires:** none.
 
 ### Expose recorded probe and check results in their responses
 
@@ -226,8 +178,6 @@ For both probe and check, expose the recorded result in the response clearly eno
 
 Recurred on 2026-09-30 in run `7969bab6-360c-4bd5-a5bd-33dfe3ef28d9` on installed 3.2.16: each of its eleven `check` operations again returned only the obligation brief, so the controller read every exit code and pass flag through a full `inspect` of run state. The user chose at triage to record it here.
 
-**Requires:** none.
-
 ### Agent-directed rules leak into user-facing prose
 
 Reported from a `/ready` run in another project on 2026-09-11 and repaired for that skill in plugin 3.0.4; the pattern is broader than one skill. Skill texts state constraints for the agent, such as readiness not being agreement, a draft not being authorized implementation work, or a previous review not authorizing a narrowed new pass, and agents echo them to the user as stiff rule quotations, for example "Readiness is not a selection". The user wrote these conventions and does not need them restated. Fresh evidence on 2026-09-24 from [the Ready selection campaign](reports/ready-selection-boundary-20260924.md): with the 3.2.4 candidate, the Codex controller told the user in two turns what the Ready skill "says" and "requires" ("The Ready skill says to propose a concrete selection by ready-set number ...", "... requires that nothing is edited before the user agrees that readback"), although the skill states those constraints are guidance for the agent; the Claude controller did not. Evidence: `.tmp/ready-live/codex-work-f3c5d95f/live-2026-09-24T02-19-21-251Z-c-work/events.jsonl`.
@@ -236,15 +186,11 @@ Add a shared rule to `internal/workflow.md` that separates agent-directed constr
 
 Another instance on 2026-10-03 in this repository, on Claude Code: a Ready readback ended "Once you say yes, I'll create an attended Nightshift run and take it through revise-code, revise-docs and revise-lore", echoing the repository rule to create an attended run after agreement, and the user asked "does it need to be attended? sounds like it with the wording you're using", reading a default that a handover changes as a requirement. The user chose at triage to record it here.
 
-**Requires:** none.
-
 ### Documentation and backlog edits land before the first cumulative assessment
 
 Observed in this repository on 2026-09-11 during an unattended run. The agreed outcome committed to archiving two fixed BUGS.md entries, the controller left that for the documentation stage, the first cumulative assessment raised it as a minor finding, and the archive edit then invalidated the review snapshot, so a second full dispatch was needed for a change the reviewer had already covered. The lifecycle places documentation after review, but the runtime requires the cumulative assessment to be fresh at task completion and any tracked-file edit invalidates it, so every documentation or backlog edit made in that stage forces a reassessment. `internal/workflow.md` "Close and report" currently reads as if those edits belong after review. Since the local 3.2.16 candidate, a backlog-only edit in that stage is covered by the docs review the task now needs, so the forced code reassessment remains for other documentation edits on a task under code assessment.
 
 Add one sentence to the brief, under Durable execution or Review and repair, stating that documentation, skill text and backlog closure the agreed outcome commits to are part of implementation and land before the first cumulative assessment, so the documentation stage only records evidence and a reassessment is needed only when findings change files; mirror it in `skills/handover/SKILL.md` if the handover text implies the later ordering. Shipped text changes model-owned behavior, so it rides with the next version increase.
-
-**Requires:** none.
 
 ### Test that resumed dispatches keep the limit refusal codes
 
@@ -252,15 +198,11 @@ Found on 2026-10-01 in run `edb0199e-f5f3-4fab-a55f-8fa909a08289` by a skeptic d
 
 Add resumed-dispatch tests showing that each refusal keeps its code rather than becoming `resume-failed`. A test-only change needs no version increase. Tracking does not authorize implementation.
 
-**Requires:** none.
-
 ### Name the limit that capped a review attempt
 
 Found on 2026-10-01 in run `edb0199e-f5f3-4fab-a55f-8fa909a08289` by a probe during the code review of [Resumable reviewer and adversarial repair dialogue](features/resumable-reviewer-dialogue.md). When the run deadline or the launcher operation window shortens a review attempt and the attempt then times out, its failure says only that the attempt timed out or the host closed; neither the message nor the attempt evidence names the limit, and the Codex runner, which throws when the host closes, leaves no timed-out record. A resumed attempt cut this way is reported as `resume-failed`, which the governing spec allows because it counts an attempt timeout as a session failure; the finding that it should keep a limit code was refuted.
 
 Record which limit capped an attempt in its failure message and evidence on both runners, including a timed-out record on the Codex runner, without changing the classification. Runtime changes ship with a version increase. Tracking does not authorize implementation.
-
-**Requires:** none.
 
 ### Say that an unparseable receipt counts as none
 
@@ -268,15 +210,11 @@ Found on 2026-10-01 in run `edb0199e-f5f3-4fab-a55f-8fa909a08289` by the final d
 
 Narrow the wording to a receipt that cannot be parsed in all four places, or fold it into the next change that touches them. The reference and the code comment ship with a version increase. Tracking does not authorize implementation.
 
-**Requires:** none.
-
 ### Have revise-code trace the readers of state a repair changed
 
 Found on 2026-10-01 in run `edb0199e-f5f3-4fab-a55f-8fa909a08289`, from the independent review of that run's retrospective proposal. The user approved a `~/AGENTS.md` rule: before a repair batch is declared done, when it changed which record, status or case a decision or obligation reads, list every reader and writer of that state and every form it can take, and on a second missed case fix the property the decision keys on. Two repairs in that run each broke a reader nobody traced. [revise-code](../skills/revise-code/SKILL.md) is read at exactly that moment and already asks for the shared cause after repeated related findings, but says nothing about the controller tracing readers and writers before closing a batch, and a global rule reaches only this user. [Repairs start from current contents and respect helper ownership](features/repair-current-contents.md) also adds repair rules to the operating brief, and [the spec-review safeguard's repair-time principle](features/spec-review-safeguard.md#repair-time-authoring-guidance-proposed-2026-10-03), agreed on 2026-10-05, reaches it too; coordinate the wording so the brief does not gain overlapping repair statements.
 
 Add that habit as one clause to revise-code and the matching sentence of [the operating brief](../internal/workflow.md). Skill and guidance changes ship with a version increase. Tracking does not authorize implementation.
-
-**Requires:** none.
 
 ### Bound status refuses a completed run bound to another release
 
@@ -284,15 +222,11 @@ Observed on 2026-10-02 at the start of run `c9ea0003-a82c-4fb3-8d66-b5a341c39f43
 
 Let bound `status` describe a completed run from another release, or word the refusal to say that a completed run needs no reconciliation and that creating a new run is unaffected. Runtime changes ship with a version increase. Tracking does not authorize implementation.
 
-**Requires:** none.
-
 ### Mid-run follow-up capture is refused while a dispatch runs
 
 Reported on 2026-10-01 from run `edb0199e-f5f3-4fab-a55f-8fa909a08289` on installed 3.2.17, in the maintainer inbox report that also carried the user's idea now recorded in [Project inboxes](features/project-inboxes.md). When the user raised an idea mid-run, the controller's runtime `followup` write was refused with `retained-bootstrap-unavailable`, "A project operation is active or its termination is uncertain", because a review dispatch held the project lease, so the idea was written to the inbox instead of the run. [The resource interface](../internal/releases/REFERENCE.md) says other project entries remain serialized, and [the runtime reference](../internal/runtime/REFERENCE.md#handover-and-the-morning-report) calls the same refusal of a bound `handover` during a dispatch temporary, to be retried after `wait`, so this may be the documented serialization rather than a defect; either way a capture held only in the conversation until the dispatch returns can be lost to compaction or the end of the turn. The user chose to track it at inbox triage on 2026-10-02.
 
 Admit `followup` writes while a dispatch holds the project lease, or have the operating brief tell the controller to hold a mid-run capture and record it once the dispatch returns. Runtime or guidance changes ship with a version increase. Tracking does not authorize implementation.
-
-**Requires:** none.
 
 ### Skip resuming a reviewer with nothing to close
 
@@ -300,15 +234,11 @@ Observed on 2026-10-02 in run `61461833-3c7e-4449-8282-67b3df7dd564` on installe
 
 Let the controller go straight to a fresh assessment for a review kind with no findings pending closure, in the operating brief and in the runtime's `resumeTargets`, keeping resumption where closures are owed. Guidance and runtime changes ship with a version increase. Tracking does not authorize implementation.
 
-**Requires:** none.
-
 ### Rename one of the two workflow files
 
 Raised by the user on 2026-10-02 after run `61461833-3c7e-4449-8282-67b3df7dd564`, whose report named `internal/workflow.md` as a changed instruction file and prompted the question whether there are two workflow files. There are, and their names differ only in case and directory. [WORKFLOW.md](../WORKFLOW.md) at the root holds the agreed workflow direction beside [VISION.md](../VISION.md); it is not in the shipped release payload and no skill links to it. [The operating brief](../internal/workflow.md) ships in the plugin, and the handover and revise skills and [the runtime reference](../internal/runtime/REFERENCE.md) direct agents to it. [AGENTS.md](../AGENTS.md) separates them by role, but a reader or an agent can mix them up by name.
 
 Rename one of them so the two roles read apart by name. Find the references with a case-insensitive `git grep` for the renamed file's name over tracked files: Ready checks only links between backlog files, and the packaging tests check only links in the skills, AGENTS.md, the brief and the runtime reference, so neither catches a stale link elsewhere. Retarget every link to the renamed file wherever it lives, including history files, reports, specs and delivered records, so that links keep resolving, and update every other current mention, whether in prose, a code span or a code string. The sweep on 2026-10-02 found references in the skills, the runtime reference, AGENTS.md, README.md, VISION.md, V3-MIGRATION.md, `tests/package.test.js` (which lists the brief among the files whose links it checks), the release payload manifest, and backlog records, reports and specs, including entries that prescribe edits to the file. Leave unchanged only text that records the past rather than pointing at the file: quoted words, and non-link citations of the file as it stood at a past commit, such as line references in dated reports. Renaming the shipped brief changes plugin files and ships with a version increase; renaming only the root file is repository documentation. Sequence it with the current feature [Separate run-time guidance from reference material](features/runtime-guidance-separation.md), which touches every public skill and all three shared files, among them the brief. Tracking does not authorize implementation.
-
-**Requires:** none.
 
 ### Weigh minor fixes against the review cycle and keep the rest as follow-ups
 
@@ -316,15 +246,11 @@ Found on 2026-10-02 in run `61461833-3c7e-4449-8282-67b3df7dd564` and agreed wit
 
 Have the operating brief and the four revise skills ask the controller, when weighing whether to fix an optional minor finding, to count the extra review dispatches the repair causes wherever in the loop it arises, and say that confirmed optional minor findings it chooses not to fix are deferred as follow-ups with a reason rather than skipped, while a confirmed finding whose validation calls for no change keeps its skip as an accepted tradeoff. Required obligations keep their repair whatever it costs, as the brief already requires. Relates to [Skip resuming a reviewer with nothing to close](#skip-resuming-a-reviewer-with-nothing-to-close) and the feature [Proportionate review of tracking edits](features/tracking-review-cost.md); once resumes are cheap, revisit this guidance, since a fix made while a fresh pass is due anyway would then cost little. Guidance and skill changes ship with a version increase. Tracking does not authorize implementation.
 
-**Requires:** none.
-
 ### Release manifest hashes working-copy bytes
 
 Found on 2026-10-03 in run `e92922e8-d20f-4674-907c-bf3277f5f184` while preparing 3.3.3. `node tools/release-manifest.js --write`, and its check without arguments, hash payload files as read from the working tree (`workingManifest` in `tools/release-manifest.js`), while `--revision` and the release gate hash the committed blobs. Three unchanged payload files (`internal/markdown.js`, `internal/migration-references.js` and `internal/runtime/workers.js`) had CRLF working copies from 2026-09-11 and 12 that Git reports as clean under their `text=auto eol=lf` attributes, so the written manifest carried their CRLF hashes, the working-tree check passed, and the release commit failed the gate with "Committed internal/releases/payload.json is stale at HEAD". Restoring the three working copies to their committed bytes and committing the regenerated manifest as a fixup repaired it. Other tracked files in that checkout still had CRLF working copies, none of them payload files. The user chose at triage to track it.
 
 Have `--write` and the working-tree check hash the bytes Git would commit for each payload file, or refuse naming the file when its working bytes differ from them, so a stale line-ending working copy cannot produce a manifest that is wrong at the commit. A change to the repository's tools needs no version increase. Tracking does not authorize implementation.
-
-**Requires:** none.
 
 ### Record null usage for a Codex attempt that did not continue its session
 
@@ -332,15 +258,11 @@ Found on 2026-10-03 by the docs review (`76567bcd`) of run `e92922e8-d20f-4674-9
 
 Have `runCodex` record null usage for a resumed attempt whose host did not continue the session, as `runClaude` does, with a test using the fixture host's `resume-new-session` mode, so the reference sentence holds on both hosts. Runtime changes ship with a version increase. Tracking does not authorize implementation.
 
-**Requires:** none.
-
 ### Offer to revisit an entry's settled decisions before starting work
 
 Raised by the user on 2026-10-03, outside any run, in a backlog session that had by then graduated five Exploring entries, in their words: "idea: ready should ask the user if they want to revisit the settled questions before starting work, since both the code and the user's thinking might have changed since the feature spec was written." [The operating brief](../internal/workflow.md) asks for investigation and a short readback or concise spec that ends by asking whether to begin, and [the Ready skill](../skills/ready/SKILL.md) has a confirmed selection start that investigation and readback, but neither asks the agent to bring up the decisions the selected entry's record already marks as settled or agreed, which can be weeks old. The same session wrote such a revisit into [Name durability and evidence in the reliability priority](features/reliability-parts.md) by hand.
 
 Have the readback or concise spec for work taken from a backlog entry list the decisions its record marks as settled or agreed, with their dates, point out any that the investigation found contradicted by the current code or by work landed since, and ask once whether the user wants to revisit any before the work begins. The user added the same day that, since this is the interactive part of the work, the agent must not take too long before presenting the readback and the new question. The check therefore uses what the readback's own investigation already found, with no separate pass over every decision, and a decision it could not check quickly is listed as unchecked rather than investigated further; the thorough check of each decision against the current code and work landed since is to run in the background while the user reads, as an amended commitment of [Background review and assessment of selected work](features/selection-review-and-assessment.md) records. This entry does not depend on that feature: without it, the readback's own listing and question still apply. It applies to features, quick wins and bugs whose records carry agreed decisions, and to work the user starts directly as well as through Ready, so the rule belongs with the readback rule in the operating brief, with Ready's selection text consistent with it. The question is part of the readback the user answers before any handover, so it never waits on an absent user. The user agreed this shape when it was filed. Guidance changes ship with a version increase, and since the behavior is model-owned, the start of the work decides between a budgeted installed-host check and deterministic evidence only with that behavior marked unverified. Tracking does not authorize implementation.
-
-**Requires:** none.
 
 ### Have docs reviews check dependency declarations and the links Ready cannot
 
@@ -348,15 +270,11 @@ Raised by the user on 2026-10-03 during the dual review of that day's backlog ch
 
 Have the docs review check explicitly, for the entries a change touches: every `**Requires:**` line, that its references resolve, that each declared dependency or `none` is right for the entry as recorded, beyond what the parser's recorded check already rejects, such as a reference to an Exploring draft, which no longer resolves, and that shipped work removes its satisfied references from the active indexes; the other direction, that prose describing a dependency on another entry has a matching `**Requires:**` reference, while relations worded as independent, as coordination or as "whichever ships first" need none and are worded so they cannot be read as dependencies; and the links Ready's check does not cover, meaning targets outside the backlog with their anchors, and other entries named by title without a link. Once [Related field for non-dependency relations](features/related-field.md) ships, the same check covers its lines. Review-brief changes ship with a version increase. Tracking does not authorize implementation.
 
-**Requires:** none.
-
 ### Check authorized publication prerequisites before handover
 
 Found on 2026-10-04 by [the section-level audit of v2 records](reports/v2-section-audit-20261004.md). The agreed v3 decision under [Git and publication](../V3-MIGRATION.md#git-and-publication) says "Check essential publication prerequisites before departure, then carry authorized publication through after the required review and verification gates", and [the v3 feature](features/nightshift-v3.md) promises "checking essential execution, review, and any authorized publication capabilities before handover". [The handover skill](../skills/handover/SKILL.md) has said only "verify essential execution, review and continuation capabilities" since v3's first commit, `8ca3cb4`, and no backlog entry, disposition or report names the missing check. An unattended run with publication authority can therefore finish its work and only then find that it cannot publish, for example because a credential expired, the remote is unreachable or a pre-push gate fails. The user chose to restore it as a quick win at the audit's triage.
 
 Have the handover skill include authorized publication among the capabilities it verifies before the user leaves: when the handover carries publication authority, confirm that the remote, credentials, branch policy and release tooling the publication needs are usable, and settle a blocker while the user is present. A handover without publication authority has nothing to check. Skill changes ship with a version increase. Tracking does not authorize implementation.
-
-**Requires:** none.
 
 ### Resolve a deferred finding only once its destination exists
 
@@ -364,15 +282,11 @@ Found on 2026-10-04 by [the section-level audit of v2 records](reports/v2-sectio
 
 Have a deferral name its destination in a form the runtime can check, a follow-up recorded in the run or an existing backlog entry, and keep the finding unresolved until that destination exists; recovery after an interruption reuses an existing matching follow-up instead of recording a second one. Runtime changes ship with a version increase. Tracking does not authorize implementation.
 
-**Requires:** none.
-
 ### Document installing and updating on both hosts
 
 Found on 2026-10-04 by [the section-level audit of v2 records](reports/v2-section-audit-20261004.md). v2's [host-portability umbrella](features/agent-host-agnostic-nightshift.md) asked, in its packaging slice, whose disposition was Keep, to "Document install, update, and invocation for Claude Code and Codex." When the audit ran, [the README](../README.md) gave the Claude Code marketplace commands and documented invocation, but said of Codex only that its packaging "is included under `.codex-plugin`", and gave update instructions for neither host; `claude plugin update nightshift@astenlund` and `codex plugin marketplace upgrade astenlund` appeared only in this repository's [AGENTS.md](../AGENTS.md) as maintainer notes. The user chose to restore it as a quick win at the audit's triage. The README rewrite of 2026-10-05, in run `7b7ad4bd-c137-4dc4-8300-eaab1be6e89b`, added the Codex installation commands and an update command for each host under Getting started. In that run `codex plugin marketplace add astenlund/nightshift`, `codex plugin add nightshift@astenlund` and `codex plugin marketplace upgrade astenlund` each exited 0 on codex-cli 0.158.0 against an empty scratch profile, installing plugin 3.3.3; the upgrade had no newer release to move to. The Claude Code update command was checked against `claude plugin update --help` on Claude Code 2.1.289 and not run. [Codex sandbox blocks the launcher from starting the host](#codex-sandbox-blocks-the-launcher-from-starting-the-host) would document an approval "in the README installation guidance", which is that section.
 
 One part remains here: confirm on an installed Codex host that `codex plugin marketplace upgrade astenlund` brings the installed plugin to a newer release, or document the further step it needs; the README says that this step is unverified. Stating when the marketplace's automatic update takes effect, the other part of the original request, now belongs to [Confirm when marketplace auto-update applies a pushed release](#confirm-when-marketplace-auto-update-applies-a-pushed-release), which establishes it. README changes are repository documentation and need no version increase. Tracking does not authorize implementation.
-
-**Requires:** none.
 
 ### Prefer the smallest repair that meets the obligation
 
@@ -380,15 +294,11 @@ Found on 2026-10-04 by [the section-level audit of v2 records](reports/v2-sectio
 
 Have the operating brief's review-and-repair guidance, including the repair proposal it asks the skeptic for, prefer the smallest repair that meets the obligation: remove or generalize machinery the agreed outcome does not need before adding mechanism, and add mechanism only when the requirement still fails after the smaller options. Keep it consistent with the repair principle of [Complete the spec-review safeguard and authoring guidance](features/spec-review-safeguard.md), agreed on 2026-10-05, under which a repair also removes nothing the artifact needs. Guidance changes ship with a version increase. Tracking does not authorize implementation.
 
-**Requires:** none.
-
 ### Keep the review lens text in one place
 
 Found on 2026-10-04 by [the section-level audit of v2 records](reports/v2-section-audit-20261004.md). v2's [bundled revise controller](migration/v2/features/bundled-revise-controller.md) proposal kept the dimension text in one place so that it "never duplicates into the script". In v3 the dimension names come from one module, `DIMENSIONS` in `internal/runtime/lifecycle.js`, but their descriptions are written twice in different words: in [the operating brief](../internal/workflow.md), which the controller reads, and in `DIMENSION_BRIEFS` in `internal/runtime/review.js`, which is what reviewers receive. [WORKFLOW.md](../WORKFLOW.md) carries a third version that no run loads. No test ties the two loaded copies together, so an edit to one can leave the controller believing a lens covers something reviewers are never asked to check. The user chose to restore it as a quick win at the audit's triage.
 
 Give the lens text one source, either by rendering the reviewer prompt from the brief's text or by a test that pins both copies to the same wording. Runtime and guidance changes ship with a version increase. Tracking does not authorize implementation.
-
-**Requires:** none.
 
 ### Tell a later-pass reviewer to expect subtler defects
 
@@ -396,15 +306,11 @@ Found on 2026-10-04 by [the section-level audit of v2 records](reports/v2-sectio
 
 Tell a fresh reviewer dispatched after earlier review rounds of the same change that earlier rounds ran, and to look for subtler defects, without giving it their findings; a first review gets no such framing. Runtime changes ship with a version increase. Tracking does not authorize implementation.
 
-**Requires:** none.
-
 ### Carry the agreed context-gathering rule into the brief
 
 Found on 2026-10-04 at the triage of [the section-level audit of v2 records](reports/v2-section-audit-20261004.md), while checking a smaller simplification, v2's expected feature lifetime as a context input, which the user chose not to restore. The agreed v3 decision under [Scope and context](../V3-MIGRATION.md#scope-and-context) absorbed v2's operating-context profile into ordinary investigation: "establish relevant deployment, trust, data, compatibility, and recovery context, use project evidence, and ask when an unknown would materially affect the work", and "Missing essential information pauses dependent work; no user answer is inferred." [The operating brief](../internal/workflow.md) says only "Investigate the actual problem before editing"; it names no operating context and no rule for unknowns, and no active entry tracks the gap. The user chose to restore the agreed rule as a quick win.
 
 Carry the agreed rule into the brief's intake paragraph: establish the deployment, trust, data, compatibility and recovery context relevant to the work from project evidence, ask when an unknown would materially affect the work, pause only the dependent work while the answer is missing, and never infer the user's answer. Keep it proportionate, with no mandatory profile or checklist, as the decision requires. Guidance changes ship with a version increase. Tracking does not authorize implementation.
-
-**Requires:** none.
 
 ### Show setup's change list before applying it
 
@@ -412,23 +318,17 @@ Found on 2026-10-04 by [the section-level audit of v2 records](reports/v2-sectio
 
 Have init-backlog present the inspect inventory, meaning the files to be moved, created and rewritten, and ask the user before applying, with a warning not to edit the affected files until setup finishes; the byte-level manifest stays retired, and a declined confirmation applies nothing. It complements the rule that one setup operation owns a project at a time, which [Bind setup recovery to physical artifact ownership](features/v3-recovery-artifact-ownership.md) carries. Skill changes ship with a version increase. Tracking does not authorize implementation.
 
-**Requires:** none.
-
 ### Reclaim finished run copies
 
 Found on 2026-10-04 by [the section-level audit of v2 records](reports/v2-section-audit-20261004.md). v2's [night manager and shift supervisor draft](migration/v2/features/night-manager-shift-supervisor.md) left open race-free deferred cleanup of abandoned scratch directories, and [the migration decision](../V3-MIGRATION.md#requirements-retained-from-the-larger-proposals) kept only the rule that "Only proven-owned disposable material is eligible for cleanup." v3 removes a review copy under `.nightshift/runs/c/` when the reviewer's process never started or provably ended (`internal/runtime/review.js`); a copy whose ending could not be proven stays without any marker, a `cleanup.json` marker is written only when a removal already judged safe fails and nothing reads it, and probe copies are never removed. In this repository on 2026-10-04, `.nightshift/runs/c/` held 163 copy directories totalling 152 MB, the oldest from 2026-09-28. The directory is ignored, so it does not reach commits, but it grows without bound in every project that uses Nightshift. [The 2026-09-08 acceptance report](reports/v3-acceptance-20260908.md) left "safe retention of disposable probe copies" as an optional follow-up. The user chose to restore it as a quick win at the audit's triage.
 
 Reclaim run copies whose owning dispatch or probe has provably finished: remove a probe copy once its result is recorded, retry a removal that failed, and sweep leftovers, including review copies left without a marker, only under proven ownership, never deleting a copy that a live or uncertain worker may still use. Runtime changes ship with a version increase. Tracking does not authorize implementation.
 
-**Requires:** none.
-
 ### Tell the init-backlog templates where retired features go
 
 Found on 2026-10-05 by the independent documentation review of the backlog session of 2026-10-04 to 2026-10-05, in which [Init-backlog ignore-shape election](features/init-backlog-ignore-shape-election.md) was retired into [FEATURES_HISTORY.md](FEATURES_HISTORY.md). This repository's FEATURES_HISTORY.md header and FEATURES.md History section now say that features retired without shipping are appended to the history file, each marked retired, but the templates init-backlog ships for new projects do not: [the history template](../skills/init-backlog/templates/features-history.md) introduces the file as "Implemented features" appended "When a feature (or a slice of a sliced feature) ships", and [the features template](../skills/init-backlog/templates/features.md) never says where a retired feature goes. The user chose to track it at the review's follow-up triage.
 
 Add the retirement convention to both templates so that a project set up from them has a stated place for a retirement, worded as this repository's two files now word it, and keep the templates consistent with the parser and their fixtures. Template changes ship with a version increase. Tracking does not authorize implementation.
-
-**Requires:** none.
 
 ## History
 

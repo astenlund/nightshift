@@ -29,7 +29,7 @@ const {
   readFileIfPresent,
   runCli,
   scanUnlinkedBacklogFiles,
-  scanBreakoutLines,
+  scanDependencyLines,
   scanBreakoutTargets,
 } = require('./ready.js');
 const { analyzeBacklogLinks, extractLinks, headingAnchors, resolveLink } = require('../../internal/backlog-links.js');
@@ -959,6 +959,74 @@ test('quick wins are always ready, both h3 and bullet shapes', () => {
   assert.ok(ready.includes('Rename the thing'), `missing bullet QW in ${ready}`);
 });
 
+function quickWinDependencyFixture(quickWins) {
+  return analyze({
+    QUICK_WINS: quickWins,
+    FEATURES: '# Features\n\n## Area\n\n### [Alpha](features/alpha.md)\n\nCore.\n\n**Requires:** none.\n',
+    BUGS: '# Bugs\n\n## Open\n\n### Torn write\n\nTears.\n\n**Requires:** none.\n',
+    PATTERNS: '# Patterns\n',
+  });
+}
+
+const QUICK_WIN_DEPENDENCY_NOTICE_TAIL = 'quick wins are always ready and carry neither line, so Ready ignores such a line; remove it, or move the entry to FEATURES.md or BUGS.md if it depends on other work';
+
+test('dependency lines on quick wins draw one notice for the index and leave every entry ready', () => {
+  const result = quickWinDependencyFixture([
+    '# Quick wins', '', '## Area', '',
+    '### None line', '', 'Body.', '', '**Requires:** none.', '',
+    '### External line', '', 'Body.', '', '**External:** vendor support for streaming', '',
+    '### Linked line', '', 'Body.', '', '**Requires:** [Alpha](features/alpha.md).', '',
+    '### Indented line', '', 'Body.', '', '  **Requires:** none.', '',
+    '### Clean', '', 'Mentions `**Requires:**` inline only.', '', '```md', '**Requires:** none.', '```', '',
+    '## Misc', '',
+    '- **Bullet entry.** A loose quick win.', '',
+    '- **Bullet requires.** A loose quick win.', '  **Requires:** none.', '',
+    '- **Bullet external.** A loose quick win.', '  **External:** vendor support for streaming', '',
+  ].join('\n'));
+
+  assert.deepStrictEqual(result.notices, [
+    `QUICK_WINS.md has 6 quick wins with a **Requires:** or **External:** line (first: "None line"); ${QUICK_WIN_DEPENDENCY_NOTICE_TAIL}`,
+  ]);
+  for (const title of ['None line', 'External line', 'Linked line', 'Indented line', 'Clean', 'Bullet entry', 'Bullet requires', 'Bullet external']) {
+    assert.ok(findByTitle(result.ready, title), `${title} missing from ready: ${titles(result.ready)}`);
+  }
+  assert.deepStrictEqual(result.blocked, []);
+  assert.deepStrictEqual(result.external, []);
+  assert.deepStrictEqual(result.structuralErrors, []);
+});
+
+test('a single quick win with a dependency line draws the singular notice', () => {
+  const result = quickWinDependencyFixture('# Quick wins\n\n## Area\n\n### Only one\n\nBody.\n\n**External:** a user decision\n');
+
+  assert.deepStrictEqual(result.notices, [
+    `QUICK_WINS.md has 1 quick win with a **Requires:** or **External:** line (first: "Only one"); ${QUICK_WIN_DEPENDENCY_NOTICE_TAIL}`,
+  ]);
+});
+
+test('a bullet quick win is scanned by its physical lines, so a continuation or opening label is counted and named first', () => {
+  const result = quickWinDependencyFixture([
+    '# Quick wins', '', '## Area', '',
+    '- **Bullet first.** Body.', '  **Requires:** none.', '',
+    '- **Requires:** none.', '',
+    '### Heading after', '', 'Body.', '', '**External:** a user decision', '',
+  ].join('\n'));
+
+  assert.deepStrictEqual(result.notices, [
+    `QUICK_WINS.md has 3 quick wins with a **Requires:** or **External:** line (first: "Bullet first"); ${QUICK_WIN_DEPENDENCY_NOTICE_TAIL}`,
+  ]);
+  const bullet = findByTitle(result.ready, 'Bullet first');
+  assert.ok(bullet, `Bullet first missing from ready: ${titles(result.ready)}`);
+  assert.strictEqual(bullet.excerpt, '**Bullet first.** Body. **Requires:** none.');
+});
+
+test('quick wins without dependency lines draw no dependency notice', () => {
+  const result = quickWinDependencyFixture('# Quick wins\n\n## Area\n\n### Plain\n\nBody naming `**External:**` in a code span.\n\n## Misc\n\n- **Bullet.** Body.\n');
+
+  assert.deepStrictEqual(result.notices, []);
+  assert.ok(findByTitle(result.ready, 'Plain'), `Plain missing from ready: ${titles(result.ready)}`);
+  assert.ok(findByTitle(result.ready, 'Bullet'), `Bullet missing from ready: ${titles(result.ready)}`);
+});
+
 test('wrapped quick-win title and excerpt join continuation lines', () => {
   const wrapped = findByTitle(result.ready, 'A title that wraps onto the next line');
   assert.ok(wrapped, `missing wrapped QW in ${titles(result.ready)}`);
@@ -1736,7 +1804,7 @@ test('the top-level External line governs the first unshipped slice, not later c
 
 // ---------- breakout scan ----------
 
-test('scanBreakoutLines finds Requires and External labels at any indentation, outside fences, never in inline backticks', () => {
+test('scanDependencyLines finds Requires and External labels at any indentation, outside fences, never in inline backticks', () => {
   const contents = [
     '# Title',
     '',
@@ -1750,17 +1818,17 @@ test('scanBreakoutLines finds Requires and External labels at any indentation, o
     '',
   ].join('\n');
 
-  assert.deepStrictEqual(scanBreakoutLines(contents), [
+  assert.deepStrictEqual(scanDependencyLines(contents), [
     { label: 'External', line: 7 },
     { label: 'Requires', line: 9 },
   ]);
 });
 
-test('scanBreakoutLines returns an empty array for a clean breakout', () => {
-  assert.deepStrictEqual(scanBreakoutLines('# Title\n\n## Requirements\n\n- Needs a parser.\n'), []);
+test('scanDependencyLines returns an empty array for a clean breakout', () => {
+  assert.deepStrictEqual(scanDependencyLines('# Title\n\n## Requirements\n\n- Needs a parser.\n'), []);
 });
 
-test('scanBreakoutLines ignores dependency labels inside every raw HTML block type', () => {
+test('scanDependencyLines ignores dependency labels inside every raw HTML block type', () => {
   const blocks = [
     '<script>\n**Requires:** [Ghost](ghost.md)\n</script>',
     '<!--\n**Requires:** [Ghost](ghost.md)\n-->',
@@ -1772,14 +1840,14 @@ test('scanBreakoutLines ignores dependency labels inside every raw HTML block ty
   ];
 
   for (const block of blocks) {
-    assert.deepStrictEqual(scanBreakoutLines(`${block}\n**External:** [Real](real.md)\n`), [
+    assert.deepStrictEqual(scanDependencyLines(`${block}\n**External:** [Real](real.md)\n`), [
       { label: 'External', line: block.split('\n').length + 1 },
     ]);
   }
 });
 
-test('scanBreakoutLines does not mask inline HTML', () => {
-  assert.deepStrictEqual(scanBreakoutLines('Text <span>inline</span>.\n**Requires:** [Real](real.md)\n'), [
+test('scanDependencyLines does not mask inline HTML', () => {
+  assert.deepStrictEqual(scanDependencyLines('Text <span>inline</span>.\n**Requires:** [Real](real.md)\n'), [
     { label: 'Requires', line: 2 },
   ]);
 });

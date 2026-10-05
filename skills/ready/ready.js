@@ -5,7 +5,8 @@
 // .nightshift/ indexes (QUICK_WINS.md, FEATURES.md, BUGS.md), resolves each
 // entry's **Requires:** line (in-backlog links) and optional **External:**
 // line (external primitives), expands sliced features into per-slice work
-// units, scans each linked breakout file for a stray dependency line, and
+// units, scans each linked breakout file for a stray dependency line, reports
+// any dependency line on a quick win (quick wins are always ready), and
 // emits a JSON report on stdout:
 //
 //   { indexes, ready, blocked, external, exploring, structuralErrors, notices }
@@ -65,7 +66,7 @@ const PLACEHOLDER_LINES = new Set([
 // wrapped Requires or External line; inline **bold** mid-line does not. The
 // pattern is imported from the unwrapper so both read the same block boundary.
 const SLICES_LABEL = /^\*\*Slices:\*\*\s*$/i;
-const BREAKOUT_LINE_LABELS = [['Requires', REQUIRES_LABEL], ['External', EXTERNAL_LABEL]];
+const DEPENDENCY_LINE_LABELS = [['Requires', REQUIRES_LABEL], ['External', EXTERNAL_LABEL]];
 // Every grammar error names its remedy: these messages are the upgrade
 // path for backlogs written under the old single-field grammar.
 const EMPTY_REQUIRES_PROBLEM = 'empty **Requires:** label; write none. when there are no upstream gates';
@@ -319,6 +320,8 @@ function createBulletEntry(line, sectionTitle) {
 }
 
 function finalizeBulletEntry(entry) {
+  // The quick-win dependency scan reads the physical lines, which the join below would hide.
+  entry.sourceLines = entry.bodyLines;
   const text = entry.bodyLines.join(' ');
   entry.title = extractBulletTitle(text);
   entry.bodyLines = [text];
@@ -1032,8 +1035,22 @@ function prepareRegistryRecords(parsed, out) {
         [`${name}.md`]);
     }
   }
+  const notice = quickWinDependencyNotice(parsed.QUICK_WINS?.entries ?? []);
+  if (notice !== null) pushNotice(out, notice, ['QUICK_WINS.md']);
 
   return registryRecords;
+}
+
+// Quick wins are always ready, so the parser never resolves a dependency line
+// on one; such a line is reported once for the index rather than dropped
+// silently. A bullet entry is scanned by its physical lines, its opening text
+// included, and a heading entry by its body.
+function quickWinDependencyNotice(entries) {
+  const declaring = entries.filter((entry) => scanDependencyLines((entry.sourceLines ?? entry.bodyLines).join('\n')).length > 0);
+  if (declaring.length === 0) return null;
+  const noun = declaring.length === 1 ? 'quick win' : 'quick wins';
+
+  return `QUICK_WINS.md has ${declaring.length} ${noun} with a **Requires:** or **External:** line (first: "${declaring[0].title}"); quick wins are always ready and carry neither line, so Ready ignores such a line; remove it, or move the entry to FEATURES.md or BUGS.md if it depends on other work`;
 }
 
 function buildCycleAnalysis(registryRecords, registry) {
@@ -1278,18 +1295,19 @@ function linkNotices(result, backlogFiles) {
   return analyzeBacklogLinks({ files: backlogFiles, linkedEntries: result[LINKED_ENTRIES], coveredTargets, normalizeTitle });
 }
 
-// Lines in a breakout file that carry a dependency label: outside any
-// fence, at any indentation, trimmed content starting with the label. The
-// index entry is the sole dependency authority, so a breakout copy is drift.
-// Inline backticked mentions in prose start with a backtick and never match.
-function scanBreakoutLines(contents) {
+// Lines that carry a dependency label: outside any fence, at any indentation,
+// trimmed content starting with the label. In a breakout file the index entry
+// is the sole dependency authority, so a copy is drift; a quick win carries no
+// dependency line at all. Inline backticked mentions in prose start with a
+// backtick and never match.
+function scanDependencyLines(contents) {
   const records = scanMarkdown(Buffer.from(contents, 'utf8')).lines;
   const rawHtml = sharedMaskRawHtmlBlocks(records);
   const hits = [];
   records.forEach((record, i) => {
     if (record.opensFence || !record.outsideFence || rawHtml.has(record)) return;
     const t = record.content.trim();
-    for (const [label, labelRe] of BREAKOUT_LINE_LABELS) {
+    for (const [label, labelRe] of DEPENDENCY_LINE_LABELS) {
       if (labelRe.test(t)) hits.push({ label, line: i + 1 });
     }
   });
@@ -1342,7 +1360,7 @@ function scanBreakoutTargetsWith(breakoutTargets, load, collectEvidence) {
         notices.push(notice);
         if (evidence !== null) evidence.notices.push([target]);
       }
-      lineHitsCache.set(identity, scanBreakoutLines(contents));
+      lineHitsCache.set(identity, scanDependencyLines(contents));
     }
     const lineHits = lineHitsCache.get(identity);
     for (const hit of lineHits) {
@@ -2006,7 +2024,7 @@ module.exports = {
   findSlicesByNormalizedName,
   extractEntries,
   findRequires,
-  scanBreakoutLines,
+  scanDependencyLines,
   buildRegistry,
   EXCLUDED_SECTIONS,
   collectEntryEdges,
