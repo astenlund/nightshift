@@ -244,6 +244,19 @@ Complete the retained concise decision and experiment record so subsequent indep
 
 **Requires:** none.
 
+### [Controller-run experiments](features/controller-run-experiments.md)
+
+Let the controller design and run bounded experiments within the authority already granted, such as comparing reviewer models, a reviewer guided by the review lenses against an unguided one, dual against single review, compacting a Codex reviewer before its resume, or tuning the keyword scores of the open-question search, with control and treatment arms, a cost limit and a separate evaluator where practical, and report each result for the user to adopt, repeat, revise, track or discard; results never promote themselves. Raised again by the user on 2026-10-03 after finding it no longer tracked; the user reversed the migration's ledger simplification the same day and added retrospective proposals and a single selection question that suggests a token allowance. The commitments agreed with the user on 2026-10-05, recorded in the linked record: experiments that cost no extra tokens may run within existing authority, while extra spending needs the allowance granted at selection, and none may weaken a gate or risk the primary result; each experiment records its design in the ledger before it runs and reports a conclusive, directional or inconclusive result; the ledger lives in the project's run store, outlives runs and is written only through runtime operations, its entries moving from proposed to disposed by the user; an experiment nearing its allowance stops and reports inconclusive, and one that suggests itself mid-run is asked about or kept as a proposal; and experiments run inside agreed runs. Each slice needs a concise governing spec, a version increase and a decision on installed-host evidence.
+
+**Slices:**
+
+- **MVP - in-run experiments.** The authority boundary, recorded designs, the ledger and the selection question for experiments the controller proposes during agreed runs, asked with the readback.
+- **Retrospective proposals.** Retrospectives propose experiments into the ledger, and a later session picks them up at selection.
+- **Proposal agent at selection.** A background agent proposes any experiment while the user reads the readback.
+  **Requires:** [Background review and assessment of selected work](features/selection-review-and-assessment.md).
+
+**Requires:** none.
+
 ## Exploring
 
 ### [Shared BACKLOG.md meta-index](features/backlog-meta-index.md)
@@ -341,10 +354,6 @@ Post-MVP investigation of measured controller overhead: repeated context reads, 
 ### [Spawn a shift supervisor when admin work fills the controller's context](features/context-triggered-supervisor.md)
 
 Have the controller notice when administrative work starts filling its context and spawn a lower-tier shift supervisor to carry assignments, progress, result collection and routine recovery, keeping consequential decisions and access to the underlying evidence. Raised by the user on 2026-09-29: the retained optional supervisor ships only as one brief sentence and a write-free role label, with nothing that triggers, briefs or launches one. The trigger, the supervisor's brief and reporting, and where it runs are open; since 2026-10-04 its reporting is to escalate a safety, authority or repository-integrity violation at once.
-
-### [Controller-run experiments](features/controller-run-experiments.md)
-
-Let the controller design and run bounded experiments within the authority already granted, such as comparing reviewer models, a reviewer guided by the review lenses against an unguided one, dual against single review, compacting a Codex reviewer before its resume, or tuning the keyword scores of the open-question search, with control and treatment arms, a cost limit and a separate evaluator where practical, and report each result for the user to adopt, repeat, revise, track or discard; results never promote themselves. Raised again by the user on 2026-10-03 after finding it no longer tracked: v2 carried it in an unshipped run-management draft whose 2026-09-06 migration disposition did not name it, while a sibling decision kept experiment evidence in the run record "without a separate ledger or experiment framework"; the user reversed the ledger part the same day, so experiments are to be recorded in a separate controller-owned ledger of material conclusions and deciding evidence, and the user added that session retrospectives could propose experiments, kept durably for future sessions, and that Ready could ask at selection whether extra tokens may be spent on experiments, only when the controller plans one, with a background agent proposing any experiment while the user reads the readback, and one question that suggests a token allowance the user can grant, adjust or decline. How much further structure it needs, budgets and evaluation, the ledger's home and lifecycle, and its authority boundary are open.
 
 ### [Answer open backlog questions cheaply in retrospectives](features/retrospective-open-questions.md)
 
