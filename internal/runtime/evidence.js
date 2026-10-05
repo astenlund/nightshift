@@ -96,21 +96,43 @@ function snapshot(root, paths) {
   return { digest: hash(JSON.stringify(files)), files };
 }
 
-// The recorded files whose bytes changed, and among them those whose recorded blob id lets a renormalization be recognized:
-// both versions exist and the record carries a blob id; evidence recorded without blob ids keeps the byte comparison.
-function byteChanges(root, files) {
-  const current = new Map(readIdentities(root, files.map(file => file.path)).map(file => [file.path, file.sha256]));
-  const changed = files.filter(file => current.get(file.path) !== file.sha256);
-  return { changed, candidates: changed.filter(file => file.sha256 !== null && current.get(file.path) !== null && typeof file.blob === 'string') };
+// The marker for an entry that can no longer be read as a regular project file, such as one replaced by a directory or a link.
+const UNREADABLE = Symbol('unreadable');
+
+// The current sha256 of each distinct recorded path, null for a missing file. With tolerate, an unreadable entry maps to
+// UNREADABLE instead of throwing, so it counts as changed without stopping the comparison of other paths.
+function currentSha256(root, files, tolerate = false) {
+  const paths = [...new Set(files.map(file => file.path))];
+  if (!tolerate) return new Map(readIdentities(root, paths).map(file => [file.path, file.sha256]));
+  return new Map(paths.map(relative => {
+    try {
+      return [relative, readIdentities(root, [relative])[0].sha256];
+    } catch {
+      // Whatever stops the read, the recorded identity cannot be matched.
+      return [relative, UNREADABLE];
+    }
+  }));
 }
 
-// The candidates Git would commit with their recorded content, as after a line-ending renormalization, established with one
-// object-format query and one batched hash however many files changed. Anything unverifiable is left out, never counted as unchanged.
-function renormalizedPaths(root, candidates) {
-  if (candidates.length === 0) return new Set();
+// The recorded files whose bytes changed, and among them those whose recorded blob id lets a renormalization be recognized:
+// both versions exist and the record carries a blob id; evidence recorded without blob ids keeps the byte comparison.
+function byteChanges(root, files, current = currentSha256(root, files)) {
+  const changed = files.filter(file => current.get(file.path) !== file.sha256);
+  return { changed, candidates: changed.filter(file => file.sha256 !== null && typeof current.get(file.path) === 'string' && typeof file.blob === 'string') };
+}
+
+// The blob id Git would commit for each candidate's current content, established with one object-format query and one batched
+// hash however many files changed. A file whose id cannot be verified is left out, never counted as unchanged.
+function currentBlobs(root, candidates) {
+  if (candidates.length === 0) return new Map();
   const format = gitObjectFormat(root);
-  if (!format) return new Set();
-  const blobs = verifiedBlobs(root, readIdentities(root, candidates.map(file => file.path), format).filter(file => file.sha256 !== null));
+  if (!format) return new Map();
+  return verifiedBlobs(root, readIdentities(root, [...new Set(candidates.map(file => file.path))], format).filter(file => file.sha256 !== null));
+}
+
+// The candidates Git would commit with their recorded content, as after a line-ending renormalization.
+function renormalizedPaths(root, candidates) {
+  const blobs = currentBlobs(root, candidates);
   return new Set(candidates.filter(file => blobs.get(file.path) === file.blob).map(file => file.path));
 }
 
@@ -143,17 +165,43 @@ function outsideGitWorktree(root) {
 
 // Unchanged bytes are fresh. Changed bytes are fresh only when Git would commit the same content, as after a line-ending renormalization.
 function fresh(root, evidence) {
-  if (!evidence || !Array.isArray(evidence.files) || evidence.files.length === 0) return false;
-  if (hash(JSON.stringify(evidence.files)) !== evidence.digest) return false;
-  if (evidence.inventory) {
-    const current = projectInventory(root, evidence.excludedPaths ?? [], evidence.includedPaths ?? []);
-    if (JSON.stringify(current) !== JSON.stringify(evidence.files.map(file => file.path))) return false;
+  return freshAll(root, [evidence])[0];
+}
+
+// Whether each snapshot still matches current inputs, as fresh decides for one, judged together: each distinct file is read once,
+// and the renormalization candidates of every snapshot cost one object-format query and one batched hash rather than two each.
+// Judging never throws: an inventory or entry that cannot be read leaves its snapshot not fresh and the others unaffected, so a
+// status brief can name the stale evidence instead of failing, while every gate that needs fresh evidence still refuses.
+function freshAll(root, evidences) {
+  const comparable = evidences.map(evidence => {
+    if (!evidence || !Array.isArray(evidence.files) || evidence.files.length === 0) return false;
+    if (hash(JSON.stringify(evidence.files)) !== evidence.digest) return false;
+    if (evidence.inventory) {
+      try {
+        const current = projectInventory(root, evidence.excludedPaths ?? [], evidence.includedPaths ?? []);
+        if (JSON.stringify(current) !== JSON.stringify(evidence.files.map(file => file.path))) return false;
+      } catch {
+        // An inventory that cannot be established cannot show the snapshot current.
+        return false;
+      }
+    }
+    return true;
+  });
+  const sha256 = currentSha256(root, evidences.filter((_, index) => comparable[index]).flatMap(evidence => evidence.files), true);
+  const decided = evidences.map((evidence, index) => {
+    if (!comparable[index]) return false;
+    const { changed, candidates } = byteChanges(root, evidence.files, sha256);
+    if (changed.length === 0) return true;
+    // A change that no blob id can explain decides the answer without consulting Git.
+    return candidates.length === changed.length ? candidates : false;
+  });
+  let blobs = new Map();
+  try {
+    blobs = currentBlobs(root, decided.filter(Array.isArray).flat());
+  } catch {
+    // A candidate that became unreadable after the byte comparison stays unverified, which never counts as unchanged.
   }
-  const { changed, candidates } = byteChanges(root, evidence.files);
-  if (changed.length === 0) return true;
-  // A change that no blob id can explain decides the answer without consulting Git.
-  if (candidates.length !== changed.length) return false;
-  return renormalizedPaths(root, candidates).size === changed.length;
+  return decided.map(result => (Array.isArray(result) ? result.every(file => blobs.get(file.path) === file.blob) : result));
 }
 
 // A snapshot of the whole reviewable project inventory, in the form a review's context snapshot takes.
@@ -229,4 +277,4 @@ function verifyCommand(root, request) {
   return { ...result, snapshot: after, inputsUnchanged, passed: !result.error && result.exitCode === 0 && inputsUnchanged };
 }
 
-module.exports = { changedPaths, executeCommand, fileIdentity, fileSha256, fresh, hash, inventorySnapshot, outsideGitWorktree, projectFile, projectInventory, snapshot, verifyCommand };
+module.exports = { changedPaths, executeCommand, fileIdentity, fileSha256, fresh, freshAll, hash, inventorySnapshot, outsideGitWorktree, projectFile, projectInventory, snapshot, verifyCommand };

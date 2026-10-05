@@ -6,7 +6,7 @@ const path = require('node:path');
 const test = require('node:test');
 const { spawnSync } = require('node:child_process');
 const { RunStore } = require('../internal/runtime/store');
-const { hash, snapshot, fresh, verifyCommand } = require('../internal/runtime/evidence');
+const { hash, snapshot, fresh, freshAll, verifyCommand } = require('../internal/runtime/evidence');
 const { DIMENSIONS, commitmentsFor, obligationBrief, reviewGate, transition } = require('../internal/runtime/lifecycle');
 const { execute } = require('../internal/runtime/cli');
 
@@ -94,6 +94,94 @@ test('history lists every transition without state and returns state only for a 
     assert.equal(refused.status, 1);
     assert.equal(JSON.parse(refused.stderr.trim().split('\n').at(-1)).error, 'invalid-history-range', JSON.stringify(range));
   }
+});
+
+test('status lists every latest check that no longer passes, completed tasks and the closing record included', t => {
+  const f = fixture(t, ['done', 'subject'].map(id => ({ id, title: id, agreement: { source: 'user message', outcome: 'Both paths behave correctly' } })));
+  const evidence = (name, paths, overrides = {}) => ({ ...verifyCommand(f.root, { name, executable: process.execPath, args: ['--version'], paths }), ...overrides });
+  const record = (taskId, check) => f.store.update(actor, f.store.read().revision, 'check', state => transition(state, { taskId, action: 'check', evidence: check }));
+  record('done', evidence('subject check', ['subject.txt']));
+  record('done', evidence('sibling check', ['sibling.txt']));
+  f.store.update(actor, f.store.read().revision, 'fixture-completed-task', state => { Object.assign(state.tasks[0], { status: 'complete', stage: 'complete' }); });
+  record('subject', evidence('failing check', ['sibling.txt'], { passed: false }));
+  record('subject', evidence('superseded check', ['sibling.txt'], { passed: false }));
+  record('subject', evidence('superseded check', ['sibling.txt']));
+  f.store.update(actor, f.store.read().revision, 'fixture-pending-check', state => { state.tasks[1].checks.push({ attemptId: 'attempt', name: 'interrupted check', passed: false, pending: true, error: 'Reserved execution has no collected result', snapshot: snapshot(f.root, ['sibling.txt']) }); });
+  f.store.update(actor, f.store.read().revision, 'fixture-closing-record', state => { state.closing = { ...state.closing, docs: { id: '#closing', kind: 'closing', baseline: null, reviews: [], findings: [], checks: [evidence('closing check', ['subject.txt'])], probeEvidence: [] } }; });
+  const before = obligationBrief(f.store.read(), f.root).staleChecks;
+
+  fs.writeFileSync(path.join(f.root, 'subject.txt'), 'changed\r\n');
+  const after = obligationBrief(f.store.read(), f.root);
+
+  assert.deepEqual(before, [{ taskId: 'subject', name: 'failing check', reason: 'failed' }, { taskId: 'subject', name: 'interrupted check', reason: 'pending' }]);
+  assert.deepEqual(after.staleChecks, [
+    { taskId: 'done', name: 'subject check', reason: 'inputs-changed' },
+    { taskId: 'subject', name: 'failing check', reason: 'failed' },
+    { taskId: 'subject', name: 'interrupted check', reason: 'pending' },
+    { taskId: '#closing', name: 'closing check', reason: 'inputs-changed' },
+  ]);
+  assert.deepEqual(after.next.map(task => task.id), ['subject'], 'the completed task is listed only through its stale check');
+  assert.equal(obligationBrief(f.store.read(), f.root, { verifyFreshness: false }).staleChecks, 'reconcile at acceptance');
+});
+
+test('a check input that can no longer be read as a regular file is listed as changed instead of failing the brief', async t => {
+  const f = fixture(t, ['done', 'subject'].map(id => ({ id, title: id, agreement: { source: 'user message', outcome: 'Both paths behave correctly' } })));
+  fs.writeFileSync(path.join(f.root, 'linked.txt'), 'will gain a second link\r\n');
+  fs.writeFileSync(path.join(f.root, 'symlinked.txt'), 'will become a symbolic link\r\n');
+  fs.writeFileSync(path.join(f.root, 'closing.txt'), 'will become a directory\r\n');
+  const evidence = (name, file) => verifyCommand(f.root, { name, executable: process.execPath, args: ['--version'], paths: [file] });
+  const record = (taskId, name, file) => f.store.update(actor, f.store.read().revision, 'check', state => transition(state, { taskId, action: 'check', evidence: evidence(name, file) }));
+  record('done', 'subject check', 'subject.txt');
+  record('done', 'linked check', 'linked.txt');
+  record('done', 'symlinked check', 'symlinked.txt');
+  record('done', 'sibling check', 'sibling.txt');
+  f.store.update(actor, f.store.read().revision, 'fixture-completed-task', state => { Object.assign(state.tasks[0], { status: 'complete', stage: 'complete' }); });
+  record('subject', 'open subject check', 'subject.txt');
+  f.store.update(actor, f.store.read().revision, 'fixture-closing-record', state => { state.closing = { ...state.closing, docs: { id: '#closing', kind: 'closing', baseline: null, reviews: [], findings: [], checks: [evidence('closing check', 'closing.txt')], probeEvidence: [] } }; });
+
+  for (const name of ['subject.txt', 'closing.txt']) {
+    fs.rmSync(path.join(f.root, name));
+    fs.mkdirSync(path.join(f.root, name));
+    fs.writeFileSync(path.join(f.root, name, 'child.txt'), 'replacement\r\n');
+  }
+  fs.linkSync(path.join(f.root, 'linked.txt'), path.join(f.root, 'alias.txt'));
+  fs.rmSync(path.join(f.root, 'symlinked.txt'));
+  fs.symlinkSync(path.join(f.root, 'sibling.txt'), path.join(f.root, 'symlinked.txt'), 'file');
+  const expected = [
+    { taskId: 'done', name: 'subject check', reason: 'inputs-changed' },
+    { taskId: 'done', name: 'linked check', reason: 'inputs-changed' },
+    { taskId: 'done', name: 'symlinked check', reason: 'inputs-changed' },
+    { taskId: 'subject', name: 'open subject check', reason: 'inputs-changed' },
+    { taskId: '#closing', name: 'closing check', reason: 'inputs-changed' },
+  ];
+
+  assert.deepEqual(obligationBrief(f.store.read(), f.root).staleChecks, expected, 'the unaffected sibling check stays current');
+  assert.throws(() => transition(f.store.read(), { action: 'advance', taskId: 'subject' }), { code: 'verification-required' }, 'acceptance still refuses the unreadable evidence');
+  const revision = f.store.read().revision;
+  const stopped = await execute(f.root, { action: 'stop', actor, revision, kind: 'user-stop', reason: 'Fixture stop' });
+  assert.deepEqual({ status: stopped.status, revision: stopped.revision, staleChecks: stopped.staleChecks }, { status: 'stopped', revision: revision + 1, staleChecks: expected });
+});
+
+test('freshAll judges several snapshots as fresh judges each one, line-ending renormalization included', t => {
+  const root = fs.mkdtempSync(path.join(scratch, 'fresh-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const init = spawnSync('git', ['init', '-q'], { cwd: root, windowsHide: true, encoding: 'utf8' });
+  assert.equal(init.status, 0, init.stderr);
+  fs.writeFileSync(path.join(root, '.gitattributes'), '*.txt text eol=lf\n');
+  for (const [name, content] of [['renormalized.txt', 'one\ntwo\n'], ['unchanged.txt', 'kept\n'], ['edited.txt', 'before\n']]) fs.writeFileSync(path.join(root, name), content);
+  const renormalized = snapshot(root, ['renormalized.txt']);
+  const shared = snapshot(root, ['renormalized.txt', 'unchanged.txt']);
+  const edited = snapshot(root, ['edited.txt', 'unchanged.txt']);
+  const tampered = { ...snapshot(root, ['unchanged.txt']), digest: 'tampered' };
+  assert.match(renormalized.files[0].blob, /^[0-9a-f]{40,64}$/);
+
+  fs.writeFileSync(path.join(root, 'renormalized.txt'), 'one\r\ntwo\r\n');
+  fs.writeFileSync(path.join(root, 'edited.txt'), 'after\n');
+  const snapshots = [renormalized, shared, edited, tampered, undefined];
+
+  assert.deepEqual(freshAll(root, snapshots), [true, true, false, false, false]);
+  assert.deepEqual(freshAll(root, snapshots), snapshots.map(evidence => fresh(root, evidence)));
+  assert.deepEqual(freshAll(root, []), []);
 });
 
 test('a failed rerun supersedes its earlier pass and a successful retry restores the gate', t => {

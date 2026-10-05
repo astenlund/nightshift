@@ -6,7 +6,7 @@ const { workerIsActive } = require('./workers');
 const { isDeepStrictEqual } = require('node:util');
 
 const { requireCondition, text } = require('./store');
-const { changedPaths, fileSha256, fresh, hash, inventorySnapshot, outsideGitWorktree, projectFile, projectInventory, snapshot } = require('./evidence');
+const { changedPaths, fileSha256, fresh, freshAll, hash, inventorySnapshot, outsideGitWorktree, projectFile, projectInventory, snapshot } = require('./evidence');
 const { exhaustedLimit } = require('./limits');
 const { CLOSING_TARGET, unknownActionMessage } = require('./actions');
 const { latestDispatchOf, lineageOf } = require('./continuation');
@@ -174,9 +174,26 @@ function verifiedContinuation(state, mechanism) {
   return { ...mechanism, runId: state.id, controller: { ...state.controller }, observedAt: new Date().toISOString() };
 }
 
+// A target's latest invocation of each named check: a later invocation supersedes an earlier one of the same name.
+function latestChecks(target) {
+  return [...new Map(target.checks.map(check => [check.name, check])).values()];
+}
+
 function verificationGate(root, task) {
-  const latest = new Map(task.checks.map(check => [check.name, check]));
-  return (task.kind !== 'code' || latest.size > 0) && [...latest.values()].every(check => check.passed && fresh(root, check.snapshot));
+  const latest = latestChecks(task);
+  return (task.kind !== 'code' || latest.length > 0) && latest.every(check => check.passed && fresh(root, check.snapshot));
+}
+
+// Every latest named check that no longer passes on current inputs, of every task, completed ones included, and of the closing
+// record, which task and run acceptance would refuse: one whose run never collected a result, one that failed, or one whose
+// inputs changed since it passed. Every brief carries the list, so the passing checks' inputs are judged in one batch.
+function staleChecks(root, state) {
+  const targets = state.closing?.docs ? [...state.tasks, state.closing.docs] : state.tasks;
+  const latest = targets.flatMap(target => latestChecks(target).map(check => ({ taskId: target.id, check })));
+  const passing = latest.filter(({ check }) => check.passed && !check.pending);
+  const current = new Map(freshAll(root, passing.map(({ check }) => check.snapshot)).map((isFresh, index) => [passing[index].check, isFresh]));
+  const reason = check => (check.pending ? 'pending' : !check.passed ? 'failed' : current.get(check) ? null : 'inputs-changed');
+  return latest.map(({ taskId, check }) => ({ taskId, name: check.name, reason: reason(check) })).filter(entry => entry.reason !== null);
 }
 
 // A docs review never makes a task's code assessment required; only its kind or an imported code assessment does.
@@ -516,6 +533,7 @@ function obligationBrief(state, root = state.root, options = {}) {
     })),
     // An exemption is recorded as its task completes, so it is listed for every task rather than only for work still ahead.
     ...(state.docsGate ? { docsExemptions: state.tasks.filter(task => task.docsExemption).map(task => ({ taskId: task.id, reason: task.docsExemption.reason, revision: task.docsExemption.revision, current: options.verifyFreshness === false ? 'reconcile at acceptance' : fresh(root, task.docsExemption.snapshot) })) } : {}),
+    staleChecks: options.verifyFreshness === false ? 'reconcile at acceptance' : staleChecks(root, state),
     finalReconciliationPending: state.status === 'running' && active.length === 0,
     closing: { ready: closingReady(state), stage: closingStage(state), ...(state.closing?.docs ? { docsReview: closingDocsBrief(state, root, options) } : {}), ...(state.closing?.carriedFindings?.length ? { carriedFindings: state.closing.carriedFindings.map(finding => finding.id) } : {}) },
     blockers: active.filter(task => task.blocker).map(task => ({ id: task.id, blocker: task.blocker })),
