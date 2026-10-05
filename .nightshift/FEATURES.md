@@ -395,6 +395,14 @@ Later pairing of visible interactive sessions, including optional Windows Termin
 
 Collect Nightshift's reusable design principles in two files split by role, as with the workflow files: a reference `PRINCIPLES.md` beside VISION.md and WORKFLOW.md that gives each principle its reasoning and the decisions that established it, and a shipped run-time file that states each rule in one sentence for the work that makes design decisions, such as revise-spec, repairs and Exploring graduations. Raised by the user on 2026-10-05 after a session that re-derived the same rules in several graduations. The run-time file owns each rule's wording and the reference links to it through GUID anchors, which the user chose so that a rewording or retitling cannot silently break or redirect a link, with a packaging test checking that the two pair up. Each principle needs at least two decisions behind it and does not restate VISION.md. The file names, coordinated with [Rename one of the two workflow files](QUICK_WINS.md#rename-one-of-the-two-workflow-files), the anchor form, the route into what a run loads and what moves out of VISION.md are open.
 
+### [Mirror run progress into the host's task list](features/host-task-lists.md)
+
+Mirror a run's queue and lifecycle stages into the host's native task list so the user can follow a run at a glance, with durable run state staying the authority. Raised by the user on 2026-10-05 mid-run and tracked as Exploring at that run's triage. v2's host-agnostic design had listed this mirror as an optional adapter capability, and no active entry carried it forward. Which native tools each host offers, what the list mirrors, who writes it and how it stays reconciled with durable state, its cost, and its relation to the text progress updates and the graphical run view are open.
+
+### [Model instinct map](features/model-instinct-map.md)
+
+Log each observed case of a model acting against its prompt or instructions in a per-model instinct map, and counter a recurring one mechanically, by providing the tool the model reaches for, removing the permission for the unwanted action or adding a hook, rather than only by strengthening instructions. Raised by the user on 2026-10-05 mid-run and tracked as Exploring at that run's triage; in that run a hook refused two inline script bodies that the written rule had not prevented. Its observations land in the [Model knowledge base](features/model-knowledge-base.md), whose settled commitments it leaves unchanged. What counts as an instinct and how it is attributed, the entry form, which steers each host supports and Nightshift may write, and how a steer is scoped, approved, measured and retired are open.
+
 ## History
 
 Delivered features belong in [FEATURES_HISTORY.md](FEATURES_HISTORY.md), as do features retired without shipping, each marked retired. When shipping or retiring an entry, remove references to it from the active indexes' Requires lines.

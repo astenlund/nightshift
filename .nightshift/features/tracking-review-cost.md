@@ -32,6 +32,8 @@ Causes seen in that run:
 - **Whole-change context for every round.** Each closing review assessed the tracking edits against the complete cumulative change, at 0.85 to 1.2 million tokens per Codex round.
 - **Output-loop fallbacks.** Two Codex attempts were ended as output loops and fell back to Fable at 2.9 and 4.4 million tokens; the loop attempts recorded no usage, as [Output-loop attempts record no token usage](../BUGS_HISTORY.md#output-loop-attempts-record-no-token-usage), fixed in 3.3.3, describes.
 
+The routing cost recurred on 2026-10-05 in run `253965ee-2713-4140-bbd4-622bfa55eb61`, in task docs reviews rather than closing reviews: four of them (`81575dea`, `9e4dff57`, `117b81c5`, `8f5b2821`) each raised the routing notice as a finding for the operating-instruction files in the change, such as `internal/workflow.md` and the runtime references, although each review's requirements stated that a clean code assessment already covered the code change as it stood. Every imported notice needed a skeptic, which refuted it as a gap; the two skeptics dispatched for a routing notice alone cost 166,603 (`b3d0311b`) and 120,701 (`63275699`) reported tokens, and the other two notices shared a skeptic with confirmed findings. The settled separate routing field would have removed those two dispatches. Added at that run's triage.
+
 ## Settled questions
 
 The user agreed these answers on 2026-10-03, when the entry graduated from Exploring to current work. Each question is kept with its answer. Checked the same day: the docs-review brief in `internal/runtime/review.js` still asks the reviewer to "Report as a finding any changed file you judge to be operating instructions".
