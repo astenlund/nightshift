@@ -7,7 +7,7 @@ Preserved as a durable report on 2026-10-01 for the quick win of the same name, 
 | Case | Decision on 2026-10-01 | Destination |
 |---|---|---|
 | Live-claim marker protocol (finding 1) | Restore, folded into an existing entry | [Verify faked boundaries live](../features/live-boundary-verification.md) |
-| Implementation scratch policy enforcement (finding 2) | Restore as a quick win | [Protect projects from committed scratch files](../QUICK_WINS.md#protect-projects-from-committed-scratch-files) |
+| Implementation scratch policy enforcement (finding 2) | Restore as a quick win | [Protect projects from committed scratch files](../QUICK_WINS_HISTORY.md#protect-projects-from-committed-scratch-files) |
 | Full test suite before the morning report (finding 3) | Restore as Exploring | [Run the full test suite before delivery](../features/full-suite-before-delivery.md) |
 | Halt for destructive, irreversible or outward-facing actions (finding 4) | Restore as a quick win | [Block unattended work before destructive or outward-facing actions](../QUICK_WINS_HISTORY.md#block-unattended-work-before-destructive-or-outward-facing-actions) |
 | revise-code scope grammar (finding 5) | Restore, folded into an existing entry | [Run-free revise](../features/run-free-revise.md) |

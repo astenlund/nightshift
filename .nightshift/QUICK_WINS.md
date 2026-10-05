@@ -4,12 +4,6 @@ V2 entries are preserved in [the historical index](migration/v2/QUICK_WINS.md) a
 
 ## Current
 
-### Protect projects from committed scratch files
-
-Found on 2026-10-01 by [the audit of capabilities that left v2 without a disposition](reports/v2-capability-audit-20261001.md). v2's implementation dispatch (`skills/handover/implementation-dispatch.js` at `8ca3cb4^`, shipped in 2.6.21) refused to start when the project's root `.gitignore` lacked the `/.tmp/` rule, refused staged `.tmp/` paths, audited every commit since the plan for committed `.tmp/` paths, and gave each dispatch a fresh scratch directory. The v3 change `8ca3cb4` removed all of it, and no disposition names the removal. v3 still writes its own request files under the project's `.tmp/nightshift`, assuming the directory is ignored ([the retained resource interface](../internal/releases/REFERENCE.md)), and excludes `.tmp` from review inventories, but nothing checks the ignore rule or keeps scratch out of commits. The user chose to restore it as a quick win at the audit's triage.
-
-Confirm that `.tmp` is ignored before Nightshift or its agents write scratch there, and flag staged or committed `.tmp` paths before delivery completes, naming the exact policy or commits to repair rather than editing the user's ignore policy. The `.superpowers/` half of the v2 check went with the Superpowers dependency. Guidance and runtime changes ship with a version increase. Tracking does not authorize implementation.
-
 ### Restore the revise-docs writing rules
 
 Found on 2026-10-01 by [the audit of capabilities that left v2 without a disposition](reports/v2-capability-audit-20261001.md). v2's revise-docs (`skills/revise-docs/SKILL.md` at `8ca3cb4^`) verified landed claims against Git and, after a revert or a `DROPME` drop, swept the session's tracking files for claims recording reverted work as landed; kept `CLAUDE.md` for constraints and traps rather than descriptions of the code; added no new documentation sections; and asked the user before balance adjustments or cleanups beyond the immediate scope. [The v3 revise-docs](../skills/revise-docs/SKILL.md) asks for proportionate updates of stale claims, and its docs review checks claim accuracy and proportionality afterwards, but none of those writing rules survives and no disposition names their removal; the coarse-and-stable anchors rule survives in the init-backlog templates. The user chose to restore them as a quick win at the audit's triage.
