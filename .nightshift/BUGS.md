@@ -365,6 +365,14 @@ The user's direction after the stop: "this affects plugin behaviour, so any adju
 
 **Requires:** none.
 
+### Hook bootstrap gives up at once on a busy registry
+
+Found by code reading on 2026-10-06 in run `7837ca05-6458-43e3-b9b6-db5d7ffd49db`, while tracing what SessionStart does inside the host's 60-second hook timeout; never observed. On the hook path the retained bootstrap sets no lock wait before its `BEGIN IMMEDIATE` on the registry (`internal/releases/bootstrap.js`), as [the resource interface](../internal/releases/REFERENCE.md) documents for a hook's nonblocking connections. A SessionStart that meets another process's registry write transaction therefore fails before its owner lookup, so no activation is recorded and nothing is saved for a later status or admission to show: the bootstrap's error handler writes an empty result unless the session owns a running run, and the activation-failure record that 3.3.7 adds is written only after the lookup. Such holds occur under load: [Registry lock holds grow with session bindings](#registry-lock-holds-grow-with-session-bindings) measured write-lock holds of 2,323 ms at p95 over 90 calls. The same zero wait applies to the Stop and PreCompact hooks. Whether this contributed to [Missing session activation blocks agreed work until restart](#missing-session-activation-blocks-agreed-work-until-restart) is unverified. The user chose to track it separately when agreeing the fix for the SessionStart owner lookup budget.
+
+Decide whether SessionStart's bootstrap waits for the registry, for example within the hook's five-second bound, and whether a failure there can leave a cause that a later status can show, with a deterministic test that holds the registry lock across a SessionStart. Launcher changes ship with a version increase. Tracking does not authorize implementation.
+
+**Requires:** none.
+
 ## History
 
 Prior delivered work remains in [BUGS_HISTORY.md](BUGS_HISTORY.md).
