@@ -19,7 +19,7 @@ Nightshift's priority is reliability, through autonomy and trust together. Auton
 ## How it works
 
 ```mermaid
-flowchart TD
+flowchart LR
     A["Agree on the outcome and limits"] --> B["Implement and verify"]
     B --> C["Fresh independent review"]
     C --> D["A skeptic tests every finding against evidence"]
