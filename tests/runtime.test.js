@@ -54,6 +54,48 @@ test('state and history commit together, rollback preserves the previous revisio
   assert.equal(f.store.history(f.state.id).at(-1).state.tasks[0].status, 'active');
 });
 
+test('history lists every transition without state and returns state only for a bounded range', t => {
+  const f = fixture(t);
+  apply(f, { action: 'start-task' });
+  // A large check log is stored once, but every revision that carries it expands it again when its state is returned.
+  const log = 'x'.repeat(1024 * 1024);
+  apply(f, { action: 'check', evidence: { name: 'Large test log', passed: true, snapshot: snapshot(f.root, ['subject.txt']), output: log } });
+  const latest = f.store.db.prepare('SELECT revision, kind, recorded_at, state FROM history WHERE run_id=? ORDER BY revision DESC LIMIT 1').get(f.state.id);
+  // Enough copies of that revision that their combined states exceed the longest string Node can build.
+  const copies = 560;
+  const insert = f.store.db.prepare('INSERT INTO history VALUES (?, ?, ?, ?, ?)');
+  f.store.transaction(() => {
+    for (let index = 1; index <= copies; index++) insert.run(f.state.id, latest.revision + index, 'fixture-copy', latest.recorded_at, latest.state);
+  });
+  const cli = path.resolve(__dirname, '../internal/runtime/cli.js');
+  const history = request => {
+    const file = path.join(f.root, 'history-request.json');
+    fs.writeFileSync(file, JSON.stringify({ action: 'history', ...request }));
+    return spawnSync(process.execPath, [cli, '--development', f.root, file], { encoding: 'utf8', windowsHide: true, maxBuffer: 64 * 1024 * 1024, timeout: 120000 });
+  };
+
+  const listed = history({});
+  assert.equal(listed.status, 0, listed.stderr);
+  const transitions = JSON.parse(listed.stdout);
+  assert.equal(transitions.length, latest.revision + copies + 1);
+  assert.deepEqual(transitions.slice(0, 3).map(entry => entry.kind), ['created', 'start-task', 'check']);
+  assert.deepEqual(transitions.map(entry => Object.keys(entry).sort().join()), transitions.map(() => 'kind,recordedAt,revision'));
+
+  const ranged = history({ fromRevision: latest.revision, toRevision: latest.revision + 1 });
+  assert.equal(ranged.status, 0, ranged.stderr);
+  const states = JSON.parse(ranged.stdout);
+  assert.deepEqual(states.map(entry => entry.revision), [latest.revision, latest.revision + 1]);
+  assert.equal(states[1].state.tasks[0].checks[0].output, log);
+  const single = JSON.parse(history({ fromRevision: 0 }).stdout);
+  assert.deepEqual(single.map(entry => [entry.revision, entry.state.revision]), [[0, 0]]);
+
+  for (const range of [{ toRevision: 3 }, { fromRevision: 4, toRevision: 3 }, { fromRevision: -1 }, { fromRevision: 1.5 }, { fromRevision: 0, toRevision: 10 }]) {
+    const refused = history(range);
+    assert.equal(refused.status, 1);
+    assert.equal(JSON.parse(refused.stderr.trim().split('\n').at(-1)).error, 'invalid-history-range', JSON.stringify(range));
+  }
+});
+
 test('a failed rerun supersedes its earlier pass and a successful retry restores the gate', t => {
   const f = fixture(t);
   fs.mkdirSync(path.join(f.root, '.tmp'));

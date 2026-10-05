@@ -121,8 +121,14 @@ class RunStore {
     return copy;
   }
 
-  history(id) {
-    return this.db.prepare('SELECT revision, kind, recorded_at AS recordedAt, state FROM history WHERE run_id=? ORDER BY revision').all(id).map(row => ({ ...row, state: this.hydrate(JSON.parse(row.state)) }));
+  // Each saved transition without its state: every state expands the immutable evidence it references, so a long run's
+  // states together can exceed what one response holds.
+  transitions(id) {
+    return this.db.prepare('SELECT revision, kind, recorded_at AS recordedAt FROM history WHERE run_id=? ORDER BY revision').all(id);
+  }
+
+  history(id, { fromRevision = 0, toRevision = Number.MAX_SAFE_INTEGER } = {}) {
+    return this.db.prepare('SELECT revision, kind, recorded_at AS recordedAt, state FROM history WHERE run_id=? AND revision BETWEEN ? AND ? ORDER BY revision').all(id, fromRevision, toRevision).map(row => ({ ...row, state: this.hydrate(JSON.parse(row.state)) }));
   }
 
   transaction(action) {

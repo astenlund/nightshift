@@ -31,6 +31,21 @@ function leadKindsFor(target) {
   return target.kind === 'lore' ? ['code'] : ['code', 'docs'];
 }
 
+// The most revisions whose full state one history response returns.
+const HISTORY_STATE_LIMIT = 10;
+
+// Every transition of the run without its state, or the full states of one bounded revision range.
+function history(store, request) {
+  const id = request.runId ?? store.read()?.id;
+  requireCondition(id, 'missing-state', 'No saved Nightshift run');
+  if (request.fromRevision === undefined && request.toRevision === undefined) return store.transitions(id);
+  const from = request.fromRevision;
+  const to = request.toRevision ?? from;
+  requireCondition(Number.isSafeInteger(from) && from >= 0 && Number.isSafeInteger(to) && to >= from && to - from < HISTORY_STATE_LIMIT, 'invalid-history-range',
+    `History returns full states for fromRevision through toRevision, at most ${HISTORY_STATE_LIMIT} revisions; omit both to list every transition without state`);
+  return store.history(id, { fromRevision: from, toRevision: to });
+}
+
 async function execute(root, request, dependencies = {}) {
   requireRuntimeAction(request);
   const store = new RunStore(root, { create: request.action === 'create' });
@@ -51,7 +66,7 @@ async function execute(root, request, dependencies = {}) {
       requireCondition(state, 'missing-state', 'No saved Nightshift run');
       return obligationBrief(state);
     }
-    if (request.action === 'history') return store.history(request.runId ?? store.read()?.id);
+    if (request.action === 'history') return history(store, request);
     if (request.action === 'inspect') return store.read(request.runId);
     // Awaited so the store stays open until the observation finishes; the finally below closes it.
     if (request.action === 'wait') return await awaitWorker(store, request, dependencies);
