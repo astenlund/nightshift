@@ -36,6 +36,8 @@ The routing cost recurred on 2026-10-05 in run `253965ee-2713-4140-bbd4-622bfa55
 
 It recurred on 2026-10-06 in run `7837ca05-6458-43e3-b9b6-db5d7ffd49db`, again in a task docs review: the review `7f0af78c` raised the routing notice at important severity for `internal/releases/REFERENCE.md`, which the task's clean fresh code assessment `37d51fa2` had reviewed at the same bytes, and a skeptic dispatched for that notice alone (`a1c1d87e`, a Codex thread total of 547,730 tokens) refuted it. Added at that run's triage, after a quick win first proposed for it turned out to duplicate this entry.
 
+It recurred twice more on 2026-10-06 in run `879319da-5bce-43b3-bdf1-020511383edd`, in both of the task's docs reviews: `e958a6f9` and `c18dabde` each raised the routing notice, at minor severity, for `internal/releases/REFERENCE.md`, which the clean fresh code assessment `cf40210f` covered at the same bytes. Each needed its own skeptic, which confirmed the classification with no edit, and both were skipped; the two Fable skeptics (`d16ac0be`, `dd89e9a7`) recorded 1,165,932 and 979,353 tokens, 2,145,285 together, about a fifth of the run's 10,422,012 recorded dispatch tokens. Added at that run's triage.
+
 ## Settled questions
 
 The user agreed these answers on 2026-10-03, when the entry graduated from Exploring to current work. Each question is kept with its answer. Checked the same day: the docs-review brief in `internal/runtime/review.js` still asks the reviewer to "Report as a finding any changed file you judge to be operating instructions".
