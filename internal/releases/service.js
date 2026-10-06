@@ -55,18 +55,30 @@ function readRun(root, id, waitMs = RUN_STORE_WAIT_MS) {
   } finally { database.close(); }
 }
 
-function readRuns(root, required = false) {
+// Every saved run of a project, or null when the project has no run database.
+function readRunStore(root) {
   requireValue(fs.realpathSync.native(root) === root, 'run-resource-state-unavailable', 'Registered project root changed');
   const database = runDatabase(root);
-  if (!database) {
-    requireValue(!required, 'run-resource-state-unavailable', 'Expected run database is unavailable; provisional resources remain protected');
-    return [];
-  }
+  if (!database) return null;
   try {
     const rows = database.prepare('SELECT state FROM runs LIMIT 10001').all();
     requireValue(rows.length <= 10000, 'run-resource-state-unavailable', 'Registered run inventory exceeds the reconciliation bound');
     return rows.map(parseRunState);
   } finally { database.close(); }
+}
+
+function presentRuns(runs, required) {
+  requireValue(runs || !required, 'run-resource-state-unavailable', 'Expected run database is unavailable; provisional resources remain protected');
+  return runs ?? [];
+}
+
+function readRuns(root, required = false) {
+  return presentRuns(readRunStore(root), required);
+}
+
+// The saved run a binding reference names, taken from a registry transaction's shared run inventory, or null.
+function referencedRun(runs, reference) {
+  return runs(reference.project, true).find(run => run.id === reference.id) ?? null;
 }
 
 function activeWorkers(run) { return (run?.workers ?? []).some(workerIsActive); }
@@ -117,7 +129,7 @@ class ReleaseService {
   constructor(store = defaultStore(), dependencies = {}, context = {}) {
     this.store = fs.existsSync(store) ? fs.realpathSync.native(store) : path.resolve(store);
     this.overrides = dependencies;
-    this.dependencies = { discover: native.discover, isEnabled: dependencies.discover ? async (...args) => { await dependencies.discover(...args); return true; } : native.isEnabled, inspectHooks: configuration.inspectHooks, applyHooks: configuration.applyHooks, recoverClaude: configuration.recoverClaude, reconcileCodexJournal: configuration.reconcileCodexJournal, discardJournal: configuration.discardJournal, nativeOwner: processes.nativeOwner, ownerAlive: processes.ownerAlive, runContained: processes.runContained, readRun, ...dependencies };
+    this.dependencies = { discover: native.discover, isEnabled: dependencies.discover ? async (...args) => { await dependencies.discover(...args); return true; } : native.isEnabled, inspectHooks: configuration.inspectHooks, applyHooks: configuration.applyHooks, recoverClaude: configuration.recoverClaude, reconcileCodexJournal: configuration.reconcileCodexJournal, discardJournal: configuration.discardJournal, nativeOwner: processes.nativeOwner, ownerAlive: processes.ownerAlive, runContained: processes.runContained, readRun, readRunStore, ...dependencies };
     this.context = context;
     // One operation asks the host the same Claude settings question several times. The
     // answer cannot change within it, and each service instance serves a single operation,
@@ -131,6 +143,17 @@ class ReleaseService {
   // unless the caller names another, as SessionStart's owner lookup does.
   inspection(onFailure, budgetMs = this.context.nativeHook ? processes.HOOK_INSPECTION_BUDGET_MS : processes.INSPECTION_BUDGET_MS) {
     return { budgetMs, onFailure };
+  }
+
+  // Run references are reconciled inside registry write transactions, so the store parse they need is paid while the
+  // registry is locked. One transaction shares each project's parsed runs among every binding that lists the project,
+  // instead of parsing the store again for each binding.
+  runInventory() {
+    const stores = new Map();
+    return (project, required) => {
+      if (!stores.has(project)) stores.set(project, this.dependencies.readRunStore(project));
+      return presentRuns(stores.get(project), required);
+    };
   }
 
   registry(action, options = {}) {
@@ -391,7 +414,7 @@ class ReleaseService {
     return this.captureCurrent(registration, identity, bind, project);
   }
 
-  reconcileOperations(registry) {
+  reconcileOperations(registry, runs = this.runInventory()) {
     for (const { key, value } of registry.list('operation')) {
       if (key === this.context.bootstrapOperation || processAlive(value.pid) !== false) continue;
       if (['bootstrap', 'capture'].includes(value.kind) || value.phase === 'prepared' || value.contained === true && processAlive(value.runnerPid) === false && processAlive(value.childPid) === false) {
@@ -399,7 +422,7 @@ class ReleaseService {
           const binding = registry.get('session', sessionKey(value.registration, value.session));
           requireValue(binding, 'run-resource-state-unavailable', 'Terminated operation lost its session reference');
           // Missing action metadata is an older, potentially run-creating lease.
-          this.reconcileRunReferences(registry, binding, value.runtimeAction !== null ? value.project : null);
+          this.reconcileRunReferences(registry, binding, value.runtimeAction !== null ? value.project : null, { runs });
         }
         if (value.kind === 'entry') cleanOperationFiles(value.project, key);
         registry.remove('operation', key);
@@ -407,11 +430,12 @@ class ReleaseService {
     }
   }
 
-  reconcileRunReferences(registry, binding, requiredProject = null) {
+  // `only` limits reconciliation to the one project an operation could have changed; `runs` shares a transaction's parsed run stores.
+  reconcileRunReferences(registry, binding, requiredProject = null, { only = null, runs = this.runInventory() } = {}) {
     // Project admission precedes child execution. Reconcile that provisional
     // reference even when a crash prevented the later run-id attachment.
-    for (const project of binding.projects) {
-      for (const run of readRuns(project, project === requiredProject || binding.runs.some(reference => reference.project === project))) {
+    for (const project of only === null ? binding.projects : [only]) {
+      for (const run of runs(project, project === requiredProject || binding.runs.some(reference => reference.project === project))) {
         const resources = executionResources(run);
         const owns = matchesBinding(resources, binding, registry.root);
         const historical = !owns && historicalBinding(run, binding, registry.root);
@@ -442,11 +466,11 @@ class ReleaseService {
     registry.put('session', sessionKey(target.registration, target.session), target);
   }
 
-  requireAdoptionSource(registry, project, run) {
+  requireAdoptionSource(registry, project, run, runs = this.runInventory()) {
     const resources = executionResources(run);
     const source = registry.get('session', sessionKey(resources.registration, resources.session));
     requireValue(source?.state === 'bound' && matchesBinding(resources, source, registry.root), 'adoption-source-retired', 'The current execution binding is missing or retired; recover its exact resources before adoption');
-    this.reconcileRunReferences(registry, source, project);
+    this.reconcileRunReferences(registry, source, project, { runs });
     requireValue(source.runs.some(reference => reference.project === project && reference.id === run.id && !reference.retired), 'adoption-source-retired', 'The current run reference was retired; recover its exact resources before adoption');
   }
 
@@ -493,14 +517,15 @@ class ReleaseService {
     const resolved = await this.resolve(key, { ...request, runId: request.runId ?? request.request?.runId }, maintenance);
     const operation = randomUUID();
     const context = this.registry(registry => {
-      this.reconcileOperations(registry);
+      const runs = this.runInventory();
+      this.reconcileOperations(registry, runs);
       requireValue(readOnly || !projectOperationActive(registry, resolved.project), 'resource-operation-busy', 'A project operation is active or its termination is uncertain');
       const binding = registry.get('session', sessionKey(key, request.session));
-      this.reconcileRunReferences(registry, binding);
+      this.reconcileRunReferences(registry, binding, null, { runs });
       const run = this.dependencies.readRun(resolved.project);
       if (request.entry === 'runtime' && request.request.action === 'adopt') {
         requireValue(run?.id === request.request.runId, 'adoption-run-unavailable', 'The current run changed during adoption admission');
-        this.requireAdoptionSource(registry, resolved.project, run);
+        this.requireAdoptionSource(registry, resolved.project, run, runs);
       }
       if (!readOnly && request.entry === 'runtime' && !['create', 'adopt'].includes(request.request.action) && run) {
         requireValue(matchesBinding(executionResources(run), binding, registry.root) && run.controller.host === resolved.registration.host && run.controller.session === request.session, 'resource-owner-mismatch', 'Only the current execution binding and controller can mutate this run');
@@ -550,9 +575,11 @@ class ReleaseService {
       });
       const run = request.entry === 'runtime' ? this.dependencies.readRun(resolved.project, request.request?.runId) : null;
       if (request.entry === 'runtime' && request.request.action === 'create') readRuns(resolved.project, true);
+      // The child could change only its own project's runs, so each binding naming that project reconciles that project alone.
       if (run && matchesBinding(executionResources(run), resolved.binding, this.store)) this.registry(registry => {
+        const runs = this.runInventory();
         for (const { value: binding } of registry.list('session')) {
-          if (binding.projects.includes(resolved.project)) this.reconcileRunReferences(registry, binding, resolved.project);
+          if (binding.projects.includes(resolved.project)) this.reconcileRunReferences(registry, binding, resolved.project, { only: resolved.project, runs });
         }
       });
       referencesReconciled = true;
@@ -669,7 +696,8 @@ class ReleaseService {
 
   retire(key, request) {
     return this.registry(registry => {
-      this.reconcileOperations(registry);
+      const runs = this.runInventory();
+      this.reconcileOperations(registry, runs);
       const target = text(request.targetSession, 'session selected for retirement');
       const cancellations = request.cancelAdoptions === undefined ? [] : request.cancelAdoptions;
       requireValue(Array.isArray(cancellations) && cancellations.every(id => typeof id === 'string' && id.trim().length > 0) && new Set(cancellations).size === cancellations.length, 'invalid-adoption-cancellation', 'cancelAdoptions must list unique pending run identities');
@@ -681,10 +709,10 @@ class ReleaseService {
       requireValue(binding || activation || failure, 'unknown-release-session', 'No activation, recorded activation failure or work binding exists for that session');
       const cancelled = new Set();
       if (binding) {
-        this.reconcileRunReferences(registry, binding);
+        this.reconcileRunReferences(registry, binding, null, { runs });
         requireValue(cancellations.every(id => binding.runs.some(reference => reference.id === id && reference.pendingAdoption === true)), 'adoption-cancellation-unavailable', 'Select only pending adoptions that have not become current or historical ownership');
         for (const reference of binding.runs) {
-          const run = this.dependencies.readRun(reference.project, reference.id);
+          const run = referencedRun(runs, reference);
           if (reference.pendingAdoption) {
             requireValue(cancellations.includes(reference.id), 'adoption-cancellation-required', 'Explicitly select the failed pending run in cancelAdoptions to abandon its uncommitted target reference');
             this.requireUnownedAdoption(registry, binding, reference, run);
@@ -728,7 +756,8 @@ class ReleaseService {
   collect() {
     const result = this.registry(registry => {
       registry.assertKnownKinds();
-      this.reconcileOperations(registry);
+      const runs = this.runInventory();
+      this.reconcileOperations(registry, runs);
       bundles.reconcileOrphans(registry);
       const keep = new Set();
       const keepIdentity = new Set();
@@ -738,10 +767,10 @@ class ReleaseService {
       }
       for (const operation of registry.list('operation').map(entry => entry.value)) { keep.add(operation.bundle); if (operation.implementationBundle) keep.add(operation.implementationBundle); }
       for (const binding of registry.list('session').map(entry => entry.value)) {
-        this.reconcileRunReferences(registry, binding);
+        this.reconcileRunReferences(registry, binding, null, { runs });
         if (binding.state === 'bound') keepIdentity.add(binding.identity);
         for (const reference of binding.runs) {
-          const run = this.dependencies.readRun(reference.project, reference.id);
+          const run = referencedRun(runs, reference);
           requireValue(run, 'run-resource-state-unavailable', 'A registered run cannot be read; collection retains all resources');
           if (reference.historical) {
             requireValue(historicalBinding(run, binding, registry.root), 'run-resource-state-unavailable', 'Historical source ownership cannot be verified');

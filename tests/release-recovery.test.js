@@ -511,6 +511,42 @@ test('a hook\'s preliminary run read does not wait for a run store commit', asyn
   assert.equal(readRun(value.project).id, JSON.parse(created.stdout).id, 'the run is readable once the lock is released');
 });
 
+test('one registry transaction reads each run store once, however many bindings name the project', async t => {
+  const value = fixture(t);
+  const { service } = simulatedService(value, packageCopy(value.root, '1.0.0'));
+  const setup = await service.setup({ host: 'codex', profile: value.profile });
+  // Every binding names a second project too, which the operation cannot change.
+  const other = path.join(value.root, 'other');
+  fs.mkdirSync(path.join(other, '.git'), { recursive: true });
+  fs.mkdirSync(path.join(other, '.nightshift'));
+  for (const session of ['owner', 'first', 'second', 'third']) {
+    await activate(service, setup.registration, value.project, session);
+    for (const project of [value.project, other]) await service.resolve(setup.registration, { session, project, entry: 'ready' });
+  }
+  const run = request => service.run(setup.registration, { session: 'owner', project: value.project, entry: 'runtime', request });
+  const created = await run({ action: 'create', objective: 'fixture', authority: 'test', tasks: [{ id: 'work', title: 'Work', agreement: { source: 'test', outcome: 'fixture' } }] });
+  assert.equal(created.code, 0, created.stderr);
+
+  const reads = [];
+  for (const method of ['readRunStore', 'readRun']) {
+    const read = service.dependencies[method];
+    service.dependencies[method] = (root, ...rest) => { reads.push(`${method} ${path.basename(root)}`); return read(root, ...rest); };
+  }
+  const status = await run({ action: 'status' });
+  assert.equal(status.code, 0, status.stderr);
+
+  // Admission reads each project of the operating session's binding once, beside its lookups of the active run, and the
+  // reconciliation after the child reads the operation's own project once for all four bindings that name it.
+  assert.deepEqual(reads.filter(read => read.startsWith('readRunStore')).sort(), ['readRunStore other', 'readRunStore project', 'readRunStore project']);
+  const owner = (await service.status()).sessions.find(binding => binding.session === 'owner');
+  assert.deepEqual(owner.runs.map(reference => reference.id), [JSON.parse(created.stdout).id]);
+
+  // Collection checks every binding's references against the same single read of each project.
+  reads.length = 0;
+  assert.deepEqual(service.collect().removed, []);
+  assert.deepEqual(reads.sort(), ['readRunStore other', 'readRunStore project']);
+});
+
 test('blocking registry connections wait the longer bound while hook connections keep theirs', async t => {
   const value = fixture(t);
   const { service } = simulatedService(value, packageCopy(value.root, '1.0.0'));
