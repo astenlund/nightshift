@@ -5,7 +5,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const test = require('node:test');
 const { DatabaseSync } = require('node:sqlite');
-const { Registry, sessionKey } = require('../internal/releases/registry');
+const { Registry, registrationKey, sessionKey } = require('../internal/releases/registry');
 const { capture } = require('../internal/releases/bundles');
 const { MANIFEST_PATH, loadManifest, validateManifest, verifyBundle } = require('../internal/releases/manifest');
 const { validateDependencies } = require('../tools/release-manifest');
@@ -16,6 +16,44 @@ const { HOOK_INSPECTION_BUDGET_MS, INSPECTION_BUDGET_MS, MAX_OPERATION_TIMEOUT_M
 const { ReleaseService } = require('../internal/releases/service');
 const { spawnSync } = require('node:child_process');
 const os = require('node:os');
+const hostConfiguration = require('../internal/releases/host-config');
+
+test('Codex pending recovery uses the current snapshot reader while retaining the owner comparison', async t => {
+  const value = fixture(t);
+  const source = packageCopy(value.root, '1.0.0');
+  const { service } = simulatedService(value, source);
+  const setup = await service.setup({ host: 'codex', profile: value.profile });
+  const registration = service.registration(setup.registration);
+  const context = path.join(value.root, 'recorded-project-junction');
+  fs.symlinkSync(value.project, context, 'junction');
+  const original = hostConfiguration.codexSnapshot;
+  t.after(() => { hostConfiguration.codexSnapshot = original; });
+  let read;
+  hostConfiguration.codexSnapshot = async (profile, cwd, options) => {
+    read = { profile, cwd, options };
+    return { version: 'before-write', hooks: {}, native: [] };
+  };
+  service.registry(registry => registry.put('registration', setup.registration, { ...registration, pending: { ...registration, ownerPid: null, journal: { type: 'codex', expectedVersion: 'before-write', survivors: [], context } } }));
+  await service.recoverPending(setup.registration, value.project);
+  assert.deepEqual(read, { profile: value.profile, cwd: context, options: { project: value.project } });
+  assert.equal(service.registration(setup.registration).pending.journal.expectedVersion, 'before-write');
+  assert.equal(service.registration(setup.registration).pending.ownerPid, null);
+});
+
+test('profile-scoped release capture carries the requested project exclusion into discovery', async t => {
+  const value = fixture(t);
+  const source = packageCopy(value.root, '1.0.0');
+  const { service } = simulatedService(value, source);
+  const discover = service.dependencies.discover;
+  const calls = [];
+  service.dependencies.discover = async (...args) => { calls.push(args); return discover(...args); };
+  await service.setup({ host: 'codex', profile: value.profile, project: value.project });
+  assert.equal(calls[0][3], value.profile);
+  assert.deepEqual(calls[0][4], { profileScoped: true, project: value.project });
+  calls.length = 0;
+  await service.captureCurrent(service.registration(registrationKey('codex', value.profile)), undefined, undefined, value.profile);
+  assert.deepEqual(calls[0][4], { profileScoped: false, project: value.profile });
+});
 
 test('manifest validation rejects omissions, alias paths and stale bytes', t => {
   const value = fixture(t);

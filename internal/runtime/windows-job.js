@@ -70,7 +70,7 @@ function spawnWindowsJob(executable, args, options) {
   let acceptedOrdinal = 0;
   const outputOrdinals = { 'host-stdout': 1, 'host-stderr': 1 };
   let outputBytes = 0;
-  const powerShell = resolveTrustedExecutable({ root: options.protectedRoot ?? options.cwd, basename: 'pwsh.exe' });
+  const powerShell = resolveTrustedExecutable({ root: options.protectedRoot ?? options.cwd, protectedRoots: options.protectedRoots, basename: 'pwsh.exe' });
   const runner = spawn(powerShell, ['-NoProfile', '-File', path.join(__dirname, 'windows-job-runner.ps1')], { cwd: options.cwd, env: options.env, windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] });
   child.runnerPid = runner.pid;
   const send = frame => {

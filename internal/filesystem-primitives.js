@@ -132,7 +132,12 @@ function stableMetadata(path, options = {}) {
 }
 
 function buildProtectedRoots(options, pathModule) {
-  return [options.root, ...(options.protectedRoots ?? [])].filter((value) => typeof value === 'string' && value.length > 0).map((value) => pathModule.resolve(value))
+  return [options.root, ...(options.protectedRoots ?? [])].filter((value) => typeof value === 'string' && value.length > 0).map((value) => {
+    const root = realpathSync.native(pathModule.resolve(value))
+    if (!lstatSync(root).isDirectory()) throw new Error('Executable protection root is not a directory')
+
+    return root
+  })
 }
 
 function candidateInProtectedRoots(roots, candidate, pathModule) {
@@ -151,10 +156,10 @@ function resolveTrustedExecutable(options = {}) {
     try {
       const directory = realpathSync.native(entry)
       const candidate = pathModule.join(directory, basename)
-      if (candidateInProtectedRoots(roots, candidate, pathModule)) continue
       const first = stableMetadata(candidate)
+      if (candidateInProtectedRoots(roots, candidate, pathModule) && options.allowProtectedCandidate?.(candidate) !== true) continue
       const second = stableMetadata(candidate)
-      if (!first.metadata.isFile() || !second.metadata.isFile() || first.resolved !== second.resolved || comparableIdentity(first.metadata) !== comparableIdentity(second.metadata)) continue
+      if (!first.metadata.isFile() || !second.metadata.isFile() || first.resolved !== second.resolved || comparableIdentity(first.metadata) !== comparableIdentity(second.metadata) || first.metadata.size !== second.metadata.size || first.metadata.mtimeNs !== second.metadata.mtimeNs) continue
       if (platform !== 'win32' && (first.metadata.mode & 0o111n) === 0n) continue
 
       return first.resolved

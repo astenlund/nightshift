@@ -439,7 +439,7 @@ test('a host whose job runner cannot start reports unproven cleanup with its cau
   const hosts = ['claude', 'codex'].map(host => {
     const options = fixture(t, host);
 
-    return { ...options, cwd: path.join(options.cwd, 'missing-directory'), commandPrefix: [], directProcess: false };
+    return { ...options, cwd: path.join(options.cwd, 'missing-directory'), protectedRoot: options.cwd, commandPrefix: [], directProcess: false };
   });
 
   // Act

@@ -8,17 +8,21 @@ const { randomUUID } = require('node:crypto');
 const { resolveTrustedExecutable } = require('../filesystem-primitives');
 const { spawnWindowsJob } = require('../runtime/windows-job');
 const { ReleaseError, parseJson, requireValue } = require('./io');
+const { trustedStandaloneCandidate } = require('./codex-executable');
 
 const METHODS = new Set(['initialize', 'hooks/list', 'skills/list', 'plugin/list', 'config/read', 'config/batchWrite']);
 const CONTROL_SUBTYPES = new Set(['initialize', 'get_settings']);
 
-function executable(host, protectedRoot) {
+function executable(host, protectedRoot, options = {}) {
   requireValue(process.platform === 'win32' && ['codex', 'claude'].includes(host), 'unsupported-release-host', 'Retained host integration requires the supported native Windows host');
-  return resolveTrustedExecutable({ root: protectedRoot, basename: `${host}.exe` });
+  const root = fs.realpathSync.native(protectedRoot);
+  const profile = typeof options.profile === 'string' ? fs.realpathSync.native(options.profile) : undefined;
+  const allowProfilePackage = host === 'codex' && options.profileScoped === true && profile !== undefined && path.relative(profile, root) === '';
+  return resolveTrustedExecutable({ root, protectedRoots: [options.project], basename: `${host}.exe`, pathValue: options.pathValue, allowProtectedCandidate: allowProfilePackage ? candidate => trustedStandaloneCandidate(candidate, profile, options) : undefined });
 }
 
 async function withCodex(profile, cwd, action, options = {}) {
-  const child = spawnWindowsJob(executable('codex', cwd), ['app-server', '--stdio'], { cwd, protectedRoot: cwd, env: { ...process.env, CODEX_HOME: profile } });
+  const child = spawnWindowsJob(executable('codex', cwd, { ...options, profile }), ['app-server', '--stdio'], { cwd, protectedRoot: cwd, protectedRoots: [options.project], env: { ...process.env, CODEX_HOME: profile } });
   const pending = new Map();
   let ordinal = 0;
   let failure = null;
@@ -178,7 +182,7 @@ async function isEnabled(host, profile, pluginId, cwd) {
   return true;
 }
 
-async function discover(host, profile, pluginId, cwd) {
+async function discover(host, profile, pluginId, cwd, options = {}) {
   if (host === 'claude') {
     const entry = claudeEntry(profile, pluginId, cwd);
     return { root: fs.realpathSync.native(entry.installPath), version: entry.version, pluginId };
@@ -195,7 +199,7 @@ async function discover(host, profile, pluginId, cwd) {
     const manifest = parseJson(fs.readFileSync(path.join(root, '.codex-plugin/plugin.json')), 'Installed Codex plugin manifest');
     requireValue(manifest.name === 'nightshift' && typeof manifest.version === 'string', 'installation-unavailable', 'Native resource root does not identify Nightshift');
     return { root, version: manifest.version, pluginId };
-  });
+  }, options);
 }
 
 module.exports = { claudeSettings, discover, executable, isEnabled, withCodex };

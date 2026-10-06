@@ -95,7 +95,12 @@ function planHooks(currentHooks, desired, previous, remove, sourcePath, nativeHo
   return { hooks, survivors };
 }
 
-async function codexSnapshot(profile, cwd) {
+function codexOperationOptions(profile, cwd, options = {}) {
+  const profileContext = path.relative(fs.realpathSync.native(profile), fs.realpathSync.native(cwd)) === '';
+  return { profileScoped: profileContext, project: options.project ?? (profileContext ? undefined : cwd) };
+}
+
+async function codexSnapshot(profile, cwd, options = {}) {
   return withCodex(profile, cwd, async request => {
     const configuration = await request('config/read', { includeLayers: true, cwd: null });
     const file = path.join(profile, 'config.toml');
@@ -104,7 +109,7 @@ async function codexSnapshot(profile, cwd) {
     const listing = await request('hooks/list', { cwds: [cwd] });
     requireValue(Array.isArray(listing.data) && listing.data.every(entry => Array.isArray(entry.hooks) && entry.errors?.length === 0), 'hook-trust-unverified', 'Native Codex hook listing is incomplete');
     return { file: layer.name.file, version: layer.version, hooks: layer.config.hooks ?? {}, native: listing.data.flatMap(entry => entry.hooks).filter(hook => hook.source === 'user' && path.relative(layer.name.file, hook.sourcePath) === '') };
-  });
+  }, codexOperationOptions(profile, cwd, options));
 }
 
 function claudeSnapshot(profile) {
@@ -163,7 +168,7 @@ function classifyHooks(nativeState) {
 async function inspectHooks(registration, cwd, options = {}) {
   const context = inspectionContext(cwd, options);
   if (registration.host === 'codex') {
-    const snapshot = await codexSnapshot(registration.profile, context);
+    const snapshot = await codexSnapshot(registration.profile, context, options);
     const entries = Object.entries(registration.definitions).map(([event, definition]) => snapshot.native.filter(item => item.eventName === EVENTS[event] && item.command === definition.command));
     return { configured: entries.every(items => items.length === 1), disabled: entries.some(items => items.some(item => item.enabled === false)), usable: entries.every(items => items.length === 1 && items[0].enabled && items[0].trustStatus === 'trusted'), entries: entries.flat().map(item => ({ key: item.key, currentHash: item.currentHash, trustStatus: item.trustStatus, enabled: item.enabled })) };
   }
@@ -184,7 +189,7 @@ async function reconcileCodexJournal(registration, cwd, options = {}) {
   // comparison below still decides, and removal never waits on a deleted checkout.
   const recorded = pending.journal.context;
   const readSnapshot = options.readSnapshot ?? codexSnapshot;
-  const snapshot = await readSnapshot(registration.profile, recorded && fs.existsSync(recorded) ? recorded : inspectionContext(cwd, options));
+  const snapshot = await readSnapshot(registration.profile, recorded && fs.existsSync(recorded) ? recorded : inspectionContext(cwd, options), options);
   if (snapshot.version === pending.journal.expectedVersion) return 'not-written';
   const matches = Object.entries(pending.definitions).every(([event, definition]) => {
     const count = flatten(snapshot.hooks, event).filter(item => isDeepStrictEqual(item.definition, definition)).length;
@@ -201,7 +206,7 @@ async function reconcileCodexJournal(registration, cwd, options = {}) {
 async function applyHooks(registration, cwd, remove = false, beforeWrite = () => {}, options = {}) {
   const context = inspectionContext(cwd, options);
   if (registration.host === 'codex') {
-    const snapshot = await codexSnapshot(registration.profile, context);
+    const snapshot = await codexSnapshot(registration.profile, context, options);
     const plan = planHooks(snapshot.hooks, registration.definitions, registration.previousDefinitions, remove, snapshot.file, snapshot.native);
     if (registration.automatic) {
       const commands = [registration.definitions, ...(registration.previousDefinitions ?? [])].flatMap(definitions => Object.values(definitions).map(definition => definition.command));
@@ -209,9 +214,9 @@ async function applyHooks(registration, cwd, remove = false, beforeWrite = () =>
     }
     if (isDeepStrictEqual(snapshot.hooks, plan.hooks)) return;
     beforeWrite({ type: 'codex', expectedVersion: snapshot.version, survivors: plan.survivors, context });
-    await withCodex(registration.profile, context, request => request('config/batchWrite', { filePath: snapshot.file, expectedVersion: snapshot.version, reloadUserConfig: true, edits: [{ keyPath: 'hooks', value: plan.hooks, mergeStrategy: 'replace' }] }));
+    await withCodex(registration.profile, context, request => request('config/batchWrite', { filePath: snapshot.file, expectedVersion: snapshot.version, reloadUserConfig: true, edits: [{ keyPath: 'hooks', value: plan.hooks, mergeStrategy: 'replace' }] }), codexOperationOptions(registration.profile, context, options));
     // The survivor comparison is only meaningful against the same listing scope.
-    const after = await codexSnapshot(registration.profile, context);
+    const after = await codexSnapshot(registration.profile, context, options);
     for (const survivor of plan.survivors) {
       const current = after.native.find(item => item.key === survivor.key);
       requireValue(current && current.currentHash === survivor.currentHash && current.trustStatus === survivor.trustStatus && current.enabled === survivor.enabled, 'hook-trust-conflict', 'A surviving user hook changed identity or trust during configuration');

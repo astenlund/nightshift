@@ -179,11 +179,11 @@ class ReleaseService {
     return previous.file;
   }
 
-  async captureCurrent(registration, identity, consume, cwd = registration.profile) {
+  async captureCurrent(registration, identity, consume, cwd, options = {}) {
     let failure;
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
-        const source = await this.dependencies.discover(registration.host, registration.profile, registration.pluginId, cwd);
+        const source = await this.dependencies.discover(registration.host, registration.profile, registration.pluginId, cwd ?? registration.profile, { profileScoped: cwd === undefined, project: options.project ?? cwd });
         return this.registry(registry => { const bundle = bundles.capture(registry, source.root, { identity, version: source.version }); return consume ? consume(registry, bundle) : bundle; });
       } catch (error) {
         failure = error;
@@ -221,7 +221,7 @@ class ReleaseService {
         // still prove it can be committed without replacing already-applied hooks.
         outcome = nativeState.configured === true ? 'written' : 'not-written';
       } else if (journal.type === 'claude') { (this.overrides.recoverClaude ?? helper.recoverClaude)(journal, registration.profile); outcome = 'written'; }
-      else { requireValue(journal.type === 'codex', 'invalid-settings-journal', 'Unknown host configuration recovery format'); outcome = await (this.overrides.reconcileCodexJournal ?? helper.reconcileCodexJournal)(registration, registration.profile, { project, cache: this.settingsCache }); }
+      else { requireValue(journal.type === 'codex', 'invalid-settings-journal', 'Unknown host configuration recovery format'); outcome = await (this.overrides.reconcileCodexJournal ?? helper.reconcileCodexJournal)(registration, registration.profile, { project, cache: this.settingsCache, readSnapshot: (profile, context) => configuration.codexSnapshot(profile, context, { project }) }); }
       this.registry(registry => {
         const value = registry.get('registration', key);
         requireValue(value.pending?.ownerToken === token, 'release-setup-conflict', 'Configuration recovery ownership changed');
@@ -248,6 +248,7 @@ class ReleaseService {
     const host = request.host;
     const automatic = request.automatic === true;
     const profile = projectRoot(hostProfile(host, request.profile));
+    const project = request.project === undefined ? undefined : projectRoot(request.project);
     const key = registrationKey(host, profile);
     const locator = locatorState(profile);
     requireValue(!locator.value || locator.value.store === this.store || locator.value.state === 'removed', 'configuration-conflict', 'This profile is already attached to another retained store');
@@ -256,12 +257,12 @@ class ReleaseService {
     let current = this.registry(registry => registry.get('registration', key));
     if (automatic) requireValue(locator.value?.state !== 'removed' && current?.state !== 'removed' && current?.pending?.remove !== true, 'nightshift-disabled', REMOVED_MESSAGE);
     requireValue(ownerFree(current), 'release-setup-busy', 'Another host configuration operation is active or unreconciled');
-    if (current?.pending?.journal) current = await this.recoverPending(key, request.project);
+    if (current?.pending?.journal) current = await this.recoverPending(key, project);
     const reservation = randomUUID();
     const bundle = await this.captureCurrent({ host, profile, pluginId }, undefined, (registry, captured) => {
       registry.put('operation', reservation, { schema: 1, kind: 'capture', state: 'running', pid: process.pid, registration: key, bundle: captured.key });
       return captured;
-    });
+    }, undefined, { project });
     // Automatic preparation must establish that the discovered release supports it before
     // writing host configuration: an older bundle's applyHooks has no deliberate-disabling
     // guard at all, so registering through it would fail open rather than refuse.
@@ -287,7 +288,7 @@ class ReleaseService {
       await applyHooks(pending, profile, false, value => {
         journal = value;
         this.registry(registry => { const value = registry.get('registration', key); requireValue(value.pending?.ownerToken === nonce, 'release-setup-conflict', 'Host configuration ownership changed'); value.pending.journal = journal; registry.put('registration', key, value); });
-      }, { project: request.project, cache: this.settingsCache });
+      }, { project, cache: this.settingsCache });
       this.registry(registry => {
         const value = registry.get('registration', key);
         requireValue(value.pending?.ownerToken === nonce, 'release-setup-conflict', 'Host configuration ownership changed');
@@ -299,7 +300,7 @@ class ReleaseService {
       throw error;
     }
     const registration = this.registration(key);
-    const nativeState = await inspectHooks(registration, profile, { project: request.project, cache: this.settingsCache });
+    const nativeState = await inspectHooks(registration, profile, { project, cache: this.settingsCache });
     const locatorFile = this.publishLocator(registration);
     return { registration: key, bootstrap: registration.bootstrap, locator: locatorFile, generation: registration.generation, native: nativeState, activationRequired: true, next: configuration.classifyHooks(nativeState).guidance };
   }

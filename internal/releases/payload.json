@@ -1,17 +1,17 @@
 {
   "schema": 1,
   "name": "nightshift",
-  "version": "3.3.8",
+  "version": "3.3.9",
   "files": [
     {
       "path": ".claude-plugin/plugin.json",
       "bytes": 640,
-      "sha256": "849043c0dfdd3005f6024b807552c76217d1f9b5ae91224ecb1958637437f060"
+      "sha256": "e5a5d9100bac994b99ca49ce75e23cd3c6dccbf1861d55ec1c33bead71bed9de"
     },
     {
       "path": ".codex-plugin/plugin.json",
       "bytes": 1160,
-      "sha256": "2edbdaba6905c8e5fa195d06db0565ff927f548fbe7538a8b0e3c92cc68153f4"
+      "sha256": "a3bc2852a41825d68ee70b251fa08ef53c771c6d7d6be427edc0f13dee700ff5"
     },
     {
       "path": "LICENSE",
@@ -45,8 +45,8 @@
     },
     {
       "path": "internal/filesystem-primitives.js",
-      "bytes": 8968,
-      "sha256": "f23aaa01b27ad2f7fff3db808250a81fe8e4068d6b2fc11f48ea256213a9787f"
+      "bytes": 9293,
+      "sha256": "a640ca71b957d9e0fea968a0f973ba69a1c39b45157137f540efa638e858de03"
     },
     {
       "path": "internal/markdown.js",
@@ -79,14 +79,24 @@
       "sha256": "c2fa5cd3dde3ed0c7468382d29a682689420685fab153e1c74da4669662c7846"
     },
     {
+      "path": "internal/releases/codex-executable.js",
+      "bytes": 3075,
+      "sha256": "53901627fefca98ab35445aa501e833bc59c74e480c7be019d68b3e93cfa0cf1"
+    },
+    {
       "path": "internal/releases/entry.js",
       "bytes": 6441,
       "sha256": "26fa583c2f9e1511553c4ca97077bc1dcc11ea73c1b57aa3e782587864bba19f"
     },
     {
+      "path": "internal/releases/executable-signature.ps1",
+      "bytes": 451,
+      "sha256": "3dc351d3d04137151071e468cb66155ba795c2490dbd9a3fa9f1218ad5ab4477"
+    },
+    {
       "path": "internal/releases/host-config.js",
-      "bytes": 18718,
-      "sha256": "24b3c6bc1c2e2ad70f28b843182559236a65014f971a3bafb8603653f54b4aef"
+      "bytes": 19158,
+      "sha256": "c2208fe5740e1739032534340809d630c3dd98151b4d5e72df811be9c6196ee8"
     },
     {
       "path": "internal/releases/io.js",
@@ -105,8 +115,8 @@
     },
     {
       "path": "internal/releases/native-host.js",
-      "bytes": 11934,
-      "sha256": "d5801eba8ca6aef2e97fcb1b187c690b701f8d191e33e8bb322213214754d234"
+      "bytes": 12589,
+      "sha256": "85d4640db92b055c3d9d90751902ab8812fce1e94d236d91478eb0549b756b3b"
     },
     {
       "path": "internal/releases/notice.js",
@@ -135,8 +145,8 @@
     },
     {
       "path": "internal/releases/service.js",
-      "bytes": 62227,
-      "sha256": "94562413139240a8607376b8faabd19366e3e44695e01b86a192dc96780ef0a7"
+      "bytes": 62485,
+      "sha256": "230c17597561fe6836bdff63e15f9314d8f8f3403583726d87592a4519fe8366"
     },
     {
       "path": "internal/releases/settings-write.ps1",
@@ -250,8 +260,8 @@
     },
     {
       "path": "internal/runtime/windows-job.js",
-      "bytes": 9580,
-      "sha256": "7c4035b82ffd630e4c26b870a7e52cde6757e8ab41cf95c0f5162cd2987eab80"
+      "bytes": 9620,
+      "sha256": "82b3c7710dba99fdcb83a8e632fb7fe0076ead14a93af1e60df61a5903edf360"
     },
     {
       "path": "internal/runtime/workers.js",
