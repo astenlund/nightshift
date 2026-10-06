@@ -13,6 +13,13 @@ const { DatabaseSync } = require('node:sqlite');
 const LOCK_WAIT_MS = 30000;
 const HOOK_LOCK_WAIT_MS = 5000;
 
+// Hooks fire in every session of every project, so a hook waits for the registry only where its session depends on it:
+// SessionStart, whose activation later work requires, and a session that owns a running run. Other hooks do not wait.
+function registryWait(hook, input, owned) {
+  if (!hook) return LOCK_WAIT_MS;
+  return input?.hook_event_name === 'SessionStart' || owned ? HOOK_LOCK_WAIT_MS : 0;
+}
+
 const hash = bytes => createHash('sha256').update(bytes).digest('hex');
 const requireValue = (condition, message) => { if (!condition) throw new Error(message); };
 
@@ -79,6 +86,7 @@ async function main() {
   const registrationKey = process.argv[2];
   const hook = process.argv[3] === '--hook';
   let input;
+  let owned;
   let database;
   let lease;
   try {
@@ -86,12 +94,13 @@ async function main() {
     const bytes = fs.readFileSync(hook ? 0 : process.argv[3]);
     requireValue(bytes.length <= 4 * 1024 * 1024, 'Nightshift request exceeds its bound');
     input = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes));
+    if (hook) owned = ownsRun(input, registrationKey, root);
     const registryFile = path.join(root, 'registry.sqlite');
     const registryStat = fs.lstatSync(registryFile);
     requireValue(registryStat.isFile() && !registryStat.isSymbolicLink() && registryStat.nlink === 1, 'Retained registry is not an ordinary file');
     database = new DatabaseSync(registryFile);
     // The wait applies before the first read, since a commit in progress elsewhere keeps readers out too.
-    database.exec(`PRAGMA busy_timeout=${hook ? 0 : LOCK_WAIT_MS};`);
+    database.exec(`PRAGMA busy_timeout=${registryWait(hook, input, owned)};`);
     requireValue(database.prepare('PRAGMA user_version').get().user_version === 1, 'Unsupported Nightshift store protocol');
     database.exec('BEGIN IMMEDIATE;');
     const registration = readRecord(database, 'registration', registrationKey);
@@ -127,7 +136,7 @@ async function main() {
     const handler = require(path.join(selected, 'internal/releases/launcher.js'));
     await handler.route({ ...input, action: hook ? 'hook' : input.action, hookInput: hook ? input : undefined }, { store: root, registration: registrationKey, implementationBundle: selectedRecord.key, bootstrapOperation: lease, nativeHook: hook });
   } catch (error) {
-    if (hook) process.stdout.write(JSON.stringify(ownsRun(input, registrationKey, root) ? { systemMessage: `Nightshift retained resources are unavailable: ${error.message}. Saved work remains incomplete; recover its bound resources before dependent operations.` } : {}) + '\n');
+    if (hook) process.stdout.write(JSON.stringify((owned ?? ownsRun(input, registrationKey, root)) ? { systemMessage: `Nightshift retained resources are unavailable: ${error.message}. Saved work remains incomplete; recover its bound resources before dependent operations.` } : {}) + '\n');
     else { process.stderr.write(JSON.stringify({ error: 'retained-bootstrap-unavailable', message: error.message }) + '\n'); process.exitCode = 1; }
   } finally {
     database?.close();

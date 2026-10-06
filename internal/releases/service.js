@@ -592,25 +592,26 @@ class ReleaseService {
     }
   }
 
-  // SessionStart's activation depends on this owner lookup alone: before it the hook waits only for its registration read,
-  // at most HOOK_LOCK_WAIT_MS, and a later failure is caught once the activation is saved. So the lookup takes the launcher's
-  // full inspection budget inside the host's 60-second hook timeout. The hook stays silent for a session that owns no running
-  // run, so a failed lookup leaves its cause where status and dependent admission can show it; one that cannot be saved is lost.
-  recordActivation(key, registration, session, identifiable) {
+  // SessionStart's activation depends on this owner lookup alone: before it the hook waits for the registry at most
+  // HOOK_LOCK_WAIT_MS in the bootstrap and as long again for its registration read, and a later failure is caught once the
+  // activation is saved. So the lookup takes the launcher's full inspection budget inside the host's 60-second hook timeout.
+  // Every session's later work depends on the activation, so its write, like the failure record, waits the hook's registry
+  // bound whether or not the session owns a run. The hook stays silent for a session that owns no running run, so a failed
+  // lookup leaves its cause where status and dependent admission can show it; one that cannot be saved is lost.
+  recordActivation(key, registration, session) {
     const skey = sessionKey(key, session);
-    const lock = { nonblocking: !identifiable };
     let inspectionFailure = null;
     const owner = this.dependencies.nativeOwner(registration.host, registration.profile, this.inspection(cause => { inspectionFailure = cause; }, processes.INSPECTION_BUDGET_MS));
     if (!owner) {
       const cause = 'Native host process identity could not be established' + (inspectionFailure === null ? '' : ` because process inspection failed (${inspectionFailure})`);
-      try { this.registry(registry => registry.put('activation-failure', skey, { schema: 1, registration: key, session, generation: registration.generation, cause, observedAt: new Date().toISOString() }), lock); }
+      try { this.registry(registry => registry.put('activation-failure', skey, { schema: 1, registration: key, session, generation: registration.generation, cause, observedAt: new Date().toISOString() })); }
       catch { /* The hook stays silent without the record, as it was before the record existed. */ }
       requireValue(false, 'native-activation-unavailable', cause);
     }
     this.registry(registry => {
       registry.put('activation', skey, { schema: 1, registration: key, session, generation: registration.generation, owner, observedAt: new Date().toISOString() });
       registry.remove('activation-failure', skey);
-    }, lock);
+    });
     return owner;
   }
 
@@ -627,7 +628,7 @@ class ReleaseService {
       const identifiable = ownerRun?.controller?.host === registration.host && ownerRun.controller.session === input.session_id && ownerRun.status === 'running';
       if (identifiable && ownerRun.resourceMode === 'development') return {};
       if (registration.state !== 'registered' || registration.pending) return identifiable ? { systemMessage: 'Nightshift host setup is incomplete; saved work remains incomplete.' } : {};
-      const observedOwner = input.hook_event_name === 'SessionStart' ? this.recordActivation(key, registration, input.session_id, identifiable) : null;
+      const observedOwner = input.hook_event_name === 'SessionStart' ? this.recordActivation(key, registration, input.session_id) : null;
       const binding = this.registry(registry => registry.get('session', sessionKey(key, input.session_id)), { nonblocking: !identifiable });
       if (!binding) return project && fs.existsSync(path.join(project, '.nightshift')) ? { hookSpecificOutput: input.hook_event_name === 'SessionStart' ? { hookEventName: 'SessionStart', additionalContext: `Nightshift native session: ${input.session_id}. Retained launcher: ${registration.bootstrap}. Registration: ${key}. Resolve resources through this launcher before using Nightshift.` } : undefined } : {};
       requireValue(binding.state === 'bound', 'retired-release-binding', 'This Nightshift session was retired');
