@@ -53,6 +53,8 @@ codex plugin marketplace add astenlund/nightshift
 codex plugin add nightshift@astenlund
 ```
 
+On Windows, profile-scoped retained-release administration supports Codex standalone packages inside the selected profile after verifying their canonical package layout and a valid OpenAI Authenticode signature. Project-local binaries and other placements inside the profile stay excluded. Missing or failed signature inspection leaves the package unavailable.
+
 Then pick an entry point:
 
 - **Review a change you already made.** `/nightshift:revise-code` runs independent review, skeptic validation and repair on your current work.

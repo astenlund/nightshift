@@ -20,6 +20,8 @@ The retained requirement allows legitimate re-resolution and updates but require
 
 The [independent shipped-capability audit](../reports/pre-v3-shipped-capability-audit-20260921.md) distinguishes actual code/probe evidence, instruction policy and unverified installed-host behavior. No capability in this entry is declared delivered by its restoration to the backlog.
 
+The local 3.3.9 repair recognizes verified Windows Codex standalone packages for profile-scoped retained-release administration, as [its acceptance report](../reports/codex-standalone-trust-20261006.md) records. It checks canonical package metadata and a valid OpenAI Authenticode signature, preserving project exclusions and ordinary concurrent-change detection. This closes the standalone profile-resolution refusal, not the broader atomic signature-to-launch identity requirement tracked here.
+
 ## Decisions and acceptance
 
 Choose the per-role contract and document residual race limits. Verify retargeting, replacement, permitted updates and unavailable proof on the supported Windows host without treating a last-moment path check as atomic launch binding.
