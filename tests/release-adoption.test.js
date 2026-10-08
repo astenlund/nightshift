@@ -10,7 +10,7 @@ const { executionResources, savedResources, validateContext, CONTEXT_ENV } = req
 const { sessionKey } = require('../internal/releases/registry');
 const { readRun } = require('../internal/releases/service');
 const { ownsRun } = require('../internal/releases/bootstrap');
-const { activate, fixture, packageCopy, refreshPackage, simulatedService } = require('./release-fixtures');
+const { activate, fixture, activationPackageCopy: packageCopy, refreshPackage, simulatedService } = require('./release-fixtures');
 
 async function setupCase(t, host = 'codex', compatible = true) {
   const value = fixture(t);
@@ -58,6 +58,71 @@ async function setupCase(t, host = 'codex', compatible = true) {
   };
   return { ...value, service, state, original, target, selected, run, request, launches: () => launches };
 }
+
+// A bound handed-over delivery owned by session 'original' whose recorded morning report awaits its recipient, with a second
+// admitted session 'target' on the given host that has no binding yet.
+async function completedReportCase(t, host = 'codex', status = 'complete') {
+  const value = await setupCase(t, host);
+  const report = '.nightshift/runs/reports/fixture.md';
+  fs.mkdirSync(path.join(value.project, '.nightshift/runs/reports'), { recursive: true });
+  fs.writeFileSync(path.join(value.project, report), '# Fixture report\r\n');
+  const sha256 = require('node:crypto').createHash('sha256').update(fs.readFileSync(path.join(value.project, report))).digest('hex');
+  const run = changeRun(value, current => {
+    current.status = status;
+    current.handover = { authority: 'fixture handover', revision: 0 };
+    current.closing = { retrospectiveEvidence: 'fixture retrospective', reportEvidence: { path: report, sha256 }, reportDelivery: null, triageEvidence: 'fixture triage' };
+  });
+  // The same contained launch as adoption, without its pending-adoption reference assertion.
+  value.service.dependencies.runContained = async (executable, args, options) => {
+    options.onPrepared({ runnerPid: process.pid });
+    options.onStarted({ pid: process.pid, runnerPid: process.pid, contained: true });
+    const context = JSON.parse(options.env[CONTEXT_ENV]);
+    validateContext(context, path.resolve(args[0], '../../..'), value.project, true);
+    const result = await require('../internal/runtime/cli').execute(value.project, JSON.parse(fs.readFileSync(args[2], 'utf8')), { resourceContext: context });
+    const exit = { code: 0, stdout: JSON.stringify(result), stderr: '', descendantsReclaimed: true };
+    options.onFinished(exit);
+    return exit;
+  };
+  const confirm = (overrides = {}) => value.service.run(value.target.registration, { session: 'target', project: value.project, entry: 'runtime', request: { action: 'report-delivered', revision: readRun(value.project).revision, authority: 'The user replied after the saved report was presented', ...overrides } });
+  return { ...value, completed: run, report, sha256, confirm };
+}
+
+for (const host of ['codex', 'claude']) test(`another ${host} session confirms a completed delivery's report through the launcher without taking it over`, async t => {
+  const value = await completedReportCase(t, host);
+  const exit = await value.confirm();
+  assert.equal(exit.code, 0);
+  const run = readRun(value.project);
+  assert.deepEqual(run.closing.reportDelivery, { authority: 'The user replied after the saved report was presented', revision: value.completed.revision + 1, sha256: value.sha256, recordedBy: { host, session: 'target' } });
+  assert.deepEqual(run.controller, value.completed.controller);
+  assert.deepEqual(run.executionResources, value.completed.executionResources);
+  assert.equal(run.status, 'complete');
+  assert.deepEqual(binding(value, value.target.registration, 'target').runs, []);
+});
+
+test('a confirming session bound to a newer release confirms with its own payload and keeps its binding', async t => {
+  const value = await completedReportCase(t);
+  value.state.source = packageCopy(value.root, '1.0.1');
+  value.state.version = '1.0.1';
+  const selected = await value.service.resolve(value.target.registration, { session: 'target', project: value.project, entry: 'ready' });
+  assert.notEqual(selected.bundle.identity, value.selected.bundle.identity);
+  assert.equal((await value.confirm()).code, 0);
+  assert.equal(readRun(value.project).closing.reportDelivery.sha256, value.sha256);
+  assert.equal(binding(value, value.target.registration, 'target').identity, selected.bundle.identity);
+  assert.deepEqual(readRun(value.project).executionResources, value.completed.executionResources);
+});
+
+test('report confirmation from another session stays refused outside a current completed delivery in this store', async t => {
+  const stopped = await completedReportCase(t, 'codex', 'stopped');
+  await assert.rejects(stopped.confirm(), error => error.code === 'resource-owner-mismatch');
+
+  const value = await completedReportCase(t);
+  await assert.rejects(value.service.run(value.target.registration, { session: 'target', project: value.project, entry: 'runtime', request: { action: 'report', path: value.report, revision: value.completed.revision } }), error => error.code === 'resource-owner-mismatch');
+  await assert.rejects(value.confirm({ actor: value.completed.controller }), error => error.code === 'resource-actor-conflict');
+  await assert.rejects(value.confirm({ revision: value.completed.revision - 1 }), error => error.code === 'stale-state');
+  changeRun(value, run => { run.executionResources = { ...run.executionResources, store: value.root }; });
+  await assert.rejects(value.confirm(), error => error.code === 'report-confirmation-unavailable');
+  assert.equal(readRun(value.project).closing.reportDelivery, null);
+});
 
 function binding(value, registration, session) {
   return value.service.registry(registry => registry.get('session', sessionKey(registration, session)));

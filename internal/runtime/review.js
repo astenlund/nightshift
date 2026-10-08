@@ -376,7 +376,7 @@ async function dispatchReview(root, options, dependencies = {}) {
     git(workspace, ['init', '--quiet']);
     const continuation = options.continuation ?? null;
     const request = {
-      id, workspace: path.relative(canonical, workspace).split(path.sep).join('/'), runId: options.runId, taskId: options.taskId, coveredTaskIds: options.coveredTaskIds ?? [options.taskId], commitments: options.commitments ?? {}, resources: options.resources ?? null, controller: options.controller ?? null, kind: options.kind ?? 'code', requirements: text(options.requirements, 'review requirements'), dimensions: DIMENSIONS[lensFor(options)], findings: (options.findings ?? []).map(assignedClaim), snapshot: captured, contextSnapshot, baseSha: options.baseSha,
+      id, workspace: path.relative(canonical, workspace).split(path.sep).join('/'), runId: options.runId, recordKind: options.recordKind ?? 'delivery', taskId: options.taskId, coveredTaskIds: options.coveredTaskIds ?? [options.taskId], commitments: options.commitments ?? {}, resources: options.resources ?? null, controller: options.controller ?? null, kind: options.kind ?? 'code', requirements: text(options.requirements, 'review requirements'), dimensions: DIMENSIONS[lensFor(options)], findings: (options.findings ?? []).map(assignedClaim), snapshot: captured, contextSnapshot, baseSha: options.baseSha,
       // A continued dispatch belongs to the lineage of the reviewer it continues; a fresh one starts its own.
       continues: continuesRecord(continuation),
       lineage: continuation?.lineage ?? id,
@@ -428,7 +428,7 @@ async function dispatchReview(root, options, dependencies = {}) {
         requireCondition(inputsUnchanged(canonical, request.kind, captured, contextSnapshot) && fresh(project, { ...contextSnapshot, inventory: false }), 'review-input-drift', 'Reviewed project inputs changed during assessment');
         attempt.status = 'complete';
         const receipt = {
-          requestId: id, runId: request.runId, taskId: request.taskId,
+          requestId: id, runId: request.runId, recordKind: request.recordKind, taskId: request.taskId,
           coveredTaskIds: request.coveredTaskIds, commitments: request.commitments, resources: request.resources, kind: request.kind,
           host: result.host, model: result.model, effort: result.effort, session: result.session,
           attributionVerified: true, strength: 'strong', independent: true,
@@ -495,6 +495,7 @@ function readReceipt(root, relative, state, taskId) {
     }), 'stale-commitments', 'Accepted commitments changed during assessment; reassess them before importing this report');
   }
   requireCondition(receipt.runId === state.id && receipt.taskId === taskId && receipt.session !== state.controller.session, 'wrong-result', 'Report belongs to another run, task or controller');
+  requireCondition((receipt.recordKind ?? 'delivery') === require('./records').recordKind(state) && (assignment.recordKind ?? 'delivery') === require('./records').recordKind(state), 'wrong-result-kind', 'Report belongs to another runtime record kind');
   if (assignment.controller && isDeepStrictEqual(assignment.controller, state.controller)) requireCondition(!require('./ownership').forbiddenReviewSessions(state).has(receipt.session), 'nonindependent-worker', 'A former controller cannot author a new independent assessment');
   requireCondition(hash(fs.readFileSync(projectFile(root, receipt.eventFile))) === receipt.eventHash, 'changed-result', 'Native host result changed after collection');
   requireCondition(STRONG_MODELS[receipt.host]?.includes(receipt.model) && receipt.attributionVerified === true && inputsUnchanged(root, receipt.kind, receipt.snapshot, receipt.contextSnapshot), 'invalid-receipt', 'Review attribution, strength or input freshness is invalid');

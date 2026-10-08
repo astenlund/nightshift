@@ -1,5 +1,7 @@
 'use strict';
 
+const { fixtureReport } = require('./fixtures/report');
+const { fixtureContinuation } = require('./fixtures/continuation');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
@@ -61,8 +63,11 @@ function project(t, { ignored = true, files = {} } = {}) {
 function closedRun(p, baseSha = p.baseSha) {
   const store = new RunStore(p.root, { create: true });
   p.stores.push(store);
-  store.create({ objective: 'Deliver accepted work', authority: 'User agreed the scope', controller: actor, controllerClaim: fixtureControllerClaim(actor), tasks: LORE });
-  const act = request => store.update(actor, store.read().revision, request.action, state => transition(state, request));
+  store.create({ mechanism: fixtureContinuation(), objective: 'Deliver accepted work', authority: 'User agreed the scope', controller: actor, controllerClaim: fixtureControllerClaim(actor), tasks: LORE });
+  const act = request => {
+    fixtureReport(store, actor, request);
+    return store.update(actor, store.read().revision, request.action, state => transition(state, request));
+  };
   if (baseSha) store.update(actor, store.read().revision, 'fixture-review-base', state => { state.baseSha = baseSha; });
   act({ action: 'advance', taskId: 'lessons', evidence: 'Retrospective completed; no instruction proposal' });
   act({ action: 'triage', evidence: 'No follow-ups' });
@@ -111,7 +116,7 @@ test('creating a run and reading its status report the scratch status before any
   const p = project(t, { ignored: false });
 
   // Act
-  const created = await executeWithFixtureController(p.root, { action: 'create', objective: 'Deliver accepted work', authority: 'User agreed the scope', controller: actor, tasks: LORE });
+  const created = await executeWithFixtureController(p.root, { action: 'handover', mechanism: fixtureContinuation(), objective: 'Deliver accepted work', authority: 'User agreed the scope', controller: actor, tasks: LORE });
   const status = await executeWithFixtureController(p.root, { action: 'status' });
 
   // Assert

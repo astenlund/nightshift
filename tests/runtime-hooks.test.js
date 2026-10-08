@@ -1,5 +1,6 @@
 'use strict';
 
+const { fixtureContinuation } = require('./fixtures/continuation');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -30,7 +31,7 @@ test('hooks recover obligations after compaction and premature yield without tak
   const store = new RunStore(root, { create: true });
   t.after(() => { store.close(); fs.rmSync(root, { recursive: true, force: true }); });
   const actor = { host: 'codex', session: 'owner' };
-  store.create({ objective: 'Deliver accepted work', authority: 'User handover', mode: 'unattended', controller: actor, tasks: [{ id: 'work', title: 'Work', agreement: { source: 'User', outcome: 'Preserve the selection' } }] });
+  store.create({ mechanism: fixtureContinuation(), objective: 'Deliver accepted work', authority: 'User handover', controller: actor, tasks: [{ id: 'work', title: 'Work', agreement: { source: 'User', outcome: 'Preserve the selection' } }] });
   const input = { cwd: root, session_id: 'owner', hook_event_name: 'Stop' };
   assert.equal(handleHook(input).decision, 'block');
   assert.deepEqual(handleHook({ ...input, session_id: 'reviewer' }), {});
@@ -41,7 +42,7 @@ test('hooks recover obligations after compaction and premature yield without tak
   assert.equal(handleHook({ ...input, stop_hook_active: true }).continue, false);
   assert.equal(store.read().status, 'running');
   store.update(actor, store.read().revision, 'recovered-continuation', state => transition(state, { action: 'continuation', mechanism: { verified: true, kind: 'goal', evidence: 'Actual recovery observed in fixture' } }));
-  assert.equal(handleHook(input).decision, 'block');
+  assert.equal(handleHook(input).continue, false);
   handleHook({ ...input, hook_event_name: 'Interrupt' });
   assert.equal(store.read().status, 'stopped');
   assert.deepEqual(handleHook(input), {});
@@ -54,7 +55,7 @@ test('a Stop reminder resumes the controller at the revision the reminder wrote'
   const store = new RunStore(root, { create: true });
   t.after(() => { store.close(); fs.rmSync(root, { recursive: true, force: true }); });
   const actor = { host: 'claude', session: 'owner' };
-  store.create({ objective: 'Deliver accepted work', authority: 'User handover', mode: 'unattended', controller: actor, tasks: [{ id: 'work', title: 'Work', agreement: { source: 'User', outcome: 'Preserve the selection' } }] });
+  store.create({ mechanism: fixtureContinuation(), objective: 'Deliver accepted work', authority: 'User handover', controller: actor, tasks: [{ id: 'work', title: 'Work', agreement: { source: 'User', outcome: 'Preserve the selection' } }] });
   for (let reminder = 1; reminder <= 2; reminder++) {
     const result = handleHook({ cwd: root, session_id: actor.session, hook_event_name: 'Stop' });
     assert.equal(result.decision, 'block');
@@ -70,8 +71,8 @@ test('delegation preserves writes, reviewer strength and controller judgment', t
   const store = new RunStore(root, { create: true });
   t.after(() => { store.close(); fs.rmSync(root, { recursive: true, force: true }); });
   const actor = { host: 'claude', session: 'owner' };
-  store.create({ objective: 'Work', authority: 'User', controller: actor, tasks: [{ id: 'work', title: 'Work', agreement: { source: 'User', outcome: 'Behavior' } }] });
-  assert.deepEqual(handleHook({ cwd: root, session_id: actor.session, hook_event_name: 'Stop' }), {});
+  store.create({ mechanism: fixtureContinuation(), objective: 'Work', authority: 'User', controller: actor, tasks: [{ id: 'work', title: 'Work', agreement: { source: 'User', outcome: 'Behavior' } }] });
+  assert.equal(handleHook({ cwd: root, session_id: actor.session, hook_event_name: 'Stop' }).decision, 'block');
   assert.match(handleHook({ cwd: root, session_id: actor.session, hook_event_name: 'PreCompact' }).systemMessage, /Reconcile it after compaction/);
   const update = request => store.update(actor, store.read().revision, request.action, state => transition(state, request));
   const implementer = { id: 'writer', session: 'writer-session', assignment: 'Repair component', role: 'implementer', writes: ['src/component'] };
@@ -92,7 +93,7 @@ test('unattended Stop permits a pause on user decisions and keeps resisting ever
     const root = fs.mkdtempSync(path.join(parent, 'pause-'));
     const store = new RunStore(root, { create: true });
     t.after(() => { store.close(); fs.rmSync(root, { recursive: true, force: true }); });
-    store.create({ objective: 'Work', authority: 'User handover', mode: 'unattended', controller: actor, tasks: ids.map(id => ({ id, title: id, agreement, requires: id === 'follow' ? ['work'] : [] })) });
+    store.create({ mechanism: fixtureContinuation(), objective: 'Work', authority: 'User handover', controller: actor, tasks: ids.map(id => ({ id, title: id, agreement, requires: id === 'follow' ? ['work'] : [] })) });
     const update = request => store.update(actor, store.read().revision, request.action, state => transition(state, request));
     update({ action: 'continuation', mechanism: { verified: true, kind: 'goal', evidence: 'Actual recovery observed in fixture' } });
     return { store, update, report: () => update({ action: 'report', path: writeReport(root) }), stop: () => handleHook({ cwd: root, session_id: actor.session, hook_event_name: 'Stop' }) };

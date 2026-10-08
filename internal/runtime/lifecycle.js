@@ -2,6 +2,7 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
+const { randomUUID } = require('node:crypto');
 const { workerIsActive } = require('./workers');
 const { isDeepStrictEqual } = require('node:util');
 
@@ -11,6 +12,8 @@ const { exhaustedLimit } = require('./limits');
 const { CLOSING_TARGET, unknownActionMessage } = require('./actions');
 const { latestDispatchOf, lineageOf } = require('./continuation');
 const { scratchFailure, scratchStatus } = require('./scratch');
+const { isReviewContext, requireDelivery, recordKind } = require('./records');
+const { invalidateContinuation, continuationForRequest } = require('./continuation-health');
 
 const DIMENSIONS = Object.freeze({
   spec: ['intent-scope-acceptance', 'soundness-integration', 'failure-safety-recovery', 'clarity-consistency-proportionality'],
@@ -55,8 +58,16 @@ function targetById(state, id) {
   return state.closing.docs;
 }
 
-function closingRecord(baseline) {
-  return { id: CLOSING_TARGET, kind: 'closing', baseline, reviews: [], findings: [], checks: [], probeEvidence: [] };
+// Each closing record carries its own occurrence identity, so asynchronous closing work can tell an unchanged record from a
+// replacement, including one under the same context, whether or not progress accounting is available.
+function closingRecord(baseline, progressBinding) {
+  return { id: CLOSING_TARGET, kind: 'closing', occurrence: randomUUID(), baseline, progressBinding: progressBinding ? structuredClone(progressBinding) : null, reviews: [], findings: [], checks: [], probeEvidence: [] };
+}
+
+// Whether asynchronous work pinned to a closing record still belongs to it. A record minted with an occurrence identity is
+// fenced by it; an earlier record without one can only be identified through the accounting origin the work captured.
+function sameClosingRecord(record, pinned, origin) {
+  return record.occurrence ? pinned.closingOccurrence === record.occurrence : Boolean(pinned.progressOrigin) && pinned.progressOrigin === origin;
 }
 
 // The project inventory at triage, against which a closing review must show documentation-only changes. An empty inventory is an
@@ -163,25 +174,54 @@ function commitmentsFor(tasks) {
   return Object.fromEntries(tasks.map(task => [task.id, { agreement: structuredClone(task.agreement), revision: task.requirementsRevision ?? 0 }]));
 }
 
-// A native goal re-engages a controller whose models yield early; a Stop hook only resists a yield, which suffices where the host's models do not yield early.
-const CONTINUATION_KINDS = Object.freeze({ goal: ['claude', 'codex'], 'stop-hook': ['claude'] });
-
-function verifiedContinuation(state, mechanism) {
-  requireCondition(mechanism?.verified === true && typeof mechanism.evidence === 'string' && mechanism.evidence.trim(), 'unverified-continuation', 'Unattended continuation requires observed host evidence');
-  requireCondition(typeof mechanism.kind === 'string' && Object.hasOwn(CONTINUATION_KINDS, mechanism.kind), 'invalid-continuation-kind', `Continuation mechanism kind must be one of ${Object.keys(CONTINUATION_KINDS).join(', ')}`);
-  requireCondition(CONTINUATION_KINDS[mechanism.kind].includes(state.controller.host), 'unsupported-continuation', `A ${mechanism.kind} mechanism cannot carry unattended work for a ${state.controller.host} controller; verify its native goal instead`);
-
-  return { ...mechanism, runId: state.id, controller: { ...state.controller }, observedAt: new Date().toISOString() };
-}
-
 // A target's latest invocation of each named check: a later invocation supersedes an earlier one of the same name.
 function latestChecks(target) {
   return [...new Map(target.checks.map(check => [check.name, check])).values()];
 }
 
-function verificationGate(root, task) {
+function verificationGate(root, task, snapshotCurrent = fresh) {
   const latest = latestChecks(task);
-  return (task.kind !== 'code' || latest.length > 0) && latest.every(check => check.passed && fresh(root, check.snapshot));
+  return (task.kind !== 'code' || latest.length > 0) && latest.every(check => check.passed && !check.pending && snapshotCurrent(root, check.snapshot));
+}
+
+function historicalDischarge(state, snapshotValid) {
+  const current = (_root, value) => snapshotValid(value);
+  const supportedWorker = worker => worker && typeof worker === 'object' && ['starting', 'running', 'unverified', 'complete', 'failed', 'stopped'].includes(worker.status) && ['implementer', 'reviewer', 'skeptic', 'peer', 'supervisor', 'operation'].includes(worker.role);
+  const supportedTask = task => task && typeof task === 'object' && typeof task.id === 'string' && ['code', 'spec', 'docs', 'lore'].includes(task.kind) && Array.isArray(task.checks) && Array.isArray(task.reviews) && Array.isArray(task.findings);
+  if (!state.tasks.every(supportedTask) || !state.workers.every(supportedWorker)) return false;
+  if (!['complete', 'stopped'].includes(state.status) || !state.tasks.every(task => task.status === 'complete' && !task.blocker) || state.workers.some(workerIsActive)) return false;
+  if (!state.closing?.retrospectiveEvidence || !state.closing.triageEvidence || state.handover && !state.closing.reportEvidence) return false;
+  if (pendingClosures(state).length || carriedFindings(state).some(finding => !settled(finding))) return false;
+  const assessed = (entry, task, kind) => {
+    const review = entry?.review;
+    return acceptableAssessment(review, task) && review.attributionVerified === true && DIMENSIONS[kind].every(dimension => review.dimensions?.includes(dimension)) && snapshotValid(review.snapshot);
+  };
+  for (const task of state.tasks) {
+    if (!verificationGate(state.root, task, current) || !task.findings.every(finding => settled(finding) && finding.validation.attributionVerified === true && ['confirmed', 'refuted'].includes(finding.validation.verdict))) return false;
+    if (requiresReview(task)) {
+      const entry = leadEntry(task, state);
+      if (!assessed(entry, task, leadKind(task)) || task.findings.some(finding => finding.repaired && findingKind(finding, task) === leadKind(task) && finding.repairRevision >= entry.review.revision)) return false;
+    }
+    if (state.docsGate && sharesCumulativeAssessment(task)) {
+      const exemption = task.docsExemption;
+      if (!(exemption?.reason?.trim() && snapshotValid(exemption.snapshot))) {
+        const entry = latestReview(docsCandidates(task, state, false));
+        if (!assessed(entry, task, 'docs') || task.findings.some(finding => finding.repaired && findingKind(finding, task) === 'docs' && finding.repairRevision >= entry.review.revision)) return false;
+      }
+    }
+    if (task.kind === 'code' && task.agreement.spec) {
+      const spec = state.tasks.find(item => item.id === task.agreement.specReviewTaskId);
+      if (spec ? spec.status !== 'complete' || spec.agreement.spec !== task.agreement.spec || !assessed(leadEntry(spec, state), spec, 'spec') : task.agreement.specReviewed !== true || !snapshotValid(task.agreement.specSnapshot)) return false;
+    }
+  }
+  const closing = state.closing.docs;
+  if (closing) {
+    if (!closing.findings.every(settled) || !verificationGate(state.root, closing, current) || !snapshotValid(closing.baseline, true)) return false;
+    const review = latestReview(closing.reviews.map(item => ({ review: item })))?.review;
+    if (review && (!completeAssessment(review) || review.attributionVerified !== true || !DIMENSIONS.docs.every(dimension => review.dimensions?.includes(dimension)) || !snapshotValid(review.snapshot))) return false;
+    if (closing.findings.some(finding => finding.repaired && finding.repairRevision >= (review?.revision ?? Infinity))) return false;
+  }
+  return true;
 }
 
 // Every latest named check that no longer passes on current inputs, of every task, completed ones included, and of the closing
@@ -208,9 +248,10 @@ function closingReady(state) {
 // Clearing closing evidence keeps the latest closing baseline, so the next triage can still tell whether tracking edits since it were
 // reviewed, and keeps the closing findings that still owe something, which the next closing record takes over.
 function resetClosing(state) {
+  if (isReviewContext(state)) return;
   const baseline = state.closing?.docs ? state.closing.docs.baseline : state.closing?.carriedBaseline;
   const carried = carriedFindings(state);
-  state.closing = { retrospectiveEvidence: null, reportEvidence: null, reportDelivery: null, triageEvidence: null, ...(baseline ? { carriedBaseline: baseline } : {}), ...(carried.length ? { carriedFindings: carried } : {}) };
+  state.closing = { retrospectiveEvidence: null, reportEvidence: null, reportDelivery: null, triageEvidence: null, progressBindings: { retrospective: null, report: null, delivery: null, triage: null }, ...(baseline ? { carriedBaseline: baseline } : {}), ...(carried.length ? { carriedFindings: carried } : {}) };
 }
 
 // The closing findings a replaced closing record must hand on: every one not yet settled or still pending closure. The closing gate
@@ -223,6 +264,7 @@ function recordRetrospective(state, evidence) {
   text(evidence, 'retrospective.evidence');
   resetClosing(state);
   state.closing.retrospectiveEvidence = evidence;
+  state.closing.progressBindings.retrospective = require('./progress').captureClosingBinding(state);
 }
 
 function closingStage(state) {
@@ -278,6 +320,7 @@ function specAcceptanceStatus(root, task, options) {
 }
 
 function specReady(state, task) {
+  if (isReviewContext(state)) return true;
   if (task.kind !== 'code' || !Object.hasOwn(task.agreement, 'spec')) return true;
   if (typeof task.agreement.spec !== 'string' || !task.agreement.spec.trim()) return false;
   if (!task.agreement.specReviewTaskId && task.agreement.specReviewed === true) {
@@ -437,7 +480,7 @@ function recordClosures(target, review, lineage, revision) {
   for (const closure of review.closures ?? []) {
     const finding = target.findings.find(candidate => candidate.id === closure.id);
     if (finding?.pendingClosure?.lineage !== lineage) continue;
-    finding.closures = [...(finding.closures ?? []), { requestId: review.requestId, closed: closure.closed, evidence: closure.evidence, revision }];
+    finding.closures = [...(finding.closures ?? []), { requestId: review.requestId, closed: closure.closed, evidence: closure.evidence, revision, ...(target.kind === 'closing' ? { progressBinding: structuredClone(finding.progressBinding) } : {}) }];
     if (closure.closed) delete finding.pendingClosure;
   }
 }
@@ -530,19 +573,32 @@ function requireDocsGate(root, task, state, message) {
   requireCondition(failure === null, 'docs-review-required', failure === 'stale' ? STALE_DOCS_REVIEW : message);
 }
 
+function requireStandaloneAssessment(state, task) {
+  if (requiresReview(task)) requireReviewGate(state.root, task, state, 'Standalone revision needs its current strong independent assessment and resolved repair obligations');
+  // A purely mechanical standalone docs revision may record an inventory-bound exemption instead, honored only while current.
+  const exempt = task.docsExemption && fresh(state.root, task.docsExemption.snapshot);
+  if (!exempt && (task.kind === 'docs' || task.reviews.some(review => reviewKind(review, task) === 'docs'))) {
+    const failure = docsReviewFailure(state.root, task, state);
+    requireCondition(failure === null, 'docs-review-required', failure === 'stale' ? STALE_DOCS_REVIEW : 'Standalone documentation assurance must be current and resolved');
+  }
+  requireCondition(unresolvedFindings(task).length === 0, 'review-required', 'Every standalone finding needs validation, disposition and any required repair closure');
+  requireCondition(verificationGate(state.root, task), 'verification-required', 'Standalone verification must pass on current inputs');
+}
+
 function obligationBrief(state, root = state.root, options = {}) {
   const active = state.tasks.filter(task => task.status !== 'complete');
   const ready = active.filter(task => !task.blocker && task.requires.every(id => taskById(state, id).status === 'complete'));
   return {
-    id: state.id, revision: state.revision, status: state.status, controller: state.controller,
-    objective: state.objective, authority: state.authority, limits: state.limits, publication: state.publication,
-    mode: state.mode, handover: state.handover ?? null, report: reportStatus(state, root), continuation: state.continuation ?? null,
+    id: state.id, kind: recordKind(state), ...(isReviewContext(state) ? { reviewContextId: state.id } : {}), revision: state.revision, status: state.status, controller: state.controller,
+    objective: state.objective, authority: state.authority, limits: state.limits, publication: state.publication, hold: state.hold ?? null,
+    ...(!isReviewContext(state) ? { handover: state.handover ?? null, report: reportStatus(state, root), continuation: state.continuation ?? null, hookIntegration: state.hookIntegration ?? null, ...(state.kind === 'delivery' ? { acknowledgement: { status: state.acknowledgement?.status ?? 'pending', current: require('./acknowledgement').acknowledged(state), renewalRevision: state.acknowledgement?.renewalRevision ?? null, requiredAfter: state.acknowledgement?.requiredAfter ?? null } } : {}) } : {}),
     scratch: options.verifyFreshness === false ? 'reconcile at acceptance' : scratchStatus(root, state.baseSha ?? null),
     resourceMode: state.resourceMode ?? 'legacy', resources: state.resources ?? null,
-    executionResources: require('../releases/entry').executionResources(state), controllerClaim: state.controllerClaim ?? null, adoption: state.adoption ?? null,
+    executionResources: require('../releases/entry').executionResources(state), ...(!isReviewContext(state) ? { controllerClaim: state.controllerClaim ?? null } : { ownerObservation: state.ownerObservation ?? null }), adoption: state.adoption ?? null,
     next: ready.map(task => ({
       id: task.id, title: task.title,
-      stage: options.verifyFreshness !== false && !specReady(state, task) ? 'governing-spec-review' : task.stage,
+      stage: state.kind === 'delivery' && !require('./continuation-health').continuationOutcomeCurrent(state) ? 'continuation-observation'
+        : options.verifyFreshness !== false && !specReady(state, task) ? 'governing-spec-review' : task.stage,
       agreement: { source: task.agreement.source, outcome: task.agreement.outcome, decisions: task.agreement.decisions, spec: task.agreement.spec, specReviewTaskId: task.agreement.specReviewTaskId },
       ...(typeof task.agreement.spec === 'string' ? { specAcceptance: specAcceptanceStatus(root, task, options) } : {}),
       unresolvedFindings: unresolvedFindings(task).map(finding => ({ id: finding.id, consequence: finding.consequence, verdict: finding.validation?.verdict ?? null, disposition: finding.disposition, pendingClosure: Boolean(finding.pendingClosure), evidence: finding.evidence.slice(0, 600) })),
@@ -551,14 +607,16 @@ function obligationBrief(state, root = state.root, options = {}) {
       ...(state.docsGate && sharesCumulativeAssessment(task) ? { docsReviewCurrent: options.verifyFreshness === false ? 'reconcile at acceptance' : docsGateFailure(root, task, state) === null } : {}),
     })),
     // An exemption is recorded as its task completes, so it is listed for every task rather than only for work still ahead.
-    ...(state.docsGate ? { docsExemptions: state.tasks.filter(task => task.docsExemption).map(task => ({ taskId: task.id, reason: task.docsExemption.reason, revision: task.docsExemption.revision, current: options.verifyFreshness === false ? 'reconcile at acceptance' : fresh(root, task.docsExemption.snapshot) })) } : {}),
+    ...(state.docsGate || isReviewContext(state) ? { docsExemptions: state.tasks.filter(task => task.docsExemption).map(task => ({ taskId: task.id, reason: task.docsExemption.reason, revision: task.docsExemption.revision, current: options.verifyFreshness === false ? 'reconcile at acceptance' : fresh(root, task.docsExemption.snapshot) })) } : {}),
     staleChecks: options.verifyFreshness === false ? 'reconcile at acceptance' : staleChecks(root, state),
-    finalReconciliationPending: state.status === 'running' && active.length === 0,
-    closing: { ready: closingReady(state), stage: closingStage(state), ...(state.closing?.docs ? { docsReview: closingDocsBrief(state, root, options) } : {}), ...(state.closing?.carriedFindings?.length ? { carriedFindings: state.closing.carriedFindings.map(finding => finding.id) } : {}) },
+    finalReconciliationPending: !isReviewContext(state) && state.status === 'running' && active.length === 0,
+    ...(!isReviewContext(state) ? { closing: { ready: closingReady(state), stage: closingStage(state), ...(state.closing?.docs ? { docsReview: closingDocsBrief(state, root, options) } : {}), ...(state.closing?.carriedFindings?.length ? { carriedFindings: state.closing.carriedFindings.map(finding => finding.id) } : {}) } } : {}),
     blockers: active.filter(task => task.blocker).map(task => ({ id: task.id, blocker: task.blocker })),
     workers: state.workers.filter(workerIsActive),
     followups: state.followups.filter(item => item.status !== 'resolved'),
-    rules: `Continue authorized independent work and recovery. Every repair needs cumulative strong broad review: resume the reviewer that raised each repaired finding to record its closure, and pass a gate only on a fresh assessment. Validate every finding with a fresh skeptic before disposition. Preserve writer ownership. Update documentation and obtain its independent docs review, then retrospective, then follow-up triage; a handed-over run records its morning report before triage. Tracking edits after triage stay within the backlog and the other documentation a docs review alone covers, and need a closing docs review (task ${CLOSING_TARGET}) before completion. Missing or stale evidence is incomplete. Publication requires authority. Reconcile this record with actual files after compaction.`,
+    rules: isReviewContext(state)
+      ? 'This is standalone revision, not a delivery run. Preserve attributed independent assessment, skeptical validation, dispositions, repair closure, freshness, owner identity and resources. No delivery closing, continuation, retrospective or triage is required. Report pending follow-ups and actual limits. Publication requires separate authority.'
+      : `Continue authorized independent work and recovery. Every repair needs cumulative strong broad review: resume the reviewer that raised each repaired finding to record its closure, and pass a gate only on a fresh assessment. Validate every finding with a fresh skeptic before disposition. Preserve writer ownership. Update documentation and obtain its independent docs review, then retrospective, then follow-up triage; a handed-over run records its morning report before triage. Tracking edits after triage stay within the backlog and the other documentation a docs review alone covers, and need a closing docs review (task ${CLOSING_TARGET}) before completion. Missing or stale evidence is incomplete. Publication requires authority. Reconcile this record with actual files after compaction.`,
   };
 }
 
@@ -581,9 +639,11 @@ function assertClosingAction(state, request) {
   requireCondition(state.status !== 'stopped', 'run-stopped', 'The run is stopped; resume it under the user\'s authority before closing work');
   const record = targetById(state, request.taskId);
   requireCondition(state.status === 'complete' || state.closing.triageEvidence, 'closing-review-unavailable', 'A closing docs review is admitted once triage evidence is recorded');
+  if (state.kind === 'delivery' && state.status === 'running' && !['review', 'validate', 'dialogue'].includes(request.action)) {
+    requireCondition(require('./continuation-health').continuationOutcomeCurrent(state), 'continuation-observation-required', 'Attempt host continuation and record its outcome before new dependent closing execution');
+  }
   const exhausted = exhaustedLimit(state, { dispatch: request.action === 'dispatch' });
   requireCondition(!exhausted, 'resource-limit', exhausted);
-  if (state.status === 'running' && state.mode === 'unattended') requireCondition(state.continuation?.verified === true, 'unverified-continuation', 'Verify the actual host continuation mechanism before unattended execution');
   return record;
 }
 
@@ -598,15 +658,15 @@ function closingScopeFailure(root, record, review) {
 }
 
 function assertAction(state, request) {
+  if (['handover', 'continuation', 'invalidate-continuation', 'claim-controller', 'add-spec-review', 'retrospective', 'report', 'report-delivered', 'triage'].includes(request.action) || request.taskId === CLOSING_TARGET) requireDelivery(state, request.action);
   const taskActions = ['start-task', 'add-spec-review', 'check', 'dispatch', 'probe', 'review', 'validate', 'dialogue', 'dispose', 'repair', 'advance', 'block', 'unblock', 'spec-accepted'];
   if (taskActions.includes(request.action) && request.taskId === CLOSING_TARGET) return assertClosingAction(state, request);
   const task = taskActions.includes(request.action) ? taskById(state, request.taskId) : null;
-  const bookkeeping = ['worker-finished', 'followup', 'resolve-followup', 'resume', 'stop', 'block', 'retrospective', 'report', 'report-delivered', 'spec-accepted', 'triage', 'invalidate-continuation'];
+  const bookkeeping = ['worker-finished', 'followup', 'resolve-followup', 'resume', 'hold', 'stop', 'block', 'retrospective', 'report', 'report-delivered', 'spec-accepted', 'triage', 'invalidate-continuation'];
   requireCondition(state.status === 'running' || bookkeeping.includes(request.action), 'run-stopped', 'The run is stopped; explicit resumption is required before more work');
   if (!bookkeeping.includes(request.action)) {
     requireCondition(!exhaustedLimit(state, { dispatch: request.action === 'dispatch' }), 'resource-limit', exhaustedLimit(state, { dispatch: request.action === 'dispatch' }));
-    // A handover validates the mechanism it carries, as continuation does, so neither waits on an earlier verification.
-    if (state.mode === 'unattended' && !['continuation', 'handover', 'claim-controller'].includes(request.action)) requireCondition(state.continuation?.verified === true, 'unverified-continuation', 'Verify the actual host continuation mechanism before unattended execution');
+    if (state.kind === 'delivery' && !['continuation', 'handover', 'claim-controller', 'review', 'validate', 'dialogue'].includes(request.action)) requireCondition(require('./continuation-health').continuationOutcomeCurrent(state), 'continuation-observation-required', 'Attempt host continuation and record its observed result or failure before dependent work');
   }
   if (task && !['block', 'unblock', 'add-spec-review', 'spec-accepted'].includes(request.action)) {
     requireCondition(!task.blocker, 'task-blocked', 'Resolve the recorded blocker before dependent work');
@@ -616,8 +676,14 @@ function assertAction(state, request) {
   return task;
 }
 
-function transition(state, request) {
+function transition(state, request, integration = null) {
   const task = assertAction(state, request);
+  const dischargeBefore = require('./discharge').capture(state);
+  const canonical = ['start-task', 'repair'].includes(request.action) || request.action === 'dispose' && request.disposition === 'implement';
+  if (canonical || !isReviewContext(state) && ['claim-controller', 'resume'].includes(request.action)) {
+    if (isReviewContext(state)) require('./review-context').assertRepairScope(state.root, state.controller, state);
+    else require('./project-ownership').assertCanonicalWriteScope(state);
+  }
   switch (request.action) {
     case 'add-spec-review': {
       requireCondition(task.kind === 'code' && task.agreement.spec, 'missing-spec', 'A governing spec is required for this internal assessment');
@@ -639,7 +705,7 @@ function transition(state, request) {
       break;
     case 'check':
       requireCondition(request.evidence && fresh(state.root, request.evidence.snapshot), 'stale-evidence', 'Verification inputs changed or are missing');
-      task.checks.push(request.evidence);
+      task.checks.push({ ...request.evidence, ...(task.kind === 'closing' ? { progressBinding: structuredClone(task.progressBinding) } : {}) });
       break;
     case 'review': {
       const review = request.review;
@@ -649,6 +715,7 @@ function transition(state, request) {
       requireCondition(review.session && review.session !== state.controller.session && review.attributionVerified === true, 'unattributed-review', 'Independent reviewer attribution is required');
       requireCondition(Array.isArray(review.findings) && Array.isArray(review.dimensions), 'invalid-review', 'Review must contain findings and coverage');
       const closing = task.kind === 'closing';
+      if (closing) review.progressBinding = structuredClone(task.progressBinding);
       if (closing) {
         const outside = closingScopeFailure(state.root, task, review);
         requireCondition(!outside, 'closing-scope', outside);
@@ -665,7 +732,7 @@ function transition(state, request) {
         text(finding.evidence, 'finding.evidence');
         const id = review.requestId ? `${review.requestId}:${finding.id}` : `${revision}:${finding.id}`;
         const relatedTo = task.findings.filter(existing => existing.localId === finding.id).map(existing => existing.id);
-        task.findings.push({ ...finding, id, localId: finding.id, relatedTo, reviewRevision: revision, reviewKind: reviewKind(review, task), reviewer: review.session, raisedBy: { requestId: review.requestId ?? null, lineage }, validation: null, disposition: null, repaired: false });
+        task.findings.push({ ...finding, ...(closing ? { progressBinding: structuredClone(task.progressBinding) } : {}), id, localId: finding.id, relatedTo, reviewRevision: revision, reviewKind: reviewKind(review, task), reviewer: review.session, raisedBy: { requestId: review.requestId ?? null, lineage }, validation: null, disposition: null, repaired: false });
       }
       recordClosures(task, review, lineage, revision);
       if (closing) break;
@@ -688,6 +755,7 @@ function transition(state, request) {
       // repair it waits on is still in the change.
       if (validation.dialogue) finding.dialogue = [...(finding.dialogue ?? []), { requestId: validation.requestId, session: validation.session, role: 'skeptic', message: validation.dialogue, verdict: validation.verdict, evidence: validation.evidence, revision: state.revision + 1 }];
       finding.validation = validation;
+      if (task.kind === 'closing') finding.validation.progressBinding = structuredClone(finding.progressBinding);
       finding.disposition = null;
       finding.repaired = false;
       delete finding.repairRevision;
@@ -732,7 +800,7 @@ function transition(state, request) {
       for (const id of request.findingIds) {
         const finding = task.findings.find(candidate => candidate.id === id);
         // The reviewer that raised the finding, or its replacement, must verify the repair before any gate passes.
-        Object.assign(finding, { repaired: true, repairRevision: state.revision + 1, pendingClosure: { lineage: finding.raisedBy?.lineage ?? null, requestId: finding.raisedBy?.requestId ?? null, revision: state.revision + 1 } });
+        Object.assign(finding, { repaired: true, repairRevision: state.revision + 1, pendingClosure: { lineage: finding.raisedBy?.lineage ?? null, requestId: finding.raisedBy?.requestId ?? null, revision: state.revision + 1, ...(task.kind === 'closing' ? { progressBinding: structuredClone(finding.progressBinding) } : {}) } });
       }
       task.lastRepair = { revision: state.revision + 1, kinds: [...new Set(request.findingIds.map(id => findingKind(task.findings.find(candidate => candidate.id === id), task)))] };
       task.probeEvidence = [];
@@ -745,6 +813,18 @@ function transition(state, request) {
       if (task.resumeStage) task.resumeStage = task.kind === 'lore' ? 'retrospective' : 'documentation';
       break;
     case 'advance': {
+      if (isReviewContext(state) && request.docsExemption !== undefined) {
+        requireCondition(task.kind === 'docs' && !task.reviews.some(review => reviewKind(review, task) === 'docs'), 'invalid-exemption', 'Only a standalone docs revision without a docs assessment can record a mechanical exemption');
+      }
+      if (isReviewContext(state) && task.stage !== 'implementation') {
+        if (request.docsExemption !== undefined) task.docsExemption = { reason: text(request.docsExemption, 'docsExemption'), snapshot: inventorySnapshot(state.root), revision: state.revision + 1 };
+        requireStandaloneAssessment(state, task);
+        text(request.evidence, 'revision.evidence');
+        task.revisionEvidence = request.evidence;
+        task.stage = 'complete';
+        task.status = 'complete';
+        break;
+      }
       const stages = task.kind === 'lore' ? ['review', 'retrospective', 'complete'] : ['implementation', 'review', 'documentation', 'complete'];
       const current = stages.indexOf(task.stage);
       requireCondition(current >= 0 && current < stages.length - 1, 'invalid-stage', 'Task cannot advance');
@@ -806,6 +886,7 @@ function transition(state, request) {
         task.agreement.decisions = [...(task.agreement.decisions ?? []), request.evidence];
         if (request.updatedOutcome !== undefined) task.agreement.outcome = text(request.updatedOutcome, 'updatedOutcome');
         task.requirementsRevision = state.revision + 1;
+        require('./acknowledgement').renewAcknowledgement(state, state.revision + 1, new Date().toISOString());
         delete task.docsExemption;
         const spec = state.tasks.find(candidate => candidate.id === task.agreement.specReviewTaskId);
         if (spec) {
@@ -825,15 +906,23 @@ function transition(state, request) {
       requireCondition(state.handover, 'report-not-due', 'A morning report is due only after a recorded handover');
       requireCondition(closingReady(state) && state.closing?.retrospectiveEvidence, 'retrospective-required', 'Session retrospective must precede the morning report');
       state.closing.reportEvidence = reportEvidenceFor(state.root, request.path);
+      state.closing.progressBindings ??= { retrospective: null, report: null, delivery: null, triage: null };
+      state.closing.progressBindings.report = structuredClone(state.closing.progressBindings.retrospective);
       // A replaced report has not been delivered.
       state.closing.reportDelivery = null;
+      state.closing.progressBindings.delivery = null;
       break;
     case 'report-delivered': {
       const evidence = state.handover && state.closing?.reportEvidence;
       requireCondition(evidence, 'report-required', 'Record the morning report before its delivery');
       text(request.authority, 'report-delivered.authority');
       requireCondition(reportIsCurrent(state.root, evidence), 'report-stale', 'The saved morning report is missing or changed; rewrite it and record the report again');
-      if (state.closing.reportDelivery?.sha256 !== evidence.sha256) state.closing.reportDelivery = { authority: request.authority, revision: state.revision + 1, sha256: evidence.sha256 };
+      if (state.closing.reportDelivery?.sha256 !== evidence.sha256) {
+        const owner = request.actor === undefined || state.controller.session === request.actor.session && state.controller.host === request.actor.host;
+        state.closing.reportDelivery = { authority: request.authority, revision: state.revision + 1, sha256: evidence.sha256, ...(owner ? {} : { recordedBy: { host: request.actor.host, session: request.actor.session } }) };
+        state.closing.progressBindings ??= { retrospective: null, report: null, delivery: null, triage: null };
+        state.closing.progressBindings.delivery = structuredClone(state.closing.progressBindings.report);
+      }
       break;
     }
     case 'spec-accepted': {
@@ -851,11 +940,13 @@ function transition(state, request) {
       requireCondition(reportSatisfied(state), 'report-required', 'A handed-over run records its morning report before follow-up triage');
       text(request.evidence, 'triage.evidence');
       state.closing.triageEvidence = request.evidence;
+      state.closing.progressBindings ??= { retrospective: null, report: null, delivery: null, triage: null };
+      state.closing.progressBindings.triage = structuredClone(state.closing.progressBindings.retrospective);
       // Re-recorded triage starts a new closing record, so a closing review always follows the triage whose tracking edits it covers;
       // closing findings not yet settled or still pending closure move into it and must still be resolved there.
       if (state.docsGate) {
         const carried = carriedFindings(state);
-        state.closing.docs = closingRecord(nextTriageBaseline(state.root, state));
+        state.closing.docs = closingRecord(nextTriageBaseline(state.root, state), state.closing.progressBindings.triage);
         state.closing.docs.findings.push(...carried);
         delete state.closing.carriedBaseline;
         delete state.closing.carriedFindings;
@@ -883,28 +974,25 @@ function transition(state, request) {
       state.status = 'running';
       state.resumedBy = request.authority;
       delete state.stop;
-      transition(state, { action: 'invalidate-continuation', reason: 'Resumption requires a current observation of the host continuation mechanism' });
+      delete state.hold;
+      if (!isReviewContext(state)) transition(state, { action: 'invalidate-continuation', reason: 'Resumption requires a current observation of the host continuation mechanism' });
       break;
     case 'claim-controller':
       requireCondition(request.claim && isDeepStrictEqual(request.claim.controller, state.controller), 'invalid-controller-claim', 'A claim must be observed for the current controller');
       state.controllerClaim = request.claim;
       break;
     case 'invalidate-continuation': {
-      text(request.reason, 'invalidate-continuation.reason');
-      const same = state.mode === 'attended' && state.continuation?.verified === false && state.continuation.reason === request.reason && state.continuation.runId === state.id && isDeepStrictEqual(state.continuation.controller, state.controller);
-      if (!same) state.continuation = { verified: false, reason: request.reason, runId: state.id, controller: { ...state.controller }, observedAt: new Date().toISOString() };
-      state.mode = 'attended';
+      invalidateContinuation(state, request.reason);
       break;
     }
     case 'continuation':
-      state.continuation = verifiedContinuation(state, request.mechanism);
+      state.continuation = continuationForRequest(state, request.mechanism, integration);
       break;
     case 'handover':
       text(request.authority, 'handover.authority');
       if (request.mechanism !== undefined) {
         // The mechanism travels with the handover so an earlier verified flag is never reused as proof, and one write leaves no partial transition.
-        state.continuation = verifiedContinuation(state, request.mechanism);
-        state.mode = 'unattended';
+        state.continuation = continuationForRequest(state, request.mechanism, integration);
       }
       state.handover ??= { authority: request.authority, revision: state.revision + 1 };
       break;
@@ -917,14 +1005,14 @@ function transition(state, request) {
       requireCondition(['implementer', 'reviewer', 'skeptic', 'supervisor', 'peer'].includes(worker.role), 'invalid-worker', 'Unknown worker role');
       requireCondition(!state.workers.some(existing => existing.id === worker.id), 'duplicate-worker', 'Worker identity already exists');
       requireCondition(Array.isArray(worker.writes), 'invalid-worker', 'Worker must declare write ownership, including an empty list for reviewers');
-      worker.writes.forEach(target => projectFile(state.root, target));
+      const { overlaps, assertWorkerWriteScope, requireOwnershipPath } = require('./project-ownership');
+      worker.writes.forEach(target => requireOwnershipPath(state.root, target));
       requireCondition(!['reviewer', 'skeptic', 'peer', 'supervisor'].includes(worker.role) || worker.writes.length === 0, 'reviewer-write', 'Only assigned implementers can own project writes');
-      const overlaps = (left, right) => {
-        const a = process.platform === 'win32' ? left.toUpperCase() : left;
-        const b = process.platform === 'win32' ? right.toUpperCase() : right;
-        return a === b || a.startsWith(b + '/') || b.startsWith(a + '/');
-      };
-      for (const other of state.workers.filter(workerIsActive)) {
+      if (isReviewContext(state) && worker.writes.length > 0) require('./review-context').assertRepairScope(state.root, state.controller, state, worker.writes);
+      assertWorkerWriteScope(state, worker);
+      // A worker declaring no writes stays registrable while another worker's reservation awaits reconciliation.
+      for (const other of worker.writes.length > 0 ? state.workers.filter(workerIsActive) : []) {
+        other.writes.forEach(owned => requireOwnershipPath(state.root, owned, 'writer-state-unavailable'));
         requireCondition(!worker.writes.some(target => other.writes.some(owned => overlaps(target, owned))), 'writer-conflict', 'Another worker owns the requested paths');
       }
       if (worker.role === 'peer') {
@@ -944,6 +1032,12 @@ function transition(state, request) {
       worker.evidence = request.evidence;
       break;
     }
+    case 'hold':
+      text(request.authority, 'hold.authority');
+      text(request.reason, 'hold.reason');
+      state.status = 'stopped';
+      state.hold = { authority: request.authority, reason: request.reason, revision: state.revision + 1 };
+      break;
     case 'stop':
       text(request.reason, 'stop.reason');
       requireCondition(['user-stop', 'resource-limit'].includes(request.kind), 'invalid-stop', 'A stop requires an explicit stop or exhausted resource limit');
@@ -953,6 +1047,11 @@ function transition(state, request) {
     case 'complete': {
       requireCondition(state.tasks.every(candidate => candidate.status === 'complete'), 'unfinished-work', 'Queue still has incomplete work');
       requireCondition(state.workers.every(worker => !workerIsActive(worker)), 'active-workers', 'Workers remain active');
+      if (isReviewContext(state)) {
+        for (const target of state.tasks) requireStandaloneAssessment(state, target);
+        state.status = 'complete';
+        break;
+      }
       requireCondition(state.tasks.every(candidate => specReady(state, candidate)), 'spec-review-required', 'Every governing spec still requires current independent assessment');
       // Checked first, because an unresolved closing review also withholds the documentation relief the gates below depend on.
       requireCondition(closingRecordFailure(state.root, state) === null, 'closing-review-unresolved', 'The closing docs review is unresolved: its latest review is not a complete strong docs assessment covering all five dimensions, a finding is unsettled, a repair postdates its latest review or a check fails');
@@ -976,6 +1075,7 @@ function transition(state, request) {
     default:
       requireCondition(false, 'invalid-request', unknownActionMessage(request.action));
   }
+  require('./discharge').admittedAction(state, request, dischargeBefore);
 }
 
-module.exports = { DIMENSIONS, assertAction, commitmentsFor, completeAssessment, findingKind, isDocumentationPath, obligationBrief, reportNotice, reviewGate, reviewProgress, sharesCumulativeAssessment, targetById, taskById, transition, unresolvedFindings };
+module.exports = { DIMENSIONS, assertAction, commitmentsFor, completeAssessment, findingKind, historicalDischarge, isDocumentationPath, obligationBrief, reportNotice, reviewGate, reviewProgress, sameClosingRecord, sharesCumulativeAssessment, targetById, taskById, transition, unresolvedFindings };

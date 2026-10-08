@@ -8,6 +8,7 @@ const { spawnSync } = require('node:child_process');
 const { resolveTrustedExecutable } = require('../filesystem-primitives');
 const { claudeSettings, withCodex } = require('./native-host');
 const { digest, parseJson, readBytes, requireValue, writeNew } = require('./io');
+const { optionalHookDiagnostic } = require('./hook-diagnostics');
 
 const EVENTS = Object.freeze({ SessionStart: 'sessionStart', PreCompact: 'preCompact', Stop: 'stop' });
 const EVENT_KEYS = Object.freeze({ SessionStart: 'session_start', PreCompact: 'pre_compact', Stop: 'stop' });
@@ -149,18 +150,22 @@ async function claudeHooksDisabled(profile, context, options = {}) {
   return disabled;
 }
 
-// One classification of a hook inspection. Admission and guidance both consume this
-// verdict rather than re-deriving one from the raw fields, so a state cannot be split at
-// one call site and merged at another.
-function classifyHooks(nativeState) {
+// Hook classification is shared; recovery guidance reflects the caller's admission contract.
+function classifyHooks(nativeState, { continuationOptional = false } = {}) {
+  const failure = (state, code, cause, message, guidance) => ({
+    state,
+    code,
+    message: continuationOptional ? optionalHookDiagnostic(cause) : message,
+    guidance: continuationOptional ? 'Continue authorized work in the active turn under valid ownership and operation permissions; leave hooks unchanged unless the user directs restoration. If the session stops, resumption may be needed.' : guidance,
+  });
   if (nativeState.disabled === true) {
-    return { state: 'disabled', code: 'nightshift-disabled', message: DISABLED_MESSAGE, guidance: 'Nightshift hooks are disabled for this profile or project; enable them explicitly, then open or reopen a native session.' };
+    return failure('disabled', 'nightshift-disabled', 'Nightshift hooks are disabled', DISABLED_MESSAGE, 'Nightshift hooks are disabled for this profile or project; enable them explicitly, then open or reopen a native session.');
   }
   if (nativeState.configured === false) {
-    return { state: 'unconfigured', code: 'nightshift-disabled', message: 'Nightshift hooks were removed or changed; reconcile them explicitly before using Nightshift', guidance: 'Reconcile the registered hook definitions, then open or reopen a native session.' };
+    return failure('unconfigured', 'nightshift-disabled', 'Nightshift hooks were removed or changed', 'Nightshift hooks were removed or changed; reconcile them explicitly before using Nightshift', 'Reconcile the registered hook definitions, then open or reopen a native session.');
   }
   if (!nativeState.usable) {
-    return { state: 'untrusted', code: 'hook-activation-required', message: 'Nightshift hooks are not trusted on this host; restore native trust and reopen the session', guidance: 'Review and trust the installed hook definitions, then open or reopen a native session.' };
+    return failure('untrusted', 'hook-activation-required', 'Nightshift hooks are not trusted on this host', 'Nightshift hooks are not trusted on this host; restore native trust and reopen the session', 'Review and trust the installed hook definitions, then open or reopen a native session.');
   }
   return { state: 'usable', code: null, message: null, guidance: 'Use a native session that has observed this generation; open or reopen if yours has not.' };
 }

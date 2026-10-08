@@ -1,5 +1,7 @@
 'use strict';
 
+const { fixtureReport } = require('./fixtures/report');
+const { fixtureContinuation } = require('./fixtures/continuation');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
@@ -45,9 +47,12 @@ function fixture(t, tasks = [CODE_TASK], options = {}) {
   const baseSha = git(root, ['rev-parse', 'HEAD']);
   const store = new RunStore(root, { create: true });
   t.after(() => { store.close(); fs.rmSync(root, { recursive: true, force: true }); });
-  store.create({ objective: 'Deliver accepted work', authority: 'User agreed the scope', controller: actor, controllerClaim: fixtureControllerClaim(actor), tasks, ...options });
+  store.create({ mechanism: fixtureContinuation(), objective: 'Deliver accepted work', authority: 'User agreed the scope', controller: actor, controllerClaim: fixtureControllerClaim(actor), tasks, ...options });
   let sequence = 0;
-  const act = request => store.update(actor, store.read().revision, request.action, state => transition(state, request));
+  const act = request => {
+    fixtureReport(store, actor, request);
+    return store.update(actor, store.read().revision, request.action, state => transition(state, request));
+  };
   const assessment = (kind, covered, findings = [], overrides = {}) => {
     sequence++;
     const coveredTasks = store.read().tasks.filter(task => covered.includes(task.id));
@@ -124,6 +129,31 @@ function agent(calls, dimensions, findings = []) {
     return { host: options.host, model: options.model, effort: options.effort, session, attributionVerified: true, status: 'complete', output: report, tokens: 0 };
   };
 }
+
+for (const [label, alter, expected] of [
+  ['unchanged record whose current accounting row is lost', f => f.store.db.prepare('DELETE FROM accounting_commits WHERE run_id=? AND revision=?').run(f.store.read().id, f.store.read().revision), null],
+  ['record replaced under the same binding', f => f.store.update(actor, f.store.read().revision, 'fixture-closing-replacement', state => { state.closing.docs.occurrence = 'replacement-occurrence'; }), 'closing-origin-changed'],
+  ['earlier record identified by its captured origin', f => f.store.update(actor, f.store.read().revision, 'fixture-earlier-record', state => { delete state.closing.docs.occurrence; delete state.workers.at(-1).closingOccurrence; }), null],
+  ['earlier record whose worker captured no origin', f => f.store.update(actor, f.store.read().revision, 'fixture-earlier-record', state => { delete state.closing.docs.occurrence; delete state.workers.at(-1).closingOccurrence; state.workers.at(-1).progressOrigin = null; }), 'closing-origin-changed'],
+]) test(`closing review import of the ${label}`, async t => {
+  const f = fixture(t);
+  completeTask(f);
+  close(f);
+  const run = (request, overrides) => executeWithFixtureController(f.root, { actor, revision: f.store.read().revision, ...request }, overrides);
+  const review = { kind: 'docs', baseSha: f.baseSha, requirements: 'Tracking edits after triage', rules: 'Do not edit reviewed inputs.', candidates: [{ host: 'claude', model: 'claude-fable-5-1', effort: 'high' }] };
+  const dispatched = await run({ action: 'dispatch', taskId: CLOSING_TARGET, review }, { runAgent: agent([], DIMENSIONS.docs) });
+  assert.equal(f.store.read().workers.at(-1).closingOccurrence, f.store.read().closing.docs.occurrence);
+  alter(f);
+  const reviews = f.store.read().closing.docs.reviews.length;
+  const imported = run({ action: 'review', taskId: CLOSING_TARGET, receipt: path.relative(f.root, dispatched.receiptFile).split(path.sep).join('/') });
+  if (expected) {
+    await assert.rejects(imported, { code: expected });
+    assert.equal(f.store.read().closing.docs.reviews.length, reviews);
+  } else {
+    await imported;
+    assert.equal(f.store.read().closing.docs.reviews.length, reviews + 1);
+  }
+});
 
 test('a docs review is dispatched with the documentation lens, and its skeptic takes that lens', async t => {
   const f = fixture(t);
@@ -574,8 +604,11 @@ test('a Git failure never waives closing coverage, and outside Git any documenta
     fs.writeFileSync(path.join(root, '.nightshift', 'features', 'idea.md'), '# Idea\n');
     const store = new RunStore(root, { create: true });
     stores.push(store);
-    store.create({ objective: 'Reflect outside Git', authority: 'User agreed', controller: actor, controllerClaim: fixtureControllerClaim(actor), tasks: lore });
-    const act = request => store.update(actor, store.read().revision, request.action, state => transition(state, request));
+    store.create({ mechanism: fixtureContinuation(), objective: 'Reflect outside Git', authority: 'User agreed', controller: actor, controllerClaim: fixtureControllerClaim(actor), tasks: lore });
+    const act = request => {
+    fixtureReport(store, actor, request);
+    return store.update(actor, store.read().revision, request.action, state => transition(state, request));
+  };
     act({ action: 'advance', taskId: 'lessons', evidence: 'Retrospective completed' });
     act({ action: 'triage', evidence: 'Follow-ups triaged' });
     return { root, store, act };
@@ -688,5 +721,6 @@ test('wait keeps observing a closing-record worker on a complete run and still e
 test('the closing identity cannot name a queue task', t => {
   const f = fixture(t);
   f.act({ action: 'stop', kind: 'user-stop', reason: 'Make room for a new run' });
-  assert.throws(() => f.store.create({ objective: 'Next work', authority: 'User agreed', controller: actor, tasks: [{ ...CODE_TASK, id: CLOSING_TARGET }] }), { code: 'invalid-queue' });
+  f.store.update(actor, f.store.read().revision, 'fixture-finished-prior-work', state => { for (const task of state.tasks) { task.status = 'complete'; task.stage = 'complete'; } });
+  assert.throws(() => f.store.create({ mechanism: fixtureContinuation(), objective: 'Next work', authority: 'User agreed', controller: actor, tasks: [{ ...CODE_TASK, id: CLOSING_TARGET }] }), { code: 'invalid-queue' });
 });

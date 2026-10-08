@@ -1,5 +1,6 @@
 'use strict';
 
+const { fixtureContinuation } = require('./fixtures/continuation');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -109,7 +110,7 @@ test('injected native observations do not grant a missing or mismatched controll
   const f = fixture(t);
   const store = new RunStore(f.root, { create: true });
   const actor = { host: 'codex', session: 'controller' };
-  store.create({ objective: f.requirements, authority: 'User', controller: actor, tasks: [{ id: f.taskId, title: 'Work', agreement: { source: 'User', outcome: f.requirements } }] });
+  store.create({ mechanism: fixtureContinuation(), objective: f.requirements, authority: 'User', controller: actor, tasks: [{ id: f.taskId, title: 'Work', agreement: { source: 'User', outcome: f.requirements } }] });
   let calls = 0;
   const dispatch = dependencies => executeWithFixtureController(f.root, { action: 'dispatch', actor, revision: store.read().revision, taskId: f.taskId, review: { ...f, kind: 'code' } }, { runAgent: () => { calls++; throw new Error('Unexpected model call'); }, ...dependencies });
   try {
@@ -129,7 +130,7 @@ test('a dispatch whose helper inspection fails names the cause and reserves noth
   const f = fixture(t);
   const store = new RunStore(f.root, { create: true });
   const actor = { host: 'codex', session: 'controller' };
-  store.create({ objective: f.requirements, authority: 'User', controller: actor, tasks: [{ id: f.taskId, title: 'Work', agreement: { source: 'User', outcome: f.requirements } }] });
+  store.create({ mechanism: fixtureContinuation(), objective: f.requirements, authority: 'User', controller: actor, tasks: [{ id: f.taskId, title: 'Work', agreement: { source: 'User', outcome: f.requirements } }] });
   store.update(actor, 0, 'fixture-claim', state => { state.controllerClaim = fixtureControllerClaim(actor); });
   let calls = 0;
   const information = (pid, host, root, options) => { options?.onFailure?.('PowerShell exited with code 1: Get-CimInstance failed; retry: timed out after 29600 ms'); return null; };
@@ -155,7 +156,7 @@ for (const owner of ['docs', 'code']) {
       { id: 'lessons', title: 'Retrospective proposal', kind: 'lore' },
       { id: f.taskId, title: 'Current ' + owner, kind: owner },
     ].map(task => ({ ...task, agreement: { source: 'User', outcome: task.title } }));
-    store.create({ objective: f.requirements, authority: 'User', controller: actor, controllerClaim: fixtureControllerClaim(actor), tasks });
+    store.create({ mechanism: fixtureContinuation(), objective: f.requirements, authority: 'User', controller: actor, controllerClaim: fixtureControllerClaim(actor), tasks });
     store.update(actor, store.read().revision, 'fixture-completed-tasks', state => { for (const task of state.tasks) if (task.id !== f.taskId) task.status = 'complete'; });
     let requirements;
     try {
@@ -172,7 +173,7 @@ test('invalid skeptic assignments reject before workers or model attempts are cr
   const f = fixture(t);
   const store = new RunStore(f.root, { create: true });
   const actor = { host: 'codex', session: 'controller' };
-  store.create({ objective: f.requirements, authority: 'User', controller: actor, controllerClaim: fixtureControllerClaim(actor), tasks: [{ id: f.taskId, title: 'Work', agreement: { source: 'User', outcome: f.requirements } }] });
+  store.create({ mechanism: fixtureContinuation(), objective: f.requirements, authority: 'User', controller: actor, controllerClaim: fixtureControllerClaim(actor), tasks: [{ id: f.taskId, title: 'Work', agreement: { source: 'User', outcome: f.requirements } }] });
   let calls = 0;
   try {
     for (const [findings, code] of [['not-an-array', 'invalid-skeptic-assignment'], [[{ id: 'same' }, { id: 'same' }], 'invalid-skeptic-assignment'], [[{ id: '' }], 'invalid-request']]) {
@@ -188,7 +189,7 @@ test('dispatch refuses an abbreviated, symbolic or uppercase base and names the 
   const f = fixture(t);
   const store = new RunStore(f.root, { create: true });
   const actor = { host: 'codex', session: 'controller' };
-  store.create({ objective: f.requirements, authority: 'User', controller: actor, controllerClaim: fixtureControllerClaim(actor), tasks: [{ id: f.taskId, title: 'Work', agreement: { source: 'User', outcome: f.requirements } }] });
+  store.create({ mechanism: fixtureContinuation(), objective: f.requirements, authority: 'User', controller: actor, controllerClaim: fixtureControllerClaim(actor), tasks: [{ id: f.taskId, title: 'Work', agreement: { source: 'User', outcome: f.requirements } }] });
   let calls = 0;
   try {
     assert.doesNotThrow(() => validateBase(f.root, f.baseSha));
@@ -206,7 +207,7 @@ for (const adoptionCase of ['historical-import', 'adopter-authored', 'already-im
     const store = new RunStore(f.root, { create: true });
     const actor = { host: 'codex', session: 'controller' };
     const adopter = { host: 'claude', session: adoptionCase === 'historical-import' ? 'adopter' : 'fresh-session' };
-    const created = store.create({ objective: f.requirements, authority: 'User', controller: actor, controllerClaim: fixtureControllerClaim(actor), tasks: [{ id: f.taskId, title: 'Work', kind: 'docs', agreement: { source: 'User', outcome: f.requirements } }] });
+    const created = store.create({ mechanism: fixtureContinuation(), objective: f.requirements, authority: 'User', controller: actor, controllerClaim: fixtureControllerClaim(actor), tasks: [{ id: f.taskId, title: 'Work', kind: 'docs', agreement: { source: 'User', outcome: f.requirements } }] });
     const act = (request, owner = store.read().controller) => executeWithFixtureController(f.root, { actor: owner, revision: store.read().revision, taskId: f.taskId, ...request });
     try {
       const lead = await executeWithFixtureController(f.root, { action: 'dispatch', actor, revision: store.read().revision, taskId: f.taskId, review: { ...f, kind: 'code' } }, { runAgent: options => mockAgent(options) });
@@ -215,6 +216,7 @@ for (const adoptionCase of ['historical-import', 'adopter-authored', 'already-im
       await act({ action: 'stop', kind: 'user-stop', reason: 'User switches host' });
       await act({ action: 'adopt', runId: created.id, previousController: actor, authority: 'User adopts preserved fixture work' }, adopter);
       await act({ action: 'resume', authority: 'User resumes adopted work' });
+      await act({ action: 'continuation', mechanism: fixtureContinuation(adopter.host) });
       if (adoptionCase === 'adopter-authored') {
         await assert.rejects(act({ action: 'review', receipt }), { code: 'wrong-result' });
       } else {
@@ -233,7 +235,7 @@ test('receipt maintenance can import produced evidence without acquiring a new e
   const f = fixture(t);
   const store = new RunStore(f.root, { create: true });
   const actor = { host: 'codex', session: 'controller' };
-  store.create({ objective: f.requirements, authority: 'User', controller: actor, controllerClaim: fixtureControllerClaim(actor), tasks: [{ id: f.taskId, title: 'Work', agreement: { source: 'User', outcome: f.requirements } }] });
+  store.create({ mechanism: fixtureContinuation(), objective: f.requirements, authority: 'User', controller: actor, controllerClaim: fixtureControllerClaim(actor), tasks: [{ id: f.taskId, title: 'Work', agreement: { source: 'User', outcome: f.requirements } }] });
   const relative = result => path.relative(f.root, result.receiptFile).split(path.sep).join('/');
   const invoke = (request, overrides) => executeWithFixtureController(f.root, { actor, revision: store.read().revision, taskId: f.taskId, ...request }, overrides);
   const unavailable = { nativeOwner: () => { throw new Error('Maintenance must not require native controller inspection'); } };
@@ -257,7 +259,7 @@ for (const hasFinding of [false, true]) {
     const f = fixture(t);
     const store = new RunStore(f.root, { create: true });
     const actor = { host: 'codex', session: 'controller' };
-    store.create({ objective: f.requirements, authority: 'User', controller: actor, controllerClaim: fixtureControllerClaim(actor), tasks: [{ id: f.taskId, title: 'Work', agreement: { source: 'User', outcome: f.requirements } }] });
+    store.create({ mechanism: fixtureContinuation(), objective: f.requirements, authority: 'User', controller: actor, controllerClaim: fixtureControllerClaim(actor), tasks: [{ id: f.taskId, title: 'Work', agreement: { source: 'User', outcome: f.requirements } }] });
     const act = request => executeWithFixtureController(f.root, { actor, revision: store.read().revision, taskId: f.taskId, ...request });
     const receiptPath = result => path.relative(f.root, result.receiptFile).split(path.sep).join('/');
     const dispatch = (kind, assigned, output) => executeWithFixtureController(f.root, { action: 'dispatch', actor, revision: store.read().revision, taskId: f.taskId, review: { ...f, kind, findings: assigned } }, { runAgent: options => mockAgent(options, DIMENSIONS.code, { findings: output, session: kind === 'skeptic' ? 'skeptic' : 'lead' }) });
@@ -302,7 +304,7 @@ for (const fallback of [false, true]) {
     const f = fixture(t);
     const store = new RunStore(f.root, { create: true });
     const actor = { host: 'codex', session: 'controller' };
-    store.create({ objective: f.requirements, authority: 'User', controller: actor, controllerClaim: fixtureControllerClaim(actor), tasks: [{ id: f.taskId, title: 'Work', agreement: { source: 'User', outcome: f.requirements } }] });
+    store.create({ mechanism: fixtureContinuation(), objective: f.requirements, authority: 'User', controller: actor, controllerClaim: fixtureControllerClaim(actor), tasks: [{ id: f.taskId, title: 'Work', agreement: { source: 'User', outcome: f.requirements } }] });
     try {
       const candidates = fallback ? [{ host: 'codex', model: 'gpt-6-astra', effort: 'medium' }, ...f.candidates] : f.candidates;
       const result = await executeWithFixtureController(f.root, { action: 'dispatch', actor, revision: store.read().revision, taskId: f.taskId, review: { ...f, kind: 'code', candidates, substitutionReason: 'First permitted host unavailable in fixture' } }, { runAgent: options => {
@@ -435,7 +437,7 @@ for (const failure of ['returned-failed', 'unattributed', 'malformed', 'thrown-e
     const f = fixture(t);
     const store = new RunStore(f.root, { create: true });
     const actor = { host: 'codex', session: 'controller' };
-    store.create({ objective: f.requirements, authority: 'User', controller: actor, controllerClaim: fixtureControllerClaim(actor), tasks: [{ id: f.taskId, title: 'Work', agreement: { source: 'User', outcome: f.requirements } }] });
+    store.create({ mechanism: fixtureContinuation(), objective: f.requirements, authority: 'User', controller: actor, controllerClaim: fixtureControllerClaim(actor), tasks: [{ id: f.taskId, title: 'Work', agreement: { source: 'User', outcome: f.requirements } }] });
     let calls = 0;
     try {
       const result = await executeWithFixtureController(f.root, { action: 'dispatch', actor, revision: 0, taskId: f.taskId, review: { ...f, candidates: [...f.candidates, { host: 'codex', model: 'gpt-6-astra', effort: 'high' }], substitutionReason: 'First permitted candidate failed' } }, { runAgent: options => {
@@ -525,7 +527,7 @@ test('dispatch is durable before the agent starts, and a skeptic receipt cannot 
   const f = fixture(t);
   const store = new RunStore(f.root, { create: true });
   const actor = { host: 'codex', session: 'controller' };
-  store.create({ objective: f.requirements, authority: 'User handover', controller: actor, controllerClaim: fixtureControllerClaim(actor), tasks: [{ id: f.taskId, title: 'Review fixture', agreement: { source: 'User', outcome: f.requirements } }] });
+  store.create({ mechanism: fixtureContinuation(), objective: f.requirements, authority: 'User handover', controller: actor, controllerClaim: fixtureControllerClaim(actor), tasks: [{ id: f.taskId, title: 'Review fixture', agreement: { source: 'User', outcome: f.requirements } }] });
   let release;
   let started;
   const startedPromise = new Promise(resolve => { started = resolve; });
@@ -557,7 +559,7 @@ test('missing required dispatch text is rejected before workers or copies are cr
   const f = fixture(t);
   const store = new RunStore(f.root, { create: true });
   const actor = { host: 'codex', session: 'controller' };
-  store.create({ objective: f.requirements, authority: 'User', controller: actor, controllerClaim: fixtureControllerClaim(actor), tasks: [{ id: f.taskId, title: 'Work', agreement: { source: 'User', outcome: f.requirements } }] });
+  store.create({ mechanism: fixtureContinuation(), objective: f.requirements, authority: 'User', controller: actor, controllerClaim: fixtureControllerClaim(actor), tasks: [{ id: f.taskId, title: 'Work', agreement: { source: 'User', outcome: f.requirements } }] });
   try {
     for (const field of ['requirements', 'rules']) await assert.rejects(executeWithFixtureController(f.root, { action: 'dispatch', actor, revision: 0, taskId: f.taskId, review: { ...f, [field]: undefined } }, { runAgent: mockAgent }), { code: 'invalid-request' });
     assert.equal(store.read().workers.length, 0);
@@ -570,7 +572,7 @@ test('a Codex-shaped native receipt imports through the actual controller bounda
   const f = fixture(t);
   const store = new RunStore(f.root, { create: true });
   const actor = { host: 'claude', session: 'controller' };
-  store.create({ objective: f.requirements, authority: 'User', controller: actor, controllerClaim: fixtureControllerClaim(actor), tasks: [{ id: f.taskId, title: 'Work', agreement: { source: 'User', outcome: f.requirements } }] });
+  store.create({ mechanism: fixtureContinuation(), objective: f.requirements, authority: 'User', controller: actor, controllerClaim: fixtureControllerClaim(actor), tasks: [{ id: f.taskId, title: 'Work', agreement: { source: 'User', outcome: f.requirements } }] });
   try {
     const result = await executeWithFixtureController(f.root, { action: 'dispatch', actor, revision: 0, taskId: f.taskId, review: { ...f, candidates: [{ host: 'codex', model: 'gpt-6-astra' }] } }, { runAgent: options => {
       assert.equal(options.protectedRoot, fs.realpathSync.native(f.root));
@@ -585,7 +587,7 @@ test('dispatch allowance counts attempts and prevents an otherwise valid fallbac
   const f = fixture(t);
   const store = new RunStore(f.root, { create: true });
   const actor = { host: 'codex', session: 'controller' };
-  store.create({ objective: f.requirements, authority: 'User', controller: actor, controllerClaim: fixtureControllerClaim(actor), limits: { maxDispatches: 1 }, tasks: [{ id: f.taskId, title: 'Work', agreement: { source: 'User', outcome: f.requirements } }] });
+  store.create({ mechanism: fixtureContinuation(), objective: f.requirements, authority: 'User', controller: actor, controllerClaim: fixtureControllerClaim(actor), limits: { maxDispatches: 1 }, tasks: [{ id: f.taskId, title: 'Work', agreement: { source: 'User', outcome: f.requirements } }] });
   let calls = 0;
   try {
     await assert.rejects(executeWithFixtureController(f.root, { action: 'dispatch', actor, revision: 0, taskId: f.taskId, review: { ...f, candidates: [{ host: 'codex', model: 'gpt-6-astra' }, ...f.candidates], substitutionReason: 'First host unavailable' } }, { runAgent: () => { calls++; throw new Error('Host unavailable'); } }), { code: 'resource-limit' });
@@ -598,7 +600,7 @@ test('fallback prerequisites and the attempt timeout are refused before any work
   const f = fixture(t);
   const store = new RunStore(f.root, { create: true });
   const actor = { host: 'codex', session: 'controller' };
-  store.create({ objective: f.requirements, authority: 'User', controller: actor, controllerClaim: fixtureControllerClaim(actor), tasks: [{ id: f.taskId, title: 'Work', agreement: { source: 'User', outcome: f.requirements } }] });
+  store.create({ mechanism: fixtureContinuation(), objective: f.requirements, authority: 'User', controller: actor, controllerClaim: fixtureControllerClaim(actor), tasks: [{ id: f.taskId, title: 'Work', agreement: { source: 'User', outcome: f.requirements } }] });
   const withFallback = [{ host: 'codex', model: 'gpt-6-astra', effort: 'high' }, ...f.candidates];
   let calls = 0;
   try {
@@ -625,7 +627,7 @@ function boundRun(t, f, operationDeadlineUtc) {
   const resources = { schema: 1, store: fs.realpathSync.native(directory), registration: 'a'.repeat(64), session: 'controller', identity: '1.0.0-' + 'b'.repeat(64) };
   const actor = { host: 'codex', session: 'controller' };
   const store = new RunStore(f.root, { create: true });
-  store.create({ objective: f.requirements, authority: 'User', controller: actor, controllerClaim: fixtureControllerClaim(actor), resources, resourceMode: 'bound', tasks: [{ id: f.taskId, title: 'Work', agreement: { source: 'User', outcome: f.requirements } }] });
+  store.create({ mechanism: fixtureContinuation(), objective: f.requirements, authority: 'User', controller: actor, controllerClaim: fixtureControllerClaim(actor), resources, resourceMode: 'bound', tasks: [{ id: f.taskId, title: 'Work', agreement: { source: 'User', outcome: f.requirements } }] });
   return { store, actor, context: { ...resources, mode: 'bound', bundle: 'fixture-bundle', operation: 'fixture-operation', operationDeadlineUtc } };
 }
 
@@ -673,7 +675,7 @@ test('spec receipt freshness follows the governing spec before and after accepta
   fs.writeFileSync(path.join(f.root, 'spec.md'), '# Accepted behavior\n');
   const store = new RunStore(f.root, { create: true });
   const actor = { host: 'codex', session: 'controller' };
-  store.create({ objective: f.requirements, authority: 'User', controller: actor, controllerClaim: fixtureControllerClaim(actor), tasks: [{ id: 'spec', title: 'Spec', kind: 'spec', agreement: { source: 'User', outcome: f.requirements, spec: 'spec.md' } }, { id: 'code', title: 'Code', agreement: { source: 'User', outcome: f.requirements, spec: 'spec.md', specReviewTaskId: 'spec' } }] });
+  store.create({ mechanism: fixtureContinuation(), objective: f.requirements, authority: 'User', controller: actor, controllerClaim: fixtureControllerClaim(actor), tasks: [{ id: 'spec', title: 'Spec', kind: 'spec', agreement: { source: 'User', outcome: f.requirements, spec: 'spec.md' } }, { id: 'code', title: 'Code', agreement: { source: 'User', outcome: f.requirements, spec: 'spec.md', specReviewTaskId: 'spec' } }] });
   const act = request => executeWithFixtureController(f.root, { actor, revision: store.read().revision, ...request });
   const dispatch = () => executeWithFixtureController(f.root, { action: 'dispatch', actor, revision: store.read().revision, taskId: 'spec', review: { ...f, kind: 'spec' } }, { runAgent: options => mockAgent(options, DIMENSIONS.spec) });
   try {
@@ -697,7 +699,7 @@ for (const interleaved of [true, false]) {
     const f = fixture(t);
     const store = new RunStore(f.root, { create: true });
     const actor = { host: 'codex', session: 'controller' };
-    store.create({ objective: f.requirements, authority: 'User', controller: actor, controllerClaim: fixtureControllerClaim(actor), tasks: [{ id: f.taskId, title: 'Work', agreement: { source: 'User', outcome: f.requirements } }] });
+    store.create({ mechanism: fixtureContinuation(), objective: f.requirements, authority: 'User', controller: actor, controllerClaim: fixtureControllerClaim(actor), tasks: [{ id: f.taskId, title: 'Work', agreement: { source: 'User', outcome: f.requirements } }] });
     const act = request => executeWithFixtureController(f.root, { actor, revision: store.read().revision, taskId: f.taskId, ...request });
     const receiptPath = result => path.relative(f.root, result.receiptFile).split(path.sep).join('/');
     const dispatch = (kind, assigned, output, { review = {}, session } = {}) => executeWithFixtureController(f.root, { action: 'dispatch', actor, revision: store.read().revision, taskId: f.taskId, review: { ...f, kind, findings: assigned, ...review } }, { runAgent: options => mockAgent(options, DIMENSIONS[kind === 'docs' ? 'docs' : 'code'], { findings: output, session: session ?? { skeptic: 'skeptic-session', docs: 'docs-session' }[kind] ?? 'lead-session' }) });
@@ -887,7 +889,7 @@ test('rejected initial bases cannot pin an unusable cumulative scope', async t =
   const f = fixture(t);
   const store = new RunStore(f.root, { create: true });
   const actor = { host: 'codex', session: 'controller' };
-  store.create({ objective: f.requirements, authority: 'User', controller: actor, controllerClaim: fixtureControllerClaim(actor), tasks: [{ id: f.taskId, title: 'Work', agreement: { source: 'User', outcome: f.requirements } }] });
+  store.create({ mechanism: fixtureContinuation(), objective: f.requirements, authority: 'User', controller: actor, controllerClaim: fixtureControllerClaim(actor), tasks: [{ id: f.taskId, title: 'Work', agreement: { source: 'User', outcome: f.requirements } }] });
   try {
     for (const baseSha of ['invalid', 'f'.repeat(40)]) {
       await assert.rejects(executeWithFixtureController(f.root, { action: 'dispatch', actor, revision: store.read().revision, taskId: f.taskId, review: { ...f, baseSha } }, { runAgent: mockAgent }));
@@ -905,7 +907,7 @@ for (const changedId of ['current', 'earlier']) {
     const f = fixture(t);
     const store = new RunStore(f.root, { create: true });
     const actor = { host: 'codex', session: 'controller' };
-    store.create({ objective: 'Accepted fixture outcomes', authority: 'User', controller: actor, controllerClaim: fixtureControllerClaim(actor), tasks: ['earlier', 'current'].map(id => ({ id, title: id, agreement: { source: 'User', outcome: 'Original ' + id } })) });
+    store.create({ mechanism: fixtureContinuation(), objective: 'Accepted fixture outcomes', authority: 'User', controller: actor, controllerClaim: fixtureControllerClaim(actor), tasks: ['earlier', 'current'].map(id => ({ id, title: id, agreement: { source: 'User', outcome: 'Original ' + id } })) });
     store.update(actor, store.read().revision, 'fixture-prior-work', state => { state.tasks[0].status = 'complete'; });
     let start;
     let release;
@@ -934,7 +936,7 @@ for (const kind of ['docs', 'lore']) {
     const f = fixture(t);
     const actor = { host: 'codex', session: 'controller' };
     const store = new RunStore(f.root, { create: true });
-    store.create({ objective: 'Assess the standalone artifact', authority: 'User requested standalone maintenance', controller: actor, controllerClaim: fixtureControllerClaim(actor), tasks: [{ id: f.taskId, title: 'Standalone maintenance', kind, agreement: { source: 'User', outcome: 'Review the requested artifact and retain any instruction approval as pending' } }] });
+    store.create({ mechanism: fixtureContinuation(), objective: 'Assess the standalone artifact', authority: 'User requested standalone maintenance', controller: actor, controllerClaim: fixtureControllerClaim(actor), tasks: [{ id: f.taskId, title: 'Standalone maintenance', kind, agreement: { source: 'User', outcome: 'Review the requested artifact and retain any instruction approval as pending' } }] });
     const act = request => executeWithFixtureController(f.root, { actor, revision: store.read().revision, taskId: f.taskId, ...request });
     const assess = async (lens = 'code') => {
       const result = await executeWithFixtureController(f.root, { action: 'dispatch', actor, revision: store.read().revision, taskId: f.taskId, review: { ...f, kind: lens } }, { runAgent: options => mockAgent(options, DIMENSIONS[lens]) });

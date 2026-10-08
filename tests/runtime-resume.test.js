@@ -1,5 +1,7 @@
 'use strict';
 
+const { fixtureReport } = require('./fixtures/report');
+const { fixtureContinuation } = require('./fixtures/continuation');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -70,7 +72,7 @@ function fixture(t, tasks = [{ id: 'task', title: 'Work', agreement: { source: '
   fs.writeFileSync(path.join(root, 'subject.txt'), 'after\r\n');
   const store = new RunStore(root, { create: true });
   t.after(() => { store.close(); fs.rmSync(root, { recursive: true, force: true }); });
-  store.create({ objective: 'Deliver the accepted change', authority: 'User agreed the scope', controller: actor, controllerClaim: fixtureControllerClaim(actor), tasks });
+  store.create({ mechanism: fixtureContinuation(), objective: 'Deliver the accepted change', authority: 'User agreed the scope', controller: actor, controllerClaim: fixtureControllerClaim(actor), tasks });
   const base = { baseSha, requirements: 'Change both paths correctly', rules: 'Do not mutate reviewed inputs.' };
   const act = (request, overrides) => executeWithFixtureController(root, { actor, revision: store.read().revision, taskId: 'task', ...request }, overrides);
   const receipt = result => path.relative(root, result.receiptFile).split(path.sep).join('/');
@@ -1037,9 +1039,12 @@ function lifecycleFixture(t, tasks) {
   git(root, ['-c', 'user.name=Nightshift fixture', '-c', 'user.email=a.stenlund@gmail.com', 'commit', '--quiet', '-m', 'test(fixture): establish lifecycle baseline']);
   const store = new RunStore(root, { create: true });
   t.after(() => { store.close(); fs.rmSync(root, { recursive: true, force: true }); });
-  store.create({ objective: 'Deliver accepted work', authority: 'User agreed the scope', controller: actor, controllerClaim: fixtureControllerClaim(actor), tasks });
+  store.create({ mechanism: fixtureContinuation(), objective: 'Deliver accepted work', authority: 'User agreed the scope', controller: actor, controllerClaim: fixtureControllerClaim(actor), tasks });
   let sequence = 0;
-  const act = request => store.update(actor, store.read().revision, request.action, state => transition(state, request));
+  const act = request => {
+    fixtureReport(store, actor, request);
+    return store.update(actor, store.read().revision, request.action, state => transition(state, request));
+  };
   const assessment = (kind, covered, overrides = {}) => {
     sequence++;
     const coveredTasks = store.read().tasks.filter(task => covered.includes(task.id));

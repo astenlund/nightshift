@@ -6,12 +6,13 @@ const { requireCondition, text } = require('./store');
 const { projectFile } = require('./evidence');
 const { workerIsActive } = require('./workers');
 const { CLOSING_TARGET } = require('./actions');
+const { isReviewContext } = require('./records');
 const processes = require('../releases/processes');
 const { nativeEvidenceRequests, nativeWorkerTermination } = require('./native-worker-evidence');
 
 const ADOPTION_PROTOCOL = 1;
 // Closing duties survive process replacement and never grant canonical engineering.
-const CLAIM_EXEMPT = new Set(['claim-controller', 'invalidate-continuation', 'resume', 'stop', 'block', 'unblock', 'followup', 'resolve-followup', 'worker-finished', 'continuation', 'handover', 'report', 'report-delivered', 'spec-accepted', 'retrospective', 'triage', 'review', 'validate', 'dialogue']);
+const CLAIM_EXEMPT = new Set(['claim-controller', 'invalidate-continuation', 'resume', 'hold', 'stop', 'block', 'unblock', 'followup', 'resolve-followup', 'worker-finished', 'continuation', 'handover', 'report', 'report-delivered', 'spec-accepted', 'retrospective', 'triage', 'review', 'validate', 'dialogue']);
 
 function identity(value) {
   return value && ['claude', 'codex'].includes(value.host) && typeof value.session === 'string' && value.session.trim().length > 0;
@@ -58,6 +59,10 @@ function assertControllerClaim(state, request, dependencies) {
   // A complete run admits no engineering claim, so its closing docs review is owner bookkeeping like the report operations.
   if (state.status === 'complete' && request.taskId === CLOSING_TARGET) return;
   const observation = observeController(state.root, request.actor, dependencies);
+  if (isReviewContext(state)) {
+    requireCondition(observation.process, 'review-owner-unavailable', observation.reason);
+    return controllerClaim(request.actor, observation, state.revision + 1);
+  }
   // A saved claim may still be valid when only the inspection failed, so that refusal names the failure instead of asking for a new claim.
   requireCondition(!observation.inspectionFailed, 'controller-claim-required', observation.reason);
   requireCondition(observation.process && isDeepStrictEqual(state.controllerClaim?.controller, request.actor) && isDeepStrictEqual(state.controllerClaim?.process, observation.process), 'controller-claim-required', 'Obtain a successful claim-controller in this turn before engineering; a missing, failed or previous process claim grants no work');
@@ -138,7 +143,7 @@ function adoptState(state, request, resources, dependencies = {}) {
   }
   const eligibility = { sourceStatus: state.status, controller: null, workers: [], quiescenceEvidence: request.quiescenceEvidence ?? null };
   if (state.status === 'running') {
-    const claim = state.controllerClaim;
+    const claim = isReviewContext(state) ? state.ownerObservation : state.controllerClaim;
     requireCondition(isDeepStrictEqual(claim?.controller, state.controller) && processIdentity(claim?.process), 'controller-activity-unknown', 'The running source has no usable controller claim; stop it through its owner or preserve the blocked run');
     requireCondition((dependencies.ownerAlive ?? processes.ownerAlive)(claim.process, state.root) === false, 'controller-not-inactive', 'The exact former controller process is live or its inactivity is unknown');
     eligibility.controller = structuredClone(claim);
@@ -155,10 +160,12 @@ function adoptState(state, request, resources, dependencies = {}) {
   state.controller = { ...request.actor };
   state.executionResources = resources;
   state.status = 'stopped';
-  state.mode = 'attended';
-  state.controllerClaim = null;
-  state.continuation = null;
-  delete state.stopRecovery;
+  if (isReviewContext(state)) state.ownerObservation = null;
+  else {
+    state.controllerClaim = null;
+    state.continuation = null;
+    require('./acknowledgement').renewAcknowledgement(state, state.revision + 1, adoption.observedAt);
+  }
   state.stop ??= { kind: 'adopted', reason: 'Ownership adopted; reconcile saved termination evidence and explicitly resume before engineering' };
 }
 

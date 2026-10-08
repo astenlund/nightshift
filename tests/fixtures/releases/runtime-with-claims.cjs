@@ -9,6 +9,7 @@ const { admitEntry } = require(path.join(bundle, 'internal/releases/entry'));
 const { isReadOnlyAction } = require(path.join(bundle, 'internal/runtime/actions'));
 const admitted = admitEntry(bundle, [root, requestFile], 0, { exactProject: true, diagnostic: isReadOnlyAction(request.action) });
 const dependencies = {
+  acknowledgementObserver: require('../acknowledgement').fixtureAcknowledgement,
   resourceContext: admitted.context,
   nativeOwner: host => ({ found: true, pid: process.ppid, created: 'fixture-native-controller', name: host + '.exe' }),
   ownerAlive: owner => owner?.pid === process.ppid,

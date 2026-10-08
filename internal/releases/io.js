@@ -80,7 +80,27 @@ function hostProfile(host, value) {
 }
 
 function requireConsistentRunId(request) {
-  requireValue(!request.runId || !request.request?.runId || request.runId === request.request.runId, 'resource-run-conflict', 'Conflicting run identities were supplied');
+  const { UUID } = require('../runtime/record-ids');
+  if (Object.hasOwn(request, 'runId')) requireValue(typeof request.runId === 'string' && (UUID.test(request.runId) || request.runId.startsWith('review:') && UUID.test(request.runId.slice(7))), 'resource-run-conflict', 'Envelope selectors require a complete record identity');
+  if (request.entry === 'runtime') {
+    const target = require('../runtime/targets').runtimeTarget(request.request);
+    requireValue(request.runId === undefined || target.reference === undefined || request.runId === target.reference, 'resource-run-conflict', 'Conflicting record identities were supplied');
+    requireValue(request.runId === undefined || (target.kind === 'review') === request.runId.startsWith('review:'), 'resource-run-conflict', 'Envelope selector belongs to another record domain');
+    requireValue(request.runId === undefined || !target.creating || target.reference === request.runId, 'resource-run-conflict', 'Creation cannot ignore an envelope record selector');
+  } else requireValue(request.runId === undefined || request.request?.runId === undefined || request.runId === request.request.runId, 'resource-run-conflict', 'Conflicting run identities were supplied');
+}
+
+function normalizeRuntimeTarget(request, execution = false) {
+  if (request.entry === 'runtime' && (execution || Object.hasOwn(request, 'request'))) requireValue(request.request && typeof request.request === 'object' && !Array.isArray(request.request), 'invalid-runtime-request', 'Supply a runtime request object with action');
+  if (request.entry !== 'runtime' || request.runId === undefined) { requireConsistentRunId(request); return request; }
+  const nested = { ...request.request };
+  if (!Object.hasOwn(nested, 'runId') && !Object.hasOwn(nested, 'reviewContextId')) {
+    if (typeof request.runId === 'string' && request.runId.startsWith('review:')) nested.reviewContextId = request.runId.slice(7);
+    else nested.runId = request.runId;
+  }
+  const normalized = { ...request, request: nested };
+  requireConsistentRunId(normalized);
+  return normalized;
 }
 
 function projectRoot(value) {
@@ -95,4 +115,4 @@ function processAlive(pid) {
   catch (error) { return error.code === 'ESRCH' ? false : null; }
 }
 
-module.exports = { ReleaseError, digest, directory, hostProfile, parseJson, processAlive, projectRoot, readBytes, relativePath, replaceFile, requireConsistentRunId, requireValue, text, writeNew };
+module.exports = { ReleaseError, digest, directory, hostProfile, normalizeRuntimeTarget, parseJson, processAlive, projectRoot, readBytes, relativePath, replaceFile, requireConsistentRunId, requireValue, text, writeNew };

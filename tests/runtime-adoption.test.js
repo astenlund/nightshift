@@ -1,5 +1,6 @@
 'use strict';
 
+const { fixtureContinuation } = require('./fixtures/continuation');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -9,6 +10,7 @@ const { execute } = require('../internal/runtime/cli');
 const { RunStore } = require('../internal/runtime/store');
 const { workerTermination } = require('../internal/runtime/ownership');
 const { reservedOperation } = require('../internal/runtime/operations');
+const { fixtureAcknowledgement } = require('./fixtures/acknowledgement');
 
 const scratch = path.resolve(__dirname, '../.tmp/adoption-tests');
 const source = { host: 'codex', session: 'original-owner' };
@@ -22,8 +24,8 @@ async function fixture(t, overrides = {}) {
   let store;
   t.after(() => { store?.close(); assert.equal(path.dirname(root), scratch); fs.rmSync(root, { recursive: true, force: true }); });
   const live = new Set([originalProcess.pid, targetProcess.pid]);
-  const dependencies = { nativeOwner: host => host === 'codex' ? originalProcess : targetProcess, ownerAlive: process => live.has(process.pid) };
-  const input = { action: 'create', objective: 'Preserve authorized work through adoption', authority: 'User agreed fixture delivery', controller: source, limits: { maxDispatches: 5 }, tasks: [{ id: 'change', title: 'Change', agreement: { source: 'fixture user', outcome: 'Preserve work' } }], ...overrides };
+  const dependencies = { nativeOwner: host => host === 'codex' ? originalProcess : targetProcess, ownerAlive: process => live.has(process.pid), acknowledgementObserver: fixtureAcknowledgement };
+  const input = { action: 'handover', mechanism: fixtureContinuation(), objective: 'Preserve authorized work through adoption', authority: 'User agreed fixture delivery', controller: source, limits: { maxDispatches: 5 }, tasks: [{ id: 'change', title: 'Change', agreement: { source: 'fixture user', outcome: 'Preserve work' } }], ...overrides };
   const created = await execute(root, input, dependencies);
   store = new RunStore(root);
   const call = (request, actor = store.read().controller, overrides = {}) => execute(root, { actor, revision: store.read().revision, ...request }, { ...dependencies, ...overrides });
@@ -42,7 +44,7 @@ test('stopped open-chat adoption preserves work and fences the former owner', as
   const after = f.store.read();
   assert.equal(adopted.id, before.id);
   assert.deepEqual(after.controller, target);
-  assert.equal(after.mode, 'attended');
+  assert.equal(after.mode, undefined);
   assert.equal(after.status, 'stopped');
   assert.equal(after.controllerClaim, null);
   assert.equal(after.continuation, null);
@@ -218,6 +220,7 @@ test('new review staff cannot include any former controller after adoption', asy
   await f.call({ action: 'stop', kind: 'user-stop', reason: 'User paused' });
   await f.adopt();
   await f.call({ action: 'resume', authority: 'User resumes' });
+  await f.call({ action: 'continuation', mechanism: fixtureContinuation(target.host) });
   await assert.rejects(f.call({ action: 'worker', worker: { id: 'former', session: source.session, assignment: 'Independent review', role: 'reviewer', writes: [] } }), { code: 'nonindependent-worker' });
   await f.call({ action: 'worker', worker: { id: 'fresh', session: 'fresh-reviewer', assignment: 'Independent review', role: 'reviewer', writes: [] } });
 });
@@ -435,13 +438,13 @@ test('resumption preserves handover but cannot reuse a previously verified conti
   const before = f.store.read();
   const resumed = await f.call({ action: 'resume', authority: 'User resumes same work' });
   assert.equal(resumed.controllerReady, true);
-  assert.equal(resumed.mode, 'attended');
+  assert.equal(resumed.mode, undefined);
   assert.equal(resumed.continuation.verified, false);
   assert.deepEqual(resumed.handover, before.handover);
 });
 
 for (const adopted of [false, true]) {
-  test(`closed report bookkeeping needs ownership but no new engineering grant: adopted=${adopted}`, async t => {
+  test(`closed report bookkeeping needs ownership, apart from a completed run's report confirmation, but no new engineering grant: adopted=${adopted}`, async t => {
     const f = await fixture(t, { tasks: [{ id: 'docs', title: 'Docs', kind: 'docs', agreement: { source: 'User', outcome: 'Preserve reports' } }] });
     // The maintenance task completes through its mechanical exemption, which binds to the inventory of a repository.
     const initialized = spawnSync('git', ['init', '--quiet'], { cwd: f.root, windowsHide: true, encoding: 'utf8' });
@@ -469,7 +472,16 @@ for (const adopted of [false, true]) {
     assert.deepEqual(f.store.read().controllerClaim, state.controllerClaim);
     assert.equal(f.store.read().closing.reportDelivery.sha256, f.store.read().closing.reportEvidence.sha256);
     await assert.rejects(f.call({ action: 'claim-controller' }, owner, unavailable), { code: 'run-stopped' });
-    await assert.rejects(f.call({ action: 'report-delivered', authority: 'Wrong owner' }, { host: 'codex', session: 'intruder' }, unavailable), { code: 'stale-owner' });
+    // Another admitted session may confirm a completed run's report, since that run cannot be adopted; a stopped run's
+    // confirmation stays with its owner, and every other closing operation needs the owner either way.
+    const foreign = { host: 'codex', session: 'intruder' };
+    if (adopted) await assert.rejects(f.call({ action: 'report-delivered', authority: 'Wrong owner' }, foreign, unavailable), { code: 'stale-owner' });
+    else {
+      const delivered = f.store.read().closing.reportDelivery;
+      await f.call({ action: 'report-delivered', authority: 'Another session relays the same reply' }, foreign, unavailable);
+      assert.deepEqual(f.store.read().closing.reportDelivery, delivered);
+    }
+    await assert.rejects(f.call({ action: 'report', path: report }, foreign, unavailable), { code: 'stale-owner' });
   });
 }
 

@@ -36,6 +36,13 @@ function sessionStartContext(context) {
   return { hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext: context } };
 }
 
+function reminderEligible(state, root) {
+  if (state.status !== 'running' || !state.handover || exhaustedLimit(state)) return false;
+  const brief = obligationBrief(state, root, { verifyFreshness: false });
+  const idle = brief.next.length === 0 && brief.workers.length === 0 && !brief.finalReconciliationPending;
+  return !idle || brief.closing.ready && brief.closing.stage !== 'complete' && !(brief.blockers.length > 0 && brief.blockers.every(entry => entry.blocker.kind === 'user-decision'));
+}
+
 function handleHook(input) {
   if (!input.cwd || !input.session_id) return {};
   const starting = input.hook_event_name === 'SessionStart';
@@ -44,9 +51,18 @@ function handleHook(input) {
   const root = projectRoot(input.cwd);
   if (!root || !fs.existsSync(path.join(root, '.nightshift/runs/state.sqlite'))) return sessionBinding;
   const store = new RunStore(root);
+  let ownerKnown = false;
   try {
+    if (input.hook_event_name === 'Stop') {
+      const row = store.db.prepare('SELECT r.state FROM runs r JOIN active a ON a.id=r.id WHERE a.singleton=1').get();
+      if (row) {
+        const candidate = JSON.parse(row.state);
+        ownerKnown = candidate.root === store.root && (candidate.kind ?? 'delivery') === 'delivery' && candidate.controller?.session === input.session_id;
+      }
+    }
     const state = store.read(undefined, { hydrate: false });
     if (!state || state.controller.session !== input.session_id) return sessionBinding;
+    ownerKnown = true;
     // Nothing else is restored for a closed run.
     if (['complete', 'stopped'].includes(state.status)) return starting ? sessionStartContext(withReportNotice(bindingText, reportNotice(state, root))) : sessionBinding;
     const exhausted = exhaustedLimit(state);
@@ -60,8 +76,7 @@ function handleHook(input) {
     }
     const brief = obligationBrief(state, root, { verifyFreshness: false });
     if (input.hook_event_name === 'Stop') {
-      const protectedRun = state.handover || state.mode === 'unattended';
-      // Stop follows every reply, so an attended run without a handover ends its turns silently.
+      const protectedRun = Boolean(state.handover);
       if (!protectedRun) return {};
       const idle = brief.next.length === 0 && brief.workers.length === 0 && !brief.finalReconciliationPending;
       const closingDue = brief.closing.ready && brief.closing.stage !== 'complete';
@@ -71,18 +86,22 @@ function handleHook(input) {
         return { systemMessage: `Nightshift is paused on user decisions for ${brief.blockers.map(entry => entry.id).join(', ')}. Progress is preserved; completion is not established.${closingDue ? ' Session closing remains due when the run resumes or ends.' : ''}` };
       }
       if (idle && !closingDue) return { systemMessage: 'Nightshift has unfinished blocked work. Progress and unanswered decisions are preserved; completion is not established.' };
-      const previous = state.stopRecovery;
-      const reminders = previous?.revision === state.revision ? previous.reminders + 1 : 1;
-      if (reminders > 3) return { continue: false, stopReason: 'Nightshift continuation made no recorded progress after three reminders. Work remains incomplete. Reconcile the saved state and repair the continuation mechanism before unattended resumption.' };
-      const reminded = store.update(state.controller, state.revision, 'continuation-reminder', current => {
-        current.stopRecovery = { reminders, revision: current.revision + 1 };
-      });
+      const result = store.remind(state.controller, state.revision, current => reminderEligible(current, root));
+      if (!result.issued) {
+        if (result.reason === 'ineligible') return {};
+        const reason = result.reason === 'exhausted' ? 'Nightshift continuation made no recorded progress after three reminders.' : `Nightshift automatic continuation accounting is unavailable (${result.diagnostic}).`;
+        return { continue: false, stopReason: `${reason} Work remains incomplete. Reconcile the saved state and continuation failure before resumption.` };
+      }
+      const reminded = result.state;
       // The reminder write advances the revision, so the resumed controller's brief is built from the state it wrote.
       return { decision: 'block', reason: continuationContext(obligationBrief(reminded, root, { verifyFreshness: false })) };
     }
     if (starting) return sessionStartContext(withReportNotice(continuationContext(brief), reportNotice(state, root)));
     if (input.hook_event_name === 'PreCompact') return { systemMessage: 'Nightshift saved state is authoritative for outstanding commitments, findings, evidence and ownership. Reconcile it after compaction.' };
     return {};
+  } catch (error) {
+    if (ownerKnown && input.hook_event_name === 'Stop') return { continue: false, stopReason: `Nightshift automatic continuation accounting could not be established (${error.code ?? 'state-unavailable'}). Work remains incomplete; reconcile the saved state before resumption.` };
+    throw error;
   } finally { store.close(); }
 }
 

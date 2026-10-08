@@ -1,5 +1,6 @@
 'use strict';
 
+const { fixtureContinuation } = require('./fixtures/continuation');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -11,6 +12,7 @@ const { HOOK_LOCK_WAIT_MS, LOCK_WAIT_MS, Registry } = require('../internal/relea
 const bundles = require('../internal/releases/bundles');
 const { processAlive } = require('../internal/releases/io');
 const { RunStore } = require('../internal/runtime/store');
+const { completeReflection } = require('./fixtures/completion');
 
 function holdFirstOperation(service, observeLater = async () => {}) {
   let entered;
@@ -58,7 +60,7 @@ test('retirement preserves a running run after interrupted registry attachment',
   try {
     await assert.rejects(service.run(setup.registration, {
       session: 'owner', project: value.project, entry: 'runtime',
-      request: { action: 'create', objective: 'fixture', authority: 'test', tasks: [{ id: 'work', title: 'Work', agreement: { source: 'test', outcome: 'fixture' } }] }
+      request: { action: 'handover', mechanism: fixtureContinuation(), objective: 'fixture', authority: 'test', tasks: [{ id: 'work', title: 'Work', agreement: { source: 'test', outcome: 'fixture' } }] }
     }), /injected post-child state read failure/);
   } finally {
     service.dependencies.runContained = originalRunContained;
@@ -133,7 +135,7 @@ test('provisional project references protect a running run omitted by older book
   const { service, state } = simulatedService(value, packageCopy(value.root, '1.0.0'));
   const setup = await service.setup({ host: 'codex', profile: value.profile });
   await activate(service, setup.registration, value.project, 'owner');
-  const created = await service.run(setup.registration, { session: 'owner', project: value.project, entry: 'runtime', request: { action: 'create', objective: 'fixture', authority: 'test', tasks: [{ id: 'work', title: 'Work', agreement: { source: 'test', outcome: 'fixture' } }] } });
+  const created = await service.run(setup.registration, { session: 'owner', project: value.project, entry: 'runtime', request: { action: 'handover', mechanism: fixtureContinuation(), objective: 'fixture', authority: 'test', tasks: [{ id: 'work', title: 'Work', agreement: { source: 'test', outcome: 'fixture' } }] } });
   assert.equal(created.code, 0, created.stderr);
   const original = await service.resolve(setup.registration, { session: 'owner', project: value.project, entry: 'ready' });
   state.source = packageCopy(value.root, '1.0.1');
@@ -191,7 +193,7 @@ for (const host of ['codex', 'claude']) test('bundled notices follow a usable cu
   const { service, state } = simulatedService(value, packageCopy(value.root, '1.0.0'));
   const setup = await service.setup({ host, profile: value.profile });
   await activate(service, setup.registration, value.project, 'owner');
-  const created = await service.run(setup.registration, { session: 'owner', project: value.project, entry: 'runtime', request: { action: 'create', objective: 'fixture', authority: 'test', tasks: [{ id: 'work', title: 'Work', agreement: { source: 'test', outcome: 'fixture' } }] } });
+  const created = await service.run(setup.registration, { session: 'owner', project: value.project, entry: 'runtime', request: { action: 'handover', mechanism: fixtureContinuation(), objective: 'fixture', authority: 'test', tasks: [{ id: 'work', title: 'Work', agreement: { source: 'test', outcome: 'fixture' } }] } });
   assert.equal(created.code, 0, created.stderr);
   const { handleNotice } = require('../internal/releases/notice');
   const dependencies = { profile: value.profile, createService: store => { assert.equal(store, value.store); return service; } };
@@ -218,14 +220,14 @@ for (const legacy of [false, true]) test('missing post-launch run state keeps it
     return result;
   };
   try {
-    await assert.rejects(service.run(setup.registration, { session: 'owner', project: value.project, entry: 'runtime', request: { action: 'create', objective: 'fixture', authority: 'test', tasks: [{ id: 'work', title: 'Work', agreement: { source: 'test', outcome: 'fixture' } }] } }), /Expected run database is unavailable/);
+    await assert.rejects(service.run(setup.registration, { session: 'owner', project: value.project, entry: 'runtime', request: { action: 'handover', mechanism: fixtureContinuation(), objective: 'fixture', authority: 'test', tasks: [{ id: 'work', title: 'Work', agreement: { source: 'test', outcome: 'fixture' } }] } }), /Expected run database is unavailable/);
     const deadPid = 2147483647;
     assert.equal(processAlive(deadPid), false);
     const registry = new Registry(value.store);
     try {
       registry.transaction(current => {
         const operation = current.list('operation').find(entry => entry.value.kind === 'entry');
-        assert.equal(operation.value.runtimeAction, 'create');
+        assert.equal(operation.value.runtimeAction, 'handover');
         Object.assign(operation.value, { pid: deadPid, runnerPid: deadPid, childPid: deadPid });
         if (legacy) delete operation.value.runtimeAction;
         current.put('operation', operation.key, operation.value);
@@ -261,7 +263,7 @@ test('development verification is explicit and genuine bound helpers still inher
   const { service } = simulatedService(value, packageCopy(value.root, '1.0.0'));
   const setup = await service.setup({ host: 'codex', profile: value.profile });
   await activate(service, setup.registration, value.project, 'owner');
-  const created = await service.run(setup.registration, { session: 'owner', project: value.project, entry: 'runtime', request: { action: 'create', objective: 'fixture', authority: 'test', tasks: [{ id: 'work', title: 'Work', agreement: { source: 'test', outcome: 'fixture' } }] } });
+  const created = await service.run(setup.registration, { session: 'owner', project: value.project, entry: 'runtime', request: { action: 'handover', mechanism: fixtureContinuation(), objective: 'fixture', authority: 'test', tasks: [{ id: 'work', title: 'Work', agreement: { source: 'test', outcome: 'fixture' } }] } });
   assert.equal(created.code, 0, created.stderr);
   fs.writeFileSync(path.join(value.project, 'subject.txt'), 'Stable check input\n');
   const resultFile = path.join(value.root, 'development-result.json');
@@ -401,7 +403,7 @@ test('new-session creation selects the current release after a completed run', a
   await activate(service, setup.registration, value.project, 'next');
   const next = await service.resolve(setup.registration, { session: 'next', project: value.project, entry: 'ready' });
   assert.notEqual(next.binding.identity, original.binding.identity);
-  const created = await service.resolve(setup.registration, { session: 'next', project: value.project, entry: 'runtime', request: { action: 'create' } });
+  const created = await service.resolve(setup.registration, { session: 'next', project: value.project, entry: 'runtime', request: { action: 'handover', tasks: [], mechanism: fixtureContinuation() } });
   assert.equal(created.binding.identity, next.binding.identity);
   assert.deepEqual(created.binding.runs, []);
 });
@@ -517,7 +519,7 @@ test('read-only runtime calls wait out a registry write lock held past the earli
   await activate(service, setup.registration, value.project, 'owner');
   await service.resolve(setup.registration, { session: 'owner', project: value.project, entry: 'ready' });
   const run = request => service.run(setup.registration, { session: 'owner', project: value.project, entry: 'runtime', request });
-  const created = await run({ action: 'create', objective: 'fixture', authority: 'test', tasks: [{ id: 'work', title: 'Work', agreement: { source: 'test', outcome: 'fixture' } }] });
+  const created = await run({ action: 'handover', mechanism: fixtureContinuation(), objective: 'fixture', authority: 'test', tasks: [{ id: 'work', title: 'Work', agreement: { source: 'test', outcome: 'fixture' } }] });
   assert.equal(created.code, 0, created.stderr);
   const registered = await run({ action: 'worker', revision: JSON.parse(created.stdout).revision, worker: { id: 'observed', session: 'observed-session', assignment: 'Observe', role: 'reviewer', writes: [] } });
   assert.equal(registered.code, 0, registered.stderr);
@@ -553,7 +555,7 @@ test('a hook\'s preliminary run read does not wait for a run store commit', asyn
   const setup = await service.setup({ host: 'codex', profile: value.profile });
   await activate(service, setup.registration, value.project, 'owner');
   await service.resolve(setup.registration, { session: 'owner', project: value.project, entry: 'ready' });
-  const created = await service.run(setup.registration, { session: 'owner', project: value.project, entry: 'runtime', request: { action: 'create', objective: 'fixture', authority: 'test', tasks: [{ id: 'work', title: 'Work', agreement: { source: 'test', outcome: 'fixture' } }] } });
+  const created = await service.run(setup.registration, { session: 'owner', project: value.project, entry: 'runtime', request: { action: 'handover', mechanism: fixtureContinuation(), objective: 'fixture', authority: 'test', tasks: [{ id: 'work', title: 'Work', agreement: { source: 'test', outcome: 'fixture' } }] } });
   assert.equal(created.code, 0, created.stderr);
   const { handleNotice } = require('../internal/releases/notice');
 
@@ -606,7 +608,7 @@ test('the hook bootstrap waits out a busy registry for SessionStart and a run ow
   // The owner of a handed-over running run keeps its Stop protection: the bootstrap waits and the hook blocks the yield.
   await service.resolve(setup.registration, { session: 'owner', project: value.project, entry: 'ready' });
   const run = request => service.run(setup.registration, { session: 'owner', project: value.project, entry: 'runtime', request });
-  const created = await run({ action: 'create', objective: 'fixture', authority: 'test', tasks: [{ id: 'work', title: 'Work', agreement: { source: 'test', outcome: 'fixture' } }] });
+  const created = await run({ action: 'handover', mechanism: fixtureContinuation(), objective: 'fixture', authority: 'test', tasks: [{ id: 'work', title: 'Work', agreement: { source: 'test', outcome: 'fixture' } }] });
   assert.equal(created.code, 0, created.stderr);
   const handedOver = await run({ action: 'handover', revision: JSON.parse(created.stdout).revision, authority: 'fixture handover' });
   assert.equal(handedOver.code, 0, handedOver.stderr);
@@ -658,7 +660,7 @@ test('one registry transaction reads each run store once, however many bindings 
     for (const project of [value.project, other]) await service.resolve(setup.registration, { session, project, entry: 'ready' });
   }
   const run = request => service.run(setup.registration, { session: 'owner', project: value.project, entry: 'runtime', request });
-  const created = await run({ action: 'create', objective: 'fixture', authority: 'test', tasks: [{ id: 'work', title: 'Work', agreement: { source: 'test', outcome: 'fixture' } }] });
+  const created = await run({ action: 'handover', mechanism: fixtureContinuation(), objective: 'fixture', authority: 'test', tasks: [{ id: 'work', title: 'Work', agreement: { source: 'test', outcome: 'fixture' } }] });
   assert.equal(created.code, 0, created.stderr);
 
   const reads = [];
@@ -668,8 +670,13 @@ test('one registry transaction reads each run store once, however many bindings 
   }
   const status = await run({ action: 'status' });
   assert.equal(status.code, 0, status.stderr);
+  assert.deepEqual(reads.filter(read => read.startsWith('readRunStore')), [], 'Diagnostics reconcile only established selected state');
 
-  // Admission reads each project of the operating session's binding once, beside its lookups of the active run, and the
+  reads.length = 0;
+  const claimed = await run({ action: 'claim-controller', revision: JSON.parse(status.stdout).revision });
+  assert.equal(claimed.code, 0, claimed.stderr);
+
+  // Canonical admission reads each project of the operating session's binding once, beside its active-run lookups, and the
   // reconciliation after the child reads the operation's own project once for all four bindings that name it.
   assert.deepEqual(reads.filter(read => read.startsWith('readRunStore')).sort(), ['readRunStore other', 'readRunStore project', 'readRunStore project']);
   const owner = (await service.status()).sessions.find(binding => binding.session === 'owner');
@@ -696,6 +703,7 @@ test('blocking registry connections wait the longer bound while hook connections
 });
 
 test('new-run selection preserves live ownership, explicit run identity and session pinning', async t => {
+  const previousId = '11111111-1111-1111-1111-111111111111';
   for (const scenario of [
     { name: 'fresh creation after completion', status: 'complete', session: 'next', changed: true },
     { name: 'fresh creation after stop', status: 'stopped', session: 'next', changed: true },
@@ -704,7 +712,7 @@ test('new-run selection preserves live ownership, explicit run identity and sess
     { name: 'uncertain stopped worker remains pinned', status: 'stopped', session: 'next', workers: [{ status: 'unverified' }], changed: false },
     { name: 'unrecognized stopped worker remains pinned', status: 'stopped', session: 'next', workers: [{ status: 'future-status' }], changed: false },
     { name: 'missing stopped worker status remains pinned', status: 'stopped', session: 'next', workers: [{}], changed: false },
-    { name: 'explicit completed run remains pinned', status: 'complete', session: 'next', runId: 'previous-run', changed: false }
+    { name: 'explicit completed run remains pinned', status: 'complete', session: 'next', runId: previousId, changed: false }
   ]) {
     await t.test(scenario.name, async t => {
       const value = fixture(t);
@@ -712,11 +720,11 @@ test('new-run selection preserves live ownership, explicit run identity and sess
       const setup = await service.setup({ host: 'codex', profile: value.profile });
       await activate(service, setup.registration, value.project, 'previous');
       const original = await service.resolve(setup.registration, { session: 'previous', project: value.project, entry: 'ready' });
-      service.dependencies.readRun = () => ({ id: 'previous-run', controller: { session: 'previous' }, status: scenario.status, workers: scenario.workers ?? [], resources: { identity: original.binding.identity } });
+      service.dependencies.readRun = () => ({ id: previousId, controller: { session: 'previous' }, status: scenario.status, tasks: [{ status: 'complete' }], workers: scenario.workers ?? [], resources: { identity: original.binding.identity } });
       state.source = packageCopy(value.root, '1.0.1');
       state.version = '1.0.1';
       await activate(service, setup.registration, value.project, scenario.session);
-      const selected = await service.resolve(setup.registration, { session: scenario.session, project: value.project, entry: 'runtime', runId: scenario.runId, request: { action: 'create' } });
+      const selected = await service.resolve(setup.registration, { session: scenario.session, project: value.project, entry: 'runtime', ...(scenario.runId !== undefined ? { runId: scenario.runId } : {}), request: { action: 'handover', tasks: [], mechanism: fixtureContinuation() } });
       assert.equal(selected.binding.identity !== original.binding.identity, scenario.changed);
     });
   }
@@ -742,17 +750,20 @@ test('a waiting observer does not prevent a later writer and both retain leases'
   assert.deepEqual((await service.status()).operations, []);
 });
 
-test('bound creation after a stopped run saves the new release without changing history', async t => {
+test('bound creation after admitted completion saves the new release without changing history', async t => {
   const value = fixture(t);
   const { service, state } = simulatedService(value, packageCopy(value.root, '1.0.0'));
   const setup = await service.setup({ host: 'codex', profile: value.profile });
   await activate(service, setup.registration, value.project, 'previous');
-  const create = { action: 'create', objective: 'fixture', authority: 'test', tasks: [{ id: 'work', title: 'Work', agreement: { source: 'test', outcome: 'fixture' } }] };
+  const create = { action: 'handover', mechanism: fixtureContinuation(), objective: 'fixture', authority: 'test', tasks: [{ id: 'reflection', title: 'Reflection', kind: 'lore', agreement: { source: 'test', outcome: 'Reflect without instruction proposals' } }] };
   const first = await service.run(setup.registration, { session: 'previous', project: value.project, entry: 'runtime', request: create });
   assert.equal(first.code, 0, first.stderr);
+  await completeReflection(value.project, readRun(value.project).controller, async (root, request) => {
+    const result = await service.run(setup.registration, { session: 'previous', project: root, entry: 'runtime', request });
+    assert.equal(result.code, 0, result.stderr);
+    return JSON.parse(result.stdout);
+  });
   const original = readRun(value.project);
-  const stopped = await service.run(setup.registration, { session: 'previous', project: value.project, entry: 'runtime', request: { action: 'stop', kind: 'user-stop', reason: 'fixture completed its scope', revision: original.revision } });
-  assert.equal(stopped.code, 0, stopped.stderr);
   state.source = packageCopy(value.root, '1.0.1');
   state.version = '1.0.1';
   await activate(service, setup.registration, value.project, 'next');
@@ -773,7 +784,7 @@ test('uncertain saved worker statuses retain session and run resources', async t
       const { service } = simulatedService(value, packageCopy(value.root, '1.0.0'));
       const setup = await service.setup({ host: 'codex', profile: value.profile });
       await activate(service, setup.registration, value.project, 'owner');
-      const created = await service.run(setup.registration, { session: 'owner', project: value.project, entry: 'runtime', request: { action: 'create', objective: 'fixture', authority: 'test', tasks: [{ id: 'work', title: 'Work', agreement: { source: 'test', outcome: 'fixture' } }] } });
+      const created = await service.run(setup.registration, { session: 'owner', project: value.project, entry: 'runtime', request: { action: 'handover', mechanism: fixtureContinuation(), objective: 'fixture', authority: 'test', tasks: [{ id: 'work', title: 'Work', agreement: { source: 'test', outcome: 'fixture' } }] } });
       assert.equal(created.code, 0, created.stderr);
       const run = readRun(value.project);
       const store = new RunStore(value.project);
@@ -792,7 +803,7 @@ test('collection protects unreconciled workers discovered under a retired sessio
   const { service, state } = simulatedService(value, packageCopy(value.root, '1.0.0'));
   const setup = await service.setup({ host: 'codex', profile: value.profile });
   await activate(service, setup.registration, value.project, 'previous');
-  const created = await service.run(setup.registration, { session: 'previous', project: value.project, entry: 'runtime', request: { action: 'create', objective: 'fixture', authority: 'test', tasks: [{ id: 'work', title: 'Work', agreement: { source: 'test', outcome: 'fixture' } }] } });
+  const created = await service.run(setup.registration, { session: 'previous', project: value.project, entry: 'runtime', request: { action: 'handover', mechanism: fixtureContinuation(), objective: 'fixture', authority: 'test', tasks: [{ id: 'work', title: 'Work', agreement: { source: 'test', outcome: 'fixture' } }] } });
   assert.equal(created.code, 0, created.stderr);
   const run = readRun(value.project);
   const original = (await service.status()).bundles.find(bundle => bundle.identity === run.resources.identity);

@@ -1,5 +1,6 @@
 'use strict';
 
+const { fixtureContinuation } = require('./fixtures/continuation');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -74,7 +75,7 @@ test('unusable probes are refused before reservation and a pre-launch refusal le
   const store = new RunStore(root, { create: true });
   t.after(() => { store.close(); fs.rmSync(root, { recursive: true, force: true }); });
   const actor = { host: 'claude', session: 'controller' };
-  store.create({ objective: 'Refuse unusable probes', authority: 'User test request', controller: actor, controllerClaim: fixtureControllerClaim(actor), tasks: [{ id: 'work', title: 'Work', agreement: { source: 'User', outcome: 'An unusable probe leaves no uncertain worker' } }] });
+  store.create({ mechanism: fixtureContinuation(), objective: 'Refuse unusable probes', authority: 'User test request', controller: actor, controllerClaim: fixtureControllerClaim(actor), tasks: [{ id: 'work', title: 'Work', agreement: { source: 'User', outcome: 'An unusable probe leaves no uncertain worker' } }] });
   const probe = { purpose: 'Observe the fixture', executable: process.execPath, args: ['--version'], timeoutMs: 10000, files: [] };
   const probes = [{ ...probe, id: 'missing-executable', executable: 'nightshift-absent-probe-tool' }, { ...probe, id: 'seconds-timeout', timeoutMs: 240 }, { ...probe, id: 'non-ascii-fixture', files: [{ path: 'fixture.txt', content: 'caf' + String.fromCharCode(0xe9) }] }];
   const runAgent = options => assessment(options, { requestId: options.schema.properties.requestId.enum[0], status: 'incomplete', coverage: [], findings: [], summary: 'Need deciding execution evidence', probes });
@@ -101,7 +102,7 @@ for (const withSelectedArtifact of [false, true]) {
     const store = new RunStore(root, { create: true });
     t.after(() => { store.close(); fs.rmSync(root, { recursive: true, force: true }); });
     const actor = { host: 'claude', session: 'controller' };
-    store.create({ objective: 'Verify the private probe path', authority: 'User test request', controller: actor, controllerClaim: fixtureControllerClaim(actor), tasks: [{ id: 'work', title: 'Work', agreement: { source: 'User', outcome: 'Canonical inputs remain untouched while independent probes execute' } }] });
+    store.create({ mechanism: fixtureContinuation(), objective: 'Verify the private probe path', authority: 'User test request', controller: actor, controllerClaim: fixtureControllerClaim(actor), tasks: [{ id: 'work', title: 'Work', agreement: { source: 'User', outcome: 'Canonical inputs remain untouched while independent probes execute' } }] });
     const review = { kind: 'code', baseSha, artifactPaths: withSelectedArtifact ? ['.tmp/material.txt'] : [], requirements: 'Canonical inputs remain untouched', rules: 'Independent reviewer cannot modify canonical project inputs.', candidates: [{ host: 'claude', model: 'claude-fable-5-1', effort: 'high' }] };
     const selectedCheck = withSelectedArtifact ? "const assert = require('node:assert/strict');\nassert.equal(fs.readFileSync('.tmp/material.txt', 'utf8').trim(), 'Explicit deciding material');\nassert.equal(fs.existsSync('.tmp/unrelated.txt'), false);\n" : '';
     // The maximum bound leaves room for job runner startup on a loaded machine; this test is about private evidence, not speed.
@@ -161,7 +162,7 @@ for (const kind of ['check', 'probe']) {
       const resources = { schema: 1, store: root, registration: 'a'.repeat(64), session: actor.session, identity: '3.2.7-' + 'b'.repeat(64) };
       const store = new RunStore(root, { create: true });
       t.after(() => { store.close(); fs.rmSync(root, { recursive: true, force: true }); });
-      const state = store.create({ objective: 'Deadline fixture', authority: 'User', controller: actor, controllerClaim: fixtureControllerClaim(actor), resources, resourceMode: 'bound', tasks: [{ id: 'work', title: 'Work', agreement: { source: 'User', outcome: 'Bounded execution' } }] });
+      const state = store.create({ mechanism: fixtureContinuation(), objective: 'Deadline fixture', authority: 'User', controller: actor, controllerClaim: fixtureControllerClaim(actor), resources, resourceMode: 'bound', tasks: [{ id: 'work', title: 'Work', agreement: { source: 'User', outcome: 'Bounded execution' } }] });
       let now = Date.parse('2026-09-24T00:00:00.000Z');
       const deadline = now + 90000;
       const context = { ...resources, mode: 'bound', bundle: 'fixture', operation: 'fixture', operationDeadlineUtc: new Date(deadline).toISOString() };

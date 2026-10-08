@@ -8,9 +8,14 @@ const LOCK_NAME = '.nightshift-unwrap-lock.sqlite';
 const MAX_LOCK_BYTES = 64 * 1024;
 const isLockName = name => process.platform === 'win32' ? name.toLowerCase() === LOCK_NAME : name === LOCK_NAME;
 
-function lockError(file, cause) {
-  const error = new Error(`Cannot establish unwrap writer ownership at ${file}: ${cause.message}`, { cause });
-  error.code = /database is locked/.test(cause.message) ? 'unwrap-busy' : 'unwrap-lock-invalid';
+function lockConfiguration({ name = LOCK_NAME, label = 'unwrap', codePrefix = 'unwrap' } = {}) {
+  if (typeof name !== 'string' || !/^[a-zA-Z0-9_.-]+$/.test(name) || ['.', '..'].includes(name) || typeof label !== 'string' || !label.trim() || typeof codePrefix !== 'string' || !/^[a-z][a-z-]*$/.test(codePrefix)) throw new Error('Invalid writer lock configuration');
+  return { name, label, codePrefix };
+}
+
+function lockError(file, cause, configuration) {
+  const error = new Error(`Cannot establish ${configuration.label} writer ownership at ${file}: ${cause.message}`, { cause });
+  error.code = /database is locked/.test(cause.message) ? `${configuration.codePrefix}-busy` : `${configuration.codePrefix}-lock-invalid`;
   return error;
 }
 
@@ -35,9 +40,10 @@ function readOwnership(database) {
   return rows[0];
 }
 
-function inspectLock(parent) {
+function inspectLock(parent, options = {}) {
   const { DatabaseSync } = require('node:sqlite');
-  const file = path.join(parent, LOCK_NAME);
+  const configuration = lockConfiguration(options);
+  const file = path.join(parent, configuration.name);
   try {
     rejectSidecars(file);
     const parentId = parentIdentity(parent);
@@ -49,12 +55,14 @@ function inspectLock(parent) {
     if (snapshot.identity !== after.identity || snapshot.rawSha256 !== after.rawSha256 || parentIdentity(parent) !== parentId
       || ownership.parent !== parent || ownership.parent_id !== parentId || ownership.file_id !== snapshot.identity) throw new Error('Lock ownership changed');
     return { file, parent, parentId, ...snapshot };
-  } catch (cause) { throw lockError(file, cause); }
+  } catch (cause) { throw lockError(file, cause, configuration); }
 }
 
-function acquireLock(parent, { create = true } = {}) {
+function acquireLock(parent, options = {}) {
   const { DatabaseSync } = require('node:sqlite');
-  const file = path.join(parent, LOCK_NAME);
+  const { create = true } = options;
+  const configuration = lockConfiguration(options);
+  const file = path.join(parent, configuration.name);
   let database;
   try {
     const parentId = parentIdentity(parent);
@@ -75,12 +83,12 @@ function acquireLock(parent, { create = true } = {}) {
       const handle = fs.openSync(file, 'r+');
       try { fs.fsyncSync(handle); } finally { fs.closeSync(handle); }
     }
-    const snapshot = inspectLock(parent);
+    const snapshot = inspectLock(parent, configuration);
     database = new DatabaseSync(file);
     database.exec('PRAGMA busy_timeout=0; BEGIN IMMEDIATE');
     const validate = () => {
       const current = stableOpenFile(parent, file, { requireSingleLink: true, maxBytes: MAX_LOCK_BYTES });
-      if (parentIdentity(parent) !== snapshot.parentId || current.identity !== snapshot.identity || current.rawSha256 !== snapshot.rawSha256) throw lockError(file, new Error('Lock identity or content changed'));
+      if (parentIdentity(parent) !== snapshot.parentId || current.identity !== snapshot.identity || current.rawSha256 !== snapshot.rawSha256) throw lockError(file, new Error('Lock identity or content changed'), configuration);
     };
     validate();
     const held = database;
@@ -88,7 +96,7 @@ function acquireLock(parent, { create = true } = {}) {
     return { validate, close() { try { held.exec('ROLLBACK'); } finally { held.close(); } } };
   } catch (cause) {
     database?.close();
-    throw cause.code?.startsWith('unwrap-') ? cause : lockError(file, cause);
+    throw cause.code?.startsWith(configuration.codePrefix + '-') ? cause : lockError(file, cause, configuration);
   }
 }
 

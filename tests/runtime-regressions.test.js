@@ -1,5 +1,7 @@
 'use strict';
 
+const { fixtureContinuation } = require('./fixtures/continuation');
+const { fixtureReport } = require('./fixtures/report');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -15,22 +17,29 @@ const actor = { host: 'codex', session: 'controller' };
 
 test('imported prior spec assessment requires existing artifact bytes and preserves state on rejection', async t => {
   const f = fixture(t);
-  f.act({ action: 'stop', kind: 'user-stop', reason: 'User authorized the next fixture run' });
+  const root = path.join(f.root, 'new-project');
+  fs.mkdirSync(root);
+  fs.copyFileSync(path.join(f.root, 'a.txt'), path.join(root, 'a.txt'));
+  const store = new RunStore(root, { create: true });
   const previous = f.store.read();
-  const request = spec => ({ action: 'create', controller: actor, authority: 'User accepted the governing spec', objective: 'Substantial work', tasks: [{ id: 'code', title: 'Code', agreement: { source: 'User', outcome: 'Accepted behavior', spec, specReviewed: true } }] });
-  for (const spec of ['missing.md', 'missing-parent/design.md']) {
-    await assert.rejects(execute(f.root, request(spec)), { code: 'missing-spec' });
-    assert.deepEqual(f.store.read(), previous);
-  }
-  for (const spec of ['', null, '   ']) {
-    await assert.rejects(execute(f.root, request(spec)), { code: 'invalid-request' });
-    assert.deepEqual(f.store.read(), previous);
-  }
-  const state = await execute(f.root, request('a.txt'));
-  await execute(f.root, { action: 'start-task', taskId: 'code', actor, revision: state.revision });
-  assert.equal(f.store.read().tasks[0].status, 'active');
-  fs.unlinkSync(path.join(f.root, 'a.txt'));
-  await assert.rejects(execute(f.root, { action: 'start-task', taskId: 'code', actor, revision: f.store.read().revision }), { code: 'spec-review-required' });
+  const request = spec => ({ action: 'handover', mechanism: fixtureContinuation(), controller: actor, authority: 'User accepted the governing spec', objective: 'Substantial work', tasks: [{ id: 'code', title: 'Code', agreement: { source: 'User', outcome: 'Accepted behavior', spec, specReviewed: true } }] });
+  try {
+    for (const spec of ['missing.md', 'missing-parent/design.md']) {
+      await assert.rejects(execute(root, request(spec)), { code: 'missing-spec' });
+      assert.equal(store.read(), null);
+      assert.deepEqual(f.store.read(), previous);
+    }
+    for (const spec of ['', null, '   ']) {
+      await assert.rejects(execute(root, request(spec)), { code: 'invalid-request' });
+      assert.equal(store.read(), null);
+      assert.deepEqual(f.store.read(), previous);
+    }
+    const state = await execute(root, request('a.txt'));
+    await execute(root, { action: 'start-task', taskId: 'code', actor, revision: state.revision });
+    assert.equal(store.read().tasks[0].status, 'active');
+    fs.unlinkSync(path.join(root, 'a.txt'));
+    await assert.rejects(execute(root, { action: 'start-task', taskId: 'code', actor, revision: store.read().revision }), { code: 'spec-review-required' });
+  } finally { store.close(); }
 });
 
 test('persisted absent spec approvals cannot pass while deleted-code snapshots remain meaningful', async t => {
@@ -145,8 +154,9 @@ function fixture(t, options = {}, prepare) {
   for (const file of ['a.txt', 'b.txt']) fs.writeFileSync(path.join(root, file), file + '\r\n');
   prepare?.(root);
   // These regressions exercise the code gate as runs created before the docs gate did; runtime-docs-review.test.js covers the docs gate.
-  store.create({ objective: 'Deliver both accepted tasks', authority: 'User handover', controller: actor, controllerClaim: fixtureControllerClaim(actor), docsGate: false, tasks: ['a', 'b'].map(id => ({ id, title: id, agreement: { source: 'User', outcome: 'Required ' + id }, requires: id === 'b' ? ['a'] : [] })), ...options });
+  store.create({ mechanism: fixtureContinuation(), objective: 'Deliver both accepted tasks', authority: 'User handover', controller: actor, controllerClaim: fixtureControllerClaim(actor), docsGate: false, tasks: ['a', 'b'].map(id => ({ id, title: id, agreement: { source: 'User', outcome: 'Required ' + id }, requires: id === 'b' ? ['a'] : [] })), ...options });
   const act = request => {
+    fixtureReport(store, actor, request);
     if (request.action === 'review') request.review.commitments ??= commitmentsFor(store.read().tasks);
     return store.update(actor, store.read().revision, request.action, state => transition(state, request));
   };
@@ -407,7 +417,7 @@ test('large immutable logs are stored once rather than copied into every history
 });
 
 test('focused restoration excludes inventory payloads, and final reconciliation remains actionable', t => {
-  const f = fixture(t, { mode: 'unattended' });
+  const f = fixture(t, {});
   const state = f.store.read();
   state.tasks[0].findings.push({ id: 'finding', consequence: 'Concrete defect', evidence: 'Evidence summary', validation: { verdict: 'confirmed', snapshot: { files: Array.from({ length: 1000 }, (_, index) => ({ path: 'file-' + index, sha256: 'a'.repeat(64) })) } } });
   const brief = obligationBrief(state, f.root, { verifyFreshness: false });
@@ -423,7 +433,8 @@ test('deadlines stop owned work, while unsupported limits cannot be silently acc
   const output = handleHook({ cwd: f.root, session_id: actor.session, hook_event_name: 'Stop' });
   assert.equal(output.continue, false);
   assert.equal(f.store.read().stop.kind, 'resource-limit');
-  assert.throws(() => f.store.create({ objective: 'More', authority: 'User', controller: actor, limits: { unknown: 4 }, tasks: [] }), { code: 'unsupported-limit' });
+  f.store.update(actor, f.store.read().revision, 'fixture-finished-prior-work', state => { for (const task of state.tasks) { task.status = 'complete'; task.stage = 'complete'; } });
+  assert.throws(() => f.store.create({ mechanism: fixtureContinuation(), objective: 'More', authority: 'User', controller: actor, limits: { unknown: 4 }, tasks: [] }), { code: 'unsupported-limit' });
 });
 
 test('follow-up resolution preserves the actual user decision and does not require further prompts', t => {
@@ -440,17 +451,17 @@ test('a linked database is rejected before SQLite opens it', t => {
   assert.throws(() => new RunStore(f.root), { code: 'unsafe-path' });
 });
 
-test('unattended execution requires verified continuation but attended work remains available', t => {
-  const f = fixture(t, { mode: 'unattended' });
-  assert.throws(() => f.act({ action: 'start-task', taskId: 'a' }), { code: 'unverified-continuation' });
-  f.act({ action: 'continuation', mechanism: { verified: true, kind: 'goal', evidence: 'Fixture native continuation receipt' } });
+test('delivery attempts continuation and continues after its technical failure is recorded', t => {
+  const f = fixture(t, { mechanism: undefined });
+  assert.throws(() => f.act({ action: 'start-task', taskId: 'a' }), { code: 'continuation-observation-required' });
+  f.act({ action: 'continuation', mechanism: { verified: false, kind: 'goal', reason: 'Fixture goal service unavailable' } });
   f.act({ action: 'start-task', taskId: 'a' });
   assert.equal(f.store.read().tasks[0].status, 'active');
 });
 
 test('blocked sessions can record closing work without claiming unfinished engineering complete', t => {
-  const f = fixture(t, { mode: 'unattended' });
-  f.act({ action: 'block', taskId: 'a', blocker: { kind: 'capability', reason: 'Continuation could not be verified', recoveryAttempted: 'Checked the actual host mechanism' } });
+  const f = fixture(t, {});
+  f.act({ action: 'block', taskId: 'a', blocker: { kind: 'capability', reason: 'Required independent assurance is unavailable', recoveryAttempted: 'Checked the permitted model capability' } });
   assert.equal(obligationBrief(f.store.read()).closing.ready, true);
   f.act({ action: 'retrospective', evidence: 'Capability limitation captured without inventing delivered work' });
   assert.equal(obligationBrief(f.store.read()).closing.stage, 'report');
@@ -460,7 +471,7 @@ test('blocked sessions can record closing work without claiming unfinished engin
   f.act({ action: 'triage', evidence: 'Await the user decision; preserve both tasks' });
   assert.equal(obligationBrief(f.store.read()).closing.stage, 'complete');
   assert.notEqual(f.store.read().status, 'complete');
-  assert.throws(() => f.act({ action: 'complete' }), { code: 'unverified-continuation' });
+  assert.throws(() => f.act({ action: 'complete' }), { code: 'unfinished-work' });
 });
 
 test('substantial work can complete its governing spec review before implementation without code changes invalidating that spec', t => {

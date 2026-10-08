@@ -3,11 +3,13 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { registrationKey, sessionKey } = require('./registry');
-const { projectRoot, requireConsistentRunId, requireValue, text } = require('./io');
+const { normalizeRuntimeTarget, projectRoot, requireConsistentRunId, requireValue, text } = require('./io');
 const { CHANGED_CONCURRENTLY, REMOVED_MESSAGE, ownerFree, pluginIdentity, publishBootstrap, retainedRoutes, supportsPreparation } = require('./administration');
 const { classifyHooks } = require('./host-config');
+const { continuationOptional } = require('./admission');
 
 async function prepare(service, request, locatorState) {
+  request = normalizeRuntimeTarget(request);
   const profile = fs.realpathSync.native(text(request.profile, 'host profile'));
   const project = projectRoot(request.project);
   const session = text(request.session, 'native session');
@@ -31,12 +33,19 @@ async function prepare(service, request, locatorState) {
   const binding = exists ? service.registry(registry => registry.get('session', sessionKey(key, session))) : null;
   requireValue(!binding || binding.state === 'bound', 'retired-release-binding', 'This session was retired; explicitly recover its exact identity before resuming');
   await service.dependencies.isEnabled(request.host, profile, pluginId, project);
+  const selected = binding ? service.registry(registry => require('./bundles').availableIdentity(registry, binding.identity)) : null;
+  const optional = selected ? continuationOptional(selected, request.entry) : request.entry === 'runtime' && !binding;
   const inspect = async registration => {
     const inspection = registration ? { ...registration, definitions: registration.definitions ?? registration.pending?.definitions ?? {} } : { host: request.host, profile, definitions: {} };
-    const hooks = await service.dependencies.inspectHooks(inspection, project, { cache: service.settingsCache });
-    const verdict = classifyHooks(hooks);
-    if (verdict.state === 'disabled') requireValue(false, verdict.code, verdict.message);
-    return verdict;
+    try {
+      const hooks = await service.dependencies.inspectHooks(inspection, project, { cache: service.settingsCache });
+      const verdict = classifyHooks(hooks);
+      if (!optional && verdict.state === 'disabled') requireValue(false, verdict.code, verdict.message);
+      return verdict;
+    } catch (error) {
+      if (!optional) throw error;
+      return { state: 'unavailable', code: error.code ?? 'native-hook-unavailable', message: error.message };
+    }
   };
   let verdict = await inspect(current);
   if (current?.pending) {
@@ -44,10 +53,10 @@ async function prepare(service, request, locatorState) {
     verdict = await inspect(current);
   }
   if (!current || current.pending || current.state === 'preparing') {
-    await service.setup({ host: request.host, profile, pluginId, automatic: true, project });
+    await service.setup({ host: request.host, profile, pluginId, automatic: true, project, optionalContinuation: optional });
     current = service.registration(key);
   } else {
-    if (verdict.state === 'unconfigured') requireValue(false, verdict.code, verdict.message);
+    if (!optional && verdict.state === 'unconfigured') requireValue(false, verdict.code, verdict.message);
   }
   await service.captureCurrent(current, undefined, (registry, bundle) => {
     requireValue(supportsPreparation(bundle.root), 'preparation-unavailable', 'The enabled Nightshift release does not support automatic preparation; use its matching installed skill');
@@ -60,7 +69,7 @@ async function prepare(service, request, locatorState) {
   }, project);
   // Bind before returning the launcher: an older session can change its shared
   // administrative fallback, but cannot redirect a session with an exact binding.
-  const resolved = await service.resolve(key, { ...request, project, runId: request.runId ?? request.request?.runId }, false, true);
+  const resolved = await service.resolve(key, { ...request, project }, false, true);
   const registration = service.registration(key);
   requireValue(registration.state === 'registered' && !registration.pending, 'release-registration-changed', CHANGED_CONCURRENTLY);
   service.publishLocator(registration);

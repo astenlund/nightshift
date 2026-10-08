@@ -1,5 +1,6 @@
 'use strict';
 
+const { fixtureContinuation } = require('./fixtures/continuation');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -9,7 +10,7 @@ const { Registry, registrationKey, sessionKey } = require('../internal/releases/
 const { capture } = require('../internal/releases/bundles');
 const { MANIFEST_PATH, loadManifest, validateManifest, verifyBundle } = require('../internal/releases/manifest');
 const { validateDependencies } = require('../tools/release-manifest');
-const { activate, claudeInspection, fixture, packageCopy, refreshPackage, settingsReader, simulatedService } = require('./release-fixtures');
+const { activate, claudeInspection, fixture, activationPackageCopy: packageCopy, refreshPackage, settingsReader, simulatedService } = require('./release-fixtures');
 const { inspectionContext } = require('../internal/releases/host-config');
 const { CONTEXT_ENV } = require('../internal/releases/entry');
 const { HOOK_INSPECTION_BUDGET_MS, INSPECTION_BUDGET_MS, MAX_OPERATION_TIMEOUT_MS } = require('../internal/releases/processes');
@@ -121,7 +122,7 @@ test('Ready runs without trusted continuation while dependent operations still r
   state.trusted = false;
   const untrustedReady = await service.run(setup.registration, { session: 'owner', project: value.project, entry: 'ready' });
   assert.equal(untrustedReady.code, 0, untrustedReady.stderr);
-  await assert.rejects(service.run(setup.registration, { session: 'owner', project: value.project, entry: 'runtime', request: { action: 'create' } }), /not trusted on this host/);
+  await assert.rejects(service.run(setup.registration, { session: 'owner', project: value.project, entry: 'runtime', request: { action: 'handover', mechanism: fixtureContinuation() } }), /not trusted on this host/);
   state.trusted = true; state.enabled = false;
   await assert.rejects(service.run(setup.registration, { session: 'owner', project: value.project, entry: 'ready' }), /disabled fixture plugin/);
 });
@@ -139,9 +140,9 @@ test('first-use preparation admits the real Ready parser without creating activa
   assert.deepEqual(JSON.parse(first.stdout).structuralErrors, []);
   const before = await service.status();
   assert.deepEqual(before.activations, []);
-  await assert.rejects(service.run(prepared.registration, { ...request, entry: 'runtime', request: { action: 'create' } }), /not trusted on this host/);
+  await assert.rejects(service.run(prepared.registration, { ...request, entry: 'runtime', request: { action: 'handover', mechanism: fixtureContinuation() } }), /not trusted on this host/);
   state.trusted = true;
-  await assert.rejects(service.run(prepared.registration, { ...request, entry: 'runtime', request: { action: 'create' } }), /has not observed/);
+  await assert.rejects(service.run(prepared.registration, { ...request, entry: 'runtime', request: { action: 'handover', mechanism: fixtureContinuation() } }), /has not observed/);
   assert.deepEqual(await service.prepare(request), prepared);
   const after = await service.status();
   assert.equal(after.sessions[0].identity, before.sessions[0].identity);
@@ -313,14 +314,14 @@ test('the current launcher applies Ready admission to old bindings while retaini
   const result = await service.run(prepared.registration, { session: 'old', project: value.project, entry: 'ready' });
   assert.equal(result.code, 0, result.stderr);
   assert.equal(parser, path.join(old.bundle.root, 'skills/ready/ready.js'));
-  await assert.rejects(service.run(prepared.registration, { session: 'old', project: value.project, entry: 'runtime', request: { action: 'create' } }), /not trusted on this host/);
+  await assert.rejects(service.run(prepared.registration, { session: 'old', project: value.project, entry: 'runtime', request: { action: 'handover', mechanism: fixtureContinuation() } }), /not trusted on this host/);
 });
 
 test('preparing runtime resources does not admit runtime work without activation', async t => {
   const value = fixture(t);
   const { service, state } = simulatedService(value, packageCopy(value.root, '1.0.0'));
   state.trusted = false;
-  const request = { host: 'codex', profile: value.profile, project: value.project, session: 'new', entry: 'runtime', request: { action: 'create' } };
+  const request = { host: 'codex', profile: value.profile, project: value.project, session: 'new', entry: 'runtime', request: { action: 'handover', mechanism: fixtureContinuation() } };
   const prepared = await service.prepare(request);
   assert.ok(prepared.identity);
   // `preparing` is a positional argument of resolve, never a request field: a caller
@@ -373,8 +374,8 @@ test('bound runtime state carries identity and blocks development mutations', as
   const { service } = simulatedService(value, source);
   const setup = await service.setup({ host: 'codex', profile: value.profile });
   await activate(service, setup.registration, value.project, 'owner');
-  await assert.rejects(service.run(setup.registration, { session: 'owner', project: value.project, entry: 'runtime', request: { action: 'create', controller: { host: 'codex', session: 'different-owner' } } }), /must match the admitted native session/);
-  const created = await service.run(setup.registration, { session: 'owner', project: value.project, entry: 'runtime', request: { action: 'create', objective: 'fixture', authority: 'test', tasks: [{ id: 'work', title: 'Work', agreement: { source: 'test', outcome: 'fixture' } }] } });
+  await assert.rejects(service.run(setup.registration, { session: 'owner', project: value.project, entry: 'runtime', request: { action: 'handover', tasks: [], mechanism: fixtureContinuation(), controller: { host: 'codex', session: 'different-owner' } } }), /must match the admitted native session/);
+  const created = await service.run(setup.registration, { session: 'owner', project: value.project, entry: 'runtime', request: { action: 'handover', mechanism: fixtureContinuation(), objective: 'fixture', authority: 'test', tasks: [{ id: 'work', title: 'Work', agreement: { source: 'test', outcome: 'fixture' } }] } });
   assert.equal(created.code, 0, created.stderr);
   const run = JSON.parse(created.stdout);
   assert.equal(run.resourceMode, 'bound');
@@ -390,7 +391,7 @@ test('the launcher refuses an unknown runtime action before launch and passes it
   const { service } = simulatedService(value, source);
   const setup = await service.setup({ host: 'codex', profile: value.profile });
   await activate(service, setup.registration, value.project, 'owner');
-  const created = await service.run(setup.registration, { session: 'owner', project: value.project, entry: 'runtime', request: { action: 'create', objective: 'fixture', authority: 'test', tasks: [{ id: 'work', title: 'Work', agreement: { source: 'test', outcome: 'fixture' } }] } });
+  const created = await service.run(setup.registration, { session: 'owner', project: value.project, entry: 'runtime', request: { action: 'handover', mechanism: fixtureContinuation(), objective: 'fixture', authority: 'test', tasks: [{ id: 'work', title: 'Work', agreement: { source: 'test', outcome: 'fixture' } }] } });
   assert.equal(created.code, 0, created.stderr);
   const launches = [];
   service.dependencies.runContained = async (executable, args, options) => {
@@ -506,7 +507,7 @@ test('dependent admission separates a deliberate opt-out from a changed registra
   const { service, state } = simulatedService(value, packageCopy(value.root, '1.0.0'));
   const setup = await service.setup({ host: 'codex', profile: value.profile });
   await activate(service, setup.registration, value.project, 'owner');
-  const request = { session: 'owner', project: value.project, entry: 'runtime', request: { action: 'create' } };
+  const request = { session: 'owner', project: value.project, entry: 'runtime', request: { action: 'handover', mechanism: fixtureContinuation() } };
 
   // Only one of these three is fixed by reopening the session, so each states its own
   // recovery. A deliberate opt-out and a removed registration share a code and are
@@ -528,7 +529,7 @@ test('a failed inspection of the activation owner is refused without asking to r
   const { service } = simulatedService(value, packageCopy(value.root, '1.0.0'));
   const setup = await service.setup({ host: 'codex', profile: value.profile });
   await activate(service, setup.registration, value.project, 'owner');
-  const request = { session: 'owner', project: value.project, entry: 'runtime', request: { action: 'create' } };
+  const request = { session: 'owner', project: value.project, entry: 'runtime', request: { action: 'handover', mechanism: fixtureContinuation() } };
 
   service.dependencies.ownerAlive = (owner, cwd, options) => { options.onFailure('timed out after 30000 ms'); return null; };
   await assert.rejects(service.resolve(setup.registration, request), error => error.code === 'hook-activation-required'
@@ -589,7 +590,7 @@ test('a failed SessionStart owner lookup leaves its cause for status and depende
   const start = (hook, session) => hook.hook(setup.registration, { cwd: value.project, session_id: session, hook_event_name: 'SessionStart', source: 'startup' });
   const failures = async () => (await service.status()).activationFailures.map(({ session, generation: saved, cause }) => ({ session, generation: saved, cause }));
   const timedOut = 'Native host process identity could not be established because process inspection failed (timed out after 30000 ms)';
-  const request = { session: 'owner', project: value.project, entry: 'runtime', request: { action: 'create' } };
+  const request = { session: 'owner', project: value.project, entry: 'runtime', request: { action: 'handover', mechanism: fixtureContinuation() } };
   const missing = 'This native session has not observed the current Nightshift hook generation; open or reopen it before protected work';
 
   // The hook stays silent for a session that owns no running run, but the cause is saved.

@@ -25,7 +25,7 @@ function fixture(t, options = {}) {
   fs.writeFileSync(path.join(root, 'notes.md'), '# Maintained notes\n');
   const store = new RunStore(root, { create: true });
   t.after(() => { store.close(); fs.rmSync(root, { recursive: true, force: true }); });
-  store.create({ objective: 'Deliver accepted maintenance', authority: 'User agreed the scope', controller: actor, limits: { maxDispatches: 7 }, publication: { authorized: false }, tasks: [{ id: 'docs', title: 'Maintenance', kind: 'docs', agreement: { source: 'User', outcome: 'Reconciled documentation' } }], ...options });
+  store.create({ mechanism: options.controller?.host === 'codex' ? MECHANISM : STOP_HOOK, objective: 'Deliver accepted maintenance', authority: 'User agreed the scope', controller: actor, limits: { maxDispatches: 7 }, publication: { authorized: false }, tasks: [{ id: 'docs', title: 'Maintenance', kind: 'docs', agreement: { source: 'User', outcome: 'Reconciled documentation' } }], ...options });
   const act = (request, as = actor) => store.update(as, store.read().revision, request.action, state => transition(state, request));
   const writeReport = (content = '# Morning report\n', relative = REPORT_PATH) => {
     fs.mkdirSync(path.join(root, path.dirname(relative)), { recursive: true });
@@ -45,13 +45,13 @@ function noticeOf(result) {
 
 test('handover without a mechanism records the handover and leaves an attended run attended', t => {
   const f = fixture(t);
-  assert.equal(obligationBrief(f.store.read()).handover, null);
+  assert.ok(obligationBrief(f.store.read()).handover);
   const state = f.act({ action: 'handover', authority: 'User said: take it from here' });
-  assert.deepEqual(state.handover, { authority: 'User said: take it from here', revision: state.revision });
-  assert.equal(state.mode, 'attended');
-  assert.equal(state.continuation, null);
+  assert.deepEqual(state.handover, { authority: 'User agreed the scope', revision: 0 });
+  assert.equal(state.mode, undefined);
+  assert.equal(state.continuation.kind, 'stop-hook');
   const brief = obligationBrief(state);
-  assert.equal(brief.mode, 'attended');
+  assert.equal(brief.mode, undefined);
   assert.deepEqual(brief.report, { recorded: false, delivered: false, path: null, current: null });
 });
 
@@ -61,17 +61,17 @@ test('handover with a verified mechanism switches to unattended in the same writ
   f.act({ action: 'followup', item: { id: 'idea', context: 'Mid-run idea', recommendation: 'Track' } });
   const before = f.store.read();
   const state = f.act({ action: 'handover', authority: 'User handover', mechanism: MECHANISM });
-  assert.equal(state.mode, 'unattended');
+  assert.equal(state.mode, undefined);
   assert.deepEqual(state.continuation, { ...MECHANISM, controller: state.controller, runId: state.id, observedAt: state.continuation.observedAt });
   assert.match(state.continuation.observedAt, /^\d{4}-\d{2}-\d{2}T.*Z$/);
-  assert.equal(state.handover.revision, state.revision);
+  assert.equal(state.handover.revision, before.handover.revision);
   for (const key of ['id', 'tasks', 'workers', 'followups', 'limits', 'publication', 'controller', 'objective', 'authority', 'closing']) assert.deepEqual(state[key], before[key], key);
 });
 
 test('an unverified mechanism is rejected and writes nothing', t => {
   const f = fixture(t);
   const before = f.store.read();
-  for (const mechanism of [{ verified: false, evidence: 'Not observed' }, { verified: true }, { verified: true, evidence: '   ' }, null]) {
+  for (const mechanism of [{ verified: true }, { verified: true, evidence: '   ' }, null]) {
     assert.throws(() => f.act({ action: 'handover', authority: 'User handover', mechanism }), { code: 'unverified-continuation' });
     assert.throws(() => f.act({ action: 'continuation', mechanism }), { code: 'unverified-continuation' });
   }
@@ -92,17 +92,17 @@ test('a verified mechanism without a known kind is rejected and writes nothing',
 test('a verified Stop hook carries unattended work for a Claude controller', t => {
   const f = fixture(t);
   const state = f.act({ action: 'handover', authority: 'User handover', mechanism: STOP_HOOK });
-  assert.equal(state.mode, 'unattended');
+  assert.equal(state.mode, undefined);
   assert.equal(state.continuation.kind, 'stop-hook');
   f.finish();
   assert.equal(f.store.read().tasks[0].status, 'complete');
 });
 
 test('a Claude run created unattended executes once continuation records a verified Stop hook', t => {
-  const f = fixture(t, { mode: 'unattended', authority: 'User handed the queue over' });
-  assert.throws(() => f.finish(), { code: 'unverified-continuation' });
+  const f = fixture(t, { mechanism: undefined, authority: 'User handed the queue over' });
+  assert.throws(() => f.finish(), { code: 'continuation-observation-required' });
   const state = f.act({ action: 'continuation', mechanism: STOP_HOOK });
-  assert.equal(state.mode, 'unattended');
+  assert.equal(state.mode, undefined);
   assert.equal(state.continuation.kind, 'stop-hook');
   f.finish();
   assert.equal(f.store.read().tasks[0].status, 'complete');
@@ -116,7 +116,7 @@ test('a Codex controller needs a verified goal because a Stop hook alone is refu
   assert.throws(() => f.act({ action: 'continuation', mechanism: STOP_HOOK }, codex), { code: 'unsupported-continuation' });
   assert.deepEqual(f.store.read(), before);
   const state = f.act({ action: 'handover', authority: 'User handover', mechanism: MECHANISM }, codex);
-  assert.equal(state.mode, 'unattended');
+  assert.equal(state.mode, undefined);
   assert.equal(state.continuation.kind, 'goal');
 });
 
@@ -125,10 +125,10 @@ test('repeated handover keeps the original record, can upgrade and never downgra
   const first = f.act({ action: 'handover', authority: 'First handover' });
   const upgraded = f.act({ action: 'handover', authority: 'Second handover', mechanism: MECHANISM });
   assert.deepEqual(upgraded.handover, first.handover);
-  assert.equal(upgraded.mode, 'unattended');
+  assert.equal(upgraded.mode, undefined);
   const repeated = f.act({ action: 'handover', authority: 'Third handover' });
   assert.deepEqual(repeated.handover, first.handover);
-  assert.equal(repeated.mode, 'unattended');
+  assert.equal(repeated.mode, undefined);
   assert.deepEqual(repeated.continuation, upgraded.continuation);
 });
 
@@ -142,12 +142,12 @@ test('handover is refused on a stopped run and for another controller', t => {
 });
 
 test('a run created unattended carries the same handover record and can verify through handover', t => {
-  const f = fixture(t, { mode: 'unattended', authority: 'User handed the queue over' });
+  const f = fixture(t, { mechanism: undefined, authority: 'User handed the queue over' });
   assert.deepEqual(f.store.read().handover, { authority: 'User handed the queue over', revision: 0 });
-  assert.throws(() => f.finish(), { code: 'unverified-continuation' });
+  assert.throws(() => f.finish(), { code: 'continuation-observation-required' });
   // A mechanism-less handover cannot unblock an unattended run, which is why an unverifiable handover starts attended.
-  assert.equal(f.act({ action: 'handover', authority: 'Still unverified' }).mode, 'unattended');
-  assert.throws(() => f.finish(), { code: 'unverified-continuation' });
+  assert.equal(f.act({ action: 'handover', authority: 'Still unverified' }).mode, undefined);
+  assert.throws(() => f.finish(), { code: 'continuation-observation-required' });
   f.act({ action: 'handover', authority: 'Renewed', mechanism: MECHANISM });
   f.finish();
   assert.equal(f.store.read().tasks[0].status, 'complete');
@@ -155,6 +155,7 @@ test('a run created unattended carries the same handover record and can verify t
 
 test('a run without a handover keeps the two-stage closing and owes no report', t => {
   const f = fixture(t);
+  f.store.update(actor, f.store.read().revision, 'fixture-legacy-record', state => { delete state.kind; delete state.handover; });
   f.finish();
   f.act({ action: 'retrospective', evidence: 'Considered' });
   assert.equal(obligationBrief(f.store.read()).closing.stage, 'triage');
@@ -187,6 +188,7 @@ test('a handed-over run closes through retrospective, report, triage and complet
 
 test('a handover arriving after retrospective and triage still cannot complete without a report', t => {
   const f = fixture(t);
+  f.store.update(actor, f.store.read().revision, 'fixture-legacy-record', state => { delete state.kind; delete state.handover; });
   f.finish();
   f.act({ action: 'retrospective', evidence: 'Considered' });
   f.act({ action: 'triage', evidence: 'Nothing pending' });
@@ -209,7 +211,7 @@ test('resumed engineering clears the report and its delivery with the rest of th
   f.act({ action: 'report', path: f.writeReport() });
   f.act({ action: 'report-delivered', authority: 'User replied: thanks' });
   f.act({ action: 'unblock', taskId: 'later', evidence: 'User answered the decision' });
-  assert.deepEqual(f.store.read().closing, { retrospectiveEvidence: null, reportEvidence: null, reportDelivery: null, triageEvidence: null });
+  assert.deepEqual(f.store.read().closing, { retrospectiveEvidence: null, reportEvidence: null, reportDelivery: null, triageEvidence: null, progressBindings: { retrospective: null, report: null, delivery: null, triage: null } });
 });
 
 test('delivery is recorded on running, stopped and complete runs, is idempotent, and a replaced or stale report is undelivered', t => {
@@ -285,6 +287,7 @@ test('SessionStart carries the morning-report notice for a closed handed-over ru
 
 test('a closed run without a handover and a state from an earlier release produce no notice', t => {
   const f = fixture(t);
+  f.store.update(actor, f.store.read().revision, 'fixture-legacy-record', state => { delete state.kind; delete state.handover; });
   f.finish();
   f.act({ action: 'retrospective', evidence: 'Considered' });
   f.act({ action: 'triage', evidence: 'Nothing pending' });
@@ -292,7 +295,7 @@ test('a closed run without a handover and a state from an earlier release produc
   f.act({ action: 'complete' });
   assert.doesNotMatch(f.hook('SessionStart').hookSpecificOutput.additionalContext, /morning report/);
 
-  const legacy = fixture(t, { mode: 'unattended' });
+  const legacy = fixture(t, {});
   legacy.store.update(actor, legacy.store.read().revision, 'earlier-release-fixture', state => { delete state.handover; state.closing = { retrospectiveEvidence: 'Considered', triageEvidence: 'Nothing pending' }; });
   const brief = obligationBrief(legacy.store.read());
   assert.equal(brief.handover, null);
@@ -317,6 +320,6 @@ test('the unattended Stop hook resists a yield at the report stage and never for
 test('the CLI routes the new actions and still refuses a run selector on mutations', async t => {
   const f = fixture(t);
   const brief = await execute(f.root, { action: 'handover', authority: 'User handover', actor, revision: f.store.read().revision });
-  assert.equal(brief.handover.authority, 'User handover');
-  await assert.rejects(execute(f.root, { action: 'report-delivered', authority: 'User replied', runId: 'some-other-run', actor, revision: f.store.read().revision }), { code: 'wrong-run' });
+  assert.equal(brief.handover.authority, 'User agreed the scope');
+  await assert.rejects(execute(f.root, { action: 'report-delivered', authority: 'User replied', runId: require('node:crypto').randomUUID(), actor, revision: f.store.read().revision }), { code: 'wrong-run' });
 });

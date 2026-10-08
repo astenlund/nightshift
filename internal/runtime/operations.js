@@ -6,7 +6,7 @@ const { randomUUID } = require('node:crypto');
 const { RunError, requireCondition, text } = require('./store');
 const { CLOSING_TARGET } = require('./actions');
 const { resolveTrustedExecutable } = require('../filesystem-primitives');
-const { assertAction, targetById } = require('./lifecycle');
+const { assertAction, sameClosingRecord, targetById } = require('./lifecycle');
 const { timeLeft } = require('./limits');
 const { projectFile, snapshot } = require('./evidence');
 const { verificationEnvironment } = require('../releases/entry');
@@ -54,7 +54,15 @@ async function reservedOperation(store, request, work, dependencies = {}) {
   const registered = store.update(request.actor, request.revision, 'operation-reserved', state => {
     assertAction(state, request);
     state.workers.push({ id, session: null, role: 'operation', assignment: request.action, action: request.action, taskId: request.taskId, operationName: request.check?.name ?? request.probeId, writes: [], status: 'starting', phase: 'reserved', helperProcess, terminationPath });
-    if (pending) targetById(state, request.taskId).checks.push(pending);
+    if (pending) {
+      const target = targetById(state, request.taskId);
+      if (target.kind === 'closing') {
+        pending.progressBinding = structuredClone(target.progressBinding);
+        pending.progressOrigin = require('./discharge').origin(state, 'record');
+        pending.closingOccurrence = target.occurrence ?? null;
+      }
+      target.checks.push(pending);
+    }
   });
   const update = change => store.update(request.actor, store.read().revision, 'operation-progress', state => {
     const worker = state.workers.find(item => item.id === id);
@@ -105,7 +113,13 @@ async function reservedOperation(store, request, work, dependencies = {}) {
         // Completion order must not replace a newer invocation's result.
         const index = task.checks.findIndex(check => check.attemptId === id);
         requireCondition(index >= 0, 'operation-not-active', 'The reserved check attempt is missing');
-        task.checks[index] = { ...evidence, attemptId: id };
+        const pinned = task.checks[index];
+        const origin = pinned.progressBinding;
+        const source = pinned.progressOrigin;
+        requireCondition(task.kind !== 'closing' || sameClosingRecord(task, pinned, require('./discharge').origin(state, 'record')), 'closing-origin-changed', 'Check belongs to a replaced closing record');
+        requireCondition(task.kind !== 'closing' || require('node:util').isDeepStrictEqual(origin, task.progressBinding), 'closing-origin-changed', 'Check belongs to a different closing cycle');
+        task.checks[index] = { ...evidence, attemptId: id, ...(task.kind === 'closing' ? { progressBinding: structuredClone(origin), progressOrigin: source, closingOccurrence: pinned.closingOccurrence ?? null } : {}) };
+        if (task.kind === 'closing' && evidence.passed === true) require('./discharge').register(state, 'check/' + id);
       }
       else task.probeEvidence = [...(task.probeEvidence ?? []), evidence];
       Object.assign(worker, { status: 'complete', phase: 'terminated', terminationEvidence: termination, evidence: 'Command result and terminal worker state committed together' });

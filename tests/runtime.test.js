@@ -1,5 +1,7 @@
 'use strict';
 
+const { fixtureReport } = require('./fixtures/report');
+const { fixtureContinuation } = require('./fixtures/continuation');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -20,12 +22,13 @@ function fixture(t, tasks, extra = {}) {
   t.after(() => { store.close(); fs.rmSync(root, { recursive: true, force: true }); });
   fs.writeFileSync(path.join(root, 'subject.txt'), 'original\r\n');
   fs.writeFileSync(path.join(root, 'sibling.txt'), 'related\r\n');
-  const input = { controller: actor, authority: 'User confirmed this fixture outcome', objective: 'Deliver verified behavior', tasks: tasks ?? [{ id: 'subject', title: 'Subject change', agreement: { source: 'user message', outcome: 'Both paths behave correctly' } }], ...extra };
+  const input = { mechanism: fixtureContinuation(), controller: actor, authority: 'User confirmed this fixture outcome', objective: 'Deliver verified behavior', tasks: tasks ?? [{ id: 'subject', title: 'Subject change', agreement: { source: 'user message', outcome: 'Both paths behave correctly' } }], ...extra };
   const state = store.create(input);
   return { root, store, state, input };
 }
 
 function apply(fixture, request) {
+  fixtureReport(fixture.store, actor, request);
   const findings = fixture.store.read().tasks.find(task => task.id === (request.taskId ?? 'subject'))?.findings ?? [];
   const resolveId = id => findings.findLast(finding => finding.id === id || finding.localId === id)?.id ?? id;
   if (request.findingId) request.findingId = resolveId(request.findingId);
@@ -510,7 +513,7 @@ test('wait ends at the run deadline instead of the requested timeout', async t =
 test('a missing or unknown request action is refused before any store or ownership check', async t => {
   const empty = fs.mkdtempSync(path.join(scratch, 'case-'));
   t.after(() => fs.rmSync(empty, { recursive: true, force: true }));
-  const refusal = { code: 'invalid-request', message: /request key action .*accepted actions: status, inspect, history, wait, create/ };
+  const refusal = { code: 'invalid-request', message: /request key action .*accepted actions: status, inspect, history, wait, open-review/ };
   await assert.rejects(execute(empty, { operation: 'status' }), { ...refusal, message: /action is missing/ });
   await assert.rejects(execute(empty, { action: 'statuss' }), { ...refusal, message: /"statuss" is not a runtime action/ });
   assert.equal(fs.existsSync(path.join(empty, '.nightshift')), false);
@@ -530,8 +533,11 @@ function specFixture(t, tasks) {
   fs.writeFileSync(path.join(root, 'spec.md'), '# Commitments\r\nKeep both paths correct\r\n');
   const store = new RunStore(root, { create: true });
   t.after(() => { store.close(); fs.rmSync(root, { recursive: true, force: true }); });
-  store.create({ controller: actor, authority: 'User agreed the scope', objective: 'Deliver the governed work', tasks });
-  const act = request => store.update(actor, store.read().revision, request.action, state => transition(state, request));
+  store.create({ mechanism: fixtureContinuation(), controller: actor, authority: 'User agreed the scope', objective: 'Deliver the governed work', tasks });
+  const act = request => {
+    fixtureReport(store, actor, request);
+    return store.update(actor, store.read().revision, request.action, state => transition(state, request));
+  };
   return { root, store, act };
 }
 
@@ -598,6 +604,6 @@ test('the accepted runtime actions are exactly the lifecycle transitions and the
   const handled = [...source.matchAll(/^ {4}case '([a-z-]+)':/gm)].map(match => match[1]);
   assert.ok(handled.length > 20);
   assert.deepEqual(handled.filter(action => !isRuntimeAction(action)), []);
-  const cliOnly = ['adopt', 'create', 'dispatch', 'history', 'inspect', 'probe', 'status', 'wait'];
+  const cliOnly = ['adopt', 'dispatch', 'history', 'inspect', 'open-review', 'probe', 'status', 'wait'];
   assert.deepEqual([...RUNTIME_ACTIONS].filter(action => !handled.includes(action)).sort(), cliOnly);
 });

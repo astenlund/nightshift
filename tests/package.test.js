@@ -119,6 +119,17 @@ test('active deterministic entry points load without the retired workflow machin
   assert.equal(fs.existsSync(path.join(root, 'skills/revise-plan/SKILL.md')), false);
 });
 
+test('controller-claim prerequisites apply to delivery runs and name the standalone route', () => {
+  // Review contexts refuse claim-controller, so a prerequisite stated for every controller turn would misdirect standalone revision.
+  for (const file of ['internal/workflow.md', 'internal/releases/REFERENCE.md', 'internal/runtime/REFERENCE.md']) {
+    const content = fs.readFileSync(path.join(root, file), 'utf8');
+    const prerequisites = [...content.matchAll(/before canonical engineering[^.]*\./gi)].map(match => match[0]);
+    assert.ok(prerequisites.length > 0, `${file} states the claim prerequisite`);
+    for (const sentence of prerequisites) assert.match(sentence, /of a delivery run/, `${file}: ${sentence}`);
+    assert.match(content, /standalone review context takes no controller claim/i, `${file} names the standalone route`);
+  }
+});
+
 test('public skills and shared brief have resolvable local documentation links', () => {
   const files = [...publicSkills.map(name => 'skills/' + name + '/SKILL.md'), 'AGENTS.md', 'internal/workflow.md', 'internal/runtime/REFERENCE.md'];
   for (const file of files) {

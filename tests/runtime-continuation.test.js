@@ -27,9 +27,10 @@ function fixture(t, options = {}) {
   const block = kind => act({ action: 'block', taskId: 'work', blocker: { kind, reason: 'Fixture boundary', recoveryAttempted: 'Reconciled current evidence' } });
   const handover = () => act({ action: 'handover', authority: 'User handed over agreed work', mechanism });
   const invalidate = (reason = 'Native goal is blocked') => act({ action: 'invalidate-continuation', reason });
+  const fail = (reason = 'Native goal inspection failed') => act({ action: 'continuation', mechanism: { verified: false, kind: 'goal', reason } });
   const claim = () => act({ action: 'claim-controller', claim: { controller: actor, process: { pid: 123, created: 'fixture-incarnation', name: 'codex.exe' }, revision: store.read().revision + 1, observedAt: new Date().toISOString() } });
 
-  return { root, store, act, hook, block, handover, invalidate, claim };
+  return { root, store, act, hook, block, handover, invalidate, fail, claim };
 }
 
 test('recorded handover keeps Stop protection after continuation invalidation', t => {
@@ -38,7 +39,7 @@ test('recorded handover keeps Stop protection after continuation invalidation', 
   const handover = f.store.read().handover;
   f.invalidate();
   const state = f.store.read();
-  assert.equal(state.mode, 'attended');
+  assert.equal(state.mode, undefined);
   assert.equal(state.status, 'running');
   assert.deepEqual(state.handover, handover);
   assert.equal(state.continuation.verified, false);
@@ -46,22 +47,23 @@ test('recorded handover keeps Stop protection after continuation invalidation', 
   assert.deepEqual(f.hook('Stop', 'former-owner'), {});
 });
 
-test('mechanism-less handover is protected while ordinary attended conversation can yield', t => {
-  const ordinary = fixture(t);
-  assert.equal(ordinary.hook().decision, undefined);
-  assert.equal(ordinary.store.read().stopRecovery, undefined);
+test('accepted delivery is protected before its continuation outcome is recorded', t => {
+  const pending = fixture(t);
+  assert.equal(pending.hook().decision, 'block');
+  assert.equal(pending.store.read().stopRecovery.reminders, 1);
 
   const handed = fixture(t);
   handed.act({ action: 'handover', authority: 'User handed over with continuation unavailable' });
-  assert.equal(handed.store.read().mode, 'attended');
+  assert.equal(handed.store.read().mode, undefined);
   assert.equal(handed.store.read().continuation, null);
   assert.equal(handed.hook().decision, 'block');
 });
 
-test('downgraded handover pauses for a user decision only after active workers finish', t => {
+test('handover with failed continuation pauses for a user decision after workers finish', t => {
   const f = fixture(t);
   f.handover();
   f.invalidate();
+  f.fail();
   f.block('user-decision');
   f.act({ action: 'worker', worker: { id: 'review', session: 'independent-reviewer', role: 'reviewer', assignment: 'Review the cumulative change', writes: [] } });
   assert.equal(f.hook().decision, 'block');
@@ -111,16 +113,17 @@ test('claim refreshes and new negative observations cannot evade three Stop remi
   assert.equal(f.store.read().status, 'running');
 });
 
-test('real task progress resets Stop reminders without restoring unattended mode', t => {
+test('real task progress resets Stop reminders after a recorded continuation failure', t => {
   const f = fixture(t);
   f.handover();
   f.invalidate();
+  f.fail();
   for (let i = 0; i < 3; i++) assert.equal(f.hook().decision, 'block');
   assert.equal(f.hook().continue, false);
   f.act({ action: 'start-task', taskId: 'work' });
   assert.equal(f.hook().decision, 'block');
   assert.equal(f.store.read().stopRecovery.reminders, 1);
-  assert.equal(f.store.read().mode, 'attended');
+  assert.equal(f.store.read().mode, undefined);
 });
 
 test('explicit user interruption wins over downgraded handover protection', t => {
@@ -153,7 +156,7 @@ test('invalidation of a stopped run preserves the stop and cannot resume it', t 
   const stop = f.store.read().stop;
   f.invalidate();
   assert.equal(f.store.read().status, 'stopped');
-  assert.equal(f.store.read().mode, 'attended');
+  assert.equal(f.store.read().mode, undefined);
   assert.deepEqual(f.store.read().stop, stop);
   assert.deepEqual(f.hook(), {});
 });

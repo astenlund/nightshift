@@ -46,6 +46,16 @@ function refreshPackage(root) {
   fs.writeFileSync(path.join(root, MANIFEST_PATH), encodeManifest(manifest));
 }
 
+function activationPackageCopy(root, version) {
+  const target = packageCopy(root, version);
+  const cli = path.join(target, 'internal/runtime/cli.js');
+  const content = fs.readFileSync(cli, 'utf8');
+  assert.ok(content.includes('CONTINUATION_OPTIONAL_ADMISSION: true'));
+  fs.writeFileSync(cli, content.replace('CONTINUATION_OPTIONAL_ADMISSION: true', 'CONTINUATION_OPTIONAL_ADMISSION: false'));
+  refreshPackage(target);
+  return target;
+}
+
 function simulatedService(value, source, version = '1.0.0') {
   const state = { source, version, enabled: true, trusted: true, configured: true, disabled: false, discoveries: 0 };
   const service = new ReleaseService(value.store, {
@@ -90,4 +100,4 @@ async function activate(service, registration, project, session) {
   await service.hook(registration, { cwd: project, session_id: session, hook_event_name: 'SessionStart', source: 'startup' });
 }
 
-module.exports = { activate, claudeInspection, fixture, packageCopy, refreshPackage, repository, settingsReader, simulatedService };
+module.exports = { activate, activationPackageCopy, claudeInspection, fixture, packageCopy, refreshPackage, repository, settingsReader, simulatedService };
