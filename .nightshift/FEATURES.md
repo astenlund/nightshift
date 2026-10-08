@@ -4,6 +4,12 @@ Upcoming work and deferred extensions to the delivered v3 MVP. Its delivery is r
 
 ## Current work
 
+### [Handover as the delivery boundary](features/handover-only-delivery.md)
+
+Make handover the sole creation path for complete delivery, preserve Ready selection through investigated scope confirmation, and keep standalone revision in durable review contexts. Acceptance records continuation success or failure, requires visible acknowledgement before engineering, and preserves current ownership, assurance and bounded continuation pressure through recovery. The complete agreed governing design is retained in the feature record. The local 3.3.10 candidate remains under final assurance and closing; publication is not authorized. Advanced scope selection remains in [Run-free revise](features/run-free-revise.md).
+
+**Requires:** none.
+
 ### [Whole-backlog coherence audit](features/backlog-coherence-audit.md)
 
 A whole-backlog mode of `revise-docs` that walks every active index, breakout and pattern file and checks that relationships between entries, excerpts against their records, and claims about the current code still hold. Every finding gets fresh skeptic validation; the audit repairs when attended and writes an inbox report for later triage when unattended. Raised and settled by the user on 2026-09-25; the MVP is manual only.
