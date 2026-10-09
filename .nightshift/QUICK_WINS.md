@@ -368,6 +368,12 @@ Observed on 2026-10-09 in run `67af3471-c7c7-4e28-ab57-88e3ba299126`, after a Cl
 
 Bound or page `inspect` output, or add a focused lookup of a finding, task or review, so a controller can read what it needs from a long run through a supported path, and state the limit in the runtime reference. Runtime changes ship with a version increase. Tracking does not authorize implementation.
 
+### Name the stale check when completion refuses
+
+Observed on 2026-10-09 in run `67af3471-c7c7-4e28-ab57-88e3ba299126` on the retained 3.3.8 runtime, after the post-triage tracking edits: `complete` refused with `stale-review` and "Final reviewed inputs changed" although the code task's documentation relief held through the clean closing docs review. The cause was the completed delivery task's own Ready parser check, whose recorded inputs include the backlog files the tracking edits changed: `reviewGateFailure` in `internal/runtime/lifecycle.js` includes the task's verification gate, and `complete` tests the review gates before it reaches its `verification-required` refusal, so a stale check is reported as stale review inputs. Status listed the check under `staleChecks`, as [Show stale checks in status](QUICK_WINS_HISTORY.md#show-stale-checks-in-status) provides, but the controller read only the closing section and spent a read-only diagnosis on the refusal before rerunning the check. The 3.3.10 source orders the gates the same way, and the same refusal was recorded on 2026-10-01 in run `edb0199e-f5f3-4fab-a55f-8fa909a08289`, before status listed stale checks. The user chose to track it.
+
+When a task's own check is what fails its gate, have `complete` refuse with `verification-required` naming the check, or name the check in the `stale-review` message, and keep `stale-review` for assessments whose inputs changed. Runtime changes ship with a version increase. Tracking does not authorize implementation.
+
 ## History
 
 Prior delivered work remains in [QUICK_WINS_HISTORY.md](QUICK_WINS_HISTORY.md).
