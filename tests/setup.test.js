@@ -8,8 +8,9 @@ const test = require('node:test');
 const { Setup, initialize, rewriteReferences } = require('../internal/setup');
 const { analyze } = require('../skills/ready/ready');
 const { RunStore } = require('../internal/runtime/store');
-const { DIMENSIONS, transition } = require('../internal/runtime/lifecycle');
+const { transition } = require('../internal/runtime/lifecycle');
 const { executeWithFixtureController: execute } = require('./fixtures/controller-claim');
+const { fixtureContinuation } = require('./fixtures/continuation');
 
 function git(root, args, statuses = [0]) {
   const result = spawnSync('git', args, { cwd: root, windowsHide: true, encoding: 'utf8' });
@@ -30,6 +31,12 @@ function write(root, file, content) {
   const target = path.join(root, file);
   fs.mkdirSync(path.dirname(target), { recursive: true });
   fs.writeFileSync(target, content);
+}
+
+// Releases before 3.3.10 wrote no runtime project lock, so a legacy store built with the current runtime sheds the one it created.
+function closeLegacyStore(root, store) {
+  store.close();
+  fs.rmSync(path.join(root, '.claude/runs/write-ownership.sqlite'));
 }
 
 test('nonlocal namespaces are preserved before filesystem dot-segment normalization', t => {
@@ -376,10 +383,9 @@ test('migration repairs reference definitions, moved relative links and explicit
   assert.equal(fs.readFileSync(path.join(root, '.nightshift/features/a.md'), 'utf8'), '# A\n\n[Settings](../../.claude/settings.json) [Sibling](b.md)\n');
 });
 
-test('a migrated stopped run resumes default spec assessment with current paths and original history', async t => {
+test('a migrated stopped run keeps current paths and original history but refuses engineering without a current acknowledgement', async t => {
   const root = fixture(t);
   write(root, '.claude/specs/design.md', '# Accepted behavior\n');
-  const baseSha = git(root, ['hash-object', '-t', 'tree', '--stdin']).stdout.trim();
   const actor = { host: 'codex', session: 'owner' };
   const legacy = new RunStore(root, { create: true, legacy: true });
   legacy.create({ objective: 'Accepted behavior', authority: 'User', controller: actor, tasks: [{ id: 'code', title: 'Code', agreement: { source: 'User', outcome: 'Accepted behavior', spec: '.claude/specs/design.md', specReviewed: true } }] });
@@ -388,7 +394,7 @@ test('a migrated stopped run resumes default spec assessment with current paths 
     state.workers.push({ id: 'finished-writer', session: 'writer', role: 'implementer', assignment: 'Write spec', writes: ['.claude/specs'], status: 'stopped' });
     transition(state, { action: 'stop', kind: 'user-stop', reason: 'User authorized migration pause' });
   });
-  legacy.close();
+  closeLegacyStore(root, legacy);
   const setup = new Setup(root);
   try { setup.apply({ ownership: { '.claude/specs': 'nightshift' } }); } finally { setup.close(); }
   const store = new RunStore(root);
@@ -401,20 +407,11 @@ test('a migrated stopped run resumes default spec assessment with current paths 
     assert.equal(store.history(store.read().id)[1].state.followups[0].route, '.claude/specs');
     assert.deepEqual(store.history(store.read().id)[1].state.workers[0].writes, ['.claude/specs']);
     await act({ action: 'resume', authority: 'User-authorized migration resumption' });
-    await act({ action: 'add-spec-review', taskId: 'code' });
-    const specId = store.read().tasks[0].agreement.specReviewTaskId;
-    const result = await execute(root, { action: 'dispatch', actor, revision: store.read().revision, taskId: specId, review: { kind: 'spec', baseSha, requirements: 'Accepted behavior', rules: 'Read-only fixture', candidates: [{ host: 'claude', model: 'claude-fable-5-1' }] } }, { runAgent: options => {
-      assert.equal(fs.existsSync(path.join(options.cwd, 'project/.nightshift/specs/design.md')), true);
-      const report = { requestId: options.schema.properties.requestId.enum[0], status: 'complete', coverage: DIMENSIONS.spec.map(dimension => ({ dimension, evidence: 'Whole governing fixture assessed' })), findings: [], probes: [], summary: 'Accepted behavior coherent' };
-      fs.mkdirSync(options.artifacts, { recursive: true });
-      const events = [{ type: 'assistant', session_id: 'reviewer', message: { model: options.model, content: [] } }, { type: 'result', session_id: 'reviewer', subtype: 'success', is_error: false, structured_output: report }];
-      fs.writeFileSync(path.join(options.artifacts, 'events.jsonl'), events.map(event => JSON.stringify(event)).join('\n') + '\n');
-      return { host: 'claude', model: options.model, session: 'reviewer', attributionVerified: true, status: 'complete', output: report, tokens: 0 };
-    } });
-    await act({ action: 'review', taskId: specId, receipt: path.relative(root, result.receiptFile).split(path.sep).join('/') });
-    while (store.read().tasks.find(task => task.id === specId).status !== 'complete') await act({ action: 'advance', taskId: specId, evidence: 'Internal assessment closing obligation satisfied' });
-    await act({ action: 'start-task', taskId: 'code' });
-    assert.equal(store.read().tasks[0].status, 'active');
+    await act({ action: 'continuation', mechanism: fixtureContinuation(actor.host) });
+    // Engineering needs a current acknowledgement obligation, which neither a record from an earlier release nor this
+    // migration's requirements rebind leaves; how such runs resume belongs to the migration of records saved before 3.3.10.
+    await assert.rejects(act({ action: 'add-spec-review', taskId: 'code' }), { code: 'acknowledgement-obligation-unavailable' });
+    assert.equal(store.read().status, 'running');
   } finally { store.close(); }
 });
 
@@ -521,7 +518,7 @@ test('unfinished run migration preserves state and refuses active writers', t =>
     transition(state, { action: 'stop', kind: 'user-stop', reason: 'Authorized migration pause' });
   });
   const before = legacy.read();
-  legacy.close();
+  closeLegacyStore(root, legacy);
   setup = new Setup(root);
   try { assert.equal(setup.apply().status, 'complete'); }
   finally { setup.close(); }
