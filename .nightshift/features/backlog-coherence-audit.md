@@ -1,6 +1,6 @@
 ---
 name: backlog-coherence-audit
-description: Whole-backlog coherence audit as a mode of revise-docs, repairing when attended and reporting when unattended
+description: Whole-backlog coherence audit as a mode of revise-docs, repairing when the user runs it directly and reporting inside a handed-over delivery
 metadata:
   type: feature
 ---
@@ -18,7 +18,7 @@ Raised by the user on 2026-09-25 and shaped in discussion the same day; the user
 - The audit is a whole-backlog mode of `revise-docs`, not a new public skill. It walks every active index, breakout and pattern file; history files are out of scope as audit subjects, but links from active entries into them must still resolve.
 - Scope covers relationships between entries (stated separations and coordinations still holding, overlapping or duplicate entries, missing or satisfied `Requires`), consistency between index excerpts and their records, and entries' claims about the current code.
 - Every finding receives fresh skeptic validation against concrete evidence before it is repaired or reported, as in the rest of the revise family.
-- When attended, the audit repairs what it confirms, under the existing revise-docs rules. When unattended, it edits nothing and writes a report to the inbox for later triage, since backlog content reflects the user's triage decisions.
+- When the user runs it directly, the audit repairs what it confirms, under the existing revise-docs rules. Inside a handed-over delivery, it edits nothing and writes a report to the inbox for later triage, since backlog content reflects the user's triage decisions.
 - Under the user's global review rules the backlog is documentation, so the audit's repairs are reviewed with the documentation lens: accuracy against what each entry describes. [Independent documentation review](independent-documentation-review.md) supplies that lens as the runtime `docs` review kind, delivered in the local 3.2.16 candidate.
 
 ## Slices

@@ -31,7 +31,7 @@ The existing [host-probe evidence bug](../BUGS.md#probe-evidence-about-the-host-
 
 The audit of 2026-09-29 found two recording gaps that this entry also owns, besides delivery to later reviews:
 
-- Capturing investigations, for the retained need Controller-owned session experiment ledger. Follow-ups, dispositions with their reasons, check output, the closing retrospective and the morning report already record much of this, but no instruction directs recording a material investigation's conclusion, deciding evidence and limits in the run record when they are established, and an attended run without a handover has no morning report.
+- Capturing investigations, for the retained need Controller-owned session experiment ledger. Follow-ups, dispositions with their reasons, check output, the closing retrospective and the morning report already record much of this, but no instruction directs recording a material investigation's conclusion, deciding evidence and limits in the run record when they are established, and before 3.3.10 an attended run without a handover had no morning report.
 - Working notes, for the retained need Stage-altitude finding routing, whose agreed disposition under [Finding decisions](../../V3-MIGRATION.md#finding-decisions) begins "Preserve useful implementation discoveries in working notes and carry unresolved obligations through compaction or handoff." Unresolved obligations survive compaction and handoff, but no instruction or runtime operation preserves implementation discoveries, and a finding deferred to implementation leaves the focused status once it is disposed.
 
 ## Settled questions

@@ -74,6 +74,8 @@ Only explicit revise intent should trigger the plugin's standalone review skills
 
 ### Standalone operations and work already underway
 
+[Handover as the delivery boundary](.nightshift/features/handover-only-delivery.md), agreed on 2026-10-07 and delivered in the local 3.3.10 candidate, supersedes the delivery-creation and standalone-record boundary below: handover alone creates delivery, and standalone revision keeps the shared assurance through durable review contexts without delivery closing stages. Existing runs keep their exact retained runtime. The dated agreement below remains historical reasoning.
+
 Agreed 2026-09-07. Keep documentation updates and session retrospectives independently callable, using their shared lifecycle behavior and preserving user control over instruction changes. Standalone spec and code revision use explicit revise intent and the shared Nightshift machinery; plain review and review-loop requests retain the global routing above.
 
 Handover can begin partway through work. Establish accepted requirements, authority, the actual implementation state, and valid evidence, then continue from the supported stage already reached. Preserve valid agreement and completed work while checking any remaining obligations; an existing artifact or prior stage label alone does not establish completion.

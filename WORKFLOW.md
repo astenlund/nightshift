@@ -1,6 +1,6 @@
 # Nightshift workflow design
 
-Working draft, updated 2026-09-07, developing [the vision](VISION.md). The workflow and dimension brief below record the agreed walkthrough and review coverage. This document guides later transformation; it does not change the current plugin or authorize implementation of the redesign.
+Working draft, updated 2026-10-09, developing [the vision](VISION.md). The workflow and dimension brief record the agreed direction. [Handover as the delivery boundary](.nightshift/features/handover-only-delivery.md) governs delivery creation, standalone revision and continuation from 3.3.10; existing bound runs keep their retained runtime. This document grants no implementation authority.
 
 ## Governing priorities
 
@@ -24,9 +24,17 @@ For the substantial-feature path, implementation starts only when the user has c
 
 Before handing work over for unattended execution, ensure every queued item has the required user agreement through the small-change or substantial-feature path and resolve known blocking user decisions. One agreement or shared spec may cover multiple items; independent review and engineering can continue unattended. Check essential execution and review capabilities within the agreed scope and limits. During the run, the controller handles routine decisions and recoverable failures autonomously, using allowed fallbacks and sound continuation. A newly discovered material decision requiring the user pauses dependent work while independent items continue. Ordinary follow-up questions wait for the closing triage; a genuine authority or capability blocker remains explicit and does not count as completed work.
 
+## Accept handover and observe continuation
+
+Handover alone creates a delivery run. Ordinary chat agreement authorizes direct work. Ready explains that selecting work requests handover after investigation; confirmation of the investigated scope releases it, unless the user explicitly requests direct work or a pause. Selection alone starts no implementation. All four standalone revise skills use durable review contexts with attributed assurance, without delivery closing stages. Revision inside an owned delivery continues on its task.
+
+After durable acceptance and the recorded continuation outcome, emit the separate visible acknowledgement before engineering. It begins `Handover accepted: <scope and limits>. You can leave.` and names the report location. Failed continuation also discloses that automatic continuation is unavailable, the failure was recorded and resumption is needed if the session stops. The runtime observes the owning native assistant output before admitting runtime engineering; this does not intercept arbitrary editor or shell writes. After the acknowledgement paragraph, inspect runtime status in the same ongoing tool-use turn. Its read-only acceptance checkpoint distinguishes an awaiting continuation outcome, missing output, available output and unavailable history. Reconcile an awaiting outcome, emit ordinary text when missing, and recover unavailable history through bounded diagnostics. Available output permits requesting engineering, whose runtime transition independently observes and captures the acknowledgement. Inspection itself discharges no obligation. Use turn-ending acknowledgement only with verified continuation; otherwise keep working in the active turn. Actual ordering remains a per-host verification obligation.
+
+New deliveries have no attended/unattended mode. Attempt the host's continuation without enabling deliberately disabled hooks or granting trust. Preserve accepted authority when continuation fails, record the actual failure and follow-up, and continue otherwise authorized work in the current turn. Ownership, permissions, exact resources, explicit stops and exhausted limits retain their gates. A user-requested hold suspends engineering and continuation pressure; authorized resumption reconciles activity and refreshes continuation on the same run.
+
 ## Implement directly
 
-A capable model implements from the agreed request or spec, using the repository and real execution feedback to choose and refine its approach. Fable and Astra are interchangeable; a run need not use both. Subagents get bounded assignments where they offer a clear benefit, and one owner remains responsible for the complete result. A written implementation plan is exceptional guidance for a deliberately chosen weaker or cheaper implementer that needs it.
+A capable model implements from the agreed request or spec, using the repository and real execution feedback to choose and refine its approach. Select a model meeting the role's required strength and capabilities, respecting the user's model choices. A run need not use both hosts. Subagents get bounded assignments where they offer a clear benefit, and one owner remains responsible for the complete result. A written implementation plan is exceptional guidance for a deliberately chosen weaker or cheaper implementer that needs it.
 
 The controller chooses assignments using task fit, observed model strengths, availability, context, and cost within the invariant priorities. The user's reported tendencies inform that judgment without prescribing a fixed team or a fixed model for each stage; structured model teams are deferred beyond the MVP. Respect explicit model choices and preserve control of an existing run. Investigation establishes the problem before editing regardless of the implementer.
 
@@ -78,7 +86,7 @@ No follow-ups means no empty triage ceremony. If the user is unavailable, preser
 
 ## Review dimensions
 
-These are the agreed coverage lenses for the reviewer, independent of the number of agents. They consolidate overlapping criteria and make requirements and verification explicit. The current engine still uses its earlier profiles; these lenses guide their later replacement.
+These are the agreed coverage lenses for the reviewer, independent of the number of agents. They consolidate overlapping criteria and make requirements and verification explicit. The runtime's [review dimensions](internal/runtime/review.js) implement these coverage lenses.
 
 ### Spec review
 

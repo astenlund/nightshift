@@ -1,6 +1,10 @@
 # Agreement reached in ordinary chat activates the lifecycle
 
-## Current evidence
+## Correction
+
+[Handover as the delivery boundary](../features/handover-only-delivery.md) makes handover the sole delivery creation path, including the request made by Ready selection and released by confirmation of investigated scope. Ordinary chat agreement authorizes direct work and creates no run; standalone revise uses durable review contexts. It was delivered in the local 3.3.10 candidate by run `67af3471-c7c7-4e28-ab57-88e3ba299126`, which has not been published; [the acceptance report](../reports/handover-only-delivery-20261009.md) records which installed-host branches were exercised and which remain provisional. This record preserves the original incident.
+
+## Historical incident evidence
 
 Reported on 2026-10-05 to the maintainer inbox by the controller of the session it happened in, at the user's request, and tracked at the inbox triage of the same day. The session ran in this repository on `main`, on Claude Code 2.1.289 with controller `claude-fable-5-1` and installed and bound release 3.3.3: session `bf9f8d10-5668-44a7-bdee-100a0ca8380f`, attended run `7b7ad4bd-c137-4dc4-8300-eaab1be6e89b`, ended by a recorded user stop. The report says the user invoked no skill and that Ready, handover and the revise skills were not invoked in the session; the controller read skill text directly while carrying the lifecycle, for example `skills/revise-lore/SKILL.md` at 02:50:57Z in the session transcript.
 
@@ -62,6 +66,6 @@ Have a project's lifecycle requirement activate for work selected through Ready,
 
 ## Verification and related work
 
-The fix changes shipped guidance with model-owned behavior, so it rides with a plugin version increase and a decision on installed-host evidence. [Choose how agreed work proceeds](../features/agreed-work-choice.md) would let Ready-selected work be implemented without a runtime run; how the two relate is settled when either is taken on. The memory slip that followed the stop is recorded in [Retrospective routing by audience and instruction precedence](../features/revise-lore-audience-routing.md).
+The fix changes shipped guidance with model-owned behavior, so it rides with a plugin version increase and a decision on installed-host evidence. [Handover as the delivery boundary](../features/handover-only-delivery.md) settles the delivery boundary and supersedes the mandatory three-choice proposal; explicit direct-work and pause requests remain available. The memory slip that followed the stop is recorded in [Retrospective routing by audience and instruction precedence](../features/revise-lore-audience-routing.md).
 
 The incident report names the evidence it left in this checkout's ignored folders: the run state in `.nightshift/runs/state.sqlite` under the run id above, receipts in `.nightshift/runs/reviews/<request id>/` for the twelve requests in the table, and the controller's scratch folder `.tmp/readme-rewrite-20261005/`. Tracking does not authorize implementation.

@@ -9,6 +9,12 @@ metadata:
 
 Implementation was authorized on 2026-09-07. Version 3.0.0 was published to `main` on 2026-09-10, with implementation and required Windows acceptance complete. The [acceptance report](../reports/v3-acceptance-272m-20260910.md) records the evidence and its qualifications. This feature consolidates the agreed [vision](../../VISION.md), [workflow](../../WORKFLOW.md), and [migration assessment](../../V3-MIGRATION.md) for the first v3 release.
 
+## Current delivery boundary
+
+The [acceptance report](../reports/handover-only-delivery-20261009.md) records the local 3.3.10 delivery's assurance, its native evidence and each host's live claims, provisional ones included; the candidate has not been published.
+
+[Handover as the delivery boundary](handover-only-delivery.md), agreed on 2026-10-07 and delivered in the local 3.3.10 candidate, governs intake, durable standalone review contexts and continuation. Handover alone creates a delivery run. Ready selection requests handover after investigation and scope confirmation; ordinary chat agreement remains direct work. New deliveries keep handover authority and continuation health separately, with no attended/unattended mode. A technical continuation failure is recorded with a follow-up and does not revoke otherwise valid accepted work. Explicit holds and limits retain their protections, and existing bound runs keep their exact runtime and historical modes. The original MVP campaign evidence below remains historical evidence, not proof of changed behavior.
+
 ## Outcome and priorities
 
 Hand over an agreed task or finite queue, go to bed, and return to useful work supported by independent review and execution evidence. The fixed priority is reliability, through autonomy and trust together, with speed, efficiency, and economy counting only where they cost neither, within explicit user authority and limits. Routine decisions and recoverable failures must not require the user's return. The user must not need to audit the code personally. Genuine blockers remain explicit, and incomplete obligations cannot be declared complete.
@@ -45,7 +51,7 @@ Every repair batch, including tiny fixes, receives relevant verification and ful
 
 Only a completed strong independent assessment with credible broad coverage and resolved required work can pass the review gate. Weak, narrow, failed, or partial assessments cannot substitute. No-edit resolutions may avoid an extra LGTM-only pass when that coverage is already complete. A continued assessment, from a resumed or replacement reviewer, never passes a gate; once no critical or important finding awaits repair and none awaits closure, a fresh assessment of the same kind follows, and only it can pass. Every reviewer receives the recorded acknowledgements so settled points are not raised again. New evidence can reopen an earlier disposition.
 
-Standalone spec and code revision use explicit `revise` intent. Plain `review` and `review-loop` requests use the user's global direct-agent routines and must not activate Nightshift skills. An authorized Nightshift lifecycle still invokes its required internal review machinery.
+All four standalone revise skills use explicit `revise` intent and durable review contexts, with shared attributed assurance and no delivery closing stages. Inside an owned delivery, revision uses its task. Plain `review` and `review-loop` requests use the user's global direct-agent routines and must not activate Nightshift skills. An authorized Nightshift lifecycle still invokes its required internal review machinery. Staged-only, unstaged-only and historical-range capture remain the undelivered slice of [Run-free revise](run-free-revise.md).
 
 ## Dependable continuation
 

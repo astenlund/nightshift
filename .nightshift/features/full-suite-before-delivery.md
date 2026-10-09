@@ -13,7 +13,7 @@ Found on 2026-10-01 by [the audit of capabilities that left v2 without a disposi
 
 ## Direction
 
-Before a run that changed more than documentation or the backlog delivers, attended or handed over, run the project's full test suite as the explicit ask that a user's rule against unrequested full-suite runs needs. Repair a failure the run's own changes caused, and stop for the user on any other failure rather than recording it as a follow-up.
+Before a delivery run that changed more than documentation or the backlog delivers, run the project's full test suite as the explicit ask that a user's rule against unrequested full-suite runs needs. Repair a failure the run's own changes caused, and stop for the user on any other failure rather than recording it as a follow-up.
 
 ## Settled questions
 

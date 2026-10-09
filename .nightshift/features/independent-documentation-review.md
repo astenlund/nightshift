@@ -11,6 +11,10 @@ Raised by the user on 2026-09-24 after run `46fc13f1-98fc-4a3e-953c-958a31261ae4
 
 Delivered in the local 3.2.16 candidate on 2026-09-29 in run `f440497c-a0cc-4375-bada-e834e32b49a6`, under the [governing spec](../specs/independent-documentation-review.md) the user accepted that day, which settles the questions listed under Before implementation below. The [acceptance report](../reports/independent-documentation-review-20260929.md) records the independent review, the deterministic evidence and the live Claude Code campaign with its qualifications. Not yet published.
 
+## Current standalone relationship
+
+[Handover as the delivery boundary](handover-only-delivery.md) provides the standalone review-context foundation that this record originally deferred to Run-free revise. The docs review kind and its strong independent assurance remain required in those contexts; revision inside delivery continues using its task, and closing tracking stays a delivery obligation. The earlier dated commitments below retain their historical run-bound wording. Advanced review-range capture remains separately undelivered. The foundation was delivered in the local 3.3.10 candidate, which has not been published.
+
 ## Problem
 
 Follow-up triage comes after the session retrospective, so backlog edits that apply triage decisions land after the run's last review. Two consecutive runs on 2026-09-24 show the consequences:

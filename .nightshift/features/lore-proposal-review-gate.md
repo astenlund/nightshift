@@ -15,6 +15,10 @@ Found on 2026-09-29 by the audit of the v3 migration accounting that the user as
 
 Agreed on 2026-09-06, in [V3-MIGRATION.md](../../V3-MIGRATION.md) under Review and simplification ownership: "Apply the common independent review, skeptic validation, and finding-disposition process to proposed instruction changes. Only a completed strong independent assessment with credible broad coverage can support passing the review gate. Every repair batch receives full cumulative review. No-edit resolutions avoid an extra LGTM-only pass only when the artifact is unchanged and that assessment is complete; weaker-only or narrowly focused review requires a fresh strong integrated assessment. Preserve user control over applying changes. A qualified existing reviewer can continue without a separate convergence system."
 
+## Standalone record boundary
+
+[Handover as the delivery boundary](handover-only-delivery.md) supplies durable standalone review contexts for revise-lore without creating delivery. That foundation was delivered in the local 3.3.10 candidate, which has not been published. The original standalone lore-task placeholder below describes the earlier boundary. This feature still owns the unimplemented instruction-proposal gate and mid-run add-task operation; no proposal-gate delivery is claimed by the new record foundation.
+
 ## Current behavior
 
 Checked on 2026-09-29:
