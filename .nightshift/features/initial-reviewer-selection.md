@@ -39,6 +39,11 @@ The user agreed these answers on 2026-10-03, when the entry graduated from Explo
 - **Strong list.** "Fable or Astra" reads as the models on the strong list, which are Fable and Astra today and which the model policy file is to make user-editable, so a change to that list needs no change here; the preference for the other host and the effort floor stand. Once [Model knowledge base](model-knowledge-base.md) exists, it can inform the order among strong models.
 - **Scope.** Unchanged: these rules select only the initial lead; skeptics, peers, supervisors and helpers keep their own policies.
 
+## Amendments
+
+- **No max effort.** At inbox triage on 2026-10-11 the user decided that no Nightshift role uses max reasoning effort, since its token spend is not worthwhile. The effort floor and the allowance for more effort on a demanding review therefore stop at the level below max, and an author or implementer known to have run at max sets a floor of that level. [Keep every role below max reasoning effort](../QUICK_WINS.md#keep-every-role-below-max-reasoning-effort) carries the rule into the operating brief before this feature ships.
+- **Strong models.** On 2026-10-10, during a run in another project, the user decided that Opus 5.5 and Sol are strong enough for reviewers and skeptics, and at inbox triage on 2026-10-11 chose to add them to the shipped strong list through [Admit Opus 5.5 and Sol as strong reviewers](../QUICK_WINS.md#admit-opus-55-and-sol-as-strong-reviewers). Under the strong-list answer above this policy then covers them without a change to its rules, but the host table's Fable and Astra preferences and the bullet preferring Astra over Opus when Fable is unavailable predate that decision; that quick win updates them.
+
 ## Before implementation
 
 The change is shipped guidance in the operating brief and possibly a line in revise-spec and revise-code, so it rides with a plugin version increase, and effort is translated into supported host settings then. Reviewer choice is model-owned behavior, so the start of the work decides between a budgeted installed-host check and deterministic evidence only with that behavior marked unverified. Tracking and readiness do not authorize implementation.
