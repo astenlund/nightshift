@@ -381,7 +381,7 @@ Deferred exploration of stronger enforcement for explicit command restrictions. 
 
 ### [Model choice per role: Opus 5.5 versus Fable](features/opus-versus-fable-role-choice.md)
 
-Investigate which roles could use Opus 5.5 instead of Fable without falling below their required capability and strength, and at what cost difference. The user reports Opus working well as default controller, unmeasured; live testing and pricing evidence settle any policy change.
+Investigate which roles could use Opus 5.5 instead of Fable without falling below their required capability and strength, and at what cost difference. The user reports Opus working well as default controller, unmeasured. On 2026-10-10 the user decided that Opus 5.5 and Sol are strong enough for reviewers and skeptics, which [Admit Opus 5.5 and Sol as strong reviewers](QUICK_WINS.md#admit-opus-55-and-sol-as-strong-reviewers) tracks, settling the gated-assessment question by decision; live testing and pricing evidence settle any further policy change.
 
 ### [Structured model teams](features/structured-model-teams.md)
 
