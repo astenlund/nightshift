@@ -18,7 +18,7 @@ Asked whether a run with a bypassed step may publish like any other or needs its
 
 Asked whether every bypass should also produce a defect report, since a technical refusal points at a runtime defect, the user answered: "offer to file a report, don't do that automatically. the reason for a bypass can only be guessed by the model, and might be different than the actual reason the user had."
 
-Later the same day the user added: "it would be good if we could make the bypass approval impossible (or at least difficult) to counterfeit".
+Later the same day the user added: "it would be good if we could make the bypass approval impossible (or at least difficult) to counterfeit". Asked whether the approval must resist a model that records approval it did not get, by misreading or fabrication, or an agent that deliberately tampers with the run store or the runtime, the user answered: "guarding against the first one: a confused agent making a mistake, not an adversarial one".
 
 ## Direction
 
@@ -30,7 +30,7 @@ Taken from those answers. None of it is designed or implemented.
 - **User acceptance.** A degraded run can complete once the user accepts its outcome. This is new: [Degraded assessment mode](degraded-assessment-mode.md) agreed that a run cannot complete until a supported strong assessment covers the same content.
 - **Publication.** After a bypass the user takes over publication responsibility and confirms publication at run completion. A confirmation given earlier, such as publication authority recorded at handover, does not carry past the bypass.
 - **Defect report.** The controller offers to file a report about the refusal and files one only when the user agrees, because the model can only guess the user's reason for the bypass.
-- **Approval that resists counterfeiting.** A bypass approval should be impossible, or at least difficult, to counterfeit.
+- **Approval that resists counterfeiting.** A bypass approval should be impossible, or at least difficult, to counterfeit by a confused agent making a mistake. Resisting a deliberately adversarial agent is out of scope.
 
 ## Current understanding
 
@@ -47,18 +47,21 @@ Today nothing the runtime records about the user's assent resists counterfeiting
 Candidate approaches, recorded on 2026-10-12 for the design to weigh; none is verified on either host:
 
 - **Host-native approval.** A hook or permission rule makes the bypass operation raise the host's own permission prompt, which the model cannot answer. It is cheap and stops a model from recording approval by writing text, but the runtime cannot tell that the prompt was shown, a permission mode that approves automatically may skip it, and a direct write to the run store still forges the record. Whether each host prompts this way under its automatic modes is unverified (live-claim: provisional).
+- **Runtime-owned confirmation.** The runtime's bypass operation shows its own confirmation on the user's desktop, naming the refusal and the briefing, and records the answer it received itself. It does not depend on the host's permission modes, and the model cannot answer it by writing text; getting past it would take deliberate interface automation. It needs the user at the machine's interactive desktop, so a user reached over SSH or through a remote client would need another route.
 - **Signed approval from a key that needs the user.** The approval is a WebAuthn assertion, from Windows Hello, a security key or a phone passkey, over a challenge that hashes the exact refusal, briefing and run revision. Its signed authenticator data carries the user-verified flag, and every consumer, such as `complete`, the publication confirmation and the reports, verifies it against a credential enrolled while the user was present. The model cannot produce one without the user's PIN, biometric or device, and a browser-driven virtual authenticator can sign only for its own credentials, not the enrolled one. Node has no built-in WebAuthn client, so the prompt would come through a browser page, for which the local server of [Graphical run view](run-graph-view.md) is a natural home, or through a native helper, either a separate one or the one [Native helper for Windows process work](native-process-helper.md) proposes for process inspection and job containment, with its scope widened.
 - **The local limit.** An agent willing and permitted to replace the enrolled credential or patch the verifier, which lives in the user-writable plugin cache, defeats any check made on the same machine. Keeping the enrollment where changing it needs elevation, which Windows confirms on the secure desktop by default, or verifying away from the machine raises that bar.
+
+The user's answer on 2026-10-12 sets the threat: a confused agent making a mistake, such as reading assent into an ambiguous reply, applying an approval to a different refusal, or recording one with no user present. Deliberate tampering, and so the local limit, are out of scope. Against that threat, what the host-native prompt and the runtime-owned confirmation offer is that the approval comes from an interaction with the user rather than from approval text the controller relays, and binding it to one refusal guards against applying it to another. A signed approval exceeds the need but stays recorded in case the threat changes. The host-native prompt can be skipped silently under a permission mode that approves automatically, which leaves a mistake path open under this threat.
 
 ## Open questions
 
 - Which gates and refusals exist and the shape for each, starting from the user's examples of renegotiating a spec and deferring a code defect, and whether any stay beyond a bypass, for example where proceeding could lose work or corrupt saved state.
 - How the briefing tells a technical refusal from available recovery or a genuine unmet obligation, since [Available recovery is mistaken for a terminal blocker](../BUGS.md#available-recovery-is-mistaken-for-a-terminal-blocker) shows a controller misjudging that line, and what the briefing contains.
-- What a bypass records: the refusal it covers, the briefing shown, the user's words and whether the user's own reason; and whether it covers only that refusal, so that the gate judges afresh once its inputs change.
+- What a bypass records: the refusal it covers, the briefing shown, the user's words and whether the user's own reason; and whether the gate judges afresh once the inputs of the refusal it covers change.
 - Whether a bypass is possible only with the user present, as an informed decision implies, and what happens to the refusal otherwise.
 - What a degraded run is at the run level, where status, the obligation brief and the completion and morning reports show it, and what the user's acceptance records; and whether that acceptance also completes a run whose only degraded coverage comes from [Degraded assessment mode](degraded-assessment-mode.md), whose agreed commitments rule that out today.
 - How the publication confirmation at completion relates to the publication authority recorded at handover, and what may be published before completion once a bypass has happened.
-- Which threat the approval must resist: a model that records approval it did not get, by misreading or fabrication, against which a host-native prompt may be enough, or an agent that deliberately tampers with the run store or the runtime, which needs signed approvals and a protected enrollment. Then which approach, at what cost on each host, how enrollment and a lost or replaced authenticator work, and what a user without a suitable authenticator can do.
+- Which approval channel guards against a confused agent's mistakes on each host: the host's own prompt, a runtime-owned confirmation or a combination, and how it reaches a user who is not at the machine's interactive desktop.
 - How it relates to the stalled-owner recovery and carve-out records above, which could each become one gate's shape.
 
 ## Before implementation
