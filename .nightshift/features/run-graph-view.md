@@ -29,6 +29,8 @@ A search on 2026-09-29 found no backlog entry, shipped code or governing documen
 
 When [Show review progress without being asked](visible-revise-progress.md) graduated as text only on 2026-10-03, the user left showing review progress graphically to this view, so its graph would also show the review and repair progress that feature reports in text.
 
+[User-configurable workflow composition](workflow-composition.md), raised on 2026-10-12, asks for ways to modify the workflow through the web UI once one ships, which would fall to the Operational UI slice.
+
 ## Open questions
 
 - Where events come from, since the runtime records state transitions, registered and dispatched workers, check and probe operations and review event logs, but no file edits or unregistered subagents: new runtime events, watching the checkout, reading host-native logs, or a mix, and how both hosts supply them.

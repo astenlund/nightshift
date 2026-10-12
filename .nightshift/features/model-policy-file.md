@@ -38,6 +38,8 @@ The user added one commitment the same day, while graduating [Initial reviewer s
 
 [Model knowledge base](model-knowledge-base.md), raised the same day, is to record observations about models that inform the choice among the models this file permits, without changing what it permits.
 
+[User-configurable workflow composition](workflow-composition.md), raised on 2026-10-12, would let the user change the workflow's steps, gates and model choices through configuration files. The user chose to keep this file separate for now and may refactor the two once more is built around them.
+
 ## Before implementation
 
 Settle the file's schema, its exact location under a custom store, the narrowing rule for a project file, enforcement at every dispatch and receipt import, and how receipts record the policy, in a concise governing spec in `.nightshift/specs`. The change is shipped runtime behavior that governs the review gate, so it rides with a plugin version increase, fixture tests for missing, malformed, narrowing and conflicting files, a README section and careful review; the start of the work decides between a budgeted installed-host check and deterministic evidence only. Tracking and readiness do not authorize implementation.
