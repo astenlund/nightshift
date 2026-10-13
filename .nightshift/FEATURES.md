@@ -275,6 +275,12 @@ Complete the retained run-settings outcome across continuation: durable model an
 
 **Requires:** none.
 
+### [Verify compatible agreement continuity across representation changes](features/v3-agreement-continuity.md)
+
+Complete evidence for retained agreement behavior: qualified assent, compatible title or description edits, archival moves and repeated spec refinements preserve accepted commitments without enlarging the approval burden. The migration accounting audit of 2026-09-29 found that acting on a qualified yes and presenting material changes as understandable deltas are not yet instructions a run loads, so delivery needs instruction changes as well as evidence. Since 2026-10-04 it also keeps a record of what the user was shown and accepted: the accepted version against which an edit no finding drove is judged and recorded, an acceptance bound to the presented text, and a qualified yes recorded with its adjustment; and when an index entry is the governing text, review scope and staleness follow that entry. The commitments agreed with the user on 2026-10-13, recorded in the linked record: a qualified yes authorizes the adjusted commitments, which the controller reflects back before continuing; `spec-accepted` keeps a copy of the accepted content, each later edit no finding drove gets a recorded compatible or material judgment against it, and the runtime refuses the next dispatch on the spec until one covers its current content; a runtime operation records the presented content and acceptance is refused when it has changed since; a content-preserving move keeps acceptance and assessments; an index entry's snapshot covers only that entry; and a material change is presented as a change list linking to the full spec, the form the quick win [Present a governing spec as a link with a change list](QUICK_WINS.md#present-a-governing-spec-as-a-link-with-a-change-list) describes. It needs a concise governing spec, a version increase and evidence on both hosts for the behavior the model owns before implementation.
+
+**Requires:** none.
+
 ## Exploring
 
 ### [Shared BACKLOG.md meta-index](features/backlog-meta-index.md)
@@ -316,10 +322,6 @@ Improve current verification tooling through explicit fixture ownership, safe ev
 ### [Capture review content once within an operation](features/v3-review-snapshot-reuse.md)
 
 Complete the retained operation-local snapshot reuse requirement while preserving freshness and exact reviewed bytes. Reuse captured source and identity for governing artifacts and review copies where valid, without introducing a persistent cache.
-
-### [Verify compatible agreement continuity across representation changes](features/v3-agreement-continuity.md)
-
-Complete evidence for retained agreement behavior: qualified assent, compatible title or description edits, archival moves and repeated spec refinements preserve accepted commitments without enlarging the approval burden. The migration accounting audit of 2026-09-29 found that acting on a qualified yes and presenting material changes as understandable deltas are not yet instructions a run loads, so delivery needs instruction changes as well as evidence. Since 2026-10-04 it also keeps a record of what the user was shown and accepted: the accepted version against which an edit no finding drove is judged and recorded, an acceptance bound to the presented text, and a qualified yes recorded with its adjustment; and when an index entry is the governing text, review scope and staleness follow that entry.
 
 ### [Relaunch unfinished work after host exit or restart](features/v3-host-relaunch.md)
 

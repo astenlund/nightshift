@@ -3,7 +3,6 @@ name: v3-agreement-continuity
 description: Verify compatible agreement continuity across representation changes
 metadata:
   type: feature
-status: exploring
 ---
 
 # Verify compatible agreement continuity across representation changes
@@ -41,6 +40,27 @@ The audit of 2026-09-29 found that two agreed behaviors this entry verifies are 
 - Binding acceptance to the presented text. v2 discarded a yes given while the spec changed under it. v3's `spec-accepted` binds the spec as it stands when the acceptance is recorded, and [the 2026-09-21 audit](../reports/pre-v3-shipped-capability-audit-20260921.md) records that the old digest protocol was intentionally replaced. Record what was presented, and refuse the acceptance or present the spec again when it changed between presentation and acceptance.
 - Recording a qualified yes. The decision quoted in the section above keeps the behavior, and also asks to "Reassess the existing classifier and write protocol with the agreement machinery" ([Agreement and informed user decisions](../../V3-MIGRATION.md#agreement-and-informed-user-decisions)). The user settled that reassessment: a qualified yes records the presented version, the user's adjustment and the adjusted commitments in the same record, with fixtures for each outcome.
 - Reviewing one index entry. The retired v2 draft [Wave round economy](../migration/v2/features/wave-round-economy.md) found that a spec review of one quick-win entry fingerprinted the whole index, and its disposition under [Repair coverage and progress](../../V3-MIGRATION.md#repair-coverage-and-progress) keeps "Reviewing an index entry does not automatically make the entire index the target." Spec assessments in v3 snapshot whole files and go stale on any change to them ([the runtime reference](../../internal/runtime/REFERENCE.md#independent-assessment)), so an index named as the governing text is reviewed and made stale as a whole. When an index entry is the governing text, review scope and staleness are to follow that entry.
+
+## Settled questions
+
+The user agreed these answers on 2026-10-13, when the entry graduated from Exploring to current work. Each question is kept with its answer; the first four confirm directions already recorded above, and the rest settle how they are carried out. Checked the same day: `spec-accepted` stores the acceptance's authority, revision and a content snapshot of the spec, not its text; status reports `specAcceptance.current` as false once the spec's content changes, through `specAcceptanceCurrent` in `internal/runtime/lifecycle.js`, and no gate acts on it; no runtime record shows what was presented to the user; and spec assessments snapshot whole files, so an index named as the governing text is reviewed and made stale as a whole.
+
+- Qualified assent. Settled as the agreed disposition under [Agreement and informed user decisions](../../V3-MIGRATION.md#agreement-and-informed-user-decisions) states it: a yes with an explicit adjustment authorizes the adjusted commitments, the controller reflects the change back and continues, independent review of a revised spec before implementation is preserved, and the controller asks again only about genuine ambiguity or a consequence needing another decision. The operating brief gains that instruction, and one record holds the presented version, the user's adjustment and the adjusted commitments, with fixtures for each outcome.
+- Edits after acceptance. Settled as directed on 2026-10-04: the accepted text is kept, every post-acceptance edit no finding drove is judged against it and the judgment recorded, and unclear materiality goes back to the user.
+- The presented text. Settled as directed on 2026-10-04: an acceptance is bound to the text the user was shown.
+- An index entry as the governing text. Settled as directed on 2026-10-04: review scope and staleness follow that entry.
+- How the accepted text is kept. Settled: `spec-accepted` keeps a copy of the accepted content in the run's records, so later edits can be compared against it.
+- How the judgment of a later edit is enforced. Settled: each edit to an accepted spec that no review finding drove gets a recorded judgment, compatible or material, with its basis against the accepted version. The runtime refuses the next dispatch on that spec until a judgment covers its current content, and a material or unclear change goes to the user.
+- How the presented text is recorded. Settled: a runtime operation records the spec's content when it is presented to the user, and `spec-accepted` is refused when that content changed since the latest presentation, so the controller presents it again.
+- Archival moves. Settled: a move or archive that leaves the content unchanged, ignoring line endings as review freshness already does, is a representation-only change that preserves the acceptance and the assessments.
+- The boundary of an index entry. Settled: when an index entry is the governing text, its snapshot covers the entry's own text, with the boundaries the Ready parser already finds.
+- Presenting a material change as an understandable delta. Settled: a material change is presented as a short change list linking to the full spec, the form [Present a governing spec as a link with a change list](../QUICK_WINS.md#present-a-governing-spec-as-a-link-with-a-change-list) describes; whichever of the two ships first defines that form.
+- Evidence. Settled: deterministic fixtures cover the runtime parts, and the behavior the model owns, acting on a qualified yes, judging materiality and presenting changes, keeps this entry's requirement of evidence on both hosts, with its budget decided when the work starts.
+- Relations. Settled: the [permission-only recovery bug](../BUGS.md#permission-only-recovery-invalidates-accepted-specs) keeps its own repair, and the entry requires nothing.
+
+## Before implementation
+
+Settle the kept accepted copy and where it lives, the judgment record and the dispatch refusal, the presentation operation, how a content-preserving move is recognized and how an index entry's boundaries bind its snapshot in a concise governing spec in `.nightshift/specs`. The change alters the runtime, its reference, the operating brief and revise-spec, so it rides with a plugin version increase. Verify qualified assent, unchanged commitments under representation-only edits, archival moves, repeated revisions and actual scope expansion. Tracking and readiness do not authorize implementation.
 
 ## Triage and provenance
 
