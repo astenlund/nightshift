@@ -269,6 +269,12 @@ Let the user carve a queued task out of a running run, parking its work and trac
 
 **Requires:** none.
 
+### [Preserve run preferences and enforce supported resource budgets](features/v3-run-preferences.md)
+
+Complete the retained run-settings outcome across continuation: durable model and effort preferences, explicit requirements and substitutions, plus enforceable requested budgets with accurate accounting and honest unsupported limits. Since 2026-10-04 it also covers raising a recorded limit mid-run on the user's explicit authority and a closing report of the model and effort behind each role. The commitments agreed with the user on 2026-10-13, recorded in the linked record: model and effort preferences or requirements the user states for a run are recorded in it with the user's words, survive compaction, adoption and resume, and refuse a contradicting dispatch, with no settings interview; a token limit covers the runtime's own dispatches, never counting unknown usage as zero, while money cost is not enforced and usage the runtime cannot observe is stated as outside any limit; on the user's explicit authority a recorded limit of a running or stopped run can be raised or lowered, without resuming a stopped run, and never on the controller's own judgment; and the closing report gives the host, model and effort of each role, with substitutions and their reasons marked and unknowns shown as unknown. It needs a concise governing spec, a version increase and a decision on installed-host evidence before implementation.
+
+**Requires:** none.
+
 ## Exploring
 
 ### [Shared BACKLOG.md meta-index](features/backlog-meta-index.md)
@@ -306,10 +312,6 @@ Finish the retained installed-package boundary: required runtime resources and i
 ### [Maintain verification evidence, fixtures and measured efficiency](features/v3-verification-infrastructure.md)
 
 Improve current verification tooling through explicit fixture ownership, safe evidence storage and measured reduction of unnecessary startup. Retire the 2.4.5 fixture only after reconciling supported upgrade checks and the ignored upgrade driver that still loads it. The migration accounting audit of 2026-09-29 added telling buffered output from a failure or hang, cleanup on cancellation with diagnostics when cleanup fails, and verification evidence storage, which does not exist yet. Triage on 2026-09-30 added how a live fixture's nested Claude reviewer can authenticate without a copied credential.
-
-### [Preserve run preferences and enforce supported resource budgets](features/v3-run-preferences.md)
-
-Complete the retained run-settings outcome across continuation: durable model and effort preferences, explicit requirements and substitutions, plus enforceable requested budgets with accurate accounting and honest unsupported limits. Since 2026-10-04 it also covers raising a recorded limit mid-run on the user's explicit authority and a closing report of the model and effort behind each role.
 
 ### [Capture review content once within an operation](features/v3-review-snapshot-reuse.md)
 
