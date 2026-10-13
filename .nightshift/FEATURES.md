@@ -257,6 +257,12 @@ Let the controller design and run bounded experiments within the authority alrea
 
 **Requires:** none.
 
+### [Recover a run whose owner can no longer act while its host process lives on](features/stalled-owner-recovery.md)
+
+Offer a supported, user-directed way to stop or adopt a running run whose owning chat can no longer act while its host process lives on, as on Codex Desktop, where one app process hosts every chat. Raised on 2026-10-07 after a stalled owner's run could be adopted only through an approved administrative stop outside the public interface, short of restarting the whole app; the user asked for it to be officially supported. The commitments agreed with the user on 2026-10-13, recorded in the linked record: any admitted session in the project may record a stop on the run's behalf under the user's direction, which names the former chat and says it can no longer act, leaving the owner unchanged, and ordinary adoption then transfers the stopped run; the host's status for that chat is recorded where available and refuses the stop when it shows the chat active, but never counts as proof that it is inactive; the stop is refused while a project operation is active or uncertain, worker termination checks stay with adoption, and no backup is needed; the path is the same on both hosts; and once [Ready offers to pick up an interrupted run](features/ready-interrupted-run-pickup.md) also ships, Ready names this stop as the way forward for a run whose former controller's process is still live. It needs a concise governing spec, a version increase and a decision on installed-host evidence before implementation.
+
+**Requires:** none.
+
 ## Exploring
 
 ### [Shared BACKLOG.md meta-index](features/backlog-meta-index.md)
@@ -402,10 +408,6 @@ Mirror a run's queue and lifecycle stages into the host's native task list so th
 ### [Model instinct map](features/model-instinct-map.md)
 
 Log each observed case of a model acting against its prompt or instructions in a per-model instinct map, and counter a recurring one mechanically, by providing the tool the model reaches for, removing the permission for the unwanted action or adding a hook, rather than only by strengthening instructions. Raised by the user on 2026-10-05 mid-run and tracked as Exploring at that run's triage; in that run a hook refused two inline script bodies that the written rule had not prevented. Its observations land in the [Model knowledge base](features/model-knowledge-base.md), whose settled commitments it leaves unchanged. What counts as an instinct and how it is attributed, the entry form, which steers each host supports and Nightshift may write, and how a steer is scoped, approved, measured and retired are open.
-
-### [Recover a run whose owner can no longer act while its host process lives on](features/stalled-owner-recovery.md)
-
-Offer a supported, user-directed way to stop or adopt a running run whose owning chat can no longer act while its host process lives on, as on Codex Desktop, where one app process hosts every chat. Raised on 2026-10-07 after a stalled owner's run could be adopted only through an approved administrative stop outside the public interface, short of restarting the whole app; the user asked for it to be officially supported, and it was tracked as Exploring at inbox triage on 2026-10-11. What evidence shows the former controller inactive, who may record the stop and which safeguards it keeps are open.
 
 ### [Carve a task out of a running run](features/mid-run-carve-outs.md)
 

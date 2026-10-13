@@ -30,7 +30,7 @@ Ready stays read-only: the offer is a question, and pickup happens only after th
 
 ## Relationships
 
-Adoption of a stopped run with no active workers by another session, which the run-ownership bug tracked, came first and was delivered as explicit adoption. Adopting a completed run, which the undelivered-report case would have needed, was an open point of this feature until 2026-10-03, when it was settled as above. Transferring a run that is still active stays with [V3 continuations](v3-continuations.md).
+Adoption of a stopped run with no active workers by another session, which the run-ownership bug tracked, came first and was delivered as explicit adoption. Adopting a completed run, which the undelivered-report case would have needed, was an open point of this feature until 2026-10-03, when it was settled as above. Transferring a run that is still active stays with [V3 continuations](v3-continuations.md). [Recover a run whose owner can no longer act while its host process lives on](stalled-owner-recovery.md), which graduated on 2026-10-13, adds a stop that another session records on the user's direction for a run marked running whose former controller's process is still live; whichever of the two ships second makes Ready name that stop as the way forward for such a run, while Ready still offers no pickup until the run is stopped.
 
 ## Before implementation
 
