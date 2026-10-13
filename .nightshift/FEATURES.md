@@ -281,6 +281,12 @@ Complete evidence for retained agreement behavior: qualified assent, compatible 
 
 **Requires:** none.
 
+### [Maintain bounded host transports and explicit runtime ownership](features/v3-transport-maintenance.md)
+
+Assess current host transports for bounded efficient buffering, independently testable protocol decisions and one owner for every live timer. Preserve cancellation, stream closure and termination guarantees. The migration accounting audit of 2026-09-29 found the remaining work: repository verification across chunk boundaries, prompt rejection of oversized frames, a per-line output bound, and runner state decisions separated from process wiring with direct state tests. The commitments agreed with the user on 2026-10-13, recorded in the linked record: optimizing copying is dropped since the probe found none, while a test shows output unchanged across chunk boundaries; one bounded line reader shared by the runner and host transports refuses an oversized line before it is fully buffered; host output gains a per-line bound beside the aggregate; the runner's protocol decisions move into a module tested without a process, with one owner per live timer; and the work stays independent of [Native helper for Windows process work](features/native-process-helper.md), which would keep that protocol. Deterministic fixtures on the Windows CI suffice, and it needs a concise governing spec and a version increase before implementation.
+
+**Requires:** none.
+
 ## Exploring
 
 ### [Shared BACKLOG.md meta-index](features/backlog-meta-index.md)
@@ -330,10 +336,6 @@ Restore unattended execution after a host exits or Windows restarts, beyond the 
 ### [Native helper for Windows process work](features/native-process-helper.md)
 
 Replace the pwsh helpers for process inspection and job containment with a small native helper, for performance. Raised by the user on 2026-09-30. Process inspection runs twice per controller observation and again for each check, probe, review attempt and launcher admission, at 340 to 681 ms per call on a lightly loaded machine, about 170 ms of it pwsh startup; the job runner, about 0.6 s to start when idle and far longer under load, also starts whenever admission launches the host to inspect its settings. The settings writer stays on pwsh. Language, build, packaging, trust and the Codex sandbox remain open.
-
-### [Maintain bounded host transports and explicit runtime ownership](features/v3-transport-maintenance.md)
-
-Assess current host transports for bounded efficient buffering, independently testable protocol decisions and one owner for every live timer. Preserve cancellation, stream closure and termination guarantees. The migration accounting audit of 2026-09-29 found the remaining work: repository verification across chunk boundaries, prompt rejection of oversized frames, a per-line output bound, and runner state decisions separated from process wiring with direct state tests.
 
 ### [Execution plan for a multi-item selection](features/multi-item-execution-plan.md)
 
