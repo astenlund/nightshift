@@ -263,6 +263,12 @@ Offer a supported, user-directed way to stop or adopt a running run whose owning
 
 **Requires:** none.
 
+### [Carve a task out of a running run](features/mid-run-carve-outs.md)
+
+Let the user carve a queued task out of a running run, parking its work and tracking it separately, so the rest of the run can complete. Raised by the user during a long run on 2026-10-10 to 11, after a carve-out had no runtime form and the run could complete only by taking the task back. The commitments agreed with the user on 2026-10-13, recorded in the linked record: a carve-out needs the user's direction, recorded as authority, and is refused while the task has an active worker; each dependent task is carved out too or kept with its dependency dropped and its agreement adjusted, as the user chooses, and none is left depending on carved-out work; the carved-out code is parked on a local branch or as a patch, or reverted on the user's choice, never kept in place, and the controller writes its backlog item as a tracking edit under the run's closing docs review; on the user's direction a carve-out can instead take out only a live test or other live step a task still owes, and the task then completes with its reviewed work, recorded and reported as not verified live; a carved-out task takes a terminal state of its own, which completion accepts, and the morning report lists carved-out work apart from delivered work; and the carve-out shares one record of a change to a run's tasks with the add-task operation planned in [Keep a handed-over run open for triage after delivery](features/handover-open-for-triage.md), whichever ships first defining it. It needs a concise governing spec, a version increase and a decision on installed-host evidence before implementation.
+
+**Requires:** none.
+
 ## Exploring
 
 ### [Shared BACKLOG.md meta-index](features/backlog-meta-index.md)
@@ -408,10 +414,6 @@ Mirror a run's queue and lifecycle stages into the host's native task list so th
 ### [Model instinct map](features/model-instinct-map.md)
 
 Log each observed case of a model acting against its prompt or instructions in a per-model instinct map, and counter a recurring one mechanically, by providing the tool the model reaches for, removing the permission for the unwanted action or adding a hook, rather than only by strengthening instructions. Raised by the user on 2026-10-05 mid-run and tracked as Exploring at that run's triage; in that run a hook refused two inline script bodies that the written rule had not prevented. Its observations land in the [Model knowledge base](features/model-knowledge-base.md), whose settled commitments it leaves unchanged. What counts as an instinct and how it is attributed, the entry form, which steers each host supports and Nightshift may write, and how a steer is scoped, approved, measured and retired are open.
-
-### [Carve a task out of a running run](features/mid-run-carve-outs.md)
-
-Let the user carve a queued task out of a running run, parking its work and tracking it separately, so the rest of the run can complete. Raised by the user during a long run on 2026-10-10 to 11, after a carve-out had no runtime form and the run could complete only by taking the task back; tracked as Exploring at inbox triage on 2026-10-11. How a carve-out treats dependent tasks, the agreement, closing evidence, the parked work and the morning report, and its relation to the add-task operation planned in [Keep a handed-over run open for triage after delivery](features/handover-open-for-triage.md), are open.
 
 ### [Manual gate bypass on the user's responsibility](features/manual-gate-bypass.md)
 
