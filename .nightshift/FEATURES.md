@@ -293,6 +293,12 @@ Restore canonical instruction-source discovery and approved backlog guidance upd
 
 **Requires:** none.
 
+### [Complete executable identity assurance for Windows launches](features/v3-launch-identity.md)
+
+Reconcile retained launch roles with the selected executable identity and trust boundary, including replacement and path retargeting between discovery and launch. Verify the boundary rather than inferring it from a resolved path. The roles include the runtime's own Git launches, which the migration accounting audit of 2026-09-29 found unnamed. The commitments agreed with the user on 2026-10-13, recorded in the linked record: every launched executable, Git in setup and the runtime included, resolves through the trusted resolver that refuses candidates inside the project, with no bare-name launch left; an operation launches by the absolute path after rechecking identity, picks up host updates only between operations and documents the remaining race; no signature check is added beyond the Codex standalone case; and a missing candidate refuses the launch. The work starts with a Windows probe of whether a bare `git` runs a `git.exe` inside the project, and if it does, the Git part ships first as its own slice. Deterministic fixtures on the Windows CI suffice, and it needs a concise governing spec and a version increase before implementation.
+
+**Requires:** none.
+
 ## Exploring
 
 ### [Shared BACKLOG.md meta-index](features/backlog-meta-index.md)
@@ -310,10 +316,6 @@ Complete the retained preservation contract for metadata beyond bytes and meanin
 ### [Bind setup recovery to physical artifact ownership](features/v3-recovery-artifact-ownership.md)
 
 Complete physical artifact ownership and no-overwrite recovery for supported setup operations, including safe recognition of owned partial creation. Carry clear write stages, cleanup ownership and separate validation into the recovery repairs. Since 2026-10-04 it also restores v2's rule that one setup operation owns a project at a time where the installed launcher's serialization of project operations does not already apply, starting with a probe of what remains uncovered.
-
-### [Complete executable identity assurance for Windows launches](features/v3-launch-identity.md)
-
-Reconcile retained launch roles with the selected executable identity and trust boundary, including replacement and path retargeting between discovery and launch. Verify the boundary rather than inferring it from a resolved path. The roles include the runtime's own Git launches, which the migration accounting audit of 2026-09-29 found unnamed.
 
 ### [Protect private request and review artifacts on Windows](features/v3-private-request-material.md)
 
