@@ -305,6 +305,19 @@ Implement each run in a dedicated Git worktree on a run-owned branch, so the mor
 
 **Requires:** none.
 
+### [Execution plan for a multi-item selection](features/multi-item-execution-plan.md)
+
+When the user picks more than one item, the controller proposes an execution plan that works them in parallel, in sequence, together as a unit, or a mix of the three, and includes it in the readback so the user agrees to it before any work starts. Raised by the user on 2026-10-01 during a two-item Ready selection. The commitments agreed with the user on 2026-10-14, recorded in the linked record: the plan becomes the run's task graph, with sequence as a dependency and a unit as one task with one agreement and one cumulative review; parallel items that implement each use a worktree and branch of their own, joined in a set order and reassessed together, and until worktrees ship parallel work is read-only beside one implementing item; rescheduling is the controller's and is reported, while changing a unit needs the user; and an item agreed in another session while a run is active is recorded as a pending addition that the owner takes in at its next task boundary. It needs a concise governing spec, a version increase and evidence on both hosts before implementation.
+
+**Slices:**
+
+- **MVP - plan in the readback.** The plan as the run's task graph, units, read-only parallel work and the rules for changing the plan.
+- **Parallel implementation in worktrees.** Parallel items each in a worktree and branch of their own, joined in a set order and reassessed together.
+  **Requires:** [Deliver each run on its own branch or worktree](features/run-worktree-delivery.md).
+- **Queue work while a run is active.** Ready and its readback in another session, with agreed items taken in at the owner's next task boundary.
+
+**Requires:** none.
+
 ## Exploring
 
 ### [Shared BACKLOG.md meta-index](features/backlog-meta-index.md)
@@ -346,10 +359,6 @@ Restore unattended execution after a host exits or Windows restarts, beyond the 
 ### [Native helper for Windows process work](features/native-process-helper.md)
 
 Replace the pwsh helpers for process inspection and job containment with a small native helper, for performance. Raised by the user on 2026-09-30. Process inspection runs twice per controller observation and again for each check, probe, review attempt and launcher admission, at 340 to 681 ms per call on a lightly loaded machine, about 170 ms of it pwsh startup; the job runner, about 0.6 s to start when idle and far longer under load, also starts whenever admission launches the host to inspect its settings. The settings writer stays on pwsh. Language, build, packaging, trust and the Codex sandbox remain open.
-
-### [Execution plan for a multi-item selection](features/multi-item-execution-plan.md)
-
-When the user picks more than one item, the controller or the runtime proposes an execution plan that works them in parallel, in sequence, together as a unit, or a mix of the three, and includes it in the readback so the user agrees to it before any work starts. Raised by the user on 2026-10-01 during a two-item Ready selection. Who builds the plan, what a unit means for runs and reviews, and how parallel items share one checkout under the review input drift rule are open; the user suggested Git worktrees on separate branches for the last.
 
 ### [Graphical run view](features/run-graph-view.md)
 
