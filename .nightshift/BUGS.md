@@ -401,6 +401,12 @@ Establish what history must keep, such as lost-response replay at adoption, reco
 
 **Requires:** none.
 
+### Repository maintenance commands launch Git by bare name
+
+Found on 2026-10-14 during documentation review of the Windows launch-identity feature. `tools/release-manifest.js` and `tools/release-gate.js` invoke bare `git` through `spawnSync`, including the gate's `cat-file` probe; `.githooks/pre-push` and `.githooks/run-shared-hook` also invoke bare `git`. These repository maintenance paths are outside the shipped plugin payload defined in `internal/releases/manifest.js`, so [Complete executable identity assurance for Windows launches](features/v3-launch-identity.md) does not cover them. A project-local or PATH-supplied Git being selected in each tool or hook context has not been probed on Windows. Audit their executable selection and use a verified path where needed, with fixtures for supported invocations. The user chose to track this separately on 2026-10-14. Tracking does not authorize implementation.
+
+**Requires:** none.
+
 ## History
 
 Prior delivered work remains in [BUGS_HISTORY.md](BUGS_HISTORY.md).
