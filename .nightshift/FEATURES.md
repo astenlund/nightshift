@@ -299,6 +299,12 @@ Reconcile retained launch roles with the selected executable identity and trust 
 
 **Requires:** none.
 
+### [Deliver each run on its own branch or worktree](features/run-worktree-delivery.md)
+
+Implement each run in a dedicated Git worktree on a run-owned branch, so the morning report points at a reviewable diff and the user keeps working in the main checkout. From the user's 2026-09-26 ideas document comparing other agent tools. The commitments agreed with the user on 2026-10-14, recorded in the linked record: the user chooses a worktree at handover, which the controller may recommend, and running in place stays the default until installed-host evidence shows worktree runs reliable; worktrees live under the ignored `.nightshift/runs/w/<run>`, start from the agreed base commit with a setup command settled in the readback, and never carry over or touch the user's uncommitted changes; the run store stays in the main checkout, the run records its worktree, branch and starting commit, checks, probes and reviews act on the worktree, and a project keeps one active run; the branch and worktree remain after delivery until the user merges or discards them; and pushing the branch or opening a draft pull request needs recorded authority naming it and current independent review. It needs a concise governing spec, a version increase and evidence on both hosts before implementation.
+
+**Requires:** none.
+
 ## Exploring
 
 ### [Shared BACKLOG.md meta-index](features/backlog-meta-index.md)
@@ -352,10 +358,6 @@ Show a run as a graph of its whole workflow in a page hosted by a local web serv
 ### [Claude Code mods for run visibility](features/claude-code-mods.md)
 
 Consider Claude Code mods, plugins of function hooks that add a live pane, band, status line, toast or hook inside Claude Code, as an optional surface for run visibility, such as run progress, review state or CI status after a push. Raised by the user on 2026-10-01 and tracked as Exploring at inbox triage on 2026-10-02; uninvestigated. Mods exist only on Claude Code, so a mod could only add optional visibility, never machinery the lifecycle depends on.
-
-### [Deliver each run on its own branch or worktree](features/run-worktree-delivery.md)
-
-Implement each run in a dedicated Git worktree on a run-owned branch, so the morning report points at a reviewable diff and the user keeps working in the main checkout. From the user's 2026-09-26 ideas document comparing other agent tools. Open: the checkout lease, the recorded project path and adoption, review-copy source, worktree lifecycle and uncommitted user changes, and branch or draft pull request publication.
 
 ### [Measure whether the lifecycle catches defects](features/defect-detection-measurement.md)
 

@@ -17,7 +17,7 @@ It came during a Ready selection in this repository. The user picked [Resumable 
 ## Related
 
 - [The operating brief](../../internal/workflow.md) lets a shared agreement cover a finite queue and has run creation capture queue dependencies; [the v3 feature](nightshift-v3.md) accepts sequential dispatch as a baseline and uses parallel dispatch where available and useful.
-- [Handover as the delivery boundary](handover-only-delivery.md) settles Ready's selection and scope-confirmation boundary, superseding the mandatory three-choice proposal; [Size-aware Ready recommendations](ready-sized-recommendations.md) recommends groups of entries; [Deliver each run on its own branch or worktree](run-worktree-delivery.md) could let parallel items stop sharing one checkout.
+- [Handover as the delivery boundary](handover-only-delivery.md) settles Ready's selection and scope-confirmation boundary, superseding the mandatory three-choice proposal; [Size-aware Ready recommendations](ready-sized-recommendations.md) recommends groups of entries; [Deliver each run on its own branch or worktree](run-worktree-delivery.md) could let parallel items stop sharing one checkout. When that entry graduated on 2026-10-14, it kept one active run per project and left parallel runs in separate worktrees to this entry.
 - v2's handover skill had a queue (`skills/handover/handover-queue.js`, deleted in the v3 change 8ca3cb4), within the scope of the audit named above.
 
 ## Open questions
