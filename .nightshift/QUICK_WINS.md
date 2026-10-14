@@ -404,6 +404,10 @@ Reported to the maintainer inbox on 2026-10-11 from Hermes (`C:/Users/asten/AppD
 
 Have the readback or governing spec for selected work state a rough expected size and, when the work looks large, propose concrete slices for the user to choose from before handover. Keep it consistent with [Size-aware Ready recommendations](features/ready-sized-recommendations.md), which sizes Ready's picks by the model's rough judgment, [Background review and assessment of selected work](features/selection-review-and-assessment.md), whose feedback on a readback could also suggest slicing, and [Offer to revisit an entry's settled decisions before starting work](#offer-to-revisit-an-entrys-settled-decisions-before-starting-work), another addition to the readback. Guidance changes ship with a version increase. Tracking does not authorize implementation.
 
+### Rename the init-backlog skill to setup
+
+Raised by the user on 2026-10-15: rename the public `init-backlog` skill to `setup`; the Nightshift namespace already supplies its context. Account for existing entry-point references and users of the old name when designing the rename. Tracking does not authorize implementation.
+
 ## History
 
 Prior delivered work remains in [QUICK_WINS_HISTORY.md](QUICK_WINS_HISTORY.md).
