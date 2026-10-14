@@ -29,7 +29,7 @@ The user agreed these answers on 2026-10-13, when the entry graduated from Explo
 
 ## Relationships
 
-[Manual gate bypass on the user's responsibility](manual-gate-bypass.md) cites this entry's live case as a refusal that left no supported route; this entry supplies that route for its own case, independently of how a general bypass is settled. [Codex controller overflows its context window instead of compacting](../BUGS.md#codex-controller-overflows-its-context-window-instead-of-compacting) keeps the overflow that caused the live case, and fixing it would make the case rarer without removing it, since a chat can stop acting for other reasons. Each can ship without the other, so the entry declares no `**Requires:**`.
+[Manual gate bypass on the user's responsibility](manual-gate-bypass.md) cites this entry's live case as a refusal that left no supported route; this entry plans that route for its own case, independently of the general bypass proposal. The route has not shipped. [Codex controller overflows its context window instead of compacting](../BUGS.md#codex-controller-overflows-its-context-window-instead-of-compacting) keeps the overflow that caused the live case, and fixing it would make the case rarer without removing it, since a chat can stop acting for other reasons. Each can ship without the other, so the entry declares no `**Requires:**`.
 
 ## Before implementation
 

@@ -29,7 +29,7 @@ The user agreed these answers on 2026-10-13, when the entry graduated from Explo
 
 ## Relationships
 
-[Manual gate bypass on the user's responsibility](manual-gate-bypass.md) cites this entry's live case as a refusal that left no supported route; this entry supplies that route for its own case, independently of how a general bypass is settled. [State the expected size and offer slices before handover](../QUICK_WINS.md#state-the-expected-size-and-offer-slices-before-handover) would make carve-outs rarer, and [Verify faked boundaries live](live-boundary-verification.md), whose passive half marks behavior shipped without installed-host evidence, bears on how a task delivered without its carved-out live step is reported. Each can ship without the others, so the entry declares no `**Requires:**`.
+[Manual gate bypass on the user's responsibility](manual-gate-bypass.md) cites this entry's live case as a refusal that left no supported route; this entry plans that route for its own case, independently of the general bypass proposal. The route has not shipped. [State the expected size and offer slices before handover](../QUICK_WINS.md#state-the-expected-size-and-offer-slices-before-handover) would make carve-outs rarer, and [Verify faked boundaries live](live-boundary-verification.md), whose passive half marks behavior shipped without installed-host evidence, bears on how a task delivered without its carved-out live step is reported. Each can ship without the others, so the entry declares no `**Requires:**`.
 
 ## Before implementation
 
