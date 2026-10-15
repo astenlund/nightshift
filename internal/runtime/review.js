@@ -15,7 +15,7 @@ const { createPrivateCopyDirectory, isPrivateCopyDirectory } = require('./copies
 const { continuesRecord, lineageOf } = require('./continuation');
 const { workerEnvironment } = require('../releases/entry');
 const { timeLeft } = require('./limits');
-const { isStrongModel } = require('./models');
+const { isStrongModel, requirePermittedEffort } = require('./models');
 
 const DEFAULT_REVIEW_TIMEOUT_MS = 900000;
 // Failures that end a dispatch at once rather than passing to the next candidate.
@@ -126,6 +126,7 @@ function validateRequest(options) {
     for (const candidate of candidates) {
       requireCondition(candidate !== null && typeof candidate === 'object' && Object.keys(candidate).every(key => ['host', 'model', 'effort'].includes(key)), 'invalid-model-selection', 'Model selection cannot replace the trusted host executable or its process policy');
       requireCondition(isStrongModel(candidate.host, candidate.model), 'review-strength', 'This gate requires a supported strong reviewer model');
+      requirePermittedEffort(candidate.effort);
     }
     requireCondition(!options.requiredModel || candidates.every(candidate => candidate.model === options.requiredModel), 'model-requirement', 'Explicit model requirements prohibit fallback to another model');
     // A fallback records why it replaced the preferred reviewer, so the reason must exist before any attempt starts.

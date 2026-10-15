@@ -508,6 +508,56 @@ test('receipt import applies the same strong floors to the model the host report
   assert.throws(read, { code: 'invalid-receipt' });
 });
 
+test('dispatch refuses reviewer effort at max or above before reserving a worker', async t => {
+  // Arrange
+  const f = fixture(t);
+  const store = new RunStore(f.root, { create: true });
+  const actor = { host: 'codex', session: 'controller' };
+  store.create({ mechanism: fixtureContinuation(), objective: f.requirements, authority: 'User', controller: actor, controllerClaim: fixtureControllerClaim(actor), tasks: [{ id: f.taskId, title: 'Work', agreement: { source: 'User', outcome: f.requirements } }] });
+  let calls = 0;
+  const dispatch = effort => executeWithFixtureController(f.root, { action: 'dispatch', actor, revision: store.read().revision, taskId: f.taskId, review: { ...f, kind: 'code', candidates: [{ host: 'claude', model: 'claude-opus-5-5', ...(effort === undefined ? {} : { effort }) }] } }, { runAgent: options => { calls++; return mockAgent(options); } });
+  try {
+    // Act
+    const refused = [];
+    for (const effort of ['max', 'ultra', 'minimal', null, 'XHIGH']) refused.push(await dispatch(effort).then(() => 'admitted', error => error.code));
+    const workersAfterRefusals = store.read().workers.length;
+    const omitted = await dispatch(undefined);
+
+    // Assert
+    assert.deepEqual(refused, Array(5).fill('effort-not-permitted'));
+    assert.equal(workersAfterRefusals, 0);
+    assert.equal(calls, 1);
+    assert.equal(omitted.receipt.model, 'claude-opus-5-5');
+  } finally { store.close(); }
+});
+
+test('a session recorded at a refused effort is replaced rather than resumed', async t => {
+  // Arrange
+  const f = fixture(t);
+  const store = new RunStore(f.root, { create: true });
+  const actor = { host: 'codex', session: 'controller' };
+  store.create({ mechanism: fixtureContinuation(), objective: f.requirements, authority: 'User', controller: actor, controllerClaim: fixtureControllerClaim(actor), tasks: [{ id: f.taskId, title: 'Work', agreement: { source: 'User', outcome: f.requirements } }] });
+  const dispatch = review => executeWithFixtureController(f.root, { action: 'dispatch', actor, revision: store.read().revision, taskId: f.taskId, review: { ...f, kind: 'code', ...review } }, { runAgent: options => mockAgent(options) });
+  try {
+    const lead = await dispatch({ candidates: [{ host: 'claude', model: 'claude-fable-5-1', effort: 'high' }] });
+    // A receipt from before the cap could record max; the dispatch path can no longer produce one.
+    fs.writeFileSync(lead.receiptFile, JSON.stringify({ ...lead.receipt, effort: 'max' }));
+    const workers = store.read().workers.length;
+
+    // Act
+    const resumed = await dispatch({ resume: lead.receipt.requestId, candidates: undefined }).then(() => null, error => error);
+    const workersAfterRefusal = store.read().workers.length;
+    const replacement = await dispatch({ replaces: lead.receipt.requestId, candidates: [{ host: 'claude', model: 'claude-opus-5-5', effort: 'xhigh' }] });
+
+    // Assert
+    assert.equal(resumed?.code, 'effort-not-permitted');
+    assert.match(resumed.message, /review\.replaces/);
+    assert.equal(workersAfterRefusal, workers);
+    assert.equal(replacement.receipt.continues.kind, 'replacement');
+    assert.equal(replacement.receipt.effort, 'xhigh');
+  } finally { store.close(); }
+});
+
 for (const failure of ['returned-failed', 'unattributed', 'malformed', 'thrown-error']) {
   test(`fallback records each candidate once with known or unknown usage: ${failure}`, async t => {
     const f = fixture(t);

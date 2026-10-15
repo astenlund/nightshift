@@ -4,6 +4,7 @@ const fs = require('node:fs');
 const { requireCondition } = require('./store');
 const { projectFile } = require('./evidence');
 const { workerIsActive } = require('./workers');
+const { requirePermittedEffort } = require('./models');
 
 // A reviewer's lineage: the request id of the fresh dispatch it began with. Resumed and replacement dispatches carry the lineage of
 // the dispatch they continue, so a reviewer and its replacements own the same findings. A receipt or imported review names its dispatch
@@ -78,6 +79,8 @@ function resolveContinuation(root, state, target, review) {
   const lineage = lineageOf(receipt);
   const resumed = review.resume !== undefined;
   requireCondition(!resumed || !review.requiredModel || review.requiredModel === receipt.model, 'model-requirement', 'Explicit model requirements prohibit resuming a session of another model');
+  // A resumed session keeps the effort it recorded, so one recorded at a refused effort is replaced rather than continued.
+  if (resumed) requirePermittedEffort(receipt.effort, `; session ${receipt.session} ran at ${receipt.effort}, so replace it with review.replaces instead`);
   // The thread total the receipt recorded is the starting total only while no later attempt has used the session since. A later
   // dispatch holds the session from registration, but one that never launched a host, recording no pid, never used it.
   const usedSince = state.workers.slice(state.workers.indexOf(worker) + 1).some(candidate => candidate.session === receipt.session && candidate.pid !== undefined);
