@@ -14,7 +14,7 @@ Raised during the 2026-10-15 legacy delivery migration design as a separate futu
 
 ## Problem
 
-The [legacy delivery migration](legacy-delivery-record-migration.md) keeps retired runs and their evidence but makes their current state read-only. If a user later needs to continue work from one, the local 3.3.11 candidate runtime refuses mutation, adoption and resume. Creating a new delivery may cover new work, but it does not restore the old run's task identity or outstanding obligations.
+The [legacy delivery migration](legacy-delivery-record-migration.md) keeps retired runs and their evidence but makes their current state read-only. If a user later needs to continue work from one, the 3.3.11 runtime refuses mutation, adoption and resume. Creating a new delivery may cover new work, but it does not restore the old run's task identity or outstanding obligations.
 
 ## Open design
 

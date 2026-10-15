@@ -23,6 +23,6 @@ The [governing spec](../specs/legacy-delivery-record-migration.md) defines a reu
 
 The 2026-10-15 read-only inventory found 45 records without independent accounting in this repository's store: 43 complete and two stopped. One complete record has an unconfirmed saved report, and two complete records hold four pending follow-ups. The user chose a policy of retiring completed records and deciding the stopped records separately, then authorized building the reusable feature and applying it here after assessment. That policy does not approve an exact manifest or any report, follow-up or stopped-work disposition.
 
-## Candidate status
+## Release and local application
 
-Implementation is in the local 3.3.11 candidate. No saved delivery in this repository has been retired. Applying the feature here requires an installed compatible administrative route, a fresh full manifest and the user's exact approval. Publication, installed-host exercise and the two stopped-record decisions remain separate.
+The reusable runtime shipped in 3.3.11. No saved delivery in this repository has been retired. Applying the feature here requires an installed compatible administrative route, a fresh full manifest and the user's exact approval. Installed-host exercise remains unverified. Each stopped record still needs its own retention or retirement decision.
