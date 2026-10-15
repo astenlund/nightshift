@@ -211,13 +211,15 @@ test('migration admission gives a new session a usable retained bundle binding',
   const source = packageCopy(value.root, '3.3.11');
   const { service } = simulatedService(value, source, '3.3.11');
   const { registration } = await service.setup({ host: 'codex', profile: value.profile });
-  await service.prepare({ host: 'codex', profile: value.profile, session: 'new-session', project: value.project, entry: 'migration' });
+  const prepared = await service.prepare({ host: 'codex', profile: value.profile, session: 'new-session', project: value.project, entry: 'migration' });
   const binding = (await service.status()).sessions.find(item => item.session === 'new-session');
-  assert.equal(typeof binding.bundle, 'string');
-  const request = path.join(value.root, 'bootstrap-request.json');
-  fs.writeFileSync(request, JSON.stringify({ action: 'status', session: 'new-session' }));
-  const launch = spawnSync(process.execPath, [service.registration(registration).bootstrap, registration, request], { encoding: 'utf8', timeout: 30000 });
-  assert.equal(launch.status, 0, launch.stderr);
+  assert.equal(binding.bundle, service.registration(registration).baseBundle);
+  assert.equal(binding.identity, prepared.identity);
+  const runtime = await service.resolve(registration, { session: 'new-session', project: value.project, entry: 'runtime' });
+  assert.equal(runtime.bundle.key, binding.bundle);
+  const inventory = await service.run(registration, { session: 'new-session', project: value.project, entry: 'migration', request: { action: 'inventory' } });
+  assert.equal(inventory.code, 0, inventory.stderr);
+  assert.equal(JSON.parse(inventory.stdout).counts.legacy, 0);
 });
 
 test('a migration operation context cannot admit an ordinary runtime request', async t => {
