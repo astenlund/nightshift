@@ -22,6 +22,8 @@ const { reservedCheck, reservedOperation } = require('./operations');
 const { acceptanceCheckpoint } = require('./acceptance-checkpoint');
 const { continuesRecord, lineageOf, resolveContinuation } = require('./continuation');
 const { information, inspectionFailureDetail } = require('../releases/processes');
+const { LegacyInventory } = require('./legacy-inventory');
+const { tableNames } = require('./legacy-store');
 
 function requireRuntimeAction(request) {
   requireCondition(isRuntimeAction(request?.action), 'invalid-request', unknownActionMessage(request?.action));
@@ -48,6 +50,17 @@ function history(store, request) {
   requireCondition(Number.isSafeInteger(from) && from >= 0 && Number.isSafeInteger(to) && to >= from && to - from < HISTORY_STATE_LIMIT, 'invalid-history-range',
     `History returns full states for fromRevision through toRevision, at most ${HISTORY_STATE_LIMIT} revisions; omit both to list every transition without state`);
   return store.history(id, { fromRevision: from, toRevision: to });
+}
+
+function legacyFollowupBrief(store) {
+  if (store.kind !== 'delivery' || !tableNames(store.db).has('legacy_retirements')) return null;
+  try {
+    const items = new LegacyInventory(store.root, store.db).retiredFollowups();
+
+    return { status: 'available', total: items.length, items: items.slice(0, 20), truncated: items.length > 20 };
+  } catch (error) {
+    return { status: 'unavailable', reason: error.message };
+  }
 }
 
 // A completed delivery cannot be adopted and its owning session may be gone, so another admitted session of the same project,
@@ -93,7 +106,8 @@ async function execute(root, request, dependencies = {}) {
     if (request.action === 'status') {
       const state = store.read(request.runId);
       requireCondition(state, 'missing-state', 'No saved Nightshift run');
-      return { ...obligationBrief(state), acceptanceCheckpoint: acceptanceCheckpoint(state, request.actor, dependencies.resourceContext, dependencies.acknowledgementObserver) };
+      const legacyFollowups = legacyFollowupBrief(store);
+      return { ...obligationBrief(state), ...(legacyFollowups ? { legacyFollowups } : {}), acceptanceCheckpoint: acceptanceCheckpoint(state, request.actor, dependencies.resourceContext, dependencies.acknowledgementObserver) };
     }
     if (request.action === 'history') return history(store, request);
     if (request.action === 'inspect') return store.read(request.runId);

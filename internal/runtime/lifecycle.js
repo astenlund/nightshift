@@ -13,6 +13,7 @@ const { CLOSING_TARGET, unknownActionMessage } = require('./actions');
 const { latestDispatchOf, lineageOf } = require('./continuation');
 const { scratchFailure, scratchStatus } = require('./scratch');
 const { isReviewContext, requireDelivery, recordKind } = require('./records');
+const { validReportDelivery } = require('./report-delivery');
 const { invalidateContinuation, continuationForRequest } = require('./continuation-health');
 
 const DIMENSIONS = Object.freeze({
@@ -298,7 +299,7 @@ function reportStatus(state, root = state.root) {
   if (!state.handover) return null;
   const evidence = state.closing?.reportEvidence ?? null;
   if (!evidence) return { recorded: false, delivered: false, path: null, current: null };
-  return { recorded: true, delivered: state.closing.reportDelivery?.sha256 === evidence.sha256, path: evidence.path, current: reportIsCurrent(root, evidence) };
+  return { recorded: true, delivered: validReportDelivery(state, evidence.sha256), path: evidence.path, current: reportIsCurrent(root, evidence) };
 }
 
 // The report and the follow-up triage are one hand-off, so the notice outlives delivery while a decision is pending.
@@ -917,7 +918,7 @@ function transition(state, request, integration = null) {
       requireCondition(evidence, 'report-required', 'Record the morning report before its delivery');
       text(request.authority, 'report-delivered.authority');
       requireCondition(reportIsCurrent(state.root, evidence), 'report-stale', 'The saved morning report is missing or changed; rewrite it and record the report again');
-      if (state.closing.reportDelivery?.sha256 !== evidence.sha256) {
+      if (!validReportDelivery(state, evidence.sha256)) {
         const owner = request.actor === undefined || state.controller.session === request.actor.session && state.controller.host === request.actor.host;
         state.closing.reportDelivery = { authority: request.authority, revision: state.revision + 1, sha256: evidence.sha256, ...(owner ? {} : { recordedBy: { host: request.actor.host, session: request.actor.session } }) };
         state.closing.progressBindings ??= { retrospective: null, report: null, delivery: null, triage: null };

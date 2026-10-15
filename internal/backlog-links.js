@@ -432,7 +432,7 @@ function walkDocument(contents, lineOffset = 0) {
       continue;
     }
     if (setext !== null) {
-      parts.headings.push({ level: setext.level, title: lines.slice(setext.from, index).map((text) => text.trim()).join(' ') });
+      parts.headings.push({ level: setext.level, title: lines.slice(setext.from, index).map((text) => text.trim()).join(' '), line: lineOffset + setext.from + 1 });
       continue;
     }
     const trimmed = line.trim();
@@ -442,7 +442,7 @@ function walkDocument(contents, lineOffset = 0) {
       dependency = null;
     }
     const heading = atxHeading(content);
-    if (heading !== null) parts.headings.push(heading);
+    if (heading !== null) parts.headings.push({ ...heading, line: lineNumber });
     const definition = LINK_REFERENCE_DEFINITION.exec(chars.join(''));
     if (definition !== null) {
       const start = definition.index + definition[0].length - definition[2].length;
@@ -495,6 +495,13 @@ function extractLinks(contents) {
 
 function headingAnchors(contents) {
   return scanDocument(contents).anchors;
+}
+
+function headingPositions(contents) {
+  const headings = walkDocument(contents).headings;
+  const anchors = [...slugAnchors(headings)];
+
+  return headings.map((heading, index) => ({ ...heading, anchor: anchors[index] }));
 }
 
 function decodeLinkPath(raw) {
@@ -625,4 +632,4 @@ function analyzeBacklogLinks({ files, linkedEntries, coveredTargets, normalizeTi
   ];
 }
 
-module.exports = { analyzeBacklogLinks, atxHeading, extractLinks, headingAnchors, resolveLink };
+module.exports = { analyzeBacklogLinks, atxHeading, extractLinks, headingAnchors, headingPositions, resolveLink };

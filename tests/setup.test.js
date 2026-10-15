@@ -409,7 +409,7 @@ test('a migrated stopped run keeps current paths and original history but refuse
     await act({ action: 'resume', authority: 'User-authorized migration resumption' });
     await act({ action: 'continuation', mechanism: fixtureContinuation(actor.host) });
     // Engineering needs a current acknowledgement obligation, which neither a record from an earlier release nor this
-    // migration's requirements rebind leaves; how such runs resume belongs to the migration of records saved before 3.3.10.
+    // migration's requirements rebind leaves; resumption needs separate recovery outside this setup test.
     await assert.rejects(act({ action: 'add-spec-review', taskId: 'code' }), { code: 'acknowledgement-obligation-unavailable' });
     assert.equal(store.read().status, 'running');
   } finally { store.close(); }

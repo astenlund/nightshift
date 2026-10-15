@@ -166,7 +166,7 @@ function createBlockTracker() {
   let inIndentedCode = false;
   let inTable = false;
 
-  return (line, previous, probe, lastLine) => {
+  const track = (line, previous, probe, lastLine) => {
     const blank = line.trim() === '';
     if (html !== null) {
       if (html.type >= 6 && blank) {
@@ -222,6 +222,9 @@ function createBlockTracker() {
 
     return null;
   };
+  track.hasUnclosedFence = () => fence !== null;
+
+  return track;
 }
 
 // Walks the lines once and describes each one: `block` names the construct
@@ -229,7 +232,7 @@ function createBlockTracker() {
 // `continuation` says whether it continues the paragraph or list item above
 // ('paragraph', 'list-item' or null), and `setext` marks a setext underline
 // with its heading level and the index of the paragraph line it underlines.
-function describeLines(lines) {
+function describeLines(lines, state = null) {
   const described = [];
   const frontmatterClose = frontmatterEnd(lines);
   const insideBlock = createBlockTracker();
@@ -270,6 +273,8 @@ function describeLines(lines) {
       : { kind: kind === 'indented' || kind === 'label' ? 'paragraph' : kind, line, start: index };
   }
 
+  if (state) state.unclosedFence = insideBlock.hasUnclosedFence();
+
   return described;
 }
 
@@ -283,8 +288,9 @@ function scanWraps(lines) {
 // mark, each with its describeLines entry.
 function describeBlocks(text) {
   const { lines } = splitLines(text);
+  const state = { unclosedFence: false };
 
-  return { lines, described: describeLines(lines) };
+  return { lines, described: describeLines(lines, state), unclosedFence: state.unclosedFence };
 }
 
 // Private single-scan core: one splitLines + scanWraps pass per text, shared

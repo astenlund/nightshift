@@ -14,16 +14,18 @@ const processes = require('./processes');
 const { CHANGED_CONCURRENTLY, REMOVED_MESSAGE, ownerFree, pluginIdentity, publishBootstrap, retainedRoutes, supportsPreparation } = require('./administration');
 const { CONTEXT_ENV, MODE_ENV, executionResources } = require('./entry');
 const { isCreationRequest, requiresOwnershipInventory, isReadOnlyAction, isRuntimeAction, unknownActionMessage } = require('../runtime/actions');
+const { isMigrationAction, isReadOnlyMigrationAction } = require('../runtime/migration-actions');
 const { workerIsActive } = require('../runtime/workers');
 const { RUN_STORE_WAIT_MS, STORE_VERSIONS } = require('../runtime/store');
 const { referenceId, reviewId, requestedReferenceId, readReviewStore, readReviewReference } = require('../runtime/review-inventory');
 const { acceptsRuntimeAction, continuationOptional, admitReady, admitResolved } = require('./admission');
 const { digest, directory, hostProfile, normalizeRuntimeTarget, parseJson, processAlive, projectRoot, readBytes, replaceFile, requireConsistentRunId, requireValue, text, writeNew } = require('./io');
 
-const ENTRIES = Object.freeze({ ready: 'skills/ready/ready.js', unwrap: 'skills/init-backlog/unwrap.js', setup: 'skills/init-backlog/init-backlog.js', runtime: 'internal/runtime/cli.js' });
+const ENTRIES = Object.freeze({ ready: 'skills/ready/ready.js', unwrap: 'skills/init-backlog/unwrap.js', setup: 'skills/init-backlog/init-backlog.js', runtime: 'internal/runtime/cli.js', migration: 'internal/runtime/migration-cli.js' });
 const MAINTENANCE = new Set(['worker-finished', 'review', 'validate', 'dialogue', 'stop']);
-const ENTRY_CHOICE = 'Choose ready, unwrap, setup or runtime';
+const ENTRY_CHOICE = 'Choose ready, unwrap, setup, runtime or migration';
 const MISSING_ACTIVATION = 'This native session has not observed the current Nightshift hook generation; open or reopen it before protected work';
+const MIGRATION_NEW_SESSION = 'Retired deliveries need the current release for a new handover; open a new native session';
 
 function defaultStore() { return path.join(process.env.LOCALAPPDATA ?? path.join(os.homedir(), 'AppData', 'Local'), 'Nightshift'); }
 
@@ -66,6 +68,28 @@ function readRun(root, id, waitMs = RUN_STORE_WAIT_MS) {
   } finally { database.close(); }
 }
 
+// Retirement references only select the current runtime for creation. The runtime validates certificates before any write.
+function retirementReferences(root, id) {
+  const database = runDatabase(root);
+  if (!database) return { any: false, requested: false };
+  try {
+    if (!database.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='legacy_retirements'").get()) return { any: false, requested: false };
+
+    return { any: Boolean(database.prepare('SELECT 1 FROM legacy_retirements LIMIT 1').get()), requested: Boolean(database.prepare('SELECT 1 FROM legacy_retirements WHERE run_id=?').get(id)) };
+  } finally { database.close(); }
+}
+
+function deliveryCreation(request) {
+  return request?.action === 'handover' && Object.hasOwn(request, 'tasks') || request?.action === 'create';
+}
+
+function creationRetirement(root, requestedRun, request) {
+  const references = retirementReferences(root, requestedRun?.id ?? null);
+  const exactReplay = request.action === 'handover' && typeof request.handoverId === 'string' && request.handoverId.length > 0 && request.handoverId === requestedRun?.acceptance?.handoverId;
+
+  return { ...references, requiresCurrent: references.requested || references.any && !exactReplay };
+}
+
 // Every saved run of a project, or null when the project has no run database.
 function readRunStore(root) {
   requireValue(fs.realpathSync.native(root) === root, 'run-resource-state-unavailable', 'Registered project root changed');
@@ -102,7 +126,7 @@ function operationEnded(value) {
 }
 
 function projectOperationActive(registry, project, ignoreEnded = false) {
-  return registry.list('operation').some(entry => entry.value.kind === 'entry' && entry.value.project === project && !isReadOnlyAction(entry.value.runtimeAction) && (!ignoreEnded || !operationEnded(entry.value)));
+  return registry.list('operation').some(entry => entry.value.kind === 'entry' && entry.value.project === project && !(entry.value.entry === 'migration' ? isReadOnlyMigrationAction(entry.value.migrationAction) : isReadOnlyAction(entry.value.runtimeAction)) && (!ignoreEnded || !operationEnded(entry.value)));
 }
 
 function matchesBinding(resources, binding, store) {
@@ -412,13 +436,36 @@ class ReleaseService {
     const binding = this.registry(registry => registry.get('session', skey));
     requireValue(!binding || binding.state === 'bound', 'retired-release-binding', 'This session was retired; explicitly recover its exact identity before resuming');
     requireValue(maintenance || registration.state === 'registered' && !registration.pending, 'release-setup-required', 'Complete host setup and resource registration before Nightshift work');
+    if (request.entry === 'migration') {
+      await this.dependencies.isEnabled(registration.host, registration.profile, registration.pluginId, project);
+      const administrative = this.registry(registry => {
+        const current = registry.get('registration', key);
+        requireValue(current?.state === 'registered' && !current.pending && current.baseBundle, 'migration-release-unavailable', 'Migration requires a current enabled administrative release');
+        const selected = bundles.verifiedRecord(registry, current.baseBundle);
+        requireValue(!this.context.implementationBundle || selected.key === this.context.implementationBundle, 'migration-release-changed', 'Administrative release changed during migration admission');
+        requireValue(fs.existsSync(path.join(selected.root, ENTRIES.migration)), 'migration-release-unavailable', 'The current release has no migration entry');
+        const actual = registry.get('session', skey) ?? { schema: 1, registration: key, session, identity: selected.identity, bundle: selected.key, state: 'bound', projects: [], runs: [], createdAt: new Date().toISOString() };
+        requireValue(actual.state === 'bound' && actual.registration === key && actual.session === session, 'retired-release-binding', 'Migration session binding is unavailable');
+        if (!actual.projects.includes(project)) actual.projects.push(project);
+        registry.put('session', skey, actual);
+        registry.put('project', digest(project), { schema: 1, root: project });
+        return { binding: actual, bundle: selected, registration: current, project, administrative: true, activationAdmissionObserved: false };
+      });
+      return admitResolved(this, administrative, request, maintenance, preparing);
+    }
     const readyAdmissionObserved = !maintenance && request.entry === 'ready';
     if (readyAdmissionObserved) await admitReady(this, registration, project);
     const runId = requestedReferenceId(request.request) ?? request.runId;
     const requestedRun = request.entry === 'ready' ? null : runId ? this.dependencies.readRun(project, runId) : this.dependencies.readRun(project);
     const creating = request.entry === 'runtime' && (isCreationRequest(request.request) || request.request?.action === 'create');
+    const creatingDelivery = request.entry === 'runtime' && deliveryCreation(request.request);
+    const retirement = creatingDelivery ? creationRetirement(project, requestedRun, request.request) : { any: false, requested: false, requiresCurrent: false };
     const replaceable = requestedRun?.status === 'complete' || requestedRun?.status === 'stopped' && requestedRun.tasks?.every(task => task.status === 'complete');
-    const newRun = creating && (!requestedRun || !runId && replaceable && !activeWorkers(requestedRun));
+    const newRun = creating && (!requestedRun || !runId && replaceable && !activeWorkers(requestedRun) || retirement.requiresCurrent);
+    if (newRun && retirement.any && binding) {
+      const current = this.registry(registry => bundles.verifiedRecord(registry, registration.baseBundle));
+      requireValue(binding.identity === current.identity, 'migration-new-session-required', MIGRATION_NEW_SESSION);
+    }
     const relevantRun = !newRun && (runId || request.entry === 'runtime' || requestedRun?.controller?.session === session) ? requestedRun : null;
     const runResources = relevantRun ? executionResources(relevantRun) : null;
     if (relevantRun && !runResources && relevantRun.status !== 'complete') requireValue(false, 'legacy-release-reconciliation', 'This run has no retained release identity; reconcile it explicitly instead of adopting the newest runtime');
@@ -584,12 +631,15 @@ class ReleaseService {
       const bound = known ? this.registry(registry => bundles.availableIdentity(registry, known.identity)) : null;
       requireValue(bound ? acceptsRuntimeAction(bound, request.request.action) : isRuntimeAction(request.request.action), 'invalid-runtime-request', unknownActionMessage(request.request.action));
     }
+    if (request.entry === 'migration') {
+      requireValue(request.request && typeof request.request === 'object' && !Array.isArray(request.request) && isMigrationAction(request.request.action), 'invalid-migration-request', 'Choose migration inventory, manifest, raw-inspect or retire');
+    }
     if (request.entry === 'setup') requireValue(request.options === undefined || request.options && typeof request.options === 'object' && !Array.isArray(request.options), 'invalid-setup-options', 'Setup options must be an object');
     if (request.entry === 'unwrap') requireValue((request.target === undefined || typeof request.target === 'string' && request.target.length > 0) && (request.write === undefined || typeof request.write === 'boolean'), 'invalid-unwrap-options', 'Unwrap target and write options have invalid types');
     requireConsistentRunId(request);
-    const readOnly = request.entry === 'runtime' && isReadOnlyAction(request.request.action);
+    const readOnly = request.entry === 'runtime' && isReadOnlyAction(request.request.action) || request.entry === 'migration' && isReadOnlyMigrationAction(request.request.action);
     const maintenance = readOnly || request.entry === 'runtime' && MAINTENANCE.has(request.request.action);
-    const canonical = request.entry === 'runtime' ? requiresOwnershipInventory(request.request) : request.entry === 'unwrap' && request.write === true || request.entry === 'setup';
+    const canonical = request.entry === 'runtime' ? requiresOwnershipInventory(request.request) : request.entry === 'migration' ? !readOnly : request.entry === 'unwrap' && request.write === true || request.entry === 'setup';
     const resolved = await this.resolve(key, request, maintenance);
     const operation = randomUUID();
     const context = this.registry(registry => {
@@ -597,6 +647,14 @@ class ReleaseService {
       const run = request.entry === 'runtime' ? this.dependencies.readRun(resolved.project, requestedReferenceId(request.request)) : null;
       this.reconcileOperations(registry, runs, canonical ? undefined : { project: resolved.project, run });
       requireValue(readOnly || !projectOperationActive(registry, resolved.project, !canonical), 'resource-operation-busy', 'A project operation is active or its termination is uncertain');
+      if (request.entry === 'runtime' && deliveryCreation(request.request)) {
+        const current = bundles.verifiedRecord(registry, resolved.registration.baseBundle);
+        if (resolved.bundle.identity !== current.identity) {
+          const requested = this.dependencies.readRun(resolved.project, requestedReferenceId(request.request) ?? request.runId);
+          const retirement = creationRetirement(resolved.project, requested, request.request);
+          requireValue(!retirement.requiresCurrent, 'migration-new-session-required', MIGRATION_NEW_SESSION);
+        }
+      }
       if (canonical) this.requireProjectOwnershipInventory(registry, resolved.project, runs);
       const binding = registry.get('session', sessionKey(key, request.session));
       if (canonical) this.reconcileRunReferences(registry, binding, null, { runs });
@@ -615,8 +673,8 @@ class ReleaseService {
       if (!readOnly && run?.adoptions?.length && matchesBinding(executionResources(run), binding, registry.root)) this.reconcileAdoptedTarget(registry, resolved.project, run);
       // Taken before the contained launch starts its timer, so the runtime sees a deadline no later than the actual one.
       const operationDeadlineUtc = new Date(Date.now() + (request.timeoutMs ?? processes.MAX_OPERATION_TIMEOUT_MS)).toISOString();
-      const value = { schema: 1, mode: 'bound', store: registry.root, registration: key, session: request.session, identity: resolved.bundle.identity, bundle: resolved.bundle.key, project: resolved.project, operation, operationDeadlineUtc, ...(resolved.integration ? { integration: resolved.integration } : {}) };
-      registry.put('operation', operation, { ...value, kind: 'entry', state: 'running', phase: 'prepared', pid: process.pid, implementationBundle: this.context.implementationBundle ?? resolved.bundle.key, maintenance, runtimeAction: request.entry === 'runtime' ? request.request.action : null, runId: requestedReferenceId(request.request) ?? null });
+      const value = { schema: 1, mode: 'bound', store: registry.root, registration: key, host: resolved.registration.host, session: request.session, identity: resolved.bundle.identity, bundle: resolved.bundle.key, project: resolved.project, operation, operationDeadlineUtc, ...(resolved.administrative ? { administrative: true } : {}), ...(resolved.integration ? { integration: resolved.integration } : {}) };
+      registry.put('operation', operation, { ...value, kind: 'entry', entry: request.entry, state: 'running', phase: 'prepared', pid: process.pid, implementationBundle: this.context.implementationBundle ?? resolved.bundle.key, maintenance, runtimeAction: request.entry === 'runtime' ? request.request.action : null, migrationAction: request.entry === 'migration' ? request.request.action : null, runId: request.entry === 'runtime' ? requestedReferenceId(request.request) ?? null : null });
       return value;
     });
     let temporary;
@@ -634,7 +692,7 @@ class ReleaseService {
         args = [...(request.write === true ? ['--write'] : []), target];
       } else {
         const file = path.join(temporary, 'request.json');
-        const value = structuredClone(request.entry === 'runtime' ? request.request : request.options ?? {});
+        const value = structuredClone(['runtime', 'migration'].includes(request.entry) ? request.request : request.options ?? {});
         if (request.entry === 'runtime') {
           const identityField = isCreationRequest(value) || value.action === 'create' ? 'controller' : !isReadOnlyAction(value.action) ? 'actor' : null;
           if (identityField) {
@@ -644,8 +702,20 @@ class ReleaseService {
             value[identityField] = identity;
           }
         }
+        if (request.entry === 'migration' && !readOnly) {
+          const identity = { host: resolved.registration.host, session: request.session };
+          const supplied = value.actor;
+          requireValue(supplied === undefined || supplied?.host === identity.host && supplied?.session === identity.session, 'resource-actor-conflict', 'Migration actor must match the admitted native session');
+          value.actor = identity;
+        }
         writeNew(file, JSON.stringify(value) + '\r\n');
-        args = request.entry === 'runtime' ? [resolved.project, file] : [request.setupAction ?? 'inspect', resolved.project, file];
+        if (request.entry === 'migration') this.registry(registry => {
+          const running = registry.get('operation', operation);
+          requireValue(running?.state === 'running' && running.migrationAction === value.action, 'migration-request-mismatch', 'Migration admission changed before launch');
+          running.migrationRequestHash = digest(Buffer.from(JSON.stringify(value)));
+          registry.put('operation', operation, running);
+        });
+        args = ['runtime', 'migration'].includes(request.entry) ? [resolved.project, file] : [request.setupAction ?? 'inspect', resolved.project, file];
       }
       this.registry(registry => { const value = registry.get('operation', operation); value.phase = 'launching'; registry.put('operation', operation, value); });
       launchAttempted = true;

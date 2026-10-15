@@ -4,9 +4,9 @@ Upcoming work and deferred extensions to the delivered v3 MVP. Its delivery is r
 
 ## Current work
 
-### [Migrate delivery records saved before 3.3.10](features/legacy-delivery-record-migration.md)
+### [Migrate delivery records without schema-2 accounting](features/legacy-delivery-record-migration.md)
 
-Convert or retire the delivery records that releases before 3.3.10 saved without independent accounting provenance, so a project holding them can hand over new work again. The 3.3.10 creation gate refuses a new handover with `delivery-consistency-unavailable` while an earlier-release record it cannot authenticate survives, and a read-only measurement on 2026-10-09 authenticated none of the 43 earlier-release records in this repository's store; the user accepted that fail-closed boundary on 2026-10-09 and chose this migration as the next work. This repository therefore cannot hand the work over once 3.3.10 governs handover here. How a migrated record proves its earlier discharge without weakening the gate, what happens to stopped records, which under 3.3.10 cannot resume engineering without a renewed acknowledgement obligation, how the refusal names unmigrated records and when migration runs remain open, so it needs a concise governing spec and a version increase before implementation.
+Provide a reusable administrative migration for delivery records that lack schema-2 independent accounting because a retained older release saved them, regardless of date, preserving their original bytes while exact user-approved retirement certificates let the creation gate verify their disposition. The [governing spec](specs/legacy-delivery-record-migration.md) settles inventory, approval, report and follow-up decisions, stopped work, write protection and interruption recovery. A 3.3.11 implementation is a local candidate under assessment, not an installed release; this repository's saved records remain unchanged. A 2026-10-15 read-only inventory of this repository's store found 43 complete and two stopped legacy records, with one unconfirmed saved report and four pending follow-ups on two complete records. The user chose completed-record retirement as a policy and separate decisions for the stopped records; a fresh exact manifest and explicit decisions are still required before this store is changed.
 
 **Requires:** none.
 
@@ -325,6 +325,10 @@ Let the user bypass a step the runtime refuses for technical reasons, after the 
 **Requires:** none.
 
 ## Exploring
+
+### [Reactivate retired delivery records](features/retired-delivery-reactivation.md)
+
+Explore an explicit, user-approved route to resume or recover work from a retired legacy delivery without erasing its retirement certificates or silently restoring old obligations. The local 3.3.11 migration candidate treats retirement as final for runtime mutation, adoption and resume; reactivation needs its own authority, ownership, acknowledgement, provenance and interruption design before it can graduate.
 
 ### [Shared BACKLOG.md meta-index](features/backlog-meta-index.md)
 

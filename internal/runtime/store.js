@@ -5,6 +5,7 @@ const { CLOSING_TARGET } = require('./actions');
 const { RunError, requireCondition, text } = require('./errors');
 const { recordKind } = require('./records');
 const { acceptanceInput, replayAcceptance } = require('./delivery-acceptance');
+const { ACTIVE_TABLE_SQL } = require('./legacy-store');
 
 const fs = require('node:fs');
 const path = require('node:path');
@@ -16,6 +17,14 @@ const RUN_STORE_WAIT_MS = 5000;
 // The database formats a run store opens; version 0 is a fresh file this runtime initializes, so only later ones hold records.
 const STORE_VERSIONS = Object.freeze([0, 1, 2]);
 const REMINDER_WRITES = new WeakMap();
+
+function schemaStatements(kind, version) {
+  return [
+    ...(version < 2 ? ['CREATE TABLE artifacts (id TEXT PRIMARY KEY, body TEXT NOT NULL)', 'PRAGMA user_version=2'] : []),
+    ...(kind === 'delivery' ? ['CREATE TABLE IF NOT EXISTS accounting_commits (run_id TEXT NOT NULL, revision INTEGER NOT NULL, artifact TEXT NOT NULL, PRIMARY KEY(run_id, revision))', 'CREATE TABLE IF NOT EXISTS discharge_index (run_id TEXT NOT NULL, occurrence TEXT NOT NULL, evidence_hash TEXT NOT NULL, binding_hash TEXT NOT NULL, artifact TEXT NOT NULL, PRIMARY KEY(run_id, occurrence, evidence_hash, binding_hash, artifact))'] : []),
+  ];
+}
+
 function requireReplaceableDelivery(context) {
   requireCondition(!context.reportPending, 'report-delivery-pending', 'The latest delivery\'s morning report awaits its recipient: present the saved report, record report-delivered with the user\'s reply, then accept the new delivery');
   requireCondition(context.replaceable, 'overlapping-run', 'A surviving delivery still has unresolved obligations; reconcile, resume or explicitly finish it');
@@ -59,24 +68,48 @@ class RunStore {
     this.directory = safeDirectory(this.root, relative, options.create === true);
     if (options.create && !existed) fs.writeFileSync(path.join(this.directory, '.gitignore'), '*\r\n', { flag: 'wx' });
     const database = path.join(this.directory, options.review === true ? 'review-state.sqlite' : 'state.sqlite');
+    const present = new Set();
     for (const candidate of [database, database + '-journal', database + '-wal', database + '-shm']) {
-      if (!fs.existsSync(candidate)) continue;
-      const stat = fs.lstatSync(candidate);
+      const stat = fs.lstatSync(candidate, { throwIfNoEntry: false });
+      if (!stat) continue;
+      present.add(candidate);
       requireCondition(stat.isFile() && !stat.isSymbolicLink() && stat.nlink === 1, 'unsafe-path', 'Run database must be an ordinary unlinked file');
     }
-    requireCondition(options.create || fs.existsSync(database), 'missing-state', 'No Nightshift run database exists');
+    requireCondition(present.has(database) || !(present.has(database + '-journal') || present.has(database + '-wal') || present.has(database + '-shm')), 'missing-predecessor', 'Run database is missing while SQLite sidecars survive');
+    requireCondition(options.create || present.has(database), 'missing-state', 'No Nightshift run database exists');
     this.db = new DatabaseSync(database);
     this.db.exec(`PRAGMA busy_timeout=${RUN_STORE_WAIT_MS}; PRAGMA synchronous=FULL; PRAGMA foreign_keys=ON;`);
     const version = this.db.prepare('PRAGMA user_version').get().user_version;
-    requireCondition(STORE_VERSIONS.includes(version), 'state-version', `Unsupported run database version ${version}`);
-    if (version === 0) {
-      this.db.exec('BEGIN IMMEDIATE; CREATE TABLE runs (id TEXT PRIMARY KEY, revision INTEGER NOT NULL, state TEXT NOT NULL); CREATE TABLE active (singleton INTEGER PRIMARY KEY CHECK(singleton=1), id TEXT NOT NULL REFERENCES runs(id)); CREATE TABLE history (run_id TEXT NOT NULL REFERENCES runs(id), revision INTEGER NOT NULL, kind TEXT NOT NULL, recorded_at TEXT NOT NULL, state TEXT NOT NULL, PRIMARY KEY(run_id, revision)); PRAGMA user_version=1; COMMIT;');
+    if (!STORE_VERSIONS.includes(version)) {
+      this.db.close();
+      requireCondition(false, 'state-version', `Unsupported run database version ${version}`);
     }
-    if (version < 2) this.db.exec('BEGIN IMMEDIATE; CREATE TABLE artifacts (id TEXT PRIMARY KEY, body TEXT NOT NULL); PRAGMA user_version=2; COMMIT;');
-    if (this.kind === 'delivery') this.db.exec('BEGIN IMMEDIATE; CREATE TABLE IF NOT EXISTS accounting_commits (run_id TEXT NOT NULL, revision INTEGER NOT NULL, artifact TEXT NOT NULL, PRIMARY KEY(run_id, revision)); CREATE TABLE IF NOT EXISTS discharge_index (run_id TEXT NOT NULL, occurrence TEXT NOT NULL, evidence_hash TEXT NOT NULL, binding_hash TEXT NOT NULL, artifact TEXT NOT NULL, PRIMARY KEY(run_id, occurrence, evidence_hash, binding_hash, artifact)); COMMIT;');
+    if (version === 0 && present.has(database)) {
+      this.db.close();
+      requireCondition(false, 'state-version', 'A pre-existing uninitialized run database requires reconciliation before creation');
+    }
+    if (version === 0) {
+      this.db.exec(`BEGIN IMMEDIATE; CREATE TABLE runs (id TEXT PRIMARY KEY, revision INTEGER NOT NULL, state TEXT NOT NULL); ${ACTIVE_TABLE_SQL}; CREATE TABLE history (run_id TEXT NOT NULL REFERENCES runs(id), revision INTEGER NOT NULL, kind TEXT NOT NULL, recorded_at TEXT NOT NULL, state TEXT NOT NULL, PRIMARY KEY(run_id, revision)); PRAGMA user_version=1; COMMIT;`);
+    }
+    const deferSchema = version > 0 && this.kind === 'delivery';
+    if (!deferSchema) {
+      const statements = schemaStatements(this.kind, version);
+      if (statements.length) this.db.exec(`BEGIN IMMEDIATE; ${statements.join('; ')}; COMMIT;`);
+    }
   }
 
   close() { this.db.close(); }
+
+  isRetired(id) {
+    return this.kind === 'delivery' && Boolean(this.db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='legacy_retirements'").get()) && Boolean(this.db.prepare('SELECT 1 FROM legacy_retirements WHERE run_id=?').get(id));
+  }
+
+  ensureSchema() {
+    requireCondition(this.writing, 'invalid-runtime-transaction', 'Schema changes require the project transaction');
+    const version = this.db.prepare('PRAGMA user_version').get().user_version;
+    const statements = schemaStatements(this.kind, version);
+    if (statements.length) this.db.exec(statements.join('; ') + ';');
+  }
 
   read(id, options = {}) {
     id ??= this.contextId;
@@ -92,16 +125,7 @@ class RunStore {
   }
 
   hydrate(value, seen = new Set()) {
-    if (value === null || typeof value !== 'object') return value;
-    if (Object.hasOwn(value, '$artifact')) {
-      requireCondition(Object.keys(value).length === 1 && /^[a-f0-9]{64}$/.test(value.$artifact) && !seen.has(value.$artifact), 'invalid-evidence', 'Immutable evidence envelope is malformed or recursive');
-      const row = this.db.prepare('SELECT body FROM artifacts WHERE id=?').get(value.$artifact);
-      requireCondition(row, 'missing-evidence', 'Referenced immutable evidence is missing');
-      requireCondition(createHash('sha256').update(row.body).digest('hex') === value.$artifact, 'changed-evidence', 'Immutable evidence no longer matches its content identity');
-      return this.hydrate(JSON.parse(row.body), new Set([...seen, value.$artifact]));
-    }
-    if (Array.isArray(value)) return value.map(item => this.hydrate(item, seen));
-    return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, this.hydrate(item, seen)]));
+    return require('./artifact-hydration').hydrateArtifact(this.db, value, seen);
   }
 
   encode(state) {
@@ -178,6 +202,7 @@ class RunStore {
     requireCondition(state.schema === 1 && state.root === this.root && recordKind(state) === this.kind && Number.isSafeInteger(state.revision) && state.revision >= 0, 'invalid-state', 'Saved state identity or revision is invalid');
     const row = this.db.prepare('SELECT revision, state FROM runs WHERE id=?').get(state.id);
     const previous = row ? JSON.parse(row.state) : null;
+    requireCondition(!previous || !this.isRetired(state.id), 'retired-run', 'A retired delivery is read-only');
     if (previous) {
       requireCondition(previous.revision === row.revision && previous.root === this.root && recordKind(previous) === this.kind && previous.id === state.id, 'invalid-state', 'Committed predecessor identity or revision is invalid');
       requireCondition(state.revision === nextRevision(previous), 'stale-state', 'Saved state must immediately follow its committed predecessor');
@@ -190,6 +215,7 @@ class RunStore {
       REMINDER_WRITES.delete(internal);
       requireCondition(reminder.store === this && reminder.transaction === this.writeCapability && reminder.candidate === state && previous && reminder.predecessorHash === require('./progress').encodedHash(previous) && reminderContent(state) === reminder.contentHash, 'invalid-reminder-state', 'Reminder capability is stale, foreign, replayed or its candidate changed');
     } else requireCondition(internal === undefined, 'invalid-reminder-state', 'Unknown internal save capability');
+    this.ensureSchema();
     const encoded = reminder ? structuredClone(state) : this.encode(state);
     if (this.kind === 'delivery') {
       const accounting = new (require('./progress-store').ProgressStore)(this);
@@ -209,6 +235,7 @@ class RunStore {
     return this.transaction(() => {
       const state = this.read(undefined, { hydrate: false });
       requireCondition(state && state.revision === revision, 'stale-state', 'Run changed before reminder issuance');
+      requireCondition(!this.isRetired(state.id), 'retired-run', 'A retired delivery is read-only');
       requireCondition(this.kind === 'delivery' && state.controller.host === actor?.host && state.controller.session === actor?.session, 'wrong-owner', 'Only the owning delivery controller can receive a reminder');
       const captured = structuredClone(state);
       const eligibility = eligible(state);
@@ -329,6 +356,7 @@ class RunStore {
     const updated = this.transaction(() => {
       const state = this.read();
       requireCondition(state !== null, 'missing-state', 'No active run');
+      requireCondition(!this.isRetired(state.id), 'retired-run', 'A retired delivery is read-only');
       requireCondition(state.revision === revision, 'stale-state', 'Run changed; read current obligations before retrying');
       const owner = state.controller.session === actor?.session && state.controller.host === actor?.host;
       // Only the recipient's confirmation of a completed delivery's morning report may come from another admitted session.
@@ -376,6 +404,7 @@ class RunStore {
     return this.transaction(() => {
       const state = this.read();
       requireCondition(state, 'missing-state', 'No current run is available to adopt');
+      requireCondition(!this.isRetired(state.id), 'retired-run', 'A retired delivery cannot be adopted');
       const last = state.adoption;
       if (state.id === request.runId && state.controller.host === request.actor?.host && state.controller.session === request.actor?.session && last?.observedRevision === request.revision && last.previousController.host === request.previousController?.host && last.previousController.session === request.previousController?.session && last.authority === request.authority) return state;
       const revision = nextRevision(state);

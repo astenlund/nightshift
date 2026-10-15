@@ -1,7 +1,8 @@
 'use strict';
 
 const { createHash } = require('node:crypto');
-const { requireCondition } = require('./errors');
+const { requireBound, requireCondition } = require('./errors');
+const { validReportDelivery } = require('./report-delivery');
 
 const HASH = /^[a-f0-9]{64}$/;
 const MAX_CREDITS = 65536;
@@ -42,8 +43,9 @@ function validMarker(state) {
 }
 
 function validateFrontier(frontier, runId) {
-  requireCondition(frontier?.schema === 2 && frontier.runId === runId && Array.isArray(frontier.credits) && frontier.credits.length <= MAX_CREDITS && Array.isArray(frontier.closingBasis) && frontier.closingBasis.length <= MAX_CREDITS, 'progress-frontier-unavailable', 'Progress frontier is missing, foreign or exceeds its bound');
-  requireCondition(Buffer.byteLength(JSON.stringify(frontier)) <= MAX_FRONTIER_BYTES, 'progress-frontier-unavailable', 'Progress frontier exceeds its byte bound');
+  requireCondition(frontier?.schema === 2 && frontier.runId === runId && Array.isArray(frontier.credits) && Array.isArray(frontier.closingBasis), 'progress-frontier-unavailable', 'Progress frontier is missing or foreign');
+  requireBound(frontier.credits.length <= MAX_CREDITS && frontier.closingBasis.length <= MAX_CREDITS, 'progress-frontier-unavailable', 'Progress frontier exceeds its count bound');
+  requireBound(Buffer.byteLength(JSON.stringify(frontier)) <= MAX_FRONTIER_BYTES, 'progress-frontier-unavailable', 'Progress frontier exceeds its byte bound');
   requireCondition(frontier.credits.every((credit, index) => HASH.test(credit) && (index === 0 || frontier.credits[index - 1] < credit)), 'progress-frontier-unavailable', 'Progress credits must be sorted unique content identities');
   const credits = new Set(frontier.credits);
   requireCondition(frontier.closingBasis.every((credit, index) => HASH.test(credit) && credits.has(credit) && (index === 0 || frontier.closingBasis[index - 1] < credit)), 'progress-frontier-unavailable', 'Closing basis must be a sorted unique subset of credited achievements');
@@ -188,7 +190,7 @@ function semanticFacts(state, resolve = value => value) {
   if (closing?.carriedBaseline) proof(closing.carriedBaseline);
   if (closing?.retrospectiveEvidence) add('retrospective', boundContext(closing.progressBindings?.retrospective, state));
   if (closing?.reportEvidence?.sha256 && HASH.test(closing.reportEvidence.sha256)) add('report', boundContext(closing.progressBindings?.report, state));
-  if (closing?.reportDelivery?.sha256 && HASH.test(closing.reportDelivery.sha256)) add('report-delivered', boundContext(closing.progressBindings?.delivery, state));
+  if (HASH.test(closing?.reportEvidence?.sha256) && validReportDelivery(state, closing.reportEvidence.sha256)) add('report-delivered', boundContext(closing.progressBindings?.delivery, state));
   if (closing?.triageEvidence) add('triage', boundContext(closing.progressBindings?.triage, state));
   for (const followup of state.followups ?? []) {
     if (followup.status === 'resolved' && followup.decision) add('followup-resolved', { title: followup.title, context: followup.context }, { decision: followup.decision, route: followup.route ?? null });

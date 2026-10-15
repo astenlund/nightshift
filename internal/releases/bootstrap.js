@@ -108,9 +108,9 @@ async function main() {
     requireValue(routes.some(route => route.bootstrap === fs.realpathSync.native(__filename) && route.bootstrapHash === hash(fs.readFileSync(__filename))), 'Nightshift bootstrap registration changed');
     const session = hook ? input.session_id : input.session;
     const binding = typeof session === 'string' ? readRecord(database, 'session', hash(JSON.stringify([registrationKey, session]))) : null;
-    // Current admission can run an old bound Ready parser without changing its
-    // identity. Runtime and hook dispatch still use the original bound release.
-    const currentAdmission = !hook && (input.action === 'prepare' || input.entry === 'ready' && ['resolve', 'run'].includes(input.action));
+    // Current admission chooses resources for Ready, migration and delivery creation without changing an older binding.
+    // Runtime execution and hooks still use the exact bundle selected for their operation.
+    const currentAdmission = !hook && (input.action === 'prepare' || ['ready', 'migration'].includes(input.entry) && ['resolve', 'run'].includes(input.action) || ['resolve', 'run'].includes(input.action) && input.entry === 'runtime' && ['handover', 'create'].includes(input.request?.action));
     let record = !currentAdmission && binding?.state === 'bound' ? readRecord(database, 'bundle', binding.bundle) : null;
     let selected;
     let selectedRecord;
@@ -137,7 +137,7 @@ async function main() {
     await handler.route({ ...input, action: hook ? 'hook' : input.action, hookInput: hook ? input : undefined }, { store: root, registration: registrationKey, implementationBundle: selectedRecord.key, bootstrapOperation: lease, nativeHook: hook });
   } catch (error) {
     if (hook) process.stdout.write(JSON.stringify((owned ?? ownsRun(input, registrationKey, root)) ? { systemMessage: `Nightshift retained resources are unavailable: ${error.message}. Saved work remains incomplete; recover its bound resources before dependent operations.` } : {}) + '\n');
-    else { process.stderr.write(JSON.stringify({ error: 'retained-bootstrap-unavailable', message: error.message }) + '\n'); process.exitCode = 1; }
+    else { process.stderr.write(JSON.stringify({ error: error.code === 'migration-new-session-required' ? error.code : 'retained-bootstrap-unavailable', message: error.message }) + '\n'); process.exitCode = 1; }
   } finally {
     database?.close();
     if (lease) {

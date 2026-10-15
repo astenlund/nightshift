@@ -45,9 +45,11 @@ class ProgressStore {
     requireCondition(state?.schema === 1 && state.id && state.root === this.store.root && recordKind(state) === 'delivery' && state.revision === revision && Number.isSafeInteger(revision) && revision >= 0, 'progress-history-unavailable', 'Accounting row identity or revision is invalid');
   }
 
-  committed(state) {
-    const row = this.store.db.prepare('SELECT revision, kind, state FROM history WHERE run_id=? AND revision=?').get(state.id, state.revision);
+  committed(state, budget) {
+    const remaining = budget?.remainingInput?.();
+    const row = remaining === undefined ? this.store.db.prepare('SELECT revision, kind, state FROM history WHERE run_id=? AND revision=?').get(state.id, state.revision) : this.store.db.prepare('SELECT revision, kind, state FROM history WHERE run_id=? AND revision=? AND length(CAST(state AS BLOB))<=?').get(state.id, state.revision, remaining);
     requireCondition(row, 'progress-history-unavailable', 'Accounting predecessor history is missing');
+    budget?.chargeInput?.(row.state);
     const recorded = JSON.parse(row.state);
     this.identity(recorded, row.revision);
     requireCondition(progress.encodedHash(recorded) === progress.encodedHash(state), 'progress-history-unavailable', 'Accounting predecessor contradicts its committed history');
@@ -59,7 +61,11 @@ class ProgressStore {
     requireCondition(state.progress.reminderHash === progress.reminderHash(state.id, reminder), 'progress-reminder-unavailable', 'Reminder presence or absence differs from its established binding');
     if (!reminder) return undefined;
     requireCondition(progress.validReminder(reminder, state), 'progress-reminder-unavailable', 'Accounting reminder is malformed');
-    const row = this.store.db.prepare('SELECT revision, kind, state FROM history WHERE run_id=? AND revision=?').get(state.id, reminder.atRevision);
+    const remaining = budget?.remainingInput?.() ?? (budget ? progress.MAX_RECOVERY_BYTES - budget.bytes : undefined);
+    const metadata = this.store.db.prepare('SELECT kind, length(CAST(state AS BLOB)) AS bytes FROM history WHERE run_id=? AND revision=?').get(state.id, reminder.atRevision);
+    requireCondition(metadata?.kind === 'continuation-reminder', 'progress-reminder-unavailable', 'Accounting reminder has no committed issuance');
+    if (remaining !== undefined) requireCondition(metadata.bytes <= remaining, 'progress-history-limit', 'Accounting reminder exceeds its byte bound');
+    const row = remaining === undefined ? this.store.db.prepare('SELECT revision, kind, state FROM history WHERE run_id=? AND revision=?').get(state.id, reminder.atRevision) : this.store.db.prepare('SELECT revision, kind, state FROM history WHERE run_id=? AND revision=? AND length(CAST(state AS BLOB))<=?').get(state.id, reminder.atRevision, Math.max(0, remaining));
     requireCondition(row?.kind === 'continuation-reminder', 'progress-reminder-unavailable', 'Accounting reminder has no committed issuance');
     if (budget) {
       if (budget.chargeInput) budget.chargeInput(row.state);
@@ -118,7 +124,10 @@ class ProgressStore {
       if (budget.chargeInput) replayed += metadata.bytes;
       else budget.bytes += metadata.bytes;
       requireCondition((budget.chargeInput ? replayed : budget.bytes) <= progress.MAX_RECOVERY_BYTES, 'progress-history-limit', 'Accounting recovery exceeded its byte bound');
-      const row = { ...metadata, ...this.store.db.prepare('SELECT state FROM history WHERE run_id=? AND revision=?').get(state.id, metadata.revision) };
+      requireCondition(!budget.remainingInput || metadata.bytes <= budget.remainingInput(), 'progress-history-limit', 'Accounting recovery exceeded its input byte bound');
+      const saved = budget.remainingInput ? this.store.db.prepare('SELECT state FROM history WHERE run_id=? AND revision=? AND length(CAST(state AS BLOB))<=?').get(state.id, metadata.revision, budget.remainingInput()) : this.store.db.prepare('SELECT state FROM history WHERE run_id=? AND revision=?').get(state.id, metadata.revision);
+      requireCondition(saved, 'progress-history-unavailable', 'Accounting recovery history changed or exceeded its byte bound');
+      const row = { ...metadata, ...saved };
       if (budget.chargeInput) budget.chargeInput(row.state);
       const value = JSON.parse(row.state);
       this.identity(value, row.revision);
@@ -176,7 +185,7 @@ class ProgressStore {
     const provenance = new (require('./provenance-store').ProvenanceStore)(this).read(state, budget);
     if (provenance) {
       requireCondition(provenance.status === 'current', 'progress-evidence-unavailable', 'Discharge provenance is unresolved');
-      this.committed(state);
+      this.committed(state, budget);
       const restored = { ...state, progress: provenance.marker };
       if (provenance.reminder) restored.stopRecovery = provenance.reminder;
       else delete restored.stopRecovery;
@@ -188,7 +197,7 @@ class ProgressStore {
     }
     let recorded;
     try {
-      recorded = this.committed(state).state;
+      recorded = this.committed(state, budget).state;
       requireCondition(progress.fingerprint(recorded.progress) === progress.fingerprint(state.progress) && progress.fingerprint(recorded.stopRecovery) === progress.fingerprint(state.stopRecovery), 'progress-marker-unavailable', 'Accounting differs from its committed metadata');
       if (progress.validMarker(state)) return this.checkpoint(state, budget);
     } catch (error) {

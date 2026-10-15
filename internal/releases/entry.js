@@ -8,7 +8,7 @@ const CONTEXT_ENV = 'NIGHTSHIFT_RESOURCE_CONTEXT';
 const MODE_ENV = 'NIGHTSHIFT_EXECUTION_MODE';
 const WORKER_ENV = 'NIGHTSHIFT_WORKER_BINDING';
 
-function validateContext(context, executingRoot, target, exactProject = false) {
+function validateContext(context, executingRoot, target, exactProject = false, migrationRequest = null) {
   requireValue(context?.schema === 1 && context.mode === 'bound', 'resource-context-required', 'Use the retained Nightshift launcher to invoke installed operations');
   const { Registry, sessionKey } = require('./registry');
   const { verifiedRecord } = require('./bundles');
@@ -18,8 +18,12 @@ function validateContext(context, executingRoot, target, exactProject = false) {
       const registration = registry.get('registration', context.registration);
       const binding = registry.get('session', sessionKey(context.registration, context.session));
       const operation = registry.get('operation', context.operation);
+      const administrative = context.administrative === true && operation?.administrative === true && operation.entry === 'migration' && registration?.baseBundle === context.bundle;
+      requireValue(!administrative || migrationRequest !== null, 'migration-request-mismatch', 'Administrative migration context cannot authorize an ordinary runtime entry');
+      requireValue(!administrative || context.host === registration.host && operation.host === context.host, 'resource-context-mismatch', 'Administrative host identity changed');
       requireValue((registration?.state === 'registered' || operation?.maintenance === true) && binding?.state === 'bound' && operation?.kind === 'entry' && operation.state === 'running' && processAlive(operation.pid) === true, 'resource-context-expired', 'Nightshift operation context is absent, stale or retired');
-      requireValue(operation.registration === context.registration && operation.session === context.session && operation.bundle === context.bundle && operation.project === context.project && operation.identity === context.identity && binding.identity === context.identity && binding.registration === context.registration && binding.session === context.session, 'resource-context-mismatch', 'Nightshift operation does not match its bound session');
+      requireValue(operation.registration === context.registration && operation.session === context.session && operation.bundle === context.bundle && operation.project === context.project && operation.identity === context.identity && (administrative || binding.identity === context.identity) && binding.registration === context.registration && binding.session === context.session, 'resource-context-mismatch', 'Nightshift operation does not match its admitted session');
+      if (migrationRequest !== null) requireValue(administrative && operation.migrationAction === migrationRequest.action && operation.migrationRequestHash === migrationRequest.hash, 'migration-request-mismatch', 'Migration request changed after administrative admission');
       if (operation.runtimeAction === 'adopt') {
         requireValue(binding.runs.some(reference => reference.project === context.project && reference.id === operation.runId && reference.retired === false), 'adoption-reference-required', 'Adoption requires a protected target run reference before ownership changes');
       }
@@ -49,7 +53,7 @@ function admitEntry(executingRoot, args, targetIndex, options = {}) {
   const context = contextFromEnvironment();
   if (!context && options.diagnostic === true) return { args, mode: 'diagnostic', context: null };
   requireValue(context, 'resource-context-required', 'Installed Nightshift operations require the retained launcher; use --development only for deliberately selected checkout/fixture work');
-  validateContext(context, executingRoot, args[targetIndex], options.exactProject === true);
+  validateContext(context, executingRoot, args[targetIndex], options.exactProject === true, options.migrationRequest ?? null);
   process.env[MODE_ENV] = 'bound';
   return { args, mode: 'bound', context };
 }

@@ -13,7 +13,8 @@ const progress = require('../internal/runtime/progress');
 const { execute } = require('../internal/runtime/cli');
 const { DIMENSIONS, reportNotice, transition } = require('../internal/runtime/lifecycle');
 const { inventorySnapshot, snapshot, verifyCommand } = require('../internal/runtime/evidence');
-const { closingDischargedSince } = require('../internal/runtime/creation-consistency');
+const { closingDischargedSince, creationAssessment } = require('../internal/runtime/creation-consistency');
+const { execute: migrationExecute } = require('../internal/runtime/legacy-migration');
 const { fixtureAcknowledgement } = require('./fixtures/acknowledgement');
 const { completeReflection } = require('./fixtures/completion');
 const { dropFacilityProvenance } = require('./fixtures/legacy-provenance');
@@ -73,6 +74,41 @@ function isolatedProject(t, label) {
   t.after(() => { assert.equal(path.dirname(root), parent); fs.rmSync(root, { recursive: true, force: true }); });
   return root;
 }
+
+test('an active worker preserves exact handover replay and blocks a new handover as overlap', async t => {
+  // Arrange
+  const root = isolatedProject(t, 'active-worker-replay');
+  const actor = { host: 'codex', session: 'worker-owner' };
+  const dependencies = { nativeOwner: () => ({ pid: 12345, created: 'isolated-fixture', name: 'codex.exe' }), ownerAlive: () => true, acknowledgementObserver: fixtureAcknowledgement };
+  const request = { action: 'handover', handoverId: randomUUID(), controller: actor, authority: 'Explicit fixture handover', objective: 'Keep this work', mechanism: { verified: true, kind: 'goal', evidence: 'Simulated continuation' }, tasks: [{ id: 'work', title: 'Work', agreement: { source: 'Fixture user', outcome: 'Keep this work' } }] };
+  const accepted = await execute(root, request, dependencies);
+  const store = new RunStore(root);
+  try { store.update(actor, accepted.revision, 'fixture-worker', state => { state.workers.push({ id: 'active-worker', status: 'running', role: 'reviewer', taskId: 'work', writes: [] }); }); }
+  finally { store.close(); }
+
+  // Act
+  const replay = await execute(root, request, dependencies);
+
+  // Assert
+  assert.equal(replay.id, accepted.id);
+  await assert.rejects(execute(root, { ...request, handoverId: randomUUID(), objective: 'Different work' }, dependencies), { code: 'overlapping-run' });
+});
+
+test('a missing required discharge index row damages modern accounting', async t => {
+  const root = isolatedProject(t, 'missing-discharge-index');
+  const actor = { host: 'codex', session: 'discharge-owner' };
+  const dependencies = { nativeOwner: () => ({ pid: 12345, created: 'isolated-fixture', name: 'codex.exe' }), ownerAlive: () => true, acknowledgementObserver: fixtureAcknowledgement };
+  await execute(root, { action: 'handover', handoverId: randomUUID(), controller: actor, authority: 'Explicit fixture handover', objective: 'Reflect without proposals', mechanism: { verified: true, kind: 'goal', evidence: 'Simulated continuation' }, tasks: [{ id: 'reflection', title: 'Reflection', kind: 'lore', agreement: { source: 'Fixture user', outcome: 'Reflect without proposals' } }] }, dependencies);
+  const completed = await completeReflection(root, actor, execute, dependencies);
+  const store = new RunStore(root);
+  try {
+    const rows = store.db.prepare('SELECT rowid FROM discharge_index WHERE run_id=?').all(completed.id);
+    assert.ok(rows.length > 0);
+    store.db.prepare('DELETE FROM discharge_index WHERE rowid=?').run(rows[0].rowid);
+    assert.equal(migrationExecute(root, { action: 'inventory' }).counts.damagedModern, 1);
+    assert.throws(() => store.transaction(() => creationAssessment(store)), { code: 'delivery-consistency-unavailable' });
+  } finally { store.close(); }
+});
 
 const legacyOwner = { host: 'codex', session: 'legacy-owner' };
 const legacyDependencies = { nativeOwner: () => ({ pid: 12345, created: 'isolated-fixture', name: 'codex.exe' }), ownerAlive: () => true, information: pid => ({ found: true, pid, created: 'fixture-helper', name: 'node.exe' }), acknowledgementObserver: fixtureAcknowledgement, runContained: async (_executable, _args, options) => { options.onFinished({ code: 0, descendantsReclaimed: true }); return { code: 0, stdout: 'Simulated passing command', stderr: '', descendantsReclaimed: true }; } };

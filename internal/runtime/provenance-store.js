@@ -1,12 +1,14 @@
 'use strict';
 
 const { createHash } = require('node:crypto');
-const { requireCondition } = require('./errors');
+const { requireBound, requireCondition } = require('./errors');
 const progress = require('./progress');
 const discharge = require('./discharge');
 
 class ProvenanceStore {
   constructor(accounting) { this.accounting = accounting; this.store = accounting.store; }
+
+  hasTable(name) { return Boolean(this.store.db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?").get(name)); }
 
   artifact(value) {
     const body = JSON.stringify(progress.canonical(value));
@@ -19,6 +21,11 @@ class ProvenanceStore {
   }
 
   read(state, budget) {
+    if (!this.hasTable('accounting_commits')) {
+      this.requireLegacy(state);
+
+      return null;
+    }
     const row = this.store.db.prepare('SELECT artifact FROM accounting_commits WHERE run_id=? AND revision=?').get(state.id, state.revision);
     if (!row) {
       requireCondition(!this.store.db.prepare('SELECT 1 FROM accounting_commits WHERE run_id=? LIMIT 1').get(state.id), 'progress-history-unavailable', 'An established run has a missing independent provenance revision');
@@ -27,7 +34,8 @@ class ProvenanceStore {
     }
     const record = this.accounting.artifact(row.artifact, budget);
     requireCondition(record.schema === 1 && record.runId === state.id && record.revision === state.revision && record.predecessor === (state.revision === 0 ? null : state.revision - 1) && record.encodedHash === progress.encodedHash(state), 'progress-history-unavailable', 'Independent accounting provenance contradicts the substantive state');
-    requireCondition(['current', 'unavailable'].includes(record.status) && Array.isArray(record.admissions) && record.admissions.length <= progress.MAX_CREDITS && record.bindings && typeof record.bindings === 'object' && !Array.isArray(record.bindings) && Object.keys(record.bindings).length <= progress.MAX_CREDITS, 'progress-evidence-unavailable', 'Independent accounting provenance is malformed');
+    requireCondition(['current', 'unavailable'].includes(record.status) && Array.isArray(record.admissions) && record.bindings && typeof record.bindings === 'object' && !Array.isArray(record.bindings), 'progress-evidence-unavailable', 'Independent accounting provenance is malformed');
+    requireBound(record.admissions.length <= progress.MAX_CREDITS && Object.keys(record.bindings).length <= progress.MAX_CREDITS, 'progress-evidence-unavailable', 'Independent accounting provenance exceeds its count bound');
     return record;
   }
 
@@ -36,7 +44,7 @@ class ProvenanceStore {
   // those rows were lost, and the accounting stays unavailable whatever the remaining metadata claims.
   requireLegacy(state) {
     requireCondition(state.progress?.schema !== 2, 'progress-history-unavailable', 'A run saved with schema-2 accounting lost its independent provenance rows');
-    requireCondition(!this.store.db.prepare('SELECT 1 FROM discharge_index WHERE run_id=? LIMIT 1').get(state.id), 'progress-history-unavailable', 'A run with surviving discharge provenance lost its independent provenance rows');
+    requireCondition(!this.hasTable('discharge_index') || !this.store.db.prepare('SELECT 1 FROM discharge_index WHERE run_id=? LIMIT 1').get(state.id), 'progress-history-unavailable', 'A run with surviving discharge provenance lost its independent provenance rows');
   }
 
   known(reference, fact, runId, budget) {
@@ -102,11 +110,13 @@ class ProvenanceStore {
     const visited = new Map();
     let bytes = 0;
     const ancestry = (reference, depth = 0, chain = new Set()) => {
-      requireCondition(progress.HASH.test(reference) && depth < 128 && !chain.has(reference), 'progress-evidence-unavailable', 'Discharge ancestry is malformed or recursive');
+      requireCondition(progress.HASH.test(reference) && !chain.has(reference), 'progress-evidence-unavailable', 'Discharge ancestry is malformed or recursive');
+      requireBound(depth < 128, 'progress-evidence-unavailable', 'Discharge ancestry exceeds its depth bound');
       if (visited.has(reference)) return visited.get(reference);
       const record = this.accounting.artifact(reference, budget);
       bytes += Buffer.byteLength(JSON.stringify(record));
-      requireCondition(bytes <= progress.MAX_FRONTIER_BYTES && visited.size < progress.MAX_CREDITS && record.schema === 1 && record.runId === state.id && Number.isSafeInteger(record.revision) && record.revision >= 0 && record.revision <= state.revision && progress.HASH.test(record.evidenceHash) && typeof record.occurrence === 'string' && progress.validClosingBinding(record.binding, state.id), 'progress-evidence-unavailable', 'Discharge ancestry is unsupported, foreign or exceeds its bound');
+      requireBound(bytes <= progress.MAX_FRONTIER_BYTES && visited.size < progress.MAX_CREDITS, 'progress-evidence-unavailable', 'Discharge ancestry exceeds its read bound');
+      requireCondition(record.schema === 1 && record.runId === state.id && Number.isSafeInteger(record.revision) && record.revision >= 0 && record.revision <= state.revision && progress.HASH.test(record.evidenceHash) && typeof record.occurrence === 'string' && progress.validClosingBinding(record.binding, state.id), 'progress-evidence-unavailable', 'Discharge ancestry is unsupported or foreign');
       if (record.parent !== null) {
         const parent = ancestry(record.parent, depth + 1, new Set([...chain, reference]));
         requireCondition(progress.fingerprint(parent.binding) === progress.fingerprint(record.binding), 'progress-evidence-unavailable', 'Discharge ancestry changes its original context');
@@ -118,6 +128,7 @@ class ProvenanceStore {
     for (const [occurrence, fact] of facts) {
       const reference = checkpoint.bindings[occurrence];
       this.known(reference, fact, state.id, budget);
+      requireCondition(Boolean(this.store.db.prepare('SELECT 1 FROM discharge_index WHERE run_id=? AND occurrence=? AND evidence_hash=? AND binding_hash=? AND artifact=? LIMIT 1').get(state.id, occurrence, fact.evidenceHash, progress.fingerprint(fact.binding), reference)), 'progress-evidence-unavailable', 'Independent closing evidence lost its discharge index row');
       ancestry(reference);
     }
     return structuredClone(checkpoint.bindings);

@@ -264,7 +264,7 @@ test('revision overflow is refused before change executes', t => {
 test('frontier and snapshot grammar reject corruption and overflow', () => {
   assert.deepEqual(snapshotIdentity(snapshot('a', 'old')), snapshotIdentity(snapshot('a', 'new')));
   assert.throws(() => snapshotIdentity({ ...snapshot(), digest: 'f'.repeat(64) }), { code: 'progress-evidence-unavailable' });
-  assert.throws(() => validateFrontier({ schema: 2, runId: 'owner', credits: Array(MAX_CREDITS + 1).fill('a'.repeat(64)), closingBasis: [] }, 'owner'), { code: 'progress-frontier-unavailable' });
+  assert.throws(() => validateFrontier({ schema: 2, runId: 'owner', credits: Array(MAX_CREDITS + 1).fill('a'.repeat(64)), closingBasis: [] }, 'owner'), error => error.code === 'progress-frontier-unavailable' && error.limitExceeded === true);
   assert.throws(() => validateFrontier({ schema: 2, runId: 'foreign', credits: [], closingBasis: [] }, 'owner'), { code: 'progress-frontier-unavailable' });
 });
 
