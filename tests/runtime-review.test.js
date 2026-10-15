@@ -7,6 +7,7 @@ const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 const test = require('node:test');
 const { dispatchReview, readReceipt, schemaFor, validateBase, validateReport } = require('../internal/runtime/review');
+const { isStrongModel } = require('../internal/runtime/models');
 const { DIMENSIONS, reviewGate } = require('../internal/runtime/lifecycle');
 const { fileIdentity, fresh, hash } = require('../internal/runtime/evidence');
 const { runAgent } = require('../internal/runtime/hosts');
@@ -430,6 +431,81 @@ test('fallback remains strong, honors explicit model requirements, and records i
   assert.equal(result.receipt.attempts[0].status, 'failed');
   await assert.rejects(dispatchReview(f.root, { ...f, requiredModel: 'gpt-6-astra' }, { runAgent: mockAgent }), { code: 'model-requirement' });
   await assert.rejects(dispatchReview(f.root, { ...f, candidates: [{ host: 'codex', model: 'gpt-5.6-luna' }] }, { runAgent: mockAgent }), { code: 'review-strength' });
+});
+
+const ADMITTED_MODELS = [['claude', 'claude-opus-5-5'], ['codex', 'gpt-6-sol'], ['codex', 'gpt-6.1-sol'], ['claude', 'claude-opus-5-6']];
+const REFUSED_MODELS = [
+  ['codex', 'gpt-5.6-sol', 'below its family floor'], ['claude', 'claude-opus-4-7', 'below its family floor'], ['claude', 'claude-fable-5-0', 'below its family floor'],
+  ['claude', 'claude-sonnet-5-5', 'an unlisted family'], ['codex', 'gpt-6-luna', 'an unlisted family'], ['codex', 'gpt-6-constructor', 'an unlisted family'],
+  ['codex', 'gpt-6-sol-mini', 'a variant suffix'], ['claude', 'claude-opus-5-5-20261001', 'a dated suffix'], ['claude', 'claude-opus-4-20250514', 'a dated snapshot'],
+  ['claude', 'claude-opus-5-5[1m]', 'a context suffix'], ['claude', 'claude-opus-05-5', 'a leading zero'], ['claude', 'gpt-6-sol', 'another host'], ['codex', 'claude-opus-5-5', 'another host'],
+  ['gemini', 'gpt-6-sol', 'an unknown host'],
+];
+
+test('the strong floor of each listed family admits its later versions and nothing outside the plain form', () => {
+  // Arrange
+  const later = [['claude', 'claude-opus-6'], ['claude', 'claude-fable-5-1'], ['claude', 'claude-fable-6-0'], ['codex', 'gpt-6-astra'], ['codex', 'gpt-6.2-astra'], ['codex', 'gpt-7-sol']];
+
+  // Act
+  const admitted = [...ADMITTED_MODELS, ...later].filter(([host, model]) => isStrongModel(host, model));
+  const refused = REFUSED_MODELS.filter(([host, model]) => isStrongModel(host, model));
+
+  // Assert
+  assert.deepEqual(admitted, [...ADMITTED_MODELS, ...later]);
+  assert.deepEqual(refused, []);
+  assert.equal(isStrongModel('codex', undefined), false);
+  assert.equal(isStrongModel('__proto__', 'gpt-6-sol'), false);
+});
+
+for (const [host, model] of ADMITTED_MODELS) {
+  test(`a strong ${model} reviewer is admitted at dispatch and at receipt import`, async t => {
+    // Arrange
+    const f = fixture(t);
+    f.candidates = [{ host, model, effort: 'xhigh' }];
+
+    // Act
+    const { receiptFile, receipt } = await dispatchReview(f.root, f, { runAgent: mockAgent });
+    const imported = readReceipt(f.root, path.relative(f.root, receiptFile).split(path.sep).join('/'), { id: f.runId, controller: { session: 'controller' } }, f.taskId);
+
+    // Assert
+    assert.equal(receipt.strength, 'strong');
+    assert.equal(imported.model, model);
+    assert.equal(imported.effort, 'xhigh');
+  });
+}
+
+test('a model outside the strong floors is refused at dispatch for each reason', async t => {
+  // Arrange
+  const f = fixture(t);
+  let calls = 0;
+
+  // Act
+  const outcomes = [];
+  for (const [host, model, reason] of REFUSED_MODELS) {
+    outcomes.push(await dispatchReview(f.root, { ...f, candidates: [{ host, model, effort: 'high' }] }, { runAgent: () => { calls++; throw new Error('Unexpected model call'); } }).then(() => `${reason}: admitted`, error => `${reason}: ${error.code}`));
+  }
+
+  // Assert
+  assert.deepEqual(outcomes, REFUSED_MODELS.map(([, , reason]) => `${reason}: review-strength`));
+  assert.equal(calls, 0);
+});
+
+test('receipt import applies the same strong floors to the model the host reported', async t => {
+  // Arrange
+  const f = fixture(t);
+  f.candidates = [{ host: 'claude', model: 'claude-opus-5-5', effort: 'high' }];
+  const { receiptFile, receipt } = await dispatchReview(f.root, f, { runAgent: mockAgent });
+  const eventFile = path.join(f.root, receipt.eventFile);
+  const events = fs.readFileSync(eventFile, 'utf8').trim().split('\n').map(line => JSON.parse(line));
+  for (const event of events) if (event.message) event.message.model = 'claude-opus-4-7';
+  fs.writeFileSync(eventFile, events.map(event => JSON.stringify(event)).join('\n') + '\n');
+  fs.writeFileSync(receiptFile, JSON.stringify({ ...receipt, model: 'claude-opus-4-7', eventHash: hash(fs.readFileSync(eventFile)) }));
+
+  // Act
+  const read = () => readReceipt(f.root, path.relative(f.root, receiptFile).split(path.sep).join('/'), { id: f.runId, controller: { session: 'controller' } }, f.taskId);
+
+  // Assert
+  assert.throws(read, { code: 'invalid-receipt' });
 });
 
 for (const failure of ['returned-failed', 'unattributed', 'malformed', 'thrown-error']) {

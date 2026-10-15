@@ -15,8 +15,8 @@ const { createPrivateCopyDirectory, isPrivateCopyDirectory } = require('./copies
 const { continuesRecord, lineageOf } = require('./continuation');
 const { workerEnvironment } = require('../releases/entry');
 const { timeLeft } = require('./limits');
+const { isStrongModel } = require('./models');
 
-const STRONG_MODELS = Object.freeze({ claude: ['claude-fable-5-1'], codex: ['gpt-6-astra'] });
 const DEFAULT_REVIEW_TIMEOUT_MS = 900000;
 // Failures that end a dispatch at once rather than passing to the next candidate.
 const DISPATCH_ABORTING_FAILURES = Object.freeze(['review-input-drift', 'snapshot-drift', 'unsafe-path', 'inventory-failed', 'file-identity-unavailable', 'conflicting-review-paths', 'invalid-review-paths', 'resource-limit', 'operation-time-limit', 'termination-unverified']);
@@ -125,7 +125,7 @@ function validateRequest(options) {
     requireCondition(Array.isArray(candidates) && candidates.length > 0, 'missing-model', 'Controller must choose a permitted reviewer host and model');
     for (const candidate of candidates) {
       requireCondition(candidate !== null && typeof candidate === 'object' && Object.keys(candidate).every(key => ['host', 'model', 'effort'].includes(key)), 'invalid-model-selection', 'Model selection cannot replace the trusted host executable or its process policy');
-      requireCondition(STRONG_MODELS[candidate.host]?.includes(candidate.model), 'review-strength', 'This gate requires a supported strong reviewer model');
+      requireCondition(isStrongModel(candidate.host, candidate.model), 'review-strength', 'This gate requires a supported strong reviewer model');
     }
     requireCondition(!options.requiredModel || candidates.every(candidate => candidate.model === options.requiredModel), 'model-requirement', 'Explicit model requirements prohibit fallback to another model');
     // A fallback records why it replaced the preferred reviewer, so the reason must exist before any attempt starts.
@@ -498,7 +498,7 @@ function readReceipt(root, relative, state, taskId) {
   requireCondition((receipt.recordKind ?? 'delivery') === require('./records').recordKind(state) && (assignment.recordKind ?? 'delivery') === require('./records').recordKind(state), 'wrong-result-kind', 'Report belongs to another runtime record kind');
   if (assignment.controller && isDeepStrictEqual(assignment.controller, state.controller)) requireCondition(!require('./ownership').forbiddenReviewSessions(state).has(receipt.session), 'nonindependent-worker', 'A former controller cannot author a new independent assessment');
   requireCondition(hash(fs.readFileSync(projectFile(root, receipt.eventFile))) === receipt.eventHash, 'changed-result', 'Native host result changed after collection');
-  requireCondition(STRONG_MODELS[receipt.host]?.includes(receipt.model) && receipt.attributionVerified === true && inputsUnchanged(root, receipt.kind, receipt.snapshot, receipt.contextSnapshot), 'invalid-receipt', 'Review attribution, strength or input freshness is invalid');
+  requireCondition(isStrongModel(receipt.host, receipt.model) && receipt.attributionVerified === true && inputsUnchanged(root, receipt.kind, receipt.snapshot, receipt.contextSnapshot), 'invalid-receipt', 'Review attribution, strength or input freshness is invalid');
   const events = fs.readFileSync(projectFile(root, receipt.eventFile), 'utf8').trim().split('\n').map(line => JSON.parse(line));
   let output;
   if (receipt.host === 'claude') {
@@ -515,4 +515,4 @@ function readReceipt(root, relative, state, taskId) {
   return receipt;
 }
 
-module.exports = { DEFAULT_REVIEW_TIMEOUT_MS, DIALOGUE_POSITIONS, STRONG_MODELS, buildPrompt, dispatchReview, parseReport, readReceipt, schemaFor, validateBase, validateReport, validateRequest };
+module.exports = { DEFAULT_REVIEW_TIMEOUT_MS, DIALOGUE_POSITIONS, buildPrompt, dispatchReview, parseReport, readReceipt, schemaFor, validateBase, validateReport, validateRequest };
