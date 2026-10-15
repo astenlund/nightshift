@@ -407,6 +407,14 @@ Found on 2026-10-14 during documentation review of the Windows launch-identity f
 
 **Requires:** none.
 
+### Retained release reports omit retained payload size
+
+The [retained-release spec](specs/retained-plugin-releases.md) says reports expose retained size and unresolved references. `ReleaseService.status` returns bundle identities and roots, while `collect` returns removed and retained bundle keys plus staging removals, without byte counts. A direct publication review saved this gap as pending follow-up `retained-size-reporting` in completed run `2a89bde5-9c0c-4ba5-b67f-dadc545bfcc4`.
+
+Define the supported reporting surface and expose retained payload bytes and collection benefit, keeping an unavailable measurement distinct from zero. The user chose to track this during legacy-record migration on 2026-10-15. Runtime changes ship with a version increase. Tracking does not authorize implementation.
+
+**Requires:** none.
+
 ## History
 
 Prior delivered work remains in [BUGS_HISTORY.md](BUGS_HISTORY.md).
