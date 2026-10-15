@@ -4,12 +4,6 @@ Upcoming work and deferred extensions to the delivered v3 MVP. Its delivery is r
 
 ## Current work
 
-### [Migrate delivery records without schema-2 accounting](features/legacy-delivery-record-migration.md)
-
-Apply the 3.3.11 administrative migration to this repository's saved delivery records. The reusable runtime preserves each legacy record's original bytes and issues exact user-approved retirement certificates so the creation gate can verify its disposition. The [governing spec](specs/legacy-delivery-record-migration.md) settles inventory, approval, report and follow-up decisions, stopped work, write protection and interruption recovery. This repository's saved records remain unchanged. A 2026-10-15 read-only inventory of this repository's store found 43 complete and two stopped legacy records, with one unconfirmed saved report and four pending follow-ups on two complete records. The user chose completed-record retirement as a policy and separate decisions for the stopped records; a fresh exact manifest and explicit decisions are still required before this store is changed.
-
-**Requires:** none.
-
 ### [Whole-backlog coherence audit](features/backlog-coherence-audit.md)
 
 A whole-backlog mode of `revise-docs` that walks every active index, breakout and pattern file and checks that relationships between entries, excerpts against their records, and claims about the current code still hold. Every finding gets fresh skeptic validation; the audit repairs when the user runs it directly and writes an inbox report for later triage when it runs inside a handed-over delivery. Raised and settled by the user on 2026-09-25; the MVP is manual only.
