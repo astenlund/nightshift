@@ -21,7 +21,7 @@ Measure a resume's own cost on each host, find why it starts without a cache hit
 
 ### Claude resume probe
 
-A live check on 2026-10-03 (Claude Code 2.1.288, `claude-fable-5-1` at high effort) ran the checkout's `runClaude` outside any dispatch: a fresh call in one private directory wrote 2,989 tokens to the one-hour cache, and its resume from a different directory read 2,772 tokens from cache and wrote 322, costing about $0.0074 against about $0.06 for the fresh call. On Claude, then, a changed working directory alone did not prevent a cache hit. The probe passed no `--json-schema`, so the schema candidate stays untested, as does Codex. The evidence is kept locally under `.tmp/live-usage/run-1791016365983`. The user chose at triage to record it here.
+A live check on 2026-10-03 (Claude Code 2.1.288, `claude-fable-5-1` at high effort) ran the checkout's `runClaude` outside any dispatch: a fresh call in one private directory wrote 2,989 tokens to the one-hour cache, and its resume from a different directory read 2,772 tokens from cache and wrote 322, costing about $0.0074 against about $0.06 for the fresh call. On Claude, then, a changed working directory alone did not prevent a cache hit. The probe passed no `--json-schema`, so the schema candidate stays untested, as does Codex. The evidence was kept only in the clone's ignored `.tmp`, under `.tmp/live-usage/run-1791016365983`, and is no longer present (checked 2026-10-16). The user chose at triage to record it here.
 
 ### Codex resumes in a dual review
 
