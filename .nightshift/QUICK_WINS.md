@@ -390,6 +390,12 @@ Have the readback or governing spec for selected work state a rough expected siz
 
 Raised by the user on 2026-10-15: rename the public `init-backlog` skill to `setup`; the Nightshift namespace already supplies its context. Account for existing entry-point references and users of the old name when designing the rename. Tracking does not authorize implementation.
 
+### Keep each session's request files in its own scratch folder
+
+Found on 2026-10-16 in run `27dea6a9-8d0a-4b0c-85c7-880b96ae88b3`. [The resource interface](../internal/releases/REFERENCE.md) tells controllers to write request JSON in the project's ignored `.tmp` directory and says temporary request files live in `.tmp/nightshift`, with nothing about keeping a session's files apart. In this repository `.tmp/nightshift` held 366 top-level files from many sessions, and the run's controller wrote one-off request files directly there; the Write tool reported updating `req-start.json`, which replaced session `1278c0da`'s request of 2026-09-28. That file was restored from Claude Code's file history and nothing cited it. On 2026-09-28 generic request names in `.tmp` had overwritten earlier sessions' files, and a wildcard cleanup deleted 280 files, one of them evidence a backlog record cited. At that run's triage the user added a shared-scratch rule to their global instructions, which reaches only their own sessions, and chose to track the plugin guidance here.
+
+Have the resource interface and the skills that write request files direct each session or run to its own uniquely named folder under `.tmp/nightshift`, such as one carrying the session or run id, and to clean up only that folder; consider having the launcher create and report such a folder. Guidance changes ship with a version increase. Tracking does not authorize implementation.
+
 ## History
 
 Prior delivered work remains in [QUICK_WINS_HISTORY.md](QUICK_WINS_HISTORY.md).
