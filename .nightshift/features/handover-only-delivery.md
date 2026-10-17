@@ -7,7 +7,7 @@ metadata:
 
 # Handover as the delivery boundary
 
-Delivered in the local 3.3.10 candidate on 2026-10-09 in run `67af3471-c7c7-4e28-ab57-88e3ba299126`, which this record governed; the candidate has not been published, and [the feature history](../FEATURES_HISTORY.md) records the delivery. This feature preserves the complete agreed governing design. The [acceptance report](../reports/handover-only-delivery-20261009.md) records the review history, the deterministic and installed-host evidence and their limits. The remaining advanced scope selection is tracked separately in [Run-free revise](run-free-revise.md).
+Delivered for release 3.3.10 on 2026-10-09 in run `67af3471-c7c7-4e28-ab57-88e3ba299126`, which this record governed; [the feature history](../FEATURES_HISTORY.md) records the delivery. This feature preserves the complete agreed governing design. The [acceptance report](../reports/handover-only-delivery-20261009.md) records the review history, the deterministic and installed-host evidence and their limits. The remaining advanced scope selection is tracked separately in [Run-free revise](run-free-revise.md).
 
 
 ## Outcome and priorities

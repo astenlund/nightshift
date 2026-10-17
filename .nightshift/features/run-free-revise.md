@@ -11,7 +11,7 @@ Raised by the user on 2026-09-28 in run `a0eaaee7-6c97-4261-960d-346c6a4654aa`, 
 
 ## Delivered foundation and remaining scope
 
-[Handover as the delivery boundary](handover-only-delivery.md) supersedes the original attended-delivery and standalone-record boundary below. The local 3.3.10 candidate implements durable review contexts for all four standalone revise skills, preserving attributed assessment, findings, repair closure, limits and shared writer protection without delivery closing or continuation. Revision inside an owned delivery uses its task. Run `67af3471-c7c7-4e28-ab57-88e3ba299126` delivered that foundation as a slice of this feature, recorded in [the feature history](../FEATURES_HISTORY.md); the candidate has not been published.
+[Handover as the delivery boundary](handover-only-delivery.md) supersedes the original attended-delivery and standalone-record boundary below. Release 3.3.10 implements durable review contexts for all four standalone revise skills, preserving attributed assessment, findings, repair closure, limits and shared writer protection without delivery closing or continuation. Revision inside an owned delivery uses its task. Run `67af3471-c7c7-4e28-ab57-88e3ba299126` delivered that foundation as a slice of this feature, recorded in [the feature history](../FEATURES_HISTORY.md).
 
 Staged-only, unstaged-only, commit-range and older-range capture remain undelivered. Their governing spec must settle capture, later-code context, freshness, ownership and recovery independently of the implemented cumulative working-tree foundation. The original problem, direction and foundation questions below preserve the earlier agreement and do not reinstate attended delivery.
 

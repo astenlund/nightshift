@@ -11,9 +11,9 @@ Implementation was authorized on 2026-09-07. Version 3.0.0 was published to `mai
 
 ## Current delivery boundary
 
-The [acceptance report](../reports/handover-only-delivery-20261009.md) records the local 3.3.10 delivery's assurance, its native evidence and each host's live claims, provisional ones included; the candidate has not been published.
+The [acceptance report](../reports/handover-only-delivery-20261009.md) records the 3.3.10 delivery's assurance, its native evidence and each host's live claims, provisional ones included.
 
-[Handover as the delivery boundary](handover-only-delivery.md), agreed on 2026-10-07 and delivered in the local 3.3.10 candidate, governs intake, durable standalone review contexts and continuation. Handover alone creates a delivery run. Ready selection requests handover after investigation and scope confirmation; ordinary chat agreement remains direct work. New deliveries keep handover authority and continuation health separately, with no attended/unattended mode. A technical continuation failure is recorded with a follow-up and does not revoke otherwise valid accepted work. Explicit holds and limits retain their protections, and existing bound runs keep their exact runtime and historical modes. The original MVP campaign evidence below remains historical evidence, not proof of changed behavior.
+[Handover as the delivery boundary](handover-only-delivery.md), agreed on 2026-10-07 and delivered in 3.3.10, governs intake, durable standalone review contexts and continuation. Handover alone creates a delivery run. Ready selection requests handover after investigation and scope confirmation; ordinary chat agreement remains direct work. New deliveries keep handover authority and continuation health separately, with no attended/unattended mode. A technical continuation failure is recorded with a follow-up and does not revoke otherwise valid accepted work. Explicit holds and limits retain their protections, and existing bound runs keep their exact runtime and historical modes. The original MVP campaign evidence below remains historical evidence, not proof of changed behavior.
 
 ## Outcome and priorities
 

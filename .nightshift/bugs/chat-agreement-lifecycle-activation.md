@@ -2,7 +2,7 @@
 
 ## Correction
 
-[Handover as the delivery boundary](../features/handover-only-delivery.md) makes handover the sole delivery creation path, including the request made by Ready selection and released by confirmation of investigated scope. Ordinary chat agreement authorizes direct work and creates no run; standalone revise uses durable review contexts. It was delivered in the local 3.3.10 candidate by run `67af3471-c7c7-4e28-ab57-88e3ba299126`, which has not been published; [the acceptance report](../reports/handover-only-delivery-20261009.md) records which installed-host branches were exercised and which remain provisional. This record preserves the original incident.
+[Handover as the delivery boundary](../features/handover-only-delivery.md) makes handover the sole delivery creation path, including the request made by Ready selection and released by confirmation of investigated scope. Ordinary chat agreement authorizes direct work and creates no run; standalone revise uses durable review contexts. It was delivered in 3.3.10 by run `67af3471-c7c7-4e28-ab57-88e3ba299126`; [the acceptance report](../reports/handover-only-delivery-20261009.md) records which installed-host branches were exercised and which remain provisional. This record preserves the original incident.
 
 ## Historical incident evidence
 

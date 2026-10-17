@@ -11,7 +11,7 @@ Raised by the user on 2026-09-30 in run `7969bab6-360c-4bd5-a5bd-33dfe3ef28d9`. 
 
 ## Superseding decision
 
-[Handover as the delivery boundary](handover-only-delivery.md) supersedes the mandatory three-choice proposal. Ready selection requests handover after investigation; confirmation of the investigated scope releases it, with explicit direct-work and pause requests taking precedence. Ordinary chat agreement remains direct work. The original proposal below is preserved as history, not described as the feature shipped. That boundary was delivered in the local 3.3.10 candidate by run `67af3471-c7c7-4e28-ab57-88e3ba299126`, which has not been published.
+[Handover as the delivery boundary](handover-only-delivery.md) supersedes the mandatory three-choice proposal. Ready selection requests handover after investigation; confirmation of the investigated scope releases it, with explicit direct-work and pause requests taking precedence. Ordinary chat agreement remains direct work. The original proposal below is preserved as history, not described as the feature shipped. That boundary was delivered in 3.3.10 by run `67af3471-c7c7-4e28-ab57-88e3ba299126`.
 
 ## Historical problem
 

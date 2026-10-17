@@ -15,7 +15,7 @@ Asked how the second sentence was meant, the user explained: "not sure if it wor
 
 ## Delivery boundary
 
-Under [Handover as the delivery boundary](handover-only-delivery.md), selecting Ready work requests handover after investigation, and confirming its investigated scope releases that request once required assessment is resolved. Explicit direct-work or pause requests take precedence. This boundary was delivered in the local 3.3.10 candidate; it does not implement the separate background review and assessment feature described here.
+Under [Handover as the delivery boundary](handover-only-delivery.md), selecting Ready work requests handover after investigation, and confirming its investigated scope releases that request once required assessment is resolved. Explicit direct-work or pause requests take precedence. This boundary was delivered in 3.3.10; it does not implement the separate background review and assessment feature described here.
 
 ## Current behavior
 

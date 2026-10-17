@@ -17,7 +17,7 @@ Agreed on 2026-09-06, in [V3-MIGRATION.md](../../V3-MIGRATION.md) under Review a
 
 ## Standalone record boundary
 
-[Handover as the delivery boundary](handover-only-delivery.md) supplies durable standalone review contexts for revise-lore without creating delivery. That foundation was delivered in the local 3.3.10 candidate, which has not been published. The original standalone lore-task placeholder below describes the earlier boundary. This feature still owns the unimplemented instruction-proposal gate and mid-run add-task operation; no proposal-gate delivery is claimed by the new record foundation.
+[Handover as the delivery boundary](handover-only-delivery.md) supplies durable standalone review contexts for revise-lore without creating delivery. That foundation was delivered in 3.3.10. The original standalone lore-task placeholder below describes the earlier boundary. This feature still owns the unimplemented instruction-proposal gate and mid-run add-task operation; no proposal-gate delivery is claimed by the new record foundation.
 
 ## Current behavior
 
