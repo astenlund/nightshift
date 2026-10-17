@@ -1,4 +1,4 @@
-# Run adoption and continuation candidate
+# Run adoption and continuation
 
 Release 3.2.3 demonstrated all eight same-host and cross-host takeover combinations on installed Claude Code and Codex. The original work survived interruption, ownership changes and independent review, then completed through genuine Codex goal continuation. Both hosts also preserved populated limits, pending follow-ups and recorded reports. These results support the [approved executive scope](../specs/run-adoption-and-continuation-executive.md) within the observations and unexercised contexts below. Independent assessment and fresh skeptical validation identified a required per-host evidence gap. All four missing observations subsequently received genuine native evidence, including completed refusal turns on both hosts. Cumulative assurance and closing are recorded in the delivery runtime, separately from this evidence report.
 

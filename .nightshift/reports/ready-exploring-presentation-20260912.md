@@ -1,6 +1,6 @@
 # Ready Exploring presentation verification
 
-The candidate ready skill lists every Exploring draft separately, with a title, context and navigable source. Ready selection numbers remain separate. Relative record links resolve from the containing backlog index directory; drafts without a record link point to that index. Local Markdown targets use forward slashes and angle brackets around paths containing spaces.
+The 3.0.11 Ready skill lists every Exploring draft separately, with a title, context and navigable source. Ready selection numbers remain separate. Relative record links resolve from the containing backlog index directory; drafts without a record link point to that index. Local Markdown targets use forward slashes and angle brackets around paths containing spaces.
 
 ## Evidence
 
