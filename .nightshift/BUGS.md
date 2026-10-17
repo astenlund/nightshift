@@ -443,6 +443,14 @@ Establish the cause and, while it is unknown, consider having a Claude controlle
 
 **Requires:** none.
 
+### An oversized native session history blocks a handover it already accepted
+
+Observed on 2026-10-17 in the Hermes home project, delivery run `1c64da0e-f0fb-469b-b3de-e3230621d0e6` on installed 3.3.12, Claude Code on Windows. Session `ae5bbe0f-c5a7-4e94-9376-ea41edf691fa` had already carried two deliveries and one compaction when a third handover was accepted at revision 0 (14:47:04Z) and `continuation` recorded a verified Stop hook at revision 1. After the acknowledgement, `status` returned inspection `unavailable`, "Cannot establish native acknowledgement output: Native history must be a bounded ordinary file in the selected profile", with nextStep `recover-history`, and `start-task` was refused with `acknowledgement-source-unavailable`. The session history was 88,404,837 bytes, and `internal/runtime/native-acknowledgement.js` reads only that file for a Claude controller and refuses one over `MAX_BYTES`, 64 MiB (67,108,864 bytes). A session's history only grows, so that session could never discharge the acknowledgement: the runtime had accepted a delivery that its own controller session could never start. The run was adopted the same day into the fresh session `1da8e4a1-63f5-4744-97dc-5098e5fc3192`, where the acknowledgement was then observed, but nothing names that recovery and the refusal points at `recover-history`. Long sessions do reach the bound: measured directly at the inbox triage, this repository's session `f9864d83-cd95-4e65-880b-cc1b0058ad8e` held 142,775,821 bytes on 2026-10-17. The same bound applies to a Codex controller, whose rollout files the observer reads through the same bounded reader, although no Codex case has been observed. The account of the Hermes run comes from that project's maintainer inbox report; the user chose to track it at inbox triage on 2026-10-17.
+
+Let a long-lived session discharge the acknowledgement, for example by reading a bounded tail of the history, where a recent acknowledgement would be, or check the history's size before accepting a handover and refuse with adoption from a fresh session as the named recovery, or both; the design is open. Runtime changes ship with a version increase. Tracking does not authorize implementation.
+
+**Requires:** none.
+
 ## History
 
 Prior delivered work remains in [BUGS_HISTORY.md](BUGS_HISTORY.md).
