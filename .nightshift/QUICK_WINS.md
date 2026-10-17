@@ -76,7 +76,7 @@ Give Codex acceptance fixtures their own login or an API key and never copy the 
 
 Raised at triage of run `36aad5de-2825-4818-ba8c-e1ea8c8e72a4` on 2026-09-26. 3.2.10 requires a Codex controller to record its goal with `kind: "goal"` and changes the handover acknowledgement text, but its installed-host evidence covers Claude Code only: the Codex lane was blocked when the production Codex login was revoked, as recorded in [the acceptance report](reports/unattended-stop-hook-20260926.md). The runtime rules are covered by deterministic tests on both hosts. The user chose to track the verification.
 
-Run a Codex first-use and new-run handover scenario against 3.2.10, with a fixture-owned login or API key per [Codex acceptance fixtures copy the live credential](#codex-acceptance-fixtures-copy-the-live-credential), before or right after publishing 3.2.10, and record the goal kind, the acknowledgement wording and continuation in the acceptance report. Tracking does not authorize implementation.
+Run a Codex first-use and new-run handover scenario against 3.2.10, with a fixture-owned login or API key per [Codex acceptance fixtures copy the live credential](#codex-acceptance-fixtures-copy-the-live-credential), and record the goal kind, the acknowledgement wording and continuation in the acceptance report. Tracking does not authorize implementation.
 
 ### Create silently ignores unknown request fields
 

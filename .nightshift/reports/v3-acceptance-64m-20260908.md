@@ -95,7 +95,7 @@ The larger Fable case reinforces the earlier measured orchestration overhead: co
 
 ## Follow-up triage
 
-The existing measured-orchestration-overhead follow-up remains pending. The Fable fixture's probe working-directory guidance idea and recorded shell-convention departures remain visible for later judgment, without an inferred instruction change or user approval. The whitespace investigation suggests an optional efficiency improvement if the pattern recurs; existing bounded recovery worked, so it is not a required source fix. Nothing has been published, and no incomplete obligation is recorded as shipped.
+The existing measured-orchestration-overhead follow-up remains pending. The Fable fixture's probe working-directory guidance idea and recorded shell-convention departures remain visible for later judgment, without an inferred instruction change or user approval. The whitespace investigation suggests an optional efficiency improvement if the pattern recurs; existing bounded recovery worked, so it is not a required source fix. No incomplete obligation is recorded as shipped.
 
 The next continuation is concrete and prepared: resume the same Fable session/run from its already saved failed probe, complete the remaining assurance and closing, then exercise standalone lore and its scoped approval on both hosts and the remaining small policy observations. The completion segment is .tmp/v3-claude-pressure-resumes/segment-8ed37a50-8399-4a21-ae50-8f66275f9d5c/prepared.json, governed by .tmp/v3-claude-pressure-resume-report.md. It preserves the original segment, previous usage and native evidence. A missing native goal can be re-established for the same remaining objective from observed-state evidence without fabricating old completion or usage.
 
