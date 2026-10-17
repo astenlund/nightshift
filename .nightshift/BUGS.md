@@ -417,6 +417,14 @@ Define the supported reporting surface and expose retained payload bytes and col
 
 **Requires:** none.
 
+### A check failed on input drift with no known change to its files
+
+Observed on 2026-10-12 in the Hermes home project, run `451da04e-c242-4e1c-b4d0-3a22e0c96234` on installed 3.3.9, task `removal-questions`. A `helper-tests` check over 45 paths (attempt `4ac4bc8d-cc67-4308-9994-e60c5e2a761b`, 09:03:31Z to 09:29:05Z) exited 0 with all 325 tests passing, but the runtime recorded `inputsUnchanged: false` and `passed: false`. Afterwards every checked file's sha256 matched the recorded after-snapshot, which carried a blob id for all 45 files; as far as the controller knew, nothing wrote to the checked paths during the check, since the edits had landed about a minute before it started and the commit came after it finished; and the same check rerun on the unchanged files passed. A possible mechanism, which the report marks as a hypothesis: `snapshot()` in `internal/runtime/evidence.js` digests each file's path and sha256 together with its Git blob id, which `verifiedBlobs()` keeps only when `git hash-object` succeeds for the whole batch, the id is one of that file's own candidates and the file's write stamp (size, mtimeNs, ctimeNs) did not move between its two reads, and a check passes only when its before and after digests are equal (`evidence.js` and `internal/runtime/operations.js`), so a before-snapshot that lost blob ids and an after-snapshot that kept them would differ although the content is identical. [The runtime reference](../internal/runtime/REFERENCE.md) says instead that the before and after comparison around one check execution keeps the byte comparison. The before-snapshot is not recorded, so whether blob ids differed in this incident, and what made them differ, is unconfirmed; something touching the freshly rewritten files' ctime, such as a scan, is one possibility. The account comes from that project's maintainer inbox report; the user chose to track it at inbox triage on 2026-10-17.
+
+Establish the cause, then compare the checked content rather than a digest that includes environment-dependent fields, as the reference describes, or record why the digests differed, without letting a real content change pass. Runtime changes ship with a version increase. Tracking does not authorize implementation.
+
+**Requires:** none.
+
 ## History
 
 Prior delivered work remains in [BUGS_HISTORY.md](BUGS_HISTORY.md).
