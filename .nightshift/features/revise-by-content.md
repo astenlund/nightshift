@@ -14,7 +14,7 @@ Raised by the user on 2026-10-16 in this repository, outside any run. A plain `r
 
 ## Current state
 
-Checked on 2026-10-16:
+Checked on 2026-10-16 and 2026-10-17:
 
 - [WORKFLOW.md](../../WORKFLOW.md) says plain `review` and `review-loop` requests use the user's global direct-agent routines and do not activate the plugin, that the detailed routines belong in the user's global instructions, and that Nightshift's review skills activate only for explicit `revise` intent.
 - The public revise skills are separate per kind of work: [revise-code](../../skills/revise-code/SKILL.md), [revise-docs](../../skills/revise-docs/SKILL.md), [revise-lore](../../skills/revise-lore/SKILL.md) and [revise-spec](../../skills/revise-spec/SKILL.md).
