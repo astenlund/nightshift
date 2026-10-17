@@ -1,6 +1,6 @@
 # Nightshift v3 acceptance: 16M checkpoint
 
-Both Windows hosts have now completed a controlled small-change handover through durable closure and actual cross-host review. Codex accepted valid existing work; Fable implemented the helper from a stub. Independent evidence audits confirm their product and lifecycle results. Full MVP acceptance is still incomplete: larger feature/queue, standalone, repair and several host/authority boundaries remain unverified. The candidate is local and unpublished.
+Both Windows hosts have now completed a controlled small-change handover through durable closure and actual cross-host review. Codex accepted valid existing work; Fable implemented the helper from a stub. Independent evidence audits confirm their product and lifecycle results. Full MVP acceptance is still incomplete: larger feature/queue, standalone, repair and several host/authority boundaries remain unverified.
 
 This continues the [8M checkpoint](v3-acceptance-20260908.md). Earlier failed or interrupted fixtures remain intact. The latest source repair is local fixup 4ccadfe, after the closed-skeptic-schema fixup f6582d3. Both target candidate 1c1f2d3. An isolated autosquash simulation preserved the exact tree; main history was not rewritten.
 

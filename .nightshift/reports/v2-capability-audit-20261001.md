@@ -130,7 +130,7 @@ Naming: none found. Record hits for the landed-claims pattern are an unrelated b
 
 2026-09-21 audit: not covered.
 
-Confidence: medium. The independent docs review (shipped in the local 3.2.16 candidate per `review-mode.md:37`) catches a false landed claim after the fact, which is a different guarantee from not writing it.
+Confidence: medium. The independent docs review (shipped in 3.2.16 per `review-mode.md:37`) catches a false landed claim after the fact, which is a different guarantee from not writing it.
 
 Suggested disposition (suggestion only): accept as replaced by the docs review for the balance and lift-your-gaze asks; decide restore or retire for the revert sweep and the `CLAUDE.md` scope rule, which are one sentence each.
 

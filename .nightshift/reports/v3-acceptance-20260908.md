@@ -1,6 +1,6 @@
 # Nightshift v3 acceptance: 8M checkpoint
 
-The v3 candidate is implemented and source-reviewed locally, but MVP acceptance is incomplete. Native continuation and explicit compaction/recovery checks succeeded on both Windows hosts. Neither installed handover reached verified completion. Codex reached complete independent broad review, but its final skeptic report was rejected and the fixture exhausted its six-dispatch limit. The response-contract defect has since been repaired, independently reviewed and checked through real Fable and Astra responses. The feature remains active and unpublished.
+The v3 candidate is implemented and source-reviewed locally, but MVP acceptance is incomplete. Native continuation and explicit compaction/recovery checks succeeded on both Windows hosts. Neither installed handover reached verified completion. Codex reached complete independent broad review, but its final skeptic report was rejected and the fixture exhausted its six-dispatch limit. The response-contract defect has since been repaired, independently reviewed and checked through real Fable and Astra responses.
 
 After this checkpoint, the user authorized a further doubling to 16,000,000 total tokens. The preceding usage and holds remain charged, leaving 8,137,747 available before further inference. The additional campaign is in progress; the tables below record the completed 8M checkpoint.
 
@@ -87,4 +87,4 @@ Full delivery on both hosts, completed native repair cycles, reverse model-owned
 
 The stopped fixture retains two pending decisions: the optional README runtime-support note and assurance recovery after its exhausted six-dispatch allowance. The parent source repair resolves the observed response-contract defect, but does not retroactively resolve that fixture's finding or change its limits. Follow-up triage remains after the retrospective and does not infer unavailable user decisions.
 
-Optional earlier source-review follow-ups remain richer failure diagnostics, safe retention of disposable probe copies and measured reductions in repeated inventory hashing. Retained/deferred product work remains in the migration ledger and backlog. Consolidation is not delivery; the feature is still active, local and unpublished.
+Optional earlier source-review follow-ups remain richer failure diagnostics, safe retention of disposable probe copies and measured reductions in repeated inventory hashing. Retained/deferred product work remains in the migration ledger and backlog. Consolidation is not delivery.

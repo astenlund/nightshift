@@ -1,8 +1,8 @@
 # Nightshift v3 acceptance: 64M continuation
 
-Both Windows hosts now have independently verified substantial delivery, standalone documentation, and automatic compaction with recovery of real unresolved findings. The dedicated Codex case completed its repair and review loop. Fable also recovered from a timed-out reviewer, then reached the campaign budget guard with a new fixture-repair finding still open. Full MVP acceptance remains incomplete. The source candidate is local and unpublished.
+Both Windows hosts now have independently verified substantial delivery, standalone documentation, and automatic compaction with recovery of real unresolved findings. The dedicated Codex case completed its repair and review loop. Fable also recovered from a timed-out reviewer, then reached the campaign budget guard with a new fixture-repair finding still open. Full MVP acceptance remains incomplete.
 
-This continues the [32M checkpoint](v3-acceptance-32m-20260908.md) under the user's explicit 64,000,000 total allowance. Earlier consumption, uncertainty holds, original failed outcomes and their adjudications remain intact. All new cases use isolated installed candidate 3.0.0+codex.20260908153539, whose 44 packaged files were verified on both hosts. The cumulative source verdict remains clean through bb76ea1, with 88 focused tests and independent deciding controls already passing. No source change or repeated source campaign accompanied this continuation.
+This continues the [32M checkpoint](v3-acceptance-32m-20260908.md) under the user's explicit 64,000,000 total allowance. Earlier consumption, uncertainty holds, original failed outcomes and their adjudications remain intact. All new cases use isolated installed build 3.0.0+codex.20260908153539, whose 44 packaged files were verified on both hosts. The cumulative source verdict remains clean through bb76ea1, with 88 focused tests and independent deciding controls already passing. No source change or repeated source campaign accompanied this continuation.
 
 ## Standalone Codex documentation
 

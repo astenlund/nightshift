@@ -1,6 +1,6 @@
 # Recoverable unwrap acceptance
 
-Candidate 3.2.2, based on published commit `856a1cf9a26d6ced9334329d08e71bd746b53b3c`. Delivery run `16d148ab-5297-4077-80e9-c993afc81433` implements the [agreed recovery contract](../specs/recoverable-unwrap.md). Publication is separate from this local delivery.
+Release 3.2.2, based on published commit `856a1cf9a26d6ced9334329d08e71bd746b53b3c`. Delivery run `16d148ab-5297-4077-80e9-c993afc81433` implements the [agreed recovery contract](../specs/recoverable-unwrap.md). Publication is separate from this local delivery.
 
 ## Behavior and evidence
 

@@ -1,6 +1,6 @@
 # Independent documentation review: acceptance
 
-Acceptance evidence for the [governing spec](../specs/independent-documentation-review.md) of [Independent documentation review](../features/independent-documentation-review.md), delivered in run `f440497c-a0cc-4375-bada-e834e32b49a6` as the local 3.2.16 candidate on 2026-09-29. Nothing is published.
+Acceptance evidence for the [governing spec](../specs/independent-documentation-review.md) of [Independent documentation review](../features/independent-documentation-review.md), delivered in run `f440497c-a0cc-4375-bada-e834e32b49a6` for release 3.2.16 on 2026-09-29.
 
 ## What was delivered
 
@@ -22,7 +22,7 @@ The recorded runtime suite check passed on the final inputs: `node --test` over 
 
 ## Live campaign
 
-Claude Code 2.1.285 on Windows with Node 22.23.2, the 3.2.16 candidate installed in isolated profiles, and `claude-opus-5-5` as the fixture controller. Reviews dispatched inside fixtures reached Codex CLI 0.158.0 `gpt-6-astra` through the user's own Codex profile. Fixtures authenticated with a long-lived token the user created once with `claude setup-token`, supplied through `CLAUDE_CODE_OAUTH_TOKEN`; a verification call first showed that this authenticates an empty profile and leaves the user's own credential file byte-identical with an unchanged modification time. The driver refuses to start a fixture whose profile holds a credential file, and a sweep of the campaign folder after the last scenario found none. Raw evidence stays in the ignored `.tmp/docs-review-live-f440497c`.
+Claude Code 2.1.285 on Windows with Node 22.23.2, 3.2.16 installed in isolated profiles, and `claude-opus-5-5` as the fixture controller. Reviews dispatched inside fixtures reached Codex CLI 0.158.0 `gpt-6-astra` through the user's own Codex profile. Fixtures authenticated with a long-lived token the user created once with `claude setup-token`, supplied through `CLAUDE_CODE_OAUTH_TOKEN`; a verification call first showed that this authenticates an empty profile and leaves the user's own credential file byte-identical with an unchanged modification time. The driver refuses to start a fixture whose profile holds a credential file, and a sweep of the campaign folder after the last scenario found none. Raw evidence stays in the ignored `.tmp/docs-review-live-f440497c`.
 
 | Branch | Claude Code (Opus) | Evidence |
 | --- | --- | --- |

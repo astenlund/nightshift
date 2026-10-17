@@ -2,7 +2,7 @@
 
 The user completed one-at-a-time triage on 2026-09-22: ten incidents are tracked and two are skipped, including the later publication-review follow-up. Tracking does not authorize implementation or publication. This report preserves the decisions and evidence independently of the ignored run files. It does not declare the run-adoption candidate accepted or complete.
 
-Source project: `C:/Git/nightshift`. The controller used retained Nightshift 3.2.1 while developing candidate 3.2.3. The specification run was `5286ec74-ec0d-4ba8-a1cc-48877625a834`; the delivery run is `b9b654ea-0368-40da-93dc-b212899db003`. Raw receipts, check output and detailed incident records remain under `.nightshift/runs`; private experiments remain under `.tmp`. Statements below distinguish observations, user reports and unresolved causes.
+Source project: `C:/Git/nightshift`. The controller used retained Nightshift 3.2.1 while developing 3.2.3. The specification run was `5286ec74-ec0d-4ba8-a1cc-48877625a834`; the delivery run is `b9b654ea-0368-40da-93dc-b212899db003`. Raw receipts, check output and detailed incident records remain under `.nightshift/runs`; private experiments remain under `.tmp`. Statements below distinguish observations, user reports and unresolved causes.
 
 ## Dispositions
 

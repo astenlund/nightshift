@@ -1,6 +1,6 @@
 # Self-hosting lifecycle activation verification
 
-The 3.0.12 candidate makes agreed implementation under a project self-hosting requirement enter an attended runtime run, or unattended operation after handover. Repository guidance and the shared brief connect revise-code, revise-docs and revise-lore to their actual stages and require truthful completion reporting. Explicit review and review-loop retain their direct-agent exceptions. The runtime state machine is unchanged.
+Release 3.0.12 makes agreed implementation under a project self-hosting requirement enter an attended runtime run, or unattended operation after handover. Repository guidance and the shared brief connect revise-code, revise-docs and revise-lore to their actual stages and require truthful completion reporting. Explicit review and review-loop retain their direct-agent exceptions. The runtime state machine is unchanged.
 
 ## Evidence and scope
 
@@ -25,7 +25,7 @@ The initial six checkpoints reported 823,409 tokens. A scratch review monitor sw
 
 The user granted an additional 2M for remaining testing and review. budget-additional.json records that new allowance separately from the preserved original budget.json. Internal ceilings and inactive reservations were resized under the user's explicit authority; unmeasured interrupted exposure is not relabeled exact or zero. The initial 500k underestimate, unnecessary ceiling-approval pauses and subsequent overshoot are tracked in BUGS.md.
 
-Run 3a98dc79-b675-43c6-8236-1b997c443680 owns the repair's current independent assessment, findings, checks and closing in .nightshift/runs/state.sqlite. An earlier resource stop completed its own documentation reconciliation and retrospective without completing the implementation task. The installed Stop hook actually resumed this session and restored its obligations. Resumed work requires current assurance and renewed closing; neither historical checkpoints nor synthetic prerequisites complete that obligation. Publication remains a separate user-directed action.
+Run 3a98dc79-b675-43c6-8236-1b997c443680 owns the repair's current independent assessment, findings, checks and closing in .nightshift/runs/state.sqlite. An earlier resource stop completed its own documentation reconciliation and retrospective without completing the implementation task. The installed Stop hook actually resumed this session and restored its obligations. Resumed work requires current assurance and renewed closing; neither historical checkpoints nor synthetic prerequisites complete that obligation.
 
 ## Assurance history
 

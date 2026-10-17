@@ -4,7 +4,7 @@
 
 ## Status and scope
 
-The 3.1.1 implementation had a clean cumulative code assessment when this report was written, before the hook-disabling defect was found and repaired; the reassessment covering that repair is outstanding. Its deterministic checks pass on current inputs. The requested model-owned behavior has now been observed on both hosts, including Opus with an original 3.1.0 binding. Its final response was captured before the harness interrupted Stop processing, so native process completion and final usage retain the qualifications below. This is a local candidate, not a published release.
+The 3.1.1 implementation had a clean cumulative code assessment when this report was written, before the hook-disabling defect was found and repaired; the reassessment covering that repair is outstanding. Its deterministic checks pass on current inputs. The requested model-owned behavior has now been observed on both hosts, including Opus with an original 3.1.0 binding. Its final response was captured before the harness interrupted Stop processing, so native process completion and final usage retain the qualifications below.
 
 The [governing design](../specs/automatic-plugin-preparation.md) records the agreed outcome. Skill invocation prepares Nightshift automatically. Ready and Exploring use retained resources without requiring continuation activation. A narrow administrative compatibility path applies that admission policy while running an existing task's original retained parser. Runtime and hook implementations stay on their original release. Preparation preserves deliberate disabling/removal, native hook definitions, generation and trust.
 
@@ -24,7 +24,7 @@ The environment was Windows, Node 22.23.2, Codex CLI 0.154.0, Claude Code 2.1.26
 
 | Boundary | Codex | Claude |
 | --- | --- | --- |
-| First-use Ready without a setup conversation | Observed on an earlier 3.1.1 candidate | Observed on an earlier candidate; temporary-file wording also recurred in the final check despite subsequent guidance |
+| First-use Ready without a setup conversation | Observed on an earlier 3.1.1 build | Observed on an earlier build; temporary-file wording also recurred in the final check despite subsequent guidance |
 | Ready, Exploring and repeat Ready without activation | Three successful bound parser runs, unchanged binding, zero activation | Three successful bound parser runs and final Ready/Exploring/repeat report observed; original binding and zero activation preserved |
 | Dependent operation still requires continuation | init-backlog inspection blocked as expected; its technical wording prompted clearer shared guidance | init-backlog was rejected for missing activation; the final response gave a reopen-and-retry action |
 | Ready and Exploring with an existing 3.1.0 binding | Two successful parser runs; original identity, hook definitions and generation preserved; zero activation | Three successful parser runs; original identity, definitions and generation preserved with zero activation |
@@ -45,7 +45,7 @@ After the reporting-only check, the reconciled aggregate is 2,100,125 observed t
 
 The user explicitly handed over. A native persistent goal carries the queue, but the existing runtime cannot switch an already-created attended run to unattended mode. This development run therefore does not claim verified retained Stop-hook protection. That limitation is already tracked separately.
 
-Spec and implementation assessment ran. The bounded accounting has independent assessment; final report assurance and lifecycle closing are recorded in the run. Completion is established through the run's actual documentation, retrospective and triage records, not from this report's presence. Publication remains unapproved.
+Spec and implementation assessment ran. The bounded accounting has independent assessment; final report assurance and lifecycle closing are recorded in the run. Completion is established through the run's actual documentation, retrospective and triage records, not from this report's presence.
 
 ## Resumption on 2026-09-17
 

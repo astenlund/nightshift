@@ -2,7 +2,7 @@
 
 ## Status and scope
 
-This report records the evidence for plugin 3.2.0, which implements [the governing spec](../specs/handover-transition-and-morning-report.md): an in-place `handover` of a run already underway, an unmistakable acknowledgment, and a morning report that is a recorded closing stage whose delivery is runtime state. It resolves "Handover omits the morning report", "Handover leaves existing runs in attended mode" and "Acknowledge accepted handovers clearly". Work ran as attended self-hosting run `d4a44daa-96be-4ac4-bcaa-d16d8596584f`, controlled by Claude Code with `claude-fable-5-1`. Nothing is published and publication is not authorized.
+This report records the evidence for plugin 3.2.0, which implements [the governing spec](../specs/handover-transition-and-morning-report.md): an in-place `handover` of a run already underway, an unmistakable acknowledgment, and a morning report that is a recorded closing stage whose delivery is runtime state. It resolves "Handover omits the morning report", "Handover leaves existing runs in attended mode" and "Acknowledge accepted handovers clearly". Work ran as attended self-hosting run `d4a44daa-96be-4ac4-bcaa-d16d8596584f`, controlled by Claude Code with `claude-fable-5-1`.
 
 Installed-host evidence exists for the core claims on both hosts. Three items stay qualified and are listed under Qualifications; they are not claimed as verified.
 

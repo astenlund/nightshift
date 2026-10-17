@@ -1,6 +1,6 @@
 # Handover as the delivery boundary: acceptance report
 
-This report records the evidence for [Handover as the delivery boundary](../features/handover-only-delivery.md), delivered locally as plugin 3.3.10 by run `67af3471-c7c7-4e28-ab57-88e3ba299126`. The candidate has not been published; publication remains a separate user decision.
+This report records the evidence for [Handover as the delivery boundary](../features/handover-only-delivery.md), delivered as plugin 3.3.10 by run `67af3471-c7c7-4e28-ab57-88e3ba299126`.
 
 ## Scope and identities
 

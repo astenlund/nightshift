@@ -1,6 +1,6 @@
 # Resumable reviewer and adversarial repair dialogue: acceptance
 
-Acceptance evidence for the [governing spec](../specs/resumable-reviewer-dialogue.md) of [Resumable reviewer and adversarial repair dialogue](../features/resumable-reviewer-dialogue.md), delivered in run `edb0199e-f5f3-4fab-a55f-8fa909a08289` as the local 3.3.0 candidate on 2026-10-01. Nothing is published.
+Acceptance evidence for the [governing spec](../specs/resumable-reviewer-dialogue.md) of [Resumable reviewer and adversarial repair dialogue](../features/resumable-reviewer-dialogue.md), delivered in run `edb0199e-f5f3-4fab-a55f-8fa909a08289` for release 3.3.0 on 2026-10-01.
 
 ## What was delivered
 
