@@ -422,6 +422,12 @@ Observed on 2026-10-12 in `C:/Git/disco-elysium-companion`, run `cffcf94d-49be-4
 
 Establish whether Codex's question tool shows its dialog in the CLI and in the desktop app, and adjust the host-question instruction wherever it appears, in the brief, the morning-report notices in `internal/runtime/hook.js` and [the runtime reference](../internal/runtime/REFERENCE.md), so that a Codex controller falls back to plain text wherever the dialog is not shown. Shipped guidance changes ship with a version increase. Tracking does not authorize implementation.
 
+### Let accepted scope cover equal-strength implementation helpers
+
+Raised on 2026-10-08 in `C:/Git/disco-elysium-companion`, run `cffcf94d-49be-4cab-afcb-3fad1dabfd95` on retained runtime 3.3.5. During the approved coordinator MVP delivery, the controller asked separate permission to delegate the remaining implementation to fresh agents with distinct file ownership. The user approved, then stated that delegation to equal-strength models should always be allowed in Nightshift, and at that run's triage on 2026-10-12 chose to send the clarification to the maintainer inbox rather than a new feature entry. [The operating brief](../internal/workflow.md#model-roles-and-ownership) says "Use bounded helpers when authorized and useful", which a controller can read as requiring approval beyond the accepted implementation scope; since 3.3.12 the same section has each role, helpers included, take the cheapest permitted model that meets its required capability and strength, but it does not say when a helper needs approval. Whether the brief caused the extra question or the controller misread it is unverified. [Dispatch reviewer peers and return their evidence to the lead](features/reviewer-peer-dispatch.md) covers read-only reviewer peers, not implementation helpers, and the Exploring draft [Structured model teams](features/structured-model-teams.md) explores explicit model pairings. The user chose to track it at inbox triage on 2026-10-17.
+
+Have the brief say that accepted implementation scope covers delegating parts of it to equal-strength helpers without a separate approval, keeping its assignment, exclusive write ownership and evidence rules. Shipped guidance changes ship with a version increase. Tracking does not authorize implementation.
+
 ## History
 
 Prior delivered work remains in [QUICK_WINS_HISTORY.md](QUICK_WINS_HISTORY.md).
