@@ -7,7 +7,7 @@ metadata:
 
 # Restore fresh-scaffold track, ignore or defer choice
 
-Restore the fresh-project setup choice to track the backlog in Git, ignore it, or defer the decision. Preserve existing tracking and ignore policy on reruns. This restores a previously shipped setup capability. Since 2026-10-04 Nightshift ignores content only through self-ignoring folders, never through the project's `.gitignore` or `.git/info/exclude`, so the separate choice between shared and clone-local rules in [Init-backlog ignore-shape election](init-backlog-ignore-shape-election.md) was retired and its surviving needs folded in here.
+Restore the fresh-project setup choice to track the backlog in Git, ignore it, or defer the decision. Preserve existing tracking and ignore policy on reruns. This restores a previously shipped setup capability. On 2026-10-04 the user decided that Nightshift ignores content only through self-ignoring folders, never through the project's `.gitignore` or `.git/info/exclude`, so the separate choice between shared and clone-local rules in [Init-backlog ignore-shape election](init-backlog-ignore-shape-election.md) was retired and its surviving needs folded in here. Setup does not follow that decision yet: a project's first setup run, fresh or migrating, still writes ignore rules to the project's `.gitignore`, among them `/.nightshift/runs/` unless it relocates a legacy `.claude/runs` folder, as the settled answers below describe, and migration also writes the rules that [Migration turns private exclusions into shared ignore rules](../bugs/migration-private-ignore-source.md) records.
 
 ## Outcome
 
