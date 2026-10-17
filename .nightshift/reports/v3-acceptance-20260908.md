@@ -1,6 +1,6 @@
 # Nightshift v3 acceptance: 8M checkpoint
 
-The v3 candidate is implemented and source-reviewed locally, but MVP acceptance is incomplete. Native continuation and explicit compaction/recovery checks succeeded on both Windows hosts. Neither installed handover reached verified completion. Codex reached complete independent broad review, but its final skeptic report was rejected and the fixture exhausted its six-dispatch limit. The response-contract defect has since been repaired, independently reviewed and checked through real Fable and Astra responses.
+The v3 candidate is implemented and source-reviewed, but MVP acceptance is incomplete. Native continuation and explicit compaction/recovery checks succeeded on both Windows hosts. Neither installed handover reached verified completion. Codex reached complete independent broad review, but its final skeptic report was rejected and the fixture exhausted its six-dispatch limit. The response-contract defect has since been repaired, independently reviewed and checked through real Fable and Astra responses.
 
 After this checkpoint, the user authorized a further doubling to 16,000,000 total tokens. The preceding usage and holds remain charged, leaving 8,137,747 available before further inference. The additional campaign is in progress; the tables below record the completed 8M checkpoint.
 
@@ -83,7 +83,7 @@ Migration reviews also exposed omitted consumers and partially reconciled state,
 
 ## Follow-up decisions
 
-Full delivery on both hosts, completed native repair cycles, reverse model-owned cross-host dispatch, substantial/queue and standalone operations, remaining host-hook branches, and limit/ownership/fallback cases remain unverified. The user has now authorized a further doubling to 16M total. The next campaign uses a fresh controller and the repaired installed candidate, while preserving earlier failed cases and removing the avoidable per-case interruptions identified above. Its outcomes remain pending; MVP requirements are unchanged.
+Full delivery on both hosts, completed native repair cycles, reverse model-owned cross-host dispatch, substantial/queue and standalone operations, remaining host-hook branches, and limit/ownership/fallback cases remain unverified. The user has now authorized a further doubling to 16M total. The next campaign uses a fresh controller and the repaired installed build, while preserving earlier failed cases and removing the avoidable per-case interruptions identified above. Its outcomes remain pending; MVP requirements are unchanged.
 
 The stopped fixture retains two pending decisions: the optional README runtime-support note and assurance recovery after its exhausted six-dispatch allowance. The parent source repair resolves the observed response-contract defect, but does not retroactively resolve that fixture's finding or change its limits. Follow-up triage remains after the retrospective and does not infer unavailable user decisions.
 

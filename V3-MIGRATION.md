@@ -70,7 +70,7 @@ Proposed instruction changes retain user approval. Initialization does not requi
 
 Agreed 2026-09-07. A plain `review` asks one independent agent to review the code and report back, with no repairs. A `review-loop` adds verified fixes and repeated independent review until clean. These are global direct-agent routines described in the user's canonical global instructions. A `revise` request invokes the full Nightshift review machinery.
 
-Only explicit revise intent should trigger the plugin's standalone review skills. The plugin must not activate for ordinary review or review-loop requests. Reviews required inside an already-authorized Nightshift lifecycle still use its machinery. Candidate skills now implement this distinction; the globally installed release remains unchanged until publication and update. The global review rules were updated during this discussion, including removal of stale Superpowers routing from ordinary and publication reviews, and synchronized to their gist on 2026-09-07 after independent review and user confirmation.
+Only explicit revise intent should trigger the plugin's standalone review skills. The plugin must not activate for ordinary review or review-loop requests. Reviews required inside an already-authorized Nightshift lifecycle still use its machinery. The skills now implement this distinction. The global review rules were updated during this discussion, including removal of stale Superpowers routing from ordinary and publication reviews, and synchronized to their gist on 2026-09-07 after independent review and user confirmation.
 
 ### Standalone operations and work already underway
 

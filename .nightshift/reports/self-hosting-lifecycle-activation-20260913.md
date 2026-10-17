@@ -33,7 +33,7 @@ At the end of that allowance, the additional ledger accounted for 1,996,820 toke
 
 A subsequent completed assessment and fresh skeptic confirmed a scratch-harness accounting defect: the held-boundary branch could label provisional usage exact. The current harness now requires a finalized, attributed native result with a valid nonnegative token count and verified process cleanup before exact settlement. A held boundary alone retains uncertainty. Regression controls verify the actual reservation consequence for the 32,562-token provisional case and the 34,532-token finalized case. Historical outcome files and their later accounting corrections remain preserved; they are not rewritten as if the original accounting had been correct. Frozen native tool records, runtime histories, installation hashes, checks and accounting controls accompany reassessment under .tmp/self-hosting-assurance-evidence.
 
-## Completed local delivery and follow-ups
+## Completed delivery and follow-ups
 
 The final strong cumulative assessment, receipt 3c591239-df02-4665-b378-675c2d1e6bce, completed all six dimensions with no findings or missing probes. The final focused checks passed 31 tests: 27 package/runtime/hook cases, two scratch execution/monitor controls and two accounting cases. Runtime revisions 119 through 122 then recorded task documentation completion, the final session retrospective, follow-up triage and run completion. This establishes that revise-code, revise-docs and revise-lore actually completed during the resumed repair; it does not change the earlier stopped sessions or extend the native fixture claims above.
 

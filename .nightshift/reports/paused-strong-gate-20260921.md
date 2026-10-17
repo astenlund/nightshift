@@ -1,6 +1,6 @@
 # Paused strong review gate verification
 
-Date: 2026-09-21. Candidate: Nightshift 3.2.1. Governing agreement: the user selected "Paused strong gate pauses repair application", approved the scoped readback, directed continuing in the same task, granted 1,000,000 aggregate tokens for live testing and handed over. Runtime run: `45cf8a48-096b-4e2b-9425-76541b971dbd`. Base: `97ba1e57e5f8a31a067e06f38723cd92817c7368`. Publication is not authorized.
+Date: 2026-09-21. Release: Nightshift 3.2.1. Governing agreement: the user selected "Paused strong gate pauses repair application", approved the scoped readback, directed continuing in the same task, granted 1,000,000 aggregate tokens for live testing and handed over. Runtime run: `45cf8a48-096b-4e2b-9425-76541b971dbd`. Base: `97ba1e57e5f8a31a067e06f38723cd92817c7368`.
 
 ## Change and evidence boundary
 
