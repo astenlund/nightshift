@@ -8,7 +8,7 @@ Evidence was examined during the 2026-09-20 migration reconciliation and [indepe
 
 ## Resolution
 
-Implemented locally in candidate 3.2.2 on 2026-09-21. Original-byte recovery, writer ownership, safe retry and incomplete-state diagnostics are covered by the [governing spec](../specs/recoverable-unwrap.md) and [acceptance report](../reports/recoverable-unwrap-20260921.md). The evidence above describes the original defect; broader setup recovery remains separate.
+Implemented for release 3.2.2 on 2026-09-21. Original-byte recovery, writer ownership, safe retry and incomplete-state diagnostics are covered by the [governing spec](../specs/recoverable-unwrap.md) and [acceptance report](../reports/recoverable-unwrap-20260921.md). The evidence above describes the original defect; broader setup recovery remains separate.
 
 ## Required outcome
 
