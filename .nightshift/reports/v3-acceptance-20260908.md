@@ -1,6 +1,6 @@
 # Nightshift v3 acceptance: 8M checkpoint
 
-v3 is implemented and source-reviewed, but MVP acceptance is incomplete. Native continuation and explicit compaction/recovery checks succeeded on both Windows hosts. Neither installed handover reached verified completion. Codex reached complete independent broad review, but its final skeptic report was rejected and the fixture exhausted its six-dispatch limit. The response-contract defect has since been repaired, independently reviewed and checked through real Fable and Astra responses.
+Nightshift v3 is implemented and source-reviewed, but MVP acceptance is incomplete. Native continuation and explicit compaction/recovery checks succeeded on both Windows hosts. Neither installed handover reached verified completion. Codex reached complete independent broad review, but its final skeptic report was rejected and the fixture exhausted its six-dispatch limit. The response-contract defect has since been repaired, independently reviewed and checked through real Fable and Astra responses.
 
 After this checkpoint, the user authorized a further doubling to 16,000,000 total tokens. The preceding usage and holds remain charged, leaving 8,137,747 available before further inference. The additional campaign is in progress; the tables below record the completed 8M checkpoint.
 
