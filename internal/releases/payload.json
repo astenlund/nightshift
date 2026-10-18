@@ -1,17 +1,17 @@
 {
   "schema": 1,
   "name": "nightshift",
-  "version": "3.3.12",
+  "version": "3.3.13",
   "files": [
     {
       "path": ".claude-plugin/plugin.json",
       "bytes": 641,
-      "sha256": "ce056370842450081a1e49c930551a979cedde162157e9b677f1a0d6c0bd73e2"
+      "sha256": "4b6221108c758233938015b187dbab3e21fc6956ac95031f8dcccde9035fcb6d"
     },
     {
       "path": ".codex-plugin/plugin.json",
       "bytes": 1161,
-      "sha256": "653d90dcaa2479cc21d5a79a4903f5b761c55b5c4bba2117c4bf3aef51f3499a"
+      "sha256": "e8e46f726f46aa0d1819f44d9ef923f1ab8648d252d9d04dbf11fbeb3895e248"
     },
     {
       "path": "LICENSE",
@@ -165,8 +165,8 @@
     },
     {
       "path": "internal/runtime/REFERENCE.md",
-      "bytes": 106538,
-      "sha256": "9957d36aa01a23f39205a421b833096dd79139fc1664657afa90cd3afde6d924"
+      "bytes": 111092,
+      "sha256": "27cd8d07354cab8ea048095f4c1ac6ff7caca1ba6b67118d67a17e0ed9481d1d"
     },
     {
       "path": "internal/runtime/acceptance-checkpoint.js",
@@ -205,8 +205,8 @@
     },
     {
       "path": "internal/runtime/continuation.js",
-      "bytes": 8543,
-      "sha256": "78028d463bdeb979232bfdaaa74c1732715512619f2ac18461240a3e6d308a12"
+      "bytes": 10539,
+      "sha256": "f67632340095a441248089c11c9260b267d5af3c5296ff8e49d609808b71f385"
     },
     {
       "path": "internal/runtime/copies.js",
@@ -245,8 +245,8 @@
     },
     {
       "path": "internal/runtime/hosts.js",
-      "bytes": 17218,
-      "sha256": "c5db120844f365c9cdcb8657f00cbb9fa69f03f7ff0eab7414e4cf27438f28f7"
+      "bytes": 20525,
+      "sha256": "3ad566eca5ce23a93b5d535565d59663fcc7a827c2388e3bb15d43848fc1bace"
     },
     {
       "path": "internal/runtime/legacy-approval-v1.js",
@@ -285,8 +285,8 @@
     },
     {
       "path": "internal/runtime/lifecycle.js",
-      "bytes": 81725,
-      "sha256": "e872316af3d3b70e216530dfd2b8b0c947723f46ac18fcbdd933d3df4d5821d9"
+      "bytes": 81881,
+      "sha256": "dbe61cc5383f2068e1d78878c6cd77e4d23a0a2b3f608d7d8d010b54585f50ed"
     },
     {
       "path": "internal/runtime/limits.js",
@@ -310,8 +310,8 @@
     },
     {
       "path": "internal/runtime/native-acknowledgement.js",
-      "bytes": 7138,
-      "sha256": "78a2d6dc4de1226802500bcd0a878fda30033974ce7025c6a1bcc2601c726864"
+      "bytes": 9981,
+      "sha256": "697108f1c077bef81a9eb96b5eaf497e32e5b2bcf0f171cac964160f6ea4991b"
     },
     {
       "path": "internal/runtime/native-worker-evidence.js",
@@ -390,8 +390,8 @@
     },
     {
       "path": "internal/runtime/review.js",
-      "bytes": 47622,
-      "sha256": "3b3d392183f79943e89919b8ff08628f68d79292d14f590951a2c016abac6f0b"
+      "bytes": 50588,
+      "sha256": "67e5706eaffdd3685e39845cc091e239197292d36aa941f3d16f24862697fff2"
     },
     {
       "path": "internal/runtime/scratch.js",
