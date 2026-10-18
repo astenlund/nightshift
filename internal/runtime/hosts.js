@@ -61,6 +61,33 @@ function codexModelContradiction(event, session, expectedModel) {
   return event.method === 'model/rerouted' && event.params?.threadId === session && (event.params.fromModel !== expectedModel || event.params.toModel !== expectedModel);
 }
 
+const HOST_FAILURE_LIMIT = 2000;
+
+// Host-reported text carried into attempt evidence, bounded so a verbose host cannot flood the record.
+function boundedHostText(value) {
+  return String(value).trim().slice(0, HOST_FAILURE_LIMIT);
+}
+
+function joinDetails(message, details) {
+  const parts = [message, details].filter(part => part !== undefined && part !== null && String(part).trim() !== '').map(part => typeof part === 'string' ? part : JSON.stringify(part));
+
+  return parts.length ? boundedHostText(parts.join(': ')) : null;
+}
+
+// The terminal error a Claude host reported: an error result's text with its API status and terminal reason, or, when the host produced
+// no result at all, the end of its stderr.
+function claudeHostFailure(result, stderr) {
+  if (result?.is_error === true) {
+    const context = [result.api_error_status !== undefined ? `api_error_status ${result.api_error_status}` : null, result.terminal_reason ? `terminal_reason ${result.terminal_reason}` : null].filter(Boolean);
+    const text = typeof result.result === 'string' && result.result.trim() ? result.result : 'error result';
+
+    return boundedHostText(context.length ? `${text} (${context.join(', ')})` : text);
+  }
+  if (!result && stderr.trim()) return boundedHostText(stderr.trim().slice(-HOST_FAILURE_LIMIT));
+
+  return null;
+}
+
 function hostStartError(failure) {
   return new RunError('host-start-failed', `Agent host failed to start: ${failure.message}`);
 }
@@ -91,6 +118,8 @@ function startProcess(file, args, options) {
   let failure = null;
   let artifactFailure = null;
   let timedOut = false;
+  // The end of the host's stderr, kept in memory so a failure can be named without waiting on the artifact file's flush.
+  let stderrTail = '';
   let resolveReady;
   let timer;
   const ready = new Promise(resolve => { resolveReady = resolve; });
@@ -114,6 +143,7 @@ function startProcess(file, args, options) {
   child.stderr.on('error', fail);
   errors.on('error', failArtifact);
   child.stderr.pipe(errors);
+  child.stderr.on('data', chunk => { stderrTail = (stderrTail + chunk.toString('utf8')).slice(-HOST_FAILURE_LIMIT); });
   child.once('spawn', () => {
     try { options.onProcess?.(child.pid); } catch (error) { fail(error); }
     resolveReady();
@@ -132,7 +162,7 @@ function startProcess(file, args, options) {
   const finish = async () => {
     try { return await exited; } finally { clearTimeout(timer); }
   };
-  return { child, ready, finish, fail, failArtifact, failure: () => failure, artifactFailure: () => artifactFailure };
+  return { child, ready, finish, fail, failArtifact, failure: () => failure, artifactFailure: () => artifactFailure, stderrTail: () => stderrTail };
 }
 
 function eventLog(execution, artifacts) {
@@ -163,14 +193,20 @@ async function runClaude(options) {
   if (!startFailure) execution.child.stdin.end(options.prompt);
   const exit = await execution.finish();
   await new Promise(resolve => log.end(resolve));
-  if (startFailure) {
-    requireReclaimed(exit, startFailure);
-    const error = hostStartError(startFailure);
-    error.descendantsReclaimed = exit.descendantsReclaimed;
+  const result = events.findLast(event => event.type === 'result');
+  const hostFailure = claudeHostFailure(result, execution.stderrTail());
+  try {
+    if (startFailure) {
+      requireReclaimed(exit, startFailure);
+      const error = hostStartError(startFailure);
+      error.descendantsReclaimed = exit.descendantsReclaimed;
+      throw error;
+    }
+    requireArtifactsWritten(execution, exit);
+  } catch (error) {
+    error.hostFailure = hostFailure;
     throw error;
   }
-  requireArtifactsWritten(execution, exit);
-  const result = events.findLast(event => event.type === 'result');
   const authored = events.filter(event => event.type === 'assistant' && event.message?.model && event.message.model !== '<synthetic>');
   // A resumed attempt is attributable only when the host continued the session it was asked to resume.
   const continuedSession = !options.session || result?.session_id === options.session;
@@ -178,7 +214,7 @@ async function runClaude(options) {
   const threadTokens = result?.modelUsage ? Object.values(result.modelUsage).reduce((sum, usage) => sum + tokenTotal(usage), 0) : null;
   const tokens = !options.session ? threadTokens : continuedSession ? resumedClaudeUsage(threadTokens, options.priorThreadTokens, result.usage) : null;
 
-  return { host: 'claude', model: options.model, effort: options.effort ?? 'high', session: result?.session_id ?? null, attributionVerified, status: !malformed && !exit.error && !exit.timedOut && exit.code === 0 && result?.subtype === 'success' && result.is_error === false ? 'complete' : 'failed', output: result?.structured_output ?? result?.result ?? null, tokens, threadTokens, exit, events };
+  return { host: 'claude', model: options.model, effort: options.effort ?? 'high', session: result?.session_id ?? null, attributionVerified, status: !malformed && !exit.error && !exit.timedOut && exit.code === 0 && result?.subtype === 'success' && result.is_error === false ? 'complete' : 'failed', output: result?.structured_output ?? result?.result ?? null, tokens, threadTokens, hostFailure, exit, events };
 }
 
 async function runCodex(options) {
@@ -202,13 +238,22 @@ async function runCodex(options) {
   let thrown;
   let outputLoop = null;
   const detectOutputLoop = outputLoopDetector(options.outputLoop);
+  // The failures the host itself reported, in order of preference: a failed turn, an error notification for the thread, and an error
+  // response to one of this attempt's own requests. An error the host meant to retry names the failure only when no turn completed, as
+  // when the attempt ended mid-retry; after a completed turn it was recovered from.
+  let turnFailure = null;
+  let notifiedFailure = null;
+  let requestFailure = null;
+  let retriedFailure = null;
+  let turnCompleted = false;
+  const hostFailure = () => turnFailure ?? notifiedFailure ?? requestFailure ?? (turnCompleted ? null : retriedFailure);
   const pending = new Map();
   let resolveTurn;
   const turn = new Promise(resolve => { resolveTurn = resolve; });
   const request = (method, params) => new Promise((resolve, reject) => {
     const id = ++sequence;
     const timer = setTimeout(() => { pending.delete(id); reject(new Error(`Host request timed out: ${method}`)); }, options.timeoutMs ?? 900000);
-    pending.set(id, { resolve, reject, timer });
+    pending.set(id, { method, resolve, reject, timer });
     execution.child.stdin.write(JSON.stringify({ id, method, params }) + '\n');
   });
   execution.child.once('close', () => {
@@ -230,8 +275,15 @@ async function runCodex(options) {
         const call = pending.get(event.id);
         pending.delete(event.id);
         clearTimeout(call.timer);
-        if (event.error) call.reject(new Error(JSON.stringify(event.error)));
-        else call.resolve(event.result);
+        if (event.error) {
+          // The host's own text is carried once, as the attempt's host-reported failure.
+          requestFailure ??= joinDetails(event.error.message ?? JSON.stringify(event.error), event.error.data);
+          call.reject(new Error(`Host request ${call.method} failed`));
+        } else call.resolve(event.result);
+      } else if (event.method === 'error' && event.params?.threadId === session && event.params.error) {
+        const reported = joinDetails(event.params.error.message, event.params.error.additionalDetails);
+        if (event.params.willRetry === true) retriedFailure = reported;
+        else notifiedFailure = reported;
       } else if (event.method === 'model/rerouted') {
         reroutes.push(event);
       } else if (event.method === 'thread/tokenUsage/updated' && event.params.threadId === session) {
@@ -245,6 +297,8 @@ async function runCodex(options) {
       } else if (event.method === 'item/completed' && event.params.threadId === session && event.params.item.type === 'agentMessage') {
         output = event.params.item.text;
       } else if (event.method === 'turn/completed' && event.params.threadId === session) {
+        turnCompleted = true;
+        if (event.params.turn?.status === 'failed' && event.params.turn.error) turnFailure = joinDetails(event.params.turn.error.message, event.params.turn.error.additionalDetails);
         resolveTurn(event.params.turn);
       }
     } catch (error) {
@@ -276,7 +330,7 @@ async function runCodex(options) {
     const finalModel = reroutes.findLast(event => event.params?.threadId === session)?.params.toModel ?? actualModel;
     const continuedSession = !options.session || session === options.session;
     const attributionVerified = continuedSession && actualModel === options.model && !reroutes.some(event => codexModelContradiction(event, session, options.model));
-    outcome = { host: 'codex', model: finalModel, effort: options.effort ?? 'high', session, attributionVerified, status: !malformed && result.status === 'completed' ? 'complete' : 'failed', output, tokens: attemptUsage(), threadTokens: tokens };
+    outcome = { host: 'codex', model: finalModel, effort: options.effort ?? 'high', session, attributionVerified, status: !malformed && result.status === 'completed' ? 'complete' : 'failed', output, tokens: attemptUsage(), threadTokens: tokens, hostFailure: hostFailure() };
     return outcome;
   } catch (error) {
     thrown = error;
@@ -285,7 +339,7 @@ async function runCodex(options) {
     if (!ended) { execution.child.stdin.end(); execution.child.kill(); }
     const exit = await execution.finish();
     // Usage the host reported before the attempt failed, as when it ended as an output loop, was spent all the same.
-    if (thrown) Object.assign(thrown, { descendantsReclaimed: exit.descendantsReclaimed, tokens: attemptUsage() });
+    if (thrown) Object.assign(thrown, { descendantsReclaimed: exit.descendantsReclaimed, tokens: attemptUsage(), hostFailure: hostFailure() });
     if (outcome) {
       outcome.exit = exit;
       if (exit.error || exit.descendantsReclaimed === false) outcome.status = 'failed';
@@ -296,7 +350,7 @@ async function runCodex(options) {
       // An artifact failure replaces the closed-host error or failed turn it caused; one before the host started stays a start failure.
       if (!startFailure) requireArtifactsWritten(execution, exit);
     } catch (error) {
-      error.tokens = attemptUsage();
+      Object.assign(error, { tokens: attemptUsage(), hostFailure: hostFailure() });
       throw error;
     }
   }
@@ -308,4 +362,4 @@ async function runAgent(options) {
   return options.host === 'claude' ? runClaude(options) : options.host === 'codex' ? runCodex(options) : Promise.reject(new Error('Unknown host'));
 }
 
-module.exports = { codexModelContradiction, executable, pluginVersion, resumedUsage, runAgent, runClaude, runCodex, tokenTotal };
+module.exports = { boundedHostText, codexModelContradiction, executable, pluginVersion, resumedUsage, runAgent, runClaude, runCodex, tokenTotal };

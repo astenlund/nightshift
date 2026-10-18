@@ -8,7 +8,7 @@ const { isDeepStrictEqual } = require('node:util');
 const { DIMENSIONS, commitmentsFor } = require('./lifecycle');
 const { requireCondition, safeDirectory, text } = require('./store');
 const { fileIdentity, fresh, hash, inventorySnapshot, projectFile, snapshot } = require('./evidence');
-const { codexModelContradiction, runAgent } = require('./hosts');
+const { boundedHostText, codexModelContradiction, runAgent } = require('./hosts');
 const { writeJson, writeText } = require('./artifacts');
 const { PROBE_TIMEOUT_CAP_MS, PROBE_TIMEOUT_FLOOR_MS, loadProbeEvidence } = require('./probes');
 const { createPrivateCopyDirectory, isPrivateCopyDirectory } = require('./copies');
@@ -23,6 +23,7 @@ const DISPATCH_ABORTING_FAILURES = Object.freeze(['review-input-drift', 'snapsho
 // Failures that do not concern a resumed session, which keep their own codes when a resume fails.
 const SESSION_INDEPENDENT_FAILURES = Object.freeze([...DISPATCH_ABORTING_FAILURES, 'nonindependent-worker', 'host-start-failed']);
 const PROBE_TIMEOUT_RULE = `timeoutMs is in milliseconds, from ${PROBE_TIMEOUT_FLOOR_MS} to ${PROBE_TIMEOUT_CAP_MS}; allow for the command's full expected duration.`;
+const TOOL_FAILURE_RULE = 'toolFailure is empty when your tools worked or you worked around a failure. When a failure of your own tools kept you from reading or inspecting what your assessment needed, name the tool and the error it returned there; the controller then gives the assessment to another reviewer. A deciding check that your read-only tools cannot run by design is a probe request, not a tool failure.';
 
 const DIMENSION_BRIEFS = Object.freeze({
   'intent-scope-acceptance': 'Does the spec express the desired outcome, consequential behavior, boundaries and evidence of success?',
@@ -174,14 +175,14 @@ function schemaFor(kind, requestId, assignedFindings = [], shape = {}) {
     properties: {
       requestId: { type: 'string', enum: [requestId] }, status: { type: 'string', enum: ['complete', 'incomplete'] },
       coverage: { type: 'array', items: { type: 'object', additionalProperties: false, properties: { dimension: scalar, evidence: scalar }, required: ['dimension', 'evidence'] } },
-      findings: { type: 'array', items: finding, ...findingBounds }, summary: scalar,
+      findings: { type: 'array', items: finding, ...findingBounds }, summary: scalar, toolFailure: { type: 'string', description: TOOL_FAILURE_RULE },
       probes: { type: 'array', items: { type: 'object', additionalProperties: false, properties: {
         id: scalar, purpose: scalar, executable: scalar, args: { type: 'array', items: scalar }, timeoutMs: { type: 'integer', minimum: PROBE_TIMEOUT_FLOOR_MS, maximum: PROBE_TIMEOUT_CAP_MS, description: PROBE_TIMEOUT_RULE },
         files: { type: 'array', items: { type: 'object', additionalProperties: false, properties: { path: scalar, content: scalar }, required: ['path', 'content'] } },
       }, required: ['id', 'purpose', 'executable', 'args', 'timeoutMs', 'files'] } },
       ...extra,
     },
-    required: ['requestId', 'status', 'coverage', 'findings', 'summary', 'probes', ...Object.keys(extra)],
+    required: ['requestId', 'status', 'coverage', 'findings', 'summary', 'toolFailure', 'probes', ...Object.keys(extra)],
   };
 }
 
@@ -193,6 +194,10 @@ function parseReport(output) {
 
 function validateReport(report, request) {
   requireCondition(report?.requestId === request.id && ['complete', 'incomplete'].includes(report.status), 'wrong-result', 'Report is missing its request identity or completion status');
+  requireCondition(typeof report.toolFailure === 'string', 'invalid-result', 'Report lacks its toolFailure statement');
+  // A reviewer whose own tools failed has not assessed, whatever its status says, so this comes before every content check: the
+  // attempt then fails naming the reported failure, and the next candidate is tried.
+  requireCondition(!report.toolFailure.trim(), 'reviewer-tools-unavailable', `The reviewer reported that its tools failed: ${boundedHostText(report.toolFailure)}`);
   requireCondition(Array.isArray(report.findings) && Array.isArray(report.coverage), 'invalid-result', 'Report lacks findings or coverage');
   text(report.summary, 'report.summary');
   requireCondition(report.probes === undefined || Array.isArray(report.probes), 'invalid-probe', 'Requested probes must be an array');
@@ -311,8 +316,8 @@ function buildPrompt(request, { workspace } = {}) {
   const role = (skeptic ? skepticRole : '') + (dialogue ? dialogueBrief(request) : skeptic ? '' : leadRole);
   const definitions = request.dimensions.map(dimension => `${dimension}: ${DIMENSION_BRIEFS[dimension]}`).join('\n');
   const execution = `If a deciding claim needs execution unavailable in your read-only tools, request a bounded probe in probes, with its purpose, exact executable/args, timeout and ASCII fixture files. ${PROBE_TIMEOUT_RULE} The controller executes it in a separate private copy and returns raw command/output evidence for your independent assessment. Remain incomplete/unverified until that evidence is sufficient. A probe never authorizes canonical project repairs. Available returned probe evidence is under context/probes/.\n`;
-  const fields = ['requestId', 'status', 'coverage', 'findings', 'probes', 'summary', ...(!skeptic && !dialogue && request.continues ? ['closures'] : []), ...(!skeptic && dialogue ? ['positions'] : [])];
-  return common + definitions + '\n\n' + role + acknowledgementBrief(request) + execution + `\nReturn the requested structured report with ${fields.slice(0, -1).join(', ')} and ${fields.at(-1)}. Use an empty probes array when no execution evidence is missing.\n`;
+  const fields = ['requestId', 'status', 'coverage', 'findings', 'probes', 'summary', 'toolFailure', ...(!skeptic && !dialogue && request.continues ? ['closures'] : []), ...(!skeptic && dialogue ? ['positions'] : [])];
+  return common + definitions + '\n\n' + role + acknowledgementBrief(request) + execution + TOOL_FAILURE_RULE + '\n' + `\nReturn the requested structured report with ${fields.slice(0, -1).join(', ')} and ${fields.at(-1)}. Use an empty probes array when no execution evidence is missing.\n`;
 }
 
 // Whether the inputs an assessment judged are unchanged, before its dispatch returns and again at import. A spec assessment judged
@@ -320,6 +325,16 @@ function buildPrompt(request, { workspace } = {}) {
 // judged the whole context, which for them is the same evidence as their snapshot and so is read once.
 function inputsUnchanged(root, kind, snapshot, contextSnapshot) {
   return fresh(root, snapshot) && (kind === 'spec' || isDeepStrictEqual(snapshot, contextSnapshot) || fresh(root, contextSnapshot));
+}
+
+// Saves a failed dispatch's record, which status reads to route closure. A failed write must not replace the dispatch's own error,
+// so it is added to that error's message instead.
+function recordFailure(target, record, error, write = writeJson) {
+  try {
+    write(path.join(target, 'failure.json'), record);
+  } catch (failure) {
+    error.message += `; recording failure.json failed: ${failure.message}`;
+  }
 }
 
 async function dispatchReview(root, options, dependencies = {}) {
@@ -398,6 +413,9 @@ async function dispatchReview(root, options, dependencies = {}) {
       // Set while the attempt's outcome depends on the host's handling of its session: from a started host's own failure until its
       // report is validated. Bookkeeping, filesystem and pre-launch failures fall outside it.
       let sessionFailure = false;
+      // Set once the session's report is judged usable, so a later unproven termination does not leave its outcome unknown.
+      let sessionHealthy = false;
+      let hostFailure = null;
       try {
         options.onAttempt?.();
         // timeoutMs applies to each attempt; the run and launcher deadlines bound the dispatch as a whole.
@@ -412,9 +430,11 @@ async function dispatchReview(root, options, dependencies = {}) {
           // A started host that fails on its own, without an operating-system error, failed in its session.
           sessionFailure = processStarted && error.errno === undefined;
           attempt.tokens = error.tokens ?? null;
+          hostFailure = error.hostFailure ?? null;
           throw error;
         }
         attempt.tokens = result.tokens ?? null;
+        hostFailure = result.hostFailure ?? null;
         terminationProven = result.exit?.descendantsReclaimed === true;
         options.onFinalizing?.();
         requireCondition(!(options.forbiddenSessions ?? []).includes(result.session), 'nonindependent-worker', 'A current or former controller cannot supply a newly dispatched independent assessment');
@@ -424,8 +444,11 @@ async function dispatchReview(root, options, dependencies = {}) {
         sessionFailure = true;
         requireCondition(result.status === 'complete' && result.attributionVerified, 'unusable-review', 'Host did not return an attributable completed assessment');
         requireCondition(!resumed.session || result.session === resumed.session, 'unusable-review', 'The host did not continue the resumed session');
+        // A reported tool failure is refused here too; on a resume it stays a session failure, since resuming the same session again
+        // would meet the same tools.
         const report = validateReport(parseReport(result.output), request);
         sessionFailure = false;
+        sessionHealthy = true;
         requireCondition(inputsUnchanged(canonical, request.kind, captured, contextSnapshot) && fresh(project, { ...contextSnapshot, inventory: false }), 'review-input-drift', 'Reviewed project inputs changed during assessment');
         attempt.status = 'complete';
         const receipt = {
@@ -448,16 +471,22 @@ async function dispatchReview(root, options, dependencies = {}) {
         return { receiptFile, receipt };
       } catch (error) {
         terminationProven ||= error.descendantsReclaimed === true;
-        Object.assign(attempt, { status: 'failed', error: error.message });
+        // The failure the host itself reported, such as an authentication error, is named in the attempt's error.
+        if (hostFailure !== null) error.message += `; the host reported: ${hostFailure}`;
+        Object.assign(attempt, { status: 'failed', error: error.message, hostFailure });
         // A resume that fails because of its session is distinct, so the controller knows to replace the reviewer; failures that do
         // not concern the session keep their codes, and unproven termination outranks both below.
         if (continuation?.kind === 'resumed' && sessionFailure && !SESSION_INDEPENDENT_FAILURES.includes(error.code)) {
           error.code = 'resume-failed';
           error.message = `Resuming session ${continuation.session} failed: ${error.message}`;
         }
-        if (processStarted && !terminationProven) error.code = 'termination-unverified';
+        // Recorded before unproven termination outranks it, so status still routes the closure away from a failed session. A launched
+        // attempt whose termination is unproven before its report was judged usable has an unknown outcome, which counts as failed.
+        const unproven = processStarted && !terminationProven;
+        const sessionFailed = error.code === 'resume-failed' || unproven && !sessionHealthy;
+        if (unproven) error.code = 'termination-unverified';
         if (index === candidates.length - 1 || DISPATCH_ABORTING_FAILURES.includes(error.code)) {
-          writeJson(path.join(target, 'failure.json'), { requestId: id, attempts });
+          recordFailure(target, { requestId: id, attempts, code: error.code, ...(continuation?.kind === 'resumed' ? { sessionFailed } : {}) }, error, dependencies.writeJson);
           throw error;
         }
       }
@@ -512,6 +541,8 @@ function readReceipt(root, relative, state, taskId) {
     output = events.findLast(event => event.method === 'item/completed' && event.params.threadId === receipt.session && event.params.item.type === 'agentMessage')?.params.item.text;
   }
   const report = parseReport(output);
+  // Reports from earlier releases carry no toolFailure; one that names a tool failure never produced a receipt.
+  requireCondition(typeof report.toolFailure !== 'string' || !report.toolFailure.trim(), 'changed-result', 'The native report names a tool failure, so it is not a usable assessment');
   requireCondition(report.requestId === receipt.requestId && report.status === receipt.status && isDeepStrictEqual(report.findings, receipt.findings) && isDeepStrictEqual(report.probes ?? [], receipt.probes) && isDeepStrictEqual(report.coverage.map(item => item.dimension), receipt.dimensions) && isDeepStrictEqual(report.closures ?? [], receipt.closures ?? []) && isDeepStrictEqual(report.positions ?? null, receipt.positions ?? null), 'changed-result', 'Collected assessment differs from the native host report');
   return receipt;
 }

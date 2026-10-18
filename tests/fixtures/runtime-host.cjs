@@ -57,7 +57,9 @@ else if (args.includes('--print')) {
       : { [model]: { inputTokens: 2, outputTokens: 3, cacheReadInputTokens: 4, cacheCreationInputTokens: 5 } };
     send({ type: 'system', subtype: 'init', session_id: session });
     send({ type: 'assistant', session_id: session, message: { model, content: [] } });
-    send({ type: 'result', session_id: session, subtype: 'success', is_error: mode === 'error-result', result: 'Fixture assessment', ...usage, modelUsage });
+    // An API failure: the host reports a refused request as an error result with its status and terminal reason.
+    const apiError = mode === 'api-error' ? { api_error_status: 401, terminal_reason: 'api_error' } : {};
+    send({ type: 'result', session_id: session, subtype: 'success', is_error: mode === 'error-result' || mode === 'api-error', result: mode === 'api-error' ? 'Invalid API key' : 'Fixture assessment', ...apiError, ...usage, modelUsage });
   });
 } else {
   let pendingTurn;
@@ -114,6 +116,23 @@ else if (args.includes('--print')) {
         delta('{');
         for (let index = 0; index < 30; index++) delta('  ');
         delta('}');
+      }
+      const notify = willRetry => send({ method: 'error', params: { threadId: thread, turnId: 'fixture-turn', willRetry, error: { message: willRetry ? 'fixture transient error' : 'fixture stream error', additionalDetails: null } } });
+      if (mode === 'turn-failed') {
+        send({ method: 'turn/completed', params: { threadId: thread, turn: { id: 'fixture-turn', status: 'failed', error: { message: 'unexpected status 401 Unauthorized', additionalDetails: 'Incorrect API key provided' } } } });
+        return;
+      }
+      if (mode === 'error-notification') {
+        notify(false);
+        send({ method: 'turn/completed', params: { threadId: thread, turn: { id: 'fixture-turn', status: 'failed' } } });
+        return;
+      }
+      if (mode === 'error-retried') notify(true);
+      // A host still retrying when the attempt ends: it never completes the turn.
+      if (mode === 'retry-then-stall') {
+        notify(true);
+        setInterval(() => {}, 1000);
+        return;
       }
       completeTurn();
     }

@@ -46,7 +46,7 @@ function fakeAgent(options, { findings = [], closures, positions, status = 'comp
   if (launched) options.onProcess(999999);
   fs.mkdirSync(options.artifacts, { recursive: true });
   const properties = options.schema.properties;
-  const report = { requestId: properties.requestId.enum[0], status, coverage: dimensions.map(dimension => ({ dimension, evidence: 'Assessed the change' })), findings, probes: [], summary: 'Fixture report' };
+  const report = { requestId: properties.requestId.enum[0], status, coverage: dimensions.map(dimension => ({ dimension, evidence: 'Assessed the change' })), findings, probes: [], summary: 'Fixture report', toolFailure: '' };
   if (properties.closures) report.closures = closures ?? (properties.closures.items.properties.id.enum ?? []).map(id => ({ id, closed: true, evidence: 'The repair resolves it' }));
   if (properties.positions) report.positions = positions ?? properties.positions.items.properties.id.enum.map(id => ({ id, position: 'maintain', evidence: 'The finding still holds' }));
   const actual = options.session ?? session ?? `session-${++sessions}`;
@@ -138,7 +138,7 @@ test('the raising reviewer resumes in a new copy to record closure, and only a f
   assert.notEqual(workspaces[0], workspaces[1]);
   assert.equal(calls[0].cwd, path.join(fs.realpathSync.native(f.root), workspaces[1]));
   assert.ok(calls[0].prompt.includes(`new private copy of the project at ${calls[0].cwd}`));
-  assert.match(calls[1].prompt, /probes and summary\. Use an empty probes array/);
+  assert.match(calls[1].prompt, /probes, summary and toolFailure\. Use an empty probes array/);
   assert.deepEqual(resumed.receipt.continues, { kind: 'resumed', requestId: lead.receipt.requestId, session: lead.receipt.session });
   assert.equal(resumed.receipt.lineage, lead.receipt.requestId);
   assert.equal(resumed.receipt.session, lead.receipt.session);
@@ -242,6 +242,132 @@ test('a session failure is resume-failed without fallback, other failures keep t
   assert.equal(unproven?.code, 'termination-unverified');
   assert.equal(f.store.read().workers.at(-1).status, 'unverified');
   assert.equal(held?.code, 'session-held');
+});
+
+const TOOL_FAILURE = 'Failed to create unified exec process: helper_unknown_error: setup refresh had errors';
+
+// A launched reviewer that read nothing because its own tools failed.
+function toolFailedAgent(options) {
+  const result = fakeAgent(options, { launched: true, status: 'incomplete' });
+
+  return { ...result, output: { ...result.output, toolFailure: TOOL_FAILURE } };
+}
+
+const failureRecord = (f, requestId) => JSON.parse(fs.readFileSync(path.join(f.root, '.nightshift/runs/reviews', requestId, 'failure.json'), 'utf8'));
+
+test('a resumed reviewer whose tools fail is resume-failed, and closure routes to a replacement until a later dispatch succeeds', async t => {
+  // Arrange
+  const f = fixture(t);
+  const { lead } = await raiseAndRepair(f);
+  const route = () => f.brief().review.resumeTargets.map(target => [target.requestId, target.continue]);
+  const routes = { before: route() };
+
+  // Act
+  const resumed = await f.act({ action: 'dispatch', review: { ...f.base, kind: 'code', resume: lead.receipt.requestId } }, { runAgent: toolFailedAgent }).then(() => null, error => error);
+  const resumedId = f.store.read().workers.at(-1).id;
+  routes.afterResume = route();
+  const replacementFailure = await f.act({ action: 'dispatch', review: { ...f.base, kind: 'code', replaces: lead.receipt.requestId, candidates: [COUNTERPART] } }, { runAgent: () => { throw new RunError('host-start-failed', 'Agent host failed to start: fixture'); } }).then(() => null, error => error.code);
+  routes.afterFailedReplacement = route();
+  const replacement = await f.dispatch({ kind: 'code', replaces: lead.receipt.requestId, candidates: [COUNTERPART] });
+  routes.afterReplacement = route();
+
+  // Assert
+  assert.equal(resumed?.code, 'resume-failed');
+  assert.match(resumed.message, /The reviewer reported that its tools failed: Failed to create unified exec process/);
+  assert.deepEqual({ code: failureRecord(f, resumedId).code, sessionFailed: failureRecord(f, resumedId).sessionFailed }, { code: 'resume-failed', sessionFailed: true });
+  assert.equal(replacementFailure, 'host-start-failed');
+  assert.deepEqual(routes, {
+    before: [[lead.receipt.requestId, 'resume']],
+    afterResume: [[lead.receipt.requestId, 'replace']],
+    afterFailedReplacement: [[lead.receipt.requestId, 'replace']],
+    afterReplacement: [[replacement.receipt.requestId, 'resume']],
+  });
+});
+
+test('a resume whose session failure is masked by unproven termination still routes closure to a replacement', async t => {
+  // Arrange
+  const f = fixture(t);
+  const { lead } = await raiseAndRepair(f);
+
+  // Act
+  const failure = await f.act({ action: 'dispatch', review: { ...f.base, kind: 'code', resume: lead.receipt.requestId } }, { runAgent: options => {
+    options.onProcess(999999);
+    return { ...fakeAgent(options), status: 'failed' };
+  } }).then(() => null, error => error.code);
+  const worker = f.store.read().workers.at(-1);
+
+  // Assert
+  assert.deepEqual({ failure, status: worker.status }, { failure: 'termination-unverified', status: 'unverified' });
+  assert.deepEqual({ code: failureRecord(f, worker.id).code, sessionFailed: failureRecord(f, worker.id).sessionFailed }, { code: 'termination-unverified', sessionFailed: true });
+  assert.deepEqual(f.brief().review.resumeTargets.map(target => target.continue), ['replace']);
+});
+
+test('a resume ending in unproven termination before its report was judged routes closure to a replacement on both runner shapes', async t => {
+  // Arrange
+  const shapes = {
+    // The Windows job reports unproven termination as explicit false on the result it returns, as a Claude runner does.
+    claudeFailedSession: options => ({ ...fakeAgent(options, { launched: true }), status: 'failed', exit: { descendantsReclaimed: false } }),
+    claudeReport: options => ({ ...fakeAgent(options, { launched: true }), exit: { descendantsReclaimed: false } }),
+    // A Codex runner throws its own termination error in place of the session's outcome.
+    codexThrown: options => {
+      options.onProcess(999999);
+      throw Object.assign(new RunError('termination-unverified', 'The native host process tree did not provide termination evidence'), { descendantsReclaimed: false });
+    },
+  };
+  const outcomes = {};
+
+  // Act
+  for (const [name, runAgent] of Object.entries(shapes)) {
+    const f = fixture(t);
+    const { lead } = await raiseAndRepair(f);
+    const code = await f.act({ action: 'dispatch', review: { ...f.base, kind: 'code', resume: lead.receipt.requestId } }, { runAgent }).then(() => null, error => error.code);
+    const worker = f.store.read().workers.at(-1);
+    outcomes[name] = { code, sessionFailed: failureRecord(f, worker.id).sessionFailed, route: f.brief().review.resumeTargets[0].continue };
+  }
+
+  // Assert
+  for (const name of Object.keys(shapes)) assert.deepEqual(outcomes[name], { code: 'termination-unverified', sessionFailed: true, route: 'replace' }, name);
+});
+
+test('closure routes to a replacement when an ended resume launched its host but saved no outcome, and only then', async t => {
+  // Arrange
+  const f = fixture(t);
+  const { lead } = await raiseAndRepair(f);
+  const route = () => f.brief().review.resumeTargets[0].continue;
+  // A reconciled resumed dispatch of the lead's session, with or without a host process and a saved failure record.
+  const resumedWorker = ({ pid, failure }) => {
+    const id = randomUUID();
+    const directory = `.nightshift/runs/reviews/${id}`;
+    if (failure !== undefined) {
+      fs.mkdirSync(path.join(f.root, directory), { recursive: true });
+      fs.writeFileSync(path.join(f.root, directory, 'failure.json'), failure);
+    }
+    f.store.update(actor, f.store.read().revision, 'fixture-reconciled-resume', state => {
+      state.workers.push({ id, role: 'reviewer', taskId: 'task', status: 'failed', writes: [], artifactDirectory: directory, session: lead.receipt.session, host: LEAD.host, continues: { kind: 'resumed', requestId: lead.receipt.requestId, session: lead.receipt.session }, lineage: lead.receipt.requestId, ...(pid === undefined ? {} : { pid }) });
+    });
+  };
+  const routes = {};
+
+  // Act
+  resumedWorker({});
+  routes.beforeLaunch = route();
+  // A launched resume from an earlier release: its record is honored rather than read as an unsaved outcome.
+  resumedWorker({ pid: 999999, failure: JSON.stringify({ requestId: 'earlier-release', attempts: [] }) });
+  routes.earlierReleaseRecord = route();
+  resumedWorker({ pid: 999999, failure: JSON.stringify({ requestId: 'saved', attempts: [], code: 'review-input-drift', sessionFailed: false }) });
+  routes.savedHealthySession = route();
+  resumedWorker({ pid: 999999, failure: '{"truncated' });
+  routes.unreadableRecord = route();
+
+  const second = fixture(t);
+  const raised = await raiseAndRepair(second);
+  second.store.update(actor, second.store.read().revision, 'fixture-reconciled-resume', state => {
+    state.workers.push({ id: randomUUID(), role: 'reviewer', taskId: 'task', status: 'failed', writes: [], artifactDirectory: `.nightshift/runs/reviews/${randomUUID()}`, session: raised.lead.receipt.session, host: LEAD.host, continues: { kind: 'resumed', requestId: raised.lead.receipt.requestId, session: raised.lead.receipt.session }, lineage: raised.lead.receipt.requestId, pid: 999999 });
+  });
+  routes.unsavedOutcome = second.brief().review.resumeTargets[0].continue;
+
+  // Assert
+  assert.deepEqual(routes, { beforeLaunch: 'resume', earlierReleaseRecord: 'resume', savedHealthySession: 'resume', unreadableRecord: 'replace', unsavedOutcome: 'replace' });
 });
 
 test('an artifact write failure in a real runner keeps its operating-system error through a resumed dispatch on both hosts', { skip: process.platform !== 'win32' }, async t => {

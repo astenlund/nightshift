@@ -58,6 +58,40 @@ function latestDispatchOf(root, state, owner, lineage) {
   return state.workers.filter(worker => worker.taskId === owner.id && lineageOf(worker) === lineage && dispatchReceipt(root, worker)).at(-1)?.id ?? null;
 }
 
+// The failure record a dispatch saved before it threw: absent when none was saved, unreadable when a record exists but cannot be read.
+function dispatchFailure(root, worker) {
+  if (!worker.artifactDirectory) return { saved: false };
+  const file = projectFile(root, `${worker.artifactDirectory}/failure.json`);
+  if (!fs.existsSync(file)) return { saved: false };
+  try {
+    const record = JSON.parse(fs.readFileSync(file, 'utf8'));
+    return record !== null && typeof record === 'object' ? { saved: true, record } : { saved: true, record: null };
+  } catch (error) {
+    if (error instanceof SyntaxError) return { saved: true, record: null };
+    throw error;
+  }
+}
+
+// How closure continues with the dispatch a resume target names: 'replace' once a later dispatch of the lineage resumed that dispatch's
+// session and failed in it, or ended after launching its host without saving any outcome, which leaves the session's state unknown;
+// otherwise 'resume'. A later receipt of the lineage becomes the named dispatch, so this resets only when a dispatch succeeds. An
+// unreadable failure record counts as no saved outcome, and one from an earlier release, without sessionFailed, does not count.
+function closureRoute(root, state, requestId) {
+  const index = state.workers.findIndex(worker => worker.id === requestId);
+  const named = state.workers[index];
+  const receipt = named && dispatchReceipt(root, named);
+  if (!receipt?.session) return 'resume';
+  const failed = state.workers.slice(index + 1).some(worker => {
+    if (worker.taskId !== named.taskId || lineageOf(worker) !== lineageOf(named) || worker.continues?.kind !== 'resumed' || worker.continues.session !== receipt.session) return false;
+    const failure = dispatchFailure(root, worker);
+    if (failure.record) return failure.record.sessionFailed === true;
+
+    return !workerIsActive(worker) && worker.pid !== undefined && !dispatchReceipt(root, worker);
+  });
+
+  return failed ? 'replace' : 'resume';
+}
+
 // What a finding looks like to a reviewer or skeptic continuing an exchange about it.
 function findingSummary(finding) {
   return {
@@ -105,4 +139,4 @@ function resolveContinuation(root, state, target, review) {
   };
 }
 
-module.exports = { continuesRecord, latestDispatchOf, lineageOf, resolveContinuation };
+module.exports = { closureRoute, continuesRecord, latestDispatchOf, lineageOf, resolveContinuation };

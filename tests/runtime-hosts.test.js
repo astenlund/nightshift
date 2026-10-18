@@ -173,11 +173,35 @@ test('Codex handshake identifies the plugin with the manifest version', async t 
   const result = await runAgent({ ...accepted, env: { ...accepted.env, NIGHTSHIFT_TEST_EXPECTED_VERSION: manifest.version } });
   assert.equal(result.status, 'complete');
   const rejected = fixture(t, 'codex');
-  await assert.rejects(runAgent({ ...rejected, env: { ...rejected.env, NIGHTSHIFT_TEST_EXPECTED_VERSION: 'not-the-manifest-version' } }), /fixture rejected client version/);
+  await assert.rejects(runAgent({ ...rejected, env: { ...rejected.env, NIGHTSHIFT_TEST_EXPECTED_VERSION: 'not-the-manifest-version' } }), { message: 'Host request initialize failed', hostFailure: /fixture rejected client version/ });
 });
 
 test('Codex request rejection is collected and the process is reclaimed', async t => {
-  await assert.rejects(runAgent(fixture(t, 'codex', 'request-error')), /fixture request rejected/);
+  await assert.rejects(runAgent(fixture(t, 'codex', 'request-error')), { message: 'Host request initialize failed', hostFailure: 'fixture request rejected' });
+});
+
+test('each host names the terminal failure it reported, and only a terminal one', async t => {
+  // Arrange
+  const run = (host, mode) => runAgent(fixture(t, host, mode));
+
+  // Act
+  const codexTurn = await run('codex', 'turn-failed');
+  const codexNotified = await run('codex', 'error-notification');
+  const codexRetried = await run('codex', 'error-retried');
+  const codexStalled = await runAgent({ ...fixture(t, 'codex', 'retry-then-stall'), timeoutMs: 1000 }).then(result => result, error => error);
+  const claudeApi = await run('claude', 'api-error');
+  const claudeStderr = await runAgent({ ...fixture(t, 'claude', 'resume-missing'), session: 'earlier-session' });
+  const claudeClean = await run('claude', 'success');
+
+  // Assert
+  assert.deepEqual({ status: codexTurn.status, hostFailure: codexTurn.hostFailure }, { status: 'failed', hostFailure: 'unexpected status 401 Unauthorized: Incorrect API key provided' });
+  assert.deepEqual({ status: codexNotified.status, hostFailure: codexNotified.hostFailure }, { status: 'failed', hostFailure: 'fixture stream error' });
+  assert.deepEqual({ status: codexRetried.status, hostFailure: codexRetried.hostFailure }, { status: 'complete', hostFailure: null });
+  assert.equal(codexStalled.hostFailure, 'fixture transient error');
+  assert.notEqual(codexStalled.status, 'complete');
+  assert.deepEqual({ status: claudeApi.status, hostFailure: claudeApi.hostFailure }, { status: 'failed', hostFailure: 'Invalid API key (api_error_status 401, terminal_reason api_error)' });
+  assert.deepEqual({ status: claudeStderr.status, hostFailure: claudeStderr.hostFailure }, { status: 'failed', hostFailure: 'No conversation found with session ID: earlier-session' });
+  assert.equal(claudeClean.hostFailure, null);
 });
 
 for (const mode of ['reroute-away', 'reroute-back', 'reroute-return-only', 'reroute-foreign', 'reroute-same']) {

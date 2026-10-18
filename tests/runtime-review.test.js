@@ -54,7 +54,7 @@ function validateSchemas(cases, directory) {
 // A continued lead's schema names the findings pending closure; by default the fixture reviewer closes each of them.
 function assessment(options, dimensions = DIMENSIONS.code, findings = [], closures) {
   const pending = options.schema.properties.closures?.items.properties.id.enum ?? [];
-  const report = { requestId: options.schema.properties.requestId.enum[0], status: 'complete', coverage: dimensions.map(dimension => ({ dimension, evidence: 'Assessed both concrete paths' })), findings, probes: [], summary: 'Fixture assessment completed' };
+  const report = { requestId: options.schema.properties.requestId.enum[0], status: 'complete', coverage: dimensions.map(dimension => ({ dimension, evidence: 'Assessed both concrete paths' })), findings, probes: [], summary: 'Fixture assessment completed', toolFailure: '' };
   if (options.schema.properties.closures) report.closures = closures ?? pending.map(id => ({ id, closed: true, evidence: 'The repair resolves the fixture finding' }));
   return report;
 }
@@ -79,7 +79,7 @@ test('skeptic producer schemas bind assigned ids and count while consumer valida
   const directory = path.join(f.root, '.tmp/schema');
   const ids = ['first-request:claim', 'second-request:claim'];
   const verdict = (id, evidence = 'Deciding fixture evidence') => ({ id, verdict: 'confirmed', evidence, value: 'Required behavior assessed independently', repairProposal: 'Correct the fixture boundary at its single caller' });
-  const report = findings => ({ requestId: 'schema-request', status: 'complete', coverage: [], findings, probes: [], summary: 'Assigned claims evaluated' });
+  const report = findings => ({ requestId: 'schema-request', status: 'complete', coverage: [], findings, probes: [], summary: 'Assigned claims evaluated', toolFailure: '' });
   const schemas = [0, 1, 2].map(count => schemaFor('skeptic', 'schema-request', ids.slice(0, count).map(id => ({ id }))));
   const duplicate = report([verdict(ids[0]), verdict(ids[0], 'Different evidence for the repeated id')]);
   const blank = report([verdict(ids[0], '')]);
@@ -641,9 +641,168 @@ test('a dispatch whose only attempt ended as an output loop records the attempt\
   assert.deepEqual(record.attempts.map(attempt => ({ status: attempt.status, tokens: attempt.tokens })), [{ status: 'failed', tokens: 30 }]);
 });
 
+const TOOL_FAILURE = 'Failed to create unified exec process: helper_unknown_error: setup refresh had errors';
+
+// A reviewer whose own tools failed, reporting it with the given status.
+function toolFailedAgent(options, status = 'incomplete') {
+  const result = mockAgent(options);
+
+  return { ...result, output: { ...result.output, status, toolFailure: TOOL_FAILURE } };
+}
+
+test('a reviewer reporting a tool failure passes the dispatch to the next candidate, whatever its status', async t => {
+  for (const status of ['incomplete', 'complete']) {
+    // Arrange
+    const f = fixture(t);
+    const hosts = [];
+
+    // Act
+    const result = await dispatchReview(f.root, { ...f, candidates: [{ host: 'codex', model: 'gpt-6-sol', effort: 'high' }, ...f.candidates], substitutionReason: 'Preferred reviewer could not use its tools' }, { runAgent: options => {
+      hosts.push(options.host);
+      return options.host === 'codex' ? toolFailedAgent(options, status) : mockAgent(options);
+    } });
+
+    // Assert
+    assert.deepEqual(hosts, ['codex', 'claude'], status);
+    assert.deepEqual(result.receipt.attempts.map(attempt => ({ host: attempt.host, status: attempt.status, error: attempt.error, hostFailure: attempt.hostFailure })), [
+      { host: 'codex', status: 'failed', error: `The reviewer reported that its tools failed: ${TOOL_FAILURE}`, hostFailure: null },
+      { host: 'claude', status: 'complete', error: undefined, hostFailure: undefined },
+    ], status);
+  }
+});
+
+test('a tool failure on the last candidate fails the dispatch with reviewer-tools-unavailable and no receipt', async t => {
+  // Arrange
+  const f = fixture(t);
+  let requestId;
+
+  // Act
+  const failure = await dispatchReview(f.root, { ...f, onPrepared: request => { requestId = request.id; } }, { runAgent: options => toolFailedAgent(options) }).then(() => null, error => error);
+  const directory = path.join(f.root, '.nightshift/runs/reviews', requestId);
+  const record = JSON.parse(fs.readFileSync(path.join(directory, 'failure.json'), 'utf8'));
+
+  // Assert
+  assert.equal(failure?.code, 'reviewer-tools-unavailable');
+  assert.match(failure.message, /setup refresh had errors/);
+  assert.deepEqual({ code: record.code, sessionFailed: record.sessionFailed, attempts: record.attempts.length }, { code: 'reviewer-tools-unavailable', sessionFailed: undefined, attempts: 1 });
+  assert.equal(fs.existsSync(path.join(directory, 'receipt.json')), false);
+});
+
+test('a reported tool failure is named before any content check of the report', () => {
+  // Arrange
+  const lead = { id: 'request', kind: 'code', dimensions: DIMENSIONS.code };
+  const skeptic = { id: 'request', kind: 'skeptic', findings: [{ id: 'a' }], dimensions: DIMENSIONS.code };
+  const base = { requestId: 'request', summary: 'Could not read the copy', coverage: [], findings: [], probes: [], toolFailure: TOOL_FAILURE };
+  const cases = {
+    partialCoverage: [{ ...base, status: 'complete' }, lead],
+    blankSummary: [{ ...base, status: 'incomplete', summary: ' ' }, lead],
+    blankSkepticEvidence: [{ ...base, status: 'complete', findings: [{ id: 'a', verdict: 'unverified', evidence: '', value: '', repairProposal: '' }] }, skeptic],
+  };
+
+  // Act and assert
+  for (const [name, [report, request]] of Object.entries(cases)) assert.throws(() => validateReport(report, request), { code: 'reviewer-tools-unavailable', message: new RegExp(`tools failed: ${TOOL_FAILURE}`) }, name);
+});
+
+test('a resumed reviewer whose tool-failed report is also incomplete in content is resume-failed naming the failure', async t => {
+  // Arrange
+  const f = fixture(t);
+  const continuation = { kind: 'resumed', requestId: '00000000-0000-4000-8000-000000000001', lineage: '00000000-0000-4000-8000-000000000001', session: 'earlier-session' };
+
+  // Act
+  const failure = await dispatchReview(f.root, { ...f, continuation }, { runAgent: options => {
+    const result = mockAgent(options);
+    return { ...result, output: { ...result.output, status: 'complete', coverage: [], toolFailure: TOOL_FAILURE } };
+  } }).then(() => null, error => error);
+
+  // Assert
+  assert.equal(failure?.code, 'resume-failed');
+  assert.match(failure.message, new RegExp(`^Resuming session earlier-session failed: The reviewer reported that its tools failed: ${TOOL_FAILURE}`));
+});
+
+test('a report without its toolFailure statement is refused', () => {
+  // Arrange
+  const request = { id: 'request', kind: 'code', dimensions: DIMENSIONS.code };
+  const report = { requestId: 'request', status: 'incomplete', summary: 'Fixture', coverage: [], findings: [], probes: [] };
+
+  // Act and assert
+  for (const toolFailure of [undefined, null, 7]) assert.throws(() => validateReport({ ...report, toolFailure }, request), { code: 'invalid-result' }, String(toolFailure));
+  assert.equal(validateReport({ ...report, toolFailure: '' }, request).status, 'incomplete');
+});
+
+test('a failed attempt names the failure its host reported, once, in its error and record', async t => {
+  // Arrange
+  const f = fixture(t);
+  let requestId;
+  const reported = 'unexpected status 401 Unauthorized: Incorrect API key provided';
+
+  // Act
+  const failure = await dispatchReview(f.root, { ...f, onPrepared: request => { requestId = request.id; } }, { runAgent: options => ({ ...mockAgent(options), status: 'failed', hostFailure: reported }) }).then(() => null, error => error);
+  const record = JSON.parse(fs.readFileSync(path.join(f.root, '.nightshift/runs/reviews', requestId, 'failure.json'), 'utf8'));
+
+  // Assert
+  assert.equal(failure?.code, 'unusable-review');
+  assert.equal(failure.message, `Host did not return an attributable completed assessment; the host reported: ${reported}`);
+  assert.deepEqual({ error: record.attempts[0].error, hostFailure: record.attempts[0].hostFailure }, { error: failure.message, hostFailure: reported });
+});
+
+test('a host failure carried on a thrown runner error reaches the attempt error once, on a fresh dispatch and a resume', async t => {
+  // Arrange
+  const reported = 'fixture request rejected: thread not found';
+  // A started runner whose request the host rejected, as runCodex throws it: the host's text rides on the error, not in its message.
+  const rejected = method => options => {
+    options.onProcess(999999);
+    throw Object.assign(new Error(`Host request ${method} failed`), { descendantsReclaimed: true, hostFailure: reported });
+  };
+  const outcomes = {};
+
+  // Act
+  for (const [name, continuation, method] of [['fresh', undefined, 'thread/start'], ['resumed', { kind: 'resumed', requestId: '00000000-0000-4000-8000-000000000002', lineage: '00000000-0000-4000-8000-000000000002', session: 'earlier-session' }, 'thread/resume']]) {
+    const f = fixture(t);
+    let requestId;
+    const failure = await dispatchReview(f.root, { ...f, candidates: [{ host: 'codex', model: 'gpt-6-sol', effort: 'high' }], continuation, onPrepared: request => { requestId = request.id; } }, { runAgent: rejected(method) }).then(() => null, error => error);
+    const record = JSON.parse(fs.readFileSync(path.join(f.root, '.nightshift/runs/reviews', requestId, 'failure.json'), 'utf8'));
+    outcomes[name] = { failure, record };
+  }
+
+  // Assert
+  assert.equal(outcomes.fresh.failure.message, `Host request thread/start failed; the host reported: ${reported}`);
+  assert.equal(outcomes.resumed.failure.code, 'resume-failed');
+  assert.equal(outcomes.resumed.failure.message, `Resuming session earlier-session failed: Host request thread/resume failed; the host reported: ${reported}`);
+  assert.deepEqual(outcomes.fresh.record.attempts.map(attempt => ({ error: attempt.error, hostFailure: attempt.hostFailure })), [{ error: outcomes.fresh.failure.message, hostFailure: reported }]);
+  assert.deepEqual(outcomes.resumed.record.attempts.map(attempt => ({ error: attempt.error, hostFailure: attempt.hostFailure })), [{ error: `Host request thread/resume failed; the host reported: ${reported}`, hostFailure: reported }]);
+  for (const { failure } of Object.values(outcomes)) assert.equal(failure.message.split('the host reported:').length, 2);
+});
+
+test('a failed failure.json write keeps the dispatch\'s own error and names the write failure', async t => {
+  // Arrange
+  const f = fixture(t);
+
+  // Act
+  const failure = await dispatchReview(f.root, f, { runAgent: options => ({ ...mockAgent(options), status: 'failed' }), writeJson: () => { throw Object.assign(new Error('ENOSPC: no space left on device'), { code: 'ENOSPC' }); } }).then(() => null, error => error);
+
+  // Assert
+  assert.equal(failure?.code, 'unusable-review');
+  assert.match(failure.message, /^Host did not return an attributable completed assessment; recording failure\.json failed: ENOSPC/);
+});
+
+test('receipt import refuses a native report that names a tool failure', async t => {
+  // Arrange
+  const f = fixture(t);
+  const { receiptFile, receipt } = await dispatchReview(f.root, f, { runAgent: mockAgent });
+  const eventFile = path.join(f.root, receipt.eventFile);
+  const events = fs.readFileSync(eventFile, 'utf8').trim().split('\n').map(line => JSON.parse(line));
+  const result = events.findLast(event => event.type === 'result');
+  result.structured_output = { ...result.structured_output, toolFailure: TOOL_FAILURE };
+  fs.writeFileSync(eventFile, events.map(event => JSON.stringify(event)).join('\n') + '\n');
+  fs.writeFileSync(receiptFile, JSON.stringify({ ...receipt, eventHash: hash(fs.readFileSync(eventFile)) }));
+
+  // Act and assert
+  assert.throws(() => readReceipt(f.root, path.relative(f.root, receiptFile).split(path.sep).join('/'), { id: f.runId, controller: { session: 'controller' } }, f.taskId), { code: 'changed-result', message: /names a tool failure/ });
+});
+
 test('skeptic reports must address every finding; missing evidence stays unverified', () => {
   const request = { id: 'request', kind: 'skeptic', findings: [{ id: 'a' }, { id: 'b' }] };
-  const report = { requestId: 'request', status: 'complete', summary: 'Evidence unavailable for one claim', coverage: [], findings: [{ id: 'a', verdict: 'refuted', evidence: 'Concrete counterexample', value: 'Skip false claim' }] };
+  const report = { requestId: 'request', status: 'complete', summary: 'Evidence unavailable for one claim', toolFailure: '', coverage: [], findings: [{ id: 'a', verdict: 'refuted', evidence: 'Concrete counterexample', value: 'Skip false claim' }] };
   assert.throws(() => validateReport(report, request), { code: 'missing-validation' });
   report.findings.push({ id: 'b', verdict: 'unverified', evidence: 'Missing executable dependency', value: 'Need evidence before disposition' });
   assert.equal(validateReport(report, request).findings[1].verdict, 'unverified');

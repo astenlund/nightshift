@@ -122,7 +122,7 @@ function agent(calls, dimensions, findings = []) {
   return options => {
     calls.push(options);
     fs.mkdirSync(options.artifacts, { recursive: true });
-    const report = { requestId: options.schema.properties.requestId.enum[0], status: 'complete', coverage: dimensions.map(dimension => ({ dimension, evidence: 'Assessed the change' })), findings, probes: [], summary: 'Assessment complete' };
+    const report = { requestId: options.schema.properties.requestId.enum[0], status: 'complete', coverage: dimensions.map(dimension => ({ dimension, evidence: 'Assessed the change' })), findings, probes: [], summary: 'Assessment complete', toolFailure: '' };
     const session = `agent-session-${calls.length}`;
     const events = [{ type: 'assistant', session_id: session, message: { model: options.model, content: [] } }, { type: 'result', session_id: session, subtype: 'success', is_error: false, structured_output: report }];
     fs.writeFileSync(path.join(options.artifacts, 'events.jsonl'), events.map(event => JSON.stringify(event)).join('\n') + '\n');

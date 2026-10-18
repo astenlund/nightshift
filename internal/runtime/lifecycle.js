@@ -10,7 +10,7 @@ const { requireCondition, text } = require('./store');
 const { changedPaths, fileSha256, fresh, freshAll, hash, inventorySnapshot, outsideGitWorktree, projectFile, projectInventory, snapshot } = require('./evidence');
 const { exhaustedLimit } = require('./limits');
 const { CLOSING_TARGET, unknownActionMessage } = require('./actions');
-const { latestDispatchOf, lineageOf } = require('./continuation');
+const { closureRoute, latestDispatchOf, lineageOf } = require('./continuation');
 const { scratchFailure, scratchStatus } = require('./scratch');
 const { isReviewContext, requireDelivery, recordKind } = require('./records');
 const { validReportDelivery } = require('./report-delivery');
@@ -524,19 +524,23 @@ function freshAssessmentTask(state, task, kind, target) {
 
 // What a target's review needs next, in order: validation and disposition, then repairs, then closures by resuming the reviewers that
 // raised the repaired findings, then a fresh assessment of each kind whose latest assessment is a continued one. resumeTargets names
-// the dispatch to resume, and the task it belongs to, for each lineage owing closures. After a task's repair, freshTargets names the
-// fresh assessments due because the repair left a latest assessment of another review kind, of this or any other task, predating it
-// and no longer matching current inputs: one its gate accepts and finds stale, or any other whose reviewed inputs changed. Such a
-// reviewer has nothing to close, so it is not resumed. Each entry gives the kind, the task to dispatch it on, the tasks whose stale
-// gates it covers, the stale assessments and whether the dispatch reopens a completed task. The raising reviewers reassess their own
-// kinds, and a closing repair reopens no task, so neither adds fresh targets. Fresh targets depend on freshness: a lightweight brief
-// marks them unevaluated.
+// the dispatch to resume, the task it belongs to and whether to resume or replace it, for each lineage owing closures. After a task's
+// repair, freshTargets names the fresh assessments due because the repair left a latest assessment of another review kind, of this or
+// any other task, predating it and no longer matching current inputs: one its gate accepts and finds stale, or any other whose reviewed
+// inputs changed. Such a reviewer has nothing to close, so it is not resumed. Each entry gives the kind, the task to dispatch it on, the
+// tasks whose stale gates it covers, the stale assessments and whether the dispatch reopens a completed task. The raising reviewers
+// reassess their own kinds, and a closing repair reopens no task, so neither adds fresh targets. Fresh targets depend on freshness: a
+// lightweight brief marks them unevaluated.
 function reviewProgress(root, state, target, options = {}) {
   const findings = target.findings;
   const latest = latestByKind(target);
   const freshDue = [...latest].filter(([, review]) => review.continues).map(([kind]) => kind);
   const owing = [...new Set(findings.filter(finding => finding.pendingClosure).map(finding => finding.pendingClosure.lineage))];
-  const resumeTargets = owing.map(lineage => ({ requestId: latestDispatchOf(root, state, target, lineage), taskId: target.id, lineage, reason: 'pending-closure' }));
+  const resumeTargets = owing.map(lineage => {
+    const requestId = latestDispatchOf(root, state, target, lineage);
+
+    return { requestId, taskId: target.id, lineage, reason: 'pending-closure', continue: requestId ? closureRoute(root, state, requestId) : 'resume' };
+  });
   const repair = target.kind === 'closing' ? null : latestRepair(target);
   const evaluateStale = repair !== null && repair.revision >= 0;
   let freshTargets = [];
