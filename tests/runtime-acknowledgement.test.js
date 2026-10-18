@@ -153,6 +153,108 @@ for (const variant of ['missing', 'bom', 'malformed', 'wrong-session']) {
   });
 }
 
+// Fixture bounds that make a small history stand in for one past the real 64 MiB window.
+const SMALL = { windowBytes: 4096, firstLineBytes: 1024 };
+
+// A history whose acknowledgement row sits after `before` filler bytes and before `after` filler bytes, written as raw lines so a test
+// can place an invalid byte or a BOM where the window does not reach.
+function sizedNativeFile(value, state, { before = 0, after = 0, prefix = Buffer.alloc(0), metaPad = 0, messageId = randomUUID() } = {}) {
+  const text = 'Handover accepted: Honor the fixture scope and its limits. You can leave.';
+  const timestamp = new Date().toISOString();
+  const acknowledgement = value.actor.host === 'claude'
+    ? { type: 'assistant', sessionId: value.actor.session, cwd: state.root, uuid: randomUUID(), timestamp, isSidechain: false, message: { role: 'assistant', model: 'fixture-model', content: [{ type: 'text', text }] } }
+    : { type: 'response_item', timestamp, payload: { type: 'message', ...(messageId ? { id: messageId } : {}), role: 'assistant', phase: 'commentary', content: [{ type: 'output_text', text }] } };
+  const filler = bytes => {
+    const lines = [];
+    for (let total = 0, index = 0; total < bytes; index++) {
+      const line = JSON.stringify({ type: 'filler', index, pad: 'x'.repeat(200) }) + '\n';
+      lines.push(line);
+      total += line.length;
+    }
+    return lines.join('');
+  };
+  const meta = value.actor.host === 'codex' ? JSON.stringify({ type: 'session_meta', payload: { id: value.actor.session, cwd: state.root, pad: 'm'.repeat(metaPad) } }) + '\n' : '';
+  const file = value.actor.host === 'claude'
+    ? path.join(value.profile, 'projects', state.root.replace(/[^a-zA-Z0-9]/g, '-'), value.actor.session + '.jsonl')
+    : path.join(value.profile, 'sessions/2026/10/18', 'rollout-fixture-' + value.actor.session + '.jsonl');
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, Buffer.concat([Buffer.from(meta), prefix, Buffer.from(filler(before) + JSON.stringify(acknowledgement) + '\n' + filler(after))]));
+  return file;
+}
+
+function acceptedState(t, host) {
+  const value = fixture(t, host);
+  const store = new RunStore(value.root, { create: true });
+  let state;
+  try { state = store.create(value.request); } finally { store.close(); }
+  const earlier = new Date(Date.now() - 1000).toISOString();
+  state.acknowledgement.renewedAt = earlier;
+  state.acknowledgement.requiredAfter = earlier;
+  return { value, state, read: (bounds = SMALL) => readAcknowledgementFromProfile(state, fs.realpathSync.native(value.profile), bounds) };
+}
+
+for (const host of ['claude', 'codex']) {
+  test(`${host} finds a recent acknowledgement in the final window of a history past the read bound`, t => {
+    // Arrange
+    const { value, state, read } = acceptedState(t, host);
+    const file = sizedNativeFile(value, state, { before: 5 * SMALL.windowBytes, after: 512 });
+
+    // Act
+    const observation = read();
+
+    // Assert
+    assert.ok(fs.statSync(file).size > 5 * SMALL.windowBytes);
+    assert.equal(observationCurrent(state, observation), true);
+  });
+
+  test(`${host} reports an acknowledgement before the window as missing, not as unavailable history`, t => {
+    // Arrange
+    const { value, state, read } = acceptedState(t, host);
+    sizedNativeFile(value, state, { before: 512, after: 3 * SMALL.windowBytes });
+
+    // Act and assert
+    assert.equal(read(), null);
+  });
+
+  test(`${host} checks encoding over the bytes it reads: an invalid byte before the window passes, a BOM at the start does not`, t => {
+    // Arrange
+    const invalid = acceptedState(t, host);
+    sizedNativeFile(invalid.value, invalid.state, { prefix: Buffer.from([255, 10]), before: 3 * SMALL.windowBytes });
+    const bom = acceptedState(t, host);
+    const file = sizedNativeFile(bom.value, bom.state, { before: 3 * SMALL.windowBytes });
+    fs.writeFileSync(file, Buffer.concat([Buffer.from([239, 187, 191]), fs.readFileSync(file)]));
+
+    // Act and assert
+    assert.equal(observationCurrent(invalid.state, invalid.read()), true);
+    assert.throws(() => bom.read(), { code: 'acknowledgement-source-unavailable' });
+  });
+}
+
+test('an oversized Codex rollout whose first line exceeds its bound is unavailable history', t => {
+  // Arrange
+  const { value, state, read } = acceptedState(t, 'codex');
+  sizedNativeFile(value, state, { metaPad: 2 * SMALL.firstLineBytes, before: 3 * SMALL.windowBytes });
+
+  // Act and assert
+  assert.throws(() => read(), { code: 'acknowledgement-source-unavailable', message: /first line exceeds/ });
+});
+
+test('a Codex message without its own id keeps its byte-offset identity across a whole read and a tail read after growth', t => {
+  // Arrange
+  const { value, state, read } = acceptedState(t, 'codex');
+  const file = sizedNativeFile(value, state, { before: 1024, messageId: null });
+
+  // Act
+  const whole = read({});
+  fs.appendFileSync(file, Array.from({ length: 40 }, (_, index) => JSON.stringify({ type: 'filler', index, pad: 'y'.repeat(200) }) + '\n').join(''));
+  const tail = read({ windowBytes: fs.statSync(file).size - 512, firstLineBytes: SMALL.firstLineBytes });
+
+  // Assert
+  assert.match(whole.source.messageId, /^offset:\d+$/);
+  assert.equal(tail.source.messageId, whole.source.messageId);
+  assert.equal(tail.source.eventSha256, whole.source.eventSha256);
+});
+
 for (const previous of ['absent', 'failed']) {
   test(`acceptance replay reconciles acknowledgement after ${previous} continuation`, async t => {
     const value = fixture(t, 'claude');
