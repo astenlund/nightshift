@@ -8,6 +8,8 @@ Readiness and graduation are not approval. Agree meaningful commitments through 
 
 Backlog prose is one paragraph or one bullet per physical line, never hard-wrapped at a column: a search hit then shows the whole entry, the parsers anchor on whole lines, and an edit shows as one changed line instead of a reflowed block. `/nightshift:ready` reports a hard-wrapped file as a notice so it can receive a scoped repair before handover.
 
+**Before adding an entry, look for a feature to fold it into.** If an active feature in `FEATURES.md` would remove or rewrite the lines the fix touches, so that the fix would not survive the feature in its current form, add the fix as one line under that feature record's `## Carried fixes` heading, giving the observed failure, its location, what the replacement must do and a link to the evidence, and create no entry here. A feature that merely touches the same module does not qualify, and neither does an Exploring draft, which has not settled what it replaces. A repeat adds a date to that line, never a paragraph. A tenuous match, or a feature invented so there is somewhere to fold into, means an entry here as before. A defect that blocks runs now gets the smallest stopgap, noted on its carried line, without an entry of its own. `FEATURES.md` describes how carried fixes ship and what happens to them when a feature is retired.
+
 ## Requires lines
 
 **Every open bug entry carries a `**Requires:**` line** declaring what must be in place before the fix can land. Comma-separated on one physical line, same shape as `FEATURES.md` (the parser joins a wrapped line, but the line discipline above forbids wrapping):

@@ -5,7 +5,9 @@
 // .nightshift/ indexes (QUICK_WINS.md, FEATURES.md, BUGS.md), resolves each
 // entry's **Requires:** line (in-backlog links) and optional **External:**
 // line (external primitives), expands sliced features into per-slice work
-// units, scans each linked breakout file for a stray dependency line, reports
+// units, scans each linked breakout file for a stray dependency line, counts
+// the fixes a ready feature's record carries (`carriedFixes`, present when
+// nonzero) and reports an Exploring draft whose record carries any, reports
 // any dependency line on a quick win (quick wins are always ready), and
 // emits a JSON report on stdout:
 //
@@ -77,6 +79,10 @@ const HEADING = /^#{2,3} /;
 const BULLET = /^- /;
 const ANALYSIS_EVIDENCE = Symbol('analysisEvidence');
 const LINKED_ENTRIES = Symbol('linkedEntries');
+const READY_UNITS = Symbol('readyUnits');
+const CARRIED_FIXES_TITLE = 'carried fixes';
+const CARRIED_FIX_BULLET = /^[-*+][ \t]+\S/;
+const THEMATIC_BREAK = /^(?:(?:\*[ \t]*){3,}|(?:-[ \t]*){3,}|(?:_[ \t]*){3,})$/;
 
 function readCanonicalText(rootIdentity, target, observe) {
   try {
@@ -1087,8 +1093,10 @@ function addQuickWins(parsed, duplicateEntries, out) {
 
 // `draft` marks an exploring draft; `outcome` is a tracked entry's own
 // classification outcome (`structural` or `cycle`), omitted when the entry
-// resolved. Both ride on the record by presence only.
-function addBreakoutTarget(breakoutTargets, index, entry, { draft = false, outcome = null } = {}) {
+// resolved. Both ride on the record by presence only. `units` are the ready
+// work units a feature entry produced, which receive its record's carried-fix
+// count; they ride on a symbol so the target's JSON shape is unchanged.
+function addBreakoutTarget(breakoutTargets, index, entry, { draft = false, outcome = null, units = [] } = {}) {
   if (!isRepoRelativeTarget(entry.selfTarget)) {
     return;
   }
@@ -1099,6 +1107,9 @@ function addBreakoutTarget(breakoutTargets, index, entry, { draft = false, outco
   }
   if (outcome !== null) {
     target.outcome = outcome;
+  }
+  if (units.length > 0) {
+    Object.defineProperty(target, READY_UNITS, { value: units });
   }
   breakoutTargets.push(target);
 }
@@ -1198,9 +1209,11 @@ function classifyTrackedEntries(parsed, registry, cycleMembers, duplicateEntries
       // outcome is measured across this entry's own classify call, never by
       // scanning the finished errors by title (two indexes can share one).
       const errorsBefore = out.structuralErrors.length;
+      const readyBefore = out.ready.length;
       classifyTrackedEntry(index, entry, excluded, registry, out);
       const outcome = out.structuralErrors.length > errorsBefore || duplicate ? 'structural' : excluded ? 'cycle' : null;
-      addBreakoutTarget(breakoutTargets, index, entry, { outcome });
+      const units = name === 'FEATURES' ? out.ready.slice(readyBefore) : [];
+      addBreakoutTarget(breakoutTargets, index, entry, { outcome, units });
     }
   }
 }
@@ -1314,6 +1327,34 @@ function scanDependencyLines(contents) {
   return hits;
 }
 
+// The fixes a feature record carries: each bullet at column 0 under a
+// level-two ATX heading titled "Carried fixes", up to the next level-one or
+// level-two heading, outside fences and raw HTML blocks. A nested bullet,
+// continuation text and a thematic break are not fixes.
+function countCarriedFixes(contents) {
+  const records = scanMarkdown(Buffer.from(contents, 'utf8')).lines;
+  const rawHtml = sharedMaskRawHtmlBlocks(records);
+  let inSection = false;
+  let count = 0;
+  for (const record of records) {
+    if (record.opensFence || !record.outsideFence || rawHtml.has(record)) continue;
+    const heading = atxHeading(record.content);
+    if (heading !== null && heading.level <= 2) {
+      inSection = heading.level === 2 && heading.title.toLowerCase() === CARRIED_FIXES_TITLE;
+      continue;
+    }
+    if (inSection && CARRIED_FIX_BULLET.test(record.content) && !THEMATIC_BREAK.test(record.content)) count += 1;
+  }
+
+  return count;
+}
+
+function carriedFixesDraftNotice(rec, count) {
+  const noun = count === 1 ? 'fix' : 'fixes';
+
+  return `${rec.index} Exploring draft "${rec.title}" has a record (${rec.target}) carrying ${count} ${noun}; an Exploring draft cannot carry fixes, since it has not settled which code it replaces; triage each again as a quick win or bug entry, or fold it into an active feature that would remove or rewrite its lines`;
+}
+
 // Filesystem checks for breakout-file links (relative to the index dir):
 // a missing file is a notice, an unreadable target is a notice, and a
 // dependency line inside the file is a hygiene structural error that
@@ -1328,12 +1369,14 @@ function scanDependencyLines(contents) {
 // keys identities canonically, catalog mode looks the target up directly and
 // the target is its own identity; catalog mode additionally records lockstep
 // evidence segments for the analysis sidecar. Each distinct identity's
-// dependency-line scan is parsed once; every referencing entry still gets
-// its own notice and structural error from the cached results.
+// dependency-line scan and carried-fix count are parsed once; every
+// referencing entry still gets its own notice, structural error and count
+// from the cached results.
 function scanBreakoutTargetsWith(breakoutTargets, load, collectEvidence) {
   const notices = [];
   const structuralErrors = [];
   const lineHitsCache = new Map();
+  const carriedFixesCache = new Map();
   const evidence = collectEvidence ? { notices: [], structuralErrors: [] } : null;
   const pushReadNotice = (rec, code) => {
     notices.push(breakoutReadNotice(rec, code));
@@ -1361,6 +1404,15 @@ function scanBreakoutTargetsWith(breakoutTargets, load, collectEvidence) {
         if (evidence !== null) evidence.notices.push([target]);
       }
       lineHitsCache.set(identity, scanDependencyLines(contents));
+      carriedFixesCache.set(identity, countCarriedFixes(contents));
+    }
+    const carriedFixes = carriedFixesCache.get(identity);
+    if (carriedFixes > 0) {
+      for (const unit of rec[READY_UNITS] ?? []) unit.carriedFixes = carriedFixes;
+      if (rec.draft) {
+        notices.push(carriedFixesDraftNotice(rec, carriedFixes));
+        if (evidence !== null) evidence.notices.push([rec.index, target]);
+      }
     }
     const lineHits = lineHitsCache.get(identity);
     for (const hit of lineHits) {
@@ -2025,6 +2077,7 @@ module.exports = {
   extractEntries,
   findRequires,
   scanDependencyLines,
+  countCarriedFixes,
   buildRegistry,
   EXCLUDED_SECTIONS,
   collectEntryEdges,

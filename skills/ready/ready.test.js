@@ -31,6 +31,7 @@ const {
   scanUnlinkedBacklogFiles,
   scanDependencyLines,
   scanBreakoutTargets,
+  countCarriedFixes,
 } = require('./ready.js');
 const { analyzeBacklogLinks, extractLinks, headingAnchors, resolveLink } = require('../../internal/backlog-links.js');
 
@@ -352,6 +353,196 @@ test('analyzeCatalog carries parser-owned structural, breakout, cycle, and notic
     { kind: 'notices', ordinal: 0, evidencePaths: ['FEATURES.md'] },
   ]);
   assert.ok(!Object.hasOwn(result, 'breakoutTargets'));
+});
+
+test('countCarriedFixes counts column-0 bullets under level-two Carried fixes headings only', () => {
+  const record = `# Alpha
+
+## Direction
+
+- Not a carried fix.
+
+## Carried fixes
+
+- Drops quoted phrases in formatQuery; the tokenizer must keep them; [evidence](../reports/a.md).
+* Second fix, star bullet.
++ Third fix, plus bullet.
+  - A nested bullet is detail, not a fix.
+Continuation text is not a fix.
+- - -
+
+### Detail under the section
+
+- Fourth fix, still in the section.
+
+~~~md
+- A fenced bullet is not a fix.
+~~~
+
+<div>
+- A raw HTML bullet is not a fix.
+</div>
+
+## carried Fixes ##
+
+- Fifth fix, in a second section whose heading has a closing sequence.
+
+## Later
+
+### Carried fixes
+
+- A level-three heading opens no section.
+`;
+
+  assert.strictEqual(countCarriedFixes(record), 5);
+  assert.strictEqual(countCarriedFixes('# Plain\n'), 0);
+  assert.strictEqual(countCarriedFixes(`# Empty
+
+## Carried fixes
+
+Nothing carried yet.
+`), 0);
+});
+
+const CARRIED_FIXES_BACKLOG = [
+  { target: 'FEATURES.md', contents: `# Features
+
+## Area
+
+### [Alpha](features/alpha.md)
+
+**Requires:** none.
+
+### [Plain](features/plain.md)
+
+**Requires:** none.
+
+### [Blocked](features/blocked.md)
+
+**Requires:** [Alpha](features/alpha.md).
+
+### [Sliced](features/sliced.md)
+
+**Slices:**
+
+- ~~MVP. Core.~~ (Shipped.)
+- **Paging.** Adds paging.
+- **Sorting.** Adds sorting.
+
+**Requires:** none.
+
+## Exploring
+
+### [Draft](features/draft.md)
+
+A draft that would rewrite the renderer.
+
+### [Quiet draft](features/quiet.md)
+
+A draft without fixes.
+` },
+  { target: 'BUGS.md', contents: `# Bugs
+
+## Current
+
+### [Crash](bugs/crash.md)
+
+**Requires:** none.
+` },
+  { target: 'QUICK_WINS.md', contents: `# Quick wins
+
+## Current
+
+### Tidy
+
+A tidy-up.
+` },
+  { target: 'PATTERNS.md', contents: '# Patterns\n' },
+  { target: 'features/alpha.md', contents: `# Alpha
+
+## Carried fixes
+
+- One.
+- Two.
+` },
+  { target: 'features/plain.md', contents: '# Plain\n' },
+  { target: 'features/blocked.md', contents: `# Blocked
+
+## Carried fixes
+
+- One.
+` },
+  { target: 'features/sliced.md', contents: `# Sliced
+
+## Carried fixes
+
+- One.
+` },
+  { target: 'features/draft.md', contents: `# Draft
+
+## Carried fixes
+
+- One.
+- Two.
+- Three.
+` },
+  { target: 'features/quiet.md', contents: '# Quiet draft\n' },
+  { target: 'bugs/crash.md', contents: `# Crash
+
+## Carried fixes
+
+- One.
+` },
+];
+
+test('ready feature units carry their record\'s carried-fix count and an Exploring draft carrying fixes draws a notice', () => {
+  const result = analyzeCatalog(CARRIED_FIXES_BACKLOG);
+
+  assert.deepStrictEqual(result.ready.map(({ title, carriedFixes }) => [title, carriedFixes]), [
+    ['Tidy', undefined],
+    ['Alpha', 2],
+    ['Plain', undefined],
+    ['[Sliced: Paging]', 1],
+    ['[Sliced: Sorting]', 1],
+    ['Crash', undefined],
+  ]);
+  assert.ok(result.ready.filter((unit) => unit.carriedFixes === undefined).every((unit) => !Object.hasOwn(unit, 'carriedFixes')), 'a zero count is absent, not written');
+  assert.deepStrictEqual(result.blocked.map(({ title, carriedFixes }) => [title, carriedFixes]), [['Blocked', undefined]]);
+  assert.deepStrictEqual(result.exploring.map((draft) => [draft.title, Object.hasOwn(draft, 'carriedFixes')]), [['Draft', false], ['Quiet draft', false]]);
+  assert.strictEqual(result.notices.length, 1, JSON.stringify(result.notices));
+  assert.match(result.notices[0], /^FEATURES\.md Exploring draft "Draft" has a record \(features\/draft\.md\) carrying 3 fixes; an Exploring draft cannot carry fixes/);
+  assert.deepStrictEqual(result.evidence.notices, [{ kind: 'notices', ordinal: 0, evidencePaths: ['FEATURES.md', 'features/draft.md'] }]);
+  assert.deepStrictEqual(result.structuralErrors, []);
+});
+
+test('the CLI reports carried fixes like analyzeCatalog, and only the draft notice fails --check', () => {
+  const tmpRoot = path.join(__dirname, '..', '..', '.tmp', `ready-carried-fixes-${process.pid}`);
+  const backlogDir = path.join(tmpRoot, '.nightshift');
+  const writeBacklog = (items) => {
+    fs.rmSync(tmpRoot, { recursive: true, force: true });
+    for (const item of items) {
+      fs.mkdirSync(path.dirname(path.join(backlogDir, item.target)), { recursive: true });
+      fs.writeFileSync(path.join(backlogDir, item.target), item.contents);
+    }
+  };
+  const run = (...args) => spawnSync(process.execPath, [path.join(__dirname, 'ready.js'), '--development', ...args, tmpRoot], { encoding: 'utf8' });
+  try {
+    writeBacklog(CARRIED_FIXES_BACKLOG);
+    const { evidence, ...catalog } = analyzeCatalog(CARRIED_FIXES_BACKLOG);
+    const checked = run('--check');
+    assert.strictEqual(checked.status, 1);
+    assert.deepStrictEqual(JSON.parse(checked.stdout), catalog);
+
+    const withoutDraftFixes = CARRIED_FIXES_BACKLOG.map((item) => item.target === 'features/draft.md' ? { ...item, contents: '# Draft\n' } : item);
+    writeBacklog(withoutDraftFixes);
+    const clean = run('--check');
+    assert.strictEqual(clean.status, 0, clean.stdout);
+    const report = JSON.parse(clean.stdout);
+    assert.deepStrictEqual(report.notices, []);
+    assert.strictEqual(findByTitle(report.ready, 'Alpha').carriedFixes, 2, 'a carried-fix count alone keeps the parse clean');
+  } finally {
+    fs.rmSync(tmpRoot, { recursive: true, force: true });
+  }
 });
 
 test('analyzeCatalog preserves recursively discovered nested catalog identities in evidence', () => {
