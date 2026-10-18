@@ -445,6 +445,22 @@ Establish the cause and, while it is unknown, consider having a Claude controlle
 
 **Requires:** none.
 
+### A host result without termination evidence can still yield a receipt
+
+Found on 2026-10-18 by skeptic `532ca537` in run `5b9cc37c-fd38-48f2-98d6-6e5f20594a99`, the 3.3.13 delivery, outside that change. `dispatchReview` in `internal/runtime/review.js` refuses a receipt with `termination-unverified` only when the host result reports `exit.descendantsReclaimed === false`; a result whose termination evidence is null or absent passes that check and can produce a receipt although termination was never proven, and only the cleanup afterwards treats it as unproven. On the verified Windows target every reviewer runs in a job that reports true or false, so the path is reachable only with `directProcess`, which the tests use, or on unverified operating systems; its practical relevance is unverified. The user chose at the run's triage on 2026-10-18 to track it as a low-priority bug.
+
+Require positive termination evidence before a receipt, mapping a missing reading to the cautious outcome, or record why runners off the Windows job path are exempt. Runtime changes ship with a version increase. Tracking does not authorize implementation.
+
+**Requires:** none.
+
+### Claude reviewers read outside their private review copy
+
+Observed on 2026-10-18 in run `5b9cc37c-fd38-48f2-98d6-6e5f20594a99`, the 3.3.13 delivery. Each dispatch gives its reviewer a private copy of the project; Codex reviewers run in a read-only sandbox on it, while Claude reviewers run with Read, Glob and Grep and no sandbox. The read-only sandbox governs writes, and no record shows that it confines a Codex reviewer's reads to the copy, so that half is unchecked; the rule not to read earlier copies is prompt-level on both hosts. Docs reviewer `49234f9e` cited the live repository's `.nightshift/runs/state.sqlite` ("54 saved revisions" of a follow-up), `.git/logs/HEAD` and another dispatch's native events, none of which its copy holds, so a reviewer can rest an assessment on inputs the controller never supplied. Up to its triage, the run's 23 Opus attempts used 167,078,541 tokens, the three largest single dispatches 15,337,244, 21,593,155 and 28,478,536; after the controller added a rule to read only the copy to the reviewer rules text, later Opus dispatches were smaller, a comparison that is not controlled, so how much of the usage the reads caused is not established. The user chose at the run's triage on 2026-10-18 to track it as a Nightshift bug.
+
+Decide how the runtime confines Claude reviewers to their copy, for example through the reviewer prompt, permission settings or a host option, keep their read-only tools working inside it, and measure the effect on usage. Runtime changes ship with a version increase. Tracking does not authorize implementation.
+
+**Requires:** none.
+
 ## History
 
 Prior delivered work remains in [BUGS_HISTORY.md](BUGS_HISTORY.md).
