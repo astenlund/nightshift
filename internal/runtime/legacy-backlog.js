@@ -30,11 +30,20 @@ function backlogDestinationPath(destination) {
   return relative;
 }
 
+// budget.planned, when present, maps a project-relative path to bytes a caller plans to write, which are read in place of
+// the file on disk; setup uses it to check that its edits leave every certificate-bound destination unchanged.
 function targetBytes(root, relative, budget) {
   const target = projectFile(root, relative);
   const cached = budget.cache.get(relative);
   const remaining = budget.maximum - budget.bytes;
   requireCondition(remaining >= 0, 'migration-target-bound', 'Backlog target reads exceed their aggregate bound');
+  const planned = budget.planned?.get(relative);
+  if (planned) {
+    requireCondition(planned.length <= remaining, 'migration-target-bound', 'Backlog target reads exceed their aggregate bound');
+    budget.bytes += planned.length;
+
+    return planned;
+  }
   let opened;
   try { opened = stableOpenFile(root, target, { requireSingleLink: true, maxBytes: remaining }); }
   catch (error) { requireCondition(false, error.code === 'file-too-large' ? 'migration-target-bound' : 'migration-followup-target-unavailable', `Backlog target ${relative} is unavailable: ${error.message}`); }
