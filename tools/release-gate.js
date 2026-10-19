@@ -61,6 +61,57 @@ function compareVersions(a, b) {
   return 0;
 }
 
+function showFile(root, revision, file) {
+  const result = spawnSync('git', ['show', `${revision}:${file}`], { cwd: root, windowsHide: true, encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 });
+
+  return result.status === 0 ? result.stdout : null;
+}
+
+// Keeps skills/init-backlog/retired-guidance.json complete for every published version by induction (commitment 3 of
+// .nightshift/specs/setup-index-text-adjudication.md): guidance a template drops since the baseline must be listed and
+// a listed hash may not be dropped while its comparison rules stand; a new list, or new rules, must equal what the
+// history reachable from the baseline produces, which needs that history.
+function retiredGuidanceProblems(root, baseline, head) {
+  const { BACKLOG_FILES } = require('../internal/backlog-catalog');
+  const { LIST, generate, guidanceOf, serialize, templatePath, verify } = require('./retired-guidance');
+  if (showFile(root, head, templatePath('FEATURES.md')) === null) return [];
+  const parse = text => {
+    if (text === null) return null;
+    try { return JSON.parse(text); } catch { return undefined; }
+  };
+  const headList = parse(showFile(root, head, LIST));
+  if (!headList) return [`${LIST} is ${headList === null ? 'missing' : 'unreadable'} at ${head}; run node tools/retired-guidance.js --write`];
+  const headTemplates = new Map(BACKLOG_FILES.map(file => [file, showFile(root, head, templatePath(file))]));
+  const shallow = git(root, ['rev-parse', '--is-shallow-repository']).trim() === 'true';
+  const baselineList = parse(showFile(root, baseline, LIST));
+  if (!baselineList || baselineList.rules !== headList.rules) {
+    if (shallow) return [`${LIST} is new or its comparison rules changed since ${baseline}, which needs the full history to check; run the gate where history exists, as CI does`];
+    const expected = generate(root, baseline, headTemplates).list;
+
+    return serialize(expected) === serialize(headList) ? [] : [`${LIST} at ${head} differs from what the history reachable from ${baseline} produces; run node tools/retired-guidance.js --write`];
+  }
+  const problems = [];
+  for (const file of BACKLOG_FILES) {
+    const before = showFile(root, baseline, templatePath(file));
+    if (before === null || headTemplates.get(file) === null) continue;
+    let earlier;
+    try { earlier = guidanceOf(before); } catch { continue; }
+    const now = guidanceOf(headTemplates.get(file));
+    const listed = headList.retired?.[file] ?? { blocks: [], headings: [] };
+    for (const kind of ['blocks', 'headings']) {
+      for (const hash of earlier[kind]) {
+        if (!now.all.has(hash) && !listed[kind].includes(hash)) problems.push(`${templatePath(file)} drops guidance since ${baseline} that ${LIST} does not list (${kind} ${hash.slice(0, 12)}); run node tools/retired-guidance.js --write`);
+      }
+      for (const hash of baselineList.retired?.[file]?.[kind] ?? []) {
+        if (!listed[kind].includes(hash) && !now.all.has(hash)) problems.push(`${LIST} drops retired ${kind} ${hash.slice(0, 12)} of ${file} under unchanged comparison rules`);
+      }
+    }
+  }
+  if (!shallow) problems.push(...verify(root, baseline, headList, headTemplates));
+
+  return problems;
+}
+
 function evaluateRelease(root, baseline, head) {
   const problems = [];
   const changed = git(root, ['diff', '--name-only', '-z', '--no-renames', baseline, head]).split('\0').filter(Boolean);
@@ -78,6 +129,7 @@ function evaluateRelease(root, baseline, head) {
     try { require('./release-manifest').checkTree(root, head); }
     catch (error) { problems.push(`Retained release manifest is invalid: ${error.message}`); }
   }
+  problems.push(...retiredGuidanceProblems(root, baseline, head));
   return { baseline, head, changed, shipped, manifestFieldsChanged, baselineVersion: baselineManifests[0].version, headVersion: headManifests[0].version, problems };
 }
 
@@ -149,4 +201,4 @@ if (require.main === module) {
   }
 }
 
-module.exports = { GateError, evaluateRelease, isShipped, prePushRanges };
+module.exports = { GateError, evaluateRelease, isShipped, prePushRanges, retiredGuidanceProblems };

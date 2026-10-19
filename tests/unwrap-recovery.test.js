@@ -117,6 +117,7 @@ test('actual setup partial write retains originals and all read-only or opted-ou
   const inspection = cli(setup, ['inspect', f.root], f);
   succeeds(inspection);
   assert.equal(JSON.parse(inspection.stdout).status, 'unwrap-recovery-required');
+  assert.deepEqual(JSON.parse(inspection.stdout).templates, { unavailable: 'unwrap-recovery-required' });
   fs.writeFileSync(f.target, original);
   succeeds(cli(setup, ['apply', f.root, f.options], f));
   assert.deepEqual(fs.readFileSync(f.target), replacement);
@@ -145,6 +146,18 @@ for (const alteration of ['edit', 'target-substitution', 'record-substitution', 
     assert.deepEqual(fs.readFileSync(journal), journalBefore);
   });
 }
+
+test('setup inspect through the CLI reports the template differences of the current backlog', t => {
+  const f = fixture(t);
+  const LF = String.fromCharCode(10);
+  fs.writeFileSync(f.target, ['# Features', '', '## Area', '', '### [Item](features/item.md)', '', 'Body.', '', '**Requires:** none.', ''].join(LF));
+  const inspection = cli(setup, ['inspect', f.root], f);
+  succeeds(inspection);
+  const { templates } = JSON.parse(inspection.stdout);
+  assert.equal(templates.ready.ok, true);
+  const features = templates.files.find(file => file.file === 'FEATURES.md');
+  assert.ok(features.count > 0 && features.differences.some(difference => difference.kind === 'missing-section'));
+});
 
 test('oversized inputs and recovery evidence fail before mutation', t => {
   const f = fixture(t);

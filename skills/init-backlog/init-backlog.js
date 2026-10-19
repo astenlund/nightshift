@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 'use strict';
 
-const { Setup, initialize } = require('../../internal/setup');
+const { Setup, currentBacklogStatus, initialize } = require('../../internal/setup');
+const { inspectTemplates } = require('../../internal/template-text');
 const { requireCondition } = require('../../internal/runtime/store');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -12,7 +13,13 @@ function main(args = process.argv.slice(2)) {
   const options = optionsFile ? JSON.parse(fs.readFileSync(optionsFile, 'utf8').replace(/^\uFEFF/, '')) : {};
   if (action === 'apply') return initialize(root, options);
   const setup = new Setup(root);
-  try { return setup.inspect(options); } finally { setup.close(); }
+  try {
+    const result = setup.inspect(options);
+    // Template differences are computed from the current files on every inspect and never journaled.
+    const templates = result.status === 'unwrap-recovery-required' ? { unavailable: 'unwrap-recovery-required' } : inspectTemplates(root, { validate: () => currentBacklogStatus(fs.realpathSync.native(root)) });
+
+    return { ...result, templates };
+  } finally { setup.close(); }
 }
 
 if (require.main === module) {

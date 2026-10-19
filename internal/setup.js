@@ -12,6 +12,7 @@ const { UnresolvedPathError, hasUnsupportedPathLiterals, relocated, relocationMo
 const { discoverUnwrapArtifacts, recoveryDiagnostics, recoverPendingUnwrap } = require('./backlog-catalog');
 const { isLockName, acquireLock, inspectLock } = require('./unwrap-lock');
 const { RECOVERY_SUFFIX } = require('./unwrap-recovery');
+const { adjudicate, loadContext, preserveUnsafeLeftovers, requireReadableDecisions, validateDecisions } = require('./template-text');
 
 const BACKLOG_FILES = ['FEATURES.md', 'BUGS.md', 'QUICK_WINS.md', 'PATTERNS.md', 'FEATURES_HISTORY.md', 'BUGS_HISTORY.md', 'QUICK_WINS_HISTORY.md'];
 const OWNED_DIRECTORIES = ['features', 'bugs', 'patterns', 'inbox', 'plans', 'specs', 'runs'];
@@ -487,13 +488,26 @@ function unwrapBacklog(root) {
   return unwrap.json;
 }
 
+// The Ready parser's verdict on the current .nightshift backlog, for template adjudication: never throws.
+function currentBacklogStatus(root) {
+  if (!fs.existsSync(path.join(root, '.nightshift'))) return { ok: true, report: { structuralErrors: [] } };
+  try { return { ok: true, report: validateBacklog(root, '.nightshift') }; }
+  catch (error) { return { ok: false, error: error.message }; }
+}
+
 function initialize(root, options = {}) {
   requireCondition(options.unwrap === undefined || typeof options.unwrap === 'boolean', 'invalid-policy', 'unwrap must be true or false');
   root = fs.realpathSync.native(root);
   assertQuiescent(root);
+  // Decisions and the remembered-keeps file are refused before any write, migration included.
+  const templateDecisions = validateDecisions(options.templateDecisions, loadContext());
+  requireReadableDecisions(root);
   const setup = new Setup(root);
   const completed = [];
+  const templateWrites = [];
   try {
+    // Before unwrap recovery, migration or scaffolding can change a target whose earlier content only a leftover may hold.
+    const earlier = preserveUnsafeLeftovers(setup.root);
     const pending = setup.pendingUnwrap(options);
     requireCondition(options.unwrap === true || pending.length === 0, 'unwrap-recovery-required', 'Unfinished unwrap must be resolved before setup: ' + JSON.stringify(pending));
     const scope = setup.unwrapScope(options);
@@ -510,15 +524,17 @@ function initialize(root, options = {}) {
       const content = fs.readFileSync(path.resolve(__dirname, '../skills/init-backlog/templates', template), 'utf8').replace(/\r?\n/g, '\r\n');
       fs.writeFileSync(target, content, { flag: 'wx' });
     }
+    const templates = adjudicate(setup.root, templateDecisions, { validate: () => currentBacklogStatus(setup.root), earlier });
+    templateWrites.push(...templates.completed);
     if (options.unwrap === true) completed.push(...unwrapBacklog(setup.root));
     const unwrapped = options.unwrap === true ? completed : null;
     const backlog = validateBacklog(setup.root, '.nightshift');
     requireValidBacklog(backlog, '.nightshift');
-    return { migration, unwrapped, backlog };
+    return { migration, unwrapped, backlog, templates };
   } catch (error) {
-    error.completed = [...completed, ...(error.completed ?? [])];
+    error.completed = [...completed, ...templateWrites, ...(error.completed ?? [])];
     throw error;
   } finally { setup.close(); }
 }
 
-module.exports = { BACKLOG_FILES, OWNED_DIRECTORIES, Setup, assertQuiescent, initialize, inventory, rewriteReferences };
+module.exports = { BACKLOG_FILES, OWNED_DIRECTORIES, Setup, assertQuiescent, currentBacklogStatus, initialize, inventory, rewriteReferences };
