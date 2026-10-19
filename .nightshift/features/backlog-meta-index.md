@@ -22,4 +22,6 @@ Choose the file's project location and link-resolution convention. Inventory the
 
 On 2026-09-29, triaging [Ground Ready recommendations in the project's direction](ready-project-direction.md), the user suggested this file as one more place to put the project's goals or direction, in their words: "one more place to put project goals or directions might be in the shared BACKLOG.md meta-index."
 
+Since the 3.3.13 batch setup compares existing indexes with their templates and offers to remove guidance a template dropped, as [setup's template adjudication](../specs/setup-index-text-adjudication.md) describes, so guidance this file moves out of the index templates becomes retired for those indexes and existing projects are offered its removal.
+
 Tracking preserves the idea for design; it does not authorize implementation or publication.

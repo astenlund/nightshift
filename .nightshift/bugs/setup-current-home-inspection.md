@@ -23,3 +23,5 @@ The user selected tracking during migration triage. The source decision and its 
 - [Setup inspection omits current backlog completeness](../reports/v3-migration-followups-20260920.md#setup-inspection-omits-current-backlog-completeness).
 
 Tracking is not implementation authority.
+
+Since the 3.3.13 batch, inspect reports the current backlog's template differences and the Ready parser's structural errors, and apply validates the backlog before its template edits, as [setup's template adjudication](../specs/setup-index-text-adjudication.md) describes; the completeness reporting this bug asks for stays open.

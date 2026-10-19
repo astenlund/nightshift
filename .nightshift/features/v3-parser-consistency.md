@@ -41,7 +41,7 @@ The user agreed these answers on 2026-10-05, when the entry graduated from Explo
 
 ## Before implementation
 
-The change alters shipped parser, catalog and setup code, so it rides with a plugin version increase. An agreed readback is enough, and deterministic fixtures are enough evidence, since no model-owned behavior changes. Tracking and readiness do not authorize implementation.
+The change alters shipped parser, catalog and setup code, so it rides with a plugin version increase. An agreed readback is enough, and deterministic fixtures are enough evidence, since no model-owned behavior changes. Since the 3.3.13 batch, [setup's template adjudication](../specs/setup-index-text-adjudication.md) hashes backlog text through the shared block model, so a change here that alters a block's comparison text needs `COMPARISON_RULES` in `internal/template-text/document.js` increased and `node tools/retired-guidance.js --write` run, and presents projects' remembered keeps again; batch such changes. Tracking and readiness do not authorize implementation.
 
 ## Triage and provenance
 

@@ -23,3 +23,5 @@ The user selected tracking during migration triage. The source decision and its 
 - [Interrupted template creation is accepted as a complete existing file](../reports/v3-migration-followups-20260920.md#interrupted-template-creation-is-accepted-as-a-complete-existing-file).
 
 Tracking is not implementation authority.
+
+Since the 3.3.13 batch, [setup's template adjudication](../specs/setup-index-text-adjudication.md) presents the missing guidance of a scaffold truncated outside a fence as differences the user can adopt, while one cut inside a fence is reported as unreadable with no differences and a truncated title is never compared; recognizing an owned incomplete write, those cases included, stays with this bug.

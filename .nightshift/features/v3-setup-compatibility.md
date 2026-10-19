@@ -16,7 +16,7 @@ Earlier setup separated semantic repair proposals from approved publication. Gen
 
 ## Evidence and limits
 
-Current initialize skips existing targets before final parser validation and has no semantic repair proposal/apply flow. The independent audit distinguishes this missing capability from current-home inspection and recoverable-write defects.
+Current initialize skips existing targets before final parser validation. Since the 3.3.13 batch setup proposes and applies approved repairs of template guidance text, as [Setup adjudicates index text that differs from its template](../specs/setup-index-text-adjudication.md) describes, but has no proposal and apply flow for legacy guidance or general structural repair. The independent audit distinguishes this missing capability from current-home inspection and recoverable-write defects.
 
 The [FeatherPod lettered-workflow incident](../reports/inbox-triage-20260921.md#unwrapping-collapses-lettered-workflow-steps) records installed 3.2.1 joining indented a. through h. workflow steps into surrounding prose and a nested metadata bullet. Words survived but grouping became misleading; Ready reported no problems. The source used nonstandard Markdown list markers, so its classification as a supported-syntax defect remains unsettled. The original source commit and local repair are preserved in the report.
 
