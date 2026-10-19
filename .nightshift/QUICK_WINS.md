@@ -464,6 +464,18 @@ Raised by the user mid-run on 2026-10-18 in run `5b9cc37c-fd38-48f2-98d6-6e5f205
 
 Have the runtime give each imported finding a stable label such as `CB2`: a prefix of `S`, `C` or `D` by review kind, a letter per review round of that kind on the task, and a number per finding in that round. Show the label in status and reports, and have the skills use it in user-facing text beside or instead of the durable id. Runtime and skill changes ship with a version increase. Tracking does not authorize implementation.
 
+### Present every part of setup's template report
+
+Three minor findings from the code review of the 3.3.13 batch, standalone review context `2b758039-e78b-44b2-9674-ae58ea91db0c` on 2026-10-19, each confirmed by skeptic `bda2f6c4` and routed here by the user's direction that minors from the final fresh assessment go to the backlog without another review cycle. The [setup adjudication spec](specs/setup-index-text-adjudication.md) has the question for a missing section partly present elsewhere name where the present guidance sits, but inspect reports only those blocks' texts in `presentElsewhere` (`describeDifference` in `internal/template-text/index.js`), so that commitment is open (finding `present-elsewhere-location-missing`). The [init-backlog skill](../skills/init-backlog/SKILL.md) never tells the agent to present inspect's `inertKeeps`, the remembered keeps the spec says the user removes by hand, or apply's `staleCertificates`, destinations already stale before setup's edit (finding `skill-omits-inert-keeps-and-stale-certificates`). Apply refuses `replaces: null`, which the skill does not warn against (finding `replaces-null-refused`).
+
+Report each present block's section and line in `presentElsewhere` and have the skill name them; have the skill present inert keeps as entries the user may remove from `.nightshift/template-decisions.json`, and each stale destination as stale before setup's edit and able to block handover until reconciled; and say in the skill's decision shape that `replaces` is given only for a replace. Fixtures cover the new report field. The code and skill changes ship with a version increase, and the new skill wording needs an installed-host check or a not-observed-live note. Tracking does not authorize implementation.
+
+### Correct two stale clauses from the 3.3.13 batch
+
+Two minor findings from the same review, confirmed by skeptic `bda2f6c4` and routed here the same way: a parenthetical in the [setup adjudication spec](specs/setup-index-text-adjudication.md) says the fold-fixes record and history entry "now say" what they said before the change (finding `spec-stale-parenthetical`), and the Slices and scope section of [Fold fixes into the feature that replaces their code](features/fold-fixes-into-features.md) still says the AGENTS.md rule alone needs no version increase, although the rule shipped in the plugin (finding `fold-record-agents-md-remnant`).
+
+Put the parenthetical in the past tense or drop it, and drop the stale clause from the record's Slices and scope or mark that section as the original proposal. This is documentation only and needs no version increase. Tracking does not authorize implementation.
+
 ## History
 
 Prior delivered work remains in [QUICK_WINS_HISTORY.md](QUICK_WINS_HISTORY.md).
