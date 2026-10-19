@@ -23,7 +23,7 @@ Both hosts read the fixture's backlog indexes, its `NOTES.md` and `src/search.js
 
 ## Deviations and limits
 
-- The Claude carried line also links the new bug entry by its `BUGS.md` anchor, which breaks once that entry moves to history, although the features template, which that session read in full, says the carried line links its evidence rather than the entry that keeps the rest; its final message said either piece can ship first.
+- The Claude carried line also links the new bug entry by its `BUGS.md` anchor, which breaks once that entry moves to history, although the features template, which that session read in full, says the carried line links its evidence rather than the entry that keeps the rest; its final message said either piece can ship first. A later commit in the same batch added that clause where the rule is acted on, in the operating brief and the quick-wins and bugs templates; that wording has had no live run.
 - The report named both functions, so neither host had to locate the two parts in the code itself.
 - The Claude run waited for production to renew its own credential, since the harness refuses a fixture copy that could need refreshing during the session; the copy was taken after that renewal.
 - Not observed live: a split recommended during a delivery's follow-up triage, which the operating brief governs; removal of an entry's pointer when the feature ships; and a split part rejoining its entry when a feature is retired. Each case is one observation on one model.
