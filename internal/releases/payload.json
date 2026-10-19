@@ -445,8 +445,8 @@
     },
     {
       "path": "internal/workflow.md",
-      "bytes": 35434,
-      "sha256": "262c92b54d03b8f41d63242903f85805f51e6251d94aba13df7510b9e463cf26"
+      "bytes": 35526,
+      "sha256": "c47bf1ba1d5dafdcae645fccf9449f38fd18d56ffa1a3d1c0ef0e98a1b647eef"
     },
     {
       "path": "skills/exploring/SKILL.md",
@@ -475,8 +475,8 @@
     },
     {
       "path": "skills/init-backlog/templates/bugs.md",
-      "bytes": 4978,
-      "sha256": "670fb2d9420f3e2ca5ba121ff080c2548cd2a1aba468cdbfa9672b2a901051bf"
+      "bytes": 5070,
+      "sha256": "52340f9ae760bf5dbac7e071543d18d9e17fe49563cc7e815d34392997af9056"
     },
     {
       "path": "skills/init-backlog/templates/features-history.md",
@@ -500,8 +500,8 @@
     },
     {
       "path": "skills/init-backlog/templates/quick-wins.md",
-      "bytes": 3816,
-      "sha256": "08e6b6eb8c2b27cd7bc7353a434150022f19ffb5479d064808906c6469685f4c"
+      "bytes": 3908,
+      "sha256": "d86971290001242de203a803c514a37101e149a43a991318d421118cfad25833"
     },
     {
       "path": "skills/init-backlog/unwrap.js",
