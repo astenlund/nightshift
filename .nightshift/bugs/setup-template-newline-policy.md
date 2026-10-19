@@ -25,3 +25,5 @@ The user selected tracking during migration triage. The source decision and its 
 - [New setup templates ignore effective project newline policy](../reports/v3-migration-followups-20260920.md#new-setup-templates-ignore-effective-project-newline-policy).
 
 Tracking is not implementation authority.
+
+On 2026-10-19 the user chose to split this bug: the runs-exclusion `.gitignore` write described above is now a fix that [Restore fresh-scaffold track, ignore or defer choice](../features/setup-tracking-choice.md#carried-fixes) carries, since that feature removes the write, and this entry keeps the template half.
