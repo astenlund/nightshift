@@ -10,11 +10,11 @@ Evidence was examined during the 2026-09-20 migration reconciliation and [indepe
 
 ## Required outcome
 
-Materialize missing templates according to the effective supported project newline policy, keeping logical template content and existing files intact. Resolve genuine ambiguity rather than silently overriding an established convention.
+Materialize missing templates according to the effective supported project newline policy, keeping logical template content and existing files intact. Append migration's translated ignore rules to an existing `.gitignore` by the same policy. Resolve genuine ambiguity rather than silently overriding an established convention.
 
 ## Verification and related work
 
-Cover explicit LF and CRLF policies, defaults, existing files, missing targets and interruption. This concerns new-file creation, not normalization of an existing mixed-ending file.
+Cover explicit LF and CRLF policies, defaults, existing files, missing targets, migration's append to an existing `.gitignore`, including one with mixed endings, and interruption. This concerns new-file creation and that append, not normalization of an existing mixed-ending file.
 
 The related but separate [mixed-ending repair feature](../features/v3-mixed-ending-repair.md) preserves its own acceptance cases.
 
@@ -26,4 +26,4 @@ The user selected tracking during migration triage. The source decision and its 
 
 Tracking is not implementation authority.
 
-On 2026-10-19 the user chose to split this bug: the runs-exclusion `.gitignore` write described above is now a fix that [Restore fresh-scaffold track, ignore or defer choice](../features/setup-tracking-choice.md#carried-fixes) carries, since that feature removes the write, and this entry keeps the template half.
+On 2026-10-19 the user chose to split this bug: the runs-exclusion `.gitignore` write described above is now a fix that [Restore fresh-scaffold track, ignore or defer choice](../features/setup-tracking-choice.md#carried-fixes) carries, since that feature removes the write, and this entry keeps the template half. The user chose the same day to keep here as well the line ending of migration's append of translated ignore rules to an existing `.gitignore`, a write that feature keeps: `preservePolicies` picks it with the same check, without consulting Git attributes or configuration, and appends CRLF to a `.gitignore` with mixed endings instead of refusing the ambiguous write.
