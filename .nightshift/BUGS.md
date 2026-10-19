@@ -455,6 +455,14 @@ Decide how the runtime confines Claude reviewers to their copy, for example thro
 
 **Requires:** none.
 
+### Recorded checks pass the bound runtime's resource context to the commands they run
+
+Observed on 2026-10-19 in this repository, in standalone code review context `2b758039-e78b-44b2-9674-ae58ea91db0c` on the bound 3.3.12 runtime. A recorded check running `node --test tests/package.test.js tests/setup.test.js` failed, 36 setup tests refused with `resource-root-mismatch`, while the same command passes when run by hand. The check's process inherited `NIGHTSHIFT_RESOURCE_CONTEXT`, `NIGHTSHIFT_EXECUTION_MODE` and `NIGHTSHIFT_WORKER_BINDING` from the bound runtime, and the setup tests' own runs of the checkout's entries appear to take that context as theirs; this is inferred from the variables and the error, not traced. The controller recorded those tests for the rest of the session through a wrapper script under `.tmp` that removes the three variables before running `node --test`.
+
+Establish which process reads the inherited context, and whether a recorded check should run its command without the runtime's private variables or the tests should clear them, with a fixture that records a setup test as a check. Runtime changes ship with a version increase. Tracking does not authorize implementation.
+
+**Requires:** none.
+
 ## History
 
 Prior delivered work remains in [BUGS_HISTORY.md](BUGS_HISTORY.md).
