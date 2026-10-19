@@ -20,6 +20,8 @@ Use [the runtime interface](internal/runtime/REFERENCE.md) before operating a ru
 
 Project-owned Nightshift artifacts live under `.nightshift` on both hosts. Host-owned configuration stays in its required location. `CLAUDE.md` imports this file; keep repository guidance canonical here.
 
+**Current focus (set 2026-10-20).** For the time being, work in this repository goes to working through [the assessment](.nightshift/reports/assessment-20261018.md) and [its worklist](.nightshift/reports/assessment-worklist-20261018.md); the backlog is secondary until the user says otherwise. When the user invokes the `ready` skill here, remind them of this focus before presenting the ready set, and still present it. Remove this paragraph when the focus changes.
+
 Consult relevant indexes before proposing or starting related work:
 
 - [FEATURES.md](.nightshift/FEATURES.md): features and Exploring drafts, with design records under `.nightshift/features`.
