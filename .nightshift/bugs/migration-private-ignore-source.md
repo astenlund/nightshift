@@ -25,3 +25,5 @@ The user selected tracking during migration triage. The source decision and its 
 - [Migration turns private exclusions into shared ignore rules](../reports/v3-migration-followups-20260920.md#migration-turns-private-exclusions-into-shared-ignore-rules).
 
 Tracking is not implementation authority.
+
+On 2026-10-19 the user chose to fold this fix into [Restore fresh-scaffold track, ignore or defer choice](../features/setup-tracking-choice.md#carried-fixes), whose settled direction removes the writes it concerns, so it is carried there instead of tracked as a bug entry, and this record stays as its evidence.

@@ -46,3 +46,7 @@ Treat missing and empty ignore targets as normal election cases, preserving conv
 
 - [Ignore election cannot initialize a missing .gitignore](../reports/v3-migration-followups-20260920.md#ignore-election-cannot-initialize-a-missing-gitignore), whose original diagnosis is [the v2 bug record](../bugs/ignore-election-missing-gitignore.md).
 - [Restore fresh-scaffold track, ignore or defer choice](../reports/v3-migration-followups-20260920.md#restore-fresh-scaffold-track-ignore-or-defer-choice).
+
+## Carried fixes
+
+- Migration mirrors a clone-local exclusion into the shared `.gitignore`: `preservePolicies` in `internal/setup.js` appends a rule for each relocated file whose source was ignored, and `/.nightshift/runs/`, to the project's root `.gitignore`, which on 2026-10-12 put seven per-file rules and the runs rule into the tracked `.gitignore` of a shared customer repository on installed 3.3.10 without reporting it; the replacement must keep an ignored legacy source ignored after relocation without writing a rule to any shared or clone-local ignore file, through a self-ignoring `.gitignore` beside the moved content, covering local, shared and global sources, masking parent rules, tracked exceptions, interrupted relocation and reruns; see [the bug record](../bugs/migration-private-ignore-source.md). Folded here from a bug entry on 2026-10-19 at the user's choice.

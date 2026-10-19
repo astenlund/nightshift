@@ -110,14 +110,6 @@ Restore complete, truthful problem-channel reporting in the skill instructions w
 
 **Requires:** none.
 
-### [Migration turns private exclusions into shared ignore rules](bugs/migration-private-ignore-source.md)
-
-The audit private-ignore-source probe began with .git/info/exclude owning the legacy file exclusion. After migration the new destination was ignored by a root .gitignore rule. The ignored boolean survived, but its private storage choice did not. On 2026-10-12 it occurred in a real project with installed 3.3.10: in a customer repository shared with other developers, whose legacy backlog was excluded only through `.git/info/exclude`, migration silently appended per-file rules and `/.nightshift/runs/` to the tracked `.gitignore`.
-
-Preserve the effective private/shared policy choice when relocating backlog content. Do not convert clone-local exclusions into shared repository rules merely to restore an ignored flag. Cover local, shared and global sources, masking parent rules, tracked exceptions, interrupted relocation and reruns. Distinguish preservation of an existing choice from choosing a destination for new exclusions. Since 2026-10-04 the agreed direction is that Nightshift ignores content only through self-ignoring folders, which setup does not follow yet, so a fix can restore an ignored flag that way rather than through any shared rule. [The report](bugs/migration-private-ignore-source.md) preserves evidence and related work. Tracking does not authorize implementation.
-
-**Requires:** none.
-
 ### [New setup templates ignore effective project newline policy](bugs/setup-template-newline-policy.md)
 
 In the audit git-newline-policy probe Git reported text:set and eol:lf, but new FEATURES.md bytes used CRLF. Current initialize converts template text unconditionally to CRLF.
@@ -296,7 +288,7 @@ Reported from an init-backlog run in another project on 2026-09-11. The original
 
 Treat this as a robustness gap: classify a directory containing tracked files as visible regardless of the probe result, avoid the `--no-index` plus trailing-slash combination, and add a fixture asserting that a directory with tracked children is never reported as ignored. The full observation record is in [`bugs/init-backlog-check-ignore-directory-false-positive.md`](bugs/init-backlog-check-ignore-directory-false-positive.md).
 
-Recurred on 2026-10-07 in `C:/Git/McpTools` on installed 3.3.9, reported to the maintainer inbox, with a new trigger for the source flag: `.git/info/exclude` held a blanket `.claude/` rule while `.claude/features/` held three tracked files, and inspect and apply both reported that directory as ignored, since `--no-index` disregards the index. `preservePolicies` writes an ignored source's destination into the root `.gitignore` unless the destination already reads as ignored, and here it read as ignored only through the CRLF blank-line false positive above, so apply added only `/.nightshift/runs/`. With an LF `.gitignore` apply would, by the report's unreproduced hypothesis, have written `/.nightshift/features/` and hidden every later feature file; the mirroring itself is the concern of [Migration turns private exclusions into shared ignore rules](#migration-turns-private-exclusions-into-shared-ignore-rules). The user chose at inbox triage on 2026-10-11 to record it here.
+Recurred on 2026-10-07 in `C:/Git/McpTools` on installed 3.3.9, reported to the maintainer inbox, with a new trigger for the source flag: `.git/info/exclude` held a blanket `.claude/` rule while `.claude/features/` held three tracked files, and inspect and apply both reported that directory as ignored, since `--no-index` disregards the index. `preservePolicies` writes an ignored source's destination into the root `.gitignore` unless the destination already reads as ignored, and here it read as ignored only through the CRLF blank-line false positive above, so apply added only `/.nightshift/runs/`. With an LF `.gitignore` apply would, by the report's unreproduced hypothesis, have written `/.nightshift/features/` and hidden every later feature file; the mirroring itself is the concern of [Migration turns private exclusions into shared ignore rules](bugs/migration-private-ignore-source.md), a fix that [Restore fresh-scaffold track, ignore or defer choice](features/setup-tracking-choice.md#carried-fixes) carries. The user chose at inbox triage on 2026-10-11 to record it here.
 
 **Requires:** none.
 
