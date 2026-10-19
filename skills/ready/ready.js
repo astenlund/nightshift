@@ -972,6 +972,17 @@ function hardWrapNotice(label, contents) {
   return `${label} has ${wraps.length} hard-wrapped ${noun} (first at line ${wraps[0].line}); backlog prose is one paragraph or bullet per physical line; run the bundled skills/init-backlog/unwrap.js on the named backlog file to unwrap`;
 }
 
+// The entry grammar extractEntries applies to a work index: which sections hold no work, whether column-0 bullets are
+// entries, and which excluded sections still collect drafts. Setup reads it to keep template edits outside entries.
+function entryGrammar(name) {
+  return {
+    excluded: EXCLUDED_SECTIONS[name] ?? [],
+    bullets: name === 'QUICK_WINS',
+    noticeProse: name === 'QUICK_WINS',
+    collectSections: name === 'FEATURES' ? [EXPLORING_SECTION] : [],
+  };
+}
+
 function parseIndexes(files, out) {
   const parsed = {};
   for (const name of WORK_INDEX_NAMES) {
@@ -982,11 +993,8 @@ function parseIndexes(files, out) {
     out.indexes.found.push(`${name}.md`);
     const notice = hardWrapNotice(`${name}.md`, files[name]);
     if (notice !== null) pushNotice(out, notice, [`${name}.md`]);
-    parsed[name] = extractEntries(files[name], EXCLUDED_SECTIONS[name], {
-      bullets: name === 'QUICK_WINS',
-      noticeProse: name === 'QUICK_WINS',
-      collectSections: name === 'FEATURES' ? [EXPLORING_SECTION] : [],
-    });
+    const grammar = entryGrammar(name);
+    parsed[name] = extractEntries(files[name], grammar.excluded, grammar);
   }
   if (files.PATTERNS !== undefined && files.PATTERNS !== null) {
     out.indexes.found.push('PATTERNS.md (registry only, not parsed for work items)');
@@ -2066,6 +2074,7 @@ function formatCycle(cycle, cycleEdges, nodeToRec) {
 
 module.exports = {
   analyze,
+  entryGrammar,
   stripStable,
   normalizeSliceName,
   normalizeTitle,
