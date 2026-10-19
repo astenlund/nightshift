@@ -445,8 +445,8 @@
     },
     {
       "path": "internal/workflow.md",
-      "bytes": 35526,
-      "sha256": "c47bf1ba1d5dafdcae645fccf9449f38fd18d56ffa1a3d1c0ef0e98a1b647eef"
+      "bytes": 35759,
+      "sha256": "83475e9a6486594869385451f91093a1e471bab7ce8d4c86174b897f35d7e94e"
     },
     {
       "path": "skills/exploring/SKILL.md",
@@ -475,8 +475,8 @@
     },
     {
       "path": "skills/init-backlog/templates/bugs.md",
-      "bytes": 5070,
-      "sha256": "52340f9ae760bf5dbac7e071543d18d9e17fe49563cc7e815d34392997af9056"
+      "bytes": 5166,
+      "sha256": "b0873c711228de877ebaec1040b0cc3c9a695570f9aaa01962e60630cbbe14ab"
     },
     {
       "path": "skills/init-backlog/templates/features-history.md",
@@ -485,8 +485,8 @@
     },
     {
       "path": "skills/init-backlog/templates/features.md",
-      "bytes": 14190,
-      "sha256": "785814a8105b96648610a1f224d6725fc40cbf43387a3aa980568164e453a895"
+      "bytes": 14675,
+      "sha256": "4d26fac99b44b32e5d3fa6fe4aa9511789a7b58cbf1dee3cb6d2caf43359a614"
     },
     {
       "path": "skills/init-backlog/templates/patterns.md",
@@ -500,8 +500,8 @@
     },
     {
       "path": "skills/init-backlog/templates/quick-wins.md",
-      "bytes": 3908,
-      "sha256": "d86971290001242de203a803c514a37101e149a43a991318d421118cfad25833"
+      "bytes": 4004,
+      "sha256": "57da1c1677d2ef8176567afd4c157e3f4b0d708cdf3be85810d7afa07cd89451"
     },
     {
       "path": "skills/init-backlog/unwrap.js",
@@ -510,8 +510,8 @@
     },
     {
       "path": "skills/ready/SKILL.md",
-      "bytes": 3838,
-      "sha256": "2b4c6a08cf7e1ed1f96ecf87f4f974551e478233b4853bded0dc87ecc5eea630"
+      "bytes": 4065,
+      "sha256": "72d8edafe7f99d7dbc0c62433077942d3b78f35144cb9729cd02f17decd1475c"
     },
     {
       "path": "skills/ready/ready.js",
@@ -525,8 +525,8 @@
     },
     {
       "path": "skills/revise-docs/SKILL.md",
-      "bytes": 3818,
-      "sha256": "fd1f390594601e05c5dba41841a7df748464314764079991124caf382773b490"
+      "bytes": 3924,
+      "sha256": "39b87b6e7eef4a2e6d2d2a3f828c2268e52c32fbee87fa24ef06a3679d7244b6"
     },
     {
       "path": "skills/revise-lore/SKILL.md",
