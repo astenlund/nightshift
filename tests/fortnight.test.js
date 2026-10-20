@@ -181,7 +181,7 @@ test('the numbers of a run whose task was repaired three times, reopened twice, 
     assert.deepEqual(gate.entries.map(entry => [entry.requestId, entry.gateRequestId, entry.severeFindings]), [[RESUMED2, GATE, 1], [UNIMPORTED_RESUME, REOPEN, 0], [RESUMED3, null, null]]);
 
     const markdown = formatMarkdown(result);
-    assert.match(markdown, /12 receipts, 12 on these runs, 1 receipt files unreadable, their tokens, verdicts and closures missing from the counts read from receipts; 14 dispatches registered by these runs, 2 without a receipt, of which 1 may have launched a model/);
+    assert.match(markdown, /12 receipts, 12 on these runs, 1 receipt files unreadable, their tokens, verdicts and closures missing from the counts read from receipts; 14 dispatches of these runs \(registered, plus any receipt without a registration row\), 2 without a receipt, of which 1 may have launched a model/);
     assert.match(markdown, /\| 1 \| Tokens per completed task \| median 600, p90 600, max 600 over 1 tasks \(1 partial, 0 with no dispatch counted as 0\) \|/);
     assert.match(markdown, /\| 2 \| Tokens per repair batch \| median 300, worst 300 over 1 batches, of 3 \(1 ended at a fresh assessment and 1 at the next repair; 1 open, 1 partial, 0 with no dispatch counted as 0\); measured tokens over the closed batches, their unknown attempts excluded and replacements counted as fresh sessions: fresh 2,400, resumed 650, skeptic 0 \|/);
     assert.match(markdown, /completions by UTC date 1 to 2026-10-04, 0 to 2026-10-18/);
@@ -351,5 +351,6 @@ test('fortnights are labelled by the anchor they end on and the arguments are ch
   assert.throws(() => parseArguments(['store.sqlite', '--json']), /--json needs a value/);
   assert.throws(() => parseArguments(['store.sqlite', '--json', '--anchor', '2026-10-18']), /--json needs a value/);
   assert.throws(() => parseArguments([]), /Usage/);
+  assert.throws(() => parseArguments(['one.sqlite', 'two.sqlite']), /one store path/);
   assert.deepEqual(parseArguments(['store.sqlite', '--json', 'out.json']), { anchor: '2026-10-18', json: 'out.json', store: 'store.sqlite' });
 });

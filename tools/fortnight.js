@@ -410,7 +410,7 @@ const hours = value => value === null ? 'unknown' : `${value.toFixed(1)} h`;
 function formatMarkdown(result) {
   const lines = [];
   lines.push(`# Fortnightly numbers from ${result.store}`, '');
-  lines.push(`Read ${result.readAt.slice(0, 10)}: ${result.runs.total} runs, ${result.runs.completed} completed; ${result.receipts.total} receipts, ${result.receipts.onTheseRuns} on these runs, ${result.receipts.unreadable} receipt files unreadable, their tokens, verdicts and closures missing from the counts read from receipts; ${result.dispatches.total} dispatches registered by these runs, ${result.dispatches.withoutReceipt} without a receipt, of which ${result.dispatches.unknownWithoutReceipt} may have launched a model and so cost an unknown amount. Medians and ninetieth percentiles are nearest rank. Token figures sum each receipt's own attempt tokens; a task or batch with an attempt whose tokens are unknown is left out of the figures and counted as partial.`, '');
+  lines.push(`Read ${result.readAt.slice(0, 10)}: ${result.runs.total} runs, ${result.runs.completed} completed; ${result.receipts.total} receipts, ${result.receipts.onTheseRuns} on these runs, ${result.receipts.unreadable} receipt files unreadable, their tokens, verdicts and closures missing from the counts read from receipts; ${result.dispatches.total} dispatches of these runs (registered, plus any receipt without a registration row), ${result.dispatches.withoutReceipt} without a receipt, of which ${result.dispatches.unknownWithoutReceipt} may have launched a model and so cost an unknown amount. Medians and ninetieth percentiles are nearest rank. Token figures sum each receipt's own attempt tokens; a task or batch with an attempt whose tokens are unknown is left out of the figures and counted as partial.`, '');
   lines.push('| # | Number | Reading |', '| --- | --- | --- |');
   const task = result.tokensPerTask;
   lines.push(`| 1 | Tokens per completed task | median ${number(task.complete.median)}, p90 ${number(task.complete.p90)}, max ${number(task.complete.max)} over ${task.complete.count} tasks (${task.partial} partial, ${task.withoutDispatch} with no dispatch counted as 0) |`);
@@ -456,6 +456,7 @@ function parseArguments(argv) {
     if (argument === '--anchor') options.anchor = valueOf(++index);
     else if (argument === '--json') options.json = valueOf(++index);
     else if (argument.startsWith('--')) throw new Error(`Unknown option ${argument}`);
+    else if (options.store) throw new Error('Only one store path is accepted');
     else options.store = argument;
   }
   if (!options.store) throw new Error('Usage: node tools/fortnight.js <path to state.sqlite> [--anchor YYYY-MM-DD] [--json <file>]');
@@ -470,6 +471,10 @@ if (require.main === module) {
     options = parseArguments(process.argv.slice(2));
   } catch (error) {
     console.error(error.message);
+    process.exit(2);
+  }
+  if (!fs.existsSync(options.store)) {
+    console.error(`No store at ${options.store}`);
     process.exit(2);
   }
   const result = compute(path.resolve(options.store), { anchor: options.anchor });
