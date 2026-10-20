@@ -148,6 +148,15 @@ test('one report schema serves every dispatch of a kind, and the consumer checks
   assert.throws(() => validateReport(leadDocument({}), dialogue), { code: 'missing-position' });
   assert.throws(() => validateReport(leadDocument({ positions: [position('earlier:F1', 'ignore')] }), dialogue), { code: 'invalid-position' });
   assert.equal(validateReport(leadDocument({ positions: [position('earlier:F1')] }), dialogue).positions.length, 1);
+  // A skeptic, in a dialogue turn or not, and a replacement lead are held to the same rules.
+  const skepticRequest = extra => ({ ...request(1), continues: null, dialogue: null, ...extra });
+  assert.throws(() => validateReport({ ...report([verdict(ids[0])]), closures: [closure(ids[0])] }, skepticRequest()), { code: 'invalid-result', message: /Closures/ });
+  assert.throws(() => validateReport({ ...report([verdict(ids[0])]), positions: [position(ids[0])] }, skepticRequest({ continues: { kind: 'resumed', requestId: 'earlier' }, dialogue: { findingIds: [ids[0]], message: 'Why' } })), { code: 'invalid-result', message: /Positions/ });
+  assert.equal(validateReport(report([verdict(ids[0])]), skepticRequest({ continues: { kind: 'resumed', requestId: 'earlier' }, dialogue: { findingIds: [ids[0]], message: 'Why' } })).findings.length, 1);
+  const replacement = leadRequest({ continues: { kind: 'replacement', requestId: 'earlier' }, pendingClosures: [{ id: 'earlier:F1', localId: 'F1' }] });
+  assert.equal(validateReport(leadDocument({ closures: [closure('earlier:F1')] }), replacement).closures.length, 1);
+  assert.throws(() => validateReport(leadDocument({}), replacement), { code: 'missing-closure' });
+  assert.throws(() => validateReport(leadDocument({ closures: [closure('earlier:F1')], positions: [position('earlier:F1')] }), replacement), { code: 'invalid-result', message: /Positions/ });
 });
 
 test('injected native observations do not grant a missing or mismatched controller claim', async t => {

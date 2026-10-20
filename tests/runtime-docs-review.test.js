@@ -122,7 +122,9 @@ function agent(calls, dimensions, findings = []) {
   return options => {
     calls.push(options);
     fs.mkdirSync(options.artifacts, { recursive: true });
-    const report = { requestId: JSON.parse(fs.readFileSync(path.join(options.artifacts, '..', 'request.json'), 'utf8')).id, status: 'complete', coverage: dimensions.map(dimension => ({ dimension, evidence: 'Assessed the change' })), findings, probes: [], summary: 'Assessment complete', toolFailure: '' };
+    const request = JSON.parse(fs.readFileSync(path.join(options.artifacts, '..', 'request.json'), 'utf8'));
+    // A lead report carries the closures and positions the schema requires, empty unless asked for; a skeptic's has neither.
+    const report = { requestId: request.id, status: 'complete', coverage: dimensions.map(dimension => ({ dimension, evidence: 'Assessed the change' })), findings, probes: [], summary: 'Assessment complete', toolFailure: '', ...(request.kind === 'skeptic' ? {} : { closures: [], positions: [] }) };
     const session = `agent-session-${calls.length}`;
     const events = [{ type: 'assistant', session_id: session, message: { model: options.model, content: [] } }, { type: 'result', session_id: session, subtype: 'success', is_error: false, structured_output: report }];
     fs.writeFileSync(path.join(options.artifacts, 'events.jsonl'), events.map(event => JSON.stringify(event)).join('\n') + '\n');

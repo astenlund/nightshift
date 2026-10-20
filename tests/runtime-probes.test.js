@@ -54,7 +54,9 @@ function committedProject() {
   return { root, baseSha: git(['rev-parse', 'HEAD']) };
 }
 
-function assessment(options, output) {
+function assessment(options, given) {
+  // A lead report carries the closures and positions the schema requires, empty unless asked for.
+  const output = { closures: [], positions: [], ...given };
   const session = output.status === 'complete' ? 'final-assessor' : 'requesting-assessor';
   const events = [{ type: 'assistant', session_id: session, message: { model: options.model, content: [] } }, { type: 'result', session_id: session, subtype: 'success', is_error: false, structured_output: output }];
   fs.mkdirSync(options.artifacts, { recursive: true });
