@@ -63,7 +63,7 @@ function assessment(options, output) {
 }
 
 test('the reviewer brief and report schema state the probe timeout unit and range', () => {
-  const schema = schemaFor('code', randomUUID()).properties.probes.items.properties.timeoutMs;
+  const schema = schemaFor('code').properties.probes.items.properties.timeoutMs;
   assert.equal(schema.minimum, PROBE_TIMEOUT_FLOOR_MS);
   assert.equal(schema.maximum, PROBE_TIMEOUT_CAP_MS);
   assert.match(schema.description, /milliseconds, from 5000 to 120000/);
@@ -78,7 +78,7 @@ test('unusable probes are refused before reservation and a pre-launch refusal le
   store.create({ mechanism: fixtureContinuation(), objective: 'Refuse unusable probes', authority: 'User test request', controller: actor, controllerClaim: fixtureControllerClaim(actor), tasks: [{ id: 'work', title: 'Work', agreement: { source: 'User', outcome: 'An unusable probe leaves no uncertain worker' } }] });
   const probe = { purpose: 'Observe the fixture', executable: process.execPath, args: ['--version'], timeoutMs: 10000, files: [] };
   const probes = [{ ...probe, id: 'missing-executable', executable: 'nightshift-absent-probe-tool' }, { ...probe, id: 'seconds-timeout', timeoutMs: 240 }, { ...probe, id: 'non-ascii-fixture', files: [{ path: 'fixture.txt', content: 'caf' + String.fromCharCode(0xe9) }] }];
-  const runAgent = options => assessment(options, { requestId: options.schema.properties.requestId.enum[0], status: 'incomplete', coverage: [], findings: [], summary: 'Need deciding execution evidence', toolFailure: '', probes });
+  const runAgent = options => assessment(options, { requestId: JSON.parse(fs.readFileSync(path.join(options.artifacts, '..', 'request.json'), 'utf8')).id, status: 'incomplete', coverage: [], findings: [], summary: 'Need deciding execution evidence', toolFailure: '', probes });
   const requested = await executeWithFixtureController(root, { action: 'dispatch', actor, revision: store.read().revision, taskId: 'work', review: { kind: 'code', baseSha, requirements: 'Fixture', rules: 'Fixture rules', candidates: [{ host: 'claude', model: 'claude-fable-5-1', effort: 'high' }] } }, { runAgent });
   const act = probeId => executeWithFixtureController(root, { action: 'probe', actor, revision: store.read().revision, taskId: 'work', receipt: path.relative(root, requested.receiptFile).split(path.sep).join('/'), probeId });
   const workers = store.read().workers.length;
@@ -114,7 +114,7 @@ for (const withSelectedArtifact of [false, true]) {
         assert.equal(evidence.exitCode, 0);
         assert.deepEqual(JSON.parse(evidence.output), { before: 41, after: 42 });
       } else assert.equal(fs.existsSync(path.join(options.cwd, 'context/probes')), false);
-      return assessment(options, { requestId: options.schema.properties.requestId.enum[0], status: complete ? 'complete' : 'incomplete', coverage: DIMENSIONS.code.map(dimension => ({ dimension, evidence: 'Fixture evidence assessed' })), findings: [], summary: complete ? 'Execution evidence resolves the question' : 'Need deciding execution evidence', probes: complete ? [] : [probe], toolFailure: '' });
+      return assessment(options, { requestId: JSON.parse(fs.readFileSync(path.join(options.artifacts, '..', 'request.json'), 'utf8')).id, status: complete ? 'complete' : 'incomplete', coverage: DIMENSIONS.code.map(dimension => ({ dimension, evidence: 'Fixture evidence assessed' })), findings: [], summary: complete ? 'Execution evidence resolves the question' : 'Need deciding execution evidence', probes: complete ? [] : [probe], toolFailure: '' });
     };
     const dispatch = async (complete, hasEvidence = complete) => executeWithFixtureController(root, { action: 'dispatch', actor, revision: store.read().revision, taskId: 'work', review }, { runAgent: agent(complete, hasEvidence) });
     const first = await dispatch(false);
@@ -137,7 +137,7 @@ for (const withSelectedArtifact of [false, true]) {
     await check();
     await act({ action: 'advance' });
     await assert.rejects(act({ action: 'advance', evidence: 'Documentation updated' }), { code: 'docs-review-required' });
-    const documentation = await executeWithFixtureController(root, { action: 'dispatch', actor, revision: store.read().revision, taskId: 'work', review: { ...review, kind: 'docs' } }, { runAgent: options => assessment(options, { requestId: options.schema.properties.requestId.enum[0], status: 'complete', coverage: DIMENSIONS.docs.map(dimension => ({ dimension, evidence: 'Documentation assessed against the change' })), findings: [], summary: 'Documentation matches the change', probes: [], toolFailure: '' }) });
+    const documentation = await executeWithFixtureController(root, { action: 'dispatch', actor, revision: store.read().revision, taskId: 'work', review: { ...review, kind: 'docs' } }, { runAgent: options => assessment(options, { requestId: JSON.parse(fs.readFileSync(path.join(options.artifacts, '..', 'request.json'), 'utf8')).id, status: 'complete', coverage: DIMENSIONS.docs.map(dimension => ({ dimension, evidence: 'Documentation assessed against the change' })), findings: [], summary: 'Documentation matches the change', probes: [], toolFailure: '' }) });
     await importReview(documentation);
     await act({ action: 'advance' });
     await act({ action: 'advance', evidence: 'Documentation updated' });

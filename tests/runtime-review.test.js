@@ -51,11 +51,19 @@ function validateSchemas(cases, directory) {
   return JSON.parse(checked.stdout);
 }
 
-// A continued lead's schema names the findings pending closure; by default the fixture reviewer closes each of them.
+// The fixture reviewer reads its request record beside its attempt folder, as a real one reads its prompt, since the schema names
+// neither the request nor the findings pending closure; by default a continued lead closes each of them.
+function requestOf(options) {
+  return JSON.parse(fs.readFileSync(path.join(options.artifacts, '..', 'request.json'), 'utf8'));
+}
+
 function assessment(options, dimensions = DIMENSIONS.code, findings = [], closures) {
-  const pending = options.schema.properties.closures?.items.properties.id.enum ?? [];
-  const report = { requestId: options.schema.properties.requestId.enum[0], status: 'complete', coverage: dimensions.map(dimension => ({ dimension, evidence: 'Assessed both concrete paths' })), findings, probes: [], summary: 'Fixture assessment completed', toolFailure: '' };
-  if (options.schema.properties.closures) report.closures = closures ?? pending.map(id => ({ id, closed: true, evidence: 'The repair resolves the fixture finding' }));
+  const request = requestOf(options);
+  const report = { requestId: request.id, status: 'complete', coverage: dimensions.map(dimension => ({ dimension, evidence: 'Assessed both concrete paths' })), findings, probes: [], summary: 'Fixture assessment completed', toolFailure: '' };
+  if (request.kind !== 'skeptic') {
+    report.closures = request.continues && !request.dialogue ? closures ?? request.pendingClosures.map(finding => ({ id: finding.id, closed: true, evidence: 'The repair resolves the fixture finding' })) : [];
+    report.positions = [];
+  }
   return report;
 }
 
@@ -74,37 +82,72 @@ function mockAgent(options, dimensions = DIMENSIONS.code, { findings = [], sessi
   return { host: options.host, model: options.model, effort: options.effort, session, attributionVerified: true, status: 'complete', output: report, tokens: 0 };
 }
 
-test('skeptic producer schemas bind assigned ids and count while consumer validation remains independent', { skip: process.platform !== 'win32' }, t => {
+test('one report schema serves every dispatch of a kind, and the consumer checks what it no longer binds', { skip: process.platform !== 'win32' }, t => {
   const f = fixture(t);
   const directory = path.join(f.root, '.tmp/schema');
   const ids = ['first-request:claim', 'second-request:claim'];
   const verdict = (id, evidence = 'Deciding fixture evidence') => ({ id, verdict: 'confirmed', evidence, value: 'Required behavior assessed independently', repairProposal: 'Correct the fixture boundary at its single caller' });
-  const report = findings => ({ requestId: 'schema-request', status: 'complete', coverage: [], findings, probes: [], summary: 'Assigned claims evaluated', toolFailure: '' });
-  const schemas = [0, 1, 2].map(count => schemaFor('skeptic', 'schema-request', ids.slice(0, count).map(id => ({ id }))));
+  const report = (findings, requestId = 'schema-request') => ({ requestId, status: 'complete', coverage: [], findings, probes: [], summary: 'Assigned claims evaluated', toolFailure: '' });
+  const skeptic = schemaFor('skeptic');
+  const lead = schemaFor('code');
+  // The schema names no request, finding or dialogue identity, so a reviewer's first and last dispatch send the same bytes.
+  assert.deepEqual([schemaFor('docs'), schemaFor('spec')], [lead, lead]);
+  assert.equal(JSON.stringify([skeptic, lead]).includes('Items'), false);
+  assert.deepEqual([skeptic.properties.requestId, lead.properties.requestId, skeptic.properties.findings.items.properties.id, lead.properties.closures.items.properties.id], Array(4).fill({ type: 'string' }));
+  const leadFields = ['closures', 'coverage', 'findings', 'positions', 'probes', 'requestId', 'status', 'summary', 'toolFailure'];
+  assert.deepEqual([Object.keys(lead.properties).sort(), [...lead.required].sort()], [leadFields, leadFields]);
+  assert.deepEqual(Object.keys(skeptic.properties).sort(), leadFields.filter(field => !['closures', 'positions'].includes(field)));
   const duplicate = report([verdict(ids[0]), verdict(ids[0], 'Different evidence for the repeated id')]);
   const blank = report([verdict(ids[0], '')]);
   const probe = { ...report([{ ...verdict(ids[0]), verdict: 'unverified' }]), status: 'incomplete', probes: [{ id: 'deciding-probe', purpose: 'Resolve missing evidence', executable: process.execPath, args: ['--version'], timeoutMs: 10000, files: [] }] };
   const secondsTimeout = { ...probe, probes: [{ ...probe.probes[0], timeoutMs: 240 }] };
+  const leadReport = { ...report([]), closures: [], positions: [] };
   const cases = [
-    { name: 'empty-assignment', count: 0, document: report([]), valid: true },
-    { name: 'extra-on-empty', count: 0, document: report([verdict('new-claim')]), valid: false },
-    { name: 'assigned-only', count: 1, document: report([verdict(ids[0])]), valid: true },
-    { name: 'unassigned-observation', count: 1, document: report([verdict(ids[0]), verdict('unassigned-readme-note')]), valid: false },
-    { name: 'wrong-id', count: 1, document: report([verdict('unassigned-readme-note')]), valid: false },
-    { name: 'omitted-verdict', count: 1, document: report([]), valid: false },
-    { name: 'unverified-with-probe', count: 1, document: probe, valid: true },
-    { name: 'probe-timeout-in-seconds', count: 1, document: secondsTimeout, valid: false },
-    { name: 'complete-batch', count: 2, document: report(ids.map(id => verdict(id))), valid: true },
-    { name: 'duplicate-id-needs-consumer-check', count: 2, document: duplicate, valid: true },
-    { name: 'blank-evidence-needs-consumer-check', count: 1, document: blank, valid: true },
+    { name: 'empty-assignment', schema: skeptic, document: report([]), valid: true },
+    { name: 'other-request-needs-consumer-check', schema: skeptic, document: report([], 'another-request'), valid: true },
+    { name: 'unassigned-id-needs-consumer-check', schema: skeptic, document: report([verdict('unassigned-readme-note')]), valid: true },
+    { name: 'unverified-with-probe', schema: skeptic, document: probe, valid: true },
+    { name: 'probe-timeout-in-seconds', schema: skeptic, document: secondsTimeout, valid: false },
+    { name: 'complete-batch', schema: skeptic, document: report(ids.map(id => verdict(id))), valid: true },
+    { name: 'duplicate-id-needs-consumer-check', schema: skeptic, document: duplicate, valid: true },
+    { name: 'blank-evidence-needs-consumer-check', schema: skeptic, document: blank, valid: true },
+    { name: 'skeptic-refuses-closures', schema: skeptic, document: { ...report([]), closures: [] }, valid: false },
+    { name: 'lead-empty-closures-and-positions', schema: lead, document: leadReport, valid: true },
+    { name: 'lead-missing-closures', schema: lead, document: { ...leadReport, closures: undefined }, valid: false },
+    { name: 'lead-closure-and-position-shapes', schema: lead, document: { ...leadReport, closures: [{ id: 'f1', closed: true, evidence: 'Resolved' }], positions: [{ id: 'f2', position: 'maintain', evidence: 'Still holds' }] }, valid: true },
+    { name: 'lead-unknown-position', schema: lead, document: { ...leadReport, positions: [{ id: 'f2', position: 'ignore', evidence: 'No' }] }, valid: false },
   ];
-  assert.deepEqual(validateSchemas(cases.map(item => ({ ...item, schema: schemas[item.count] })), directory), cases.map(item => ({ name: item.name, valid: item.valid })));
+  assert.deepEqual(validateSchemas(cases, directory), cases.map(item => ({ name: item.name, valid: item.valid })));
   const request = count => ({ id: 'schema-request', kind: 'skeptic', findings: ids.slice(0, count).map(id => ({ id })), dimensions: DIMENSIONS.code });
+  assert.throws(() => validateReport(report([], 'another-request'), request(0)), { code: 'wrong-result' });
+  assert.throws(() => validateReport(report([verdict('unassigned-readme-note')]), request(1)), { code: 'missing-validation' });
+  assert.throws(() => validateReport(report([]), request(1)), { code: 'missing-validation' });
+  assert.throws(() => validateReport(report([verdict(ids[0]), verdict('unassigned-readme-note')]), request(1)), { code: 'missing-validation' });
   assert.throws(() => validateReport(duplicate, request(2)), { code: 'duplicate-finding' });
   assert.throws(() => validateReport(blank, request(1)), { code: 'invalid-request' });
   assert.throws(() => validateReport(report([{ ...verdict(ids[0]), repairProposal: ' ' }]), request(1)), { code: 'invalid-request', message: /repairProposal/ });
   assert.equal(validateReport(report([{ ...verdict(ids[0]), verdict: 'refuted', repairProposal: '' }]), request(1)).findings[0].verdict, 'refuted');
   assert.equal(validateReport(probe, request(1)).findings[0].verdict, 'unverified');
+  // What the schema stopped binding for leads, the validators refuse: entries nobody asked for, and the wrong or missing ones.
+  const coverage = DIMENSIONS.code.map(dimension => ({ dimension, evidence: 'Assessed' }));
+  const leadDocument = extra => ({ requestId: 'schema-request', status: 'complete', coverage, findings: [], probes: [], summary: 'Assessed', toolFailure: '', closures: [], positions: [], ...extra });
+  const leadRequest = extra => ({ id: 'schema-request', kind: 'code', dimensions: DIMENSIONS.code, continues: null, dialogue: null, pendingClosures: [], ...extra });
+  const closure = id => ({ id, closed: true, evidence: 'Resolved' });
+  const position = (id, value = 'maintain') => ({ id, position: value, evidence: 'Still holds' });
+  const continued = leadRequest({ continues: { kind: 'resumed', requestId: 'earlier' }, pendingClosures: [{ id: 'earlier:F1', localId: 'F1' }] });
+  const dialogue = leadRequest({ continues: { kind: 'resumed', requestId: 'earlier' }, dialogue: { findingIds: ['earlier:F1'], message: 'Why' } });
+  assert.throws(() => validateReport(leadDocument({ closures: {} }), leadRequest()), { code: 'invalid-result', message: /arrays/ });
+  assert.throws(() => validateReport(leadDocument({ closures: [closure('earlier:F1')] }), leadRequest()), { code: 'invalid-result', message: /Closures/ });
+  assert.throws(() => validateReport(leadDocument({ positions: [position('earlier:F1')] }), leadRequest()), { code: 'invalid-result', message: /Positions/ });
+  assert.throws(() => validateReport(leadDocument({ closures: [closure('earlier:F1')] }), dialogue), { code: 'invalid-result', message: /Closures/ });
+  assert.throws(() => validateReport(leadDocument({ positions: [position('earlier:F1')] }), continued), { code: 'invalid-result', message: /Positions/ });
+  assert.throws(() => validateReport(leadDocument({ closures: [closure('earlier:F2')] }), continued), { code: 'missing-closure' });
+  assert.equal(validateReport(leadDocument({ closures: [closure('earlier:F1')] }), continued).closures.length, 1);
+  assert.throws(() => validateReport(leadDocument({ positions: [position('earlier:F1')], findings: [{ id: 'new', severity: 'minor', consequence: 'Raised', evidence: 'Seen', required: false }] }), dialogue), { code: 'invalid-dialogue-reply' });
+  assert.throws(() => validateReport(leadDocument({ positions: [position('earlier:F2')] }), dialogue), { code: 'missing-position' });
+  assert.throws(() => validateReport(leadDocument({}), dialogue), { code: 'missing-position' });
+  assert.throws(() => validateReport(leadDocument({ positions: [position('earlier:F1', 'ignore')] }), dialogue), { code: 'invalid-position' });
+  assert.equal(validateReport(leadDocument({ positions: [position('earlier:F1')] }), dialogue).positions.length, 1);
 });
 
 test('injected native observations do not grant a missing or mismatched controller claim', async t => {

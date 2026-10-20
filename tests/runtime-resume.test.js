@@ -12,7 +12,7 @@ const { CLOSING_TARGET } = require('../internal/runtime/actions');
 const { DIMENSIONS, commitmentsFor, completeAssessment, obligationBrief, reviewGate, reviewProgress, transition } = require('../internal/runtime/lifecycle');
 const { RunError, RunStore } = require('../internal/runtime/store');
 const { fresh, hash, inventorySnapshot, snapshot, verifyCommand } = require('../internal/runtime/evidence');
-const { dispatchReview, readReceipt } = require('../internal/runtime/review');
+const { dispatchReview, readReceipt, schemaFor } = require('../internal/runtime/review');
 const { runAgent } = require('../internal/runtime/hosts');
 const { artifactFailure } = require('./fixtures/artifact-failure');
 const { writeJson } = require('../internal/runtime/artifacts');
@@ -45,10 +45,13 @@ function fakeAgent(options, { findings = [], closures, positions, status = 'comp
   calls?.push(options);
   if (launched) options.onProcess(999999);
   fs.mkdirSync(options.artifacts, { recursive: true });
-  const properties = options.schema.properties;
-  const report = { requestId: properties.requestId.enum[0], status, coverage: dimensions.map(dimension => ({ dimension, evidence: 'Assessed the change' })), findings, probes: [], summary: 'Fixture report', toolFailure: '' };
-  if (properties.closures) report.closures = closures ?? (properties.closures.items.properties.id.enum ?? []).map(id => ({ id, closed: true, evidence: 'The repair resolves it' }));
-  if (properties.positions) report.positions = positions ?? properties.positions.items.properties.id.enum.map(id => ({ id, position: 'maintain', evidence: 'The finding still holds' }));
+  // The request record beside the attempt folder names what the schema no longer binds: the request and the findings to close or answer.
+  const request = JSON.parse(fs.readFileSync(path.join(options.artifacts, '..', 'request.json'), 'utf8'));
+  const report = { requestId: request.id, status, coverage: dimensions.map(dimension => ({ dimension, evidence: 'Assessed the change' })), findings, probes: [], summary: 'Fixture report', toolFailure: '' };
+  if (request.kind !== 'skeptic') {
+    report.closures = request.continues && !request.dialogue ? closures ?? request.pendingClosures.map(finding => ({ id: finding.id, closed: true, evidence: 'The repair resolves it' })) : [];
+    report.positions = request.dialogue ? positions ?? request.dialogue.findingIds.map(id => ({ id, position: 'maintain', evidence: 'The finding still holds' })) : [];
+  }
   const actual = options.session ?? session ?? `session-${++sessions}`;
   const events = options.host === 'codex'
     ? [{ id: 2, result: { thread: { id: actual }, model: options.model } }, { method: 'item/completed', params: { threadId: actual, item: { type: 'agentMessage', text: JSON.stringify(report) } } }, { method: 'turn/completed', params: { threadId: actual, turn: { status: 'completed' } } }]
@@ -138,7 +141,10 @@ test('the raising reviewer resumes in a new copy to record closure, and only a f
   assert.notEqual(workspaces[0], workspaces[1]);
   assert.equal(calls[0].cwd, path.join(fs.realpathSync.native(f.root), workspaces[1]));
   assert.ok(calls[0].prompt.includes(`new private copy of the project at ${calls[0].cwd}`));
-  assert.match(calls[1].prompt, /probes, summary and toolFailure\. Use an empty probes array/);
+  assert.match(calls[1].prompt, /toolFailure, closures and positions\. Use an empty probes array/);
+  // The resumed and the fresh dispatch send one and the same schema, so the resumed session's cached prefix survives.
+  assert.deepEqual(calls.map(call => call.schema), calls.map(() => schemaFor('code')));
+  assert.ok(calls[0].prompt.includes(`for request ${resumed.receipt.requestId} with requestId set to that id verbatim`));
   assert.deepEqual(resumed.receipt.continues, { kind: 'resumed', requestId: lead.receipt.requestId, session: lead.receipt.session });
   assert.equal(resumed.receipt.lineage, lead.receipt.requestId);
   assert.equal(resumed.receipt.session, lead.receipt.session);
@@ -1018,7 +1024,7 @@ test('dialogue turns relay between the reviewer and the skeptic, through resumes
   // Assert
   assert.match(calls[0].prompt, /This is a dialogue turn, not a new assessment/);
   assert.ok(calls[0].prompt.includes(message));
-  assert.equal(calls[0].schema.properties.findings.maxItems, 0);
+  assert.deepEqual(calls[0].schema, schemaFor('code'));
   assert.equal(asReview, 'dialogue-receipt');
   assert.equal(asDialogue, 'dialogue-receipt-required');
   assert.match(calls[2].prompt, /standing in for the strong lead reviewer/);

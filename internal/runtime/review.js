@@ -149,33 +149,30 @@ function assignedClaim(finding) {
   return Object.fromEntries(CLAIM_FIELDS.filter(field => finding[field] !== undefined).map(field => [field, finding[field]]));
 }
 
-// A list of exactly one entry per named identity; an empty set admits no entries.
-function boundList(ids, properties, required) {
-  const id = ids.length ? { type: 'string', enum: ids } : { type: 'string' };
-
-  return { type: 'array', items: { type: 'object', additionalProperties: false, properties: { id, ...properties }, required: ['id', ...required] }, minItems: ids.length, maxItems: ids.length };
+function listOf(properties, required) {
+  return { type: 'array', items: { type: 'object', additionalProperties: false, properties: { id: { type: 'string' }, ...properties }, required: ['id', ...required] } };
 }
 
-// The report a dispatch must return. shape.closures lists the findings a continued lead reports closure for, and shape.dialogue
-// the findings a lead's dialogue turn answers; a skeptic's dialogue turn returns ordinary verdicts over its assigned findings.
-function schemaFor(kind, requestId, assignedFindings = [], shape = {}) {
+// The report a dispatch must return: one schema for every lead dispatch and one for every skeptic dispatch, identical from a
+// reviewer's first call to its last, so that a resumed session's cached prefix survives. Nothing a dispatch binds is in it: the
+// request id, the finding ids a skeptic judges or a continued lead closes, and the dialogue turn's positions are checked by
+// validateReport after the report arrives. A lead's closures and positions are always present and empty unless asked for.
+function schemaFor(kind) {
   const scalar = { type: 'string' };
-  const assignedIds = kind === 'skeptic' ? assignedFindings.map(finding => finding.id) : [];
-  const leadDialogue = kind !== 'skeptic' && Array.isArray(shape.dialogue);
-  const finding = kind === 'skeptic'
-    ? { type: 'object', additionalProperties: false, properties: { id: assignedIds.length ? { type: 'string', enum: assignedIds } : scalar, verdict: { type: 'string', enum: ['confirmed', 'refuted', 'unverified'] }, evidence: scalar, value: scalar, repairProposal: scalar }, required: ['id', 'verdict', 'evidence', 'value', 'repairProposal'] }
+  const skeptic = kind === 'skeptic';
+  const finding = skeptic
+    ? { type: 'object', additionalProperties: false, properties: { id: scalar, verdict: { type: 'string', enum: ['confirmed', 'refuted', 'unverified'] }, evidence: scalar, value: scalar, repairProposal: scalar }, required: ['id', 'verdict', 'evidence', 'value', 'repairProposal'] }
     : { type: 'object', additionalProperties: false, properties: { id: scalar, severity: { type: 'string', enum: ['critical', 'important', 'minor'] }, consequence: scalar, evidence: scalar, required: { type: 'boolean' } }, required: ['id', 'severity', 'consequence', 'evidence', 'required'] };
-  const findingBounds = kind === 'skeptic' ? { minItems: assignedIds.length, maxItems: assignedIds.length } : leadDialogue ? { maxItems: 0 } : {};
-  const extra = {
-    ...(kind !== 'skeptic' && !leadDialogue && Array.isArray(shape.closures) ? { closures: boundList(shape.closures, { closed: { type: 'boolean' }, evidence: scalar }, ['closed', 'evidence']) } : {}),
-    ...(leadDialogue ? { positions: boundList(shape.dialogue, { position: { type: 'string', enum: DIALOGUE_POSITIONS }, evidence: scalar }, ['position', 'evidence']) } : {}),
+  const extra = skeptic ? {} : {
+    closures: listOf({ closed: { type: 'boolean' }, evidence: scalar }, ['closed', 'evidence']),
+    positions: listOf({ position: { type: 'string', enum: DIALOGUE_POSITIONS }, evidence: scalar }, ['position', 'evidence']),
   };
   return {
     type: 'object', additionalProperties: false,
     properties: {
-      requestId: { type: 'string', enum: [requestId] }, status: { type: 'string', enum: ['complete', 'incomplete'] },
+      requestId: scalar, status: { type: 'string', enum: ['complete', 'incomplete'] },
       coverage: { type: 'array', items: { type: 'object', additionalProperties: false, properties: { dimension: scalar, evidence: scalar }, required: ['dimension', 'evidence'] } },
-      findings: { type: 'array', items: finding, ...findingBounds }, summary: scalar, toolFailure: { type: 'string', description: TOOL_FAILURE_RULE },
+      findings: { type: 'array', items: finding }, summary: scalar, toolFailure: { type: 'string', description: TOOL_FAILURE_RULE },
       probes: { type: 'array', items: { type: 'object', additionalProperties: false, properties: {
         id: scalar, purpose: scalar, executable: scalar, args: { type: 'array', items: scalar }, timeoutMs: { type: 'integer', minimum: PROBE_TIMEOUT_FLOOR_MS, maximum: PROBE_TIMEOUT_CAP_MS, description: PROBE_TIMEOUT_RULE },
         files: { type: 'array', items: { type: 'object', additionalProperties: false, properties: { path: scalar, content: scalar }, required: ['path', 'content'] } },
@@ -199,6 +196,12 @@ function validateReport(report, request) {
   // attempt then fails naming the reported failure, and the next candidate is tried.
   requireCondition(!report.toolFailure.trim(), 'reviewer-tools-unavailable', `The reviewer reported that its tools failed: ${boundedHostText(report.toolFailure)}`);
   requireCondition(Array.isArray(report.findings) && Array.isArray(report.coverage), 'invalid-result', 'Report lacks findings or coverage');
+  // The schema admits closures and positions on every lead report, so a dispatch that asked for neither refuses any entry.
+  requireCondition((report.closures === undefined || Array.isArray(report.closures)) && (report.positions === undefined || Array.isArray(report.positions)), 'invalid-result', 'Closures and positions are arrays when present');
+  const continuedLead = request.kind !== 'skeptic' && Boolean(request.continues) && !request.dialogue;
+  const leadDialogue = request.kind !== 'skeptic' && Boolean(request.dialogue);
+  requireCondition(continuedLead || !(report.closures ?? []).length, 'invalid-result', 'Closures belong to a continued lead report only');
+  requireCondition(leadDialogue || !(report.positions ?? []).length, 'invalid-result', 'Positions belong to a dialogue reply only');
   text(report.summary, 'report.summary');
   requireCondition(report.probes === undefined || Array.isArray(report.probes), 'invalid-probe', 'Requested probes must be an array');
   requireCondition(!report.probes?.length || report.status === 'incomplete', 'incomplete-evidence', 'An assessment needing probe evidence must remain incomplete');
@@ -281,7 +284,7 @@ function listing(title, items) {
 // its last report, and for a replacement the whole record of the reviewer it stands in for.
 function continuationBrief(request) {
   const context = request.continuationContext ?? {};
-  const closure = 'For each finding listed as pending closure, return exactly one closures entry {id, closed, evidence}: closed true when the repair resolves it or it no longer applies, with the deciding evidence; closed false when it does not, and then report the remaining problem again as a finding whose id is that finding\'s localId. Besides closures, assess the complete supplied artifact and cumulative change across every dimension, as any lead does.\n';
+  const closure = 'For each finding listed as pending closure, return exactly one closures entry {id, closed, evidence}, with id the full id of the finding verbatim: closed true when the repair resolves it or it no longer applies, with the deciding evidence; closed false when it does not, and then report the remaining problem again as a finding whose id is that finding\'s localId. Besides closures, assess the complete supplied artifact and cumulative change across every dimension, as any lead does.\n';
   return listing('Findings pending closure: repaired since they were raised, and not yet verified by their reviewer.', context.pendingClosures ?? [])
     + listing('Dispositions recorded since your last imported report.', context.dispositionsSince ?? [])
     + listing('The record of the reviewer you stand in for: its findings with their verdicts, dispositions and repair state.', context.replacedFindings ?? [])
@@ -292,7 +295,7 @@ function dialogueBrief(request) {
   const findings = request.continuationContext?.dialogueFindings ?? [];
   const reply = request.kind === 'skeptic'
     ? 'Return a verdict for each assigned finding as before, with its evidence, value and repairProposal; you may keep or change your earlier verdict.'
-    : 'For each named finding return one positions entry: maintain it, revise it (say how in evidence) or withdraw it, with the deciding evidence. Return empty findings and coverage arrays.';
+    : 'For each named finding return one positions entry, with id the full id of the finding verbatim: maintain it, revise it (say how in evidence) or withdraw it, with the deciding evidence. Return empty findings, coverage and closures arrays.';
   return `This is a dialogue turn, not a new assessment. The controller relays the exchange between the reviewer that raised these findings and the skeptic that validated them, and decides every disposition itself. Message from the controller:\n${request.dialogue.message}\n\n` + listing('The findings in question, with their current verdicts and the dialogue so far.', findings) + reply + '\n';
 }
 
@@ -316,8 +319,10 @@ function buildPrompt(request, { workspace } = {}) {
   const role = (skeptic ? skepticRole : '') + (dialogue ? dialogueBrief(request) : skeptic ? '' : leadRole);
   const definitions = request.dimensions.map(dimension => `${dimension}: ${DIMENSION_BRIEFS[dimension]}`).join('\n');
   const execution = `If a deciding claim needs execution unavailable in your read-only tools, request a bounded probe in probes, with its purpose, exact executable/args, timeout and ASCII fixture files. ${PROBE_TIMEOUT_RULE} The controller executes it in a separate private copy and returns raw command/output evidence for your independent assessment. Remain incomplete/unverified until that evidence is sufficient. A probe never authorizes canonical project repairs. Available returned probe evidence is under context/probes/.\n`;
-  const fields = ['requestId', 'status', 'coverage', 'findings', 'probes', 'summary', 'toolFailure', ...(!skeptic && !dialogue && request.continues ? ['closures'] : []), ...(!skeptic && dialogue ? ['positions'] : [])];
-  return common + definitions + '\n\n' + role + acknowledgementBrief(request) + execution + TOOL_FAILURE_RULE + '\n' + `\nReturn the requested structured report with ${fields.slice(0, -1).join(', ')} and ${fields.at(-1)}. Use an empty probes array when no execution evidence is missing.\n`;
+  // The report schema is the same for every dispatch of a kind, so the request id and the fields this dispatch fills are named here.
+  const fields = ['requestId', 'status', 'coverage', 'findings', 'probes', 'summary', 'toolFailure', ...(skeptic ? [] : ['closures', 'positions'])];
+  const empties = skeptic ? '' : ' Leave closures empty unless findings are listed as pending closure, and positions empty unless this is a dialogue turn.';
+  return common + definitions + '\n\n' + role + acknowledgementBrief(request) + execution + TOOL_FAILURE_RULE + '\n' + `\nReturn the requested structured report for request ${request.id} with requestId set to that id verbatim, ${fields.slice(1, -1).join(', ')} and ${fields.at(-1)}. Use an empty probes array when no execution evidence is missing.${empties}\n`;
 }
 
 // Whether the inputs an assessment judged are unchanged, before its dispatch returns and again at import. A spec assessment judged
@@ -423,9 +428,8 @@ async function dispatchReview(root, options, dependencies = {}) {
         processStarted = false;
         terminationProven = false;
         const resumed = continuation?.kind === 'resumed' ? { session: continuation.session, priorThreadTokens: continuation.priorThreadTokens ?? null } : {};
-        const shape = { ...(request.continues && !request.dialogue ? { closures: request.pendingClosures.map(finding => finding.id) } : {}), ...(request.dialogue ? { dialogue: request.dialogue.findingIds } : {}) };
         try {
-          result = await (dependencies.runAgent ?? runAgent)({ ...candidate, ...resumed, cwd: workspace, protectedRoot: canonical, artifacts, systemFile, env: workerEnvironment(options.resourceContext), prompt: buildPrompt(request, { workspace }), schema: schemaFor(request.kind, id, request.findings, shape), timeoutMs, onProcess: pid => { processStarted = true; options.onProcess?.(pid); }, onSession: options.onSession });
+          result = await (dependencies.runAgent ?? runAgent)({ ...candidate, ...resumed, cwd: workspace, protectedRoot: canonical, artifacts, systemFile, env: workerEnvironment(options.resourceContext), prompt: buildPrompt(request, { workspace }), schema: schemaFor(request.kind), timeoutMs, onProcess: pid => { processStarted = true; options.onProcess?.(pid); }, onSession: options.onSession });
         } catch (error) {
           // A started host that fails on its own, without an operating-system error, failed in its session.
           sessionFailure = processStarted && error.errno === undefined;
@@ -543,7 +547,7 @@ function readReceipt(root, relative, state, taskId) {
   const report = parseReport(output);
   // Reports from earlier releases carry no toolFailure; one that names a tool failure never produced a receipt.
   requireCondition(typeof report.toolFailure !== 'string' || !report.toolFailure.trim(), 'changed-result', 'The native report names a tool failure, so it is not a usable assessment');
-  requireCondition(report.requestId === receipt.requestId && report.status === receipt.status && isDeepStrictEqual(report.findings, receipt.findings) && isDeepStrictEqual(report.probes ?? [], receipt.probes) && isDeepStrictEqual(report.coverage.map(item => item.dimension), receipt.dimensions) && isDeepStrictEqual(report.closures ?? [], receipt.closures ?? []) && isDeepStrictEqual(report.positions ?? null, receipt.positions ?? null), 'changed-result', 'Collected assessment differs from the native host report');
+  requireCondition(report.requestId === receipt.requestId && report.status === receipt.status && isDeepStrictEqual(report.findings, receipt.findings) && isDeepStrictEqual(report.probes ?? [], receipt.probes) && isDeepStrictEqual(report.coverage.map(item => item.dimension), receipt.dimensions) && isDeepStrictEqual(report.closures ?? [], receipt.closures ?? []) && isDeepStrictEqual(report.positions ?? [], receipt.positions ?? []), 'changed-result', 'Collected assessment differs from the native host report');
   return receipt;
 }
 
