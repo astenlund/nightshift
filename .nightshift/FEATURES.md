@@ -34,12 +34,6 @@ Have the operating brief ask for a change that crosses a boundary the determinis
 
 **Requires:** none.
 
-### [Reproduce a bug with a failing check before repairing it](features/reproduce-before-repair.md)
-
-Have the operating brief ask the controller, for defect work, to run a check that reproduces the failure before the repair, confirm it fails for the defect's reason, and rerun it under the same name after the repair, and have its Tests and evidence code dimension ask whether a fix carries that pair. This is guidance only: the existing check evidence already keeps both runs and gates acceptance on the latest, so the runtime stays unchanged. The agreed scope identifies defect work, and for a defect without a practical automated reproduction the controller is to record why and what evidence stands in, reported as a verification limit. From the user's 2026-09-26 ideas document; the commitments were agreed with the user on 2026-09-28 and are recorded in the linked record. It changes model-owned behavior, so it needs a version increase and a decision on installed-host evidence before implementation.
-
-**Requires:** none.
-
 ### [Run-free revise](features/run-free-revise.md)
 
 The standalone review-context foundation for all four revise skills was delivered in 3.3.10 under [Handover as the delivery boundary](features/handover-only-delivery.md) and is recorded in [the feature history](FEATURES_HISTORY.md): attributed receipts, findings, dispositions, repair closure, limits and shared writer protection, without a delivery run, continuation or delivery closing. Staged-only, unstaged-only, commit-range and older-range capture remain undelivered, with capture, later-code context, freshness and recovery to be settled for that slice. The record preserves the original agreements and design questions.
