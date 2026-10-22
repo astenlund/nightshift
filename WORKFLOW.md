@@ -40,7 +40,7 @@ The controller chooses assignments using task fit, observed model strengths, ava
 
 When coordination load warrants it, the controller may use a lower-tier shift supervisor for assignments, progress, result collection, and routine recovery. The controller retains consequential engineering decisions, scope and authority judgments, finding dispositions, and final acceptance. Direct coordination remains available, with ownership and activity reconciled before a handoff. The optional layer is justified by reliability before cost savings.
 
-Tests, builds, and live verification establish the agreed behavior and meaningful failure handling throughout implementation. A repair includes investigating the shared cause and relevant sibling occurrences. Additional checks need a reason tied to the change or unresolved evidence.
+Tests, builds, and live verification establish the agreed behavior and meaningful failure handling throughout implementation. A repair follows the repair paragraph of [the operating brief](internal/workflow.md), which states how large a repair is, what reproduction evidence precedes it and reaches its review, which state it traces and when repeated misses call for the shared cause. Additional checks need a reason tied to the change or unresolved evidence.
 
 ## Maintain continuity throughout the run
 
@@ -70,9 +70,9 @@ New findings receive skeptic validation. When the reviewed artifact is unchanged
 
 ## Recognize repeated failure to make progress
 
-Use three successive review passes raising related findings in something already subject to attempted repairs as an initial investigation signal. Count recurrence across repair attempts, not several findings reported together. Same area alone is weak evidence; missed sibling paths, the same violated invariant, or fixes undoing earlier fixes are stronger signals.
+A second missed case of the same kind after a repair, a fix undoing an earlier fix, or the same violated invariant raised again means the repair was too narrow. Count recurrence across repair attempts, not several findings reported together. Same area alone is weak evidence.
 
-The controller pauses routine patching to determine whether separate defects are being closed or the repair approach is missing a shared cause. It may reconsider the implementation or seek a fresh specialist assessment, explaining the conclusion briefly. The signal does not automatically fail the run, launch a swarm, or require user approval. Act earlier when the evidence warrants it; a clean round with no edits is progress. Tune the heuristic from actual runs.
+The controller pauses routine patching and fixes the shared cause the repairs missed instead of the next case. It may reconsider the implementation or seek a fresh specialist assessment, explaining the conclusion briefly. The signal does not automatically fail the run, launch a swarm, or require user approval. Act earlier when the evidence warrants it; a clean round with no edits is progress. Tune the heuristic from actual runs.
 
 ## Close with evidence and the existing follow-up triage
 
@@ -108,7 +108,7 @@ Spec review checks the mechanisms the design actually commits to. It does not in
 | Security and data safety | Are trust boundaries, permissions, confidentiality, data integrity, and consequential preservation and recovery obligations respected? |
 | Design and maintainability | Is the local code and overall system decomposition understandable and proportionate, with suitable reuse, ownership, abstraction boundaries, and coupling? |
 | Performance and resources | Does it avoid consequential latency, throughput, resource, or operating-cost problems under realistic conditions? |
-| Tests and evidence | Do meaningful assertions, realistic execution, integration checks, and regression protection establish the required behavior and expose remaining uncertainty? |
+| Tests and evidence | Do meaningful assertions, realistic execution, integration checks, and regression protection establish the required behavior and expose remaining uncertainty? Does a fix of misbehavior carry a check that failed before it, or, when no practical automated reproduction exists, a recorded reason and stand-in evidence? |
 
 Design and maintainability explicitly covers two scales:
 
