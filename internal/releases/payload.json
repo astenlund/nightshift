@@ -1,17 +1,17 @@
 {
   "schema": 1,
   "name": "nightshift",
-  "version": "3.3.14",
+  "version": "3.3.15",
   "files": [
     {
       "path": ".claude-plugin/plugin.json",
       "bytes": 641,
-      "sha256": "e38421d1575f6927f2791c806b6423af6f5f049bb374d9db16c255b3097c160c"
+      "sha256": "f723a077320ad1649509526fd96cbcaadd79a3da5315ef02283c0f0977dfd31f"
     },
     {
       "path": ".codex-plugin/plugin.json",
       "bytes": 1161,
-      "sha256": "6399ac4609b26eef68e62dfdf30d2a7166bc89cf49f33f0528ec85d379da43b9"
+      "sha256": "b21cf281b0709b122833650fd6fa2fffa9fe43e041755f1dacb847d35597229c"
     },
     {
       "path": "LICENSE",
@@ -285,8 +285,8 @@
     },
     {
       "path": "internal/runtime/lifecycle.js",
-      "bytes": 81881,
-      "sha256": "dbe61cc5383f2068e1d78878c6cd77e4d23a0a2b3f608d7d8d010b54585f50ed"
+      "bytes": 82631,
+      "sha256": "0de69db8bb67ebc5b6d2cead71bd4807a9df1f74842512d498d610e63dd7cefd"
     },
     {
       "path": "internal/runtime/limits.js",
@@ -390,8 +390,8 @@
     },
     {
       "path": "internal/runtime/review.js",
-      "bytes": 51007,
-      "sha256": "072c6aefec01d516fa08848a4bee6bec652ae8ab98cb8bb31ecce92e21877938"
+      "bytes": 51430,
+      "sha256": "288db8a735c35e7bb6fab4fcf302984abc221209ed6f8d5df70d4cb26ec8f2eb"
     },
     {
       "path": "internal/runtime/scratch.js",
@@ -485,8 +485,8 @@
     },
     {
       "path": "internal/workflow.md",
-      "bytes": 35759,
-      "sha256": "83475e9a6486594869385451f91093a1e471bab7ce8d4c86174b897f35d7e94e"
+      "bytes": 37146,
+      "sha256": "3032cffb3b905c9524b180dfad35aea895726c314efc04523b48f2cf7829dfc7"
     },
     {
       "path": "skills/exploring/SKILL.md",
@@ -565,8 +565,8 @@
     },
     {
       "path": "skills/revise-code/SKILL.md",
-      "bytes": 3196,
-      "sha256": "cfc18cbb3f73c671b6467df25dcee10a97e9cfb9d4fe8ef3104f65b9d92fc48b"
+      "bytes": 3787,
+      "sha256": "a5a93356f6e6be4e97a54a08fb947f681f731b03fd2b8e017e97ee1d542716e9"
     },
     {
       "path": "skills/revise-docs/SKILL.md",

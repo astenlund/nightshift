@@ -471,6 +471,8 @@ function nextTriageBaseline(root, state) {
   return closingReviewed || taskReviewed() ? triageBaseline(root) : earlier;
 }
 
+// The repair step of the operating brief, carried by both kinds of status rules.
+const REPAIR_RULE = 'Repair the property a finding keys on with the smallest change; before repairing a finding that reports misbehavior, run a failing check that reproduces it, or, when no practical automated reproduction exists, record a reason and stand-in evidence; when a repair changes which record, status or case a decision or obligation reads, trace that state\'s readers and writers; and after a second missed case of the same kind after a repair, a repair undoing an earlier one or a repeated invariant violation, counting misses across repair attempts rather than findings one review reports together, fix the shared cause.';
 const STALE_REVIEW = 'The latest assessment is stale: reviewed inputs changed after its import. Dispatch a current cumulative assessment that covers the changes';
 const STALE_DOCS_REVIEW = 'The latest docs review is stale: reviewed inputs changed after its import. Dispatch a current docs review that covers the changes';
 
@@ -620,8 +622,8 @@ function obligationBrief(state, root = state.root, options = {}) {
     workers: state.workers.filter(workerIsActive),
     followups: state.followups.filter(item => item.status !== 'resolved'),
     rules: isReviewContext(state)
-      ? 'This is standalone revision, not a delivery run. Preserve attributed independent assessment, skeptical validation, dispositions, repair closure, freshness, owner identity and resources. No delivery closing, continuation, retrospective or triage is required. Report pending follow-ups and actual limits. Publication requires separate authority.'
-      : `Continue authorized independent work and recovery. Every repair needs cumulative strong broad review: resume the reviewer that raised each repaired finding to record its closure, and pass a gate only on a fresh assessment. Validate every finding with a fresh skeptic before disposition. Preserve writer ownership. Update documentation and obtain its independent docs review, then retrospective, then follow-up triage; a handed-over run records its morning report before triage. Tracking edits after triage stay within the backlog and the other documentation a docs review alone covers, and need a closing docs review (task ${CLOSING_TARGET}) before completion. Missing or stale evidence is incomplete. Publication requires authority. Reconcile this record with actual files after compaction.`,
+      ? `This is standalone revision, not a delivery run. Preserve attributed independent assessment, skeptical validation, dispositions, repair closure, freshness, owner identity and resources. ${REPAIR_RULE} No delivery closing, continuation, retrospective or triage is required. Report pending follow-ups and actual limits. Publication requires separate authority.`
+      : `Continue authorized independent work and recovery. Every repair needs cumulative strong broad review: resume the reviewer that raised each repaired finding to record its closure, and pass a gate only on a fresh assessment. ${REPAIR_RULE} Validate every finding with a fresh skeptic before disposition. Preserve writer ownership. Update documentation and obtain its independent docs review, then retrospective, then follow-up triage; a handed-over run records its morning report before triage. Tracking edits after triage stay within the backlog and the other documentation a docs review alone covers, and need a closing docs review (task ${CLOSING_TARGET}) before completion. Missing or stale evidence is incomplete. Publication requires authority. Reconcile this record with actual files after compaction.`,
   };
 }
 
