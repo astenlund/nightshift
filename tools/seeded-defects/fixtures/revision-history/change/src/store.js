@@ -7,7 +7,7 @@ class Store {
   }
 
   apply(change) {
-    const next = { ...structuredClone(this.#state), ...structuredClone(change), revision: this.#state.revision + 1 };
+    const next = { ...this.#state, ...structuredClone(change), revision: this.#state.revision + 1 };
     this.#history.push(structuredClone(next));
     this.#state = next;
     return next.revision;

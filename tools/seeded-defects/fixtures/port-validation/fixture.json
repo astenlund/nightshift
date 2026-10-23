@@ -1,6 +1,6 @@
 {
   "requirements": "parsePort(text) must reject anything that is not a string holding a whole decimal number from 1 to 65535, throwing a RangeError whose message names the input, and otherwise return the number.",
-  "audited": "2026-10-23",
+  "audited": "2026-10-24",
   "defects": [],
   "outOfScope": [],
   "incidental": [],

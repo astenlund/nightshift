@@ -1,6 +1,6 @@
 {
   "requirements": "Add a Store class that applies changes to a state and keeps an audit history from which any earlier revision can be reconstructed. Runs reach tens of thousands of revisions, and a state can be several megabytes.",
-  "audited": "2026-10-23",
+  "audited": "2026-10-24",
   "defects": [
     {
       "id": "D1",

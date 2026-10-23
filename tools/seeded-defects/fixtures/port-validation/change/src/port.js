@@ -2,7 +2,7 @@ function describe(value) {
   try {
     return String(value);
   } catch {
-    return Object.prototype.toString.call(value);
+    return `a value of type ${typeof value}`;
   }
 }
 

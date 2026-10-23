@@ -16,7 +16,7 @@ async function writeJournal(file, entries) {
     await fs.promises.writeFile(temporary, JSON.stringify(entries));
     await fs.promises.rename(temporary, file);
   } catch (error) {
-    await fs.promises.rm(temporary, { force: true });
+    await fs.promises.rm(temporary, { force: true }).catch(() => {});
     throw error;
   }
 }
