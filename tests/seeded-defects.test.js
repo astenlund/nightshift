@@ -1,0 +1,475 @@
+'use strict';
+
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+const { spawnSync } = require('node:child_process');
+const test = require('node:test');
+const suite = require('../tools/seeded-defects');
+const { dispatchReview } = require('../internal/runtime/review');
+const { DIMENSIONS } = require('../internal/runtime/lifecycle');
+
+const MODEL = { host: 'claude', id: 'claude-opus-5-5' };
+
+function scratch(t) {
+  const parent = path.resolve(__dirname, '../.tmp/seeded-defects-tests');
+  fs.mkdirSync(parent, { recursive: true });
+  const root = fs.mkdtempSync(path.join(parent, 'case-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+
+  return root;
+}
+
+function writeTree(root, files) {
+  for (const [file, content] of Object.entries(files)) {
+    fs.mkdirSync(path.dirname(path.join(root, file)), { recursive: true });
+    fs.writeFileSync(path.join(root, file), content);
+  }
+}
+
+const BASE_CALC = 'function addTotal(a, b) {\n  return a + b;\n}\n\nmodule.exports = { addTotal };\n';
+const CHANGED_CALC = 'function addTotal(a, b) {\n  // Totals now include a fee.\n  return a - b + 1;\n}\n\nmodule.exports = { addTotal };\n';
+
+function defect(overrides = {}) {
+  return { id: 'D1', dimension: 'correctness-integration', file: 'src/calc.js', lines: [3, 3], symbol: 'addTotal', severity: 'important', consequence: 'Totals subtract instead of adding.', origin: 'synthetic', ...overrides };
+}
+
+function decoy(overrides = {}) {
+  return { severity: 'minor', consequence: 'The export list is incomplete.', evidence: 'src/calc.js:6 exports only one function', required: false, reason: 'The module defines only one function.', ...overrides };
+}
+
+function writeFixture(fixturesRoot, name, { base = { 'src/calc.js': BASE_CALC }, change = { 'src/calc.js': CHANGED_CALC }, fixture = {} } = {}) {
+  const directory = path.join(fixturesRoot, name);
+  writeTree(path.join(directory, 'base'), base);
+  writeTree(path.join(directory, 'change'), change);
+  const document = { requirements: 'Add a flat fee of one to every total without changing the addition.', audited: '2026-10-23', defects: [defect()], outOfScope: [], incidental: [], decoys: [decoy()], ...fixture };
+  fs.writeFileSync(path.join(directory, 'fixture.json'), JSON.stringify(document, null, 2) + '\n');
+
+  return directory;
+}
+
+function requestOf(options) {
+  return JSON.parse(fs.readFileSync(path.join(options.artifacts, '..', 'request.json'), 'utf8'));
+}
+
+// A host stand-in: the lead reports scenario.lead(request) findings, the skeptic answers each claim with scenario.verdict(claim).
+function mockAgent(scenario, calls) {
+  return async options => {
+    const request = requestOf(options);
+    calls.push({ kind: request.kind, request, options });
+    fs.mkdirSync(options.artifacts, { recursive: true });
+    if (scenario.throwFor?.(request)) throw Object.assign(new Error('host failed'), { code: 'unusable-review', tokens: 5 });
+    let report;
+    if (request.kind === 'skeptic') {
+      report = { requestId: request.id, status: 'complete', coverage: [], findings: request.findings.map(claim => ({ id: claim.id, verdict: scenario.verdict(claim), evidence: 'Checked the cited line', value: 'Worth fixing', repairProposal: 'Restore the addition' })), probes: [], summary: 'Claims checked', toolFailure: '' };
+    } else {
+      const findings = scenario.lead(request);
+      const status = scenario.leadStatus?.(request) ?? 'complete';
+      report = { requestId: request.id, status, coverage: DIMENSIONS.code.map(dimension => ({ dimension, evidence: 'Assessed' })), findings, probes: status === 'incomplete' ? [{ id: 'p1', purpose: 'run the test', executable: 'node', args: ['-v'], timeoutMs: 1000, files: [] }] : [], summary: 'Lead assessment', toolFailure: '', closures: [], positions: [] };
+    }
+    const events = [{ type: 'assistant', session_id: 's1', message: { model: options.model, content: [] } }, { type: 'result', session_id: 's1', subtype: 'success', is_error: false, structured_output: report, note: scenario.eventNote?.(request) ?? '' }];
+    fs.writeFileSync(path.join(options.artifacts, 'events.jsonl'), events.map(event => JSON.stringify(event)).join('\n') + '\n');
+
+    return { host: options.host, model: options.model, effort: options.effort, session: 's1', attributionVerified: true, status: 'complete', output: report, tokens: scenario.tokens ? scenario.tokens(request) : 1000, ...(scenario.exit ? { exit: scenario.exit(request) } : {}) };
+  };
+}
+
+const LEAD_FINDS_DEFECT = { lead: () => [{ id: 'L1', severity: 'important', consequence: 'Totals are wrong.', evidence: 'src/calc.js:3 addTotal subtracts b', required: true }], verdict: claim => claim.evidence.includes('addTotal') ? 'confirmed' : 'refuted' };
+
+function dependencies(scenario, calls) {
+  return { dispatchReview, materialize: suite.materialize, hostVersion: () => 'test-host 1.0', machineryHash: () => 'machinery', commit: () => 'commit', dispatchDependencies: { runAgent: mockAgent(scenario, calls) } };
+}
+
+function options(root, fixtures, overrides = {}) {
+  const rules = path.join(root, 'rules.md');
+  if (!fs.existsSync(rules)) fs.writeFileSync(rules, 'Name the file and line of every finding in its evidence.\n');
+
+  return { fixtures, out: path.join(root, 'run'), rules, models: [MODEL], repeat: 1, budget: 10000000, selected: ['alpha'], ...overrides };
+}
+
+test('the loader refuses overlapping truth, missing fields, unknown dimensions, misplaced origins, hidden paths and supplied tokens', t => {
+  // Arrange
+  const root = scratch(t);
+  const cases = [
+    ['overlap', { fixture: { defects: [defect(), defect({ id: 'D2', lines: [5, 5], symbol: undefined })] } }, /overlap/],
+    ['missing', { fixture: { defects: [{ ...defect(), consequence: undefined }] } }, /missing consequence/],
+    ['dimension', { fixture: { defects: [defect({ dimension: 'style' })] } }, /unknown dimension/],
+    ['origin', { fixture: { defects: [defect({ origin: 'adjudicated:run-1' })] } }, /adjudicated origin outside incidental/],
+    ['incidental', { fixture: { incidental: [defect({ id: 'I1', origin: 'synthetic', file: 'src/calc.js', lines: [6, 6], symbol: 'exports' })] } }, /must have origin adjudicated/],
+    ['hidden', { change: { 'src/calc.js': CHANGED_CALC, '.gitignore': 'x\n' } }, /hidden from the reviewer/],
+    ['tree-token', { change: { 'src/calc.js': CHANGED_CALC + '// see fixture.json\n' } }, /contains fixture\.json/],
+    ['decoy-token', { fixture: { decoys: [decoy({ evidence: 'seeded-defects layout' })] } }, /contains seeded-defects/],
+  ];
+
+  for (const [name, spec, pattern] of cases) {
+    writeFixture(root, name, spec);
+
+    // Act and Assert
+    assert.throws(() => suite.loadFixture(path.join(root, name)), pattern, name);
+  }
+});
+
+test('composition rules are checked for the whole suite and skipped for a subset', t => {
+  // Arrange
+  const root = scratch(t);
+  writeFixture(root, 'alpha');
+
+  // Act
+  const problems = suite.compositionProblems([suite.loadFixture(path.join(root, 'alpha'))]);
+
+  // Assert
+  assert.ok(problems.some(problem => problem.includes('three clean fixtures')));
+  assert.ok(problems.some(problem => problem.includes('fresh-gate')));
+  assert.throws(() => suite.loadSuite(root), /composition rules/);
+  assert.equal(suite.loadSuite(root, ['alpha']).whole, false);
+});
+
+test('materialization lies outside the checkout, commits the base untouched by line-ending settings, applies deletions and omits the truth', t => {
+  // Arrange
+  const root = scratch(t);
+  const directory = writeFixture(root, 'alpha', { base: { 'src/calc.js': BASE_CALC, 'old.txt': 'line\r\n' }, fixture: { deletions: ['old.txt'] } });
+  const fixture = suite.loadFixture(directory).fixture;
+
+  // Act
+  const repository = suite.materialize(directory, fixture);
+  t.after(() => fs.rmSync(repository.root, { recursive: true, force: true }));
+
+  // Assert
+  assert.equal(repository.root.startsWith(fs.realpathSync.native(os.tmpdir())), true);
+  assert.equal(path.relative(path.resolve(__dirname, '..'), repository.root).startsWith('..'), true);
+  assert.equal(fs.existsSync(path.join(repository.root, 'old.txt')), false);
+  assert.equal(fs.existsSync(path.join(repository.root, 'fixture.json')), false);
+  const committed = spawnSync('git', ['show', `${repository.baseSha}:old.txt`], { cwd: repository.root, encoding: 'utf8' }).stdout;
+  assert.equal(committed, 'line\r\n');
+  assert.equal(spawnSync('git', ['config', 'core.autocrlf'], { cwd: repository.root, encoding: 'utf8' }).stdout.trim(), 'false');
+});
+
+test('materialization refuses a fixture whose files a global ignore file hides', t => {
+  // Arrange
+  const root = scratch(t);
+  const directory = writeFixture(root, 'alpha');
+  const ignore = path.join(root, 'global-ignore');
+  fs.writeFileSync(ignore, 'calc.js\n');
+  const config = path.join(root, 'global-config');
+  fs.writeFileSync(config, `[core]\n\texcludesFile = ${ignore.split(path.sep).join('/')}\n`);
+  const previous = process.env.GIT_CONFIG_GLOBAL;
+  process.env.GIT_CONFIG_GLOBAL = config;
+  t.after(() => {
+    if (previous === undefined) delete process.env.GIT_CONFIG_GLOBAL;
+    else process.env.GIT_CONFIG_GLOBAL = previous;
+  });
+
+  // Act and Assert
+  assert.throws(() => suite.materialize(directory, suite.loadFixture(directory).fixture), /hidden from the reviewer/);
+});
+
+test('a run dispatches a lead and a skeptic in separate repositories, shuffles claims and grades every figure', async t => {
+  // Arrange
+  const root = scratch(t);
+  writeFixture(root, 'alpha');
+  const calls = [];
+
+  // Act
+  const result = await suite.run(options(root, root), dependencies(LEAD_FINDS_DEFECT, calls));
+  const report = suite.grade(path.join(root, 'run'), path.join(root, 'no-targets.json'));
+
+  // Assert
+  assert.equal(result.stopped, null);
+  assert.deepEqual(calls.map(call => call.kind), ['code', 'skeptic']);
+  assert.notEqual(calls[0].options.protectedRoot, calls[1].options.protectedRoot);
+  assert.deepEqual(calls[1].request.findings.map(claim => claim.id).sort(), ['F1', 'F2']);
+  assert.equal(fs.existsSync(path.join(calls[1].options.protectedRoot, '.nightshift/runs/reviews', calls[0].request.id)), false);
+  assert.deepEqual([report.pooled.detection.numerator, report.pooled.detection.denominator], [1, 1]);
+  assert.deepEqual([report.pooled.skepticAccuracy.numerator, report.pooled.skepticAccuracy.denominator], [2, 2]);
+  assert.equal(report.pooled.severityAccuracy.value, 1);
+  assert.equal(report.pooled.tokensPerFixture.value, 2000);
+  assert.equal(report.pooled.provisional, false);
+  assert.equal(report.targets.status, 'none');
+  assert.equal(report.whole, false);
+});
+
+test('a run refuses to start without a budget and stops before a dispatch the budget cannot cover', async t => {
+  // Arrange
+  const root = scratch(t);
+  writeFixture(root, 'alpha');
+  const calls = [];
+
+  // Act
+  const missing = suite.run(options(root, root, { budget: undefined }), dependencies(LEAD_FINDS_DEFECT, calls));
+  const result = await suite.run(options(root, root, { budget: 1000 }), dependencies(LEAD_FINDS_DEFECT, calls));
+
+  // Assert
+  await assert.rejects(missing, /budget/);
+  assert.match(result.stopped, /budget/);
+  assert.equal(calls.length, 0);
+});
+
+test('an attempt without a token reading stops the run before the next dispatch', async t => {
+  // Arrange
+  const root = scratch(t);
+  writeFixture(root, 'alpha');
+  const calls = [];
+
+  // Act
+  const result = await suite.run(options(root, root), dependencies({ ...LEAD_FINDS_DEFECT, tokens: () => null }, calls));
+
+  // Assert
+  assert.match(result.stopped, /recorded no tokens/);
+  assert.deepEqual(calls.map(call => call.kind), ['code']);
+  assert.equal(result.spending.unknown, true);
+});
+
+test('an incomplete lead skips the skeptic, grades incomplete, and --retry supersedes it with its cause recorded', async t => {
+  // Arrange
+  const root = scratch(t);
+  writeFixture(root, 'alpha');
+  const calls = [];
+  let incomplete = true;
+  const scenario = { ...LEAD_FINDS_DEFECT, leadStatus: () => incomplete ? 'incomplete' : 'complete' };
+
+  // Act
+  await suite.run(options(root, root), dependencies(scenario, calls));
+  const first = suite.grade(path.join(root, 'run'), path.join(root, 'none.json'));
+  const rerun = await suite.run(options(root, root), dependencies(scenario, calls));
+  incomplete = false;
+  await suite.run(options(root, root, { retry: true }), dependencies(scenario, calls));
+  const second = suite.grade(path.join(root, 'run'), path.join(root, 'none.json'));
+
+  // Assert
+  assert.deepEqual(first.incomplete, ['alpha__claude-claude-opus-5-5__r1']);
+  assert.equal(rerun.stopped, null);
+  assert.deepEqual(calls.map(call => call.kind), ['code', 'code', 'skeptic']);
+  assert.deepEqual(second.incomplete, []);
+  assert.deepEqual(second.pooled.retries, { 'incomplete-report': 1 });
+  assert.equal(second.pooled.tokensPerFixture.value, 2000);
+  assert.equal(suite.spending(path.join(root, 'run')).spent, 3000);
+});
+
+test('resume reconciles a pending intent from its repository or counts a lost outcome as estimated, and writes a missing completion record', async t => {
+  // Arrange
+  const root = scratch(t);
+  writeFixture(root, 'alpha');
+  const calls = [];
+  await suite.run(options(root, root), dependencies(LEAD_FINDS_DEFECT, calls));
+  const key = 'alpha__claude-claude-opus-5-5__r1';
+  const paths = suite.runPaths(path.join(root, 'run'), key);
+  fs.rmSync(paths.complete);
+  const skepticIntent = JSON.parse(fs.readFileSync(paths.intent('skeptic'), 'utf8'));
+  const missingRepository = path.join(root, 'gone');
+  fs.writeFileSync(paths.intent('skeptic'), JSON.stringify({ ...skepticIntent, done: false, repository: missingRepository }));
+  fs.rmSync(paths.result('skeptic'));
+  fs.rmSync(paths.artifacts('skeptic'), { recursive: true });
+
+  // Act
+  await suite.run(options(root, root), dependencies(LEAD_FINDS_DEFECT, calls));
+  const report = suite.grade(path.join(root, 'run'), path.join(root, 'none.json'));
+
+  // Assert
+  assert.deepEqual(calls.map(call => call.kind), ['code', 'skeptic']);
+  const record = JSON.parse(fs.readFileSync(paths.result('skeptic'), 'utf8'));
+  assert.equal(record.outcome, 'lost');
+  assert.equal(record.estimated, 1000);
+  assert.equal(fs.existsSync(paths.complete), true);
+  assert.equal(report.pooled.tokensEstimated, true);
+  assert.deepEqual([report.pooled.detection.numerator, report.pooled.skepticAccuracy.denominator], [1, 0]);
+});
+
+test('after a done lead with no skeptic intent, resume dispatches the skeptic next', async t => {
+  // Arrange
+  const root = scratch(t);
+  writeFixture(root, 'alpha');
+  const calls = [];
+  await suite.run(options(root, root), dependencies(LEAD_FINDS_DEFECT, calls));
+  const paths = suite.runPaths(path.join(root, 'run'), 'alpha__claude-claude-opus-5-5__r1');
+  for (const file of [paths.complete, paths.intent('skeptic'), paths.result('skeptic'), paths.claims]) fs.rmSync(file);
+  fs.rmSync(paths.artifacts('skeptic'), { recursive: true });
+
+  // Act
+  await suite.run(options(root, root), dependencies(LEAD_FINDS_DEFECT, calls));
+
+  // Assert
+  assert.deepEqual(calls.map(call => call.kind), ['code', 'skeptic', 'skeptic']);
+});
+
+test('unproven host termination blocks the run folder until the termination is confirmed', async t => {
+  // Arrange
+  const root = scratch(t);
+  writeFixture(root, 'alpha');
+  const calls = [];
+  const scenario = { ...LEAD_FINDS_DEFECT, exit: () => ({ descendantsReclaimed: false }) };
+
+  // Act
+  const first = await suite.run(options(root, root), dependencies(scenario, calls));
+  const refused = suite.run(options(root, root), dependencies(LEAD_FINDS_DEFECT, calls));
+
+  // Assert
+  assert.match(first.stopped, /termination is unproven/);
+  await assert.rejects(refused, /termination-checked/);
+  const blocking = JSON.parse(fs.readFileSync(path.join(root, 'run', 'blocking.json'), 'utf8'));
+  assert.equal(fs.existsSync(blocking.repository), true);
+  fs.rmSync(blocking.repository, { recursive: true, force: true });
+  const resumed = await suite.run(options(root, root, { terminationChecked: true }), dependencies(LEAD_FINDS_DEFECT, calls));
+  assert.equal(resumed.stopped, null);
+});
+
+test('matching assigns one finding to one entry, nearest first, and leaves the rest unmatched', () => {
+  // Arrange
+  const truth = [defect({ id: 'A', file: 'a.js', lines: [10, 10], symbol: undefined }), defect({ id: 'B', file: 'b.js', lines: [20, 20], symbol: undefined })];
+  const findings = [{ id: 'X', evidence: 'a.js:10 and b.js:21 both break', consequence: 'Broken' }, { id: 'Y', evidence: 'b.js:20 breaks', consequence: 'Broken' }, { id: 'Z', evidence: 'c.js:1', consequence: 'Other' }];
+
+  // Act
+  const { byFinding } = suite.assign(findings, truth);
+
+  // Assert
+  assert.deepEqual([...byFinding.entries()].sort(), [[0, 0], [1, 1]]);
+  assert.equal(byFinding.has(2), false);
+});
+
+test('a cited range enclosing the entry matches at distance zero, ahead of a nearby single line', () => {
+  // Arrange
+  const entry = defect({ id: 'A', file: 'src/runs.js', lines: [18, 21], symbol: undefined });
+  const enclosing = { id: 'F1', evidence: 'src/runs.js:15-26 (update) writes the recorded owner', consequence: 'Broken' };
+  const nearby = { id: 'F2', evidence: 'src/runs.js:4-12 and the guard at src/runs.js:23', consequence: 'Broken' };
+  const pair = { id: 'F3', evidence: 'lines 4 and 25 of runs.js', consequence: 'Broken' };
+
+  // Act
+  const { byFinding } = suite.assign([nearby, enclosing], [entry]);
+
+  // Assert
+  assert.equal(suite.distance(enclosing, entry, ['src/runs.js']), 0);
+  assert.equal(suite.distance(nearby, entry, ['src/runs.js']), 2);
+  assert.equal(suite.distance(pair, entry, ['src/runs.js']), null);
+  assert.deepEqual([...byFinding.entries()], [[1, 0]]);
+});
+
+test('a symbol matches from the evidence only, so a caller named in a consequence does not claim the entry', () => {
+  // Arrange
+  const entry = defect({ id: 'O1', file: 'src/report.js', lines: [3, 3], symbol: 'summarize' });
+  const passing = { id: 'F2', evidence: 'src/fresh.js:13 (fresh) throws', consequence: 'Breaks callers such as summarize in src/report.js' };
+  const locating = { id: 'F3', evidence: 'src/report.js (summarize) subtracts one', consequence: 'Undercounts' };
+
+  // Act
+  const { byFinding } = suite.assign([passing, locating], [entry]);
+
+  // Assert
+  assert.equal(suite.distance(passing, entry, ['src/report.js']), null);
+  assert.equal(suite.distance(locating, entry, ['src/report.js']), 0);
+  assert.deepEqual([...byFinding.entries()], [[1, 0]]);
+});
+
+test('grading handles clean fixtures, out-of-scope flags, unverified verdicts, adjudications and contamination', async t => {
+  // Arrange
+  const root = scratch(t);
+  writeFixture(root, 'alpha', { change: { 'src/calc.js': BASE_CALC.replace('return a + b;', 'return a + b; // unchanged') }, fixture: { defects: [], outOfScope: [defect({ id: 'O1', dimension: 'design-maintainability', lines: [1, 1], symbol: undefined, consequence: 'The name is vague.' })], decoys: [decoy()] } });
+  const calls = [];
+  const scenario = {
+    lead: () => [
+      { id: 'L1', severity: 'minor', consequence: 'Vague name.', evidence: 'src/calc.js:1 addTotal is vague', required: false },
+      { id: 'L2', severity: 'important', consequence: 'Missing input checks.', evidence: 'src/calc.js:9 no validation', required: true },
+      { id: 'L3', severity: 'minor', consequence: 'Comment noise.', evidence: 'src/calc.js:12 comment', required: true },
+    ],
+    verdict: claim => claim.evidence.includes('validation') ? 'confirmed' : claim.evidence.includes('comment') ? 'unverified' : claim.evidence.includes('vague') ? 'confirmed' : 'refuted',
+  };
+  await suite.run(options(root, root), dependencies(scenario, calls));
+  const runFolder = path.join(root, 'run');
+  const key = 'alpha__claude-claude-opus-5-5__r1';
+
+  // Act
+  const provisional = suite.grade(runFolder, path.join(root, 'none.json'));
+  fs.writeFileSync(path.join(runFolder, 'adjudications.json'), JSON.stringify({ [key]: { L2: { outcome: 'false', reason: 'No input reaches it' }, L3: { outcome: 'real', reason: 'A stale comment', file: 'src/calc.js', lines: [2, 2] } } }));
+  const adjudicated = suite.grade(runFolder, path.join(root, 'none.json'));
+
+  // Assert
+  assert.equal(provisional.pooled.provisional, true);
+  assert.deepEqual(provisional.pendingAdjudication[key].sort(), ['L2', 'L3']);
+  assert.equal(adjudicated.pooled.provisional, false);
+  assert.deepEqual([adjudicated.pooled.outOfScope.numerator, adjudicated.pooled.outOfScope.requiredFalse], [1, 1]);
+  // L3 adjudicated real makes the fixture not clean for this run, so L2's confirmation counts among unmatched confirmations.
+  assert.deepEqual([adjudicated.pooled.cleanChangeFalsePositives.denominator, adjudicated.pooled.unmatchedConfirmations.numerator], [0, 1]);
+  // Out-of-scope finding confirmed agrees, decoy refuted agrees.
+  assert.deepEqual([adjudicated.pooled.skepticAccuracy.numerator, adjudicated.pooled.skepticAccuracy.denominator], [2, 2]);
+  const leadEvents = path.join(suite.runPaths(runFolder, key).artifacts('lead'), 'attempt-1', 'events.jsonl');
+  fs.appendFileSync(leadEvents, JSON.stringify({ type: 'note', text: 'read fixture.json' }) + '\n');
+  assert.deepEqual(suite.grade(runFolder, path.join(root, 'none.json')).contaminated, [key]);
+});
+
+test('a run whose skeptic failed keeps its lead figures, leaves both false-positive figures and is listed', async t => {
+  // Arrange
+  const root = scratch(t);
+  writeFixture(root, 'alpha');
+  const calls = [];
+  const scenario = {
+    lead: () => [...LEAD_FINDS_DEFECT.lead(), { id: 'L2', severity: 'minor', consequence: 'Missing input checks.', evidence: 'src/calc.js:12 no validation', required: false }],
+    verdict: () => 'confirmed',
+    throwFor: request => request.kind === 'skeptic',
+  };
+  await suite.run(options(root, root), dependencies(scenario, calls));
+  const runFolder = path.join(root, 'run');
+  fs.writeFileSync(path.join(runFolder, 'adjudications.json'), JSON.stringify({ 'alpha__claude-claude-opus-5-5__r1': { L2: { outcome: 'false', reason: 'No input reaches it' } } }));
+
+  // Act
+  const report = suite.grade(runFolder, path.join(root, 'none.json'));
+
+  // Assert
+  assert.deepEqual([report.pooled.detection.numerator, report.pooled.detection.denominator], [1, 1]);
+  assert.deepEqual([report.pooled.unmatchedConfirmations.denominator, report.pooled.cleanChangeFalsePositives.denominator, report.pooled.skepticAccuracy.denominator], [0, 0, 0]);
+  assert.deepEqual(report.skepticIncomplete, ['alpha__claude-claude-opus-5-5__r1']);
+  assert.match(fs.readFileSync(path.join(runFolder, 'report.md'), 'utf8'), /Without a complete skeptic: alpha__claude-claude-opus-5-5__r1\./);
+});
+
+test('an attribution to an unmatched entry counts as its match, and one to a matched entry is a duplicate', async t => {
+  // Arrange
+  const root = scratch(t);
+  writeFixture(root, 'alpha');
+  const calls = [];
+  const scenario = { lead: () => [{ id: 'L1', severity: 'important', consequence: 'Totals are wrong for callers.', evidence: 'The checkout total in the cart is off by the fee', required: true }], verdict: () => 'refuted' };
+  await suite.run(options(root, root), dependencies(scenario, calls));
+  const runFolder = path.join(root, 'run');
+  const key = 'alpha__claude-claude-opus-5-5__r1';
+
+  // Act
+  const before = suite.grade(runFolder, path.join(root, 'none.json'));
+  fs.writeFileSync(path.join(runFolder, 'adjudications.json'), JSON.stringify({ [key]: { L1: { outcome: 'attributed', entry: 'D1', reason: 'Reported at the symptom' } } }));
+  const after = suite.grade(runFolder, path.join(root, 'none.json'));
+
+  // Assert
+  assert.equal(before.pooled.detection.numerator, 0);
+  assert.equal(after.pooled.detection.numerator, 1);
+  assert.equal(after.pooled.attributions, 1);
+});
+
+test('comparisons flag confounding, informational differences and stale targets', t => {
+  // Arrange
+  const root = scratch(t);
+  const report = overrides => ({ fixtureSetHash: 'f1', graderHash: 'g1', rulesHash: 'r1', mixed: false, identities: [{ machinery: 'm1', harness: 'h1', commit: 'c1', hostVersion: 'v1' }], byModel: { 'claude:claude-opus-5-5': {} }, pooled: Object.fromEntries(['detection', 'cleanChangeFalsePositives', 'unmatchedConfirmations', 'severityAccuracy', 'skepticAccuracy'].map(key => [key, { value: 0.5 }])), ...overrides });
+  for (const [name, value] of [['base', report()], ['prompt', report({ identities: [{ machinery: 'm2', harness: 'h1', commit: 'c2', hostVersion: 'v2' }] })], ['both', report({ identities: [{ machinery: 'm2', harness: 'h1', commit: 'c1', hostVersion: 'v1' }], rulesHash: 'r2' })]]) {
+    fs.mkdirSync(path.join(root, name));
+    fs.writeFileSync(path.join(root, name, 'report.json'), JSON.stringify({ ...value, pooled: { ...value.pooled, provisional: false } }));
+  }
+
+  // Act
+  const prompt = suite.compare(path.join(root, 'base'), path.join(root, 'prompt'));
+  const both = suite.compare(path.join(root, 'base'), path.join(root, 'both'));
+
+  // Assert
+  assert.deepEqual(prompt.confounded, []);
+  assert.deepEqual(prompt.informational.hostVersions.sort(), ['v1', 'v2']);
+  assert.equal(both.confounded.length, 1);
+  assert.match(both.confounded[0], /more than one varied input/);
+});
+
+test('the harness writes nothing in the checkout outside its run folder', async t => {
+  // Arrange
+  const root = scratch(t);
+  writeFixture(root, 'alpha');
+  const calls = [];
+  const status = () => spawnSync('git', ['status', '--porcelain', '--untracked-files=all', '--', '.', ':!.tmp'], { cwd: path.resolve(__dirname, '..'), encoding: 'utf8' }).stdout;
+  const before = status();
+
+  // Act
+  await suite.run(options(root, root), dependencies(LEAD_FINDS_DEFECT, calls));
+
+  // Assert
+  assert.equal(status(), before);
+});
