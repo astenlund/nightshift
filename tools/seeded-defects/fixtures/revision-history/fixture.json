@@ -7,8 +7,8 @@
       "dimension": "performance-resources",
       "file": "src/store.js",
       "lines": [
-        9,
-        9
+        11,
+        11
       ],
       "severity": "important",
       "consequence": "Every revision stores a full copy of a multi-megabyte state, so tens of thousands of revisions exhaust memory; storing the changes would reconstruct the same history.",
@@ -21,7 +21,7 @@
     {
       "severity": "minor",
       "consequence": "A change carrying its own revision field overwrites the revision counter.",
-      "evidence": "src/store.js:8 change can overwrite revision",
+      "evidence": "src/store.js:10 change can overwrite revision",
       "required": false,
       "reason": "revision is set after the change is spread, so a change cannot overwrite it."
     }

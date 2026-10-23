@@ -7,8 +7,8 @@
       "dimension": "correctness-integration",
       "file": "bin/check.js",
       "lines": [
-        9,
-        9
+        15,
+        15
       ],
       "severity": "critical",
       "consequence": "No problem parseConfig reports starts with 'error', so --check exits 0 on a malformed file and CI passes it.",

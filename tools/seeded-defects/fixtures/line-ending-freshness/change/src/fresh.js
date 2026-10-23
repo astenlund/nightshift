@@ -10,7 +10,13 @@ function snapshot(files) {
 }
 
 function fresh(recorded) {
-  return Object.entries(recorded).every(([file, hash]) => fs.existsSync(file) && digest(file) === hash);
+  return Object.entries(recorded).every(([file, hash]) => {
+    try {
+      return digest(file) === hash;
+    } catch {
+      return false;
+    }
+  });
 }
 
 module.exports = { fresh, snapshot };

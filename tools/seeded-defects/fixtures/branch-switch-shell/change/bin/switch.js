@@ -1,10 +1,14 @@
-#!/usr/bin/env node
 const { runGit } = require('../src/git');
 
 const branch = process.argv[2];
-if (!branch) {
+if (!branch || branch.startsWith('-')) {
   console.error('usage: switch <branch>');
   process.exit(2);
 }
-runGit(process.cwd(), ['switch', branch]);
+try {
+  runGit(process.cwd(), ['switch', branch]);
+} catch (error) {
+  console.error(error.message.trim());
+  process.exit(1);
+}
 console.log(`switched to ${branch}`);

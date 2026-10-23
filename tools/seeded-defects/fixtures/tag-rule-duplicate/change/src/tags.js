@@ -3,7 +3,8 @@ function validTag(tag) {
 }
 
 function normalizeTags(tags) {
-  return [...new Set(tags.filter(validTag).map(tag => tag.toLowerCase()))];
+  const lowered = tags.map(tag => (typeof tag === 'string' ? tag.toLowerCase() : tag));
+  return [...new Set(lowered.filter(validTag))];
 }
 
 module.exports = { normalizeTags, validTag };

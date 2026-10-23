@@ -15,7 +15,20 @@
       "origin": "9bea7815-8786-409c-9841-458b0a4df837"
     }
   ],
-  "outOfScope": [],
+  "outOfScope": [
+    {
+      "id": "O1",
+      "dimension": "security-data-safety",
+      "file": "src/runs.js",
+      "lines": [
+        29,
+        29
+      ],
+      "severity": "important",
+      "consequence": "The module exports its runs Map, and createRun and adopt return the live run records, so any caller can change a run's owner or state without the owner check; the code predates this change.",
+      "origin": "synthetic"
+    }
+  ],
   "incidental": [],
   "decoys": [
     {

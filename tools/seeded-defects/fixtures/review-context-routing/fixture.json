@@ -7,21 +7,34 @@
       "dimension": "correctness-integration",
       "file": "src/intake.js",
       "lines": [
-        10,
-        10
+        2,
+        2
       ],
       "severity": "critical",
       "consequence": "A request with both tasks and a reviewContextId opens a review instead of being refused, silently dropping the delivery's tasks and obligations.",
       "origin": "9bea7815-8786-409c-9841-458b0a4df837"
     }
   ],
-  "outOfScope": [],
+  "outOfScope": [
+    {
+      "id": "O1",
+      "dimension": "design-maintainability",
+      "file": "src/intake.js",
+      "lines": [
+        15,
+        15
+      ],
+      "severity": "minor",
+      "consequence": "createDelivery and createReview stay exported, so callers can still bypass accept, the single entry; the exports predate this change.",
+      "origin": "synthetic"
+    }
+  ],
   "incidental": [],
   "decoys": [
     {
       "severity": "important",
       "consequence": "accept never reaches createDelivery, so no delivery can be created.",
-      "evidence": "src/intake.js:12 the delivery branch is unreachable",
+      "evidence": "src/intake.js:4 the delivery branch is unreachable",
       "required": false,
       "reason": "The final return calls createDelivery for every request with tasks and no review context."
     }

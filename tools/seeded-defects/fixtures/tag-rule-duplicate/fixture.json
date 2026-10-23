@@ -22,7 +22,7 @@
     {
       "severity": "minor",
       "consequence": "normalizeTags keeps tags that differ only in case.",
-      "evidence": "src/tags.js:6 duplicates differing in case survive",
+      "evidence": "src/tags.js:7 duplicates differing in case survive",
       "required": false,
       "reason": "Tags are lowercased before the Set removes duplicates."
     }

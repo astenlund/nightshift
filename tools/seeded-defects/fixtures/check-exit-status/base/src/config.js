@@ -1,7 +1,7 @@
 function parseConfig(text) {
   const entries = [];
   const problems = [];
-  text.split('\n').forEach((line, index) => {
+  text.split(/\r?\n/).forEach((line, index) => {
     if (!line.trim() || line.startsWith('#')) return;
     const match = /^(\w+)\s*=\s*(.*)$/.exec(line);
     if (!match) problems.push(`line ${index + 1}: not a key = value pair`);

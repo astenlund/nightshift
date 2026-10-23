@@ -1,5 +1,5 @@
 {
-  "requirements": "parsePort(text) must reject anything that is not a whole decimal number from 1 to 65535, throwing a RangeError whose message names the input, and otherwise return the number.",
+  "requirements": "parsePort(text) must reject anything that is not a string holding a whole decimal number from 1 to 65535, throwing a RangeError whose message names the input, and otherwise return the number.",
   "audited": "2026-10-23",
   "defects": [],
   "outOfScope": [],
@@ -8,7 +8,7 @@
     {
       "severity": "important",
       "consequence": "parsePort accepts negative numbers.",
-      "evidence": "src/port.js:4 negative ports pass",
+      "evidence": "src/port.js:12 negative ports pass",
       "required": false,
       "reason": "The pattern admits digits only, so a minus sign is refused before the range check."
     }

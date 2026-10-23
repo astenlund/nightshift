@@ -8,7 +8,7 @@
       "file": "src/fresh.js",
       "lines": [
         4,
-        13
+        15
       ],
       "severity": "important",
       "consequence": "fresh compares raw-byte digests, so a file converted between CRLF and LF reads as changed, against the requirement; the digest it compares is where line endings would need normalizing.",
@@ -35,9 +35,9 @@
     {
       "severity": "important",
       "consequence": "fresh reports a deleted file as fresh.",
-      "evidence": "src/fresh.js:13 fresh does not check that the file exists",
+      "evidence": "src/fresh.js:15 fresh does not check that the file exists",
       "required": false,
-      "reason": "fresh checks fs.existsSync before digesting, so a deleted file makes it false."
+      "reason": "Digesting a deleted file throws, and fresh catches that and returns false."
     }
   ]
 }
