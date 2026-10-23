@@ -2,14 +2,15 @@ const runs = new Map();
 const seen = new Map();
 
 function createRun(id, owner) {
+  if (runs.has(id)) throw new Error(`run ${id} already exists`);
   runs.set(id, { id, owner, state: 'open' });
-  return runs.get(id);
+  return { ...runs.get(id) };
 }
 
 function adopt(id, newOwner) {
   const run = runs.get(id);
   run.owner = newOwner;
-  return run;
+  return { ...run };
 }
 
 function update(request) {
@@ -26,4 +27,4 @@ function update(request) {
   return { state: run.state };
 }
 
-module.exports = { adopt, createRun, runs, update };
+module.exports = { adopt, createRun, update };

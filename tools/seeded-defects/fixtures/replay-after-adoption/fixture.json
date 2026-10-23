@@ -7,34 +7,21 @@
       "dimension": "security-data-safety",
       "file": "src/runs.js",
       "lines": [
-        18,
-        21
+        19,
+        22
       ],
       "severity": "critical",
       "consequence": "Replaying a recorded request after adoption reinstalls the former owner and rewrites the run's state without checking who owns it now.",
       "origin": "9bea7815-8786-409c-9841-458b0a4df837"
     }
   ],
-  "outOfScope": [
-    {
-      "id": "O1",
-      "dimension": "security-data-safety",
-      "file": "src/runs.js",
-      "lines": [
-        29,
-        29
-      ],
-      "severity": "important",
-      "consequence": "The module exports its runs Map, and createRun and adopt return the live run records, so any caller can change a run's owner or state without the owner check; the code predates this change.",
-      "origin": "synthetic"
-    }
-  ],
+  "outOfScope": [],
   "incidental": [],
   "decoys": [
     {
       "severity": "important",
       "consequence": "adopt silently creates a run for an unknown id, so a typo creates an orphan run.",
-      "evidence": "src/runs.js:9 adopt creates a new run when the id is unknown",
+      "evidence": "src/runs.js:10 adopt creates a new run when the id is unknown",
       "required": false,
       "reason": "adopt reads the existing run and throws on an unknown id; it never creates one."
     }

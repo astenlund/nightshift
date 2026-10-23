@@ -15,20 +15,7 @@
       "origin": "9bea7815-8786-409c-9841-458b0a4df837"
     }
   ],
-  "outOfScope": [
-    {
-      "id": "O1",
-      "dimension": "design-maintainability",
-      "file": "src/intake.js",
-      "lines": [
-        15,
-        15
-      ],
-      "severity": "minor",
-      "consequence": "createDelivery and createReview stay exported, so callers can still bypass accept, the single entry; the exports predate this change.",
-      "origin": "synthetic"
-    }
-  ],
+  "outOfScope": [],
   "incidental": [],
   "decoys": [
     {

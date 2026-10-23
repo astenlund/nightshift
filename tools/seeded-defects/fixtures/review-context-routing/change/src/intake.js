@@ -12,4 +12,4 @@ function createReview(request) {
   return { kind: 'review', context: request.reviewContextId, obligations: [] };
 }
 
-module.exports = { accept, createDelivery, createReview };
+module.exports = { accept };

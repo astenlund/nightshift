@@ -12,7 +12,7 @@
       ],
       "symbol": "onFailure",
       "severity": "important",
-      "consequence": "onFailure still passes the attempt first, so scheduleRetry reads the backoff as the attempt count, which exceeds MAX_ATTEMPTS, and every worker task is abandoned on its first failure.",
+      "consequence": "onFailure still passes the attempt first, so scheduleRetry reads the backoff as the attempt count, and a task with any backoff of MAX_ATTEMPTS (5) milliseconds or more is abandoned on its first failure.",
       "origin": "synthetic"
     }
   ],

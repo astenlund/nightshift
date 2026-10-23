@@ -1,5 +1,5 @@
 {
-  "requirements": "Add normalizeTags(tags): keep the valid tags, lowercased and deduplicated. A tag is valid under the same rule as a name, which src/limits.js owns.",
+  "requirements": "Add normalizeTags(tags): lowercase the tags, then keep the valid ones, deduplicated. A lowercased tag is valid under the same rule as a name, which src/limits.js owns.",
   "audited": "2026-10-23",
   "defects": [
     {
