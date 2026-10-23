@@ -14,6 +14,14 @@ Give the harness an explicit user attestation for a null attempt, recorded besid
 
 **Requires:** none.
 
+### Seeded-defect grader gives a planted defect to a nearer unrelated finding
+
+Found on 2026-10-24 while adjudicating the second seeded-defect baseline. `assign` in `tools/seeded-defects.js` pairs findings with truth entries by line distance alone, so a finding about something else whose cited range touches the entry's lines takes the entry ahead of the finding that describes the defect but cites a line nearby. It happened twice in GLM 5.3 lead runs in `.tmp/9fe31e9c-suite/baseline-2`. In `check-environment__vibe-glm-5-3__r2`, a minor finding about the fixed timeout cited `src/checks.js:4` and took D1, while the critical RUNNER_ exposure finding cited line 5. In `revision-history__vibe-glm-5-3__r2`, a finding about the missing current-state reader cited `src/store.js:11-22` and took D1, while the critical per-revision snapshot finding cited lines 13-14. Detection still counts, but severity accuracy is judged on the wrong finding, and the unrelated finding escapes the false-confirmation count. An `attributed` adjudication cannot repair this, because the entry is already matched and the attributed finding becomes a duplicate.
+
+Rank candidate pairs so that a finding's agreement with the entry, such as its dimension and severity or its evidence naming the entry's symbol, can outweigh a small line difference, or let an adjudication reassign an entry to another finding. Cover both cases above with tests. A grader change alters the harness hash, so make it between baselines.
+
+**Requires:** none.
+
 ### Unwrap joins adjacent link reference definitions
 
 Found on 2026-09-25 while writing fixtures in run `6e70931a-3760-46e2-b628-fdaa4a29f0e3`. The shared unwrap scanner (`scanWraps` in `internal/backlog-catalog.js`) treats two adjacent link reference definition lines (`[a]: x` followed by `[b]: y`) as one hard-wrapped paragraph. Ready then reports a hard-wrap notice, and `unwrap.js --write` would join them into one line (`[a]: x [b]: y`). Under CommonMark that line is no longer a definition, so both definitions are lost as paragraph text, while Ready's definition pattern, which has no end anchor, would still read the first as defined. The repository backlog has no reference definitions today, so nothing is affected yet. Pre-existing; the user chose to track it at triage.
