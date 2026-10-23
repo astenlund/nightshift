@@ -25,6 +25,12 @@ const LINE_SLACK = 3;
 const EFFORT = 'xhigh';
 const REPOSITORY_PREFIX = 'nsr-';
 const FIXTURE_AUTHOR = ['-c', 'user.name=Suite fixture', '-c', 'user.email=a.stenlund@gmail.com'];
+const VIBE_LAUNCHER = path.join(SUITE_ROOT, 'vibe-launcher.js');
+// Hosts the runtime's reviewer gate does not admit, measured through a launcher the harness injects. The dispatch names the gate
+// candidate so the runtime accepts it; the launcher runs the evaluated host and model instead, and the records name both.
+const EVALUATION_HOSTS = Object.freeze({
+  vibe: { gate: { host: 'codex', model: 'gpt-6-sol' }, launcher: () => require(VIBE_LAUNCHER).runVibe, version: () => require(VIBE_LAUNCHER).vibeVersion() },
+});
 
 class SuiteError extends Error {
   constructor(code, message) {
@@ -246,8 +252,9 @@ function machineryHash() {
   return hash.digest('hex');
 }
 
+// The harness and its evaluation launchers, which decide how an evaluated host is dispatched.
 function harnessHash() {
-  return sha256(fs.readFileSync(__filename));
+  return sha256(Buffer.concat([fs.readFileSync(__filename), Buffer.from('\0'), fs.readFileSync(VIBE_LAUNCHER)]));
 }
 
 function checkoutCommit() {
@@ -257,6 +264,7 @@ function checkoutCommit() {
 }
 
 function hostVersion(host) {
+  if (Object.hasOwn(EVALUATION_HOSTS, host)) return EVALUATION_HOSTS[host].version();
   try {
     const { executable } = require(path.join(PLUGIN_ROOT, 'internal/runtime/hosts.js'));
     const result = spawnSync(executable(host, PLUGIN_ROOT), ['--version'], { windowsHide: true, encoding: 'utf8', timeout: 30000 });
@@ -475,9 +483,20 @@ function recordOutcome(paths, stage, intent, error, elapsedMs, identity) {
 }
 
 function stageOptions(stage, item, frozen, manifestRules, repository, model, requestId, claims) {
-  const common = { id: requestId, baseSha: repository.baseSha, requirements: item.fixture.requirements, rules: manifestRules, candidates: [{ host: model.host, model: model.id, effort: EFFORT }] };
+  const candidate = EVALUATION_HOSTS[model.host]?.gate ?? { host: model.host, model: model.id };
+  const common = { id: requestId, baseSha: repository.baseSha, requirements: item.fixture.requirements, rules: manifestRules, candidates: [{ ...candidate, effort: EFFORT }] };
 
   return stage === 'lead' ? { ...common, kind: 'code' } : { ...common, kind: 'skeptic', findings: claims.map(claim => claim.claim) };
+}
+
+// For an evaluated host, the dispatch's agent runner is that host's launcher, or an injected runner, given the evaluated model.
+function dispatchDependencies(dependencies, model) {
+  const base = dependencies.dispatchDependencies ?? {};
+  const evaluation = EVALUATION_HOSTS[model.host];
+  if (!evaluation) return base;
+  const runAgent = base.runAgent ?? evaluation.launcher();
+
+  return { ...base, runAgent: options => runAgent({ ...options, host: model.host, model: model.id }) };
 }
 
 class StopRun extends Error {
@@ -510,11 +529,13 @@ async function dispatchStage(context, runItem, stage, claims) {
   const started = Date.now();
   let error = null;
   try {
-    await dependencies.dispatchReview(repository.root, stageOptions(stage, runItem.fixture, frozen, rules, repository, runItem.model, requestId, claims), dependencies.dispatchDependencies ?? {});
+    await dependencies.dispatchReview(repository.root, stageOptions(stage, runItem.fixture, frozen, rules, repository, runItem.model, requestId, claims), dispatchDependencies(dependencies, runItem.model));
   } catch (caught) {
     error = caught;
   }
   const record = recordOutcome(paths, stage, intent, error, Date.now() - started, identity);
+  const evaluation = EVALUATION_HOSTS[runItem.model.host];
+  if (evaluation) record.evaluation = { host: runItem.model.host, model: runItem.model.id, gateCandidate: evaluation.gate };
   writeJson(paths.result(stage), record);
   intent.done = true;
   writeJson(paths.intent(stage), intent);
@@ -943,7 +964,8 @@ function grade(runFolder, targetsFile = path.join(SUITE_ROOT, 'targets.json')) {
     whole: manifest.whole,
     fixtureSetHash: manifest.fixtureSetHash,
     rulesHash: manifest.rulesHash,
-    graderHash: harnessHash(),
+    // Grading reads only this file, so the launcher stays out of the grader's identity.
+    graderHash: sha256(fs.readFileSync(__filename)),
     identities: [...new Map(identities.map(identity => [JSON.stringify(identity), identity])).values()],
     mixed: heldEqual.size > 1,
     targets: targetsFor(manifest.fixtureSetHash, targetsFile),

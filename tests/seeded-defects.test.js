@@ -189,6 +189,50 @@ test('a run dispatches a lead and a skeptic in separate repositories, shuffles c
   assert.equal(report.whole, false);
 });
 
+test('an evaluated host passes the reviewer gate as its gate candidate while its runner gets the evaluated model, and the records name both', async t => {
+  // Arrange
+  const root = scratch(t);
+  writeFixture(root, 'alpha');
+  const calls = [];
+  const evaluated = { host: 'vibe', id: 'glm-5-3' };
+
+  // Act
+  const result = await suite.run(options(root, root, { models: [evaluated] }), dependencies(LEAD_FINDS_DEFECT, calls));
+  const report = suite.grade(path.join(root, 'run'), path.join(root, 'no-targets.json'));
+  const key = suite.fixtureRunKey('alpha', evaluated, 1);
+  const lead = JSON.parse(fs.readFileSync(path.join(root, 'run', 'runs', key, 'lead.result.json'), 'utf8'));
+  const receipt = JSON.parse(fs.readFileSync(path.join(root, 'run', 'runs', key, 'lead', 'receipt.json'), 'utf8'));
+
+  // Assert
+  assert.equal(result.stopped, null);
+  assert.deepEqual(calls.map(call => [call.options.host, call.options.model]), [['vibe', 'glm-5-3'], ['vibe', 'glm-5-3']]);
+  assert.deepEqual(lead.evaluation, { host: 'vibe', model: 'glm-5-3', gateCandidate: { host: 'codex', model: 'gpt-6-sol' } });
+  assert.deepEqual([receipt.host, receipt.model], ['vibe', 'glm-5-3']);
+  assert.deepEqual([receipt.attempts[0].host, receipt.attempts[0].model], ['codex', 'gpt-6-sol']);
+  assert.deepEqual(Object.keys(report.byModel), ['vibe:glm-5-3']);
+});
+
+test('the Vibe launcher takes the report from a fenced block or the outermost braces, and the model from a single journal value', t => {
+  // Arrange
+  const vibe = require('../tools/seeded-defects/vibe-launcher');
+  const root = scratch(t);
+  const journal = (name, model) => writeTree(path.join(root, name, 'session', 'generations'), { '1/runtime-state.json': JSON.stringify({ session_metadata: { active_model: model } }), '8/runtime-state.json': JSON.stringify({ session_metadata: { active_model: 'glm-5-3' } }) });
+  journal('same', 'glm-5-3');
+  journal('mixed', 'mistral-medium-3.5');
+
+  // Act
+  const fenced = vibe.reportText('I have checked it.\n\n```json\n{"a": {"b": 1}}\n```');
+  const braces = vibe.reportText('Report: {"a": 1} done');
+
+  // Assert
+  assert.equal(fenced, '{"a": {"b": 1}}');
+  assert.equal(braces, '{"a": 1}');
+  assert.equal(vibe.reportText(null), null);
+  assert.equal(vibe.sessionModel(path.join(root, 'same')), 'glm-5-3');
+  assert.equal(vibe.sessionModel(path.join(root, 'mixed')), null);
+  assert.equal(vibe.sessionModel(path.join(root, 'absent')), null);
+});
+
 test('a run refuses to start without a budget and stops before a dispatch the budget cannot cover', async t => {
   // Arrange
   const root = scratch(t);
