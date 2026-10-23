@@ -1,0 +1,30 @@
+{
+  "requirements": "Change scheduleRetry in src/schedule.js to take the delay first, scheduleRetry(delayMs, attempt), like the other scheduling helpers, and update every caller in the project. Attempts count from 0 and delays are in milliseconds.",
+  "audited": "2026-10-23",
+  "defects": [
+    {
+      "id": "D1",
+      "dimension": "correctness-integration",
+      "file": "src/worker.js",
+      "lines": [
+        4,
+        4
+      ],
+      "symbol": "onFailure",
+      "severity": "important",
+      "consequence": "onFailure still passes the attempt first, so scheduleRetry reads the backoff as the attempt count, which exceeds MAX_ATTEMPTS, and every worker task is abandoned on its first failure.",
+      "origin": "synthetic"
+    }
+  ],
+  "outOfScope": [],
+  "incidental": [],
+  "decoys": [
+    {
+      "severity": "important",
+      "consequence": "requeue still passes the attempt first, so jobs are retried with the attempt count as their delay.",
+      "evidence": "src/queue.js:4 requeue passes scheduleRetry's arguments in the old order",
+      "required": true,
+      "reason": "requeue passes job.delayMs first and job.attempt second, the new order."
+    }
+  ]
+}

@@ -1,0 +1,36 @@
+{
+  "requirements": "Add latencyReport(samples) to src/latency.js. samples holds request durations in milliseconds as numbers, with null for a request that never completed and NaN from a broken timer; ignore those and any negative value. Return the number of samples kept and their median and 95th percentile, both by the nearest-rank method, or a count of 0 with null figures when no sample remains.",
+  "audited": "2026-10-23",
+  "defects": [
+    {
+      "id": "D1",
+      "dimension": "correctness-integration",
+      "file": "src/latency.js",
+      "lines": [
+        15,
+        15
+      ],
+      "severity": "important",
+      "consequence": "sort() without a comparator orders the durations as strings, so 1000 sorts before 200 and the median and 95th percentile come out wrong whenever durations differ in digit count.",
+      "origin": "synthetic"
+    }
+  ],
+  "outOfScope": [],
+  "incidental": [],
+  "decoys": [
+    {
+      "severity": "important",
+      "consequence": "clean keeps NaN samples, because every comparison with NaN is false, so NaN reaches the percentiles.",
+      "evidence": "src/latency.js:4 NaN passes the filter in clean",
+      "required": true,
+      "reason": "value !== value is true only for NaN, so clean skips it."
+    },
+    {
+      "severity": "important",
+      "consequence": "rank returns the element after the requested rank, an off-by-one that overstates both figures.",
+      "evidence": "src/latency.js:11 rank indexes one past the nearest rank",
+      "required": true,
+      "reason": "The nearest rank is ceil(fraction * n), a 1-based position, and rank subtracts one to index the array."
+    }
+  ]
+}

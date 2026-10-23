@@ -1,0 +1,29 @@
+{
+  "requirements": "Add src/registry.js, an in-memory registry of host sessions bound to projects: bind and unbind sessions (an unbound session is retired and may never bind again), attach records the run a bound session works on, queries return a project's bindings, the bound projects and per-host counts, describe gives a one-line summary, and serialize and deserialize round-trip the registry. reconcile(registry, project) releases every binding of the project whose run is no longer open in the project's run store, read with readStore from src/store-io.js; every bound project has a run store. reconcile runs inside the registry's write lock after every runtime operation, a project's run store can be several megabytes, and a busy project has hundreds of bound sessions.",
+  "audited": "2026-10-23",
+  "defects": [
+    {
+      "id": "D1",
+      "dimension": "performance-resources",
+      "file": "src/registry.js",
+      "lines": [
+        53,
+        53
+      ],
+      "severity": "important",
+      "consequence": "reconcile reads and parses the project's multi-megabyte run store once for every binding with a run, so with hundreds of bindings each runtime operation holds the registry write lock for many full parses where one would do.",
+      "origin": "Registry lock holds grow with session bindings"
+    }
+  ],
+  "outOfScope": [],
+  "incidental": [],
+  "decoys": [
+    {
+      "severity": "important",
+      "consequence": "reconcile unbinds sessions while iterating the registry's bindings, so it skips the binding after each one it releases.",
+      "evidence": "src/registry.js:51 reconcile unbinds while iterating registry.bindings",
+      "required": true,
+      "reason": "reconcile iterates the array bindingsFor returns, a copy taken before the loop, so unbinding does not disturb the iteration."
+    }
+  ]
+}

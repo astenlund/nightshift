@@ -1,0 +1,30 @@
+{
+  "requirements": "Make assessmentStaysCurrent(changedPaths) in src/assessment.js decide whether a code assessment stays current after an edit: it does when every changed path is documentation, meaning a Markdown file or any file under docs/. Instruction files are code even though they are Markdown, because agents follow them: AGENTS.md and CLAUDE.md in any directory, and every file under skills/ or .claude/, so an edit to one makes the code assessment stale. Paths are repository-relative with forward slashes and exact case, as Git lists them.",
+  "audited": "2026-10-23",
+  "defects": [
+    {
+      "id": "D1",
+      "dimension": "requirements-ux",
+      "file": "src/assessment.js",
+      "lines": [
+        5,
+        8
+      ],
+      "symbol": "isDocumentation",
+      "severity": "critical",
+      "consequence": "isDocumentation exempts only AGENTS.md and CLAUDE.md, so an edit to a Markdown file under skills/ or .claude/ keeps the code assessment current and the changed instructions pass without code review.",
+      "origin": "A documentation-only edit makes the code assessment stale"
+    }
+  ],
+  "outOfScope": [],
+  "incidental": [],
+  "decoys": [
+    {
+      "severity": "important",
+      "consequence": "A non-Markdown file under docs/ is treated as code, so an edit to a diagram makes the code assessment stale.",
+      "evidence": "src/assessment.js:7 isDocumentation accepts only Markdown files",
+      "required": true,
+      "reason": "isDocumentation also accepts every path starting with docs/, whatever its extension."
+    }
+  ]
+}

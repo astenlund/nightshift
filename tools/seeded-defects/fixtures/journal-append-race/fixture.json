@@ -1,0 +1,30 @@
+{
+  "requirements": "Add appendEntry(file, entry) to src/journal.js: add the entry to the journal file with the time it was appended, and return the journal's new length. This server process handles many requests at once, and several of them append to the same journal concurrently; no appended entry may be lost. Only this process writes the journal, a journal stays under a few hundred entries, and the server runs on Linux.",
+  "audited": "2026-10-23",
+  "defects": [
+    {
+      "id": "D1",
+      "dimension": "security-data-safety",
+      "file": "src/journal.js",
+      "lines": [
+        25,
+        27
+      ],
+      "symbol": "appendEntry",
+      "severity": "critical",
+      "consequence": "Two concurrent appends both read the journal before either writes it, so the later write replaces the earlier one and an appended entry is lost.",
+      "origin": "Setup unwrap can lose existing backlog content after a partial write"
+    }
+  ],
+  "outOfScope": [],
+  "incidental": [],
+  "decoys": [
+    {
+      "severity": "important",
+      "consequence": "appendEntry does not wait for the write, so a failed write is never reported to the caller.",
+      "evidence": "src/journal.js:27 writeJournal is called without await",
+      "required": true,
+      "reason": "appendEntry awaits writeJournal, so a write failure rejects its promise."
+    }
+  ]
+}

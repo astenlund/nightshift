@@ -1,0 +1,43 @@
+{
+  "requirements": "Add parseDependencies(entries) to src/deps.js. entries are backlog entries built by src/entries.js, features and quick wins mixed, with unique titles. Any entry, feature or quick win, may end a line of its text with a Requires clause: `**Requires:** none.` or `**Requires:**` followed by a comma-separated list of entry titles and a period; titles never contain commas. Return a map from each entry's title to the titles it requires, and a problem message for every required title that names no entry.",
+  "audited": "2026-10-23",
+  "defects": [
+    {
+      "id": "D1",
+      "dimension": "correctness-integration",
+      "file": "src/deps.js",
+      "lines": [
+        4,
+        4
+      ],
+      "symbol": "requiresOf",
+      "severity": "important",
+      "consequence": "requiresOf reads only entry.body, which quick wins do not have, so every quick win's Requires clause is silently treated as none and its unknown dependencies are never reported.",
+      "origin": "Ready silently ignores dependency lines on quick wins"
+    },
+    {
+      "id": "D2",
+      "dimension": "requirements-ux",
+      "file": "src/deps.js",
+      "lines": [
+        22,
+        22
+      ],
+      "symbol": "unknownDependency",
+      "severity": "minor",
+      "consequence": "The unknown-dependency message repeats the entry's own title where the missing title belongs, so it never says which dependency is unknown.",
+      "origin": "synthetic"
+    }
+  ],
+  "outOfScope": [],
+  "incidental": [],
+  "decoys": [
+    {
+      "severity": "important",
+      "consequence": "A dependency on an entry listed later in entries is reported as unknown.",
+      "evidence": "src/deps.js:16 the unknown check runs before later entries are seen",
+      "required": true,
+      "reason": "titles is built from every entry before the loop starts, so a later entry's title is already known."
+    }
+  ]
+}
