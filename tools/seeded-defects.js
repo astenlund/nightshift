@@ -280,7 +280,18 @@ function hostVersion(host) {
 // Run folder layout
 
 function fixtureRunKey(fixture, model, repetition) {
-  return `${fixture}__${model.host}-${model.id}__r${repetition}`;
+  const skeptic = model.skeptic ? `__s-${model.skeptic.host}-${model.skeptic.id}` : '';
+
+  return `${fixture}__${model.host}-${model.id}${skeptic}__r${repetition}`;
+}
+
+// A model names its lead and, when they differ, the skeptic model that checks that lead's findings.
+function modelLabel(model) {
+  return `${model.host}:${model.id}${model.skeptic ? `@${model.skeptic.host}:${model.skeptic.id}` : ''}`;
+}
+
+function stageModel(model, stage) {
+  return stage === 'skeptic' && model.skeptic ? model.skeptic : model;
 }
 
 function runPaths(runFolder, key) {
@@ -322,7 +333,7 @@ function prepareRunFolder(options, suite) {
     seed: options.seed ?? crypto.randomInt(1, 2 ** 31),
     fixtureSetHash: fixtureSetHash(options.out, suite.fixtures.map(item => item.name)),
     rulesHash: sha256(fs.readFileSync(path.join(options.out, 'rules.md'))),
-    hostVersions: Object.fromEntries([...new Set(options.models.map(model => model.host))].map(host => [host, options.hostVersion(host)])),
+    hostVersions: Object.fromEntries([...new Set(options.models.flatMap(model => [model.host, model.skeptic?.host].filter(Boolean)))].map(host => [host, options.hostVersion(host)])),
   };
   writeJson(manifestFile, manifest);
 
@@ -525,17 +536,18 @@ async function dispatchStage(context, runItem, stage, claims) {
   const intent = { stage, requestId, repository: repository.root, started: new Date().toISOString() };
   writeJson(paths.intent(stage), intent);
   const rules = fs.readFileSync(path.join(runFolder, 'rules.md'), 'utf8');
-  const identity = { machinery: context.identity.machinery, harness: context.identity.harness, commit: context.identity.commit, hostVersion: manifest.hostVersions[runItem.model.host] ?? null };
+  const model = stageModel(runItem.model, stage);
+  const identity = { machinery: context.identity.machinery, harness: context.identity.harness, commit: context.identity.commit, hostVersion: manifest.hostVersions[model.host] ?? null };
   const started = Date.now();
   let error = null;
   try {
-    await dependencies.dispatchReview(repository.root, stageOptions(stage, runItem.fixture, frozen, rules, repository, runItem.model, requestId, claims), dispatchDependencies(dependencies, runItem.model));
+    await dependencies.dispatchReview(repository.root, stageOptions(stage, runItem.fixture, frozen, rules, repository, model, requestId, claims), dispatchDependencies(dependencies, model));
   } catch (caught) {
     error = caught;
   }
   const record = recordOutcome(paths, stage, intent, error, Date.now() - started, identity);
-  const evaluation = EVALUATION_HOSTS[runItem.model.host];
-  if (evaluation) record.evaluation = { host: runItem.model.host, model: runItem.model.id, gateCandidate: evaluation.gate };
+  const evaluation = EVALUATION_HOSTS[model.host];
+  if (evaluation) record.evaluation = { host: model.host, model: model.id, gateCandidate: evaluation.gate };
   writeJson(paths.result(stage), record);
   intent.done = true;
   writeJson(paths.intent(stage), intent);
@@ -555,7 +567,7 @@ function reconcileIntent(context, runItem, stage) {
   const intent = readJson(paths.intent(stage));
   const directory = reviewsDirectory(intent.repository, intent.requestId);
   const found = fs.existsSync(path.join(directory, 'receipt.json')) || fs.existsSync(path.join(directory, 'failure.json'));
-  const identity = { machinery: context.identity.machinery, harness: context.identity.harness, commit: context.identity.commit, hostVersion: context.manifest.hostVersions[runItem.model.host] ?? null };
+  const identity = { machinery: context.identity.machinery, harness: context.identity.harness, commit: context.identity.commit, hostVersion: context.manifest.hostVersions[stageModel(runItem.model, stage).host] ?? null };
   let record;
   if (found) {
     record = recordOutcome(paths, stage, intent, null, null, identity);
@@ -803,7 +815,7 @@ function gradeFixtureRun(runFolder, runItem, adjudications) {
   const tokens = [leadRecord, skepticRecord].filter(Boolean).map(dispatchTokens);
   const elapsed = [leadRecord, skepticRecord].filter(Boolean).map(record => record.elapsedMs);
   const base = {
-    key: runItem.key, fixture: runItem.fixture.name, model: `${runItem.model.host}:${runItem.model.id}`, repetition: runItem.repetition,
+    key: runItem.key, fixture: runItem.fixture.name, model: modelLabel(runItem.model), repetition: runItem.repetition,
     tokens: tokens.some(value => value === null) ? null : tokens.reduce((sum, value) => sum + value, 0),
     tokensEstimated: [leadRecord, skepticRecord].some(record => record?.estimated !== undefined),
     elapsedMs: elapsed.some(value => value === null) ? null : elapsed.reduce((sum, value) => sum + value, 0),
@@ -952,7 +964,7 @@ function grade(runFolder, targetsFile = path.join(SUITE_ROOT, 'targets.json')) {
   }
   const byModel = {};
   for (const model of manifest.models) {
-    const label = `${model.host}:${model.id}`;
+    const label = modelLabel(model);
     const own = graded.filter(item => item.model === label);
     const repetitions = [...new Set(own.map(item => item.repetition))].map(repetition => figures(own.filter(item => item.repetition === repetition)));
     byModel[label] = { figures: figures(own), spread: spread(repetitions) };
@@ -1048,11 +1060,21 @@ function compare(baselineFolder, laterFolder) {
 // ---------------------------------------------------------------------------------------------------------------------------
 // Command line
 
+// <host>:<model id>, optionally followed by @<host>:<model id> naming a different skeptic model.
 function parseModel(value) {
-  const separator = value.indexOf(':');
-  if (separator <= 0) fail('invalid-arguments', `--model takes <host>:<model id>, not ${value}`);
+  const parse = text => {
+    const separator = text.indexOf(':');
+    if (separator <= 0 || separator === text.length - 1) fail('invalid-arguments', `--model takes <host>:<model id>[@<host>:<model id>], not ${value}`);
 
-  return { host: value.slice(0, separator), id: value.slice(separator + 1) };
+    return { host: text.slice(0, separator), id: text.slice(separator + 1) };
+  };
+  const [lead, skeptic, ...extra] = value.split('@');
+  if (extra.length) fail('invalid-arguments', `--model takes <host>:<model id>[@<host>:<model id>], not ${value}`);
+  const model = parse(lead);
+  if (skeptic === undefined) return model;
+  const other = parse(skeptic);
+
+  return other.host === model.host && other.id === model.id ? model : { ...model, skeptic: other };
 }
 
 function parseArguments(argv) {

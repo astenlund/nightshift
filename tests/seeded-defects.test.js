@@ -357,6 +357,34 @@ test('unproven host termination blocks the run folder until the termination is c
   assert.equal(resumed.stopped, null);
 });
 
+test('a paired model dispatches its skeptic on the named model and is keyed and reported as the pair', async t => {
+  // Arrange
+  const root = scratch(t);
+  writeFixture(root, 'alpha');
+  const calls = [];
+  const paired = suite.parseArguments(['run', '--out', 'x', '--budget', '1', '--model', 'claude:claude-opus-5-5@codex:gpt-6-sol']).models[0];
+
+  // Act
+  await suite.run(options(root, root, { models: [paired] }), dependencies(LEAD_FINDS_DEFECT, calls));
+  const report = suite.grade(path.join(root, 'run'), path.join(root, 'none.json'));
+
+  // Assert
+  assert.deepEqual(calls.map(call => [call.kind, call.options.host, call.options.model]), [['code', 'claude', 'claude-opus-5-5'], ['skeptic', 'codex', 'gpt-6-sol']]);
+  assert.deepEqual(Object.keys(report.byModel), ['claude:claude-opus-5-5@codex:gpt-6-sol']);
+  assert.equal(report.fixtureRuns[0].key, 'alpha__claude-claude-opus-5-5__s-codex-gpt-6-sol__r1');
+  assert.deepEqual([report.pooled.skepticAccuracy.numerator, report.pooled.skepticAccuracy.denominator], [2, 2]);
+});
+
+test('a model pair parses to a lead and a different skeptic, and a pair naming one model twice is that model alone', () => {
+  // Arrange
+  const parse = value => suite.parseArguments(['run', '--out', 'x', '--budget', '1', '--model', value]).models[0];
+
+  // Act and assert
+  assert.deepEqual(parse('vibe:glm-5-3@claude:claude-opus-5-5'), { host: 'vibe', id: 'glm-5-3', skeptic: { host: 'claude', id: 'claude-opus-5-5' } });
+  assert.deepEqual(parse('codex:gpt-6-sol@codex:gpt-6-sol'), { host: 'codex', id: 'gpt-6-sol' });
+  for (const value of ['codex:gpt-6-sol@codex', 'codex:gpt-6-sol@a:b@c:d', 'codex:']) assert.throws(() => parse(value), /--model takes/);
+});
+
 test('matching assigns one finding to one entry, nearest first, and leaves the rest unmatched', () => {
   // Arrange
   const truth = [defect({ id: 'A', file: 'a.js', lines: [10, 10], symbol: undefined }), defect({ id: 'B', file: 'b.js', lines: [20, 20], symbol: undefined })];
