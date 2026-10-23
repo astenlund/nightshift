@@ -1,0 +1,29 @@
+{
+  "requirements": "Add total(values), the sum of a list of numbers, which is 0 for an empty list. Do not change mean.",
+  "audited": "2026-10-23",
+  "defects": [],
+  "outOfScope": [
+    {
+      "id": "O1",
+      "dimension": "correctness-integration",
+      "file": "src/stats.js",
+      "lines": [
+        2,
+        2
+      ],
+      "severity": "minor",
+      "consequence": "mean of an empty list is NaN; the requirements leave mean unchanged.",
+      "origin": "synthetic"
+    }
+  ],
+  "incidental": [],
+  "decoys": [
+    {
+      "severity": "important",
+      "consequence": "total returns undefined for an empty list.",
+      "evidence": "src/stats.js:6 total has no initial value",
+      "required": false,
+      "reason": "reduce is given an initial value of 0, so an empty list totals 0."
+    }
+  ]
+}

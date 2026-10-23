@@ -1,0 +1,16 @@
+{
+  "requirements": "Extract the greeting text of greet(name) into a new exported greeting(name), and keep greet(name) returning exactly the same string as before.",
+  "audited": "2026-10-23",
+  "defects": [],
+  "outOfScope": [],
+  "incidental": [],
+  "decoys": [
+    {
+      "severity": "important",
+      "consequence": "greeting drops the exclamation mark, changing greet's output.",
+      "evidence": "src/greet.js:2 the greeting lost its exclamation mark",
+      "required": false,
+      "reason": "greeting keeps the original concatenation, exclamation mark included."
+    }
+  ]
+}

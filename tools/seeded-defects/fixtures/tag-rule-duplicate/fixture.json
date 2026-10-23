@@ -1,0 +1,30 @@
+{
+  "requirements": "Add normalizeTags(tags): keep the valid tags, lowercased and deduplicated. A tag is valid under the same rule as a name, which src/limits.js owns.",
+  "audited": "2026-10-23",
+  "defects": [
+    {
+      "id": "D1",
+      "dimension": "design-maintainability",
+      "file": "src/tags.js",
+      "lines": [
+        1,
+        3
+      ],
+      "symbol": "validTag",
+      "severity": "minor",
+      "consequence": "validTag copies the name rule with its own literal 64 instead of reusing validName, so the two rules drift when src/limits.js changes.",
+      "origin": "synthetic"
+    }
+  ],
+  "outOfScope": [],
+  "incidental": [],
+  "decoys": [
+    {
+      "severity": "minor",
+      "consequence": "normalizeTags keeps tags that differ only in case.",
+      "evidence": "src/tags.js:6 duplicates differing in case survive",
+      "required": false,
+      "reason": "Tags are lowercased before the Set removes duplicates."
+    }
+  ]
+}

@@ -1,0 +1,30 @@
+{
+  "requirements": "Add checkForLoop(log, attempt, outputs, tokens): when the last three outputs of an attempt are identical, record the attempt as failed with reason 'output loop' and return true. Every recorded attempt, failed or not, must carry the tokens it spent, since budgets are summed from the log.",
+  "audited": "2026-10-23",
+  "defects": [
+    {
+      "id": "D1",
+      "dimension": "correctness-integration",
+      "file": "src/attempts.js",
+      "lines": [
+        5,
+        7
+      ],
+      "symbol": "recordFailure",
+      "severity": "important",
+      "consequence": "recordFailure takes no tokens, so a looping attempt is logged without the tokens it spent and budgets undercount it.",
+      "origin": "Output-loop attempts record no token usage"
+    }
+  ],
+  "outOfScope": [],
+  "incidental": [],
+  "decoys": [
+    {
+      "severity": "minor",
+      "consequence": "checkForLoop flags two identical outputs as a loop.",
+      "evidence": "src/loop.js:7 two equal outputs count as a loop",
+      "required": false,
+      "reason": "The check needs LOOP_LIMIT, three, outputs before comparing."
+    }
+  ]
+}

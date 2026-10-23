@@ -1,0 +1,29 @@
+{
+  "requirements": "Add regression tests for createLock in test/lock.test.js: one proving that a second tryAcquire is refused while the lock is held, and one proving that release lets the next holder in.",
+  "audited": "2026-10-23",
+  "defects": [
+    {
+      "id": "D1",
+      "dimension": "tests-evidence",
+      "file": "test/lock.test.js",
+      "lines": [
+        7,
+        9
+      ],
+      "severity": "important",
+      "consequence": "The contention test releases the lock before the second acquire, so it never exercises a refused acquire and passes even if tryAcquire never refuses.",
+      "origin": "b68a88b5-077a-434a-8cc4-b659b8f07c67"
+    }
+  ],
+  "outOfScope": [],
+  "incidental": [],
+  "decoys": [
+    {
+      "severity": "minor",
+      "consequence": "The release test makes no assertion, so it cannot fail.",
+      "evidence": "test/lock.test.js:16 the release test has no assertion",
+      "required": false,
+      "reason": "The release test asserts that the acquire after release succeeds."
+    }
+  ]
+}

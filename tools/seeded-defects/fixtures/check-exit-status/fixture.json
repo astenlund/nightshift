@@ -1,0 +1,29 @@
+{
+  "requirements": "Add bin/check.js <file> [--check]: print each problem parseConfig reports for the file, then the entry count. With --check the process must also end with exit status 1 when parseConfig reports any problem, so that CI fails on a malformed file. CI always supplies the file argument.",
+  "audited": "2026-10-23",
+  "defects": [
+    {
+      "id": "D1",
+      "dimension": "correctness-integration",
+      "file": "bin/check.js",
+      "lines": [
+        9,
+        9
+      ],
+      "severity": "critical",
+      "consequence": "No problem parseConfig reports starts with 'error', so --check exits 0 on a malformed file and CI passes it.",
+      "origin": "Ready parser check passes with structural errors"
+    }
+  ],
+  "outOfScope": [],
+  "incidental": [],
+  "decoys": [
+    {
+      "severity": "minor",
+      "consequence": "Comment lines are reported as problems, so a commented file fails the check.",
+      "evidence": "src/config.js:5 comments are counted as problems",
+      "required": false,
+      "reason": "parseConfig returns early for lines starting with #, so comments are never reported."
+    }
+  ]
+}

@@ -1,0 +1,29 @@
+{
+  "requirements": "Add a Store class that applies changes to a state and keeps an audit history from which any earlier revision can be reconstructed. Runs reach tens of thousands of revisions, and a state can be several megabytes.",
+  "audited": "2026-10-23",
+  "defects": [
+    {
+      "id": "D1",
+      "dimension": "performance-resources",
+      "file": "src/store.js",
+      "lines": [
+        9,
+        9
+      ],
+      "severity": "important",
+      "consequence": "Every revision stores a full copy of a multi-megabyte state, so tens of thousands of revisions exhaust memory; storing the changes would reconstruct the same history.",
+      "origin": "Run store keeps a full state copy for every revision"
+    }
+  ],
+  "outOfScope": [],
+  "incidental": [],
+  "decoys": [
+    {
+      "severity": "minor",
+      "consequence": "A change carrying its own revision field overwrites the revision counter.",
+      "evidence": "src/store.js:8 change can overwrite revision",
+      "required": false,
+      "reason": "revision is set after the change is spread, so a change cannot overwrite it."
+    }
+  ]
+}

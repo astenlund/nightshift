@@ -1,0 +1,30 @@
+{
+  "requirements": "Add resumeTargets(tasks): the ids of the tasks that were started but not finished, meaning status running or blocked, so that an interrupted session resumes them. Task statuses are pending, running, blocked and completed.",
+  "audited": "2026-10-23",
+  "defects": [
+    {
+      "id": "D1",
+      "dimension": "correctness-integration",
+      "file": "src/tasks.js",
+      "lines": [
+        2,
+        2
+      ],
+      "symbol": "resumeTargets",
+      "severity": "important",
+      "consequence": "resumeTargets includes completed tasks, so a resumed session reopens finished work.",
+      "origin": "Resume targets reopen completed tasks"
+    }
+  ],
+  "outOfScope": [],
+  "incidental": [],
+  "decoys": [
+    {
+      "severity": "minor",
+      "consequence": "nextTask returns undefined when no task is pending, which callers compare against null.",
+      "evidence": "src/tasks.js:6 nextTask returns undefined",
+      "required": false,
+      "reason": "nextTask returns null through ?? when no task is pending."
+    }
+  ]
+}

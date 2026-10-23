@@ -1,0 +1,29 @@
+{
+  "requirements": "Add runCheck(command, args, cwd) to run a project's check command and return its exit status and output. The runner process holds its credential in RUNNER_TOKEN and its own state in other RUNNER_ variables; checks run project code and must not receive any RUNNER_ variable.",
+  "audited": "2026-10-23",
+  "defects": [
+    {
+      "id": "D1",
+      "dimension": "security-data-safety",
+      "file": "src/checks.js",
+      "lines": [
+        4,
+        4
+      ],
+      "severity": "critical",
+      "consequence": "Checks inherit the runner's whole environment, so project code receives RUNNER_TOKEN and the runner's state.",
+      "origin": "Recorded checks pass the bound runtime's resource context to the commands they run"
+    }
+  ],
+  "outOfScope": [],
+  "incidental": [],
+  "decoys": [
+    {
+      "severity": "important",
+      "consequence": "runCheck has no timeout, so a hung check blocks the runner forever.",
+      "evidence": "src/checks.js:4 spawnSync is called without a timeout",
+      "required": false,
+      "reason": "spawnSync is given a 600000 ms timeout."
+    }
+  ]
+}

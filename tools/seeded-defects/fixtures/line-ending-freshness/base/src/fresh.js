@@ -1,0 +1,12 @@
+const crypto = require('node:crypto');
+const fs = require('node:fs');
+
+function digest(file) {
+  return crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
+}
+
+function snapshot(files) {
+  return Object.fromEntries(files.map(file => [file, digest(file)]));
+}
+
+module.exports = { snapshot };

@@ -1,0 +1,29 @@
+{
+  "requirements": "Add bin/switch.js <branch>: switch the repository in the current directory to the named branch, using the existing runGit helper. Branch names are typed by users.",
+  "audited": "2026-10-23",
+  "defects": [
+    {
+      "id": "D1",
+      "dimension": "security-data-safety",
+      "file": "src/git.js",
+      "lines": [
+        4,
+        4
+      ],
+      "severity": "critical",
+      "consequence": "runGit passes its arguments through a shell, so a user-typed branch name such as 'main; rm -rf ~' runs arbitrary commands.",
+      "origin": "Repository maintenance commands launch Git by bare name"
+    }
+  ],
+  "outOfScope": [],
+  "incidental": [],
+  "decoys": [
+    {
+      "severity": "minor",
+      "consequence": "switch.js exits with status 0 when no branch is given.",
+      "evidence": "bin/switch.js:7 a missing branch exits 0",
+      "required": false,
+      "reason": "A missing branch prints the usage line and exits with status 2."
+    }
+  ]
+}

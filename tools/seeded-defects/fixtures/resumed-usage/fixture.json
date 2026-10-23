@@ -1,0 +1,30 @@
+{
+  "requirements": "Add attemptTokens(events): the tokens one attempt spent. Every usage event carries the session's running total in sessionTotal. An attempt may resume an earlier session; its events then also carry that earlier session's total in priorTotal, which the attempt did not spend.",
+  "audited": "2026-10-23",
+  "defects": [
+    {
+      "id": "D1",
+      "dimension": "correctness-integration",
+      "file": "src/usage.js",
+      "lines": [
+        6,
+        6
+      ],
+      "symbol": "attemptTokens",
+      "severity": "important",
+      "consequence": "A resumed attempt is charged the whole session's tokens, since priorTotal is never subtracted.",
+      "origin": "Resumed Claude dispatches record cumulative session usage"
+    }
+  ],
+  "outOfScope": [],
+  "incidental": [],
+  "decoys": [
+    {
+      "severity": "minor",
+      "consequence": "attemptTokens throws when the events hold no usage event.",
+      "evidence": "src/usage.js:5 attemptTokens reads sessionTotal of a missing event",
+      "required": false,
+      "reason": "lastEvent returns null for no usage event and attemptTokens then returns null."
+    }
+  ]
+}

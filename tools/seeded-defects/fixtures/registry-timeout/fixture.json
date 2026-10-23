@@ -1,0 +1,43 @@
+{
+  "requirements": "lookupSession runs inside a startup hook whose whole time budget is 10 seconds, and it may open up to four registries in turn. Busy registries sometimes take a second or two to answer. Make a busy registry less likely to fail the lookup without letting the lookup exceed the hook's budget.",
+  "audited": "2026-10-23",
+  "defects": [
+    {
+      "id": "D1",
+      "dimension": "performance-resources",
+      "file": "src/registry.js",
+      "lines": [
+        2,
+        2
+      ],
+      "symbol": "CONNECT_TIMEOUT_MS",
+      "severity": "important",
+      "consequence": "Each of up to four sequential connections may now wait 30 seconds, so a busy lookup can take two minutes against a 10-second hook budget.",
+      "origin": "c6148bdd-1381-4450-b4e3-cf545b1d6c0b"
+    }
+  ],
+  "outOfScope": [
+    {
+      "id": "O1",
+      "dimension": "correctness-integration",
+      "file": "src/registry.js",
+      "lines": [
+        11,
+        12
+      ],
+      "severity": "minor",
+      "consequence": "A registry whose find throws is never closed, leaking its connection; the code predates this change.",
+      "origin": "synthetic"
+    }
+  ],
+  "incidental": [],
+  "decoys": [
+    {
+      "severity": "important",
+      "consequence": "lookupSession stops after the first registry even when it does not hold the session.",
+      "evidence": "src/registry.js:13 lookupSession returns after the first registry",
+      "required": false,
+      "reason": "The loop returns only when a registry finds the session and otherwise continues to the next path."
+    }
+  ]
+}

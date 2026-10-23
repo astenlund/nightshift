@@ -1,0 +1,29 @@
+{
+  "requirements": "Add accept(request), the single entry for new work. A request with a non-empty tasks list is a delivery; a request with a reviewContextId and no tasks opens a review. A request carrying both tasks and a reviewContextId is malformed and must be refused with an error.",
+  "audited": "2026-10-23",
+  "defects": [
+    {
+      "id": "D1",
+      "dimension": "correctness-integration",
+      "file": "src/intake.js",
+      "lines": [
+        10,
+        10
+      ],
+      "severity": "critical",
+      "consequence": "A request with both tasks and a reviewContextId opens a review instead of being refused, silently dropping the delivery's tasks and obligations.",
+      "origin": "9bea7815-8786-409c-9841-458b0a4df837"
+    }
+  ],
+  "outOfScope": [],
+  "incidental": [],
+  "decoys": [
+    {
+      "severity": "important",
+      "consequence": "accept never reaches createDelivery, so no delivery can be created.",
+      "evidence": "src/intake.js:12 the delivery branch is unreachable",
+      "required": false,
+      "reason": "The final return calls createDelivery for every request with tasks and no review context."
+    }
+  ]
+}

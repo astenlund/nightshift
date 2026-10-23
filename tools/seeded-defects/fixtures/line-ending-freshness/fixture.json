@@ -1,0 +1,43 @@
+{
+  "requirements": "Add fresh(recorded) to src/fresh.js: given a snapshot from snapshot(files), return true when every recorded file still exists with the content it had at snapshot time. Converting a file between CRLF and LF line endings is not a content change.",
+  "audited": "2026-10-23",
+  "defects": [
+    {
+      "id": "D1",
+      "dimension": "correctness-integration",
+      "file": "src/fresh.js",
+      "lines": [
+        4,
+        13
+      ],
+      "severity": "important",
+      "consequence": "fresh compares raw-byte digests, so a file converted between CRLF and LF reads as changed, against the requirement; the digest it compares is where line endings would need normalizing.",
+      "origin": "Review freshness treats a line-ending renormalization as an input change"
+    }
+  ],
+  "outOfScope": [
+    {
+      "id": "O1",
+      "dimension": "correctness-integration",
+      "file": "src/report.js",
+      "lines": [
+        3,
+        3
+      ],
+      "symbol": "summarize",
+      "severity": "minor",
+      "consequence": "summarize reports one file fewer than it checked; the code predates this change.",
+      "origin": "synthetic"
+    }
+  ],
+  "incidental": [],
+  "decoys": [
+    {
+      "severity": "important",
+      "consequence": "fresh reports a deleted file as fresh.",
+      "evidence": "src/fresh.js:13 fresh does not check that the file exists",
+      "required": false,
+      "reason": "fresh checks fs.existsSync before digesting, so a deleted file makes it false."
+    }
+  ]
+}

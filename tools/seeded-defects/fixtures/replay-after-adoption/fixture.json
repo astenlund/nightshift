@@ -1,0 +1,29 @@
+{
+  "requirements": "Make update(request) idempotent: a request whose id was already applied returns the recorded outcome instead of applying it again. Ownership of a run moves to another controller through adopt(), and only the current owner may change a run. Request ids are unique across all runs and controllers. Runs live only for the life of the process, so recorded outcomes may stay in memory without eviction.",
+  "audited": "2026-10-23",
+  "defects": [
+    {
+      "id": "D1",
+      "dimension": "security-data-safety",
+      "file": "src/runs.js",
+      "lines": [
+        18,
+        21
+      ],
+      "severity": "critical",
+      "consequence": "Replaying a recorded request after adoption reinstalls the former owner and rewrites the run's state without checking who owns it now.",
+      "origin": "9bea7815-8786-409c-9841-458b0a4df837"
+    }
+  ],
+  "outOfScope": [],
+  "incidental": [],
+  "decoys": [
+    {
+      "severity": "important",
+      "consequence": "adopt silently creates a run for an unknown id, so a typo creates an orphan run.",
+      "evidence": "src/runs.js:9 adopt creates a new run when the id is unknown",
+      "required": false,
+      "reason": "adopt reads the existing run and throws on an unknown id; it never creates one."
+    }
+  ]
+}
