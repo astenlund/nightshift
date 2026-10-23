@@ -6,6 +6,14 @@ V2 entries are preserved in [the historical index](migration/v2/BUGS.md) and [MI
 
 ## Current
 
+### Seeded-defect harness cannot resume past a null token reading
+
+Found on 2026-10-23 during the first seeded-defect baseline. `dispatchStage` in `tools/seeded-defects.js` stops before every dispatch while `spending` reports any null attempt, and `spending` also counts superseded result records, so once a host refuses a turn for its usage limit (Codex reported `usageLimitExceeded` about 2.4 seconds into the turn, with no token usage event) the run folder can never dispatch again, `--retry` included. [The suite's spec](specs/seeded-defect-suite.md) says the user decides whether a retry is worth unknown spending, so the harness contradicts it. For that baseline the user chose to settle each such null by hand at zero tokens, only when its events show the usage-limit refusal and no token usage, with the evidence recorded in a settlement file in the run folder, because changing the harness mid-baseline would mix harness hashes and bar the baseline from setting targets.
+
+Give the harness an explicit user attestation for a null attempt, recorded beside its result the way `--termination-checked` is recorded beside a blocking record, and decide whether a usage-limit refusal with no token usage may settle at zero mechanically. Cover both with tests. A harness change alters its hash, so make it between baselines.
+
+**Requires:** none.
+
 ### Unwrap joins adjacent link reference definitions
 
 Found on 2026-09-25 while writing fixtures in run `6e70931a-3760-46e2-b628-fdaa4a29f0e3`. The shared unwrap scanner (`scanWraps` in `internal/backlog-catalog.js`) treats two adjacent link reference definition lines (`[a]: x` followed by `[b]: y`) as one hard-wrapped paragraph. Ready then reports a hard-wrap notice, and `unwrap.js --write` would join them into one line (`[a]: x [b]: y`). Under CommonMark that line is no longer a definition, so both definitions are lost as paragraph text, while Ready's definition pattern, which has no end anchor, would still read the first as defined. The repository backlog has no reference definitions today, so nothing is affected yet. Pre-existing; the user chose to track it at triage.
