@@ -1296,6 +1296,60 @@ test('a fixture name holding the key separator is refused', t => {
   assert.throws(() => suite.loadSuite(root, ['a__vibe-foo']), /fixture name must be/);
 });
 
+test('the loader refuses a .git path and a linked entry in a fixture tree', t => {
+  // Arrange
+  const root = scratch(t);
+  writeFixture(root, 'gitdir', { base: { 'src/calc.js': BASE_CALC, '.git/config': '[filter "x"]\n\tclean = calc\n' } });
+  writeFixture(root, 'linked');
+  fs.mkdirSync(path.join(root, 'outside'));
+  fs.symlinkSync(path.join(root, 'outside'), path.join(root, 'linked', 'base', 'elsewhere'), 'junction');
+
+  // Act and Assert
+  assert.throws(() => suite.loadFixture(path.join(root, 'gitdir')), /\.git\/config lies in a \.git folder/);
+  assert.throws(() => suite.loadFixture(path.join(root, 'linked')), /base\/elsewhere is a link or special file/);
+});
+
+test('resume and grading refuse a frozen copy or rules.md that no longer matches the manifest', async t => {
+  // Arrange
+  const root = scratch(t);
+  writeFixture(root, 'alpha');
+  const calls = [];
+  await suite.run(options(root, root), dependencies(LEAD_FINDS_DEFECT, calls));
+  const runFolder = path.join(root, 'run');
+  const frozenCalc = path.join(runFolder, 'frozen', 'alpha', 'change', 'src', 'calc.js');
+  const original = fs.readFileSync(frozenCalc, 'utf8');
+  fs.appendFileSync(frozenCalc, '// edited after the run started\n');
+
+  // Act
+  const resumed = suite.run(options(root, root), dependencies(LEAD_FINDS_DEFECT, calls));
+
+  // Assert
+  await assert.rejects(resumed, /frozen fixtures no longer match/);
+  assert.throws(() => suite.grade(runFolder, path.join(root, 'none.json')), /frozen fixtures no longer match/);
+  fs.writeFileSync(frozenCalc, original);
+  fs.appendFileSync(path.join(runFolder, 'rules.md'), 'Another rule.\n');
+  assert.throws(() => suite.grade(runFolder, path.join(root, 'none.json')), /rules\.md no longer matches/);
+});
+
+test('a stage retried under another machinery hash leaves the run mixed', async t => {
+  // Arrange
+  const root = scratch(t);
+  writeFixture(root, 'alpha');
+  const calls = [];
+  let failing = true;
+  const scenario = { ...LEAD_FINDS_DEFECT, throwFor: request => failing && request.kind === 'code' };
+  await suite.run(options(root, root), dependencies(scenario, calls));
+  failing = false;
+
+  // Act
+  await suite.run(options(root, root, { retry: true }), { ...dependencies(scenario, calls), machineryHash: () => 'retry machinery' });
+  const report = suite.grade(path.join(root, 'run'), path.join(root, 'none.json'));
+
+  // Assert
+  assert.equal(report.mixed, true);
+  assert.deepEqual([...new Set(report.identities.map(identity => identity.machinery))].sort(), ['machinery', 'retry machinery']);
+});
+
 test('a contamination token in the requirements or in rules.md refuses the run', async t => {
   // Arrange
   const root = scratch(t);

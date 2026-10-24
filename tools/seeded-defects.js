@@ -62,6 +62,21 @@ function writeJson(file, value) {
 }
 
 // Every regular file below root as a sorted list of forward-slash relative paths.
+// Every entry under root that is neither a regular file nor a directory, such as a symbolic link or junction.
+function linkedEntries(root) {
+  const entries = [];
+  const walk = directory => {
+    for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+      const full = path.join(directory, entry.name);
+      if (entry.isDirectory()) walk(full);
+      else if (!entry.isFile()) entries.push(path.relative(root, full).split(path.sep).join('/'));
+    }
+  };
+  if (fs.existsSync(root)) walk(root);
+
+  return entries.sort();
+}
+
 function listFiles(root) {
   const files = [];
   const walk = directory => {
@@ -158,7 +173,12 @@ function loadFixture(directory) {
   // A base file the change deletes is still committed in the base, where it can hide others, so every file of both trees is checked.
   for (const item of new Set([...base, ...change])) {
     if (path.posix.basename(item) === '.gitignore' || HIDDEN_PREFIXES.some(prefix => item.startsWith(prefix))) fail('fixture-invalid', `${name}: ${item} would be hidden from the reviewer`);
+    // Materialization copies the trees over a configured repository, so a .git path could replace its configuration and run commands.
+    if (item.split('/').includes('.git')) fail('fixture-invalid', `${name}: ${item} lies in a .git folder`);
   }
+  // listFiles sees regular files only, while copying would carry a link through unchecked.
+  const linked = ['base', 'change'].flatMap(tree => linkedEntries(path.join(directory, tree)).map(item => `${tree}/${item}`));
+  if (linked.length) fail('fixture-invalid', `${name}: ${linked.join(', ')} is a link or special file`);
   if (typeof fixture.requirements !== 'string' || !fixture.requirements.trim()) fail('fixture-invalid', `${name}: requirements are missing`);
   if (typeof fixture.audited !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(fixture.audited)) fail('fixture-invalid', `${name}: audited must be a YYYY-MM-DD date`);
   for (const list of ['defects', 'outOfScope', 'incidental', 'decoys']) {
@@ -344,8 +364,16 @@ function resumedManifest(options) {
   const sameFixtures = selected.length ? !manifest.whole && JSON.stringify(manifest.fixtures) === JSON.stringify(selected) : manifest.whole;
   const same = JSON.stringify(manifest.models) === JSON.stringify(options.models) && manifest.repeat === options.repeat && sameFixtures;
   if (!same) fail('run-folder-mismatch', 'The run folder was started with other fixtures, models or repetitions; use a new run folder');
+  verifyFrozen(options.out, manifest);
 
   return manifest;
+}
+
+// The frozen copy and rules.md must still match the hashes the manifest recorded, so every dispatch reviews, and grading reads, the
+// project state and truth the run started with.
+function verifyFrozen(runFolder, manifest) {
+  if (fixtureSetHash(runFolder, manifest.fixtures) !== manifest.fixtureSetHash) fail('run-folder-altered', `${runFolder}: the frozen fixtures no longer match the manifest's fixture set hash`);
+  if (sha256(fs.readFileSync(path.join(runFolder, 'rules.md'))) !== manifest.rulesHash) fail('run-folder-altered', `${runFolder}: rules.md no longer matches the manifest's rules hash`);
 }
 
 // Copies the selected fixtures and rules.md into a new run folder and writes its manifest.
@@ -1053,6 +1081,7 @@ function targetsFor(fixtureSetHash, targetsFile) {
 
 function grade(runFolder, targetsFile = path.join(SUITE_ROOT, 'targets.json')) {
   const manifest = readJson(path.join(runFolder, 'manifest.json'));
+  verifyFrozen(runFolder, manifest);
   const adjudicationFile = path.join(runFolder, 'adjudications.json');
   const adjudications = fs.existsSync(adjudicationFile) ? readJson(adjudicationFile) : {};
   // Every decision is checked, whether or not its finding is unmatched now, since a misspelled outcome would otherwise settle a finding silently as false.
@@ -1075,7 +1104,8 @@ function grade(runFolder, targetsFile = path.join(SUITE_ROOT, 'targets.json')) {
     const repetitions = [...new Set(own.map(item => item.repetition))].map(repetition => figures(own.filter(item => item.repetition === repetition)));
     byModel[label] = { figures: figures(own), spread: spread(repetitions) };
   }
-  const identities = graded.flatMap(item => item.identities);
+  // Superseded results count too: a stage retried under another identity still dispatched under the first one.
+  const identities = allResults(runFolder).map(record => record.identity).filter(Boolean);
   const heldEqual = new Set(identities.map(identity => `${identity.machinery}|${identity.harness}`));
   const report = {
     graded: new Date().toISOString(),
