@@ -1428,8 +1428,16 @@ test('the loader refuses a tree root that is itself a link', t => {
   fs.renameSync(path.join(root, 'alpha', 'base'), outside);
   fs.symlinkSync(outside, path.join(root, 'alpha', 'base'), 'junction');
 
+  writeFixture(root, 'dangling');
+  fs.rmSync(path.join(root, 'dangling', 'change'), { recursive: true });
+  const gone = path.join(root, 'gone');
+  fs.mkdirSync(gone);
+  fs.symlinkSync(gone, path.join(root, 'dangling', 'change'), 'junction');
+  fs.rmSync(gone, { recursive: true });
+
   // Act and Assert
   assert.throws(() => suite.loadFixture(path.join(root, 'alpha')), /alpha: base is a link or special file/);
+  assert.throws(() => suite.loadFixture(path.join(root, 'dangling')), /dangling: change is a link or special file/);
 });
 
 test('a run that passes its budget on its last dispatch reports the overrun', async t => {

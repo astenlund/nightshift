@@ -188,7 +188,8 @@ function loadFixture(directory) {
     if (folded.split('/').includes('.git')) fail('fixture-invalid', `${name}: ${item} lies in a .git folder`);
   }
   // listFiles sees regular files only, while copying would carry a link through unchecked; a tree root that is itself a link counts too.
-  const linkedRoots = ['base', 'change'].filter(tree => fs.existsSync(path.join(directory, tree)) && fs.lstatSync(path.join(directory, tree)).isSymbolicLink());
+  // lstat sees the link itself, so a link whose target is missing, which existsSync reports as absent, is refused too.
+  const linkedRoots = ['base', 'change'].filter(tree => fs.lstatSync(path.join(directory, tree), { throwIfNoEntry: false })?.isSymbolicLink() ?? false);
   const linked = [...linkedRoots, ...['base', 'change'].filter(tree => !linkedRoots.includes(tree)).flatMap(tree => linkedEntries(path.join(directory, tree)).map(item => `${tree}/${item}`))];
   if (linked.length) fail('fixture-invalid', `${name}: ${linked.join(', ')} is a link or special file`);
   if (typeof fixture.requirements !== 'string' || !fixture.requirements.trim()) fail('fixture-invalid', `${name}: requirements are missing`);
