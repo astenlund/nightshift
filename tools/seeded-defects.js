@@ -29,6 +29,7 @@ const LINE_SLACK = 3;
 const EFFORT = 'xhigh';
 const REPOSITORY_PREFIX = 'nsr-';
 const OWNER_FILE = 'nsr-owner';
+const DIFF_DEFAULTS = Object.freeze([['diff.algorithm', 'myers'], ['diff.noprefix', 'false'], ['diff.mnemonicPrefix', 'false'], ['diff.context', '3'], ['diff.interHunkContext', '0'], ['diff.relative', 'false'], ['diff.renames', 'true'], ['diff.suppressBlankEmpty', 'false'], ['diff.indentHeuristic', 'true'], ['color.ui', 'false'], ['color.diff', 'false'], ['core.quotePath', 'true']]);
 const FIXTURE_AUTHOR = ['-c', 'user.name=Suite fixture', '-c', 'user.email=a.stenlund@gmail.com'];
 const VIBE_LAUNCHER = path.join(SUITE_ROOT, 'vibe-launcher.js');
 // Hosts the runtime's reviewer gate does not admit, measured through a launcher the harness injects. The dispatch names the gate
@@ -437,8 +438,9 @@ function materialize(frozen, fixture) {
   const root = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), REPOSITORY_PREFIX)));
   try {
     git(root, ['init', '--quiet']);
-    // A global attributes file could still normalize line endings on add, so attributes point at a file that does not exist either.
-    for (const [key, value] of [['core.autocrlf', 'false'], ['core.safecrlf', 'false'], ['core.hooksPath', path.join(root, '.git', 'no-hooks')], ['core.attributesFile', path.join(root, '.git', 'no-attributes')]]) git(root, ['config', key, value]);
+    // A global attributes file could still normalize line endings on add, so attributes point at a file that does not exist either,
+    // and the diff settings a machine can change are pinned to Git's defaults, since the runtime's diff is the reviewer's main input.
+    for (const [key, value] of [['core.autocrlf', 'false'], ['core.safecrlf', 'false'], ['core.hooksPath', path.join(root, '.git', 'no-hooks')], ['core.attributesFile', path.join(root, '.git', 'no-attributes')], ...DIFF_DEFAULTS]) git(root, ['config', key, value]);
     // A random token the intent records, so cleanup can tell this repository from any other path of the same shape.
     const owner = crypto.randomUUID();
     fs.writeFileSync(path.join(root, '.git', OWNER_FILE), owner);
@@ -1193,7 +1195,9 @@ function formatReport(report) {
   const cell = (key, value) => perFixtureKeys.has(key) ? (value.value === null ? `n/a (${value.numerator}/${value.denominator})` : `${value.value.toFixed(2)} (${value.numerator}/${value.denominator})`) : formatRatio(value);
   for (const [label, key] of rows) lines.push(`| ${label} | ${cell(key, report.pooled[key])} | ${Object.values(report.byModel).map(model => cell(key, model.figures[key])).join(' | ')} |`);
   const perFixture = figure => figure.value === null ? 'n/a' : Math.round(figure.value).toString();
-  lines.push(`| Tokens per fixture run | ${perFixture(report.pooled.tokensPerFixture)} | ${Object.values(report.byModel).map(model => perFixture(model.figures.tokensPerFixture)).join(' | ')} |`);
+  // A token figure missing an attempt's reading, or holding an estimate for a lost outcome, is marked as such.
+  const tokenCell = figures => perFixture(figures.tokensPerFixture) + (figures.tokensIncomplete ? ' (incomplete)' : '') + (figures.tokensEstimated ? ' (estimated)' : '');
+  lines.push(`| Tokens per fixture run | ${tokenCell(report.pooled)} | ${Object.values(report.byModel).map(model => tokenCell(model.figures)).join(' | ')} |`);
   lines.push(`| Seconds per fixture run | ${report.pooled.elapsedMsPerFixture.value === null ? 'n/a' : Math.round(report.pooled.elapsedMsPerFixture.value / 1000)} | ${Object.values(report.byModel).map(model => model.figures.elapsedMsPerFixture.value === null ? 'n/a' : Math.round(model.figures.elapsedMsPerFixture.value / 1000)).join(' | ')} |`);
   if (report.targets.status === 'current') {
     lines.push('', 'Targets set from the baseline:');
@@ -1286,7 +1290,8 @@ function validateModels(models) {
       if (typeof part.id !== 'string' || !MODEL_NAME.test(part.id)) fail('invalid-arguments', `A model id must be letters, digits, '.', '_' or '-' without '__', not ${part.id}`);
     }
   }
-  const labels = models.map(modelLabel);
+  // Run keys become folder names on a case-insensitive filesystem, so models differing only in case are the same model.
+  const labels = models.map(model => modelLabel(model).toLowerCase());
   const repeated = labels.find((label, index) => labels.indexOf(label) !== index);
   if (repeated) fail('invalid-arguments', `--model ${repeated} is given more than once`);
 }

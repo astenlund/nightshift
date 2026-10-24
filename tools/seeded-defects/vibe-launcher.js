@@ -82,15 +82,34 @@ function finalAssistantText(entries) {
 }
 
 // Vibe has no structured-output option, and models preface the report with prose, so the report is the message's last fenced JSON
-// block, or else the span from its first opening brace to its last closing one. The runtime's own parser still validates it.
+// block, or else the span from its first opening brace to its last closing one. The runtime's own parser still validates it. Every
+// fence is matched whatever its language tag, so a block of code shown before the report cannot pair its closing fence with the
+// report's opening one; only an untagged or json block counts as the report.
 function reportText(message) {
   if (message === null) return null;
-  const fenced = [...message.matchAll(/```(?:json)?\s*\n([\s\S]*?)\n\s*```/g)].at(-1);
-  if (fenced) return fenced[1];
+  const fenced = [...message.matchAll(/```([^\n`]*)\n([\s\S]*?)\n[ \t]*```/g)].filter(match => ['', 'json'].includes(match[1].trim().toLowerCase())).at(-1);
+  if (fenced) return fenced[2];
   const first = message.indexOf('{');
   const last = message.lastIndexOf('}');
 
   return first >= 0 && last > first ? message.slice(first, last + 1) : message;
+}
+
+// Writes the attempt's artifact files once the host has closed. A failed write is kept as the attempt's failure cause instead of
+// escaping without the exit record, which the runtime would read as unproven termination of a process the job already proved ended.
+function artifactWriter(directory, writeFile = fs.writeFileSync) {
+  let failure = null;
+
+  return {
+    write: (file, text) => {
+      try {
+        writeFile(path.join(directory, file), text);
+      } catch (error) {
+        failure ??= `writing ${file} failed: ${error.message}`;
+      }
+    },
+    failure: () => failure,
+  };
 }
 
 // Runs one assessment with the runtime's runAgent contract: the same prompt and system text, with the report schema stated in the
@@ -122,24 +141,27 @@ async function runVibe(options) {
   clearTimeout(timer);
   const output = Buffer.concat(stdout).toString('utf8');
   const errorText = Buffer.concat(stderr).toString('utf8');
-  fs.writeFileSync(path.join(options.artifacts, 'stderr.txt'), errorText);
+  const writer = artifactWriter(options.artifacts);
+  const write = writer.write;
+  write('stderr.txt', errorText);
   let entries = null;
   try {
     entries = JSON.parse(output);
   } catch {
     // Unparsable output leaves no assessment; the attempt fails below.
   }
-  fs.writeFileSync(path.join(options.artifacts, 'events.jsonl'), (Array.isArray(entries) ? entries.map(entry => JSON.stringify(entry)) : [output]).join('\n') + '\n');
+  write('events.jsonl', (Array.isArray(entries) ? entries.map(entry => JSON.stringify(entry)) : [output]).join('\n') + '\n');
   const summary = readJsonIfPresent(path.join(exportDirectory, 'export.json'));
   const session = summary?.session_id ?? null;
   if (session) options.onSession?.(session);
   const model = sessionModel(exportDirectory);
   const tokens = Number.isSafeInteger(summary?.usage?.total_tokens) ? summary.usage.total_tokens : null;
-  const failed = collector.overflowed || exit.error || exit.timedOut || exit.code !== 0 || summary?.outcome !== 'finished';
-  const reason = collector.overflowed ? `Vibe's output passed ${OUTPUT_LIMIT} bytes, so the process was stopped` : summary?.error ? String(summary.error) : errorText.trim();
+  const writeFailure = writer.failure();
+  const failed = collector.overflowed || writeFailure || exit.error || exit.timedOut || exit.code !== 0 || summary?.outcome !== 'finished';
+  const reason = collector.overflowed ? `Vibe's output passed ${OUTPUT_LIMIT} bytes, so the process was stopped` : writeFailure ?? (summary?.error ? String(summary.error) : errorText.trim());
   const hostFailure = failed ? reason.slice(-HOST_FAILURE_LIMIT) || null : null;
 
   return { host: 'vibe', model: options.model, effort: options.effort, session, attributionVerified: session !== null && model === options.model, status: failed ? 'failed' : 'complete', output: reportText(finalAssistantText(entries)), tokens, threadTokens: tokens, hostFailure, exit };
 }
 
-module.exports = { OUTPUT_LIMIT, TOOLS, boundedCollector, reportText, runVibe, sessionModel, vibeVersion };
+module.exports = { OUTPUT_LIMIT, TOOLS, artifactWriter, boundedCollector, reportText, runVibe, sessionModel, vibeVersion };

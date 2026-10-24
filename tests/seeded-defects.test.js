@@ -1592,6 +1592,89 @@ test('the Vibe output limit sits below the Windows job capacity, so the launcher
   assert.ok(vibe.OUTPUT_LIMIT < 32 * 1024 * 1024);
 });
 
+test('the Vibe launcher takes the json block even after a block in another language, and keeps a failed artifact write as the cause', () => {
+  // Arrange
+  const vibe = require('../tools/seeded-defects/vibe-launcher');
+  const message = 'I checked the helper:\n\n```typescript\nconst x = 1;\n```\n\nHere is the report:\n\n```json\n{"a": 1}\n```';
+  const writer = vibe.artifactWriter('C:/nowhere', () => { throw new Error('disk full'); });
+
+  // Act
+  const report = vibe.reportText(message);
+  writer.write('stderr.txt', 'x');
+  writer.write('events.jsonl', 'y');
+
+  // Assert
+  assert.equal(report, '{"a": 1}');
+  assert.equal(vibe.reportText('```typescript\nconst x = 1;\n```\nThen {"b": 2}'), '{"b": 2}');
+  assert.equal(writer.failure(), 'writing stderr.txt failed: disk full');
+});
+
+test('models that differ only in case are refused as the same model', async t => {
+  // Arrange
+  const root = scratch(t);
+  writeFixture(root, 'alpha');
+  const calls = [];
+
+  // Act
+  const refused = suite.run(options(root, root, { models: [{ host: 'vibe', id: 'glm-5-3' }, { host: 'vibe', id: 'GLM-5-3' }] }), dependencies(LEAD_FINDS_DEFECT, calls));
+
+  // Assert
+  await assert.rejects(refused, /given more than once/);
+  assert.equal(calls.length, 0);
+});
+
+test('global diff settings cannot change the diff of a materialized repository', t => {
+  // Arrange
+  const root = scratch(t);
+  const directory = writeFixture(root, 'alpha');
+  const config = path.join(root, 'global-config');
+  fs.writeFileSync(config, '[diff]\n\tnoprefix = true\n\tcontext = 0\n[color]\n\tui = always\n');
+  const previous = process.env.GIT_CONFIG_GLOBAL;
+  process.env.GIT_CONFIG_GLOBAL = config;
+  t.after(() => {
+    if (previous === undefined) delete process.env.GIT_CONFIG_GLOBAL;
+    else process.env.GIT_CONFIG_GLOBAL = previous;
+  });
+
+  // Act
+  const repository = suite.materialize(directory, suite.loadFixture(directory).fixture);
+  t.after(() => fs.rmSync(repository.root, { recursive: true, force: true }));
+  const diff = spawnSync('git', ['diff', '--no-ext-diff', repository.baseSha], { cwd: repository.root, encoding: 'utf8' }).stdout;
+
+  // Assert
+  assert.match(diff, /^diff --git a\/src\/calc\.js b\/src\/calc\.js$/m);
+  assert.match(diff, /^ function addTotal\(a, b\) \{$/m);
+  assert.equal(diff.includes(String.fromCharCode(27) + '['), false);
+});
+
+test('report.md marks an estimated token figure', async t => {
+  // Arrange
+  const root = scratch(t);
+  writeFixture(root, 'alpha');
+  const calls = [];
+  await suite.run(options(root, root), dependencies(LEAD_FINDS_DEFECT, calls));
+  const paths = suite.runPaths(path.join(root, 'run'), 'alpha__claude-claude-opus-5-5__r1');
+  const intent = JSON.parse(fs.readFileSync(paths.intent('skeptic'), 'utf8'));
+  for (const file of [paths.complete, paths.result('skeptic')]) fs.rmSync(file);
+  fs.writeFileSync(paths.intent('skeptic'), JSON.stringify({ ...intent, done: false, repository: path.join(root, 'gone') }));
+  await suite.run(options(root, root), dependencies(LEAD_FINDS_DEFECT, calls));
+
+  // Act
+  suite.grade(path.join(root, 'run'), path.join(root, 'none.json'));
+
+  // Assert
+  assert.match(fs.readFileSync(path.join(root, 'run', 'report.md'), 'utf8'), /\| Tokens per fixture run \| \d+ \(estimated\) \|/);
+});
+
+test('the shipped suite loads whole and meets its composition rules', () => {
+  // Act
+  const loaded = suite.loadSuite(path.resolve(__dirname, '../tools/seeded-defects/fixtures'));
+
+  // Assert
+  assert.equal(loaded.whole, true);
+  assert.ok(loaded.fixtures.length >= 23);
+});
+
 test('a contamination token in the requirements or in rules.md refuses the run', async t => {
   // Arrange
   const root = scratch(t);
