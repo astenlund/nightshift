@@ -19,7 +19,9 @@ const SEVERITIES = Object.freeze(['critical', 'important', 'minor']);
 const CONTAMINATION_TOKENS = Object.freeze(['seeded-defects', 'fixture.json']);
 const HIDDEN_PREFIXES = Object.freeze(['.nightshift/runs/', '.nightshift/inbox/', '.tmp/']);
 const ADJUDICATED_ORIGIN = /^adjudicated:[^/\\]+$/;
-const MODEL_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
+// A host carries no '-' and an id no '__', so neither can imitate the separators of a fixture run key.
+const HOST_NAME = /^[A-Za-z0-9]+$/;
+const MODEL_NAME = /^(?!.*__)[A-Za-z0-9][A-Za-z0-9._-]*$/;
 const ADJUDICATION_OUTCOMES = Object.freeze(['false', 'attributed', 'real']);
 const RECEIPT_ORIGIN = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/;
 const INITIAL_RESERVE = 2000000;
@@ -152,8 +154,8 @@ function loadFixture(directory) {
   if (!base.length) fail('fixture-invalid', `${name}: base/ holds no files`);
   const deletions = fixture.deletions ?? [];
   if (!Array.isArray(deletions) || deletions.some(item => !base.includes(item))) fail('fixture-invalid', `${name}: every deletion must name a base/ file`);
-  const reviewed = new Set([...base.filter(item => !deletions.includes(item)), ...change]);
-  for (const item of reviewed) {
+  // A base file the change deletes is still committed in the base, where it can hide others, so every file of both trees is checked.
+  for (const item of new Set([...base, ...change])) {
     if (path.posix.basename(item) === '.gitignore' || HIDDEN_PREFIXES.some(prefix => item.startsWith(prefix))) fail('fixture-invalid', `${name}: ${item} would be hidden from the reviewer`);
   }
   if (typeof fixture.requirements !== 'string' || !fixture.requirements.trim()) fail('fixture-invalid', `${name}: requirements are missing`);
@@ -183,7 +185,7 @@ function loadFixture(directory) {
     }
     if (!SEVERITIES.includes(decoy.severity) || typeof decoy.required !== 'boolean') fail('fixture-invalid', `${name}: a decoy needs a known severity and a boolean required`);
   }
-  const texts = [fixture.requirements, ...fixture.decoys.flatMap(decoy => [decoy.severity, decoy.consequence, decoy.evidence])];
+  const texts = [fixture.requirements, ...fixture.decoys.flatMap(decoy => [decoy.severity, decoy.consequence, decoy.evidence, decoy.reason])];
   for (const text of texts) {
     const token = containsToken(text);
     if (token) fail('fixture-contaminated', `${name}: supplied text contains ${token}`);
@@ -205,7 +207,8 @@ function bugEntryTitles() {
     const location = path.join(PLUGIN_ROOT, '.nightshift', file);
     if (!fs.existsSync(location)) continue;
     for (const line of fs.readFileSync(location, 'utf8').split(/\r?\n/)) {
-      const match = /^#{2,4} (.+)$/.exec(line);
+      // Entries are third-level headings in both files; second-level headings are sections such as Current.
+      const match = /^### (.+)$/.exec(line);
       if (match) titles.add(match[1].replace(/^\[(.+)\]\([^)]*\)$/, '$1').trim());
     }
   }
@@ -541,7 +544,7 @@ class StopRun extends Error {
 }
 
 async function dispatchStage(context, runItem, stage, claims) {
-  const { runFolder, manifest, dependencies, budget } = context;
+  const { runFolder, dependencies, budget } = context;
   const paths = runPaths(runFolder, runItem.key);
   const money = spending(runFolder);
   if (money.unknown) throw new StopRun('Spending is unknown because an attempt recorded no tokens');
@@ -557,7 +560,7 @@ async function dispatchStage(context, runItem, stage, claims) {
   }
   const requestId = crypto.randomUUID();
   const model = stageModel(runItem.model, stage);
-  const identity = { machinery: context.identity.machinery, harness: context.identity.harness, commit: context.identity.commit, hostVersion: manifest.hostVersions[model.host] ?? null };
+  const identity = { machinery: context.identity.machinery, harness: context.identity.harness, commit: context.identity.commit, hostVersion: context.hostVersions[model.host] ?? null };
   // The intent keeps the dispatch's identity, so a reconciliation after a code change still records what dispatched it.
   const intent = { stage, requestId, repository: repository.root, started: new Date().toISOString(), identity };
   writeJson(paths.intent(stage), intent);
@@ -718,6 +721,10 @@ async function runFixture(context, runItem) {
   const paths = runPaths(context.runFolder, runItem.key);
   fs.mkdirSync(paths.root, { recursive: true });
   finishInterruptedSupersessions(paths);
+  // Pending intents are reconciled before --retry looks at the results, so an outcome found lost now is retried in this same pass.
+  for (const stage of ['lead', 'skeptic']) {
+    if (stageState(paths, stage) === 'pending') reconcileIntent(context, runItem, stage);
+  }
   if (context.retry) applyRetry(paths);
   if (fs.existsSync(paths.complete)) return;
   for (const stage of ['lead', 'skeptic']) {
@@ -762,8 +769,10 @@ async function run(options, dependencies = defaultDependencies()) {
     fs.renameSync(blockingFile, path.join(checked, `${new Date().toISOString().replace(/[:.]/g, '-')}.json`));
   }
   const manifest = resuming ? resumedManifest(options) : prepareRunFolder({ ...options, hostVersion: dependencies.hostVersion }, suite);
+  // A host can update itself between invocations, so a resumed run records the versions it finds now, not those of the run's start.
+  const hostVersions = resuming ? Object.fromEntries(Object.keys(manifest.hostVersions).map(host => [host, dependencies.hostVersion(host)])) : manifest.hostVersions;
   const context = {
-    runFolder: options.out, manifest, dependencies, budget: options.budget, retry: Boolean(options.retry),
+    runFolder: options.out, manifest, dependencies, budget: options.budget, retry: Boolean(options.retry), hostVersions,
     identity: { machinery: dependencies.machineryHash?.() ?? machineryHash(), harness: harnessHash(), commit: dependencies.commit?.() ?? checkoutCommit() },
   };
   const frozenSuite = manifest.fixtures.map(name => loadFixture(frozenFixture(options.out, name)));
@@ -889,8 +898,6 @@ function gradeFixtureRun(runFolder, runItem, adjudications) {
   for (const { finding, index } of unmatched) {
     const decision = own[finding.id];
     if (!decision) continue;
-    // A misspelled outcome would otherwise settle the finding silently as false.
-    if (!ADJUDICATION_OUTCOMES.includes(decision.outcome) || typeof decision.reason !== 'string' || !decision.reason.trim()) fail('adjudication-invalid', `${runItem.key}: ${finding.id} needs an outcome of ${ADJUDICATION_OUTCOMES.join(', ')} and a reason`);
     if (decision.outcome === 'real') realIds.add(finding.id);
     if (decision.outcome === 'attributed') {
       const entryIndex = truth.findIndex(entry => entry.id === decision.entry);
@@ -989,14 +996,19 @@ function figures(graded) {
   };
 }
 
+// The range of each figure across repetitions, for every figure a comparison reports, detection per dimension included.
 function spread(groups) {
-  const keys = ['detection', 'cleanChangeFalsePositives', 'unmatchedConfirmations', 'severityAccuracy', 'skepticAccuracy'];
+  const keys = ['detection', 'cleanChangeFalsePositives', 'unmatchedConfirmations', 'outOfScope', 'severityAccuracy', 'skepticAccuracy', 'tokensPerFixture', 'elapsedMsPerFixture'];
+  const range = values => {
+    const known = values.filter(value => value !== null && value !== undefined);
 
-  return Object.fromEntries(keys.map(key => {
-    const values = groups.map(group => group[key].value).filter(value => value !== null);
+    return known.length > 1 ? { min: Math.min(...known), max: Math.max(...known) } : null;
+  };
 
-    return [key, values.length > 1 ? { min: Math.min(...values), max: Math.max(...values) } : null];
-  }));
+  return {
+    ...Object.fromEntries(keys.map(key => [key, range(groups.map(group => group[key].value))])),
+    detectionByDimension: Object.fromEntries(CODE_DIMENSIONS.map(dimension => [dimension, range(groups.map(group => group.detectionByDimension[dimension].value))])),
+  };
 }
 
 // The targets set from a baseline, and whether they apply to a report on the given fixture set hash.
@@ -1011,6 +1023,12 @@ function grade(runFolder, targetsFile = path.join(SUITE_ROOT, 'targets.json')) {
   const manifest = readJson(path.join(runFolder, 'manifest.json'));
   const adjudicationFile = path.join(runFolder, 'adjudications.json');
   const adjudications = fs.existsSync(adjudicationFile) ? readJson(adjudicationFile) : {};
+  // Every decision is checked, whether or not its finding is unmatched now, since a misspelled outcome would otherwise settle a finding silently as false.
+  for (const [key, decisions] of Object.entries(adjudications)) {
+    for (const [id, decision] of Object.entries(decisions ?? {})) {
+      if (!ADJUDICATION_OUTCOMES.includes(decision?.outcome) || typeof decision.reason !== 'string' || !decision.reason.trim()) fail('adjudication-invalid', `${key}: ${id} needs an outcome of ${ADJUDICATION_OUTCOMES.join(', ')} and a reason`);
+    }
+  }
   const graded = [];
   for (const name of manifest.fixtures) {
     const fixture = loadFixture(frozenFixture(runFolder, name));
@@ -1120,7 +1138,7 @@ function compare(baselineFolder, laterFolder) {
   };
   const keys = ['detection', 'cleanChangeFalsePositives', 'unmatchedConfirmations', 'outOfScope', 'severityAccuracy', 'skepticAccuracy', 'tokensPerFixture', 'elapsedMsPerFixture'];
   const changes = Object.fromEntries(keys.map(key => [key, change(baseline.pooled[key]?.value, later.pooled[key]?.value, baselineSpread[key], targets[key])]));
-  const detectionByDimension = Object.fromEntries(CODE_DIMENSIONS.map(dimension => [dimension, change(baseline.pooled.detectionByDimension?.[dimension]?.value, later.pooled.detectionByDimension?.[dimension]?.value)]));
+  const detectionByDimension = Object.fromEntries(CODE_DIMENSIONS.map(dimension => [dimension, change(baseline.pooled.detectionByDimension?.[dimension]?.value, later.pooled.detectionByDimension?.[dimension]?.value, baselineSpread.detectionByDimension?.[dimension])]));
 
   return { varied, confounded: confounds, provisional: baseline.pooled.provisional || later.pooled.provisional, informational, targets: { status: later.targets?.status ?? 'none', baseline: later.targets?.baseline ?? null }, changes, detectionByDimension };
 }
@@ -1149,9 +1167,8 @@ function parseModel(value) {
 function validateModels(models) {
   for (const model of models) {
     for (const part of [model, model.skeptic].filter(Boolean)) {
-      for (const name of [part.host, part.id]) {
-        if (typeof name !== 'string' || !MODEL_NAME.test(name)) fail('invalid-arguments', `A host or model id must be letters, digits, '.', '_' or '-', not ${name}`);
-      }
+      if (typeof part.host !== 'string' || !HOST_NAME.test(part.host)) fail('invalid-arguments', `A host must be letters and digits, not ${part.host}`);
+      if (typeof part.id !== 'string' || !MODEL_NAME.test(part.id)) fail('invalid-arguments', `A model id must be letters, digits, '.', '_' or '-' without '__', not ${part.id}`);
     }
   }
   const labels = models.map(modelLabel);

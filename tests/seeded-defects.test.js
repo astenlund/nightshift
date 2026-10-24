@@ -740,6 +740,107 @@ test('a report shows targets set on its fixture set hash and marks targets from 
   assert.match(fs.readFileSync(path.join(runFolder, 'report.md'), 'utf8'), /Targets are stale/);
 });
 
+test('a model id cannot imitate a pair\'s key, and a host cannot imitate the host separator', async t => {
+  // Arrange
+  const root = scratch(t);
+  writeFixture(root, 'alpha');
+  const calls = [];
+
+  for (const [model, pattern] of [[{ host: 'vibe', id: 'foo__s-codex-bar' }, /without '__'/], [{ host: 'vi-be', id: 'foo' }, /host must be letters and digits/]]) {
+    // Act
+    const refused = suite.run(options(root, root, { models: [model] }), dependencies(LEAD_FINDS_DEFECT, calls));
+
+    // Assert
+    await assert.rejects(refused, pattern);
+  }
+  assert.equal(calls.length, 0);
+});
+
+test('--retry dispatches again in the same pass a stage whose outcome reconciliation finds lost', async t => {
+  // Arrange
+  const root = scratch(t);
+  writeFixture(root, 'alpha');
+  const calls = [];
+  await suite.run(options(root, root), dependencies(LEAD_FINDS_DEFECT, calls));
+  const paths = suite.runPaths(path.join(root, 'run'), 'alpha__claude-claude-opus-5-5__r1');
+  const intent = JSON.parse(fs.readFileSync(paths.intent('skeptic'), 'utf8'));
+  for (const file of [paths.complete, paths.result('skeptic')]) fs.rmSync(file);
+  fs.writeFileSync(paths.intent('skeptic'), JSON.stringify({ ...intent, done: false, repository: path.join(root, 'gone') }));
+
+  // Act
+  await suite.run(options(root, root, { retry: true }), dependencies(LEAD_FINDS_DEFECT, calls));
+  const report = suite.grade(path.join(root, 'run'), path.join(root, 'none.json'));
+
+  // Assert
+  assert.deepEqual(calls.map(call => call.kind), ['code', 'skeptic', 'skeptic']);
+  assert.deepEqual(report.pooled.retries, { 'lost-outcome': 1 });
+  assert.equal(JSON.parse(fs.readFileSync(paths.result('skeptic'), 'utf8')).outcome, 'complete');
+});
+
+test('a resumed run records the host version it finds when it resumes', async t => {
+  // Arrange
+  const root = scratch(t);
+  writeFixture(root, 'alpha');
+  const calls = [];
+  await suite.run(options(root, root), dependencies(LEAD_FINDS_DEFECT, calls));
+  const paths = suite.runPaths(path.join(root, 'run'), 'alpha__claude-claude-opus-5-5__r1');
+  for (const file of [paths.complete, paths.intent('skeptic'), paths.result('skeptic'), paths.claims]) fs.rmSync(file);
+  fs.rmSync(paths.artifacts('skeptic'), { recursive: true });
+
+  // Act
+  await suite.run(options(root, root), { ...dependencies(LEAD_FINDS_DEFECT, calls), hostVersion: () => 'test-host 2.0' });
+
+  // Assert
+  assert.equal(JSON.parse(fs.readFileSync(paths.result('lead'), 'utf8')).identity.hostVersion, 'test-host 1.0');
+  assert.equal(JSON.parse(fs.readFileSync(paths.result('skeptic'), 'utf8')).identity.hostVersion, 'test-host 2.0');
+  assert.equal(JSON.parse(fs.readFileSync(path.join(root, 'run', 'manifest.json'), 'utf8')).hostVersions.claude, 'test-host 1.0');
+});
+
+test('the loader refuses a deleted base .gitignore and a contamination token in a decoy reason', t => {
+  // Arrange
+  const root = scratch(t);
+  writeFixture(root, 'deleted', { base: { 'src/calc.js': BASE_CALC, '.gitignore': 'x\n' }, fixture: { deletions: ['.gitignore'] } });
+  writeFixture(root, 'reason', { fixture: { decoys: [decoy({ reason: 'fixture.json says otherwise' })] } });
+
+  // Act and Assert
+  assert.throws(() => suite.loadFixture(path.join(root, 'deleted')), /hidden from the reviewer/);
+  assert.throws(() => suite.loadFixture(path.join(root, 'reason')), /contains fixture\.json/);
+});
+
+test('an adjudication is checked even when its finding is no longer unmatched', async t => {
+  // Arrange
+  const root = scratch(t);
+  writeFixture(root, 'alpha');
+  const calls = [];
+  await suite.run(options(root, root), dependencies(LEAD_FINDS_DEFECT, calls));
+  const runFolder = path.join(root, 'run');
+  fs.writeFileSync(path.join(runFolder, 'adjudications.json'), JSON.stringify({ 'alpha__claude-claude-opus-5-5__r1': { L9: { outcome: 'misspelled', reason: 'Orphan' } } }));
+
+  // Act and Assert
+  assert.throws(() => suite.grade(runFolder, path.join(root, 'none.json')), /L9 needs an outcome/);
+});
+
+test('a two-repetition baseline gives every compared figure a spread, detection per dimension included', async t => {
+  // Arrange
+  const root = scratch(t);
+  writeFixture(root, 'alpha');
+  const calls = [];
+  let repetition = 0;
+  const scenario = { ...LEAD_FINDS_DEFECT, lead: () => (repetition++ === 0 ? LEAD_FINDS_DEFECT.lead() : []) };
+  await suite.run(options(root, root, { repeat: 2 }), dependencies(scenario, calls));
+  const runFolder = path.join(root, 'run');
+  suite.grade(runFolder, path.join(root, 'none.json'));
+
+  // Act
+  const comparison = suite.compare(runFolder, runFolder);
+
+  // Assert
+  assert.deepEqual(comparison.changes.detection.spread, { min: 0, max: 1 });
+  assert.deepEqual(comparison.detectionByDimension['correctness-integration'].spread, { min: 0, max: 1 });
+  assert.notEqual(comparison.changes.tokensPerFixture.spread, null);
+  assert.equal(comparison.changes.detection.withinSpread, true);
+});
+
 test('a bug origin counts toward the composition rules only when it names a bug entry', t => {
   // Arrange
   const root = scratch(t);
@@ -753,6 +854,21 @@ test('a bug origin counts toward the composition rules only when it names a bug 
   // Assert
   assert.ok(unknown.some(problem => problem.includes('names no BUGS.md or BUGS_HISTORY.md entry')));
   assert.equal(known.some(problem => problem.includes('names no')), false);
+});
+
+test('a section heading of the bug index is no entry title for an origin', t => {
+  // Arrange
+  const root = scratch(t);
+  writeFixture(root, 'section', { fixture: { defects: [defect({ origin: 'Current' })] } });
+  writeFixture(root, 'entry', { fixture: { defects: [defect({ origin: 'Registry lock holds grow with session bindings' })] } });
+
+  // Act
+  const section = suite.compositionProblems([suite.loadFixture(path.join(root, 'section'))]);
+  const entry = suite.compositionProblems([suite.loadFixture(path.join(root, 'entry'))]);
+
+  // Assert
+  assert.ok(section.some(problem => problem.includes('"Current" names no')));
+  assert.equal(entry.some(problem => problem.includes('names no')), false);
 });
 
 test('the harness writes nothing in the checkout outside its run folder', async t => {
