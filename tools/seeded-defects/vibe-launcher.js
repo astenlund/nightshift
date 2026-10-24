@@ -12,6 +12,28 @@ const PLUGIN_ROOT = path.resolve(__dirname, '../..');
 // own sandbox, which reaches the workspace only through the listed tools, so the reviewer can read the workspace and compute.
 const TOOLS = ['read_file'];
 const HOST_FAILURE_LIMIT = 4000;
+// Vibe's output is held whole for parsing, so a runaway stream is cut off here rather than exhausting the harness process.
+const OUTPUT_LIMIT = 64 * 1024 * 1024;
+
+// Collects stream chunks up to a shared byte limit across every stream it serves; the first chunk past it calls onOverflow once and is
+// dropped, as is everything after it.
+function boundedCollector(limit, onOverflow) {
+  let total = 0;
+  const state = { overflowed: false };
+  state.into = chunks => chunk => {
+    if (state.overflowed) return;
+    total += chunk.length;
+    if (total > limit) {
+      state.overflowed = true;
+      onOverflow();
+
+      return;
+    }
+    chunks.push(chunk);
+  };
+
+  return state;
+}
 
 function vibeExecutable(root) {
   const { resolveTrustedExecutable } = require(path.join(PLUGIN_ROOT, 'internal/filesystem-primitives.js'));
@@ -85,8 +107,9 @@ async function runVibe(options) {
   const stderr = [];
   const errors = [];
   const child = spawnWindowsJob(vibeExecutable(options.protectedRoot ?? options.cwd), args, { cwd: options.cwd, env: options.env ?? process.env, protectedRoot: options.protectedRoot, closeInput: true });
-  child.stdout.on('data', chunk => stdout.push(chunk));
-  child.stderr.on('data', chunk => stderr.push(chunk));
+  const collector = boundedCollector(OUTPUT_LIMIT, () => child.kill());
+  child.stdout.on('data', collector.into(stdout));
+  child.stderr.on('data', collector.into(stderr));
   child.on('error', error => errors.push(error));
   child.once('spawn', () => options.onProcess?.(child.pid));
   let timedOut = false;
@@ -111,10 +134,11 @@ async function runVibe(options) {
   if (session) options.onSession?.(session);
   const model = sessionModel(exportDirectory);
   const tokens = Number.isSafeInteger(summary?.usage?.total_tokens) ? summary.usage.total_tokens : null;
-  const failed = exit.error || exit.timedOut || exit.code !== 0 || summary?.outcome !== 'finished';
-  const hostFailure = failed ? (summary?.error ? String(summary.error) : errorText.trim()).slice(-HOST_FAILURE_LIMIT) || null : null;
+  const failed = collector.overflowed || exit.error || exit.timedOut || exit.code !== 0 || summary?.outcome !== 'finished';
+  const reason = collector.overflowed ? `Vibe's output passed ${OUTPUT_LIMIT} bytes, so the process was stopped` : summary?.error ? String(summary.error) : errorText.trim();
+  const hostFailure = failed ? reason.slice(-HOST_FAILURE_LIMIT) || null : null;
 
   return { host: 'vibe', model: options.model, effort: options.effort, session, attributionVerified: session !== null && model === options.model, status: failed ? 'failed' : 'complete', output: reportText(finalAssistantText(entries)), tokens, threadTokens: tokens, hostFailure, exit };
 }
 
-module.exports = { TOOLS, reportText, runVibe, sessionModel, vibeVersion };
+module.exports = { TOOLS, boundedCollector, reportText, runVibe, sessionModel, vibeVersion };

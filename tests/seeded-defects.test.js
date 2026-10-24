@@ -1397,6 +1397,92 @@ test('a stage retried under another machinery hash leaves the run mixed', async 
   assert.deepEqual([...new Set(report.identities.map(identity => identity.machinery))].sort(), ['machinery', 'retry machinery']);
 });
 
+test('two supersessions with the same timestamp keep separate folders', async t => {
+  // Arrange
+  const root = scratch(t);
+  writeFixture(root, 'alpha');
+  const calls = [];
+  const scenario = { ...LEAD_FINDS_DEFECT, leadStatus: () => 'incomplete' };
+  const original = Date.prototype.toISOString;
+  Date.prototype.toISOString = () => '2026-10-24T00:00:00.000Z';
+  t.after(() => { Date.prototype.toISOString = original; });
+
+  // Act
+  await suite.run(options(root, root), dependencies(scenario, calls));
+  await suite.run(options(root, root, { retry: true }), dependencies(scenario, calls));
+  await suite.run(options(root, root, { retry: true }), dependencies(scenario, calls));
+  Date.prototype.toISOString = original;
+  const report = suite.grade(path.join(root, 'run'), path.join(root, 'none.json'));
+
+  // Assert
+  assert.equal(fs.readdirSync(suite.runPaths(path.join(root, 'run'), 'alpha__claude-claude-opus-5-5__r1').superseded).length, 2);
+  assert.deepEqual(report.pooled.retries, { 'incomplete-report': 2 });
+  assert.equal(suite.spending(path.join(root, 'run')).spent, 3000);
+});
+
+test('the loader refuses a tree root that is itself a link', t => {
+  // Arrange
+  const root = scratch(t);
+  writeFixture(root, 'alpha');
+  const outside = path.join(root, 'outside');
+  fs.renameSync(path.join(root, 'alpha', 'base'), outside);
+  fs.symlinkSync(outside, path.join(root, 'alpha', 'base'), 'junction');
+
+  // Act and Assert
+  assert.throws(() => suite.loadFixture(path.join(root, 'alpha')), /alpha: base is a link or special file/);
+});
+
+test('a run that passes its budget on its last dispatch reports the overrun', async t => {
+  // Arrange
+  const root = scratch(t);
+  writeFixture(root, 'alpha');
+  const calls = [];
+  const scenario = { ...LEAD_FINDS_DEFECT, tokens: request => request.kind === 'skeptic' ? 3000000 : 100 };
+
+  // Act
+  const result = await suite.run(options(root, root, { budget: 2000000 }), dependencies(scenario, calls));
+
+  // Assert
+  assert.equal(result.stopped, null);
+  assert.deepEqual([result.budget, result.spending.spent, result.overrun], [2000000, 3000100, 1000100]);
+});
+
+test('a comparison of the same models in another order does not vary the models', t => {
+  // Arrange
+  const root = scratch(t);
+  const report = models => ({ fixtureSetHash: 'f1', graderHash: 'g1', rulesHash: 'r1', mixed: false, identities: [{ machinery: 'm1', harness: 'h1', commit: 'c1', hostVersion: 'v1' }], byModel: Object.fromEntries(models.map(model => [model, {}])), pooled: { detection: { value: 1 }, provisional: false } });
+  for (const [name, models] of [['ab', ['a:x', 'b:y']], ['ba', ['b:y', 'a:x']]]) {
+    fs.mkdirSync(path.join(root, name));
+    fs.writeFileSync(path.join(root, name, 'report.json'), JSON.stringify(report(models)));
+  }
+
+  // Act
+  const comparison = suite.compare(path.join(root, 'ab'), path.join(root, 'ba'));
+
+  // Assert
+  assert.deepEqual([comparison.varied, comparison.confounded], [[], []]);
+});
+
+test('the Vibe launcher collects output only up to its limit and reports the overflow once', () => {
+  // Arrange
+  const vibe = require('../tools/seeded-defects/vibe-launcher');
+  let overflows = 0;
+  const collector = vibe.boundedCollector(10, () => overflows++);
+  const stdout = [];
+  const stderr = [];
+
+  // Act
+  collector.into(stdout)(Buffer.from('12345'));
+  collector.into(stderr)(Buffer.from('1234'));
+  collector.into(stdout)(Buffer.from('12'));
+  collector.into(stderr)(Buffer.from('1'));
+
+  // Assert
+  assert.deepEqual([Buffer.concat(stdout).toString(), Buffer.concat(stderr).toString()], ['12345', '1234']);
+  assert.equal(collector.overflowed, true);
+  assert.equal(overflows, 1);
+});
+
 test('a contamination token in the requirements or in rules.md refuses the run', async t => {
   // Arrange
   const root = scratch(t);

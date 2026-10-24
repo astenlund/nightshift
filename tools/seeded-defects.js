@@ -187,8 +187,9 @@ function loadFixture(directory) {
     // Materialization copies the trees over a configured repository, so a .git path could replace its configuration and run commands.
     if (folded.split('/').includes('.git')) fail('fixture-invalid', `${name}: ${item} lies in a .git folder`);
   }
-  // listFiles sees regular files only, while copying would carry a link through unchecked.
-  const linked = ['base', 'change'].flatMap(tree => linkedEntries(path.join(directory, tree)).map(item => `${tree}/${item}`));
+  // listFiles sees regular files only, while copying would carry a link through unchecked; a tree root that is itself a link counts too.
+  const linkedRoots = ['base', 'change'].filter(tree => fs.existsSync(path.join(directory, tree)) && fs.lstatSync(path.join(directory, tree)).isSymbolicLink());
+  const linked = [...linkedRoots, ...['base', 'change'].filter(tree => !linkedRoots.includes(tree)).flatMap(tree => linkedEntries(path.join(directory, tree)).map(item => `${tree}/${item}`))];
   if (linked.length) fail('fixture-invalid', `${name}: ${linked.join(', ')} is a link or special file`);
   if (typeof fixture.requirements !== 'string' || !fixture.requirements.trim()) fail('fixture-invalid', `${name}: requirements are missing`);
   if (typeof fixture.audited !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(fixture.audited)) fail('fixture-invalid', `${name}: audited must be a YYYY-MM-DD date`);
@@ -729,8 +730,10 @@ function retryCause(paths, stage) {
 }
 
 function supersede(paths, stages, cause) {
-  const target = path.join(paths.superseded, new Date().toISOString().replace(/[:.]/g, '-'));
-  fs.mkdirSync(target, { recursive: true });
+  // A random suffix keeps two supersessions apart even when their timestamps match, and creating the folder fails rather than reuse one.
+  const target = path.join(paths.superseded, `${new Date().toISOString().replace(/[:.]/g, '-')}-${crypto.randomUUID().slice(0, 8)}`);
+  fs.mkdirSync(paths.superseded, { recursive: true });
+  fs.mkdirSync(target);
   const retried = stages.filter(stage => fs.existsSync(paths.intent(stage)) || fs.existsSync(paths.result(stage)));
   writeJson(path.join(target, 'moving.json'), { stages, retried, cause });
   completeSupersession(paths, target);
@@ -878,7 +881,10 @@ async function run(options, dependencies = defaultDependencies()) {
     }
   }
 
-  return { stopped, spending: spending(options.out), fixtureRuns: items.length };
+  // The budget is checked before each dispatch, so the last one can pass it; the overrun is reported rather than left to be inferred.
+  const spent = spending(options.out);
+
+  return { stopped, spending: spent, budget: options.budget, overrun: Math.max(0, spent.spent - options.budget), fixtureRuns: items.length };
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------
@@ -1213,7 +1219,8 @@ function compare(baselineFolder, laterFolder) {
   const varied = [];
   if (hashesOf(baseline, 'machinery') !== hashesOf(later, 'machinery')) varied.push('review machinery');
   if (baseline.rulesHash !== later.rulesHash) varied.push('conventions');
-  if (JSON.stringify(Object.keys(baseline.byModel)) !== JSON.stringify(Object.keys(later.byModel))) varied.push('models');
+  // The same models in another command-line order are the same models.
+  if (JSON.stringify(Object.keys(baseline.byModel).sort()) !== JSON.stringify(Object.keys(later.byModel).sort())) varied.push('models');
   if (varied.length > 1) confounds.push(`more than one varied input (${varied.join(', ')})`);
   const informational = { commits: [...new Set([...baseline.identities, ...later.identities].map(identity => identity.commit))], hostVersions: [...new Set([...baseline.identities, ...later.identities].map(identity => identity.hostVersion))] };
   // The spread between identical runs is known per model, so a baseline of one model supplies it and a pooled one does not.
