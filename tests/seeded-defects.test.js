@@ -865,6 +865,26 @@ test('a dispatch that fails before any attempt records no tokens spent and grade
   assert.deepEqual(report.incomplete, ['alpha__claude-claude-opus-5-5__r1']);
 });
 
+test('a failed dispatch that started an attempt but left no failure record makes spending unknown, not zero', async t => {
+  // Arrange
+  const root = scratch(t);
+  writeFixture(root, 'alpha');
+  // As when the runtime's write of failure.json fails after a host ran: the attempt folder exists and the error still propagates.
+  const failing = { ...dependencies(LEAD_FINDS_DEFECT, []), dispatchReview: async (repository, request) => {
+    fs.mkdirSync(path.join(repository, '.nightshift/runs/reviews', request.id, 'attempt-1'), { recursive: true });
+    throw Object.assign(new Error('host failed; recording failure.json failed: disk full'), { code: 'unusable-review' });
+  } };
+
+  // Act
+  const result = await suite.run(options(root, root), failing);
+  const record = JSON.parse(fs.readFileSync(suite.runPaths(path.join(root, 'run'), 'alpha__claude-claude-opus-5-5__r1').result('lead'), 'utf8'));
+
+  // Assert
+  assert.deepEqual([record.outcome, record.prelaunch, record.attemptTokens], ['failed', undefined, [null]]);
+  assert.match(result.stopped, /recorded no tokens/);
+  assert.equal(result.spending.unknown, true);
+});
+
 test('each dispatch repository is deleted after its dispatch, and the claims record keeps the seed that reproduces its shuffle', async t => {
   // Arrange
   const root = scratch(t);

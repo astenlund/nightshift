@@ -537,6 +537,11 @@ function attemptsOf(directory) {
   return null;
 }
 
+// Whether the runtime started an attempt in this dispatch's directory, which it names attempt-1 onward as each candidate begins.
+function hasAttemptFolder(directory) {
+  return fs.existsSync(directory) && fs.readdirSync(directory, { withFileTypes: true }).some(entry => entry.isDirectory() && /^attempt-\d+$/.test(entry.name));
+}
+
 // Builds a result record from what the runtime left in the dispatch's directory, copying its artifacts into the run folder.
 function recordOutcome(paths, stage, intent, error, elapsedMs, identity) {
   const source = reviewsDirectory(intent.repository, intent.requestId);
@@ -552,8 +557,12 @@ function recordOutcome(paths, stage, intent, error, elapsedMs, identity) {
   } else if (fs.existsSync(failureFile)) {
     const failure = readJson(failureFile);
     Object.assign(record, { outcome: 'failed', code: failure.code ?? error?.code ?? null, message: error?.message ?? null, attemptTokens: (failure.attempts ?? []).map(attempt => attempt.tokens ?? null) });
+  } else if (error && hasAttemptFolder(target)) {
+    // An attempt began, so a host may have spent tokens even though failure.json is missing, as when writing it failed; the spending
+    // is unknown, which stops the run before the next dispatch.
+    Object.assign(record, { outcome: 'failed', code: error.code ?? null, message: error.message, attemptTokens: [null] });
   } else if (error) {
-    // The runtime records failure.json only inside its attempt loop, so a failure without one launched no host.
+    // No attempt folder exists, so the failure came before any host launched and spent nothing.
     Object.assign(record, { outcome: 'failed', code: error.code ?? null, message: error.message, attemptTokens: [], prelaunch: true });
   } else {
     Object.assign(record, { outcome: 'lost', attemptTokens: [] });
