@@ -22,8 +22,8 @@ Build a small fixed suite of tasks with seeded defects of known kinds across the
 
 ## Open questions
 
-- An explicit aggregate budget and reliable usage accounting, as required for real-model campaigns.
-- How to prevent the suite from leaking into reviewer context or training effects.
+- An explicit aggregate budget and reliable usage accounting, as required for real-model campaigns. The seeded-defect suite settles both for lead and skeptic dispatches (`--budget` and per-attempt token records); a whole-lifecycle run still needs them.
+- How to prevent the suite from leaking into reviewer context or training effects. The seeded-defect suite refuses its contamination tokens in everything it supplies to a reviewer and grades a run that mentions them as contaminated; training effects remain open.
 - How many runs are needed for a meaningful rate.
 
 ## Related

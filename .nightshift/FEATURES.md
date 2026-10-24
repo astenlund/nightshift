@@ -380,7 +380,7 @@ Consider Claude Code mods, plugins of function hooks that add a live pane, band,
 
 ### [Measure whether the lifecycle catches defects](features/defect-detection-measurement.md)
 
-Run the lifecycle against a small fixed suite of seeded defects and record detection rate, false-positive rate after skeptic validation, and time and model cost, repeating when models or review guidance change. From the user's 2026-09-26 ideas document. Open: budget and usage accounting, keeping the suite out of reviewer context, and how many runs a meaningful rate needs.
+Run the lifecycle against a small fixed suite of seeded defects and record detection rate, false-positive rate after skeptic validation, and time and model cost, repeating when models or review guidance change. From the user's 2026-09-26 ideas document. Since 2026-10-24 the [seeded-defect suite](specs/seeded-defect-suite.md) measures these rates for one fresh code lead and its skeptic, with an explicit budget, usage accounting and contamination guards, and targets set from [its baseline](reports/seeded-defect-baseline-20261024.md); the rates for the whole lifecycle, with repair, closure and fresh gate, remain unmeasured. Open: carrying budget and contamination guards over to whole-lifecycle runs, and how many runs a meaningful rate needs.
 
 ### [User proxy consultation and opt-in user profile](features/user-proxy-consultation.md)
 
