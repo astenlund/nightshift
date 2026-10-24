@@ -992,23 +992,33 @@ test('reconciliation deletes only a repository the harness materialized, never a
   const unrelated = path.join(root, 'precious');
   fs.mkdirSync(unrelated);
   fs.writeFileSync(path.join(unrelated, 'data.txt'), 'keep\n');
-  const owned = fs.mkdtempSync(path.join(os.tmpdir(), 'nsr-'));
-  t.after(() => fs.rmSync(owned, { recursive: true, force: true }));
-  const lose = repository => {
+  // A directory of the repository's shape that the harness did not make, and a repository it did.
+  const lookalike = fs.mkdtempSync(path.join(os.tmpdir(), 'nsr-'));
+  const frozen = path.join(root, 'run', 'frozen', 'alpha');
+  const owned = suite.materialize(frozen, suite.loadFixture(frozen).fixture);
+  const other = suite.materialize(frozen, suite.loadFixture(frozen).fixture);
+  t.after(() => [lookalike, owned.root, other.root].forEach(directory => fs.rmSync(directory, { recursive: true, force: true })));
+  const lose = (repository, owner) => {
     fs.rmSync(paths.complete, { force: true });
     fs.rmSync(paths.result('skeptic'), { force: true });
-    fs.writeFileSync(paths.intent('skeptic'), JSON.stringify({ ...intent, done: false, repository }));
+    fs.writeFileSync(paths.intent('skeptic'), JSON.stringify({ ...intent, done: false, repository, owner }));
   };
 
   // Act
-  lose(unrelated);
+  lose(unrelated, intent.owner);
   await suite.run(options(root, root), dependencies(LEAD_FINDS_DEFECT, calls));
-  lose(owned);
+  lose(lookalike, intent.owner);
+  await suite.run(options(root, root), dependencies(LEAD_FINDS_DEFECT, calls));
+  lose(other.root, owned.owner);
+  await suite.run(options(root, root), dependencies(LEAD_FINDS_DEFECT, calls));
+  lose(owned.root, owned.owner);
   await suite.run(options(root, root), dependencies(LEAD_FINDS_DEFECT, calls));
 
   // Assert
   assert.equal(fs.readFileSync(path.join(unrelated, 'data.txt'), 'utf8'), 'keep\n');
-  assert.equal(fs.existsSync(owned), false);
+  assert.equal(fs.existsSync(lookalike), true);
+  assert.equal(fs.existsSync(other.root), true);
+  assert.equal(fs.existsSync(owned.root), false);
   assert.deepEqual(calls.map(call => call.kind), ['code', 'skeptic']);
 });
 

@@ -28,6 +28,7 @@ const INITIAL_RESERVE = 2000000;
 const LINE_SLACK = 3;
 const EFFORT = 'xhigh';
 const REPOSITORY_PREFIX = 'nsr-';
+const OWNER_FILE = 'nsr-owner';
 const FIXTURE_AUTHOR = ['-c', 'user.name=Suite fixture', '-c', 'user.email=a.stenlund@gmail.com'];
 const VIBE_LAUNCHER = path.join(SUITE_ROOT, 'vibe-launcher.js');
 // Hosts the runtime's reviewer gate does not admit, measured through a launcher the harness injects. The dispatch names the gate
@@ -383,6 +384,9 @@ function materialize(frozen, fixture) {
   try {
     git(root, ['init', '--quiet']);
     for (const [key, value] of [['core.autocrlf', 'false'], ['core.safecrlf', 'false'], ['core.hooksPath', path.join(root, '.git', 'no-hooks')]]) git(root, ['config', key, value]);
+    // A random token the intent records, so cleanup can tell this repository from any other path of the same shape.
+    const owner = crypto.randomUUID();
+    fs.writeFileSync(path.join(root, '.git', OWNER_FILE), owner);
     fs.cpSync(path.join(frozen, 'base'), root, { recursive: true });
     git(root, ['add', '--all']);
     const staged = new Set(git(root, ['ls-files', '-z', '--cached']).split('\0').filter(Boolean));
@@ -398,7 +402,7 @@ function materialize(frozen, fixture) {
     const missing = expected.filter(item => !inventory.has(item));
     if (missing.length) fail('fixture-hidden', `${path.basename(frozen)}: ${missing.join(', ')} would be hidden from the reviewer by this machine's Git configuration`);
 
-    return { root, baseSha };
+    return { root, baseSha, owner };
   } catch (error) {
     fs.rmSync(root, { recursive: true, force: true });
     throw error;
@@ -564,7 +568,7 @@ async function dispatchStage(context, runItem, stage, claims) {
   const model = stageModel(runItem.model, stage);
   const identity = { machinery: context.identity.machinery, harness: context.identity.harness, commit: context.identity.commit, hostVersion: context.hostVersions[model.host] ?? null };
   // The intent keeps the dispatch's identity, so a reconciliation after a code change still records what dispatched it.
-  const intent = { stage, requestId, repository: repository.root, started: new Date().toISOString(), identity };
+  const intent = { stage, requestId, repository: repository.root, owner: repository.owner, started: new Date().toISOString(), identity };
   writeJson(paths.intent(stage), intent);
   const rules = fs.readFileSync(path.join(runFolder, 'rules.md'), 'utf8');
   const started = Date.now();
@@ -602,16 +606,18 @@ function settleStage(context, runItem, stage, intent, record) {
   intent.done = true;
   writeJson(paths.intent(stage), intent);
   if (blocked) throw new StopRun(`Host termination is unproven for ${runItem.key} ${stage}; its repository is kept at ${intent.repository}`);
-  if (!record.unproven && ownedRepository(intent.repository)) fs.rmSync(intent.repository, { recursive: true, force: true });
+  if (!record.unproven && ownedRepository(intent.repository, intent.owner)) fs.rmSync(intent.repository, { recursive: true, force: true });
 }
 
-// Whether a path is a dispatch repository the harness materialized, directly under the temporary directory with its prefix; a saved
-// intent is data, so its path is never deleted on trust.
-function ownedRepository(repository) {
-  if (typeof repository !== 'string' || !fs.existsSync(repository)) return false;
+// Whether a path is the dispatch repository this intent materialized: directly under the temporary directory with the harness's
+// prefix, and holding the owner token the intent recorded. A saved intent is data, so its path is never deleted on trust.
+function ownedRepository(repository, owner) {
+  if (typeof repository !== 'string' || typeof owner !== 'string' || !owner || !fs.existsSync(repository)) return false;
   const real = fs.realpathSync.native(repository);
+  if (path.dirname(real) !== fs.realpathSync.native(os.tmpdir()) || !path.basename(real).startsWith(REPOSITORY_PREFIX)) return false;
+  const marker = path.join(real, '.git', OWNER_FILE);
 
-  return path.dirname(real) === fs.realpathSync.native(os.tmpdir()) && path.basename(real).startsWith(REPOSITORY_PREFIX);
+  return fs.existsSync(marker) && fs.readFileSync(marker, 'utf8') === owner;
 }
 
 // Reconciles an intent that was never marked done, from the repository it names.
