@@ -29,7 +29,7 @@ const LINE_SLACK = 3;
 const EFFORT = 'xhigh';
 const REPOSITORY_PREFIX = 'nsr-';
 const OWNER_FILE = 'nsr-owner';
-const DIFF_DEFAULTS = Object.freeze([['diff.algorithm', 'myers'], ['diff.noprefix', 'false'], ['diff.mnemonicPrefix', 'false'], ['diff.context', '3'], ['diff.interHunkContext', '0'], ['diff.relative', 'false'], ['diff.renames', 'true'], ['diff.suppressBlankEmpty', 'false'], ['diff.indentHeuristic', 'true'], ['color.ui', 'false'], ['color.diff', 'false'], ['core.quotePath', 'true']]);
+const PINNED_DIFF_SETTINGS = Object.freeze([['diff.algorithm', 'myers'], ['diff.noprefix', 'false'], ['diff.mnemonicPrefix', 'false'], ['diff.srcPrefix', 'a/'], ['diff.dstPrefix', 'b/'], ['diff.context', '3'], ['diff.interHunkContext', '0'], ['diff.relative', 'false'], ['diff.renames', 'true'], ['diff.suppressBlankEmpty', 'false'], ['diff.indentHeuristic', 'true'], ['color.ui', 'false'], ['color.diff', 'false'], ['core.quotePath', 'true']]);
 const FIXTURE_AUTHOR = ['-c', 'user.name=Suite fixture', '-c', 'user.email=a.stenlund@gmail.com'];
 const VIBE_LAUNCHER = path.join(SUITE_ROOT, 'vibe-launcher.js');
 // Hosts the runtime's reviewer gate does not admit, measured through a launcher the harness injects. The dispatch names the gate
@@ -439,8 +439,11 @@ function materialize(frozen, fixture) {
   try {
     git(root, ['init', '--quiet']);
     // A global attributes file could still normalize line endings on add, so attributes point at a file that does not exist either,
-    // and the diff settings a machine can change are pinned to Git's defaults, since the runtime's diff is the reviewer's main input.
-    for (const [key, value] of [['core.autocrlf', 'false'], ['core.safecrlf', 'false'], ['core.hooksPath', path.join(root, '.git', 'no-hooks')], ['core.attributesFile', path.join(root, '.git', 'no-attributes')], ...DIFF_DEFAULTS]) git(root, ['config', key, value]);
+    // and the diff settings a machine can change are pinned, to Git's defaults and with color off, since the runtime's diff is the
+    // reviewer's main input.
+    // An empty order file keeps Git's own file order in the diff, whatever order file the machine names.
+    fs.writeFileSync(path.join(root, '.git', 'no-order'), '');
+    for (const [key, value] of [['core.autocrlf', 'false'], ['core.safecrlf', 'false'], ['core.hooksPath', path.join(root, '.git', 'no-hooks')], ['core.attributesFile', path.join(root, '.git', 'no-attributes')], ['diff.orderFile', path.join(root, '.git', 'no-order')], ...PINNED_DIFF_SETTINGS]) git(root, ['config', key, value]);
     // A random token the intent records, so cleanup can tell this repository from any other path of the same shape.
     const owner = crypto.randomUUID();
     fs.writeFileSync(path.join(root, '.git', OWNER_FILE), owner);
@@ -454,6 +457,10 @@ function materialize(frozen, fixture) {
     const baseSha = git(root, ['rev-parse', 'HEAD']);
     refuseGitAliases(root, frozen, 'change');
     if (fs.existsSync(path.join(frozen, 'change'))) fs.cpSync(path.join(frozen, 'change'), root, { recursive: true });
+    // The copy keeps each source file's mtime, so a change file the same size as its base file with an mtime in the same second looks
+    // unchanged to Git's stat check and drops out of the diff. Reading the base tree back into the index zeroes its stat data, so
+    // every later diff compares contents.
+    git(root, ['read-tree', baseSha]);
     for (const deletion of fixture.deletions ?? []) fs.rmSync(path.join(root, deletion), { force: true });
     const inventory = new Set(git(root, ['ls-files', '-z', '--cached', '--others', '--exclude-standard']).split('\0').filter(Boolean));
     const deletions = fixture.deletions ?? [];

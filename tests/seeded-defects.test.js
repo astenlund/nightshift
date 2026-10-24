@@ -1647,6 +1647,49 @@ test('global diff settings cannot change the diff of a materialized repository',
   assert.equal(diff.includes(String.fromCharCode(27) + '['), false);
 });
 
+test('a change file the same size as its base file, with the same source mtime, still appears in the diff', t => {
+  // Arrange
+  const root = scratch(t);
+  const before = 'function order(a, b) {\n  return [a, b];\n}\n';
+  const after = 'function order(a, b) {\n  return [b, a];\n}\n';
+  const directory = writeFixture(root, 'alpha', { base: { 'src/calc.js': BASE_CALC, 'src/order.js': before }, change: { 'src/calc.js': CHANGED_CALC, 'src/order.js': after } });
+  const stamp = new Date('2026-10-01T12:00:00.000Z');
+  for (const tree of ['base', 'change']) fs.utimesSync(path.join(directory, tree, 'src', 'order.js'), stamp, stamp);
+
+  // Act
+  const repository = suite.materialize(directory, suite.loadFixture(directory).fixture);
+  t.after(() => fs.rmSync(repository.root, { recursive: true, force: true }));
+  const changed = spawnSync('git', ['diff', '--name-only', repository.baseSha], { cwd: repository.root, encoding: 'utf8' }).stdout.split('\n').filter(Boolean);
+
+  // Assert
+  assert.equal(before.length, after.length);
+  assert.deepEqual(changed.sort(), ['src/calc.js', 'src/order.js']);
+});
+
+test('global diff prefix and order settings cannot change the diff either', t => {
+  // Arrange
+  const root = scratch(t);
+  const directory = writeFixture(root, 'alpha', { base: { 'src/calc.js': BASE_CALC, 'src/zeta.js': 'z\n' }, change: { 'src/calc.js': CHANGED_CALC, 'src/zeta.js': 'zz\n' } });
+  const order = path.join(root, 'order.txt');
+  fs.writeFileSync(order, 'src/zeta.js\n');
+  const config = path.join(root, 'global-config');
+  fs.writeFileSync(config, `[diff]\n\tsrcPrefix = SRC/\n\tdstPrefix = DST/\n\torderFile = ${order.split(path.sep).join('/')}\n`);
+  const previous = process.env.GIT_CONFIG_GLOBAL;
+  process.env.GIT_CONFIG_GLOBAL = config;
+  t.after(() => {
+    if (previous === undefined) delete process.env.GIT_CONFIG_GLOBAL;
+    else process.env.GIT_CONFIG_GLOBAL = previous;
+  });
+
+  // Act
+  const repository = suite.materialize(directory, suite.loadFixture(directory).fixture);
+  t.after(() => fs.rmSync(repository.root, { recursive: true, force: true }));
+  const headers = spawnSync('git', ['diff', '--no-ext-diff', repository.baseSha], { cwd: repository.root, encoding: 'utf8' }).stdout.split('\n').filter(line => line.startsWith('diff --git'));
+
+  // Assert
+  assert.deepEqual(headers, ['diff --git a/src/calc.js b/src/calc.js', 'diff --git a/src/zeta.js b/src/zeta.js']);
+});
+
 test('report.md marks an estimated token figure', async t => {
   // Arrange
   const root = scratch(t);
