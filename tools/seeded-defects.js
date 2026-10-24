@@ -19,6 +19,8 @@ const SEVERITIES = Object.freeze(['critical', 'important', 'minor']);
 const CONTAMINATION_TOKENS = Object.freeze(['seeded-defects', 'fixture.json']);
 const HIDDEN_PREFIXES = Object.freeze(['.nightshift/runs/', '.nightshift/inbox/', '.tmp/']);
 const ADJUDICATED_ORIGIN = /^adjudicated:[^/\\]+$/;
+const MODEL_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
+const ADJUDICATION_OUTCOMES = Object.freeze(['false', 'attributed', 'real']);
 const RECEIPT_ORIGIN = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/;
 const INITIAL_RESERVE = 2000000;
 const LINE_SLACK = 3;
@@ -196,10 +198,27 @@ function loadFixture(directory) {
   return { name, directory, fixture, truth, clean: fixture.defects.length === 0 && fixture.incidental.length === 0 };
 }
 
+// The entry titles of the checkout's bug index and its history, a linked title read as its text.
+function bugEntryTitles() {
+  const titles = new Set();
+  for (const file of ['BUGS.md', 'BUGS_HISTORY.md']) {
+    const location = path.join(PLUGIN_ROOT, '.nightshift', file);
+    if (!fs.existsSync(location)) continue;
+    for (const line of fs.readFileSync(location, 'utf8').split(/\r?\n/)) {
+      const match = /^#{2,4} (.+)$/.exec(line);
+      if (match) titles.add(match[1].replace(/^\[(.+)\]\([^)]*\)$/, '$1').trim());
+    }
+  }
+
+  return titles;
+}
+
 // The composition rules of the spec's Fixtures section, checked when a run selects the whole suite. Returns the unmet rules.
-function compositionProblems(fixtures) {
+function compositionProblems(fixtures, bugTitles = bugEntryTitles()) {
   const problems = [];
   const planted = fixtures.flatMap(item => item.fixture.defects);
+  // A bug origin counts toward the real-source quota only when it names an entry, so a mistyped title cannot satisfy it.
+  for (const defect of planted.filter(item => originKind(item.origin) === 'bug' && !bugTitles.has(item.origin))) problems.push(`origin "${defect.origin}" names no BUGS.md or BUGS_HISTORY.md entry`);
   const origins = planted.map(defect => originKind(defect.origin));
   const real = origins.filter(kind => kind === 'bug' || kind === 'fresh-gate').length;
   if (real * 2 < planted.length) problems.push('at least half of the planted defects must have a real origin');
@@ -312,16 +331,20 @@ function frozenFixture(runFolder, name) {
   return path.join(runFolder, 'frozen', name);
 }
 
-// Copies the selected fixtures and rules.md into the run folder, or reads the manifest of an existing run folder.
+// Reads the manifest of an existing run folder, which a resumed run follows without consulting the source fixtures.
+function resumedManifest(options) {
+  const manifest = readJson(path.join(options.out, 'manifest.json'));
+  const selected = [...new Set(options.selected ?? [])].sort();
+  const sameFixtures = selected.length ? !manifest.whole && JSON.stringify(manifest.fixtures) === JSON.stringify(selected) : manifest.whole;
+  const same = JSON.stringify(manifest.models) === JSON.stringify(options.models) && manifest.repeat === options.repeat && sameFixtures;
+  if (!same) fail('run-folder-mismatch', 'The run folder was started with other fixtures, models or repetitions; use a new run folder');
+
+  return manifest;
+}
+
+// Copies the selected fixtures and rules.md into a new run folder and writes its manifest.
 function prepareRunFolder(options, suite) {
   const manifestFile = path.join(options.out, 'manifest.json');
-  if (fs.existsSync(manifestFile)) {
-    const manifest = readJson(manifestFile);
-    const same = JSON.stringify(manifest.models) === JSON.stringify(options.models) && manifest.repeat === options.repeat && JSON.stringify(manifest.fixtures) === JSON.stringify(suite.fixtures.map(item => item.name));
-    if (!same) fail('run-folder-mismatch', 'The run folder was started with other fixtures, models or repetitions; use a new run folder');
-
-    return manifest;
-  }
   for (const item of suite.fixtures) fs.cpSync(item.directory, frozenFixture(options.out, item.name), { recursive: true });
   fs.copyFileSync(options.rules, path.join(options.out, 'rules.md'));
   const manifest = {
@@ -533,11 +556,12 @@ async function dispatchStage(context, runItem, stage, claims) {
     throw error;
   }
   const requestId = crypto.randomUUID();
-  const intent = { stage, requestId, repository: repository.root, started: new Date().toISOString() };
-  writeJson(paths.intent(stage), intent);
-  const rules = fs.readFileSync(path.join(runFolder, 'rules.md'), 'utf8');
   const model = stageModel(runItem.model, stage);
   const identity = { machinery: context.identity.machinery, harness: context.identity.harness, commit: context.identity.commit, hostVersion: manifest.hostVersions[model.host] ?? null };
+  // The intent keeps the dispatch's identity, so a reconciliation after a code change still records what dispatched it.
+  const intent = { stage, requestId, repository: repository.root, started: new Date().toISOString(), identity };
+  writeJson(paths.intent(stage), intent);
+  const rules = fs.readFileSync(path.join(runFolder, 'rules.md'), 'utf8');
   const started = Date.now();
   let error = null;
   try {
@@ -567,7 +591,8 @@ function reconcileIntent(context, runItem, stage) {
   const intent = readJson(paths.intent(stage));
   const directory = reviewsDirectory(intent.repository, intent.requestId);
   const found = fs.existsSync(path.join(directory, 'receipt.json')) || fs.existsSync(path.join(directory, 'failure.json'));
-  const identity = { machinery: context.identity.machinery, harness: context.identity.harness, commit: context.identity.commit, hostVersion: context.manifest.hostVersions[stageModel(runItem.model, stage).host] ?? null };
+  const identity = intent.identity;
+  if (!identity) fail('intent-unidentified', `${runItem.key} ${stage}: the pending intent records no dispatch identity, so its outcome cannot be attributed`);
   let record;
   if (found) {
     record = recordOutcome(paths, stage, intent, null, null, identity);
@@ -626,11 +651,29 @@ function retryCause(paths, stage) {
 function supersede(paths, stages, cause) {
   const target = path.join(paths.superseded, new Date().toISOString().replace(/[:.]/g, '-'));
   fs.mkdirSync(target, { recursive: true });
-  writeJson(path.join(target, 'cause.json'), { stage: stages[0], cause });
-  // The completion record moves first, so an interruption anywhere in the move leaves a fixture run the resume rules cover.
+  const retried = stages.filter(stage => fs.existsSync(paths.intent(stage)) || fs.existsSync(paths.result(stage)));
+  writeJson(path.join(target, 'moving.json'), { stages, retried, cause });
+  completeSupersession(paths, target);
+}
+
+// Moves a supersession's files and only then records its cause, so a folder still holding moving.json is an interrupted move, which the
+// next pass over the fixture run finishes before it reads any stage; a stage left half moved would otherwise dispatch over a result
+// whose tokens were never superseded.
+function completeSupersession(paths, target) {
+  const { stages, retried, cause } = readJson(path.join(target, 'moving.json'));
   const files = [paths.complete, ...stages.flatMap(stage => [paths.intent(stage), paths.result(stage), paths.artifacts(stage)]), ...(stages.includes('skeptic') ? [paths.claims] : [])];
   for (const file of files) {
     if (fs.existsSync(file)) fs.renameSync(file, path.join(target, path.basename(file)));
+  }
+  writeJson(path.join(target, 'cause.json'), { stage: stages[0], stages: retried, cause });
+  fs.rmSync(path.join(target, 'moving.json'));
+}
+
+function finishInterruptedSupersessions(paths) {
+  if (!fs.existsSync(paths.superseded)) return;
+  for (const entry of fs.readdirSync(paths.superseded)) {
+    const target = path.join(paths.superseded, entry);
+    if (fs.existsSync(path.join(target, 'moving.json'))) completeSupersession(paths, target);
   }
 }
 
@@ -663,8 +706,9 @@ function retryCounts(runFolder, key) {
   for (const entry of fs.readdirSync(folder)) {
     const file = path.join(folder, entry, 'cause.json');
     if (!fs.existsSync(file)) continue;
-    const { cause } = readJson(file);
-    counts[cause] = (counts[cause] ?? 0) + 1;
+    const { cause, stages } = readJson(file);
+    // One supersession can retry both stages; a record from before stages were listed counts as one.
+    counts[cause] = (counts[cause] ?? 0) + (stages?.length ?? 1);
   }
 
   return counts;
@@ -673,7 +717,8 @@ function retryCounts(runFolder, key) {
 async function runFixture(context, runItem) {
   const paths = runPaths(context.runFolder, runItem.key);
   fs.mkdirSync(paths.root, { recursive: true });
-  if (context.retry && fs.existsSync(paths.root)) applyRetry(paths);
+  finishInterruptedSupersessions(paths);
+  if (context.retry) applyRetry(paths);
   if (fs.existsSync(paths.complete)) return;
   for (const stage of ['lead', 'skeptic']) {
     if (!requiredStages(paths, runItem).includes(stage)) continue;
@@ -699,10 +744,15 @@ function defaultDependencies() {
 
 async function run(options, dependencies = defaultDependencies()) {
   if (!Number.isSafeInteger(options.budget) || options.budget <= 0) fail('budget-missing', 'A run needs --budget <tokens>');
-  const suite = loadSuite(options.fixtures, options.selected ?? []);
-  const rules = fs.readFileSync(options.rules, 'utf8');
-  const token = containsToken(rules);
-  if (token) fail('fixture-contaminated', `rules.md contains ${token}`);
+  validateModels(options.models);
+  // A resumed run reads only its frozen copy, so later edits to the source fixtures or rules cannot refuse or alter it.
+  const resuming = fs.existsSync(path.join(options.out, 'manifest.json'));
+  let suite = null;
+  if (!resuming) {
+    suite = loadSuite(options.fixtures, options.selected ?? []);
+    const token = containsToken(fs.readFileSync(options.rules, 'utf8'));
+    if (token) fail('fixture-contaminated', `rules.md contains ${token}`);
+  }
   fs.mkdirSync(options.out, { recursive: true });
   const blockingFile = path.join(options.out, 'blocking.json');
   if (fs.existsSync(blockingFile)) {
@@ -711,7 +761,7 @@ async function run(options, dependencies = defaultDependencies()) {
     fs.mkdirSync(checked, { recursive: true });
     fs.renameSync(blockingFile, path.join(checked, `${new Date().toISOString().replace(/[:.]/g, '-')}.json`));
   }
-  const manifest = prepareRunFolder({ ...options, hostVersion: dependencies.hostVersion }, suite);
+  const manifest = resuming ? resumedManifest(options) : prepareRunFolder({ ...options, hostVersion: dependencies.hostVersion }, suite);
   const context = {
     runFolder: options.out, manifest, dependencies, budget: options.budget, retry: Boolean(options.retry),
     identity: { machinery: dependencies.machineryHash?.() ?? machineryHash(), harness: harnessHash(), commit: dependencies.commit?.() ?? checkoutCommit() },
@@ -816,6 +866,8 @@ function gradeFixtureRun(runFolder, runItem, adjudications) {
   const elapsed = [leadRecord, skepticRecord].filter(Boolean).map(record => record.elapsedMs);
   const base = {
     key: runItem.key, fixture: runItem.fixture.name, model: modelLabel(runItem.model), repetition: runItem.repetition,
+    // A fixture run a stopped run never dispatched has no cost to average, which is different from a dispatch that cost nothing.
+    dispatched: Boolean(leadRecord),
     tokens: tokens.some(value => value === null) ? null : tokens.reduce((sum, value) => sum + value, 0),
     tokensEstimated: [leadRecord, skepticRecord].some(record => record?.estimated !== undefined),
     elapsedMs: elapsed.some(value => value === null) ? null : elapsed.reduce((sum, value) => sum + value, 0),
@@ -837,6 +889,8 @@ function gradeFixtureRun(runFolder, runItem, adjudications) {
   for (const { finding, index } of unmatched) {
     const decision = own[finding.id];
     if (!decision) continue;
+    // A misspelled outcome would otherwise settle the finding silently as false.
+    if (!ADJUDICATION_OUTCOMES.includes(decision.outcome) || typeof decision.reason !== 'string' || !decision.reason.trim()) fail('adjudication-invalid', `${runItem.key}: ${finding.id} needs an outcome of ${ADJUDICATION_OUTCOMES.join(', ')} and a reason`);
     if (decision.outcome === 'real') realIds.add(finding.id);
     if (decision.outcome === 'attributed') {
       const entryIndex = truth.findIndex(entry => entry.id === decision.entry);
@@ -882,6 +936,7 @@ function gradeFixtureRun(runFolder, runItem, adjudications) {
     status: 'graded',
     provisional: pendingAdjudication.length > 0,
     pendingAdjudication,
+    unmatched: unmatched.map(({ finding }) => finding.id),
     unmatchedConfirmed: unmatched.filter(({ finding }) => verdictOf.get(`lead:${finding.id}`) === 'confirmed').map(({ finding }) => finding.id),
     clean,
     planted: planted.length,
@@ -908,8 +963,9 @@ function figures(graded) {
   const cleanRuns = verdicted.filter(item => item.clean);
   const otherRuns = verdicted.filter(item => !item.clean);
   const sum = (items, field) => items.reduce((total, item) => total + item[field], 0);
-  const known = graded.filter(item => item.tokens !== null);
-  const timed = graded.filter(item => item.elapsedMs !== null);
+  const dispatched = graded.filter(item => item.dispatched);
+  const known = dispatched.filter(item => item.tokens !== null);
+  const timed = dispatched.filter(item => item.elapsedMs !== null);
 
   return {
     detection: ratio(sum(done, 'detected'), sum(done, 'planted')),
@@ -928,8 +984,8 @@ function figures(graded) {
       return totals;
     }, {}),
     provisional: done.some(item => item.provisional),
-    tokensIncomplete: graded.some(item => item.tokens === null),
-    tokensEstimated: graded.some(item => item.tokensEstimated),
+    tokensIncomplete: dispatched.some(item => item.tokens === null),
+    tokensEstimated: dispatched.some(item => item.tokensEstimated),
   };
 }
 
@@ -1044,17 +1100,29 @@ function compare(baselineFolder, laterFolder) {
   if (baseline.fixtureSetHash !== later.fixtureSetHash) confounds.push('fixture set');
   if (baseline.graderHash !== later.graderHash) confounds.push('grader (regrade the older run first)');
   if (baseline.mixed || later.mixed) confounds.push('a mixed run');
-  const heldOf = report => new Set(report.identities.map(identity => `${identity.machinery}|${identity.harness}`));
+  const hashesOf = (report, field) => [...new Set(report.identities.map(identity => identity[field]))].sort().join();
+  // The dispatching harness is held equal in every comparison, so a change to it confounds whatever else varied.
+  if (hashesOf(baseline, 'harness') !== hashesOf(later, 'harness')) confounds.push('dispatching harness');
   const varied = [];
-  if ([...heldOf(baseline)].join() !== [...heldOf(later)].join()) varied.push('review machinery or harness');
+  if (hashesOf(baseline, 'machinery') !== hashesOf(later, 'machinery')) varied.push('review machinery');
   if (baseline.rulesHash !== later.rulesHash) varied.push('conventions');
   if (JSON.stringify(Object.keys(baseline.byModel)) !== JSON.stringify(Object.keys(later.byModel))) varied.push('models');
   if (varied.length > 1) confounds.push(`more than one varied input (${varied.join(', ')})`);
   const informational = { commits: [...new Set([...baseline.identities, ...later.identities].map(identity => identity.commit))], hostVersions: [...new Set([...baseline.identities, ...later.identities].map(identity => identity.hostVersion))] };
-  const keys = ['detection', 'cleanChangeFalsePositives', 'unmatchedConfirmations', 'severityAccuracy', 'skepticAccuracy'];
-  const changes = Object.fromEntries(keys.map(key => [key, { baseline: baseline.pooled[key].value, later: later.pooled[key].value }]));
+  // The spread between identical runs is known per model, so a baseline of one model supplies it and a pooled one does not.
+  const models = Object.values(baseline.byModel);
+  const baselineSpread = models.length === 1 ? models[0].spread ?? {} : {};
+  const targets = later.targets?.status === 'current' ? later.targets.figures : {};
+  const change = (before, after, spread, target) => {
+    const delta = before === null || before === undefined || after === null || after === undefined ? null : after - before;
 
-  return { varied, confounded: confounds, provisional: baseline.pooled.provisional || later.pooled.provisional, informational, changes };
+    return { baseline: before ?? null, later: after ?? null, change: delta, spread: spread ?? null, withinSpread: delta === null || !spread ? null : Math.abs(delta) <= spread.max - spread.min, target: target ?? null };
+  };
+  const keys = ['detection', 'cleanChangeFalsePositives', 'unmatchedConfirmations', 'outOfScope', 'severityAccuracy', 'skepticAccuracy', 'tokensPerFixture', 'elapsedMsPerFixture'];
+  const changes = Object.fromEntries(keys.map(key => [key, change(baseline.pooled[key]?.value, later.pooled[key]?.value, baselineSpread[key], targets[key])]));
+  const detectionByDimension = Object.fromEntries(CODE_DIMENSIONS.map(dimension => [dimension, change(baseline.pooled.detectionByDimension?.[dimension]?.value, later.pooled.detectionByDimension?.[dimension]?.value)]));
+
+  return { varied, confounded: confounds, provisional: baseline.pooled.provisional || later.pooled.provisional, informational, targets: { status: later.targets?.status ?? 'none', baseline: later.targets?.baseline ?? null }, changes, detectionByDimension };
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------
@@ -1075,6 +1143,20 @@ function parseModel(value) {
   const other = parse(skeptic);
 
   return other.host === model.host && other.id === model.id ? model : { ...model, skeptic: other };
+}
+
+// A host and model id become path segments of every fixture run key, so each is one plain name, and a model runs once per run.
+function validateModels(models) {
+  for (const model of models) {
+    for (const part of [model, model.skeptic].filter(Boolean)) {
+      for (const name of [part.host, part.id]) {
+        if (typeof name !== 'string' || !MODEL_NAME.test(name)) fail('invalid-arguments', `A host or model id must be letters, digits, '.', '_' or '-', not ${name}`);
+      }
+    }
+  }
+  const labels = models.map(modelLabel);
+  const repeated = labels.find((label, index) => labels.indexOf(label) !== index);
+  if (repeated) fail('invalid-arguments', `--model ${repeated} is given more than once`);
 }
 
 function parseArguments(argv) {
