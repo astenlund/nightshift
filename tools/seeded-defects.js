@@ -1076,6 +1076,8 @@ function grade(runFolder, targetsFile = path.join(SUITE_ROOT, 'targets.json')) {
     skepticIncomplete: graded.filter(item => item.skepticIncomplete).map(item => item.key),
     pendingAdjudication: Object.fromEntries(graded.filter(item => item.pendingAdjudication?.length).map(item => [item.key, item.pendingAdjudication])),
     real: graded.filter(item => item.real > 0).map(item => item.key),
+    // An active block names the dispatch whose host may still run and the repository kept for inspecting it.
+    blocking: fs.existsSync(path.join(runFolder, 'blocking.json')) ? readJson(path.join(runFolder, 'blocking.json')) : null,
     fixtureRuns: graded,
   };
   writeJson(path.join(runFolder, 'report.json'), report);
@@ -1108,6 +1110,7 @@ function formatReport(report) {
   } else if (report.targets.status === 'stale') {
     lines.push('', `Targets are stale: they were set on another fixture set (baseline ${report.targets.baseline}).`);
   }
+  if (report.blocking) lines.push('', `Blocked: host termination is unproven for ${report.blocking.fixtureRun} ${report.blocking.stage}; its repository is kept at ${report.blocking.repository}. Rerun with --termination-checked once the host process has ended.`);
   lines.push('', `Incomplete fixture runs: ${report.incomplete.length ? report.incomplete.join(', ') : 'none'}. Contaminated: ${report.contaminated.length ? report.contaminated.join(', ') : 'none'}. Without a complete skeptic: ${report.skepticIncomplete.length ? report.skepticIncomplete.join(', ') : 'none'}. Attributions: ${report.pooled.attributions}.`);
   for (const [label, model] of Object.entries(report.byModel)) {
     const retries = Object.entries(model.figures.retries);
@@ -1132,9 +1135,10 @@ function compare(baselineFolder, laterFolder) {
   if (baseline.fixtureSetHash !== later.fixtureSetHash) confounds.push('fixture set');
   if (baseline.graderHash !== later.graderHash) confounds.push('grader (regrade the older run first)');
   if (baseline.mixed || later.mixed) confounds.push('a mixed run');
-  // An incomplete or contaminated fixture run drops out of the figures, so the two reports would measure different samples.
-  const dropped = report => (report.incomplete?.length ?? 0) + (report.contaminated?.length ?? 0);
-  if (dropped(baseline) || dropped(later)) confounds.push(`incomplete or contaminated fixture runs (baseline ${dropped(baseline)}, later ${dropped(later)})`);
+  // An incomplete or contaminated fixture run drops out of the figures, and one without a complete skeptic out of every verdict
+  // figure, so the two reports would measure different samples.
+  const dropped = report => (report.incomplete?.length ?? 0) + (report.contaminated?.length ?? 0) + (report.skepticIncomplete?.length ?? 0);
+  if (dropped(baseline) || dropped(later)) confounds.push(`incomplete, contaminated or skeptic-incomplete fixture runs (baseline ${dropped(baseline)}, later ${dropped(later)})`);
   const hashesOf = (report, field) => [...new Set(report.identities.map(identity => identity[field]))].sort().join();
   // The dispatching harness is held equal in every comparison, so a change to it confounds whatever else varied.
   if (hashesOf(baseline, 'harness') !== hashesOf(later, 'harness')) confounds.push('dispatching harness');

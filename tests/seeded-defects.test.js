@@ -543,6 +543,7 @@ test('a comparison counts a changed dispatching harness as a confound and gives 
     large: { ...base, identities: [{ machinery: 'm2', harness: 'h1', commit: 'c2', hostVersion: 'v1' }], pooled: pooled({ unmatchedConfirmations: 0.4, tokensPerFixture: 50000 }) },
     harness: { ...base, identities: [{ machinery: 'm1', harness: 'h2', commit: 'c2', hostVersion: 'v1' }] },
     incomplete: { ...base, incomplete: ['alpha__claude-claude-opus-5-5__r2'] },
+    skeptic: { ...base, skepticIncomplete: ['alpha__claude-claude-opus-5-5__r1'] },
   };
   for (const [name, value] of Object.entries(reports)) {
     fs.mkdirSync(path.join(root, name));
@@ -563,7 +564,8 @@ test('a comparison counts a changed dispatching harness as a confound and gives 
   assert.equal(small.detectionByDimension['correctness-integration'].change, 0);
   assert.equal(large.changes.unmatchedConfirmations.withinSpread, false);
   assert.deepEqual(harness.confounded, ['dispatching harness']);
-  assert.deepEqual(suite.compare(path.join(root, 'base'), path.join(root, 'incomplete')).confounded, ['incomplete or contaminated fixture runs (baseline 0, later 1)']);
+  assert.deepEqual(suite.compare(path.join(root, 'base'), path.join(root, 'incomplete')).confounded, ['incomplete, contaminated or skeptic-incomplete fixture runs (baseline 0, later 1)']);
+  assert.deepEqual(suite.compare(path.join(root, 'skeptic'), path.join(root, 'base')).confounded, ['incomplete, contaminated or skeptic-incomplete fixture runs (baseline 1, later 0)']);
 });
 
 test('a run refuses a model id that is not a plain name and a model given twice', async t => {
@@ -1133,6 +1135,41 @@ test('a reconciled dispatch with unproven host termination blocks the run until 
   assert.equal(fs.existsSync(path.join(runFolder, 'blocking.json')), false);
   assert.equal(JSON.parse(fs.readFileSync(paths.result('lead'), 'utf8')).unproven, true);
   assert.equal(fs.existsSync(repository), true);
+});
+
+test('a settlement interrupted after its blocking record settles without blocking again once termination is confirmed, and the report shows an active block', async t => {
+  // Arrange
+  const root = scratch(t);
+  writeFixture(root, 'alpha');
+  const calls = [];
+  await suite.run(options(root, root), dependencies(LEAD_FINDS_DEFECT, calls));
+  const runFolder = path.join(root, 'run');
+  const key = 'alpha__claude-claude-opus-5-5__r1';
+  const paths = suite.runPaths(runFolder, key);
+  const intent = JSON.parse(fs.readFileSync(paths.intent('lead'), 'utf8'));
+  const repository = path.join(root, 'left-lead');
+  fs.mkdirSync(path.join(repository, '.nightshift/runs/reviews', intent.requestId), { recursive: true });
+  fs.writeFileSync(path.join(repository, '.nightshift/runs/reviews', intent.requestId, 'failure.json'), JSON.stringify({ code: 'termination-unverified', attempts: [{ tokens: 9 }] }));
+  for (const file of [paths.complete, paths.result('lead')]) fs.rmSync(file);
+  fs.rmSync(paths.artifacts('lead'), { recursive: true });
+  // Interrupted after the blocking record and before the result: the intent is still pending.
+  fs.writeFileSync(paths.intent('lead'), JSON.stringify({ ...intent, done: false, repository }));
+  fs.writeFileSync(path.join(runFolder, 'blocking.json'), JSON.stringify({ fixtureRun: key, stage: 'lead', requestId: intent.requestId, repository, recorded: '2026-10-24T00:00:00.000Z' }));
+
+  // Act
+  const blockedReport = suite.grade(runFolder, path.join(root, 'none.json'));
+  const blockedText = fs.readFileSync(path.join(runFolder, 'report.md'), 'utf8');
+  const confirmed = await suite.run(options(root, root, { terminationChecked: true }), dependencies(LEAD_FINDS_DEFECT, calls));
+  const settledReport = suite.grade(runFolder, path.join(root, 'none.json'));
+
+  // Assert
+  assert.equal(blockedReport.blocking.repository, repository);
+  assert.match(blockedText, /Blocked: host termination is unproven for alpha__claude-claude-opus-5-5__r1 lead/);
+  assert.equal(confirmed.stopped, null);
+  assert.equal(fs.existsSync(path.join(runFolder, 'blocking.json')), false);
+  assert.equal(JSON.parse(fs.readFileSync(paths.result('lead'), 'utf8')).unproven, true);
+  assert.equal(settledReport.blocking, null);
+  assert.deepEqual(calls.map(call => call.kind), ['code', 'skeptic']);
 });
 
 test('a reconciled evaluated-host dispatch keeps its evaluation attribution', async t => {
