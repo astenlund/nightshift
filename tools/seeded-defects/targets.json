@@ -1,0 +1,13 @@
+{
+  "baseline": ".nightshift/reports/seeded-defect-baseline-20261024.md",
+  "fixtureSetHash": "c450f1e27c7de74edf3a2cd992c68b2973f94caed3c923aaf067e9f83f9d3a3b",
+  "set": "2026-10-24",
+  "figures": {
+    "detection": 1,
+    "cleanChangeFalsePositives": 0.3334,
+    "unmatchedConfirmations": 0.2,
+    "severityAccuracy": 0.57,
+    "skepticAccuracy": 1,
+    "tokensPerFixture": 60000
+  }
+}
