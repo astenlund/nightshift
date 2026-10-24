@@ -22,7 +22,7 @@ Build a small fixed suite of tasks with seeded defects of known kinds across the
 
 ## Open questions
 
-- An explicit aggregate budget and reliable usage accounting, as required for real-model campaigns. The seeded-defect suite settles both for lead and skeptic dispatches (`--budget` and per-attempt token records); a whole-lifecycle run still needs them.
+- An explicit aggregate budget and reliable usage accounting, as required for real-model campaigns. The seeded-defect suite provides both for lead and skeptic dispatches (`--budget` and per-attempt token records), with two known limits: a single null token reading stops a run folder for good (the BUGS.md entry "Seeded-defect harness cannot resume past a null token reading"), and an evaluated host's token totals may not count cached input as the Claude and Codex records do. A whole-lifecycle run still needs both.
 - How to prevent the suite from leaking into reviewer context or training effects. The seeded-defect suite refuses its contamination tokens in everything it supplies to a reviewer and grades a run that mentions them as contaminated; training effects remain open.
 - How many runs are needed for a meaningful rate.
 
