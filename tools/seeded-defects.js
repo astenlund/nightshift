@@ -555,13 +555,9 @@ function attemptsOf(directory) {
   return null;
 }
 
-// Whether the runtime started an attempt in this dispatch's directory, which it names attempt-1 onward as each candidate begins.
-function hasAttemptFolder(directory) {
-  return fs.existsSync(directory) && fs.readdirSync(directory, { withFileTypes: true }).some(entry => entry.isDirectory() && /^attempt-\d+$/.test(entry.name));
-}
-
 // Builds a result record from what the runtime left in the dispatch's directory, copying its artifacts into the run folder.
-// launched is true or false when the dispatch watched onProcess, and undefined for a reconciliation, which cannot know.
+// launched is true or false when the dispatch watched onProcess; a reconciliation, which cannot know, passes it undefined and is
+// called only when a receipt or failure.json was found.
 function recordOutcome(paths, stage, intent, error, elapsedMs, identity, launched) {
   const source = reviewsDirectory(intent.repository, intent.requestId);
   const target = paths.artifacts(stage);
@@ -581,13 +577,10 @@ function recordOutcome(paths, stage, intent, error, elapsedMs, identity, launche
   } else if (fs.existsSync(failureFile)) {
     const failure = readJson(failureFile);
     Object.assign(record, { outcome: 'failed', code: failure.code ?? error?.code ?? null, message: error?.message ?? null, attemptTokens: (failure.attempts ?? []).map(attempt => attempt.tokens ?? null) });
-  } else if (error && (launched === true || hasAttemptFolder(target))) {
-    // A host launched, or for a reconciliation an attempt began, so tokens may have been spent even though failure.json is missing,
-    // as when writing it failed; the spending is unknown, which stops the run before the next dispatch.
-    Object.assign(record, { outcome: 'failed', code: error.code ?? null, message: error.message, attemptTokens: [null] });
   } else if (error) {
-    // No attempt folder exists, so the failure came before any host launched and spent nothing.
-    Object.assign(record, { outcome: 'failed', code: error.code ?? null, message: error.message, attemptTokens: [], prelaunch: true });
+    // A host launched, so tokens may have been spent even though failure.json is missing, as when writing it failed; the spending is
+    // unknown, which stops the run before the next dispatch.
+    Object.assign(record, { outcome: 'failed', code: error.code ?? null, message: error.message, attemptTokens: [null] });
   } else {
     Object.assign(record, { outcome: 'lost', attemptTokens: [] });
   }
