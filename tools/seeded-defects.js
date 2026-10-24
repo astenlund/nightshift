@@ -56,9 +56,18 @@ function readJson(file) {
   return JSON.parse(fs.readFileSync(file, 'utf8'));
 }
 
+// Writes through a temporary file and a rename, so an interruption leaves the earlier record or none, never a partial one that every
+// later resume would fail to parse.
 function writeJson(file, value) {
   fs.mkdirSync(path.dirname(file), { recursive: true });
-  fs.writeFileSync(file, JSON.stringify(value, null, 2) + '\n');
+  const temporary = `${file}.${crypto.randomUUID()}.tmp`;
+  try {
+    fs.writeFileSync(temporary, JSON.stringify(value, null, 2) + '\n');
+    fs.renameSync(temporary, file);
+  } catch (error) {
+    fs.rmSync(temporary, { force: true });
+    throw error;
+  }
 }
 
 // Every regular file below root as a sorted list of forward-slash relative paths.
@@ -172,9 +181,11 @@ function loadFixture(directory) {
   if (!Array.isArray(deletions) || deletions.some(item => !base.includes(item))) fail('fixture-invalid', `${name}: every deletion must name a base/ file`);
   // A base file the change deletes is still committed in the base, where it can hide others, so every file of both trees is checked.
   for (const item of new Set([...base, ...change])) {
-    if (path.posix.basename(item) === '.gitignore' || HIDDEN_PREFIXES.some(prefix => item.startsWith(prefix))) fail('fixture-invalid', `${name}: ${item} would be hidden from the reviewer`);
+    // Compared without case, since the verified Windows filesystem resolves .GIT and .Gitignore to the same entries.
+    const folded = item.toLowerCase();
+    if (path.posix.basename(folded) === '.gitignore' || HIDDEN_PREFIXES.some(prefix => folded.startsWith(prefix))) fail('fixture-invalid', `${name}: ${item} would be hidden from the reviewer`);
     // Materialization copies the trees over a configured repository, so a .git path could replace its configuration and run commands.
-    if (item.split('/').includes('.git')) fail('fixture-invalid', `${name}: ${item} lies in a .git folder`);
+    if (folded.split('/').includes('.git')) fail('fixture-invalid', `${name}: ${item} lies in a .git folder`);
   }
   // listFiles sees regular files only, while copying would carry a link through unchecked.
   const linked = ['base', 'change'].flatMap(tree => linkedEntries(path.join(directory, tree)).map(item => `${tree}/${item}`));
@@ -1307,4 +1318,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { CODE_DIMENSIONS, SuiteError, assign, compare, compositionProblems, distance, fixtureRunKey, grade, gradeFixtureRun, loadFixture, loadSuite, materialize, parseArguments, run, runPaths, seedFor, shuffledClaims, spending };
+module.exports = { CODE_DIMENSIONS, SuiteError, assign, compare, compositionProblems, distance, fixtureRunKey, grade, gradeFixtureRun, loadFixture, loadSuite, materialize, parseArguments, run, runPaths, seedFor, shuffledClaims, spending, writeJson };

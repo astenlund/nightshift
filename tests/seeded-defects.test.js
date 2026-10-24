@@ -1304,9 +1304,35 @@ test('the loader refuses a .git path and a linked entry in a fixture tree', t =>
   fs.mkdirSync(path.join(root, 'outside'));
   fs.symlinkSync(path.join(root, 'outside'), path.join(root, 'linked', 'base', 'elsewhere'), 'junction');
 
+  writeFixture(root, 'upper', { base: { 'src/calc.js': BASE_CALC, '.GIT/config': '[core]\n' } });
+  writeFixture(root, 'ignore', { change: { 'src/calc.js': CHANGED_CALC, 'src/.Gitignore': 'x\n' } });
+
   // Act and Assert
   assert.throws(() => suite.loadFixture(path.join(root, 'gitdir')), /\.git\/config lies in a \.git folder/);
   assert.throws(() => suite.loadFixture(path.join(root, 'linked')), /base\/elsewhere is a link or special file/);
+  assert.throws(() => suite.loadFixture(path.join(root, 'upper')), /\.GIT\/config lies in a \.git folder/);
+  assert.throws(() => suite.loadFixture(path.join(root, 'ignore')), /src\/\.Gitignore would be hidden/);
+});
+
+test('a control record write interrupted partway leaves the earlier record and no partial file', t => {
+  // Arrange
+  const root = scratch(t);
+  const file = path.join(root, 'blocking.json');
+  suite.writeJson(file, { attempt: 1 });
+  const original = fs.writeFileSync;
+  fs.writeFileSync = (target, content) => {
+    original(target, String(content).slice(0, 5));
+    throw new Error('disk full');
+  };
+  t.after(() => { fs.writeFileSync = original; });
+
+  // Act
+  assert.throws(() => suite.writeJson(file, { attempt: 2 }), /disk full/);
+  fs.writeFileSync = original;
+
+  // Assert
+  assert.deepEqual(JSON.parse(fs.readFileSync(file, 'utf8')), { attempt: 1 });
+  assert.deepEqual(fs.readdirSync(root), ['blocking.json']);
 });
 
 test('resume and grading refuse a frozen copy or rules.md that no longer matches the manifest', async t => {
@@ -1329,6 +1355,7 @@ test('resume and grading refuse a frozen copy or rules.md that no longer matches
   fs.writeFileSync(frozenCalc, original);
   fs.appendFileSync(path.join(runFolder, 'rules.md'), 'Another rule.\n');
   assert.throws(() => suite.grade(runFolder, path.join(root, 'none.json')), /rules\.md no longer matches/);
+  await assert.rejects(suite.run(options(root, root), dependencies(LEAD_FINDS_DEFECT, calls)), /rules\.md no longer matches/);
 });
 
 test('a stage retried under another machinery hash leaves the run mixed', async t => {
