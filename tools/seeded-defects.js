@@ -243,6 +243,8 @@ function compositionProblems(fixtures, bugTitles = bugEntryTitles()) {
 
 function loadSuite(fixturesDirectory, selected = []) {
   const names = fs.readdirSync(fixturesDirectory, { withFileTypes: true }).filter(entry => entry.isDirectory()).map(entry => entry.name).sort();
+  // A fixture name opens every fixture run key, so like a model id it may not hold the '__' that separates the key's parts.
+  for (const name of names.filter(item => !MODEL_NAME.test(item))) fail('fixture-invalid', `${name}: a fixture name must be letters, digits, '.', '_' or '-' without '__'`);
   for (const name of selected) {
     if (!names.includes(name)) fail('fixture-missing', `No fixture named ${name}`);
   }
@@ -573,19 +575,34 @@ async function dispatchStage(context, runItem, stage, claims) {
     error = caught;
   }
   const record = recordOutcome(paths, stage, intent, error, Date.now() - started, identity);
-  const evaluation = EVALUATION_HOSTS[model.host];
-  if (evaluation) record.evaluation = { host: model.host, model: model.id, gateCandidate: evaluation.gate };
-  writeJson(paths.result(stage), record);
-  intent.done = true;
-  writeJson(paths.intent(stage), intent);
-  if (record.unproven) {
-    writeJson(path.join(runFolder, 'blocking.json'), { fixtureRun: runItem.key, stage, repository: repository.root, recorded: new Date().toISOString() });
-    throw new StopRun(`Host termination is unproven for ${runItem.key} ${stage}; its repository is kept at ${repository.root}`);
-  }
-  fs.rmSync(repository.root, { recursive: true, force: true });
+  settleStage(context, runItem, stage, intent, record);
   if (record.attemptTokens.some(value => value === null)) throw new StopRun(`An attempt of ${runItem.key} ${stage} recorded no tokens`);
 
   return record;
+}
+
+// Whether the user has confirmed, by --termination-checked, that the host of this dispatch has ended.
+function terminationConfirmed(runFolder, requestId) {
+  const folder = path.join(runFolder, 'termination-checked');
+
+  return fs.existsSync(folder) && fs.readdirSync(folder).some(file => readJson(path.join(folder, file)).requestId === requestId);
+}
+
+// Writes a stage's result and marks its intent done, from a dispatch or a reconciliation alike. Unproven host termination is blocked
+// before the result is written, so an interruption anywhere leaves either the blocking record or a pending intent whose
+// reconciliation blocks again, until the user confirms the host has ended; the repository is then kept for inspection.
+function settleStage(context, runItem, stage, intent, record) {
+  const paths = runPaths(context.runFolder, runItem.key);
+  const model = stageModel(runItem.model, stage);
+  const evaluation = EVALUATION_HOSTS[model.host];
+  if (evaluation) record.evaluation = { host: model.host, model: model.id, gateCandidate: evaluation.gate };
+  const blocked = record.unproven && !terminationConfirmed(context.runFolder, intent.requestId);
+  if (blocked) writeJson(path.join(context.runFolder, 'blocking.json'), { fixtureRun: runItem.key, stage, requestId: intent.requestId, repository: intent.repository, recorded: new Date().toISOString() });
+  writeJson(paths.result(stage), record);
+  intent.done = true;
+  writeJson(paths.intent(stage), intent);
+  if (blocked) throw new StopRun(`Host termination is unproven for ${runItem.key} ${stage}; its repository is kept at ${intent.repository}`);
+  if (!record.unproven && fs.existsSync(intent.repository)) fs.rmSync(intent.repository, { recursive: true, force: true });
 }
 
 // Reconciles an intent that was never marked done, from the repository it names.
@@ -603,10 +620,7 @@ function reconcileIntent(context, runItem, stage) {
     const money = spending(context.runFolder);
     record = { stage, requestId: intent.requestId, outcome: 'lost', attemptTokens: [], estimated: money.reserve, elapsedMs: null, identity };
   }
-  writeJson(paths.result(stage), record);
-  intent.done = true;
-  writeJson(paths.intent(stage), intent);
-  if (fs.existsSync(intent.repository) && !record.unproven) fs.rmSync(intent.repository, { recursive: true, force: true });
+  settleStage(context, runItem, stage, intent, record);
 
   return record;
 }
@@ -1118,6 +1132,9 @@ function compare(baselineFolder, laterFolder) {
   if (baseline.fixtureSetHash !== later.fixtureSetHash) confounds.push('fixture set');
   if (baseline.graderHash !== later.graderHash) confounds.push('grader (regrade the older run first)');
   if (baseline.mixed || later.mixed) confounds.push('a mixed run');
+  // An incomplete or contaminated fixture run drops out of the figures, so the two reports would measure different samples.
+  const dropped = report => (report.incomplete?.length ?? 0) + (report.contaminated?.length ?? 0);
+  if (dropped(baseline) || dropped(later)) confounds.push(`incomplete or contaminated fixture runs (baseline ${dropped(baseline)}, later ${dropped(later)})`);
   const hashesOf = (report, field) => [...new Set(report.identities.map(identity => identity[field]))].sort().join();
   // The dispatching harness is held equal in every comparison, so a change to it confounds whatever else varied.
   if (hashesOf(baseline, 'harness') !== hashesOf(later, 'harness')) confounds.push('dispatching harness');

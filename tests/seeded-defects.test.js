@@ -542,6 +542,7 @@ test('a comparison counts a changed dispatching harness as a confound and gives 
     small: { ...base, identities: [{ machinery: 'm2', harness: 'h1', commit: 'c2', hostVersion: 'v1' }], pooled: pooled({ unmatchedConfirmations: 0.2, tokensPerFixture: 56000 }), targets: { status: 'current', baseline: 'b', figures: { unmatchedConfirmations: 0.2 } } },
     large: { ...base, identities: [{ machinery: 'm2', harness: 'h1', commit: 'c2', hostVersion: 'v1' }], pooled: pooled({ unmatchedConfirmations: 0.4, tokensPerFixture: 50000 }) },
     harness: { ...base, identities: [{ machinery: 'm1', harness: 'h2', commit: 'c2', hostVersion: 'v1' }] },
+    incomplete: { ...base, incomplete: ['alpha__claude-claude-opus-5-5__r2'] },
   };
   for (const [name, value] of Object.entries(reports)) {
     fs.mkdirSync(path.join(root, name));
@@ -562,6 +563,7 @@ test('a comparison counts a changed dispatching harness as a confound and gives 
   assert.equal(small.detectionByDimension['correctness-integration'].change, 0);
   assert.equal(large.changes.unmatchedConfirmations.withinSpread, false);
   assert.deepEqual(harness.confounded, ['dispatching harness']);
+  assert.deepEqual(suite.compare(path.join(root, 'base'), path.join(root, 'incomplete')).confounded, ['incomplete or contaminated fixture runs (baseline 0, later 1)']);
 });
 
 test('a run refuses a model id that is not a plain name and a model given twice', async t => {
@@ -1098,6 +1100,104 @@ test('a planted defect in a sibling the change leaves untouched is located in th
   // Assert
   assert.equal(fixture.truth[0].file, 'src/format.js');
   assert.deepEqual([report.pooled.detection.numerator, report.pooled.detection.denominator], [1, 1]);
+});
+
+test('a reconciled dispatch with unproven host termination blocks the run until the user confirms, then settles without blocking again', async t => {
+  // Arrange
+  const root = scratch(t);
+  writeFixture(root, 'alpha');
+  const calls = [];
+  await suite.run(options(root, root), dependencies(LEAD_FINDS_DEFECT, calls));
+  const runFolder = path.join(root, 'run');
+  const paths = suite.runPaths(runFolder, 'alpha__claude-claude-opus-5-5__r1');
+  const intent = JSON.parse(fs.readFileSync(paths.intent('lead'), 'utf8'));
+  const repository = path.join(root, 'left-lead');
+  fs.mkdirSync(path.join(repository, '.nightshift/runs/reviews', intent.requestId), { recursive: true });
+  fs.writeFileSync(path.join(repository, '.nightshift/runs/reviews', intent.requestId, 'failure.json'), JSON.stringify({ code: 'termination-unverified', attempts: [{ tokens: 9 }] }));
+  for (const file of [paths.complete, paths.result('lead')]) fs.rmSync(file);
+  fs.rmSync(paths.artifacts('lead'), { recursive: true });
+  fs.writeFileSync(paths.intent('lead'), JSON.stringify({ ...intent, done: false, repository }));
+
+  // Act
+  const blocked = await suite.run(options(root, root, { retry: true }), dependencies(LEAD_FINDS_DEFECT, calls));
+  const blocking = JSON.parse(fs.readFileSync(path.join(runFolder, 'blocking.json'), 'utf8'));
+  const refused = suite.run(options(root, root, { retry: true }), dependencies(LEAD_FINDS_DEFECT, calls));
+  await assert.rejects(refused, /termination-checked/);
+  const confirmed = await suite.run(options(root, root, { terminationChecked: true }), dependencies(LEAD_FINDS_DEFECT, calls));
+
+  // Assert
+  assert.match(blocked.stopped, /termination is unproven/);
+  assert.deepEqual([blocking.requestId, blocking.repository], [intent.requestId, repository]);
+  assert.deepEqual(calls.map(call => call.kind), ['code', 'skeptic']);
+  assert.equal(confirmed.stopped, null);
+  assert.equal(fs.existsSync(path.join(runFolder, 'blocking.json')), false);
+  assert.equal(JSON.parse(fs.readFileSync(paths.result('lead'), 'utf8')).unproven, true);
+  assert.equal(fs.existsSync(repository), true);
+});
+
+test('a reconciled evaluated-host dispatch keeps its evaluation attribution', async t => {
+  // Arrange
+  const root = scratch(t);
+  writeFixture(root, 'alpha');
+  const calls = [];
+  const evaluated = { host: 'vibe', id: 'glm-5-3' };
+  await suite.run(options(root, root, { models: [evaluated] }), dependencies(LEAD_FINDS_DEFECT, calls));
+  const paths = suite.runPaths(path.join(root, 'run'), suite.fixtureRunKey('alpha', evaluated, 1));
+  const intent = JSON.parse(fs.readFileSync(paths.intent('lead'), 'utf8'));
+  const repository = path.join(root, 'left-lead');
+  fs.cpSync(paths.artifacts('lead'), path.join(repository, '.nightshift/runs/reviews', intent.requestId), { recursive: true });
+  fs.rmSync(paths.complete);
+  fs.rmSync(paths.result('lead'));
+  fs.writeFileSync(paths.intent('lead'), JSON.stringify({ ...intent, done: false, repository }));
+
+  // Act
+  await suite.run(options(root, root, { models: [evaluated] }), dependencies(LEAD_FINDS_DEFECT, calls));
+
+  // Assert
+  assert.deepEqual(JSON.parse(fs.readFileSync(paths.result('lead'), 'utf8')).evaluation, { host: 'vibe', model: 'glm-5-3', gateCandidate: { host: 'codex', model: 'gpt-6-sol' } });
+  assert.equal(calls.length, 2);
+});
+
+test('the lead repository is gone before the skeptic dispatch starts', async t => {
+  // Arrange
+  const root = scratch(t);
+  writeFixture(root, 'alpha');
+  const calls = [];
+  const seen = [];
+  const scenario = { ...LEAD_FINDS_DEFECT, verdict: claim => (seen.push(fs.existsSync(calls[0].options.protectedRoot)), LEAD_FINDS_DEFECT.verdict(claim)) };
+
+  // Act
+  await suite.run(options(root, root), dependencies(scenario, calls));
+
+  // Assert
+  assert.ok(seen.length > 0);
+  assert.deepEqual([...new Set(seen)], [false]);
+});
+
+test('a fixture whose only truth is incidental is not clean and counts among the other fixtures', async t => {
+  // Arrange
+  const root = scratch(t);
+  writeFixture(root, 'alpha', { fixture: { defects: [], incidental: [defect({ id: 'I1', origin: 'adjudicated:earlier-run' })], decoys: [decoy()] } });
+  const calls = [];
+
+  // Act
+  await suite.run(options(root, root), dependencies({ ...LEAD_FINDS_DEFECT, verdict: () => 'confirmed' }, calls));
+  const report = suite.grade(path.join(root, 'run'), path.join(root, 'none.json'));
+  const run = report.fixtureRuns[0];
+
+  // Assert
+  assert.deepEqual([run.clean, run.planted, run.unmatched, run.falseConfirmed], [false, 0, [], 0]);
+  assert.deepEqual([report.pooled.cleanChangeFalsePositives.denominator, report.pooled.unmatchedConfirmations.denominator], [0, 1]);
+  assert.equal(report.pooled.detection.denominator, 0);
+});
+
+test('a fixture name holding the key separator is refused', t => {
+  // Arrange
+  const root = scratch(t);
+  writeFixture(root, 'a__vibe-foo');
+
+  // Act and Assert
+  assert.throws(() => suite.loadSuite(root, ['a__vibe-foo']), /fixture name must be/);
 });
 
 test('a contamination token in the requirements or in rules.md refuses the run', async t => {
