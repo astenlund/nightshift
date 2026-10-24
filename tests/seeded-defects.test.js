@@ -977,7 +977,56 @@ test('reconciliation copies a receipt or failure record left in the repository i
   assert.deepEqual(calls.map(call => call.kind), ['code', 'skeptic']);
   assert.deepEqual([lead.outcome, lead.reportStatus, lead.attemptTokens], ['complete', 'complete', [1000]]);
   assert.deepEqual([skeptic.outcome, skeptic.code, skeptic.attemptTokens], ['failed', 'unusable-review', [7]]);
-  assert.equal(fs.existsSync(path.join(root, 'left-lead')), false);
+  // These repositories lie outside the temporary directory, so the harness did not make them and does not delete them.
+  assert.equal(fs.existsSync(path.join(root, 'left-lead')), true);
+});
+
+test('reconciliation deletes only a repository the harness materialized, never another path a saved intent names', async t => {
+  // Arrange
+  const root = scratch(t);
+  writeFixture(root, 'alpha');
+  const calls = [];
+  await suite.run(options(root, root), dependencies(LEAD_FINDS_DEFECT, calls));
+  const paths = suite.runPaths(path.join(root, 'run'), 'alpha__claude-claude-opus-5-5__r1');
+  const intent = JSON.parse(fs.readFileSync(paths.intent('skeptic'), 'utf8'));
+  const unrelated = path.join(root, 'precious');
+  fs.mkdirSync(unrelated);
+  fs.writeFileSync(path.join(unrelated, 'data.txt'), 'keep\n');
+  const owned = fs.mkdtempSync(path.join(os.tmpdir(), 'nsr-'));
+  t.after(() => fs.rmSync(owned, { recursive: true, force: true }));
+  const lose = repository => {
+    fs.rmSync(paths.complete, { force: true });
+    fs.rmSync(paths.result('skeptic'), { force: true });
+    fs.writeFileSync(paths.intent('skeptic'), JSON.stringify({ ...intent, done: false, repository }));
+  };
+
+  // Act
+  lose(unrelated);
+  await suite.run(options(root, root), dependencies(LEAD_FINDS_DEFECT, calls));
+  lose(owned);
+  await suite.run(options(root, root), dependencies(LEAD_FINDS_DEFECT, calls));
+
+  // Assert
+  assert.equal(fs.readFileSync(path.join(unrelated, 'data.txt'), 'utf8'), 'keep\n');
+  assert.equal(fs.existsSync(owned), false);
+  assert.deepEqual(calls.map(call => call.kind), ['code', 'skeptic']);
+});
+
+test('a run refuses an output folder that holds files but no manifest', async t => {
+  // Arrange
+  const root = scratch(t);
+  writeFixture(root, 'alpha');
+  const calls = [];
+  fs.mkdirSync(path.join(root, 'run', 'frozen', 'alpha'), { recursive: true });
+  fs.writeFileSync(path.join(root, 'run', 'frozen', 'alpha', 'stale.js'), 'left from an interrupted start\n');
+
+  // Act
+  const refused = suite.run(options(root, root), dependencies(LEAD_FINDS_DEFECT, calls));
+
+  // Assert
+  await assert.rejects(refused, /holds files but no manifest/);
+  assert.equal(calls.length, 0);
+  assert.equal(fs.existsSync(path.join(root, 'run', 'frozen', 'alpha', 'stale.js')), true);
 });
 
 test('--retry dispatches a lost lead again with its skeptic, counting both superseded stages', async t => {

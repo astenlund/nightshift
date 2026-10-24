@@ -602,7 +602,16 @@ function settleStage(context, runItem, stage, intent, record) {
   intent.done = true;
   writeJson(paths.intent(stage), intent);
   if (blocked) throw new StopRun(`Host termination is unproven for ${runItem.key} ${stage}; its repository is kept at ${intent.repository}`);
-  if (!record.unproven && fs.existsSync(intent.repository)) fs.rmSync(intent.repository, { recursive: true, force: true });
+  if (!record.unproven && ownedRepository(intent.repository)) fs.rmSync(intent.repository, { recursive: true, force: true });
+}
+
+// Whether a path is a dispatch repository the harness materialized, directly under the temporary directory with its prefix; a saved
+// intent is data, so its path is never deleted on trust.
+function ownedRepository(repository) {
+  if (typeof repository !== 'string' || !fs.existsSync(repository)) return false;
+  const real = fs.realpathSync.native(repository);
+
+  return path.dirname(real) === fs.realpathSync.native(os.tmpdir()) && path.basename(real).startsWith(REPOSITORY_PREFIX);
 }
 
 // Reconciles an intent that was never marked done, from the repository it names.
@@ -770,6 +779,9 @@ async function run(options, dependencies = defaultDependencies()) {
   const resuming = fs.existsSync(path.join(options.out, 'manifest.json'));
   let suite = null;
   if (!resuming) {
+    // A folder without a manifest but with content is an interrupted start or something else entirely; copying over it could keep
+    // files a source fixture has since dropped, so the run refuses it rather than clearing it.
+    if (fs.existsSync(options.out) && fs.readdirSync(options.out).length) fail('run-folder-unfinished', `${options.out} holds files but no manifest; remove it or use a new run folder`);
     suite = loadSuite(options.fixtures, options.selected ?? []);
     const token = containsToken(fs.readFileSync(options.rules, 'utf8'));
     if (token) fail('fixture-contaminated', `rules.md contains ${token}`);
