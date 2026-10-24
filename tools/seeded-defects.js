@@ -70,7 +70,6 @@ function writeJson(file, value) {
   }
 }
 
-// Every regular file below root as a sorted list of forward-slash relative paths.
 // Every entry under root that is neither a regular file nor a directory, such as a symbolic link or junction.
 function linkedEntries(root) {
   const entries = [];
@@ -86,6 +85,7 @@ function linkedEntries(root) {
   return entries.sort();
 }
 
+// Every regular file below root as a sorted list of forward-slash relative paths.
 function listFiles(root) {
   const files = [];
   const walk = directory => {
@@ -186,6 +186,8 @@ function loadFixture(directory) {
     if (path.posix.basename(folded) === '.gitignore' || HIDDEN_PREFIXES.some(prefix => folded.startsWith(prefix))) fail('fixture-invalid', `${name}: ${item} would be hidden from the reviewer`);
     // Materialization copies the trees over a configured repository, so a .git path could replace its configuration and run commands.
     if (folded.split('/').includes('.git')) fail('fixture-invalid', `${name}: ${item} lies in a .git folder`);
+    // A Windows 8.3 short name such as GIT~1 can alias .git or another entry, so no segment may take that shape.
+    if (folded.split('/').some(segment => /~\d+(\.|$)/.test(segment))) fail('fixture-invalid', `${name}: ${item} has a segment shaped like a short name`);
   }
   // listFiles sees regular files only, while copying would carry a link through unchecked; a tree root that is itself a link counts too.
   // lstat sees the link itself, so a link whose target is missing, which existsSync reports as absent, is refused too.
@@ -417,6 +419,17 @@ function fixtureSetHash(runFolder, names) {
 // ---------------------------------------------------------------------------------------------------------------------------
 // Materialization
 
+// Refuses a tree whose top-level entry already resolves to the repository's .git folder under another name, such as the Windows 8.3
+// alias GIT~1, before anything is copied, since copying through it would replace the repository's configuration.
+function refuseGitAliases(root, frozen, tree) {
+  const gitFolder = fs.realpathSync.native(path.join(root, '.git')).toLowerCase();
+  const tops = [...new Set(listFiles(path.join(frozen, tree)).map(item => item.split('/')[0]))];
+  for (const top of tops) {
+    const target = path.join(root, top);
+    if (fs.existsSync(target) && fs.realpathSync.native(target).toLowerCase() === gitFolder) fail('fixture-invalid', `${path.basename(frozen)}: ${tree}/${top} resolves to the repository's .git folder`);
+  }
+}
+
 // Builds a fixture repository whose committed bytes and diff this machine's Git configuration cannot alter. The settings live in
 // the repository's own configuration, so the runtime's Git commands inherit them: line-ending conversion is off, and hooks point at
 // a folder that does not exist, since the fixture repository is scratch, not the user's work.
@@ -424,10 +437,12 @@ function materialize(frozen, fixture) {
   const root = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), REPOSITORY_PREFIX)));
   try {
     git(root, ['init', '--quiet']);
-    for (const [key, value] of [['core.autocrlf', 'false'], ['core.safecrlf', 'false'], ['core.hooksPath', path.join(root, '.git', 'no-hooks')]]) git(root, ['config', key, value]);
+    // A global attributes file could still normalize line endings on add, so attributes point at a file that does not exist either.
+    for (const [key, value] of [['core.autocrlf', 'false'], ['core.safecrlf', 'false'], ['core.hooksPath', path.join(root, '.git', 'no-hooks')], ['core.attributesFile', path.join(root, '.git', 'no-attributes')]]) git(root, ['config', key, value]);
     // A random token the intent records, so cleanup can tell this repository from any other path of the same shape.
     const owner = crypto.randomUUID();
     fs.writeFileSync(path.join(root, '.git', OWNER_FILE), owner);
+    refuseGitAliases(root, frozen, 'base');
     fs.cpSync(path.join(frozen, 'base'), root, { recursive: true });
     git(root, ['add', '--all']);
     const staged = new Set(git(root, ['ls-files', '-z', '--cached']).split('\0').filter(Boolean));
@@ -435,6 +450,7 @@ function materialize(frozen, fixture) {
     if (unstaged.length) fail('fixture-hidden', `${path.basename(frozen)}: ${unstaged.join(', ')} would be hidden from the reviewer by this machine's Git configuration`);
     git(root, [...FIXTURE_AUTHOR, 'commit', '--quiet', '-m', 'base']);
     const baseSha = git(root, ['rev-parse', 'HEAD']);
+    refuseGitAliases(root, frozen, 'change');
     if (fs.existsSync(path.join(frozen, 'change'))) fs.cpSync(path.join(frozen, 'change'), root, { recursive: true });
     for (const deletion of fixture.deletions ?? []) fs.rmSync(path.join(root, deletion), { force: true });
     const inventory = new Set(git(root, ['ls-files', '-z', '--cached', '--others', '--exclude-standard']).split('\0').filter(Boolean));
@@ -545,7 +561,8 @@ function hasAttemptFolder(directory) {
 }
 
 // Builds a result record from what the runtime left in the dispatch's directory, copying its artifacts into the run folder.
-function recordOutcome(paths, stage, intent, error, elapsedMs, identity) {
+// launched is true or false when the dispatch watched onProcess, and undefined for a reconciliation, which cannot know.
+function recordOutcome(paths, stage, intent, error, elapsedMs, identity, launched) {
   const source = reviewsDirectory(intent.repository, intent.requestId);
   const target = paths.artifacts(stage);
   if (fs.existsSync(source)) fs.cpSync(source, target, { recursive: true });
@@ -556,12 +573,17 @@ function recordOutcome(paths, stage, intent, error, elapsedMs, identity) {
   if (fs.existsSync(receiptFile)) {
     const receipt = readJson(receiptFile);
     Object.assign(record, { outcome: 'complete', reportStatus: receipt.status, attemptTokens: receipt.attempts.map(attempt => attempt.tokens ?? null) });
+  } else if (launched === false) {
+    // Every host runner reports its process through onProcess when it spawns, so a dispatch that saw none launched no host and spent
+    // nothing, whatever null token placeholders the runtime wrote into failure.json for the attempt it began.
+    const failure = fs.existsSync(failureFile) ? readJson(failureFile) : null;
+    Object.assign(record, { outcome: 'failed', code: failure?.code ?? error?.code ?? null, message: error?.message ?? null, attemptTokens: [], prelaunch: true });
   } else if (fs.existsSync(failureFile)) {
     const failure = readJson(failureFile);
     Object.assign(record, { outcome: 'failed', code: failure.code ?? error?.code ?? null, message: error?.message ?? null, attemptTokens: (failure.attempts ?? []).map(attempt => attempt.tokens ?? null) });
-  } else if (error && hasAttemptFolder(target)) {
-    // An attempt began, so a host may have spent tokens even though failure.json is missing, as when writing it failed; the spending
-    // is unknown, which stops the run before the next dispatch.
+  } else if (error && (launched === true || hasAttemptFolder(target))) {
+    // A host launched, or for a reconciliation an attempt began, so tokens may have been spent even though failure.json is missing,
+    // as when writing it failed; the spending is unknown, which stops the run before the next dispatch.
     Object.assign(record, { outcome: 'failed', code: error.code ?? null, message: error.message, attemptTokens: [null] });
   } else if (error) {
     // No attempt folder exists, so the failure came before any host launched and spent nothing.
@@ -575,9 +597,9 @@ function recordOutcome(paths, stage, intent, error, elapsedMs, identity) {
   return record;
 }
 
-function stageOptions(stage, item, frozen, manifestRules, repository, model, requestId, claims) {
+function stageOptions(stage, item, frozen, manifestRules, repository, model, requestId, claims, onProcess) {
   const candidate = EVALUATION_HOSTS[model.host]?.gate ?? { host: model.host, model: model.id };
-  const common = { id: requestId, baseSha: repository.baseSha, requirements: item.fixture.requirements, rules: manifestRules, candidates: [{ ...candidate, effort: EFFORT }] };
+  const common = { id: requestId, baseSha: repository.baseSha, requirements: item.fixture.requirements, rules: manifestRules, candidates: [{ ...candidate, effort: EFFORT }], onProcess };
 
   return stage === 'lead' ? { ...common, kind: 'code' } : { ...common, kind: 'skeptic', findings: claims.map(claim => claim.claim) };
 }
@@ -623,12 +645,13 @@ async function dispatchStage(context, runItem, stage, claims) {
   const rules = fs.readFileSync(path.join(runFolder, 'rules.md'), 'utf8');
   const started = Date.now();
   let error = null;
+  let launched = false;
   try {
-    await dependencies.dispatchReview(repository.root, stageOptions(stage, runItem.fixture, frozen, rules, repository, model, requestId, claims), dispatchDependencies(dependencies, model));
+    await dependencies.dispatchReview(repository.root, stageOptions(stage, runItem.fixture, frozen, rules, repository, model, requestId, claims, () => { launched = true; }), dispatchDependencies(dependencies, model));
   } catch (caught) {
     error = caught;
   }
-  const record = recordOutcome(paths, stage, intent, error, Date.now() - started, identity);
+  const record = recordOutcome(paths, stage, intent, error, Date.now() - started, identity, launched);
   settleStage(context, runItem, stage, intent, record);
   if (record.attemptTokens.some(value => value === null)) throw new StopRun(`An attempt of ${runItem.key} ${stage} recorded no tokens`);
 
@@ -1203,7 +1226,7 @@ function formatReport(report) {
 // ---------------------------------------------------------------------------------------------------------------------------
 // Comparison
 
-function compare(baselineFolder, laterFolder) {
+function compare(baselineFolder, laterFolder, targetsFile = path.join(SUITE_ROOT, 'targets.json')) {
   const baseline = readJson(path.join(baselineFolder, 'report.json'));
   const later = readJson(path.join(laterFolder, 'report.json'));
   const confounds = [];
@@ -1227,7 +1250,9 @@ function compare(baselineFolder, laterFolder) {
   // The spread between identical runs is known per model, so a baseline of one model supplies it and a pooled one does not.
   const models = Object.values(baseline.byModel);
   const baselineSpread = models.length === 1 ? models[0].spread ?? {} : {};
-  const targets = later.targets?.status === 'current' ? later.targets.figures : {};
+  // The targets file is read now, not the snapshot the later report took when graded, so targets set after that grading still apply.
+  const currentTargets = targetsFor(later.fixtureSetHash, targetsFile);
+  const targets = currentTargets.status === 'current' ? currentTargets.figures : {};
   const change = (before, after, spread, target) => {
     const delta = before === null || before === undefined || after === null || after === undefined ? null : after - before;
 
@@ -1237,7 +1262,7 @@ function compare(baselineFolder, laterFolder) {
   const changes = Object.fromEntries(keys.map(key => [key, change(baseline.pooled[key]?.value, later.pooled[key]?.value, baselineSpread[key], targets[key])]));
   const detectionByDimension = Object.fromEntries(CODE_DIMENSIONS.map(dimension => [dimension, change(baseline.pooled.detectionByDimension?.[dimension]?.value, later.pooled.detectionByDimension?.[dimension]?.value, baselineSpread.detectionByDimension?.[dimension])]));
 
-  return { varied, confounded: confounds, provisional: baseline.pooled.provisional || later.pooled.provisional, informational, targets: { status: later.targets?.status ?? 'none', baseline: later.targets?.baseline ?? null }, changes, detectionByDimension };
+  return { varied, confounded: confounds, provisional: baseline.pooled.provisional || later.pooled.provisional, informational, targets: { status: currentTargets.status, baseline: currentTargets.baseline ?? null }, changes, detectionByDimension };
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------

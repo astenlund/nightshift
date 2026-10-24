@@ -12,8 +12,9 @@ const PLUGIN_ROOT = path.resolve(__dirname, '../..');
 // own sandbox, which reaches the workspace only through the listed tools, so the reviewer can read the workspace and compute.
 const TOOLS = ['read_file'];
 const HOST_FAILURE_LIMIT = 4000;
-// Vibe's output is held whole for parsing, so a runaway stream is cut off here rather than exhausting the harness process.
-const OUTPUT_LIMIT = 64 * 1024 * 1024;
+// Vibe's output is held whole for parsing, so a runaway stream is cut off here rather than exhausting the harness process. The limit
+// sits below the Windows job's own 32 MiB output capacity, so this check, which names the cause, is the one that fires.
+const OUTPUT_LIMIT = 24 * 1024 * 1024;
 
 // Collects stream chunks up to a shared byte limit across every stream it serves; the first chunk past it calls onOverflow once and is
 // dropped, as is everything after it.
@@ -141,4 +142,4 @@ async function runVibe(options) {
   return { host: 'vibe', model: options.model, effort: options.effort, session, attributionVerified: session !== null && model === options.model, status: failed ? 'failed' : 'complete', output: reportText(finalAssistantText(entries)), tokens, threadTokens: tokens, hostFailure, exit };
 }
 
-module.exports = { TOOLS, boundedCollector, reportText, runVibe, sessionModel, vibeVersion };
+module.exports = { OUTPUT_LIMIT, TOOLS, boundedCollector, reportText, runVibe, sessionModel, vibeVersion };

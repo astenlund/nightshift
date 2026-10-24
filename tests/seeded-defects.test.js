@@ -59,7 +59,9 @@ function mockAgent(scenario, calls) {
     const request = requestOf(options);
     calls.push({ kind: request.kind, request, options });
     fs.mkdirSync(options.artifacts, { recursive: true });
+    // A scenario's failure stands for a host that did not start; a real host runner reports its process as it spawns.
     if (scenario.throwFor?.(request)) throw Object.assign(new Error('host failed'), { code: 'unusable-review', tokens: 5 });
+    options.onProcess?.(4242);
     let report;
     if (request.kind === 'skeptic') {
       const status = scenario.skepticStatus?.(request) ?? 'complete';
@@ -539,7 +541,7 @@ test('a comparison counts a changed dispatching harness as a confound and gives 
   const base = { fixtureSetHash: 'f1', graderHash: 'g1', rulesHash: 'r1', mixed: false, identities: [{ machinery: 'm1', harness: 'h1', commit: 'c1', hostVersion: 'v1' }], byModel: { 'claude:claude-opus-5-5': { spread: { unmatchedConfirmations: { min: 0.1, max: 0.2 } } } }, pooled: pooled({ unmatchedConfirmations: 0.15, tokensPerFixture: 50000 }) };
   const reports = {
     base,
-    small: { ...base, identities: [{ machinery: 'm2', harness: 'h1', commit: 'c2', hostVersion: 'v1' }], pooled: pooled({ unmatchedConfirmations: 0.2, tokensPerFixture: 56000 }), targets: { status: 'current', baseline: 'b', figures: { unmatchedConfirmations: 0.2 } } },
+    small: { ...base, identities: [{ machinery: 'm2', harness: 'h1', commit: 'c2', hostVersion: 'v1' }], pooled: pooled({ unmatchedConfirmations: 0.2, tokensPerFixture: 56000 }), targets: { status: 'none' } },
     large: { ...base, identities: [{ machinery: 'm2', harness: 'h1', commit: 'c2', hostVersion: 'v1' }], pooled: pooled({ unmatchedConfirmations: 0.4, tokensPerFixture: 50000 }) },
     harness: { ...base, identities: [{ machinery: 'm1', harness: 'h2', commit: 'c2', hostVersion: 'v1' }] },
     incomplete: { ...base, incomplete: ['alpha__claude-claude-opus-5-5__r2'] },
@@ -550,8 +552,12 @@ test('a comparison counts a changed dispatching harness as a confound and gives 
     fs.writeFileSync(path.join(root, name, 'report.json'), JSON.stringify(value));
   }
 
+  // The current targets file supplies the target, not the snapshot the later report took when it was graded.
+  const targetsFile = path.join(root, 'targets.json');
+  fs.writeFileSync(targetsFile, JSON.stringify({ baseline: 'b', fixtureSetHash: 'f1', figures: { unmatchedConfirmations: 0.2 } }));
+
   // Act
-  const small = suite.compare(path.join(root, 'base'), path.join(root, 'small'));
+  const small = suite.compare(path.join(root, 'base'), path.join(root, 'small'), targetsFile);
   const large = suite.compare(path.join(root, 'base'), path.join(root, 'large'));
   const harness = suite.compare(path.join(root, 'base'), path.join(root, 'harness'));
 
@@ -872,6 +878,7 @@ test('a failed dispatch that started an attempt but left no failure record makes
   // As when the runtime's write of failure.json fails after a host ran: the attempt folder exists and the error still propagates.
   const failing = { ...dependencies(LEAD_FINDS_DEFECT, []), dispatchReview: async (repository, request) => {
     fs.mkdirSync(path.join(repository, '.nightshift/runs/reviews', request.id, 'attempt-1'), { recursive: true });
+    request.onProcess(1234);
     throw Object.assign(new Error('host failed; recording failure.json failed: disk full'), { code: 'unusable-review' });
   } };
 
@@ -1489,6 +1496,81 @@ test('the Vibe launcher collects output only up to its limit and reports the ove
   assert.deepEqual([Buffer.concat(stdout).toString(), Buffer.concat(stderr).toString()], ['12345', '1234']);
   assert.equal(collector.overflowed, true);
   assert.equal(overflows, 1);
+});
+
+test('a short-name segment is refused by the loader, and a tree entry aliasing .git is refused before anything is copied', t => {
+  // Arrange
+  const root = scratch(t);
+  writeFixture(root, 'short', { change: { 'src/calc.js': CHANGED_CALC, 'GIT~1/config': '[core]\n\tfsmonitor = node marker.js\n' } });
+  const probe = fs.mkdtempSync(path.join(os.tmpdir(), 'nsr-'));
+  t.after(() => fs.rmSync(probe, { recursive: true, force: true }));
+  fs.mkdirSync(path.join(probe, '.git'));
+  const aliased = fs.existsSync(path.join(probe, 'GIT~1'));
+
+  // Act and Assert
+  assert.throws(() => suite.loadFixture(path.join(root, 'short')), /GIT~1\/config has a segment shaped like a short name/);
+  if (!aliased) {
+    t.skip('the temporary volume creates no 8.3 short names, so the materialization half cannot run here');
+
+    return;
+  }
+  // Materializing straight from the trees, as a fixture that slipped past the loader would be, still refuses the alias.
+  assert.throws(() => suite.materialize(path.join(root, 'short'), { deletions: [] }), /change\/GIT~1 resolves to the repository's \.git folder/);
+});
+
+test('a launch that never starts a host records no spending even when failure.json holds a null placeholder', async t => {
+  // Arrange
+  const root = scratch(t);
+  writeFixture(root, 'alpha');
+  // As when the host executable cannot be found: the runtime begins the attempt, the runner throws before spawning, and onProcess never fires.
+  const neverStarts = { ...dependencies(LEAD_FINDS_DEFECT, []), dispatchDependencies: { runAgent: async options => {
+    fs.mkdirSync(options.artifacts, { recursive: true });
+    throw Object.assign(new Error('claude executable not found'), { code: 'executable-missing' });
+  } } };
+
+  // Act
+  const result = await suite.run(options(root, root), neverStarts);
+  const paths = suite.runPaths(path.join(root, 'run'), 'alpha__claude-claude-opus-5-5__r1');
+  const record = JSON.parse(fs.readFileSync(paths.result('lead'), 'utf8'));
+  const failure = JSON.parse(fs.readFileSync(path.join(paths.artifacts('lead'), 'failure.json'), 'utf8'));
+
+  // Assert
+  assert.deepEqual(failure.attempts.map(attempt => attempt.tokens), [null]);
+  assert.deepEqual([record.outcome, record.prelaunch, record.attemptTokens], ['failed', true, []]);
+  assert.equal(result.stopped, null);
+  assert.deepEqual([result.spending.spent, result.spending.unknown], [0, false]);
+});
+
+test('a global attributes file cannot normalize the committed base', t => {
+  // Arrange
+  const root = scratch(t);
+  const directory = writeFixture(root, 'alpha', { base: { 'src/calc.js': BASE_CALC, 'notes.txt': 'one\r\ntwo\r\n' } });
+  const attributes = path.join(root, 'global-attributes');
+  fs.writeFileSync(attributes, '* text=auto\n');
+  const config = path.join(root, 'global-config');
+  fs.writeFileSync(config, `[core]\n\tattributesFile = ${attributes.split(path.sep).join('/')}\n`);
+  const previous = process.env.GIT_CONFIG_GLOBAL;
+  process.env.GIT_CONFIG_GLOBAL = config;
+  t.after(() => {
+    if (previous === undefined) delete process.env.GIT_CONFIG_GLOBAL;
+    else process.env.GIT_CONFIG_GLOBAL = previous;
+  });
+
+  // Act
+  const repository = suite.materialize(directory, suite.loadFixture(directory).fixture);
+  t.after(() => fs.rmSync(repository.root, { recursive: true, force: true }));
+  const committed = spawnSync('git', ['show', `${repository.baseSha}:notes.txt`], { cwd: repository.root, encoding: 'utf8' }).stdout;
+
+  // Assert
+  assert.equal(committed, 'one\r\ntwo\r\n');
+});
+
+test('the Vibe output limit sits below the Windows job capacity, so the launcher names the cause', () => {
+  // Arrange
+  const vibe = require('../tools/seeded-defects/vibe-launcher');
+
+  // Act and Assert
+  assert.ok(vibe.OUTPUT_LIMIT < 32 * 1024 * 1024);
 });
 
 test('a contamination token in the requirements or in rules.md refuses the run', async t => {
