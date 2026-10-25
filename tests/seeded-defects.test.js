@@ -142,7 +142,9 @@ test('materialization lies outside the checkout, commits the base untouched by l
 
   // Assert
   assert.equal(repository.root.startsWith(fs.realpathSync.native(os.tmpdir())), true);
-  assert.equal(path.relative(path.resolve(__dirname, '..'), repository.root).startsWith('..'), true);
+  // Across drives, as on a runner with the checkout on D: and the temporary directory on C:, path.relative returns an absolute path.
+  const fromCheckout = path.relative(path.resolve(__dirname, '..'), repository.root);
+  assert.equal(fromCheckout.startsWith('..') || path.isAbsolute(fromCheckout), true);
   assert.equal(fs.existsSync(path.join(repository.root, 'old.txt')), false);
   assert.equal(fs.existsSync(path.join(repository.root, 'fixture.json')), false);
   const committed = spawnSync('git', ['show', `${repository.baseSha}:old.txt`], { cwd: repository.root, encoding: 'utf8' }).stdout;
