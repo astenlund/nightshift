@@ -29,7 +29,7 @@ Detection is 100% in every dimension (requirements 6/6, correctness 18/18, secur
 
 ## Adjudication
 
-All eight unmatched findings were adjudicated false. Seven follow earlier rulings: not making `bin/switch.js` runnable directly, message quoting in port-validation (both clean-fixture false positives), the duplicated host list in registry-reconcile, re-exporting from `src/index.js`, and validating a change's shape. The eighth is new: check-environment's timeout stops only the command it started, so a hung grandchild under a wrapper such as npm would outlive it. It was adjudicated false because `runCheck` still returns and the runner cannot hang, which was the substance of the SIGTERM finding, and stopping a whole process tree goes beyond what the requirement asks.
+All seven unmatched findings were adjudicated false. Six follow earlier rulings: not making `bin/switch.js` runnable directly, message quoting in port-validation (both clean-fixture false positives), the duplicated host list in registry-reconcile, re-exporting from `src/index.js`, and validating a change's shape. The seventh is new: check-environment's timeout stops only the command it started, so a hung grandchild under a wrapper such as npm would outlive it. It was adjudicated false because `runCheck` still returns and the runner cannot hang, which was the substance of the SIGTERM finding, and stopping a whole process tree goes beyond what the requirement asks.
 
 ## Qualifications
 
