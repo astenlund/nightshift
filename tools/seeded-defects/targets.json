@@ -1,12 +1,14 @@
 {
-  "baseline": ".nightshift/reports/seeded-defect-baseline-20261024.md",
-  "fixtureSetHash": "c450f1e27c7de74edf3a2cd992c68b2973f94caed3c923aaf067e9f83f9d3a3b",
-  "set": "2026-10-24",
+  "baseline": ".nightshift/reports/seeded-defect-baseline-20261025.md",
+  "fixtureSetHash": "71d708fb5ea5ffc36dddc2d26a1879c1173e6186b36ec9d23334c6b6e26574f7",
+  "set": "2026-10-25",
+  "model": "claude:claude-opus-5-5",
+  "scope": "Set from an Opus 5.5 baseline and describing its figures; a report on another model is out of their scope, the token figure above all.",
   "figures": {
     "detection": 1,
     "cleanChangeFalsePositives": 0.3334,
     "unmatchedConfirmations": 0.2,
-    "severityAccuracy": 0.57,
+    "severityAccuracy": 0.619,
     "skepticAccuracy": 1,
     "tokensPerFixture": 60000
   }
