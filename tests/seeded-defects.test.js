@@ -9,6 +9,7 @@ const test = require('node:test');
 const suite = require('../tools/seeded-defects');
 const { dispatchReview } = require('../internal/runtime/review');
 const { DIMENSIONS } = require('../internal/runtime/lifecycle');
+const { pathIsContained } = require('../internal/filesystem-primitives');
 
 const MODEL = { host: 'claude', id: 'claude-opus-5-5' };
 
@@ -142,9 +143,10 @@ test('materialization lies outside the checkout, commits the base untouched by l
 
   // Assert
   assert.equal(repository.root.startsWith(fs.realpathSync.native(os.tmpdir())), true);
-  // Across drives, as on a runner with the checkout on D: and the temporary directory on C:, path.relative returns an absolute path.
-  const fromCheckout = path.relative(path.resolve(__dirname, '..'), repository.root);
-  assert.equal(fromCheckout.startsWith('..') || path.isAbsolute(fromCheckout), true);
+  // Both sides are real paths, and the repository's own containment check treats a cross-drive path, as on a runner with the checkout
+  // on D: and the temporary directory on C:, as outside, unlike a bare '..' prefix test, which a child named '..foo' would also pass.
+  const checkout = fs.realpathSync.native(path.resolve(__dirname, '..'));
+  assert.equal(pathIsContained(checkout, repository.root) || repository.root === checkout, false);
   assert.equal(fs.existsSync(path.join(repository.root, 'old.txt')), false);
   assert.equal(fs.existsSync(path.join(repository.root, 'fixture.json')), false);
   const committed = spawnSync('git', ['show', `${repository.baseSha}:old.txt`], { cwd: repository.root, encoding: 'utf8' }).stdout;
