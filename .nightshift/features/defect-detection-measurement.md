@@ -14,7 +14,7 @@ From the user-supplied ideas document "Workflow ideas adopted from other agent t
 
 ## Observation
 
-Nightshift's central claim is that independent review, skeptic validation and cumulative reassessment catch what the implementer missed. Acceptance reports record single observations of behavior rather than detection rates. Since 2026-10-24 the [seeded-defect suite](../specs/seeded-defect-suite.md) measures detection, false-positive, severity and skeptic rates for one fresh code lead and its skeptic, with targets set from [its baseline](../reports/seeded-defect-baseline-20261024.md); it runs no repair, closure or fresh gate, so the rates for the whole lifecycle this record proposes remain unmeasured. Benchmarks such as SWE-bench and Aider's leaderboards show how persuasive measured results are.
+Nightshift's central claim is that independent review, skeptic validation and cumulative reassessment catch what the implementer missed. Acceptance reports record single observations of behavior rather than detection rates. Since 2026-10-24 the [seeded-defect suite](../specs/seeded-defect-suite.md) measures detection, false-positive, severity and skeptic rates for one fresh code lead and its skeptic, with Opus 5.5 targets reset on 2026-10-25 from [its corrected baseline](../reports/seeded-defect-baseline-20261025.md); it runs no repair, closure or fresh gate, so the rates for the whole lifecycle this record proposes remain unmeasured. Benchmarks such as SWE-bench and Aider's leaderboards show how persuasive measured results are.
 
 ## Proposal
 
