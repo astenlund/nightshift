@@ -57,6 +57,6 @@ Thirty-three unmatched GLM findings were adjudicated, following the baseline's p
 ## Qualifications
 
 - Two repetitions per fixture on seventeen fixtures, with detection at the ceiling; the figures are a first measurement, not a ranking.
-- When this evaluation was written, the fixture set still needed the corrections the baseline and this evaluation's adjudications called for, and no targets were set. Both have happened since, on a different fixture set hash, so these figures are not comparable with those targets; see [the seeded-defect baseline report](seeded-defect-baseline-20261024.md).
+- When this evaluation was written, the fixture set still needed the corrections the baseline and this evaluation's adjudications called for, and no targets were set. Both have happened since, on a different fixture set hash, so these figures are not comparable with those targets, which also describe Opus 5.5 alone; see [the corrected seeded-defect baseline report](seeded-defect-baseline-20261025.md).
 - Earlier GLM work outside these figures: two smoke runs through the harness (573,955 tokens) and hand-run probes not metered by the harness.
 - The raw run folder lives in the session's scratch space under `.tmp` and is not durable.
