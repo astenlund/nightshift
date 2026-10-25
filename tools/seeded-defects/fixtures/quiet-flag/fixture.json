@@ -1,14 +1,14 @@
 {
   "requirements": "Add bin/sync.js <target>, which runs sync(target, log). Add a --quiet flag that suppresses the progress lines, matching the --quiet flag every other command in this project takes. The target is always given.",
-  "audited": "2026-10-23",
+  "audited": "2026-10-25",
   "defects": [
     {
       "id": "D1",
       "dimension": "requirements-ux",
       "file": "bin/sync.js",
       "lines": [
-        5,
-        5
+        4,
+        4
       ],
       "severity": "important",
       "consequence": "The flag is --silent, not the --quiet every other command takes, so users typing --quiet still get progress lines.",
@@ -21,7 +21,7 @@
     {
       "severity": "minor",
       "consequence": "The target argument is taken from the first option instead of the first non-option argument.",
-      "evidence": "bin/sync.js:6 target reads an option",
+      "evidence": "bin/sync.js:5 target reads an option",
       "required": false,
       "reason": "target is the first argument that does not start with --."
     }

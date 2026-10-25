@@ -1,4 +1,3 @@
-#!/usr/bin/env node
 const { sync } = require('../src/sync');
 
 const args = process.argv.slice(2);
