@@ -478,9 +478,13 @@ class ReleaseService {
     const confirming = completedReportConfirmation(request, relevantRun, registration.host, session);
     if (confirming) requireConfirmableReport(relevantRun, this.dependencies.readRun(project), this.store);
     // A confirming session executes its own binding, or the current release when it has none, never the owner's payload.
-    const wanted = confirming ? undefined : runResources?.identity;
+    // A completed record holds no work to continue, so it never chooses a session's release: an unbound session takes the current
+    // release, a bound one keeps its own, and the runtime's ownership checks still govern what another session may change.
+    const pins = !confirming && Boolean(relevantRun) && relevantRun.status !== 'complete';
+    const wanted = pins ? runResources?.identity : undefined;
     requireValue(!wanted || !binding || binding.identity === wanted, 'run-release-conflict', 'The requested run uses another release; reconcile its binding before resuming');
     const identity = binding?.identity ?? wanted;
+    const boundBy = wanted ? { kind: 'run', runId: referenceId(relevantRun) } : binding ? { kind: 'session-binding' } : null;
     const bundle = identity ? this.registry(registry => bundles.availableIdentity(registry, identity)) : null;
     const activationAdmissionObserved = Boolean(bundle) && !maintenance && !preparing && request.entry !== 'ready' && !continuationOptional(bundle, request.entry);
     if (activationAdmissionObserved) await this.requireActivation(registration, session, false, project);
@@ -508,7 +512,7 @@ class ReleaseService {
       // Only a genuinely new selection can advance administration; an existing
       // binding or an explicitly selected run must not demote that shared base.
       if (!identity && digest(readBytes(selected.root, 'internal/releases/bootstrap.js')) === currentRegistration.bootstrapHash) { currentRegistration.baseBundle = selected.key; registry.put('registration', key, currentRegistration); }
-      return { binding: value, bundle: selected, registration, project, readyAdmissionObserved, activationAdmissionObserved };
+      return { binding: value, bundle: selected, registration, project, readyAdmissionObserved, activationAdmissionObserved, boundBy };
     };
     if (bundle) return admitResolved(this, this.registry(registry => bind(registry, bundle)), request, maintenance, preparing);
     requireValue(!maintenance || identity, 'release-unavailable', 'Maintenance cannot create a new work binding');

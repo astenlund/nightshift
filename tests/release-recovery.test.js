@@ -712,7 +712,8 @@ test('new-run selection preserves live ownership, explicit run identity and sess
     { name: 'uncertain stopped worker remains pinned', status: 'stopped', session: 'next', workers: [{ status: 'unverified' }], changed: false },
     { name: 'unrecognized stopped worker remains pinned', status: 'stopped', session: 'next', workers: [{ status: 'future-status' }], changed: false },
     { name: 'missing stopped worker status remains pinned', status: 'stopped', session: 'next', workers: [{}], changed: false },
-    { name: 'explicit completed run remains pinned', status: 'complete', session: 'next', runId: previousId, changed: false }
+    { name: 'explicit completed run no longer pins an unbound session', status: 'complete', session: 'next', runId: previousId, changed: true },
+    { name: 'explicit stopped run remains pinned', status: 'stopped', session: 'next', runId: previousId, changed: false }
   ]) {
     await t.test(scenario.name, async t => {
       const value = fixture(t);

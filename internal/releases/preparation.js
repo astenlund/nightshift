@@ -73,7 +73,24 @@ async function prepare(service, request, locatorState) {
   const registration = service.registration(key);
   requireValue(registration.state === 'registered' && !registration.pending, 'release-registration-changed', CHANGED_CONCURRENTLY);
   service.publishLocator(registration);
-  return { state: 'prepared', registration: key, bootstrap: registration.bootstrap, root: resolved.bundle.root, identity: resolved.bundle.identity, version: resolved.bundle.version };
+  const base = service.registry(registry => require('./bundles').verifiedRecord(registry, registration.baseBundle));
+  const warning = olderReleaseWarning(resolved, base);
+  return { state: 'prepared', registration: key, bootstrap: registration.bootstrap, root: resolved.bundle.root, identity: resolved.bundle.identity, version: resolved.bundle.version, ...(warning ? { warning } : {}) };
+}
+
+function olderVersion(version, than) {
+  const [a, b] = [version, than].map(value => value.split('.').map(Number));
+  const index = a.findIndex((part, position) => part !== b[position]);
+  return index !== -1 && a[index] < b[index];
+}
+
+// The result's version is otherwise the only sign that a session runs an older release than the one installed.
+function olderReleaseWarning(resolved, current) {
+  if (!resolved.boundBy || !olderVersion(resolved.bundle.version, current.version)) return null;
+  const reason = resolved.boundBy.kind === 'run'
+    ? `unfinished run ${resolved.boundBy.runId} uses that release`
+    : 'this session retains its earlier release binding';
+  return { code: 'older-release-bound', boundVersion: resolved.bundle.version, currentVersion: current.version, cause: resolved.boundBy, message: `This session is bound to Nightshift ${resolved.bundle.version}, older than the current ${current.version}, because ${reason}` };
 }
 
 module.exports = { prepare };

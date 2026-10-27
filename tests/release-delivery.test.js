@@ -468,3 +468,75 @@ for (const kind of ['review', 'delivery']) {
     });
   }
 }
+
+// A record made on 3.3.10, then an installed 3.3.11: only unfinished work or an existing binding holds a session to 3.3.10.
+async function upgradedAfterRecord(t, record) {
+  const value = fixture(t);
+  const { service, state: native } = simulatedService(value, packageCopy(value.root, '3.3.10'), '3.3.10');
+  const setup = await service.setup({ host: 'codex', profile: value.profile });
+  const call = async (session, request) => {
+    const result = await service.run(setup.registration, { session, project: value.project, entry: 'runtime', request });
+    assert.equal(result.code, 0, result.stderr);
+    return JSON.parse(result.stdout);
+  };
+  const agreement = { source: 'Fixture user', outcome: 'Reflect without instruction proposals' };
+  const handover = { action: 'handover', handoverId: randomUUID(), authority: 'Explicit fixture handover', objective: 'Reflect without proposals', mechanism: { verified: true, kind: 'goal', evidence: 'Simulated fixture goal' }, tasks: [{ id: 'reflection', title: 'Reflection', kind: 'lore', agreement }] };
+  let current;
+  if (record === 'review') {
+    current = await call('owner', { action: 'open-review', reviewContextId: randomUUID(), kind: 'lore', authority: 'Explicit fixture reflection', objective: 'Reflect without proposals', agreement });
+    current = await call('owner', { action: 'advance', reviewContextId: current.id, revision: current.revision, evidence: 'Reflection found no worthwhile proposal' });
+    current = await call('owner', { action: 'complete', reviewContextId: current.id, revision: current.revision });
+  } else if (record === 'delivery') {
+    await call('owner', handover);
+    current = await completeReflection(value.project, { host: 'codex', session: 'owner' }, (_root, request) => call('owner', request));
+  } else {
+    current = await call('owner', handover);
+    current = await call('owner', { action: 'hold', revision: current.revision, authority: 'Fixture user hold', reason: 'Pause before the upgrade' });
+  }
+  native.source = packageCopy(value.root, '3.3.11');
+  native.version = '3.3.11';
+  await service.setup({ host: 'codex', profile: value.profile });
+  const prepare = (session, request, selector = {}) => service.prepare({ host: 'codex', profile: value.profile, session, project: value.project, entry: 'runtime', ...selector, ...(request ? { request } : {}) });
+  return { value, service, setup, call, current, prepare };
+}
+
+for (const record of ['delivery', 'review']) {
+  test(`a completed ${record} record leaves a fresh session on the current release without a warning`, async t => {
+    const { current, prepare } = await upgradedAfterRecord(t, record);
+    assert.equal(current.status, 'complete');
+    const named = { runId: record === 'review' ? referenceId(current) : current.id };
+    for (const [session, request, selector] of [['fresh-default', undefined, {}], ['fresh-named', undefined, named], ['fresh-review', { action: 'open-review' }, {}], ['fresh-handover', { action: 'handover', tasks: [] }, {}]]) {
+      const prepared = await prepare(session, request, selector);
+      assert.equal(prepared.version, '3.3.11', session);
+      assert.equal(Object.hasOwn(prepared, 'warning'), false, session);
+      // Once bound to the current release, the session meets the completed record again without a conflict.
+      for (const again of [{}, named]) assert.equal((await prepare(session, undefined, again)).version, '3.3.11', session);
+    }
+  });
+}
+
+test('a stopped unfinished delivery still pins a fresh session and the warning names that run', async t => {
+  const { current, prepare } = await upgradedAfterRecord(t, 'stopped');
+  assert.equal(current.status, 'stopped');
+  const prepared = await prepare('fresh');
+  assert.equal(prepared.version, '3.3.10');
+  assert.deepEqual(prepared.warning, { code: 'older-release-bound', boundVersion: '3.3.10', currentVersion: '3.3.11', cause: { kind: 'run', runId: current.id }, message: `This session is bound to Nightshift 3.3.10, older than the current 3.3.11, because unfinished run ${current.id} uses that release` });
+  for (const session of ['fresh', 'another-fresh', 'owner']) {
+    assert.deepEqual((await prepare(session)).warning, prepared.warning, session);
+  }
+});
+
+test('a bound owner keeps its release for closing work on its completed delivery and is warned of the binding', async t => {
+  const { value, call, current, prepare } = await upgradedAfterRecord(t, 'delivery');
+  const prepared = await prepare('owner');
+  assert.equal(prepared.version, '3.3.10');
+  assert.deepEqual(prepared.warning, { code: 'older-release-bound', boundVersion: '3.3.10', currentVersion: '3.3.11', cause: { kind: 'session-binding' }, message: 'This session is bound to Nightshift 3.3.10, older than the current 3.3.11, because this session retains its earlier release binding' });
+  const report = '.nightshift/runs/reports/fixture-' + current.id + '.md';
+  fs.appendFileSync(path.join(value.project, report), 'Corrected after completion.\r\n');
+  const recorded = await call('owner', { action: 'report', revision: current.revision, path: report });
+  assert.equal(recorded.status, 'complete');
+  assert.deepEqual([recorded.report.recorded, recorded.report.delivered], [true, false]);
+  const delivered = await call('owner', { action: 'report-delivered', revision: recorded.revision, authority: 'Fixture recipient acknowledged the corrected report' });
+  assert.equal(delivered.status, 'complete');
+  assert.deepEqual([delivered.report.delivered, delivered.report.current], [true, true]);
+});
