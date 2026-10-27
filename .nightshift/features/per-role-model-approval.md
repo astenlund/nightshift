@@ -8,7 +8,9 @@ status: exploring
 
 # Complete the per-role model approval migration
 
-Raised by the user on 2026-10-26 during the Vibe reviewer host delivery and routed to the backlog on 2026-10-27, in their words: "we've discovered that a model can be a good reviewer and yet not suited as a skeptic. in fact, i think it might be best to retire the 'strong model' concept altogether. instead, we'll continue evaluating the models for each individual role and update the allow lists whenever a new model family has been approved." Tracked in [the feature index](../FEATURES.md#complete-the-per-role-model-approval-migration). The original capture is follow-up `role-specific-model-approval-direction` in run `dcd9e840-e8b6-4f28-9c6e-b5aaaaac9847`.
+Raised by the user on 2026-10-26 during the Vibe reviewer host delivery and routed to the backlog on 2026-10-27. Tracked in [the feature index](../FEATURES.md#complete-the-per-role-model-approval-migration). The original capture is follow-up `role-specific-model-approval-direction` in run `dcd9e840-e8b6-4f28-9c6e-b5aaaaac9847`. The user said:
+
+> we've discovered that a model can be a good reviewer and yet not suited as a skeptic. in fact, i think it might be best to retire the "strong model" concept altogether. instead, we'll continue evaluating the models for each individual role and update the allow lists whenever a new model family has been approved.
 
 ## Requested direction
 
