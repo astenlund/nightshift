@@ -10,7 +10,7 @@ const { spawnWindowsJob } = require('./windows-job');
 const { outputLoopDetector, outputLoopMessage } = require('./output-loop');
 
 function executable(host, root) {
-  requireCondition(['codex', 'claude'].includes(host), 'unsupported-host', 'Unknown agent host');
+  requireCondition(['codex', 'claude', 'vibe'].includes(host), 'unsupported-host', 'Unknown agent host');
   return resolveTrustedExecutable({ root, basename: host + (process.platform === 'win32' ? '.exe' : '') });
 }
 
@@ -356,10 +356,103 @@ async function runCodex(options) {
   }
 }
 
+// The failure a Vibe attempt reported: the error export.json records, else the end of stderr.
+function vibeHostFailure(summary, stderr) {
+  const error = summary?.error;
+  if (error && typeof error === 'object' && typeof error.message === 'string' && error.message.trim()) return boundedHostText(error.code ? `${error.message} (${error.code})` : error.message);
+  if (typeof error === 'string' && error.trim()) return boundedHostText(error);
+
+  return stderr.trim() ? boundedHostText(stderr.trim().slice(-HOST_FAILURE_LIMIT)) : null;
+}
+
+// Runs one lead assessment on Mistral Vibe, headless in the dispatch's private copy, under the isolation in vibe.js. Vibe has no
+// structured-output option, so the report schema is stated in the prompt, and it cannot resume into a new copy, so it never resumes.
+// Its JSON output exposes no partial output, so like Claude attempts its attempts are not checked for output loops.
+async function runVibe(options) {
+  const vibe = require('./vibe');
+  const file = options.executable ?? executable('vibe', options.protectedRoot ?? options.cwd);
+  // CLI dispatches retain their eligibility observation; direct callers establish their version anchor here.
+  const launchVersion = (options.readVibeVersion ?? vibe.readVersion)(file);
+  const preflight = options.vibePreflight;
+  const preflighted = preflight !== undefined;
+  requireCondition(!preflighted || preflight !== null && typeof preflight === 'object' && !Array.isArray(preflight) && Object.hasOwn(preflight, 'version') && vibe.versionSupported(preflight.version), 'unusable-review', 'The Vibe eligibility version observation is unavailable or invalid');
+  const version = preflighted ? preflight.version : launchVersion;
+  requireCondition(vibe.versionSupported(launchVersion), preflighted ? 'unusable-review' : 'vibe-version-unsupported', `Vibe ${launchVersion ?? 'of unreadable version'} is below the supported floor ${vibe.VERSION_FLOOR.join('.')}`);
+  requireCondition(Object.hasOwn(vibe.GLM_MODELS, options.model), 'vibe-model-unknown', `The Vibe launcher has no entry for ${options.model}`);
+  requireCondition(!options.session, 'resume-unsupported', 'A Vibe session cannot be resumed into a new private copy; replace the reviewer with review.replaces');
+  const level = vibe.effortLevel(options.effort);
+  const isolation = vibe.createIsolation(options.artifacts, options.model, level, fs.readFileSync(options.systemFile, 'utf8'));
+  const promptFile = path.join(options.artifacts, 'prompt.md');
+  fs.writeFileSync(promptFile, `${options.prompt}\nReply with only one JSON object that conforms to this JSON schema, with no other text:\n${JSON.stringify(options.schema)}\n`, { flag: 'wx' });
+  const exportDirectory = path.join(options.artifacts, 'vibe');
+  const timeLimit = Math.max(60, Math.floor((options.timeoutMs ?? 900000) / 1000) - 60);
+  const args = ['--workdir', options.cwd, '--agent', vibe.AGENT, '--prompt-file', promptFile, '--output', 'json', '--output-dir', exportDirectory, '--time-limit', String(timeLimit), ...vibe.TOOLS.flatMap(tool => ['--enabled-tools', tool])];
+  const execution = startProcess(file, args, { ...options, env: vibe.environment(options.env ?? process.env, isolation) });
+  const stdout = [];
+  let received = 0;
+  let overflowed = false;
+  execution.child.stdout.on('data', chunk => {
+    if (overflowed) return;
+    received += chunk.length;
+    if (received > vibe.OUTPUT_LIMIT) {
+      overflowed = true;
+      execution.child.kill();
+
+      return;
+    }
+    stdout.push(chunk);
+  });
+  await execution.ready;
+  const startFailure = execution.failure();
+  if (!startFailure) execution.child.stdin.end();
+  const exit = await execution.finish();
+  let tokens = null;
+  let hostFailure = null;
+  const record = { version, uncomparedKeys: [], attributionFiles: [] };
+  try {
+    let entries = null;
+    try {
+      entries = JSON.parse(Buffer.concat(stdout).toString('utf8'));
+    } catch {
+      // Unparsable output leaves no assessment; the attempt fails below.
+    }
+    try {
+      fs.writeFileSync(path.join(options.artifacts, 'events.jsonl'), (Array.isArray(entries) ? entries.map(entry => JSON.stringify(entry)) : []).join('\n') + '\n', { flag: 'wx' });
+    } catch (error) {
+      execution.failArtifact(error);
+    }
+    const summary = vibe.readJsonIfPresent(path.join(exportDirectory, 'export.json'));
+    tokens = Number.isSafeInteger(summary?.usage?.total_tokens) ? summary.usage.total_tokens : null;
+    hostFailure = overflowed ? `Vibe's output passed ${vibe.OUTPUT_LIMIT} bytes, so the process was stopped` : vibeHostFailure(summary, execution.stderrTail());
+    const { exportFile, states } = vibe.journalFiles(exportDirectory);
+    record.attributionFiles = [exportFile, ...states];
+    const session = typeof summary?.session_id === 'string' && summary.session_id ? summary.session_id : null;
+    if (session) options.onSession?.(session);
+    if (startFailure) {
+      requireReclaimed(exit, startFailure);
+      throw hostStartError(startFailure);
+    }
+    requireArtifactsWritten(execution, exit);
+    const finished = !overflowed && !exit.error && !exit.timedOut && exit.code === 0 && summary?.outcome === 'finished';
+    if (finished) {
+      const { differing, uncompared } = vibe.configurationDifferences(summary.config ?? null, options.model, level);
+      record.uncomparedKeys = uncompared;
+      if (summary.vibe_version !== version || launchVersion !== version) throw new RunError('unusable-review', `Vibe recorded version ${summary.vibe_version ?? 'none'} after launching as ${launchVersion}; expected version ${version}`);
+      if (differing.length > 0) throw new RunError('unusable-review', `Vibe's effective configuration differs from the launcher's at ${differing.join(', ')}`);
+    }
+
+    return { host: 'vibe', model: options.model, effort: level, session, attributionVerified: session !== null && vibe.journalModel(states) === options.model, status: finished ? 'complete' : 'failed', output: vibe.reportFromEntries(entries), tokens, threadTokens: tokens, hostFailure: finished ? null : hostFailure, exit, vibe: record };
+  } catch (error) {
+    const failure = error instanceof Error ? new RunError(error.code ?? 'unusable-review', error.message) : new RunError('unusable-review', String(error));
+    throw Object.assign(failure, error instanceof Error ? error : {}, { cause: error, descendantsReclaimed: exit.descendantsReclaimed, tokens, hostFailure, vibe: record });
+  }
+}
+
 async function runAgent(options) {
   requireCondition(options.artifacts !== options.cwd, 'invalid-dispatch', 'Agent output must be outside the reviewed project');
   fs.mkdirSync(options.artifacts, { recursive: true });
-  return options.host === 'claude' ? runClaude(options) : options.host === 'codex' ? runCodex(options) : Promise.reject(new Error('Unknown host'));
+  const run = { claude: runClaude, codex: runCodex, vibe: runVibe }[options.host];
+  return run ? run(options) : Promise.reject(new Error('Unknown host'));
 }
 
-module.exports = { boundedHostText, codexModelContradiction, executable, pluginVersion, resumedUsage, runAgent, runClaude, runCodex, tokenTotal };
+module.exports = { boundedHostText, codexModelContradiction, executable, pluginVersion, resumedUsage, runAgent, runClaude, runCodex, runVibe, tokenTotal };

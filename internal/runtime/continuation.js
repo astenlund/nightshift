@@ -80,6 +80,8 @@ function closureRoute(root, state, requestId) {
   const index = state.workers.findIndex(worker => worker.id === requestId);
   const named = state.workers[index];
   const receipt = named && dispatchReceipt(root, named);
+  // A Vibe session cannot resume into a new private copy, so its lineage always continues by replacement.
+  if (receipt?.host === 'vibe') return 'replace';
   if (!receipt?.session) return 'resume';
   const failed = state.workers.slice(index + 1).some(worker => {
     if (worker.taskId !== named.taskId || lineageOf(worker) !== lineageOf(named) || worker.continues?.kind !== 'resumed' || worker.continues.session !== receipt.session) return false;
@@ -112,6 +114,8 @@ function resolveContinuation(root, state, target, review) {
   requireCondition(kind !== 'skeptic' || review.dialogue, 'invalid-continuation', 'A skeptic is continued only for a dialogue turn; validate a new finding with a fresh skeptic');
   const lineage = lineageOf(receipt);
   const resumed = review.resume !== undefined;
+  // A resumed Vibe session keeps the directory it started in and ignores the new copy, so it is refused before anything launches.
+  requireCondition(!resumed || receipt.host !== 'vibe', 'resume-unsupported', `Session ${receipt.session} ran on Vibe, which cannot resume into a new private copy; replace the reviewer with review.replaces instead`);
   requireCondition(!resumed || !review.requiredModel || review.requiredModel === receipt.model, 'model-requirement', 'Explicit model requirements prohibit resuming a session of another model');
   // A resumed session keeps the effort it recorded, so one recorded at a refused effort is replaced rather than continued.
   if (resumed) requirePermittedEffort(receipt.effort, `; session ${receipt.session} ran at ${receipt.effort}, so replace it with review.replaces instead`);

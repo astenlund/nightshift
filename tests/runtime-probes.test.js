@@ -115,7 +115,11 @@ for (const withSelectedArtifact of [false, true]) {
         assert.equal(evidence.canonicalUnchanged, true);
         assert.equal(evidence.exitCode, 0);
         assert.deepEqual(JSON.parse(evidence.output), { before: 41, after: 42 });
-      } else assert.equal(fs.existsSync(path.join(options.cwd, 'context/probes')), false);
+        assert.ok(options.prompt.includes('Returned probe evidence for this assessment: context/probes/1.json'));
+      } else {
+        assert.equal(fs.existsSync(path.join(options.cwd, 'context/probes')), false);
+        assert.ok(options.prompt.includes('No probe evidence has been returned for this assessment yet.'));
+      }
       return assessment(options, { requestId: JSON.parse(fs.readFileSync(path.join(options.artifacts, '..', 'request.json'), 'utf8')).id, status: complete ? 'complete' : 'incomplete', coverage: DIMENSIONS.code.map(dimension => ({ dimension, evidence: 'Fixture evidence assessed' })), findings: [], summary: complete ? 'Execution evidence resolves the question' : 'Need deciding execution evidence', probes: complete ? [] : [probe], toolFailure: '' });
     };
     const dispatch = async (complete, hasEvidence = complete) => executeWithFixtureController(root, { action: 'dispatch', actor, revision: store.read().revision, taskId: 'work', review }, { runAgent: agent(complete, hasEvidence) });

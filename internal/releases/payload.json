@@ -165,8 +165,8 @@
     },
     {
       "path": "internal/runtime/REFERENCE.md",
-      "bytes": 111542,
-      "sha256": "2c114bd7a670e207bb4afe596a327ad997c7ec602b874c01e94d42258a49aaa3"
+      "bytes": 119653,
+      "sha256": "012cf9da7c281757cb2fd582fe1a0b25acda3333a657e9d3bb2b33a452422f25"
     },
     {
       "path": "internal/runtime/acceptance-checkpoint.js",
@@ -195,8 +195,8 @@
     },
     {
       "path": "internal/runtime/cli.js",
-      "bytes": 24608,
-      "sha256": "764c775d7b4636ad336773024710126fa9769c2acc55ca623b9f0175709313b7"
+      "bytes": 25094,
+      "sha256": "dafabc5d4bb5cf76dc134a3f0b4f78f55006e0d3cb71b0fa412dabae55d4e856"
     },
     {
       "path": "internal/runtime/continuation-health.js",
@@ -205,8 +205,8 @@
     },
     {
       "path": "internal/runtime/continuation.js",
-      "bytes": 10539,
-      "sha256": "f67632340095a441248089c11c9260b267d5af3c5296ff8e49d609808b71f385"
+      "bytes": 11044,
+      "sha256": "be49c814edf323243779fb34b63a7c952f2b33a785f19cf0c9f0d44352560ee4"
     },
     {
       "path": "internal/runtime/copies.js",
@@ -245,8 +245,8 @@
     },
     {
       "path": "internal/runtime/hosts.js",
-      "bytes": 20525,
-      "sha256": "3ad566eca5ce23a93b5d535565d59663fcc7a827c2388e3bb15d43848fc1bace"
+      "bytes": 27009,
+      "sha256": "62eeeaac456c9d19c13833e3ebd7e66320c9648f1a0c0e7cfd417be0cd938eb3"
     },
     {
       "path": "internal/runtime/legacy-approval-v1.js",
@@ -305,8 +305,8 @@
     },
     {
       "path": "internal/runtime/models.js",
-      "bytes": 2683,
-      "sha256": "601ba2b2014a760689f0669d88c114b77312f072fb9afb21bd7e4097de3397bd"
+      "bytes": 4100,
+      "sha256": "06bdf3db5d160742cd9f08fed17c329fbf13cd0905232bfe311538461953c2ee"
     },
     {
       "path": "internal/runtime/native-acknowledgement.js",
@@ -390,8 +390,8 @@
     },
     {
       "path": "internal/runtime/review.js",
-      "bytes": 51430,
-      "sha256": "288db8a735c35e7bb6fab4fcf302984abc221209ed6f8d5df70d4cb26ec8f2eb"
+      "bytes": 58457,
+      "sha256": "cc6b0a3a4edce019a735087dd9f30e03b6bbc730bcf7600ed8eac88ba190fdf5"
     },
     {
       "path": "internal/runtime/scratch.js",
@@ -407,6 +407,16 @@
       "path": "internal/runtime/targets.js",
       "bytes": 1471,
       "sha256": "0d127d38ad98a141ce4ae037626463b126b957cdf25daacf2735369defe25fdd"
+    },
+    {
+      "path": "internal/runtime/vibe-config.js",
+      "bytes": 4847,
+      "sha256": "cfaf0c2e9867bf52861c5420fa550b78f7a898450dfb25a558fcd0ed569a134b"
+    },
+    {
+      "path": "internal/runtime/vibe.js",
+      "bytes": 15421,
+      "sha256": "d593b5320929faa06ead0f92352f70b23fc7eb026482f2e0929215632fbe043e"
     },
     {
       "path": "internal/runtime/wait.js",
@@ -485,8 +495,8 @@
     },
     {
       "path": "internal/workflow.md",
-      "bytes": 37146,
-      "sha256": "3032cffb3b905c9524b180dfad35aea895726c314efc04523b48f2cf7829dfc7"
+      "bytes": 38691,
+      "sha256": "f6e8b7937dc736f052d440d62fef72f2d3691e289824c3eb965fc0c6be308b83"
     },
     {
       "path": "skills/exploring/SKILL.md",
@@ -565,13 +575,13 @@
     },
     {
       "path": "skills/revise-code/SKILL.md",
-      "bytes": 3787,
-      "sha256": "a5a93356f6e6be4e97a54a08fb947f681f731b03fd2b8e017e97ee1d542716e9"
+      "bytes": 3783,
+      "sha256": "d2a727cf271ec38909a4372f925b75ead067d85b5101b73ccda8a5b8cc239484"
     },
     {
       "path": "skills/revise-docs/SKILL.md",
-      "bytes": 3924,
-      "sha256": "39b87b6e7eef4a2e6d2d2a3f828c2268e52c32fbee87fa24ef06a3679d7244b6"
+      "bytes": 3934,
+      "sha256": "5c1848f3b3bad67ef852845fcc865a4e2b2328939110e77e28de95977bb10b60"
     },
     {
       "path": "skills/revise-lore/SKILL.md",

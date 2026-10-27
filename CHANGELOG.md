@@ -6,7 +6,9 @@ The entries through 3.3.3 were moved here from the README on 2026-10-05 and spli
 
 ## 3.3.16
 
+- GLM on Mistral Vibe can lead code, spec and docs assessments; skeptics remain on Claude or Codex. The launcher uses a private Vibe home, an allowlisted environment, an untrusted project and effective-configuration checks, and import verifies the saved export and journal attribution. Vibe continuation uses replacement, including dialogue. Guidance defaults to Vibe leads, then Codex, then Claude, and the fortnight tool reports Vibe tokens separately.
 - Completed records no longer pin fresh sessions or conflict with an existing session binding. Unfinished work still pins its release, completed-run bookkeeping keeps its owner binding, and preparation warns about an older release with the current cause, including repeated preparation on a run-pinned session.
+- Evidence: targeted runtime, release, accounting and packaging checks passed before documentation reconciliation. Candidate development-runtime fixtures used installed Vibe 3.0.0 on Windows for isolation, fresh lead kinds, replacement closure and dialogue. The saved GLM-lead/Opus-skeptic seeded campaign is provisional, with incomplete fixture runs and unmatched findings awaiting adjudication. Live verification used 4,750,410 of the authorized 6,000,000 tokens. The [verification report](.nightshift/reports/vibe-reviewer-host-acceptance-20261025.md) preserves the sandbox corroboration observation, later probe-dependent replacement and unverified limits. A published 3.3.16 installation was not tested.
 
 ## 3.3.15
 

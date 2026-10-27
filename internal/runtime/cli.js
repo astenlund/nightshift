@@ -10,8 +10,9 @@ const { ReviewStore } = require('./review-store');
 const { isReviewContext } = require('./records');
 const { REVIEW_TARGET, reviewInput, openReview, assertRepairScope } = require('./review-context');
 const { assertAction, commitmentsFor, findingKind, obligationBrief, sameClosingRecord, sharesCumulativeAssessment, targetById, transition } = require('./lifecycle');
-const { DEFAULT_REVIEW_TIMEOUT_MS, dispatchReview, readReceipt, validateBase, validateRequest } = require('./review');
+const { DEFAULT_REVIEW_TIMEOUT_MS, dispatchReview, readReceipt, selectionMetadata, validateBase, validateRequest } = require('./review');
 const { exhaustedLimit, remainingTime, requireDispatchFits } = require('./limits');
+const { eligibleCandidates } = require('./vibe');
 const { prepareProbe, runProbe } = require('./probes');
 const { scratchStatus } = require('./scratch');
 const { awaitWorker } = require('./wait');
@@ -164,7 +165,9 @@ async function execute(root, request, dependencies = {}) {
       validateBase(store.root, request.review.baseSha);
       const task = targetById(state, request.taskId);
       const continued = resolveContinuation(store.root, state, task, request.review);
-      const candidates = continued?.candidates ?? request.review.candidates;
+      // An ineligible Vibe candidate is dropped before any time is reserved or worker registered, so it consumes neither.
+      const { eligible: candidates, dropped: ineligibleCandidates, versions: vibeVersions } = eligibleCandidates(continued?.candidates ?? request.review.candidates, store.root, dependencies);
+      const selection = selectionMetadata(ineligibleCandidates, request.review.substitutionReason);
       const attemptTimeoutMs = request.review.timeoutMs ?? DEFAULT_REVIEW_TIMEOUT_MS;
       requireDispatchFits(state, dependencies.resourceContext, candidates.length, attemptTimeoutMs);
       const id = randomUUID();
@@ -186,7 +189,7 @@ async function execute(root, request, dependencies = {}) {
         current.baseSha = request.review.baseSha;
         // A resumed dispatch holds its known session from the start, so a concurrent resume of the same session is refused.
         const held = continuation?.kind === 'resumed' ? { session: continuation.session, host: candidates[0].host } : { session: null };
-        current.workers.push({ id, ...held, role: request.review.kind === 'skeptic' ? 'skeptic' : 'reviewer', assignment: closing ? 'Assess the closing tracking edits' : 'Assess ' + task.title, taskId: task.id, writes: [], status: 'starting', phase: 'reserved', artifactDirectory: `.nightshift/runs/reviews/${id}`, runnerPid: process.pid, helperProcess, resources: currentResources, controller: { ...state.controller }, continues: continuesRecord(continuation), lineage: continuation?.lineage ?? id });
+        current.workers.push({ id, ...held, ...selection, role: request.review.kind === 'skeptic' ? 'skeptic' : 'reviewer', assignment: closing ? 'Assess the closing tracking edits' : 'Assess ' + task.title, taskId: task.id, writes: [], status: 'starting', phase: 'reserved', artifactDirectory: `.nightshift/runs/reviews/${id}`, runnerPid: process.pid, helperProcess, resources: currentResources, controller: { ...state.controller }, continues: continuesRecord(continuation), lineage: continuation?.lineage ?? id });
         if (closing && !isReviewContext(current)) {
           current.workers.at(-1).progressOrigin = require('./discharge').origin(current, 'record');
           current.workers.at(-1).progressBinding = structuredClone(task.progressBinding);
@@ -200,7 +203,7 @@ async function execute(root, request, dependencies = {}) {
       try {
         updateWorker({ phase: 'preparing' });
         const result = await dispatchReview(store.root, {
-          ...request.review, id, runId: registered.id, recordKind: store.kind, taskId: task.id, lens, candidates,
+          ...request.review, id, runId: registered.id, recordKind: store.kind, taskId: task.id, lens, candidates, ineligibleCandidates, vibeVersions, vibePreflightRequired: true,
           continuation, continuationContext: continued?.continuationContext, findings: skepticFindings,
           resources: currentResources,
           controller: state.controller,

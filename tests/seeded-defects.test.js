@@ -55,6 +55,15 @@ function requestOf(options) {
 }
 
 // A host stand-in: the lead reports scenario.lead(request) findings, the skeptic answers each claim with scenario.verdict(claim).
+// The attribution files a Vibe attempt leaves: its export and the one generation of its session journal.
+function vibeAttribution(options) {
+  const exportDirectory = path.join(options.artifacts, 'vibe');
+  const state = path.join(exportDirectory, 'session', 'generations', '0000000000000000', 'runtime-state.json');
+  writeTree(exportDirectory, { 'export.json': JSON.stringify({ session_id: 's1', outcome: 'finished', vibe_version: '3.0.0' }), 'session/generations/0000000000000000/runtime-state.json': JSON.stringify({ session_metadata: { active_model: options.model } }) });
+
+  return { version: '3.0.0', uncomparedKeys: [], attributionFiles: [path.join(exportDirectory, 'export.json'), state] };
+}
+
 function mockAgent(scenario, calls) {
   return async options => {
     const request = requestOf(options);
@@ -77,7 +86,7 @@ function mockAgent(scenario, calls) {
     const events = [{ type: 'assistant', session_id: 's1', message: { model: options.model, content: [] } }, { type: 'result', session_id: 's1', subtype: 'success', is_error: false, structured_output: report, note: scenario.eventNote?.(request) ?? '' }];
     fs.writeFileSync(path.join(options.artifacts, 'events.jsonl'), events.map(event => JSON.stringify(event)).join('\n') + '\n');
 
-    return { host: options.host, model: options.model, effort: options.effort, session: 's1', attributionVerified: true, status: 'complete', output: report, tokens: scenario.tokens ? scenario.tokens(request) : 1000, ...(scenario.exit ? { exit: scenario.exit(request) } : {}) };
+    return { host: options.host, model: options.model, effort: options.effort, session: 's1', attributionVerified: true, status: 'complete', output: report, tokens: scenario.tokens ? scenario.tokens(request) : 1000, ...(scenario.exit ? { exit: scenario.exit(request) } : {}), ...(options.host === 'vibe' ? { vibe: vibeAttribution(options) } : {}) };
   };
 }
 
@@ -198,7 +207,7 @@ test('a run dispatches a lead and a skeptic in separate repositories, shuffles c
   assert.equal(report.whole, false);
 });
 
-test('an evaluated host passes the reviewer gate as its gate candidate while its runner gets the evaluated model, and the records name both', async t => {
+test('a Vibe lead runs as an admitted candidate while a Vibe skeptic passes the gate as its gate candidate, and the records name both', async t => {
   // Arrange
   const root = scratch(t);
   writeFixture(root, 'alpha');
@@ -209,37 +218,17 @@ test('an evaluated host passes the reviewer gate as its gate candidate while its
   const result = await suite.run(options(root, root, { models: [evaluated] }), dependencies(LEAD_FINDS_DEFECT, calls));
   const report = suite.grade(path.join(root, 'run'), path.join(root, 'no-targets.json'));
   const key = suite.fixtureRunKey('alpha', evaluated, 1);
-  const lead = JSON.parse(fs.readFileSync(path.join(root, 'run', 'runs', key, 'lead.result.json'), 'utf8'));
-  const receipt = JSON.parse(fs.readFileSync(path.join(root, 'run', 'runs', key, 'lead', 'receipt.json'), 'utf8'));
+  const read = file => JSON.parse(fs.readFileSync(path.join(root, 'run', 'runs', key, file), 'utf8'));
+  const [lead, skeptic, leadReceipt, skepticReceipt] = ['lead.result.json', 'skeptic.result.json', 'lead/receipt.json', 'skeptic/receipt.json'].map(read);
 
   // Assert
   assert.equal(result.stopped, null);
-  assert.deepEqual(calls.map(call => [call.options.host, call.options.model]), [['vibe', 'glm-5-3'], ['vibe', 'glm-5-3']]);
-  assert.deepEqual(lead.evaluation, { host: 'vibe', model: 'glm-5-3', gateCandidate: { host: 'codex', model: 'gpt-6-sol' } });
-  assert.deepEqual([receipt.host, receipt.model], ['vibe', 'glm-5-3']);
-  assert.deepEqual([receipt.attempts[0].host, receipt.attempts[0].model], ['codex', 'gpt-6-sol']);
+  assert.deepEqual(calls.map(call => [call.kind, call.options.host, call.options.model]), [['code', 'vibe', 'glm-5-3'], ['skeptic', 'vibe', 'glm-5-3']]);
+  assert.equal(lead.evaluation, undefined);
+  assert.deepEqual(skeptic.evaluation, { host: 'vibe', model: 'glm-5-3', gateCandidate: { host: 'codex', model: 'gpt-6-sol' } });
+  assert.deepEqual([leadReceipt.host, leadReceipt.model, leadReceipt.attempts[0].host], ['vibe', 'glm-5-3', 'vibe']);
+  assert.deepEqual([skepticReceipt.host, skepticReceipt.model, skepticReceipt.attempts[0].host, skepticReceipt.attempts[0].model], ['vibe', 'glm-5-3', 'codex', 'gpt-6-sol']);
   assert.deepEqual(Object.keys(report.byModel), ['vibe:glm-5-3']);
-});
-
-test('the Vibe launcher takes the report from a fenced block or the outermost braces, and the model from a single journal value', t => {
-  // Arrange
-  const vibe = require('../tools/seeded-defects/vibe-launcher');
-  const root = scratch(t);
-  const journal = (name, model) => writeTree(path.join(root, name, 'session', 'generations'), { '1/runtime-state.json': JSON.stringify({ session_metadata: { active_model: model } }), '8/runtime-state.json': JSON.stringify({ session_metadata: { active_model: 'glm-5-3' } }) });
-  journal('same', 'glm-5-3');
-  journal('mixed', 'mistral-medium-3.5');
-
-  // Act
-  const fenced = vibe.reportText('I have checked it.\n\n```json\n{"a": {"b": 1}}\n```');
-  const braces = vibe.reportText('Report: {"a": 1} done');
-
-  // Assert
-  assert.equal(fenced, '{"a": {"b": 1}}');
-  assert.equal(braces, '{"a": 1}');
-  assert.equal(vibe.reportText(null), null);
-  assert.equal(vibe.sessionModel(path.join(root, 'same')), 'glm-5-3');
-  assert.equal(vibe.sessionModel(path.join(root, 'mixed')), null);
-  assert.equal(vibe.sessionModel(path.join(root, 'absent')), null);
 });
 
 test('a run refuses to start without a budget and stops before a dispatch the budget cannot cover', async t => {
@@ -1289,18 +1278,18 @@ test('a reconciled evaluated-host dispatch keeps its evaluation attribution', as
   const evaluated = { host: 'vibe', id: 'glm-5-3' };
   await suite.run(options(root, root, { models: [evaluated] }), dependencies(LEAD_FINDS_DEFECT, calls));
   const paths = suite.runPaths(path.join(root, 'run'), suite.fixtureRunKey('alpha', evaluated, 1));
-  const intent = JSON.parse(fs.readFileSync(paths.intent('lead'), 'utf8'));
-  const repository = path.join(root, 'left-lead');
-  fs.cpSync(paths.artifacts('lead'), path.join(repository, '.nightshift/runs/reviews', intent.requestId), { recursive: true });
+  const intent = JSON.parse(fs.readFileSync(paths.intent('skeptic'), 'utf8'));
+  const repository = path.join(root, 'left-skeptic');
+  fs.cpSync(paths.artifacts('skeptic'), path.join(repository, '.nightshift/runs/reviews', intent.requestId), { recursive: true });
   fs.rmSync(paths.complete);
-  fs.rmSync(paths.result('lead'));
-  fs.writeFileSync(paths.intent('lead'), JSON.stringify({ ...intent, done: false, repository }));
+  fs.rmSync(paths.result('skeptic'));
+  fs.writeFileSync(paths.intent('skeptic'), JSON.stringify({ ...intent, done: false, repository }));
 
   // Act
   await suite.run(options(root, root, { models: [evaluated] }), dependencies(LEAD_FINDS_DEFECT, calls));
 
   // Assert
-  assert.deepEqual(JSON.parse(fs.readFileSync(paths.result('lead'), 'utf8')).evaluation, { host: 'vibe', model: 'glm-5-3', gateCandidate: { host: 'codex', model: 'gpt-6-sol' } });
+  assert.deepEqual(JSON.parse(fs.readFileSync(paths.result('skeptic'), 'utf8')).evaluation, { host: 'vibe', model: 'glm-5-3', gateCandidate: { host: 'codex', model: 'gpt-6-sol' } });
   assert.equal(calls.length, 2);
 });
 
@@ -1501,26 +1490,6 @@ test('a comparison of the same models in another order does not vary the models'
   assert.deepEqual([comparison.varied, comparison.confounded], [[], []]);
 });
 
-test('the Vibe launcher collects output only up to its limit and reports the overflow once', () => {
-  // Arrange
-  const vibe = require('../tools/seeded-defects/vibe-launcher');
-  let overflows = 0;
-  const collector = vibe.boundedCollector(10, () => overflows++);
-  const stdout = [];
-  const stderr = [];
-
-  // Act
-  collector.into(stdout)(Buffer.from('12345'));
-  collector.into(stderr)(Buffer.from('1234'));
-  collector.into(stdout)(Buffer.from('12'));
-  collector.into(stderr)(Buffer.from('1'));
-
-  // Assert
-  assert.deepEqual([Buffer.concat(stdout).toString(), Buffer.concat(stderr).toString()], ['12345', '1234']);
-  assert.equal(collector.overflowed, true);
-  assert.equal(overflows, 1);
-});
-
 test('a short-name segment is refused by the loader, and a tree entry aliasing .git is refused before anything is copied', t => {
   // Arrange
   const root = scratch(t);
@@ -1586,31 +1555,6 @@ test('a global attributes file cannot normalize the committed base', t => {
 
   // Assert
   assert.equal(committed, 'one\r\ntwo\r\n');
-});
-
-test('the Vibe output limit sits below the Windows job capacity, so the launcher names the cause', () => {
-  // Arrange
-  const vibe = require('../tools/seeded-defects/vibe-launcher');
-
-  // Act and Assert
-  assert.ok(vibe.OUTPUT_LIMIT < 32 * 1024 * 1024);
-});
-
-test('the Vibe launcher takes the json block even after a block in another language, and keeps a failed artifact write as the cause', () => {
-  // Arrange
-  const vibe = require('../tools/seeded-defects/vibe-launcher');
-  const message = 'I checked the helper:\n\n```typescript\nconst x = 1;\n```\n\nHere is the report:\n\n```json\n{"a": 1}\n```';
-  const writer = vibe.artifactWriter('C:/nowhere', () => { throw new Error('disk full'); });
-
-  // Act
-  const report = vibe.reportText(message);
-  writer.write('stderr.txt', 'x');
-  writer.write('events.jsonl', 'y');
-
-  // Assert
-  assert.equal(report, '{"a": 1}');
-  assert.equal(vibe.reportText('```typescript\nconst x = 1;\n```\nThen {"b": 2}'), '{"b": 2}');
-  assert.equal(writer.failure(), 'writing stderr.txt failed: disk full');
 });
 
 test('models that differ only in case are refused as the same model', async t => {

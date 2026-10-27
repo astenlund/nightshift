@@ -1,6 +1,6 @@
 # GLM 5.3 review evaluation
 
-The user asked on 2026-10-23 whether Mistral Vibe running GLM 5.3 could take review work, since Codex usage is limited, and set aside the Vibe plan's tokens for finding out. This evaluation runs GLM 5.3 through the [seeded-defect suite](../specs/seeded-defect-suite.md) under the same prompts, conventions and report validation as the Opus 5.5 and Sol baseline, as evidence for the Exploring draft [Admit Mistral Vibe and GLM as a reviewer host](../FEATURES.md#admit-mistral-vibe-and-glm-as-a-reviewer-host). It does not change the runtime's reviewer gate; the user framed it as an evaluation that feeds that separate feature.
+The user asked on 2026-10-23 whether Mistral Vibe running GLM 5.3 could take review work, since Codex usage is limited, and set aside the Vibe plan's tokens for finding out. This evaluation runs GLM 5.3 through the [seeded-defect suite](../specs/seeded-defect-suite.md) under the same prompts, conventions and report validation as the Opus 5.5 and Sol baseline, as evidence for the Exploring draft [Admit Mistral Vibe and GLM as a reviewer host](../specs/vibe-reviewer-host.md). It does not change the runtime's reviewer gate; the user framed it as an evaluation that feeds that separate feature.
 
 ## Method
 

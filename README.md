@@ -39,6 +39,8 @@ Two reviewer roles are kept apart on purpose: the reviewer that raised a finding
 
 **Requirements.** Windows, Node.js 22.23 or later, Git, PowerShell 7, and a native install of Claude Code or Codex CLI. The verified baselines are Claude Code 2.1.268 and Codex CLI 0.154.0. Other operating systems are not yet verified.
 
+GLM lead review optionally uses native Mistral Vibe 3.0.0 or later, with a working keyring credential or MISTRAL_API_KEY. Vibe is the preferred lead host when eligible; unavailable or ineligible Vibe falls back to the permitted Codex and Claude candidates with the reason recorded. Claude Code or Codex remains the controller host. See [runtime host and eligibility rules](internal/runtime/REFERENCE.md#independent-assessment) for details. Installed Vibe 3.0.0 was exercised on Windows; later versions are accepted under the documented version policy, not claimed as individually verified.
+
 Claude Code:
 
 ```text
@@ -118,7 +120,7 @@ A plain "review" request does not trigger the plugin. "Revise" does.
 - **Cost.** Independent review adds real model usage. Nightshift does not claim to be the cheapest way to get a change made.
 - **Platform.** Windows is the only verified platform.
 - **Checkout.** One delivery run owns a checkout at a time. Durable standalone review contexts may coexist for isolated read-only assessment; their actual workers and canonical repairs still enforce shared writer ownership. Review covers regular, singly linked files: symbolic links, hard links and submodules get a diagnosis to reconcile first, as the [runtime reference](internal/runtime/REFERENCE.md) describes.
-- **Hosts.** Either host is meant to carry the whole workflow, and review prefers an equally strong model on the other host when one is suitable and available. Automatic continuation needs an observed mechanism: a persistent goal on Codex, a Stop hook on Claude Code. Unavailable continuation is recorded with a follow-up, while accepted work can continue in the current turn. New deliveries have no attended/unattended mode.
+- **Hosts.** Either controller host is meant to carry the whole workflow. Lead review defaults to GLM on Vibe, then Sol on Codex, then Opus on Claude; skeptics stay on Claude or Codex, following the placement rule in the operating brief. Automatic continuation needs an observed mechanism: a persistent goal on Codex, a Stop hook on Claude Code. Unavailable continuation is recorded with a follow-up, while accepted work can continue in the current turn. New deliveries have no attended/unattended mode.
 - **Recovery.** Saved state survives context compaction and a closed session. Nothing relaunches the host after a crash or reboot: work stops until you reopen the session, and the agent then reconciles saved state with the actual files.
 - **Not a sandbox.** Reviewers work on private copies, which protects the files under review. Probes the agent authorizes run with your privileges and are not sandboxed.
 - **Authority.** The workflow requires explicit authority before a push, release or deployment. That is an operating rule the agent follows, not a technical lock.

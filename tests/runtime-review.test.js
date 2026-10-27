@@ -7,7 +7,7 @@ const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 const test = require('node:test');
 const { dispatchReview, readReceipt, schemaFor, validateBase, validateReport } = require('../internal/runtime/review');
-const { isStrongModel } = require('../internal/runtime/models');
+const { isAdmittedModel, roleFor } = require('../internal/runtime/models');
 const { DIMENSIONS, reviewGate } = require('../internal/runtime/lifecycle');
 const { fileIdentity, fresh, hash } = require('../internal/runtime/evidence');
 const { runAgent } = require('../internal/runtime/hosts');
@@ -494,19 +494,36 @@ const REFUSED_MODELS = [
   ['gemini', 'gpt-6-sol', 'an unknown host'],
 ];
 
-test('the strong floor of each listed family admits its later versions and nothing outside the plain form', () => {
+test('the strong floor of each listed family admits its later versions for both roles and nothing outside the plain form', () => {
   // Arrange
   const later = [['claude', 'claude-opus-6'], ['claude', 'claude-fable-5-1'], ['claude', 'claude-fable-6-0'], ['codex', 'gpt-6-astra'], ['codex', 'gpt-6.2-astra'], ['codex', 'gpt-7-sol']];
 
   // Act
-  const admitted = [...ADMITTED_MODELS, ...later].filter(([host, model]) => isStrongModel(host, model));
-  const refused = REFUSED_MODELS.filter(([host, model]) => isStrongModel(host, model));
+  const admitted = role => [...ADMITTED_MODELS, ...later].filter(([host, model]) => isAdmittedModel(host, model, role));
+  const refused = role => REFUSED_MODELS.filter(([host, model]) => isAdmittedModel(host, model, role));
 
   // Assert
-  assert.deepEqual(admitted, [...ADMITTED_MODELS, ...later]);
-  assert.deepEqual(refused, []);
-  assert.equal(isStrongModel('codex', undefined), false);
-  assert.equal(isStrongModel('__proto__', 'gpt-6-sol'), false);
+  for (const role of ['lead', 'skeptic']) {
+    assert.deepEqual(admitted(role), [...ADMITTED_MODELS, ...later], role);
+    assert.deepEqual(refused(role), [], role);
+  }
+  assert.equal(isAdmittedModel('codex', undefined, 'lead'), false);
+  assert.equal(isAdmittedModel('__proto__', 'gpt-6-sol', 'lead'), false);
+  assert.equal(isAdmittedModel('codex', 'gpt-6-sol', 'peer'), false);
+});
+
+test('GLM on Vibe is admitted as a lead from 5.3 on, a bare major included, and never as a skeptic', () => {
+  // Arrange
+  const leads = ['glm-5-3', 'glm-5-4', 'glm-6', 'glm-6-0', 'glm-12-1'];
+  const refusedLeads = ['glm-5-2', 'glm-5', 'glm-5-3-air', 'glm-05-3', 'GLM-5-3', 'glm', 'qwen-5-3', 'zai-glm-5-3'];
+
+  // Act and Assert
+  assert.deepEqual(leads.filter(model => isAdmittedModel('vibe', model, 'lead')), leads);
+  assert.deepEqual(leads.filter(model => isAdmittedModel('vibe', model, 'skeptic')), []);
+  assert.deepEqual(refusedLeads.filter(model => isAdmittedModel('vibe', model, 'lead')), []);
+  assert.equal(isAdmittedModel('claude', 'glm-5-3', 'lead'), false);
+  assert.equal(isAdmittedModel('vibe', 'claude-opus-5-5', 'lead'), false);
+  assert.deepEqual([roleFor('skeptic'), roleFor('code'), roleFor('spec'), roleFor('docs'), roleFor(undefined)], ['skeptic', 'lead', 'lead', 'lead', 'lead']);
 });
 
 for (const [host, model] of ADMITTED_MODELS) {
@@ -642,6 +659,43 @@ for (const failure of ['returned-failed', 'unattributed', 'malformed', 'thrown-e
       await executeWithFixtureController(f.root, { action: 'review', actor, revision: store.read().revision, taskId: f.taskId, receipt: relative });
       assert.equal(store.read().tasks[0].reviews[0].host, 'codex');
     } finally { store.close(); }
+  });
+}
+
+for (const mode of ['exhausted', 'aborting', 'failure-record-unwritable']) {
+  test('eligibility metadata survives a terminal dispatch failure: ' + mode, async t => {
+    // Arrange
+    const f = fixture(t);
+    const ineligible = [{ host: 'vibe', model: 'glm-5-3', code: 'vibe-version-unsupported', reason: 'Fixture Vibe version is below the supported floor' }];
+    const terminalCode = mode === 'aborting' ? 'review-input-drift' : 'unusable-review';
+    let requestId;
+    let calls = 0;
+    const dependencies = {
+      runAgent: () => {
+        calls++;
+        throw Object.assign(new RunError(terminalCode, 'Fixture host unavailable'), { tokens: 7 });
+      },
+      ...(mode === 'failure-record-unwritable' ? { writeJson: () => { throw new Error('Fixture failure record is unwritable'); } } : {}),
+    };
+
+    // Act
+    await assert.rejects(dispatchReview(f.root, { ...f, candidates: [...f.candidates, { host: 'codex', model: 'gpt-6-sol', effort: 'high' }], substitutionReason: 'Fixture Vibe candidate was ineligible', ineligibleCandidates: ineligible, onPrepared: request => { requestId = request.id; } }, dependencies), { code: terminalCode });
+
+    // Assert
+    const directory = path.join(f.root, '.nightshift/runs/reviews', requestId);
+    const failureFile = path.join(directory, 'failure.json');
+    assert.equal(calls, mode === 'aborting' ? 1 : 2);
+    if (mode === 'failure-record-unwritable') {
+      assert.equal(fs.existsSync(failureFile), false);
+    } else {
+      const failure = JSON.parse(fs.readFileSync(failureFile, 'utf8'));
+      assert.deepEqual(failure.ineligible, ineligible);
+      assert.equal(failure.attempts.length, calls);
+      assert.ok(failure.attempts.every(attempt => attempt.tokens === 7));
+    }
+    const prepared = JSON.parse(fs.readFileSync(path.join(directory, 'request.json'), 'utf8'));
+    assert.deepEqual(prepared.ineligible, ineligible);
+    assert.equal(fs.existsSync(path.join(directory, 'receipt.json')), false);
   });
 }
 

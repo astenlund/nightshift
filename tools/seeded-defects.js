@@ -32,11 +32,19 @@ const OWNER_FILE = 'nsr-owner';
 const PINNED_DIFF_SETTINGS = Object.freeze([['diff.algorithm', 'myers'], ['diff.noprefix', 'false'], ['diff.mnemonicPrefix', 'false'], ['diff.srcPrefix', 'a/'], ['diff.dstPrefix', 'b/'], ['diff.context', '3'], ['diff.interHunkContext', '0'], ['diff.relative', 'false'], ['diff.renames', 'true'], ['diff.suppressBlankEmpty', 'false'], ['diff.indentHeuristic', 'true'], ['color.ui', 'false'], ['color.diff', 'false'], ['core.quotePath', 'true']]);
 const FIXTURE_AUTHOR = ['-c', 'user.name=Suite fixture', '-c', 'user.email=a.stenlund@gmail.com'];
 const VIBE_LAUNCHER = path.join(SUITE_ROOT, 'vibe-launcher.js');
-// Hosts the runtime's reviewer gate does not admit, measured through a launcher the harness injects. The dispatch names the gate
-// candidate so the runtime accepts it; the launcher runs the evaluated host and model instead, and the records name both.
+// Hosts the runtime's reviewer gate does not admit in a stage, measured through a launcher the harness injects. The dispatch names
+// the gate candidate so the runtime accepts it; the launcher runs the evaluated host and model instead, and the records name both.
+// The runtime admits Vibe as a lead, so only a Vibe skeptic is injected.
 const EVALUATION_HOSTS = Object.freeze({
-  vibe: { gate: { host: 'codex', model: 'gpt-6-sol' }, launcher: () => require(VIBE_LAUNCHER).runVibe, version: () => require(VIBE_LAUNCHER).vibeVersion() },
+  vibe: { stages: Object.freeze(['skeptic']), gate: { host: 'codex', model: 'gpt-6-sol' }, launcher: () => require(VIBE_LAUNCHER).runVibe },
 });
+
+// The injection a stage's model needs, or null when the runtime admits it directly.
+function evaluationFor(model, stage) {
+  const evaluation = EVALUATION_HOSTS[model.host];
+
+  return evaluation?.stages.includes(stage) ? evaluation : null;
+}
 
 class SuiteError extends Error {
   constructor(code, message) {
@@ -325,7 +333,6 @@ function checkoutCommit() {
 }
 
 function hostVersion(host) {
-  if (Object.hasOwn(EVALUATION_HOSTS, host)) return EVALUATION_HOSTS[host].version();
   try {
     const { executable } = require(path.join(PLUGIN_ROOT, 'internal/runtime/hosts.js'));
     const result = spawnSync(executable(host, PLUGIN_ROOT), ['--version'], { windowsHide: true, encoding: 'utf8', timeout: 30000 });
@@ -600,16 +607,16 @@ function recordOutcome(paths, stage, intent, error, elapsedMs, identity, launche
 }
 
 function stageOptions(stage, item, frozen, manifestRules, repository, model, requestId, claims, onProcess) {
-  const candidate = EVALUATION_HOSTS[model.host]?.gate ?? { host: model.host, model: model.id };
+  const candidate = evaluationFor(model, stage)?.gate ?? { host: model.host, model: model.id };
   const common = { id: requestId, baseSha: repository.baseSha, requirements: item.fixture.requirements, rules: manifestRules, candidates: [{ ...candidate, effort: EFFORT }], onProcess };
 
   return stage === 'lead' ? { ...common, kind: 'code' } : { ...common, kind: 'skeptic', findings: claims.map(claim => claim.claim) };
 }
 
 // For an evaluated host, the dispatch's agent runner is that host's launcher, or an injected runner, given the evaluated model.
-function dispatchDependencies(dependencies, model) {
+function dispatchDependencies(dependencies, model, stage) {
   const base = dependencies.dispatchDependencies ?? {};
-  const evaluation = EVALUATION_HOSTS[model.host];
+  const evaluation = evaluationFor(model, stage);
   if (!evaluation) return base;
   const runAgent = base.runAgent ?? evaluation.launcher();
 
@@ -649,7 +656,7 @@ async function dispatchStage(context, runItem, stage, claims) {
   let error = null;
   let launched = false;
   try {
-    await dependencies.dispatchReview(repository.root, stageOptions(stage, runItem.fixture, frozen, rules, repository, model, requestId, claims, () => { launched = true; }), dispatchDependencies(dependencies, model));
+    await dependencies.dispatchReview(repository.root, stageOptions(stage, runItem.fixture, frozen, rules, repository, model, requestId, claims, () => { launched = true; }), dispatchDependencies(dependencies, model, stage));
   } catch (caught) {
     error = caught;
   }
@@ -673,7 +680,7 @@ function terminationConfirmed(runFolder, requestId) {
 function settleStage(context, runItem, stage, intent, record) {
   const paths = runPaths(context.runFolder, runItem.key);
   const model = stageModel(runItem.model, stage);
-  const evaluation = EVALUATION_HOSTS[model.host];
+  const evaluation = evaluationFor(model, stage);
   if (evaluation) record.evaluation = { host: model.host, model: model.id, gateCandidate: evaluation.gate };
   const blocked = record.unproven && !terminationConfirmed(context.runFolder, intent.requestId);
   if (blocked) writeJson(path.join(context.runFolder, 'blocking.json'), { fixtureRun: runItem.key, stage, requestId: intent.requestId, repository: intent.repository, recorded: new Date().toISOString() });

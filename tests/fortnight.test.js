@@ -182,8 +182,8 @@ test('the numbers of a run whose task was repaired three times, reopened twice, 
 
     const markdown = formatMarkdown(result);
     assert.match(markdown, /12 receipts, 12 on these runs, 1 receipt files unreadable, their tokens, verdicts and closures missing from the counts read from receipts; 14 dispatches of these runs \(registered, plus any receipt without a registration row\), 2 without a receipt, of which 1 may have launched a model/);
-    assert.match(markdown, /\| 1 \| Tokens per completed task \| median 600, p90 600, max 600 over 1 tasks \(1 partial, 0 with no dispatch counted as 0\) \|/);
-    assert.match(markdown, /\| 2 \| Tokens per repair batch \| median 300, worst 300 over 1 batches, of 3 \(1 ended at a fresh assessment and 1 at the next repair; 1 open, 1 partial, 0 with no dispatch counted as 0\); measured tokens over the closed batches, their unknown attempts excluded and replacements counted as fresh sessions: fresh 2,400, resumed 650, skeptic 0 \|/);
+    assert.match(markdown, /\| 1 \| Tokens per completed task \| median 600, p90 600, max 600 over 1 tasks \(1 partial, 0 with no dispatch counted as 0\); Vibe apart, in its own accounting: median unknown, max unknown over 0 tasks that ran Vibe \(0 partial\) \|/);
+    assert.match(markdown, /\| 2 \| Tokens per repair batch \| median 300, worst 300 over 1 batches, of 3 \(1 ended at a fresh assessment and 1 at the next repair; 1 open, 1 partial, 0 with no dispatch counted as 0\); measured tokens over the closed batches, their unknown attempts excluded and replacements counted as fresh sessions: fresh 2,400, resumed 650, skeptic 0; Vibe apart, in its own accounting: 0 over 0 batches that ran Vibe \(0 partial\) \|/);
     assert.match(markdown, /completions by UTC date 1 to 2026-10-04, 0 to 2026-10-18/);
     assert.match(markdown, /\| first run \| Fresh-gate catches after resumed closure \| 1 of 2 resumed closures .* \(1 resumed closures had no such fresh review; 1 of the 3 were never imported into run state\)/);
   } finally {
@@ -327,15 +327,15 @@ test('a cumulative pre-3.3.3 Claude resume is corrected by its continued receipt
   const replacement = { requestId: REOPEN, host: 'claude', continues: { kind: 'replacement', requestId: FRESH }, threadTokens: null, attempts: [claude(1200)] };
   const unmeasured = { requestId: UNIMPORTED, host: 'claude', continues: null, threadTokens: null, attempts: [claude(null)] };
   const map = new Map([[FRESH, fresh], [RESUMED, cumulative], [GATE, measured], [REOPEN, replacement], [UNIMPORTED, unmeasured]]);
-  assert.deepEqual(ownTokens(cumulative, map), { known: 800, unknownAttempts: 0, correction: 'cumulative' });
-  assert.deepEqual(ownTokens({ ...cumulative, attempts: [{ host: 'codex', status: 'failed', tokens: 70 }, claude(2300)] }, map), { known: 870, unknownAttempts: 0, correction: 'cumulative' });
-  assert.deepEqual(ownTokens(measured, map), { known: 900, unknownAttempts: 1, correction: null });
-  assert.deepEqual(ownTokens(replacement, map), { known: 1200, unknownAttempts: 0, correction: null });
-  assert.deepEqual(ownTokens({ ...cumulative, continues: { kind: 'resumed', requestId: 'missing' } }, map), { known: 0, unknownAttempts: 1, correction: 'uncorrectable' });
-  assert.deepEqual(ownTokens({ ...cumulative, continues: { kind: 'resumed', requestId: UNIMPORTED } }, map), { known: 0, unknownAttempts: 1, correction: 'uncorrectable' });
-  assert.deepEqual(ownTokens({ ...cumulative, attempts: [claude(null)] }, map), { known: 0, unknownAttempts: 1, correction: 'uncorrectable' });
-  assert.deepEqual(ownTokens({ ...cumulative, attempts: [claude(900)] }, map), { known: 0, unknownAttempts: 1, correction: 'uncorrectable' });
-  assert.deepEqual(ownTokens({ ...cumulative, attempts: [claude(500, 'failed')] }, map), { known: 0, unknownAttempts: 1, correction: 'uncorrectable' });
+  assert.deepEqual(ownTokens(cumulative, map), { known: 800, unknownAttempts: 0, vibe: 0, vibeUnknownAttempts: 0, correction: 'cumulative' });
+  assert.deepEqual(ownTokens({ ...cumulative, attempts: [{ host: 'codex', status: 'failed', tokens: 70 }, claude(2300)] }, map), { known: 870, unknownAttempts: 0, vibe: 0, vibeUnknownAttempts: 0, correction: 'cumulative' });
+  assert.deepEqual(ownTokens(measured, map), { known: 900, unknownAttempts: 1, vibe: 0, vibeUnknownAttempts: 0, correction: null });
+  assert.deepEqual(ownTokens(replacement, map), { known: 1200, unknownAttempts: 0, vibe: 0, vibeUnknownAttempts: 0, correction: null });
+  assert.deepEqual(ownTokens({ ...cumulative, continues: { kind: 'resumed', requestId: 'missing' } }, map), { known: 0, unknownAttempts: 1, vibe: 0, vibeUnknownAttempts: 0, correction: 'uncorrectable' });
+  assert.deepEqual(ownTokens({ ...cumulative, continues: { kind: 'resumed', requestId: UNIMPORTED } }, map), { known: 0, unknownAttempts: 1, vibe: 0, vibeUnknownAttempts: 0, correction: 'uncorrectable' });
+  assert.deepEqual(ownTokens({ ...cumulative, attempts: [claude(null)] }, map), { known: 0, unknownAttempts: 1, vibe: 0, vibeUnknownAttempts: 0, correction: 'uncorrectable' });
+  assert.deepEqual(ownTokens({ ...cumulative, attempts: [claude(900)] }, map), { known: 0, unknownAttempts: 1, vibe: 0, vibeUnknownAttempts: 0, correction: 'uncorrectable' });
+  assert.deepEqual(ownTokens({ ...cumulative, attempts: [claude(500, 'failed')] }, map), { known: 0, unknownAttempts: 1, vibe: 0, vibeUnknownAttempts: 0, correction: 'uncorrectable' });
 });
 
 test('fortnights are labelled by the anchor they end on and the arguments are checked', () => {
@@ -354,3 +354,92 @@ test('fortnights are labelled by the anchor they end on and the arguments are ch
   assert.throws(() => parseArguments(['one.sqlite', 'two.sqlite']), /one store path/);
   assert.deepEqual(parseArguments(['store.sqlite', '--json', 'out.json']), { anchor: '2026-10-18', json: 'out.json', store: 'store.sqlite' });
 });
+
+test('Vibe attempts are kept out of the Claude and Codex figures and reported as their own', () => {
+  // Arrange
+  const VIBE_LEAD = '77777777-0000-4000-8000-000000000041';
+  const SOL_SKEPTIC = '77777777-0000-4000-8000-000000000042';
+  const VIBE_STAND_IN = '77777777-0000-4000-8000-000000000043';
+  const FALLBACK = '77777777-0000-4000-8000-000000000044';
+  const VIBE_FAILED = '77777777-0000-4000-8000-000000000045';
+  const V1 = { id: `${VIBE_LEAD}:V1`, severity: 'important', reviewRevision: 3, raisedBy: { requestId: VIBE_LEAD }, validation: { verdict: 'confirmed' } };
+  const vibeReview = (requestId, extra) => review(requestId, { host: 'vibe', model: 'glm-5-3', ...extra });
+  const imported = [vibeReview(VIBE_LEAD, { revision: 3, findings: [{ id: 'V1', severity: 'important' }] }), review(FALLBACK, { revision: 10 })];
+  const rows = [
+    ['created', '2026-10-01T00:00:00.000Z', state(0, 'pending')],
+    ['start-task', '2026-10-01T01:00:00.000Z', state(1, 'active')],
+    ['dispatch-started', '2026-10-01T01:10:00.000Z', dispatch(VIBE_LEAD)],
+    ['review', '2026-10-01T02:00:00.000Z', state(3, 'active')],
+    ['dispatch-started', '2026-10-01T02:10:00.000Z', dispatch(SOL_SKEPTIC, 'skeptic')],
+    ['validate', '2026-10-01T02:30:00.000Z', state(5, 'active')],
+    ['repair', '2026-10-01T03:00:00.000Z', state(6, 'active', { task: { findings: [{ ...V1, repairRevision: 6 }] } })],
+    ['dispatch-started', '2026-10-01T03:10:00.000Z', dispatch(VIBE_STAND_IN)],
+    ['dispatch-started', '2026-10-01T03:20:00.000Z', dispatch(FALLBACK)],
+    ['dispatch-started', '2026-10-01T03:30:00.000Z', dispatch(VIBE_FAILED)],
+    ['review', '2026-10-01T04:00:00.000Z', state(10, 'active')],
+    ['advance', '2026-10-01T05:00:00.000Z', state(11, 'complete')],
+    ['complete', '2026-10-01T06:00:00.000Z', state(12, 'complete')],
+  ];
+  const final = { ...JSON.parse(state(12, 'complete', { task: { reviews: imported, findings: [{ ...V1, repairRevision: 6 }] }, state: { workers: [{ id: VIBE_FAILED, role: 'reviewer', taskId: 'task-a', status: 'failed', phase: 'launched' }] } })), status: 'complete' };
+  const { root, runs, store } = writeStore(rows, final);
+  // A launched Vibe dispatch whose only attempt failed leaves its attempts in failure.json and no receipt.
+  fs.mkdirSync(path.join(runs, 'reviews', VIBE_FAILED), { recursive: true });
+  fs.writeFileSync(path.join(runs, 'reviews', VIBE_FAILED, 'failure.json'), JSON.stringify({ requestId: VIBE_FAILED, attempts: [{ host: 'vibe', model: 'glm-5-3', status: 'failed', tokens: 30 }], code: 'unusable-review' }));
+  writeReceipts(runs, {
+    [VIBE_LEAD]: vibeReview(VIBE_LEAD, { threadTokens: 500, attempts: [{ host: 'vibe', status: 'complete', tokens: 500 }] }),
+    [SOL_SKEPTIC]: review(SOL_SKEPTIC, { kind: 'skeptic', threadTokens: 200, attempts: [{ host: 'codex', status: 'complete', tokens: 200 }] }),
+    [VIBE_STAND_IN]: vibeReview(VIBE_STAND_IN, { continues: { kind: 'replacement', requestId: VIBE_LEAD }, threadTokens: 400, attempts: [{ host: 'vibe', status: 'complete', tokens: 400 }] }),
+    [FALLBACK]: review(FALLBACK, { threadTokens: 700, attempts: [{ host: 'vibe', status: 'failed', tokens: 50 }, { host: 'codex', status: 'complete', tokens: 700 }] }),
+  });
+
+  try {
+    // Act
+    const result = compute(store, { anchor: '2026-10-18' });
+    const markdown = formatMarkdown(result);
+
+    // Assert
+    assert.deepEqual(result.tokensPerTask.tasks.map(task => [task.dispatches, task.tokens, task.threadTokens, task.unknownAttempts, task.vibeTokens, task.vibeUnknownAttempts]), [[5, 900, 900, 0, 980, 0]]);
+    assert.deepEqual(result.tokensPerTask.complete.median, 900);
+    assert.deepEqual([result.tokensPerTask.vibe.count, result.tokensPerTask.vibe.median, result.tokensPerTask.vibe.partial], [1, 980, 0]);
+    assert.deepEqual(result.tokensPerBatch.batches.map(batch => [batch.repairRevision, batch.endRevision, batch.fresh, batch.resumed, batch.skeptic, batch.tokens, batch.unknownAttempts, batch.vibe]), [[6, 10, 700, 0, 0, 700, 0, 480]]);
+    assert.deepEqual(result.tokensPerBatch.shares, [['fresh', 700], ['resumed', 0], ['skeptic', 0]]);
+    assert.equal(result.tokensPerBatch.vibe.total, 480);
+    assert.match(markdown, /Vibe apart, in its own accounting: median 980, max 980 over 1 tasks that ran Vibe \(0 partial\)/);
+    assert.match(markdown, /skeptic 0; Vibe apart, in its own accounting: 480 over 1 batches that ran Vibe \(0 partial\)/);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+for (const host of ['claude', 'codex', undefined, 'vibe']) {
+  test('known failed attempt spend keeps missing thread totals unknown for ' + (host ?? 'unknown host'), () => {
+    // Arrange
+    const rows = [
+      ['created', '2026-10-01T00:00:00.000Z', state(0, 'pending')],
+      ['start-task', '2026-10-01T01:00:00.000Z', state(1, 'active')],
+      ['dispatch-started', '2026-10-01T01:10:00.000Z', dispatch(FRESH)],
+      ['dispatch-started', '2026-10-01T01:20:00.000Z', dispatch(FAILED)],
+      ['advance', '2026-10-01T02:00:00.000Z', state(4, 'complete')],
+    ];
+    const final = JSON.parse(state(4, 'complete', { state: { workers: [{ id: FAILED, role: 'reviewer', taskId: 'task-a', status: 'failed', phase: 'launched' }] } }));
+    const { root, runs, store } = writeStore(rows, final);
+    writeReceipts(runs, { [FRESH]: review(FRESH, { threadTokens: 100, attempts: [{ host: 'codex', status: 'complete', tokens: 100 }] }) });
+    const folder = path.join(runs, 'reviews', FAILED);
+    fs.mkdirSync(folder, { recursive: true });
+    fs.writeFileSync(path.join(folder, 'failure.json'), JSON.stringify({ requestId: FAILED, attempts: [{ host, status: 'failed', tokens: 30 }], code: 'unusable-review' }));
+
+    try {
+      // Act
+      const result = compute(store, { anchor: '2026-10-18' });
+      const [task] = result.tokensPerTask.tasks;
+
+      // Assert
+      assert.equal(task.tokens, host === 'vibe' ? 100 : 130);
+      assert.equal(task.unknownAttempts, 0);
+      assert.equal(task.threadTokens, host === 'vibe' ? 100 : null);
+      assert.equal(task.vibeTokens, host === 'vibe' ? 30 : 0);
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+}

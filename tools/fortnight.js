@@ -57,9 +57,28 @@ function readReceipts(reviews, unreadable = []) {
   return receipts;
 }
 
+// Vibe counts its tokens in its own accounting, which is not comparable with Claude's or Codex's, and its plan pays for them, so its
+// attempts are kept apart: known and unknownAttempts cover Claude and Codex attempts, vibe and vibeUnknownAttempts Vibe's.
+// The attempts each failed dispatch recorded in failure.json beside where its receipt would be, by request id, so a dispatch that left
+// no receipt is still counted by host. An unreadable record is left out, and its dispatch counts as one attempt of unknown host.
+function readFailures(reviews) {
+  const failures = new Map();
+  if (!fs.existsSync(reviews)) return failures;
+  for (const entry of fs.readdirSync(reviews)) {
+    const file = path.join(reviews, entry, 'failure.json');
+    if (!fs.existsSync(file)) continue;
+    let record;
+    try { record = JSON.parse(fs.readFileSync(file, 'utf8')); } catch { continue; }
+    if (typeof record?.requestId === 'string' && Array.isArray(record.attempts)) failures.set(record.requestId, { attempts: record.attempts.map(attempt => ({ host: attempt.host ?? null, status: attempt.status ?? null, tokens: typeof attempt.tokens === 'number' ? attempt.tokens : null })) });
+  }
+  return failures;
+}
+
 function rawTokens(receipt) {
-  const known = receipt.attempts.filter(attempt => attempt.tokens !== null).reduce((sum, attempt) => sum + attempt.tokens, 0);
-  return { known, unknownAttempts: receipt.attempts.filter(attempt => attempt.tokens === null).length };
+  const tally = attempts => ({ known: attempts.filter(attempt => attempt.tokens !== null).reduce((sum, attempt) => sum + attempt.tokens, 0), unknown: attempts.filter(attempt => attempt.tokens === null).length });
+  const other = tally(receipt.attempts.filter(attempt => attempt.host !== 'vibe'));
+  const vibe = tally(receipt.attempts.filter(attempt => attempt.host === 'vibe'));
+  return { known: other.known, unknownAttempts: other.unknown, vibe: vibe.known, vibeUnknownAttempts: vibe.unknown };
 }
 
 function isFresh(review) {
@@ -86,8 +105,8 @@ function ownTokens(receipt, receipts) {
   if (isResumed(receipt) && receipt.host === 'claude' && receipt.threadTokens === null) {
     const cumulative = claudeSessionTokens(receipt);
     const prior = claudeSessionTokens(receipts.get(receipt.continues.requestId));
-    if (cumulative === null || prior === null || cumulative < prior) return { known: 0, unknownAttempts: Math.max(raw.unknownAttempts, 1), correction: 'uncorrectable' };
-    return { known: raw.known - prior, unknownAttempts: raw.unknownAttempts, correction: 'cumulative' };
+    if (cumulative === null || prior === null || cumulative < prior) return { ...raw, known: 0, unknownAttempts: Math.max(raw.unknownAttempts, 1), correction: 'uncorrectable' };
+    return { ...raw, known: raw.known - prior, correction: 'cumulative' };
   }
   return { ...raw, correction: null };
 }
@@ -132,7 +151,7 @@ function closingRecordOf(run) {
 
 // The final record of each review or skeptic worker, by request id, for dispatches that left no receipt.
 function workersOf(state) {
-  return new Map((state.workers ?? []).filter(worker => REVIEW_ROLES.has(worker.role)).map(worker => [worker.id, { status: worker.status ?? null, phase: worker.phase ?? null }]));
+  return new Map((state.workers ?? []).filter(worker => REVIEW_ROLES.has(worker.role)).map(worker => [worker.id, { status: worker.status ?? null, phase: worker.phase ?? null, role: worker.role, continues: worker.continues ?? null }]));
 }
 
 // The store is read inside one read transaction, so a run completing between two of the queries cannot leave the current
@@ -197,14 +216,17 @@ function dispatchesByRecord(dispatches, receipts) {
 }
 
 // What a dispatch cost: its receipt's own tokens, or, without a receipt, nothing when its worker record says it never launched
-// a model (its phase still reserved or preparing) and otherwise one unknown attempt. The part names the session kind: a
+// a model (its phase still reserved or preparing), its failed attempts when recorded, and otherwise one unknown attempt. The part names the session kind: a
 // replacement is a fresh session standing in for one that could not be resumed, so its tokens count as fresh, although it is
 // no fresh assessment to the lifecycle.
-function dispatchTokens(dispatch, run, receipts) {
+function dispatchTokens(dispatch, run, receipts, failures = new Map()) {
   const receipt = receipts.get(dispatch.requestId);
   if (receipt) return { ...ownTokens(receipt, receipts), part: receipt.kind === 'skeptic' ? 'skeptic' : isResumed(receipt) ? 'resumed' : 'fresh', receipt };
-  const launched = !['reserved', 'preparing'].includes(run.workers.get(dispatch.requestId)?.phase);
-  return { known: 0, unknownAttempts: launched ? 1 : 0, correction: null, part: null, receipt: null };
+  const worker = run.workers.get(dispatch.requestId);
+  const launched = !['reserved', 'preparing'].includes(worker?.phase);
+  const failure = failures.get(dispatch.requestId);
+  if (launched && failure) return { ...rawTokens(failure), missingThreadTokens: !failure.attempts.length || failure.attempts.some(attempt => attempt.host !== 'vibe'), correction: null, part: worker?.role === 'skeptic' ? 'skeptic' : worker?.continues?.kind === 'resumed' ? 'resumed' : 'fresh', receipt: null };
+  return { known: 0, unknownAttempts: launched ? 1 : 0, missingThreadTokens: launched, vibe: 0, vibeUnknownAttempts: 0, correction: null, part: null, receipt: null };
 }
 
 // A sum that is unknown when any part is, or when there are no parts.
@@ -217,21 +239,24 @@ function completeRecordKeys(runs) {
 }
 
 // Tokens per completed task: every dispatch the task's run registered under that task id, fresh and resumed alike, plus any
-// receipt on the task without a registration. Thread tokens count each session chain once, at its last receipt, and are
-// unknown when any chain's last receipt did not measure them or a launched dispatch left no receipt.
-function tokensPerTask(runs, byRecord, receipts) {
+// receipt on the task without a registration, with Vibe attempts counted apart. Thread tokens count each Claude or Codex session
+// chain once, at its last receipt, and are unknown when any chain's last receipt did not measure them or a launched dispatch left
+// no receipt for a Claude, Codex or unknown-host attempt, even when its own attempt tokens are known.
+function tokensPerTask(runs, byRecord, receipts, failures = new Map()) {
   const complete = completeRecordKeys(runs);
   const continuedByResume = new Set([...receipts.values()].filter(isResumed).map(receipt => receipt.continues.requestId));
   const tasks = [];
   for (const run of runs) {
     for (const record of run.records) {
       if (!complete.has(`${run.id}\n${record.id}`)) continue;
-      const own = (byRecord.get(`${run.id}\n${record.id}`) ?? []).map(dispatch => dispatchTokens(dispatch, run, receipts));
+      const own = (byRecord.get(`${run.id}\n${record.id}`) ?? []).map(dispatch => dispatchTokens(dispatch, run, receipts, failures));
       tasks.push({
         runId: run.id, taskId: record.id, kind: record.kind, dispatches: own.length,
         tokens: own.reduce((sum, entry) => sum + entry.known, 0),
-        threadTokens: own.some(entry => !entry.receipt && entry.unknownAttempts) ? null : sumOrNull(own.filter(entry => entry.receipt && !continuedByResume.has(entry.receipt.requestId)).map(entry => entry.receipt.threadTokens)),
+        threadTokens: own.some(entry => entry.missingThreadTokens) ? null : sumOrNull(own.filter(entry => entry.receipt && entry.receipt.host !== 'vibe' && !continuedByResume.has(entry.receipt.requestId)).map(entry => entry.receipt.threadTokens)),
         unknownAttempts: own.reduce((sum, entry) => sum + entry.unknownAttempts, 0),
+        vibeTokens: own.reduce((sum, entry) => sum + entry.vibe, 0),
+        vibeUnknownAttempts: own.reduce((sum, entry) => sum + entry.vibeUnknownAttempts, 0),
         corrected: own.filter(entry => entry.correction === 'cumulative').length,
       });
     }
@@ -302,7 +327,7 @@ function importedReviews(record) {
 // next fresh assessment on the same record, that assessment included, or up to the next repair when that comes first. The
 // fresh assessment's own skeptics start after its import, so they fall outside, as the skeptics of the first assessment fall
 // before the first batch. A batch no fresh assessment or repair has yet ended is open and left out of the figures.
-function repairBatches(runs, transitions, byRecord, receipts) {
+function repairBatches(runs, transitions, byRecord, receipts, failures = new Map()) {
   const batches = [];
   for (const run of runs) {
     for (const record of run.records) {
@@ -313,15 +338,17 @@ function repairBatches(runs, transitions, byRecord, receipts) {
         const nextRepair = repairs[index + 1] ?? Infinity;
         const fresh = reviews.find(review => review.revision > start && isFresh(review));
         const end = Math.min(nextRepair, fresh?.revision ?? Infinity);
-        const batch = { runId: run.id, taskId: record.id, kind: record.kind, repairRevision: start, endRevision: Number.isFinite(end) ? end : null, reachedFreshGate: fresh !== undefined && fresh.revision <= end, fresh: 0, resumed: 0, skeptic: 0, unknownAttempts: 0, dispatches: 0 };
+        const batch = { runId: run.id, taskId: record.id, kind: record.kind, repairRevision: start, endRevision: Number.isFinite(end) ? end : null, reachedFreshGate: fresh !== undefined && fresh.revision <= end, fresh: 0, resumed: 0, skeptic: 0, unknownAttempts: 0, vibe: 0, vibeUnknownAttempts: 0, dispatches: 0 };
         if (!Number.isFinite(end)) {
           batches.push({ ...batch, open: true });
           return;
         }
         for (const dispatch of dispatches.filter(candidate => candidate.revision !== null && candidate.revision > start && candidate.revision <= end)) {
-          const tokens = dispatchTokens(dispatch, run, receipts);
+          const tokens = dispatchTokens(dispatch, run, receipts, failures);
           if (tokens.part) batch[tokens.part] += tokens.known;
           batch.unknownAttempts += tokens.unknownAttempts;
+          batch.vibe += tokens.vibe;
+          batch.vibeUnknownAttempts += tokens.vibeUnknownAttempts;
           batch.dispatches += 1;
         }
         batches.push({ ...batch, open: false, tokens: batch.fresh + batch.resumed + batch.skeptic });
@@ -374,28 +401,35 @@ function freshGateCatches(runs, byRecord, receipts) {
   return { closures: closures.length, withGate: closures.filter(entry => entry.gateRequestId).length, catches: closures.filter(entry => entry.severeFindings > 0).length, unimported: closures.filter(entry => !entry.imported).length, entries: closures };
 }
 
+// Vibe's own figures over the entries that ran any Vibe attempt, entries with an unknown Vibe attempt counted as partial.
+function vibeSummary(entries, tokensOf) {
+  const ran = entries.filter(entry => tokensOf(entry) > 0 || entry.vibeUnknownAttempts > 0);
+  return { ...summary(ran.filter(entry => !entry.vibeUnknownAttempts).map(tokensOf)), partial: ran.filter(entry => entry.vibeUnknownAttempts).length };
+}
+
 function compute(store, options = {}) {
   const anchor = options.anchor ?? DEFAULT_ANCHOR;
   const reviews = options.reviews ?? path.join(path.dirname(store), 'reviews');
   const { meta, runs, transitions, dispatches } = readStore(store);
   const unreadable = [];
   const receipts = readReceipts(reviews, unreadable);
+  const failures = readFailures(reviews);
   const runIds = new Set(runs.map(run => run.id));
   const byRecord = dispatchesByRecord(dispatches.filter(dispatch => runIds.has(dispatch.runId)), new Map([...receipts].filter(([, receipt]) => runIds.has(receipt.runId))));
   const placed = [...byRecord.values()].flat();
-  const costs = placed.map(dispatch => dispatchTokens(dispatch, runs.find(run => run.id === dispatch.runId), receipts));
-  const tasks = tokensPerTask(runs, byRecord, receipts);
+  const costs = placed.map(dispatch => dispatchTokens(dispatch, runs.find(run => run.id === dispatch.runId), receipts, failures));
+  const tasks = tokensPerTask(runs, byRecord, receipts, failures);
   const elapsed = elapsedPerTask(transitions, runs);
   const completions = completionsPerFortnight(meta, anchor);
-  const batches = repairBatches(runs, transitions, byRecord, receipts);
+  const batches = repairBatches(runs, transitions, byRecord, receipts, failures);
   const closedBatches = batches.filter(batch => !batch.open);
   return {
     store, reviews, anchor, readAt: new Date().toISOString(),
     runs: { total: runs.length, completed: runs.filter(run => run.status === 'complete').length },
     receipts: { total: receipts.size, onTheseRuns: [...receipts.values()].filter(receipt => runIds.has(receipt.runId)).length, unreadable: unreadable.length, unreadableIds: unreadable },
     dispatches: { total: placed.length, withoutReceipt: costs.filter(cost => !cost.receipt).length, unknownWithoutReceipt: costs.filter(cost => !cost.receipt && cost.unknownAttempts).length },
-    tokensPerTask: { tasks, complete: summary(tasks.filter(task => !task.unknownAttempts).map(task => task.tokens)), partial: tasks.filter(task => task.unknownAttempts).length, withoutDispatch: tasks.filter(task => task.dispatches === 0).length },
-    tokensPerBatch: { batches, closed: summary(closedBatches.filter(batch => !batch.unknownAttempts).map(batch => batch.tokens)), reachedFreshGate: closedBatches.filter(batch => batch.reachedFreshGate).length, endedAtRepair: closedBatches.filter(batch => !batch.reachedFreshGate).length, open: batches.length - closedBatches.length, partial: closedBatches.filter(batch => batch.unknownAttempts).length, withoutDispatch: closedBatches.filter(batch => batch.dispatches === 0).length, shares: ['fresh', 'resumed', 'skeptic'].map(part => [part, closedBatches.reduce((sum, batch) => sum + batch[part], 0)]) },
+    tokensPerTask: { tasks, complete: summary(tasks.filter(task => !task.unknownAttempts).map(task => task.tokens)), partial: tasks.filter(task => task.unknownAttempts).length, withoutDispatch: tasks.filter(task => task.dispatches === 0).length, vibe: vibeSummary(tasks, task => task.vibeTokens) },
+    tokensPerBatch: { batches, closed: summary(closedBatches.filter(batch => !batch.unknownAttempts).map(batch => batch.tokens)), reachedFreshGate: closedBatches.filter(batch => batch.reachedFreshGate).length, endedAtRepair: closedBatches.filter(batch => !batch.reachedFreshGate).length, open: batches.length - closedBatches.length, partial: closedBatches.filter(batch => batch.unknownAttempts).length, withoutDispatch: closedBatches.filter(batch => batch.dispatches === 0).length, shares: ['fresh', 'resumed', 'skeptic'].map(part => [part, closedBatches.reduce((sum, batch) => sum + batch[part], 0)]), vibe: { ...vibeSummary(closedBatches, batch => batch.vibe), total: closedBatches.reduce((sum, batch) => sum + batch.vibe, 0) } },
     refutation: refutationRate(runs, receipts),
     minorOnly: minorOnlyCycles(transitions),
     elapsed: { tasks: elapsed, hours: summary(elapsed.filter(task => task.hours !== null).map(task => task.hours)), unknownStart: elapsed.filter(task => task.hours === null).length, reopened: elapsed.filter(task => task.completions > 1).length, completions: completions.fortnights, completionsAfterAnchor: completions.afterAnchor },
@@ -413,10 +447,10 @@ function formatMarkdown(result) {
   lines.push(`Read ${result.readAt.slice(0, 10)}: ${result.runs.total} runs, ${result.runs.completed} completed; ${result.receipts.total} receipts, ${result.receipts.onTheseRuns} on these runs, ${result.receipts.unreadable} receipt files unreadable, their tokens, verdicts and closures missing from the counts read from receipts; ${result.dispatches.total} dispatches of these runs (registered, plus any receipt without a registration row), ${result.dispatches.withoutReceipt} without a receipt, of which ${result.dispatches.unknownWithoutReceipt} may have launched a model and so cost an unknown amount. Medians and ninetieth percentiles are nearest rank. Token figures sum each receipt's own attempt tokens; a task or batch with an attempt whose tokens are unknown is left out of the figures and counted as partial.`, '');
   lines.push('| # | Number | Reading |', '| --- | --- | --- |');
   const task = result.tokensPerTask;
-  lines.push(`| 1 | Tokens per completed task | median ${number(task.complete.median)}, p90 ${number(task.complete.p90)}, max ${number(task.complete.max)} over ${task.complete.count} tasks (${task.partial} partial, ${task.withoutDispatch} with no dispatch counted as 0) |`);
+  lines.push(`| 1 | Tokens per completed task | median ${number(task.complete.median)}, p90 ${number(task.complete.p90)}, max ${number(task.complete.max)} over ${task.complete.count} tasks (${task.partial} partial, ${task.withoutDispatch} with no dispatch counted as 0); Vibe apart, in its own accounting: median ${number(task.vibe.median)}, max ${number(task.vibe.max)} over ${task.vibe.count} tasks that ran Vibe (${task.vibe.partial} partial) |`);
   const batch = result.tokensPerBatch;
   const shares = batch.shares.map(([part, tokens]) => `${part} ${number(tokens)}`).join(', ');
-  lines.push(`| 2 | Tokens per repair batch | median ${number(batch.closed.median)}, worst ${number(batch.closed.max)} over ${batch.closed.count} batches, of ${batch.batches.length} (${batch.reachedFreshGate} ended at a fresh assessment and ${batch.endedAtRepair} at the next repair; ${batch.open} open, ${batch.partial} partial, ${batch.withoutDispatch} with no dispatch counted as 0); measured tokens over the closed batches, their unknown attempts excluded and replacements counted as fresh sessions: ${shares} |`);
+  lines.push(`| 2 | Tokens per repair batch | median ${number(batch.closed.median)}, worst ${number(batch.closed.max)} over ${batch.closed.count} batches, of ${batch.batches.length} (${batch.reachedFreshGate} ended at a fresh assessment and ${batch.endedAtRepair} at the next repair; ${batch.open} open, ${batch.partial} partial, ${batch.withoutDispatch} with no dispatch counted as 0); measured tokens over the closed batches, their unknown attempts excluded and replacements counted as fresh sessions: ${shares}; Vibe apart, in its own accounting: ${number(batch.vibe.total)} over ${batch.vibe.count + batch.vibe.partial} batches that ran Vibe (${batch.vibe.partial} partial) |`);
   const refutation = result.refutation;
   lines.push(`| 3 | Skeptic refutation rate | ${percent(refutation.receipts.rate)} of ${refutation.receipts.total} verdicts in skeptic receipts (${refutation.receipts.refuted} refuted, ${refutation.receipts.confirmed} confirmed, ${refutation.receipts.unverified} unverified); ${percent(refutation.latest.rate)} of the ${refutation.latest.total} latest verdicts in run state |`);
   const minor = result.minorOnly;
@@ -425,11 +459,11 @@ function formatMarkdown(result) {
   lines.push(`| 7 | Elapsed time per completed task, and runs completed per fortnight | median ${hours(elapsed.hours.median)}, p90 ${hours(elapsed.hours.p90)}, max ${hours(elapsed.hours.max)} over ${elapsed.hours.count} tasks (${elapsed.unknownStart} without a recorded start, ${elapsed.reopened} completed more than once); completions by UTC date ${elapsed.completions.map(entry => `${entry.count} ${entry.fortnight}`).join(', ')}${elapsed.completionsAfterAnchor ? `, ${elapsed.completionsAfterAnchor} after the anchor not listed` : ''} |`);
   const gate = result.freshGate;
   lines.push(`| first run | Fresh-gate catches after resumed closure | ${gate.catches} of ${gate.withGate} resumed closures followed by a fresh review of the same kind raised a critical or important finding (${gate.closures - gate.withGate} resumed closures had no such fresh review; ${gate.unimported} of the ${gate.closures} were never imported into run state) |`);
-  lines.push('', '## Completed tasks', '', '| Run | Task | Kind | Dispatches | Tokens | Thread tokens | Unknown attempts | Elapsed |', '| --- | --- | --- | ---: | ---: | ---: | ---: | ---: |');
+  lines.push('', '## Completed tasks', '', '| Run | Task | Kind | Dispatches | Tokens | Thread tokens | Unknown attempts | Vibe tokens | Elapsed |', '| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |');
   const elapsedByTask = new Map(elapsed.tasks.map(entry => [`${entry.runId}\n${entry.taskId}`, entry.hours]));
-  for (const entry of task.tasks) lines.push(`| ${entry.runId.slice(0, 8)} | ${entry.taskId} | ${entry.kind} | ${entry.dispatches} | ${number(entry.tokens)} | ${number(entry.threadTokens)} | ${entry.unknownAttempts} | ${hours(elapsedByTask.get(`${entry.runId}\n${entry.taskId}`) ?? null)} |`);
-  lines.push('', '## Repair batches', '', '| Run | Task | Repair revision | End revision | Fresh gate | Dispatches | Fresh | Resumed | Skeptic | Total |', '| --- | --- | ---: | ---: | --- | ---: | ---: | ---: | ---: | ---: |');
-  for (const entry of batch.batches) lines.push(`| ${entry.runId.slice(0, 8)} | ${entry.taskId} | ${entry.repairRevision} | ${entry.open ? 'open' : entry.endRevision} | ${entry.open ? '' : entry.reachedFreshGate ? 'yes' : 'next repair first'} | ${entry.dispatches} | ${number(entry.fresh)} | ${number(entry.resumed)} | ${number(entry.skeptic)} | ${entry.open ? '' : number(entry.tokens)}${entry.unknownAttempts ? ' partial' : ''} |`);
+  for (const entry of task.tasks) lines.push(`| ${entry.runId.slice(0, 8)} | ${entry.taskId} | ${entry.kind} | ${entry.dispatches} | ${number(entry.tokens)} | ${number(entry.threadTokens)} | ${entry.unknownAttempts} | ${number(entry.vibeTokens)}${entry.vibeUnknownAttempts ? ' partial' : ''} | ${hours(elapsedByTask.get(`${entry.runId}\n${entry.taskId}`) ?? null)} |`);
+  lines.push('', '## Repair batches', '', '| Run | Task | Repair revision | End revision | Fresh gate | Dispatches | Fresh | Resumed | Skeptic | Total | Vibe |', '| --- | --- | ---: | ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: |');
+  for (const entry of batch.batches) lines.push(`| ${entry.runId.slice(0, 8)} | ${entry.taskId} | ${entry.repairRevision} | ${entry.open ? 'open' : entry.endRevision} | ${entry.open ? '' : entry.reachedFreshGate ? 'yes' : 'next repair first'} | ${entry.dispatches} | ${number(entry.fresh)} | ${number(entry.resumed)} | ${number(entry.skeptic)} | ${entry.open ? '' : number(entry.tokens)}${entry.unknownAttempts ? ' partial' : ''} | ${number(entry.vibe)}${entry.vibeUnknownAttempts ? ' partial' : ''} |`);
   return lines.join('\n') + '\n';
 }
 

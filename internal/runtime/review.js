@@ -15,7 +15,8 @@ const { createPrivateCopyDirectory, isPrivateCopyDirectory } = require('./copies
 const { continuesRecord, lineageOf } = require('./continuation');
 const { workerEnvironment } = require('../releases/entry');
 const { timeLeft } = require('./limits');
-const { isStrongModel, requirePermittedEffort } = require('./models');
+const { isAdmittedModel, requireAdmittedModel, requirePermittedEffort, roleFor } = require('./models');
+const vibe = require('./vibe');
 
 const DEFAULT_REVIEW_TIMEOUT_MS = 900000;
 // Failures that end a dispatch at once rather than passing to the next candidate.
@@ -108,8 +109,18 @@ function validateContinuationRequest(options) {
   }
 }
 
+// A Vibe candidate or a required model naming the alias glm takes the newest launcher entry before any other rule, so admission,
+// dispatch, attribution and the receipt all carry the exact identifier.
+function resolveModelAliases(options) {
+  for (const candidate of Array.isArray(options.candidates) ? options.candidates : []) {
+    if (candidate !== null && typeof candidate === 'object' && candidate.model === vibe.ALIAS) candidate.model = vibe.resolveAlias(candidate.host, candidate.model);
+  }
+  if (options.requiredModel === vibe.ALIAS) options.requiredModel = vibe.resolveAlias('vibe', vibe.ALIAS);
+}
+
 function validateRequest(options) {
   text(options?.requirements, 'review.requirements');
+  resolveModelAliases(options);
   text(options?.rules, 'review.rules');
   requireCondition(options.kind === undefined || ['code', 'spec', 'docs', 'skeptic'].includes(options.kind), 'invalid-review-kind', 'Unknown independent assessment kind');
   for (const field of ['artifactPaths', 'excludedPaths']) {
@@ -126,7 +137,7 @@ function validateRequest(options) {
     requireCondition(Array.isArray(candidates) && candidates.length > 0, 'missing-model', 'Controller must choose a permitted reviewer host and model');
     for (const candidate of candidates) {
       requireCondition(candidate !== null && typeof candidate === 'object' && Object.keys(candidate).every(key => ['host', 'model', 'effort'].includes(key)), 'invalid-model-selection', 'Model selection cannot replace the trusted host executable or its process policy');
-      requireCondition(isStrongModel(candidate.host, candidate.model), 'review-strength', 'This gate requires a supported strong reviewer model');
+      requireAdmittedModel(candidate.host, candidate.model, options.kind);
       requirePermittedEffort(candidate.effort);
     }
     requireCondition(!options.requiredModel || candidates.every(candidate => candidate.model === options.requiredModel), 'model-requirement', 'Explicit model requirements prohibit fallback to another model');
@@ -304,8 +315,17 @@ function acknowledgementBrief(request) {
   return statements.length === 0 ? '' : `Recorded acknowledgements, settled by the governing requirement or the user. Do not raise them again; adjacent issues about how they are carried out remain in scope:\n${statements.map(statement => `- ${statement}`).join('\n')}\n`;
 }
 
-// workspace is the absolute directory of the dispatch's private copy, which a resumed reviewer is told by name.
-function buildPrompt(request, { workspace } = {}) {
+// Vibe gives its reviewer a TypeScript sandbox that cannot be removed; what it runs there is a transcription, not the project. It also
+// refuses reads outside its working directory, which a reviewer guessing absolute paths meets as a tool failure.
+function vibeRules(workspace) {
+  const location = workspace ? `Your working directory is ${workspace}` : 'Your files are in your current working directory';
+  return `${location}: read context/diff.patch, context/manifest.json, context/probes/ and project/ there by relative path, since Vibe refuses reads outside it. Your run_typescript sandbox runs only code you transcribe into it, never this project: a sandbox run is not execution evidence of the project, so a deciding claim that needs execution goes through a probe request, as for every host.\n`;
+}
+
+// workspace is the absolute directory of the dispatch's private copy, which a resumed reviewer is told by name; host is the
+// attempt's host, whose own tools may need a rule of their own; probeFiles names each returned probe result in the copy, since a
+// reviewer that can only read named files cannot list a folder.
+function buildPrompt(request, { workspace, host, probeFiles = [] } = {}) {
   const skeptic = request.kind === 'skeptic';
   const dialogue = Boolean(request.dialogue);
   const scope = skeptic ? 'Use the complete supplied artifact and cumulative change as context for validating the assigned claims and their affected siblings.' : 'Assess the complete supplied artifact and cumulative change, surrounding code and sibling paths.';
@@ -318,11 +338,11 @@ function buildPrompt(request, { workspace } = {}) {
   const leadRole = (request.kind === 'docs' ? documentation : '') + lead + (request.continues ? continuationBrief(request) : '');
   const role = (skeptic ? skepticRole : '') + (dialogue ? dialogueBrief(request) : skeptic ? '' : leadRole);
   const definitions = request.dimensions.map(dimension => `${dimension}: ${DIMENSION_BRIEFS[dimension]}`).join('\n');
-  const execution = `If a deciding claim needs execution unavailable in your read-only tools, request a bounded probe in probes, with its purpose, exact executable/args, timeout and ASCII fixture files. ${PROBE_TIMEOUT_RULE} The controller executes it in a separate private copy and returns raw command/output evidence for your independent assessment. Remain incomplete/unverified until that evidence is sufficient. A probe never authorizes canonical project repairs. Available returned probe evidence is under context/probes/.\n`;
+  const execution = `If a deciding claim needs execution unavailable in your read-only tools, request a bounded probe in probes, with its purpose, exact executable/args, timeout and ASCII fixture files. ${PROBE_TIMEOUT_RULE} The controller executes it in a separate private copy and returns raw command/output evidence for your independent assessment. Remain incomplete/unverified until that evidence is sufficient. A probe never authorizes canonical project repairs. ${probeFiles.length ? `Returned probe evidence for this assessment: ${probeFiles.join(', ')}; read each before deciding the claims it bears on.` : 'No probe evidence has been returned for this assessment yet.'}\n`;
   // The report schema is the same for every dispatch of a kind, so the request id and the fields this dispatch fills are named here.
   const fields = ['requestId', 'status', 'coverage', 'findings', 'probes', 'summary', 'toolFailure', ...(skeptic ? [] : ['closures', 'positions'])];
   const empties = skeptic ? '' : ' Leave closures empty unless findings are listed as pending closure, and positions empty unless this is a dialogue turn.';
-  return common + definitions + '\n\n' + role + acknowledgementBrief(request) + execution + TOOL_FAILURE_RULE + '\n' + `\nReturn the requested structured report for request ${request.id} with requestId set to that id verbatim, ${fields.slice(1, -1).join(', ')} and ${fields.at(-1)}. Use an empty probes array when no execution evidence is missing.${empties}\n`;
+  return common + definitions + '\n\n' + role + acknowledgementBrief(request) + execution + (host === 'vibe' ? vibeRules(workspace) : '') + TOOL_FAILURE_RULE + '\n' + `\nReturn the requested structured report for request ${request.id} with requestId set to that id verbatim, ${fields.slice(1, -1).join(', ')} and ${fields.at(-1)}. Use an empty probes array when no execution evidence is missing.${empties}\n`;
 }
 
 // Whether the inputs an assessment judged are unchanged, before its dispatch returns and again at import. A spec assessment judged
@@ -330,6 +350,14 @@ function buildPrompt(request, { workspace } = {}) {
 // judged the whole context, which for them is the same evidence as their snapshot and so is read once.
 function inputsUnchanged(root, kind, snapshot, contextSnapshot) {
   return fresh(root, snapshot) && (kind === 'spec' || isDeepStrictEqual(snapshot, contextSnapshot) || fresh(root, contextSnapshot));
+}
+
+// Selection observations are independent of an attempt outcome and do not count as model attempts.
+function selectionMetadata(ineligible, substitutionReason) {
+  return {
+    ...(ineligible.length > 0 ? { ineligible: structuredClone(ineligible) } : {}),
+    ...(substitutionReason !== undefined ? { substitutionReason } : {}),
+  };
 }
 
 // Saves a failed dispatch's record, which status reads to route closure. A failed write must not replace the dispatch's own error,
@@ -342,11 +370,23 @@ function recordFailure(target, record, error, write = writeJson) {
   }
 }
 
+// The coverage evidence a receipt keeps, one line per assessed dimension.
+function coverageText(report) {
+  return report.coverage.map(item => `${item.dimension}: ${item.evidence}`).join('\n');
+}
+
+// The Vibe version an attempt ran and the configuration keys a later version added that have no known default to compare with.
+function vibeAttemptFields(record) {
+  return { vibeVersion: record.version, vibeUncomparedKeys: record.uncomparedKeys };
+}
+
 async function dispatchReview(root, options, dependencies = {}) {
   const canonical = fs.realpathSync.native(root);
   validateRequest(options);
   validateBase(canonical, options.baseSha);
   const candidates = options.candidates;
+  const ineligible = options.ineligibleCandidates ?? [];
+  const selection = selectionMetadata(ineligible, options.substitutionReason);
   const directory = safeDirectory(canonical, '.nightshift/runs/reviews', true);
   const id = options.id ?? randomUUID();
   requireCondition(REQUEST_ID.test(id), 'invalid-dispatch', 'Dispatch identity must be a UUID');
@@ -389,14 +429,16 @@ async function dispatchReview(root, options, dependencies = {}) {
       writeJson(path.join(directory, 'manifest.json'), contextSnapshot);
     }
     const probeEvidence = loadProbeEvidence(canonical, options.probeEvidence, captured, contextSnapshot);
+    const probeFiles = probeEvidence.map((_evidence, index) => `context/probes/${index + 1}.json`);
     if (probeEvidence.length > 0) {
       fs.mkdirSync(path.join(context, 'probes'));
-      probeEvidence.forEach((evidence, index) => writeJson(path.join(context, 'probes', `${index + 1}.json`), evidence));
+      probeEvidence.forEach((evidence, index) => writeJson(path.join(workspace, probeFiles[index]), evidence));
     }
     // A repository boundary prevents host discovery from walking into the controller's checkout.
     git(workspace, ['init', '--quiet']);
     const continuation = options.continuation ?? null;
     const request = {
+      ...selection,
       id, workspace: path.relative(canonical, workspace).split(path.sep).join('/'), runId: options.runId, recordKind: options.recordKind ?? 'delivery', taskId: options.taskId, coveredTaskIds: options.coveredTaskIds ?? [options.taskId], commitments: options.commitments ?? {}, resources: options.resources ?? null, controller: options.controller ?? null, kind: options.kind ?? 'code', requirements: text(options.requirements, 'review requirements'), dimensions: DIMENSIONS[lensFor(options)], findings: (options.findings ?? []).map(assignedClaim), snapshot: captured, contextSnapshot, baseSha: options.baseSha,
       // A continued dispatch belongs to the lineage of the reviewer it continues; a fresh one starts its own.
       continues: continuesRecord(continuation),
@@ -429,15 +471,17 @@ async function dispatchReview(root, options, dependencies = {}) {
         terminationProven = false;
         const resumed = continuation?.kind === 'resumed' ? { session: continuation.session, priorThreadTokens: continuation.priorThreadTokens ?? null } : {};
         try {
-          result = await (dependencies.runAgent ?? runAgent)({ ...candidate, ...resumed, cwd: workspace, protectedRoot: canonical, artifacts, systemFile, env: workerEnvironment(options.resourceContext), prompt: buildPrompt(request, { workspace }), schema: schemaFor(request.kind), timeoutMs, onProcess: pid => { processStarted = true; options.onProcess?.(pid); }, onSession: options.onSession });
+          result = await (dependencies.runAgent ?? runAgent)({ ...candidate, ...resumed, vibePreflight: candidate.host === 'vibe' && options.vibePreflightRequired ? { version: options.vibeVersions?.[index] } : undefined, cwd: workspace, protectedRoot: canonical, artifacts, systemFile, env: workerEnvironment(options.resourceContext), prompt: buildPrompt(request, { workspace, host: candidate.host, probeFiles }), schema: schemaFor(request.kind), timeoutMs, onProcess: pid => { processStarted = true; options.onProcess?.(pid); }, onSession: options.onSession });
         } catch (error) {
           // A started host that fails on its own, without an operating-system error, failed in its session.
           sessionFailure = processStarted && error.errno === undefined;
           attempt.tokens = error.tokens ?? null;
           hostFailure = error.hostFailure ?? null;
+          if (error.vibe) Object.assign(attempt, vibeAttemptFields(error.vibe));
           throw error;
         }
         attempt.tokens = result.tokens ?? null;
+        if (result.vibe) Object.assign(attempt, vibeAttemptFields(result.vibe));
         hostFailure = result.hostFailure ?? null;
         terminationProven = result.exit?.descendantsReclaimed === true;
         options.onFinalizing?.();
@@ -447,6 +491,7 @@ async function dispatchReview(root, options, dependencies = {}) {
         requireCondition(result.exit?.descendantsReclaimed !== false, 'termination-unverified', 'The agent process tree did not provide complete termination evidence');
         sessionFailure = true;
         requireCondition(result.status === 'complete' && result.attributionVerified, 'unusable-review', 'Host did not return an attributable completed assessment');
+        requireCondition(result.host !== 'vibe' || result.vibe?.attributionFiles?.length > 0, 'unusable-review', 'A Vibe attempt returned no attribution evidence');
         requireCondition(!resumed.session || result.session === resumed.session, 'unusable-review', 'The host did not continue the resumed session');
         // A reported tool failure is refused here too; on a resume it stays a session failure, since resuming the same session again
         // would meet the same tools.
@@ -462,9 +507,11 @@ async function dispatchReview(root, options, dependencies = {}) {
           attributionVerified: true, strength: 'strong', independent: true,
           broad: report.status === 'complete', status: report.status,
           dimensions: report.coverage.map(item => item.dimension),
-          coverageEvidence: report.coverage.map(item => `${item.dimension}: ${item.evidence}`).join('\n'),
+          coverageEvidence: coverageText(report),
           findings: report.findings, probes: report.probes ?? [], summary: report.summary,
-          snapshot: captured, contextSnapshot, attempts, substitution: index > 0 ? options.substitutionReason : null,
+          snapshot: captured, contextSnapshot, attempts, substitution: index > 0 || ineligible.length > 0 ? options.substitutionReason ?? null : null,
+          ...selection,
+          ...(result.host === 'vibe' ? { ...vibeAttemptFields(result.vibe), attributionEvidence: result.vibe.attributionFiles.map(file => ({ path: path.relative(canonical, file).split(path.sep).join('/'), sha256: hash(fs.readFileSync(file)) })) } : {}),
           continues: request.continues, lineage: request.lineage, dialogue: request.dialogue,
           closures: report.closures ?? [], positions: report.positions ?? null, threadTokens: result.threadTokens ?? null,
           eventFile: path.relative(canonical, path.join(artifacts, 'events.jsonl')).split(path.sep).join('/'),
@@ -490,7 +537,7 @@ async function dispatchReview(root, options, dependencies = {}) {
         const sessionFailed = error.code === 'resume-failed' || unproven && !sessionHealthy;
         if (unproven) error.code = 'termination-unverified';
         if (index === candidates.length - 1 || DISPATCH_ABORTING_FAILURES.includes(error.code)) {
-          recordFailure(target, { requestId: id, attempts, code: error.code, ...(continuation?.kind === 'resumed' ? { sessionFailed } : {}) }, error, dependencies.writeJson);
+          recordFailure(target, { requestId: id, attempts, code: error.code, ...selection, ...(continuation?.kind === 'resumed' ? { sessionFailed } : {}) }, error, dependencies.writeJson);
           throw error;
         }
       }
@@ -504,6 +551,31 @@ async function dispatchReview(root, options, dependencies = {}) {
       catch (error) { writeJson(path.join(target, 'cleanup.json'), { pending: true, error: error.message }); }
     }
   }
+}
+
+// A Vibe receipt's session, outcome and model rest on exactly the files its attributionEvidence lists: the attempt's export.json and
+// the runtime state of every generation in its session journal, each still holding its recorded hash. Returns the report taken from
+// the events by the launcher's rule.
+function vibeReceiptOutput(root, receipt, events) {
+  const evidence = receipt.attributionEvidence;
+  requireCondition(Array.isArray(evidence) && evidence.length > 0 && evidence.every(item => typeof item?.path === 'string' && typeof item.sha256 === 'string'), 'unattributed-review', 'A Vibe receipt lists the files that attribute it');
+  const exportDirectory = `${path.posix.dirname(receipt.eventFile)}/vibe`;
+  const exportPath = `${exportDirectory}/export.json`;
+  const generationsPrefix = `${exportDirectory}/session/generations/`;
+  const stateSuffix = '/runtime-state.json';
+  const isState = file => file.startsWith(generationsPrefix) && file.endsWith(stateSuffix) && /^[0-9A-Za-z_-]+$/.test(file.slice(generationsPrefix.length, -stateSuffix.length));
+  const listed = evidence.map(item => item.path);
+  requireCondition(new Set(listed).size === listed.length && listed.includes(exportPath) && listed.every(file => file === exportPath || isState(file)), 'unattributed-review', 'A Vibe receipt lists its attempt\'s export.json and journal runtime states, and nothing else');
+  const generations = projectFile(root, `${exportDirectory}/session/generations`);
+  const present = fs.existsSync(generations) ? fs.readdirSync(generations).map(generation => `${exportDirectory}/session/generations/${generation}/runtime-state.json`) : [];
+  const states = listed.filter(file => file !== exportPath);
+  requireCondition(states.length > 0 && present.every(file => states.includes(file)), 'unattributed-review', 'A Vibe receipt lists every generation of its session journal');
+  for (const item of evidence) requireCondition(hash(fs.readFileSync(projectFile(root, item.path))) === item.sha256, 'changed-result', `Vibe attribution evidence changed after collection: ${item.path}`);
+  const summary = JSON.parse(fs.readFileSync(projectFile(root, exportPath), 'utf8'));
+  requireCondition(summary?.session_id === receipt.session && summary.outcome === 'finished', 'unattributed-review', 'Vibe export does not match the reviewer receipt');
+  requireCondition(states.every(file => JSON.parse(fs.readFileSync(projectFile(root, file), 'utf8'))?.session_metadata?.active_model === receipt.model), 'unattributed-review', 'Vibe journal does not name the receipt\'s model in every generation');
+
+  return vibe.reportFromEntries(events);
 }
 
 function readReceipt(root, relative, state, taskId) {
@@ -532,10 +604,13 @@ function readReceipt(root, relative, state, taskId) {
   requireCondition((receipt.recordKind ?? 'delivery') === require('./records').recordKind(state) && (assignment.recordKind ?? 'delivery') === require('./records').recordKind(state), 'wrong-result-kind', 'Report belongs to another runtime record kind');
   if (assignment.controller && isDeepStrictEqual(assignment.controller, state.controller)) requireCondition(!require('./ownership').forbiddenReviewSessions(state).has(receipt.session), 'nonindependent-worker', 'A former controller cannot author a new independent assessment');
   requireCondition(hash(fs.readFileSync(projectFile(root, receipt.eventFile))) === receipt.eventHash, 'changed-result', 'Native host result changed after collection');
-  requireCondition(isStrongModel(receipt.host, receipt.model) && receipt.attributionVerified === true && inputsUnchanged(root, receipt.kind, receipt.snapshot, receipt.contextSnapshot), 'invalid-receipt', 'Review attribution, strength or input freshness is invalid');
+  requireCondition(isAdmittedModel(receipt.host, receipt.model, roleFor(receipt.kind)), 'invalid-receipt', `The receipt's model is not a strong reviewer admitted for the ${roleFor(receipt.kind)} role`);
+  requireCondition(receipt.attributionVerified === true && inputsUnchanged(root, receipt.kind, receipt.snapshot, receipt.contextSnapshot), 'invalid-receipt', 'Review attribution or input freshness is invalid');
+  requireCondition(receipt.host === 'vibe' || receipt.attributionEvidence === undefined, 'unattributed-review', 'Only a Vibe receipt carries attributionEvidence');
   const events = fs.readFileSync(projectFile(root, receipt.eventFile), 'utf8').trim().split('\n').map(line => JSON.parse(line));
   let output;
-  if (receipt.host === 'claude') {
+  if (receipt.host === 'vibe') output = vibeReceiptOutput(root, receipt, events);
+  else if (receipt.host === 'claude') {
     const result = events.findLast(event => event.type === 'result');
     const authored = events.filter(event => event.type === 'assistant' && event.message?.model && event.message.model !== '<synthetic>');
     requireCondition(result?.session_id === receipt.session && result.subtype === 'success' && result.is_error === false && authored.length > 0 && authored.every(event => event.message.model === receipt.model && event.session_id === receipt.session), 'unattributed-review', 'Native Claude result does not match the reviewer receipt');
@@ -548,7 +623,9 @@ function readReceipt(root, relative, state, taskId) {
   // Reports from earlier releases carry no toolFailure; one that names a tool failure never produced a receipt.
   requireCondition(typeof report.toolFailure !== 'string' || !report.toolFailure.trim(), 'changed-result', 'The native report names a tool failure, so it is not a usable assessment');
   requireCondition(report.requestId === receipt.requestId && report.status === receipt.status && isDeepStrictEqual(report.findings, receipt.findings) && isDeepStrictEqual(report.probes ?? [], receipt.probes) && isDeepStrictEqual(report.coverage.map(item => item.dimension), receipt.dimensions) && isDeepStrictEqual(report.closures ?? [], receipt.closures ?? []) && isDeepStrictEqual(report.positions ?? [], receipt.positions ?? []), 'changed-result', 'Collected assessment differs from the native host report');
+  // A Vibe receipt's coverage evidence is checked too, as its import contract requires; earlier hosts keep their import rules.
+  requireCondition(receipt.host !== 'vibe' || receipt.coverageEvidence === coverageText(report), 'changed-result', 'Collected coverage evidence differs from the native Vibe report');
   return receipt;
 }
 
-module.exports = { DEFAULT_REVIEW_TIMEOUT_MS, DIALOGUE_POSITIONS, buildPrompt, dispatchReview, parseReport, readReceipt, schemaFor, validateBase, validateReport, validateRequest };
+module.exports = { DEFAULT_REVIEW_TIMEOUT_MS, DIALOGUE_POSITIONS, buildPrompt, dispatchReview, parseReport, readReceipt, schemaFor, selectionMetadata, validateBase, validateReport, validateRequest };
