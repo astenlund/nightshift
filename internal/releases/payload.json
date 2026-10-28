@@ -1,17 +1,17 @@
 {
   "schema": 1,
   "name": "nightshift",
-  "version": "3.3.16",
+  "version": "3.3.17",
   "files": [
     {
       "path": ".claude-plugin/plugin.json",
       "bytes": 641,
-      "sha256": "3c0d9caff95fa5b8f3a5bcd0b20fee4d4c54a7422ff1db068f924145c3727fb3"
+      "sha256": "7e328ea6a4f664f00270f07901884b7392c3a07c7e360a0f13bf23a1bc8b7c1d"
     },
     {
       "path": ".codex-plugin/plugin.json",
       "bytes": 1161,
-      "sha256": "46a4249b8b51fd586a539f8d81c97689800134a9999580eedf7eb4536200fb61"
+      "sha256": "73969f7477350dc4268a0183b38ea5f42c1f5fa264e51764823b79db6049939a"
     },
     {
       "path": "LICENSE",
@@ -410,13 +410,13 @@
     },
     {
       "path": "internal/runtime/vibe-config.js",
-      "bytes": 4847,
-      "sha256": "cfaf0c2e9867bf52861c5420fa550b78f7a898450dfb25a558fcd0ed569a134b"
+      "bytes": 5062,
+      "sha256": "1449efa905c72c3c271482da0760980dfdda52fa3389d0e93de69b8b9713baf0"
     },
     {
       "path": "internal/runtime/vibe.js",
-      "bytes": 15421,
-      "sha256": "d593b5320929faa06ead0f92352f70b23fc7eb026482f2e0929215632fbe043e"
+      "bytes": 15516,
+      "sha256": "c87be3aa41e45810067b544d15161d70e9de227f164c5beb86b42d1154fdba24"
     },
     {
       "path": "internal/runtime/wait.js",

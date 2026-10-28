@@ -4,6 +4,11 @@ Release notes for the Nightshift plugin, newest first. The plugin manifests carr
 
 The entries through 3.3.3 were moved here from the README on 2026-10-05 and split by version. A version without an entry had no notes recorded there.
 
+## 3.3.17
+
+- New members of Vibe's fixed-shape configuration objects are recorded by dotted path and left uncompared, as required for automatically accepted newer Vibe versions. Known members, whole-value arrays and open-ended maps retain their checks, as do active-model and provider entries.
+- Evidence: deterministic comparison and fake-Vibe launcher regressions cover the compatibility boundary. No new live-model campaign or published-installation test was run for this repair.
+
 ## 3.3.16
 
 - GLM on Mistral Vibe can lead code, spec and docs assessments; skeptics remain on Claude or Codex. The launcher uses a private Vibe home, an allowlisted environment, an untrusted project and effective-configuration checks, and import verifies the saved export and journal attribution. Vibe continuation uses replacement, including dialogue. Guidance defaults to Vibe leads, then Codex, then Claude, and the fortnight tool reports Vibe tokens separately.

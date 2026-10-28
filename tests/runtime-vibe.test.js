@@ -14,7 +14,7 @@ const { runVibe } = require('../internal/runtime/hosts');
 const { closureRoute } = require('../internal/runtime/continuation');
 const { OPERATION_EXIT_MARGIN_MS, requireDispatchFits } = require('../internal/runtime/limits');
 const vibe = require('../internal/runtime/vibe');
-const { PROVIDER_DEFAULTS } = require('../internal/runtime/vibe-config');
+const { FIXED_SHAPE_KEYS, PROVIDER_DEFAULTS } = require('../internal/runtime/vibe-config');
 const { fixtureControllerClaim, executeWithFixtureController } = require('./fixtures/controller-claim');
 
 const actor = { host: 'claude', session: 'controller' };
@@ -36,7 +36,7 @@ function scratch(t, name) {
 function cleanConfig(model = 'glm-5-3', level = 'high') {
   const entry = vibe.GLM_MODELS[model];
   return {
-    ...vibe.expectedConfiguration(model), enable_update_checks: true, log_level: null, theme: 'auto',
+    ...structuredClone(vibe.expectedConfiguration(model)), enable_update_checks: true, log_level: null, theme: 'auto',
     models: {
       'mistral-medium-3.5': { name: 'mistral-vibe-cli-latest', provider: 'mistral', alias: 'mistral-medium-3.5', thinking: 'high', thinking_levels: ['off', 'high'] },
       [model]: { name: entry.name, provider: entry.provider, alias: model, display_name: null, temperature: entry.temperature, top_p: null, max_output_tokens: null, input_price: entry.input_price, output_price: entry.output_price, cached_input_price: null, thinking: level, thinking_levels: [...entry.levels], supports_images: false, max_context_length: null, auto_compact_threshold: entry.auto_compact_threshold },
@@ -133,6 +133,68 @@ test('the effective-configuration check refuses changed, missing and entry diffe
     assert.ok(error.message.includes(key), `${key}: ${error.message}`);
   }
   assert.equal(preferences.result.status, 'complete');
+});
+
+test('fixed-shape Vibe configuration objects record new members and still require every known member', () => {
+  // Arrange
+  for (const key of FIXED_SHAPE_KEYS) {
+    const config = cleanConfig();
+    const members = Object.keys(config[key]);
+    config[key].future_setting = { arbitrary: ['value'] };
+
+    // Act and Assert
+    assert.deepEqual(vibe.configurationDifferences(config, GLM.model, 'high'), { differing: [], uncompared: [key + '.future_setting'] });
+    for (const member of members) {
+      const missing = cleanConfig();
+      delete missing[key][member];
+      assert.deepEqual(vibe.configurationDifferences(missing, GLM.model, 'high').differing, [key + '.' + member]);
+      const changed = cleanConfig();
+      changed[key][member] = 'changed';
+      assert.deepEqual(vibe.configurationDifferences(changed, GLM.model, 'high').differing, [key + '.' + member]);
+    }
+    for (const wrong of [null, [], 'invalid']) {
+      const malformed = cleanConfig();
+      malformed[key] = wrong;
+      assert.deepEqual(vibe.configurationDifferences(malformed, GLM.model, 'high').differing, [key]);
+    }
+    const absent = cleanConfig();
+    delete absent[key];
+    assert.deepEqual(vibe.configurationDifferences(absent, GLM.model, 'high').differing, [key]);
+  }
+});
+
+test('Vibe configuration arrays, open-ended maps and known entry values remain whole-value comparisons', () => {
+  // Arrange
+  const cases = [
+    ['enabled_tools', config => { config.enabled_tools.push('shell'); }],
+    ['catalog_model_aliases', config => { config.catalog_model_aliases.other = ['model']; }],
+    ['tools', config => { config.tools.read_file = { instructions: 'other' }; }],
+    ['models.glm-5-3.thinking_levels', config => { config.models[GLM.model].thinking_levels.push('other'); }],
+    ['providers.mistral.extra_headers', config => { config.providers[0].extra_headers = { custom: 'value' }; }],
+  ];
+
+  // Act and Assert
+  for (const [key, change] of cases) {
+    const config = cleanConfig();
+    change(config);
+    assert.deepEqual(vibe.configurationDifferences(config, GLM.model, 'high').differing, [key]);
+  }
+});
+
+test('a later Vibe version records new fixed-shape, active-model and provider members through the launcher', async t => {
+  // Arrange
+  const config = cleanConfig();
+  for (const key of FIXED_SHAPE_KEYS) config[key].future_setting = true;
+  config.models[GLM.model].future_setting = true;
+  config.providers[0].future_setting = true;
+
+  // Act
+  const later = await launch(t, { installed: '3.1.0', control: { vibeVersion: '3.1.0', config } });
+
+  // Assert
+  assert.equal(later.error, null);
+  assert.equal(later.result.status, 'complete');
+  assert.deepEqual(later.result.vibe.uncomparedKeys, ['experiments.future_setting', 'models.glm-5-3.future_setting', 'project_context.future_setting', 'providers.mistral.future_setting', 'utility_models.future_setting']);
 });
 
 test('the version floor refuses an older or unreadable Vibe before launch, a version changed after launch, and records a later version', async t => {

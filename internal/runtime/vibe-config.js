@@ -74,6 +74,9 @@ const COMPARED_DEFAULTS = Object.freeze({
 
 const ALLOWLISTED_KEYS = Object.freeze(["auto_compact_threshold","active_transcribe_model","transcribe_providers","transcribe_models","active_tts_model","tts_providers","tts_models","enable_otel","otel_endpoint","otel_redaction","theme","applied_migrations","disable_welcome_banner_animation","cursor_blink","show_greeting","autocopy_to_clipboard","file_watcher_for_autocomplete","ask_confirmation_on_exit","displayed_workdir","context_warnings","voice_mode_enabled","narrator_enabled","show_thinking_nodes","show_subagent_status_list","worktree_limit","raise_on_compaction_failure","enable_update_checks","enable_auto_update","enable_notifications","experimental_enable_tab_status","api_timeout","api_retry_max_elapsed_time","api_stream_idle_timeout","api_connect_timeout","api_write_timeout","api_pool_timeout","log_level","session_logging"]);
 
+// These schema objects have named members. The remaining compared objects are open-ended value maps.
+const FIXED_SHAPE_KEYS = Object.freeze(['utility_models', 'project_context', 'experiments']);
+
 // Keys compared per entry: the active model's entry in models and its provider's entry in providers.
 const PER_ENTRY_KEYS = Object.freeze(['models', 'providers']);
 
@@ -99,4 +102,4 @@ const PROVIDER_DEFAULTS = Object.freeze({ mistral: Object.freeze({
   "extra_headers": {}
 }) });
 
-module.exports = { ALLOWLISTED_KEYS, COMPARED_DEFAULTS, MODEL_ENTRY_ALLOWLISTED, MODEL_ENTRY_COMPARED, PER_ENTRY_KEYS, PROVIDER_DEFAULTS };
+module.exports = { ALLOWLISTED_KEYS, COMPARED_DEFAULTS, FIXED_SHAPE_KEYS, MODEL_ENTRY_ALLOWLISTED, MODEL_ENTRY_COMPARED, PER_ENTRY_KEYS, PROVIDER_DEFAULTS };

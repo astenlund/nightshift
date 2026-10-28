@@ -11,7 +11,7 @@ const { isDeepStrictEqual: sameValue } = require('node:util');
 const { RunError, requireCondition } = require('./store');
 const { resolveTrustedExecutable } = require('../filesystem-primitives');
 const { compareVersions, parseModel } = require('./models');
-const { ALLOWLISTED_KEYS, COMPARED_DEFAULTS, MODEL_ENTRY_ALLOWLISTED, MODEL_ENTRY_COMPARED, PER_ENTRY_KEYS, PROVIDER_DEFAULTS } = require('./vibe-config');
+const { ALLOWLISTED_KEYS, COMPARED_DEFAULTS, FIXED_SHAPE_KEYS, MODEL_ENTRY_ALLOWLISTED, MODEL_ENTRY_COMPARED, PER_ENTRY_KEYS, PROVIDER_DEFAULTS } = require('./vibe-config');
 
 const VERSION_FLOOR = Object.freeze([3, 0, 0]);
 const AGENT = 'nightshift-reviewer';
@@ -245,9 +245,6 @@ function configurationDifferences(config, model, level) {
   const entry = GLM_MODELS[model];
   const differing = [];
   const uncompared = [];
-  for (const [key, value] of Object.entries(expectedConfiguration(model))) {
-    if (!Object.hasOwn(config, key) || !sameValue(config[key], value)) differing.push(key);
-  }
   const compareEntry = (prefix, actual, expected, allowlisted) => {
     if (actual === null || typeof actual !== 'object' || Array.isArray(actual)) {
       differing.push(prefix);
@@ -259,6 +256,10 @@ function configurationDifferences(config, model, level) {
     }
     uncompared.push(...Object.keys(actual).filter(key => !Object.hasOwn(expected, key) && !allowlisted.includes(key)).map(key => `${prefix}.${key}`));
   };
+  for (const [key, value] of Object.entries(expectedConfiguration(model))) {
+    if (FIXED_SHAPE_KEYS.includes(key)) compareEntry(key, config[key], value, []);
+    else if (!Object.hasOwn(config, key) || !sameValue(config[key], value)) differing.push(key);
+  }
   const expectedEntry = { name: entry.name, provider: entry.provider, alias: model, thinking: level, thinking_levels: entry.levels, temperature: entry.temperature, ...MODEL_ENTRY_DEFAULTS };
   for (const key of MODEL_ENTRY_COMPARED) requireCondition(Object.hasOwn(expectedEntry, key), 'vibe-model-unknown', `The launcher's entry for ${model} lacks ${key}`);
   compareEntry(`models.${model}`, config.models?.[model], expectedEntry, MODEL_ENTRY_ALLOWLISTED);
@@ -271,7 +272,7 @@ function configurationDifferences(config, model, level) {
   return { differing, uncompared: uncompared.sort() };
 }
 
-// The expected value of every key compared as a whole: the launcher's own value for each key it set, else Vibe's built-in default.
+// The expected value of every compared key: the launcher's own value for each key it set, else Vibe's built-in default.
 // The models and providers entries are compared per entry above.
 function expectedConfiguration(model) {
   return {
