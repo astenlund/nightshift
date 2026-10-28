@@ -245,8 +245,8 @@
     },
     {
       "path": "internal/runtime/hosts.js",
-      "bytes": 27009,
-      "sha256": "62eeeaac456c9d19c13833e3ebd7e66320c9648f1a0c0e7cfd417be0cd938eb3"
+      "bytes": 27044,
+      "sha256": "f7ca6551d4eb90f8099784f9521eca0faa30aafe6918531aab7077fe13b588ad"
     },
     {
       "path": "internal/runtime/legacy-approval-v1.js",

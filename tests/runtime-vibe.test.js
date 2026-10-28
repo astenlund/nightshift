@@ -11,6 +11,7 @@ const { RunStore } = require('../internal/runtime/store');
 const { hash } = require('../internal/runtime/evidence');
 const { readReceipt, validateRequest } = require('../internal/runtime/review');
 const { runVibe } = require('../internal/runtime/hosts');
+const { ownTokens } = require('../tools/fortnight');
 const { closureRoute } = require('../internal/runtime/continuation');
 const { OPERATION_EXIT_MARGIN_MS, requireDispatchFits } = require('../internal/runtime/limits');
 const vibe = require('../internal/runtime/vibe');
@@ -195,6 +196,30 @@ test('a later Vibe version records new fixed-shape, active-model and provider me
   assert.equal(later.error, null);
   assert.equal(later.result.status, 'complete');
   assert.deepEqual(later.result.vibe.uncomparedKeys, ['experiments.future_setting', 'models.glm-5-3.future_setting', 'project_context.future_setting', 'providers.mistral.future_setting', 'utility_models.future_setting']);
+});
+
+test('Vibe usage preserves valid counts and marks malformed exports unknown in accounting', async t => {
+  // Arrange
+  const cases = [
+    ['negative', { total_tokens: -1 }, null],
+    ['fractional', { total_tokens: 1.5 }, null],
+    ['unsafe', { total_tokens: Number.MAX_SAFE_INTEGER + 1 }, null],
+    ['string', { total_tokens: '4321' }, null],
+    ['missing', {}, null],
+    ['null', null, null],
+    ['zero', { total_tokens: 0 }, 0],
+    ['ordinary', { total_tokens: 4321 }, 4321],
+  ];
+
+  // Act and Assert
+  for (const [name, usage, expected] of cases) {
+    const { result, error } = await launch(t, { control: { usage } });
+    assert.equal(error, null, name);
+    assert.equal(result.tokens, expected, name);
+    assert.equal(result.threadTokens, expected, name);
+    const accounted = ownTokens({ host: GLM.host, threadTokens: result.threadTokens, attempts: [{ host: GLM.host, status: result.status, tokens: result.tokens }] }, new Map());
+    assert.deepEqual({ known: accounted.vibe, unknown: accounted.vibeUnknownAttempts }, { known: expected ?? 0, unknown: expected === null ? 1 : 0 }, name);
+  }
 });
 
 test('the version floor refuses an older or unreadable Vibe before launch, a version changed after launch, and records a later version', async t => {

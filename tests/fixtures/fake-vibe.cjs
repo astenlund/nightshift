@@ -37,7 +37,7 @@ if (control.generationsFile) {
     fs.writeFileSync(path.join(directory, 'runtime-state.json'), JSON.stringify({ session_metadata: { active_model: model } }));
   });
 }
-const summary = { session_id: control.session ?? 'vibe-session', outcome: control.outcome ?? 'finished', vibe_version: control.vibeVersion ?? '3.0.0', usage: { total_tokens: 4321 }, config: control.config };
+const summary = { session_id: control.session ?? 'vibe-session', outcome: control.outcome ?? 'finished', vibe_version: control.vibeVersion ?? '3.0.0', usage: Object.hasOwn(control, 'usage') ? control.usage : { total_tokens: 4321 }, config: control.config };
 if (control.error) summary.error = control.error;
 fs.writeFileSync(path.join(outputDir, 'export.json'), JSON.stringify(summary));
 const text = control.text ?? `I read the change.\n\n\`\`\`json\n${JSON.stringify(control.report)}\n\`\`\``;

@@ -422,7 +422,7 @@ async function runVibe(options) {
       execution.failArtifact(error);
     }
     const summary = vibe.readJsonIfPresent(path.join(exportDirectory, 'export.json'));
-    tokens = Number.isSafeInteger(summary?.usage?.total_tokens) ? summary.usage.total_tokens : null;
+    tokens = Number.isSafeInteger(summary?.usage?.total_tokens) && summary.usage.total_tokens >= 0 ? summary.usage.total_tokens : null;
     hostFailure = overflowed ? `Vibe's output passed ${vibe.OUTPUT_LIMIT} bytes, so the process was stopped` : vibeHostFailure(summary, execution.stderrTail());
     const { exportFile, states } = vibe.journalFiles(exportDirectory);
     record.attributionFiles = [exportFile, ...states];

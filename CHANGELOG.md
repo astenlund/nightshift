@@ -7,7 +7,8 @@ The entries through 3.3.3 were moved here from the README on 2026-10-05 and spli
 ## 3.3.17
 
 - New members of Vibe's fixed-shape configuration objects are recorded by dotted path and left uncompared, as required for automatically accepted newer Vibe versions. Known members, whole-value arrays and open-ended maps retain their checks, as do active-model and provider entries.
-- Evidence: deterministic comparison and fake-Vibe launcher regressions cover the compatibility boundary. No new live-model campaign or published-installation test was run for this repair.
+- Invalid Vibe usage, including a negative token count, stays unknown rather than reducing recorded spend. Zero and other nonnegative safe-integer counts retain their original values.
+- Evidence: deterministic comparison, fake-Vibe launcher and usage-accounting regressions cover both repairs. No new live-model campaign or published-installation test was run for this repair.
 
 ## 3.3.16
 
