@@ -4,6 +4,12 @@ Release notes for the Nightshift plugin, newest first. The plugin manifests carr
 
 The entries through 3.3.3 were moved here from the README on 2026-10-05 and split by version. A version without an entry had no notes recorded there.
 
+## 3.3.18
+
+- Every assessment receives the recorded checks of the target it assesses and of the tasks its assessment covers: the latest invocation of each named check when it passed and its inputs are unchanged, with its command, exit code, output tail, input count and digest, and the inputs the reviewed change touches, and the last earlier failing invocation of the same name and command as its reproduction, naming the inputs whose content differed from the passing run. A check recorded alike on several covered tasks is listed once. The prompt says a passing check on matching inputs is execution evidence, not something to rerun by probe, so the controller cites only a missing reproduction's reason and stand-in evidence by hand.
+- Lead prompts define critical, important and minor with the seeded-defect suite's severity rubric, and every prompt states the layout of the copy a probe runs in. The runtime reference and the operating brief say what the dispatch's `rules` may carry, since it reaches every reviewer's system prompt verbatim.
+- Evidence: deterministic selection, prompt and dispatch regressions cover the attached checks and the new prompt text.
+
 ## 3.3.17
 
 - New members of Vibe's fixed-shape configuration objects are recorded by dotted path and left uncompared, as required for automatically accepted newer Vibe versions. Known members, whole-value arrays and open-ended maps retain their checks, as do active-model and provider entries.

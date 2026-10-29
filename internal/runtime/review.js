@@ -5,9 +5,9 @@ const path = require('node:path');
 const { randomUUID } = require('node:crypto');
 const { spawnSync } = require('node:child_process');
 const { isDeepStrictEqual } = require('node:util');
-const { DIMENSIONS, commitmentsFor } = require('./lifecycle');
+const { DIMENSIONS, commitmentsFor, latestChecks } = require('./lifecycle');
 const { requireCondition, safeDirectory, text } = require('./store');
-const { fileIdentity, fresh, hash, inventorySnapshot, projectFile, snapshot } = require('./evidence');
+const { fileIdentity, fresh, freshAll, hash, inventorySnapshot, projectFile, snapshot } = require('./evidence');
 const { boundedHostText, codexModelContradiction, runAgent } = require('./hosts');
 const { writeJson, writeText } = require('./artifacts');
 const { PROBE_TIMEOUT_CAP_MS, PROBE_TIMEOUT_FLOOR_MS, loadProbeEvidence } = require('./probes');
@@ -24,6 +24,10 @@ const DISPATCH_ABORTING_FAILURES = Object.freeze(['review-input-drift', 'snapsho
 // Failures that do not concern a resumed session, which keep their own codes when a resume fails.
 const SESSION_INDEPENDENT_FAILURES = Object.freeze([...DISPATCH_ABORTING_FAILURES, 'nonindependent-worker', 'host-start-failed']);
 const PROBE_TIMEOUT_RULE = `timeoutMs is in milliseconds, from ${PROBE_TIMEOUT_FLOOR_MS} to ${PROBE_TIMEOUT_CAP_MS}; allow for the command's full expected duration.`;
+// The seeded-defect suite grades planted severities by this rubric, so a change to it changes what the suite measures.
+const SEVERITY_RUBRIC = 'Severity rubric. Critical: the defect loses or corrupts data or state, breaks a security or authority boundary, or lets a gate pass that should refuse. Important: the defect gives wrong behavior on a path the agreed outcome covers, or breaks a stated requirement, without the critical consequences. Minor: the defect is real but leaves agreed behavior intact, such as a misleading message or a missed simplification. In documentation and specs, behavior is what the text tells its reader. Rate the consequence the evidence shows, not the worst one imaginable.';
+// How much of a recorded check's output an assessment receives: the end, where test runners print their totals.
+const CHECK_OUTPUT_TAIL = 2000;
 const TOOL_FAILURE_RULE = 'toolFailure is empty when your tools worked or you worked around a failure. When a failure of your own tools kept you from reading or inspecting what your assessment needed, name the tool and the error it returned there; the controller then gives the assessment to another reviewer. A deciding check that your read-only tools cannot run by design is a probe request, not a tool failure.';
 
 const DIMENSION_BRIEFS = Object.freeze({
@@ -36,7 +40,7 @@ const DIMENSION_BRIEFS = Object.freeze({
   'security-data-safety': 'Are permissions, trust boundaries, confidentiality, data integrity, preservation and recovery respected?',
   'design-maintainability': 'Are local code and overall system decomposition proportionate and understandable? Check local clarity, ownership, reuse and duplication, and system module boundaries, dependency direction, shared contracts and coupling.',
   'performance-resources': 'Does the change avoid consequential latency, throughput, resource or operating-cost problems under realistic conditions?',
-  'tests-evidence': 'Do meaningful assertions and realistic execution establish the behavior across the other lenses, and expose remaining uncertainty without mandating a separate verifier? Does a fix of misbehavior carry a check that failed before it, or, when no practical automated reproduction exists, a recorded reason and stand-in evidence? Judge this from the tests in the change and the reproduction evidence the requirements cite.',
+  'tests-evidence': 'Do meaningful assertions and realistic execution establish the behavior across the other lenses, and expose remaining uncertainty without mandating a separate verifier? Does a fix of misbehavior carry a check that failed before it, or, when no practical automated reproduction exists, a recorded reason and stand-in evidence? Judge this from the tests in the change, the recorded checks attached to this assessment with their reproductions, and the reason and stand-in evidence the requirements cite.',
   'claim-accuracy': 'Does each changed or affected claim match the code, records and evidence it describes, at the version it names?',
   'sweep-completeness': 'Which documentation, changed or not, did the cumulative change leave stale, contradictory or missing, including navigable references and history moves?',
   'backlog-conventions': 'Do backlog changes follow the project\'s documented grammar, dependency, history and retirement conventions? Parser validity itself is evidenced by the controller\'s recorded ready parser check run with --check; without that flag the parser exits 0 despite structural errors, notices and missing indexes, so such a check does not establish validity.',
@@ -315,6 +319,59 @@ function acknowledgementBrief(request) {
   return statements.length === 0 ? '' : `Recorded acknowledgements, settled by the governing requirement or the user. Do not raise them again; adjacent issues about how they are carried out remain in scope:\n${statements.map(statement => `- ${statement}`).join('\n')}\n`;
 }
 
+function checkCommand(check) {
+  return [check.executable, ...(check.args ?? [])];
+}
+
+function inputFiles(check) {
+  return (check.snapshot?.files ?? []).map(file => ({ path: file.path, sha256: file.sha256 }));
+}
+
+// A check's inputs travel as their count and the snapshot's digest, naming only the files that matter to the reader, since a full
+// listing repeats every input path in every prompt of the run.
+function checkRun(check, named) {
+  const files = inputFiles(check);
+  return { command: checkCommand(check), exitCode: check.exitCode ?? null, error: check.error ?? null, finishedAt: check.finishedAt ?? null, outputTail: (check.output ?? '').slice(-CHECK_OUTPUT_TAIL), inputs: { count: files.length, digest: check.snapshot?.digest ?? null, ...named(files) } };
+}
+
+// The recorded checks an assessment receives: for each covered target, the latest invocation of each named check when it passed on
+// inputs that are still current, with the last failing invocation of the same name and command before it, the reproduction a repair
+// of misbehavior runs first; a failure of another command under that name reproduces nothing this run reran. A failing, pending or
+// stale latest invocation is left out, since no gate accepts it either. A passing check names the inputs the reviewed change touches
+// and a reproduction the inputs whose content differed from that passing run; one check recorded on several targets with the same
+// command and inputs is listed once with every target's id.
+function attachedChecks(root, targets, { changed = new Set(), judge = freshAll } = {}) {
+  const candidates = targets.flatMap(target => latestChecks(target).filter(check => check.passed === true && !check.pending).map(check => ({ target, check })));
+  const current = candidates.length === 0 ? [] : judge(root, candidates.map(item => item.check.snapshot));
+  const attached = new Map();
+  for (const { target, check } of candidates.filter((_item, index) => current[index])) {
+    const key = JSON.stringify([check.name, checkCommand(check), check.snapshot.digest]);
+    const earlier = target.checks.slice(0, target.checks.lastIndexOf(check));
+    const reproduction = earlier.findLast(item => item.name === check.name && isDeepStrictEqual(checkCommand(item), checkCommand(check)) && !item.pending && (item.error || item.exitCode !== 0));
+    const known = attached.get(key);
+    if (known) {
+      known.taskIds.push(target.id);
+      if (known.reproduction || !reproduction) continue;
+    }
+    const passing = new Map(inputFiles(check).map(file => [file.path, file.sha256]));
+    const differing = files => {
+      const read = new Set(files.map(file => file.path));
+      const onlyPassing = [...passing.keys()].filter(file => !read.has(file)).map(file => ({ path: file, sha256: null }));
+      return { differing: [...files.filter(file => passing.get(file.path) !== file.sha256), ...onlyPassing] };
+    };
+    attached.set(key, { taskIds: known?.taskIds ?? [target.id], name: check.name, ...checkRun(check, files => ({ changed: files.filter(file => changed.has(file.path)) })), reproduction: reproduction ? checkRun(reproduction, differing) : null });
+  }
+
+  return [...attached.values()];
+}
+
+function checkBrief(request) {
+  const checks = request.checks ?? [];
+  if (checks.length === 0) return 'No passing recorded check ran on inputs that are unchanged since; execution evidence comes from probe requests.\n';
+
+  return listing('Recorded checks: the controller ran each through the runtime, and every input a passing check read is unchanged since it ran. Each gives the number of its inputs and their digest, and names the inputs this change touches. A passing check on matching inputs is execution evidence: rely on it, and request a probe only for execution these checks do not cover, never to rerun one. A reproduction is the last failing run of the same name and command before it, the evidence a fix of misbehavior carries; it names the inputs whose content differed from the passing run, with a null hash for an input only the passing run read, which shows what the fix changed. A fix of misbehavior whose check lists none needs the reason and stand-in evidence the requirements cite.', checks);
+}
+
 // Vibe gives its reviewer a TypeScript sandbox that cannot be removed; what it runs there is a transcription, not the project. It also
 // refuses reads outside its working directory, which a reviewer guessing absolute paths meets as a tool failure.
 function vibeRules(workspace) {
@@ -331,18 +388,18 @@ function buildPrompt(request, { workspace, host, probeFiles = [] } = {}) {
   const scope = skeptic ? 'Use the complete supplied artifact and cumulative change as context for validating the assigned claims and their affected siblings.' : 'Assess the complete supplied artifact and cumulative change, surrounding code and sibling paths.';
   const purpose = skeptic ? 'deciding each assigned claim' : dialogue ? 'answering the dialogue' : 'a credible broad assessment';
   const common = `${opening(request, skeptic ? 'skeptic' : 'strong lead reviewer', workspace)} ${scope} Reviewed files are immutable. Do not edit them, commit, or publish. Mutating probes require a separate isolated fixture; if tools cannot support a deciding check, report the missing evidence. Do not delegate unless the assignment explicitly includes peer dispatch. Report only concrete consequences with evidence; do not manufacture findings or prescribe unnecessary implementation detail.\n\nRequest: ${request.id}\nRequirements:\n${request.requirements}\n\nAll applicable review dimensions:\n${request.dimensions.join('\n')}\n\nRead context/diff.patch, context/manifest.json and the files in project/ as needed for ${purpose}. The full source snapshot is available. Prior fixes are included in the cumulative change and need surrounding/sibling coverage.\n`;
-  const lead = 'Evaluate all dimensions without quotas or equal-depth narration. The author has not selected relevant dimensions. If the assignment is too large for credible coverage, return incomplete and describe the needed peer coverage. One underlying problem is one finding.\n';
+  const lead = `Evaluate all dimensions without quotas or equal-depth narration. The author has not selected relevant dimensions. If the assignment is too large for credible coverage, return incomplete and describe the needed peer coverage. One underlying problem is one finding. ${SEVERITY_RUBRIC}\n`;
   const documentation = 'This is a documentation review. The code in the cumulative change is context: judge what the documentation, including the backlog, says about it, not whether the code is correct. Report as a finding any changed file you judge to be operating instructions that agents load or are directed to follow during a run, such as skills, instruction files or runtime reference guidance, so the controller routes it to code assessment.\n';
   const proposal = 'For every confirmed verdict give repairProposal: the approach a repair would take, the smallest change that fixes the property the finding\'s obligation keys on rather than only the reported case, preferring removal or generalization over added mechanism, with enough reasoning to judge it and without a complete patch, whatever you recommend about implementing it. For a refuted or unverified verdict give an empty repairProposal unless a repair is still worth describing.\n';
   const skepticRole = `The assigned finding set is closed: return exactly one verdict for each supplied full id and retain that id verbatim. Validate each claim against concrete evidence, attempting refutation. Separate factual validity and practical value. Missing evidence is unverified. Evaluate whether it is worthwhile to implement, defer or skip, preserving agreed obligations. Unassigned observations belong in summary for separate controller routing and independent assessment before disposition; they are not assigned verdicts. ${proposal}Findings:\n${JSON.stringify(request.findings, null, 2)}\n`;
   const leadRole = (request.kind === 'docs' ? documentation : '') + lead + (request.continues ? continuationBrief(request) : '');
   const role = (skeptic ? skepticRole : '') + (dialogue ? dialogueBrief(request) : skeptic ? '' : leadRole);
   const definitions = request.dimensions.map(dimension => `${dimension}: ${DIMENSION_BRIEFS[dimension]}`).join('\n');
-  const execution = `If a deciding claim needs execution unavailable in your read-only tools, request a bounded probe in probes, with its purpose, exact executable/args, timeout and ASCII fixture files. ${PROBE_TIMEOUT_RULE} The controller executes it in a separate private copy and returns raw command/output evidence for your independent assessment. Remain incomplete/unverified until that evidence is sufficient. A probe never authorizes canonical project repairs. ${probeFiles.length ? `Returned probe evidence for this assessment: ${probeFiles.join(', ')}; read each before deciding the claims it bears on.` : 'No probe evidence has been returned for this assessment yet.'}\n`;
+  const execution = `If a deciding claim needs execution unavailable in your read-only tools, request a bounded probe in probes, with its purpose, exact executable/args, timeout and ASCII fixture files. ${PROBE_TIMEOUT_RULE} The controller executes it in a separate private copy and returns raw command/output evidence for your independent assessment. That copy's root, the probe's working directory, holds the project files at their project-relative paths, not under project/, with no context/ folder, and is a new Git repository; each fixture file is written at its path relative to that root, replacing a project file of the same path, so name every path in args and files relative to it. Remain incomplete/unverified until that evidence is sufficient. A probe never authorizes canonical project repairs. ${probeFiles.length ? `Returned probe evidence for this assessment: ${probeFiles.join(', ')}; read each before deciding the claims it bears on.` : 'No probe evidence has been returned for this assessment yet.'}\n`;
   // The report schema is the same for every dispatch of a kind, so the request id and the fields this dispatch fills are named here.
   const fields = ['requestId', 'status', 'coverage', 'findings', 'probes', 'summary', 'toolFailure', ...(skeptic ? [] : ['closures', 'positions'])];
   const empties = skeptic ? '' : ' Leave closures empty unless findings are listed as pending closure, and positions empty unless this is a dialogue turn.';
-  return common + definitions + '\n\n' + role + acknowledgementBrief(request) + execution + (host === 'vibe' ? vibeRules(workspace) : '') + TOOL_FAILURE_RULE + '\n' + `\nReturn the requested structured report for request ${request.id} with requestId set to that id verbatim, ${fields.slice(1, -1).join(', ')} and ${fields.at(-1)}. Use an empty probes array when no execution evidence is missing.${empties}\n`;
+  return common + definitions + '\n\n' + role + acknowledgementBrief(request) + checkBrief(request) + execution + (host === 'vibe' ? vibeRules(workspace) : '') + TOOL_FAILURE_RULE + '\n' + `\nReturn the requested structured report for request ${request.id} with requestId set to that id verbatim, ${fields.slice(1, -1).join(', ')} and ${fields.at(-1)}. Use an empty probes array when no execution evidence is missing.${empties}\n`;
 }
 
 // Whether the inputs an assessment judged are unchanged, before its dispatch returns and again at import. A spec assessment judged
@@ -409,6 +466,8 @@ async function dispatchReview(root, options, dependencies = {}) {
     const exclusionArgs = excludedPaths.map(file => `:(exclude,literal)${file}`);
     let diff = git(canonical, ['diff', '--no-ext-diff', '--binary', options.baseSha, '--', '.', ...exclusionArgs]);
     const untracked = git(canonical, ['ls-files', '-z', '--others', '--exclude-standard']).split('\0').filter(file => files.includes(file));
+    const changed = new Set([...git(canonical, ['diff', '--name-only', '--relative', '--no-renames', '-z', options.baseSha, '--', '.', ...exclusionArgs]).split('\0').filter(Boolean), ...untracked]);
+    const checks = attachedChecks(canonical, options.recordedChecks ?? [], { changed });
     for (const file of untracked) {
       const added = spawnSync('git', ['diff', '--no-index', '--no-ext-diff', '--binary', '--', '/dev/null', file], { cwd: canonical, windowsHide: true, encoding: 'utf8', maxBuffer: 32 * 1024 * 1024, timeout: 30000 });
       requireCondition(!added.error && [0, 1].includes(added.status), 'diff-failed', added.error?.message ?? added.stderr);
@@ -439,7 +498,7 @@ async function dispatchReview(root, options, dependencies = {}) {
     const continuation = options.continuation ?? null;
     const request = {
       ...selection,
-      id, workspace: path.relative(canonical, workspace).split(path.sep).join('/'), runId: options.runId, recordKind: options.recordKind ?? 'delivery', taskId: options.taskId, coveredTaskIds: options.coveredTaskIds ?? [options.taskId], commitments: options.commitments ?? {}, resources: options.resources ?? null, controller: options.controller ?? null, kind: options.kind ?? 'code', requirements: text(options.requirements, 'review requirements'), dimensions: DIMENSIONS[lensFor(options)], findings: (options.findings ?? []).map(assignedClaim), snapshot: captured, contextSnapshot, baseSha: options.baseSha,
+      id, workspace: path.relative(canonical, workspace).split(path.sep).join('/'), runId: options.runId, recordKind: options.recordKind ?? 'delivery', taskId: options.taskId, coveredTaskIds: options.coveredTaskIds ?? [options.taskId], commitments: options.commitments ?? {}, resources: options.resources ?? null, controller: options.controller ?? null, kind: options.kind ?? 'code', requirements: text(options.requirements, 'review requirements'), dimensions: DIMENSIONS[lensFor(options)], findings: (options.findings ?? []).map(assignedClaim), checks, snapshot: captured, contextSnapshot, baseSha: options.baseSha,
       // A continued dispatch belongs to the lineage of the reviewer it continues; a fresh one starts its own.
       continues: continuesRecord(continuation),
       lineage: continuation?.lineage ?? id,
@@ -628,4 +687,4 @@ function readReceipt(root, relative, state, taskId) {
   return receipt;
 }
 
-module.exports = { DEFAULT_REVIEW_TIMEOUT_MS, DIALOGUE_POSITIONS, buildPrompt, dispatchReview, parseReport, readReceipt, schemaFor, selectionMetadata, validateBase, validateReport, validateRequest };
+module.exports = { DEFAULT_REVIEW_TIMEOUT_MS, DIALOGUE_POSITIONS, attachedChecks, buildPrompt, dispatchReview, parseReport, readReceipt, schemaFor, selectionMetadata, validateBase, validateReport, validateRequest };

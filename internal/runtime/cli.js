@@ -211,6 +211,8 @@ async function execute(root, request, dependencies = {}) {
           resourceContext: dependencies.resourceContext,
           artifactPaths: request.review.artifactPaths ?? (task.agreement?.spec ? [task.agreement.spec] : undefined),
           probeEvidence: task.probeEvidence ?? [],
+          // The closing record is not among the tasks it covers, so the dispatched target's own checks are added to theirs.
+          recordedChecks: [task, ...coveredTasks.filter(candidate => candidate !== task)],
           coveredTaskIds: coveredTasks.map(candidate => candidate.id),
           commitments: commitmentsFor(coveredTasks),
           requirements: request.review.requirements + '\n\nAccepted commitments covered by this cumulative assessment:\n' + JSON.stringify(coveredTasks.map(candidate => ({ id: candidate.id, agreement: candidate.agreement }))),

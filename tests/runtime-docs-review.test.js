@@ -157,6 +157,40 @@ for (const [label, alter, expected] of [
   }
 });
 
+test('a closing review receives the closing record\'s own checks beside those of the tasks it covers', async t => {
+  // Arrange
+  const f = fixture(t);
+  completeTask(f);
+  close(f);
+  f.check(CLOSING_TARGET, [BACKLOG], 'Ready parser');
+  const review = { kind: 'docs', baseSha: f.baseSha, requirements: 'Tracking edits after triage', rules: 'Do not edit reviewed inputs.', candidates: [{ host: 'claude', model: 'claude-fable-5-1', effort: 'high' }] };
+
+  // Act
+  const dispatched = await executeWithFixtureController(f.root, { actor, revision: f.store.read().revision, action: 'dispatch', taskId: CLOSING_TARGET, review }, { runAgent: agent([], DIMENSIONS.docs) });
+
+  // Assert
+  const checks = JSON.parse(fs.readFileSync(path.join(path.dirname(dispatched.receiptFile), 'request.json'), 'utf8')).checks;
+  assert.deepEqual(checks.map(check => [check.taskIds, check.name]), [[[CLOSING_TARGET], 'Ready parser'], [['code'], 'Fixture check']]);
+});
+
+test('a task review receives the checks of its completed cumulative siblings and not of open ones', async t => {
+  // Arrange
+  const task = (id, title) => ({ id, title, agreement: { source: 'User', outcome: `${title} behavior` } });
+  const f = fixture(t, [task('done', 'Completed'), task('open', 'Open'), task('current', 'Current')]);
+  completeTask(f, 'done');
+  f.check('open', ['src.js'], 'Open check');
+  f.act({ action: 'start-task', taskId: 'current' });
+  f.check('current', ['src.js'], 'Current check');
+  const review = { kind: 'code', baseSha: f.baseSha, requirements: 'Current behavior', rules: 'Do not edit reviewed inputs.', candidates: [{ host: 'claude', model: 'claude-fable-5-1', effort: 'high' }] };
+
+  // Act
+  const dispatched = await executeWithFixtureController(f.root, { actor, revision: f.store.read().revision, action: 'dispatch', taskId: 'current', review }, { runAgent: agent([], DIMENSIONS.code) });
+
+  // Assert
+  const checks = JSON.parse(fs.readFileSync(path.join(path.dirname(dispatched.receiptFile), 'request.json'), 'utf8')).checks;
+  assert.deepEqual(checks.map(check => [check.taskIds, check.name]), [[['current'], 'Current check'], [['done'], 'Fixture check']]);
+});
+
 test('a docs review is dispatched with the documentation lens, and its skeptic takes that lens', async t => {
   const f = fixture(t);
   const run = (request, overrides) => executeWithFixtureController(f.root, { actor, revision: f.store.read().revision, ...request }, overrides);

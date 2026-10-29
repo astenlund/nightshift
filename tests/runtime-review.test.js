@@ -6,7 +6,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 const test = require('node:test');
-const { dispatchReview, readReceipt, schemaFor, validateBase, validateReport } = require('../internal/runtime/review');
+const { attachedChecks, buildPrompt, dispatchReview, readReceipt, schemaFor, validateBase, validateReport } = require('../internal/runtime/review');
 const { isAdmittedModel, roleFor } = require('../internal/runtime/models');
 const { DIMENSIONS, reviewGate } = require('../internal/runtime/lifecycle');
 const { fileIdentity, fresh, hash } = require('../internal/runtime/evidence');
@@ -1134,6 +1134,82 @@ for (const interleaved of [true, false]) {
     } finally { store.close(); }
   });
 }
+
+test('an assessment receives the latest passing current checks of every covered target with their reproductions', () => {
+  // Arrange
+  const run = (name, outcome, extra = {}) => ({ name, executable: 'node', args: ['--test'], exitCode: outcome === 'pass' ? 0 : 1, error: null, passed: outcome === 'pass', output: `${name} ${outcome}`, finishedAt: '2026-10-29T00:00:00.000Z', snapshot: { digest: `${name}-${outcome}`, files: [{ path: `${name}.js`, sha256: 'a'.repeat(64), blob: 'unused' }] }, ...extra });
+  const task = { id: 'task', checks: [run('repro', 'fail'), run('repro', 'pass'), run('repro', 'pass'), run('regressed', 'pass'), run('regressed', 'fail'), run('pending', 'pass', { pending: true }), run('stale', 'pass'), run('drifted', 'pass', { exitCode: 0, passed: false }), run('drifted', 'pass'), run('retargeted', 'fail', { args: ['old.js'] }), run('retargeted', 'pass', { args: ['new.js'] }), run('mixed', 'fail'), run('mixed', 'fail', { args: ['other.js'], output: 'other fail' }), run('mixed', 'pass')] };
+  const sibling = { id: 'sibling', checks: [run('sibling', 'pass'), run('mixed', 'pass')] };
+  const judged = [];
+  const judge = (_root, snapshots) => { judged.push(snapshots.map(item => item.digest)); return snapshots.map(item => item.digest !== 'stale-pass'); };
+  const file = (name, sha) => ({ path: name, sha256: sha.repeat(64), blob: 'unused' });
+  const fixed = { id: 'fixed', checks: [run('fixed', 'fail', { snapshot: { digest: 'before', files: [file('fixed.js', 'b'), file('helper.js', 'a'), file('gone.js', 'c')] } }), run('fixed', 'pass', { snapshot: { digest: 'after', files: [file('fixed.js', 'a'), file('helper.js', 'a'), file('new.js', 'd')] } })] };
+  const always = (_root, snapshots) => snapshots.map(() => true);
+
+  // Act
+  const attached = attachedChecks('unused-root', [task, sibling], { judge });
+  const none = attachedChecks('unused-root', [{ id: 'empty', checks: [run('failing', 'fail')] }], { judge: () => assert.fail('No candidate needs judging') });
+  const [repaired] = attachedChecks('unused-root', [fixed], { changed: new Set(['fixed.js', 'new.js', 'unrelated.js']), judge: always });
+
+  // Assert
+  assert.deepEqual(judged, [['repro-pass', 'stale-pass', 'drifted-pass', 'retargeted-pass', 'mixed-pass', 'sibling-pass', 'mixed-pass']]);
+  assert.deepEqual(attached.map(check => [check.taskIds, check.name, check.reproduction?.outputTail ?? null]), [[['task'], 'repro', 'repro fail'], [['task'], 'drifted', null], [['task'], 'retargeted', null], [['task', 'sibling'], 'mixed', 'mixed fail'], [['sibling'], 'sibling', null]]);
+  assert.deepEqual(attached[0], { taskIds: ['task'], name: 'repro', command: ['node', '--test'], exitCode: 0, error: null, finishedAt: '2026-10-29T00:00:00.000Z', outputTail: 'repro pass', inputs: { count: 1, digest: 'repro-pass', changed: [] }, reproduction: { command: ['node', '--test'], exitCode: 1, error: null, finishedAt: '2026-10-29T00:00:00.000Z', outputTail: 'repro fail', inputs: { count: 1, digest: 'repro-fail', differing: [] } } });
+  assert.deepEqual(repaired.inputs, { count: 3, digest: 'after', changed: [{ path: 'fixed.js', sha256: 'a'.repeat(64) }, { path: 'new.js', sha256: 'd'.repeat(64) }] });
+  assert.deepEqual(repaired.reproduction.inputs, { count: 3, digest: 'before', differing: [{ path: 'fixed.js', sha256: 'b'.repeat(64) }, { path: 'gone.js', sha256: 'c'.repeat(64) }, { path: 'new.js', sha256: null }] });
+  assert.deepEqual(none, []);
+  assert.equal(attachedChecks('unused-root', [{ id: 'long', checks: [run('long', 'pass', { output: 'x'.repeat(5000) + 'totals' })] }], { judge: always })[0].outputTail, 'x'.repeat(1994) + 'totals');
+});
+
+test('the review prompt defines severity for leads, states the probe copy layout and presents attached checks', () => {
+  // Arrange
+  const base = { id: 'prompt-request', requirements: 'Fixture', dimensions: DIMENSIONS.code };
+  const check = { taskIds: ['task'], name: 'Fixture suite', command: ['node', '--test'], exitCode: 0, error: null, finishedAt: null, outputTail: 'pass 3', inputs: { count: 0, digest: 'empty', changed: [] }, reproduction: null };
+
+  // Act
+  const lead = buildPrompt({ ...base, kind: 'code', checks: [check] });
+  const skeptic = buildPrompt({ ...base, kind: 'skeptic', findings: [] });
+
+  // Assert
+  assert.match(lead, /Severity rubric\. Critical: the defect loses or corrupts data or state/);
+  assert.doesNotMatch(skeptic, /Severity rubric/);
+  for (const prompt of [lead, skeptic]) assert.match(prompt, /project files at their project-relative paths, not under project\/, with no context\/ folder/);
+  assert.match(lead, /Recorded checks: the controller ran each through the runtime[^\n]*\n[^]*"name": "Fixture suite"/);
+  assert.match(lead, /every input a passing check read is unchanged since it ran\. Each gives the number of its inputs and their digest, and names the inputs this change touches/);
+  assert.match(lead, /names the inputs whose content differed from the passing run, with a null hash for an input only the passing run read/);
+  assert.match(lead, /A passing check on matching inputs is execution evidence/);
+  assert.match(skeptic, /No passing recorded check ran on inputs that are unchanged since/);
+});
+
+test('dispatch attaches the run\'s recorded checks while their inputs are unchanged', async t => {
+  // Arrange
+  const f = fixture(t);
+  const store = new RunStore(f.root, { create: true });
+  const actor = { host: 'codex', session: 'controller' };
+  store.create({ mechanism: fixtureContinuation(), objective: f.requirements, authority: 'User', controller: actor, controllerClaim: fixtureControllerClaim(actor), tasks: [{ id: f.taskId, title: 'Work', agreement: { source: 'User', outcome: f.requirements } }] });
+  const act = request => executeWithFixtureController(f.root, { actor, revision: store.read().revision, taskId: f.taskId, ...request });
+  const prompts = [];
+  const dispatchCapturing = () => executeWithFixtureController(f.root, { action: 'dispatch', actor, revision: store.read().revision, taskId: f.taskId, review: { ...f, kind: 'code' } }, { runAgent: options => { prompts.push(options.prompt); return mockAgent(options); } });
+  const verification = () => act({ action: 'check', check: { name: 'Fixture verification', executable: process.execPath, args: ['-e', "process.exit(require('fs').readFileSync('subject.txt', 'utf8').includes('broken') ? 3 : 0)"], paths: ['subject.txt'] } });
+  try {
+    fs.writeFileSync(path.join(f.root, 'subject.txt'), 'broken\r\n');
+    await verification();
+    fs.writeFileSync(path.join(f.root, 'subject.txt'), 'repaired\r\n');
+    await verification();
+
+    // Act
+    const attached = await dispatchCapturing();
+    fs.writeFileSync(path.join(f.root, 'subject.txt'), 'edited after the check\r\n');
+    const stale = await dispatchCapturing();
+
+    // Assert
+    const recorded = JSON.parse(fs.readFileSync(path.join(path.dirname(attached.receiptFile), 'request.json'), 'utf8')).checks;
+    assert.deepEqual(recorded.map(check => [check.taskIds, check.name, check.exitCode, check.inputs.count, check.inputs.changed.map(input => input.path), check.reproduction?.exitCode, check.reproduction?.inputs.differing.map(input => input.path)]), [[[f.taskId], 'Fixture verification', 0, 1, ['subject.txt'], 3, ['subject.txt']]]);
+    assert.match(prompts[0], /"name": "Fixture verification"/);
+    assert.deepEqual(JSON.parse(fs.readFileSync(path.join(path.dirname(stale.receiptFile), 'request.json'), 'utf8')).checks, []);
+    assert.match(prompts[1], /No passing recorded check ran on inputs that are unchanged since/);
+  } finally { store.close(); }
+});
 
 for (const kind of ['spec', 'code', 'skeptic']) {
   test(`explicit ignored artifacts reach ${kind} assessment with complete surrounding context`, async t => {

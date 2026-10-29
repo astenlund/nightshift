@@ -1085,4 +1085,4 @@ function transition(state, request, integration = null) {
   require('./discharge').admittedAction(state, request, dischargeBefore);
 }
 
-module.exports = { DIMENSIONS, assertAction, commitmentsFor, completeAssessment, findingKind, historicalDischarge, isDocumentationPath, obligationBrief, reportNotice, reviewGate, reviewProgress, sameClosingRecord, sharesCumulativeAssessment, targetById, taskById, transition, unresolvedFindings };
+module.exports = { DIMENSIONS, assertAction, commitmentsFor, completeAssessment, findingKind, historicalDischarge, isDocumentationPath, latestChecks, obligationBrief, reportNotice, reviewGate, reviewProgress, sameClosingRecord, sharesCumulativeAssessment, targetById, taskById, transition, unresolvedFindings };
