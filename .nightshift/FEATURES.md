@@ -466,6 +466,10 @@ Retire the remaining universal strong-model terminology and extend per-role mode
 
 Let a Vibe session own a Nightshift delivery as controller, preserving the settled GLM controller approval. Settle ownership admission and actor identity, execution resources and the operation lease, native continuation equivalents, and the formal controller approval criteria the user left open before implementation.
 
+### [Harder fixtures for lead review and skeptic evaluation](features/harder-review-fixtures.md)
+
+Grow the seeded-defect suite past its detection ceiling in three directions: scenarios mined by a read-only tool from projects' run stores (fresh-gate catches after a clean cumulative review, refuted findings whose site a repair later changed, confirmed findings disposed as skip or defer, and leads disagreeing on the same inputs), curated by hand into fixtures; one semantic mutation planted in a snapshot of a real module; and skeptic traps that are true but mis-located, inflated in severity, right for the wrong evidence or fixed at a regression's cost. Mining is a tool over recorded state, not a lifecycle step. Open: selection bias toward what some reviewer caught, fixture size against cost, the grader's line-distance matching and a verdict-per-class grammar for traps, baseline and target resets, and which projects may contribute code. Raised 2026-10-29.
+
 ## History
 
 Delivered features belong in [FEATURES_HISTORY.md](FEATURES_HISTORY.md), as do features retired without shipping, each marked retired. When shipping or retiring an entry, remove references to it from the active indexes' Requires lines.
