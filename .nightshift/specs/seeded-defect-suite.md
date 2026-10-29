@@ -78,7 +78,7 @@ The worklist item asks for Anthropic's evals guidance and the Claude plugin eval
 
 ## Severity rubric
 
-Critical: the defect loses or corrupts data or state, breaks a security or authority boundary, or lets a gate pass that should refuse. Important: the defect gives wrong behavior on a path the agreed outcome covers, or breaks a stated requirement, without the critical consequences. Minor: the defect is real but leaves agreed behavior intact, such as a misleading message or a missed simplification. Planted severities follow this rubric; defining severity in the review prompt is a separate later change that the suite then measures.
+Critical: the defect loses or corrupts data or state, breaks a security or authority boundary, or lets a gate pass that should refuse. Important: the defect gives wrong behavior on a path the agreed outcome covers, or breaks a stated requirement, without the critical consequences. Minor: the defect is real but leaves agreed behavior intact, such as a misleading message or a missed simplification. Planted severities follow this rubric. Since 3.3.18 lead assessment prompts, though not their dialogue turns, carry it too, followed by two sentences of their own: in documentation and specs behavior is what the text tells its reader, and a reviewer rates the consequence the evidence shows; [the prompt-change rerun](../reports/seeded-defect-prompt-change-20261029.md) measured that change.
 
 ## Verification
 
