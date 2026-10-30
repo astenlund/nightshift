@@ -35,7 +35,7 @@ function scratch(t, name) {
 // The effective configuration a clean isolated run records: every compared key at its expected value, the active model's and its
 // provider's entries as the launcher writes them, and allowlisted keys at their defaults.
 function cleanConfig(model = 'glm-5-3', level = 'high') {
-  const entry = vibe.GLM_MODELS[model];
+  const entry = vibe.MODELS[model];
   return {
     ...structuredClone(vibe.expectedConfiguration(model)), enable_update_checks: true, log_level: null, theme: 'auto',
     models: {
@@ -57,7 +57,7 @@ async function launch(t, { control = {}, effort = 'high', model = 'glm-5-3', ins
   fs.mkdirSync(artifacts);
   const systemFile = path.join(root, 'system.md');
   fs.writeFileSync(systemFile, 'You are an independent read-only engineering assessor.');
-  fs.writeFileSync(path.join(artifacts, 'control.json'), JSON.stringify({ model, config: Object.hasOwn(vibe.GLM_MODELS, model) ? cleanConfig(model, vibe.effortLevel(effort)) : {}, report: REPORT, ...control }));
+  fs.writeFileSync(path.join(artifacts, 'control.json'), JSON.stringify({ model, config: Object.hasOwn(vibe.MODELS, model) ? cleanConfig(model, vibe.effortLevel(model, effort)) : {}, report: REPORT, ...control }));
   const env = { ...process.env, VIBE_ACTIVE_MODEL: 'mistral-medium-3.5', VIBE_HOME: path.join(root, 'user-vibe'), ENABLE: 'true', SAVE_DIR: path.join(root, 'elsewhere'), MISTRAL_API_KEY: 'fixture-key' };
   const options = { host: 'vibe', model, effort, cwd, protectedRoot: root, artifacts, systemFile, prompt: 'Fixture assessment', schema: { type: 'object' }, timeoutMs: 30000, executable: process.execPath, commandPrefix: [FAKE_VIBE], directProcess: true, readVibeVersion: () => installed, vibePreflight: preflight, env };
   let result = null;
@@ -97,7 +97,7 @@ test('the Vibe launcher runs headless and untrusted under its own home, agent an
 
 test('the effort mapping runs GLM at low only for low, and the level read back must be the one written', async t => {
   // Arrange and Act
-  const mapped = ['low', 'medium', 'high', 'xhigh', undefined].map(vibe.effortLevel);
+  const mapped = ['low', 'medium', 'high', 'xhigh', undefined].map(effort => vibe.effortLevel('glm-5-3', effort));
   const low = await launch(t, { effort: 'low' });
   const reset = await launch(t, { effort: 'low', control: { config: cleanConfig('glm-5-3', 'high') } });
 
@@ -108,7 +108,33 @@ test('the effort mapping runs GLM at low only for low, and the level read back m
   assert.equal(reset.error.code, 'unusable-review');
   assert.match(reset.error.message, /models\.glm-5-3\.thinking/);
   assert.equal(reset.error.tokens, 4321);
-  assert.ok(Object.values(vibe.GLM_MODELS).every(entry => entry.levels.includes('low') && entry.levels.includes('high')));
+  assert.ok(Object.values(vibe.MODELS).every(entry => entry.levels.includes(entry.low) && entry.levels.includes('high')));
+});
+
+test('the launcher runs Mistral Large 4 at off for low and high otherwise, while no gate admits it in either role', async t => {
+  // Arrange
+  const model = 'mistral-large-4';
+  const refusal = kind => {
+    try {
+      validateRequest({ kind, requirements: 'r', rules: 'r', findings: kind === 'skeptic' ? [] : undefined, candidates: [{ host: 'vibe', model, effort: 'high' }] });
+      return null;
+    } catch (error) {
+      return error.code;
+    }
+  };
+
+  // Act
+  const mapped = ['low', 'medium', 'high', 'xhigh', undefined].map(effort => vibe.effortLevel(model, effort));
+  const high = await launch(t, { model, effort: 'xhigh' });
+  const low = await launch(t, { model, effort: 'low' });
+
+  // Assert
+  assert.deepEqual(mapped, ['off', 'high', 'high', 'high', 'high']);
+  assert.deepEqual([high.result.status, high.result.model, high.result.effort, low.result.effort], ['complete', model, 'high', 'off']);
+  for (const line of ['active_model = "mistral-large-4"', '[models."mistral-large-4"]', 'name = "mistral-large-4"', 'thinking = "high"', 'thinking_levels = ["off", "high"]', 'supports_images = false']) assert.ok(high.invocation.agent.split('\n').includes(line), line);
+  assert.ok(low.invocation.agent.includes('thinking = "off"'));
+  assert.equal(vibe.newestGlm(), 'glm-5-3');
+  assert.deepEqual([refusal('code'), refusal('skeptic')], ['review-strength', 'review-strength']);
 });
 
 test('the effective-configuration check refuses changed, missing and entry differences and passes allowlisted preferences', async t => {
@@ -305,7 +331,7 @@ function agent(options, { findings = [], closures, positions, dimensions, calls 
     fs.writeFileSync(state, JSON.stringify({ session_metadata: { active_model: options.model } }));
     const entries = [{ type: 'message', role: 'assistant', content: [{ type: 'text', text: `Report:\n\`\`\`json\n${JSON.stringify(report)}\n\`\`\`` }] }];
     fs.writeFileSync(path.join(options.artifacts, 'events.jsonl'), entries.map(entry => JSON.stringify(entry)).join('\n') + '\n');
-    return { host: 'vibe', model: options.model, effort: vibe.effortLevel(options.effort), session, attributionVerified: true, status: 'complete', output: vibe.reportFromEntries(entries), tokens: 100, threadTokens: 100, vibe: { version: '3.0.0', uncomparedKeys: [], attributionFiles: [path.join(exportDirectory, 'export.json'), state] } };
+    return { host: 'vibe', model: options.model, effort: vibe.effortLevel(options.model, options.effort), session, attributionVerified: true, status: 'complete', output: vibe.reportFromEntries(entries), tokens: 100, threadTokens: 100, vibe: { version: '3.0.0', uncomparedKeys: [], attributionFiles: [path.join(exportDirectory, 'export.json'), state] } };
   }
   const events = options.host === 'codex'
     ? [{ id: 2, result: { thread: { id: session }, model: options.model } }, { method: 'item/completed', params: { threadId: session, item: { type: 'agentMessage', text: JSON.stringify(report) } } }, { method: 'turn/completed', params: { threadId: session, turn: { status: 'completed' } } }]

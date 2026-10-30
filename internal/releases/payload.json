@@ -1,17 +1,17 @@
 {
   "schema": 1,
   "name": "nightshift",
-  "version": "3.3.19",
+  "version": "3.3.20",
   "files": [
     {
       "path": ".claude-plugin/plugin.json",
       "bytes": 641,
-      "sha256": "9abff61f5f327a9f08ae79da066b2d1dcaf994fec00efff62ef8583b27a65fde"
+      "sha256": "eb995cb12dac3d21e3b4d95c8bacb1047c66a92b47350159d6cff4fccc789df5"
     },
     {
       "path": ".codex-plugin/plugin.json",
       "bytes": 1161,
-      "sha256": "1458c7737d4bf937a94a465aa6d549461fff87da6f8846b9e23d747429bcc1c0"
+      "sha256": "d021ff3f0220d90371bc9d6486bd65a1fa1b2eca02cc1e44a284cbe04c36689e"
     },
     {
       "path": "LICENSE",
@@ -165,8 +165,8 @@
     },
     {
       "path": "internal/runtime/REFERENCE.md",
-      "bytes": 122632,
-      "sha256": "318161a999c6a20d7c783fe146530234e269a83eb245eb0fad18087179158fad"
+      "bytes": 122638,
+      "sha256": "267518123b45f99760ede58d66c34c7f30f846426916403b2518cd88f7b16098"
     },
     {
       "path": "internal/runtime/acceptance-checkpoint.js",
@@ -245,8 +245,8 @@
     },
     {
       "path": "internal/runtime/hosts.js",
-      "bytes": 27044,
-      "sha256": "f7ca6551d4eb90f8099784f9521eca0faa30aafe6918531aab7077fe13b588ad"
+      "bytes": 27055,
+      "sha256": "5bb0b56dcbd6e78b6046fef4099d728bcfb3b686ca62a2c4a1630158eb9495ac"
     },
     {
       "path": "internal/runtime/legacy-approval-v1.js",
@@ -415,8 +415,8 @@
     },
     {
       "path": "internal/runtime/vibe.js",
-      "bytes": 15516,
-      "sha256": "c87be3aa41e45810067b544d15161d70e9de227f164c5beb86b42d1154fdba24"
+      "bytes": 16229,
+      "sha256": "c4395e1b7b5b437d32d51a841805d86b7a10338008c671acc692d741e02e6ca8"
     },
     {
       "path": "internal/runtime/wait.js",

@@ -378,9 +378,9 @@ async function runVibe(options) {
   requireCondition(!preflighted || preflight !== null && typeof preflight === 'object' && !Array.isArray(preflight) && Object.hasOwn(preflight, 'version') && vibe.versionSupported(preflight.version), 'unusable-review', 'The Vibe eligibility version observation is unavailable or invalid');
   const version = preflighted ? preflight.version : launchVersion;
   requireCondition(vibe.versionSupported(launchVersion), preflighted ? 'unusable-review' : 'vibe-version-unsupported', `Vibe ${launchVersion ?? 'of unreadable version'} is below the supported floor ${vibe.VERSION_FLOOR.join('.')}`);
-  requireCondition(Object.hasOwn(vibe.GLM_MODELS, options.model), 'vibe-model-unknown', `The Vibe launcher has no entry for ${options.model}`);
+  requireCondition(Object.hasOwn(vibe.MODELS, options.model), 'vibe-model-unknown', `The Vibe launcher has no entry for ${options.model}`);
   requireCondition(!options.session, 'resume-unsupported', 'A Vibe session cannot be resumed into a new private copy; replace the reviewer with review.replaces');
-  const level = vibe.effortLevel(options.effort);
+  const level = vibe.effortLevel(options.model, options.effort);
   const isolation = vibe.createIsolation(options.artifacts, options.model, level, fs.readFileSync(options.systemFile, 'utf8'));
   const promptFile = path.join(options.artifacts, 'prompt.md');
   fs.writeFileSync(promptFile, `${options.prompt}\nReply with only one JSON object that conforms to this JSON schema, with no other text:\n${JSON.stringify(options.schema)}\n`, { flag: 'wx' });

@@ -1,6 +1,6 @@
 'use strict';
 
-// Mistral Vibe as a lead reviewer host: the launcher's table of GLM entries, eligibility before reservation, the isolation every
+// Mistral Vibe as a lead reviewer host: the launcher's table of model entries, eligibility before reservation, the isolation every
 // attempt runs under, the effective-configuration check, and the report and attribution rules that dispatch and import share.
 
 const fs = require('node:fs');
@@ -22,29 +22,35 @@ const OUTPUT_LIMIT = 24 * 1024 * 1024;
 // The system variables a Windows process needs; every other variable of the controller stays out of the reviewer's environment.
 const SYSTEM_VARIABLES = Object.freeze(['PATH', 'SYSTEMROOT', 'WINDIR', 'COMSPEC', 'TEMP', 'TMP', 'LOCALAPPDATA', 'APPDATA']);
 
-// The GLM identifiers the launcher can run, each with the models entry it writes for it: underlying name, provider, offered thinking
-// levels, sampling and the figures Vibe reports cost and compaction by. An entry is added only when it offers both low and high, the
-// levels the effort mapping uses. Vibe records the entry's other compared fields at their defaults: no top_p, output or context
-// limit, and no image support.
-const GLM_MODELS = Object.freeze({
-  'glm-5-3': Object.freeze({ name: 'zai-glm-5-3', provider: 'mistral', levels: Object.freeze(['low', 'high', 'max']), temperature: 1.0, input_price: 1.4, output_price: 4.4, auto_compact_threshold: 800000 }),
+// The Vibe identifiers the launcher can run, each with the models entry it writes for it: underlying name, provider, offered thinking
+// levels, the offered level a low effort runs at, sampling and the figures Vibe reports cost and compaction by. An entry is added
+// only when it offers high, the level every other effort runs at. The entry turns image support off, since Vibe otherwise takes it
+// from its own table of known models, and Vibe records the entry's other compared fields at their defaults: no top_p, output or
+// context limit. Holding an entry does not admit a model; mistral-large-4 is in no
+// admitted family and is run only by the seeded-defect suite's evaluation launcher.
+const MODELS = Object.freeze({
+  'glm-5-3': Object.freeze({ name: 'zai-glm-5-3', provider: 'mistral', levels: Object.freeze(['low', 'high', 'max']), low: 'low', temperature: 1.0, input_price: 1.4, output_price: 4.4, auto_compact_threshold: 800000 }),
+  'mistral-large-4': Object.freeze({ name: 'mistral-large-4', provider: 'mistral', levels: Object.freeze(['off', 'high']), low: 'off', temperature: 1.0, input_price: 1.36, output_price: 4.18, auto_compact_threshold: 800000 }),
 });
 const MODEL_ENTRY_DEFAULTS = Object.freeze({ top_p: null, max_output_tokens: null, supports_images: false, max_context_length: null });
 
 const ALIAS = 'glm';
 
 function newestGlm() {
-  return Object.keys(GLM_MODELS).sort((left, right) => compareVersions(parseModel('vibe', left).version, parseModel('vibe', right).version)).at(-1);
+  const glm = Object.keys(MODELS).filter(model => parseModel('vibe', model)?.family === ALIAS);
+
+  return glm.sort((left, right) => compareVersions(parseModel('vibe', left).version, parseModel('vibe', right).version)).at(-1);
 }
 
-// A Vibe candidate may name the alias glm, which stands for the newest table entry, so no receipt ever records the alias.
+// A Vibe candidate may name the alias glm, which stands for the newest GLM table entry, so no receipt ever records the alias.
 function resolveAlias(host, model) {
   return host === 'vibe' && model === ALIAS ? newestGlm() : model;
 }
 
-// GLM's offered levels make low send no reasoning and high and max the same, so every requested effort but low runs at high.
-function effortLevel(effort) {
-  return effort === 'low' ? 'low' : 'high';
+// A requested low runs at the entry's level that sends no reasoning, and every other requested effort at high: GLM's high and max
+// are the same on the wire, and Mistral Large 4 offers no other level.
+function effortLevel(model, effort) {
+  return effort === 'low' ? MODELS[model].low : 'high';
 }
 
 function executable(root) {
@@ -78,7 +84,7 @@ function tomlList(values) {
 
 // The reviewer agent file, which outranks Vibe's user, project and environment layers.
 function agentFile(model, level) {
-  const entry = GLM_MODELS[model];
+  const entry = MODELS[model];
   return [
     'display_name = "Nightshift reviewer"',
     'description = "Read-only independent reviewer launched by Nightshift"',
@@ -105,6 +111,7 @@ function agentFile(model, level) {
     `thinking = ${tomlString(level)}`,
     `thinking_levels = ${tomlList(entry.levels)}`,
     `temperature = ${entry.temperature.toFixed(1)}`,
+    'supports_images = false',
     `input_price = ${entry.input_price}`,
     `output_price = ${entry.output_price}`,
     `auto_compact_threshold = ${entry.auto_compact_threshold}`,
@@ -149,7 +156,7 @@ function environment(base, isolation) {
 // Whether a Vibe candidate can run, checked before the dispatch reserves time or registers its worker: an identifier the table
 // holds, a readable version at or above the floor, and isolation the launcher can create. Returns its observed version when eligible, or a refusal.
 function candidateEligibility(candidate, root, dependencies = {}) {
-  if (!Object.hasOwn(GLM_MODELS, candidate.model)) return { code: 'vibe-model-unknown', reason: `The Vibe launcher has no entry for ${candidate.model}` };
+  if (!Object.hasOwn(MODELS, candidate.model)) return { code: 'vibe-model-unknown', reason: `The Vibe launcher has no entry for ${candidate.model}` };
   let file;
   try {
     file = (dependencies.vibeExecutable ?? executable)(root);
@@ -160,7 +167,7 @@ function candidateEligibility(candidate, root, dependencies = {}) {
   if (!versionSupported(version)) return { code: 'vibe-version-unsupported', reason: version === null ? 'The installed Vibe version could not be read' : `Vibe ${version} is below the supported floor ${VERSION_FLOOR.join('.')}` };
   const scratch = path.join(root, '.nightshift', 'runs', 'reviews', `.vibe-eligibility-${crypto.randomUUID()}`);
   try {
-    createIsolation(scratch, candidate.model, effortLevel(candidate.effort), 'Eligibility check');
+    createIsolation(scratch, candidate.model, effortLevel(candidate.model, candidate.effort), 'Eligibility check');
   } catch (error) {
     return { code: 'vibe-isolation-unavailable', reason: error.message };
   } finally {
@@ -242,7 +249,7 @@ function journalModel(states) {
 // default to compare with. The active model's entry and its provider's entry are compared; other catalog and provider entries are not.
 function configurationDifferences(config, model, level) {
   if (config === null || typeof config !== 'object' || Array.isArray(config)) return { differing: ['config'], uncompared: [] };
-  const entry = GLM_MODELS[model];
+  const entry = MODELS[model];
   const differing = [];
   const uncompared = [];
   const compareEntry = (prefix, actual, expected, allowlisted) => {
@@ -294,7 +301,7 @@ function expectedConfiguration(model) {
 }
 
 module.exports = {
-  AGENT, ALIAS, GLM_MODELS, OUTPUT_LIMIT, TOOLS, VERSION_FLOOR,
+  AGENT, ALIAS, MODELS, OUTPUT_LIMIT, TOOLS, VERSION_FLOOR,
   agentFile, configurationDifferences, createIsolation, effortLevel, eligibleCandidates, environment, executable, expectedConfiguration,
   finalAssistantText, journalFiles, journalModel, newestGlm, readJsonIfPresent, readVersion, reportFromEntries, reportText, resolveAlias, versionSupported,
 };
