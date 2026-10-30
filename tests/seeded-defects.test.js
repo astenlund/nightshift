@@ -231,6 +231,29 @@ test('a Vibe lead runs as an admitted candidate while a Vibe skeptic passes the 
   assert.deepEqual(Object.keys(report.byModel), ['vibe:glm-5-3']);
 });
 
+test('a Vibe model no family admits passes the gate as its gate candidate in both stages, and the records name it', async t => {
+  // Arrange
+  const root = scratch(t);
+  writeFixture(root, 'alpha');
+  const calls = [];
+  const evaluated = { host: 'vibe', id: 'mistral-large-4' };
+  const gateCandidate = { host: 'codex', model: 'gpt-6-sol' };
+
+  // Act
+  const result = await suite.run(options(root, root, { models: [evaluated] }), dependencies(LEAD_FINDS_DEFECT, calls));
+  const report = suite.grade(path.join(root, 'run'), path.join(root, 'no-targets.json'));
+  const key = suite.fixtureRunKey('alpha', evaluated, 1);
+  const read = file => JSON.parse(fs.readFileSync(path.join(root, 'run', 'runs', key, file), 'utf8'));
+  const [lead, skeptic, leadReceipt] = ['lead.result.json', 'skeptic.result.json', 'lead/receipt.json'].map(read);
+
+  // Assert
+  assert.equal(result.stopped, null);
+  assert.deepEqual(calls.map(call => [call.kind, call.options.host, call.options.model]), [['code', 'vibe', 'mistral-large-4'], ['skeptic', 'vibe', 'mistral-large-4']]);
+  assert.deepEqual([lead.evaluation, skeptic.evaluation], [{ host: 'vibe', model: 'mistral-large-4', gateCandidate }, { host: 'vibe', model: 'mistral-large-4', gateCandidate }]);
+  assert.deepEqual([leadReceipt.host, leadReceipt.model, leadReceipt.attempts[0].host, leadReceipt.attempts[0].model], ['vibe', 'mistral-large-4', 'codex', 'gpt-6-sol']);
+  assert.deepEqual(Object.keys(report.byModel), ['vibe:mistral-large-4']);
+});
+
 test('a run refuses to start without a budget and stops before a dispatch the budget cannot cover', async t => {
   // Arrange
   const root = scratch(t);

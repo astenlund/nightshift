@@ -32,18 +32,19 @@ const OWNER_FILE = 'nsr-owner';
 const PINNED_DIFF_SETTINGS = Object.freeze([['diff.algorithm', 'myers'], ['diff.noprefix', 'false'], ['diff.mnemonicPrefix', 'false'], ['diff.srcPrefix', 'a/'], ['diff.dstPrefix', 'b/'], ['diff.context', '3'], ['diff.interHunkContext', '0'], ['diff.relative', 'false'], ['diff.renames', 'true'], ['diff.suppressBlankEmpty', 'false'], ['diff.indentHeuristic', 'true'], ['color.ui', 'false'], ['color.diff', 'false'], ['core.quotePath', 'true']]);
 const FIXTURE_AUTHOR = ['-c', 'user.name=Suite fixture', '-c', 'user.email=a.stenlund@gmail.com'];
 const VIBE_LAUNCHER = path.join(SUITE_ROOT, 'vibe-launcher.js');
-// Hosts the runtime's reviewer gate does not admit in a stage, measured through a launcher the harness injects. The dispatch names
-// the gate candidate so the runtime accepts it; the launcher runs the evaluated host and model instead, and the records name both.
-// The runtime admits Vibe as a lead, so only a Vibe skeptic is injected.
+// Hosts whose models the runtime's reviewer gate may not admit in a stage, measured through a launcher the harness injects. The
+// dispatch names the gate candidate so the runtime accepts it; the launcher runs the evaluated host and model instead, and the
+// records name both. A model the runtime admits for the stage, such as a GLM lead, runs directly.
 const EVALUATION_HOSTS = Object.freeze({
-  vibe: { stages: Object.freeze(['skeptic']), gate: { host: 'codex', model: 'gpt-6-sol' }, launcher: () => require(VIBE_LAUNCHER).runVibe },
+  vibe: { gate: { host: 'codex', model: 'gpt-6-sol' }, launcher: () => require(VIBE_LAUNCHER).runVibe },
 });
 
 // The injection a stage's model needs, or null when the runtime admits it directly.
 function evaluationFor(model, stage) {
   const evaluation = EVALUATION_HOSTS[model.host];
+  const { isAdmittedModel } = require(path.join(PLUGIN_ROOT, 'internal/runtime/models.js'));
 
-  return evaluation?.stages.includes(stage) ? evaluation : null;
+  return evaluation && !isAdmittedModel(model.host, model.id, stage) ? evaluation : null;
 }
 
 class SuiteError extends Error {
