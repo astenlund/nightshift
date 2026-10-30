@@ -1,17 +1,17 @@
 {
   "schema": 1,
   "name": "nightshift",
-  "version": "3.3.18",
+  "version": "3.3.19",
   "files": [
     {
       "path": ".claude-plugin/plugin.json",
       "bytes": 641,
-      "sha256": "accf255a5b362087da1deb7e00f12cd1ca8f9b568990cf01fa0461594479eff6"
+      "sha256": "9abff61f5f327a9f08ae79da066b2d1dcaf994fec00efff62ef8583b27a65fde"
     },
     {
       "path": ".codex-plugin/plugin.json",
       "bytes": 1161,
-      "sha256": "13e22e24d90a85defa894f69d7f5a4677dcb0c505e7486593e717ea137cc19f9"
+      "sha256": "1458c7737d4bf937a94a465aa6d549461fff87da6f8846b9e23d747429bcc1c0"
     },
     {
       "path": "LICENSE",
@@ -165,8 +165,8 @@
     },
     {
       "path": "internal/runtime/REFERENCE.md",
-      "bytes": 121286,
-      "sha256": "02a274736e52b43c42946ceb87a5fdf6fd6756e5bde278429e0af996aaa43bb9"
+      "bytes": 122632,
+      "sha256": "318161a999c6a20d7c783fe146530234e269a83eb245eb0fad18087179158fad"
     },
     {
       "path": "internal/runtime/acceptance-checkpoint.js",
@@ -285,8 +285,8 @@
     },
     {
       "path": "internal/runtime/lifecycle.js",
-      "bytes": 82645,
-      "sha256": "83e59c1aa4f0f1a04cae93d0782a9b571a95670f27d26ee1a5ce90f475de4c29"
+      "bytes": 82850,
+      "sha256": "ec909fe63e331961fea6ba8cb5e2fde74d4bfcd2504b41fff19987c6c5886f54"
     },
     {
       "path": "internal/runtime/limits.js",
@@ -390,8 +390,8 @@
     },
     {
       "path": "internal/runtime/review.js",
-      "bytes": 64319,
-      "sha256": "48a8ca031b975ff06ead778d9a1c5b8b81e9412b8d2ef127c22650722faf9b8d"
+      "bytes": 68215,
+      "sha256": "446795288fa0ca59dc687ffe9e27657950cd2d28c267a598b73b4beb88602bc5"
     },
     {
       "path": "internal/runtime/scratch.js",
@@ -495,8 +495,8 @@
     },
     {
       "path": "internal/workflow.md",
-      "bytes": 39084,
-      "sha256": "fffe098e7975d6c5a482db98cced07eacf42e34c42e814919e8c4303d10b9c27"
+      "bytes": 39412,
+      "sha256": "ac15866c37b7b8f738acbbd0070a8a9d2c01ab3f1d246f7e88cdc7282b11c04e"
     },
     {
       "path": "skills/exploring/SKILL.md",
@@ -575,8 +575,8 @@
     },
     {
       "path": "skills/revise-code/SKILL.md",
-      "bytes": 3783,
-      "sha256": "d2a727cf271ec38909a4372f925b75ead067d85b5101b73ccda8a5b8cc239484"
+      "bytes": 3905,
+      "sha256": "daf7b45a270664013eba5118c185e8c61d77fd00082b9c38b167ac09ce44169e"
     },
     {
       "path": "skills/revise-docs/SKILL.md",

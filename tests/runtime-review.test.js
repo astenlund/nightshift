@@ -8,7 +8,7 @@ const { spawnSync } = require('node:child_process');
 const test = require('node:test');
 const { attachedChecks, buildPrompt, dispatchReview, readReceipt, schemaFor, validateBase, validateReport } = require('../internal/runtime/review');
 const { isAdmittedModel, roleFor } = require('../internal/runtime/models');
-const { DIMENSIONS, reviewGate } = require('../internal/runtime/lifecycle');
+const { DIMENSIONS, obligationBrief, reviewGate } = require('../internal/runtime/lifecycle');
 const { fileIdentity, fresh, hash } = require('../internal/runtime/evidence');
 const { runAgent } = require('../internal/runtime/hosts');
 const { RunError, RunStore } = require('../internal/runtime/store');
@@ -1145,18 +1145,41 @@ test('an assessment receives the latest passing current checks of every covered 
   const file = (name, sha) => ({ path: name, sha256: sha.repeat(64), blob: 'unused' });
   const fixed = { id: 'fixed', checks: [run('fixed', 'fail', { snapshot: { digest: 'before', files: [file('fixed.js', 'b'), file('helper.js', 'a'), file('gone.js', 'c')] } }), run('fixed', 'pass', { snapshot: { digest: 'after', files: [file('fixed.js', 'a'), file('helper.js', 'a'), file('new.js', 'd')] } })] };
   const always = (_root, snapshots) => snapshots.map(() => true);
+  const attempts = { id: 'attempts', checks: [run('attempts', 'fail', { output: 'old failure' }), run('attempts', 'pass'), run('attempts', 'fail', { output: 'finding reason' }), run('attempts', 'fail', { output: 'pending', pending: true }), run('attempts', 'pass', { passed: false, output: 'inputs drifted' }), run('attempts', 'fail', { exitCode: null, error: 'spawn failed', output: 'unrelated' }), run('attempts', 'pass')] };
+  const windows = process.platform === 'win32';
+  const backslashed = windows ? ['c:', 'tools', 'node.exe'].join(String.fromCharCode(92)) : 'node';
+  const spelt = (outcome, executable, name, sha) => run('spelling', outcome, { executable, snapshot: { digest: `spelling-${outcome}`, files: [file(name, sha)] } });
+  const spelling = { id: 'spelling', checks: [spelt('fail', backslashed, windows ? 'Spelled.js' : 'spelled.js', 'b'), spelt('pass', windows ? 'C:/Tools/Node.exe' : 'node', 'spelled.js', 'a')] };
+  const twin = { id: 'twin', checks: [spelt('fail', windows ? 'C:/Tools/Node.exe' : 'node', windows ? 'Spelled.js' : 'spelled.js', 'b'), spelt('pass', backslashed, 'spelled.js', 'a')] };
+  const reproducing = (id, output) => ({ id, checks: [run('shared', 'fail', { output }), run('shared', 'pass')] });
+  const passingOnly = (id, executable) => ({ id, checks: [spelt('pass', executable, 'spelled.js', 'a')] });
 
   // Act
   const attached = attachedChecks('unused-root', [task, sibling], { judge });
+  const legacy = attachedChecks('unused-root', [{ id: 'legacy', checks: [{ name: 'legacy', passed: false, output: 'legacy fail', snapshot: { digest: 'legacy-fail', files: [] } }, { name: 'legacy', passed: true, output: 'legacy pass', snapshot: { digest: 'legacy-pass', files: [] } }] }], { judge: always });
   const none = attachedChecks('unused-root', [{ id: 'empty', checks: [run('failing', 'fail')] }], { judge: () => assert.fail('No candidate needs judging') });
-  const [repaired] = attachedChecks('unused-root', [fixed], { changed: new Set(['fixed.js', 'new.js', 'unrelated.js']), judge: always });
+  const [repaired] = attachedChecks('unused-root', [fixed], { changed: new Set(['fixed.js', windows ? 'NEW.js' : 'new.js', 'unrelated.js']), judge: always });
+  const [attempted] = attachedChecks('unused-root', [attempts], { judge: always });
+  const respelt = attachedChecks('unused-root', [spelling, twin], { judge: always });
+  const divergent = attachedChecks('unused-root', [reproducing('dispatched', 'earlier fix'), reproducing('covered', 'this repair'), reproducing('alike', 'this repair')], { judge: always });
+  const merged = attachedChecks('unused-root', [passingOnly('plain', backslashed), passingOnly('respelled', windows ? 'C:/Tools/Node.exe' : 'node'), reproducing('reproduced', 'shared fail')], { judge: always });
 
   // Assert
   assert.deepEqual(judged, [['repro-pass', 'stale-pass', 'drifted-pass', 'retargeted-pass', 'mixed-pass', 'sibling-pass', 'mixed-pass']]);
-  assert.deepEqual(attached.map(check => [check.taskIds, check.name, check.reproduction?.outputTail ?? null]), [[['task'], 'repro', 'repro fail'], [['task'], 'drifted', null], [['task'], 'retargeted', null], [['task', 'sibling'], 'mixed', 'mixed fail'], [['sibling'], 'sibling', null]]);
-  assert.deepEqual(attached[0], { taskIds: ['task'], name: 'repro', command: ['node', '--test'], exitCode: 0, error: null, finishedAt: '2026-10-29T00:00:00.000Z', outputTail: 'repro pass', inputs: { count: 1, digest: 'repro-pass', changed: [] }, reproduction: { command: ['node', '--test'], exitCode: 1, error: null, finishedAt: '2026-10-29T00:00:00.000Z', outputTail: 'repro fail', inputs: { count: 1, digest: 'repro-fail', differing: [] } } });
+  assert.deepEqual(attached.map(check => [check.taskIds, check.name, check.reproduction?.outputTail ?? null]), [[['task'], 'repro', 'repro fail'], [['task'], 'drifted', null], [['task'], 'retargeted', null], [['task'], 'mixed', 'mixed fail'], [['sibling'], 'sibling', null], [['sibling'], 'mixed', null]]);
+  assert.deepEqual(divergent.map(check => [check.taskIds, check.reproduction.outputTail]), [[['dispatched'], 'earlier fix'], [['covered'], 'this repair'], [['alike'], 'this repair']]);
+  assert.deepEqual(merged.map(check => [check.taskIds, check.name, check.reproduction?.outputTail ?? null]), [[['plain', 'respelled'], 'spelling', null], [['reproduced'], 'shared', 'shared fail']]);
+  assert.deepEqual(attached[0], { taskIds: ['task'], name: 'repro', command: ['node', '--test'], exitCode: 0, error: null, finishedAt: '2026-10-29T00:00:00.000Z', outputTail: 'repro pass', inputs: { count: 1, digest: 'repro-pass', changed: [] }, reproduction: { command: ['node', '--test'], exitCode: 1, error: null, finishedAt: '2026-10-29T00:00:00.000Z', outputTail: 'repro fail', inputs: { count: 1, digest: 'repro-fail', differing: [] }, laterFailures: [], omittedFailures: 0, passesSince: 1 } });
+  assert.deepEqual([attached[3].reproduction.laterFailures, attached[3].reproduction.passesSince], [[], 0]);
   assert.deepEqual(repaired.inputs, { count: 3, digest: 'after', changed: [{ path: 'fixed.js', sha256: 'a'.repeat(64) }, { path: 'new.js', sha256: 'd'.repeat(64) }] });
-  assert.deepEqual(repaired.reproduction.inputs, { count: 3, digest: 'before', differing: [{ path: 'fixed.js', sha256: 'b'.repeat(64) }, { path: 'gone.js', sha256: 'c'.repeat(64) }, { path: 'new.js', sha256: null }] });
+  assert.deepEqual(repaired.reproduction.inputs, { count: 3, digest: 'before', differing: [{ path: 'fixed.js', failing: 'b'.repeat(64), passing: 'a'.repeat(64) }, { path: 'gone.js', failing: 'c'.repeat(64), passing: null }, { path: 'new.js', failing: null, passing: 'd'.repeat(64) }] });
+  assert.deepEqual([attempted.reproduction.outputTail, attempted.reproduction.laterFailures, attempted.reproduction.passesSince], ['finding reason', [{ exitCode: null, error: 'spawn failed', finishedAt: '2026-10-29T00:00:00.000Z', outputTail: 'unrelated' }], 0]);
+  assert.deepEqual(respelt.map(check => [check.taskIds, check.reproduction?.outputTail, check.reproduction?.inputs.differing]), ['spelling', 'twin'].map(id => [[id], 'spelling fail', [{ path: 'spelled.js', failing: 'b'.repeat(64), passing: 'a'.repeat(64) }]]));
+  const interleaved = attachedChecks('unused-root', [{ id: 'interleaved', checks: [run('interleaved', 'fail', { output: 'earlier fix' }), run('interleaved', 'pass', { args: ['other.js'] }), run('interleaved', 'fail', { output: 'this fix' }), run('interleaved', 'pass')] }], { judge: always })[0].reproduction;
+  assert.deepEqual([interleaved.outputTail, interleaved.laterFailures, interleaved.passesSince], ['this fix', [], 0]);
+  const series = attachedChecks('unused-root', [{ id: 'series', checks: [...['1', '2', '3', '4', '5', '6'].map(attempt => run('series', 'fail', { output: `attempt ${attempt}` })), run('series', 'pass')] }], { judge: always })[0].reproduction;
+  assert.deepEqual([series.outputTail, series.laterFailures.map(failure => failure.outputTail), series.omittedFailures], ['attempt 1', ['attempt 2', 'attempt 3', 'attempt 4'], 2]);
+  assert.deepEqual(legacy.map(check => [check.command, check.outputTail, check.reproduction?.outputTail]), [[[undefined], 'legacy pass', 'legacy fail']]);
   assert.deepEqual(none, []);
   assert.equal(attachedChecks('unused-root', [{ id: 'long', checks: [run('long', 'pass', { output: 'x'.repeat(5000) + 'totals' })] }], { judge: always })[0].outputTail, 'x'.repeat(1994) + 'totals');
 });
@@ -1175,8 +1198,11 @@ test('the review prompt defines severity for leads, states the probe copy layout
   assert.doesNotMatch(skeptic, /Severity rubric/);
   for (const prompt of [lead, skeptic]) assert.match(prompt, /project files at their project-relative paths, not under project\/, with no context\/ folder/);
   assert.match(lead, /Recorded checks: the controller ran each through the runtime[^\n]*\n[^]*"name": "Fixture suite"/);
-  assert.match(lead, /every input a passing check read is unchanged since it ran\. Each gives the number of its inputs and their digest, and names the inputs this change touches/);
-  assert.match(lead, /names the inputs whose content differed from the passing run, with a null hash for an input only the passing run read/);
+  assert.match(lead, /every input a passing check declares is unchanged since it ran\. Each gives the number of its declared inputs and their digest, and names the inputs this change touches/);
+  assert.match(lead, /the failures of the same name and command in the last series before the passing run that no successful run of that name interrupts, given as the first of them, with laterFailures listing the outcome of each of up to 3 further failures in that series and omittedFailures counting any after them/);
+  assert.match(lead, /judge from the output tails which one reproduces it\. passesSince counts/);
+  assert.match(lead, /The first failure names each input whose content differed from the passing run, with its failing and passing hashes and a null hash where that run did not declare the file or the file was missing/);
+  assert.match(lead, /reruns after later edits make it nonzero, so it does not show by itself whether the series belongs to the fix under review/);
   assert.match(lead, /A passing check on matching inputs is execution evidence/);
   assert.match(skeptic, /No passing recorded check ran on inputs that are unchanged since/);
 });
@@ -1208,6 +1234,39 @@ test('dispatch attaches the run\'s recorded checks while their inputs are unchan
     assert.match(prompts[0], /"name": "Fixture verification"/);
     assert.deepEqual(JSON.parse(fs.readFileSync(path.join(path.dirname(stale.receiptFile), 'request.json'), 'utf8')).checks, []);
     assert.match(prompts[1], /No passing recorded check ran on inputs that are unchanged since/);
+  } finally { store.close(); }
+});
+
+test('dispatch names the touched inputs of a project in a subdirectory of its repository', async t => {
+  // Arrange
+  const outer = fixture(t);
+  const root = path.join(outer.root, 'nested');
+  fs.mkdirSync(root);
+  fs.writeFileSync(path.join(root, 'subject.txt'), 'before\r\n');
+  git(outer.root, ['add', 'nested/subject.txt']);
+  git(outer.root, ['-c', 'user.name=Nightshift fixture', '-c', 'user.email=a.stenlund@gmail.com', 'commit', '--quiet', '-m', 'test(fixture): nest the project']);
+  const baseSha = git(outer.root, ['rev-parse', 'HEAD']);
+  fs.writeFileSync(path.join(root, 'subject.txt'), 'after\r\n');
+  fs.writeFileSync(path.join(root, 'new.txt'), 'new sibling\r\n');
+  const f = { ...outer, root, baseSha };
+  const store = new RunStore(root, { create: true });
+  const actor = { host: 'codex', session: 'controller' };
+  store.create({ mechanism: fixtureContinuation(), objective: f.requirements, authority: 'User', controller: actor, controllerClaim: fixtureControllerClaim(actor), tasks: [{ id: f.taskId, title: 'Work', agreement: { source: 'User', outcome: f.requirements } }] });
+  const act = request => executeWithFixtureController(root, { actor, revision: store.read().revision, taskId: f.taskId, ...request });
+  try {
+    await act({ action: 'check', check: { name: 'Nested verification', executable: process.execPath, args: ['-e', "require('fs').readFileSync('subject.txt')"], paths: ['subject.txt'] } });
+
+    // Act
+    const dispatched = await executeWithFixtureController(root, { action: 'dispatch', actor, revision: store.read().revision, taskId: f.taskId, review: { ...f, kind: 'code' } }, { runAgent: mockAgent });
+
+    // Assert
+    const recorded = JSON.parse(fs.readFileSync(path.join(path.dirname(dispatched.receiptFile), 'request.json'), 'utf8')).checks;
+    assert.deepEqual(recorded.map(check => check.inputs.changed.map(input => input.path)), [['subject.txt']]);
+    const patch = fs.readFileSync(path.join(path.dirname(dispatched.receiptFile), 'context', 'diff.patch'), 'utf8');
+    assert.match(patch, /^diff --git a\/subject\.txt b\/subject\.txt$/m);
+    assert.doesNotMatch(patch, /nested\//);
+    assert.match(patch, /^\+\+\+ b\/new\.txt$/m);
+    assert.match(obligationBrief(store.read()).rules, /rerun the same command under the same name on the same task after the repair, and again before a review once its inputs change/);
   } finally { store.close(); }
 });
 

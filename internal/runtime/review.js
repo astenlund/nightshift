@@ -28,6 +28,9 @@ const PROBE_TIMEOUT_RULE = `timeoutMs is in milliseconds, from ${PROBE_TIMEOUT_F
 const SEVERITY_RUBRIC = 'Severity rubric. Critical: the defect loses or corrupts data or state, breaks a security or authority boundary, or lets a gate pass that should refuse. Important: the defect gives wrong behavior on a path the agreed outcome covers, or breaks a stated requirement, without the critical consequences. Minor: the defect is real but leaves agreed behavior intact, such as a misleading message or a missed simplification. In documentation and specs, behavior is what the text tells its reader. Rate the consequence the evidence shows, not the worst one imaginable.';
 // How much of a recorded check's output an assessment receives: the end, where test runners print their totals.
 const CHECK_OUTPUT_TAIL = 2000;
+// How many failures after a reproduction's first it lists: the failure a controller confirmed is normally among the first few of a
+// series, and later repair attempts would otherwise grow every prompt of the run without bound.
+const LATER_FAILURES = 3;
 const TOOL_FAILURE_RULE = 'toolFailure is empty when your tools worked or you worked around a failure. When a failure of your own tools kept you from reading or inspecting what your assessment needed, name the tool and the error it returned there; the controller then gives the assessment to another reviewer. A deciding check that your read-only tools cannot run by design is a probe request, not a tool failure.';
 
 const DIMENSION_BRIEFS = Object.freeze({
@@ -323,6 +326,47 @@ function checkCommand(check) {
   return [check.executable, ...(check.args ?? [])];
 }
 
+// Windows paths compare without regard to case, so a check's inputs and executable match however they were spelled.
+function pathKey(value) {
+  return process.platform === 'win32' ? value.toLowerCase() : value;
+}
+
+// A record written without an executable, which only the CLI's check operation guarantees, pairs only with another record without one.
+function commandKey(check) {
+  return [typeof check.executable === 'string' ? pathKey(path.normalize(check.executable)) : null, ...(check.args ?? [])];
+}
+
+// A record without an exit code reports its outcome only through passed.
+function succeeded(check) {
+  return !check.error && (check.exitCode === undefined ? check.passed === true : check.exitCode === 0);
+}
+
+// A pending run has no outcome yet, and one that exited cleanly while its inputs changed proves neither a failure nor a pass.
+function settled(check) {
+  return !check.pending && !(succeeded(check) && check.passed === false);
+}
+
+// The reproduction of a passing check, from the earlier settled runs of its name on the same target: every failure of its command
+// in the last unbroken series of failures before it, since the records do not say which of them the controller confirmed fails for
+// the finding's reason, with the number of successful runs between that series and the passing check. A success under any command
+// of that name ends the series, and a failure of another command is no part of it.
+function reproductionOf(history, check) {
+  const command = commandKey(check);
+  const same = item => isDeepStrictEqual(commandKey(item), command);
+  const runs = history.slice(0, history.lastIndexOf(check)).filter(item => item.name === check.name && settled(item));
+  let index = runs.length - 1;
+  let passesSince = 0;
+  for (; index >= 0 && (succeeded(runs[index]) || !same(runs[index])); index--) {
+    if (succeeded(runs[index])) passesSince++;
+  }
+  const failures = [];
+  for (; index >= 0 && !succeeded(runs[index]); index--) {
+    if (same(runs[index])) failures.unshift(runs[index]);
+  }
+
+  return failures.length === 0 ? null : { failures, passesSince };
+}
+
 function inputFiles(check) {
   return (check.snapshot?.files ?? []).map(file => ({ path: file.path, sha256: file.sha256 }));
 }
@@ -335,31 +379,36 @@ function checkRun(check, named) {
 }
 
 // The recorded checks an assessment receives: for each covered target, the latest invocation of each named check when it passed on
-// inputs that are still current, with the last failing invocation of the same name and command before it, the reproduction a repair
-// of misbehavior runs first; a failure of another command under that name reproduces nothing this run reran. A failing, pending or
-// stale latest invocation is left out, since no gate accepts it either. A passing check names the inputs the reviewed change touches
-// and a reproduction the inputs whose content differed from that passing run; one check recorded on several targets with the same
-// command and inputs is listed once with every target's id.
+// inputs that are still current, with its reproduction (see reproductionOf), the evidence a repair of misbehavior carries; a failure
+// of another command under that name reproduces nothing this run reran. A failing, pending or stale latest invocation is left out,
+// since no gate accepts it either, and its reproduction with it until the check is rerun. A passing check names the inputs the
+// reviewed change touches, and a reproduction's first failure each input whose content differed from the passing run, with both
+// hashes. One check recorded on several targets with the same command and inputs and no reproduction on any is listed once with
+// every target's id; a reproduction is its own target's failing run, so a check with one gets an entry for that target alone.
 function attachedChecks(root, targets, { changed = new Set(), judge = freshAll } = {}) {
   const candidates = targets.flatMap(target => latestChecks(target).filter(check => check.passed === true && !check.pending).map(check => ({ target, check })));
   const current = candidates.length === 0 ? [] : judge(root, candidates.map(item => item.check.snapshot));
+  const touched = new Set([...changed].map(pathKey));
   const attached = new Map();
   for (const { target, check } of candidates.filter((_item, index) => current[index])) {
-    const key = JSON.stringify([check.name, checkCommand(check), check.snapshot.digest]);
-    const earlier = target.checks.slice(0, target.checks.lastIndexOf(check));
-    const reproduction = earlier.findLast(item => item.name === check.name && isDeepStrictEqual(checkCommand(item), checkCommand(check)) && !item.pending && (item.error || item.exitCode !== 0));
-    const known = attached.get(key);
-    if (known) {
-      known.taskIds.push(target.id);
-      if (known.reproduction || !reproduction) continue;
-    }
-    const passing = new Map(inputFiles(check).map(file => [file.path, file.sha256]));
+    const reproduction = reproductionOf(target.checks, check);
+    const passing = new Map(inputFiles(check).map(file => [pathKey(file.path), file]));
     const differing = files => {
-      const read = new Set(files.map(file => file.path));
-      const onlyPassing = [...passing.keys()].filter(file => !read.has(file)).map(file => ({ path: file, sha256: null }));
-      return { differing: [...files.filter(file => passing.get(file.path) !== file.sha256), ...onlyPassing] };
+      const failing = new Map(files.map(file => [pathKey(file.path), file]));
+      const keys = [...failing.keys(), ...[...passing.keys()].filter(key => !failing.has(key))];
+      const entries = keys.map(key => ({ path: (passing.get(key) ?? failing.get(key)).path, failing: failing.get(key)?.sha256 ?? null, passing: passing.get(key)?.sha256 ?? null }));
+      return { differing: entries.filter(entry => entry.failing !== entry.passing) };
     };
-    attached.set(key, { taskIds: known?.taskIds ?? [target.id], name: check.name, ...checkRun(check, files => ({ changed: files.filter(file => changed.has(file.path)) })), reproduction: reproduction ? checkRun(reproduction, differing) : null });
+    const later = run => {
+      const { command: _command, inputs: _inputs, ...outcome } = checkRun(run, () => ({}));
+      return outcome;
+    };
+    const [first, ...rest] = reproduction?.failures ?? [];
+    const repro = reproduction ? { ...checkRun(first, differing), laterFailures: rest.slice(0, LATER_FAILURES).map(later), omittedFailures: Math.max(rest.length - LATER_FAILURES, 0), passesSince: reproduction.passesSince } : null;
+    const key = JSON.stringify([check.name, commandKey(check), check.snapshot.digest, repro ? target.id : null]);
+    const known = attached.get(key);
+    if (known) known.taskIds.push(target.id);
+    else attached.set(key, { taskIds: [target.id], name: check.name, ...checkRun(check, files => ({ changed: files.filter(file => touched.has(pathKey(file.path))) })), reproduction: repro });
   }
 
   return [...attached.values()];
@@ -369,7 +418,7 @@ function checkBrief(request) {
   const checks = request.checks ?? [];
   if (checks.length === 0) return 'No passing recorded check ran on inputs that are unchanged since; execution evidence comes from probe requests.\n';
 
-  return listing('Recorded checks: the controller ran each through the runtime, and every input a passing check read is unchanged since it ran. Each gives the number of its inputs and their digest, and names the inputs this change touches. A passing check on matching inputs is execution evidence: rely on it, and request a probe only for execution these checks do not cover, never to rerun one. A reproduction is the last failing run of the same name and command before it, the evidence a fix of misbehavior carries; it names the inputs whose content differed from the passing run, with a null hash for an input only the passing run read, which shows what the fix changed. A fix of misbehavior whose check lists none needs the reason and stand-in evidence the requirements cite.', checks);
+  return listing(`Recorded checks: the controller ran each through the runtime, and every input a passing check declares is unchanged since it ran. Each gives the number of its declared inputs and their digest, and names the inputs this change touches. A passing check on matching inputs is execution evidence: rely on it, and request a probe only for execution these checks do not cover, never to rerun one. A reproduction is the evidence a fix of misbehavior carries: the failures of the same name and command in the last series before the passing run that no successful run of that name interrupts, given as the first of them, with laterFailures listing the outcome of each of up to ${LATER_FAILURES} further failures in that series and omittedFailures counting any after them, since the records do not say which failure the controller confirmed fails for the reason the finding gives; judge from the output tails which one reproduces it. passesSince counts the successful runs between that series and the passing run; reruns after later edits make it nonzero, so it does not show by itself whether the series belongs to the fix under review: judge that from whether the failure output matches the misbehavior that fix addresses, and treat a series that reproduces something else as an earlier fix's reproduction. The first failure names each input whose content differed from the passing run, with its failing and passing hashes and a null hash where that run did not declare the file or the file was missing, which shows what changed between the two runs. A fix of misbehavior whose check lists none needs the reason and stand-in evidence the requirements cite.`, checks);
 }
 
 // Vibe gives its reviewer a TypeScript sandbox that cannot be removed; what it runs there is a transcription, not the project. It also
@@ -464,7 +513,8 @@ async function dispatchReview(root, options, dependencies = {}) {
     const captured = options.kind === 'spec' ? snapshot(canonical, options.artifactPaths) : contextSnapshot;
     if (options.kind === 'spec') requireCondition(captured.files.every(file => file.sha256 !== null), 'missing-spec', 'Whole-spec assessment requires the governing artifact to exist');
     const exclusionArgs = excludedPaths.map(file => `:(exclude,literal)${file}`);
-    let diff = git(canonical, ['diff', '--no-ext-diff', '--binary', options.baseSha, '--', '.', ...exclusionArgs]);
+    // Paths stay relative to the project root, as in the reviewer's copy, when the root is a subdirectory of its repository.
+    let diff = git(canonical, ['diff', '--no-ext-diff', '--binary', '--relative', options.baseSha, '--', '.', ...exclusionArgs]);
     const untracked = git(canonical, ['ls-files', '-z', '--others', '--exclude-standard']).split('\0').filter(file => files.includes(file));
     const changed = new Set([...git(canonical, ['diff', '--name-only', '--relative', '--no-renames', '-z', options.baseSha, '--', '.', ...exclusionArgs]).split('\0').filter(Boolean), ...untracked]);
     const checks = attachedChecks(canonical, options.recordedChecks ?? [], { changed });
