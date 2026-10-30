@@ -440,12 +440,6 @@ Four remain outstanding. In [the acceptance report](reports/vibe-reviewer-host-a
 
 Apply each correction to the document it names, keeping the acceptance report's evidence qualifications intact and adding no new claims. These are documentation repairs only and need no version increase. Tracking does not authorize implementation.
 
-### Give the evaluated Vibe skeptic the launcher's guidance
-
-One minor finding from the code review of the Vibe reviewer host delivery, run `dcd9e840-e8b6-4f28-9c6e-b5aaaaac9847`, confirmed by a skeptic and deferred under the user's minor-only policy, routed here the same way (finding `9445a957-df68-4140-97ca-df7981962a56:F1`). The seeded-defect suite's evaluated Vibe skeptic is prompted for its Codex gate candidate and then only its runner host and model are replaced with the isolated Vibe launcher, so it never receives the Vibe-specific relative-read and sandbox-evidence guidance that an admitted Vibe lead's prompt carries; this is a potential measurement issue in the suite's skeptic figures, not a defect in the runtime's role restrictions, which admit no Vibe skeptic.
-
-Give the injected skeptic the same Vibe prompt rules the runtime's dispatch prompt gives a lead, without changing runtime admission, and rerun the affected suite measurements when the suite is next exercised. The suite is a repository tool and needs no version increase. Tracking does not authorize implementation.
-
 ### Reject a Vibe version mismatch before launch
 
 One minor finding from the same review, confirmed by a skeptic and deferred the same way (finding `9445a957-df68-4140-97ca-df7981962a56:F2`). A Vibe candidate whose installed version cannot match the dispatch's eligibility observation is refused only after the attempt finishes and its export is compared, so a launch whose version comparison will refuse it still spends model time and tokens; the current post-attempt refusal meets the governing spec's export-comparison boundary, and the wasted time and tokens were not measured.

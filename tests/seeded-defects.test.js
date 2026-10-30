@@ -7,7 +7,7 @@ const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 const test = require('node:test');
 const suite = require('../tools/seeded-defects');
-const { dispatchReview } = require('../internal/runtime/review');
+const { buildPrompt, dispatchReview } = require('../internal/runtime/review');
 const { DIMENSIONS } = require('../internal/runtime/lifecycle');
 const { pathIsContained } = require('../internal/filesystem-primitives');
 
@@ -228,8 +228,17 @@ test('a Vibe lead runs as an admitted candidate while a Vibe skeptic passes the 
   assert.deepEqual(skeptic.evaluation, { host: 'vibe', model: 'glm-5-3', gateCandidate: { host: 'codex', model: 'gpt-6-sol' } });
   assert.deepEqual([leadReceipt.host, leadReceipt.model, leadReceipt.attempts[0].host], ['vibe', 'glm-5-3', 'vibe']);
   assert.deepEqual([skepticReceipt.host, skepticReceipt.model, skepticReceipt.attempts[0].host, skepticReceipt.attempts[0].model], ['vibe', 'glm-5-3', 'codex', 'gpt-6-sol']);
+  assertVibePrompts(calls);
   assert.deepEqual(Object.keys(report.byModel), ['vibe:glm-5-3']);
 });
+
+// Every Vibe stage, direct or behind a gate candidate, gets the prompt the runtime builds for a Vibe host.
+function assertVibePrompts(calls) {
+  for (const call of calls) {
+    assert.equal(call.options.prompt, buildPrompt(call.request, { workspace: call.options.cwd, host: 'vibe' }));
+    assert.match(call.options.prompt, /Your run_typescript sandbox/);
+  }
+}
 
 test('a Vibe model no family admits passes the gate as its gate candidate in both stages, and the records name it', async t => {
   // Arrange
@@ -251,7 +260,29 @@ test('a Vibe model no family admits passes the gate as its gate candidate in bot
   assert.deepEqual(calls.map(call => [call.kind, call.options.host, call.options.model]), [['code', 'vibe', 'mistral-large-4'], ['skeptic', 'vibe', 'mistral-large-4']]);
   assert.deepEqual([lead.evaluation, skeptic.evaluation], [{ host: 'vibe', model: 'mistral-large-4', gateCandidate }, { host: 'vibe', model: 'mistral-large-4', gateCandidate }]);
   assert.deepEqual([leadReceipt.host, leadReceipt.model, leadReceipt.attempts[0].host, leadReceipt.attempts[0].model], ['vibe', 'mistral-large-4', 'codex', 'gpt-6-sol']);
+  assertVibePrompts(calls);
   assert.deepEqual(Object.keys(report.byModel), ['vibe:mistral-large-4']);
+});
+
+test('an evaluated stage whose saved request does not rebuild the runtime prompt fails before its host starts', async t => {
+  // Arrange
+  const root = scratch(t);
+  writeFixture(root, 'alpha');
+  const calls = [];
+  const base = dependencies(LEAD_FINDS_DEFECT, calls);
+  // A runtime that builds its prompt from more than it saves, standing in for request fields the rebuild cannot see.
+  const drifting = { ...base, dispatchReview: (project, dispatch, injected) => dispatchReview(project, dispatch, { ...injected, runAgent: agent => injected.runAgent({ ...agent, prompt: `${agent.prompt}Unsaved rule.\n` }) }) };
+
+  // Act
+  const result = await suite.run(options(root, root, { models: [{ host: 'vibe', id: 'mistral-large-4' }] }), drifting);
+  const paths = suite.runPaths(path.join(root, 'run'), suite.fixtureRunKey('alpha', { host: 'vibe', id: 'mistral-large-4' }, 1));
+  const record = JSON.parse(fs.readFileSync(paths.result('lead'), 'utf8'));
+
+  // Assert
+  assert.equal(calls.length, 0);
+  assert.deepEqual([record.outcome, record.code, record.prelaunch], ['failed', 'evaluation-prompt-drift', true]);
+  assert.equal(result.stopped, null);
+  assert.equal(result.spending.spent, 0);
 });
 
 test('a run refuses to start without a budget and stops before a dispatch the budget cannot cover', async t => {

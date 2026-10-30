@@ -614,14 +614,27 @@ function stageOptions(stage, item, frozen, manifestRules, repository, model, req
   return stage === 'lead' ? { ...common, kind: 'code' } : { ...common, kind: 'skeptic', findings: claims.map(claim => claim.claim) };
 }
 
-// For an evaluated host, the dispatch's agent runner is that host's launcher, or an injected runner, given the evaluated model.
+// For an evaluated host, the dispatch's agent runner is that host's launcher, or an injected runner, given the evaluated model and the
+// prompt the runtime builds for that host, rebuilt from the dispatch's saved request. The rebuild for the gate candidate must first
+// reproduce the runtime's own prompt, so a request the rebuild cannot see in full fails the attempt before any host starts.
 function dispatchDependencies(dependencies, model, stage) {
   const base = dependencies.dispatchDependencies ?? {};
   const evaluation = evaluationFor(model, stage);
   if (!evaluation) return base;
   const runAgent = base.runAgent ?? evaluation.launcher();
+  const { buildPrompt } = require(path.join(PLUGIN_ROOT, 'internal/runtime/review.js'));
 
-  return { ...base, runAgent: options => runAgent({ ...options, host: model.host, model: model.id }) };
+  return {
+    ...base,
+    runAgent: async options => {
+      const request = readJson(path.join(options.artifacts, '..', 'request.json'));
+      if (buildPrompt(request, { workspace: options.cwd, host: options.host }) !== options.prompt) {
+        throw new SuiteError('evaluation-prompt-drift', `The saved request does not rebuild the ${options.host} prompt the runtime built, so the ${model.host} prompt cannot be built from it`);
+      }
+
+      return runAgent({ ...options, host: model.host, model: model.id, prompt: buildPrompt(request, { workspace: options.cwd, host: model.host }) });
+    },
+  };
 }
 
 class StopRun extends Error {
