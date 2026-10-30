@@ -42,10 +42,39 @@ Apart from probe requests, 16 stage dispatches failed: 4 leads and 12 skeptics. 
 
 The evaluation spent 14,125,044 tokens: 325,379 on two smoke runs, the first of which failed on the image-support mismatch above, and 13,799,665 in the run, of which the final fixture runs' records hold 7,987,921. The first pass spent 7,066,686, the first retry pass 4,354,483 and the second 2,378,496, which converted one stage; retrying further would have kept paying for the same fifteen probe requests.
 
+## Sandbox execution claims
+
+Findings and verdicts in both Vibe evaluations cite runs in Vibe's `run_typescript` sandbox as evidence. On 2026-10-30 two fresh-context agents checked those claims against the session journals: every claim whose text matched an execution keyword in the 27 GLM 5.3 final receipts that have one, and the same for a sample of 16 of Mistral's 58 such receipts (every fourth in sorted order, plus each receipt with no sandbox call). A claim counted as executed when every input and result it attributes to execution appears in a recorded call and its output. Each agent also compared the code the sandbox ran with the shipped files. The GLM agent found every `run_typescript` call in the journals present in the extracted calls it was given; the Mistral agent checked the journals its partial and not-executed verdicts rest on, with the same result.
+
+| Claims | GLM 5.3 | Mistral Large 4 (sample) |
+|---|---|---|
+| Matching an execution keyword | 44 | 27 |
+| Not claiming execution | 16 | 3 |
+| Executed as claimed | 24 | 20 |
+| Partly executed | 3 | 3 |
+| Not executed | 0 | 1 |
+| Output contradicts the claim | 1 | 0 |
+
+Eight of the 52 claims that cite execution go beyond their recorded calls:
+
+- GLM, port-validation's second lead credits a Symbol input's TypeError to sandbox execution; no call ran a Symbol input.
+- GLM, port-validation's second skeptic reports `'-1'` throwing "invalid port: -80"; its call recorded "invalid port: -1", with the same error class. Another of its verdicts credits a second TypeError to a template literal that the shipped code never reaches, since the regular expression throws first.
+- GLM, replay-after-adoption's second skeptic says execution confirmed an adoption by owner B; the call ran it, but no output records the owner after it.
+- Mistral, branch-switch-shell's first lead says a finding was "Confirmed by" a probe it had only requested.
+- Mistral, registry-timeout's first skeptic cites a "33000+ ms" figure that no call produced; the journal shows it copied from the lead's report.
+- Mistral, replay-after-adoption's second lead, two findings: the read after each replay was an `adopt` call, which itself set the owner the findings attribute to the replay.
+
+In each of the eight, the conclusion is still true of the shipped code. One conclusion among all the judged claims is incomplete: GLM's check-exit-status second skeptic refuted "comments are counted as problems" on a line starting with `#`, while its own output shows an indented comment reported as a problem, which `line.startsWith('#')` in the fixture's `src/config.js` does not skip.
+
+Every hand-typed copy reproduced the shipped function. One Mistral run replaced the `node:crypto` digest and file reads with a hand-written SHA-256 over an in-memory map, keeping the freshness logic, after an earlier hand-written version failed its own known-answer test. Labels are unreliable: among the sampled Mistral claims, four describe a hand-typed copy as the real file ("exact file contents", "unmodified module", "byte-exact"), three say "verbatim" without saying which, and many GLM claims do not say that a copy ran.
+
+The sandbox is not limited to transcription. Code in `run_typescript` can call `tools.file_system.read_file`. In 6 of the 16 sampled Mistral receipts the model read `project/src` files that way and ran the returned text with `new Function` under small `module` and `require` shims, so the shipped bytes ran; GLM read files from the sandbox too, but always ran copies it typed. Every shell call in both runs was refused, and code that needs Node's built-in modules did not run as shipped, since `require` had to be replaced. The runtime's Vibe rule that the sandbox "runs only code you transcribe into it, never this project" is therefore inaccurate for self-contained modules. Whether such a run should count as evidence is a separate question: unlike a probe, the runtime neither records nor checks it.
+
 ## Observations for the admission decision
 
 - On the fixture runs it completed, Mistral Large 4 matched Opus on detection and skeptic accuracy, with no clean-change false positive, and was within Opus's spread on unmatched confirmations and severity.
 - Almost half of its first lead attempts (21 of 46) end with probe requests under the probe instruction every host gets, and a third (15 of 46) on every attempt, against 2 of 34 for GLM 5.3 on the fixtures both ran, so in runtime use it would lean on probes far more than Opus or GLM; the suite cannot say what that costs or whether those reviews would then be correct.
+- Its sandbox execution claims mostly match their recorded calls, but in the sample one credits a probe it never ran and three go beyond their calls, so a sandbox claim alone is weaker evidence than a probe.
 - Its report protocol fails more often than Opus's, skeptic JSON above all, so a runtime launcher must keep the retry path.
 - It spent about three times Opus's tokens per fixture run by Vibe's accounting.
 - Attribution and the Windows job worked as for GLM: every attempt's journal names `mistral-large-4`.
@@ -55,6 +84,6 @@ The evaluation spent 14,125,044 tokens: 325,379 on two smoke runs, the first of 
 - Two repetitions on 23 fixtures, of which fifteen fixture runs, covering six fixtures entirely and the tests-evidence dimension, have no complete lead; the figures describe the fixtures Mistral completed, not the suite.
 - Confounded comparison: model and host, review machinery and dispatching harness all differ from the Opus run, and Mistral's prompts, built for the Codex gate candidate, lack the guidance a runtime Vibe lead's prompt carries.
 - Same-model pairing: the skeptic figures describe Mistral judging Mistral, as in the GLM evaluation, not Mistral judging another model's leads.
-- Findings report execution in Vibe's sandbox, as GLM's did; those claims were not checked call by call here.
+- The sandbox audit checked a sample of 16 of Mistral's 58 receipts with execution keywords, and its Mistral figures describe that sample.
 - Token figures are Vibe's accounting and not comparable with Claude's; the targets describe Opus 5.5 and are out of scope for this model.
-- The raw run folder lives in the session's scratch space under `.tmp` and is not durable.
+- The raw run folder and the audit's reports live in the session's scratch space under `.tmp` and are not durable.
