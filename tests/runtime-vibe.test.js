@@ -387,7 +387,7 @@ for (const kind of ['code', undefined]) {
     assert.equal(lead.receipt.kind, 'code');
     assert.equal(lead.receipt.strength, 'strong');
     assert.equal(lead.receipt.vibeVersion, '3.0.0');
-    assert.match(calls[0].prompt, /run_typescript sandbox runs only code you transcribe into it/);
+    assert.match(calls[0].prompt, /run_typescript sandbox can load project files through read_file, but the runtime neither records nor checks what runs there, so a sandbox run is not execution evidence of the project, even of project code it loaded: a deciding claim that needs execution goes through a probe request/);
     assert.ok(calls[0].prompt.includes(`Your working directory is ${calls[0].cwd}: read context/diff.patch`));
     assert.equal(reviewGate(f.root, f.task(), f.store.read()), true);
   });
