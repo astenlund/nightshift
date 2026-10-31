@@ -458,6 +458,12 @@ Run `dcd9e840-e8b6-4f28-9c6e-b5aaaaac9847` delivered the Vibe reviewer host and 
 
 This entry is the durable home for those obligations; it does not claim any of them done, does not authorize publication, and does not infer user answers for triage. Each obligation is recorded through the runtime by a closing session on a Claude or Codex controller. Tracking does not authorize implementation.
 
+### Run requested probes in the seeded-defect suite
+
+Raised on 2026-10-30 from [the Mistral Large 4 evaluation](reports/mistral-large-4-review-evaluation-20261030.md), which the user chose to keep as a follow-up and filed here on 2026-10-31. [The suite spec](specs/seeded-defect-suite.md) grades a fixture run incomplete when its lead returns an incomplete report, "such as one requesting probes, which this version does not execute", and then dispatches no skeptic. A model that confirms findings through probes therefore leaves fixtures unmeasured rather than missed. Mistral's first lead attempts requested probes in 21 of 46 fixture runs, and 25 of 46 in the rerun under the runtime's Vibe prompt. Fifteen fixture runs, and then seventeen, requested probes on all three attempts. Six fixtures, and then eight, had no complete lead in either repetition, and in both runs the tests-evidence dimension, whose only fixture is lock-contention-test, went unmeasured. GLM 5.3 requested probes in 2 of 34 first lead attempts on the fixtures both evaluations ran, and Opus 5.5 in one of 48 lead dispatches.
+
+Let the suite execute a lead's requested probes in a private copy of the fixture run's materialized repository, as the runtime's `probe` operation does, and continue the review with their results so the fixture run can complete and be graded. Settle these first: whether the lead's session is resumed with the results or a fresh dispatch carries them; who authorizes a model-proposed command in an unattended run, since the runtime has the controller inspect each probe as authorized verification before it runs; how probe time and any continuation's tokens count toward the budget and the per-fixture figures; and whether a run with executed probes stays comparable with earlier runs and baselines, or is marked as a machinery change. Suite changes live in `tools/` and need no version increase. Tracking does not authorize implementation.
+
 ## History
 
 Prior delivered work remains in [QUICK_WINS_HISTORY.md](QUICK_WINS_HISTORY.md).
