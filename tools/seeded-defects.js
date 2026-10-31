@@ -39,12 +39,22 @@ const EVALUATION_HOSTS = Object.freeze({
   vibe: { gate: { host: 'codex', model: 'gpt-6-sol' }, launcher: () => require(VIBE_LAUNCHER).runVibe },
 });
 
+// A fixture run's stages in dispatch order: the lead, the probed lead that receives the results of the lead's approved probes, and
+// the skeptic.
+const STAGES = Object.freeze(['lead', 'probed', 'skeptic']);
+// The runtime's grace for a probe's descendants to outlive its command (LINGERING_GRACE_MS in internal/runtime/operations.js).
+const PROBE_GRACE_MS = 5000;
+
+function kindOf(stage) {
+  return stage === 'skeptic' ? 'skeptic' : 'code';
+}
+
 // The injection a stage's model needs, or null when the runtime admits it directly.
 function evaluationFor(model, stage) {
   const evaluation = EVALUATION_HOSTS[model.host];
-  const { isAdmittedModel } = require(path.join(PLUGIN_ROOT, 'internal/runtime/models.js'));
+  const { isAdmittedModel, roleFor } = require(path.join(PLUGIN_ROOT, 'internal/runtime/models.js'));
 
-  return evaluation && !isAdmittedModel(model.host, model.id, stage) ? evaluation : null;
+  return evaluation && !isAdmittedModel(model.host, model.id, roleFor(kindOf(stage))) ? evaluation : null;
 }
 
 class SuiteError extends Error {
@@ -372,6 +382,10 @@ function runPaths(runFolder, key) {
     result: stage => path.join(root, `${stage}.result.json`),
     artifacts: stage => path.join(root, stage),
     claims: path.join(root, 'claims.json'),
+    probes: path.join(root, 'probes'),
+    pending: path.join(root, 'probes', 'pending.json'),
+    decision: path.join(root, 'probes', 'decision.json'),
+    probeResult: index => path.join(root, 'probes', `${index}.result.json`),
     complete: path.join(root, 'complete.json'),
     superseded: path.join(root, 'superseded'),
   };
@@ -498,7 +512,7 @@ function allResults(runFolder) {
   const results = [];
   const runsRoot = path.join(runFolder, 'runs');
   for (const file of listFiles(runsRoot)) {
-    if (/(^|\/)(lead|skeptic)\.result\.json$/.test(file)) results.push(readJson(path.join(runsRoot, file)));
+    if (/(^|\/)(lead|probed|skeptic)\.result\.json$/.test(file)) results.push(readJson(path.join(runsRoot, file)));
   }
 
   return results;
@@ -607,11 +621,21 @@ function recordOutcome(paths, stage, intent, error, elapsedMs, identity, launche
   return record;
 }
 
-function stageOptions(stage, item, frozen, manifestRules, repository, model, requestId, claims, onProcess) {
+function stageOptions(stage, item, manifestRules, repository, model, requestId, claims, probeEvidence, onProcess) {
   const candidate = evaluationFor(model, stage)?.gate ?? { host: model.host, model: model.id };
-  const common = { id: requestId, baseSha: repository.baseSha, requirements: item.fixture.requirements, rules: manifestRules, candidates: [{ ...candidate, effort: EFFORT }], onProcess };
+  const common = { id: requestId, baseSha: repository.baseSha, requirements: item.fixture.requirements, rules: manifestRules, candidates: [{ ...candidate, effort: EFFORT }], onProcess, kind: kindOf(stage) };
+  if (stage === 'skeptic') return { ...common, findings: claims.map(claim => claim.claim) };
 
-  return stage === 'lead' ? { ...common, kind: 'code' } : { ...common, kind: 'skeptic', findings: claims.map(claim => claim.claim) };
+  return probeEvidence ? { ...common, probeEvidence } : common;
+}
+
+// The probe evidence files the runtime wrote into a dispatch's workspace, in the order it named them, since the saved request does not
+// record them.
+function suppliedProbeFiles(workspace) {
+  const folder = path.join(workspace, 'context', 'probes');
+  if (!fs.existsSync(folder)) return [];
+
+  return fs.readdirSync(folder).map(file => Number(path.basename(file, '.json'))).sort((a, b) => a - b).map(index => `context/probes/${index}.json`);
 }
 
 // For an evaluated host, the dispatch's agent runner is that host's launcher, or an injected runner, given the evaluated model and the
@@ -628,13 +652,55 @@ function dispatchDependencies(dependencies, model, stage) {
     ...base,
     runAgent: async options => {
       const request = readJson(path.join(options.artifacts, '..', 'request.json'));
-      if (buildPrompt(request, { workspace: options.cwd, host: options.host }) !== options.prompt) {
+      const probeFiles = suppliedProbeFiles(options.cwd);
+      if (buildPrompt(request, { workspace: options.cwd, host: options.host, probeFiles }) !== options.prompt) {
         throw new SuiteError('evaluation-prompt-drift', `The saved request does not rebuild the ${options.host} prompt the runtime built, so the ${model.host} prompt cannot be built from it`);
       }
 
-      return runAgent({ ...options, host: model.host, model: model.id, prompt: buildPrompt(request, { workspace: options.cwd, host: model.host }) });
+      return runAgent({ ...options, host: model.host, model: model.id, prompt: buildPrompt(request, { workspace: options.cwd, host: model.host, probeFiles }) });
     },
   };
+}
+
+// Runs a probe command contained in a Windows job, as the runtime's probe operation does, so its descendants are reclaimed or their
+// survival is reported.
+async function containedProbe(root, check) {
+  const { runContained } = require(path.join(PLUGIN_ROOT, 'internal/releases/processes.js'));
+  const { verificationEnvironment } = require(path.join(PLUGIN_ROOT, 'internal/releases/entry.js'));
+  const startedAt = new Date().toISOString();
+  const result = await runContained(check.executable, check.args, { cwd: root, env: verificationEnvironment(check.resourceMode), timeoutMs: check.timeoutMs, reclaimAfterMs: PROBE_GRACE_MS });
+
+  return { ...check, startedAt, finishedAt: new Date().toISOString(), exitCode: result.code, error: result.error ?? null, output: (result.stdout ?? '') + (result.stderr ?? ''), lingeringDescendants: result.lingering ?? null };
+}
+
+// Runs the lead's approved probes in the probed lead's repository through the runtime's own probe preparation and execution, each in a
+// private copy of the reviewed inventory, and copies each result into the fixture run's probes folder. A probe the runtime refuses or
+// that ends in an error yields no evidence and keeps its code; one whose descendants were not reclaimed stops the rest, since a
+// process it started may still run.
+async function runApprovedProbes(dependencies, paths, repository) {
+  const { prepareProbe, runProbe } = require(path.join(PLUGIN_ROOT, 'internal/runtime/probes.js'));
+  const receipt = receiptOf(paths, 'lead');
+  const runner = dependencies.probeRunner ?? containedProbe;
+  const started = Date.now();
+  const references = [];
+  const outcomes = [];
+  let unproven = false;
+  for (const [index, probe] of receipt.probes.entries()) {
+    try {
+      const reference = await runProbe(repository.root, receipt, prepareProbe(repository.root, probe), runner);
+      fs.copyFileSync(path.join(repository.root, reference.path), paths.probeResult(index + 1));
+      references.push(reference);
+      outcomes.push({ id: probe.id, result: path.basename(paths.probeResult(index + 1)) });
+    } catch (error) {
+      outcomes.push({ id: probe.id, code: error.code ?? null, message: error.message });
+      if (error.code === 'operation-termination-unverified' || error.descendantsReclaimed === false) {
+        unproven = true;
+        break;
+      }
+    }
+  }
+
+  return { references, outcomes, unproven, elapsedMs: Date.now() - started };
 }
 
 class StopRun extends Error {
@@ -667,14 +733,24 @@ async function dispatchStage(context, runItem, stage, claims) {
   writeJson(paths.intent(stage), intent);
   const rules = fs.readFileSync(path.join(runFolder, 'rules.md'), 'utf8');
   const started = Date.now();
+  const probes = stage === 'probed' ? await runApprovedProbes(dependencies, paths, repository) : null;
+  // A probed lead with no evidence to receive, or whose probe left its termination unproven, settles without dispatching.
+  if (probes && (probes.unproven || probes.references.length === 0)) {
+    const code = probes.unproven ? 'termination-unverified' : 'probes-not-run';
+    const record = { stage, requestId, elapsedMs: Date.now() - started, identity, outcome: 'failed', code, message: probes.unproven ? 'A probe did not establish descendant termination' : 'No approved probe produced evidence', attemptTokens: [], prelaunch: true, unproven: probes.unproven, probes: probes.outcomes, probeElapsedMs: probes.elapsedMs };
+    settleStage(context, runItem, stage, intent, record);
+
+    return record;
+  }
   let error = null;
   let launched = false;
   try {
-    await dependencies.dispatchReview(repository.root, stageOptions(stage, runItem.fixture, frozen, rules, repository, model, requestId, claims, () => { launched = true; }), dispatchDependencies(dependencies, model, stage));
+    await dependencies.dispatchReview(repository.root, stageOptions(stage, runItem.fixture, rules, repository, model, requestId, claims, probes?.references, () => { launched = true; }), dispatchDependencies(dependencies, model, stage));
   } catch (caught) {
     error = caught;
   }
   const record = recordOutcome(paths, stage, intent, error, Date.now() - started, identity, launched);
+  if (probes) Object.assign(record, { probes: probes.outcomes, probeElapsedMs: probes.elapsedMs });
   settleStage(context, runItem, stage, intent, record);
   if (record.attemptTokens.some(value => value === null)) throw new StopRun(`An attempt of ${runItem.key} ${stage} recorded no tokens`);
 
@@ -743,21 +819,51 @@ function stageState(paths, stage) {
   return intent.done && fs.existsSync(paths.result(stage)) ? 'done' : 'pending';
 }
 
-function leadReceipt(paths) {
-  const file = path.join(paths.artifacts('lead'), 'receipt.json');
+function receiptOf(paths, stage) {
+  const file = path.join(paths.artifacts(stage), 'receipt.json');
 
   return fs.existsSync(file) ? readJson(file) : null;
 }
 
-// The stages a fixture run requires, given its lead's result.
-function requiredStages(paths, runItem) {
+// Where a fixture run stands on its lead's requested probes: none unless the lead returned an incomplete report requesting probes,
+// then awaiting until the user decides, and approved or declined after.
+function probeState(paths) {
   const lead = fs.existsSync(paths.result('lead')) ? readJson(paths.result('lead')) : null;
-  if (!lead) return ['lead'];
-  if (lead.outcome !== 'complete' || lead.reportStatus !== 'complete') return ['lead'];
-  const receipt = leadReceipt(paths);
-  const claims = (receipt?.findings ?? []).length + runItem.fixture.fixture.decoys.length;
+  if (lead?.outcome !== 'complete' || lead.reportStatus !== 'incomplete' || !receiptOf(paths, 'lead')?.probes?.length) return 'none';
 
-  return claims > 0 ? ['lead', 'skeptic'] : ['lead'];
+  return fs.existsSync(paths.decision) ? readJson(paths.decision).decision : 'awaiting';
+}
+
+// The stage whose report the skeptic checks and grading reads: the probed lead once the lead's probes are approved, else the lead.
+function reviewingStage(paths) {
+  return probeState(paths) === 'approved' ? 'probed' : 'lead';
+}
+
+// The stages a fixture run requires, given its lead's result and probe decision.
+function requiredStages(paths, runItem) {
+  const reviewing = reviewingStage(paths);
+  const stages = reviewing === 'probed' ? ['lead', 'probed'] : ['lead'];
+  if (!fs.existsSync(paths.result(reviewing)) || stageIncomplete(paths, reviewing)) return stages;
+  const claims = (receiptOf(paths, reviewing)?.findings ?? []).length + runItem.fixture.fixture.decoys.length;
+
+  return claims > 0 ? [...stages, 'skeptic'] : stages;
+}
+
+// Writes the probes a lead requested for the user to inspect, once, from its receipt.
+function writePendingProbes(paths) {
+  if (fs.existsSync(paths.pending)) return;
+  const receipt = receiptOf(paths, 'lead');
+  writeJson(paths.pending, { leadRequestId: receipt.requestId, probes: receipt.probes });
+}
+
+// Refuses to run approved probes unless the pending record still has the bytes the decision covered and still holds the lead's
+// requested probes, since the approval covers what the user inspected and nothing else.
+function verifyApproval(paths) {
+  const decision = readJson(paths.decision);
+  const bytes = fs.readFileSync(paths.pending);
+  const pending = JSON.parse(bytes.toString('utf8'));
+  const receipt = receiptOf(paths, 'lead');
+  if (sha256(bytes) !== decision.pendingSha256 || pending.leadRequestId !== receipt.requestId || JSON.stringify(pending.probes) !== JSON.stringify(receipt.probes)) fail('probes-altered', `${paths.pending} no longer holds the probes approved for it`);
 }
 
 function stageIncomplete(paths, stage) {
@@ -768,7 +874,7 @@ function stageIncomplete(paths, stage) {
 }
 
 function retryCause(paths, stage) {
-  if (stage === 'lead' && fs.existsSync(paths.result('lead')) && !stageIncomplete(paths, 'lead')) return 'contamination';
+  if (stage !== 'skeptic' && fs.existsSync(paths.result(stage)) && !stageIncomplete(paths, stage)) return 'contamination';
   const record = fs.existsSync(paths.result(stage)) ? readJson(paths.result(stage)) : null;
   if (!record || record.outcome === 'lost') return 'lost-outcome';
   if (record.outcome === 'failed') return 'known-failure';
@@ -791,7 +897,7 @@ function supersede(paths, stages, cause) {
 // whose tokens were never superseded.
 function completeSupersession(paths, target) {
   const { stages, retried, cause } = readJson(path.join(target, 'moving.json'));
-  const files = [paths.complete, ...stages.flatMap(stage => [paths.intent(stage), paths.result(stage), paths.artifacts(stage)]), ...(stages.includes('skeptic') ? [paths.claims] : [])];
+  const files = [paths.complete, ...stages.flatMap(stage => [paths.intent(stage), paths.result(stage), paths.artifacts(stage)]), ...(stages.includes('lead') ? [paths.probes] : []), ...(stages.includes('skeptic') ? [paths.claims] : [])];
   for (const file of files) {
     if (fs.existsSync(file)) fs.renameSync(file, path.join(target, path.basename(file)));
   }
@@ -808,7 +914,7 @@ function finishInterruptedSupersessions(paths) {
 }
 
 function contaminated(paths) {
-  for (const stage of ['lead', 'skeptic']) {
+  for (const stage of STAGES) {
     const directory = paths.artifacts(stage);
     for (const file of listFiles(directory).filter(item => item.endsWith('events.jsonl'))) {
       if (containsToken(fs.readFileSync(path.join(directory, file), 'utf8'))) return true;
@@ -818,10 +924,14 @@ function contaminated(paths) {
   return false;
 }
 
-// Applies --retry to one fixture run: every incomplete stage, and a contaminated run's lead, is superseded so it runs again.
+// Applies --retry to one fixture run: every incomplete stage, and a contaminated run's lead, is superseded so it runs again. Every
+// later stage depends on the lead's report, so a retried lead or probed lead supersedes the whole chain, probe records included; a
+// lead whose probes await a decision, or whose approved probes have not run yet, is left to them.
 function applyRetry(paths) {
-  if (stageIncomplete(paths, 'lead') || (fs.existsSync(paths.result('lead')) && contaminated(paths))) {
-    supersede(paths, ['lead', 'skeptic'], retryCause(paths, 'lead'));
+  if (probeState(paths) === 'awaiting') return;
+  const reviewing = reviewingStage(paths);
+  if (stageIncomplete(paths, reviewing) || (fs.existsSync(paths.result(reviewing)) && contaminated(paths))) {
+    supersede(paths, STAGES, retryCause(paths, reviewing));
 
     return;
   }
@@ -849,25 +959,47 @@ async function runFixture(context, runItem) {
   fs.mkdirSync(paths.root, { recursive: true });
   finishInterruptedSupersessions(paths);
   // Pending intents are reconciled before --retry looks at the results, so an outcome found lost now is retried in this same pass.
-  for (const stage of ['lead', 'skeptic']) {
+  for (const stage of STAGES) {
     if (stageState(paths, stage) === 'pending') reconcileIntent(context, runItem, stage);
   }
   if (context.retry) applyRetry(paths);
   if (fs.existsSync(paths.complete)) return;
-  for (const stage of ['lead', 'skeptic']) {
+  for (const stage of STAGES) {
     if (!requiredStages(paths, runItem).includes(stage)) continue;
     const state = stageState(paths, stage);
     if (state === 'pending') reconcileIntent(context, runItem, stage);
     if (state !== 'none') continue;
     let claims = null;
+    if (stage === 'probed') verifyApproval(paths);
     if (stage === 'skeptic') {
-      const receipt = leadReceipt(paths);
+      const receipt = receiptOf(paths, reviewingStage(paths));
       claims = shuffledClaims(receipt?.findings ?? [], runItem.fixture.fixture.decoys, seedFor(context.manifest.seed, runItem.key));
       writeJson(paths.claims, { seed: seedFor(context.manifest.seed, runItem.key), claims });
     }
     await dispatchStage(context, runItem, stage, claims);
   }
+  // Probes a lead requested wait for the user's decision, so the fixture run stays open.
+  if (probeState(paths) === 'awaiting') {
+    writePendingProbes(paths);
+
+    return;
+  }
   writeJson(paths.complete, { stages: requiredStages(paths, runItem), completed: new Date().toISOString() });
+}
+
+// Records the user's decisions on fixture runs whose probes await one, all checked before any is written.
+function recordProbeDecisions(runFolder, items, approved, declined) {
+  const both = approved.find(key => declined.includes(key));
+  if (both) fail('invalid-arguments', `${both} is both approved and declined`);
+  const decisions = [...approved.map(key => [key, 'approved']), ...declined.map(key => [key, 'declined'])];
+  for (const [key] of decisions) {
+    const paths = runPaths(runFolder, key);
+    if (!items.some(item => item.key === key) || !fs.existsSync(paths.pending) || probeState(paths) !== 'awaiting') fail('probes-not-pending', `${key} has no probes awaiting a decision in this run folder`);
+  }
+  for (const [key, decision] of decisions) {
+    const paths = runPaths(runFolder, key);
+    writeJson(paths.decision, { decision, pendingSha256: sha256(fs.readFileSync(paths.pending)), decided: new Date().toISOString() });
+  }
 }
 
 function defaultDependencies() {
@@ -917,6 +1049,7 @@ async function run(options, dependencies = defaultDependencies()) {
       for (let repetition = 1; repetition <= manifest.repeat; repetition++) items.push({ fixture, model, repetition, key: fixtureRunKey(fixture.name, model, repetition) });
     }
   }
+  recordProbeDecisions(options.out, items, options.approveProbes ?? [], options.declineProbes ?? []);
   let stopped = null;
   for (const item of items) {
     try {
@@ -930,8 +1063,9 @@ async function run(options, dependencies = defaultDependencies()) {
 
   // The budget is checked before each dispatch, so the last one can pass it; the overrun is reported rather than left to be inferred.
   const spent = spending(options.out);
+  const awaitingProbes = items.filter(item => probeState(runPaths(options.out, item.key)) === 'awaiting').map(item => item.key);
 
-  return { stopped, spending: spent, budget: options.budget, overrun: Math.max(0, spent.spent - options.budget), fixtureRuns: items.length };
+  return { stopped, awaitingProbes, spending: spent, budget: options.budget, overrun: Math.max(0, spent.spent - options.budget), fixtureRuns: items.length };
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------
@@ -1002,23 +1136,28 @@ function ratio(numerator, denominator) {
 // Grades one fixture run from its saved artifacts and the run folder's adjudications.
 function gradeFixtureRun(runFolder, runItem, adjudications) {
   const paths = runPaths(runFolder, runItem.key);
-  const leadRecord = fs.existsSync(paths.result('lead')) ? readJson(paths.result('lead')) : null;
+  const records = STAGES.map(stage => fs.existsSync(paths.result(stage)) ? readJson(paths.result(stage)) : null).filter(Boolean);
+  const reviewing = reviewingStage(paths);
+  const leadRecord = fs.existsSync(paths.result(reviewing)) ? readJson(paths.result(reviewing)) : null;
   const skepticRecord = fs.existsSync(paths.result('skeptic')) ? readJson(paths.result('skeptic')) : null;
-  const tokens = [leadRecord, skepticRecord].filter(Boolean).map(dispatchTokens);
-  const elapsed = [leadRecord, skepticRecord].filter(Boolean).map(record => record.elapsedMs);
+  const tokens = records.map(dispatchTokens);
+  const elapsed = records.map(record => record.elapsedMs);
   const base = {
     key: runItem.key, fixture: runItem.fixture.name, model: modelLabel(runItem.model), repetition: runItem.repetition,
     // A fixture run a stopped run never dispatched has no cost to average, which is different from a dispatch that cost nothing.
-    dispatched: Boolean(leadRecord),
+    dispatched: records.length > 0,
     tokens: tokens.some(value => value === null) ? null : tokens.reduce((sum, value) => sum + value, 0),
-    tokensEstimated: [leadRecord, skepticRecord].some(record => record?.estimated !== undefined),
+    tokensEstimated: records.some(record => record.estimated !== undefined),
     elapsedMs: elapsed.some(value => value === null) ? null : elapsed.reduce((sum, value) => sum + value, 0),
-    identities: [leadRecord, skepticRecord].filter(Boolean).map(record => record.identity),
+    identities: records.map(record => record.identity),
     retries: retryCounts(runFolder, runItem.key),
+    awaitingProbes: probeState(paths) === 'awaiting',
+    // The lead's figures come from a review that received executed probe results, which no run without probes had.
+    probed: reviewing === 'probed' && Boolean(leadRecord),
   };
   if (!leadRecord || leadRecord.outcome !== 'complete' || leadRecord.reportStatus !== 'complete') return { ...base, status: 'incomplete' };
   if (contaminated(paths)) return { ...base, status: 'contaminated' };
-  const receipt = leadReceipt(paths);
+  const receipt = receiptOf(paths, reviewing);
   const findings = receipt.findings;
   const truth = runItem.fixture.truth;
   const { byFinding, byEntry } = assign(findings, truth);
@@ -1195,6 +1334,8 @@ function grade(runFolder, targetsFile = path.join(SUITE_ROOT, 'targets.json')) {
     incomplete: graded.filter(item => item.status === 'incomplete').map(item => item.key),
     contaminated: graded.filter(item => item.status === 'contaminated').map(item => item.key),
     skepticIncomplete: graded.filter(item => item.skepticIncomplete).map(item => item.key),
+    awaitingProbes: graded.filter(item => item.awaitingProbes).map(item => item.key),
+    probed: graded.filter(item => item.status === 'graded' && item.probed).map(item => item.key),
     pendingAdjudication: Object.fromEntries(graded.filter(item => item.pendingAdjudication?.length).map(item => [item.key, item.pendingAdjudication])),
     real: graded.filter(item => item.real > 0).map(item => item.key),
     // An active block names the dispatch whose host may still run and the repository kept for inspecting it.
@@ -1235,6 +1376,7 @@ function formatReport(report) {
   }
   if (report.blocking) lines.push('', `Blocked: host termination is unproven for ${report.blocking.fixtureRun} ${report.blocking.stage}; its repository is kept at ${report.blocking.repository}. Rerun with --termination-checked once the host process has ended.`);
   lines.push('', `Incomplete fixture runs: ${report.incomplete.length ? report.incomplete.join(', ') : 'none'}. Contaminated: ${report.contaminated.length ? report.contaminated.join(', ') : 'none'}. Without a complete skeptic: ${report.skepticIncomplete.length ? report.skepticIncomplete.join(', ') : 'none'}. Attributions: ${report.pooled.attributions}.`);
+  lines.push(`Graded with executed probes: ${report.probed.length ? report.probed.join(', ') : 'none'}. Awaiting a probe decision: ${report.awaitingProbes.length ? `${report.awaitingProbes.join(', ')} (each fixture run's probes/pending.json holds the requested probes)` : 'none'}.`);
   for (const [label, model] of Object.entries(report.byModel)) {
     const retries = Object.entries(model.figures.retries);
     lines.push(`Retried stages on ${label}: ${retries.length ? retries.map(([cause, count]) => `${count} ${cause}`).join(', ') : 'none'}.`);
@@ -1262,6 +1404,10 @@ function compare(baselineFolder, laterFolder, targetsFile = path.join(SUITE_ROOT
   // figure, so the two reports would measure different samples.
   const dropped = report => (report.incomplete?.length ?? 0) + (report.contaminated?.length ?? 0) + (report.skepticIncomplete?.length ?? 0);
   if (dropped(baseline) || dropped(later)) confounds.push(`incomplete, contaminated or skeptic-incomplete fixture runs (baseline ${dropped(baseline)}, later ${dropped(later)})`);
+  // A lead that received executed probe results reviewed with evidence the other run's leads lacked; reports from before probes ran
+  // have none.
+  const probed = report => report.probed?.length ?? 0;
+  if (probed(baseline) !== probed(later)) confounds.push(`fixture runs graded with executed probes (baseline ${probed(baseline)}, later ${probed(later)})`);
   const hashesOf = (report, field) => [...new Set(report.identities.map(identity => identity[field]))].sort().join();
   // The dispatching harness is held equal in every comparison, so a change to it confounds whatever else varied.
   if (hashesOf(baseline, 'harness') !== hashesOf(later, 'harness')) confounds.push('dispatching harness');
@@ -1326,7 +1472,7 @@ function validateModels(models) {
 
 function parseArguments(argv) {
   const [command, ...rest] = argv;
-  const options = { command, models: [], selected: [], repeat: 1, fixtures: path.join(SUITE_ROOT, 'fixtures'), rules: path.join(SUITE_ROOT, 'rules.md'), positional: [] };
+  const options = { command, models: [], selected: [], approveProbes: [], declineProbes: [], repeat: 1, fixtures: path.join(SUITE_ROOT, 'fixtures'), rules: path.join(SUITE_ROOT, 'rules.md'), positional: [] };
   for (let index = 0; index < rest.length; index++) {
     const argument = rest[index];
     const valueOf = () => {
@@ -1342,6 +1488,8 @@ function parseArguments(argv) {
     else if (argument === '--budget') options.budget = Number(valueOf());
     else if (argument === '--retry') options.retry = true;
     else if (argument === '--termination-checked') options.terminationChecked = true;
+    else if (argument === '--approve-probes') options.approveProbes.push(valueOf());
+    else if (argument === '--decline-probes') options.declineProbes.push(valueOf());
     else if (argument.startsWith('--')) fail('invalid-arguments', `Unknown option ${argument}`);
     else options.positional.push(argument);
   }
@@ -1367,7 +1515,7 @@ async function main(argv) {
     const result = await run(options);
     console.log(JSON.stringify(result, null, 2));
 
-    return result.stopped ? 1 : 0;
+    return result.stopped || result.awaitingProbes.length ? 1 : 0;
   }
   if (options.command === 'grade') {
     process.stdout.write(formatReport(grade(path.resolve(options.positional[0]))));

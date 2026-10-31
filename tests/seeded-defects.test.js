@@ -67,7 +67,9 @@ function vibeAttribution(options) {
 function mockAgent(scenario, calls) {
   return async options => {
     const request = requestOf(options);
-    calls.push({ kind: request.kind, request, options });
+    const probeFolder = path.join(options.cwd, 'context', 'probes');
+    const evidence = fs.existsSync(probeFolder) ? fs.readdirSync(probeFolder).sort().map(file => JSON.parse(fs.readFileSync(path.join(probeFolder, file), 'utf8'))) : [];
+    calls.push({ kind: request.kind, request, options, evidence });
     fs.mkdirSync(options.artifacts, { recursive: true });
     // A scenario's failure stands for a host that did not start; a real host runner reports its process as it spawns.
     if (scenario.throwFor?.(request)) throw Object.assign(new Error('host failed'), { code: 'unusable-review', tokens: 5 });
@@ -80,8 +82,9 @@ function mockAgent(scenario, calls) {
       report = { requestId: request.id, status, coverage: [], findings: request.findings.map(claim => ({ id: claim.id, verdict: scenario.verdict(claim), evidence: 'Checked the cited line', value: 'Worth fixing', repairProposal: 'Restore the addition' })), probes: status === 'incomplete' ? [{ id: 'p1', purpose: 'run the test', executable: 'node', args: ['-v'], timeoutMs: 1000, files: [] }] : [], summary: 'Claims checked', toolFailure: '' };
     } else {
       const findings = scenario.lead(request);
-      const status = scenario.leadStatus?.(request) ?? 'complete';
-      report = { requestId: request.id, status, coverage: DIMENSIONS.code.map(dimension => ({ dimension, evidence: 'Assessed' })), findings, probes: status === 'incomplete' ? [{ id: 'p1', purpose: 'run the test', executable: 'node', args: ['-v'], timeoutMs: 1000, files: [] }] : [], summary: 'Lead assessment', toolFailure: '', closures: [], positions: [] };
+      const status = scenario.leadStatus?.(request, evidence) ?? 'complete';
+      // An incomplete lead requests the scenario's probes, and none by default.
+      report = { requestId: request.id, status, coverage: DIMENSIONS.code.map(dimension => ({ dimension, evidence: 'Assessed' })), findings, probes: status === 'incomplete' ? scenario.leadProbes?.(request) ?? [] : [], summary: 'Lead assessment', toolFailure: '', closures: [], positions: [] };
     }
     const events = [{ type: 'assistant', session_id: 's1', message: { model: options.model, content: [] } }, { type: 'result', session_id: 's1', subtype: 'success', is_error: false, structured_output: report, note: scenario.eventNote?.(request) ?? '' }];
     fs.writeFileSync(path.join(options.artifacts, 'events.jsonl'), events.map(event => JSON.stringify(event)).join('\n') + '\n');
@@ -342,6 +345,159 @@ test('an incomplete lead skips the skeptic, grades incomplete, and --retry super
   assert.equal(suite.spending(path.join(root, 'run')).spent, 3000);
 });
 
+const NODE_VERSION_PROBE = { id: 'p1', purpose: 'print the Node version', executable: 'node', args: ['--version'], timeoutMs: 30000, files: [] };
+// A lead that requests a probe until it has received probe evidence, then finds the defect.
+const PROBING_LEAD = { ...LEAD_FINDS_DEFECT, leadStatus: (_request, evidence) => evidence.length ? 'complete' : 'incomplete', leadProbes: () => [NODE_VERSION_PROBE] };
+
+test('a lead requesting probes awaits a decision, and approved probes run contained before a fresh probed lead that is graded', async t => {
+  // Arrange
+  const root = scratch(t);
+  writeFixture(root, 'alpha');
+  const calls = [];
+  const key = suite.fixtureRunKey('alpha', MODEL, 1);
+  const paths = suite.runPaths(path.join(root, 'run'), key);
+
+  // Act
+  const first = await suite.run(options(root, root), dependencies(PROBING_LEAD, calls));
+  const waiting = suite.grade(path.join(root, 'run'), path.join(root, 'none.json'));
+  const retried = await suite.run(options(root, root, { retry: true }), dependencies(PROBING_LEAD, calls));
+  const callsBeforeApproval = calls.length;
+  const approved = await suite.run(options(root, root, { approveProbes: [key] }), dependencies(PROBING_LEAD, calls));
+  const report = suite.grade(path.join(root, 'run'), path.join(root, 'none.json'));
+  const read = file => JSON.parse(fs.readFileSync(file, 'utf8'));
+  const probed = read(paths.result('probed'));
+  const result = read(paths.probeResult(1));
+
+  // Assert
+  assert.deepEqual([first.awaitingProbes, retried.awaitingProbes, callsBeforeApproval], [[key], [key], 1]);
+  assert.deepEqual(read(paths.pending).probes, [NODE_VERSION_PROBE]);
+  assert.deepEqual([waiting.incomplete, waiting.awaitingProbes, waiting.probed], [[key], [key], []]);
+  assert.deepEqual(approved.awaitingProbes, []);
+  assert.deepEqual(calls.map(call => call.kind), ['code', 'code', 'skeptic']);
+  assert.notEqual(calls[1].request.id, calls[0].request.id);
+  assert.deepEqual(calls[1].evidence.map(item => [item.probeId, item.exitCode, item.canonicalUnchanged]), [['p1', 0, true]]);
+  assert.match(calls[1].evidence[0].output, /^v\d+\./);
+  assert.match(calls[1].options.prompt, /Returned probe evidence for this assessment: context\/probes\/1\.json/);
+  assert.deepEqual(calls[2].request.findings.map(claim => claim.evidence).sort(), [decoy().evidence, 'src/calc.js:3 addTotal subtracts b'].sort());
+  assert.deepEqual([result.exitCode, probed.probes, read(paths.decision).decision], [0, [{ id: 'p1', result: '1.result.json' }], 'approved']);
+  assert.match(result.copy, /^\.nightshift\/runs\/c\/[0-9a-f]{8}$/);
+  assert.ok(probed.probeElapsedMs <= probed.elapsedMs);
+  assert.deepEqual([report.incomplete, report.probed, report.pooled.detection.value], [[], [key], 1]);
+  assert.equal(report.pooled.tokensPerFixture.value, 3000);
+  assert.match(fs.readFileSync(path.join(root, 'run', 'report.md'), 'utf8'), new RegExp(`Graded with executed probes: ${key}\\.`));
+});
+
+test('declined probes leave the lead incomplete for --retry, and a decision on no pending probes or on both sides is refused', async t => {
+  // Arrange
+  const root = scratch(t);
+  writeFixture(root, 'alpha');
+  const calls = [];
+  let probing = true;
+  const scenario = { ...LEAD_FINDS_DEFECT, leadStatus: () => probing ? 'incomplete' : 'complete', leadProbes: () => [NODE_VERSION_PROBE] };
+  const key = suite.fixtureRunKey('alpha', MODEL, 1);
+  const paths = suite.runPaths(path.join(root, 'run'), key);
+
+  // Act
+  await suite.run(options(root, root), dependencies(scenario, calls));
+  const both = suite.run(options(root, root, { approveProbes: [key], declineProbes: [key] }), dependencies(scenario, calls));
+  const unknown = suite.run(options(root, root, { approveProbes: ['beta__claude-claude-opus-5-5__r1'] }), dependencies(scenario, calls));
+  await assert.rejects(both, { code: 'invalid-arguments' });
+  await assert.rejects(unknown, { code: 'probes-not-pending' });
+  const declined = await suite.run(options(root, root, { declineProbes: [key] }), dependencies(scenario, calls));
+  const graded = suite.grade(path.join(root, 'run'), path.join(root, 'none.json'));
+  const again = suite.run(options(root, root, { declineProbes: [key] }), dependencies(scenario, calls));
+  await assert.rejects(again, { code: 'probes-not-pending' });
+  probing = false;
+  await suite.run(options(root, root, { retry: true }), dependencies(scenario, calls));
+  const retried = suite.grade(path.join(root, 'run'), path.join(root, 'none.json'));
+  const superseded = fs.readdirSync(paths.superseded).map(entry => path.join(paths.superseded, entry));
+
+  // Assert
+  assert.deepEqual(declined.awaitingProbes, []);
+  assert.deepEqual([graded.incomplete, graded.awaitingProbes], [[key], []]);
+  assert.deepEqual(calls.map(call => call.kind), ['code', 'code', 'skeptic']);
+  assert.deepEqual([retried.incomplete, retried.probed, retried.pooled.retries], [[], [], { 'incomplete-report': 1 }]);
+  assert.equal(fs.existsSync(paths.probes), false);
+  assert.ok(fs.existsSync(path.join(superseded[0], 'probes', 'decision.json')));
+});
+
+test('approved probes whose pending record changed are refused, and a probed lead with no evidence settles without dispatching', async t => {
+  // Arrange
+  const root = scratch(t);
+  writeFixture(root, 'alpha');
+  writeFixture(root, 'beta');
+  const calls = [];
+  // The runtime refuses a timeout below its floor, so this probe yields no evidence.
+  const scenario = { ...PROBING_LEAD, leadProbes: () => [{ ...NODE_VERSION_PROBE, timeoutMs: 1000 }] };
+  const [alpha, beta] = ['alpha', 'beta'].map(name => suite.fixtureRunKey(name, MODEL, 1));
+  const paths = suite.runPaths(path.join(root, 'run'), alpha);
+  const selected = { selected: ['alpha', 'beta'] };
+
+  // Act
+  await suite.run(options(root, root, selected), dependencies(scenario, calls));
+  await suite.run(options(root, root, { ...selected, approveProbes: [beta] }), dependencies(scenario, calls));
+  // A decision recorded by an earlier invocation over a pending record that has since changed.
+  suite.writeJson(paths.decision, { decision: 'approved', pendingSha256: 'another', decided: new Date().toISOString() });
+  const altered = suite.run(options(root, root, selected), dependencies(scenario, calls));
+  await assert.rejects(altered, { code: 'probes-altered' });
+  const probed = JSON.parse(fs.readFileSync(suite.runPaths(path.join(root, 'run'), beta).result('probed'), 'utf8'));
+  const report = suite.grade(path.join(root, 'run'), path.join(root, 'none.json'));
+
+  // Assert
+  assert.deepEqual(calls.map(call => call.kind), ['code', 'code']);
+  assert.deepEqual([probed.outcome, probed.code, probed.prelaunch, probed.attemptTokens], ['failed', 'probes-not-run', true, []]);
+  assert.deepEqual(probed.probes.map(probe => [probe.id, probe.code]), [['p1', 'invalid-probe-timeout']]);
+  assert.deepEqual([report.incomplete.sort(), report.probed], [[alpha, beta].sort(), []]);
+  assert.equal(fs.existsSync(paths.result('probed')), false);
+});
+
+test('a probe whose descendants are not reclaimed blocks the run with its repository kept', async t => {
+  // Arrange
+  const root = scratch(t);
+  writeFixture(root, 'alpha');
+  const calls = [];
+  const key = suite.fixtureRunKey('alpha', MODEL, 1);
+  const paths = suite.runPaths(path.join(root, 'run'), key);
+  const unproven = async () => { throw Object.assign(new Error('Guarded operation descendants could not be reconciled'), { code: 'operation-termination-unverified' }); };
+  const injected = { ...dependencies(PROBING_LEAD, calls), probeRunner: unproven };
+
+  // Act
+  await suite.run(options(root, root), injected);
+  const result = await suite.run(options(root, root, { approveProbes: [key] }), injected);
+  const blocking = JSON.parse(fs.readFileSync(path.join(root, 'run', 'blocking.json'), 'utf8'));
+  t.after(() => fs.rmSync(blocking.repository, { recursive: true, force: true }));
+  const probed = JSON.parse(fs.readFileSync(paths.result('probed'), 'utf8'));
+
+  // Assert
+  assert.match(result.stopped, /Host termination is unproven/);
+  assert.deepEqual([blocking.fixtureRun, blocking.stage], [key, 'probed']);
+  assert.ok(fs.existsSync(blocking.repository));
+  assert.deepEqual([probed.code, probed.unproven, probed.probes[0].code], ['termination-unverified', true, 'operation-termination-unverified']);
+  assert.deepEqual(calls.map(call => call.kind), ['code']);
+});
+
+test('an evaluated probed lead receives the Vibe prompt naming its probe evidence', async t => {
+  // Arrange
+  const root = scratch(t);
+  writeFixture(root, 'alpha');
+  const calls = [];
+  const evaluated = { host: 'vibe', id: 'mistral-large-4' };
+  const key = suite.fixtureRunKey('alpha', evaluated, 1);
+  const succeeds = async (_root, check) => ({ ...check, startedAt: new Date().toISOString(), finishedAt: new Date().toISOString(), exitCode: 0, error: null, output: 'v22.23.0\n' });
+  const injected = { ...dependencies(PROBING_LEAD, calls), probeRunner: succeeds };
+
+  // Act
+  await suite.run(options(root, root, { models: [evaluated] }), injected);
+  const result = await suite.run(options(root, root, { models: [evaluated], approveProbes: [key] }), injected);
+  const probed = calls[1];
+
+  // Assert
+  assert.equal(result.stopped, null);
+  assert.deepEqual(calls.map(call => [call.kind, call.options.host]), [['code', 'vibe'], ['code', 'vibe'], ['skeptic', 'vibe']]);
+  assert.equal(probed.options.prompt, buildPrompt(probed.request, { workspace: probed.options.cwd, host: 'vibe', probeFiles: ['context/probes/1.json'] }));
+  assert.match(probed.options.prompt, /Your run_typescript sandbox/);
+});
+
 test('resume reconciles a pending intent from its repository or counts a lost outcome as estimated, and writes a missing completion record', async t => {
   // Arrange
   const root = scratch(t);
@@ -567,7 +723,8 @@ test('comparisons flag confounding, informational differences and stale targets'
   // Arrange
   const root = scratch(t);
   const report = overrides => ({ fixtureSetHash: 'f1', graderHash: 'g1', rulesHash: 'r1', mixed: false, identities: [{ machinery: 'm1', harness: 'h1', commit: 'c1', hostVersion: 'v1' }], byModel: { 'claude:claude-opus-5-5': {} }, pooled: Object.fromEntries(['detection', 'cleanChangeFalsePositives', 'unmatchedConfirmations', 'severityAccuracy', 'skepticAccuracy'].map(key => [key, { value: 0.5 }])), ...overrides });
-  for (const [name, value] of [['base', report()], ['prompt', report({ identities: [{ machinery: 'm2', harness: 'h1', commit: 'c2', hostVersion: 'v2' }] })], ['both', report({ identities: [{ machinery: 'm2', harness: 'h1', commit: 'c1', hostVersion: 'v1' }], rulesHash: 'r2' })]]) {
+  const probedIdentity = { identities: [{ machinery: 'm2', harness: 'h1', commit: 'c1', hostVersion: 'v1' }] };
+  for (const [name, value] of [['base', report()], ['prompt', report({ identities: [{ machinery: 'm2', harness: 'h1', commit: 'c2', hostVersion: 'v2' }] })], ['both', report({ identities: [{ machinery: 'm2', harness: 'h1', commit: 'c1', hostVersion: 'v1' }], rulesHash: 'r2' })], ['probed', report({ ...probedIdentity, probed: ['alpha__claude-claude-opus-5-5__r1'] })]]) {
     fs.mkdirSync(path.join(root, name));
     fs.writeFileSync(path.join(root, name, 'report.json'), JSON.stringify({ ...value, pooled: { ...value.pooled, provisional: false } }));
   }
@@ -575,12 +732,14 @@ test('comparisons flag confounding, informational differences and stale targets'
   // Act
   const prompt = suite.compare(path.join(root, 'base'), path.join(root, 'prompt'));
   const both = suite.compare(path.join(root, 'base'), path.join(root, 'both'));
+  const probed = suite.compare(path.join(root, 'base'), path.join(root, 'probed'));
 
   // Assert
   assert.deepEqual(prompt.confounded, []);
   assert.deepEqual(prompt.informational.hostVersions.sort(), ['v1', 'v2']);
   assert.equal(both.confounded.length, 1);
   assert.match(both.confounded[0], /more than one varied input/);
+  assert.deepEqual(probed.confounded, ['fixture runs graded with executed probes (baseline 0, later 1)']);
 });
 
 test('a comparison counts a changed dispatching harness as a confound and gives each change beside the spread and the targets', t => {
