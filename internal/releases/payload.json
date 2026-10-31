@@ -1,17 +1,17 @@
 {
   "schema": 1,
   "name": "nightshift",
-  "version": "3.3.20",
+  "version": "3.3.21",
   "files": [
     {
       "path": ".claude-plugin/plugin.json",
       "bytes": 641,
-      "sha256": "eb995cb12dac3d21e3b4d95c8bacb1047c66a92b47350159d6cff4fccc789df5"
+      "sha256": "c71a58ebb49d5278d6cd2a51ad9246dd11441c199cf55ef0b86ea706386ebd0a"
     },
     {
       "path": ".codex-plugin/plugin.json",
       "bytes": 1161,
-      "sha256": "d021ff3f0220d90371bc9d6486bd65a1fa1b2eca02cc1e44a284cbe04c36689e"
+      "sha256": "5a5b3b8a127d0d16827496b9067e828764c07b609295ccfc506b6cc21f98b7fd"
     },
     {
       "path": "LICENSE",
@@ -165,8 +165,8 @@
     },
     {
       "path": "internal/runtime/REFERENCE.md",
-      "bytes": 122756,
-      "sha256": "511d6f7bf7094252a95da148f5113189d32e9de56464206fb3f0f07a0d16c88d"
+      "bytes": 123029,
+      "sha256": "e663634e0129adb12a7725df506b9126f83c1a4ca0bfa4240bbf886bf0b4e2c3"
     },
     {
       "path": "internal/runtime/acceptance-checkpoint.js",
@@ -215,8 +215,8 @@
     },
     {
       "path": "internal/runtime/creation-consistency.js",
-      "bytes": 21124,
-      "sha256": "e3c481109bfe438a85a411b6473b4eef1e423455036bbdfbd00d2f74e1318266"
+      "bytes": 20445,
+      "sha256": "ccc7cd62844bae355e3e3cec57b1fbbe983df7a9303ea1dd8149a5105d1a4ad0"
     },
     {
       "path": "internal/runtime/delivery-acceptance.js",
@@ -265,8 +265,8 @@
     },
     {
       "path": "internal/runtime/legacy-inventory.js",
-      "bytes": 28538,
-      "sha256": "185ac9d75bca93d080b50ab1191f5f6b38130a4c777e556a8adf9c17f1a41c2f"
+      "bytes": 27744,
+      "sha256": "346a4a84f586a0679e7cfeb5ba0a0eba1160e5e035fe8d84b0b7fa9bd6a47d27"
     },
     {
       "path": "internal/runtime/legacy-migration.js",
@@ -280,8 +280,8 @@
     },
     {
       "path": "internal/runtime/legacy-store.js",
-      "bytes": 9082,
-      "sha256": "fd5b07e09019f23ec9a59ccc4c9b5ce95ca5836c746251ae0dc10f5c5b550257"
+      "bytes": 10782,
+      "sha256": "038f420121fae10955c77ae9a7aa5517112d81478ab9d8740a29ff59c08cb3f1"
     },
     {
       "path": "internal/runtime/lifecycle.js",

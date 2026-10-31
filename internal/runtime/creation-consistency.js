@@ -11,7 +11,7 @@ const progress = require('./progress');
 const { ProgressStore } = require('./progress-store');
 const { ProvenanceStore } = require('./provenance-store');
 const { validateCertificate, MAX_CERTIFICATE_CHAIN_BYTES, MAX_HISTORICAL_BYTES, MAX_MANIFEST_CHAIN_BYTES } = require('./legacy-certificates');
-const { MAX_ARTIFACT_ID_BYTES, MAX_DELIVERY_RECORDS: MAX_RECORDS, MAX_RUN_ID_BYTES, isRetirementCertificate, retirementRows, schemaState, verifyTriggers } = require('./legacy-store');
+const { MAX_DELIVERY_RECORDS: MAX_RECORDS, MAX_RUN_ID_BYTES, isRetirementCertificate, retirementRows, runBoundArtifacts, schemaState, verifyTriggers } = require('./legacy-store');
 
 const MAX_INPUT_BYTES = 64 * 1024 * 1024;
 const TABLES = ['runs', 'active', 'history', 'artifacts', 'accounting_commits', 'discharge_index'];
@@ -110,15 +110,10 @@ function assessment(store, options = {}) {
   const ids = new Set(rows.map(row => row.id));
   requireCondition(retirements.every(row => ids.has(row.runId)), CODE, 'Retirement reference has no saved delivery');
   for (const table of ['history', 'accounting_commits', 'discharge_index'].filter(table => tables.has(table))) requireCondition(!store.db.prepare(`SELECT 1 FROM ${table} evidence LEFT JOIN runs saved ON saved.id=evidence.run_id WHERE saved.id IS NULL LIMIT 1`).get(), 'missing-predecessor', 'Surviving delivery evidence has no stored owner');
-  const artifactStats = tables.has('artifacts') ? store.db.prepare('SELECT count(*) AS count, coalesce(sum(length(cast(body AS BLOB))), 0) AS bytes, coalesce(max(length(CAST(id AS BLOB))), 0) AS idBytes FROM artifacts').get() : { count: 0, bytes: 0, idBytes: 0 };
-  requireCondition(artifactStats.count <= progress.MAX_CREDITS && artifactStats.bytes <= MAX_INPUT_BYTES && artifactStats.idBytes <= MAX_ARTIFACT_ID_BYTES, CODE, 'Artifact identity scan exceeds its bound');
   const retirementArtifacts = new Set();
-  for (const artifact of tables.has('artifacts') ? store.db.prepare('SELECT id, body FROM artifacts').iterate() : []) {
-    const value = JSON.parse(artifact.body);
-    if (isRetirementCertificate(value)) retirementArtifacts.add(artifact.id);
-    if (value && typeof value === 'object' && Object.hasOwn(value, 'runId')) {
-      requireCondition(typeof value.runId === 'string' && ids.has(value.runId) && createHash('sha256').update(artifact.body).digest('hex') === artifact.id, CODE, 'Run-bound artifact has an unknown owner or corrupt identity');
-    }
+  for (const artifact of tables.has('artifacts') ? runBoundArtifacts(store.db, CODE) : []) {
+    if (isRetirementCertificate(artifact.value)) retirementArtifacts.add(artifact.id);
+    requireCondition(typeof artifact.value.runId === 'string' && ids.has(artifact.value.runId) && createHash('sha256').update(artifact.body).digest('hex') === artifact.id, CODE, 'Run-bound artifact has an unknown owner or corrupt identity');
   }
   requireCondition(retirements.length > 0 || retirementArtifacts.size === 0, CODE, 'Retirement certificate artifacts have no current reference');
   const accounting = new ProgressStore(store);
@@ -231,7 +226,7 @@ function assessment(store, options = {}) {
     }
   }
   if (!options.resourceOnly) requireCondition([...retirementArtifacts].every(id => certificateBudgets.chain.visited.has(id)), CODE, 'Retirement certificate artifact is outside every current reference chain');
-  if (options.resourceOnly) return { inputBytes, artifactCount: artifactStats.count, artifactBytes: artifactStats.bytes };
+  if (options.resourceOnly) return { inputBytes };
   requireCondition(legacyUnavailable.length === 0, CODE, legacyRefusal(legacyUnavailable));
   const selected = records.find(record => record.state.id === selections[0].id);
   requireCondition(selected && records.every(record => record === selected || record.discharged), CODE, 'Another surviving delivery still has unresolved or unavailable obligations');

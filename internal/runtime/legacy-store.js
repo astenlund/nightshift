@@ -98,6 +98,26 @@ function isRetirementCertificate(value) {
   return value?.schema === 1 && typeof value.runId === 'string' && Object.hasOwn(value, 'manifestHash') && Object.hasOwn(value, 'supersedes');
 }
 
+// Every writer of an artifact whose top level carries runId bounds it to this, so a larger one cannot be genuine.
+const MAX_RUN_BOUND_ARTIFACT_BYTES = progress.MAX_FRONTIER_BYTES;
+
+// Yields, parsed, the artifacts whose top level carries runId: the only ones the owner, identity and retirement certificate checks
+// need, so the store's other evidence never reaches JavaScript and its total sets no ceiling. Every body must still be valid JSON:
+// json_valid checks RFC 8259 text, where json_type alone would accept JSON5, but reads only up to an embedded NUL, which valid JSON
+// text never holds, so a body holding one is refused as well; json_valid also refuses nesting past SQLite's 1000-level limit, which
+// JSON.parse accepts and no writer produces.
+function* runBoundArtifacts(db, code) {
+  const identities = db.prepare('SELECT coalesce(max(length(CAST(id AS BLOB))), 0) AS bytes FROM artifacts').get();
+  requireCondition(identities.bytes <= MAX_ARTIFACT_ID_BYTES, code, 'Artifact identity exceeds its bound');
+  const invalid = db.prepare("SELECT id FROM artifacts WHERE NOT json_valid(body) OR instr(CAST(body AS BLOB), x'00') > 0 LIMIT 1").get();
+  requireCondition(!invalid, code, `Artifact ${invalid?.id} is not valid JSON`);
+  const rows = db.prepare("SELECT id, CASE WHEN length(CAST(body AS BLOB))<=? THEN body END AS body FROM artifacts WHERE json_type(body, '$.runId') IS NOT NULL").iterate(MAX_RUN_BOUND_ARTIFACT_BYTES);
+  for (const row of rows) {
+    requireCondition(row.body !== null, code, `Run-bound artifact ${row.id} exceeds its byte bound`);
+    yield { id: row.id, body: row.body, value: JSON.parse(row.body) };
+  }
+}
+
 function readArtifactBody(db, id, maximumBytes = progress.MAX_FRONTIER_BYTES) {
   requireCondition(progress.HASH.test(id), 'migration-evidence-unavailable', 'Artifact identity is malformed');
   requireCondition(Number.isSafeInteger(maximumBytes) && maximumBytes >= 0, 'migration-evidence-unavailable', 'Artifact read bound is invalid');
@@ -125,4 +145,4 @@ function writeArtifact(db, value, maximumBytes = progress.MAX_FRONTIER_BYTES) {
   return id;
 }
 
-module.exports = { ACTIVE_TABLE_SQL, CREATE_TABLES, MAX_ARTIFACT_ID_BYTES, MAX_DELIVERY_RECORDS, MAX_RUN_ID_BYTES, TRIGGERS, createSupport, isRetirementCertificate, readArtifact, readArtifactBody, retirementRows, schemaState, sha256, tableNames, verifyTriggers, writeArtifact };
+module.exports = { ACTIVE_TABLE_SQL, CREATE_TABLES, MAX_ARTIFACT_ID_BYTES, MAX_DELIVERY_RECORDS, MAX_RUN_BOUND_ARTIFACT_BYTES, MAX_RUN_ID_BYTES, TRIGGERS, createSupport, isRetirementCertificate, readArtifact, readArtifactBody, retirementRows, runBoundArtifacts, schemaState, sha256, tableNames, verifyTriggers, writeArtifact };

@@ -7,7 +7,7 @@ const { targetEntry, MAX_TARGET_READ_BYTES } = require('./legacy-backlog');
 const { APPROVAL_SCHEMA, MAX_APPROVAL_RECORDS, MAX_CERTIFICATE_BYTES, MAX_CERTIFICATE_CHAIN_BYTES, MAX_HISTORICAL_BYTES, MAX_MANIFEST_BYTES, MAX_MANIFEST_CHAIN_BYTES, approvedStateProjection, savedFollowupsValid, validateCertificate } = require('./legacy-certificates');
 const { requireCondition } = require('./errors');
 const { reportProjection, MAX_BATCH_REPORT_BYTES } = require('./legacy-report');
-const { MAX_ARTIFACT_ID_BYTES, MAX_DELIVERY_RECORDS: MAX_RECORDS, MAX_RUN_ID_BYTES, isRetirementCertificate, readArtifact, readArtifactBody, retirementRows, schemaState, sha256, verifyTriggers } = require('./legacy-store');
+const { MAX_DELIVERY_RECORDS: MAX_RECORDS, MAX_RUN_ID_BYTES, isRetirementCertificate, readArtifact, readArtifactBody, retirementRows, runBoundArtifacts, schemaState, sha256, verifyTriggers } = require('./legacy-store');
 const { recordKind } = require('./records');
 const progress = require('./progress');
 const { ProgressStore } = require('./progress-store');
@@ -67,10 +67,6 @@ class LegacyInventory {
     requireCondition(runStats.count <= MAX_RECORDS && runStats.bytes <= MAX_INPUT_BYTES && runStats.idBytes <= MAX_RUN_ID_BYTES, 'migration-store-unavailable', 'Delivery identity or state inventory exceeds its bound');
     const latestStats = this.db.prepare('SELECT count(*) AS count, coalesce(sum(length(CAST(history.state AS BLOB))), 0) AS bytes FROM runs JOIN history ON history.run_id=runs.id AND history.revision=runs.revision').get();
     requireCondition(latestStats.count <= MAX_RECORDS && runStats.bytes + latestStats.bytes <= MAX_INPUT_BYTES, 'migration-store-unavailable', 'Delivery current and latest history exceed the inventory read bound');
-    if (this.schema.tables.has('artifacts')) {
-      const artifactStats = this.db.prepare('SELECT count(*) AS count, coalesce(sum(length(CAST(body AS BLOB))), 0) AS bytes, coalesce(max(length(CAST(id AS BLOB))), 0) AS idBytes FROM artifacts').get();
-      requireCondition(artifactStats.count <= progress.MAX_CREDITS && artifactStats.bytes <= MAX_INPUT_BYTES && artifactStats.idBytes <= MAX_ARTIFACT_ID_BYTES, 'migration-store-unavailable', 'Retirement artifact inventory exceeds its bound');
-    }
     const rows = this.db.prepare('SELECT id, revision, state FROM runs ORDER BY id LIMIT ?').all(MAX_RECORDS + 1);
     requireCondition(rows.length <= MAX_RECORDS, 'migration-store-unavailable', 'Delivery identity inventory exceeds its bound');
     for (const table of ['history', 'accounting_commits', 'discharge_index'].filter(name => this.schema.tables.has(name))) requireCondition(!this.db.prepare(`SELECT 1 FROM ${table} evidence LEFT JOIN runs saved ON saved.id=evidence.run_id WHERE saved.id IS NULL LIMIT 1`).get(), 'migration-store-unavailable', `${table} has an orphaned delivery owner`);
@@ -122,12 +118,8 @@ class LegacyInventory {
       }
     }
     const retirementArtifacts = new Map();
-    let artifactBytes = 0;
-    for (const artifact of this.schema.tables.has('artifacts') ? this.db.prepare('SELECT id, body FROM artifacts').iterate() : []) {
-      artifactBytes += Buffer.byteLength(artifact.body);
-      requireCondition(artifactBytes <= MAX_INPUT_BYTES, 'migration-store-unavailable', 'Retirement artifact inventory exceeds its byte bound');
-      const parsed = parseState(artifact.body, `Artifact ${artifact.id}`);
-      if (isRetirementCertificate(parsed)) retirementArtifacts.set(artifact.id, parsed.runId);
+    for (const artifact of this.schema.tables.has('artifacts') ? runBoundArtifacts(this.db, 'migration-store-unavailable') : []) {
+      if (isRetirementCertificate(artifact.value)) retirementArtifacts.set(artifact.id, artifact.value.runId);
     }
     const referencedArtifacts = new Set();
     let chainBytes = 0;

@@ -673,31 +673,113 @@ test('several long legacy replays retain every blocking identity within the shar
   finally { store.close(); }
 });
 
-test('creation bounds artifacts and current state separately for a legacy store', t => {
-  // Arrange
-  const { root, id } = fixture(t);
+// Gives a legacy fixture the schema-2 evidence tables and the artifact bodies supplied, each stored under its own hash unless an id
+// is given.
+function addArtifacts(root, artifacts) {
   const db = new DatabaseSync(path.join(root, '.nightshift/runs/state.sqlite'));
   try {
     db.exec('CREATE TABLE artifacts (id TEXT PRIMARY KEY, body TEXT NOT NULL); CREATE TABLE accounting_commits (run_id TEXT NOT NULL, revision INTEGER NOT NULL, artifact TEXT NOT NULL, PRIMARY KEY(run_id, revision)); CREATE TABLE discharge_index (run_id TEXT NOT NULL, occurrence TEXT NOT NULL, evidence_hash TEXT NOT NULL, binding_hash TEXT NOT NULL, artifact TEXT NOT NULL, PRIMARY KEY(run_id, occurrence, evidence_hash, binding_hash, artifact)); PRAGMA user_version=2;');
-    const artifact = JSON.stringify('x'.repeat(48 * 1024 * 1024 - 2));
-    db.prepare('INSERT INTO artifacts VALUES (?, ?)').run(sha256(artifact), artifact);
+    for (const { body, id } of artifacts) db.prepare('INSERT INTO artifacts VALUES (?, ?)').run(id ?? sha256(body), body);
+  } finally { db.close(); }
+}
+
+function assessResources(root) {
+  const store = new RunStore(root);
+  try { return store.transaction(() => creationAssessment(store, { resourceOnly: true })); }
+  finally { store.close(); }
+}
+
+test('creation and inventory read only run-bound artifacts, so other evidence past 64 MiB refuses neither', t => {
+  // Arrange
+  const { root, id } = fixture(t);
+  const evidence = index => JSON.stringify(`${index}`.repeat(33 * 1024 * 1024));
+  addArtifacts(root, [{ body: evidence(1) }, { body: evidence(2) }, { body: JSON.stringify({ runId: id, note: 'owned' }) }]);
+  const db = new DatabaseSync(path.join(root, '.nightshift/runs/state.sqlite'));
+  try {
     const state = JSON.parse(db.prepare('SELECT state FROM runs WHERE id=?').get(id).state);
     state.padding = 'y'.repeat(12 * 1024 * 1024);
     const body = JSON.stringify(state);
     db.prepare('UPDATE runs SET state=? WHERE id=?').run(body, id);
     db.prepare('UPDATE history SET state=? WHERE run_id=?').run(body, id);
   } finally { db.close(); }
-  const store = new RunStore(root);
 
   // Act
-  let result;
-  try { result = store.transaction(() => creationAssessment(store, { resourceOnly: true })); }
-  finally { store.close(); }
+  const result = assessResources(root);
+  const inventory = execute(root, { action: 'inventory' });
 
   // Assert
-  assert.equal(result.artifactCount, 1);
-  assert.ok(result.artifactBytes > 47 * 1024 * 1024);
-  assert.ok(result.inputBytes > 24 * 1024 * 1024);
+  assert.ok(result.inputBytes > 24 * 1024 * 1024 && result.inputBytes < 25 * 1024 * 1024);
+  assert.equal(inventory.counts.legacy, 1);
+});
+
+test('creation and inventory refuse a run-bound artifact larger than its writers allow', t => {
+  // Arrange
+  const { root, id } = fixture(t);
+  addArtifacts(root, [{ body: JSON.stringify({ runId: id, padding: 'z'.repeat(8 * 1024 * 1024) }) }]);
+
+  // Act
+  const assess = () => assessResources(root);
+  const inventory = () => execute(root, { action: 'inventory' });
+
+  // Assert
+  assert.throws(assess, error => error.code === 'delivery-consistency-unavailable' && error.message.includes('exceeds its byte bound'));
+  assert.throws(inventory, error => error.code === 'migration-store-unavailable' && error.message.includes('exceeds its byte bound'));
+});
+
+test('creation and inventory refuse an artifact that is not strict JSON', t => {
+  // Arrange
+  const { root, id } = fixture(t);
+  const lenient = `{runId: '${id}'}`;
+  addArtifacts(root, [{ body: lenient }]);
+
+  // Act
+  const assess = () => assessResources(root);
+  const inventory = () => execute(root, { action: 'inventory' });
+
+  // Assert
+  assert.throws(assess, error => error.code === 'delivery-consistency-unavailable' && error.message.includes(`Artifact ${sha256(lenient)} is not valid JSON`));
+  assert.throws(inventory, error => error.code === 'migration-store-unavailable' && error.message.includes('is not valid JSON'));
+});
+
+// SQLite selects and validates the bodies, so these pin how its JSON reading compares with JSON.parse: an escaped key still names
+// runId for both, while json_valid reads text only up to an embedded NUL, which valid JSON never holds, and refuses nesting past 1000
+// levels.
+test('creation checks an escaped runId key, and creation and inventory refuse a body holding a NUL or nested past the SQLite limit', t => {
+  // Arrange
+  const escaped = fixture(t);
+  addArtifacts(escaped.root, [{ body: JSON.stringify({ runId: randomUUID() }).replace('runId', 'run' + String.fromCharCode(92) + 'u0049d') }]);
+  const nulTailed = fixture(t);
+  addArtifacts(nulTailed.root, [{ body: JSON.stringify({ evidence: 'kept' }) + String.fromCharCode(0) + 'garbage' }]);
+  const runBoundNulTailed = fixture(t);
+  addArtifacts(runBoundNulTailed.root, [{ body: JSON.stringify({ runId: runBoundNulTailed.id }) + String.fromCharCode(0) + 'garbage' }]);
+  const nested = fixture(t);
+  addArtifacts(nested.root, [{ body: '['.repeat(1001) + ']'.repeat(1001) }]);
+
+  // Act
+  const assess = root => () => assessResources(root);
+  const inventory = root => () => execute(root, { action: 'inventory' });
+
+  // Assert
+  assert.throws(assess(escaped.root), error => error.code === 'delivery-consistency-unavailable' && error.message.includes('unknown owner or corrupt identity'));
+  for (const root of [nulTailed.root, runBoundNulTailed.root, nested.root]) {
+    assert.throws(assess(root), error => error.code === 'delivery-consistency-unavailable' && error.message.includes('is not valid JSON'));
+    assert.throws(inventory(root), error => error.code === 'migration-store-unavailable' && error.message.includes('is not valid JSON'));
+  }
+});
+
+test('creation refuses a run-bound artifact with an unknown owner or a corrupt identity', t => {
+  // Arrange
+  const foreign = fixture(t);
+  addArtifacts(foreign.root, [{ body: JSON.stringify({ runId: randomUUID() }) }]);
+  const corrupt = fixture(t);
+  addArtifacts(corrupt.root, [{ body: JSON.stringify({ runId: corrupt.id }), id: 'a'.repeat(64) }]);
+
+  // Act
+  const assessForeign = () => assessResources(foreign.root);
+  const assessCorrupt = () => assessResources(corrupt.root);
+
+  // Assert
+  for (const assess of [assessForeign, assessCorrupt]) assert.throws(assess, error => error.code === 'delivery-consistency-unavailable' && error.message.includes('unknown owner or corrupt identity'));
 });
 
 test('an eligible legacy record retires beside damaged modern discharge evidence', async t => {
