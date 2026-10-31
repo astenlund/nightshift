@@ -17,6 +17,8 @@ V3 validates structured reports, which meets only part of the agreed Review repo
 
 `dispatchReview` validates output after runAgent and records a failed attempt on parsing or validation errors; fallback invokes a new assessment. There is no dedicated report-correction operation in the runtime reference.
 
+The [Mistral Large 4 evaluation](../reports/mistral-large-4-review-evaluation-20261030.md) recorded how often a Vibe reviewer's completed attempt hits these failures; the user chose on 2026-10-31 to add it here rather than as a separate quick win. The first run had 16 failed stage dispatches besides probe requests. Seven were replies that were not valid JSON, five were reports without findings or coverage, one was a finding without its severity and obligation assessment, two were reports marked complete although they needed probe evidence, and one was a host failure. The rerun had 15. Four were invalid JSON, three were findings without that assessment, and eight were reports marked complete although they needed probe evidence. Under the settled answers below, the JSON, shape and missing-assessment faults would be re-emitted, and the reports marked complete only downgraded to incomplete. Each such failure in the suite cost a fresh dispatch of the whole review.
+
 The [independent shipped-capability audit](../reports/pre-v3-shipped-capability-audit-20260921.md) distinguishes actual code/probe evidence, instruction policy and unverified installed-host behavior. No capability in this entry is declared delivered by its restoration to the backlog.
 
 ## Settled questions
