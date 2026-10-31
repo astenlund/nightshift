@@ -370,6 +370,7 @@ test('a lead requesting probes awaits a decision, and approved probes run contai
 
   // Assert
   assert.deepEqual([first.awaitingProbes, retried.awaitingProbes, callsBeforeApproval], [[key], [key], 1]);
+  assert.deepEqual([first.pendingProbes, approved.pendingProbes], [{ [key]: paths.pending }, {}]);
   assert.deepEqual(read(paths.pending).probes, [NODE_VERSION_PROBE]);
   assert.deepEqual([waiting.incomplete, waiting.awaitingProbes, waiting.probed], [[key], [key], []]);
   assert.deepEqual(approved.awaitingProbes, []);

@@ -1064,8 +1064,9 @@ async function run(options, dependencies = defaultDependencies()) {
   // The budget is checked before each dispatch, so the last one can pass it; the overrun is reported rather than left to be inferred.
   const spent = spending(options.out);
   const awaitingProbes = items.filter(item => probeState(runPaths(options.out, item.key)) === 'awaiting').map(item => item.key);
+  const pendingProbes = Object.fromEntries(awaitingProbes.map(key => [key, runPaths(options.out, key).pending]));
 
-  return { stopped, awaitingProbes, spending: spent, budget: options.budget, overrun: Math.max(0, spent.spent - options.budget), fixtureRuns: items.length };
+  return { stopped, awaitingProbes, pendingProbes, spending: spent, budget: options.budget, overrun: Math.max(0, spent.spent - options.budget), fixtureRuns: items.length };
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------
@@ -1509,11 +1510,24 @@ function parseArguments(argv) {
   return options;
 }
 
+// Tells whoever drives the run, a user or a controller acting for one, that the parked fixture runs need an inspected decision.
+function probeNotice(pendingProbes) {
+  const lines = Object.entries(pendingProbes).map(([key, file]) => `  ${key}: ${file}`);
+
+  return [
+    `${SCRIPT_NAME}: ${lines.length} fixture run(s) await a probe decision. A probe runs with the user's privileges in a private working copy, which is not a sandbox,`,
+    'so inspect each requested executable, its arguments, its files and its likely effects as an untrusted proposal, then rerun the same run folder',
+    'with --approve-probes <key> or --decline-probes <key> for each:',
+    ...lines,
+  ].join('\n');
+}
+
 async function main(argv) {
   const options = parseArguments(argv);
   if (options.command === 'run') {
     const result = await run(options);
     console.log(JSON.stringify(result, null, 2));
+    if (result.awaitingProbes.length) console.error(probeNotice(result.pendingProbes));
 
     return result.stopped || result.awaitingProbes.length ? 1 : 0;
   }
