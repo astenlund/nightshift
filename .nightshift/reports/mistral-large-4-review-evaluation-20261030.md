@@ -34,7 +34,7 @@ Tokens are Vibe's own total, not the Claude accounting of the Opus figures; whet
 
 The suite runs no probes, so a lead whose report requests one is graded incomplete and its skeptic is not dispatched. Mistral's first lead attempt requested probes in 21 of 46 fixture runs, against one of 48 Opus lead dispatches. Two retry passes converted six of them; the other fifteen requested probes on all three attempts. In the receipts read, the probes are confirmations of findings already made rather than missing reads: running the check with the runner's environment to show `RUNNER_TOKEN` reaching the child process, running the committed lock tests, and running them against a lock with its mutual exclusion removed to show that a test does not guard what it is named for. Their summaries name the decisive defect in the receipts read, check-environment's leaked credential among them, but no incomplete receipt was graded, so detection on those fixtures is unmeasured, not missed.
 
-The rate does not come from the runtime's Vibe-only rule that a sandbox run is not execution evidence of the project, so that "a deciding claim that needs execution goes through a probe request" (`vibeRules` in `internal/runtime/review.js`): as Method records, no Mistral prompt carried it. The GLM 5.3 evaluation's prompts lack it too, since that run predates the rule, and carry the probe instruction every host gets. On the 17 fixtures both runs share, GLM's first lead attempts requested probes in 2 of 34 fixture runs and Mistral's in 18 of 34. The review machinery differs between the two runs, so the comparison is not controlled. A runtime Vibe lead's prompt would carry the rule, so Mistral's probe rate in runtime use is unmeasured. In a runtime review the probes would run and the review continue, at a cost this suite does not measure.
+The rate does not come from the runtime's Vibe-only rule that a sandbox run is not execution evidence of the project, so that "a deciding claim that needs execution goes through a probe request" (`vibeRules` in `internal/runtime/review.js`): as Method records, no Mistral prompt carried it. The GLM 5.3 evaluation's prompts lack it too, since that run predates the rule, and carry the probe instruction every host gets. On the 17 fixtures both runs share, GLM's first lead attempts requested probes in 2 of 34 fixture runs and Mistral's in 18 of 34. The review machinery differs between the two runs, so the comparison is not controlled. A runtime Vibe lead's prompt carries the rule. The rerun below measures Mistral's probe rate under that prompt, and it was no lower. In a runtime review the probes would run and the review continue, at a cost this suite does not measure.
 
 ## Protocol failures
 
@@ -70,10 +70,42 @@ Every hand-typed copy reproduced the shipped function. One Mistral run replaced 
 
 The sandbox is not limited to transcription. Code in `run_typescript` can call `tools.file_system.read_file`. In 6 of the 16 sampled Mistral receipts the model read `project/src` files that way and ran the returned text with `new Function` under small `module` and `require` shims, so the shipped bytes ran; GLM read files from the sandbox too, but always ran copies it typed. Every shell call in both runs was refused, and code that needs Node's built-in modules did not run as shipped, since `require` had to be replaced. The runtime's Vibe rule, which then said the sandbox "runs only code you transcribe into it, never this project", was therefore inaccurate for self-contained modules; release 3.3.20 rewords it. Whether such a run should count as evidence is a separate question: unlike a probe, the runtime neither records nor checks it.
 
+## Rerun with the Vibe prompt
+
+The suite fix in 3.3.20 makes an evaluated Vibe stage receive the prompt `buildPrompt` builds for a Vibe host. The user then asked on 2026-10-30 for the evaluation to be rerun under a 32,000,000-token budget. The rerun's run folder was capped at 31,500,000 and used the same fixtures, repetitions, pairing and two `--retry` passes. All 132 attempt prompts, lead and skeptic, carry the working-directory guidance and the reworded sandbox rule. Every dispatch shares one review machinery hash (`9cb8575d249e`) and one dispatching harness hash (`135457cf5c92`), and all ran from commit `c36fae09`; every attempt's `session/meta.json` names `mistral-large-4`. Regraded with the current grader (`ceac00b71b1c`), the first run's figures are unchanged.
+
+| Figure | First run | Rerun |
+|---|---|---|
+| Detection | 27/27 | 20/20 |
+| Clean-change false positives per clean fixture | 0.00 (0/6) | 0.00 (0/4) |
+| Unmatched confirmations per other fixture | 0.21 (5/24) | 0.22 (4/18) |
+| Out of scope raised | 1/5 | 1/5 |
+| Severity accuracy | 22/27 | 16/20 |
+| Skeptic accuracy | 59/59 | 41/41 |
+| Tokens per fixture run | 173,650 | 104,529 |
+| Seconds per fixture run | 227 | 125 |
+| Fixture runs with a complete lead | 31/46 | 24/46 |
+
+`compare` varies the review machinery and reports the pair as confounded by the dispatching harness and by the incomplete fixture runs. It places every quality figure within the first run's spread across repetitions. Only tokens and time per fixture run fall outside it, and those figures count each fixture run's final stages only. The rerun completed fewer fixture runs, so its figures rest on fewer fixtures. Eight fixtures have no complete lead in either repetition: branch-switch-shell, check-exit-status, journal-append-race, latency-percentile, lock-contention-test, port-validation, quick-win-dependencies and registry-reconcile. Six more have one: check-environment, instruction-file-freshness, line-ending-freshness, replay-after-adoption, revision-history and tag-rule-duplicate. The tests-evidence dimension is unmeasured again. All 22 fixture runs without a complete lead end with a probe request. Two more fixture runs have a complete lead but no complete skeptic.
+
+Probe requests did not fall. First lead attempts requested probes in 25 of 46 fixture runs, against 21 of 46 in the first run, on the same 23 fixtures. Seventeen fixture runs requested probes on all three attempts, against fifteen. These prompts match what a runtime Vibe lead receives, and the suite's tests check that. So in runtime use about half of Mistral's lead reviews would stop for probes. The suite still does not run probes, so it cannot measure whether those reviews would then be correct.
+
+Six unmatched findings were adjudicated, all false. The skeptic confirmed the four it judged; check-environment's two had no complete skeptic:
+
+- Two repeat precedents from the first run: an unknown run id surfacing as a `TypeError`, and `accept` sharing the caller's `tasks` array.
+- Four go beyond what their requirements ask: check-environment's joined output streams and its timeout leaving grandchild processes running, revision-history's package entry not exporting `Store`, and `apply` accepting a non-object change.
+
+Apart from probe requests, 15 stage dispatches failed: 6 leads and 9 skeptics. Four replies were not valid JSON (two leads, two skeptics), against seven in the first run. Three lead findings lacked their severity and obligation assessment. Eight reports, one lead and seven skeptics, were marked complete although their assessment needed probe evidence, against two in the first run. That pattern fits skeptics that now treat a sandbox run as non-evidence but still mark the verdict complete; it was not checked report by report.
+
+The share of dispatches that used the sandbox fell. Distinct `run_typescript` calls in the session journals fell from 569, in 123 of 128 dispatches, to 128, in 61 of 132. The rerun's sandbox claims were not audited, so whether they keep to the reworded rule is unchecked. Which prompt change reduced the calls, the working-directory guidance or the rule, is also unchecked.
+
+The rerun spent 10,157,541 tokens: 4,833,870 on the first pass, 2,882,345 on the first retry pass and 2,441,326 on the second. Its final fixture runs' records hold 4,808,342. The retries redispatched 62 stages (49 incomplete reports, 13 known failures) and raised fixture runs with complete lead and skeptic from 14 to 22. Together with the first evaluation's 14,125,044, the two runs spent 24,282,585 tokens.
+
 ## Observations for the admission decision
 
 - On the fixture runs it completed, Mistral Large 4 matched Opus on detection and skeptic accuracy, with no clean-change false positive, and was within Opus's spread on unmatched confirmations and severity.
-- Almost half of its first lead attempts (21 of 46) end with probe requests under the probe instruction every host gets, and a third (15 of 46) on every attempt, against 2 of 34 for GLM 5.3 on the fixtures both ran, so in runtime use it would lean on probes far more than Opus or GLM; the suite cannot say what that costs or whether those reviews would then be correct.
+- Almost half of its first lead attempts (21 of 46) end with probe requests under the probe instruction every host gets, and a third (15 of 46) on every attempt, against 2 of 34 for GLM 5.3 on the fixtures both ran. Under the runtime's Vibe prompt the rerun's rate was 25 of 46, and 17 of 46 on every attempt. So in runtime use it would lean on probes far more than Opus or GLM; the suite cannot say what that costs or whether those reviews would then be correct.
+- The rerun reproduced the first run's quality figures within their spread, on fewer completed fixture runs (24 against 31).
 - Its sandbox execution claims mostly match their recorded calls, but in the sample one credits a probe it never ran and three go beyond their calls, so a sandbox claim alone is weaker evidence than a probe.
 - Its report protocol fails more often than Opus's, skeptic JSON above all, so a runtime launcher must keep the retry path.
 - It spent about three times Opus's tokens per fixture run by Vibe's accounting.
@@ -82,8 +114,10 @@ The sandbox is not limited to transcription. Code in `run_typescript` can call `
 ## Qualifications
 
 - Two repetitions on 23 fixtures, of which fifteen fixture runs, covering six fixtures entirely and the tests-evidence dimension, have no complete lead; the figures describe the fixtures Mistral completed, not the suite.
-- Confounded comparison: model and host, review machinery and dispatching harness all differ from the Opus run, and Mistral's prompts, built for the Codex gate candidate, lack the guidance a runtime Vibe lead's prompt carries.
+- The rerun leaves 22 fixture runs, covering eight fixtures entirely and the tests-evidence dimension, without a complete lead.
+- Confounded comparison: model and host, review machinery and dispatching harness all differ from the Opus run, and the first run's prompts, built for the Codex gate candidate, lack the guidance a runtime Vibe lead's prompt carries. The rerun's prompts carry it, but its review machinery and harness differ from the first run's as well.
+- The rerun's sandbox claims were not audited.
 - Same-model pairing: the skeptic figures describe Mistral judging Mistral, as in the GLM evaluation, not Mistral judging another model's leads.
 - The sandbox audit checked a sample of 16 of Mistral's 58 receipts with execution keywords, and its Mistral figures describe that sample.
 - Token figures are Vibe's accounting and not comparable with Claude's; the targets describe Opus 5.5 and are out of scope for this model.
-- The raw run folder and the audit's reports live in the session's scratch space under `.tmp` and are not durable.
+- The raw run folders and the audit's reports live in the session's scratch space under `.tmp` and are not durable.
