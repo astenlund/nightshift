@@ -250,4 +250,4 @@ function creationAssessment(store, options = {}) {
   }
 }
 
-module.exports = { closingDischargedSince, creationAssessment };
+module.exports = { closingDischargedSince, creationAssessment, reportAwaitsRecipient };

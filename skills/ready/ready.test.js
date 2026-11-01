@@ -28,6 +28,7 @@ const {
   createBreakoutLoader,
   readFileIfPresent,
   runCli,
+  readRunState,
   scanUnlinkedBacklogFiles,
   scanDependencyLines,
   scanBreakoutTargets,
@@ -37,6 +38,16 @@ const { analyzeBacklogLinks, extractLinks, headingAnchors, resolveLink } = requi
 
 let passed = 0;
 const failures = [];
+
+const SQLITE_WARNING = /\(node:\d+\) ExperimentalWarning: SQLite is an experimental feature and might change at any time\r?\n\(Use `node --trace-warnings \.\.\.` to show where the warning was created\)\r?\n/;
+
+// A fixture project has no run stores, so the CLI's run state is empty; the catalog adapter has no run state to compare.
+function withoutRunState(report) {
+  const { runState, ...rest } = report;
+  assert.deepStrictEqual(runState, { records: [], compaction: [], unavailable: [] });
+
+  return rest;
+}
 
 function test(name, fn) {
   try {
@@ -226,7 +237,7 @@ test('analyzeCatalog reproduces CLI JSON from exact catalog records and uses pre
     }
 
     const { evidence, ...publicCatalog } = catalog;
-    assert.deepStrictEqual(publicCatalog, cli);
+    assert.deepStrictEqual(publicCatalog, withoutRunState(cli));
     assert.deepStrictEqual(evidence, {
       structuralErrors: [],
       notices: [{ kind: 'notices', ordinal: 0, evidencePaths: ['FEATURES.md'] }],
@@ -262,6 +273,49 @@ test('the CLI reads a legacy .claude directory as the backlog root and names the
   } finally {
     fs.rmSync(tmpRoot, { recursive: true, force: true });
   }
+});
+
+test('a run overview that fails is reported as the run state error, not as an empty run state', () => {
+  const runOverview = require('../../internal/runtime/run-overview.js');
+  const original = runOverview.overview;
+  runOverview.overview = () => {
+    throw new Error('fixture overview failure');
+  };
+  try {
+    assert.deepStrictEqual(readRunState(__dirname, null), { error: 'fixture overview failure' });
+  } finally {
+    runOverview.overview = original;
+  }
+});
+
+test('the CLI passes its admitted context and canonical project root to the run overview and reports its result', () => {
+  const tmpRoot = path.join(__dirname, '..', '..', '.tmp', `ready-run-state-${process.pid}`);
+  const runOverview = require('../../internal/runtime/run-overview.js');
+  const original = runOverview.overview;
+  const write = process.stdout.write;
+  const calls = [];
+  let output = '';
+  fs.rmSync(tmpRoot, { recursive: true, force: true });
+  fs.mkdirSync(path.join(tmpRoot, '.nightshift'), { recursive: true });
+  fs.writeFileSync(path.join(tmpRoot, '.nightshift', 'QUICK_WINS.md'), '# Quick wins\n\n## Current\n\n### Tidy\n\nA tidy-up.\n');
+  const context = { host: 'claude', session: 'fixture-session' };
+  const canonicalRoot = fs.realpathSync.native(tmpRoot);
+  runOverview.overview = (root, options) => {
+    calls.push({ root, options });
+    return { records: [], compaction: [], unavailable: [{ store: 'review', code: 'run-overview-busy', message: 'fixture' }] };
+  };
+  try {
+    process.stdout.write = (chunk) => { output += chunk; return true; };
+    runCli(path.join(tmpRoot, '.nightshift'), { context });
+  } finally {
+    process.stdout.write = write;
+    runOverview.overview = original;
+    fs.rmSync(tmpRoot, { recursive: true, force: true });
+  }
+  assert.strictEqual(calls.length, 1);
+  assert.strictEqual(calls[0].root, canonicalRoot);
+  assert.deepStrictEqual(calls[0].options, { context });
+  assert.deepStrictEqual(JSON.parse(output).runState.unavailable, [{ store: 'review', code: 'run-overview-busy', message: 'fixture' }]);
 });
 
 test('--check keeps the report and exits 1 unless the parse is clean', () => {
@@ -531,7 +585,7 @@ test('the CLI reports carried fixes like analyzeCatalog, and only the draft noti
     const { evidence, ...catalog } = analyzeCatalog(CARRIED_FIXES_BACKLOG);
     const checked = run('--check');
     assert.strictEqual(checked.status, 1);
-    assert.deepStrictEqual(JSON.parse(checked.stdout), catalog);
+    assert.deepStrictEqual(withoutRunState(JSON.parse(checked.stdout)), catalog);
 
     const withoutDraftFixes = CARRIED_FIXES_BACKLOG.map((item) => item.target === 'features/draft.md' ? { ...item, contents: '# Draft\n' } : item);
     writeBacklog(withoutDraftFixes);
@@ -2560,7 +2614,7 @@ test('CLI preserves valid UTF-8, byte-order marks, and line endings', () => {
     const result = JSON.parse(completion.stdout);
 
     assert.equal(completion.status, 0);
-    assert.equal(completion.stderr, '');
+    assert.equal(completion.stderr.replace(SQLITE_WARNING, ''), '');
     assert.equal(result.ready.some((entry) => entry.title.includes(title)), true);
     assert.deepEqual(fs.readFileSync(path.join(backlogDir, 'FEATURES.md')), featuresBytes);
     assert.deepEqual(fs.readFileSync(path.join(backlogDir, 'QUICK_WINS.md')), quickWinsBytes);
@@ -3336,7 +3390,7 @@ test('link notices from the CLI match the catalog adapter exactly', () => {
     const { evidence, ...catalog } = analyzeCatalog(LINK_FIXTURE);
 
     assert.ok(evidence);
-    assert.deepStrictEqual(catalog, cli);
+    assert.deepStrictEqual(catalog, withoutRunState(cli));
     assert.deepStrictEqual(cli.notices, LINK_FIXTURE_NOTICES);
   } finally {
     fs.rmSync(tmpRoot, { recursive: true, force: true });

@@ -11,7 +11,10 @@
 // any dependency line on a quick win (quick wins are always ready), and
 // emits a JSON report on stdout:
 //
-//   { indexes, ready, blocked, external, exploring, structuralErrors, notices }
+//   { indexes, ready, blocked, external, exploring, structuralErrors, notices, runState }
+//
+// runState is the project's open runs and run-store compaction state from
+// internal/runtime/run-overview.js; it never affects the other fields or --check.
 //
 // History archives are never parsed for work: the walk-and-remove convention
 // keeps active Requires lines authoritative. PATTERNS.md is a pattern
@@ -1821,6 +1824,15 @@ function isCleanParse(result) {
   return result.structuralErrors.length === 0 && result.notices.length === 0 && result.indexes.missing.length === 0;
 }
 
+// The project's open runs and compaction state ride beside the backlog result without touching its notices, errors or exit code.
+function readRunState(projectRoot, context) {
+  try {
+    return require('../../internal/runtime/run-overview').overview(fs.realpathSync.native(projectRoot), { context });
+  } catch (error) {
+    return { error: error?.message ?? String(error) };
+  }
+}
+
 function runCli(argRoot, options = {}) {
   const root = path.resolve(argRoot || process.cwd());
   const backlogDir = BACKLOG_DIRECTORY_NAMES.includes(path.basename(root)) ? root : path.join(root, '.nightshift');
@@ -1897,6 +1909,7 @@ function runCli(argRoot, options = {}) {
     if (recoveryFailure !== null || result.structuralErrors.some(error => error.error === 'unwrap-recovery-required')) process.exitCode = 1;
     if (options.check === true && !isCleanParse(result)) process.exitCode = 1;
     delete result.breakoutTargets;
+    result.runState = readRunState(path.dirname(backlogDir), options.context ?? null);
 
     process.stdout.write(JSON.stringify(result, null, 2) + '\n');
   } catch (error) {
@@ -2075,6 +2088,7 @@ function formatCycle(cycle, cycleEdges, nodeToRec) {
 module.exports = {
   analyze,
   entryGrammar,
+  readRunState,
   stripStable,
   normalizeSliceName,
   normalizeTitle,
@@ -2105,7 +2119,7 @@ if (require.main === module) {
     const args = process.argv.slice(2);
     // Admission reads the first remaining argument as the admitted project path, so the flag is removed first.
     const admitted = require('../../internal/releases/entry').admitEntry(path.resolve(__dirname, '../..'), args.filter(argument => argument !== CHECK_FLAG), 0);
-    runCli(admitted.args[0], { check: args.includes(CHECK_FLAG) });
+    runCli(admitted.args[0], { check: args.includes(CHECK_FLAG), context: admitted.context });
   } catch (error) {
     process.stderr.write(JSON.stringify({ error: error.code ?? 'ready-failed', message: error.message }) + '\n');
     process.exitCode = 1;

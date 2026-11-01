@@ -125,6 +125,27 @@ function workerTermination(root, worker, state, dependencies = {}, nativePath) {
   return null;
 }
 
+// Read-only: Ready runs it with an empty request to decide whether to offer adoption, so it never changes the state.
+// Request validation by nativeEvidenceRequests still throws; only inactivity that cannot be proven is an ineligible verdict.
+function adoptionEligibility(state, request, dependencies = {}) {
+  let controller = null;
+  if (state.status === 'running') {
+    const claim = isReviewContext(state) ? state.ownerObservation : state.controllerClaim;
+    if (!isDeepStrictEqual(claim?.controller, state.controller) || !processIdentity(claim?.process)) return { eligible: false, code: 'controller-activity-unknown', message: 'The running source has no usable controller claim; stop it through its owner or preserve the blocked run' };
+    if ((dependencies.ownerAlive ?? processes.ownerAlive)(claim.process, state.root) !== false) return { eligible: false, code: 'controller-not-inactive', message: 'The exact former controller process is live or its inactivity is unknown' };
+    controller = structuredClone(claim);
+  }
+  const nativeEvidence = nativeEvidenceRequests(state, request);
+  const workers = [];
+  for (const worker of state.workers) {
+    const evidence = workerTermination(state.root, worker, state, dependencies, nativeEvidence.get(worker.id));
+    if (!evidence) return { eligible: false, code: 'worker-activity-unknown', message: 'Worker ' + worker.id + ' has active or uncertain work; reconcile attributable termination before adoption' };
+    workers.push(evidence);
+  }
+
+  return { eligible: true, controller, workers };
+}
+
 function adoptState(state, request, resources, dependencies = {}) {
   requireCondition(identity(request.actor) && identity(request.previousController), 'invalid-controller', 'Adoption requires the adopting and expected former host/session identities');
   text(request.authority, 'adoption.authority');
@@ -141,19 +162,9 @@ function adoptState(state, request, resources, dependencies = {}) {
     requireCondition(resources === null && previousResources === null, 'adoption-resource-conflict', 'Development adoption cannot convert a bound or legacy run');
     if (state.operationReservations !== ADOPTION_PROTOCOL) text(request.quiescenceEvidence, 'adoption.quiescenceEvidence: factual accounting of legacy development operations');
   }
-  const eligibility = { sourceStatus: state.status, controller: null, workers: [], quiescenceEvidence: request.quiescenceEvidence ?? null };
-  if (state.status === 'running') {
-    const claim = isReviewContext(state) ? state.ownerObservation : state.controllerClaim;
-    requireCondition(isDeepStrictEqual(claim?.controller, state.controller) && processIdentity(claim?.process), 'controller-activity-unknown', 'The running source has no usable controller claim; stop it through its owner or preserve the blocked run');
-    requireCondition((dependencies.ownerAlive ?? processes.ownerAlive)(claim.process, state.root) === false, 'controller-not-inactive', 'The exact former controller process is live or its inactivity is unknown');
-    eligibility.controller = structuredClone(claim);
-  }
-  const nativeEvidence = nativeEvidenceRequests(state, request);
-  for (const worker of state.workers) {
-    const evidence = workerTermination(state.root, worker, state, dependencies, nativeEvidence.get(worker.id));
-    requireCondition(evidence, 'worker-activity-unknown', 'Worker ' + worker.id + ' has active or uncertain work; reconcile attributable termination before adoption');
-    eligibility.workers.push(evidence);
-  }
+  const verdict = adoptionEligibility(state, request, dependencies);
+  requireCondition(verdict.eligible, verdict.code, verdict.message);
+  const eligibility = { sourceStatus: state.status, controller: verdict.controller, workers: verdict.workers, quiescenceEvidence: request.quiescenceEvidence ?? null };
   const adoption = { previousController: { ...state.controller }, controller: { ...request.actor }, previousExecutionResources: previousResources, executionResources: resources, authority: request.authority, observedRevision: state.revision, revision: state.revision + 1, observedAt: new Date().toISOString(), eligibility };
   state.adoptions = [...(state.adoptions ?? []), adoption];
   state.adoption = adoption;
@@ -169,4 +180,4 @@ function adoptState(state, request, resources, dependencies = {}) {
   state.stop ??= { kind: 'adopted', reason: 'Ownership adopted; reconcile saved termination evidence and explicitly resume before engineering' };
 }
 
-module.exports = { ADOPTION_PROTOCOL, adoptState, assertControllerClaim, controllerClaim, forbiddenReviewSessions, identity, observeController, processIdentity, workerTermination };
+module.exports = { ADOPTION_PROTOCOL, adoptState, adoptionEligibility, assertControllerClaim, controllerClaim, forbiddenReviewSessions, identity, observeController, processIdentity, workerTermination };

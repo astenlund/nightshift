@@ -240,4 +240,4 @@ function compact(root, request) {
   }
 }
 
-module.exports = { STORES, compact };
+module.exports = { BACKUP, SIDECARS, STORES, compact };

@@ -73,4 +73,4 @@ function readReviewReference(root, reference, waitMs = RUN_STORE_WAIT_MS) {
   } finally { database.close(); }
 }
 
-module.exports = { REVIEW_REFERENCE_PREFIX, referenceId, reviewId, requestedReferenceId, readReviewStore, readReviewReference };
+module.exports = { REVIEW_REFERENCE_PREFIX, parseReviewState, referenceId, reviewDatabase, reviewId, requestedReferenceId, readReviewStore, readReviewReference };

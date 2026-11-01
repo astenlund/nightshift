@@ -5,7 +5,6 @@ const path = require('node:path');
 const os = require('node:os');
 const { randomUUID } = require('node:crypto');
 const { isDeepStrictEqual } = require('node:util');
-const { DatabaseSync } = require('node:sqlite');
 const { HOOK_LOCK_WAIT_MS, Registry, registrationKey, sessionKey } = require('./registry');
 const bundles = require('./bundles');
 const native = require('./native-host');
@@ -16,7 +15,8 @@ const { CONTEXT_ENV, MODE_ENV, executionResources } = require('./entry');
 const { isCreationRequest, requiresOwnershipInventory, isReadOnlyAction, isRuntimeAction, unknownActionMessage } = require('../runtime/actions');
 const { isMigrationAction, isReadOnlyMigrationAction } = require('../runtime/migration-actions');
 const { workerIsActive } = require('../runtime/workers');
-const { RUN_STORE_WAIT_MS, STORE_VERSIONS } = require('../runtime/store');
+const { RUN_STORE_WAIT_MS } = require('../runtime/store');
+const { parseRunState, runDatabase } = require('../runtime/run-overview');
 const { referenceId, reviewId, requestedReferenceId, readReviewStore, readReviewReference } = require('../runtime/review-inventory');
 const { acceptsRuntimeAction, continuationOptional, admitReady, admitResolved } = require('./admission');
 const { digest, directory, hostProfile, normalizeRuntimeTarget, parseJson, processAlive, projectRoot, readBytes, replaceFile, requireConsistentRunId, requireValue, text, writeNew } = require('./io');
@@ -28,33 +28,6 @@ const MISSING_ACTIVATION = 'This native session has not observed the current Nig
 const MIGRATION_NEW_SESSION = 'Retired deliveries need the current release for a new handover; open a new native session';
 
 function defaultStore() { return path.join(process.env.LOCALAPPDATA ?? path.join(os.homedir(), 'AppData', 'Local'), 'Nightshift'); }
-
-// A run store commit keeps readers out while it writes. Launcher operations wait for it as the runtime's own store connections
-// do; a hook's preliminary read, made before it knows whether the session owns a run, passes no wait and keeps its earlier bound.
-function runDatabase(root, waitMs = RUN_STORE_WAIT_MS) {
-  const file = path.join(root, '.nightshift/runs/state.sqlite');
-  if (!fs.existsSync(file)) return null;
-  const stat = fs.lstatSync(file);
-  requireValue(stat.isFile() && !stat.isSymbolicLink() && stat.nlink === 1, 'run-resource-state-unavailable', 'Run database is not an ordinary file');
-  const database = new DatabaseSync(file, { readOnly: true });
-  try {
-    database.exec(`PRAGMA busy_timeout=${waitMs};`);
-    // Only formats whose records the runtime reads can be inventoried; anything else holds retirement and collection back.
-    const version = database.prepare('PRAGMA user_version').get().user_version;
-    requireValue(version > 0 && STORE_VERSIONS.includes(version), 'run-resource-state-unavailable', `Unsupported run database version ${version}`);
-  } catch (error) {
-    database.close();
-    throw error;
-  }
-
-  return database;
-}
-
-function parseRunState(row, root) {
-  const value = JSON.parse(row.state);
-  requireValue(value?.schema === 1 && (value.kind === undefined || value.kind === 'delivery') && value.root === root && typeof value.id === 'string' && value.id === row.id && value.controller && ['running', 'complete', 'stopped'].includes(value.status) && Array.isArray(value.workers), 'run-resource-state-unavailable', 'Run reference state is unsupported or incomplete');
-  return value;
-}
 
 function readRun(root, id, waitMs = RUN_STORE_WAIT_MS) {
   if (id !== undefined) requireValue(typeof id === 'string' && id.length > 0, 'run-resource-state-unavailable', 'Record selection cannot be empty or null');

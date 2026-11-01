@@ -7,6 +7,6 @@ description: "Use to inspect and discuss Exploring drafts in the .nightshift bac
 
 Use [automatic preparation and resource binding](../../internal/releases/REFERENCE.md#skill-activation) before this skill. Claude native session marker: `${CLAUDE_SESSION_ID}`.
 
-Run the bound launcher with entry `ready` against the absolute project root. Render every exploring draft in full, including its title, excerpt and breakout link; keep it separate from the ready set. Read source breakouts as discussion requires. A draft is not authorized implementation work.
+Run the bound launcher with entry `ready` against the absolute project root. Render every exploring draft in full, including its title, excerpt and breakout link; keep it separate from the ready set. Do not present the parser's `runState`; the Ready skill reports it. Read source breakouts as discussion requires. A draft is not authorized implementation work.
 
 When the user agrees to graduate a draft, preserve its content, move the index entry from Exploring to its appropriate active section, declare Requires and any External gates unless the entry becomes a quick win, which carries neither, and remove status: exploring from the breakout. Run the real parser and verify the selected work is in the proper ready/blocked/external category with no new structural problem. Agreement concerns the meaningful commitments, not its location in the index.

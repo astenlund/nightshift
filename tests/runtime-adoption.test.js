@@ -79,6 +79,13 @@ test('running adoption needs the exact former claimed process to be confirmed en
   assert.equal(adopted.adoption.observedRevision, before.revision);
 });
 
+test('a live former controller refuses adoption before the request worker evidence is validated', async t => {
+  const f = await fixture(t);
+  await assert.rejects(f.adopt({ workerEvidence: null }), { code: 'controller-not-inactive' });
+  f.live.delete(originalProcess.pid);
+  await assert.rejects(f.adopt({ workerEvidence: null }), { code: 'invalid-worker-evidence' });
+});
+
 test('unknown liveness and missing historical claims preserve ownership', async t => {
   const f = await fixture(t);
   const state = f.store.read();
