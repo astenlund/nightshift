@@ -777,7 +777,7 @@ class ReleaseService {
       const result = require(path.join(bundle.root, 'internal/runtime/hook.js')).handleHook(input);
       if (input.hook_event_name === 'SessionStart') {
         const existing = result.hookSpecificOutput?.additionalContext ?? '';
-        result.hookSpecificOutput = { hookEventName: 'SessionStart', additionalContext: `${existing}\nNightshift native session: ${input.session_id}. Bound resources: ${bundle.root}. Retained launcher: ${registration.bootstrap}. Registration: ${key}. Use this binding for all Nightshift work.` };
+        result.hookSpecificOutput = { hookEventName: 'SessionStart', additionalContext: `${existing}\nNightshift native session: ${input.session_id}. Bound release: ${bundle.version}. Bound resources: ${bundle.root}. Retained launcher: ${registration.bootstrap}. Registration: ${key}. Use this binding for all Nightshift work.` };
       }
       return result;
     } catch (error) {

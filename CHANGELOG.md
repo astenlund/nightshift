@@ -4,6 +4,11 @@ Release notes for the Nightshift plugin, newest first. The plugin manifests carr
 
 The entries through 3.3.3 were moved here from the README on 2026-10-05 and split by version. A version without an entry had no notes recorded there.
 
+## 3.3.25
+
+- A bound session's SessionStart notice now names the bound release's version (`Bound release: x.y.z.`) before its resources path, so the header shows which release the session's Nightshift work uses. An unbound session's notice is unchanged and names no release, since nothing is bound until the session's first Nightshift operation.
+- Evidence: a new deterministic test checks the bound notice's version. No installed host has run the change.
+
 ## 3.3.24
 
 - Ready now reports run state before the ready set. The parser adds `runState` beside its backlog result, without changing notices, structural errors or `--check`: every running or stopped delivery run and review context apart from retired ones, plus the current delivery when it is complete and its morning report awaits its recipient, each with its objective, status, last update, stop and task counts and an offer to adopt it, an offer to present its saved report, or the reason no pickup is offered; the skill shows the age from the last update. Adoption is offered only when adoption's own controller and worker checks, now `adoptionEligibility`, prove the record inactive, so their refusal codes and precedence are unchanged. Ready also offers `compact-history` for a run store below version 3 of at least 64 MiB without a leftover backup, naming the running records that block it when it could read them, and its `finish` while a compacted store's backup remains. A store Ready cannot read is reported as unreadable, never as empty. The Exploring skill does not present the section. Ready's process now prints Node's experimental SQLite warning on stderr, as `unwrap --write` already does.

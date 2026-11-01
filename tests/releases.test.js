@@ -581,6 +581,21 @@ test('process inspection keeps the shorter budget on the hook path, apart from t
   assert.ok(HOOK_INSPECTION_BUDGET_MS < INSPECTION_BUDGET_MS);
 });
 
+test('a bound session SessionStart names the release its work is bound to', async t => {
+  // Arrange
+  const value = fixture(t);
+  const { service } = simulatedService(value, packageCopy(value.root, '1.0.0'));
+  const setup = await service.setup({ host: 'codex', profile: value.profile });
+  const hook = new ReleaseService(value.store, service.overrides, { nativeHook: true });
+  await new ReleaseService(value.store, service.overrides).resolve(setup.registration, { session: 'owner', project: value.project, entry: 'ready' });
+
+  // Act
+  const result = await hook.hook(setup.registration, { cwd: value.project, session_id: 'owner', hook_event_name: 'SessionStart', source: 'startup' });
+
+  // Assert
+  assert.match(result.hookSpecificOutput.additionalContext, /Nightshift native session: owner\. Bound release: 1\.0\.0\. Bound resources: /);
+});
+
 test('a failed SessionStart owner lookup leaves its cause for status and dependent admission until an activation replaces it', async t => {
   const value = fixture(t);
   const { service } = simulatedService(value, packageCopy(value.root, '1.0.0'));

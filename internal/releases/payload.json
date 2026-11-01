@@ -1,17 +1,17 @@
 {
   "schema": 1,
   "name": "nightshift",
-  "version": "3.3.24",
+  "version": "3.3.25",
   "files": [
     {
       "path": ".claude-plugin/plugin.json",
       "bytes": 641,
-      "sha256": "aa6dc8a892038ad065fa1d0da938a5a2ec8fee9fa9f6886c2a9d6581564955f6"
+      "sha256": "a0d106fea14a59a578edd8c9cd77d239948670677f8b146fef9b6915a7d0f9f1"
     },
     {
       "path": ".codex-plugin/plugin.json",
       "bytes": 1161,
-      "sha256": "e44568f73346d24060117cf9f26584ee17cbdb5bf442dcdc2d768f77da753bc1"
+      "sha256": "92a9bb6663a1a1022240b1995dc16c87f58081b1e146e0f5d114ddad1581dbcb"
     },
     {
       "path": "LICENSE",
@@ -155,8 +155,8 @@
     },
     {
       "path": "internal/releases/service.js",
-      "bytes": 74870,
-      "sha256": "b97da11b7c4ba7d82819865860effd6feee5f0adec7ea126393710fce045a6ee"
+      "bytes": 74904,
+      "sha256": "43cb33322bb93b876fce66c9bf6881bac907d24daa7ca08cd912c7bff237856c"
     },
     {
       "path": "internal/releases/settings-write.ps1",
