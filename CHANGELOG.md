@@ -7,7 +7,8 @@ The entries through 3.3.3 were moved here from the README on 2026-10-05 and spli
 ## 3.3.25
 
 - A bound session's SessionStart notice now names the bound release's version (`Bound release: x.y.z.`) before its resources path, so the header shows which release the session's Nightshift work uses. An unbound session's notice is unchanged and names no release, since nothing is bound until the session's first Nightshift operation.
-- Evidence: a new deterministic test checks the bound notice's version. No installed host has run the change.
+- Ready now reports the release running it. The parser adds `release` beside `runState`: `{mode: 'bound', version}` with the version of the session's bound release, taken from the launcher context's identity, which admission checks against the session binding, with `version` null when the context names none, or `{mode: 'development'}` without an admitted context. The skill opens its report with one line giving the bound version, or saying that the bound release could not be named when `version` is null, or that the parser ran from a development checkout. When Ready is a session's first Nightshift operation, it binds the release the host lists at that moment, and a bound session refuses work on a run from another release, so the line shows which release later work in the session uses.
+- Evidence: two new deterministic tests check the bound notice's version and a bound context's `release` version; added assertions check `release` through a launcher-run Ready, with a context that names no identity, and in development mode for every parser comparison. No installed host has run the change.
 
 ## 3.3.24
 

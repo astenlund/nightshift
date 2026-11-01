@@ -165,8 +165,8 @@
     },
     {
       "path": "internal/runtime/REFERENCE.md",
-      "bytes": 127295,
-      "sha256": "9babb4e0c6bcdc683fe0288bbf728b8671c6b04b34591cea23495a9ce43671d2"
+      "bytes": 127597,
+      "sha256": "f5873c5cc589cf914d6cef1fcd80237f78195d41cb9d22d7c0f7f20ac9d3bbb1"
     },
     {
       "path": "internal/runtime/acceptance-checkpoint.js",
@@ -515,8 +515,8 @@
     },
     {
       "path": "skills/exploring/SKILL.md",
-      "bytes": 1192,
-      "sha256": "c3b9b9d90e532fb8ea69a2931b4de2e1950cefb7653c5af5a4094c3c77a3ac32"
+      "bytes": 1207,
+      "sha256": "939df6165440e05f1aa2a6ecf9b471a59f11b96ae0e0ddbc256858483d556624"
     },
     {
       "path": "skills/handover/SKILL.md",
@@ -580,13 +580,13 @@
     },
     {
       "path": "skills/ready/SKILL.md",
-      "bytes": 6140,
-      "sha256": "3301224efabea2ff9f653c2eed964a992d3e13004552f1030401b7afe95907cb"
+      "bytes": 6484,
+      "sha256": "aab3a2bcf59e881ac8d6fd64f3e90563ec744c82d8e1ebf47bc275e06d8280c3"
     },
     {
       "path": "skills/ready/ready.js",
-      "bytes": 84601,
-      "sha256": "2598e23e569a06e032836048625d191ae394e9242d31bb64de8cde1cbb9e2156"
+      "bytes": 85196,
+      "sha256": "1e64210d851be7e4919fd2db06373113e8601594225fc54d595109fd8fde760f"
     },
     {
       "path": "skills/revise-code/SKILL.md",

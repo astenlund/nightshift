@@ -119,6 +119,7 @@ test('Ready runs without trusted continuation while dependent operations still r
   const exit = await service.run(setup.registration, { session: 'owner', project: value.project, entry: 'ready' });
   assert.equal(exit.code, 0, exit.stderr);
   assert.deepEqual(JSON.parse(exit.stdout).structuralErrors, []);
+  assert.deepEqual(JSON.parse(exit.stdout).release, { mode: 'bound', version: '1.0.0' });
   state.trusted = false;
   const untrustedReady = await service.run(setup.registration, { session: 'owner', project: value.project, entry: 'ready' });
   assert.equal(untrustedReady.code, 0, untrustedReady.stderr);

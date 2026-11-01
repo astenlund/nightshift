@@ -11,10 +11,12 @@
 // any dependency line on a quick win (quick wins are always ready), and
 // emits a JSON report on stdout:
 //
-//   { indexes, ready, blocked, external, exploring, structuralErrors, notices, runState }
+//   { indexes, ready, blocked, external, exploring, structuralErrors, notices, runState, release }
 //
 // runState is the project's open runs and run-store compaction state from
 // internal/runtime/run-overview.js; it never affects the other fields or --check.
+// release names the release running this parser: the version of the session's
+// bound release when the launcher admitted it, or development mode without one.
 //
 // History archives are never parsed for work: the walk-and-remove convention
 // keeps active Requires lines authoritative. PATTERNS.md is a pattern
@@ -1833,6 +1835,14 @@ function readRunState(projectRoot, context) {
   }
 }
 
+// An admitted context carries the session binding's identity, `<version>-<manifest digest>`, which admission checks against the binding.
+function releaseOf(context) {
+  if (context === null) return { mode: 'development' };
+  const match = /^(\d+\.\d+\.\d+)-[a-f0-9]{64}$/.exec(context.identity ?? '');
+
+  return { mode: 'bound', version: match ? match[1] : null };
+}
+
 function runCli(argRoot, options = {}) {
   const root = path.resolve(argRoot || process.cwd());
   const backlogDir = BACKLOG_DIRECTORY_NAMES.includes(path.basename(root)) ? root : path.join(root, '.nightshift');
@@ -1910,6 +1920,7 @@ function runCli(argRoot, options = {}) {
     if (options.check === true && !isCleanParse(result)) process.exitCode = 1;
     delete result.breakoutTargets;
     result.runState = readRunState(path.dirname(backlogDir), options.context ?? null);
+    result.release = releaseOf(options.context ?? null);
 
     process.stdout.write(JSON.stringify(result, null, 2) + '\n');
   } catch (error) {

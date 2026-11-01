@@ -41,10 +41,12 @@ const failures = [];
 
 const SQLITE_WARNING = /\(node:\d+\) ExperimentalWarning: SQLite is an experimental feature and might change at any time\r?\n\(Use `node --trace-warnings \.\.\.` to show where the warning was created\)\r?\n/;
 
-// A fixture project has no run stores, so the CLI's run state is empty; the catalog adapter has no run state to compare.
-function withoutRunState(report) {
-  const { runState, ...rest } = report;
+// A fixture project has no run stores, so the CLI's run state is empty, and it runs without an admitted context, so its release is
+// development mode; the catalog adapter has neither field to compare.
+function withoutCliFields(report) {
+  const { runState, release, ...rest } = report;
   assert.deepStrictEqual(runState, { records: [], compaction: [], unavailable: [] });
+  assert.deepStrictEqual(release, { mode: 'development' });
 
   return rest;
 }
@@ -237,7 +239,7 @@ test('analyzeCatalog reproduces CLI JSON from exact catalog records and uses pre
     }
 
     const { evidence, ...publicCatalog } = catalog;
-    assert.deepStrictEqual(publicCatalog, withoutRunState(cli));
+    assert.deepStrictEqual(publicCatalog, withoutCliFields(cli));
     assert.deepStrictEqual(evidence, {
       structuralErrors: [],
       notices: [{ kind: 'notices', ordinal: 0, evidencePaths: ['FEATURES.md'] }],
@@ -316,6 +318,24 @@ test('the CLI passes its admitted context and canonical project root to the run 
   assert.strictEqual(calls[0].root, canonicalRoot);
   assert.deepStrictEqual(calls[0].options, { context });
   assert.deepStrictEqual(JSON.parse(output).runState.unavailable, [{ store: 'review', code: 'run-overview-busy', message: 'fixture' }]);
+  assert.deepStrictEqual(JSON.parse(output).release, { mode: 'bound', version: null });
+});
+
+test('the CLI reports the version of the release its admitted context is bound to', () => {
+  const tmpRoot = path.join(__dirname, '..', '..', '.tmp', `ready-release-${process.pid}`);
+  const write = process.stdout.write;
+  let output = '';
+  fs.rmSync(tmpRoot, { recursive: true, force: true });
+  fs.mkdirSync(path.join(tmpRoot, '.nightshift'), { recursive: true });
+  fs.writeFileSync(path.join(tmpRoot, '.nightshift', 'QUICK_WINS.md'), '# Quick wins\n\n## Current\n\n### Tidy\n\nA tidy-up.\n');
+  try {
+    process.stdout.write = (chunk) => { output += chunk; return true; };
+    runCli(path.join(tmpRoot, '.nightshift'), { context: { host: 'claude', session: 'fixture-session', identity: `3.3.25-${'a'.repeat(64)}` } });
+  } finally {
+    process.stdout.write = write;
+    fs.rmSync(tmpRoot, { recursive: true, force: true });
+  }
+  assert.deepStrictEqual(JSON.parse(output).release, { mode: 'bound', version: '3.3.25' });
 });
 
 test('--check keeps the report and exits 1 unless the parse is clean', () => {
@@ -585,7 +605,7 @@ test('the CLI reports carried fixes like analyzeCatalog, and only the draft noti
     const { evidence, ...catalog } = analyzeCatalog(CARRIED_FIXES_BACKLOG);
     const checked = run('--check');
     assert.strictEqual(checked.status, 1);
-    assert.deepStrictEqual(withoutRunState(JSON.parse(checked.stdout)), catalog);
+    assert.deepStrictEqual(withoutCliFields(JSON.parse(checked.stdout)), catalog);
 
     const withoutDraftFixes = CARRIED_FIXES_BACKLOG.map((item) => item.target === 'features/draft.md' ? { ...item, contents: '# Draft\n' } : item);
     writeBacklog(withoutDraftFixes);
@@ -3390,7 +3410,7 @@ test('link notices from the CLI match the catalog adapter exactly', () => {
     const { evidence, ...catalog } = analyzeCatalog(LINK_FIXTURE);
 
     assert.ok(evidence);
-    assert.deepStrictEqual(catalog, withoutRunState(cli));
+    assert.deepStrictEqual(catalog, withoutCliFields(cli));
     assert.deepStrictEqual(cli.notices, LINK_FIXTURE_NOTICES);
   } finally {
     fs.rmSync(tmpRoot, { recursive: true, force: true });
