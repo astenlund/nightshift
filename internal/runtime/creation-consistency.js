@@ -4,7 +4,7 @@ const { createHash } = require('node:crypto');
 const { isDeepStrictEqual } = require('node:util');
 const { RunError, requireBound, requireCondition } = require('./errors');
 const { recordKind } = require('./records');
-const { MAX_EXPANDED_BYTES, hydrateArtifact } = require('./artifact-hydration');
+const { verificationPass, verifyArtifacts } = require('./artifact-hydration');
 const { validReportDelivery } = require('./report-delivery');
 const { workerIsActive } = require('./workers');
 const progress = require('./progress');
@@ -122,7 +122,7 @@ function assessment(store, options = {}) {
   const acceptances = new Set();
   const legacyUnavailable = [];
   const certificateBudgets = { chain: { bytes: 0, maximum: MAX_CERTIFICATE_CHAIN_BYTES, visited: new Set() }, manifests: { bytes: 0, maximum: MAX_MANIFEST_CHAIN_BYTES, visited: new Set() }, history: { bytes: 0, maximum: MAX_HISTORICAL_BYTES, cache: new Map() }, targetsByManifest: new Map() };
-  const retirementHydration = { bytes: 0, maximum: MAX_INPUT_BYTES, expansionMaximum: MAX_EXPANDED_BYTES, visited: new Set(), artifactsAvailable: tables.has('artifacts') };
+  const retirementEvidence = verificationPass(tables.has('artifacts'));
   for (const row of rows) {
     const state = parse(row.state, true);
     requireCondition(state?.schema === 1 && typeof state.id === 'string' && state.id.length > 0 && state.id === row.id && state.root === store.root && recordKind(state) === 'delivery' && state.revision === row.revision && Number.isSafeInteger(row.revision) && row.revision >= 0 && ['running', 'stopped', 'complete'].includes(state.status) && ['claude', 'codex'].includes(state.controller?.host) && typeof state.controller.session === 'string' && state.controller.session.length > 0 && Array.isArray(state.tasks) && Array.isArray(state.workers), CODE, 'Delivery identity, shape or revision is unsupported');
@@ -142,8 +142,8 @@ function assessment(store, options = {}) {
     }
     const retired = retiredById.get(state.id);
     if (retiredById.has(state.id)) {
-      hydrateArtifact(store.db, state, new Set(), retirementHydration);
-      hydrateArtifact(store.db, latestState, new Set(), retirementHydration);
+      verifyArtifacts(store.db, state, retirementEvidence);
+      verifyArtifacts(store.db, latestState, retirementEvidence);
       try { validateCertificate(store.db, store.root, row, state, historical, retired, certificateBudgets); }
       catch (error) {
         if (!options.resourceOnly || options.requiredRetirements?.has(state.id) || resourceLimit(error) || !(error instanceof RunError)) throw error;
@@ -163,8 +163,8 @@ function assessment(store, options = {}) {
       continue;
     }
     if (options.resourceOnly && state.progress === undefined) {
-      hydrateArtifact(store.db, state, new Set(), retirementHydration);
-      hydrateArtifact(store.db, latestState, new Set(), retirementHydration);
+      verifyArtifacts(store.db, state, retirementEvidence);
+      verifyArtifacts(store.db, latestState, retirementEvidence);
       records.push({ state, discharged: false, closingOpen: false });
       continue;
     }

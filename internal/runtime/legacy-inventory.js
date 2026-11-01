@@ -2,7 +2,7 @@
 
 const fs = require('node:fs');
 const { isDeepStrictEqual } = require('node:util');
-const { MAX_EXPANDED_BYTES, hydrateArtifact } = require('./artifact-hydration');
+const { hydrateArtifact, verificationPass, verifyArtifacts } = require('./artifact-hydration');
 const { targetEntry, MAX_TARGET_READ_BYTES } = require('./legacy-backlog');
 const { APPROVAL_SCHEMA, MAX_APPROVAL_RECORDS, MAX_CERTIFICATE_BYTES, MAX_CERTIFICATE_CHAIN_BYTES, MAX_HISTORICAL_BYTES, MAX_MANIFEST_BYTES, MAX_MANIFEST_CHAIN_BYTES, approvedStateProjection, savedFollowupsValid, validateCertificate } = require('./legacy-certificates');
 const { requireCondition } = require('./errors');
@@ -155,11 +155,11 @@ class LegacyInventory {
 
   validateCurrentEvidence() {
     this.load();
-    const hydration = { bytes: 0, maximum: MAX_INPUT_BYTES, expansionMaximum: MAX_EXPANDED_BYTES, visited: new Set(), artifactsAvailable: this.schema.tables.has('artifacts') };
+    const evidence = this.evidencePass();
     for (const record of this.records.values()) {
       try {
-        hydrateArtifact(this.db, record.state, new Set(), hydration);
-        hydrateArtifact(this.db, parseState(record.rawHistory, `History for ${record.id}`), new Set(), hydration);
+        verifyArtifacts(this.db, record.state, evidence);
+        verifyArtifacts(this.db, parseState(record.rawHistory, `History for ${record.id}`), evidence);
       } catch (error) {
         requireCondition(false, 'migration-store-unavailable', `Delivery ${record.id} has unavailable referenced evidence: ${error.message}`);
       }
@@ -168,10 +168,14 @@ class LegacyInventory {
     return this;
   }
 
-  summary(record, budget = { bytes: 0, maximum: MAX_BATCH_REPORT_BYTES }, hydration = { bytes: 0, maximum: MAX_INPUT_BYTES, expansionMaximum: MAX_EXPANDED_BYTES, visited: new Set(), artifactsAvailable: this.schema.tables.has('artifacts') }) {
+  evidencePass() {
+    return verificationPass(this.schema.tables.has('artifacts'));
+  }
+
+  summary(record, budget = { bytes: 0, maximum: MAX_BATCH_REPORT_BYTES }, evidence = this.evidencePass()) {
     const state = record.state;
-    hydrateArtifact(this.db, state, new Set(), hydration);
-    hydrateArtifact(this.db, parseState(record.rawHistory, `History for ${record.id}`), new Set(), hydration);
+    verifyArtifacts(this.db, state, evidence);
+    verifyArtifacts(this.db, parseState(record.rawHistory, `History for ${record.id}`), evidence);
 
     return {
       id: record.id,
@@ -208,9 +212,9 @@ class LegacyInventory {
       return fallback;
     };
     const reportBudget = { bytes: 0, maximum: MAX_BATCH_REPORT_BYTES };
-    const pageHydration = { bytes: 0, maximum: MAX_INPUT_BYTES, expansionMaximum: MAX_EXPANDED_BYTES, visited: new Set(), artifactsAvailable: this.schema.tables.has('artifacts') };
+    const pageEvidence = this.evidencePass();
     let details;
-    try { details = pageRecords.map(record => ({ ...this.summary(record, reportBudget, pageHydration), retiredFollowups: this.retiredFollowupsFor(record) })); }
+    try { details = pageRecords.map(record => ({ ...this.summary(record, reportBudget, pageEvidence), retiredFollowups: this.retiredFollowupsFor(record) })); }
     catch (error) {
       if (!['migration-evidence-bound', 'migration-report-bound'].includes(error.code)) throw error;
 
@@ -284,9 +288,9 @@ class LegacyInventory {
     requireCondition(Number.isSafeInteger(page) && page >= 0, 'migration-manifest-unavailable', 'Manifest page must be nonnegative');
     const sorted = [...ids].sort();
     const reportBudget = { bytes: 0, maximum: MAX_BATCH_REPORT_BYTES };
-    const hydrationBudget = { bytes: 0, maximum: MAX_INPUT_BYTES, expansionMaximum: MAX_EXPANDED_BYTES, visited: new Set(), artifactsAvailable: this.schema.tables.has('artifacts') };
+    const batchEvidence = this.evidencePass();
     const targetBudget = { bytes: 0, maximum: MAX_TARGET_READ_BYTES, cache: new Map() };
-    const records = sorted.map(id => this.summary(this.record(id), reportBudget, hydrationBudget));
+    const records = sorted.map(id => this.summary(this.record(id), reportBudget, batchEvidence));
     let choices = null;
     if (suppliedChoices !== undefined) {
       requireCondition(Array.isArray(suppliedChoices) && suppliedChoices.length === records.length && suppliedChoices.every(choice => choice && typeof choice === 'object' && !Array.isArray(choice) && typeof choice.runId === 'string') && new Set(suppliedChoices.map(choice => choice.runId)).size === records.length, 'migration-decision-unavailable', 'Manifest choices must cover each member once');

@@ -11,7 +11,7 @@ const { execute: migrationExecute } = require('../internal/runtime/legacy-migrat
 const { execute: runtimeExecute } = require('../internal/runtime/cli');
 const { TRIGGERS, readArtifact, sha256 } = require('../internal/runtime/legacy-store');
 const { validateCertificate } = require('../internal/runtime/legacy-certificates');
-const { hydrateArtifact } = require('../internal/runtime/artifact-hydration');
+const { hydrateArtifact, verificationPass, verifyArtifacts } = require('../internal/runtime/artifact-hydration');
 const { reportProjection } = require('../internal/runtime/legacy-report');
 const { targetEntry } = require('../internal/runtime/legacy-backlog');
 const { creationAssessment } = require('../internal/runtime/creation-consistency');
@@ -712,6 +712,32 @@ test('creation and inventory read only run-bound artifacts, so other evidence pa
   assert.equal(inventory.counts.legacy, 1);
 });
 
+test('creation, inventory and manifest verify referenced evidence past the old 64 MiB and 256 MiB totals', t => {
+  // Arrange
+  const { root, id } = fixture(t);
+  const bodies = [1, 2].map(index => JSON.stringify(`${index}`.repeat(33 * 1024 * 1024)));
+  addArtifacts(root, bodies.map(body => ({ body })));
+  const db = new DatabaseSync(path.join(root, '.nightshift/runs/state.sqlite'));
+  try {
+    const state = JSON.parse(db.prepare('SELECT state FROM runs WHERE id=?').get(id).state);
+    state.notes = Array.from({ length: 10 }, (_, index) => ({ $artifact: sha256(bodies[index % 2]) }));
+    const body = JSON.stringify(state);
+    db.prepare('UPDATE runs SET state=? WHERE id=?').run(body, id);
+    db.prepare('UPDATE history SET state=? WHERE run_id=?').run(body, id);
+  } finally { db.close(); }
+
+  // Act
+  const assess = () => assessResources(root);
+  const inventory = execute(root, { action: 'inventory' });
+  const manifest = execute(root, { action: 'manifest', ids: [id] });
+
+  // Assert
+  assert.doesNotThrow(assess);
+  assert.equal(inventory.counts.legacy, 1);
+  assert.equal(inventory.preview[0].id, id);
+  assert.deepEqual(manifest.members.map(member => member.record.id), [id]);
+});
+
 test('creation and inventory refuse a run-bound artifact larger than its writers allow', t => {
   // Arrange
   const { root, id } = fixture(t);
@@ -1390,7 +1416,7 @@ test('repeated referenced evidence is read once and bounded when expanded', t =>
     } };
   } };
   const envelope = { $artifact: id };
-  const budget = { bytes: 0, maximum: Buffer.byteLength(body), expansionMaximum: Buffer.byteLength(body) * 2, visited: new Set(), artifactsAvailable: true };
+  const budget = { bytes: 0, maximum: Buffer.byteLength(body) * 2, visited: new Set(), artifactsAvailable: true };
 
   // Act
   let hydrated;
@@ -1403,6 +1429,66 @@ test('repeated referenced evidence is read once and bounded when expanded', t =>
   assert.equal(budget.bytes, Buffer.byteLength(body));
   assert.equal(budget.expandedBytes, Buffer.byteLength(body) * 2);
   assert.throws(() => hydrateArtifact({ prepare: () => { throw new Error('Cached evidence should need no SQLite read'); } }, envelope, new Set(), budget), { code: 'migration-evidence-bound' });
+});
+
+test('evidence verification reads each body once with no total and refuses one body over its bound', t => {
+  // Arrange
+  const { root } = fixture(t);
+  const db = new DatabaseSync(path.join(root, '.nightshift/runs/state.sqlite'));
+  const inner = JSON.stringify({ detail: 'x'.repeat(1024) });
+  const outer = JSON.stringify({ detail: 'y'.repeat(1024), nested: [{ $artifact: sha256(inner) }, { $artifact: sha256(inner) }] });
+  const large = JSON.stringify({ detail: 'z'.repeat(4096) });
+  db.exec('CREATE TABLE artifacts (id TEXT PRIMARY KEY, body TEXT NOT NULL)');
+  for (const body of [inner, outer, large]) db.prepare('INSERT INTO artifacts VALUES (?, ?)').run(sha256(body), body);
+  let bodyReads = 0;
+  const counting = { prepare(sql) {
+    const statement = db.prepare(sql);
+    return { get(...args) {
+      if (sql.startsWith('SELECT body FROM artifacts')) bodyReads++;
+
+      return statement.get(...args);
+    } };
+  } };
+  const pass = verificationPass(true, Buffer.byteLength(outer));
+  const value = { first: { $artifact: sha256(outer) }, again: [{ $artifact: sha256(outer) }, { $artifact: sha256(inner) }] };
+
+  // Act
+  const oversized = () => verifyArtifacts(counting, { $artifact: sha256(large) }, pass);
+  try {
+    verifyArtifacts(counting, value, pass);
+
+    // Assert
+    assert.equal(bodyReads, 2);
+    assert.deepEqual([...pass.verified].sort(), [sha256(inner), sha256(outer)].sort());
+    assert.throws(oversized, { code: 'migration-evidence-bound' });
+  } finally { db.close(); }
+});
+
+test('evidence verification keeps the missing, changed and malformed evidence codes', t => {
+  // Arrange
+  const { root } = fixture(t);
+  const db = new DatabaseSync(path.join(root, '.nightshift/runs/state.sqlite'));
+  const intact = JSON.stringify({ detail: 'intact' });
+  const changedId = sha256(JSON.stringify({ detail: 'original' }));
+  db.exec('CREATE TABLE artifacts (id TEXT PRIMARY KEY, body TEXT NOT NULL)');
+  db.prepare('INSERT INTO artifacts VALUES (?, ?)').run(sha256(intact), intact);
+  db.prepare('INSERT INTO artifacts VALUES (?, ?)').run(changedId, JSON.stringify({ detail: 'altered' }));
+  const verify = (value, available = true) => () => verifyArtifacts(db, value, verificationPass(available));
+
+  // Act
+  const cases = [
+    [verify({ $artifact: sha256('absent') }), 'missing-evidence'],
+    [verify({ $artifact: sha256(intact) }, false), 'missing-evidence'],
+    [verify({ $artifact: changedId }), 'changed-evidence'],
+    [verify({ $artifact: sha256(intact), extra: true }), 'invalid-evidence'],
+    [verify({ $artifact: 'not-a-hash' }), 'invalid-evidence'],
+  ];
+
+  // Assert
+  try {
+    for (const [run, code] of cases) assert.throws(run, { code });
+    assert.doesNotThrow(verify({ $artifact: sha256(intact) }));
+  } finally { db.close(); }
 });
 
 test('ordinary runtime hydration reports a missing artifact as missing evidence', t => {

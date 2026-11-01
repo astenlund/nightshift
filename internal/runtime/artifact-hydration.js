@@ -3,7 +3,8 @@
 const { createHash } = require('node:crypto');
 const { requireCondition } = require('./errors');
 
-const MAX_EXPANDED_BYTES = 256 * 1024 * 1024;
+// The largest single body a verification pass reads; a pass has no total, since it keeps no body after checking it.
+const MAX_VERIFIED_BODY_BYTES = 64 * 1024 * 1024;
 
 function hydrateArtifact(db, value, seen = new Set(), budget = null) {
   if (value === null || typeof value !== 'object') return value;
@@ -15,7 +16,7 @@ function hydrateArtifact(db, value, seen = new Set(), budget = null) {
     const cached = budget?.cache?.get(id);
     if (cached) {
       budget.expandedBytes = (budget.expandedBytes ?? 0) + cached.bytes;
-      requireCondition(budget.expandedBytes <= (budget.expansionMaximum ?? budget.maximum), 'migration-evidence-bound', 'Expanded referenced evidence exceeds the migration read bound');
+      requireCondition(budget.expandedBytes <= budget.maximum, 'migration-evidence-bound', 'Expanded referenced evidence exceeds the migration read bound');
 
       return hydrateArtifact(db, cached.value, new Set([...seen, id]), budget);
     }
@@ -35,7 +36,7 @@ function hydrateArtifact(db, value, seen = new Set(), budget = null) {
       budget.visited.add(id);
       requireCondition(budget.bytes <= budget.maximum, 'migration-evidence-bound', 'Referenced evidence exceeds the migration read bound');
       budget.expandedBytes = (budget.expandedBytes ?? 0) + size;
-      requireCondition(budget.expandedBytes <= (budget.expansionMaximum ?? budget.maximum), 'migration-evidence-bound', 'Expanded referenced evidence exceeds the migration read bound');
+      requireCondition(budget.expandedBytes <= budget.maximum, 'migration-evidence-bound', 'Expanded referenced evidence exceeds the migration read bound');
     }
     const parsed = JSON.parse(row.body);
     if (budget) {
@@ -50,4 +51,32 @@ function hydrateArtifact(db, value, seen = new Set(), budget = null) {
   return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, hydrateArtifact(db, item, seen, budget)]));
 }
 
-module.exports = { MAX_EXPANDED_BYTES, hydrateArtifact };
+function verificationPass(artifactsAvailable, maximum = MAX_VERIFIED_BODY_BYTES) {
+  return { verified: new Set(), artifactsAvailable, maximum };
+}
+
+// Checks every artifact a value references, transitively, as hydration would, without building the hydrated value: a pass reads,
+// identity-checks and parses each distinct body once and drops it after checking its own references, so a repeat reference costs
+// nothing and the pass holds only the bodies on the reference chain it is checking.
+function verifyArtifacts(db, value, pass, path = new Set()) {
+  if (value === null || typeof value !== 'object') return;
+  if (!Object.hasOwn(value, '$artifact')) {
+    for (const item of Array.isArray(value) ? value : Object.values(value)) verifyArtifacts(db, item, pass, path);
+
+    return;
+  }
+  const id = value.$artifact;
+  requireCondition(Object.keys(value).length === 1 && /^[a-f0-9]{64}$/.test(id) && !path.has(id), 'invalid-evidence', 'Immutable evidence envelope is malformed or recursive');
+  if (pass.verified.has(id)) return;
+  requireCondition(pass.artifactsAvailable !== false, 'missing-evidence', 'Referenced immutable evidence is missing');
+  const size = db.prepare('SELECT length(CAST(body AS BLOB)) AS bytes FROM artifacts WHERE id=?').get(id)?.bytes;
+  requireCondition(size !== undefined, 'missing-evidence', 'Referenced immutable evidence is missing');
+  requireCondition(size <= pass.maximum, 'migration-evidence-bound', 'Referenced evidence exceeds the per-body read bound');
+  const row = db.prepare('SELECT body FROM artifacts WHERE id=? AND length(CAST(body AS BLOB))<=?').get(id, pass.maximum);
+  requireCondition(row, 'migration-evidence-bound', 'Referenced evidence changed during the bounded read');
+  requireCondition(createHash('sha256').update(row.body).digest('hex') === id, 'changed-evidence', 'Immutable evidence no longer matches its content identity');
+  verifyArtifacts(db, JSON.parse(row.body), pass, new Set([...path, id]));
+  pass.verified.add(id);
+}
+
+module.exports = { MAX_VERIFIED_BODY_BYTES, hydrateArtifact, verificationPass, verifyArtifacts };

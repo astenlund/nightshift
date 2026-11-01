@@ -1,17 +1,17 @@
 {
   "schema": 1,
   "name": "nightshift",
-  "version": "3.3.21",
+  "version": "3.3.22",
   "files": [
     {
       "path": ".claude-plugin/plugin.json",
       "bytes": 641,
-      "sha256": "c71a58ebb49d5278d6cd2a51ad9246dd11441c199cf55ef0b86ea706386ebd0a"
+      "sha256": "cae75b12b1ce2479a0baa0cba4e3a51b35a99df5ec723be27e8d69455f1c017b"
     },
     {
       "path": ".codex-plugin/plugin.json",
       "bytes": 1161,
-      "sha256": "5a5b3b8a127d0d16827496b9067e828764c07b609295ccfc506b6cc21f98b7fd"
+      "sha256": "2b1a8ee0e30891dfa15b4eb5201489dce594d91ca05695795321a3f7eac0e84b"
     },
     {
       "path": "LICENSE",
@@ -165,8 +165,8 @@
     },
     {
       "path": "internal/runtime/REFERENCE.md",
-      "bytes": 123029,
-      "sha256": "e663634e0129adb12a7725df506b9126f83c1a4ca0bfa4240bbf886bf0b4e2c3"
+      "bytes": 123155,
+      "sha256": "d3aaa0cf25867893aeb8d7911cd5472091c737ad49dc61c5dcbfe42e398ff632"
     },
     {
       "path": "internal/runtime/acceptance-checkpoint.js",
@@ -185,8 +185,8 @@
     },
     {
       "path": "internal/runtime/artifact-hydration.js",
-      "bytes": 3407,
-      "sha256": "d7e95cffeb1522bfc854499d536872dcb89ed9e5ee4a4e29afb830ea3b8d0b28"
+      "bytes": 5501,
+      "sha256": "9f8e4192a0a91c31e5d93990cd1636bae68034d215b60f3255c3d3f3492206ce"
     },
     {
       "path": "internal/runtime/artifacts.js",
@@ -215,8 +215,8 @@
     },
     {
       "path": "internal/runtime/creation-consistency.js",
-      "bytes": 20445,
-      "sha256": "ccc7cd62844bae355e3e3cec57b1fbbe983df7a9303ea1dd8149a5105d1a4ad0"
+      "bytes": 20294,
+      "sha256": "93bef107768ebfbdce6d4d089fa4e0019aa06d0700b6cdcb8179e2b3143083d0"
     },
     {
       "path": "internal/runtime/delivery-acceptance.js",
@@ -265,8 +265,8 @@
     },
     {
       "path": "internal/runtime/legacy-inventory.js",
-      "bytes": 27744,
-      "sha256": "346a4a84f586a0679e7cfeb5ba0a0eba1160e5e035fe8d84b0b7fa9bd6a47d27"
+      "bytes": 27257,
+      "sha256": "83937d0f405e38bcd6d03792b63d73bc831da339263ab990b6928d6fe257d010"
     },
     {
       "path": "internal/runtime/legacy-migration.js",
