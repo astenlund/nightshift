@@ -12,6 +12,7 @@ const { DIMENSIONS, commitmentsFor, obligationBrief, reviewGate, transition } = 
 const { fresh, snapshot, verifyCommand } = require('../internal/runtime/evidence');
 const { handleHook } = require('../internal/runtime/hook');
 const { remainingTime } = require('../internal/runtime/limits');
+const { storedHistoryBytes } = require('./fixtures/history');
 
 const actor = { host: 'codex', session: 'controller' };
 
@@ -410,7 +411,7 @@ test('large immutable logs are stored once rather than copied into every history
   const f = fixture(t);
   f.act({ action: 'check', taskId: 'a', evidence: { name: 'Large test log', passed: true, snapshot: snapshot(f.root, ['a.txt']), output: 'x'.repeat(1024 * 1024) } });
   for (let index = 0; index < 20; index++) f.act({ action: 'followup', item: { id: 'item-' + index, context: 'Observed issue', recommendation: 'Discuss after the run' } });
-  const historyBytes = f.store.db.prepare('SELECT sum(length(state)) AS bytes FROM history').get().bytes;
+  const historyBytes = storedHistoryBytes(f.store.db);
   assert.ok(historyBytes < 200000, 'Small transitions should not repeat megabyte evidence');
   assert.equal(f.store.read().tasks[0].checks[0].output.length, 1024 * 1024);
   assert.ok(fs.statSync(path.join(f.root, '.nightshift/runs/state.sqlite')).size < 3 * 1024 * 1024);

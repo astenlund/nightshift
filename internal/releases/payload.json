@@ -1,17 +1,17 @@
 {
   "schema": 1,
   "name": "nightshift",
-  "version": "3.3.22",
+  "version": "3.3.23",
   "files": [
     {
       "path": ".claude-plugin/plugin.json",
       "bytes": 641,
-      "sha256": "cae75b12b1ce2479a0baa0cba4e3a51b35a99df5ec723be27e8d69455f1c017b"
+      "sha256": "f725d90f657b49cf9345881e5e0fc3b645e20952efd8f157269e9a3be1e07dc6"
     },
     {
       "path": ".codex-plugin/plugin.json",
       "bytes": 1161,
-      "sha256": "2b1a8ee0e30891dfa15b4eb5201489dce594d91ca05695795321a3f7eac0e84b"
+      "sha256": "faf525c83613ef062305c7edfd8c23c8f77f7cf1d484d3c5aed6f61f51dfd8e6"
     },
     {
       "path": "LICENSE",
@@ -60,8 +60,8 @@
     },
     {
       "path": "internal/releases/REFERENCE.md",
-      "bytes": 40193,
-      "sha256": "b4445d72a3687c99e16d9449b9b707982c9386105c9929f62fe6a550a148ad67"
+      "bytes": 40212,
+      "sha256": "0178d7041aee8f80f5e3c1520fb16b8f9351a53ec92de848d7c50cab34d90fc1"
     },
     {
       "path": "internal/releases/administration.js",
@@ -155,8 +155,8 @@
     },
     {
       "path": "internal/releases/service.js",
-      "bytes": 76480,
-      "sha256": "ea4920db4cdf658a79fc395b18b3daa9b936dbbd1b8f709099fe988e9a5be295"
+      "bytes": 76497,
+      "sha256": "89ca15e229a5b819d156a9f4ce92d5a97b6f3cc72510f37c8d2ff4b8d50836ac"
     },
     {
       "path": "internal/releases/settings-write.ps1",
@@ -165,8 +165,8 @@
     },
     {
       "path": "internal/runtime/REFERENCE.md",
-      "bytes": 123155,
-      "sha256": "d3aaa0cf25867893aeb8d7911cd5472091c737ad49dc61c5dcbfe42e398ff632"
+      "bytes": 126071,
+      "sha256": "14d4dcaa0ab3d350e2542c9c4dfa873997bcca6ac0a5ba2ddc0d4827b36b52d7"
     },
     {
       "path": "internal/runtime/acceptance-checkpoint.js",
@@ -215,8 +215,8 @@
     },
     {
       "path": "internal/runtime/creation-consistency.js",
-      "bytes": 20294,
-      "sha256": "93bef107768ebfbdce6d4d089fa4e0019aa06d0700b6cdcb8179e2b3143083d0"
+      "bytes": 19803,
+      "sha256": "c8a795faa4e22cb7611039540986a745eb2e09d6c89a684542e3fbdc4b648d8f"
     },
     {
       "path": "internal/runtime/delivery-acceptance.js",
@@ -237,6 +237,16 @@
       "path": "internal/runtime/evidence.js",
       "bytes": 17061,
       "sha256": "426736f3e5d8ff9d0c08b75d9db0bce2a23679d5131456dcb94c176a286edebb"
+    },
+    {
+      "path": "internal/runtime/history-compaction.js",
+      "bytes": 12586,
+      "sha256": "ed52842b6cd0e8bfdc61e2016c14a4ca849ee8cafdc0b72860619a5235981100"
+    },
+    {
+      "path": "internal/runtime/history-store.js",
+      "bytes": 13561,
+      "sha256": "b230432732795df160bef33c2bc71b3d7b3dd0966ed7410903570747d4281a12"
     },
     {
       "path": "internal/runtime/hook.js",
@@ -260,18 +270,18 @@
     },
     {
       "path": "internal/runtime/legacy-certificates.js",
-      "bytes": 11309,
-      "sha256": "ab923f3f8873174c737c3cb48a582a587f62f0984442ec17b6455267e038f8d6"
+      "bytes": 11209,
+      "sha256": "eb9299bbdd3ea7c963c37d18e98558a56d39c5141000a47d2b6a18eca8a8501f"
     },
     {
       "path": "internal/runtime/legacy-inventory.js",
-      "bytes": 27257,
-      "sha256": "83937d0f405e38bcd6d03792b63d73bc831da339263ab990b6928d6fe257d010"
+      "bytes": 26986,
+      "sha256": "6a8133251378ff57b922e7bc318124c068ac45a13d70b6fc3bc83cf41164eee9"
     },
     {
       "path": "internal/runtime/legacy-migration.js",
-      "bytes": 13933,
-      "sha256": "2233e4d366e1b84a7df9a4d1ce38f436a076189586cc9fabc6f9e4275816c943"
+      "bytes": 14937,
+      "sha256": "eaffe935c29be16439ee241578362cff71a7b2751b1be64e92a8d4bb264a503d"
     },
     {
       "path": "internal/runtime/legacy-report.js",
@@ -280,8 +290,8 @@
     },
     {
       "path": "internal/runtime/legacy-store.js",
-      "bytes": 10782,
-      "sha256": "038f420121fae10955c77ae9a7aa5517112d81478ab9d8740a29ff59c08cb3f1"
+      "bytes": 11541,
+      "sha256": "ea4b21470e33d60a96b26f02255447fda2461aa24bec7da57de3046b5366b1fd"
     },
     {
       "path": "internal/runtime/lifecycle.js",
@@ -295,13 +305,13 @@
     },
     {
       "path": "internal/runtime/migration-actions.js",
-      "bytes": 442,
-      "sha256": "e1cac7f1120af98e193d827a4814b855d7bfcab6d2a8434ee6ceb3f198516939"
+      "bytes": 461,
+      "sha256": "f30db0f2365b81d477f297a5f6d9170a929e321651ba972418a36d063448a020"
     },
     {
       "path": "internal/runtime/migration-cli.js",
-      "bytes": 1745,
-      "sha256": "8b2dbaefb2ae3978246635a37aab2536dd8f2cc5f365c02ceeed68f51cfb68d4"
+      "bytes": 1762,
+      "sha256": "0d06c9d5995b0fe5503a9bf0f1e162d35dec166f1e2c95192329107a8cf79c55"
     },
     {
       "path": "internal/runtime/models.js",
@@ -340,8 +350,8 @@
     },
     {
       "path": "internal/runtime/progress-store.js",
-      "bytes": 17896,
-      "sha256": "f37f10f19625f22fb74199020c7092ebcf479f3c9d71301f73d5cff60cd8dd85"
+      "bytes": 17125,
+      "sha256": "39e584aebfe038e23a1c2d8849fafc6c22bfdb4f320e408bd11944547da2380a"
     },
     {
       "path": "internal/runtime/progress.js",
@@ -400,8 +410,8 @@
     },
     {
       "path": "internal/runtime/store.js",
-      "bytes": 28141,
-      "sha256": "41e19092bb4864bba5c4550727bbc03d5eae89fc3a2dd02be597da411016da17"
+      "bytes": 28334,
+      "sha256": "38e8e365d9ec76f3155f2bcfe4822e43e984bc75a1415fdb22d7e163a6d2fc1a"
     },
     {
       "path": "internal/runtime/targets.js",

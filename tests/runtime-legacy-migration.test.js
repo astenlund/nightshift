@@ -20,6 +20,7 @@ const { ProgressStore } = require('../internal/runtime/progress-store');
 const { ProvenanceStore } = require('../internal/runtime/provenance-store');
 const { fixtureAcknowledgement } = require('./fixtures/acknowledgement');
 const { completeReflection } = require('./fixtures/completion');
+const { putHistory } = require('./fixtures/history');
 
 const execute = (root, request, context = null, dependencies = {}) => migrationExecute(root, request, context, { ...dependencies, fixtureRetirement: true });
 
@@ -116,6 +117,46 @@ test('retirement of a version-one completed delivery is atomic, repeatable and p
   const next = await runtimeExecute(root, { action: 'handover', handoverId: randomUUID(), controller: { host: 'codex', session: 'new-owner' }, authority: 'Fixture approval for new work', objective: 'New delivery', tasks: [{ id: 'new-work', title: 'New work', agreement: { source: 'Fixture', outcome: 'New delivery' } }] }, { nativeOwner: () => ({ pid: 12345, created: 'fixture', name: 'codex.exe' }), ownerAlive: () => true });
   assert.notEqual(next.id, id);
   assert.equal(next.status, 'running');
+});
+
+test('history compaction keeps retired deliveries, their certificates and inventory unchanged', async t => {
+  // Arrange
+  const { root, id } = fixture(t);
+  const second = addCompletedRun(root, id);
+  const choices = [choiceFor(id), choiceFor(second)];
+  const preview = execute(root, { action: 'manifest', ids: [id, second], choices });
+  const request = { action: 'retire', ids: [id, second], choices, manifestHash: preview.hash, authority: 'Approve the exact fixture manifest', actor: { host: 'codex', session: 'fixture-owner' } };
+  execute(root, request);
+  assert.equal(execute(root, request).state, 'already-retired');
+  // A superseding certificate, so validation walks a chain through an earlier certificate's history.
+  const store = new DatabaseSync(path.join(root, '.nightshift/runs/state.sqlite'));
+  try {
+    const earlierId = store.prepare('SELECT artifact FROM legacy_retirements WHERE run_id=?').get(second).artifact;
+    const later = JSON.stringify({ ...JSON.parse(store.prepare('SELECT body FROM artifacts WHERE id=?').get(earlierId).body), supersedes: earlierId, recordedAt: new Date(Date.now() + 1000).toISOString() });
+    store.prepare('INSERT INTO artifacts VALUES (?, ?)').run(sha256(later), later);
+    store.prepare('UPDATE legacy_retirements SET artifact=? WHERE run_id=?').run(sha256(later), second);
+  } finally { store.close(); }
+  const before = { inventory: execute(root, { action: 'inventory' }), raw: execute(root, { action: 'raw-inspect', runId: second }), retry: execute(root, request).state };
+  assert.equal(before.inventory.counts.retired, 2);
+
+  // Act
+  const result = migrationExecute(root, { action: 'compact-history', store: 'delivery' }, null, { fixtureCompaction: true });
+  const finished = migrationExecute(root, { action: 'compact-history', store: 'delivery', finish: true }, null, { fixtureCompaction: true });
+
+  // Assert
+  assert.deepEqual([result.state, finished.state], ['swapped', 'finished']);
+  const after = { inventory: execute(root, { action: 'inventory' }), raw: execute(root, { action: 'raw-inspect', runId: second }), retry: execute(root, request).state };
+  assert.deepEqual(after, before);
+  const runtime = new RunStore(root);
+  try {
+    assert.equal(runtime.transaction(() => creationAssessment(runtime)).replaceable, true);
+    assert.throws(() => runtime.update({ host: 'codex', session: 'fixture-owner' }, 0, 'hold', () => {}), { code: 'retired-run' });
+  } finally { runtime.close(); }
+  const db = new DatabaseSync(path.join(root, '.nightshift/runs/state.sqlite'));
+  try {
+    assert.equal(db.prepare('PRAGMA user_version').get().user_version, 3);
+    assert.throws(() => db.prepare("UPDATE history SET body='{}' WHERE run_id=?").run(id), /retired-run/);
+  } finally { db.close(); }
 });
 
 test('a missing decision leaves a version-one store untouched', t => {
@@ -825,7 +866,7 @@ test('an eligible legacy record retires beside damaged modern discharge evidence
     const legacy = { schema: 1, kind: 'delivery', id: legacyId, root, revision: 0, status: 'complete', controller: actor, resourceMode: 'development', tasks: [], workers: [], followups: [], createdAt: now, updatedAt: now };
     const body = JSON.stringify(legacy);
     db.prepare('INSERT INTO runs VALUES (?, ?, ?)').run(legacyId, 0, body);
-    db.prepare('INSERT INTO history VALUES (?, ?, ?, ?, ?)').run(legacyId, 0, 'complete', now, body);
+    putHistory(db, legacyId, 0, 'complete', now, body);
     const discharge = db.prepare('SELECT rowid FROM discharge_index WHERE run_id=? LIMIT 1').get(modern.id);
     assert.ok(discharge);
     db.prepare('DELETE FROM discharge_index WHERE rowid=?').run(discharge.rowid);

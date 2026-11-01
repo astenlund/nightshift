@@ -9,7 +9,7 @@ const { requireCondition } = require('./errors');
 const { sha256 } = require('./legacy-store');
 
 function execute(root, request, context) {
-  requireCondition(request && isMigrationAction(request.action), 'invalid-migration-request', 'Choose inventory, manifest, raw-inspect or retire');
+  requireCondition(request && isMigrationAction(request.action), 'invalid-migration-request', 'Choose inventory, manifest, raw-inspect, retire or compact-history');
   requireCondition(!context || context.administrative === true, 'migration-admission-required', 'Use the current administrative migration entry');
 
   return require('./legacy-migration').execute(root, request, context);

@@ -63,12 +63,14 @@ test('history lists every transition without state and returns state only for a 
   // A large check log is stored once, but every revision that carries it expands it again when its state is returned.
   const log = 'x'.repeat(1024 * 1024);
   apply(f, { action: 'check', evidence: { name: 'Large test log', passed: true, snapshot: snapshot(f.root, ['subject.txt']), output: log } });
-  const latest = f.store.db.prepare('SELECT revision, kind, recorded_at, state FROM history WHERE run_id=? ORDER BY revision DESC LIMIT 1').get(f.state.id);
+  // The latest row is always stored full, so copies of it are valid full rows too.
+  const latest = f.store.db.prepare("SELECT revision, kind, recorded_at, encoding FROM history WHERE run_id=? ORDER BY revision DESC LIMIT 1").get(f.state.id);
+  assert.equal(latest.encoding, 'full');
   // Enough copies of that revision that their combined states exceed the longest string Node can build.
   const copies = 560;
-  const insert = f.store.db.prepare('INSERT INTO history VALUES (?, ?, ?, ?, ?)');
+  const insert = f.store.db.prepare("INSERT INTO history SELECT run_id, ?, 'fixture-copy', recorded_at, encoding, bytes, digest, body FROM history WHERE run_id=? AND revision=?");
   f.store.transaction(() => {
-    for (let index = 1; index <= copies; index++) insert.run(f.state.id, latest.revision + index, 'fixture-copy', latest.recorded_at, latest.state);
+    for (let index = 1; index <= copies; index++) insert.run(latest.revision + index, f.state.id, latest.revision);
   });
   const cli = path.resolve(__dirname, '../internal/runtime/cli.js');
   const history = request => {

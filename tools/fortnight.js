@@ -3,14 +3,16 @@
 // Fortnightly numbers over one project's run store and dispatch receipts, read-only: the store-derived rows of the fortnightly
 // check in .nightshift/reports/assessment-worklist-20261018.md (tokens per completed task and per repair batch, skeptic
 // refutation rate, minor-only repair cycles, elapsed time per task and completions per fortnight) and the first-run question of
-// how often a fresh gate after a resumed closure raised a critical or important finding. The store's history rows carry a full
-// state each, so only the metadata columns are read for every row and the state only for the rows whose transition can change
+// how often a fresh gate after a resumed closure raised a critical or important finding. Each history row stands for a full state,
+// stored whole or, in a compact store, rebuilt from deltas, so only the metadata columns are read for every row and the state only
+// for the rows whose transition can change
 // a task's status, for repairs, which mark the findings they repaired, and for dispatch registrations, which place every
 // dispatch at a revision; current states come from the runs table.
 
 const fs = require('node:fs');
 const path = require('node:path');
 const { DatabaseSync } = require('node:sqlite');
+const { statesOfKinds, transitions: historyTransitions } = require('../internal/runtime/history-store');
 
 const DEFAULT_ANCHOR = '2026-10-18';
 const DAY_MS = 86400000;
@@ -162,14 +164,14 @@ function readStore(store) {
   try {
     db.exec('BEGIN');
     reading = true;
-    const meta = db.prepare('SELECT run_id, revision, kind, recorded_at FROM history ORDER BY run_id, revision').all();
+    const meta = historyTransitions(db);
     const runs = db.prepare('SELECT id, state FROM runs').all().map(row => {
       const state = JSON.parse(row.state);
       return { id: row.id, status: state.status, createdAt: state.createdAt, records: recordsOf(state), workers: workersOf(state) };
     });
     const closingReviews = new Map();
     const transitions = [];
-    for (const row of db.prepare(`SELECT run_id, revision, kind, recorded_at, state FROM history WHERE kind IN (${STATE_KINDS.map(() => '?').join(', ')}) ORDER BY run_id, revision`).iterate(...STATE_KINDS)) {
+    for (const row of statesOfKinds(db, STATE_KINDS)) {
       const state = JSON.parse(row.state);
       rememberClosingReviews(closingReviews, row.run_id, state);
       transitions.push({
@@ -179,7 +181,7 @@ function readStore(store) {
       });
     }
     const dispatches = [];
-    for (const row of db.prepare('SELECT run_id, revision, recorded_at, state FROM history WHERE kind = ? ORDER BY run_id, revision').iterate(DISPATCH_KIND)) {
+    for (const row of statesOfKinds(db, [DISPATCH_KIND])) {
       const worker = JSON.parse(row.state).workers?.at(-1);
       if (typeof worker?.id === 'string') dispatches.push({ runId: row.run_id, revision: row.revision, recordedAt: row.recorded_at, requestId: worker.id, taskId: worker.taskId ?? null, role: worker.role ?? null });
     }

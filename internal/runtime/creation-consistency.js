@@ -10,6 +10,7 @@ const { workerIsActive } = require('./workers');
 const progress = require('./progress');
 const { ProgressStore } = require('./progress-store');
 const { ProvenanceStore } = require('./provenance-store');
+const { HistoryReader, latestRevision, latestRevisionOfKind, latestRowStats } = require('./history-store');
 const { validateCertificate, MAX_CERTIFICATE_CHAIN_BYTES, MAX_HISTORICAL_BYTES, MAX_MANIFEST_CHAIN_BYTES } = require('./legacy-certificates');
 const { MAX_DELIVERY_RECORDS: MAX_RECORDS, MAX_RUN_ID_BYTES, isRetirementCertificate, retirementRows, runBoundArtifacts, schemaState, verifyTriggers } = require('./legacy-store');
 
@@ -88,7 +89,7 @@ function assessment(store, options = {}) {
   };
   const runStats = store.db.prepare('SELECT count(*) AS count, coalesce(sum(length(CAST(state AS BLOB))), 0) AS bytes, coalesce(max(length(CAST(id AS BLOB))), 0) AS idBytes FROM runs').get();
   requireCondition(runStats.count <= MAX_RECORDS && runStats.idBytes <= MAX_RUN_ID_BYTES, CODE, 'Delivery identity inventory exceeds its bound');
-  const latestStats = store.db.prepare('SELECT count(*) AS count, coalesce(sum(length(CAST(history.state AS BLOB))), 0) AS bytes FROM runs JOIN history ON history.run_id=runs.id AND history.revision=runs.revision').get();
+  const latestStats = latestRowStats(store.db);
   mandatoryTotal = runStats.bytes + latestStats.bytes;
   if (mandatoryTotal > MAX_INPUT_BYTES) {
     const ids = store.db.prepare('SELECT id FROM runs ORDER BY id LIMIT 10').all().map(row => row.id);
@@ -126,13 +127,14 @@ function assessment(store, options = {}) {
   for (const row of rows) {
     const state = parse(row.state, true);
     requireCondition(state?.schema === 1 && typeof state.id === 'string' && state.id.length > 0 && state.id === row.id && state.root === store.root && recordKind(state) === 'delivery' && state.revision === row.revision && Number.isSafeInteger(row.revision) && row.revision >= 0 && ['running', 'stopped', 'complete'].includes(state.status) && ['claude', 'codex'].includes(state.controller?.host) && typeof state.controller.session === 'string' && state.controller.session.length > 0 && Array.isArray(state.tasks) && Array.isArray(state.workers), CODE, 'Delivery identity, shape or revision is unsupported');
-    const latest = store.db.prepare('SELECT max(revision) AS revision FROM history WHERE run_id=?').get(state.id);
+    const history = new HistoryReader(store.db, state.id);
+    const latest = latestRevision(store.db, state.id);
     const journal = tables.has('accounting_commits') ? store.db.prepare('SELECT max(revision) AS revision FROM accounting_commits WHERE run_id=?').get(state.id) : { revision: null };
-    requireCondition(latest.revision === state.revision && (journal.revision === null || journal.revision === state.revision), CODE, 'Current delivery was rolled back behind surviving revision evidence');
-    const historicalSize = store.db.prepare('SELECT length(CAST(state AS BLOB)) AS bytes FROM history WHERE run_id=? AND revision=?').get(state.id, state.revision)?.bytes;
+    requireCondition(latest === state.revision && (journal.revision === null || journal.revision === state.revision), CODE, 'Current delivery was rolled back behind surviving revision evidence');
+    const historicalSize = history.meta(state.revision)?.bytes;
     requireCondition(historicalSize !== undefined, CODE, 'Current delivery lacks matching history');
     requireBound(historicalSize <= MAX_INPUT_BYTES - inputBytes, CODE, 'Current delivery history exceeds its read bound');
-    const historical = store.db.prepare('SELECT state FROM history WHERE run_id=? AND revision=? AND length(CAST(state AS BLOB))<=?').get(state.id, state.revision, MAX_INPUT_BYTES - inputBytes);
+    const historical = history.text(state.revision, MAX_INPUT_BYTES - inputBytes);
     const latestState = historical ? parse(historical.state, true) : null;
     requireCondition(latestState && progress.encodedHash(latestState) === progress.encodedHash(state) && isDeepStrictEqual(latestState.progress, state.progress) && isDeepStrictEqual(latestState.stopRecovery, state.stopRecovery), CODE, 'Current delivery contradicts its committed state');
     const acceptance = state.acceptance?.handoverId;
@@ -193,13 +195,14 @@ function assessment(store, options = {}) {
       }
       if (account) {
         requireCondition(account.marker.status === 'current', CODE, 'Delivery accounting is unavailable');
-        const completionRevision = store.db.prepare("SELECT revision FROM history WHERE run_id=? AND kind='complete' ORDER BY revision DESC LIMIT 1").get(state.id)?.revision;
+        const completionRevision = latestRevisionOfKind(store.db, state.id, 'complete');
         if (completionRevision !== undefined) {
-          const completionSize = store.db.prepare('SELECT length(CAST(state AS BLOB)) AS bytes FROM history WHERE run_id=? AND revision=?').get(state.id, completionRevision)?.bytes;
+          const completionSize = history.meta(completionRevision)?.bytes;
           requireCondition(completionSize !== undefined, CODE, 'Completion history is missing');
           requireBound(completionSize <= budget.remainingInput(), CODE, `Delivery ${state.id} completion history exceeds the delivery read bound`);
         }
-        const completion = completionRevision === undefined ? null : store.db.prepare("SELECT revision, state FROM history WHERE run_id=? AND revision=? AND kind='complete' AND length(CAST(state AS BLOB))<=?").get(state.id, completionRevision, budget.remainingInput());
+        const completionRow = completionRevision === undefined ? undefined : history.text(completionRevision, budget.remainingInput());
+        const completion = completionRevision === undefined ? null : completionRow?.kind === 'complete' ? completionRow : undefined;
         requireCondition(completionRevision === undefined || completion, CODE, `Delivery ${state.id} completion history exceeds the delivery read bound`);
         if (completion) {
           const completed = parse(completion.state);

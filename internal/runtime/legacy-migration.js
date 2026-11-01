@@ -10,6 +10,7 @@ const { creationAssessment } = require('./creation-consistency');
 const { MAX_TARGET_READ_BYTES, targetEntry } = require('./legacy-backlog');
 const { requireCondition } = require('./errors');
 const { MAX_AUTHORITY_BYTES, MAX_CERTIFICATE_BYTES, MAX_CERTIFICATE_CHAIN_BYTES, MAX_HISTORICAL_BYTES, MAX_MANIFEST_BYTES, MAX_MANIFEST_CHAIN_BYTES, validateCertificate } = require('./legacy-certificates');
+const { compact } = require('./history-compaction');
 const { LegacyInventory } = require('./legacy-inventory');
 const { MAX_BATCH_REPORT_BYTES, reportProjection } = require('./legacy-report');
 const { createSupport, readArtifact, sha256, verifyTriggers, writeArtifact } = require('./legacy-store');
@@ -126,6 +127,17 @@ function fixtureRetirementAllowed(root, inventory, dependencies) {
   return relative.length > 0 && relative !== '..' && !relative.startsWith('..' + path.sep) && !path.isAbsolute(relative) && [...inventory.records.values()].every(record => record.state.resourceMode === 'development' && !record.state.resources && !record.state.executionResources);
 }
 
+// As for retirement, only isolated deterministic fixtures may compact without administrative admission.
+function fixtureCompactionAllowed(root, dependencies) {
+  if (dependencies.fixtureCompaction !== true) return false;
+  const canonical = fs.realpathSync.native(root);
+
+  return ['runtime-history-compaction', 'runtime-legacy-migration'].some(name => {
+    const relative = path.relative(path.resolve(__dirname, '../../.tmp', name), canonical);
+    return relative.length > 0 && relative !== '..' && !relative.startsWith('..' + path.sep) && !path.isAbsolute(relative);
+  });
+}
+
 function retire(root, db, request, context, dependencies = {}) {
   requireAuthority(request, context);
   if (!context) requireCondition(fixtureRetirementAllowed(root, new LegacyInventory(root, db).load(), dependencies), 'migration-admission-required', 'Retirement requires current administrative admission; only isolated deterministic fixtures may use the development core');
@@ -191,6 +203,11 @@ function execute(project, request, context = null, dependencies = {}) {
   if (context) {
     requireCondition(context.administrative === true, 'migration-admission-required', 'Migration requires current administrative admission');
     validateContext(context, path.resolve(__dirname, '../..'), project, true, { action: request.action, hash: sha256(Buffer.from(JSON.stringify(request))) });
+  }
+  // Compaction renames the store file, so it runs before this entry opens one.
+  if (request.action === 'compact-history') {
+    requireCondition(context || fixtureCompactionAllowed(project, dependencies), 'migration-admission-required', 'History compaction requires current administrative admission');
+    return compact(fs.realpathSync.native(project), request);
   }
   const located = databaseFile(project);
   if (!located) {

@@ -6,6 +6,7 @@ const { RunError, requireCondition, text } = require('./errors');
 const { recordKind } = require('./records');
 const { acceptanceInput, replayAcceptance } = require('./delivery-acceptance');
 const { ACTIVE_TABLE_SQL } = require('./legacy-store');
+const { COMPACT_VERSION, HISTORY_SQL, HistoryReader, appendRevision, hasHistory, metadata, transitions } = require('./history-store');
 
 const fs = require('node:fs');
 const path = require('node:path');
@@ -15,7 +16,9 @@ const { DatabaseSync } = require('node:sqlite');
 // How long a connection to a project's run store waits for another process's commit before failing with "database is locked".
 const RUN_STORE_WAIT_MS = 5000;
 // The database formats a run store opens; version 0 is a fresh file this runtime initializes, so only later ones hold records.
-const STORE_VERSIONS = Object.freeze([0, 1, 2]);
+// Version 3 keeps history compact (see history-store.js); a fresh store starts there, and an earlier one reaches it only through
+// the administrative compact-history migration.
+const STORE_VERSIONS = Object.freeze([0, 1, 2, 3]);
 const REMINDER_WRITES = new WeakMap();
 
 function schemaStatements(kind, version) {
@@ -79,7 +82,7 @@ class RunStore {
     requireCondition(options.create || present.has(database), 'missing-state', 'No Nightshift run database exists');
     this.db = new DatabaseSync(database);
     this.db.exec(`PRAGMA busy_timeout=${RUN_STORE_WAIT_MS}; PRAGMA synchronous=FULL; PRAGMA foreign_keys=ON;`);
-    const version = this.db.prepare('PRAGMA user_version').get().user_version;
+    let version = this.db.prepare('PRAGMA user_version').get().user_version;
     if (!STORE_VERSIONS.includes(version)) {
       this.db.close();
       requireCondition(false, 'state-version', `Unsupported run database version ${version}`);
@@ -88,10 +91,12 @@ class RunStore {
       this.db.close();
       requireCondition(false, 'state-version', 'A pre-existing uninitialized run database requires reconciliation before creation');
     }
-    if (version === 0) {
-      this.db.exec(`BEGIN IMMEDIATE; CREATE TABLE runs (id TEXT PRIMARY KEY, revision INTEGER NOT NULL, state TEXT NOT NULL); ${ACTIVE_TABLE_SQL}; CREATE TABLE history (run_id TEXT NOT NULL REFERENCES runs(id), revision INTEGER NOT NULL, kind TEXT NOT NULL, recorded_at TEXT NOT NULL, state TEXT NOT NULL, PRIMARY KEY(run_id, revision)); PRAGMA user_version=1; COMMIT;`);
+    const fresh = version === 0;
+    if (fresh) {
+      this.db.exec(`BEGIN IMMEDIATE; CREATE TABLE runs (id TEXT PRIMARY KEY, revision INTEGER NOT NULL, state TEXT NOT NULL); ${ACTIVE_TABLE_SQL}; ${HISTORY_SQL}; CREATE TABLE artifacts (id TEXT PRIMARY KEY, body TEXT NOT NULL); PRAGMA user_version=${COMPACT_VERSION}; COMMIT;`);
+      version = COMPACT_VERSION;
     }
-    const deferSchema = version > 0 && this.kind === 'delivery';
+    const deferSchema = !fresh && this.kind === 'delivery';
     if (!deferSchema) {
       const statements = schemaStatements(this.kind, version);
       if (statements.length) this.db.exec(`BEGIN IMMEDIATE; ${statements.join('; ')}; COMMIT;`);
@@ -165,11 +170,13 @@ class RunStore {
   // Each saved transition without its state: every state expands the immutable evidence it references, so a long run's
   // states together can exceed what one response holds.
   transitions(id) {
-    return this.db.prepare('SELECT revision, kind, recorded_at AS recordedAt FROM history WHERE run_id=? ORDER BY revision').all(id);
+    return transitions(this.db, id);
   }
 
   history(id, { fromRevision = 0, toRevision = Number.MAX_SAFE_INTEGER } = {}) {
-    return this.db.prepare('SELECT revision, kind, recorded_at AS recordedAt, state FROM history WHERE run_id=? AND revision BETWEEN ? AND ? ORDER BY revision').all(id, fromRevision, toRevision).map(row => ({ ...row, state: this.hydrate(JSON.parse(row.state)) }));
+    const reader = new HistoryReader(this.db, id);
+
+    return metadata(this.db, id, { from: fromRevision, to: toRevision }).map(({ revision, kind, recordedAt }) => ({ revision, kind, recordedAt, state: this.hydrate(JSON.parse(reader.text(revision).state)) }));
   }
 
   transaction(action) {
@@ -207,7 +214,7 @@ class RunStore {
       requireCondition(previous.revision === row.revision && previous.root === this.root && recordKind(previous) === this.kind && previous.id === state.id, 'invalid-state', 'Committed predecessor identity or revision is invalid');
       requireCondition(state.revision === nextRevision(previous), 'stale-state', 'Saved state must immediately follow its committed predecessor');
     } else {
-      requireCondition(state.revision === 0 && !this.db.prepare('SELECT 1 FROM history WHERE run_id=? LIMIT 1').get(state.id), 'missing-predecessor', 'Missing current state with surviving history is not creation');
+      requireCondition(state.revision === 0 && !hasHistory(this.db, state.id), 'missing-predecessor', 'Missing current state with surviving history is not creation');
       if (this.kind === 'delivery') requireReplaceableDelivery(require('./creation-consistency').creationAssessment(this));
     }
     const reminder = internal && REMINDER_WRITES.get(internal);
@@ -228,7 +235,7 @@ class RunStore {
     }
     const bytes = JSON.stringify(encoded);
     this.db.prepare('INSERT INTO runs VALUES (?, ?, ?) ON CONFLICT(id) DO UPDATE SET revision=excluded.revision, state=excluded.state').run(state.id, state.revision, bytes);
-    this.db.prepare('INSERT INTO history VALUES (?, ?, ?, ?, ?)').run(state.id, state.revision, kind, state.updatedAt, bytes);
+    appendRevision(this.db, { runId: state.id, revision: state.revision, kind, recordedAt: state.updatedAt, text: bytes, previous: row ? { revision: row.revision, text: row.state } : null });
   }
 
   remind(actor, revision, eligible) {

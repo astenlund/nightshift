@@ -13,6 +13,7 @@ const { DIMENSIONS, assertAction, commitmentsFor, transition } = require('../int
 const { snapshot } = require('../internal/runtime/evidence');
 const { fixtureAcknowledgement } = require('./fixtures/acknowledgement');
 const { completeReflection } = require('./fixtures/completion');
+const { historyText, setHistoryText } = require('./fixtures/history');
 
 const scratch = path.resolve(__dirname, '../.tmp/delivery-tests');
 fs.mkdirSync(scratch, { recursive: true });
@@ -208,10 +209,10 @@ for (const damage of ['stale-selection', 'contradictory-row', 'matching-contradi
           changed.workers = [];
           changed.tasks.forEach(task => { task.status = 'complete'; task.stage = 'complete'; });
           store.db.prepare('UPDATE runs SET state=? WHERE id=?').run(JSON.stringify(changed), outstanding.id);
-          if (damage === 'matching-contradictory-history') store.db.prepare('UPDATE history SET state=? WHERE run_id=? AND revision=?').run(JSON.stringify(changed), outstanding.id, outstanding.revision);
+          if (damage === 'matching-contradictory-history') setHistoryText(store.db, outstanding.id, outstanding.revision, JSON.stringify(changed));
         }
         if (damage === 'rollback') {
-          const older = store.db.prepare('SELECT state FROM history WHERE run_id=? AND revision=?').get(outstanding.id, beforeWorker).state;
+          const older = historyText(store.db, outstanding.id, beforeWorker);
           store.db.prepare('UPDATE runs SET revision=?, state=? WHERE id=?').run(beforeWorker, older, outstanding.id);
         }
         if (damage === 'missing-journal') store.db.prepare('DELETE FROM accounting_commits WHERE run_id=? AND revision=?').run(outstanding.id, outstanding.revision);
@@ -245,7 +246,7 @@ test('exact replay preserves independently attested pressure after metadata-only
     delete state.progress;
     delete state.stopRecovery;
     store.db.prepare('UPDATE runs SET state=? WHERE id=?').run(JSON.stringify(state), row.id);
-    store.db.prepare('UPDATE history SET state=? WHERE run_id=? AND revision=?').run(JSON.stringify(state), row.id, row.revision);
+    setHistoryText(store.db, row.id, row.revision, JSON.stringify(state));
     const before = deliveryRows(store);
     const replay = await execute(root, request, dependencies);
     assert.equal(replay.id, row.id);

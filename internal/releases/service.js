@@ -636,7 +636,7 @@ class ReleaseService {
       requireValue(bound ? acceptsRuntimeAction(bound, request.request.action) : isRuntimeAction(request.request.action), 'invalid-runtime-request', unknownActionMessage(request.request.action));
     }
     if (request.entry === 'migration') {
-      requireValue(request.request && typeof request.request === 'object' && !Array.isArray(request.request) && isMigrationAction(request.request.action), 'invalid-migration-request', 'Choose migration inventory, manifest, raw-inspect or retire');
+      requireValue(request.request && typeof request.request === 'object' && !Array.isArray(request.request) && isMigrationAction(request.request.action), 'invalid-migration-request', 'Choose migration inventory, manifest, raw-inspect, retire or compact-history');
     }
     if (request.entry === 'setup') requireValue(request.options === undefined || request.options && typeof request.options === 'object' && !Array.isArray(request.options), 'invalid-setup-options', 'Setup options must be an object');
     if (request.entry === 'unwrap') requireValue((request.target === undefined || typeof request.target === 'string' && request.target.length > 0) && (request.write === undefined || typeof request.write === 'boolean'), 'invalid-unwrap-options', 'Unwrap target and write options have invalid types');

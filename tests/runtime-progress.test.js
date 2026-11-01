@@ -13,6 +13,7 @@ const { achievements, fingerprint, snapshotIdentity, validateFrontier, captureCl
 const { fixtureContinuation } = require('./fixtures/continuation');
 const { fixtureAcknowledgement } = require('./fixtures/acknowledgement');
 const { dropFacilityProvenance } = require('./fixtures/legacy-provenance');
+const { putHistory, rewriteHistory, setHistoryText } = require('./fixtures/history');
 const { DIMENSIONS } = require('../internal/runtime/lifecycle');
 const { renewAcknowledgement } = require('../internal/runtime/acknowledgement');
 
@@ -45,7 +46,7 @@ function corrupt(f, change, history = false) {
   change(state);
   const body = JSON.stringify(state);
   f.store.db.prepare('UPDATE runs SET state=? WHERE id=?').run(body, state.id);
-  if (history) f.store.db.prepare('UPDATE history SET state=? WHERE run_id=? AND revision=?').run(body, state.id, state.revision);
+  if (history) setHistoryText(f.store.db, state.id, state.revision, body);
 }
 
 test('handover retries and diagnostic changes never replenish three reminders', t => {
@@ -215,7 +216,7 @@ test('legacy false reminder resets accumulate to exhaustion during recovery', t 
     state.revision = revision;
     if (revision && revision % 2 === 0) state.stopRecovery = { reminders: 1, revision };
     const body = JSON.stringify(state);
-    f.store.db.prepare('INSERT INTO history VALUES (?, ?, ?, ?, ?)').run(state.id, revision, revision === 0 ? 'created' : revision % 2 === 0 ? 'continuation-reminder' : 'handover', state.updatedAt, body);
+    putHistory(f.store.db, state.id, revision, revision === 0 ? 'created' : revision % 2 === 0 ? 'continuation-reminder' : 'handover', state.updatedAt, body);
   }
   f.store.db.prepare('UPDATE runs SET revision=?, state=? WHERE id=?').run(state.revision, JSON.stringify(state), state.id);
   assert.equal(f.stop().continue, false);
@@ -230,7 +231,7 @@ for (const damage of ['missing history', 'foreign history', 'future legacy remin
     if (damage === 'missing history') f.store.db.prepare('DELETE FROM history WHERE run_id=?').run(state.id);
     if (damage === 'foreign history') {
       const foreign = structuredClone(state); foreign.root = 'C:/foreign'; delete foreign.progress;
-      f.store.db.prepare('UPDATE history SET state=? WHERE run_id=?').run(JSON.stringify(foreign), state.id);
+      rewriteHistory(f.store.db, () => JSON.stringify(foreign), { runId: state.id });
       corrupt(f, value => { delete value.progress; });
     }
     if (damage === 'future legacy reminder') {
@@ -240,7 +241,7 @@ for (const damage of ['missing history', 'foreign history', 'future legacy remin
     if (damage === 'history limit') {
       delete state.progress; delete state.stopRecovery;
       f.store.db.prepare('DELETE FROM history WHERE run_id=?').run(state.id);
-      for (let revision = 1; revision <= 257; revision++) { state.revision = revision; f.store.db.prepare('INSERT INTO history VALUES (?, ?, ?, ?, ?)').run(state.id, revision, 'observation', state.updatedAt, JSON.stringify(state)); }
+      for (let revision = 1; revision <= 257; revision++) { state.revision = revision; putHistory(f.store.db, state.id, revision, 'observation', state.updatedAt, JSON.stringify(state)); }
       f.store.db.prepare('UPDATE runs SET revision=?, state=? WHERE id=?').run(state.revision, JSON.stringify(state), state.id);
     }
     const result = f.stop();
@@ -464,7 +465,7 @@ test('a legacy reset anchor beyond complete provenance grants no unused remainde
     let kind = revision === 0 ? 'created' : 'observation';
     if (revision >= 1 && revision <= 3) { state.stopRecovery = { reminders: revision, revision }; kind = 'continuation-reminder'; }
     if (revision === 10) { state.stopRecovery = { reminders: 1, revision }; kind = 'continuation-reminder'; }
-    f.store.db.prepare('INSERT INTO history VALUES (?, ?, ?, ?, ?)').run(state.id, revision, kind, state.updatedAt, JSON.stringify(state));
+    putHistory(f.store.db, state.id, revision, kind, state.updatedAt, JSON.stringify(state));
   }
   f.store.db.prepare('UPDATE runs SET revision=?, state=? WHERE id=?').run(state.revision, JSON.stringify(state), state.id);
   const result = f.stop();
@@ -630,7 +631,7 @@ for (const [loss, metadata] of REMINDER_LOSS) {
       else delete state.stopRecovery;
       state.progress.reminderHash = reminderHash(state.id, state.stopRecovery);
       store.db.prepare('UPDATE runs SET state=? WHERE id=?').run(JSON.stringify(state), state.id);
-      store.db.prepare('UPDATE history SET state=? WHERE run_id=? AND revision=?').run(JSON.stringify(state), state.id, state.revision);
+      setHistoryText(store.db, state.id, state.revision, JSON.stringify(state));
     }
     assert.equal(stop().continue, false);
     assert.equal(store.read().revision, state.revision);

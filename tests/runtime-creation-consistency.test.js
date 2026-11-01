@@ -18,6 +18,7 @@ const { execute: migrationExecute } = require('../internal/runtime/legacy-migrat
 const { fixtureAcknowledgement } = require('./fixtures/acknowledgement');
 const { completeReflection } = require('./fixtures/completion');
 const { dropFacilityProvenance } = require('./fixtures/legacy-provenance');
+const { historyText, rewriteHistory } = require('./fixtures/history');
 
 test('creation shares an eight MiB distinct-artifact allowance across completed records', main);
 
@@ -124,7 +125,11 @@ test('creation accepts an authenticated completion and refuses delivery records 
   const halfway = (store, id) => dropFacilityProvenance(store.db, id);
   const preSchema2 = (store, id) => {
     halfway(store, id);
-    store.db.exec("UPDATE runs SET state=json_remove(state, '$.progress'); UPDATE history SET state=json_remove(state, '$.progress')");
+    store.db.exec("UPDATE runs SET state=json_remove(state, '$.progress')");
+    rewriteHistory(store.db, text => {
+      const { progress: removed, ...rest } = JSON.parse(text);
+      return JSON.stringify(rest);
+    });
   };
   const forms = {
     intact: () => {},
@@ -138,7 +143,9 @@ test('creation accepts an authenticated completion and refuses delivery records 
     // The current state and its committed history row rewritten together no longer match the checkpoint's substantive binding.
     substituted: (store, id) => {
       halfway(store, id);
-      store.db.exec("UPDATE runs SET state=json_set(state, '$.objective', 'Substituted objective'); UPDATE history SET state=json_set(state, '$.objective', 'Substituted objective') WHERE revision=(SELECT max(revision) FROM history)");
+      store.db.exec("UPDATE runs SET state=json_set(state, '$.objective', 'Substituted objective')");
+      const latest = store.db.prepare('SELECT max(revision) AS revision FROM history').get().revision;
+      rewriteHistory(store.db, text => JSON.stringify({ ...JSON.parse(text), objective: 'Substituted objective' }), { revision: latest });
     },
   };
   const outcomes = {};
@@ -378,7 +385,7 @@ test('creation charges reminder history separately and preserves default recover
   store.create({ controller: actor, authority: 'Explicit fixture handover', objective: 'Keep pressure', mechanism: { verified: true, kind: 'goal', evidence: 'Simulated goal' }, tasks: [{ id: 'work', title: 'Work', agreement: { source: 'Fixture user', outcome: 'Preserve pressure' } }] });
   store.remind(actor, store.read().revision, () => true);
   const state = store.read(undefined, { hydrate: false });
-  const history = store.db.prepare('SELECT state FROM history WHERE run_id=? AND revision=?').get(state.id, state.stopRecovery.atRevision).state;
+  const history = historyText(store.db, state.id, state.stopRecovery.atRevision);
   const accounting = new ProgressStore(store);
   let inputBytes = 0;
   const creation = { bytes: 0, artifacts: new Set(), artifactLimit: progress.MAX_FRONTIER_BYTES, chargeInput: body => { inputBytes += Buffer.byteLength(body); } };

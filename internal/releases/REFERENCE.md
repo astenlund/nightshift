@@ -52,7 +52,7 @@ Runtime selection is normalized before preparation, resource resolution and exec
 - `unwrap`: optional `write: true` and project-relative `target` (default `.nightshift`).
 - `setup`: `setupAction` of `inspect` or `apply`, plus optional `options` object for init-backlog.
 - `runtime`: the ordinary runtime request in the `request` object. Preserve its current `revision`. Controller/actor identity comes from the admitted native session; runtime ownership checks still apply.
-- `migration`: a closed administrative request under `request`, with `action` of `inventory`, `manifest`, `raw-inspect` or `retire`. Read the [runtime migration contract](../runtime/REFERENCE.md#legacy-delivery-migration) before using it.
+- `migration`: a closed administrative request under `request`, with `action` of `inventory`, `manifest`, `raw-inspect`, `retire` or `compact-history`. Read the [runtime migration contract](../runtime/REFERENCE.md#legacy-delivery-migration) before using it.
 
 Migration is an administrative entry, not a ninth public skill. Prepare it through the current enabled installation with `entry: "migration"`. The bootstrap and service select the current administrative bundle even when the session or selected historical run keeps an older execution binding. They leave that binding, hooks and other runtime actions on the older release. Read-only migration actions use current installation and project admission without claiming the historical run. Retirement additionally requires live native activation, the admitted actor, exact user approval and serialized project writer ownership. The entry cannot run ordinary runtime actions, and an absent or disabled current installation fails rather than using checkout code or substituting another release.
 

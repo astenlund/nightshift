@@ -4,6 +4,7 @@ const { createHash } = require('node:crypto');
 const { requireCondition } = require('./errors');
 const { recordKind } = require('./records');
 const progress = require('./progress');
+const { HistoryReader, metadata } = require('./history-store');
 
 function unavailable(state, previous, reason) {
   return {
@@ -47,7 +48,7 @@ class ProgressStore {
 
   committed(state, budget) {
     const remaining = budget?.remainingInput?.();
-    const row = remaining === undefined ? this.store.db.prepare('SELECT revision, kind, state FROM history WHERE run_id=? AND revision=?').get(state.id, state.revision) : this.store.db.prepare('SELECT revision, kind, state FROM history WHERE run_id=? AND revision=? AND length(CAST(state AS BLOB))<=?').get(state.id, state.revision, remaining);
+    const row = new HistoryReader(this.store.db, state.id).text(state.revision, remaining);
     requireCondition(row, 'progress-history-unavailable', 'Accounting predecessor history is missing');
     budget?.chargeInput?.(row.state);
     const recorded = JSON.parse(row.state);
@@ -62,10 +63,11 @@ class ProgressStore {
     if (!reminder) return undefined;
     requireCondition(progress.validReminder(reminder, state), 'progress-reminder-unavailable', 'Accounting reminder is malformed');
     const remaining = budget?.remainingInput?.() ?? (budget ? progress.MAX_RECOVERY_BYTES - budget.bytes : undefined);
-    const metadata = this.store.db.prepare('SELECT kind, length(CAST(state AS BLOB)) AS bytes FROM history WHERE run_id=? AND revision=?').get(state.id, reminder.atRevision);
-    requireCondition(metadata?.kind === 'continuation-reminder', 'progress-reminder-unavailable', 'Accounting reminder has no committed issuance');
-    if (remaining !== undefined) requireCondition(metadata.bytes <= remaining, 'progress-history-limit', 'Accounting reminder exceeds its byte bound');
-    const row = remaining === undefined ? this.store.db.prepare('SELECT revision, kind, state FROM history WHERE run_id=? AND revision=?').get(state.id, reminder.atRevision) : this.store.db.prepare('SELECT revision, kind, state FROM history WHERE run_id=? AND revision=? AND length(CAST(state AS BLOB))<=?').get(state.id, reminder.atRevision, Math.max(0, remaining));
+    const history = new HistoryReader(this.store.db, state.id);
+    const issuance = history.meta(reminder.atRevision);
+    requireCondition(issuance?.kind === 'continuation-reminder', 'progress-reminder-unavailable', 'Accounting reminder has no committed issuance');
+    if (remaining !== undefined) requireCondition(issuance.bytes <= remaining, 'progress-history-limit', 'Accounting reminder exceeds its byte bound');
+    const row = history.text(reminder.atRevision, remaining === undefined ? undefined : Math.max(0, remaining));
     requireCondition(row?.kind === 'continuation-reminder', 'progress-reminder-unavailable', 'Accounting reminder has no committed issuance');
     if (budget) {
       if (budget.chargeInput) budget.chargeInput(row.state);
@@ -114,20 +116,21 @@ class ProgressStore {
   // A caller supplying its own input allowance, as creation does, has replayed history charged there while one record's replay
   // still stays within the recovery byte bound; otherwise history and artifacts share one combined recovery budget.
   recover(state, budget = { bytes: 0, artifacts: new Set() }) {
-    const rows = this.store.db.prepare('SELECT revision, kind, length(CAST(state AS BLOB)) AS bytes FROM history WHERE run_id=? AND revision<=? ORDER BY revision DESC LIMIT ?').all(state.id, state.revision, progress.MAX_RECOVERY_REVISIONS);
+    const history = new HistoryReader(this.store.db, state.id);
+    const rows = metadata(this.store.db, state.id, { to: state.revision, descending: true, limit: progress.MAX_RECOVERY_REVISIONS });
     requireCondition(rows.length && rows[0].revision === state.revision, 'progress-history-unavailable', 'Accounting history has no current row');
     let anchor;
     let account;
     let replayed = 0;
     const ordered = [];
-    for (const metadata of rows) {
-      if (budget.chargeInput) replayed += metadata.bytes;
-      else budget.bytes += metadata.bytes;
+    for (const entry of rows) {
+      if (budget.chargeInput) replayed += entry.bytes;
+      else budget.bytes += entry.bytes;
       requireCondition((budget.chargeInput ? replayed : budget.bytes) <= progress.MAX_RECOVERY_BYTES, 'progress-history-limit', 'Accounting recovery exceeded its byte bound');
-      requireCondition(!budget.remainingInput || metadata.bytes <= budget.remainingInput(), 'progress-history-limit', 'Accounting recovery exceeded its input byte bound');
-      const saved = budget.remainingInput ? this.store.db.prepare('SELECT state FROM history WHERE run_id=? AND revision=? AND length(CAST(state AS BLOB))<=?').get(state.id, metadata.revision, budget.remainingInput()) : this.store.db.prepare('SELECT state FROM history WHERE run_id=? AND revision=?').get(state.id, metadata.revision);
+      requireCondition(!budget.remainingInput || entry.bytes <= budget.remainingInput(), 'progress-history-limit', 'Accounting recovery exceeded its input byte bound');
+      const saved = history.text(entry.revision, budget.remainingInput ? budget.remainingInput() : undefined);
       requireCondition(saved, 'progress-history-unavailable', 'Accounting recovery history changed or exceeded its byte bound');
-      const row = { ...metadata, ...saved };
+      const row = { ...entry, state: saved.state };
       if (budget.chargeInput) budget.chargeInput(row.state);
       const value = JSON.parse(row.state);
       this.identity(value, row.revision);

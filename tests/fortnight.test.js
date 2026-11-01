@@ -7,6 +7,7 @@ const path = require('node:path');
 const test = require('node:test');
 const { DatabaseSync } = require('node:sqlite');
 const { compute, formatMarkdown, fortnightLabel, ownTokens, parseArguments, readReceipts } = require('../tools/fortnight');
+const { execute: migrationExecute } = require('../internal/runtime/legacy-migration');
 
 const RUN = '11111111-1111-4111-8111-111111111111';
 const FRESH = 'aaaaaaaa-0000-4000-8000-000000000001';
@@ -57,17 +58,23 @@ function dispatch(requestId, role = 'reviewer', taskId = 'task-a') {
   return state(0, 'active', { state: { workers: [{ id: requestId, role, taskId }] } });
 }
 
-// A store under a fresh temporary root: the rows, by index, as the run's history and the final state as its current state.
-function writeStore(rows, final) {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'fortnight-'));
+// A store under a fresh temporary root: the rows, by index, as the run's history and the final state as its current state. A
+// compactable store has the full version 2 shape and sits where the compact-history fixture core may migrate it.
+function writeStore(rows, final, { compactable = false } = {}) {
+  const parent = compactable ? path.resolve(__dirname, '../.tmp/runtime-history-compaction') : os.tmpdir();
+  fs.mkdirSync(parent, { recursive: true });
+  const root = fs.realpathSync.native(fs.mkdtempSync(path.join(parent, 'fortnight-')));
   const runs = path.join(root, '.nightshift', 'runs');
   fs.mkdirSync(runs, { recursive: true });
   const store = path.join(runs, 'state.sqlite');
   const db = new DatabaseSync(store);
-  db.exec('CREATE TABLE runs (id TEXT PRIMARY KEY, revision INTEGER, state TEXT); CREATE TABLE history (run_id TEXT, revision INTEGER, kind TEXT, recorded_at TEXT, state TEXT)');
+  db.exec(compactable
+    ? 'CREATE TABLE runs (id TEXT PRIMARY KEY, revision INTEGER NOT NULL, state TEXT NOT NULL); CREATE TABLE active (singleton INTEGER PRIMARY KEY CHECK(singleton=1), id TEXT NOT NULL REFERENCES runs(id)); CREATE TABLE history (run_id TEXT NOT NULL REFERENCES runs(id), revision INTEGER NOT NULL, kind TEXT NOT NULL, recorded_at TEXT NOT NULL, state TEXT NOT NULL, PRIMARY KEY(run_id, revision)); CREATE TABLE artifacts (id TEXT PRIMARY KEY, body TEXT NOT NULL); PRAGMA user_version=2;'
+    : 'CREATE TABLE runs (id TEXT PRIMARY KEY, revision INTEGER, state TEXT); CREATE TABLE history (run_id TEXT, revision INTEGER, kind TEXT, recorded_at TEXT, state TEXT)');
+  db.prepare('INSERT INTO runs VALUES (?, ?, ?)').run(RUN, rows.length - 1, JSON.stringify(final));
+  if (compactable) db.prepare('INSERT INTO active VALUES (1, ?)').run(RUN);
   const insert = db.prepare('INSERT INTO history VALUES (?, ?, ?, ?, ?)');
   rows.forEach(([kind, recordedAt, row], revision) => insert.run(RUN, revision, kind, recordedAt, row));
-  db.prepare('INSERT INTO runs VALUES (?, ?, ?)').run(RUN, rows.length - 1, JSON.stringify(final));
   db.close();
   return { root, runs, store };
 }
@@ -79,7 +86,7 @@ function writeReceipts(runs, receipts) {
   }
 }
 
-function fixture() {
+function fixture(options = {}) {
   const rows = [
     ['created', '2026-10-01T00:00:00.000Z', state(0, 'pending')],
     ['start-task', '2026-10-01T01:00:00.000Z', state(1, 'active')],
@@ -122,7 +129,7 @@ function fixture() {
     workers: [{ id: NEVER, role: 'reviewer', taskId: 'task-a', status: 'failed', phase: 'preparing' }, { id: FAILED, role: 'reviewer', taskId: 'task-a', status: 'failed', phase: 'launched' }],
     closing: { docs: { id: '#closing', kind: 'closing', reviews: [review(CLOSING, { revision: 32, taskId: '#closing', kind: 'docs' })], findings: [] } },
   };
-  const { root, runs, store } = writeStore(rows, final);
+  const { root, runs, store } = writeStore(rows, final, options);
   const receipts = {
     [FRESH]: review(FRESH, { threadTokens: 1000, findings: [{ id: 'F1', severity: 'critical' }, { id: 'F2', severity: 'minor' }] }),
     [SKEPTIC]: review(SKEPTIC, { kind: 'skeptic', threadTokens: 500, attempts: [{ status: 'complete', tokens: 500 }], findings: [{ id: F1.id, verdict: 'confirmed' }, { id: F2.id, verdict: 'confirmed' }] }),
@@ -186,6 +193,24 @@ test('the numbers of a run whose task was repaired three times, reopened twice, 
     assert.match(markdown, /\| 2 \| Tokens per repair batch \| median 300, worst 300 over 1 batches, of 3 \(1 ended at a fresh assessment and 1 at the next repair; 1 open, 1 partial, 0 with no dispatch counted as 0\); measured tokens over the closed batches, their unknown attempts excluded and replacements counted as fresh sessions: fresh 2,400, resumed 650, skeptic 0; Vibe apart, in its own accounting: 0 over 0 batches that ran Vibe \(0 partial\) \|/);
     assert.match(markdown, /completions by UTC date 1 to 2026-10-04, 0 to 2026-10-18/);
     assert.match(markdown, /\| first run \| Fresh-gate catches after resumed closure \| 1 of 2 resumed closures .* \(1 resumed closures had no such fresh review; 1 of the 3 were never imported into run state\)/);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('the numbers are the same before and after the store is compacted', () => {
+  const { root, store } = fixture({ compactable: true });
+  try {
+    // The read time is minted per call, so it is left out of the comparison.
+    const numbers = () => {
+      const { readAt, ...rest } = compute(store, { anchor: '2026-10-18' });
+      return rest;
+    };
+    const before = numbers();
+    const compacted = migrationExecute(root, { action: 'compact-history', store: 'delivery' }, null, { fixtureCompaction: true });
+    assert.equal(compacted.state, 'swapped');
+    assert.ok(compacted.history.delta > 0);
+    assert.deepEqual(numbers(), before);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }

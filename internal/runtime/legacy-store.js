@@ -3,6 +3,7 @@
 const { createHash } = require('node:crypto');
 const { requireCondition } = require('./errors');
 const progress = require('./progress');
+const { COMPACT_VERSION } = require('./history-store');
 
 const MAX_DELIVERY_RECORDS = 10000;
 const MAX_RUN_ID_BYTES = 1024;
@@ -23,6 +24,19 @@ const EXPECTED_KEYS = Object.freeze({ runs: [1, 0, 0], active: [1, 0], history: 
 const EXPECTED_TYPES = Object.freeze({ runs: ['TEXT', 'INTEGER', 'TEXT'], active: ['INTEGER', 'TEXT'], history: ['TEXT', 'INTEGER', 'TEXT', 'TEXT', 'TEXT'], artifacts: ['TEXT', 'TEXT'], accounting_commits: ['TEXT', 'INTEGER', 'TEXT'], discharge_index: ['TEXT', 'TEXT', 'TEXT', 'TEXT', 'TEXT'], legacy_retirements: ['TEXT', 'TEXT'] });
 const EXPECTED_NOT_NULL = Object.freeze({ runs: [0, 1, 1], active: [0, 1], history: [1, 1, 1, 1, 1], artifacts: [0, 1], accounting_commits: [1, 1, 1], discharge_index: [1, 1, 1, 1, 1], legacy_retirements: [0, 1] });
 const EXPECTED_FOREIGN = Object.freeze({ active: { from: 'id', to: 'id' }, history: { from: 'run_id', to: 'id' }, legacy_retirements: { from: 'run_id', to: 'id' } });
+// Version 3's compact history table (history-store.js); every other table keeps its shape across versions.
+const COMPACT_HISTORY = Object.freeze({
+  columns: ['run_id', 'revision', 'kind', 'recorded_at', 'encoding', 'bytes', 'digest', 'body'],
+  keys: [1, 2, 0, 0, 0, 0, 0, 0],
+  types: ['TEXT', 'INTEGER', 'TEXT', 'TEXT', 'TEXT', 'INTEGER', 'TEXT', 'TEXT'],
+  notNull: [1, 1, 1, 1, 1, 1, 1, 1],
+});
+
+function expectedShape(name, version) {
+  if (name === 'history' && version >= COMPACT_VERSION) return COMPACT_HISTORY;
+
+  return { columns: EXPECTED_COLUMNS[name], keys: EXPECTED_KEYS[name], types: EXPECTED_TYPES[name], notNull: EXPECTED_NOT_NULL[name] };
+}
 
 const CREATE_TABLES = Object.freeze({
   artifacts: 'CREATE TABLE artifacts (id TEXT PRIMARY KEY, body TEXT NOT NULL)',
@@ -50,15 +64,16 @@ function tableNames(db) {
 
 function schemaState(db) {
   const version = db.prepare('PRAGMA user_version').get().user_version;
-  requireCondition([1, 2].includes(version), 'migration-store-version', `Unsupported delivery store version ${version}`);
+  requireCondition([1, 2, COMPACT_VERSION].includes(version), 'migration-store-version', `Unsupported delivery store version ${version}`);
   const tables = tableNames(db);
   for (const name of ['runs', 'active', 'history']) requireCondition(tables.has(name), 'migration-store-unavailable', `Delivery store lacks ${name}`);
-  requireCondition(version !== 2 || tables.has('artifacts'), 'migration-store-unavailable', 'Version-2 delivery store lacks artifacts');
+  requireCondition(version < 2 || tables.has('artifacts'), 'migration-store-unavailable', `Version-${version} delivery store lacks artifacts`);
   requireCondition(!tables.has('legacy_retirements') || tables.has('artifacts'), 'migration-store-unavailable', 'Retirement references lack their artifact store');
-  for (const [name, columns] of Object.entries(EXPECTED_COLUMNS)) {
+  for (const name of Object.keys(EXPECTED_COLUMNS)) {
     if (!tables.has(name)) continue;
+    const shape = expectedShape(name, version);
     const actual = db.prepare(`PRAGMA table_info(${name})`).all();
-    requireCondition(actual.length === columns.length && columns.every((column, index) => column === actual[index].name && EXPECTED_KEYS[name][index] === actual[index].pk && EXPECTED_TYPES[name][index] === actual[index].type && EXPECTED_NOT_NULL[name][index] === actual[index].notnull && actual[index].dflt_value === null), 'migration-store-unavailable', `Delivery table ${name} has an unsupported shape`);
+    requireCondition(actual.length === shape.columns.length && shape.columns.every((column, index) => column === actual[index].name && shape.keys[index] === actual[index].pk && shape.types[index] === actual[index].type && shape.notNull[index] === actual[index].notnull && actual[index].dflt_value === null), 'migration-store-unavailable', `Delivery table ${name} has an unsupported shape`);
     const foreign = db.prepare(`PRAGMA foreign_key_list(${name})`).all();
     const expected = EXPECTED_FOREIGN[name];
     requireCondition(expected ? foreign.length === 1 && foreign[0].table === 'runs' && foreign[0].from === expected.from && foreign[0].to === expected.to && foreign[0].on_update === 'NO ACTION' && foreign[0].on_delete === 'NO ACTION' : foreign.length === 0, 'migration-store-unavailable', `Delivery table ${name} has unsupported foreign keys`);

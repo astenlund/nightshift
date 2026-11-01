@@ -5,6 +5,7 @@ const { requireBound, requireCondition } = require('./errors');
 const { targetEntry, MAX_TARGET_READ_BYTES } = require('./legacy-backlog');
 const approvalV1 = require('./legacy-approval-v1');
 const { readArtifact, sha256 } = require('./legacy-store');
+const { HistoryReader } = require('./history-store');
 const progress = require('./progress');
 
 const MAX_CERTIFICATE_BYTES = 8 * 1024;
@@ -113,10 +114,11 @@ function validateCertificate(db, root, row, state, latest, artifact, budgets = {
     let saved = history.cache.get(key);
     if (!saved) {
       const remaining = history.maximum - history.bytes;
-      const historicalSize = db.prepare('SELECT length(CAST(state AS BLOB)) AS bytes FROM history WHERE run_id=? AND revision=?').get(row.id, earlier.revision)?.bytes;
+      const reader = new HistoryReader(db, row.id);
+      const historicalSize = reader.meta(earlier.revision)?.bytes;
       requireCondition(historicalSize !== undefined, 'migration-evidence-unavailable', `Earlier history for retired delivery ${row.id} is missing`);
       requireBound(historicalSize <= remaining, 'migration-evidence-unavailable', `Earlier history for retired delivery ${row.id} exceeds its read bound`);
-      const historicalRow = db.prepare('SELECT state FROM history WHERE run_id=? AND revision=? AND length(CAST(state AS BLOB))<=?').get(row.id, earlier.revision, remaining);
+      const historicalRow = reader.text(earlier.revision, remaining);
       requireCondition(historicalRow, 'migration-evidence-unavailable', `Earlier history for retired delivery ${row.id} changed during its bounded read`);
       history.bytes += Buffer.byteLength(historicalRow.state);
       let historicalState;

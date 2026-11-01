@@ -1,7 +1,7 @@
 'use strict';
 
 const READ_ONLY_MIGRATION_ACTIONS = new Set(['inventory', 'manifest', 'raw-inspect']);
-const MIGRATION_ACTIONS = new Set([...READ_ONLY_MIGRATION_ACTIONS, 'retire']);
+const MIGRATION_ACTIONS = new Set([...READ_ONLY_MIGRATION_ACTIONS, 'retire', 'compact-history']);
 
 function isMigrationAction(action) { return MIGRATION_ACTIONS.has(action); }
 

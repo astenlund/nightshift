@@ -6,6 +6,7 @@ const { hydrateArtifact, verificationPass, verifyArtifacts } = require('./artifa
 const { targetEntry, MAX_TARGET_READ_BYTES } = require('./legacy-backlog');
 const { APPROVAL_SCHEMA, MAX_APPROVAL_RECORDS, MAX_CERTIFICATE_BYTES, MAX_CERTIFICATE_CHAIN_BYTES, MAX_HISTORICAL_BYTES, MAX_MANIFEST_BYTES, MAX_MANIFEST_CHAIN_BYTES, approvedStateProjection, savedFollowupsValid, validateCertificate } = require('./legacy-certificates');
 const { requireCondition } = require('./errors');
+const { HistoryReader, latestRevision, latestRowStats, metadata, rangeBytes } = require('./history-store');
 const { reportProjection, MAX_BATCH_REPORT_BYTES } = require('./legacy-report');
 const { MAX_DELIVERY_RECORDS: MAX_RECORDS, MAX_RUN_ID_BYTES, isRetirementCertificate, readArtifact, readArtifactBody, retirementRows, runBoundArtifacts, schemaState, sha256, verifyTriggers } = require('./legacy-store');
 const { recordKind } = require('./records');
@@ -65,7 +66,7 @@ class LegacyInventory {
     if (this.records) return this;
     const runStats = this.db.prepare('SELECT count(*) AS count, coalesce(sum(length(CAST(state AS BLOB))), 0) AS bytes, coalesce(max(length(CAST(id AS BLOB))), 0) AS idBytes FROM runs').get();
     requireCondition(runStats.count <= MAX_RECORDS && runStats.bytes <= MAX_INPUT_BYTES && runStats.idBytes <= MAX_RUN_ID_BYTES, 'migration-store-unavailable', 'Delivery identity or state inventory exceeds its bound');
-    const latestStats = this.db.prepare('SELECT count(*) AS count, coalesce(sum(length(CAST(history.state AS BLOB))), 0) AS bytes FROM runs JOIN history ON history.run_id=runs.id AND history.revision=runs.revision').get();
+    const latestStats = latestRowStats(this.db);
     requireCondition(latestStats.count <= MAX_RECORDS && runStats.bytes + latestStats.bytes <= MAX_INPUT_BYTES, 'migration-store-unavailable', 'Delivery current and latest history exceed the inventory read bound');
     const rows = this.db.prepare('SELECT id, revision, state FROM runs ORDER BY id LIMIT ?').all(MAX_RECORDS + 1);
     requireCondition(rows.length <= MAX_RECORDS, 'migration-store-unavailable', 'Delivery identity inventory exceeds its bound');
@@ -84,9 +85,8 @@ class LegacyInventory {
     const generation = [];
     for (const row of rows) {
       requireCondition(typeof row.id === 'string' && row.id.length > 0 && Buffer.byteLength(row.id) <= MAX_RUN_ID_BYTES, 'migration-store-unavailable', 'Delivery identity exceeds its supported bound');
-      const latestRevision = this.db.prepare('SELECT revision FROM history WHERE run_id=? ORDER BY revision DESC LIMIT 1').get(row.id)?.revision;
-      requireCondition(Number.isSafeInteger(row.revision) && row.revision >= 0 && latestRevision === row.revision, 'migration-store-unavailable', `Delivery ${row.id} lacks its matching latest history`);
-      const latest = this.db.prepare('SELECT revision, state FROM history WHERE run_id=? AND revision=? AND length(CAST(state AS BLOB))<=?').get(row.id, row.revision, MAX_INPUT_BYTES - bytes - Buffer.byteLength(row.state));
+      requireCondition(Number.isSafeInteger(row.revision) && row.revision >= 0 && latestRevision(this.db, row.id) === row.revision, 'migration-store-unavailable', `Delivery ${row.id} lacks its matching latest history`);
+      const latest = new HistoryReader(this.db, row.id).text(row.revision, MAX_INPUT_BYTES - bytes - Buffer.byteLength(row.state));
       requireCondition(latest, 'migration-store-unavailable', `Delivery ${row.id} latest history exceeds the inventory read bound`);
       bytes += Buffer.byteLength(row.state) + Buffer.byteLength(latest.state);
       requireCondition(bytes <= MAX_INPUT_BYTES, 'migration-store-unavailable', 'Delivery inventory exceeds its byte bound');
@@ -103,7 +103,8 @@ class LegacyInventory {
       this.records.set(row.id, current);
       generation.push({ id: row.id, revision: row.revision, stateHash: sha256(row.state), historyRevision: latest.revision, historyHash: sha256(latest.state) });
     }
-    this.storeInventoryHash = progress.fingerprint({ version: this.schema.version, selected: this.selection, records: generation, retirements });
+    // Version 3 changes only how history rows are stored, not the records an approval binds, so compaction leaves the hash alone.
+    this.storeInventoryHash = progress.fingerprint({ version: Math.min(this.schema.version, 2), selected: this.selection, records: generation, retirements });
     const budgets = { chain: { bytes: 0, maximum: MAX_CERTIFICATE_CHAIN_BYTES, visited: new Set() }, manifests: { bytes: 0, maximum: MAX_MANIFEST_CHAIN_BYTES, visited: new Set() }, history: { bytes: 0, maximum: MAX_HISTORICAL_BYTES, cache: new Map() }, targetsByManifest: new Map() };
     for (const record of this.records.values()) {
       if (!record.retirement) {
@@ -322,9 +323,9 @@ class LegacyInventory {
     toRevision ??= fromRevision;
     requireCondition(Number.isSafeInteger(fromRevision) && fromRevision >= 0 && Number.isSafeInteger(toRevision) && toRevision >= fromRevision && toRevision - fromRevision < 10, 'invalid-history-range', 'Raw inspection spans at most ten revisions');
     const remaining = MAX_RAW_BYTES - Buffer.byteLength(record.rawState);
-    const historyStats = this.db.prepare('SELECT coalesce(sum(length(CAST(state AS BLOB))), 0) AS bytes FROM history WHERE run_id=? AND revision BETWEEN ? AND ?').get(id, fromRevision, toRevision);
-    requireCondition(historyStats.bytes <= remaining, 'migration-raw-bound', 'Raw history response exceeds its byte bound');
-    const rows = this.db.prepare('SELECT revision, kind, recorded_at AS recordedAt, state FROM history WHERE run_id=? AND revision BETWEEN ? AND ? ORDER BY revision').all(id, fromRevision, toRevision);
+    requireCondition(rangeBytes(this.db, id, fromRevision, toRevision) <= remaining, 'migration-raw-bound', 'Raw history response exceeds its byte bound');
+    const reader = new HistoryReader(this.db, id);
+    const rows = metadata(this.db, id, { from: fromRevision, to: toRevision }).map(({ revision, kind, recordedAt }) => ({ revision, kind, recordedAt, state: reader.text(revision).state }));
     requireCondition(rows.length > 0 && rows[0].revision === fromRevision, 'invalid-history-range', 'Raw history start revision is missing');
     let bytes = Buffer.byteLength(record.rawState);
     requireCondition(bytes <= MAX_RAW_BYTES, 'migration-raw-bound', 'Raw inspection response exceeds its byte bound');
