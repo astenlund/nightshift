@@ -6,6 +6,14 @@ V2 entries are preserved in [the historical index](migration/v2/BUGS.md) and [MI
 
 ## Current
 
+### CI omits several deterministic suites
+
+Found by the documentation review of delivery `ede318dd` on 2026-11-02 and tracked as a bug by the user's triage decision. `.github/workflows/ci.yml` lists test files by name and omits `tests/runtime-close.test.js`, `tests/release-close-migration.test.js` and `tests/release-closed-records.test.js`, added for 3.3.26, as well as the earlier `tests/history-compaction.test.js`, `tests/run-overview.test.js`, `tests/history-store.test.js` and `tests/runtime-vibe.test.js`, although AGENTS.md says CI defines the full deterministic suite; a change that breaks one of them can pass CI.
+
+List every deterministic suite in `ci.yml`, or have CI discover the test files, and keep AGENTS.md's statement true. CI configuration, so it gets its own code assessment; tracking does not authorize implementation.
+
+**Requires:** none.
+
 ### Seeded-defect harness cannot resume past a null token reading
 
 Found on 2026-10-23 during the first seeded-defect baseline. `dispatchStage` in `tools/seeded-defects.js` stops before every dispatch while `spending` reports any null attempt, and `spending` also counts superseded result records, so once a host refuses a turn for its usage limit (Codex reported `usageLimitExceeded` about 2.4 seconds into the turn, with no token usage event) the run folder can never dispatch again, `--retry` included. [The suite's spec](specs/seeded-defect-suite.md) says the user decides whether a retry is worth unknown spending, so the harness contradicts it. For that baseline the user chose to settle each such null by hand at zero tokens, only when its events show the usage-limit refusal and no token usage, with the evidence recorded in a settlement file in the run folder, because changing the harness mid-baseline would mix harness hashes and bar the baseline from setting targets.
