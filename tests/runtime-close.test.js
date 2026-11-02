@@ -751,3 +751,13 @@ test('close-manifest runs through the migration entry and close there requires a
   assert.deepEqual(manifest.guard.refusals.map(refusal => refusal.reason), ['No admitted migration context: the older-release guard cannot read the release registry']);
   assert.throws(() => migrationExecute(f.root, { action: 'close', members, manifestHash: 'e'.repeat(64), authority: 'Yes', reason: 'Settled', actor: closer }, null, f.dependencies), { code: 'migration-admission-required' });
 });
+
+test('close is a migration write action and close-manifest a read-only one', () => {
+  // The release service admits write actions only with the requester's live activation, refuses them with resource-operation-busy
+  // while another project operation runs and serializes them against later operations; the older-release guard relies on all three.
+  const { isMigrationAction, isReadOnlyMigrationAction } = require('../internal/runtime/migration-actions');
+  assert.equal(isMigrationAction('close'), true);
+  assert.equal(isReadOnlyMigrationAction('close'), false);
+  assert.equal(isMigrationAction('close-manifest'), true);
+  assert.equal(isReadOnlyMigrationAction('close-manifest'), true);
+});
