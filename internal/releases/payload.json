@@ -60,8 +60,8 @@
     },
     {
       "path": "internal/releases/REFERENCE.md",
-      "bytes": 40597,
-      "sha256": "1fe05525432c5db37d184047fee764587bff10c6f2603fad8e9906b70560e599"
+      "bytes": 40636,
+      "sha256": "b350858d19b4727c91116755357d167f494d7659678862d52f3425d27f989e20"
     },
     {
       "path": "internal/releases/administration.js",
@@ -165,8 +165,8 @@
     },
     {
       "path": "internal/runtime/REFERENCE.md",
-      "bytes": 134197,
-      "sha256": "fbc8594a005df345f4047165c08fcb5675e6ffacabfb7bfae291225fe88aa9e3"
+      "bytes": 135200,
+      "sha256": "8d520e705acfe819b74bd5c2e3229313bc843c10ab1ac7238bb0159c9b8c8c5a"
     },
     {
       "path": "internal/runtime/acceptance-checkpoint.js",
