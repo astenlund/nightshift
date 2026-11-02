@@ -50,6 +50,22 @@ function accountingClass(db, root, state, accounting, discharge, budget) {
   }
 }
 
+// The follow-up dispositions of one approval: every pending follow-up of the record tracked to a backlog entry or dismissed, once each.
+// Retire and close share this grammar, so their certificates and closures record follow-ups identically.
+function normalizeFollowups(root, recordId, saved, selections = [], targetBudget) {
+  const pending = (saved ?? []).filter(item => item.status !== 'resolved');
+  requireCondition(Array.isArray(selections) && selections.length === pending.length && selections.every(item => item && typeof item === 'object' && !Array.isArray(item) && typeof item.id === 'string') && new Set(selections.map(item => item.id)).size === pending.length, 'migration-decision-unavailable', `Pending follow-ups of ${recordId} need distinct dispositions`);
+
+  return pending.map(item => {
+    const selected = selections.find(candidate => candidate.id === item.id);
+    requireCondition(selected && ['tracked', 'dismissed'].includes(selected.disposition), 'migration-decision-unavailable', `Follow-up ${item.id} lacks a disposition`);
+    const destination = selected.disposition === 'tracked' ? targetEntry(root, selected.destination, targetBudget) : null;
+    requireCondition(selected.disposition !== 'dismissed' || selected.destination == null, 'migration-decision-unavailable', `Dismissed follow-up ${item.id} has a destination`);
+
+    return { id: item.id, sourceHash: progress.fingerprint(item), disposition: selected.disposition, destination };
+  }).sort((left, right) => left.id < right.id ? -1 : left.id > right.id ? 1 : 0);
+}
+
 class LegacyInventory {
   constructor(root, db) {
     this.root = fs.realpathSync.native(root);
@@ -268,17 +284,7 @@ class LegacyInventory {
     const delivered = report.savedHash !== null && !report.owed;
     const validReport = reportKind === 'none' && !report.owed && report.savedHash === null || reportKind === 'already-delivered' && delivered || reportKind === 'confirmed' && report.owed && report.file.status === 'present' && report.file.sha256 === report.savedHash || reportKind === 'waived' && report.owed;
     requireCondition(validReport, 'migration-decision-unavailable', `Report disposition for ${record.id} is missing or inconsistent`);
-    const pending = (record.state.followups ?? []).filter(item => item.status !== 'resolved');
-    const selections = choice.followups ?? [];
-    requireCondition(Array.isArray(selections) && selections.length === pending.length && selections.every(item => item && typeof item === 'object' && !Array.isArray(item) && typeof item.id === 'string') && new Set(selections.map(item => item.id)).size === pending.length, 'migration-decision-unavailable', `Pending follow-ups of ${record.id} need distinct dispositions`);
-    const followups = pending.map(item => {
-      const selected = selections.find(candidate => candidate.id === item.id);
-      requireCondition(selected && ['tracked', 'dismissed'].includes(selected.disposition), 'migration-decision-unavailable', `Follow-up ${item.id} lacks a disposition`);
-      const destination = selected.disposition === 'tracked' ? targetEntry(this.root, selected.destination, targetBudget) : null;
-      requireCondition(selected.disposition !== 'dismissed' || selected.destination == null, 'migration-decision-unavailable', `Dismissed follow-up ${item.id} has a destination`);
-
-      return { id: item.id, sourceHash: progress.fingerprint(item), disposition: selected.disposition, destination };
-    }).sort((left, right) => left.id < right.id ? -1 : left.id > right.id ? 1 : 0);
+    const followups = normalizeFollowups(this.root, record.id, record.state.followups, choice.followups, targetBudget);
 
     return { runId: record.id, disposition: choice.disposition, report: { kind: reportKind, sha256: report.savedHash }, followups };
   }
@@ -369,4 +375,4 @@ class LegacyInventory {
   }
 }
 
-module.exports = { LegacyInventory, MAX_INPUT_BYTES, MAX_MANIFEST_BYTES, MAX_RAW_BYTES, PAGE_RECORDS };
+module.exports = { LegacyInventory, normalizeFollowups, MAX_INPUT_BYTES, MAX_MANIFEST_BYTES, MAX_RAW_BYTES, PAGE_RECORDS };

@@ -165,8 +165,8 @@
     },
     {
       "path": "internal/runtime/REFERENCE.md",
-      "bytes": 133017,
-      "sha256": "06779b61814ce5947968d36230b588e20feab947069b9c401f49ce930f26dbf4"
+      "bytes": 133817,
+      "sha256": "795724cde6a85bd7bd5ad1c2128dfeddcf907d177fa78cd4a4544fa97431eb74"
     },
     {
       "path": "internal/runtime/acceptance-checkpoint.js",
@@ -200,8 +200,8 @@
     },
     {
       "path": "internal/runtime/close.js",
-      "bytes": 30662,
-      "sha256": "bc6963e3dd04ca8185023195af9cbdf921d9e4e01f5295c8a44c7a9a5e801aab"
+      "bytes": 31045,
+      "sha256": "8abea222f9c34cf7a297c59f6fbc81217cf56cf6818d491cb3e3b9e9a333f337"
     },
     {
       "path": "internal/runtime/continuation-health.js",
@@ -280,8 +280,8 @@
     },
     {
       "path": "internal/runtime/legacy-inventory.js",
-      "bytes": 26979,
-      "sha256": "e0988b3e19d0ffe452ef9892799ac16854f861895cca2cd69ff26bc562178695"
+      "bytes": 27351,
+      "sha256": "4c573adfda38fccca6c021d06b757947f058fde5edd9d1f062f5cde592fc6083"
     },
     {
       "path": "internal/runtime/legacy-migration.js",
@@ -410,8 +410,8 @@
     },
     {
       "path": "internal/runtime/run-overview.js",
-      "bytes": 10269,
-      "sha256": "47bb23025d5e05a100da011f47ddf4ea6bd9cf1991c864905e018d40981e0b14"
+      "bytes": 9968,
+      "sha256": "d1c1056a3f89d5dc365b564ab00b9c2d603c8fecc11cf7cf96af394f61a6190e"
     },
     {
       "path": "internal/runtime/scratch.js",
@@ -530,8 +530,8 @@
     },
     {
       "path": "skills/handover/SKILL.md",
-      "bytes": 9938,
-      "sha256": "270ec2631048adc7809f4d64afffae8c7583d5588476903f5032b9884896ea79"
+      "bytes": 10039,
+      "sha256": "00fc633590c151d5e7732ab5fc98b0d628bc1bddd2237489a09ab40abab03266"
     },
     {
       "path": "skills/init-backlog/SKILL.md",
@@ -590,8 +590,8 @@
     },
     {
       "path": "skills/ready/SKILL.md",
-      "bytes": 8116,
-      "sha256": "196b4d6ef80439c7d7a2281c389f2e6d1219f4c83f6c9563d4f2da6091f017eb"
+      "bytes": 8763,
+      "sha256": "d5417703dec9811f809e584f08e0fe691afc4c88a0b30b0ac66e0805fec86ca9"
     },
     {
       "path": "skills/ready/ready.js",

@@ -6,13 +6,12 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { createHash } = require('node:crypto');
 const { DatabaseSync } = require('node:sqlite');
-const { isDeepStrictEqual } = require('node:util');
 const { RunError, requireCondition } = require('./errors');
 const { workerIsActive } = require('./workers');
-const { isClosed } = require('./statuses');
+const { isClosed, isRecordStatus } = require('./statuses');
 const { BACKUP, BUILDING, SIDECARS, STORES } = require('./history-compaction');
 const { HistoryReader } = require('./history-store');
-const { MAX_TARGET_READ_BYTES, targetEntry } = require('./legacy-backlog');
+const { MAX_TARGET_READ_BYTES } = require('./legacy-backlog');
 const { MAX_AUTHORITY_BYTES, MAX_CERTIFICATE_BYTES, MAX_MANIFEST_BYTES } = require('./legacy-certificates');
 const { validReportDelivery } = require('./report-delivery');
 const progress = require('./progress');
@@ -98,7 +97,7 @@ function readStore(root, store) {
     for (const row of database.prepare('SELECT id, revision, state FROM runs').all()) {
       const state = JSON.parse(row.state);
       const kindMatches = store === 'review' ? state?.kind === 'review' : state?.kind === undefined || state?.kind === 'delivery';
-      if (!(state?.schema === 1 && state.id === row.id && state.revision === row.revision && state.root === root && kindMatches && require('./statuses').isRecordStatus(state.status) && Array.isArray(state.workers))) return { store, unreadable: `Record ${row.id} fails its state check` };
+      if (!(state?.schema === 1 && state.id === row.id && state.revision === row.revision && state.root === root && kindMatches && isRecordStatus(state.status) && Array.isArray(state.workers))) return { store, unreadable: `Record ${row.id} fails its state check` };
       states.push(state);
     }
 
@@ -185,25 +184,46 @@ function accountingCurrent(root, state) {
   } finally { database.close(); }
 }
 
-function eligibility(root, read, state, ownerAlive) {
+// The status and adoption-evidence part of close eligibility, worded for close. close, close-manifest and Ready's close offer share it;
+// each adds the accounting check it can make (the replay here, the saved marker in Ready).
+function closeVerdict(state, dependencies) {
   if (state.status === 'complete') return { code: 'close-not-needed', message: `Record ${state.id} is complete; nothing is left to close` };
   if (isClosed(state)) return { code: 'run-closed', message: `Record ${state.id} is already closed` };
-  if (read.retired.has(state.id)) return { code: 'retired-run', message: `Delivery ${state.id} is retired` };
-  const verdict = require('./ownership').adoptionEligibility(state, {}, { ownerAlive });
+  const verdict = require('./ownership').adoptionEligibility(state, {}, dependencies);
   if (!verdict.eligible) {
     const message = verdict.code === 'worker-activity-unknown' ? `${verdict.message.replace(/; reconcile attributable termination before adoption$/, '')}; close accepts no native worker evidence in this release, so reconcile or prove that worker's termination first` : verdict.message.replace(/adoption|adopted/g, 'close');
 
     return { code: verdict.code, message };
   }
+
+  return { eligible: true, workers: verdict.workers };
+}
+
+// The remedy for a delivery whose accounting is not current. Ready judges from the saved marker, so for a running delivery it points
+// to close-manifest's replay; close itself judges from the replay.
+function accountingRemedy(status, { saved }) {
+  if (status !== 'running') return 'consult migration inventory, which classifies it; retire it when listed as legacy, otherwise inspect it with raw-inspect and restore its accounting evidence';
+
+  return saved ? 'run close-manifest, whose accounting replay is the authoritative check, or stop it through its own release first' : 'stop it through its own release first';
+}
+
+function eligibility(root, read, state, ownerAlive) {
+  if (read.retired.has(state.id) && !isClosed(state) && state.status !== 'complete') return { code: 'retired-run', message: `Delivery ${state.id} is retired` };
+  const verdict = closeVerdict(state, { ownerAlive });
+  if (!verdict.eligible) return verdict;
   if (read.store === 'delivery') {
     if (!read.tables.has('accounting_commits') || !read.tables.has('discharge_index')) return { code: 'close-accounting-unavailable', message: `Delivery store lacks the accounting tables; ${state.status === 'running' ? 'a running legacy delivery has no close or retire route in this release: stop it through its own release first, or acknowledge it' : 'retire this stopped legacy record instead'}` };
-    if (!accountingCurrent(root, state)) return { code: 'close-accounting-unavailable', message: state.status === 'running' ? 'Its accounting is not current; stop it through its own release first' : 'Its accounting is not current: consult migration inventory; retire it when listed as legacy, otherwise inspect it with raw-inspect and restore its accounting evidence' };
+    if (!accountingCurrent(root, state)) return { code: 'close-accounting-unavailable', message: `Its accounting is not current: ${accountingRemedy(state.status, { saved: false })}` };
   }
 
   return { eligible: true, reconciles: new Map(verdict.workers.filter(evidence => workerIsActive(state.workers.find(worker => worker.id === evidence.workerId) ?? {})).map(evidence => [evidence.workerId, evidence])) };
 }
 
 // --- Older-release guard ------------------------------------------------------------------------------------------------------
+
+function describeOwner(owner) {
+  return `${owner?.name ?? 'unknown executable'} (pid ${owner?.pid ?? 'unknown'})`;
+}
 
 function sessionFindings(root, context, ownerAlive) {
   const { Registry, sessionKey } = require('../releases/registry');
@@ -216,8 +236,9 @@ function sessionFindings(root, context, ownerAlive) {
     for (const { value: binding } of registry.list('session')) {
       if (binding.state !== 'bound' || !binding.projects.some(project => { try { return fs.realpathSync.native(project) === canonical; } catch { return false; } }) || !olderThanSupport(binding.identity)) continue;
       const named = { session: binding.session, identity: binding.identity };
+      const subject = `Session ${binding.session} is bound to older release ${binding.identity ?? 'unknown'}`;
       if (binding.session === context.session) {
-        refusals.push({ ...named, reason: 'The requesting session is bound to an older release; close from a new session on a current release' });
+        refusals.push({ ...named, reason: `${subject} and is the session requesting close; close from a new session on a current release` });
         continue;
       }
       const key = sessionKey(binding.registration, binding.session);
@@ -229,7 +250,9 @@ function sessionFindings(root, context, ownerAlive) {
       const registration = registry.get('registration', binding.registration);
       const alive = ownerAlive(activation.owner, registration?.profile ?? root);
       if (alive !== false) {
-        refusals.push({ ...named, owner: activation.owner, reason: alive === true ? 'Its activation owner process is alive: exit that host process, or retire its binding, before closing' : 'Its activation owner could not be inspected' });
+        const process = `its activation owner host process ${describeOwner(activation.owner)}`;
+        const remedy = 'exit that host process, or retire the old session binding, before closing';
+        refusals.push({ ...named, owner: activation.owner, reason: alive === true ? `${subject}; ${process} is alive: ${remedy}` : `${subject}; ${process} could not be inspected, so it may be alive: ${remedy}` });
         continue;
       }
       const failure = registry.get('activation-failure', key);
@@ -242,7 +265,7 @@ function sessionFindings(root, context, ownerAlive) {
       if (bundle && olderThanSupport(bundle.identity)) warnings.push({ registration: registration.key, host: registration.host, identity: bundle.identity, kind: 'older-host-registration', note: 'Every new session on this host binds to that older release until its plugin is updated' });
     }
   } catch (error) {
-    refusals.push({ registry: context.store, reason: `The release registry could not be read: ${error?.message ?? String(error)}` });
+    refusals.push({ registry: context.store, reason: `The release registry at ${context.store} could not be read: ${error?.message ?? String(error)}` });
   } finally { registry?.close(); }
 
   return { refusals, warnings };
@@ -256,17 +279,7 @@ function normalizeChoice(root, member, state, choice, targetBudget) {
   const report = member.store === 'delivery' ? reportFacts(state) : { owed: false, delivered: false, savedHash: null };
   const valid = member.store === 'review' || !state.handover ? 'none' : report.delivered ? 'already-delivered' : 'waived';
   requireCondition(choice.report.kind === valid, 'migration-decision-unavailable', `Report choice for ${member.id} must be ${valid}`);
-  const pending = (state.followups ?? []).filter(item => item.status !== 'resolved');
-  const selections = choice.followups ?? [];
-  requireCondition(Array.isArray(selections) && selections.length === pending.length && selections.every(item => item && typeof item === 'object' && !Array.isArray(item) && typeof item.id === 'string') && new Set(selections.map(item => item.id)).size === pending.length, 'migration-decision-unavailable', `Pending follow-ups of ${member.id} need distinct dispositions`);
-  const followups = pending.map(item => {
-    const selected = selections.find(candidate => candidate.id === item.id);
-    requireCondition(selected && ['tracked', 'dismissed'].includes(selected.disposition), 'migration-decision-unavailable', `Follow-up ${item.id} lacks a disposition`);
-    requireCondition(selected.disposition !== 'dismissed' || selected.destination == null, 'migration-decision-unavailable', `Dismissed follow-up ${item.id} has a destination`);
-    const destination = selected.disposition === 'tracked' ? targetEntry(root, selected.destination, targetBudget) : null;
-
-    return { id: item.id, sourceHash: progress.fingerprint(item), disposition: selected.disposition, destination };
-  }).sort((left, right) => left.id < right.id ? -1 : left.id > right.id ? 1 : 0);
+  const followups = require('./legacy-inventory').normalizeFollowups(root, member.id, state.followups, choice.followups, targetBudget);
 
   return { store: member.store, id: member.id, report: { kind: choice.report.kind, sha256: report.savedHash ?? null }, followups };
 }
@@ -311,7 +324,7 @@ function computeManifest(root, request, context, ownerAlive, { requireChoices = 
   const named = [];
   for (const read of reads.values()) {
     if (read.unreadable) {
-      refusals.push({ store: read.store, reason: read.unreadable });
+      refusals.push({ store: read.store, reason: `The ${read.store} store cannot be read, so its older-bound records cannot be checked: ${read.unreadable}` });
       continue;
     }
     for (const state of read.states) {
@@ -323,7 +336,7 @@ function computeManifest(root, request, context, ownerAlive, { requireChoices = 
   const namedKeys = new Set(named.map(entryKey));
   for (const entry of acknowledgedRecords) requireCondition(namedKeys.has(entryKey(entry)), 'migration-decision-unavailable', `acknowledgedRecords names ${entry.store} ${entry.id}, which the older-release guard does not name`);
   const acknowledged = new Set(acknowledgedRecords.map(entryKey));
-  for (const record of named) if (!acknowledged.has(entryKey(record))) refusals.push({ ...record, reason: 'Unfinished record bound to an older release; include it, finish or retire it, or acknowledge it by name' });
+  for (const record of named) if (!acknowledged.has(entryKey(record))) refusals.push({ ...record, reason: `${record.status} ${record.store} record ${record.id} is bound to older release ${record.identity ?? 'unknown'} (${record.resourceMode}); include it, finish or retire it, or acknowledge it by name` });
   const sessions = context ? sessionFindings(root, context, ownerAlive) : { refusals: [{ reason: 'No admitted migration context: the older-release guard cannot read the release registry' }], warnings: [] };
   refusals.push(...sessions.refusals);
   const guard = { named, refusals, warnings: sessions.warnings };
@@ -399,7 +412,8 @@ function writeStore(root, store, request, context, liveness, dependencies) {
   try {
     return handle.transaction(() => {
       const manifest = computeManifest(root, request, context, liveness.replay, { requireChoices: true });
-      requireCondition(manifest.ineligible.length === 0 && manifest.guard.refusals.length === 0, manifest.ineligible[0]?.code ?? 'close-older-release-present', manifest.ineligible[0]?.message ?? `The older-release guard refuses: ${manifest.guard.refusals.map(refusal => refusal.reason).slice(0, 3).join('; ')}`);
+      requireCondition(manifest.ineligible.length === 0, manifest.ineligible[0]?.code, manifest.ineligible.map(item => `${item.store} ${item.id}: ${item.message}`).join('. '));
+      requireCondition(manifest.guard.refusals.length === 0, 'close-older-release-present', `The older-release guard refuses: ${manifest.guard.refusals.map(refusal => refusal.reason).join('. ')}`);
       requireCondition(manifest.hash === request.manifestHash, 'migration-manifest-stale', 'The approved manifest differs from the current stores, registry or choices');
       dependencies.afterRecompute?.(store);
       const body = JSON.stringify(progress.canonical(manifest.approval));
@@ -459,4 +473,4 @@ function closeManifest(root, request, context, dependencies = {}) {
   return publicManifest(manifest);
 }
 
-module.exports = { CLOSE_SUPPORT_VERSION, close, closeManifest, olderThanSupport, releaseIdentity };
+module.exports = { CLOSE_SUPPORT_VERSION, accountingRemedy, close, closeManifest, closeVerdict, olderThanSupport, releaseIdentity };

@@ -102,15 +102,10 @@ function describe(store, state, current, context, dependencies) {
 // adoption-eligibility evidence and, for a delivery, the saved accounting marker. The older-release guard is left to close-manifest.
 function closeOffer(record, state, dependencies) {
   if (!['running', 'stopped'].includes(state.status)) return null;
-  const verdict = require('./ownership').adoptionEligibility(state, {}, dependencies);
+  const { accountingRemedy, closeVerdict } = require('./close');
+  const verdict = closeVerdict(state, dependencies);
   if (!verdict.eligible) return { offer: 'none', reason: verdict.code, message: verdict.message };
-  if (record.store === 'delivery' && state.progress?.status !== 'current') {
-    const message = state.status === 'running'
-      ? 'Its saved accounting is not current: run close-manifest, whose accounting replay is the authoritative check, or stop it through its own release first'
-      : 'Its saved accounting is not current: consult migration inventory, which classifies it; retire it when listed as legacy, otherwise inspect it with raw-inspect and restore its accounting evidence';
-
-    return { offer: 'none', reason: 'close-accounting-unavailable', message };
-  }
+  if (record.store === 'delivery' && state.progress?.status !== 'current') return { offer: 'none', reason: 'close-accounting-unavailable', message: `Its saved accounting is not current: ${accountingRemedy(state.status, { saved: true })}` };
 
   return { offer: 'close' };
 }
