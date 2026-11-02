@@ -378,6 +378,9 @@ test('the creation gate counts a closed selection discharged and replaceable, al
   assert.equal(assess(f).replaceable, true);
   const next = await delivery(f, { objective: 'A new delivery after the close' });
   assert.equal(next.status, 'running');
+  // The closed delivery is now a nonselected record, and the gate still counts it discharged.
+  await f.call({ action: 'stop', kind: 'user-stop', reason: 'User paused the new delivery' });
+  assert.equal(assess(f).current.id, next.id);
 });
 
 test('the creation gate does not count a closed status discharged without its matching close row', async t => {
@@ -535,9 +538,15 @@ test('a contained worker with a valid termination file is reconciled by close, a
   assert.deepEqual(without({ ...after, workers: after.workers.map(worker => ({ ...worker, status: undefined })) }, removed), without({ ...before, workers: before.workers.map(worker => ({ ...worker, status: undefined })) }, removed));
   assert.equal(assess(f).replaceable, true);
   assert.doesNotThrow(() => assertQuiescent(f.root));
-  // A retry projects the closed member from its closure, without inspecting the worker again.
-  const retry = closeManifest(f.root, { members, choices: request.choices }, f.context, { ...f.dependencies, ownerAlive: () => { throw new Error('No liveness inspection on a retry'); } });
-  assert.equal(retry.records[0].workers[0].reconciles, null);
+  // An identical retry projects the closed member from its approved revision with reconciles from its closure, inspecting nothing.
+  const noInspection = { ...f.dependencies, ownerAlive: () => { throw new Error('No liveness inspection on a retry'); } };
+  const { actor, ...retryRequest } = request;
+  const retry = closeManifest(f.root, retryRequest, f.context, noInspection);
+  assert.equal(retry.hash, request.manifestHash);
+  assert.deepEqual(retry.records, manifest.records);
+  assert.equal(retry.records[0].workers[0].reconciles, 'contained-termination');
+  assert.equal(close(f.root, request, f.context, noInspection).state, 'closed');
+  assert.equal(readState(f.root, 'delivery', created.id).revision, after.revision);
 });
 
 test('delivery accounting: close refuses records whose accounting is not current or whose store lacks it, and rolls back a save that leaves it not current', async t => {
@@ -601,4 +610,144 @@ test('close refuses complete and retired members and a mismatched actor', async 
     db.prepare('INSERT INTO legacy_retirements VALUES (?, ?)').run(second.id, 'a'.repeat(64));
   } finally { db.close(); }
   assert.equal(closeManifest(g.root, { members: [{ store: 'delivery', id: second.id }] }, g.context, g.dependencies).ineligible[0].code, 'retired-run');
+});
+
+test('acknowledged records hash the same in either order', async t => {
+  const f = fixture(t);
+  const created = await delivery(f);
+  await f.call({ action: 'stop', kind: 'user-stop', reason: 'User paused' });
+  const first = await review(f);
+  const second = await review(f);
+  const members = [{ store: 'delivery', id: created.id }];
+  const both = [{ store: 'review', id: first.id }, { store: 'review', id: second.id }];
+  const proposal = closeManifest(f.root, { members, acknowledgedRecords: both }, f.context, f.dependencies);
+  assert.deepEqual(proposal.guard.named.map(record => record.id).sort(), [first.id, second.id].sort());
+  const choices = choicesFor(proposal);
+  const forward = closeManifest(f.root, { members, choices, acknowledgedRecords: both }, f.context, f.dependencies);
+  const reversed = closeManifest(f.root, { members, choices, acknowledgedRecords: [...both].reverse() }, f.context, f.dependencies);
+  assert.ok(forward.hash);
+  assert.equal(reversed.hash, forward.hash);
+  assert.notEqual(closeManifest(f.root, { members, choices, acknowledgedRecords: both.slice(0, 1) }, f.context, f.dependencies).hash, forward.hash);
+});
+
+test('manifest members count findings by category, for a delivery and a review context', async t => {
+  const f = fixture(t);
+  const opened = await review(f);
+  const finding = (id, extra) => ({ id, severity: 'important', consequence: 'c', evidence: 'e', required: true, validation: { verdict: 'confirmed' }, ...extra });
+  update(f, current => {
+    current.tasks[0].findings = [
+      finding('lead:required', { disposition: 'implement', repaired: false, obligation: { classification: 'required' } }),
+      finding('lead:optional', { disposition: 'implement', repaired: false, obligation: { classification: 'optional' } }),
+      finding('lead:closing', { disposition: 'implement', repaired: true, pendingClosure: true, obligation: { classification: 'required' } }),
+      finding('lead:unvalidated', { validation: null }),
+      finding('lead:undisposed', {}),
+      finding('lead:settled', { disposition: 'skip' }),
+    ];
+  }, 'review', opened.id);
+  f.live.delete(ownerProcess.pid);
+  const manifest = closeManifest(f.root, { members: [{ store: 'review', id: opened.id }] }, f.context, f.dependencies);
+  assert.deepEqual(Object.keys(manifest.records[0]).sort(), ['findings', 'followups', 'hold', 'id', 'identity', 'incompleteTasks', 'objective', 'revision', 'status', 'stop', 'store', 'workers']);
+  assert.deepEqual(manifest.records[0].findings, { pendingClosure: 1, pendingRepair: 2, pendingRepairRequired: 1, unverified: 1, pendingDisposition: 1 });
+});
+
+test('Ready offers close for a stopped delivery that its pickup refuses as not current', async t => {
+  const f = fixture(t);
+  const created = await delivery(f);
+  await f.call({ action: 'stop', kind: 'user-stop', reason: 'User paused' });
+  const db = new DatabaseSync(path.join(f.root, '.nightshift/runs/state.sqlite'));
+  let copy;
+  try {
+    const state = JSON.parse(db.prepare('SELECT state FROM runs WHERE id=?').get(created.id).state);
+    copy = { ...state, id: randomUUID() };
+    db.prepare('INSERT INTO runs(id, revision, state) VALUES (?, ?, ?)').run(copy.id, copy.revision, JSON.stringify(copy));
+  } finally { db.close(); }
+  const record = overview(f.root, { dependencies: f.dependencies }).records.find(item => item.id === copy.id);
+  assert.equal(record.pickup.reason, 'not-current');
+  assert.deepEqual(record.close, { offer: 'close' });
+});
+
+test('close refuses report choices its record does not allow, and inspect shows the closure', async t => {
+  const f = fixture(t);
+  const opened = await review(f);
+  f.live.delete(ownerProcess.pid);
+  const members = [{ store: 'review', id: opened.id }];
+  for (const kind of ['waived', 'already-delivered']) {
+    assert.throws(() => closeManifest(f.root, { members, choices: [{ store: 'review', id: opened.id, report: { kind }, followups: [] }] }, f.context, f.dependencies), { code: 'migration-decision-unavailable' });
+  }
+  const before = readState(f.root, 'review', opened.id);
+  const { request } = approve(f, members);
+  close(f.root, request, f.context, f.dependencies);
+  const after = readState(f.root, 'review', opened.id);
+  const removed = ['status', 'closure', 'revision', 'updatedAt', 'progress', 'stopRecovery'];
+  assert.deepEqual(without(after, removed), without(before, removed));
+  assert.equal(after.updatedAt, after.closure.recordedAt);
+  const db = new DatabaseSync(path.join(f.root, '.nightshift/runs/review-state.sqlite'), { readOnly: true });
+  try { assert.ok(db.prepare('SELECT 1 FROM artifacts WHERE id=?').get(after.closure.approval)); } finally { db.close(); }
+  const inspected = await execute(f.root, { action: 'inspect', reviewContextId: opened.id }, f.dependencies);
+  assert.equal(inspected.closure.reason, 'The work is settled');
+
+  const g = fixture(t);
+  const created = await delivery(g);
+  await savedReport(g, { delivered: true });
+  await g.call({ action: 'stop', kind: 'user-stop', reason: 'User paused' });
+  const deliveryMembers = [{ store: 'delivery', id: created.id }];
+  for (const kind of ['waived', 'none']) {
+    assert.throws(() => closeManifest(g.root, { members: deliveryMembers, choices: [{ store: 'delivery', id: created.id, report: { kind }, followups: [] }] }, g.context, g.dependencies), { code: 'migration-decision-unavailable' });
+  }
+});
+
+test('a stopped record still carrying a closure closes again through a fresh manifest', async t => {
+  const f = fixture(t);
+  const created = await delivery(f);
+  await f.call({ action: 'stop', kind: 'user-stop', reason: 'User paused' });
+  close(f.root, approve(f, [{ store: 'delivery', id: created.id }]).request, f.context, f.dependencies);
+  // An older runtime without the closed guard writes the record back to stopped, keeping its closure.
+  olderUpdate(f, current => { current.status = 'stopped'; });
+  const reopened = readState(f.root, 'delivery', created.id);
+  assert.equal(reopened.status, 'stopped');
+  assert.ok(reopened.closure);
+  const { request } = approve(f, [{ store: 'delivery', id: created.id }]);
+  request.reason = 'Closed again after an older release reopened it';
+  close(f.root, request, f.context, f.dependencies);
+  const closed = readState(f.root, 'delivery', created.id);
+  assert.equal(closed.status, 'closed');
+  assert.equal(closed.closure.previousRevision, reopened.revision);
+  assert.equal(closed.closure.reason, request.reason);
+});
+
+test('the guard refuses naming a store whose file is absent beside a compaction backup', async t => {
+  const f = fixture(t);
+  const created = await delivery(f);
+  await f.call({ action: 'stop', kind: 'user-stop', reason: 'User paused' });
+  await review(f);
+  const file = path.join(f.root, '.nightshift/runs/review-state.sqlite');
+  fs.renameSync(file, file + '.pre-compaction');
+  const manifest = closeManifest(f.root, { members: [{ store: 'delivery', id: created.id }] }, f.context, f.dependencies);
+  const refusal = manifest.guard.refusals.find(item => item.store === 'review');
+  assert.match(refusal.reason, /^The review store cannot be read, .*compaction backup/);
+});
+
+test('close-manifest reports a running delivery whose controller is live or unclaimed with close wording', async t => {
+  const f = fixture(t);
+  const created = await delivery(f);
+  const members = [{ store: 'delivery', id: created.id }];
+  const live = closeManifest(f.root, { members }, f.context, f.dependencies);
+  assert.equal(live.ineligible[0].code, 'controller-not-inactive');
+  f.live.delete(ownerProcess.pid);
+  update(f, current => { delete current.controllerClaim; });
+  const unclaimed = closeManifest(f.root, { members }, f.context, f.dependencies);
+  assert.equal(unclaimed.ineligible[0].code, 'controller-activity-unknown');
+  assert.doesNotMatch(unclaimed.ineligible[0].message, /adopt/);
+});
+
+test('close-manifest runs through the migration entry and close there requires admission', async t => {
+  const f = fixture(t);
+  const opened = await review(f);
+  f.live.delete(ownerProcess.pid);
+  const { execute: migrationExecute } = require('../internal/runtime/legacy-migration');
+  const members = [{ store: 'review', id: opened.id }];
+  const manifest = migrationExecute(f.root, { action: 'close-manifest', members }, null, f.dependencies);
+  assert.equal(manifest.records[0].id, opened.id);
+  assert.deepEqual(manifest.guard.refusals.map(refusal => refusal.reason), ['No admitted migration context: the older-release guard cannot read the release registry']);
+  assert.throws(() => migrationExecute(f.root, { action: 'close', members, manifestHash: 'e'.repeat(64), authority: 'Yes', reason: 'Settled', actor: closer }, null, f.dependencies), { code: 'migration-admission-required' });
 });
