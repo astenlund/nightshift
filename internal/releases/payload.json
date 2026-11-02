@@ -165,8 +165,8 @@
     },
     {
       "path": "internal/runtime/REFERENCE.md",
-      "bytes": 133817,
-      "sha256": "795724cde6a85bd7bd5ad1c2128dfeddcf907d177fa78cd4a4544fa97431eb74"
+      "bytes": 134197,
+      "sha256": "fbc8594a005df345f4047165c08fcb5675e6ffacabfb7bfae291225fe88aa9e3"
     },
     {
       "path": "internal/runtime/acceptance-checkpoint.js",
