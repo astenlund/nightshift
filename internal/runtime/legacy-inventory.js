@@ -52,7 +52,9 @@ function accountingClass(db, root, state, accounting, discharge, budget) {
 
 // The follow-up dispositions of one approval: every pending follow-up of the record tracked to a backlog entry or dismissed, once each.
 // Retire and close share this grammar, so their certificates and closures record follow-ups identically.
-function normalizeFollowups(root, recordId, saved, selections = [], targetBudget) {
+function normalizeFollowups(root, recordId, saved, supplied, targetBudget) {
+  // Omitted and null both mean no selections, as retire's earlier grammar and its retry projection read them.
+  const selections = supplied ?? [];
   const pending = (saved ?? []).filter(item => item.status !== 'resolved');
   requireCondition(Array.isArray(selections) && selections.length === pending.length && selections.every(item => item && typeof item === 'object' && !Array.isArray(item) && typeof item.id === 'string') && new Set(selections.map(item => item.id)).size === pending.length, 'migration-decision-unavailable', `Pending follow-ups of ${recordId} need distinct dispositions`);
 

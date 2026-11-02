@@ -1314,6 +1314,17 @@ test('a stopped legacy delivery needs its own retirement choice', t => {
   assert.equal(execute(root, { action: 'raw-inspect', runId: id }).chain[0].certificate.disposition, 'retired-stopped');
 });
 
+test('close refuses a stopped legacy delivery for lacking accounting, and it stays retirable with a null follow-up selection', t => {
+  const { root, id } = fixture(t, { status: 'stopped' });
+  const closing = execute(root, { action: 'close-manifest', members: [{ store: 'delivery', id }] });
+  assert.equal(closing.ineligible[0].code, 'close-accounting-unavailable');
+  assert.match(closing.ineligible[0].message, /retire this stopped legacy record instead/);
+  const choice = { ...choiceFor(id), disposition: 'retired-stopped', followups: null };
+  const manifest = execute(root, { action: 'manifest', ids: [id], choices: [choice] });
+  const result = execute(root, { action: 'retire', ids: [id], choices: [choice], manifestHash: manifest.hash, authority: 'Approve abandonment of this stopped work', actor: { host: 'codex', session: 'fixture-owner' } });
+  assert.equal(result.state, 'retired');
+});
+
 test('stopped approval pages retain the saved work and closing context', t => {
   const { root, id } = fixture(t, { status: 'stopped' });
   const db = new DatabaseSync(path.join(root, '.nightshift/runs/state.sqlite'));

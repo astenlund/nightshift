@@ -280,8 +280,8 @@
     },
     {
       "path": "internal/runtime/legacy-inventory.js",
-      "bytes": 27351,
-      "sha256": "4c573adfda38fccca6c021d06b757947f058fde5edd9d1f062f5cde592fc6083"
+      "bytes": 27492,
+      "sha256": "ade8ba434156805a0f42fd1f7c7952cbd82e7ab9f9e0033fbfa0a0d338c5c24d"
     },
     {
       "path": "internal/runtime/legacy-migration.js",
