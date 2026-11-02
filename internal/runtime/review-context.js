@@ -10,7 +10,7 @@ const REVIEW_KINDS = new Set(['code', 'spec', 'docs', 'lore']);
 function assertRepairScope(root, owner, state, writes) {
   if (state && writes === undefined) require('./project-ownership').assertCanonicalWriteScope(state);
   const delivery = require('../releases/service').readRun(root);
-  if (!delivery || delivery.status === 'complete') return;
+  if (!delivery || require('./statuses').isFinished(delivery)) return;
   requireCondition(isDeepStrictEqual(delivery.controller, owner), 'review-write-conflict', 'Another delivery owner holds this project; continue only isolated assessment');
   if (writes === undefined) requireCondition(delivery.workers.every(worker => ['complete', 'failed', 'stopped'].includes(worker.status)), 'review-write-conflict', 'A delivery worker has active or uncertain work; reconcile it before standalone repair');
 }

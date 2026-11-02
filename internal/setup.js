@@ -162,7 +162,7 @@ function assertQuiescent(root) {
       const row = database.prepare('SELECT r.state FROM runs r JOIN active a ON a.id=r.id WHERE a.singleton=1').get();
       if (!row) continue;
       const state = JSON.parse(row.state);
-      requireCondition(['stopped', 'complete', 'paused'].includes(state.status) && state.workers.every(worker => !workerIsActive(worker)), 'active-writer', 'Stop or pause the owning run and reconcile every worker before migration');
+      requireCondition(['stopped', 'complete', 'closed', 'paused'].includes(state.status) && state.workers.every(worker => !workerIsActive(worker)), 'active-writer', 'Stop or pause the owning run and reconcile every worker before migration');
     } finally { database.close(); }
   }
 }

@@ -151,6 +151,7 @@ function adoptState(state, request, resources, dependencies = {}) {
   text(request.authority, 'adoption.authority');
   requireCondition(request.runId === state.id && request.revision === state.revision && isDeepStrictEqual(request.previousController, state.controller), 'stale-adoption', 'Read the current run, revision and former controller before adoption');
   requireCondition(!isDeepStrictEqual(request.actor, state.controller), 'self-adoption', 'The current owner resumes its own run instead of adopting it');
+  requireCondition(state.status !== 'closed', 'run-closed', 'A closed record cannot be adopted');
   requireCondition(['running', 'stopped'].includes(state.status), 'invalid-adoption', 'Only the current unfinished run can be adopted');
   const { executionResources } = require('../releases/entry');
   const previousResources = executionResources(state);

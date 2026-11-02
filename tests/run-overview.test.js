@@ -83,7 +83,7 @@ test('a running current delivery is reported and offered for adoption only once 
   const live = overview(f.root, { dependencies: f.dependencies });
   assert.deepEqual(live.unavailable, []);
   const [record] = only(live, 'delivery');
-  assert.deepEqual({ ...record, updatedAt: undefined }, { store: 'delivery', id: f.id, kind: 'delivery', status: 'running', objective: 'Report open work in Ready', updatedAt: undefined, current: true, stop: null, tasks: { complete: 0, total: 1 }, report: null, pickup: { offer: 'none', reason: 'controller-not-inactive', message: 'The exact former controller process is live or its inactivity is unknown' } });
+  assert.deepEqual({ ...record, updatedAt: undefined }, { store: 'delivery', id: f.id, kind: 'delivery', status: 'running', objective: 'Report open work in Ready', updatedAt: undefined, current: true, stop: null, tasks: { complete: 0, total: 1 }, report: null, pickup: { offer: 'none', reason: 'controller-not-inactive', message: 'The exact former controller process is live or its inactivity is unknown' }, close: { offer: 'none', reason: 'controller-not-inactive', message: 'The exact former controller process is live or its inactivity is unknown' } });
   assert.equal(typeof record.updatedAt, 'string');
   f.live.delete(ownerProcess.pid);
   assert.deepEqual(only(overview(f.root, { dependencies: f.dependencies }), 'delivery')[0].pickup, { offer: 'adopt' });

@@ -48,7 +48,7 @@ function reviewDatabase(root, waitMs) {
 
 function parseReviewState(row, root) {
   const state = JSON.parse(row.state);
-  requireCondition(state?.schema === 1 && state.kind === 'review' && state.root === root && state.id === row.id && UUID.test(state.id) && state.controller && ['running', 'complete', 'stopped'].includes(state.status) && Array.isArray(state.workers), 'review-resource-state-unavailable', 'Review reference state is unsupported or incomplete');
+  requireCondition(state?.schema === 1 && state.kind === 'review' && state.root === root && state.id === row.id && UUID.test(state.id) && state.controller && require('./statuses').isRecordStatus(state.status) && Array.isArray(state.workers), 'review-resource-state-unavailable', 'Review reference state is unsupported or incomplete');
   return state;
 }
 

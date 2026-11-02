@@ -156,7 +156,7 @@ test('the numbers of a run whose task was repaired three times, reopened twice, 
   const { root, store } = fixture();
   try {
     const result = compute(store, { anchor: '2026-10-18' });
-    assert.deepEqual(result.runs, { total: 1, completed: 1 });
+    assert.deepEqual(result.runs, { total: 1, completed: 1, closed: 0 });
     assert.deepEqual(result.receipts, { total: 12, onTheseRuns: 12, unreadable: 1, unreadableIds: [BROKEN] });
     assert.deepEqual(result.dispatches, { total: 14, withoutReceipt: 2, unknownWithoutReceipt: 1 });
 

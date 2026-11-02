@@ -63,8 +63,8 @@ function handleHook(input) {
     const state = store.read(undefined, { hydrate: false });
     if (!state || state.controller.session !== input.session_id) return sessionBinding;
     ownerKnown = true;
-    // Nothing else is restored for a closed run.
-    if (['complete', 'stopped'].includes(state.status)) return starting ? sessionStartContext(withReportNotice(bindingText, reportNotice(state, root))) : sessionBinding;
+    // Nothing else is restored for a finished run; reportNotice owes no notice for a closed one, so SessionStart gives the binding only.
+    if (['complete', 'stopped', 'closed'].includes(state.status)) return starting ? sessionStartContext(withReportNotice(bindingText, reportNotice(state, root))) : sessionBinding;
     const exhausted = exhaustedLimit(state);
     if (exhausted) {
       store.update(state.controller, state.revision, 'limit-reached', current => transition(current, { action: 'stop', kind: 'resource-limit', reason: exhausted }));

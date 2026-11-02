@@ -15,6 +15,7 @@ const { CONTEXT_ENV, MODE_ENV, executionResources } = require('./entry');
 const { isCreationRequest, requiresOwnershipInventory, isReadOnlyAction, isRuntimeAction, unknownActionMessage } = require('../runtime/actions');
 const { isMigrationAction, isReadOnlyMigrationAction } = require('../runtime/migration-actions');
 const { workerIsActive } = require('../runtime/workers');
+const { isFinished } = require('../runtime/statuses');
 const { RUN_STORE_WAIT_MS } = require('../runtime/store');
 const { parseRunState, runDatabase } = require('../runtime/run-overview');
 const { referenceId, reviewId, requestedReferenceId, readReviewStore, readReviewReference } = require('../runtime/review-inventory');
@@ -433,7 +434,7 @@ class ReleaseService {
     const creating = request.entry === 'runtime' && (isCreationRequest(request.request) || request.request?.action === 'create');
     const creatingDelivery = request.entry === 'runtime' && deliveryCreation(request.request);
     const retirement = creatingDelivery ? creationRetirement(project, requestedRun, request.request) : { any: false, requested: false, requiresCurrent: false };
-    const replaceable = requestedRun?.status === 'complete' || requestedRun?.status === 'stopped' && requestedRun.tasks?.every(task => task.status === 'complete');
+    const replaceable = isFinished(requestedRun) || requestedRun?.status === 'stopped' && requestedRun.tasks?.every(task => task.status === 'complete');
     const newRun = creating && (!requestedRun || !runId && replaceable && !activeWorkers(requestedRun) || retirement.requiresCurrent);
     if (newRun && retirement.any && binding) {
       const current = this.registry(registry => bundles.verifiedRecord(registry, registration.baseBundle));
@@ -441,10 +442,10 @@ class ReleaseService {
     }
     const relevantRun = !newRun && (runId || request.entry === 'runtime' || requestedRun?.controller?.session === session) ? requestedRun : null;
     const runResources = relevantRun ? executionResources(relevantRun) : null;
-    if (relevantRun && !runResources && relevantRun.status !== 'complete') requireValue(false, 'legacy-release-reconciliation', 'This run has no retained release identity; reconcile it explicitly instead of adopting the newest runtime');
+    if (relevantRun && !runResources && !isFinished(relevantRun)) requireValue(false, 'legacy-release-reconciliation', 'This run has no retained release identity; reconcile it explicitly instead of adopting the newest runtime');
     if (adoption) {
       const current = relevantRun?.kind === 'review' ? this.dependencies.readRun(project, referenceId(relevantRun)) : this.dependencies.readRun(project);
-      requireValue(relevantRun && relevantRun.id === current?.id && relevantRun.status !== 'complete', 'adoption-run-unavailable', 'Only a current unfinished record can be adopted');
+      requireValue(relevantRun && relevantRun.id === current?.id && !isFinished(relevantRun), 'adoption-run-unavailable', 'Only a current unfinished record can be adopted');
       requireValue(relevantRun.resourceMode === 'bound' && runResources?.store === this.store, 'adoption-resource-conflict', 'Adoption requires the same retained store and bound resource mode');
       this.registry(registry => this.requireAdoptionSource(registry, project, relevantRun));
     }
@@ -453,7 +454,7 @@ class ReleaseService {
     // A confirming session executes its own binding, or the current release when it has none, never the owner's payload.
     // A completed record holds no work to continue, so it never chooses a session's release: an unbound session takes the current
     // release, a bound one keeps its own, and the runtime's ownership checks still govern what another session may change.
-    const pins = !confirming && Boolean(relevantRun) && relevantRun.status !== 'complete';
+    const pins = !confirming && Boolean(relevantRun) && !isFinished(relevantRun);
     const wanted = pins ? runResources?.identity : undefined;
     requireValue(!wanted || !binding || binding.identity === wanted, 'run-release-conflict', 'The requested run uses another release; reconcile its binding before resuming');
     const identity = binding?.identity ?? wanted;
@@ -609,7 +610,7 @@ class ReleaseService {
       requireValue(bound ? acceptsRuntimeAction(bound, request.request.action) : isRuntimeAction(request.request.action), 'invalid-runtime-request', unknownActionMessage(request.request.action));
     }
     if (request.entry === 'migration') {
-      requireValue(request.request && typeof request.request === 'object' && !Array.isArray(request.request) && isMigrationAction(request.request.action), 'invalid-migration-request', 'Choose migration inventory, manifest, raw-inspect, retire or compact-history');
+      requireValue(request.request && typeof request.request === 'object' && !Array.isArray(request.request) && isMigrationAction(request.request.action), 'invalid-migration-request', 'Choose migration inventory, manifest, raw-inspect, retire, compact-history, close-manifest or close');
     }
     if (request.entry === 'setup') requireValue(request.options === undefined || request.options && typeof request.options === 'object' && !Array.isArray(request.options), 'invalid-setup-options', 'Setup options must be an object');
     if (request.entry === 'unwrap') requireValue((request.target === undefined || typeof request.target === 'string' && request.target.length > 0) && (request.write === undefined || typeof request.write === 'boolean'), 'invalid-unwrap-options', 'Unwrap target and write options have invalid types');
@@ -860,7 +861,7 @@ class ReleaseService {
           }
           requireValue(!projectOperationActive(registry, reference.project), 'resource-operation-busy', 'A project operation may still depend on this current run reference');
           requireValue(run && !activeWorkers(run), 'run-resource-state-unavailable', 'Associated run/worker state is missing or active');
-          if (run.status !== 'complete' && !reference.retired) requireValue(request.retireRuns?.includes(reference.id) && run.status === 'stopped', 'run-retirement-required', 'Stop and explicitly select unfinished runs before abandoning their retained resources');
+          if (!isFinished(run) && !reference.retired) requireValue(request.retireRuns?.includes(reference.id) && run.status === 'stopped', 'run-retirement-required', 'Stop and explicitly select unfinished runs before abandoning their retained resources');
           reference.retired = true;
         }
         // Cancelled attempts never owned this run. Removing their provisional
@@ -910,7 +911,7 @@ class ReleaseService {
             this.reconcileAdoptedTarget(registry, reference.project, run);
             continue;
           }
-          if (!reference.retired && (run.status !== 'complete' || activeWorkers(run))) keepIdentity.add(binding.identity);
+          if (!reference.retired && (!isFinished(run) || activeWorkers(run))) keepIdentity.add(binding.identity);
         }
       }
       const removed = [];

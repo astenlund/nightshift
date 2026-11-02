@@ -13,6 +13,7 @@ const { CLOSING_TARGET, unknownActionMessage } = require('./actions');
 const { closureRoute, latestDispatchOf, lineageOf } = require('./continuation');
 const { scratchFailure, scratchStatus } = require('./scratch');
 const { isReviewContext, requireDelivery, recordKind } = require('./records');
+const { isClosed } = require('./statuses');
 const { validReportDelivery } = require('./report-delivery');
 const { invalidateContinuation, continuationForRequest } = require('./continuation-health');
 
@@ -243,6 +244,7 @@ function requiresReview(task) {
 }
 
 function closingReady(state) {
+  if (isClosed(state)) return false;
   return !state.workers.some(workerIsActive) && (state.status === 'stopped' || !state.tasks.some(task => task.status !== 'complete' && !task.blocker && task.requires.every(id => taskById(state, id).status === 'complete')));
 }
 
@@ -303,7 +305,10 @@ function reportStatus(state, root = state.root) {
 }
 
 // The report and the follow-up triage are one hand-off, so the notice outlives delivery while a decision is pending.
+// A closed record owes no notice: its close recorded the user's report and follow-up decisions, and every action the notice asks for
+// would be refused as run-closed.
 function reportNotice(state, root = state.root) {
+  if (isClosed(state)) return null;
   const report = reportStatus(state, root);
   if (!report?.recorded) return null;
   const followups = state.followups.filter(item => item.status !== 'resolved').map(item => item.id);
@@ -592,7 +597,19 @@ function requireStandaloneAssessment(state, task) {
   requireCondition(verificationGate(state.root, task), 'verification-required', 'Standalone verification must pass on current inputs');
 }
 
+// A closed record has nothing actionable left, so its brief reports its identity and closure without next tasks, freshness or acceptance.
+function closedBrief(state) {
+  return {
+    id: state.id, kind: recordKind(state), ...(isReviewContext(state) ? { reviewContextId: state.id } : {}), revision: state.revision, status: state.status, controller: state.controller,
+    objective: state.objective, authority: state.authority, stop: state.stop ?? null, hold: state.hold ?? null, closure: state.closure ?? null,
+    resourceMode: state.resourceMode ?? 'legacy', resources: state.resources ?? null, executionResources: require('../releases/entry').executionResources(state),
+    next: [], blockers: [], workers: [], followups: [],
+    rules: 'This record is closed: the user dropped its remaining obligations through the administrative close action. It is read-only; nothing further is due.',
+  };
+}
+
 function obligationBrief(state, root = state.root, options = {}) {
+  if (isClosed(state)) return closedBrief(state);
   const active = state.tasks.filter(task => task.status !== 'complete');
   const ready = active.filter(task => !task.blocker && task.requires.every(id => taskById(state, id).status === 'complete'));
   return {
@@ -665,6 +682,8 @@ function closingScopeFailure(root, record, review) {
 }
 
 function assertAction(state, request) {
+  // First, ahead of the closing-target route and the bookkeeping exemption, so no action reaches a closed record by any path.
+  requireCondition(!isClosed(state), 'run-closed', 'This record is closed and read-only; nothing further can change it');
   if (['handover', 'continuation', 'invalidate-continuation', 'claim-controller', 'add-spec-review', 'retrospective', 'report', 'report-delivered', 'triage'].includes(request.action) || request.taskId === CLOSING_TARGET) requireDelivery(state, request.action);
   const taskActions = ['start-task', 'add-spec-review', 'check', 'dispatch', 'probe', 'review', 'validate', 'dialogue', 'dispose', 'repair', 'advance', 'block', 'unblock', 'spec-accepted'];
   if (taskActions.includes(request.action) && request.taskId === CLOSING_TARGET) return assertClosingAction(state, request);
@@ -1085,4 +1104,4 @@ function transition(state, request, integration = null) {
   require('./discharge').admittedAction(state, request, dischargeBefore);
 }
 
-module.exports = { DIMENSIONS, assertAction, commitmentsFor, completeAssessment, findingKind, historicalDischarge, isDocumentationPath, latestChecks, obligationBrief, reportNotice, reviewGate, reviewProgress, sameClosingRecord, sharesCumulativeAssessment, targetById, taskById, transition, unresolvedFindings };
+module.exports = { DIMENSIONS, assertAction, closingStage, commitmentsFor, completeAssessment, findingKind, historicalDischarge, isDocumentationPath, latestChecks, obligationBrief, reportNotice, reportStatus, reviewGate, reviewProgress, sameClosingRecord, settled, sharesCumulativeAssessment, targetById, taskById, transition, unresolvedFindings };

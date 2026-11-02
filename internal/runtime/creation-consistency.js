@@ -4,6 +4,7 @@ const { createHash } = require('node:crypto');
 const { isDeepStrictEqual } = require('node:util');
 const { RunError, requireBound, requireCondition } = require('./errors');
 const { recordKind } = require('./records');
+const { isClosed, isRecordStatus } = require('./statuses');
 const { verificationPass, verifyArtifacts } = require('./artifact-hydration');
 const { validReportDelivery } = require('./report-delivery');
 const { workerIsActive } = require('./workers');
@@ -51,6 +52,23 @@ function closingDischargedSince(current, completed, resolve) {
   const absent = sha256 => sha256 === null || sha256 === undefined;
 
   return later.every(check => resolve(check.snapshot).files.every(file => (absent(file.sha256) ? absent(seen.get(file.path)) : seen.get(file.path) === file.sha256)));
+}
+
+// A closed delivery is discharged by its own close row: the revision right after closure.previousRevision is kind close and holds the
+// same closure. Anchoring on that row, not on the latest one, keeps a hand-edited status without a close row failing while a later
+// status-preserving revision appended by an older runtime cannot undo the discharge.
+function closeRowDischarges(history, state, budget) {
+  const closure = state.closure;
+  if (!closure || typeof closure !== 'object' || !Number.isSafeInteger(closure.previousRevision) || closure.previousRevision < 0 || !progress.HASH.test(closure.manifestHash ?? '')) return false;
+  const revision = closure.previousRevision + 1;
+  const size = history.meta(revision)?.bytes;
+  if (size === undefined) return false;
+  requireBound(size <= budget.remainingInput(), CODE, `Delivery ${state.id} close history exceeds the delivery read bound`);
+  const row = history.text(revision, budget.remainingInput());
+  if (row?.kind !== 'close') return false;
+  const closed = JSON.parse(row.state);
+
+  return closed.id === state.id && closed.status === 'closed' && isDeepStrictEqual(closed.closure, closure);
 }
 
 function legacyRefusal(records) {
@@ -126,7 +144,7 @@ function assessment(store, options = {}) {
   const retirementEvidence = verificationPass(tables.has('artifacts'));
   for (const row of rows) {
     const state = parse(row.state, true);
-    requireCondition(state?.schema === 1 && typeof state.id === 'string' && state.id.length > 0 && state.id === row.id && state.root === store.root && recordKind(state) === 'delivery' && state.revision === row.revision && Number.isSafeInteger(row.revision) && row.revision >= 0 && ['running', 'stopped', 'complete'].includes(state.status) && ['claude', 'codex'].includes(state.controller?.host) && typeof state.controller.session === 'string' && state.controller.session.length > 0 && Array.isArray(state.tasks) && Array.isArray(state.workers), CODE, 'Delivery identity, shape or revision is unsupported');
+    requireCondition(state?.schema === 1 && typeof state.id === 'string' && state.id.length > 0 && state.id === row.id && state.root === store.root && recordKind(state) === 'delivery' && state.revision === row.revision && Number.isSafeInteger(row.revision) && row.revision >= 0 && isRecordStatus(state.status) && ['claude', 'codex'].includes(state.controller?.host) && typeof state.controller.session === 'string' && state.controller.session.length > 0 && Array.isArray(state.tasks) && Array.isArray(state.workers), CODE, 'Delivery identity, shape or revision is unsupported');
     const history = new HistoryReader(store.db, state.id);
     const latest = latestRevision(store.db, state.id);
     const journal = tables.has('accounting_commits') ? store.db.prepare('SELECT max(revision) AS revision FROM accounting_commits WHERE run_id=?').get(state.id) : { revision: null };
@@ -193,7 +211,11 @@ function assessment(store, options = {}) {
           continue;
         }
       }
-      if (account) {
+      if (account && isClosed(state)) {
+        requireCondition(account.marker.status === 'current', CODE, 'Delivery accounting is unavailable');
+        // The user dropped the remaining lifecycle, so it is never replayed; the close row itself is the discharge evidence.
+        discharged = closeRowDischarges(history, state, budget);
+      } else if (account) {
         requireCondition(account.marker.status === 'current', CODE, 'Delivery accounting is unavailable');
         const completionRevision = latestRevisionOfKind(store.db, state.id, 'complete');
         if (completionRevision !== undefined) {
@@ -237,7 +259,7 @@ function assessment(store, options = {}) {
   requireCondition(selected.state.status !== 'complete' || selected.discharged || selected.closingOpen, CODE, 'Selected completion lacks authenticated lifecycle discharge');
   // Replacement would detach the selected delivery's unconfirmed report from its notice and confirmation route. A delivery
   // replaced under an earlier release has no such route left, so only the selected one can hold replacement back.
-  const reportPending = !selected.retired && selected.discharged && reportAwaitsRecipient(selected.state);
+  const reportPending = !selected.retired && !isClosed(selected.state) && selected.discharged && reportAwaitsRecipient(selected.state);
 
   return { current: selected.state, replaceable: selected.discharged && !reportPending && !records.some(record => record.state.workers.some(workerIsActive)), reportPending };
 }

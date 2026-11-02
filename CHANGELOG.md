@@ -4,6 +4,13 @@ Release notes for the Nightshift plugin, newest first. The plugin manifests carr
 
 The entries through 3.3.3 were moved here from the README on 2026-10-05 and split by version. A version without an entry had no notes recorded there.
 
+## 3.3.26
+
+- A delivery run or standalone review context the user considers settled can now be closed. The administrative migration entry gains a read-only `close-manifest`, which shows what closing drops, and `close`, which records the user's exact reply and reason and moves each member to a new final status, `closed`, distinct from `complete`. Stopped records can be closed, and so can running ones whose former owner has ended, by adoption's inactivity evidence. One manifest can span both run stores. The current release can close records bound to any older release, as this repository's two review contexts bound to 3.3.12 need.
+- An older-release guard keeps sessions that cannot read `closed` from failing project-wide. Close refuses while another unfinished record bound to an older release exists, unless the user's reply acknowledges that record by name, and while a live session bound to an older release lists the project; bindings it cannot judge live are listed as warnings. The guard sees only sessions in the admitted release registry.
+- A closed record is read-only in the current release: every runtime action and store write refuses with `run-closed`, its `status` carries its closure and no next tasks, and it owes no morning report, follow-up notice or acceptance checkpoint. The creation gate counts it discharged by its close row, the release service treats it as finished, Ready omits it and offers close beside the existing pickup, and `wait`, hooks, setup and standalone repair treat it as ended.
+- Evidence: a new deterministic suite (`tests/runtime-close.test.js`) covers closing a stopped delivery and a running review context, a two-store close with a failed second transaction and its identical retry, the refusal codes, the write guard, the closed status brief, the creation gate's close-row rule (including a status-preserving revision appended by a simulated older runtime, and a status edited without a close row), the older-release guard with acknowledgement, and Ready's close offer. The live close of this repository's two 3.3.12 review contexts is a post-release follow-up and has not run.
+
 ## 3.3.25
 
 - A bound session's SessionStart notice now names the bound release's version (`Bound release: x.y.z.`) before its resources path, so the header shows which release the session's Nightshift work uses. An unbound session's notice is unchanged and names no release, since nothing is bound until the session's first Nightshift operation.

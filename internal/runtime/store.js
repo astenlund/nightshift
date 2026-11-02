@@ -4,6 +4,7 @@ const { workerIsActive } = require('./workers');
 const { CLOSING_TARGET } = require('./actions');
 const { RunError, requireCondition, text } = require('./errors');
 const { recordKind } = require('./records');
+const { isClosed, isFinished } = require('./statuses');
 const { acceptanceInput, replayAcceptance } = require('./delivery-acceptance');
 const { ACTIVE_TABLE_SQL } = require('./legacy-store');
 const { COMPACT_VERSION, HISTORY_SQL, HistoryReader, appendRevision, hasHistory, metadata, transitions } = require('./history-store');
@@ -210,6 +211,8 @@ class RunStore {
     const row = this.db.prepare('SELECT revision, state FROM runs WHERE id=?').get(state.id);
     const previous = row ? JSON.parse(row.state) : null;
     requireCondition(!previous || !this.isRetired(state.id), 'retired-run', 'A retired delivery is read-only');
+    // A closed record is final in this release; the close write itself saves over a running or stopped predecessor.
+    requireCondition(!previous || !isClosed(previous), 'run-closed', 'A closed record is read-only');
     if (previous) {
       requireCondition(previous.revision === row.revision && previous.root === this.root && recordKind(previous) === this.kind && previous.id === state.id, 'invalid-state', 'Committed predecessor identity or revision is invalid');
       requireCondition(state.revision === nextRevision(previous), 'stale-state', 'Saved state must immediately follow its committed predecessor');
@@ -279,7 +282,7 @@ class RunStore {
         previous = this.read();
         requireCondition(require('node:util').isDeepStrictEqual(previous.controller, input.controller), 'wrong-owner', 'Only the current owner can reconcile an existing handover');
         requireCondition(require('node:util').isDeepStrictEqual(previous.executionResources ?? previous.resources ?? null, input.resources ?? null), 'bound-runtime-required', 'Acceptance replay requires the current execution resource binding');
-        if (previous.status === 'complete') return previous;
+        if (isFinished(previous)) return previous;
         const health = require('./continuation-health');
         const changedProcess = input.controllerClaim && !require('node:util').isDeepStrictEqual(previous.controllerClaim?.process, input.controllerClaim.process);
         if (previous.status === 'running') require('./project-ownership').assertCanonicalWriteScope(previous);
@@ -364,6 +367,7 @@ class RunStore {
       const state = this.read();
       requireCondition(state !== null, 'missing-state', 'No active run');
       requireCondition(!this.isRetired(state.id), 'retired-run', 'A retired delivery is read-only');
+      requireCondition(!isClosed(state), 'run-closed', 'A closed record is read-only');
       requireCondition(state.revision === revision, 'stale-state', 'Run changed; read current obligations before retrying');
       const owner = state.controller.session === actor?.session && state.controller.host === actor?.host;
       // Only the recipient's confirmation of a completed delivery's morning report may come from another admitted session.
@@ -412,6 +416,7 @@ class RunStore {
       const state = this.read();
       requireCondition(state, 'missing-state', 'No current run is available to adopt');
       requireCondition(!this.isRetired(state.id), 'retired-run', 'A retired delivery cannot be adopted');
+      requireCondition(!isClosed(state), 'run-closed', 'A closed record cannot be adopted');
       const last = state.adoption;
       if (state.id === request.runId && state.controller.host === request.actor?.host && state.controller.session === request.actor?.session && last?.observedRevision === request.revision && last.previousController.host === request.previousController?.host && last.previousController.session === request.previousController?.session && last.authority === request.authority) return state;
       const revision = nextRevision(state);

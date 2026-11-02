@@ -32,7 +32,8 @@ function inspect(state, context, observer) {
 }
 
 function acceptanceCheckpoint(state, actor, context, observer = observeAcknowledgement) {
-  if (state.kind !== 'delivery' || !state.handover || acknowledged(state) || !owningView(state, actor, context)) return null;
+  // A closed delivery asks for no acknowledgement: the write guard would refuse recording it.
+  if (state.kind !== 'delivery' || state.status === 'closed' || !state.handover || acknowledged(state) || !owningView(state, actor, context)) return null;
   let inspection;
   try { inspection = inspect(state, context, observer); }
   catch (error) { inspection = { status: 'unavailable', reason: reasonText(error.message) }; }

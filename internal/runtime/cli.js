@@ -117,6 +117,8 @@ async function execute(root, request, dependencies = {}) {
     let state = store.read();
     requireCondition(state, 'missing-state', 'No saved Nightshift run; create or recover the authorized run first');
     requireCondition(request.runId === undefined || request.runId === state.id, 'wrong-run', 'Mutations must name the current active run');
+    // A closed record is read-only, so its refusal comes before release routing or ownership could name another cause.
+    requireCondition(state.status !== 'closed', 'run-closed', 'This record is closed and read-only; nothing further can change it');
     const resources = savedResources(dependencies.resourceContext);
     if (request.action === 'adopt') return obligationBrief(store.adopt(request, resources, dependencies));
     const ownedBy = actor => state.controller.session === actor?.session && state.controller.host === actor?.host;

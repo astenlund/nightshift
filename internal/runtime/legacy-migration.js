@@ -11,6 +11,7 @@ const { MAX_TARGET_READ_BYTES, targetEntry } = require('./legacy-backlog');
 const { requireCondition } = require('./errors');
 const { MAX_AUTHORITY_BYTES, MAX_CERTIFICATE_BYTES, MAX_CERTIFICATE_CHAIN_BYTES, MAX_HISTORICAL_BYTES, MAX_MANIFEST_BYTES, MAX_MANIFEST_CHAIN_BYTES, validateCertificate } = require('./legacy-certificates');
 const { compact } = require('./history-compaction');
+const { close, closeManifest } = require('./close');
 const { LegacyInventory } = require('./legacy-inventory');
 const { MAX_BATCH_REPORT_BYTES, reportProjection } = require('./legacy-report');
 const { createSupport, readArtifact, sha256, verifyTriggers, writeArtifact } = require('./legacy-store');
@@ -204,6 +205,9 @@ function execute(project, request, context = null, dependencies = {}) {
     requireCondition(context.administrative === true, 'migration-admission-required', 'Migration requires current administrative admission');
     validateContext(context, path.resolve(__dirname, '../..'), project, true, { action: request.action, hash: sha256(Buffer.from(JSON.stringify(request))) });
   }
+  // Close reads and writes both stores itself, so like compaction it runs before this entry's delivery-store lookup and connection.
+  if (request.action === 'close-manifest') return closeManifest(project, request, context, dependencies);
+  if (request.action === 'close') return close(project, request, context, dependencies);
   // Compaction renames the store file, so it runs before this entry opens one.
   if (request.action === 'compact-history') {
     requireCondition(context || fixtureCompactionAllowed(project, dependencies), 'migration-admission-required', 'History compaction requires current administrative admission');

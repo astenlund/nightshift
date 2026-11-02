@@ -28,9 +28,9 @@ function deadlineReached(state, now) {
   return Boolean(state.limits?.deadlineUtc) && now >= Date.parse(state.limits.deadlineUtc);
 }
 
-// A stopped run has ended its work, and so has a complete one, except for the closing record, whose work a complete run still admits.
+// A stopped or closed run has ended its work, and so has a complete one, except for the closing record, whose work a complete run still admits.
 function runEnded(state, worker) {
-  return state.status === 'stopped' || state.status === 'complete' && worker.taskId !== CLOSING_TARGET;
+  return state.status === 'stopped' || state.status === 'closed' || state.status === 'complete' && worker.taskId !== CLOSING_TARGET;
 }
 
 // Read-only: observes the saved worker until it leaves its polling statuses, its runner process is gone,

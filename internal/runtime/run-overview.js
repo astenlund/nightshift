@@ -38,7 +38,7 @@ function runDatabase(root, waitMs = RUN_STORE_WAIT_MS) {
 
 function parseRunState(row, root) {
   const value = JSON.parse(row.state);
-  requireValue(value?.schema === 1 && (value.kind === undefined || value.kind === 'delivery') && value.root === root && typeof value.id === 'string' && value.id === row.id && value.controller && ['running', 'complete', 'stopped'].includes(value.status) && Array.isArray(value.workers), 'run-resource-state-unavailable', 'Run reference state is unsupported or incomplete');
+  requireValue(value?.schema === 1 && (value.kind === undefined || value.kind === 'delivery') && value.root === root && typeof value.id === 'string' && value.id === row.id && value.controller && require('./statuses').isRecordStatus(value.status) && Array.isArray(value.workers), 'run-resource-state-unavailable', 'Run reference state is unsupported or incomplete');
   return value;
 }
 
@@ -89,11 +89,30 @@ function describe(store, state, current, context, dependencies) {
     tasks: { complete: tasks.filter(task => task?.status === 'complete').length, total: tasks.length },
     report: null,
     pickup: null,
+    close: null,
   };
   if (state.status === 'complete') record.report = state.closing?.reportEvidence?.path ?? null;
   record.pickup = pickup(record, state, context, dependencies);
+  record.close = closeOffer(record, state, dependencies);
 
   return record;
+}
+
+// Close eligibility as Ready can judge it from the saved record, independently of the pickup's adoption-only routing: the status, the
+// adoption-eligibility evidence and, for a delivery, the saved accounting marker. The older-release guard is left to close-manifest.
+function closeOffer(record, state, dependencies) {
+  if (!['running', 'stopped'].includes(state.status)) return null;
+  const verdict = require('./ownership').adoptionEligibility(state, {}, dependencies);
+  if (!verdict.eligible) return { offer: 'none', reason: verdict.code, message: verdict.message };
+  if (record.store === 'delivery' && state.progress?.status !== 'current') {
+    const message = state.status === 'running'
+      ? 'Its saved accounting is not current: run close-manifest, whose accounting replay is the authoritative check, or stop it through its own release first'
+      : 'Its saved accounting is not current: consult migration inventory, which classifies it; retire it when listed as legacy, otherwise inspect it with raw-inspect and restore its accounting evidence';
+
+    return { offer: 'none', reason: 'close-accounting-unavailable', message };
+  }
+
+  return { offer: 'close' };
 }
 
 function isOpen(state, current) {
