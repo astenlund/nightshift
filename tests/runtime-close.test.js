@@ -12,7 +12,11 @@ const { close, closeManifest, olderThanSupport } = require('../internal/runtime/
 const { overview } = require('../internal/runtime/run-overview');
 const { reportNotice } = require('../internal/runtime/lifecycle');
 const { creationAssessment } = require('../internal/runtime/creation-consistency');
-const { Registry } = require('../internal/releases/registry');
+const { Registry, sessionKey } = require('../internal/releases/registry');
+const { assertAction } = require('../internal/runtime/lifecycle');
+const { handleHook } = require('../internal/runtime/hook');
+const { awaitWorker } = require('../internal/runtime/wait');
+const { assertQuiescent } = require('../internal/setup');
 const { fixtureAcknowledgement } = require('./fixtures/acknowledgement');
 const { fixtureContinuation } = require('./fixtures/continuation');
 
@@ -73,6 +77,90 @@ function approve(f, members, extra = {}) {
 }
 
 const without = (state, keys) => Object.fromEntries(Object.entries(state).filter(([key]) => !keys.includes(key)));
+
+// A store write through the ordinary update path, so history and accounting stay consistent.
+function update(f, change, store = 'delivery', id = undefined) {
+  const handle = new RunStore(f.root, store === 'review' ? { review: true } : {});
+  try {
+    const state = handle.read(id);
+    return handle.update(state.controller, state.revision, 'fixture', change);
+  } finally { handle.close(); }
+}
+
+// A copy of RunStore as a runtime without the closed guard would load it: its statuses module treats nothing as closed.
+function olderRunStore() {
+  const storePath = require.resolve('../internal/runtime/store');
+  const statusesPath = require.resolve('../internal/runtime/statuses');
+  const saved = { store: require.cache[storePath], statuses: require.cache[statusesPath] };
+  delete require.cache[storePath];
+  require.cache[statusesPath] = { id: statusesPath, filename: statusesPath, loaded: true, exports: { ...require(statusesPath), isClosed: () => false, isFinished: state => state?.status === 'complete' } };
+  try { return require(storePath).RunStore; } finally {
+    require.cache[storePath] = saved.store;
+    require.cache[statusesPath] = saved.statuses;
+  }
+}
+
+function olderUpdate(f, change) {
+  const OlderStore = olderRunStore();
+  const older = new OlderStore(f.root);
+  try {
+    const state = older.read();
+    older.update(owner, state.revision, 'followup', change);
+  } finally { older.close(); }
+}
+
+function assess(f) {
+  const handle = new RunStore(f.root);
+  try { return handle.transaction(() => creationAssessment(handle)); } finally { handle.close(); }
+}
+
+const OLDER_IDENTITY = `3.3.12-${'b'.repeat(64)}`;
+const OLDER_REGISTRATION = 'a'.repeat(64);
+
+function seedRegistry(f, records) {
+  const registry = new Registry(f.context.store);
+  try { registry.transaction(handle => { for (const [kind, key, value] of records) handle.put(kind, key, value); }); } finally { registry.close(); }
+}
+
+// A session binding to an older release in this project, optionally with its activation and a later or earlier activation failure.
+function olderBinding(f, session, { activation, failure } = {}) {
+  const key = sessionKey(OLDER_REGISTRATION, session);
+  const records = [['session', key, { schema: 1, registration: OLDER_REGISTRATION, session, state: 'bound', identity: OLDER_IDENTITY, bundle: randomUUID(), projects: [f.root], runs: [] }]];
+  if (activation) records.push(['activation', key, { schema: 1, registration: OLDER_REGISTRATION, session, generation: 'c'.repeat(64), owner: activation.owner, observedAt: activation.observedAt }]);
+  if (failure) records.push(['activation-failure', key, { schema: 1, registration: OLDER_REGISTRATION, session, generation: 'd'.repeat(64), cause: 'Fixture SessionStart failure', observedAt: failure.observedAt }]);
+  seedRegistry(f, records);
+
+  return key;
+}
+
+function olderHostRegistration(f) {
+  const bundle = randomUUID();
+  const key = 'f'.repeat(64);
+  seedRegistry(f, [
+    ['bundle', bundle, { schema: 1, key: bundle, identity: OLDER_IDENTITY, manifestDigest: '1'.repeat(64), root: path.join(f.context.store, 'bundles', bundle) }],
+    ['registration', key, { schema: 1, key, host: 'claude', profile: f.root, state: 'registered', bootstrap: path.join(f.context.store, 'launchers', 'bootstrap.js'), bootstrapHash: '2'.repeat(64), baseBundle: bundle, generation: '3'.repeat(64) }],
+  ]);
+}
+
+// Writes a registry row that fails its record check, as a damaged or foreign registry would hold.
+function rawRegistryRow(f, kind, key) {
+  const db = new DatabaseSync(path.join(f.context.store, 'registry.sqlite'));
+  try { db.prepare('INSERT INTO records(kind, key, value) VALUES (?, ?, ?)').run(kind, key, JSON.stringify({ schema: 2 })); } finally { db.close(); }
+
+  return () => {
+    const cleanup = new DatabaseSync(path.join(f.context.store, 'registry.sqlite'));
+    try { cleanup.prepare('DELETE FROM records WHERE kind=? AND key=?').run(kind, key); } finally { cleanup.close(); }
+  };
+}
+
+function rawState(f, id, change, file = 'state.sqlite') {
+  const db = new DatabaseSync(path.join(f.root, '.nightshift/runs', file));
+  try {
+    const state = JSON.parse(db.prepare('SELECT state FROM runs WHERE id=?').get(id).state);
+    change(state);
+    db.prepare('UPDATE runs SET state=? WHERE id=?').run(JSON.stringify(state), id);
+  } finally { db.close(); }
+}
 
 test('a stopped delivery closes with one close revision, an approval artifact and unchanged content; an identical retry writes nothing', async t => {
   const f = fixture(t);
@@ -193,6 +281,56 @@ test('a changed member revision stales the approval', async t => {
   assert.throws(() => close(f.root, refreshed, f.context, f.dependencies), { code: 'migration-manifest-stale' });
 });
 
+// Saves a morning report file and records it on the active delivery, optionally with the recipient's delivery.
+function savedReport(f, { delivered = false } = {}) {
+  const report = '.nightshift/runs/reports/fixture.md';
+  fs.mkdirSync(path.join(f.root, '.nightshift/runs/reports'), { recursive: true });
+  fs.writeFileSync(path.join(f.root, report), '# Fixture report\n');
+  update(f, current => { for (const task of current.tasks) task.status = 'complete'; });
+  return (async () => {
+    await f.call({ action: 'retrospective', evidence: 'Fixture retrospective' });
+    await f.call({ action: 'report', path: report });
+    if (delivered) await f.call({ action: 'report-delivered', authority: 'User read it' });
+  })();
+}
+
+const hook = (f, event) => handleHook({ cwd: f.root, session_id: owner.session, hook_event_name: event });
+
+test('a closed delivery with a saved report owes no notice, and SessionStart, Stop and Interrupt write nothing', async t => {
+  for (const delivered of [false, true]) {
+    const f = fixture(t);
+    const created = await delivery(f);
+    await f.call({ action: 'followup', item: { id: 'later', context: 'Pending decision', recommendation: 'Ask later' } });
+    await savedReport(f, { delivered });
+    await f.call({ action: 'stop', kind: 'user-stop', reason: 'User paused' });
+    const stopped = readState(f.root, 'delivery', created.id);
+    assert.notEqual(reportNotice(stopped), null);
+    const { manifest, request } = approve(f, [{ store: 'delivery', id: created.id }]);
+    assert.equal(manifest.choices[0].report.kind, delivered ? 'already-delivered' : 'waived');
+    close(f.root, request, f.context, f.dependencies);
+    const closed = readState(f.root, 'delivery', created.id);
+    assert.equal(reportNotice(closed), null);
+    const start = hook(f, 'SessionStart');
+    assert.doesNotMatch(start.hookSpecificOutput.additionalContext, /morning report/);
+    assert.deepEqual(hook(f, 'Stop'), {});
+    assert.deepEqual(hook(f, 'Interrupt'), {});
+    assert.equal(readState(f.root, 'delivery', created.id).revision, closed.revision);
+  }
+});
+
+test('a closing-record import on a closed delivery with triage evidence is refused by the lifecycle check, and wait returns on a closed run', async t => {
+  const f = fixture(t);
+  const created = await delivery(f);
+  await f.call({ action: 'stop', kind: 'user-stop', reason: 'User paused' });
+  close(f.root, approve(f, [{ store: 'delivery', id: created.id }]).request, f.context, f.dependencies);
+  const state = readState(f.root, 'delivery', created.id);
+  state.closing = { ...state.closing, triageEvidence: 'Fixture triage' };
+  for (const action of ['review', 'validate']) assert.throws(() => assertAction(state, { action, taskId: '#closing' }), { code: 'run-closed' });
+  const polling = { ...state, workers: [{ id: 'polling', role: 'lead', status: 'running', taskId: 'change' }] };
+  const observed = await awaitWorker({ root: f.root, read: () => polling }, { workerId: 'polling', timeoutMs: 0 });
+  assert.equal(observed.reason, 'run-stopped');
+});
+
 test('a closed record refuses every lifecycle action and store write, reports a closed brief and owes no notice or checkpoint', async t => {
   const f = fixture(t);
   const created = await delivery(f);
@@ -200,6 +338,7 @@ test('a closed record refuses every lifecycle action and store write, reports a 
   await f.call({ action: 'stop', kind: 'user-stop', reason: 'User paused' });
   const { request } = approve(f, [{ store: 'delivery', id: created.id }]);
   close(f.root, request, f.context, f.dependencies);
+  await assert.rejects(f.call({ action: 'adopt', authority: 'a', previousController: owner, actor: closer }), { code: 'run-closed' });
   for (const action of [{ action: 'followup', item: { id: 'x', context: 'c', recommendation: 'r' } }, { action: 'resolve-followup', followupId: 'later', evidence: 'done' }, { action: 'hold', authority: 'a', reason: 'r' }, { action: 'stop', kind: 'user-stop', reason: 'r' }, { action: 'resume', authority: 'a' }, { action: 'retrospective', evidence: 'e' }]) {
     await assert.rejects(f.call(action), { code: 'run-closed' });
   }
@@ -207,11 +346,17 @@ test('a closed record refuses every lifecycle action and store write, reports a 
   assert.equal(reportNotice(state), null);
   const handle = new RunStore(f.root);
   try { assert.throws(() => handle.update(owner, state.revision, 'probe', () => {}), { code: 'run-closed' }); } finally { handle.close(); }
-  const status = await execute(f.root, { action: 'status' }, f.dependencies);
+  const status = await execute(f.root, { action: 'status', actor: owner }, f.dependencies);
   assert.equal(status.status, 'closed');
   assert.deepEqual(status.next, []);
   assert.equal(status.closure.reason, 'The work is settled');
   assert.equal(status.acceptanceCheckpoint, null);
+  // From the owner's view, with the acknowledgement still pending, a closed delivery asks for none, while its stopped form would.
+  const { acceptanceCheckpoint } = require('../internal/runtime/acceptance-checkpoint');
+  const pending = { ...state, acknowledgement: undefined };
+  assert.notEqual(acceptanceCheckpoint({ ...pending, status: 'stopped' }, owner, undefined, () => null), null);
+  assert.equal(acceptanceCheckpoint(pending, owner, undefined, () => null), null);
+  assert.throws(() => require('../internal/runtime/ownership').adoptState(state, { actor: closer, previousController: owner, authority: 'Adopt it', runId: state.id, revision: state.revision }, null), { code: 'run-closed' });
 });
 
 test('the creation gate counts a closed selection discharged and replaceable, also after a later status-preserving revision', async t => {
@@ -225,46 +370,36 @@ test('the creation gate counts a closed selection discharged and replaceable, al
     assert.equal(gate.replaceable, true);
     assert.equal(gate.reportPending, false);
   } finally { handle.close(); }
-  // An older runtime has no closed guard: load a copy of the store whose statuses module treats nothing as closed, and append a
-  // status-preserving follow-up revision after the close row, as such a runtime would.
-  const storePath = require.resolve('../internal/runtime/store');
-  const statusesPath = require.resolve('../internal/runtime/statuses');
-  const saved = { store: require.cache[storePath], statuses: require.cache[statusesPath] };
-  delete require.cache[storePath];
-  require.cache[statusesPath] = { id: statusesPath, filename: statusesPath, loaded: true, exports: { ...require(statusesPath), isClosed: () => false, isFinished: state => state?.status === 'complete' } };
-  let OlderStore;
-  try { OlderStore = require(storePath).RunStore; } finally {
-    require.cache[storePath] = saved.store;
-    require.cache[statusesPath] = saved.statuses;
-  }
-  const older = new OlderStore(f.root);
-  try {
-    const state = older.read();
-    older.update(owner, state.revision, 'followup', current => { current.followups.push({ id: 'older', context: 'Older runtime write', recommendation: 'None', status: 'pending' }); });
-  } finally { older.close(); }
+  // An older runtime has no closed guard: it appends a status-preserving follow-up revision after the close row.
+  olderUpdate(f, current => { current.followups.push({ id: 'older', context: 'Older runtime write', recommendation: 'None', status: 'pending' }); });
   const reread = readState(f.root, 'delivery', created.id);
   assert.equal(reread.status, 'closed');
   assert.notEqual(historyOf(f.root, 'delivery', created.id).at(-1).kind, 'close');
-  const after = new RunStore(f.root);
-  try { assert.equal(after.transaction(() => creationAssessment(after)).replaceable, true); } finally { after.close(); }
+  assert.equal(assess(f).replaceable, true);
   const next = await delivery(f, { objective: 'A new delivery after the close' });
   assert.equal(next.status, 'running');
 });
 
-test('the creation gate refuses a closed status without its close row', async t => {
+test('the creation gate does not count a closed status discharged without its matching close row', async t => {
+  // A closed status written by an ordinary consistent revision, with no close row at closure.previousRevision + 1.
   const f = fixture(t);
-  const created = await delivery(f);
+  await delivery(f);
   await f.call({ action: 'stop', kind: 'user-stop', reason: 'User paused' });
-  close(f.root, approve(f, [{ store: 'delivery', id: created.id }]).request, f.context, f.dependencies);
-  const db = new DatabaseSync(path.join(f.root, '.nightshift/runs/state.sqlite'));
-  try {
-    const row = db.prepare('SELECT state FROM runs WHERE id=?').get(created.id);
-    const state = JSON.parse(row.state);
-    state.closure = { ...state.closure, reason: 'Edited without a close row' };
-    db.prepare('UPDATE runs SET state=? WHERE id=?').run(JSON.stringify(state), created.id);
-  } finally { db.close(); }
-  const handle = new RunStore(f.root);
-  try { assert.throws(() => handle.transaction(() => creationAssessment(handle))); } finally { handle.close(); }
+  olderUpdate(f, current => {
+    current.closure = { authority: 'Hand-written', reason: 'No close row', manifestHash: 'e'.repeat(64), approval: 'f'.repeat(64), reconciledWorkers: [], previousStatus: 'stopped', previousRevision: current.revision - 1, recordedAt: current.updatedAt, actor: closer };
+    current.status = 'closed';
+  });
+  assert.equal(assess(f).replaceable, false);
+
+  // A close row whose closure differs from the current one.
+  const g = fixture(t);
+  const second = await delivery(g);
+  await g.call({ action: 'stop', kind: 'user-stop', reason: 'User paused' });
+  close(g.root, approve(g, [{ store: 'delivery', id: second.id }]).request, g.context, g.dependencies);
+  assert.equal(assess(g).replaceable, true);
+  olderUpdate(g, current => { current.closure = { ...current.closure, reason: 'Changed after the close row' }; });
+  assert.equal(readState(g.root, 'delivery', second.id).status, 'closed');
+  assert.equal(assess(g).replaceable, false);
 });
 
 test('the older-release guard names other unfinished older-bound records until they are acknowledged by name', async t => {
@@ -305,4 +440,165 @@ test('Ready omits closed records and offers close beside a pickup refusal', asyn
   const after = overview(f.root, { dependencies: f.dependencies });
   assert.equal(after.records.some(item => item.id === opened.id), false);
   assert.deepEqual(after.compaction.find(entry => entry.store === 'review')?.blockedBy ?? [], []);
+});
+
+test('the guard refuses older-bound sessions with a live or uninspectable owner by name, warns on unrecorded ones, and close names every refusal', async t => {
+  const f = fixture(t);
+  const created = await delivery(f);
+  await f.call({ action: 'stop', kind: 'user-stop', reason: 'User paused' });
+  const members = [{ store: 'delivery', id: created.id }];
+  const aliveOwner = { pid: 9101, created: '1', name: 'claude.exe' };
+  const unknownOwner = { pid: 9102, created: '2', name: 'codex.exe' };
+  const endedOwner = { pid: 9103, created: '3', name: 'claude.exe' };
+  const earlier = '2026-11-01T10:00:00.000Z';
+  const later = '2026-11-01T11:00:00.000Z';
+  f.live.add(aliveOwner.pid);
+  const inspection = { ...f.dependencies, ownerAlive: process => process?.pid === unknownOwner.pid ? null : f.live.has(process?.pid) };
+  olderBinding(f, 'alive-session', { activation: { owner: aliveOwner, observedAt: earlier } });
+  olderBinding(f, 'alive-failed-session', { activation: { owner: aliveOwner, observedAt: earlier }, failure: { observedAt: later } });
+  olderBinding(f, 'unknown-session', { activation: { owner: unknownOwner, observedAt: earlier } });
+  olderBinding(f, 'ended-session', { activation: { owner: endedOwner, observedAt: earlier } });
+  olderBinding(f, 'failed-session', { activation: { owner: endedOwner, observedAt: earlier }, failure: { observedAt: later } });
+  olderBinding(f, 'stale-failure-session', { activation: { owner: endedOwner, observedAt: later }, failure: { observedAt: earlier } });
+  olderBinding(f, 'unstarted-session');
+  const blocked = closeManifest(f.root, { members }, f.context, inspection);
+  const reasons = Object.fromEntries(blocked.guard.refusals.map(refusal => [refusal.session, refusal.reason]));
+  assert.deepEqual(Object.keys(reasons).sort(), ['alive-failed-session', 'alive-session', 'unknown-session']);
+  assert.match(reasons['alive-session'], /^Session alive-session is bound to older release 3[.]3[.]12-b+; its activation owner host process claude[.]exe [(]pid 9101[)] is alive: exit that host process, or retire the old session binding, before closing$/);
+  assert.match(reasons['unknown-session'], /codex[.]exe [(]pid 9102[)] could not be inspected, so it may be alive: exit that host process, or retire the old session binding/);
+  assert.deepEqual(blocked.guard.warnings.map(warning => [warning.session, warning.kind]).sort(), [['failed-session', 'newer-activation-failure'], ['unstarted-session', 'no-activation']]);
+  const request = { members, choices: choicesFor(blocked), manifestHash: 'e'.repeat(64), authority: 'Yes, close it', reason: 'Settled', actor: closer };
+  assert.throws(() => close(f.root, request, f.context, inspection), error => error.code === 'close-older-release-present' && ['alive-session', 'alive-failed-session', 'unknown-session', 'pid 9101', 'pid 9102'].every(text => error.message.includes(text)));
+  f.live.delete(aliveOwner.pid);
+  const { manifest, request: approved } = approve(f, members);
+  assert.deepEqual(manifest.guard.refusals, []);
+  assert.deepEqual(manifest.guard.warnings.map(warning => warning.session).sort(), ['alive-failed-session', 'failed-session', 'unstarted-session']);
+  assert.ok(manifest.hash);
+  close(f.root, approved, f.context, f.dependencies);
+  assert.equal(readState(f.root, 'delivery', created.id).status, 'closed');
+});
+
+test('the guard refuses an older-bound requesting session, warns on an older host registration and names an unreadable registry record', async t => {
+  const f = fixture(t);
+  const created = await delivery(f);
+  await f.call({ action: 'stop', kind: 'user-stop', reason: 'User paused' });
+  const members = [{ store: 'delivery', id: created.id }];
+  olderBinding(f, closer.session);
+  olderHostRegistration(f);
+  const manifest = closeManifest(f.root, { members }, f.context, f.dependencies);
+  assert.deepEqual(manifest.guard.refusals.map(refusal => refusal.session), [closer.session]);
+  assert.match(manifest.guard.refusals[0].reason, /^Session closing-session is bound to older release .* and is the session requesting close; close from a new session on a current release$/);
+  assert.deepEqual(manifest.guard.warnings.map(warning => warning.kind), ['older-host-registration']);
+  const request = { members, choices: choicesFor(manifest), manifestHash: 'e'.repeat(64), authority: 'Yes, close it', reason: 'Settled', actor: closer };
+  assert.throws(() => close(f.root, request, f.context, f.dependencies), error => error.code === 'close-older-release-present' && error.message.includes('closing-session'));
+  const other = olderBinding(f, 'other-session');
+  for (const [kind, key, label] of [['session', 'not-a-session-key', 'session'], ['activation', other, 'activation'], ['registration', 'e'.repeat(64), 'registration']]) {
+    const restore = rawRegistryRow(f, kind, key);
+    try {
+      const unreadable = closeManifest(f.root, { members }, f.context, f.dependencies);
+      const refusal = unreadable.guard.refusals.find(item => item.registry === f.context.store);
+      assert.ok(refusal, kind);
+      assert.ok(refusal.reason.startsWith(`The release registry at ${f.context.store} could not be read:`), refusal.reason);
+      assert.match(refusal.reason, new RegExp(label, 'i'));
+    } finally { restore(); }
+  }
+  assert.deepEqual(closeManifest(f.root, { members }, null, f.dependencies).guard.refusals.map(refusal => refusal.reason), ['No admitted migration context: the older-release guard cannot read the release registry']);
+});
+
+test('a contained worker with a valid termination file is reconciled by close, after which the delivery is replaceable and setup is quiescent', async t => {
+  const f = fixture(t);
+  const created = await delivery(f);
+  await f.call({ action: 'stop', kind: 'user-stop', reason: 'User paused' });
+  const helperProcess = { pid: 7201, created: '300', name: 'node.exe' };
+  const terminationPath = '.nightshift/runs/fixture-worker-termination.json';
+  update(f, current => { current.workers.push({ id: 'worker', role: 'lead', status: 'running', phase: 'contained', helperProcess, terminationPath }); });
+  const members = [{ store: 'delivery', id: created.id }];
+  f.live.add(helperProcess.pid);
+  const active = closeManifest(f.root, { members }, f.context, f.dependencies);
+  assert.equal(active.ineligible[0].code, 'worker-activity-unknown');
+  assert.match(active.ineligible[0].message, /close accepts no native worker evidence in this release/);
+  assert.doesNotMatch(active.ineligible[0].message, /adoption/);
+  const offered = overview(f.root, { dependencies: f.dependencies }).records.find(item => item.id === created.id);
+  assert.equal(offered.close.reason, 'worker-activity-unknown');
+  assert.equal(offered.close.message, active.ineligible[0].message);
+  assert.throws(() => assertQuiescent(f.root), { code: 'active-writer' });
+  f.live.delete(helperProcess.pid);
+  fs.writeFileSync(path.join(f.root, terminationPath), JSON.stringify({ runId: created.id, workerId: 'worker', helperProcess, descendantsReclaimed: true, exitCode: 0, observedAt: '2026-11-01T12:00:00.000Z' }));
+  const { manifest, request } = approve(f, members);
+  assert.equal(manifest.records[0].workers[0].reconciles, 'contained-termination');
+  const before = readState(f.root, 'delivery', created.id);
+  close(f.root, request, f.context, f.dependencies);
+  const after = readState(f.root, 'delivery', created.id);
+  assert.deepEqual(after.closure.reconciledWorkers, [{ id: 'worker', previousStatus: 'running', evidence: { kind: 'contained-termination' } }]);
+  assert.equal(after.workers[0].status, 'stopped');
+  const removed = ['status', 'closure', 'revision', 'updatedAt', 'progress', 'stopRecovery'];
+  assert.deepEqual(without({ ...after, workers: after.workers.map(worker => ({ ...worker, status: undefined })) }, removed), without({ ...before, workers: before.workers.map(worker => ({ ...worker, status: undefined })) }, removed));
+  assert.equal(assess(f).replaceable, true);
+  assert.doesNotThrow(() => assertQuiescent(f.root));
+  // A retry projects the closed member from its closure, without inspecting the worker again.
+  const retry = closeManifest(f.root, { members, choices: request.choices }, f.context, { ...f.dependencies, ownerAlive: () => { throw new Error('No liveness inspection on a retry'); } });
+  assert.equal(retry.records[0].workers[0].reconciles, null);
+});
+
+test('delivery accounting: close refuses records whose accounting is not current or whose store lacks it, and rolls back a save that leaves it not current', async t => {
+  const f = fixture(t);
+  const created = await delivery(f);
+  await f.call({ action: 'stop', kind: 'user-stop', reason: 'User paused' });
+  const members = [{ store: 'delivery', id: created.id }];
+  const { request } = approve(f, members);
+  const save = RunStore.prototype.save;
+  RunStore.prototype.save = function (state, kind, ...rest) {
+    const saved = save.call(this, state, kind, ...rest);
+    if (kind === 'close') state.progress = { ...state.progress, status: 'pending' };
+    return saved;
+  };
+  try { assert.throws(() => close(f.root, request, f.context, f.dependencies), { code: 'close-accounting-unavailable' }); } finally { RunStore.prototype.save = save; }
+  assert.equal(readState(f.root, 'delivery', created.id).status, 'stopped');
+  assert.equal(historyOf(f.root, 'delivery', created.id).some(entry => entry.kind === 'close'), false);
+  rawState(f, created.id, state => { state.objective = 'Changed outside the accounting'; });
+  const stale = closeManifest(f.root, { members }, f.context, f.dependencies);
+  assert.equal(stale.ineligible[0].code, 'close-accounting-unavailable');
+  assert.match(stale.ineligible[0].message, /^Its accounting is not current: consult migration inventory/);
+  const db = new DatabaseSync(path.join(f.root, '.nightshift/runs/state.sqlite'));
+  try { db.exec('DROP TABLE discharge_index'); } finally { db.close(); }
+  const legacy = closeManifest(f.root, { members }, f.context, f.dependencies);
+  assert.equal(legacy.ineligible[0].code, 'close-accounting-unavailable');
+  assert.match(legacy.ineligible[0].message, /retire this stopped legacy record instead/);
+});
+
+test('Ready names the accounting remedy for its status when a delivery marker is absent or not current', async t => {
+  for (const status of ['running', 'stopped']) {
+    for (const marker of ['absent', 'pending']) {
+      const f = fixture(t);
+      const created = await delivery(f);
+      if (status === 'stopped') await f.call({ action: 'stop', kind: 'user-stop', reason: 'User paused' });
+      f.live.delete(ownerProcess.pid);
+      rawState(f, created.id, state => { if (marker === 'absent') delete state.progress; else state.progress = { ...state.progress, status: 'pending' }; });
+      const record = overview(f.root, { dependencies: f.dependencies }).records.find(item => item.id === created.id);
+      assert.equal(record.close.offer, 'none');
+      assert.equal(record.close.reason, 'close-accounting-unavailable');
+      assert.match(record.close.message, status === 'running' ? /^Its saved accounting is not current: run close-manifest/ : /^Its saved accounting is not current: consult migration inventory/);
+    }
+  }
+});
+
+test('close refuses complete and retired members and a mismatched actor', async t => {
+  const f = fixture(t);
+  const created = await delivery(f);
+  await f.call({ action: 'stop', kind: 'user-stop', reason: 'User paused' });
+  const members = [{ store: 'delivery', id: created.id }];
+  const { request } = approve(f, members);
+  assert.throws(() => close(f.root, { ...request, actor: { host: 'codex', session: closer.session } }, f.context, f.dependencies), { code: 'migration-authority-required' });
+  assert.throws(() => close(f.root, { ...request, actor: owner }, f.context, f.dependencies), { code: 'migration-authority-required' });
+  update(f, current => { current.status = 'complete'; });
+  assert.equal(closeManifest(f.root, { members }, f.context, f.dependencies).ineligible[0].code, 'close-not-needed');
+  const g = fixture(t);
+  const second = await delivery(g);
+  await g.call({ action: 'stop', kind: 'user-stop', reason: 'User paused' });
+  const db = new DatabaseSync(path.join(g.root, '.nightshift/runs/state.sqlite'));
+  try {
+    db.exec('CREATE TABLE IF NOT EXISTS legacy_retirements (run_id TEXT PRIMARY KEY REFERENCES runs(id), artifact TEXT NOT NULL)');
+    db.prepare('INSERT INTO legacy_retirements VALUES (?, ?)').run(second.id, 'a'.repeat(64));
+  } finally { db.close(); }
+  assert.equal(closeManifest(g.root, { members: [{ store: 'delivery', id: second.id }] }, g.context, g.dependencies).ineligible[0].code, 'retired-run');
 });
