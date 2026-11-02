@@ -1,6 +1,6 @@
 # Ready run-state notices
 
-This spec governs [Ready offers to pick up an interrupted run](../features/ready-interrupted-run-pickup.md), including the settled questions the user revisited on 2026-11-01, and folds in a notice for run history that has not been compacted, which [Compact run history](compact-run-history.md) made possible. It does not cover closing a stopped record without its closing lifecycle, tracked as the Exploring draft [Close a stopped record the user considers settled](../FEATURES.md#close-a-stopped-record-the-user-considers-settled).
+This spec governs [Ready offers to pick up an interrupted run](../features/ready-interrupted-run-pickup.md), including the settled questions the user revisited on 2026-11-01, and folds in a notice for run history that has not been compacted, which [Compact run history](compact-run-history.md) made possible. It does not cover closing a stopped record without its closing lifecycle, which [Close settled records](close-settled-records.md) governs.
 
 ## Outcome
 

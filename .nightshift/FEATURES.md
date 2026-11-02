@@ -324,6 +324,12 @@ Collect Nightshift's reusable design principles in two files split by role, as w
 
 **Requires:** none.
 
+### Close settled records
+
+Give the user a supported, final way to close a delivery run or standalone review context whose work they consider settled, without running its remaining lifecycle, governed by [its spec](specs/close-settled-records.md). Raised by the user on 2026-11-01, outside any run, while agreeing that Ready should report stopped records: the user does not normally stop a run without wanting it closed; graduated from Exploring the same day, when the user settled its open questions and asked for it to close this repository's two running review contexts bound to 3.3.12, which no release can now stop, resume or adopt here. Settled 2026-11-01: a distinct terminal status `closed` stored in the record's status, not `complete`; stopped records and running records whose owner is proven inactive by adoption's evidence are eligible; it is an action of the current release's administrative migration entry, so it reaches records bound to any older release; the user approves a shown manifest of what closing drops with their exact reply, as for `retire`; and close refuses while another unfinished record or a live session in the project is bound to a release that does not know `closed`. Amended 2026-11-02, after the spec's final review showed that strict form could block every close: an older-bound unfinished record the user's reply acknowledges by name does not refuse close, and the acknowledgement is bound into the approval.
+
+**Requires:** none.
+
 ## Exploring
 
 ### [Reactivate retired delivery records](features/retired-delivery-reactivation.md)
@@ -469,10 +475,6 @@ Let a Vibe session own a Nightshift delivery as controller, preserving the settl
 ### [Harder fixtures for lead review and skeptic evaluation](features/harder-review-fixtures.md)
 
 Grow the seeded-defect suite past its detection ceiling in three directions: scenarios mined by a read-only tool from projects' run stores (fresh-gate catches after a clean cumulative review, refuted findings whose site a repair later changed, confirmed findings disposed as skip or defer, and leads disagreeing on the same inputs), curated by hand into fixtures; one semantic mutation planted in a snapshot of a real module; and skeptic traps that are true but mis-located, inflated in severity, right for the wrong evidence or fixed at a regression's cost. Mining is a tool over recorded state, not a lifecycle step. Open: selection bias toward what some reviewer caught, fixture size against cost, the grader's line-distance matching and a verdict-per-class grammar for traps, baseline and target resets, and which projects may contribute code. Raised 2026-10-29.
-
-### Close a stopped record the user considers settled
-
-Give the user a supported way to close a stopped delivery run or review context whose work they consider done, recording their decision in their own words as the reason its remaining closing obligations are dropped, so it no longer reads as unfinished. Raised by the user on 2026-11-01, outside any run, while agreeing that Ready should report stopped records: the user does not normally stop a run without wanting it closed. Today the only route from stopped to `complete` is `resume` followed by everything [the runtime reference](../internal/runtime/REFERENCE.md#delivery-and-evidence) lists for `complete`, including the retrospective, a resolved closing record and, on a handed-over run, the recorded morning report, while migration `retire` accepts only legacy records without independent accounting. The two stopped delivery runs that prompted the request in this repository, among them `7b7ad4bd-c137-4dc4-8300-eaab1be6e89b`, the README polish whose saved stop reason records that on 2026-10-05 the user said the Nightshift mechanics were not needed, turned out to be retired by the legacy migration [recorded on 2026-10-15](reports/legacy-delivery-migration-20261015.md) and so are already closed; the gap remains for any stopped record that is not retired. Ready would offer this close beside the pickup that [Ready offers to pick up an interrupted run](features/ready-interrupted-run-pickup.md) agreed. Open: whether the result is `complete` or a distinct closed status, and how the creation gate, the inventory and later handovers treat it; which obligations may be dropped and which, such as pending closure of findings or active workers, still refuse it; who may record it for a record owned by an ended session, given [Recover a run whose owner can no longer act while its host process lives on](features/stalled-owner-recovery.md); and whether it also covers records stopped for a resource limit.
 
 ## History
 
