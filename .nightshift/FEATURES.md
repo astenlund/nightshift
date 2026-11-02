@@ -324,12 +324,6 @@ Collect Nightshift's reusable design principles in two files split by role, as w
 
 **Requires:** none.
 
-### Close settled records
-
-Give the user a supported, final way to close a delivery run or standalone review context whose work they consider settled, without running its remaining lifecycle, governed by [its spec](specs/close-settled-records.md). Raised by the user on 2026-11-01, outside any run, while agreeing that Ready should report stopped records: the user does not normally stop a run without wanting it closed; graduated from Exploring the same day, when the user settled its open questions and asked for it to close this repository's two running review contexts bound to 3.3.12, which no release can now stop, resume or adopt here. Settled 2026-11-01: a distinct terminal status `closed` stored in the record's status, not `complete`; stopped records and running records whose owner is proven inactive by adoption's evidence are eligible; it is an action of the current release's administrative migration entry, so it reaches records bound to any older release; the user approves a shown manifest of what closing drops with their exact reply, as for `retire`; and close refuses while another unfinished record or a live session in the project is bound to a release that does not know `closed`. Amended 2026-11-02, after the spec's final review showed that strict form could block every close: an older-bound unfinished record the user's reply acknowledges by name does not refuse close, and the acknowledgement is bound into the approval.
-
-**Requires:** none.
-
 ## Exploring
 
 ### [Reactivate retired delivery records](features/retired-delivery-reactivation.md)
