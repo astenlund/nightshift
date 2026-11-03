@@ -41,5 +41,5 @@ Each direction is the report's; the owner is where the backlog already carries i
 
 ## Open
 
-- The audit of refusal codes against the provenance-or-bookkeeping split, which the report proposes as the way to measure how much of the friction is the second kind, is an input to the assessment pass the user chose on 2026-11-03, not an entry.
+- The audit of refusal codes against the provenance-or-bookkeeping split, which the report proposes as the way to measure how much of the friction is the second kind, was made on 2026-11-03 as [the refusal-code audit](../reports/refusal-code-audit-20261103.md) and fed the assessment pass the user chose that day: 993 refusal sites over 359 codes, 541 of them slated for the removals of the worklist's steps 4 and 5, all but seventeen in modules the worklist names, and the friction concentrated in one comparison over a snapshot of the whole project inventory, `evidence.js:fresh` and, for the closing baseline, `changedPaths`, which the worklist's step 3 now re-scopes.
 - The report did not analyse whether any listed refusal was strictly necessary for provenance; some may be load-bearing in ways it does not see, so the grouping above is a map of complaints, not a verdict on the gates.
