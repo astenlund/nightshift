@@ -100,7 +100,9 @@ function assessment(store, options = {}) {
     inputBytes = next;
     if (mandatory) mandatoryCharged += size;
   };
-  const budget = { bytes: 0, artifacts: new Set(), artifactLimit: progress.MAX_FRONTIER_BYTES, chargeInput, remainingInput: () => MAX_INPUT_BYTES - inputBytes - (mandatoryTotal - mandatoryCharged) };
+  // Each budget charges distinct artifact bodies against its own 8 MiB allowance while sharing the one 64 MiB input allowance.
+  const evidenceBudget = () => ({ bytes: 0, artifacts: new Set(), artifactLimit: progress.MAX_FRONTIER_BYTES, chargeInput, remainingInput: () => MAX_INPUT_BYTES - inputBytes - (mandatoryTotal - mandatoryCharged) });
+  const budget = evidenceBudget();
   const parse = (body, mandatory = false) => {
     chargeInput(body, mandatory);
     return JSON.parse(body);
@@ -230,15 +232,19 @@ function assessment(store, options = {}) {
           const completed = parse(completion.state);
           requireCondition(completed.id === state.id && completed.revision === completion.revision && completed.status === 'complete', CODE, 'Recorded completion identity is contradictory');
           provenance.read(completed, budget);
+          // The completion discharge check hydrates every task check and review snapshot of the completed state. Those assurance
+          // bodies are charged to a budget of this record's own, so completed records do not accumulate against the accounting and
+          // provenance allowance shared across the store, which would refuse every new delivery once enough runs had completed.
+          const evidence = evidenceBudget();
           const snapshotValid = (value, empty = false) => {
-            const resolved = accounting.resolve(value, budget);
+            const resolved = accounting.resolve(value, evidence);
             if (Array.isArray(resolved?.files) && resolved.files.length === 0) return empty && resolved.digest === createHash('sha256').update('[]').digest('hex');
             progress.snapshotIdentity(resolved);
             return true;
           };
-          const target = value => ({ ...value, checks: value.checks.map(check => ({ ...check, snapshot: accounting.resolve(check.snapshot, budget) })), reviews: value.reviews.map(review => ({ ...review, snapshot: accounting.resolve(review.snapshot, budget) })), ...(value.docsExemption ? { docsExemption: { ...value.docsExemption, snapshot: accounting.resolve(value.docsExemption.snapshot, budget) } } : {}) });
-          const historicalState = { ...state, tasks: state.tasks.map(target), closing: { ...state.closing, ...(state.closing?.docs ? { docs: { ...target(state.closing.docs), baseline: accounting.resolve(state.closing.docs.baseline, budget) } } : {}) } };
-          closingOpen = !closingDischargedSince(state, completed, value => accounting.resolve(value, budget));
+          const target = value => ({ ...value, checks: value.checks.map(check => ({ ...check, snapshot: accounting.resolve(check.snapshot, evidence) })), reviews: value.reviews.map(review => ({ ...review, snapshot: accounting.resolve(review.snapshot, evidence) })), ...(value.docsExemption ? { docsExemption: { ...value.docsExemption, snapshot: accounting.resolve(value.docsExemption.snapshot, evidence) } } : {}) });
+          const historicalState = { ...state, tasks: state.tasks.map(target), closing: { ...state.closing, ...(state.closing?.docs ? { docs: { ...target(state.closing.docs), baseline: accounting.resolve(state.closing.docs.baseline, evidence) } } : {}) } };
+          closingOpen = !closingDischargedSince(state, completed, value => accounting.resolve(value, evidence));
           discharged = !closingOpen && require('./lifecycle').historicalDischarge(historicalState, snapshotValid);
         }
       }

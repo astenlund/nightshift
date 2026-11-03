@@ -1,17 +1,17 @@
 {
   "schema": 1,
   "name": "nightshift",
-  "version": "3.3.26",
+  "version": "3.3.27",
   "files": [
     {
       "path": ".claude-plugin/plugin.json",
       "bytes": 641,
-      "sha256": "8984448d393914286423319514762daf2227f37d5ebb8b7ff5d431529f32b221"
+      "sha256": "7d4fde3cf69cc929ca82cc85e3aa041af49dc45e0e3bba00cdaaad69bc5cd9ff"
     },
     {
       "path": ".codex-plugin/plugin.json",
       "bytes": 1161,
-      "sha256": "33fc1f0e9dbf353c0cb11c39558f8dfd340d847dd13f6b20f04bf00629d9f1ce"
+      "sha256": "9eece2d68eedf3bb047b43e3a92d83229bc7a83cd0a5e95adcf06763292b9b92"
     },
     {
       "path": "LICENSE",
@@ -165,8 +165,8 @@
     },
     {
       "path": "internal/runtime/REFERENCE.md",
-      "bytes": 135200,
-      "sha256": "8d520e705acfe819b74bd5c2e3229313bc843c10ab1ac7238bb0159c9b8c8c5a"
+      "bytes": 135678,
+      "sha256": "6f3c26d7926d202b4edde1d29d061559067af9770dd8b236ee037b75de636a09"
     },
     {
       "path": "internal/runtime/acceptance-checkpoint.js",
@@ -220,8 +220,8 @@
     },
     {
       "path": "internal/runtime/creation-consistency.js",
-      "bytes": 21385,
-      "sha256": "8e40881b75d68f892398ede8926c5e1e4ac253d16252beee15b33f1debc17f83"
+      "bytes": 22012,
+      "sha256": "5340570895a9fe1930a4d7a009794cded03cff7af116365b235b218386074714"
     },
     {
       "path": "internal/runtime/delivery-acceptance.js",
