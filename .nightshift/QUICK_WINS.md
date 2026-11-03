@@ -496,6 +496,12 @@ Run `dcd9e840-e8b6-4f28-9c6e-b5aaaaac9847` delivered the Vibe reviewer host and 
 
 This entry is the durable home for those obligations; it does not claim any of them done, does not authorize publication, and does not infer user answers for triage. Each obligation is recorded through the runtime by a closing session on a Claude or Codex controller. Tracking does not authorize implementation.
 
+### Point close's no-activation warning at a remedy that clears it
+
+Found on 2026-11-02 in this repository, outside any run, while preparing the close of the two 3.3.12 review contexts, and tracked by the user's decision on 2026-11-03. The close guard in `internal/runtime/close.js` warns `no-activation` for a session bound to a release older than close support that has no recorded activation, with the note "end or restart it before replying". Ending the session cannot clear that warning: with no activation there is no owner process to inspect, so the guard keeps warning for as long as the binding stays `bound`. After the user ended the 3.2.0 Codex session `01a0ba94-8a7c-7ee2-839c-6f50f2ca7c34`, the recomputed manifest still carried the warning. The guard skips bindings that are not `bound`, so the release service's `retire` maintenance operation on the binding does clear it, and the guard's refusal for a live activation owner already names that remedy ("retire the old session binding"). That remedy can itself be unavailable: a `retire` request carries no session of its own, so the bootstrap runs it on the registration's base bundle, and on 2026-11-03, after the Codex plugin had been updated but before the Codex registration's base had moved past 3.3.12, `retire` refused with `retained-bootstrap-unavailable` ("Unsupported run database version 3"), because 3.3.12 cannot read the compacted delivery store.
+
+Reword the warning's note so it says that the guard cannot tell whether the session is live and that, once the user knows it has ended, retiring its binding removes it from the guard, and say what to do when that registration's base release cannot run `retire`. Shipped runtime text, so the batch needs a version increase. Tracking does not authorize implementation.
+
 ## History
 
 Prior delivered work remains in [QUICK_WINS_HISTORY.md](QUICK_WINS_HISTORY.md).
