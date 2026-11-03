@@ -40,6 +40,8 @@ It recurred twice more on 2026-10-06 in run `879319da-5bce-43b3-bdf1-020511383ed
 
 It recurred on 2026-10-30 in Hermes run `5ebc4c0e` on 3.3.18: two docs assessments dispatched on other tasks of the run (`547d157d`, `eab7bd6c`) each raised a required minor finding that `scripts/obsidian/README.md`, a project operating input assessed as code under the dispatch rules, "gets only a documentation review unless the controller routes it to code assessment", although the code task that changed it had a complete clean code assessment (`a434795c`); each needed a skeptic and a `refuted` disposition, and the finding stopped once the docs dispatch carried a `review.acknowledgements` entry naming that assessment, which the reviewers' context had not included. Maintainer inbox report `2026-10-30-docs-review-reroutes-code-assessed-readme.md`; recorded 2026-11-03 and agreed at the user's inbox triage that day.
 
+It recurred on 2026-11-03 in this repository's delivery `ffdba409` (3.3.27): the docs assessment `c5dd8d4d` raised as a finding that `internal/runtime/REFERENCE.md` is operating instructions needing code assessment, although the task's code assessments `32ec6f8c` and `64b8abca` had assessed it at the same bytes, and a skeptic (`61258f3a`, whose 177,669 tokens also covered another finding) refuted it. The user chose at that run's triage to record it here.
+
 ## Settled questions
 
 The user agreed these answers on 2026-10-03, when the entry graduated from Exploring to current work. Each question is kept with its answer. Checked the same day: the docs-review brief in `internal/runtime/review.js` still asks the reviewer to "Report as a finding any changed file you judge to be operating instructions".
