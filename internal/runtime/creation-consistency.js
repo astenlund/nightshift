@@ -232,7 +232,7 @@ function assessment(store, options = {}) {
           const completed = parse(completion.state);
           requireCondition(completed.id === state.id && completed.revision === completion.revision && completed.status === 'complete', CODE, 'Recorded completion identity is contradictory');
           provenance.read(completed, budget);
-          // The completion discharge check hydrates every task check and review snapshot of the completed state. Those assurance
+          // The completion discharge check hydrates the assurance snapshots and closing evidence of the completed state. Those
           // bodies are charged to a budget of this record's own, so completed records do not accumulate against the accounting and
           // provenance allowance shared across the store, which would refuse every new delivery once enough runs had completed.
           const evidence = evidenceBudget();

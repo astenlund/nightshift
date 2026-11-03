@@ -165,8 +165,8 @@
     },
     {
       "path": "internal/runtime/REFERENCE.md",
-      "bytes": 135678,
-      "sha256": "6f3c26d7926d202b4edde1d29d061559067af9770dd8b236ee037b75de636a09"
+      "bytes": 135666,
+      "sha256": "c5115c0f9a27cdf45690a814ea72542861280330d46782b88e8dee2acd14fcfe"
     },
     {
       "path": "internal/runtime/acceptance-checkpoint.js",
@@ -220,8 +220,8 @@
     },
     {
       "path": "internal/runtime/creation-consistency.js",
-      "bytes": 22012,
-      "sha256": "5340570895a9fe1930a4d7a009794cded03cff7af116365b235b218386074714"
+      "bytes": 22010,
+      "sha256": "ebc9d206419c0d301087b6a7d27fff4a1381c3d87c1b374243bee256e67e470f"
     },
     {
       "path": "internal/runtime/delivery-acceptance.js",

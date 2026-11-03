@@ -20,7 +20,7 @@ const { completeReflection } = require('./fixtures/completion');
 const { dropFacilityProvenance } = require('./fixtures/legacy-provenance');
 const { historyText, rewriteHistory } = require('./fixtures/history');
 
-test('creation shares an eight MiB distinct-artifact allowance across completed records', main);
+test('creation shares an eight MiB distinct-artifact allowance for accounting and provenance and bounds completion evidence per record', main);
 
 test('an unconfirmed morning report holds replacement until any admitted session records its recipient\'s reply', async t => {
   const parent = path.resolve(__dirname, '../.tmp/creation-report-delivery');
