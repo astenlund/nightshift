@@ -285,10 +285,12 @@ function validatePositions(report, request) {
   }
 }
 
-// How a dispatch begins: a fresh reviewer, one continuing its own session in a new copy, or one standing in for a lost session.
-function opening(request, role, workspace) {
+// How a dispatch begins: a fresh reviewer, one continuing its own session in a new copy or, on Vibe, in its refreshed copy at the same
+// path, or one standing in for a lost session.
+function opening(request, role, workspace, sameCopy) {
   const continued = request.continues;
   const location = workspace ? `at ${workspace}, which is your current working directory` : 'in your current working directory';
+  if (continued?.kind === 'resumed' && sameCopy) return `You are continuing your own earlier work as the ${role} in this session (request ${continued.requestId}). This dispatch refreshed the private copy of the project ${location}; it now holds the current snapshot, so read context/diff.patch, context/manifest.json and project/ there again. What you read in earlier turns may be stale; do not rely on it for the current state.`;
   if (continued?.kind === 'resumed') return `You are continuing your own earlier work as the ${role} in this session (request ${continued.requestId}). This dispatch gives you a new private copy of the project ${location}: read context/diff.patch, context/manifest.json and project/ there. Copies from your earlier turns, in any other directory, are stale; do not read them.`;
   if (continued?.kind === 'replacement') return `You are a fresh independent ${role} standing in for the ${role} of request ${continued.requestId}, whose session cannot be resumed; its record follows.`;
   return `You are a fresh independent ${role}.`;
@@ -429,15 +431,16 @@ function vibeRules(workspace) {
   return `${location}: read context/diff.patch, context/manifest.json, context/probes/ and project/ there by relative path, since Vibe refuses reads outside it. Your run_typescript sandbox can load project files through read_file, but the runtime neither records nor checks what runs there, so a sandbox run is not execution evidence of the project, even of project code it loaded: a deciding claim that needs execution goes through a probe request, as for every host.\n`;
 }
 
-// workspace is the absolute directory of the dispatch's private copy, which a resumed reviewer is told by name; host is the
-// attempt's host, whose own tools may need a rule of their own; probeFiles names each returned probe result in the copy, since a
-// reviewer that can only read named files cannot list a folder.
-function buildPrompt(request, { workspace, host, probeFiles = [] } = {}) {
+// workspace is the absolute directory of the dispatch's private copy, which a resumed reviewer is told by name, and sameCopy whether a
+// resumed reviewer's copy was refreshed at the path it already knows; host is the attempt's host, whose own tools may need a rule of
+// their own; probeFiles names each returned probe result in the copy, since a reviewer that can only read named files cannot list a
+// folder.
+function buildPrompt(request, { workspace, host, probeFiles = [], sameCopy = false, rules = null } = {}) {
   const skeptic = request.kind === 'skeptic';
   const dialogue = Boolean(request.dialogue);
   const scope = skeptic ? 'Use the complete supplied artifact and cumulative change as context for validating the assigned claims and their affected siblings.' : 'Assess the complete supplied artifact and cumulative change, surrounding code and sibling paths.';
   const purpose = skeptic ? 'deciding each assigned claim' : dialogue ? 'answering the dialogue' : 'a credible broad assessment';
-  const common = `${opening(request, skeptic ? 'skeptic' : 'strong lead reviewer', workspace)} ${scope} Reviewed files are immutable. Do not edit them, commit, or publish. Mutating probes require a separate isolated fixture; if tools cannot support a deciding check, report the missing evidence. Do not delegate unless the assignment explicitly includes peer dispatch. Report only concrete consequences with evidence; do not manufacture findings or prescribe unnecessary implementation detail.\n\nRequest: ${request.id}\nRequirements:\n${request.requirements}\n\nAll applicable review dimensions:\n${request.dimensions.join('\n')}\n\nRead context/diff.patch, context/manifest.json and the files in project/ as needed for ${purpose}. The full source snapshot is available. Prior fixes are included in the cumulative change and need surrounding/sibling coverage.\n`;
+  const common = `${opening(request, skeptic ? 'skeptic' : 'strong lead reviewer', workspace, sameCopy)} ${scope} Reviewed files are immutable. Do not edit them, commit, or publish. Mutating probes require a separate isolated fixture; if tools cannot support a deciding check, report the missing evidence. Do not delegate unless the assignment explicitly includes peer dispatch. Report only concrete consequences with evidence; do not manufacture findings or prescribe unnecessary implementation detail.\n\nRequest: ${request.id}\nRequirements:\n${request.requirements}\n\nAll applicable review dimensions:\n${request.dimensions.join('\n')}\n\nRead context/diff.patch, context/manifest.json and the files in project/ as needed for ${purpose}. The full source snapshot is available. Prior fixes are included in the cumulative change and need surrounding/sibling coverage.\n`;
   const lead = `Evaluate all dimensions without quotas or equal-depth narration. The author has not selected relevant dimensions. If the assignment is too large for credible coverage, return incomplete and describe the needed peer coverage. One underlying problem is one finding. ${SEVERITY_RUBRIC}\n`;
   const documentation = 'This is a documentation review. The code in the cumulative change is context: judge what the documentation, including the backlog, says about it, not whether the code is correct. Report as a finding any changed file you judge to be operating instructions that agents load or are directed to follow during a run, such as skills, instruction files or runtime reference guidance, so the controller routes it to code assessment.\n';
   const proposal = 'For every confirmed verdict give repairProposal: the approach a repair would take, the smallest change that fixes the property the finding\'s obligation keys on rather than only the reported case, preferring removal or generalization over added mechanism, with enough reasoning to judge it and without a complete patch, whatever you recommend about implementing it. For a refuted or unverified verdict give an empty repairProposal unless a repair is still worth describing.\n';
@@ -449,7 +452,9 @@ function buildPrompt(request, { workspace, host, probeFiles = [] } = {}) {
   // The report schema is the same for every dispatch of a kind, so the request id and the fields this dispatch fills are named here.
   const fields = ['requestId', 'status', 'coverage', 'findings', 'probes', 'summary', 'toolFailure', ...(skeptic ? [] : ['closures', 'positions'])];
   const empties = skeptic ? '' : ' Leave closures empty unless findings are listed as pending closure, and positions empty unless this is a dialogue turn.';
-  return common + definitions + '\n\n' + role + acknowledgementBrief(request) + checkBrief(request) + execution + (host === 'vibe' ? vibeRules(workspace) : '') + TOOL_FAILURE_RULE + '\n' + `\nReturn the requested structured report for request ${request.id} with requestId set to that id verbatim, ${fields.slice(1, -1).join(', ')} and ${fields.at(-1)}. Use an empty probes array when no execution evidence is missing.${empties}\n`;
+  // A resumed Vibe session runs under its predecessor's system prompt, so the dispatch's own rules reach it through the turn prompt.
+  const carried = sameCopy && rules ? `Applicable rules for this turn, which govern this assessment as the system prompt of a fresh dispatch would:\n${rules}\n` : '';
+  return common + definitions + '\n\n' + role + acknowledgementBrief(request) + carried + checkBrief(request) + execution + (host === 'vibe' ? vibeRules(workspace) : '') + TOOL_FAILURE_RULE + '\n' + `\nReturn the requested structured report for request ${request.id} with requestId set to that id verbatim, ${fields.slice(1, -1).join(', ')} and ${fields.at(-1)}. Use an empty probes array when no execution evidence is missing.${empties}\n`;
 }
 
 // Whether the inputs an assessment judged are unchanged, before its dispatch returns and again at import. A spec assessment judged
@@ -482,9 +487,24 @@ function coverageText(report) {
   return report.coverage.map(item => `${item.dimension}: ${item.evidence}`).join('\n');
 }
 
-// The Vibe version an attempt ran and the configuration keys a later version added that have no known default to compare with.
+// The Vibe version an attempt ran, the configuration keys a later version added that have no known default to compare with, and the
+// model calls its journal records, by which a resumed attempt's cost is judged against a replacement's.
 function vibeAttemptFields(record) {
-  return { vibeVersion: record.version, vibeUncomparedKeys: record.uncomparedKeys };
+  return { vibeVersion: record.version, vibeUncomparedKeys: record.uncomparedKeys, vibeCalls: record.calls ?? null };
+}
+
+// The private copy a dispatch runs in: a new one, or for a resumed Vibe session the lineage's copy refreshed at the path the session
+// keeps, recreated when the disposable copies were cleared and refused while it still holds a project folder.
+function prepareWorkspace(canonical, continuation) {
+  const reused = continuation?.vibe?.workspace;
+  if (!reused) return createPrivateCopyDirectory(canonical);
+  const workspace = path.join(canonical, ...reused.split('/'));
+  requireCondition(isPrivateCopyDirectory(canonical, workspace), 'resume-unsupported', 'The resumed Vibe session\'s private copy is not recorded as one; replace the reviewer with review.replaces');
+  requireCondition(!fs.existsSync(path.join(workspace, 'project')), 'resume-unsupported', 'The resumed Vibe session\'s private copy still holds a project folder; replace the reviewer with review.replaces');
+  fs.mkdirSync(workspace, { recursive: true });
+  fs.rmSync(path.join(workspace, 'context'), { recursive: true, force: true });
+
+  return workspace;
 }
 
 async function dispatchReview(root, options, dependencies = {}) {
@@ -499,7 +519,8 @@ async function dispatchReview(root, options, dependencies = {}) {
   requireCondition(REQUEST_ID.test(id), 'invalid-dispatch', 'Dispatch identity must be a UUID');
   const target = path.join(directory, id);
   fs.mkdirSync(target);
-  const workspace = createPrivateCopyDirectory(canonical);
+  const continuation = options.continuation ?? null;
+  const workspace = prepareWorkspace(canonical, continuation);
   const project = path.join(workspace, 'project');
   const context = path.join(workspace, 'context');
   let processStarted = false;
@@ -546,7 +567,6 @@ async function dispatchReview(root, options, dependencies = {}) {
     }
     // A repository boundary prevents host discovery from walking into the controller's checkout.
     git(workspace, ['init', '--quiet']);
-    const continuation = options.continuation ?? null;
     const request = {
       ...selection,
       id, workspace: path.relative(canonical, workspace).split(path.sep).join('/'), runId: options.runId, recordKind: options.recordKind ?? 'delivery', taskId: options.taskId, coveredTaskIds: options.coveredTaskIds ?? [options.taskId], commitments: options.commitments ?? {}, resources: options.resources ?? null, controller: options.controller ?? null, kind: options.kind ?? 'code', requirements: text(options.requirements, 'review requirements'), dimensions: DIMENSIONS[lensFor(options)], findings: (options.findings ?? []).map(assignedClaim), checks, snapshot: captured, contextSnapshot, baseSha: options.baseSha,
@@ -580,8 +600,10 @@ async function dispatchReview(root, options, dependencies = {}) {
         processStarted = false;
         terminationProven = false;
         const resumed = continuation?.kind === 'resumed' ? { session: continuation.session, priorThreadTokens: continuation.priorThreadTokens ?? null } : {};
+        // A resumed Vibe attempt's home is seeded from the retained stores the continuation named, each as a project-relative path.
+        const vibeResume = continuation?.vibe ? { session: path.join(canonical, ...continuation.vibe.session.split('/')), plugins: path.join(canonical, ...continuation.vibe.plugins.split('/')), promptFile: path.join(canonical, ...continuation.vibe.prompt.split('/')) } : undefined;
         try {
-          result = await (dependencies.runAgent ?? runAgent)({ ...candidate, ...resumed, vibePreflight: candidate.host === 'vibe' && options.vibePreflightRequired ? { version: options.vibeVersions?.[index] } : undefined, cwd: workspace, protectedRoot: canonical, artifacts, systemFile, env: workerEnvironment(options.resourceContext), prompt: buildPrompt(request, { workspace, host: candidate.host, probeFiles }), schema: schemaFor(request.kind), timeoutMs, onProcess: pid => { processStarted = true; options.onProcess?.(pid); }, onSession: options.onSession });
+          result = await (dependencies.runAgent ?? runAgent)({ ...candidate, ...resumed, vibeResume, vibePreflight: candidate.host === 'vibe' && options.vibePreflightRequired ? { version: options.vibeVersions?.[index] } : undefined, cwd: workspace, protectedRoot: canonical, artifacts, systemFile, env: workerEnvironment(options.resourceContext), prompt: buildPrompt(request, { workspace, host: candidate.host, probeFiles, sameCopy: Boolean(continuation?.vibe), rules: options.rules }), schema: schemaFor(request.kind), timeoutMs, onProcess: pid => { processStarted = true; options.onProcess?.(pid); }, onSession: options.onSession });
         } catch (error) {
           // A started host that fails on its own, without an operating-system error, failed in its session.
           sessionFailure = processStarted && error.errno === undefined;

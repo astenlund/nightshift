@@ -366,8 +366,10 @@ function vibeHostFailure(summary, stderr) {
 }
 
 // Runs one lead assessment on Mistral Vibe, headless in the dispatch's private copy, under the isolation in vibe.js. Vibe has no
-// structured-output option, so the report schema is stated in the prompt, and it cannot resume into a new copy, so it never resumes.
-// Its JSON output exposes no partial output, so like Claude attempts its attempts are not checked for output loops.
+// structured-output option, so the report schema is stated in the prompt. A resumed session keeps the directory it started in, so a
+// resume runs in the lineage's refreshed copy from a home seeded with the retained session and plugin stores (vibeResume), under the
+// predecessor's reviewer prompt byte for byte, since Vibe replaces a session's stored system instructions with changed ones. Its JSON
+// output exposes no partial output, so like Claude attempts its attempts are not checked for output loops.
 async function runVibe(options) {
   const vibe = require('./vibe');
   const file = options.executable ?? executable('vibe', options.protectedRoot ?? options.cwd);
@@ -379,14 +381,16 @@ async function runVibe(options) {
   const version = preflighted ? preflight.version : launchVersion;
   requireCondition(vibe.versionSupported(launchVersion), preflighted ? 'unusable-review' : 'vibe-version-unsupported', `Vibe ${launchVersion ?? 'of unreadable version'} is below the supported floor ${vibe.VERSION_FLOOR.join('.')}`);
   requireCondition(Object.hasOwn(vibe.MODELS, options.model), 'vibe-model-unknown', `The Vibe launcher has no entry for ${options.model}`);
-  requireCondition(!options.session, 'resume-unsupported', 'A Vibe session cannot be resumed into a new private copy; replace the reviewer with review.replaces');
+  const resume = options.session ? options.vibeResume : null;
+  requireCondition(!options.session || resume !== null && typeof resume === 'object' && ['session', 'plugins', 'promptFile'].every(key => typeof resume[key] === 'string'), 'resume-unsupported', 'A Vibe session is resumed only from its retained session store, plugin store and reviewer prompt; replace the reviewer with review.replaces');
   const level = vibe.effortLevel(options.model, options.effort);
-  const isolation = vibe.createIsolation(options.artifacts, options.model, level, fs.readFileSync(options.systemFile, 'utf8'));
+  const isolation = vibe.createIsolation(options.artifacts, options.model, level, fs.readFileSync(resume ? resume.promptFile : options.systemFile, 'utf8'), resume ? { sessionId: options.session, session: resume.session, plugins: resume.plugins } : null);
   const promptFile = path.join(options.artifacts, 'prompt.md');
   fs.writeFileSync(promptFile, `${options.prompt}\nReply with only one JSON object that conforms to this JSON schema, with no other text:\n${JSON.stringify(options.schema)}\n`, { flag: 'wx' });
   const exportDirectory = path.join(options.artifacts, 'vibe');
   const timeLimit = Math.max(60, Math.floor((options.timeoutMs ?? 900000) / 1000) - 60);
-  const args = ['--workdir', options.cwd, '--agent', vibe.AGENT, '--prompt-file', promptFile, '--output', 'json', '--output-dir', exportDirectory, '--time-limit', String(timeLimit), ...vibe.TOOLS.flatMap(tool => ['--enabled-tools', tool])];
+  // On a resume Vibe ignores --workdir for the session's stored directory, which is the same refreshed copy.
+  const args = ['--workdir', options.cwd, ...(resume ? ['--resume', options.session] : []), '--agent', vibe.AGENT, '--prompt-file', promptFile, '--output', 'json', '--output-dir', exportDirectory, '--time-limit', String(timeLimit), ...vibe.TOOLS.flatMap(tool => ['--enabled-tools', tool])];
   const execution = startProcess(file, args, { ...options, env: vibe.environment(options.env ?? process.env, isolation) });
   const stdout = [];
   let received = 0;
@@ -408,7 +412,7 @@ async function runVibe(options) {
   const exit = await execution.finish();
   let tokens = null;
   let hostFailure = null;
-  const record = { version, uncomparedKeys: [], attributionFiles: [] };
+  const record = { version, uncomparedKeys: [], attributionFiles: [], calls: null };
   try {
     let entries = null;
     try {
@@ -426,7 +430,10 @@ async function runVibe(options) {
     hostFailure = overflowed ? `Vibe's output passed ${vibe.OUTPUT_LIMIT} bytes, so the process was stopped` : vibeHostFailure(summary, execution.stderrTail());
     const { exportFile, states } = vibe.journalFiles(exportDirectory);
     record.attributionFiles = [exportFile, ...states];
+    record.calls = vibe.journalCalls(exportDirectory);
     const session = typeof summary?.session_id === 'string' && summary.session_id ? summary.session_id : null;
+    // A resumed attempt is attributable only when the host continued the session it was asked to resume.
+    const continuedSession = !options.session || session === options.session;
     if (session) options.onSession?.(session);
     if (startFailure) {
       requireReclaimed(exit, startFailure);
@@ -441,7 +448,7 @@ async function runVibe(options) {
       if (differing.length > 0) throw new RunError('unusable-review', `Vibe's effective configuration differs from the launcher's at ${differing.join(', ')}`);
     }
 
-    return { host: 'vibe', model: options.model, effort: level, session, attributionVerified: session !== null && vibe.journalModel(states) === options.model, status: finished ? 'complete' : 'failed', output: vibe.reportFromEntries(entries), tokens, threadTokens: tokens, hostFailure: finished ? null : hostFailure, exit, vibe: record };
+    return { host: 'vibe', model: options.model, effort: level, session, attributionVerified: session !== null && continuedSession && vibe.journalModel(states) === options.model, status: finished ? 'complete' : 'failed', output: vibe.reportFromEntries(entries), tokens, threadTokens: tokens, hostFailure: finished ? null : hostFailure, exit, vibe: record };
   } catch (error) {
     const failure = error instanceof Error ? new RunError(error.code ?? 'unusable-review', error.message) : new RunError('unusable-review', String(error));
     throw Object.assign(failure, error instanceof Error ? error : {}, { cause: error, descendantsReclaimed: exit.descendantsReclaimed, tokens, hostFailure, vibe: record });

@@ -49,7 +49,7 @@ function cleanConfig(model = 'glm-5-3', level = 'high') {
 const REPORT = { requestId: 'r', status: 'complete', coverage: [], findings: [], probes: [], summary: 'Fixture', toolFailure: '', closures: [], positions: [] };
 
 // Runs the real launcher against the fake Vibe executable, with an inherited environment carrying variables the reviewer must not see.
-async function launch(t, { control = {}, effort = 'high', model = 'glm-5-3', installed = '3.0.0', preflight } = {}) {
+async function launch(t, { control = {}, effort = 'high', model = 'glm-5-3', installed = '3.0.0', preflight, session, resume } = {}) {
   const root = scratch(t, 'launch');
   const cwd = path.join(root, 'copy');
   const artifacts = path.join(root, 'attempt');
@@ -59,7 +59,7 @@ async function launch(t, { control = {}, effort = 'high', model = 'glm-5-3', ins
   fs.writeFileSync(systemFile, 'You are an independent read-only engineering assessor.');
   fs.writeFileSync(path.join(artifacts, 'control.json'), JSON.stringify({ model, config: Object.hasOwn(vibe.MODELS, model) ? cleanConfig(model, vibe.effortLevel(model, effort)) : {}, report: REPORT, ...control }));
   const env = { ...process.env, VIBE_ACTIVE_MODEL: 'mistral-medium-3.5', VIBE_HOME: path.join(root, 'user-vibe'), ENABLE: 'true', SAVE_DIR: path.join(root, 'elsewhere'), MISTRAL_API_KEY: 'fixture-key' };
-  const options = { host: 'vibe', model, effort, cwd, protectedRoot: root, artifacts, systemFile, prompt: 'Fixture assessment', schema: { type: 'object' }, timeoutMs: 30000, executable: process.execPath, commandPrefix: [FAKE_VIBE], directProcess: true, readVibeVersion: () => installed, vibePreflight: preflight, env };
+  const options = { host: 'vibe', model, effort, cwd, protectedRoot: root, artifacts, systemFile, prompt: 'Fixture assessment', schema: { type: 'object' }, timeoutMs: 30000, executable: process.execPath, commandPrefix: [FAKE_VIBE], directProcess: true, readVibeVersion: () => installed, vibePreflight: preflight, env, session, vibeResume: resume };
   let result = null;
   let error = null;
   try { result = await runVibe(options); } catch (caught) { error = caught; }
@@ -75,11 +75,11 @@ test('the Vibe launcher runs headless and untrusted under its own home, agent an
   assert.equal(result.status, 'complete');
   assert.deepEqual([result.host, result.model, result.effort, result.session, result.tokens, result.attributionVerified], ['vibe', 'glm-5-3', 'high', 'vibe-session', 4321, true]);
   assert.deepEqual(JSON.parse(result.output), REPORT);
-  assert.deepEqual(result.vibe, { version: '3.0.0', uncomparedKeys: [], attributionFiles: [path.join(artifacts, 'vibe', 'export.json'), path.join(artifacts, 'vibe', 'session', 'generations', '0000000000000000', 'runtime-state.json')] });
+  assert.deepEqual(result.vibe, { version: '3.0.0', uncomparedKeys: [], attributionFiles: [path.join(artifacts, 'vibe', 'export.json'), path.join(artifacts, 'vibe', 'session', 'generations', '0000000000000000', 'runtime-state.json')], calls: null });
   const flag = name => invocation.args[invocation.args.indexOf(name) + 1];
   assert.deepEqual([flag('--workdir'), flag('--agent'), flag('--output'), flag('--output-dir')], [cwd, 'nightshift-reviewer', 'json', path.join(artifacts, 'vibe')]);
   assert.deepEqual(invocation.args.filter((arg, index) => invocation.args[index - 1] === '--enabled-tools'), ['read_file']);
-  assert.equal(invocation.args.includes('--trust') || invocation.args.includes('--add-dir'), false);
+  assert.equal(invocation.args.includes('--trust') || invocation.args.includes('--add-dir') || invocation.args.includes('--resume'), false);
   const keys = Object.keys(invocation.env).map(key => key.toUpperCase());
   assert.deepEqual(keys.filter(key => key.startsWith('VIBE_')), ['VIBE_HOME']);
   assert.equal(keys.includes('ENABLE') || keys.includes('SAVE_DIR'), false);
@@ -93,6 +93,63 @@ test('the Vibe launcher runs headless and untrusted under its own home, agent an
   for (const line of ['active_model = "glm-5-3"', 'system_prompt_id = "nightshift-reviewer"', 'enabled_tools = ["read_file"]', 'enable_telemetry = false', 'include_project_context = false', '[experiments]', 'enable = false', '[models."glm-5-3"]', 'name = "zai-glm-5-3"', 'thinking = "high"', 'thinking_levels = ["low", "high", "max"]']) assert.ok(invocation.agent.split('\n').includes(line), line);
   assert.equal(invocation.systemPrompt, 'You are an independent read-only engineering assessor.');
   assert.match(invocation.prompt, /^Fixture assessment\nReply with only one JSON object that conforms to this JSON schema/);
+});
+
+// The retained stores a resumed attempt's home is seeded from: a session store, a pinned plugin store and the predecessor's prompt.
+function retainedSource(root, name) {
+  const source = path.join(root, name);
+  fs.mkdirSync(path.join(source, 'session', 'generations', '0000000000000000'), { recursive: true });
+  fs.writeFileSync(path.join(source, 'session', 'CURRENT'), '{"session_id": "vibe-session"}');
+  fs.mkdirSync(path.join(source, 'plugins', 'manifests'), { recursive: true });
+  fs.writeFileSync(path.join(source, 'plugins', 'manifests', 'pinned'), 'pinned plugin manifest');
+  fs.writeFileSync(path.join(source, 'prompt.md'), 'The reviewer prompt of the earlier attempt, carried byte for byte.');
+  return { session: path.join(source, 'session'), plugins: path.join(source, 'plugins'), promptFile: path.join(source, 'prompt.md') };
+}
+
+const CALLS = [{ input_tokens: 5000, cached_input_tokens: 4000, output_tokens: 10 }, { input_tokens: 5200, cached_input_tokens: 5000, output_tokens: 30 }];
+const CALL_FIGURES = { calls: 2, input: 10200, cached: 9000, firstInput: 5000, firstCached: 4000 };
+
+test('the Vibe launcher resumes a session from its retained stores under the earlier prompt, reads the turn\'s report and journal calls, and refuses a resume without them', async t => {
+  // Arrange
+  const root = scratch(t, 'resume-source');
+  const resume = retainedSource(root, 'retained');
+
+  // Act
+  const resumed = await launch(t, { session: 'vibe-session', resume, control: { calls: CALLS } });
+  const sourceless = await launch(t, { session: 'vibe-session' });
+  const other = await launch(t, { session: 'vibe-session', resume, control: { session: 'other-session' } });
+  const fresh = await launch(t, { control: { calls: CALLS } });
+
+  // Assert
+  assert.equal(resumed.error, null);
+  assert.deepEqual([resumed.result.status, resumed.result.session, resumed.result.attributionVerified], ['complete', 'vibe-session', true]);
+  assert.deepEqual(JSON.parse(resumed.result.output), REPORT);
+  assert.deepEqual(resumed.result.vibe.calls, CALL_FIGURES);
+  const { args } = resumed.invocation;
+  assert.equal(args[args.indexOf('--resume') + 1], 'vibe-session');
+  assert.deepEqual([args[args.indexOf('--workdir') + 1], args[args.indexOf('--agent') + 1], args.filter((arg, index) => args[index - 1] === '--enabled-tools')], [resumed.cwd, 'nightshift-reviewer', ['read_file']]);
+  for (const entry of ['logs/session/unified/vibe-session/CURRENT', 'logs/session/unified/vibe-session/generations/0000000000000000', 'logs/session/plugins/manifests/pinned', 'agents/nightshift-reviewer.toml', 'trusted_folders.toml']) assert.ok(resumed.invocation.home.includes(entry), entry);
+  assert.equal(resumed.invocation.systemPrompt, 'The reviewer prompt of the earlier attempt, carried byte for byte.');
+  assert.equal(sourceless.error.code, 'resume-unsupported');
+  assert.match(sourceless.error.message, /review\.replaces/);
+  assert.equal(sourceless.invocation, null);
+  assert.equal(other.result.attributionVerified, false);
+  assert.deepEqual(fresh.result.vibe.calls, CALL_FIGURES);
+  assert.ok(!fresh.invocation.args.includes('--resume'));
+});
+
+test('the report of a resumed Vibe run is taken after the last user message, and the seeding refuses a missing store', t => {
+  // Arrange
+  const root = scratch(t, 'resume-parse');
+  const message = (role, text) => ({ type: 'message', role, content: [{ type: 'text', text }] });
+  const conversation = [message('user', 'earlier prompt'), message('assistant', '{"requestId": "earlier"}'), message('user', 'prompt'), message('assistant', '{"requestId": "now"}')];
+
+  // Act and Assert
+  assert.equal(vibe.finalAssistantText(conversation), '{"requestId": "now"}');
+  assert.equal(vibe.finalAssistantText(conversation.slice(0, 3)), null);
+  assert.equal(vibe.finalAssistantText(conversation.slice(0, 2)), '{"requestId": "earlier"}');
+  assert.throws(() => vibe.createIsolation(path.join(root, 'attempt'), 'glm-5-3', 'high', 'System text', { sessionId: 'vibe-session', session: path.join(root, 'absent'), plugins: path.join(root, 'absent') }), { code: 'vibe-isolation-unavailable' });
+  assert.equal(vibe.journalCalls(path.join(root, 'absent')), null);
 });
 
 test('the effort mapping runs GLM at low only for low, and the level read back must be the one written', async t => {
@@ -530,39 +587,6 @@ test('time is reserved only for the eligible candidates, as the dispatch reserve
   assert.throws(reserve([GLM, SOL]), { code: 'operation-time-limit' });
 });
 
-test('a Vibe lineage is never resumed: resume is refused before launch, closure routes to a replacement, which closes the finding', async t => {
-  // Arrange
-  const f = fixture(t);
-  const calls = [];
-  const lead = await f.dispatch({ kind: 'code', candidates: [GLM] }, { findings: [finding('boundary')] });
-  await f.act({ action: 'review', receipt: f.receipt(lead) });
-  const findings = f.task().findings;
-  const skeptic = await f.dispatch({ kind: 'skeptic', candidates: [OPUS], findings }, { findings: findings.map(item => verdict(item.id)) });
-  for (const item of findings) await f.act({ action: 'validate', receipt: f.receipt(skeptic), findingId: item.id });
-  for (const item of findings) await f.act({ action: 'dispose', findingId: item.id, disposition: 'implement', reason: 'Required outcome', obligation: { classification: 'required', basis: 'The accepted outcome' } });
-  fs.writeFileSync(path.join(f.root, 'subject.txt'), 'repaired\r\n');
-  await f.act({ action: 'repair', findingIds: findings.map(item => item.id) });
-  await f.check();
-
-  // Act
-  const resumed = await f.dispatch({ kind: 'code', resume: lead.receipt.requestId }, { calls }).then(() => null, error => error);
-  const route = f.brief().review.resumeTargets.map(item => [item.requestId, item.continue]);
-  const replacement = await f.dispatch({ kind: 'code', replaces: lead.receipt.requestId, candidates: [GLM] }, { calls });
-  await f.act({ action: 'review', receipt: f.receipt(replacement) });
-  const dialogue = await f.dispatch({ kind: 'code', replaces: replacement.receipt.requestId, candidates: [GLM], dialogue: { findingIds: [findings[0].id], message: 'Does the finding still hold?' } }, { calls });
-
-  // Assert
-  assert.equal(resumed.code, 'resume-unsupported');
-  assert.match(resumed.message, /review\.replaces/);
-  assert.deepEqual(route, [[lead.receipt.requestId, 'replace']]);
-  assert.equal(closureRoute(f.root, f.store.read(), lead.receipt.requestId), 'replace');
-  assert.deepEqual(calls.map(call => call.host), ['vibe', 'vibe']);
-  assert.deepEqual(replacement.receipt.continues, { kind: 'replacement', requestId: lead.receipt.requestId });
-  assert.equal(f.task().findings[0].pendingClosure, undefined);
-  assert.equal(f.task().findings[0].closures.at(-1).closed, true);
-  assert.deepEqual(dialogue.receipt.positions.map(item => item.position), ['maintain']);
-});
-
 // Rewrites a collected Vibe receipt so that only the guard under test can refuse it.
 function rewrite(f, result, edit) {
   const saved = JSON.parse(fs.readFileSync(result.receiptFile, 'utf8'));
@@ -607,13 +631,127 @@ test('Vibe receipt import reads exactly its listed attribution files and refuses
   assert.equal(read(clean)().host, 'vibe');
 });
 
-async function launchedVibe(options, version, control = {}) {
+// Runs the real launcher against the fake Vibe executable inside a runtime dispatch, reporting the findings given and the closures and
+// positions a continued dispatch owes, as the fixture agent does.
+async function launchedVibe(options, version, control = {}, { findings = [] } = {}) {
   const request = JSON.parse(fs.readFileSync(path.join(options.artifacts, '..', 'request.json'), 'utf8'));
   fs.mkdirSync(options.artifacts, { recursive: true });
-  const report = { ...REPORT, requestId: request.id, coverage: request.dimensions.map(dimension => ({ dimension, evidence: 'Assessed the fixture' })) };
-  fs.writeFileSync(path.join(options.artifacts, 'control.json'), JSON.stringify({ model: options.model, vibeVersion: version, config: cleanConfig(), report, ...control }));
+  const report = { ...REPORT, requestId: request.id, findings, coverage: request.dimensions.map(dimension => ({ dimension, evidence: 'Assessed the fixture' })) };
+  report.closures = request.continues && !request.dialogue ? request.pendingClosures.map(finding => ({ id: finding.id, closed: true, evidence: 'The repair resolves it' })) : [];
+  report.positions = request.dialogue ? request.dialogue.findingIds.map(id => ({ id, position: 'maintain', evidence: 'The finding still holds' })) : [];
+  // A fresh launch starts a session of its own, as a real one does; a resumed launch continues the one it was given.
+  const session = options.session ?? `vibe-session-${++sessions}`;
+  fs.writeFileSync(path.join(options.artifacts, 'control.json'), JSON.stringify({ model: options.model, vibeVersion: version, config: cleanConfig(), report, session, ...control }));
   return runVibe({ ...options, executable: process.execPath, commandPrefix: [FAKE_VIBE], readVibeVersion: () => version, env: { ...process.env, MISTRAL_API_KEY: 'fixture-key' } });
 }
+
+// A dispatch's saved assignment, its private copy and the launcher's record of how its one Vibe attempt was invoked.
+function dispatched(f, result) {
+  const directory = path.dirname(result.receiptFile);
+  const request = JSON.parse(fs.readFileSync(path.join(directory, 'request.json'), 'utf8'));
+  const attempt = path.join(directory, 'attempt-1');
+  return { directory, request, attempt, workspace: path.join(f.root, ...request.workspace.split('/')), invocation: JSON.parse(fs.readFileSync(path.join(attempt, 'invocation.json'), 'utf8')) };
+}
+
+// A lead reviewer through the real launcher that raised one finding, validated, disposed, repaired and checked, so its closure is owed.
+async function repairedLead(f) {
+  const lead = await f.act({ action: 'dispatch', review: { ...f.base, kind: 'code', candidates: [GLM] } }, { runAgent: options => launchedVibe(options, '3.0.0', {}, { findings: [finding('boundary')] }) });
+  await f.act({ action: 'review', receipt: f.receipt(lead) });
+  const findings = f.task().findings;
+  const skeptic = await f.dispatch({ kind: 'skeptic', candidates: [OPUS], findings }, { findings: findings.map(item => verdict(item.id)) });
+  for (const item of findings) await f.act({ action: 'validate', receipt: f.receipt(skeptic), findingId: item.id });
+  for (const item of findings) await f.act({ action: 'dispose', findingId: item.id, disposition: 'implement', reason: 'Required outcome', obligation: { classification: 'required', basis: 'The accepted outcome' } });
+  fs.writeFileSync(path.join(f.root, 'subject.txt'), 'repaired\r\n');
+  await f.act({ action: 'repair', findingIds: findings.map(item => item.id) });
+  await f.check();
+  return { lead, findings };
+}
+
+test('a Vibe lineage resumes in its refreshed copy from the retained stores, closes its finding, takes a dialogue turn, and is replaced once a resume fails in the session', async t => {
+  // Arrange
+  const f = fixture(t);
+  const { lead, findings } = await repairedLead(f);
+  const before = dispatched(f, lead);
+  const route = f.brief().review.resumeTargets.map(item => [item.requestId, item.continue]);
+  const prompts = [];
+  const resumedVibe = options => { prompts.push(options.prompt); return launchedVibe(options, '3.0.0', { calls: CALLS }); };
+
+  // Act
+  const resumed = await f.act({ action: 'dispatch', review: { ...f.base, rules: 'Rules that changed since the first dispatch.', kind: 'code', resume: lead.receipt.requestId } }, { runAgent: resumedVibe });
+  const after = dispatched(f, resumed);
+  await f.act({ action: 'review', receipt: f.receipt(resumed) });
+  // The disposable copies were cleared since, so the lineage's copy is recreated at the same path.
+  fs.rmSync(after.workspace, { recursive: true });
+  const dialogue = await f.act({ action: 'dispatch', review: { ...f.base, kind: 'code', resume: resumed.receipt.requestId, dialogue: { findingIds: [findings[0].id], message: 'Does the finding still hold?' } } }, { runAgent: resumedVibe });
+  const turn = dispatched(f, dialogue);
+  await f.act({ action: 'dialogue', receipt: f.receipt(dialogue) });
+  const lost = await f.act({ action: 'dispatch', review: { ...f.base, kind: 'code', resume: dialogue.receipt.requestId } }, { runAgent: options => { options.onProcess(1); throw Object.assign(new Error('Fixture session context exhausted'), { code: 'unusable-review', descendantsReclaimed: true }); } }).then(() => null, error => error);
+  const routeAfterLoss = closureRoute(f.root, f.store.read(), dialogue.receipt.requestId);
+  const replacement = await f.act({ action: 'dispatch', review: { ...f.base, kind: 'code', replaces: dialogue.receipt.requestId, candidates: [GLM] } }, { runAgent: options => launchedVibe(options, '3.0.0') });
+
+  // Assert
+  assert.deepEqual(route, [[lead.receipt.requestId, 'resume']]);
+  assert.deepEqual(resumed.receipt.continues, { kind: 'resumed', requestId: lead.receipt.requestId, session: lead.receipt.session });
+  assert.equal(resumed.receipt.session, lead.receipt.session);
+  assert.deepEqual([after.request.workspace, turn.request.workspace], [before.request.workspace, before.request.workspace]);
+  assert.equal(after.invocation.args[after.invocation.args.indexOf('--resume') + 1], lead.receipt.session);
+  assert.equal(after.invocation.args[after.invocation.args.indexOf('--workdir') + 1], before.workspace);
+  for (const entry of [`logs/session/unified/${lead.receipt.session}/CURRENT`, 'logs/session/plugins/manifests/fixture']) assert.ok(after.invocation.home.includes(entry), entry);
+  assert.equal(after.invocation.systemPrompt, before.invocation.systemPrompt);
+  assert.equal(fs.readFileSync(path.join(after.directory, 'system.md'), 'utf8').includes('Rules that changed since the first dispatch.'), true);
+  assert.ok(prompts[0].includes('Applicable rules for this turn, which govern this assessment as the system prompt of a fresh dispatch would:\nRules that changed since the first dispatch.'));
+  assert.ok(!fs.readFileSync(path.join(before.attempt, 'prompt.md'), 'utf8').includes('Applicable rules for this turn'));
+  assert.match(prompts[0], /continuing your own earlier work as the strong lead reviewer/);
+  assert.ok(prompts[0].includes(`This dispatch refreshed the private copy of the project at ${before.workspace}, which is your current working directory; it now holds the current snapshot`));
+  assert.match(prompts[0], /What you read in earlier turns may be stale/);
+  assert.deepEqual(resumed.receipt.vibeCalls, CALL_FIGURES);
+  assert.equal(lead.receipt.vibeCalls, null);
+  assert.deepEqual([fs.existsSync(path.join(after.workspace, 'project')), fs.existsSync(path.join(after.workspace, 'context', 'diff.patch'))], [false, true]);
+  assert.equal(f.task().findings[0].pendingClosure, undefined);
+  assert.equal(f.task().findings[0].closures.at(-1).closed, true);
+  assert.deepEqual(dialogue.receipt.positions.map(item => item.position), ['maintain']);
+  assert.ok(fs.existsSync(path.join(turn.attempt, 'vibe-home', 'logs', 'session', 'unified', lead.receipt.session, 'CURRENT')));
+  assert.equal(lost.code, 'resume-failed');
+  assert.equal(routeAfterLoss, 'replace');
+  assert.deepEqual(replacement.receipt.continues, { kind: 'replacement', requestId: dialogue.receipt.requestId });
+  assert.notEqual(dispatched(f, replacement).request.workspace, before.request.workspace);
+});
+
+test('a Vibe resume is refused before any worker when its retained source cannot be reused, and closure then routes to replacement', async t => {
+  // Arrange
+  const f = fixture(t);
+  const lead = async () => (await repairedLead(f)).lead;
+  const refusal = async requestId => {
+    const workers = f.store.read().workers.length;
+    const error = await f.act({ action: 'dispatch', review: { ...f.base, kind: 'code', resume: requestId } }, { runAgent: options => launchedVibe(options, '3.0.0') }).then(() => null, error => error);
+    return { code: error?.code, message: error?.message, registered: f.store.read().workers.length - workers, route: closureRoute(f.root, f.store.read(), requestId) };
+  };
+  const held = await lead();
+  fs.mkdirSync(path.join(dispatched(f, held).workspace, 'project'));
+  const changed = await lead();
+  fs.appendFileSync(path.join(f.root, changed.receipt.attributionEvidence[0].path), ' ');
+  const unpinned = await lead();
+  fs.rmSync(path.join(dispatched(f, unpinned).attempt, 'vibe-home', 'logs', 'session', 'plugins'), { recursive: true });
+  const promptless = await lead();
+  fs.rmSync(path.join(dispatched(f, promptless).attempt, 'vibe-home', 'prompts', 'nightshift-reviewer.md'));
+
+  // Act
+  const outcomes = { held: await refusal(held.receipt.requestId), changed: await refusal(changed.receipt.requestId), unpinned: await refusal(unpinned.receipt.requestId), promptless: await refusal(promptless.receipt.requestId) };
+  fs.rmdirSync(path.join(dispatched(f, held).workspace, 'project'));
+  const released = closureRoute(f.root, f.store.read(), held.receipt.requestId);
+
+  // Assert
+  for (const [name, outcome] of Object.entries(outcomes)) {
+    assert.equal(outcome.code, 'resume-unsupported', name);
+    assert.match(outcome.message, /review\.replaces/, name);
+    assert.deepEqual([outcome.registered, outcome.route], [0, 'replace'], name);
+  }
+  assert.match(outcomes.held.message, /still holds a project folder/);
+  assert.match(outcomes.changed.message, /attribution evidence changed after collection/);
+  assert.match(outcomes.unpinned.message, /retained plugins is missing/);
+  assert.match(outcomes.promptless.message, /retained prompt is missing/);
+  assert.equal(released, 'resume');
+});
 
 for (const mode of ['journal', 'callback', 'frozen-callback', 'non-error-callback']) {
   test('post-exit failures retain known job proof and usage: ' + mode, async t => {

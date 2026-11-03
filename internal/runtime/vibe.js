@@ -119,9 +119,15 @@ function agentFile(model, level) {
   ].join('\n');
 }
 
+// Where Vibe keeps a session's store and the pinned plugin store a resume rebuilds the session's plugin environment from, under its home.
+const SESSION_STORE = ['logs', 'session', 'unified'];
+const PLUGIN_STORE = ['logs', 'session', 'plugins'];
+
 // Creates an attempt's launcher-owned Vibe home and empty user home. Vibe reads every user-scope channel from its home, and the one
 // it locates from the home directory, ~/.agents/skills, from USERPROFILE and HOME; the empty trust file keeps the copy untrusted.
-function createIsolation(directory, model, level, systemText) {
+// A resumed attempt's home is seeded with the session it resumes: the predecessor attempt's exported session store copied under the
+// session's id, and the predecessor home's plugin store, without which Vibe refuses to resume before any model call.
+function createIsolation(directory, model, level, systemText, seed = null) {
   try {
     const home = path.join(directory, 'vibe-home');
     const userHome = path.join(directory, 'vibe-user-home');
@@ -131,6 +137,10 @@ function createIsolation(directory, model, level, systemText) {
     fs.writeFileSync(path.join(home, 'agents', `${AGENT}.toml`), agentFile(model, level), { flag: 'wx' });
     fs.writeFileSync(path.join(home, 'prompts', `${AGENT}.md`), systemText, { flag: 'wx' });
     fs.writeFileSync(path.join(home, 'trusted_folders.toml'), '', { flag: 'wx' });
+    if (seed) {
+      fs.cpSync(seed.session, path.join(home, ...SESSION_STORE, seed.sessionId), { recursive: true, errorOnExist: true, force: false });
+      fs.cpSync(seed.plugins, path.join(home, ...PLUGIN_STORE), { recursive: true, errorOnExist: true, force: false });
+    }
 
     return { home, userHome };
   } catch (error) {
@@ -196,9 +206,12 @@ function eligibleCandidates(candidates, root, dependencies = {}) {
   return { eligible, dropped, versions };
 }
 
-// Vibe's JSON output is one array of entries; the report is the last assistant message's text.
+// Vibe's JSON output is one array of entries, the whole conversation on a resumed session; the report is the text of the last
+// assistant message after the last user message, so an earlier turn's report is never taken for this one.
 function finalAssistantText(entries) {
-  const messages = (Array.isArray(entries) ? entries : []).filter(entry => entry?.type === 'message' && entry.role === 'assistant');
+  const list = Array.isArray(entries) ? entries : [];
+  const lastUser = list.findLastIndex(entry => entry?.type === 'message' && entry.role === 'user');
+  const messages = list.slice(lastUser + 1).filter(entry => entry?.type === 'message' && entry.role === 'assistant');
   const content = messages.at(-1)?.content ?? [];
 
   return content.filter(part => part?.type === 'text').map(part => part.text).join('') || null;
@@ -236,6 +249,41 @@ function journalFiles(exportDirectory) {
   const states = fs.existsSync(generations) ? fs.readdirSync(generations).sort().map(generation => path.join(generations, generation, 'runtime-state.json')) : [];
 
   return { exportFile: path.join(exportDirectory, 'export.json'), states };
+}
+
+function walk(value, visit) {
+  if (value === null || typeof value !== 'object') return;
+  visit(value);
+  for (const child of Array.isArray(value) ? value : Object.values(value)) walk(child, visit);
+}
+
+// The model calls the attempt's exported session journal records, in order: Vibe journals each completed call twice, as the action's
+// result and as the input that carried it, under one action id, with the usage Mistral reported for the call. The export holds the
+// journal from the generation the attempt started at, so a resumed attempt's journal is its own turn's. Returns the number of calls,
+// their input and cached input totals, and the first call's input and cached input, or null when the journal is absent or empty.
+function journalCalls(exportDirectory) {
+  const journal = path.join(exportDirectory, 'session', 'journal');
+  if (!fs.existsSync(journal)) return null;
+  const calls = new Map();
+  for (const name of fs.readdirSync(journal).filter(file => file.endsWith('.jsonl')).sort()) {
+    for (const line of fs.readFileSync(path.join(journal, name), 'utf8').split('\n')) {
+      let record;
+      try {
+        record = JSON.parse(line);
+      } catch {
+        // A blank or partial line is not a record.
+        continue;
+      }
+      walk(record, node => {
+        const usage = node.type === 'completion_succeeded' && typeof node.action_id === 'string' ? node.result?.usage : null;
+        if (usage && Number.isSafeInteger(usage.input_tokens) && !calls.has(node.action_id)) calls.set(node.action_id, { input: usage.input_tokens, cached: Number.isSafeInteger(usage.cached_input_tokens) ? usage.cached_input_tokens : 0 });
+      });
+    }
+  }
+  if (calls.size === 0) return null;
+  const list = [...calls.values()];
+
+  return { calls: list.length, input: list.reduce((sum, call) => sum + call.input, 0), cached: list.reduce((sum, call) => sum + call.cached, 0), firstInput: list[0].input, firstCached: list[0].cached };
 }
 
 // The one model every generation of the session ran, or null when the journal names none or several.
@@ -301,7 +349,7 @@ function expectedConfiguration(model) {
 }
 
 module.exports = {
-  AGENT, ALIAS, MODELS, OUTPUT_LIMIT, TOOLS, VERSION_FLOOR,
+  AGENT, ALIAS, MODELS, OUTPUT_LIMIT, PLUGIN_STORE, SESSION_STORE, TOOLS, VERSION_FLOOR,
   agentFile, configurationDifferences, createIsolation, effortLevel, eligibleCandidates, environment, executable, expectedConfiguration,
-  finalAssistantText, journalFiles, journalModel, newestGlm, readJsonIfPresent, readVersion, reportFromEntries, reportText, resolveAlias, versionSupported,
+  finalAssistantText, journalCalls, journalFiles, journalModel, newestGlm, readJsonIfPresent, readVersion, reportFromEntries, reportText, resolveAlias, versionSupported,
 };

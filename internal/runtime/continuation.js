@@ -1,10 +1,13 @@
 'use strict';
 
 const fs = require('node:fs');
+const path = require('node:path');
 const { requireCondition } = require('./store');
-const { projectFile } = require('./evidence');
+const { hash, projectFile } = require('./evidence');
+const { isPrivateCopyDirectory } = require('./copies');
 const { workerIsActive } = require('./workers');
 const { requirePermittedEffort } = require('./models');
+const { AGENT, PLUGIN_STORE } = require('./vibe');
 
 // A reviewer's lineage: the request id of the fresh dispatch it began with. Resumed and replacement dispatches carry the lineage of
 // the dispatch they continue, so a reviewer and its replacements own the same findings. A receipt or imported review names its dispatch
@@ -72,17 +75,55 @@ function dispatchFailure(root, worker) {
   }
 }
 
+// What a Vibe lineage resumes from, since a resumed Vibe session keeps the directory it started in: the dispatch's private copy, which
+// the resume refreshes at the same path, and the attempt's retained session journal, plugin store and reviewer prompt, which seed the
+// resumed attempt's home. Each is project-relative. Returns the source, or the reason the session cannot be resumed: the copy is not
+// recorded as a private copy, it still holds a project folder (an unproven or foreign holder), the receipt's attribution evidence no
+// longer has its recorded hashes, or a retained store is missing.
+function vibeResumeSource(root, worker, receipt) {
+  const refusal = reason => ({ reason });
+  let assignment;
+  try {
+    assignment = JSON.parse(fs.readFileSync(projectFile(root, `${worker.artifactDirectory}/request.json`), 'utf8'));
+  } catch {
+    // Without its saved assignment the dispatch's private copy is unknown.
+    return refusal('its saved assignment cannot be read');
+  }
+  const workspace = typeof assignment?.workspace === 'string' ? assignment.workspace : null;
+  if (workspace === null || !isPrivateCopyDirectory(root, path.join(fs.realpathSync.native(root), ...workspace.split('/')))) return refusal('its private copy is not recorded');
+  if (fs.existsSync(path.join(root, ...workspace.split('/'), 'project'))) return refusal('its private copy still holds a project folder');
+  const evidence = receipt.attributionEvidence;
+  if (!Array.isArray(evidence) || evidence.length === 0) return refusal('its receipt lists no attribution evidence');
+  for (const item of evidence) {
+    let current;
+    try {
+      current = hash(fs.readFileSync(projectFile(root, item.path)));
+    } catch {
+      // A missing or unreadable attribution file no longer has its recorded hash.
+      current = null;
+    }
+    if (current !== item.sha256) return refusal(`its attribution evidence changed after collection: ${item.path}`);
+  }
+  const attempt = path.posix.dirname(receipt.eventFile);
+  const source = { workspace, session: `${attempt}/vibe/session`, plugins: `${attempt}/vibe-home/${PLUGIN_STORE.join('/')}`, prompt: `${attempt}/vibe-home/prompts/${AGENT}.md` };
+  for (const [name, relative] of Object.entries(source)) {
+    if (name !== 'workspace' && !fs.existsSync(path.join(root, ...relative.split('/')))) return refusal(`its retained ${name} is missing at ${relative}`);
+  }
+
+  return source;
+}
+
 // How closure continues with the dispatch a resume target names: 'replace' once a later dispatch of the lineage resumed that dispatch's
-// session and failed in it, or ended after launching its host without saving any outcome, which leaves the session's state unknown;
-// otherwise 'resume'. A later receipt of the lineage becomes the named dispatch, so this resets only when a dispatch succeeds. An
-// unreadable failure record counts as no saved outcome, and one from an earlier release, without sessionFailed, does not count.
+// session and failed in it, or ended after launching its host without saving any outcome, which leaves the session's state unknown,
+// or when a Vibe session's retained source cannot be reused; otherwise 'resume'. A later receipt of the lineage becomes the named
+// dispatch, so this resets only when a dispatch succeeds. An unreadable failure record counts as no saved outcome, and one from an
+// earlier release, without sessionFailed, does not count.
 function closureRoute(root, state, requestId) {
   const index = state.workers.findIndex(worker => worker.id === requestId);
   const named = state.workers[index];
   const receipt = named && dispatchReceipt(root, named);
-  // A Vibe session cannot resume into a new private copy, so its lineage always continues by replacement.
-  if (receipt?.host === 'vibe') return 'replace';
   if (!receipt?.session) return 'resume';
+  if (receipt.host === 'vibe' && vibeResumeSource(root, named, receipt).reason) return 'replace';
   const failed = state.workers.slice(index + 1).some(worker => {
     if (worker.taskId !== named.taskId || lineageOf(worker) !== lineageOf(named) || worker.continues?.kind !== 'resumed' || worker.continues.session !== receipt.session) return false;
     const failure = dispatchFailure(root, worker);
@@ -114,15 +155,17 @@ function resolveContinuation(root, state, target, review) {
   requireCondition(kind !== 'skeptic' || review.dialogue, 'invalid-continuation', 'A skeptic is continued only for a dialogue turn; validate a new finding with a fresh skeptic');
   const lineage = lineageOf(receipt);
   const resumed = review.resume !== undefined;
-  // A resumed Vibe session keeps the directory it started in and ignores the new copy, so it is refused before anything launches.
-  requireCondition(!resumed || receipt.host !== 'vibe', 'resume-unsupported', `Session ${receipt.session} ran on Vibe, which cannot resume into a new private copy; replace the reviewer with review.replaces instead`);
+  // A resumed Vibe session keeps the directory it started in, so it resumes only from the retained source it can reuse, refused before
+  // anything launches otherwise.
+  const vibeSource = resumed && receipt.host === 'vibe' ? vibeResumeSource(root, worker, receipt) : null;
+  requireCondition(!vibeSource?.reason, 'resume-unsupported', `Session ${receipt.session} on Vibe cannot be resumed: ${vibeSource?.reason}; replace the reviewer with review.replaces instead`);
   requireCondition(!resumed || !review.requiredModel || review.requiredModel === receipt.model, 'model-requirement', 'Explicit model requirements prohibit resuming a session of another model');
   // A resumed session keeps the effort it recorded, so one recorded at a refused effort is replaced rather than continued.
   if (resumed) requirePermittedEffort(receipt.effort, `; session ${receipt.session} ran at ${receipt.effort}, so replace it with review.replaces instead`);
   // The thread total the receipt recorded is the starting total only while no later attempt has used the session since. A later
   // dispatch holds the session from registration, but one that never launched a host, recording no pid, never used it.
   const usedSince = state.workers.slice(state.workers.indexOf(worker) + 1).some(candidate => candidate.session === receipt.session && candidate.pid !== undefined);
-  const continuation = { kind: resumed ? 'resumed' : 'replacement', requestId, lineage, ...(resumed ? { session: receipt.session, priorThreadTokens: usedSince ? null : receipt.threadTokens ?? null } : {}) };
+  const continuation = { kind: resumed ? 'resumed' : 'replacement', requestId, lineage, ...(resumed ? { session: receipt.session, priorThreadTokens: usedSince ? null : receipt.threadTokens ?? null } : {}), ...(vibeSource ? { vibe: vibeSource } : {}) };
   const candidates = resumed ? [{ host: receipt.host, model: receipt.model, effort: receipt.effort }] : review.candidates;
   const raised = finding => finding.raisedBy?.lineage === lineage;
   if (review.dialogue) {
@@ -143,4 +186,4 @@ function resolveContinuation(root, state, target, review) {
   };
 }
 
-module.exports = { closureRoute, continuesRecord, latestDispatchOf, lineageOf, resolveContinuation };
+module.exports = { closureRoute, continuesRecord, latestDispatchOf, lineageOf, resolveContinuation, vibeResumeSource };
