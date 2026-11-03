@@ -21,7 +21,7 @@ Recorded on 2026-11-03 from the maintainer inbox report `2026-11-03-refusal-fric
 4. **Pressure and cost where none is wanted.** The Stop hook resumed `e43c9099` three times while only the user's triage remained; GLM reviewers on Vibe are never resumed; the ready parser cannot run as a recorded check. Reports by title: stop-hook-loops-at-triage-awaiting-user, unattended-churn-while-user-away, stop-hook-revision-refuses-background-dispatch, vibe-reviewers-never-resumed, ready-parser-unrunnable-as-recorded-check, runtime-friction-large-delivery.
 5. **Refusals that do not say what to do.** A condition named without its route out, or one cause reported as another. Reports by title: stale-artifact-refusal-unnamed, stale-revision-reported-as-stale-owner, concurrent-dispatch-refusal-code, advance-documentation-evidence-field-name, advance-from-documentation-needs-two-calls.
 
-The report counts 58 open reports at the time of writing, the oldest of 2026-10-18, a large share by title about staleness, refusals, closing or continuation rather than wrong results, and sets aside the controller's own slips in that session.
+The report observes that, by title, a large share of the reports it groups concern staleness, refusals, closing or continuation rather than wrong results, and sets aside the controller's own slips in that session.
 
 ## Directions and their owners
 
