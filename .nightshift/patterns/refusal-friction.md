@@ -7,7 +7,7 @@ metadata:
 
 # Refusal friction
 
-Recorded on 2026-11-03 from the maintainer inbox report `2026-11-03-refusal-friction-landscape.md`, provisionally for the user's triage. The report came from the Hermes home project (session of 2026-11-01 to 2026-11-03, delivery runs `41e7d80c` and `e43c9099`, review context `2b1e2818`, installed 3.3.25) at the user's request, to describe the landscape with examples and directions without prescribing fixes. It groups the earlier inbox reports by title only, so each report's fit with its shape is unverified; this record keeps that qualification.
+Recorded on 2026-11-03 from the maintainer inbox report `2026-11-03-refusal-friction-landscape.md` and agreed at the user's inbox triage that day. The report came from the Hermes home project (session of 2026-11-01 to 2026-11-03, delivery runs `41e7d80c` and `e43c9099`, review context `2b1e2818`, installed 3.3.25) at the user's request, to describe the landscape with examples and directions without prescribing fixes. It groups the earlier inbox reports by title only, so each report's fit with its shape is unverified; this record keeps that qualification.
 
 ## The user's words
 
