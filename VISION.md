@@ -1,12 +1,12 @@
 # Nightshift vision
 
-Working draft, updated 2026-10-26. This document captures the direction for later changes to Nightshift's implementation and backlog. It distinguishes settled direction from choices that still need design; it does not authorize those later changes or describe them as shipped.
+Working draft, updated 2026-11-03. This document captures the direction for later changes to Nightshift's implementation and backlog. It distinguishes settled direction from choices that still need design; it does not authorize those later changes or describe them as shipped.
 
 ## Purpose
 
 Nightshift should let a developer settle the decisions they care about, entrust the engineering work to a capable model, and return to a useful result supported by concrete evidence. The developer owns intent, consequential tradeoffs, and authority. Nightshift owns carrying authorized work through implementation, independent review, verification, and an understandable closing report.
 
-The central design assumption is that a model approved for its assigned role can exercise the judgment that role needs from a clear outcome, meaningful constraints and access to the real project. The workflow should support that judgment while making errors discoverable. Every additional artifact, agent role, approval boundary and review pass must justify its contribution under the invariant priorities below, including its ongoing maintenance.
+The central design assumption is that a model approved for its assigned role can exercise the judgment that role needs from a clear outcome, meaningful constraints and access to the real project. The workflow should support that judgment while making errors discoverable. Every additional artifact, agent role, approval boundary, refusal and review pass must justify its contribution under the invariant priorities below, including its ongoing maintenance and the friction it puts on the run.
 
 ## Invariant priorities
 
@@ -46,7 +46,7 @@ A spec records the resulting commitments:
 - evidence that will demonstrate success;
 - unresolved decisions that prevent implementation.
 
-The spec's depth follows these commitments. For a small change, an agreed request or backlog entry may carry them without another document. Exact technical detail belongs where it defines a real contract or protects a consequential decision. Complete internal algorithms, speculative failure trees, verbatim implementation blocks, and exhaustive command sequences do not become mandatory just because a model could write them down.
+The spec's depth follows these commitments. For a small change, an agreed request or backlog entry may carry them without another document. Exact technical detail belongs where it defines a real contract or protects a consequential decision. Complete internal algorithms, speculative failure trees, verbatim implementation blocks, and exhaustive command sequences do not become mandatory just because a model could write them down. Depth also follows the implementer: a spec states what an approved implementation model must be held to, not the steps a weaker model would need to be walked through, and as models improve the depth a spec needs is revisited rather than inherited.
 
 Different implementations may satisfy the same spec. A reviewer should identify an unfulfilled commitment or a consequential ambiguity before demanding more detail. When the behavior and constraints are complete, an open implementation choice is a delegation of judgment.
 
@@ -54,9 +54,17 @@ Authority comes from the user's request to perform work or an explicit delegatio
 
 Agreement should be an understandable conversation about those commitments. Compatible refinements and movement between workflow stages should not repeatedly require approval of the same intent. A material change to the accepted outcome, obligations, or authority does require the user's decision. Internal hashes and protocol state support that boundary without becoming the user's reading assignment.
 
+## Record decisions without locking them
+
+Recording a decision and locking it are different acts. A recorded decision, such as an accepted spec, an amended agreement, a finding disposition or a triage decision, is provenance: who decided what, when, and on which evidence. A later decision by whoever holds the authority for it records over it with its own reason, and the earlier record stays as history rather than being enforced against the change.
+
+Hard refusals are reserved for provenance, ownership and safety, such as evidence attributed to work or a reviewer that did not produce it, two owners acting on one run, lost or overwritten work, and action beyond the user's authority or limits. Review coverage, verification and the closing report remain obligations of trust: without them the run is not complete, and an unmet obligation holds the work that depends on it and is shown as incomplete, without refusing unrelated progress. Everything else the workflow tracks is shown to the controller and the user as a condition with its cause and the way forward, never as a wall that takes a ritual to get past. Evidence records what it examined and goes stale only where a later change reaches that: a change outside it needs no judgment, and whether a change inside it bears on the assessment is the reviewer's call, never the author's. When the user decides that a tracked condition is settled, or accepts the incomplete coverage of review or verification, shown in full, while the closing report stays owed, that recorded decision is a way forward, and the result shows what the user settled rather than what evidence established.
+
 ## Implement directly, with evidence throughout
 
 The normal flow is to clarify intent, record a concise spec, settle any consequential design concerns, implement and test, obtain independent review of the result, and report what is complete. Spec review remains useful, with its placement and scale chosen deliberately rather than inherited from the current full lifecycle.
+
+The flow is not one-way. Until the user considers the work settled, a run stays open to change: work the user agrees to joins it, its spec can be amended under a recorded decision, and a defect found in live use goes back in as a repair instead of a new delivery. For a feature whose value shows only in use, a lighter prototype phase can come before the spec: the user tries working behavior, and the spec is written from what was observed rather than predicted. The prototype phase is a choice, not a rule for every feature, and a prototype is not a delivered result; it becomes one only through the full lifecycle.
 
 Implementation plans are not a routine artifact or lifecycle stage. The implementing model reads the project, reasons about dependencies, chooses an approach, and adjusts as real code and tests provide feedback. A working task list or resumption note may support execution without becoming a separately hardened implementation document. Nightshift should operate without a Superpowers dependency.
 
@@ -84,7 +92,7 @@ Every reported finding receives skeptic validation against concrete evidence. Fa
 
 A false claim is acknowledged as refuted. A true finding outside authorized scope receives a reasoned acknowledgement without an unauthorized edit or automatic backlog entry. Missing evidence remains unresolved. A failure to meet an agreed requirement must be repaired or explicitly renegotiated; cost alone cannot waive it. The [adversarial dialogue feature](.nightshift/features/adversarial-repair-dialogue.md) records the retained validity-and-value direction; its mechanics will be reconciled with this vision during the later transformation.
 
-Resolved findings must count as resolved, but finding disposition does not establish review coverage. When the reviewed artifact is unchanged and the required broad independent assessment by a model approved for that role is already complete, accepted skips, verified deferrals and refutations need not force another round solely to obtain literal LGTM. Actual repairs require validation against the finding's evidence. After every repair batch, the independent reviewer re-examines the complete cumulative change across all dimensions, including affected surrounding code and sibling paths. Repair size does not restrict coverage: a tiny fix can introduce a regression or address the problem too narrowly. Depth and specialist staffing remain proportionate, and the same qualified independent reviewer can retain useful context. Previously settled tradeoffs travel with later reviews and reopen when new evidence defeats their basis. Completion requires that review coverage and no unresolved required work; a time or cost limit cannot manufacture a clean result.
+Resolved findings must count as resolved, but finding disposition does not establish review coverage. When the reviewed artifact is unchanged and the required broad independent assessment by a model approved for that role is already complete, accepted skips, verified deferrals and refutations need not force another round solely to obtain literal LGTM. Actual repairs require validation against the finding's evidence. After every repair batch, the independent reviewer re-examines the complete cumulative change across all dimensions, including affected surrounding code and sibling paths. Repair size does not restrict coverage: a tiny fix can introduce a regression or address the problem too narrowly. Which later changes reopen an assessment follows from what it examined, as the recording of decisions above describes. Depth and specialist staffing remain proportionate, and the same qualified independent reviewer can retain useful context. Previously settled tradeoffs travel with later reviews and reopen when new evidence defeats their basis. Completion requires that review coverage and no unresolved required work; a time or cost limit cannot manufacture a clean result, and only the user's recorded acceptance of incomplete coverage, as the recording of decisions describes, carries it to a completion shown as what the user settled.
 
 ## A controller that owns the result
 
@@ -119,5 +127,8 @@ Evaluate the transformation by the invariant priorities: first reliability, mean
 - How to scale investigation within complete review coverage, when to extend adversarial dialogue, and how to calibrate progress signals from actual runs.
 - The smallest reliable execution and resumption machinery that preserves ownership and evidence across hosts.
 - Which current backlog structures and supervisory mechanisms help the intended experience enough to retain.
+- Which current refusals protect provenance, ownership or safety, which enforce obligations of trust that should hold dependent work and show it as incomplete, and which enforce bookkeeping that should become reported conditions.
+- Which features take a prototype phase, who offers it and when, what a prototype may skip and must keep, how its observations become the spec, and when the full lifecycle takes over.
+- What records that the user considers a run's work settled, what ends a run whose work is never settled, and whether a settled run reopens when live use finds a defect.
 
-The settled direction is concise commitments, direct implementation by capable models, exceptional implementation plans, flexible model assignment, independent review, and evidence-based finding disposition. The open choices refine that direction without making the existing machinery the default answer.
+The settled direction is concise commitments, decisions recorded rather than locked, a lifecycle that can go back, direct implementation by capable models, exceptional implementation plans, flexible model assignment, independent review, and evidence-based finding disposition. The open choices refine that direction without making the existing machinery the default answer.
