@@ -6,12 +6,6 @@ V2 entries are preserved in [the historical index](migration/v2/QUICK_WINS.md) a
 
 ## Current
 
-### Close this repository's two 3.3.12 review contexts after 3.3.26 is published
-
-Recorded by the user's triage decision on 2026-11-02 at the close of delivery `ede318dd`, which shipped [Close settled records](specs/close-settled-records.md) for 3.3.26. The motivating case: review contexts `2b758039-e78b-44b2-9674-ae58ea91db0c` and `cd347a08-b11f-49d4-af26-3c19b7630534` in `.nightshift/runs/review-state.sqlite` are saved as `running`, bound to 3.3.12, which can no longer open this project, and they keep `compact-history` from running on the review store.
-
-Once 3.3.26 is published and installed, from a new session bound to it, with delivery `ede318dd` completed and every live session bound to an older release in this repository ended, close both through Ready's close offer, finishing, including or acknowledging by name every other older-bound unfinished record, such as the spec's own review context. Record the manifest presented, the user's reply and the actual outcome of `compact-history` on the review store, including any `blockedBy`; acknowledgement satisfies close's guard but not compaction, so every record still running in that store must be stopped, finished or closed before compaction is recorded as done. Publication needs its own authority; tracking does not authorize implementation.
-
 ### Amending a governing spec inside its code task blocks the task until a whole-spec reassessment
 
 Observed in delivery `ede318dd` on 2026-11-02 and tracked by the user's triage decision. The code task's agreement required amending the spec for deferred minor findings; any spec edit makes the linked governing-spec task's assessment stale, and `specReady` gates every code-task action through `assertAction`, so even recording checks refused `spec-review-required` until another fresh whole-spec assessment, about 12 to 17 million Claude Opus tokens, completed. Deferring spec findings to the implementation therefore costs a full spec reassessment whenever the fix touches the spec text.
