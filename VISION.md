@@ -1,6 +1,6 @@
 # Nightshift vision
 
-Working draft, updated 2026-11-03. This document captures the direction for later changes to Nightshift's implementation and backlog. It distinguishes settled direction from choices that still need design; it does not authorize those later changes or describe them as shipped.
+Working draft, updated 2026-11-04. This document captures the direction for later changes to Nightshift's implementation and backlog. It distinguishes settled direction from choices that still need design; it does not authorize those later changes or describe them as shipped.
 
 ## Purpose
 
