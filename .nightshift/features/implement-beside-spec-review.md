@@ -1,0 +1,36 @@
+---
+name: implement-beside-spec-review
+description: After a broad-strokes approach check and the user's confirmation, a run starts implementing while the lead spec review runs beside it, its findings sorted into the spec or the code as they arrive, and the code review waiting for the spec to settle
+metadata:
+  type: feature
+---
+
+# Implement beside the spec review after a broad-strokes pass
+
+Raised by the user on 2026-10-18, outside any run, as the Exploring draft "Provisional handover acceptance while the spec assessment runs", while a Ready selection's spec went through several review rounds after the user had already said yes; the user noted that a controller would likely act this way already, but that no formal procedure covered it. On 2026-11-03, during the assessment pass that followed that day's VISION update, the user took the idea past acceptance: "in order to get started quicker on features, the controller/manager could ask a subagent for a quick broad-strokes assessment and then start implementing. a lead review agent is queued after the broad-strokes one and runs in parallel with the implementation. any findings get incorporated in both spec and code as they arrive (after a skeptic pass)." The draft's open questions were decided on 2026-11-04 and the draft graduated the same day.
+
+## Problem
+
+[The workflow](../../WORKFLOW.md) runs spec review concurrently with the user's reading of the draft but starts implementation only when the user has confirmed the commitments and independent spec review is resolved, so the spec review's rounds sit between the user's yes and the first line of code. The runtime lets a handover name a spec whose review is pending and create that review inside the run through `add-spec-review`, but `spec-review-required` then refuses every action on the code task until the spec is ready, and editing an accepted spec mid-delivery made `repair` refuse the same way (the refusal-friction record relates run `f198f65c` from session notes). The 2026-11-03 vision makes the pieces available: a confirmed spec is amended while the run is open under a recorded decision, and evidence goes stale only where a change reaches what it examined.
+
+## Agreed direction
+
+Decided by the user on 2026-11-04, after the settlement and prototype decisions of the same days:
+
+- The broad-strokes pass is the spec review's approach challenge on its own: the overall approach, unnecessary complexity, missing commitments and anti-goals, judged against the investigation by a fresh strong model with a small budget, returning only approach-level findings. It skips the completeness checks that the user's spec rules moved to implementation and code review on 2026-11-03. The lead spec review keeps the rest: consistency with the records, invariants, claims about the code.
+- The user's confirmation of the commitments still precedes implementation; the lead review's resolution no longer does. The order is investigation, draft spec, broad-strokes pass, the user's confirmation with the pass's result in hand, then handover; the run starts the code task at once and queues the lead spec review as the spec task beside it. That provisional acceptance is recorded by the handover itself, a spec named with its review pending.
+- A lead finding that invalidates the approach, once the skeptic confirms it, is a material change and so the user's decision: amend the spec under a recorded decision and rework, or refute the finding. Only the work that depends on the change holds; with the user away, dependent work pauses and independent work proceeds. The rework is the price of starting early, bounded by the broad-strokes pass.
+- Implementation runs beside the spec review; the code review does not. The code task's lead review is dispatched only once the spec task is resolved, every finding disposed and every amendment recorded, so the code reviewer reads the amended spec; repairs the amendments call for land before that dispatch.
+- A finding about a decision (commitments, scope, outcomes, an anti-goal) amends the spec, material changes by the user and compatible corrections by the controller, as the workflow already distinguishes; a finding about mechanics goes to the code with the spec unchanged. The controller sorts them, the skeptic's verdict stands, and a sorting the reviewer disputes is a finding like any other.
+- The runtime changes three things, all within step 3 of [the assessment worklist](../reports/assessment-worklist-20261018.md): `spec-review-required` holds only what depends on spec readiness, so starting and implementing the code task proceed while the spec task is pending while the code review dispatch and the advance past review wait; a spec amendment stales only spec evidence, the spec side of which its declared-path snapshot already covers, while code, docs and skeptic evidence, which today watch the whole inventory and so go stale on a spec edit, are no longer staled by an amendment; and the code task's requirements revision moves only when the user records a material change, never on a compatible correction.
+
+## Related
+
+- [Background review and assessment of selected work](selection-review-and-assessment.md) commits implementation and handover acceptance to wait until its background review and assessment have been presented; under this feature acceptance waits for the broad-strokes pass only, and the lead review runs inside the run. Its background assessment agent is the broad-strokes pass and its background review agent is the lead spec review started early, so whichever ships first reconciles the two records' waiting rule to the user's 2026-11-04 decision, and this record owns the definition of what acceptance waits for.
+- [Keep a handed-over run open for triage after delivery](handover-open-for-triage.md) supplies the open run and the amendment route this feature relies on; [Prototype phase](../../VISION.md#implement-directly-with-evidence-throughout) is the sibling path for a feature whose value shows only in use, and its spec, written from observations, takes the same broad-strokes pass.
+- [Complete the spec-review safeguard and authoring guidance](spec-review-safeguard.md) owns the spec review's dimension brief, which the broad-strokes pass draws its approach dimensions from.
+
+## Before implementation
+
+- The brief and skill text for the pass, the ordering and the sorting rule ride the brief rewrite of the worklist's step 6; the three gate changes ride step 3. A concise governing spec in `.nightshift/specs` settles the pass's budget and output shape, how the spec task and the code task share the run's status and closing stages, and the sweep of every statement that implementation waits for spec review (the workflow, the operating brief, the handover and revise-spec skills, the runtime reference).
+- Shipped runtime, skill and brief changes need a plugin version increase; the start of the work decides between a budgeted installed-host campaign and deterministic evidence only, with model-owned behavior marked unverified.
