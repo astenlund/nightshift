@@ -170,8 +170,8 @@
     },
     {
       "path": "internal/runtime/REFERENCE.md",
-      "bytes": 151256,
-      "sha256": "4ccea0e7e1af31cad723c4866e1c840bf696efac36eecd9185593ab04515f099"
+      "bytes": 151579,
+      "sha256": "1e8ade9379f63697a6379fb30a2103cbd09431b1cfa841ef68de2f43afe0bd1a"
     },
     {
       "path": "internal/runtime/acceptance-checkpoint.js",
@@ -270,8 +270,8 @@
     },
     {
       "path": "internal/runtime/hosts.js",
-      "bytes": 28110,
-      "sha256": "d91c3ffe10d15f84dae101b33d12b89fb7ae79b374e7cecc69d60034f7cf910b"
+      "bytes": 28119,
+      "sha256": "35fa69ee1db955b381b97a1d0c50167ef083749f2e19dcbb25f1409eabd4434c"
     },
     {
       "path": "internal/runtime/legacy-approval-v1.js",
@@ -455,13 +455,13 @@
     },
     {
       "path": "internal/runtime/vibe-config.js",
-      "bytes": 5062,
-      "sha256": "1449efa905c72c3c271482da0760980dfdda52fa3389d0e93de69b8b9713baf0"
+      "bytes": 5405,
+      "sha256": "5027fcf4ba3c0ee548df7631c478a6ccc33f1ff76843a6a07d9e83238bd535a8"
     },
     {
       "path": "internal/runtime/vibe.js",
-      "bytes": 19289,
-      "sha256": "c6fd4198b2a83e6319a7b281c8491643a47ce360b9f3e6595c8991b7ef56888f"
+      "bytes": 19629,
+      "sha256": "f03f07a5660da718336ac23872e652ddba7c317e1b3b4afd669e6ad8afa6c3e1"
     },
     {
       "path": "internal/runtime/wait.js",

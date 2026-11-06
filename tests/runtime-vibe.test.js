@@ -219,6 +219,36 @@ test('the effective-configuration check refuses changed, missing and entry diffe
   assert.equal(preferences.result.status, 'complete');
 });
 
+test('retired Vibe fields may be absent only from verified 3.1 or later configurations', async t => {
+  // Arrange
+  const config = cleanConfig();
+  delete config.tool_paths;
+  delete config.smart_approve_default;
+
+  // Act and Assert
+  for (const version of ['3.1.0', '3.1.1', '4.0.0']) assert.deepEqual(vibe.configurationDifferences(config, GLM.model, 'high', version), { differing: [], uncompared: [] });
+  for (const version of [undefined, null, '', 'unknown', '3.0.0', '3.0.3']) assert.deepEqual(vibe.configurationDifferences(config, GLM.model, 'high', version).differing, ['tool_paths', 'smart_approve_default']);
+  for (const [key, value] of [['tool_paths', ['custom']], ['smart_approve_default', true], ['tool_paths', null], ['smart_approve_default', null]]) {
+    assert.deepEqual(vibe.configurationDifferences({ ...config, [key]: value }, GLM.model, 'high', '3.1.0').differing, [key]);
+  }
+  const missingRequired = { ...config };
+  delete missingRequired.enabled_tools;
+  assert.deepEqual(vibe.configurationDifferences(missingRequired, GLM.model, 'high', '3.1.0').differing, ['enabled_tools']);
+  const accepted = await launch(t, { installed: '3.1.0', control: { vibeVersion: '3.1.0', config } });
+  assert.equal(accepted.error, null);
+  assert.equal(accepted.result.status, 'complete');
+  assert.equal(accepted.result.attributionVerified, true);
+  assert.equal(accepted.result.vibe.version, '3.1.0');
+  assert.deepEqual(accepted.result.vibe.uncomparedKeys, []);
+  const older = await launch(t, { installed: '3.0.3', control: { vibeVersion: '3.0.3', config } });
+  assert.equal(older.error.code, 'unusable-review');
+  assert.ok(older.error.message.includes('tool_paths'));
+  assert.ok(older.error.message.includes('smart_approve_default'));
+  const spoofed = await launch(t, { installed: '3.0.3', control: { vibeVersion: '3.1.0', config } });
+  assert.equal(spoofed.error.code, 'unusable-review');
+  assert.match(spoofed.error.message, /recorded version/);
+});
+
 test('fixed-shape Vibe configuration objects record new members and still require every known member', () => {
   // Arrange
   for (const key of FIXED_SHAPE_KEYS) {

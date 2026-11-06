@@ -11,7 +11,7 @@ const { isDeepStrictEqual: sameValue } = require('node:util');
 const { RunError, requireCondition } = require('./store');
 const { resolveTrustedExecutable } = require('../filesystem-primitives');
 const { compareVersions, parseModel } = require('./models');
-const { ALLOWLISTED_KEYS, COMPARED_DEFAULTS, FIXED_SHAPE_KEYS, MODEL_ENTRY_ALLOWLISTED, MODEL_ENTRY_COMPARED, PER_ENTRY_KEYS, PROVIDER_DEFAULTS } = require('./vibe-config');
+const { RETIRED_KEYS, ALLOWLISTED_KEYS, COMPARED_DEFAULTS, FIXED_SHAPE_KEYS, MODEL_ENTRY_ALLOWLISTED, MODEL_ENTRY_COMPARED, PER_ENTRY_KEYS, PROVIDER_DEFAULTS } = require('./vibe-config');
 
 const VERSION_FLOOR = Object.freeze([3, 0, 0]);
 const AGENT = 'nightshift-reviewer';
@@ -295,7 +295,8 @@ function journalModel(states) {
 
 // The keys whose effective value differs from what the launcher expects, and the keys a later Vibe version added that have no known
 // default to compare with. The active model's entry and its provider's entry are compared; other catalog and provider entries are not.
-function configurationDifferences(config, model, level) {
+// An omitted version retains the historical 3.0.0 contract; only verified newer versions permit absent retired fields.
+function configurationDifferences(config, model, level, version = '3.0.0') {
   if (config === null || typeof config !== 'object' || Array.isArray(config)) return { differing: ['config'], uncompared: [] };
   const entry = MODELS[model];
   const differing = [];
@@ -312,6 +313,7 @@ function configurationDifferences(config, model, level) {
     uncompared.push(...Object.keys(actual).filter(key => !Object.hasOwn(expected, key) && !allowlisted.includes(key)).map(key => `${prefix}.${key}`));
   };
   for (const [key, value] of Object.entries(expectedConfiguration(model))) {
+    if (!Object.hasOwn(config, key) && Object.hasOwn(RETIRED_KEYS, key) && versionSupported(version) && compareVersions(version.split('.').map(Number), RETIRED_KEYS[key]) >= 0) continue;
     if (FIXED_SHAPE_KEYS.includes(key)) compareEntry(key, config[key], value, []);
     else if (!Object.hasOwn(config, key) || !sameValue(config[key], value)) differing.push(key);
   }

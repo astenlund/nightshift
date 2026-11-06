@@ -102,4 +102,8 @@ const PROVIDER_DEFAULTS = Object.freeze({ mistral: Object.freeze({
   "extra_headers": {}
 }) });
 
-module.exports = { ALLOWLISTED_KEYS, COMPARED_DEFAULTS, FIXED_SHAPE_KEYS, MODEL_ENTRY_ALLOWLISTED, MODEL_ENTRY_COMPARED, PER_ENTRY_KEYS, PROVIDER_DEFAULTS };
+// Vibe 3.1 removed these schema fields. Absence is permitted only with a verified version at this floor;
+// present values still undergo the original comparison. Other missing fields remain failures.
+const RETIRED_KEYS = Object.freeze({ tool_paths: Object.freeze([3, 1, 0]), smart_approve_default: Object.freeze([3, 1, 0]) });
+
+module.exports = { RETIRED_KEYS, ALLOWLISTED_KEYS, COMPARED_DEFAULTS, FIXED_SHAPE_KEYS, MODEL_ENTRY_ALLOWLISTED, MODEL_ENTRY_COMPARED, PER_ENTRY_KEYS, PROVIDER_DEFAULTS };

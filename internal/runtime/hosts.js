@@ -442,9 +442,9 @@ async function runVibe(options) {
     requireArtifactsWritten(execution, exit);
     const finished = !overflowed && !exit.error && !exit.timedOut && exit.code === 0 && summary?.outcome === 'finished';
     if (finished) {
-      const { differing, uncompared } = vibe.configurationDifferences(summary.config ?? null, options.model, level);
-      record.uncomparedKeys = uncompared;
       if (summary.vibe_version !== version || launchVersion !== version) throw new RunError('unusable-review', `Vibe recorded version ${summary.vibe_version ?? 'none'} after launching as ${launchVersion}; expected version ${version}`);
+      const { differing, uncompared } = vibe.configurationDifferences(summary.config ?? null, options.model, level, version);
+      record.uncomparedKeys = uncompared;
       if (differing.length > 0) throw new RunError('unusable-review', `Vibe's effective configuration differs from the launcher's at ${differing.join(', ')}`);
     }
 
