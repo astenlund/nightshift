@@ -11,7 +11,7 @@ const { RunStore } = require('../internal/runtime/store');
 const { ProgressStore } = require('../internal/runtime/progress-store');
 const progress = require('../internal/runtime/progress');
 const { execute } = require('../internal/runtime/cli');
-const { DIMENSIONS, reportNotice, transition } = require('../internal/runtime/lifecycle');
+const { DIMENSIONS, commitmentsFor, reportNotice, transition } = require('../internal/runtime/lifecycle');
 const { inventorySnapshot, snapshot, verifyCommand } = require('../internal/runtime/evidence');
 const { closingDischargedSince, creationAssessment } = require('../internal/runtime/creation-consistency');
 const { execute: migrationExecute } = require('../internal/runtime/legacy-migration');
@@ -288,7 +288,7 @@ test('a closing check restoring content a superseded assessment saw holds replac
     await completeReflection(root, legacyOwner, withoutCompletion, legacyDependencies);
     const read = () => withStore(root, store => store.read());
     const act = request => withStore(root, store => store.update(legacyOwner, store.read().revision, request.action, state => transition(state, request)));
-    const assessment = (requestId, findings, extra = {}) => ({ requestId, kind: 'docs', session: requestId + '-session', attributionVerified: true, status: 'complete', strength: 'strong', independent: true, broad: true, dimensions: [...DIMENSIONS.docs], coverageEvidence: 'Assessed the tracking edits', coveredTaskIds: ['reflection'], snapshot: inventorySnapshot(root), findings, ...extra });
+    const assessment = (requestId, findings, extra = {}) => ({ requestId, kind: 'docs', session: requestId + '-session', attributionVerified: true, status: 'complete', strength: 'strong', independent: true, broad: true, dimensions: [...DIMENSIONS.docs], coverageEvidence: 'Assessed the tracking edits', coveredTaskIds: ['reflection'], commitments: commitmentsFor(read().tasks), snapshot: inventorySnapshot(root), contextSnapshot: inventorySnapshot(root), findings, ...extra });
     write(defective);
     act({ action: 'review', taskId: '#closing', review: assessment('finding-review', [{ id: 'F1', severity: 'important', required: false, consequence: 'The text permits replacing unfinished deliveries', evidence: 'The fixture requirement forbids it' }]) });
     const findingId = read().closing.docs.findings[0].id;

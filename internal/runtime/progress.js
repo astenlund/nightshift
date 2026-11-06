@@ -127,7 +127,7 @@ function findingSubject(finding) {
 function usableReview(review, task) {
   const dimensions = { code: ['requirements-ux', 'correctness-integration', 'security-data-safety', 'design-maintainability', 'performance-resources', 'tests-evidence'], spec: ['intent-scope-acceptance', 'soundness-integration', 'failure-safety-recovery', 'clarity-consistency-proportionality'], docs: ['claim-accuracy', 'sweep-completeness', 'backlog-conventions', 'sibling-consistency', 'proportionality'] };
   const kind = review.kind ?? task.kind;
-  return review.status === 'complete' && review.strength === 'strong' && review.independent === true && review.attributionVerified === true && review.broad === true && typeof review.coverageEvidence === 'string' && review.coverageEvidence.trim() && dimensions[kind]?.every(dimension => review.dimensions?.includes(dimension)) && (task.kind === 'closing' || (review.revision ?? -1) >= (task.requirementsRevision ?? 0) && require('node:util').isDeepStrictEqual(review.commitments?.[task.id], { agreement: task.agreement, revision: task.requirementsRevision ?? 0 }));
+  return !review.relevance && review.status === 'complete' && review.strength === 'strong' && review.independent === true && review.attributionVerified === true && review.broad === true && typeof review.coverageEvidence === 'string' && review.coverageEvidence.trim() && dimensions[kind]?.every(dimension => review.dimensions?.includes(dimension)) && (task.kind === 'closing' || (review.revision ?? -1) >= (task.requirementsRevision ?? 0) && require('node:util').isDeepStrictEqual(review.commitments?.[task.id], { agreement: task.agreement, revision: task.requirementsRevision ?? 0 }));
 }
 
 function semanticFacts(state, resolve = value => value) {

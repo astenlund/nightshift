@@ -56,7 +56,8 @@ function fixture(t, tasks = [CODE_TASK], options = {}) {
   const assessment = (kind, covered, findings = [], overrides = {}) => {
     sequence++;
     const coveredTasks = store.read().tasks.filter(task => covered.includes(task.id));
-    return { requestId: `${kind}-${sequence}`, kind, session: `${kind}-reviewer-${sequence}`, attributionVerified: true, status: 'complete', strength: 'strong', independent: true, broad: true, dimensions: [...DIMENSIONS[kind]], coverageEvidence: 'Assessed the complete change', coveredTaskIds: covered, commitments: commitmentsFor(coveredTasks), snapshot: inventorySnapshot(root), contextSnapshot: inventorySnapshot(root), findings, ...overrides };
+    const inputs = inventorySnapshot(root, [], coveredTasks.map(task => task.agreement.spec).filter(file => typeof file === 'string'));
+    return { requestId: `${kind}-${sequence}`, kind, session: `${kind}-reviewer-${sequence}`, attributionVerified: true, status: 'complete', strength: 'strong', independent: true, broad: true, dimensions: [...DIMENSIONS[kind]], coverageEvidence: 'Assessed the complete change', coveredTaskIds: covered, commitments: commitmentsFor(coveredTasks), snapshot: inputs, contextSnapshot: inputs, findings, ...overrides };
   };
   const review = (taskId, kind, covered = [taskId], findings = [], overrides = {}) => act({ action: 'review', taskId, review: assessment(kind, covered, findings, overrides) });
   const check = (taskId, paths = ['src.js'], name = 'Fixture check') => act({ action: 'check', taskId, evidence: verifyCommand(root, { name, executable: process.execPath, args: ['--version'], paths }) });
@@ -759,4 +760,176 @@ test('the closing identity cannot name a queue task', t => {
   f.act({ action: 'stop', kind: 'user-stop', reason: 'Make room for a new run' });
   f.store.update(actor, f.store.read().revision, 'fixture-finished-prior-work', state => { for (const task of state.tasks) { task.status = 'complete'; task.stage = 'complete'; } });
   assert.throws(() => f.store.create({ mechanism: fixtureContinuation(), objective: 'Next work', authority: 'User agreed', controller: actor, tasks: [{ ...CODE_TASK, id: CLOSING_TARGET }] }), { code: 'invalid-queue' });
+});
+
+
+test('closing relevance covers its exact final candidate without replacing fresh assessment or historical discharge', t => {
+  const f = fixture(t);
+  completeTask(f);
+  close(f);
+  f.write(BACKLOG, '# Bugs: first tracking change');
+  f.review(CLOSING_TARGET, 'docs', ['code']);
+  const original = f.store.read().closing.docs.reviews.at(-1);
+  f.write(BACKLOG, '# Bugs: clarified tracking change');
+  const decision = f.assessment('docs', ['code'], [], {
+    relevance: { requestId: original.requestId, originalHash: require('../internal/runtime/applicability').identity(original), taskIds: ['code'], originalInputsAvailable: true },
+    continues: { kind: 'resumed', requestId: original.requestId, session: original.session }, lineage: original.requestId, session: original.session,
+    dimensions: [], broad: false, applicability: [{ id: 'code', outcome: 'preserve', evidence: 'The clarified description preserves the independently assessed tracking decision' }],
+  });
+  f.act({ action: 'review', taskId: CLOSING_TARGET, review: decision });
+  const brief = obligationBrief(f.store.read());
+  assert.equal(brief.closing.docsReview.current, true);
+  assert.equal(brief.closing.docsReview.satisfied, true);
+  assert.equal(f.task().status, 'complete');
+  f.act({ action: 'complete' });
+  assert.equal(f.store.read().status, 'complete');
+  assert.equal(require('../internal/runtime/lifecycle').historicalDischarge(f.store.read(), evidence => Boolean(evidence?.digest)), true);
+  const completed = f.store.read();
+  f.check(CLOSING_TARGET, [BACKLOG]);
+  assert.equal(require('../internal/runtime/creation-consistency').closingDischargedSince(f.store.read(), completed, value => value), true);
+});
+
+
+test('a dispatched governing-spec assessment remains accepted through implementation and closing edits', async t => {
+  const specPath = '.nightshift/features/idea.md';
+  const f = fixture(t, [
+    { id: 'spec', title: 'Governing spec', kind: 'spec', agreement: { source: 'User', outcome: 'Assess the governing artifact', spec: specPath } },
+    { ...CODE_TASK, agreement: { ...CODE_TASK.agreement, spec: specPath, specReviewTaskId: 'spec' } },
+  ]);
+  const dispatched = await executeWithFixtureController(f.root, { action: 'dispatch', actor, revision: f.store.read().revision, taskId: 'spec', review: { kind: 'spec', baseSha: f.baseSha, requirements: 'Assess the governing artifact', rules: 'Read only', candidates: [{ host: 'claude', model: 'claude-opus-5-5', effort: 'high' }] } }, { runAgent: agent([], DIMENSIONS.spec) });
+  await executeWithFixtureController(f.root, { action: 'review', actor, revision: f.store.read().revision, taskId: 'spec', receipt: path.relative(f.root, dispatched.receiptFile).split(path.sep).join('/') });
+  f.act({ action: 'advance', taskId: 'spec' });
+  f.write('src.js', 'module.exports = 2;');
+  completeTask(f);
+  close(f);
+  f.write(BACKLOG, '# Bugs: tracking edit after triage');
+  f.review(CLOSING_TARGET, 'docs', ['code']);
+  assert.equal(obligationBrief(f.store.read()).assessmentApplicability.find(item => item.taskId === 'spec').current, true);
+  assert.equal(f.act({ action: 'complete' }).status, 'complete');
+});
+
+test('documentation relief cannot settle changed governing requirements for a code assessment', t => {
+  const specPath = '.nightshift/features/idea.md';
+  const f = fixture(t, [
+    { id: 'spec', title: 'Governing spec', kind: 'spec', agreement: { source: 'User', outcome: 'Assess governing requirements', spec: specPath } },
+    { ...CODE_TASK, agreement: { ...CODE_TASK.agreement, spec: specPath, specReviewTaskId: 'spec' } },
+  ]);
+  f.review('spec', 'spec', ['spec'], [], { snapshot: snapshot(f.root, [specPath]) });
+  f.act({ action: 'advance', taskId: 'spec' });
+  completeTask(f);
+  f.write(specPath, '# Changed governing requirements');
+  f.review('spec', 'spec', ['spec'], [], { snapshot: snapshot(f.root, [specPath]) });
+  f.act({ action: 'advance', taskId: 'spec' });
+  f.act({ action: 'spec-accepted', taskId: 'code', authority: 'User accepted the revised governing requirements' });
+  f.review('code', 'docs');
+  assert.equal(require('../internal/runtime/lifecycle').reviewGate(f.root, f.task(), f.store.read()), false);
+});
+
+test('documentation relief never overrides an independent requirement to reassess code', t => {
+  const f = fixture(t);
+  completeTask(f);
+  const original = f.task().reviews.find(review => review.kind === 'code');
+  f.write(BACKLOG, '# Changed ordinary documentation');
+  const relevance = f.assessment('code', ['code'], [], { dimensions: [], broad: false, session: original.session, lineage: original.requestId,
+    continues: { kind: 'resumed', requestId: original.requestId, session: original.session },
+    relevance: { requestId: original.requestId, originalHash: require('../internal/runtime/applicability').identity(original), taskIds: ['code'], originalInputsAvailable: true },
+    applicability: [{ id: 'code', outcome: 'reassess', evidence: 'The changed requirement needs independent code assessment' }],
+  });
+  f.act({ action: 'review', taskId: 'code', review: relevance });
+  f.review('code', 'docs');
+  assert.equal(require('../internal/runtime/lifecycle').reviewGate(f.root, f.task(), f.store.read()), false);
+  assert.equal(obligationBrief(f.store.read()).assessmentApplicability.find(item => item.kind === 'code').status, 'reassess');
+});
+
+test('status identifies satisfied documentation relief without requesting unnecessary code reassessment', t => {
+  const f = fixture(t);
+  completeTask(f);
+  f.write(BACKLOG, '# Changed ordinary documentation');
+  f.review('code', 'docs');
+  const condition = obligationBrief(f.store.read()).assessmentApplicability.find(item => item.kind === 'code');
+  assert.equal(condition.current, true);
+  assert.equal(condition.status, 'applicable-by-docs-review');
+  assert.equal(condition.next, null);
+  assert.deepEqual(condition.changedPaths, [BACKLOG]);
+});
+
+
+test('unchanged ignored governing inputs remain consistent across triage and closing context', t => {
+  const f = fixture(t);
+  const governing = '.tmp/governing.md';
+  f.write(governing, '# Governing requirements');
+  const captured = snapshot(f.root, [governing]);
+  f.store.update(actor, f.store.read().revision, 'fixture-governing-input', state => {
+    state.tasks[0].agreement = { ...state.tasks[0].agreement, spec: governing, specReviewed: true, specSnapshot: captured };
+  });
+  completeTask(f);
+  close(f);
+  f.write(BACKLOG, '# Tracking after triage');
+  f.review(CLOSING_TARGET, 'docs', ['code']);
+  assert.equal(f.act({ action: 'complete' }).status, 'complete');
+});
+
+
+for (const outcome of ['reassess', 'unresolved']) {
+  test('later documentation edits carry a prior ' + outcome + ' relevance obligation forward', t => {
+    const f = fixture(t);
+    completeTask(f);
+    const original = f.task().reviews.find(review => review.kind === 'code');
+    f.write(BACKLOG, '# First documentation candidate');
+    const decision = f.assessment('code', ['code'], [], { dimensions: [], broad: false, session: original.session, lineage: original.requestId,
+      continues: { kind: 'resumed', requestId: original.requestId, session: original.session },
+      relevance: { requestId: original.requestId, originalHash: require('../internal/runtime/applicability').identity(original), taskIds: ['code'], originalInputsAvailable: true },
+      applicability: [{ id: 'code', outcome, evidence: 'Independent current code applicability is not established' }],
+    });
+    f.act({ action: 'review', taskId: 'code', review: decision });
+    f.write(BACKLOG, '# Later documentation candidate');
+    f.review('code', 'docs');
+    assert.equal(require('../internal/runtime/lifecycle').reviewGate(f.root, f.task(), f.store.read()), false);
+    assert.notEqual(obligationBrief(f.store.read()).assessmentApplicability.find(item => item.kind === 'code').status, 'applicable-by-docs-review');
+    const current = f.assessment('code', ['code'], [], { dimensions: [], broad: false, session: original.session, lineage: original.requestId,
+      continues: { kind: 'resumed', requestId: decision.requestId, session: original.session },
+      relevance: decision.relevance,
+      applicability: [{ id: 'code', outcome: 'preserve', evidence: 'The later candidate resolves the earlier coverage gap' }],
+    });
+    f.act({ action: 'review', taskId: 'code', review: current });
+    assert.equal(require('../internal/runtime/lifecycle').reviewGate(f.root, f.task(), f.store.read()), true);
+  });
+}
+
+test('closing review context-only ignored support does not masquerade as a post-triage code edit', t => {
+  // Arrange
+  const f = fixture(t);
+  fs.writeFileSync(path.join(f.root, '.git/info/exclude'), '.tmp/');
+  f.write('.tmp/support.md', '# Supporting rationale');
+  completeTask(f);
+  close(f);
+  f.write(BACKLOG, '# Tracking after triage');
+  const inputs = inventorySnapshot(f.root, [], ['.tmp/support.md']);
+  assert.deepEqual(inputs.includedOnlyPaths, ['.tmp/support.md']);
+
+  // Act
+  f.review(CLOSING_TARGET, 'docs', ['code'], [], { snapshot: inputs, contextSnapshot: inputs });
+
+  // Assert
+  assert.equal(f.act({ action: 'complete' }).status, 'complete');
+});
+
+test('closing selected-only provenance cannot hide ordinary edits or malformed scope', t => {
+  // Arrange
+  const f = fixture(t);
+  fs.writeFileSync(path.join(f.root, '.git/info/exclude'), '.tmp/');
+  f.write('.tmp/support.md', '# Rationale');
+  completeTask(f);
+  close(f);
+  f.write(BACKLOG, '# Tracking');
+  const inputs = inventorySnapshot(f.root, [], ['.tmp/support.md']);
+
+  // Act and Assert
+  for (const includedOnlyPaths of [null, '.tmp/support.md', ['.tmp/support.md', '.tmp/support.md'], ['src.js']]) {
+    const malformed = { ...inputs, includedOnlyPaths };
+    assert.throws(() => f.review(CLOSING_TARGET, 'docs', ['code'], [], { snapshot: malformed, contextSnapshot: malformed }), { code: 'closing-scope' });
+  }
+  f.write('src.js', 'module.exports = 2;');
+  const changed = inventorySnapshot(f.root, [], ['.tmp/support.md']);
+  assert.throws(() => f.review(CLOSING_TARGET, 'docs', ['code'], [], { snapshot: changed, contextSnapshot: changed }), { code: 'closing-scope' });
 });

@@ -7,13 +7,14 @@ const { workerIsActive } = require('./workers');
 const { isDeepStrictEqual } = require('node:util');
 
 const { requireCondition, text } = require('./store');
-const { changedPaths, fileSha256, fresh, freshAll, hash, inventorySnapshot, outsideGitWorktree, projectFile, projectInventory, snapshot } = require('./evidence');
+const { withEvidenceComparisons, changedPaths, fileIdentity, fileSha256, fresh, freshAll, hash, inventorySnapshot, outsideGitWorktree, projectFile, projectInventory, snapshot } = require('./evidence');
 const { exhaustedLimit } = require('./limits');
 const { CLOSING_TARGET, unknownActionMessage } = require('./actions');
 const { closureRoute, latestDispatchOf, lineageOf } = require('./continuation');
 const { scratchFailure, scratchStatus } = require('./scratch');
 const { isReviewContext, requireDelivery, recordKind } = require('./records');
 const { isClosed } = require('./statuses');
+const { latestDecision, relevanceCoversTask, applicability, inputChanges, latestEntry: latestReview } = require('./applicability');
 const { validReportDelivery } = require('./report-delivery');
 const { invalidateContinuation, continuationForRequest } = require('./continuation-health');
 
@@ -75,10 +76,11 @@ function sameClosingRecord(record, pinned, origin) {
 // The project inventory at triage, against which a closing review must show documentation-only changes. An empty inventory is an
 // empty baseline. When Git cannot inventory the project, only a project positively outside Git gets a baseline, read from its
 // documentation files on disk, so completion can still tell whether tracking edits followed; otherwise null, which fails closed.
-function triageBaseline(root) {
+function triageBaseline(root, state) {
   try {
-    if (projectInventory(root).length === 0) return { digest: hash(JSON.stringify([])), files: [], inventory: true, excludedPaths: [], includedPaths: [] };
-    return inventorySnapshot(root);
+    const governing = [...new Set((state?.tasks ?? []).map(task => task.agreement?.spec).filter(file => typeof file === 'string'))];
+    if (projectInventory(root, [], governing).length === 0) return { digest: hash(JSON.stringify([])), files: [], inventory: true, excludedPaths: [], includedPaths: [] };
+    return inventorySnapshot(root, [], governing);
   } catch {
     try {
       return outsideGitWorktree(root) ? documentationBaseline(root) : null;
@@ -146,10 +148,6 @@ function findingKind(finding, owner) {
   return finding.reviewKind ?? (owner.kind === 'closing' ? 'docs' : leadKind(owner));
 }
 
-function latestReview(entries) {
-  return [...entries].sort((left, right) => (right.review.revision ?? 0) - (left.review.revision ?? 0))[0];
-}
-
 function settled(finding) {
   return Boolean(finding.validation) && finding.validation.verdict !== 'unverified' && Boolean(finding.disposition) && !(finding.disposition === 'implement' && !finding.repaired);
 }
@@ -176,6 +174,25 @@ function commitmentsFor(tasks) {
   return Object.fromEntries(tasks.map(task => [task.id, { agreement: structuredClone(task.agreement), revision: task.requirementsRevision ?? 0 }]));
 }
 
+function commitmentBindingFor(commitments) {
+  return { taskIds: Object.keys(commitments), digest: require('./progress').fingerprint(commitments) };
+}
+
+function evidenceCommitmentsCurrent(state, task, evidence) {
+  if (!evidence) return false;
+  let binding = evidence.commitmentBinding;
+  if (binding === undefined) {
+    const worker = state.workers.find(candidate => candidate.id === evidence.requestId);
+    if (worker?.commitments) binding = commitmentBindingFor(worker.commitments);
+    else return state.tasks.every(candidate => (candidate.requirementsRevision ?? 0) === 0);
+  }
+  if (!binding || !Array.isArray(binding.taskIds) || new Set(binding.taskIds).size !== binding.taskIds.length || binding.taskIds.some(id => typeof id !== 'string') || typeof binding.digest !== 'string') return false;
+  if (task.kind !== 'closing' && !binding.taskIds.includes(task.id)) return false;
+  const tasks = binding.taskIds.map(id => state.tasks.find(candidate => candidate.id === id));
+  if (tasks.some(candidate => !candidate)) return false;
+  return commitmentBindingFor(commitmentsFor(tasks)).digest === binding.digest;
+}
+
 // A target's latest invocation of each named check: a later invocation supersedes an earlier one of the same name.
 function latestChecks(target) {
   return [...new Map(target.checks.map(check => [check.name, check])).values()];
@@ -196,7 +213,13 @@ function historicalDischarge(state, snapshotValid) {
   if (pendingClosures(state).length || carriedFindings(state).some(finding => !settled(finding))) return false;
   const assessed = (entry, task, kind) => {
     const review = entry?.review;
-    return acceptableAssessment(review, task) && review.attributionVerified === true && DIMENSIONS[kind].every(dimension => review.dimensions?.includes(dimension)) && snapshotValid(review.snapshot);
+    const related = review ? entry.owner.reviews.filter(candidate => candidate.relevance && candidate.relevance.requestId === review.requestId && candidate.relevance.originalHash === require('./applicability').identity(review) && relevanceCoversTask(candidate, task.id)) : [];
+    if (related.length && !latestDecision(related, state)) return false;
+    const matching = related.filter(candidate => isDeepStrictEqual(candidate.commitments?.[task.id], commitmentsFor([task])[task.id]));
+    const decision = latestDecision(matching, state);
+    if (matching.length && !decision) return false;
+    const retained = completeAssessment(review) && decision?.status === 'complete' && decision.attributionVerified === true && decision.independent === true && decision.strength === 'strong' && decision.applicability?.some(answer => answer.id === task.id && answer.outcome === 'preserve' && answer.evidence?.trim()) && snapshotValid(decision.snapshot) && snapshotValid(decision.contextSnapshot);
+    return (acceptableAssessment(review, task) || retained) && review.attributionVerified === true && DIMENSIONS[kind].every(dimension => review.dimensions?.includes(dimension)) && snapshotValid(review.snapshot);
   };
   for (const task of state.tasks) {
     if (!verificationGate(state.root, task, current) || !task.findings.every(finding => settled(finding) && finding.validation.attributionVerified === true && ['confirmed', 'refuted'].includes(finding.validation.verdict))) return false;
@@ -207,7 +230,7 @@ function historicalDischarge(state, snapshotValid) {
     if (state.docsGate && sharesCumulativeAssessment(task)) {
       const exemption = task.docsExemption;
       if (!(exemption?.reason?.trim() && snapshotValid(exemption.snapshot))) {
-        const entry = latestReview(docsCandidates(task, state, false));
+        const entry = latestReview(docsCandidates(task, state, false), state);
         if (!assessed(entry, task, 'docs') || task.findings.some(finding => finding.repaired && findingKind(finding, task) === 'docs' && finding.repairRevision >= entry.review.revision)) return false;
       }
     }
@@ -219,7 +242,7 @@ function historicalDischarge(state, snapshotValid) {
   const closing = state.closing.docs;
   if (closing) {
     if (!closing.findings.every(settled) || !verificationGate(state.root, closing, current) || !snapshotValid(closing.baseline, true)) return false;
-    const review = latestReview(closing.reviews.map(item => ({ review: item })))?.review;
+    const review = latestReview(closing.reviews.filter(item => !item.relevance).map(item => ({ review: item })), state)?.review;
     if (review && (!completeAssessment(review) || review.attributionVerified !== true || !DIMENSIONS.docs.every(dimension => review.dimensions?.includes(dimension)) || !snapshotValid(review.snapshot))) return false;
     if (closing.findings.some(finding => finding.repaired && finding.repairRevision >= (review?.revision ?? Infinity))) return false;
   }
@@ -334,13 +357,15 @@ function specReady(state, task) {
     return evidence?.files?.length === 1 && evidence.files[0].path === task.agreement.spec && typeof evidence.files[0].sha256 === 'string' && fresh(state.root, evidence);
   }
   const spec = state.tasks.find(candidate => candidate.id === task.agreement.specReviewTaskId);
-  return spec?.kind === 'spec' && spec.status === 'complete' && spec.agreement.spec === task.agreement.spec && reviewGate(state.root, spec, state);
+  const assessment = spec?.kind === 'spec' ? leadEntry(spec, state)?.review : null;
+  return spec?.kind === 'spec' && spec.status === 'complete' && spec.agreement.spec === task.agreement.spec
+    && acceptableAssessment(assessment, spec) && fresh(state.root, assessment.snapshot) && reviewGate(state.root, spec, state);
 }
 
 // A completed strong independent assessment with broad evidenced coverage; a failed or partial one never counts. Neither does a
 // continued one: a resumed or replacement reviewer verifies repairs and can raise findings, but only a fresh assessment passes a gate.
 function completeAssessment(review) {
-  return Boolean(review) && !review.continues && review.status === 'complete' && review.strength === 'strong' && review.independent === true && review.broad === true && Boolean(review.coverageEvidence?.trim());
+  return Boolean(review) && !review.relevance && !review.continues && review.status === 'complete' && review.strength === 'strong' && review.independent === true && review.broad === true && Boolean(review.coverageEvidence?.trim());
 }
 
 function acceptableAssessment(review, task) {
@@ -351,28 +376,37 @@ function acceptableAssessment(review, task) {
 
 // The assessment a task's lead gate reads, with its owner: the latest of the task's own lead-kind assessments and, between tasks that
 // share the cumulative assessment, the code reviews of other tasks that cover it.
-function leadEntry(task, state) {
+function leadEntries(task, state) {
   const lead = leadKind(task);
   const entries = state
     ? state.tasks.flatMap(owner => owner.reviews
-      .filter(review => owner.id === task.id ? reviewKind(review, owner) === lead : sharesCumulativeAssessment(task) && sharesCumulativeAssessment(owner) && review.kind === 'code' && review.coveredTaskIds?.includes(task.id))
+      .filter(review => !review.relevance && (owner.id === task.id ? reviewKind(review, owner) === lead : sharesCumulativeAssessment(task) && sharesCumulativeAssessment(owner) && review.kind === 'code' && review.coveredTaskIds?.includes(task.id)))
       .map(review => ({ review, owner })))
-    : task.reviews.filter(review => reviewKind(review, task) === lead).map(review => ({ review, owner: task }));
-  return latestReview(entries);
+    : task.reviews.filter(review => !review.relevance && reviewKind(review, task) === lead).map(review => ({ review, owner: task }));
+  return entries;
+}
+
+function leadEntry(task, state) {
+  return latestReview(leadEntries(task, state), state);
 }
 
 // Returns null when the gate holds, 'stale' when the latest otherwise acceptable assessment no longer matches current inputs, and 'unmet' otherwise.
 // Each gate counts only the findings and repairs of its own kind; a docs repair reaches this gate only through the files it changed.
 function reviewGateFailure(root, task, state) {
   const lead = leadKind(task);
-  const review = leadEntry(task, state)?.review;
-  if (!acceptableAssessment(review, task)) return 'unmet';
-  if (!fresh(root, review.snapshot) && !documentationRelief(root, task, state, review)) return 'stale';
+  const entry = leadEntry(task, state);
+  const review = entry?.review;
+  if (!completeAssessment(review)) return 'unmet';
+  const condition = applicability(root, review, task, entry.owner, state);
+  if (!condition.current && !(condition.status === 'pending' && acceptableAssessment(review, task) && documentationRelief(root, task, state, review))) return 'stale';
   if (!DIMENSIONS[lead].every(dimension => review.dimensions.includes(dimension))) return 'unmet';
   if (!verificationGate(root, task)) return 'unmet';
   const findings = task.findings.filter(finding => findingKind(finding, task) === lead);
   if (!findings.every(settled) || findings.some(finding => finding.pendingClosure)) return 'unmet';
-  if (state && state.tasks.flatMap(owner => owner.findings).some(finding => finding.reviewRevision === review.revision && (!settled(finding) || finding.pendingClosure))) return 'unmet';
+  if (state && state.tasks.flatMap(owner => owner.findings).some(finding => {
+    const decision = entry.owner.reviews.find(candidate => candidate.relevance && candidate.relevance.requestId === review.requestId && relevanceCoversTask(candidate, task.id) && candidate.revision === finding.reviewRevision);
+    return (finding.reviewRevision === review.revision || decision) && (!settled(finding) || finding.pendingClosure);
+  })) return 'unmet';
   return findings.some(finding => finding.repaired && finding.repairRevision >= review.revision) ? 'unmet' : null;
 }
 
@@ -386,28 +420,40 @@ function documentationRelief(root, task, state, review) {
   if (!state || task.kind === 'spec' || review.snapshot?.inventory !== true) return false;
   const changed = changedPaths(root, review.snapshot);
   if (!changed || !changed.every(isDocumentationPath)) return false;
+  const agreements = [task.agreement, ...Object.values(review.commitments ?? {}).map(value => value.agreement)];
+  const governing = [...new Set(agreements.map(agreement => agreement?.spec).filter(file => typeof file === 'string'))];
+  try {
+    const changedKeys = new Set(changed.map(file => fileIdentity(root, file).key));
+    if (governing.some(file => {
+      projectFile(root, file);
+      const identity = fileIdentity(root, file);
+      return !identity.exists || changedKeys.has(identity.key);
+    })) return false;
+  } catch {
+    return false;
+  }
   return docsReviewFailure(root, task, state, { closingOnly: task.kind === 'lore' }) === null;
 }
 
 function docsCandidates(task, state, closingOnly) {
   const closing = state.closing?.docs;
-  const fromClosing = (closing?.reviews ?? []).filter(review => review.coveredTaskIds?.includes(task.id)).map(review => ({ review, owner: closing }));
+  const fromClosing = (closing?.reviews ?? []).filter(review => !review.relevance && review.coveredTaskIds?.includes(task.id)).map(review => ({ review, owner: closing }));
   if (closingOnly) return fromClosing;
   const fromTasks = state.tasks.flatMap(owner => owner.reviews
-    .filter(review => review.kind === 'docs' && (owner.id === task.id || sharesCumulativeAssessment(task) && sharesCumulativeAssessment(owner) && review.coveredTaskIds?.includes(task.id)))
+    .filter(review => !review.relevance && review.kind === 'docs' && (owner.id === task.id || sharesCumulativeAssessment(task) && sharesCumulativeAssessment(owner) && review.coveredTaskIds?.includes(task.id)))
     .map(review => ({ review, owner })));
   return [...fromTasks, ...fromClosing];
 }
 
 // Whether the latest docs review covering the task is current, with the same conditions the code gate applies, plus the closing record's own findings and checks when it supplies that review.
 function docsReviewFailure(root, task, state, { closingOnly = false } = {}) {
-  const entry = latestReview(docsCandidates(task, state, closingOnly));
-  if (!entry || !acceptableAssessment(entry.review, task)) return 'unmet';
+  const entry = latestReview(docsCandidates(task, state, closingOnly), state);
+  if (!entry || !completeAssessment(entry.review)) return 'unmet';
   const { review, owner } = entry;
-  if (!fresh(root, review.snapshot)) return 'stale';
+  if (!applicability(root, review, task, owner, state).current) return 'stale';
   if (!DIMENSIONS.docs.every(dimension => review.dimensions.includes(dimension))) return 'unmet';
   // The task's own docs findings, and those of the owning record: every one the closing record holds, or those this review raised on another task.
-  const others = owner === task ? [] : owner.kind === 'closing' ? owner.findings : owner.findings.filter(finding => finding.reviewRevision === review.revision);
+  const others = owner === task ? [] : owner.kind === 'closing' ? owner.findings : owner.findings.filter(finding => finding.reviewRevision === review.revision || owner.reviews.some(candidate => candidate.relevance && candidate.relevance.requestId === review.requestId && relevanceCoversTask(candidate, task.id) && candidate.revision === finding.reviewRevision));
   const findings = [...task.findings.filter(finding => findingKind(finding, task) === 'docs'), ...others];
   if (!findings.every(settled) || findings.some(finding => finding.pendingClosure || finding.repaired && finding.repairRevision >= review.revision)) return 'unmet';
   if (owner.kind === 'closing' && !verificationGate(root, owner)) return 'unmet';
@@ -426,7 +472,7 @@ function docsGateFailure(root, task, state) {
 function closingRecordFailure(root, state) {
   const record = state.closing?.docs;
   if (!record) return null;
-  const latest = latestReview(record.reviews.map(review => ({ review })))?.review;
+  const latest = latestReview(record.reviews.filter(review => !review.relevance).map(review => ({ review })), state)?.review;
   if (latest && (!completeAssessment(latest) || !DIMENSIONS.docs.every(dimension => latest.dimensions.includes(dimension)))) return 'unmet';
   if (!record.findings.every(settled) || record.findings.some(finding => finding.pendingClosure)) return 'unmet';
   if (record.findings.some(finding => finding.repaired && finding.repairRevision >= (latest?.revision ?? Infinity))) return 'unmet';
@@ -453,8 +499,10 @@ function closingCoverageFailure(root, state) {
   const changed = changedPaths(root, record.baseline);
   if (changed === null) return 'no-baseline';
   if (changed.length === 0) return null;
-  const latest = latestReview(record.reviews.map(review => ({ review })))?.review;
-  return latest && fresh(root, latest.snapshot) && closingRecordFailure(root, state) === null ? null : 'unreviewed';
+  const latest = latestReview(record.reviews.filter(review => !review.relevance).map(review => ({ review })), state)?.review;
+  const excluded = new Set(latest?.contextSnapshot?.excludedPaths ?? []);
+  if (changed.some(file => !excluded.has(file) && !isDocumentationPath(file))) return 'unreviewed';
+  return latest && closingAssessmentCurrent(root, state, latest) && closingRecordFailure(root, state) === null ? null : 'unreviewed';
 }
 
 // The baseline a triage records. An earlier baseline of the run stands while the changes since it lack independent review, so
@@ -463,7 +511,7 @@ function closingCoverageFailure(root, state) {
 // the whole inventory; a missing earlier baseline, which already fails closed, gives way to the inventory at this triage.
 function nextTriageBaseline(root, state) {
   const earlier = state.closing.docs ? state.closing.docs.baseline : state.closing.carriedBaseline;
-  if (!earlier) return triageBaseline(root);
+  if (!earlier) return triageBaseline(root, state);
   const closingReviewed = Boolean(state.closing.docs) && closingCoverageFailure(root, state) === null;
   const taskReviewed = () => {
     try {
@@ -473,13 +521,13 @@ function nextTriageBaseline(root, state) {
       return false;
     }
   };
-  return closingReviewed || taskReviewed() ? triageBaseline(root) : earlier;
+  return closingReviewed || taskReviewed() ? triageBaseline(root, state) : earlier;
 }
 
 // The repair step of the operating brief, carried by both kinds of status rules.
 const REPAIR_RULE = 'Repair the property a finding keys on with the smallest change; before repairing a finding that reports misbehavior, run a failing check that reproduces it and rerun the same command under the same name on the same task after the repair, and again before a review once its inputs change, since only a current passing check carries its reproduction to reviewers, or, when no practical automated reproduction exists, record a reason and stand-in evidence; when a repair changes which record, status or case a decision or obligation reads, trace that state\'s readers and writers; and after a second missed case of the same kind after a repair, a repair undoing an earlier one or a repeated invariant violation, counting misses across repair attempts rather than findings one review reports together, fix the shared cause.';
-const STALE_REVIEW = 'The latest assessment is stale: reviewed inputs changed after its import. Dispatch a current cumulative assessment that covers the changes';
-const STALE_DOCS_REVIEW = 'The latest docs review is stale: reviewed inputs changed after its import. Dispatch a current docs review that covers the changes';
+const STALE_REVIEW = 'The latest assessment is stale on current inputs: obtain independent relevance or cumulative reassessment covering the changes';
+const STALE_DOCS_REVIEW = 'The latest docs review is stale on current inputs: obtain independent relevance or cumulative docs reassessment';
 
 // Closures in a complete report of a continued lead end the pending closure of each finding of its lineage it records closed; an
 // incomplete report's closures are not recorded. Every recorded closure stays on its finding as evidence.
@@ -493,9 +541,13 @@ function recordClosures(target, review, lineage, revision) {
   }
 }
 
-function latestByKind(owner) {
+function latestByKind(owner, state) {
   const latest = new Map();
-  for (const review of [...owner.reviews].sort((left, right) => (left.revision ?? 0) - (right.revision ?? 0))) latest.set(reviewKind(review, owner), review);
+  const reviews = owner.reviews.filter(review => !review.relevance);
+  for (const kind of new Set(reviews.map(review => reviewKind(review, owner)))) {
+    const entries = reviews.filter(review => reviewKind(review, owner) === kind).map(review => ({ review }));
+    latest.set(kind, latestReview(entries, state).review);
+  }
   return latest;
 }
 
@@ -513,8 +565,8 @@ function latestRepair(task) {
 // judges the currency of an assessment it accepts, so documentation relief and covering assessments count; it never reports stale one it
 // does not accept, such as a continued, incomplete or narrow one, which is outdated once its reviewed inputs changed.
 function staleGateEntries(root, task, state) {
-  const outdated = (failure, entry) => Boolean(entry) && (failure === 'stale' || !acceptableAssessment(entry.review, task) && !fresh(root, entry.review.snapshot));
-  return [[reviewGateFailure(root, task, state), leadEntry(task, state)], [docsReviewFailure(root, task, state), latestReview(docsCandidates(task, state, false))]]
+  const outdated = (failure, entry) => Boolean(entry) && !applicability(root, entry.review, task, entry.owner, state).current && (failure === 'stale' || !acceptableAssessment(entry.review, task));
+  return [[reviewGateFailure(root, task, state), leadEntry(task, state)], [docsReviewFailure(root, task, state), latestReview(docsCandidates(task, state, false), state)]]
     .filter(([failure, entry]) => outdated(failure, entry))
     .map(([, entry]) => entry);
 }
@@ -540,7 +592,7 @@ function freshAssessmentTask(state, task, kind, target) {
 // lightweight brief marks them unevaluated.
 function reviewProgress(root, state, target, options = {}) {
   const findings = target.findings;
-  const latest = latestByKind(target);
+  const latest = latestByKind(target, state);
   const freshDue = [...latest].filter(([, review]) => review.continues).map(([kind]) => kind);
   const owing = [...new Set(findings.filter(finding => finding.pendingClosure).map(finding => finding.pendingClosure.lineage))];
   const resumeTargets = owing.map(lineage => {
@@ -556,7 +608,9 @@ function reviewProgress(root, state, target, options = {}) {
     for (const task of [target, ...state.tasks.filter(task => task.id !== target.id)]) {
       for (const { review, owner } of staleGateEntries(root, task, state)) {
         const kind = reviewKind(review, owner);
-        if (owing.includes(lineageOf(review)) || repair.kinds.includes(kind) || (review.revision ?? 0) >= repair.revision) continue;
+        const registered = state.workers?.find(worker => worker.id === review.requestId)?.registeredRevision;
+        // Without a registration revision, a late import cannot prove that its assessment followed the repair.
+        if (owing.includes(lineageOf(review)) || repair.kinds.includes(kind) || Number.isSafeInteger(registered) && registered >= repair.revision) continue;
         const dispatchOn = freshAssessmentTask(state, task, kind, target);
         // One assessment on a task covers every stale gate it reaches, such as a covering assessment several tasks' gates read.
         const entry = freshTargets.find(item => item.kind === kind && item.taskId === dispatchOn.id);
@@ -568,7 +622,7 @@ function reviewProgress(root, state, target, options = {}) {
       }
     }
   }
-  const next = findings.some(finding => !finding.validation || finding.validation.verdict === 'unverified' || !finding.disposition) ? 'validate-and-dispose'
+  const next = findings.some(finding => !finding.validation || finding.validation.verdict === 'unverified' || !finding.disposition || finding.disposition === 'implement' && !finding.repaired && !evidenceCommitmentsCurrent(state, target, finding.validation)) ? 'validate-and-dispose'
     : findings.some(finding => finding.disposition === 'implement' && !finding.repaired) ? 'repair'
       : owing.length > 0 ? 'resume'
         : freshDue.length > 0 ? 'fresh-assessment' : null;
@@ -608,7 +662,20 @@ function closedBrief(state) {
   };
 }
 
+function assessmentCondition(root, task, state, entry) {
+  const { review, owner } = entry;
+  const condition = applicability(root, review, task, owner, state);
+  if (reviewKind(review, owner) === 'code' && condition.status === 'pending' && acceptableAssessment(review, task) && documentationRelief(root, task, state, review)) {
+    return { ...condition, status: 'applicable-by-docs-review', current: true, reason: 'A current independent docs review covers documentation-only input changes', next: null };
+  }
+  return condition;
+}
+
 function obligationBrief(state, root = state.root, options = {}) {
+  return withEvidenceComparisons(() => buildObligationBrief(state, root, options));
+}
+
+function buildObligationBrief(state, root, options) {
   if (isClosed(state)) return closedBrief(state);
   const active = state.tasks.filter(task => task.status !== 'complete');
   const ready = active.filter(task => !task.blocker && task.requires.every(id => taskById(state, id).status === 'complete'));
@@ -625,13 +692,17 @@ function obligationBrief(state, root = state.root, options = {}) {
         : options.verifyFreshness !== false && !specReady(state, task) ? 'governing-spec-review' : task.stage,
       agreement: { source: task.agreement.source, outcome: task.agreement.outcome, decisions: task.agreement.decisions, spec: task.agreement.spec, specReviewTaskId: task.agreement.specReviewTaskId },
       ...(typeof task.agreement.spec === 'string' ? { specAcceptance: specAcceptanceStatus(root, task, options) } : {}),
-      unresolvedFindings: unresolvedFindings(task).map(finding => ({ id: finding.id, consequence: finding.consequence, verdict: finding.validation?.verdict ?? null, disposition: finding.disposition, pendingClosure: Boolean(finding.pendingClosure), evidence: finding.evidence.slice(0, 600) })),
+      unresolvedFindings: unresolvedFindings(task).map(finding => ({ id: finding.id, consequence: finding.consequence, verdict: finding.validation?.verdict ?? null, validationCommitmentsCurrent: finding.validation ? evidenceCommitmentsCurrent(state, task, finding.validation) : null, disposition: finding.disposition, pendingClosure: Boolean(finding.pendingClosure), evidence: finding.evidence.slice(0, 600) })),
       review: reviewProgress(root, state, task, options),
       reviewCurrent: options.verifyFreshness === false ? 'reconcile at acceptance' : reviewGate(root, task, state),
       ...(state.docsGate && sharesCumulativeAssessment(task) ? { docsReviewCurrent: options.verifyFreshness === false ? 'reconcile at acceptance' : docsGateFailure(root, task, state) === null } : {}),
     })),
     // An exemption is recorded as its task completes, so it is listed for every task rather than only for work still ahead.
     ...(state.docsGate || isReviewContext(state) ? { docsExemptions: state.tasks.filter(task => task.docsExemption).map(task => ({ taskId: task.id, reason: task.docsExemption.reason, revision: task.docsExemption.revision, current: options.verifyFreshness === false ? 'reconcile at acceptance' : fresh(root, task.docsExemption.snapshot) })) } : {}),
+    assessmentApplicability: options.verifyFreshness === false ? 'unevaluated' : state.tasks.flatMap(task => {
+      const entries = [leadEntry(task, state), latestReview(docsCandidates(task, state, false), state)].filter(Boolean);
+      return entries.map(entry => ({ taskId: task.id, completed: task.status === 'complete', ...assessmentCondition(root, task, state, entry) }));
+    }),
     staleChecks: options.verifyFreshness === false ? 'reconcile at acceptance' : staleChecks(root, state),
     finalReconciliationPending: !isReviewContext(state) && state.status === 'running' && active.length === 0,
     ...(!isReviewContext(state) ? { closing: { ready: closingReady(state), stage: closingStage(state), ...(state.closing?.docs ? { docsReview: closingDocsBrief(state, root, options) } : {}), ...(state.closing?.carriedFindings?.length ? { carriedFindings: state.closing.carriedFindings.map(finding => finding.id) } : {}) } } : {}),
@@ -644,14 +715,23 @@ function obligationBrief(state, root = state.root, options = {}) {
   };
 }
 
+function closingAssessmentCurrent(root, state, review) {
+  if (!Array.isArray(review.coveredTaskIds)) return false;
+  if (review.coveredTaskIds.length === 0) return inputChanges(root, review)?.length === 0;
+  return review.coveredTaskIds.every(id => {
+    const task = state.tasks.find(candidate => candidate.id === id);
+    return task && applicability(root, review, task, state.closing.docs, state).current;
+  });
+}
+
 function closingDocsBrief(state, root, options) {
   const record = state.closing.docs;
-  const latest = latestReview(record.reviews.map(review => ({ review })))?.review;
+  const latest = latestReview(record.reviews.filter(review => !review.relevance).map(review => ({ review })), state)?.review;
   return {
     target: CLOSING_TARGET, baseline: Boolean(record.baseline), reviews: record.reviews.length,
     unresolvedFindings: record.findings.filter(finding => !settled(finding) || finding.pendingClosure).map(finding => finding.id),
     review: reviewProgress(root, state, record, options),
-    current: options.verifyFreshness === false ? 'reconcile at acceptance' : Boolean(latest) && fresh(root, latest.snapshot) && closingRecordFailure(root, state) === null,
+    current: options.verifyFreshness === false ? 'reconcile at acceptance' : Boolean(latest) && closingAssessmentCurrent(root, state, latest) && closingRecordFailure(root, state) === null,
     satisfied: options.verifyFreshness === false ? 'reconcile at acceptance' : closingCoverageFailure(root, state) === null,
   };
 }
@@ -672,12 +752,19 @@ function assertClosingAction(state, request) {
 }
 
 // Each changed path since the triage baseline, apart from user-owned files the review excluded, must be documentation a docs review covers.
-function closingScopeFailure(root, record, review) {
+function closingScopeFailure(record, review) {
   if (!record.baseline) return 'This closing record has no triage baseline, so a closing review cannot establish that only documentation paths changed';
   const excluded = new Set(review.contextSnapshot?.excludedPaths ?? []);
-  const changed = changedPaths(root, record.baseline);
-  if (!changed) return 'The difference from the triage baseline cannot be established';
-  const outside = changed.filter(file => !excluded.has(file) && !isDocumentationPath(file));
+  const changed = require('./applicability').snapshotChanges(record.baseline, review.contextSnapshot ?? review.snapshot);
+  if (!changed) return 'The assessed difference from the triage baseline cannot be established';
+  const baselinePaths = new Set(record.baseline.files.map(file => file.path));
+  const selectedOnly = review.contextSnapshot?.includedOnlyPaths;
+  if (selectedOnly !== undefined && (!Array.isArray(selectedOnly) || new Set(selectedOnly).size !== selectedOnly.length
+    || selectedOnly.some(file => typeof file !== 'string' || !review.contextSnapshot.includedPaths?.includes(file) || !review.contextSnapshot.files.some(entry => entry.path === file)))) {
+    return 'The closing context has malformed selected-only input provenance';
+  }
+  const contextOnly = new Set(selectedOnly ?? []);
+  const outside = changed.filter(file => !excluded.has(file) && !(contextOnly.has(file) && !baselinePaths.has(file)) && !isDocumentationPath(file));
   return outside.length === 0 ? null : `A closing review covers edits to the backlog, .nightshift/reports and root Markdown other than host instruction files only; these paths changed outside them since triage: ${outside.slice(0, 20).join(', ')}`;
 }
 
@@ -694,7 +781,7 @@ function assertAction(state, request) {
     requireCondition(!exhaustedLimit(state, { dispatch: request.action === 'dispatch' }), 'resource-limit', exhaustedLimit(state, { dispatch: request.action === 'dispatch' }));
     if (state.kind === 'delivery' && !['continuation', 'handover', 'claim-controller', 'review', 'validate', 'dialogue'].includes(request.action)) requireCondition(require('./continuation-health').continuationOutcomeCurrent(state), 'continuation-observation-required', 'Attempt host continuation and record its observed result or failure before dependent work');
   }
-  if (task && !['block', 'unblock', 'add-spec-review', 'spec-accepted'].includes(request.action)) {
+  if (task && !['review', 'block', 'unblock', 'add-spec-review', 'spec-accepted'].includes(request.action)) {
     requireCondition(!task.blocker, 'task-blocked', 'Resolve the recorded blocker before dependent work');
     requireCondition(task.requires.every(id => taskById(state, id).status === 'complete'), 'dependency-blocked', 'An upstream task remains incomplete');
     requireCondition(specReady(state, task), 'spec-review-required', 'Substantial implementation requires resolved independent spec assessment');
@@ -735,7 +822,12 @@ function transition(state, request, integration = null) {
       break;
     case 'review': {
       const review = request.review;
-      requireCondition(review && fresh(state.root, review.snapshot), 'stale-review', 'Review inputs changed or are missing');
+      if (review?.relevance) {
+        const original = task.reviews.find(candidate => candidate.requestId === review.relevance.requestId && !candidate.relevance);
+        requireCondition(original && require('./applicability').identity(original) === review.relevance.originalHash && lineageOf(original) === lineageOf(review), 'foreign-assessment', 'Relevance binds the unchanged original assessment and originating lineage');
+        require('./relevance').validateRelevanceReport({ ...review, coverage: [], applicability: review.applicability }, { relevance: review.relevance });
+      }
+      requireCondition(review?.snapshot && Array.isArray(review.snapshot.files) && hash(JSON.stringify(review.snapshot.files)) === review.snapshot.digest, 'invalid-review', 'Review needs its original input snapshot');
       // A replaced closing record hands its unsettled findings to the next one without their review, so the findings show the import too.
       requireCondition(!review.requestId || !task.reviews.some(previous => previous.requestId === review.requestId) && !task.findings.some(finding => finding.raisedBy?.requestId === review.requestId), 'duplicate-review', 'This assessment is already imported; reconcile its existing findings');
       requireCondition(review.session && review.session !== state.controller.session && review.attributionVerified === true, 'unattributed-review', 'Independent reviewer attribution is required');
@@ -743,13 +835,17 @@ function transition(state, request, integration = null) {
       const closing = task.kind === 'closing';
       if (closing) review.progressBinding = structuredClone(task.progressBinding);
       if (closing) {
-        const outside = closingScopeFailure(state.root, task, review);
+        const outside = closingScopeFailure(task, review);
         requireCondition(!outside, 'closing-scope', outside);
       }
       const revision = state.revision + 1;
       const previous = task.reviews.at(-1);
+      const candidate = { ...review, revision };
+      const siblings = reviewKind(review, task) === 'docs' ? docsCandidates(task, state, false) : leadEntries(task, state);
+      const superseded = !review.relevance && latestReview([...siblings, { review: candidate, owner: task }], state).review !== candidate;
       // The closing record reviews edits made after triage, so recording it must never clear the closing evidence it follows.
-      if (!closing && (task.status !== 'complete' || previous?.snapshot?.digest !== review.snapshot.digest || !isDeepStrictEqual(previous?.commitments, review.commitments))) resetClosing(state);
+      const historical = inputChanges(state.root, review, reviewKind(review, task))?.length !== 0 || (!closing && !isDeepStrictEqual(review.commitments?.[task.id], commitmentsFor([task])[task.id]));
+      if (!closing && !review.relevance && !historical && !superseded && (task.status !== 'complete' || previous?.snapshot?.digest !== review.snapshot.digest || !isDeepStrictEqual(previous?.commitments, review.commitments))) resetClosing(state);
       task.reviews.push({ ...review, revision });
       const lineage = lineageOf(review) ?? null;
       for (const finding of review.findings) {
@@ -760,8 +856,9 @@ function transition(state, request, integration = null) {
         const relatedTo = task.findings.filter(existing => existing.localId === finding.id).map(existing => existing.id);
         task.findings.push({ ...finding, ...(closing ? { progressBinding: structuredClone(task.progressBinding) } : {}), id, localId: finding.id, relatedTo, reviewRevision: revision, reviewKind: reviewKind(review, task), reviewer: review.session, raisedBy: { requestId: review.requestId ?? null, lineage }, validation: null, disposition: null, repaired: false });
       }
-      recordClosures(task, review, lineage, revision);
-      if (closing) break;
+      if (!review.relevance && !historical) recordClosures(task, review, lineage, revision);
+      if (closing || (review.relevance || historical || superseded) && review.findings.length === 0) break;
+      if (historical || review.relevance || superseded) resetClosing(state);
       delete task.docsExemption;
       if (!['implementation', 'review'].includes(task.stage)) task.resumeStage = task.stage;
       task.stage = 'review';
@@ -776,11 +873,13 @@ function transition(state, request, integration = null) {
       requireCondition(['confirmed', 'refuted', 'unverified'].includes(validation.verdict), 'invalid-verdict', 'Unknown skeptic verdict');
       text(validation.evidence, 'validation.evidence');
       requireCondition(fresh(state.root, validation.snapshot), 'stale-validation', 'Skeptic evidence must match current inputs');
+      const commitmentBinding = validation.commitmentBinding === undefined ? commitmentBindingFor(commitmentsFor(state.tasks)) : validation.commitmentBinding;
+      requireCondition(evidenceCommitmentsCurrent(state, task, { ...validation, commitmentBinding }), 'stale-validation', 'Skeptic evidence must match current accepted commitments');
       requireCondition(validation.verdict !== 'confirmed' || typeof validation.repairProposal === 'string' && validation.repairProposal.trim(), 'missing-repair-proposal', 'A confirmed verdict carries the approach a repair would take');
       // A new verdict replaces the proposal with it and returns the finding to disposition; a pending closure is kept, because the
       // repair it waits on is still in the change.
-      if (validation.dialogue) finding.dialogue = [...(finding.dialogue ?? []), { requestId: validation.requestId, session: validation.session, role: 'skeptic', message: validation.dialogue, verdict: validation.verdict, evidence: validation.evidence, revision: state.revision + 1 }];
-      finding.validation = validation;
+      if (validation.dialogue) finding.dialogue = [...(finding.dialogue ?? []), { requestId: validation.requestId, session: validation.session, role: 'skeptic', commitmentBinding, message: validation.dialogue, verdict: validation.verdict, evidence: validation.evidence, revision: state.revision + 1 }];
+      finding.validation = { ...validation, commitmentBinding };
       if (task.kind === 'closing') finding.validation.progressBinding = structuredClone(finding.progressBinding);
       finding.disposition = null;
       finding.repaired = false;
@@ -790,18 +889,20 @@ function transition(state, request, integration = null) {
     case 'dialogue': {
       const reply = request.reply;
       requireCondition(reply && fresh(state.root, reply.snapshot), 'stale-dialogue', 'Dialogue evidence must match current inputs');
+      const commitmentBinding = reply.commitmentBinding === undefined ? commitmentBindingFor(commitmentsFor(state.tasks)) : reply.commitmentBinding;
+      requireCondition(evidenceCommitmentsCurrent(state, task, { ...reply, commitmentBinding }), 'stale-dialogue', 'Dialogue evidence must match current accepted commitments');
       requireCondition(Array.isArray(reply.positions) && reply.positions.length > 0, 'invalid-dialogue-reply', 'A dialogue reply answers the findings it names');
       for (const position of reply.positions) {
         const finding = task.findings.find(candidate => candidate.id === position.id);
         requireCondition(finding && finding.raisedBy?.lineage === reply.lineage, 'foreign-finding', 'A reviewer answers only findings its lineage raised');
-        finding.dialogue = [...(finding.dialogue ?? []), { requestId: reply.requestId, session: reply.session, role: 'reviewer', message: reply.message, position: position.position, evidence: position.evidence, revision: state.revision + 1 }];
+        finding.dialogue = [...(finding.dialogue ?? []), { requestId: reply.requestId, session: reply.session, role: 'reviewer', commitmentBinding, message: reply.message, position: position.position, evidence: position.evidence, revision: state.revision + 1 }];
       }
       break;
     }
     case 'dispose': {
       const finding = task.findings.find(candidate => candidate.id === request.findingId);
       requireCondition(finding?.validation && finding.validation.verdict !== 'unverified', 'unvalidated-finding', 'Missing evidence is unresolved');
-      requireCondition(fresh(state.root, finding.validation.snapshot), 'stale-validation', 'Skeptic evidence changed before disposition');
+      requireCondition(fresh(state.root, finding.validation.snapshot) && evidenceCommitmentsCurrent(state, task, finding.validation), 'stale-validation', 'Skeptic inputs or accepted commitments changed before disposition');
       requireCondition(['implement', 'defer', 'skip', 'refuted'].includes(request.disposition), 'invalid-disposition', 'Unknown finding disposition');
       text(request.reason, 'disposition.reason');
       requireCondition(request.disposition !== 'refuted' || finding.validation.verdict === 'refuted', 'invalid-disposition', 'Refutation needs concrete skeptic evidence');
@@ -821,6 +922,7 @@ function transition(state, request, integration = null) {
       for (const id of request.findingIds) {
         const finding = task.findings.find(candidate => candidate.id === id);
         requireCondition(finding?.disposition === 'implement', 'unauthorized-repair', 'Repair requires a validated implement disposition');
+        requireCondition(evidenceCommitmentsCurrent(state, task, finding.validation), 'stale-validation', 'A material commitment change requires current validation and repair authority');
         requireCondition(typeof finding.validation?.repairProposal === 'string' && finding.validation.repairProposal.trim(), 'repair-proposal-required', 'A repair needs the skeptic\'s recorded repair proposal; obtain one through a dialogue turn with the skeptic before editing');
       }
       for (const id of request.findingIds) {
@@ -1104,4 +1206,4 @@ function transition(state, request, integration = null) {
   require('./discharge').admittedAction(state, request, dischargeBefore);
 }
 
-module.exports = { DIMENSIONS, assertAction, closingStage, commitmentsFor, completeAssessment, findingKind, historicalDischarge, isDocumentationPath, latestChecks, obligationBrief, reportNotice, reportStatus, reviewGate, reviewProgress, sameClosingRecord, settled, sharesCumulativeAssessment, targetById, taskById, transition, unresolvedFindings };
+module.exports = { DIMENSIONS, assertAction, closingStage, commitmentBindingFor, commitmentsFor, completeAssessment, findingKind, historicalDischarge, isDocumentationPath, latestChecks, obligationBrief, reportNotice, reportStatus, reviewGate, reviewProgress, sameClosingRecord, settled, sharesCumulativeAssessment, targetById, taskById, transition, unresolvedFindings };

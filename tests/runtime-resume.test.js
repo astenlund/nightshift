@@ -41,7 +41,7 @@ let sessions = 0;
 // A fixture host that returns the report fields a test chooses, as native Claude events. A resumed attempt continues the session it
 // was asked to resume; a continued lead closes every pending finding unless told otherwise; a lead's dialogue turn maintains each.
 // A launched one reports a host process, as a real runner does, and its proven termination.
-function fakeAgent(options, { findings = [], closures, positions, status = 'complete', session, dimensions = DIMENSIONS.code, calls, during, launched = false, threadTokens } = {}) {
+function fakeAgent(options, { findings = [], closures, positions, status = 'complete', session, dimensions = DIMENSIONS.code, calls, during, launched = false, threadTokens, applicability } = {}) {
   calls?.push(options);
   if (launched) options.onProcess(999999);
   fs.mkdirSync(options.artifacts, { recursive: true });
@@ -50,7 +50,13 @@ function fakeAgent(options, { findings = [], closures, positions, status = 'comp
   const report = { requestId: request.id, status, coverage: dimensions.map(dimension => ({ dimension, evidence: 'Assessed the change' })), findings, probes: [], summary: 'Fixture report', toolFailure: '' };
   if (request.kind !== 'skeptic') {
     report.closures = request.continues && !request.dialogue ? closures ?? request.pendingClosures.map(finding => ({ id: finding.id, closed: true, evidence: 'The repair resolves it' })) : [];
+    report.applicability = [];
     report.positions = request.dialogue ? positions ?? request.dialogue.findingIds.map(id => ({ id, position: 'maintain', evidence: 'The finding still holds' })) : [];
+  }
+  if (request.relevance) {
+    report.coverage = [];
+    report.closures = [];
+    report.applicability = applicability ?? request.relevance.taskIds.map(id => ({ id, outcome: 'preserve', evidence: 'The changed description does not alter the assessed behavior' }));
   }
   const actual = options.session ?? session ?? `session-${++sessions}`;
   const events = options.host === 'codex'
@@ -141,7 +147,7 @@ test('the raising reviewer resumes in a new copy to record closure, and only a f
   assert.notEqual(workspaces[0], workspaces[1]);
   assert.equal(calls[0].cwd, path.join(fs.realpathSync.native(f.root), workspaces[1]));
   assert.ok(calls[0].prompt.includes(`new private copy of the project at ${calls[0].cwd}`));
-  assert.match(calls[1].prompt, /toolFailure, closures and positions\. Use an empty probes array/);
+  assert.match(calls[1].prompt, /toolFailure, closures, positions and applicability\. Use an empty probes array/);
   // The resumed and the fresh dispatch send one and the same schema, so the resumed session's cached prefix survives.
   assert.deepEqual(calls.map(call => call.schema), calls.map(() => schemaFor('code')));
   assert.ok(calls[0].prompt.includes(`for request ${resumed.receipt.requestId} with requestId set to that id verbatim`));
@@ -226,7 +232,7 @@ test('a session failure is resume-failed without fallback, other failures keep t
   const beforeLaunch = await resume({ during: () => { throw new Error('No trusted executable was found'); } });
   const filesystem = await f.act({ action: 'dispatch', review: { ...f.base, kind: 'code', resume: lead.receipt.requestId } }, { runAgent: options => hostFailure(options, 'ENOSPC: no space left on device, write', { code: 'ENOSPC', errno: -4055 }) }).then(() => null, error => error);
   const switched = await f.act({ action: 'dispatch', review: { ...f.base, kind: 'code', resume: lead.receipt.requestId } }, { runAgent: options => ({ ...fakeAgent(options), session: 'another-session' }) }).then(() => null, error => error);
-  const drift = await resume({ during: () => fs.writeFileSync(path.join(f.root, 'subject.txt'), 'edited during the resume\r\n') });
+  const drift = await resume({ during: options => fs.writeFileSync(path.join(options.cwd, 'project/subject.txt'), 'edited during the resume\r\n') });
   fs.writeFileSync(path.join(f.root, 'subject.txt'), 'after\r\n');
   const unproven = await f.act({ action: 'dispatch', review: { ...f.base, kind: 'code', resume: lead.receipt.requestId } }, { runAgent: options => {
     options.onProcess(999999);
@@ -426,7 +432,7 @@ test('a resume reuses the receipt\'s thread total until a later attempt launches
 
   // Act
   const unlaunched = await resume(() => { throw new RunError('host-start-failed', 'Agent host failed to start: fixture'); });
-  const drifted = await resume(options => fakeAgent(options, { launched: true, during: () => fs.writeFileSync(path.join(f.root, 'subject.txt'), 'edited during the resume\r\n') }));
+  const drifted = await resume(options => fakeAgent(options, { launched: true, during: () => fs.writeFileSync(path.join(options.cwd, 'project/subject.txt'), 'edited during the resume\r\n') }));
   fs.writeFileSync(path.join(f.root, 'subject.txt'), 'after\r\n');
   await resume(options => fakeAgent(options));
 
@@ -532,7 +538,7 @@ test('a clean fresh assessment after a repair does not stand in for the raising 
   assert.equal(reviewGate(f.root, f.task(), f.store.read()), true);
 });
 
-test('pending closure survives an incomplete report, a dialogue reply, a failed import, re-validation and a later disposition', async t => {
+test('pending closure survives an incomplete report, a dialogue reply, historical import, re-validation and a later disposition', async t => {
   // Arrange
   const f = fixture(t);
   const { lead, findings } = await raiseAndRepair(f);
@@ -558,7 +564,7 @@ test('pending closure survives an incomplete report, a dialogue reply, a failed 
 
   // Assert
   for (const lineage of [afterIncomplete, afterDialogue, afterImport, afterValidation, afterDisposition]) assert.equal(lineage, lead.receipt.requestId);
-  assert.equal(failedImport, 'invalid-receipt');
+  assert.equal(failedImport, null);
   assert.equal(f.task().findings.find(item => item.id === id).dialogue[0].position, 'maintain');
   assert.equal(obligationBrief(f.store.read()).next[0].unresolvedFindings.find(item => item.id === id).pendingClosure, true);
 });
@@ -1559,4 +1565,391 @@ test('a receipt from an earlier release reads as a fresh dispatch of its own lin
   // Assert
   assert.equal(read.continues, undefined);
   assert.equal(completeAssessment({ ...read, revision: 1 }), true);
+});
+
+
+test('canonical drift is retained through return and import, with completed-task gaps visible without a repair', async t => {
+  const f = fixture(t);
+  const lead = await f.dispatch({ kind: 'code', candidates: [LEAD] }, { during: () => fs.writeFileSync(path.join(f.root, 'subject.txt'), 'later candidate') });
+  assert.equal(fresh(f.root, lead.receipt.snapshot), false);
+  await f.act({ action: 'review', receipt: f.receipt(lead) });
+  assert.equal(f.task().reviews.length, 1);
+  assert.equal(f.task().stage, 'implementation');
+  f.store.update(actor, f.store.read().revision, 'fixture-completed', state => { state.tasks[0].status = 'complete'; state.tasks[0].stage = 'complete'; });
+  const before = f.store.read().revision;
+  const brief = obligationBrief(f.store.read());
+  assert.equal(brief.assessmentApplicability[0].completed, true);
+  assert.deepEqual(brief.assessmentApplicability[0].changedPaths, ['subject.txt']);
+  assert.equal(brief.assessmentApplicability[0].status, 'pending');
+  assert.equal(f.store.read().revision, before);
+  assert.equal(obligationBrief(f.store.read(), f.root, { verifyFreshness: false }).assessmentApplicability, 'unevaluated');
+  await f.act({ action: 'review', receipt: f.receipt(lead) });
+  assert.equal(f.task().reviews.length, 1);
+  assert.equal(f.task().status, 'complete');
+});
+
+test('independent relevance preserves exact candidate coverage without becoming fresh assessment or check evidence', async t => {
+  const f = fixture(t);
+  await f.check();
+  const lead = await f.dispatch({ kind: 'code', candidates: [LEAD] });
+  await f.act({ action: 'review', receipt: f.receipt(lead) });
+  fs.writeFileSync(path.join(f.root, 'README.md'), 'Clarified description');
+  assert.equal(reviewGate(f.root, f.task(), f.store.read()), false);
+  const relevance = await f.dispatch({ kind: 'code', resume: lead.receipt.requestId, relevance: { requestId: lead.receipt.requestId, taskIds: ['task'] } });
+  await f.act({ action: 'review', receipt: f.receipt(relevance) });
+  assert.equal(completeAssessment(f.task().reviews.at(-1)), false);
+  assert.equal(reviewGate(f.root, f.task(), f.store.read()), true);
+  assert.equal(obligationBrief(f.store.read()).assessmentApplicability[0].status, 'applicable-by-decision');
+  fs.writeFileSync(path.join(f.root, 'README.md'), 'Another candidate on the same path');
+  assert.equal(reviewGate(f.root, f.task(), f.store.read()), false);
+  fs.writeFileSync(path.join(f.root, 'README.md'), '# Project' + String.fromCharCode(13, 10));
+  assert.equal(reviewGate(f.root, f.task(), f.store.read()), true);
+  fs.writeFileSync(path.join(f.root, 'subject.txt'), 'Changed checked behavior');
+  const next = await f.dispatch({ kind: 'code', resume: relevance.receipt.requestId, relevance: { requestId: lead.receipt.requestId, taskIds: ['task'] } });
+  await f.act({ action: 'review', receipt: f.receipt(next) });
+  assert.equal(reviewGate(f.root, f.task(), f.store.read()), false, 'a relevance decision cannot refresh a stale check');
+});
+
+test('relevance outcomes and missing original inputs fail closed, including replacement and duplicate import', async t => {
+  const f = fixture(t);
+  await f.check();
+  const lead = await f.dispatch({ kind: 'code', candidates: [LEAD] });
+  await f.act({ action: 'review', receipt: f.receipt(lead) });
+  fs.writeFileSync(path.join(f.root, 'README.md'), 'New description');
+  const result = await f.dispatch({ kind: 'code', replaces: lead.receipt.requestId, candidates: [COUNTERPART], relevance: { requestId: lead.receipt.requestId, taskIds: ['task'] } }, { applicability: [{ id: 'task', outcome: 'reassess', evidence: 'The interaction needs a new assessment' }] });
+  await f.act({ action: 'review', receipt: f.receipt(result) });
+  await f.act({ action: 'review', receipt: f.receipt(result) });
+  assert.equal(f.task().reviews.length, 2);
+  assert.equal(reviewGate(f.root, f.task(), f.store.read()), false);
+  assert.equal(obligationBrief(f.store.read()).assessmentApplicability[0].status, 'reassess');
+  const cache = new (require('node:sqlite').DatabaseSync)(path.join(f.root, require('../internal/runtime/review-inputs').CACHE_PATH));
+  cache.prepare('DELETE FROM inputs WHERE digest=?').run(lead.receipt.retainedInputs.digest);
+  cache.close();
+  await assert.rejects(f.dispatch({ kind: 'code', replaces: result.receipt.requestId, candidates: [LEAD], relevance: { requestId: lead.receipt.requestId, taskIds: ['task'] } }), { code: 'missing-assessment-inputs' });
+});
+
+
+for (const scenario of [{ drift: false, finding: false }, { drift: true, finding: false }, { drift: true, finding: true }]) {
+  test('late imports preserve newer coverage and closing while retaining findings: ' + JSON.stringify(scenario), async t => {
+    const f = fixture(t);
+    await f.check();
+    const older = await f.dispatch({ kind: 'code', candidates: [LEAD] }, { findings: scenario.finding ? [finding('late-finding')] : [] });
+    if (scenario.drift) fs.writeFileSync(path.join(f.root, 'README.md'), 'Clarified current candidate');
+    const newer = await f.dispatch({ kind: 'code', candidates: [LEAD] });
+    await f.act({ action: 'review', receipt: f.receipt(newer) });
+    f.store.update(actor, f.store.read().revision, 'fixture-completed', state => { state.tasks[0].status = 'complete'; state.tasks[0].stage = 'complete'; });
+    await f.act({ action: 'retrospective', evidence: 'Recorded before late evidence import' });
+    await f.act({ action: 'triage', evidence: 'No pending follow-ups' });
+    const closing = f.store.read().closing;
+    await f.act({ action: 'review', receipt: f.receipt(older) });
+    const current = f.store.read();
+    assert.equal(obligationBrief(current).assessmentApplicability[0].requestId, newer.receipt.requestId);
+    assert.equal(f.task().reviews.length, 2);
+    assert.equal(reviewGate(f.root, f.task(), current), !scenario.finding);
+    assert.equal(f.task().status, scenario.finding ? 'active' : 'complete');
+    assert.equal(f.task().findings.length, scenario.finding ? 1 : 0);
+    if (!scenario.finding) assert.deepEqual(current.closing, closing);
+  });
+}
+
+
+test('only fresh lead originals use shared bounded input retention and relevance state stays compact', async t => {
+  const f = fixture(t);
+  const lead = await f.dispatch({ kind: 'code', candidates: [LEAD] });
+  await f.act({ action: 'review', receipt: f.receipt(lead) });
+  assert.equal(lead.receipt.retainedInputs.kind, 'cache-v1');
+  assert.equal(fs.existsSync(path.join(path.dirname(lead.receiptFile), 'inputs')), false);
+  const second = await f.dispatch({ kind: 'code', candidates: [LEAD] });
+  assert.deepEqual(second.receipt.retainedInputs, lead.receipt.retainedInputs);
+  const resumed = await f.dispatch({ kind: 'code', resume: lead.receipt.requestId });
+  const skeptic = await f.dispatch({ kind: 'skeptic', candidates: [COUNTERPART], findings: [] });
+  assert.equal(resumed.receipt.retainedInputs, false);
+  assert.equal(skeptic.receipt.retainedInputs, false);
+  fs.writeFileSync(path.join(f.root, 'README.md'), 'Later description');
+  const relevance = await f.dispatch({ kind: 'code', resume: resumed.receipt.requestId, relevance: { requestId: lead.receipt.requestId, taskIds: ['task'] } });
+  await f.act({ action: 'review', receipt: f.receipt(relevance) });
+  assert.equal(relevance.receipt.retainedInputs, false);
+  assert.equal(relevance.receipt.relevance.original, undefined);
+  assert.equal(f.task().reviews.at(-1).relevance.original, undefined);
+  assert.equal(f.store.read().workers.at(-1).relevance.original, undefined);
+});
+
+test('evicted original input bytes do not erase a receipt or grant preserving relevance', async t => {
+  const f = fixture(t);
+  const lead = await f.dispatch({ kind: 'code', candidates: [LEAD] });
+  await f.act({ action: 'review', receipt: f.receipt(lead) });
+  assert.equal(lead.receipt.retainedInputs.kind, 'cache-v1');
+  const db = new (require('node:sqlite').DatabaseSync)(path.join(f.root, require('../internal/runtime/review-inputs').CACHE_PATH));
+  db.prepare('DELETE FROM inputs WHERE digest=?').run(lead.receipt.retainedInputs.digest);
+  db.close();
+  assert.doesNotThrow(() => readReceipt(f.root, f.receipt(lead), f.store.read(), 'task'));
+  fs.writeFileSync(path.join(f.root, 'README.md'), 'Changed candidate');
+  await assert.rejects(f.dispatch({ kind: 'code', resume: lead.receipt.requestId, relevance: { requestId: lead.receipt.requestId, taskIds: ['task'] } }), { code: 'resume-failed', message: /original inputs/ });
+});
+
+
+test('a late import respects newer covering assessments owned by another task', async t => {
+  const f = fixture(t, ['task', 'other'].map(id => ({ id, title: id, agreement: { source: 'User', outcome: 'Assess the cumulative change' } })));
+  await f.check();
+  const older = await f.dispatch({ kind: 'code', candidates: [LEAD] });
+  f.store.update(actor, f.store.read().revision, 'fixture-completed', state => { state.tasks[0].status = 'complete'; state.tasks[0].stage = 'complete'; });
+  const newer = await f.dispatch({ kind: 'code', candidates: [LEAD] }, {}, 'other');
+  await f.act({ action: 'review', taskId: 'other', receipt: f.receipt(newer) });
+  f.store.update(actor, f.store.read().revision, 'fixture-completed', state => { state.tasks[1].status = 'complete'; state.tasks[1].stage = 'complete'; });
+  await f.act({ action: 'retrospective', evidence: 'Retrospective before late receipt import' });
+  await f.act({ action: 'triage', evidence: 'Follow-ups settled' });
+  const closing = f.store.read().closing;
+  await f.act({ action: 'review', receipt: f.receipt(older) });
+  assert.equal(f.task().status, 'complete');
+  assert.deepEqual(f.store.read().closing, closing);
+  assert.equal(obligationBrief(f.store.read()).assessmentApplicability.find(item => item.taskId === 'task').requestId, newer.receipt.requestId);
+});
+
+test('a late docs import respects a newer covering closing assessment', async t => {
+  const f = fixture(t);
+  await f.check();
+  const older = await f.dispatch({ kind: 'docs', candidates: [LEAD] }, { dimensions: DIMENSIONS.docs });
+  f.store.update(actor, f.store.read().revision, 'fixture-completed', state => { state.tasks[0].status = 'complete'; state.tasks[0].stage = 'complete'; });
+  await f.act({ action: 'retrospective', evidence: 'Retrospective before closing assessment' });
+  await f.act({ action: 'triage', evidence: 'Follow-ups settled' });
+  const newer = await f.dispatch({ kind: 'docs', candidates: [LEAD] }, { dimensions: DIMENSIONS.docs }, CLOSING_TARGET);
+  await f.act({ action: 'review', taskId: CLOSING_TARGET, receipt: f.receipt(newer) });
+  const closing = f.store.read().closing;
+  await f.act({ action: 'review', receipt: f.receipt(older) });
+  assert.equal(f.task().status, 'complete');
+  assert.deepEqual(f.store.read().closing, closing);
+});
+
+test('receipt maintenance preserves a blocker and never authorizes dependent work', async t => {
+  const f = fixture(t);
+  const lead = await f.dispatch({ kind: 'code', candidates: [LEAD] }, { findings: [finding('boundary')] });
+  await f.act({ action: 'block', blocker: { kind: 'user-decision', reason: 'Consequential boundary needs the user', recoveryAttempted: 'Inspected current inputs' } });
+  const blocker = f.task().blocker;
+  await f.act({ action: 'review', receipt: f.receipt(lead) });
+  assert.deepEqual(f.task().blocker, blocker);
+  assert.equal(f.task().findings.length, 1);
+  await assert.rejects(f.act({ action: 'start-task' }), { code: 'task-blocked' });
+});
+
+
+test('implementation repair does not route a completed governing spec to needless fresh review', async t => {
+  const f = fixture(t, [
+    { id: 'spec', title: 'Governing artifact', kind: 'spec', agreement: { source: 'User', outcome: 'Assess the selected deciding input', spec: 'spec.md' } },
+    { id: 'task', title: 'Implementation', agreement: { source: 'User', outcome: 'Change both paths correctly', spec: 'spec.md', specReviewTaskId: 'spec' } },
+  ]);
+  fs.writeFileSync(path.join(f.root, 'spec.md'), '# Governing input');
+  const spec = await f.dispatch({ kind: 'spec', candidates: [LEAD], artifactPaths: ['spec.md'] }, { dimensions: DIMENSIONS.spec }, 'spec');
+  await f.act({ action: 'review', taskId: 'spec', receipt: f.receipt(spec) });
+  await f.act({ action: 'advance', taskId: 'spec' });
+  await raiseAndRepair(f);
+  const state = f.store.read();
+  assert.equal(f.task('spec').status, 'complete');
+  assert.equal(obligationBrief(state).assessmentApplicability.find(item => item.taskId === 'spec').current, true);
+  assert.equal(reviewProgress(f.root, state, f.task()).freshTargets.some(item => item.kind === 'spec'), false);
+});
+
+for (const sibling of [false, true]) {
+  test('additional code artifacts cannot omit configured ignored governing inputs, sibling=' + sibling, async t => {
+    const tasks = (sibling ? ['task', 'other'] : ['task']).map(id => ({ id, title: id, agreement: { source: 'User', outcome: 'Assess current implementation' } }));
+    const f = fixture(t, tasks);
+    const governing = '.tmp/governing.md';
+    fs.mkdirSync(path.join(f.root, '.tmp'));
+    fs.writeFileSync(path.join(f.root, governing), '# Governing requirements');
+    const captured = snapshot(f.root, [governing]);
+    f.store.update(actor, f.store.read().revision, 'fixture-governing-input', state => {
+      const owner = state.tasks.find(task => task.id === (sibling ? 'other' : 'task'));
+      owner.agreement = { ...owner.agreement, spec: governing, specReviewed: true, specSnapshot: captured };
+      if (sibling) { owner.status = 'complete'; owner.stage = 'complete'; }
+    });
+    const result = await f.dispatch({ kind: 'code', candidates: [LEAD], artifactPaths: ['README.md'] });
+    assert.ok(result.receipt.contextSnapshot.files.some(file => file.path === governing));
+    assert.ok(result.receipt.coveredTaskIds.includes(sibling ? 'other' : 'task'));
+  });
+}
+
+
+for (const dialogue of [false, true]) {
+  test('in-flight ' + (dialogue ? 'dialogue' : 'skeptic') + ' evidence cannot import under amended commitments', async t => {
+    const f = fixture(t);
+    const lead = await f.dispatch({ kind: 'code', candidates: [LEAD] }, { findings: [finding('boundary')] });
+    await f.act({ action: 'review', receipt: f.receipt(lead) });
+    const claim = f.task().findings[0];
+    const review = dialogue ? { kind: 'code', resume: lead.receipt.requestId, dialogue: { findingIds: [claim.id], message: 'Check the accepted requirement' } } : { kind: 'skeptic', candidates: [COUNTERPART], findings: [claim] };
+    const result = await f.dispatch(review, { findings: dialogue ? [] : [verdict(claim.id, 'refuted')], during: () => {
+      f.store.update(actor, f.store.read().revision, 'fixture-material-amendment', state => {
+        state.tasks[0].agreement.outcome = 'A newly accepted behavior';
+        state.tasks[0].requirementsRevision = state.revision + 1;
+      });
+    } });
+    await assert.rejects(f.act({ action: dialogue ? 'dialogue' : 'validate', findingId: claim.id, receipt: f.receipt(result) }), { code: 'stale-commitments' });
+  });
+}
+
+test('an admitted validation cannot authorize disposition after a material commitment amendment', async t => {
+  const f = fixture(t);
+  const { findings } = await raise(f);
+  await f.act({ action: 'block', blocker: { kind: 'user-decision', reason: 'The desired behavior changed', recoveryAttempted: 'Inspected the boundary' } });
+  await f.act({ action: 'unblock', evidence: 'User accepted the new behavior', updatedOutcome: 'A different accepted behavior' });
+  await assert.rejects(f.act({ action: 'dispose', findingId: findings[0].id, disposition: 'skip', reason: 'Cannot use the earlier validation', obligation: { classification: 'optional', basis: 'New outcome' } }), { code: 'stale-validation' });
+});
+
+test('material amendment invalidates old repair authority and legacy validation fallback', async t => {
+  const f = fixture(t);
+  const { findings } = await raise(f);
+  await f.act({ action: 'dispose', findingId: findings[0].id, disposition: 'implement', reason: 'Authorized under the original outcome', obligation: { classification: 'required', basis: 'Original accepted outcome' } });
+  f.store.update(actor, f.store.read().revision, 'fixture-legacy-validation', state => { delete state.tasks[0].findings[0].validation.commitmentBinding; });
+  await f.act({ action: 'block', blocker: { kind: 'user-decision', reason: 'The desired behavior changed', recoveryAttempted: 'Inspected accepted commitments' } });
+  await f.act({ action: 'unblock', evidence: 'User accepted the amended outcome', updatedOutcome: 'A different accepted behavior' });
+  await assert.rejects(f.act({ action: 'repair', findingIds: [findings[0].id] }), { code: 'stale-validation' });
+  assert.equal(obligationBrief(f.store.read()).next[0].unresolvedFindings[0].validationCommitmentsCurrent, false);
+  assert.equal(obligationBrief(f.store.read()).next[0].review.next, 'validate-and-dispose');
+});
+
+test('spec relevance does not clear the legacy fresh-assessment prerequisite for dependent engineering', async t => {
+  const f = fixture(t, [
+    { id: 'spec', title: 'Governing artifact', kind: 'spec', agreement: { source: 'User', outcome: 'Assess governing inputs', spec: 'spec.md' } },
+    { id: 'task', title: 'Implementation', agreement: { source: 'User', outcome: 'Implement the accepted behavior', spec: 'spec.md', specReviewTaskId: 'spec' } },
+  ]);
+  fs.writeFileSync(path.join(f.root, 'spec.md'), '# Original governing input');
+  const original = await f.dispatch({ kind: 'spec', candidates: [LEAD], artifactPaths: ['spec.md'] }, { dimensions: DIMENSIONS.spec }, 'spec');
+  await f.act({ action: 'review', taskId: 'spec', receipt: f.receipt(original) });
+  await f.act({ action: 'advance', taskId: 'spec' });
+  fs.writeFileSync(path.join(f.root, 'spec.md'), '# Compatible corrected governing input');
+  const relevance = await f.dispatch({ kind: 'spec', resume: original.receipt.requestId, relevance: { requestId: original.receipt.requestId, taskIds: ['spec'] } }, {}, 'spec');
+  await f.act({ action: 'review', taskId: 'spec', receipt: f.receipt(relevance) });
+  assert.equal(reviewGate(f.root, f.task('spec'), f.store.read()), true);
+  await assert.rejects(f.act({ action: 'start-task' }), { code: 'spec-review-required' });
+  const current = await f.dispatch({ kind: 'spec', candidates: [LEAD], artifactPaths: ['spec.md'] }, { dimensions: DIMENSIONS.spec }, 'spec');
+  await f.act({ action: 'review', taskId: 'spec', receipt: f.receipt(current) });
+  await f.act({ action: 'advance', taskId: 'spec' });
+  await f.act({ action: 'start-task' });
+  assert.equal(f.task().status, 'active');
+});
+
+test('legacy validation without a binding or worker refuses authority after a material amendment', async t => {
+  // Arrange
+  const f = fixture(t);
+  const { findings } = await raise(f);
+  await f.act({ action: 'dispose', findingId: findings[0].id, disposition: 'implement', reason: 'Original outcome', obligation: { classification: 'required', basis: 'Accepted outcome' } });
+  f.store.update(actor, f.store.read().revision, 'fixture-no-worker-validation', state => {
+    const validation = state.tasks[0].findings[0].validation;
+    delete validation.commitmentBinding;
+    state.workers = state.workers.filter(worker => worker.id !== validation.requestId);
+  });
+  assert.equal(obligationBrief(f.store.read()).next[0].unresolvedFindings[0].validationCommitmentsCurrent, true);
+
+  // Act
+  await f.act({ action: 'block', blocker: { kind: 'user-decision', reason: 'Changed outcome', recoveryAttempted: 'Compared commitments' } });
+  await f.act({ action: 'unblock', evidence: 'User changed the accepted outcome', updatedOutcome: 'Amended behavior' });
+
+  // Assert
+  await assert.rejects(f.act({ action: 'repair', findingIds: [findings[0].id] }), { code: 'stale-validation' });
+  assert.equal(obligationBrief(f.store.read()).next[0].unresolvedFindings[0].validationCommitmentsCurrent, false);
+});
+
+test('repair routing uses dispatch registration rather than a later import revision', async t => {
+  // Arrange
+  const f = fixture(t);
+  const docs = await f.dispatch({ kind: 'docs', candidates: [LEAD] }, { dimensions: DIMENSIONS.docs });
+  await f.act({ action: 'review', receipt: f.receipt(docs) });
+  const { findings } = await raise(f);
+  await f.act({ action: 'dispose', findingId: findings[0].id, disposition: 'implement', reason: 'Repair required', obligation: { classification: 'required', basis: 'Accepted outcome' } });
+  fs.writeFileSync(path.join(f.root, 'subject.txt'), 'repaired');
+  await f.act({ action: 'repair', findingIds: [findings[0].id] });
+
+  // Act
+  const state = f.store.read();
+  const review = state.tasks[0].reviews.find(review => review.requestId === docs.receipt.requestId);
+  review.revision = state.revision + 10;
+  const progress = reviewProgress(f.root, state, state.tasks[0]);
+
+  // Assert
+  assert.equal(progress.freshTargets.some(target => target.staleAssessments.includes(review.requestId)), true);
+});
+
+test('a surviving lineage can obtain relevance after the original worker registration is unavailable', async t => {
+  // Arrange
+  const f = fixture(t);
+  const lead = await f.dispatch({ kind: 'code', candidates: [LEAD] });
+  await f.act({ action: 'review', receipt: f.receipt(lead) });
+  const continued = await f.dispatch({ kind: 'code', resume: lead.receipt.requestId });
+  await f.act({ action: 'review', receipt: f.receipt(continued) });
+  f.store.update(actor, f.store.read().revision, 'fixture-original-worker-unavailable', state => {
+    state.workers = state.workers.filter(worker => worker.id !== lead.receipt.requestId);
+  });
+  fs.writeFileSync(path.join(f.root, 'README.md'), 'Later description');
+
+  // Act
+  const relevance = await f.dispatch({ kind: 'code', resume: continued.receipt.requestId, relevance: { requestId: lead.receipt.requestId, taskIds: ['task'] } });
+  await f.act({ action: 'review', receipt: f.receipt(relevance) });
+
+  // Assert
+  assert.equal(relevance.receipt.relevance.originalInputsAvailable, true);
+  assert.equal(f.task().reviews.at(-1).applicability[0].outcome, 'preserve');
+  const cache = new (require('node:sqlite').DatabaseSync)(path.join(f.root, require('../internal/runtime/review-inputs').CACHE_PATH));
+  cache.prepare('DELETE FROM inputs WHERE digest=?').run(lead.receipt.retainedInputs.digest);
+  cache.close();
+  const unavailable = await f.dispatch({ kind: 'code', resume: relevance.receipt.requestId, relevance: { requestId: lead.receipt.requestId, taskIds: ['task'] } }, { applicability: [{ id: 'task', outcome: 'unresolved', evidence: 'The retained source is no longer available' }] });
+  assert.equal(unavailable.receipt.relevance.originalInputsAvailable, false);
+  await f.act({ action: 'review', receipt: f.receipt(unavailable) });
+  assert.equal(f.task().reviews.at(-1).applicability[0].outcome, 'unresolved');
+  await assert.rejects(f.dispatch({ kind: 'code', resume: lead.receipt.requestId, relevance: { requestId: lead.receipt.requestId, taskIds: ['task'] } }), { code: 'unknown-dispatch' });
+});
+
+test('bare relevance imports reject malformed task bindings with a coded refusal', async t => {
+  // Arrange
+  const f = fixture(t);
+  const original = await f.dispatch({ kind: 'code', candidates: [LEAD] });
+  await f.act({ action: 'review', receipt: f.receipt(original) });
+  fs.writeFileSync(path.join(f.root, 'README.md'), 'Changed description');
+  const relevance = await f.dispatch({ kind: 'code', resume: original.receipt.requestId, relevance: { requestId: original.receipt.requestId, taskIds: ['task'] } });
+  const state = f.store.read();
+
+  // Act and Assert
+  for (const taskIds of [undefined, null, 17, 'task', [], ['task', 'task'], [' '], Array(1), ['task', ...Array(1)]]) {
+    const malformed = structuredClone(relevance.receipt);
+    malformed.relevance.taskIds = taskIds;
+    assert.throws(() => transition(structuredClone(state), { action: 'review', taskId: 'task', review: malformed }), { code: 'invalid-relevance' });
+  }
+});
+
+test('malformed relevance bindings in finding scans fail with a coded diagnosis', async t => {
+  // Arrange
+  const f = fixture(t);
+  await f.check();
+  const original = await f.dispatch({ kind: 'code', candidates: [LEAD] });
+  await f.act({ action: 'review', receipt: f.receipt(original) });
+  const state = f.store.read();
+  state.tasks[0].findings.push({ id: 'settled', reviewKind: 'code', reviewRevision: 123, validation: { verdict: 'refuted' }, disposition: 'skip' });
+  state.tasks[0].reviews.push({ requestId: 'malformed', relevance: { requestId: original.receipt.requestId, originalHash: 'unbound', taskIds: 17 }, revision: 123 });
+
+  // Act and Assert
+  assert.throws(() => reviewGate(f.root, state.tasks[0], state), { code: 'invalid-relevance' });
+  assert.throws(() => obligationBrief(state), { code: 'invalid-relevance' });
+});
+
+test('deleted spec deciding input is diagnosed before a relevance worker is registered', async t => {
+  // Arrange
+  const f = fixture(t, [{ id: 'spec', title: 'Spec', kind: 'spec', agreement: { source: 'User', outcome: 'Assess requirements', spec: 'spec.md' } }]);
+  fs.writeFileSync(path.join(f.root, 'spec.md'), '# Governing');
+  fs.writeFileSync(path.join(f.root, 'deciding.md'), '# Deciding context');
+  const original = await f.dispatch({ kind: 'spec', candidates: [LEAD], artifactPaths: ['spec.md', 'deciding.md'] }, { dimensions: DIMENSIONS.spec }, 'spec');
+  await f.act({ action: 'review', taskId: 'spec', receipt: f.receipt(original) });
+  fs.unlinkSync(path.join(f.root, 'deciding.md'));
+  const workers = f.store.read().workers.length;
+
+  // Act and Assert
+  assert.deepEqual(obligationBrief(f.store.read()).assessmentApplicability[0].missingPaths, ['deciding.md']);
+  await assert.rejects(f.dispatch({ kind: 'spec', resume: original.receipt.requestId, relevance: { requestId: original.receipt.requestId, taskIds: ['spec'] } }, {}, 'spec'), { code: 'missing-spec' });
+  assert.equal(f.store.read().workers.length, workers);
+});
+
+test('fresh spec capture names a missing additional deciding input without blaming the existing governing artifact', async t => {
+  // Arrange
+  const f = fixture(t, [{ id: 'spec', title: 'Spec', kind: 'spec', agreement: { source: 'User', outcome: 'Assess requirements', spec: 'spec.md' } }]);
+  fs.writeFileSync(path.join(f.root, 'spec.md'), '# Existing governing artifact');
+
+  // Act and Assert
+  await assert.rejects(f.dispatch({ kind: 'spec', candidates: [LEAD], artifactPaths: ['spec.md', 'deciding.md'] }, { dimensions: DIMENSIONS.spec }, 'spec'), error => error.code === 'missing-spec' && error.message.includes('deciding.md') && error.message.includes('every declared deciding input'));
+  assert.equal(fs.readFileSync(path.join(f.root, 'spec.md'), 'utf8'), '# Existing governing artifact');
 });

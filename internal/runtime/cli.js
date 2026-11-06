@@ -9,7 +9,7 @@ const { RunStore, requireCondition } = require('./store');
 const { ReviewStore } = require('./review-store');
 const { isReviewContext } = require('./records');
 const { REVIEW_TARGET, reviewInput, openReview, assertRepairScope } = require('./review-context');
-const { assertAction, commitmentsFor, findingKind, obligationBrief, sameClosingRecord, sharesCumulativeAssessment, targetById, transition } = require('./lifecycle');
+const { assertAction, commitmentBindingFor, commitmentsFor, findingKind, obligationBrief, sameClosingRecord, sharesCumulativeAssessment, targetById, transition } = require('./lifecycle');
 const { DEFAULT_REVIEW_TIMEOUT_MS, dispatchReview, readReceipt, selectionMetadata, validateBase, validateRequest } = require('./review');
 const { exhaustedLimit, remainingTime, requireDispatchFits } = require('./limits');
 const { eligibleCandidates } = require('./vibe');
@@ -167,6 +167,9 @@ async function execute(root, request, dependencies = {}) {
       validateBase(store.root, request.review.baseSha);
       const task = targetById(state, request.taskId);
       const continued = resolveContinuation(store.root, state, task, request.review);
+      const relevance = request.review.relevance ? require('./relevance').resolveRelevance(store.root, state, task, request.review.relevance) : null;
+      let artifactPaths = relevance ? relevance.original.kind === 'spec' ? relevance.original.snapshot.files.map(file => file.path) : relevance.original.contextSnapshot?.includedPaths ?? [] : request.review.artifactPaths ?? (task.agreement?.spec ? [task.agreement.spec] : undefined);
+      if (request.review.kind === 'spec') requireCondition(require('./applicability').hasGoverningInput(store.root, artifactPaths, task.agreement?.spec), 'missing-governing-spec', 'Spec deciding inputs must include the configured governing artifact');
       // An ineligible Vibe candidate is dropped before any time is reserved or worker registered, so it consumes neither.
       const { eligible: candidates, dropped: ineligibleCandidates, versions: vibeVersions } = eligibleCandidates(continued?.candidates ?? request.review.candidates, store.root, dependencies);
       const selection = selectionMetadata(ineligibleCandidates, request.review.substitutionReason);
@@ -179,9 +182,13 @@ async function execute(root, request, dependencies = {}) {
       const helperProcess = (dependencies.information ?? information)(process.pid, null, store.root, { onFailure: cause => { inspectionFailure = cause; } });
       requireCondition(helperProcess?.found === true, 'operation-owner-unavailable', 'Cannot dispatch without identifying its actual helper process' + inspectionFailureDetail(inspectionFailure));
       // The closing review covers every task whose assessment tracking edits can stale; a task review covers its cumulative siblings.
-      const coveredTasks = closing
+      const coveredTasks = relevance ? state.tasks.filter(candidate => relevance.taskIds.includes(candidate.id)) : closing
         ? state.tasks.filter(candidate => ['code', 'docs', 'lore'].includes(candidate.kind))
         : state.tasks.filter(candidate => candidate.id === task.id || sharesCumulativeAssessment(task) && sharesCumulativeAssessment(candidate) && candidate.status === 'complete');
+      if (!relevance) {
+        const governing = (closing ? state.tasks : coveredTasks).map(candidate => candidate.agreement?.spec).filter(file => typeof file === 'string');
+        if (governing.length) artifactPaths = [...new Set([...(artifactPaths ?? []), ...governing])];
+      }
       const skepticFindings = continued?.findings.length ? continued.findings : request.review.findings;
       const assigned = request.review.kind === 'skeptic' ? (skepticFindings ?? []).map(finding => task.findings.find(saved => saved.id === finding?.id)) : [];
       const lens = assigned.length > 0 && assigned.every(finding => finding && findingKind(finding, task) === 'docs') ? 'docs' : undefined;
@@ -191,7 +198,7 @@ async function execute(root, request, dependencies = {}) {
         current.baseSha = request.review.baseSha;
         // A resumed dispatch holds its known session from the start, so a concurrent resume of the same session is refused.
         const held = continuation?.kind === 'resumed' ? { session: continuation.session, host: candidates[0].host } : { session: null };
-        current.workers.push({ id, ...held, ...selection, role: request.review.kind === 'skeptic' ? 'skeptic' : 'reviewer', assignment: closing ? 'Assess the closing tracking edits' : 'Assess ' + task.title, taskId: task.id, writes: [], status: 'starting', phase: 'reserved', artifactDirectory: `.nightshift/runs/reviews/${id}`, runnerPid: process.pid, helperProcess, resources: currentResources, controller: { ...state.controller }, continues: continuesRecord(continuation), lineage: continuation?.lineage ?? id });
+        current.workers.push({ id, registeredRevision: current.revision + 1, ...held, ...selection, role: request.review.kind === 'skeptic' ? 'skeptic' : 'reviewer', assignment: closing ? 'Assess the closing tracking edits' : 'Assess ' + task.title, taskId: task.id, writes: [], status: 'starting', phase: 'reserved', artifactDirectory: `.nightshift/runs/reviews/${id}`, runnerPid: process.pid, helperProcess, resources: currentResources, controller: { ...state.controller }, continues: continuesRecord(continuation), lineage: continuation?.lineage ?? id });
         if (closing && !isReviewContext(current)) {
           current.workers.at(-1).progressOrigin = require('./discharge').origin(current, 'record');
           current.workers.at(-1).progressBinding = structuredClone(task.progressBinding);
@@ -211,7 +218,9 @@ async function execute(root, request, dependencies = {}) {
           controller: state.controller,
           forbiddenSessions: [...forbiddenReviewSessions(state)],
           resourceContext: dependencies.resourceContext,
-          artifactPaths: request.review.artifactPaths ?? (task.agreement?.spec ? [task.agreement.spec] : undefined),
+          relevance,
+          artifactPaths,
+          ...(relevance ? { excludedPaths: relevance.original.contextSnapshot?.excludedPaths ?? [] } : {}),
           probeEvidence: task.probeEvidence ?? [],
           // The closing record is not among the tasks it covers, so the dispatched target's own checks are added to theirs.
           recordedChecks: [task, ...coveredTasks.filter(candidate => candidate !== task)],
@@ -222,7 +231,7 @@ async function execute(root, request, dependencies = {}) {
           // A resumed dispatch holds its known session from registration; a host reporting another one must not release that hold.
           onSession: continuation?.kind === 'resumed' ? undefined : session => updateWorker({ session }),
           onFinalizing: () => updateWorker({ phase: 'finalizing' }),
-          onPrepared: assignment => updateWorker({ snapshotDigest: assignment.snapshot.digest, coveredTaskIds: assignment.coveredTaskIds, commitments: assignment.commitments, baseSha: assignment.baseSha }),
+          onPrepared: assignment => updateWorker({ snapshotDigest: assignment.snapshot.digest, coveredTaskIds: assignment.coveredTaskIds, commitments: assignment.commitments, baseSha: assignment.baseSha, relevance: require('./relevance').relevanceBinding(assignment.relevance) }),
           onAttempt: () => store.update(request.actor, store.read().revision, 'model-attempt', current => {
             assertAction(current, request);
             requireCondition(!exhaustedLimit(current, { dispatch: true }), 'resource-limit', 'The authorized model-dispatch allowance has been reached');
@@ -290,12 +299,12 @@ async function execute(root, request, dependencies = {}) {
       const verdict = receipt.findings.find(finding => finding.id === request.findingId);
       requireCondition(verdict, 'missing-validation', 'Skeptic report did not validate this finding');
       // The validate transition refuses a confirmed verdict whose proposal is missing or blank.
-      prepared = { ...request, validation: { ...verdict, repairProposal: verdict.repairProposal?.trim() ? verdict.repairProposal : null, session: receipt.session, requestId: receipt.requestId, lineage: lineageOf(receipt), dialogue: receipt.dialogue?.message ?? null, attributionVerified: true, snapshot: receipt.snapshot } };
+      prepared = { ...request, validation: { ...verdict, repairProposal: verdict.repairProposal?.trim() ? verdict.repairProposal : null, session: receipt.session, requestId: receipt.requestId, lineage: lineageOf(receipt), dialogue: receipt.dialogue?.message ?? null, attributionVerified: true, snapshot: receipt.snapshot, commitmentBinding: commitmentBindingFor(receipt.commitments) } };
     }
     if (request.action === 'dialogue') {
       const receipt = readReceipt(store.root, request.receipt, state, request.taskId);
       requireCondition(receipt.dialogue && receipt.kind !== 'skeptic', 'dialogue-receipt-required', 'The dialogue operation imports a reviewer\'s dialogue reply; a skeptic\'s reply is imported with validate');
-      prepared = { ...request, reply: { requestId: receipt.requestId, lineage: lineageOf(receipt), session: receipt.session, message: receipt.dialogue.message, positions: receipt.positions, snapshot: receipt.snapshot } };
+      prepared = { ...request, reply: { requestId: receipt.requestId, lineage: lineageOf(receipt), session: receipt.session, message: receipt.dialogue.message, positions: receipt.positions, snapshot: receipt.snapshot, commitmentBinding: commitmentBindingFor(receipt.commitments) } };
     }
     const result = store.update(request.actor, request.revision, request.action, (state, integration) => transition(state, prepared, integration));
     const brief = obligationBrief(result);

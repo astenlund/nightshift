@@ -63,6 +63,7 @@ function assessment(options, dimensions = DIMENSIONS.code, findings = [], closur
   if (request.kind !== 'skeptic') {
     report.closures = request.continues && !request.dialogue ? closures ?? request.pendingClosures.map(finding => ({ id: finding.id, closed: true, evidence: 'The repair resolves the fixture finding' })) : [];
     report.positions = [];
+    report.applicability = [];
   }
   return report;
 }
@@ -94,14 +95,14 @@ test('one report schema serves every dispatch of a kind, and the consumer checks
   assert.deepEqual([schemaFor('docs'), schemaFor('spec')], [lead, lead]);
   assert.equal(JSON.stringify([skeptic, lead]).includes('Items'), false);
   assert.deepEqual([skeptic.properties.requestId, lead.properties.requestId, skeptic.properties.findings.items.properties.id, lead.properties.closures.items.properties.id], Array(4).fill({ type: 'string' }));
-  const leadFields = ['closures', 'coverage', 'findings', 'positions', 'probes', 'requestId', 'status', 'summary', 'toolFailure'];
+  const leadFields = ['applicability', 'closures', 'coverage', 'findings', 'positions', 'probes', 'requestId', 'status', 'summary', 'toolFailure'];
   assert.deepEqual([Object.keys(lead.properties).sort(), [...lead.required].sort()], [leadFields, leadFields]);
-  assert.deepEqual(Object.keys(skeptic.properties).sort(), leadFields.filter(field => !['closures', 'positions'].includes(field)));
+  assert.deepEqual(Object.keys(skeptic.properties).sort(), leadFields.filter(field => !['applicability', 'closures', 'positions'].includes(field)));
   const duplicate = report([verdict(ids[0]), verdict(ids[0], 'Different evidence for the repeated id')]);
   const blank = report([verdict(ids[0], '')]);
   const probe = { ...report([{ ...verdict(ids[0]), verdict: 'unverified' }]), status: 'incomplete', probes: [{ id: 'deciding-probe', purpose: 'Resolve missing evidence', executable: process.execPath, args: ['--version'], timeoutMs: 10000, files: [] }] };
   const secondsTimeout = { ...probe, probes: [{ ...probe.probes[0], timeoutMs: 240 }] };
-  const leadReport = { ...report([]), closures: [], positions: [] };
+  const leadReport = { ...report([]), closures: [], positions: [], applicability: [] };
   const cases = [
     { name: 'empty-assignment', schema: skeptic, document: report([]), valid: true },
     { name: 'other-request-needs-consumer-check', schema: skeptic, document: report([], 'another-request'), valid: true },
@@ -130,7 +131,7 @@ test('one report schema serves every dispatch of a kind, and the consumer checks
   assert.equal(validateReport(probe, request(1)).findings[0].verdict, 'unverified');
   // What the schema stopped binding for leads, the validators refuse: entries nobody asked for, and the wrong or missing ones.
   const coverage = DIMENSIONS.code.map(dimension => ({ dimension, evidence: 'Assessed' }));
-  const leadDocument = extra => ({ requestId: 'schema-request', status: 'complete', coverage, findings: [], probes: [], summary: 'Assessed', toolFailure: '', closures: [], positions: [], ...extra });
+  const leadDocument = extra => ({ requestId: 'schema-request', status: 'complete', coverage, findings: [], probes: [], summary: 'Assessed', toolFailure: '', closures: [], positions: [], applicability: [], ...extra });
   const leadRequest = extra => ({ id: 'schema-request', kind: 'code', dimensions: DIMENSIONS.code, continues: null, dialogue: null, pendingClosures: [], ...extra });
   const closure = id => ({ id, closed: true, evidence: 'Resolved' });
   const position = (id, value = 'maintain') => ({ id, position: value, evidence: 'Still holds' });
@@ -346,7 +347,7 @@ for (const hasFinding of [false, true]) {
       await assert.rejects(act(review), { code: 'changed-result' });
       fs.writeFileSync(lead.receiptFile, bytes);
       fs.writeFileSync(path.join(f.root, 'subject.txt'), 'New unreviewed source\r\n');
-      await assert.rejects(act(review), { code: 'invalid-receipt' });
+      await act(review);
       assert.deepEqual(store.read(), saved);
     } finally { store.close(); }
   });
@@ -375,7 +376,7 @@ for (const fallback of [false, true]) {
   });
 }
 
-test('review receives cumulative tracked and new content; imported result is bound to native evidence and current inventory', async t => {
+test('review receives cumulative tracked and new content; imported result preserves native evidence and its original inventory', async t => {
   const f = fixture(t);
   const { receiptFile, receipt } = await dispatchReview(f.root, f, { runAgent: mockAgent });
   assert.equal(receipt.strength, 'strong');
@@ -383,7 +384,8 @@ test('review receives cumulative tracked and new content; imported result is bou
   const state = { id: f.runId, controller: { session: 'controller' } };
   assert.equal(readReceipt(f.root, relative, state, f.taskId).session, 'fresh-session');
   fs.writeFileSync(path.join(f.root, 'late-sibling.txt'), 'unreviewed\r\n');
-  assert.throws(() => readReceipt(f.root, relative, state, f.taskId), { code: 'invalid-receipt' });
+  assert.doesNotThrow(() => readReceipt(f.root, relative, state, f.taskId));
+  assert.equal(fresh(f.root, receipt.snapshot), false);
 });
 
 test('the review copy sits one short segment below the run directory while its evidence stays with the dispatch', async t => {
@@ -450,7 +452,7 @@ for (const kind of ['code', 'spec']) {
 }
 
 for (const kind of ['spec', 'code', 'docs', 'skeptic']) {
-  test(`a project edit outside the governing artifacts while a ${kind} assessment runs ${kind === 'spec' ? 'keeps' : 'discards'} its result`, async t => {
+  test(`a project edit outside the governing artifacts while a ${kind} assessment runs ${kind === 'skeptic' ? 'discards' : 'keeps'} its result`, async t => {
     const f = fixture(t);
     fs.writeFileSync(path.join(f.root, 'spec.md'), '# Accepted behavior\r\n');
     let attempts = 0;
@@ -461,7 +463,7 @@ for (const kind of ['spec', 'code', 'docs', 'skeptic']) {
       fs.writeFileSync(path.join(f.root, 'subject.txt'), 'Controller edit during assessment\r\n');
       return result;
     } });
-    if (kind === 'spec') {
+    if (kind !== 'skeptic') {
       const { receiptFile } = await dispatched;
       assert.doesNotThrow(() => readReceipt(f.root, path.relative(f.root, receiptFile).split(path.sep).join('/'), { id: f.runId, controller: { session: 'controller' } }, f.taskId));
     } else {
@@ -1061,27 +1063,36 @@ test('each attempt ends before the launcher operation deadline and a spent bound
   assert.equal(failure.attempts.length, 1);
 });
 
-test('spec receipt freshness follows the governing spec before and after acceptance, not the surrounding context', async t => {
+test('spec assurance preserves declared deciding scope through unrelated implementation changes', async t => {
   const f = fixture(t);
   fs.writeFileSync(path.join(f.root, 'spec.md'), '# Accepted behavior\n');
   const store = new RunStore(f.root, { create: true });
   const actor = { host: 'codex', session: 'controller' };
   store.create({ mechanism: fixtureContinuation(), objective: f.requirements, authority: 'User', controller: actor, controllerClaim: fixtureControllerClaim(actor), tasks: [{ id: 'spec', title: 'Spec', kind: 'spec', agreement: { source: 'User', outcome: f.requirements, spec: 'spec.md' } }, { id: 'code', title: 'Code', agreement: { source: 'User', outcome: f.requirements, spec: 'spec.md', specReviewTaskId: 'spec' } }] });
   const act = request => executeWithFixtureController(f.root, { actor, revision: store.read().revision, ...request });
-  const dispatch = () => executeWithFixtureController(f.root, { action: 'dispatch', actor, revision: store.read().revision, taskId: 'spec', review: { ...f, kind: 'spec' } }, { runAgent: options => mockAgent(options, DIMENSIONS.spec) });
+  const dispatch = artifactPaths => executeWithFixtureController(f.root, { action: 'dispatch', actor, revision: store.read().revision, taskId: 'spec', review: { ...f, kind: 'spec', ...(artifactPaths ? { artifactPaths } : {}) } }, { runAgent: options => mockAgent(options, DIMENSIONS.spec) });
   try {
     const stale = await dispatch();
     fs.writeFileSync(path.join(f.root, 'spec.md'), '# Amended behavior\n');
-    await assert.rejects(act({ action: 'review', taskId: 'spec', receipt: path.relative(f.root, stale.receiptFile).split(path.sep).join('/') }), { code: 'invalid-receipt' });
+    await act({ action: 'review', taskId: 'spec', receipt: path.relative(f.root, stale.receiptFile).split(path.sep).join('/') });
+    assert.equal(reviewGate(f.root, store.read().tasks[0], store.read()), false);
     const current = await dispatch();
     fs.writeFileSync(path.join(f.root, 'subject.txt'), 'Independent context edit\n');
     await act({ action: 'review', taskId: 'spec', receipt: path.relative(f.root, current.receiptFile).split(path.sep).join('/') });
     await act({ action: 'advance', taskId: 'spec' });
+
     assert.equal(store.read().tasks[0].status, 'complete');
     assert.equal(store.read().tasks[0].documentationEvidence, undefined);
     fs.writeFileSync(path.join(f.root, 'subject.txt'), 'Later implementation edit\n');
     await act({ action: 'start-task', taskId: 'code' });
     assert.equal(store.read().tasks[1].status, 'active');
+    assert.equal(reviewGate(f.root, store.read().tasks[0], store.read()), true);
+    await assert.rejects(dispatch(['subject.txt']), { code: 'missing-governing-spec' });
+    const declared = await dispatch(['spec.md', 'subject.txt']);
+    await act({ action: 'review', taskId: 'spec', receipt: path.relative(f.root, declared.receiptFile).split(path.sep).join('/') });
+    assert.equal(reviewGate(f.root, store.read().tasks[0], store.read()), true);
+    fs.writeFileSync(path.join(f.root, 'subject.txt'), 'Changed explicitly selected deciding input');
+    assert.equal(reviewGate(f.root, store.read().tasks[0], store.read()), false);
   } finally { store.close(); }
 });
 
@@ -1295,7 +1306,8 @@ for (const kind of ['spec', 'code', 'skeptic']) {
     assert.equal(fresh(f.root, result.receipt.contextSnapshot), true);
     fs.writeFileSync(path.join(f.root, '.tmp/rationale.md'), 'Changed selected rationale\r\n');
     assert.equal(fresh(f.root, result.receipt.contextSnapshot), false);
-    assert.throws(() => readReceipt(f.root, relative, { id: f.runId, controller: { session: 'controller' } }, f.taskId), { code: 'invalid-receipt' });
+    if (kind === 'skeptic') assert.throws(() => readReceipt(f.root, relative, { id: f.runId, controller: { session: 'controller' } }, f.taskId), { code: 'invalid-receipt' });
+    else assert.doesNotThrow(() => readReceipt(f.root, relative, { id: f.runId, controller: { session: 'controller' } }, f.taskId));
   });
 }
 
@@ -1314,15 +1326,17 @@ test('explicit artifact selection rejects contradictory or malformed paths befor
   assert.equal(fs.existsSync(path.join(f.root, '.nightshift/runs/reviews')), false);
 });
 
-test('changing selected ignored material during assessment invalidates the result', async t => {
+test('changing selected ignored material preserves historical assessment evidence', async t => {
   const f = fixture(t);
   fs.mkdirSync(path.join(f.root, '.tmp'));
   fs.writeFileSync(path.join(f.root, '.tmp/proposal.md'), 'Original selected proposal\r\n');
-  await assert.rejects(dispatchReview(f.root, { ...f, kind: 'spec', artifactPaths: ['.tmp/proposal.md'] }, { runAgent: options => {
+  const result = await dispatchReview(f.root, { ...f, kind: 'spec', artifactPaths: ['.tmp/proposal.md'] }, { runAgent: options => {
     const result = mockAgent(options, DIMENSIONS.spec);
     fs.writeFileSync(path.join(f.root, '.tmp/proposal.md'), 'Changed selected proposal\r\n');
     return result;
-  } }), { code: 'review-input-drift' });
+  } });
+  assert.equal(fresh(f.root, result.receipt.snapshot), false);
+  assert.doesNotThrow(() => readReceipt(f.root, path.relative(f.root, result.receiptFile).split(path.sep).join('/'), { id: f.runId, controller: { session: 'controller' } }, f.taskId));
 });
 
 test('Windows aliases cannot bypass file exclusions or duplicate selected material', { skip: process.platform !== 'win32' }, async t => {
@@ -1429,7 +1443,7 @@ test('rejected initial bases cannot pin an unusable cumulative scope', async t =
 });
 
 for (const changedId of ['current', 'earlier']) {
-  test(`an in-flight report cannot accept changed ${changedId} commitments`, async t => {
+  test(`an in-flight report retains its original ${changedId} commitments`, async t => {
     const f = fixture(t);
     const store = new RunStore(f.root, { create: true });
     const actor = { host: 'codex', session: 'controller' };
@@ -1451,8 +1465,11 @@ for (const changedId of ['current', 'earlier']) {
       await executeWithFixtureController(f.root, { action: 'unblock', actor, revision: store.read().revision, taskId: changedId, evidence: 'User explicitly confirmed the revised outcome', updatedOutcome: 'Newly required behavior' });
       release();
       const result = await pending;
-      await assert.rejects(executeWithFixtureController(f.root, { action: 'review', actor, revision: store.read().revision, taskId: 'current', receipt: path.relative(f.root, result.receiptFile).split(path.sep).join('/') }), { code: 'stale-commitments' });
-      assert.equal(store.read().tasks[1].reviews.length, 0);
+      await executeWithFixtureController(f.root, { action: 'review', actor, revision: store.read().revision, taskId: 'current', receipt: path.relative(f.root, result.receiptFile).split(path.sep).join('/') });
+      assert.equal(store.read().tasks[1].reviews.length, 1);
+      const gap = obligationBrief(store.read()).assessmentApplicability.find(item => item.taskId === changedId);
+      assert.equal(gap.commitmentsChanged, true);
+      assert.equal(gap.current, false);
     } finally { release?.(); store.close(); }
   });
 }
@@ -1495,3 +1512,27 @@ for (const kind of ['docs', 'lore']) {
     } finally { store.close(); }
   });
 }
+
+
+test('relevance prompts retain shared acknowledgements, check evidence, probe rules and host constraints', () => {
+  const request = { id: 'relevance-request', kind: 'code', requirements: 'Assess original applicability', dimensions: DIMENSIONS.code, commitments: {},
+    relevance: { requestId: 'original', taskIds: ['task'], changes: ['subject.txt'], originalInputsAvailable: true },
+    acknowledgements: ['The fixture choice is settled by the user'], checks: [{ name: 'current-fixture-check' }],
+    continues: { kind: 'replacement', requestId: 'original' }, continuationContext: null,
+  };
+  const prompt = buildPrompt(request, { workspace: 'fixture', host: 'vibe', rules: 'UNIQUE SYSTEM RULE', probeFiles: ['context/probes/1.json'] });
+  for (const text of ['Recorded acknowledgements', 'current-fixture-check', 'timeoutMs is in milliseconds', 'not under project/', 'run_typescript', 'context/probes/1.json']) assert.ok(prompt.includes(text), text);
+  assert.equal(prompt.includes('UNIQUE SYSTEM RULE'), false);
+});
+
+test('relevance findings receive severity and documentation routing without fresh-assessment coverage', () => {
+  // Arrange
+  const request = { id: 'relevance-guidance', kind: 'docs', requirements: 'Applicability only', dimensions: DIMENSIONS.docs, commitments: {},
+    relevance: { requestId: 'original', taskIds: ['task'], changes: ['README.md'], originalInputsAvailable: true } };
+
+  // Act
+  const prompt = buildPrompt(request, { workspace: 'fixture', host: 'codex', rules: '' });
+
+  // Assert
+  for (const text of ['Severity rubric.', 'One underlying problem is one finding.', 'routes it to code assessment', 'Leave coverage, closures and positions empty']) assert.ok(prompt.includes(text), text);
+});

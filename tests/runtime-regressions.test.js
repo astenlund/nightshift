@@ -64,7 +64,7 @@ for (const mutation of ['changed', 'deleted']) {
       { id: 'b', title: 'Later B', requires: ['a'], agreement: { source: 'User', outcome: 'Accepted B' } },
     ] }, root => fs.writeFileSync(path.join(root, 'spec.md'), '# Accepted governing commitments\r\n'));
     f.check('a');
-    f.review('a');
+    f.review('a', ['a'], [], ['a.txt', 'b.txt', 'spec.md']);
     f.finish('a');
     f.act({ action: 'start-task', taskId: 'b' });
     if (mutation === 'changed') fs.writeFileSync(path.join(f.root, 'spec.md'), 'Changed governing commitments\r\n');
@@ -75,7 +75,7 @@ for (const mutation of ['changed', 'deleted']) {
     f.act({ action: 'retrospective', evidence: 'Engineering retrospectively assessed' });
     f.act({ action: 'triage', evidence: 'Follow-ups retained' });
     const state = f.store.read();
-    assert.equal(reviewGate(f.root, state.tasks[0], state), true);
+    assert.equal(reviewGate(f.root, state.tasks[0], state), mutation === 'changed');
     assert.equal(reviewGate(f.root, state.tasks[1], state), true);
     assert.throws(() => f.act({ action: 'complete' }), { code: 'spec-review-required' });
     assert.equal(f.store.read().status, 'running');

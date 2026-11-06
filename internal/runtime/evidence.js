@@ -1,6 +1,7 @@
 'use strict';
 
 const fs = require('node:fs');
+const { AsyncLocalStorage } = require('node:async_hooks');
 const path = require('node:path');
 const { createHash } = require('node:crypto');
 const { spawnSync } = require('node:child_process');
@@ -205,18 +206,38 @@ function freshAll(root, evidences) {
   return decided.map(result => (Array.isArray(result) ? result.every(file => blobs.get(file.path) === file.blob) : result));
 }
 
+// Comparison results live only for one synchronous status evaluation. Never reuse them across operations or writes.
+const comparisonScope = new AsyncLocalStorage();
+
+function withEvidenceComparisons(callback) {
+  return comparisonScope.run(new Map(), callback);
+}
+
 // A snapshot of the whole reviewable project inventory, in the form a review's context snapshot takes.
 function inventorySnapshot(root, excluded = [], included = []) {
-  return { ...snapshot(root, projectInventory(root, excluded, included)), inventory: true, excludedPaths: excluded, includedPaths: included };
+  const paths = projectInventory(root, excluded, included);
+  const ordinary = included.length ? new Set(projectInventory(root, excluded)) : null;
+  return { ...snapshot(root, paths), inventory: true, excludedPaths: excluded, includedPaths: included,
+    ...(ordinary ? { includedOnlyPaths: paths.filter(file => !ordinary.has(file)) } : {}) };
 }
 
 // The paths that appeared, disappeared or changed content since an inventory snapshot, sorted; null when that cannot be established.
 function changedPaths(root, evidence) {
+  const cache = comparisonScope.getStore();
+  if (!cache) return computeChangedPaths(root, evidence);
+  const key = JSON.stringify([root, evidence]);
+  if (!cache.has(key)) cache.set(key, computeChangedPaths(root, evidence));
+  const result = cache.get(key);
+  return result === null ? null : [...result];
+}
+
+function computeChangedPaths(root, evidence) {
   if (evidence?.inventory !== true || !Array.isArray(evidence.files) || hash(JSON.stringify(evidence.files)) !== evidence.digest) return null;
   try {
     const current = projectInventory(root, evidence.excludedPaths ?? [], evidence.includedPaths ?? []);
     const recorded = new Set(evidence.files.map(file => file.path));
     const present = new Set(current);
+    for (const file of evidence.files) if (!present.has(file.path)) fileSha256(root, file.path);
     const changed = new Set([...current.filter(file => !recorded.has(file)), ...[...recorded].filter(file => !present.has(file))]);
     const { changed: altered, candidates } = byteChanges(root, evidence.files.filter(file => present.has(file.path)));
     const renormalized = renormalizedPaths(root, candidates);
@@ -226,6 +247,30 @@ function changedPaths(root, evidence) {
   } catch {
     // An unreadable or unsafe entry means the difference cannot be established, which never counts as confined.
     return null;
+  }
+}
+
+// Private copies have no tracked inventory. Enumerate their regular inputs explicitly so additions and unsafe entries cannot
+// evade the assignment check, including original inputs supplied for relevance. Empty directories carry no reviewed content.
+function privateInputsCurrent(root, evidence) {
+  try {
+    const paths = [];
+    const visit = (directory, prefix) => {
+      for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+        const relative = prefix + entry.name;
+        const target = projectFile(root, relative);
+        if (entry.isDirectory()) visit(target, relative + '/');
+        else paths.push(relative);
+      }
+    };
+    visit(root, '');
+    const expected = evidence.files.filter(file => file.sha256 !== null).map(file => file.path).sort();
+    const actualKeys = paths.map(file => fileIdentity(root, file).key);
+    const expectedKeys = expected.map(file => fileIdentity(root, file).key);
+    return new Set(actualKeys).size === actualKeys.length && new Set(expectedKeys).size === expectedKeys.length
+      && JSON.stringify(actualKeys.sort()) === JSON.stringify(expectedKeys.sort()) && fresh(root, { ...evidence, inventory: false });
+  } catch {
+    return false;
   }
 }
 
@@ -278,4 +323,4 @@ function verifyCommand(root, request) {
   return { ...result, snapshot: after, inputsUnchanged, passed: !result.error && result.exitCode === 0 && inputsUnchanged };
 }
 
-module.exports = { changedPaths, executeCommand, fileIdentity, fileSha256, fresh, freshAll, hash, inventorySnapshot, outsideGitWorktree, projectFile, projectInventory, snapshot, verifyCommand };
+module.exports = { withEvidenceComparisons, privateInputsCurrent, changedPaths, executeCommand, fileIdentity, fileSha256, fresh, freshAll, hash, inventorySnapshot, outsideGitWorktree, projectFile, projectInventory, snapshot, verifyCommand };

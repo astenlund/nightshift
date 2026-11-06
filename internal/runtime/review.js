@@ -7,7 +7,7 @@ const { spawnSync } = require('node:child_process');
 const { isDeepStrictEqual } = require('node:util');
 const { DIMENSIONS, commitmentsFor, latestChecks } = require('./lifecycle');
 const { requireCondition, safeDirectory, text } = require('./store');
-const { fileIdentity, fresh, freshAll, hash, inventorySnapshot, projectFile, snapshot } = require('./evidence');
+const { privateInputsCurrent, fileIdentity, fresh, freshAll, hash, inventorySnapshot, projectFile, snapshot } = require('./evidence');
 const { boundedHostText, codexModelContradiction, runAgent } = require('./hosts');
 const { writeJson, writeText } = require('./artifacts');
 const { PROBE_TIMEOUT_CAP_MS, PROBE_TIMEOUT_FLOOR_MS, loadProbeEvidence } = require('./probes');
@@ -17,6 +17,7 @@ const { workerEnvironment } = require('../releases/entry');
 const { timeLeft } = require('./limits');
 const { isAdmittedModel, requireAdmittedModel, requirePermittedEffort, roleFor } = require('./models');
 const vibe = require('./vibe');
+const { validateRelevanceRequest, validateRelevanceReport, relevancePrompt, relevanceBinding } = require('./relevance');
 
 const DEFAULT_REVIEW_TIMEOUT_MS = 900000;
 // Failures that end a dispatch at once rather than passing to the next candidate.
@@ -110,6 +111,7 @@ function validateContinuationRequest(options) {
     requireCondition(new Set(ids).size === ids.length, 'invalid-dialogue', 'Dialogue finding identities must be unique');
     text(dialogue.message, 'review.dialogue.message');
   }
+  validateRelevanceRequest(options);
   if (options.acknowledgements !== undefined) {
     requireCondition(Array.isArray(options.acknowledgements), 'invalid-acknowledgements', 'review.acknowledgements is a list of settled statements');
     options.acknowledgements.forEach(statement => text(statement, 'review.acknowledgements'));
@@ -174,7 +176,7 @@ function listOf(properties, required) {
 // The report a dispatch must return: one schema for every lead dispatch and one for every skeptic dispatch, identical from a
 // reviewer's first call to its last, so that a resumed session's cached prefix survives. Nothing a dispatch binds is in it: the
 // request id, the finding ids a skeptic judges or a continued lead closes, and the dialogue turn's positions are checked by
-// validateReport after the report arrives. A lead's closures and positions are always present and empty unless asked for.
+// validateReport after the report arrives. A lead's closures, positions and applicability are always present and empty unless asked for.
 function schemaFor(kind) {
   const scalar = { type: 'string' };
   const skeptic = kind === 'skeptic';
@@ -184,6 +186,7 @@ function schemaFor(kind) {
   const extra = skeptic ? {} : {
     closures: listOf({ closed: { type: 'boolean' }, evidence: scalar }, ['closed', 'evidence']),
     positions: listOf({ position: { type: 'string', enum: DIALOGUE_POSITIONS }, evidence: scalar }, ['position', 'evidence']),
+    applicability: listOf({ outcome: { type: 'string', enum: ['preserve', 'reassess', 'unresolved'] }, evidence: scalar }, ['outcome', 'evidence']),
   };
   return {
     type: 'object', additionalProperties: false,
@@ -216,7 +219,9 @@ function validateReport(report, request) {
   requireCondition(Array.isArray(report.findings) && Array.isArray(report.coverage), 'invalid-result', 'Report lacks findings or coverage');
   // The schema admits closures and positions on every lead report, so a dispatch that asked for neither refuses any entry.
   requireCondition((report.closures === undefined || Array.isArray(report.closures)) && (report.positions === undefined || Array.isArray(report.positions)), 'invalid-result', 'Closures and positions are arrays when present');
-  const continuedLead = request.kind !== 'skeptic' && Boolean(request.continues) && !request.dialogue;
+  requireCondition(report.applicability === undefined || Array.isArray(report.applicability), 'invalid-result', 'Applicability answers are an array');
+  requireCondition(request.relevance || !(report.applicability ?? []).length, 'invalid-result', 'Applicability answers belong to relevance only');
+  const continuedLead = request.kind !== 'skeptic' && Boolean(request.continues) && !request.dialogue && !request.relevance;
   const leadDialogue = request.kind !== 'skeptic' && Boolean(request.dialogue);
   requireCondition(continuedLead || !(report.closures ?? []).length, 'invalid-result', 'Closures belong to a continued lead report only');
   requireCondition(leadDialogue || !(report.positions ?? []).length, 'invalid-result', 'Positions belong to a dialogue reply only');
@@ -247,6 +252,7 @@ function validateReport(report, request) {
     }
   }
   if (request.kind === 'skeptic') requireCondition(request.findings.length === ids.size && request.findings.every(finding => ids.has(finding.id)), 'missing-validation', 'Skeptic must evaluate every assigned finding exactly once');
+  else if (request.relevance) validateRelevanceReport(report, request);
   else if (request.dialogue) validatePositions(report, request);
   else {
     if (request.continues) validateClosures(report, request);
@@ -292,7 +298,7 @@ function opening(request, role, workspace, sameCopy) {
   const location = workspace ? `at ${workspace}, which is your current working directory` : 'in your current working directory';
   if (continued?.kind === 'resumed' && sameCopy) return `You are continuing your own earlier work as the ${role} in this session (request ${continued.requestId}). This dispatch refreshed the private copy of the project ${location}; it now holds the current snapshot, so read context/diff.patch, context/manifest.json and project/ there again. What you read in earlier turns may be stale; do not rely on it for the current state.`;
   if (continued?.kind === 'resumed') return `You are continuing your own earlier work as the ${role} in this session (request ${continued.requestId}). This dispatch gives you a new private copy of the project ${location}: read context/diff.patch, context/manifest.json and project/ there. Copies from your earlier turns, in any other directory, are stale; do not read them.`;
-  if (continued?.kind === 'replacement') return `You are a fresh independent ${role} standing in for the ${role} of request ${continued.requestId}, whose session cannot be resumed; its record follows.`;
+  if (continued?.kind === 'replacement') return `You are a fresh independent ${role} standing in for the ${role} of request ${continued.requestId}, supplied for independent replacement; inspect its original record and the current inputs independently.`;
   return `You are a fresh independent ${role}.`;
 }
 
@@ -436,30 +442,32 @@ function vibeRules(workspace) {
 // their own; probeFiles names each returned probe result in the copy, since a reviewer that can only read named files cannot list a
 // folder.
 function buildPrompt(request, { workspace, host, probeFiles = [], sameCopy = false, rules = null } = {}) {
+  const relevance = Boolean(request.relevance);
   const skeptic = request.kind === 'skeptic';
   const dialogue = Boolean(request.dialogue);
-  const scope = skeptic ? 'Use the complete supplied artifact and cumulative change as context for validating the assigned claims and their affected siblings.' : 'Assess the complete supplied artifact and cumulative change, surrounding code and sibling paths.';
-  const purpose = skeptic ? 'deciding each assigned claim' : dialogue ? 'answering the dialogue' : 'a credible broad assessment';
+  const scope = relevance ? 'Compare the complete original assessment scope and deciding context with the supplied current inputs and commitments.' : skeptic ? 'Use the complete supplied artifact and cumulative change as context for validating the assigned claims and their affected siblings.' : 'Assess the complete supplied artifact and cumulative change, surrounding code and sibling paths.';
+  const purpose = relevance ? 'an independent applicability decision' : skeptic ? 'deciding each assigned claim' : dialogue ? 'answering the dialogue' : 'a credible broad assessment';
   const common = `${opening(request, skeptic ? 'skeptic' : 'strong lead reviewer', workspace, sameCopy)} ${scope} Reviewed files are immutable. Do not edit them, commit, or publish. Mutating probes require a separate isolated fixture; if tools cannot support a deciding check, report the missing evidence. Do not delegate unless the assignment explicitly includes peer dispatch. Report only concrete consequences with evidence; do not manufacture findings or prescribe unnecessary implementation detail.\n\nRequest: ${request.id}\nRequirements:\n${request.requirements}\n\nAll applicable review dimensions:\n${request.dimensions.join('\n')}\n\nRead context/diff.patch, context/manifest.json and the files in project/ as needed for ${purpose}. The full source snapshot is available. Prior fixes are included in the cumulative change and need surrounding/sibling coverage.\n`;
   const lead = `Evaluate all dimensions without quotas or equal-depth narration. The author has not selected relevant dimensions. If the assignment is too large for credible coverage, return incomplete and describe the needed peer coverage. One underlying problem is one finding. ${SEVERITY_RUBRIC}\n`;
   const documentation = 'This is a documentation review. The code in the cumulative change is context: judge what the documentation, including the backlog, says about it, not whether the code is correct. Report as a finding any changed file you judge to be operating instructions that agents load or are directed to follow during a run, such as skills, instruction files or runtime reference guidance, so the controller routes it to code assessment.\n';
   const proposal = 'For every confirmed verdict give repairProposal: the approach a repair would take, the smallest change that fixes the property the finding\'s obligation keys on rather than only the reported case, preferring removal or generalization over added mechanism, with enough reasoning to judge it and without a complete patch, whatever you recommend about implementing it. For a refuted or unverified verdict give an empty repairProposal unless a repair is still worth describing.\n';
   const skepticRole = `The assigned finding set is closed: return exactly one verdict for each supplied full id and retain that id verbatim. Validate each claim against concrete evidence, attempting refutation. Separate factual validity and practical value. Missing evidence is unverified. Evaluate whether it is worthwhile to implement, defer or skip, preserving agreed obligations. Unassigned observations belong in summary for separate controller routing and independent assessment before disposition; they are not assigned verdicts. ${proposal}Findings:\n${JSON.stringify(request.findings, null, 2)}\n`;
   const leadRole = (request.kind === 'docs' ? documentation : '') + lead + (request.continues ? continuationBrief(request) : '');
-  const role = (skeptic ? skepticRole : '') + (dialogue ? dialogueBrief(request) : skeptic ? '' : leadRole);
+  const relevanceFindings = `${request.kind === 'docs' ? documentation : ''}New findings follow the ordinary finding discipline. One underlying problem is one finding. ${SEVERITY_RUBRIC}`;
+  const role = relevance ? relevancePrompt(request, { workspace }) + ' ' + relevanceFindings : (skeptic ? skepticRole : '') + (dialogue ? dialogueBrief(request) : skeptic ? '' : leadRole);
+  const specScope = request.kind === 'spec' ? `Declared deciding inputs: ${JSON.stringify(request.snapshot?.files?.map(file => file.path) ?? [])}. Other project files are orientation and probe context. If a deciding conclusion needs an additional input outside this set, return incomplete and name the required paths in summary so the controller can supplement artifactPaths; do not silently rely on undeclared deciding inputs.` : '';
   const definitions = request.dimensions.map(dimension => `${dimension}: ${DIMENSION_BRIEFS[dimension]}`).join('\n');
   const execution = `If a deciding claim needs execution unavailable in your read-only tools, request a bounded probe in probes, with its purpose, exact executable/args, timeout and ASCII fixture files. ${PROBE_TIMEOUT_RULE} The controller executes it in a separate private copy and returns raw command/output evidence for your independent assessment. That copy's root, the probe's working directory, holds the project files at their project-relative paths, not under project/, with no context/ folder, and is a new Git repository; each fixture file is written at its path relative to that root, replacing a project file of the same path, so name every path in args and files relative to it. Remain incomplete/unverified until that evidence is sufficient. A probe never authorizes canonical project repairs. ${probeFiles.length ? `Returned probe evidence for this assessment: ${probeFiles.join(', ')}; read each before deciding the claims it bears on.` : 'No probe evidence has been returned for this assessment yet.'}\n`;
   // The report schema is the same for every dispatch of a kind, so the request id and the fields this dispatch fills are named here.
-  const fields = ['requestId', 'status', 'coverage', 'findings', 'probes', 'summary', 'toolFailure', ...(skeptic ? [] : ['closures', 'positions'])];
-  const empties = skeptic ? '' : ' Leave closures empty unless findings are listed as pending closure, and positions empty unless this is a dialogue turn.';
+  const fields = ['requestId', 'status', 'coverage', 'findings', 'probes', 'summary', 'toolFailure', ...(skeptic ? [] : ['closures', 'positions', 'applicability'])];
+  const empties = skeptic ? '' : ' Leave closures empty unless findings are listed as pending closure, positions empty unless this is a dialogue turn, and applicability empty unless this is a relevance turn.';
   // A resumed Vibe session runs under its predecessor's system prompt, so the dispatch's own rules reach it through the turn prompt.
   const carried = sameCopy && rules ? `Applicable rules for this turn, which govern this assessment as the system prompt of a fresh dispatch would:\n${rules}\n` : '';
-  return common + definitions + '\n\n' + role + acknowledgementBrief(request) + carried + checkBrief(request) + execution + (host === 'vibe' ? vibeRules(workspace) : '') + TOOL_FAILURE_RULE + '\n' + `\nReturn the requested structured report for request ${request.id} with requestId set to that id verbatim, ${fields.slice(1, -1).join(', ')} and ${fields.at(-1)}. Use an empty probes array when no execution evidence is missing.${empties}\n`;
+  return common + (specScope ? specScope + '\n\n' : '') + definitions + '\n\n' + role + acknowledgementBrief(request) + carried + checkBrief(request) + execution + (host === 'vibe' ? vibeRules(workspace) : '') + TOOL_FAILURE_RULE + '\n' + `\nReturn the requested structured report for request ${request.id} with requestId set to that id verbatim, ${fields.slice(1, -1).join(', ')} and ${fields.at(-1)}. Use an empty probes array when no execution evidence is missing.${empties}\n`;
 }
 
-// Whether the inputs an assessment judged are unchanged, before its dispatch returns and again at import. A spec assessment judged
-// its governing artifacts, so edits elsewhere while it runs keep it, as they already do once it is imported; every other kind
-// judged the whole context, which for them is the same evidence as their snapshot and so is read once.
+// Validation and finding dialogue retain their existing current-input boundary. Ordinary lead evidence survives canonical drift;
+// its applicability is judged independently against its original scope, commitments and supplied context.
 function inputsUnchanged(root, kind, snapshot, contextSnapshot) {
   return fresh(root, snapshot) && (kind === 'spec' || isDeepStrictEqual(snapshot, contextSnapshot) || fresh(root, contextSnapshot));
 }
@@ -533,7 +541,10 @@ async function dispatchReview(root, options, dependencies = {}) {
     const contextSnapshot = inventorySnapshot(canonical, excludedPaths, includedPaths);
     const files = contextSnapshot.files.map(file => file.path);
     const captured = options.kind === 'spec' ? snapshot(canonical, options.artifactPaths) : contextSnapshot;
-    if (options.kind === 'spec') requireCondition(captured.files.every(file => file.sha256 !== null), 'missing-spec', 'Whole-spec assessment requires the governing artifact to exist');
+    if (options.kind === 'spec') {
+      const missing = captured.files.filter(file => file.sha256 === null).map(file => file.path);
+      requireCondition(!missing.length, 'missing-spec', 'Whole-spec assessment requires every declared deciding input to exist; missing: ' + missing.join(', '));
+    }
     const exclusionArgs = excludedPaths.map(file => `:(exclude,literal)${file}`);
     // Paths stay relative to the project root, as in the reviewer's copy, when the root is a subdirectory of its repository.
     let diff = git(canonical, ['diff', '--no-ext-diff', '--binary', '--relative', options.baseSha, '--', '.', ...exclusionArgs]);
@@ -559,6 +570,9 @@ async function dispatchReview(root, options, dependencies = {}) {
       fs.writeFileSync(path.join(directory, 'diff.patch'), diff);
       writeJson(path.join(directory, 'manifest.json'), contextSnapshot);
     }
+    const keepOriginal = options.kind !== 'skeptic' && !continuation && !options.dialogue && !options.relevance;
+    const retention = keepOriginal ? require('./review-inputs').retain(canonical, project, contextSnapshot) : { retainedInputs: false, retainedInputsReason: 'Only fresh lead originals are cached' };
+    if (options.relevance) require('./relevance').prepareOriginal(canonical, options.relevance, workspace);
     const probeEvidence = loadProbeEvidence(canonical, options.probeEvidence, captured, contextSnapshot);
     const probeFiles = probeEvidence.map((_evidence, index) => `context/probes/${index + 1}.json`);
     if (probeEvidence.length > 0) {
@@ -574,6 +588,7 @@ async function dispatchReview(root, options, dependencies = {}) {
       continues: continuesRecord(continuation),
       lineage: continuation?.lineage ?? id,
       pendingClosures: (options.continuationContext?.pendingClosures ?? []).map(finding => ({ id: finding.id, localId: finding.localId })),
+      relevance: options.relevance ?? null, ...retention,
       dialogue: options.dialogue ?? null, acknowledgements: options.acknowledgements ?? [], continuationContext: options.continuationContext ?? null,
     };
     writeJson(path.join(target, 'request.json'), request);
@@ -630,7 +645,9 @@ async function dispatchReview(root, options, dependencies = {}) {
         const report = validateReport(parseReport(result.output), request);
         sessionFailure = false;
         sessionHealthy = true;
-        requireCondition(inputsUnchanged(canonical, request.kind, captured, contextSnapshot) && fresh(project, { ...contextSnapshot, inventory: false }), 'review-input-drift', 'Reviewed project inputs changed during assessment');
+        requireCondition(privateInputsCurrent(project, contextSnapshot), 'review-input-drift', 'The private project copy changed during assessment');
+        if (request.relevance?.originalInputsAvailable) requireCondition(privateInputsCurrent(path.join(workspace, 'original'), request.relevance.original.contextSnapshot), 'review-input-drift', 'The original private inputs changed during relevance assessment');
+        if (request.kind === 'skeptic' || request.dialogue) requireCondition(inputsUnchanged(canonical, request.kind, captured, contextSnapshot), 'review-input-drift', 'Validation or dialogue inputs changed during assessment');
         attempt.status = 'complete';
         const receipt = {
           requestId: id, runId: request.runId, recordKind: request.recordKind, taskId: request.taskId,
@@ -645,6 +662,7 @@ async function dispatchReview(root, options, dependencies = {}) {
           ...selection,
           ...(result.host === 'vibe' ? { ...vibeAttemptFields(result.vibe), attributionEvidence: result.vibe.attributionFiles.map(file => ({ path: path.relative(canonical, file).split(path.sep).join('/'), sha256: hash(fs.readFileSync(file)) })) } : {}),
           continues: request.continues, lineage: request.lineage, dialogue: request.dialogue,
+          relevance: relevanceBinding(request.relevance), applicability: report.applicability ?? [], ...retention,
           closures: report.closures ?? [], positions: report.positions ?? null, threadTokens: result.threadTokens ?? null,
           eventFile: path.relative(canonical, path.join(artifacts, 'events.jsonl')).split(path.sep).join('/'),
           eventHash: hash(fs.readFileSync(path.join(artifacts, 'events.jsonl'))),
@@ -679,7 +697,10 @@ async function dispatchReview(root, options, dependencies = {}) {
     // assessment evidence after a safely ended attempt's source copy is discarded.
     if ((!processStarted || terminationProven) && fs.existsSync(project)) {
       requireCondition(isPrivateCopyDirectory(canonical, workspace) && path.relative(workspace, project) === 'project', 'unsafe-path', 'Disposable review copy escaped its assignment');
-      try { fs.rmSync(project, { recursive: true }); }
+      try {
+        fs.rmSync(project, { recursive: true });
+        fs.rmSync(path.join(workspace, 'original'), { recursive: true, force: true });
+      }
       catch (error) { writeJson(path.join(target, 'cleanup.json'), { pending: true, error: error.message }); }
     }
   }
@@ -726,18 +747,23 @@ function readReceipt(root, relative, state, taskId) {
     requireCondition(isDeepStrictEqual(worker.resources ?? null, receipt.resources ?? null), 'changed-assignment', 'Receipt differs from the worker resource binding');
     requireCondition(isDeepStrictEqual(worker.controller ?? null, assignment.controller ?? null), 'changed-assignment', 'Receipt assignment changed its dispatch controller provenance');
     requireCondition(isDeepStrictEqual(worker.continues ?? null, receipt.continues ?? null) && lineageOf(worker) === lineageOf(receipt), 'changed-assignment', 'Receipt continuation differs from the controller-owned dispatch record');
+    requireCondition(isDeepStrictEqual(worker.relevance ?? null, receipt.relevance ?? null), 'changed-assignment', 'Receipt relevance differs from its registered assignment');
     requireCondition(isDeepStrictEqual(worker.commitments, receipt.commitments) && isDeepStrictEqual(assignment.commitments, receipt.commitments), 'changed-assignment', 'Receipt differs from the commitments bound when it was dispatched');
-    requireCondition(receipt.coveredTaskIds.every(id => {
-      const task = state.tasks.find(candidate => candidate.id === id);
-      return task && isDeepStrictEqual(receipt.commitments?.[id], commitmentsFor([task])[id]);
-    }), 'stale-commitments', 'Accepted commitments changed during assessment; reassess them before importing this report');
+    requireCondition(receipt.coveredTaskIds.every(id => state.tasks.some(task => task.id === id)), 'wrong-result', 'An assessment covers existing named tasks');
   }
+  if (state.workers && (receipt.kind === 'skeptic' || receipt.dialogue)) requireCondition(receipt.coveredTaskIds.every(id => {
+    const task = state.tasks.find(candidate => candidate.id === id);
+    return task && isDeepStrictEqual(receipt.commitments?.[id], commitmentsFor([task])[id]);
+  }), 'stale-commitments', 'Validation and dialogue evidence must match current accepted commitments');
   requireCondition(receipt.runId === state.id && receipt.taskId === taskId && receipt.session !== state.controller.session, 'wrong-result', 'Report belongs to another run, task or controller');
   requireCondition((receipt.recordKind ?? 'delivery') === require('./records').recordKind(state) && (assignment.recordKind ?? 'delivery') === require('./records').recordKind(state), 'wrong-result-kind', 'Report belongs to another runtime record kind');
   if (assignment.controller && isDeepStrictEqual(assignment.controller, state.controller)) requireCondition(!require('./ownership').forbiddenReviewSessions(state).has(receipt.session), 'nonindependent-worker', 'A former controller cannot author a new independent assessment');
   requireCondition(hash(fs.readFileSync(projectFile(root, receipt.eventFile))) === receipt.eventHash, 'changed-result', 'Native host result changed after collection');
   requireCondition(isAdmittedModel(receipt.host, receipt.model, roleFor(receipt.kind)), 'invalid-receipt', `The receipt's model is not a strong reviewer admitted for the ${roleFor(receipt.kind)} role`);
-  requireCondition(receipt.attributionVerified === true && inputsUnchanged(root, receipt.kind, receipt.snapshot, receipt.contextSnapshot), 'invalid-receipt', 'Review attribution or input freshness is invalid');
+  requireCondition(receipt.attributionVerified === true, 'invalid-receipt', 'Review attribution is invalid');
+  if (receipt.kind === 'skeptic' || receipt.dialogue) requireCondition(inputsUnchanged(root, receipt.kind, receipt.snapshot, receipt.contextSnapshot), 'invalid-receipt', 'Validation or dialogue inputs are no longer current');
+  requireCondition(isDeepStrictEqual(relevanceBinding(assignment.relevance), receipt.relevance ?? null) && isDeepStrictEqual(assignment.retainedInputs ?? false, receipt.retainedInputs ?? false) && (assignment.retainedInputsReason ?? null) === (receipt.retainedInputsReason ?? null), 'changed-assignment', 'Receipt relevance or retained-input binding changed');
+  if (receipt.retainedInputs === true) requireCondition(privateInputsCurrent(projectFile(root, path.posix.join(path.posix.dirname(relative), 'inputs')), receipt.contextSnapshot), 'changed-assignment', 'Retained original inputs no longer match their assignment');
   requireCondition(receipt.host === 'vibe' || receipt.attributionEvidence === undefined, 'unattributed-review', 'Only a Vibe receipt carries attributionEvidence');
   const events = fs.readFileSync(projectFile(root, receipt.eventFile), 'utf8').trim().split('\n').map(line => JSON.parse(line));
   let output;
@@ -752,6 +778,8 @@ function readReceipt(root, relative, state, taskId) {
     output = events.findLast(event => event.method === 'item/completed' && event.params.threadId === receipt.session && event.params.item.type === 'agentMessage')?.params.item.text;
   }
   const report = parseReport(output);
+  if (receipt.relevance) validateReport(report, assignment);
+  requireCondition(isDeepStrictEqual(report.applicability ?? [], receipt.applicability ?? []), 'changed-result', 'Collected applicability differs from the native result');
   // Reports from earlier releases carry no toolFailure; one that names a tool failure never produced a receipt.
   requireCondition(typeof report.toolFailure !== 'string' || !report.toolFailure.trim(), 'changed-result', 'The native report names a tool failure, so it is not a usable assessment');
   requireCondition(report.requestId === receipt.requestId && report.status === receipt.status && isDeepStrictEqual(report.findings, receipt.findings) && isDeepStrictEqual(report.probes ?? [], receipt.probes) && isDeepStrictEqual(report.coverage.map(item => item.dimension), receipt.dimensions) && isDeepStrictEqual(report.closures ?? [], receipt.closures ?? []) && isDeepStrictEqual(report.positions ?? [], receipt.positions ?? []), 'changed-result', 'Collected assessment differs from the native host report');

@@ -28,7 +28,7 @@ function reportAwaitsRecipient(state) {
 
 // A completion discharges the closing record as it stood then. A record opened after it, by renewed triage or a closing reset, stays
 // undischarged until the delivery completes again. The latest invocation of each named closing check recorded on the same record after
-// completion must match the latest closing assessment by revision, the one historical discharge qualifies and orders repairs against: it must be a fresh, strong,
+// completion must match the latest closing assessment in recorded dispatch order when available, the one historical discharge qualifies and orders repairs against: it must be a fresh, strong,
 // independent and complete docs assessment whose snapshot holds the content of every file the check recorded. An older assessment
 // never stands in, so restored content a superseded assessment saw stays uncovered, while a check of content the latest one saw adds
 // no debt whether recorded before or after it. Findings, repairs, closures and check results stay with historical discharge, and
@@ -46,12 +46,14 @@ function closingDischargedSince(current, completed, resolve) {
   const later = [...new Map(now.checks.map(check => [check.name, check])).values()].filter(check => !earlierChecks.has(identity(check)));
   if (later.length === 0) return true;
   const { DIMENSIONS, completeAssessment } = require('./lifecycle');
-  const latest = now.reviews.reduce((found, review) => (!found || review.revision > found.revision ? review : found), null);
+  const latest = require('./applicability').latestEntry(now.reviews.filter(review => !review.relevance).map(review => ({ review })), current)?.review;
   if (!(latest?.kind === 'docs' && completeAssessment(latest) && latest.attributionVerified === true && DIMENSIONS.docs.every(dimension => latest.dimensions?.includes(dimension)))) return false;
-  const seen = new Map(resolve(latest.snapshot).files.map(file => [file.path, file.sha256 ?? null]));
+  const covered = (current.tasks ?? []).filter(task => latest.coveredTaskIds?.includes(task.id));
+  const candidates = [resolve(latest.snapshot), ...require('./applicability').preservedSnapshots(latest, now, covered, resolve, current)];
+  const seen = candidates.map(candidate => new Map(candidate.files.map(file => [file.path, file.sha256 ?? null])));
   const absent = sha256 => sha256 === null || sha256 === undefined;
 
-  return later.every(check => resolve(check.snapshot).files.every(file => (absent(file.sha256) ? absent(seen.get(file.path)) : seen.get(file.path) === file.sha256)));
+  return later.every(check => seen.some(candidate => resolve(check.snapshot).files.every(file => (absent(file.sha256) ? absent(candidate.get(file.path)) : candidate.get(file.path) === file.sha256))));
 }
 
 // A closed delivery is discharged by its own close row: the revision right after closure.previousRevision is kind close and holds the
@@ -242,7 +244,7 @@ function assessment(store, options = {}) {
             progress.snapshotIdentity(resolved);
             return true;
           };
-          const target = value => ({ ...value, checks: value.checks.map(check => ({ ...check, snapshot: accounting.resolve(check.snapshot, evidence) })), reviews: value.reviews.map(review => ({ ...review, snapshot: accounting.resolve(review.snapshot, evidence) })), ...(value.docsExemption ? { docsExemption: { ...value.docsExemption, snapshot: accounting.resolve(value.docsExemption.snapshot, evidence) } } : {}) });
+          const target = value => ({ ...value, checks: value.checks.map(check => ({ ...check, snapshot: accounting.resolve(check.snapshot, evidence) })), reviews: value.reviews.map(review => ({ ...review, snapshot: accounting.resolve(review.snapshot, evidence), ...(review.contextSnapshot ? { contextSnapshot: accounting.resolve(review.contextSnapshot, evidence) } : {}) })), ...(value.docsExemption ? { docsExemption: { ...value.docsExemption, snapshot: accounting.resolve(value.docsExemption.snapshot, evidence) } } : {}) });
           const historicalState = { ...state, tasks: state.tasks.map(target), closing: { ...state.closing, ...(state.closing?.docs ? { docs: { ...target(state.closing.docs), baseline: accounting.resolve(state.closing.docs.baseline, evidence) } } : {}) } };
           closingOpen = !closingDischargedSince(state, completed, value => accounting.resolve(value, evidence));
           discharged = !closingOpen && require('./lifecycle').historicalDischarge(historicalState, snapshotValid);

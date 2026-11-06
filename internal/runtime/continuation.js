@@ -168,6 +168,11 @@ function resolveContinuation(root, state, target, review) {
   const continuation = { kind: resumed ? 'resumed' : 'replacement', requestId, lineage, ...(resumed ? { session: receipt.session, priorThreadTokens: usedSince ? null : receipt.threadTokens ?? null } : {}), ...(vibeSource ? { vibe: vibeSource } : {}) };
   const candidates = resumed ? [{ host: receipt.host, model: receipt.model, effort: receipt.effort }] : review.candidates;
   const raised = finding => finding.raisedBy?.lineage === lineage;
+  if (review.relevance) {
+    const original = target.reviews.find(candidate => candidate.requestId === review.relevance.requestId && !candidate.relevance);
+    requireCondition(original && lineageOf(original) === lineage, 'foreign-assessment', 'Relevance resumes or replaces the originating assessment lineage');
+    return { candidates, continuation, continuationContext: null, findings: [] };
+  }
   if (review.dialogue) {
     const named = review.dialogue.findingIds.map(id => target.findings.find(finding => finding.id === id));
     requireCondition(named.every(Boolean), 'unknown-finding', 'A dialogue turn names recorded findings');
@@ -175,7 +180,7 @@ function resolveContinuation(root, state, target, review) {
     requireCondition(owned, 'foreign-finding', kind === 'skeptic' ? 'A skeptic discusses only findings its lineage validated' : 'A reviewer discusses only findings its lineage raised');
     return { candidates, continuation, continuationContext: { dialogueFindings: named.map(findingSummary) }, findings: kind === 'skeptic' ? named : [] };
   }
-  const lastReport = target.reviews.filter(review => lineageOf(review) === lineage).at(-1)?.revision ?? -1;
+  const lastReport = target.reviews.filter(review => !review.relevance && lineageOf(review) === lineage).at(-1)?.revision ?? -1;
   return {
     candidates, continuation, findings: [],
     continuationContext: {
