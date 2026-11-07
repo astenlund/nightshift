@@ -4,6 +4,10 @@ Release notes for the Nightshift plugin, newest first. The plugin manifests carr
 
 The entries through 3.3.3 were moved here from the README on 2026-10-05 and split by version. A version without an entry had no notes recorded there.
 
+## 3.3.31
+
+- Place each Vibe reviewer attempt's home and empty user home in a short isolation directory under `.nightshift/runs/v/`, instead of under the attempt's artifacts; the attempt and its receipt record the home's project-relative path, `.nightshift/runs/v/<eight hex digits>/home`, as `vibeHome`. Vibe nests its pinned plugin store deeply under its home, and the old layout put those files past 260 characters in any project whose root is longer than about 50 characters, where Git without long-path support could not read them and removed worktrees had to be deleted by hand; the home's path below the project root drops from 81 characters to 32. A resume seeds its new home from the recorded one and refuses a `vibeHome` not spelled exactly in the form `.nightshift/runs/v/<eight hex digits>/home`; a receipt from an earlier release, which records no `vibeHome`, still resumes from its attempt's own `vibe-home` folder. An isolation that cannot be completed is removed where the filesystem allows, and the eligibility check builds a real one and removes it, a throwaway the filesystem keeps leaving the candidate eligible. Focused deterministic tests with the fake Vibe host verify the layout, resume from both layouts and the refusals; no native Vibe run was made.
+
 ## 3.3.30
 
 - Accept Vibe 3.1 exports without the retired `tool_paths` and `smart_approve_default` configuration fields after verifying the launched and exported versions agree. Present values and all other required fields remain checked. Focused deterministic tests and replay of saved native exports verify collector compatibility; this does not establish a new live review verdict.

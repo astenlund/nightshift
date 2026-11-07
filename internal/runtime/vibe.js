@@ -5,11 +5,11 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
-const crypto = require('node:crypto');
 const { spawnSync } = require('node:child_process');
 const { isDeepStrictEqual: sameValue } = require('node:util');
 const { RunError, requireCondition } = require('./store');
 const { resolveTrustedExecutable } = require('../filesystem-primitives');
+const { createVibeHomeDirectory, isVibeHomeDirectory } = require('./copies');
 const { compareVersions, parseModel } = require('./models');
 const { RETIRED_KEYS, ALLOWLISTED_KEYS, COMPARED_DEFAULTS, FIXED_SHAPE_KEYS, MODEL_ENTRY_ALLOWLISTED, MODEL_ENTRY_COMPARED, PER_ENTRY_KEYS, PROVIDER_DEFAULTS } = require('./vibe-config');
 
@@ -123,14 +123,22 @@ function agentFile(model, level) {
 const SESSION_STORE = ['logs', 'session', 'unified'];
 const PLUGIN_STORE = ['logs', 'session', 'plugins'];
 
-// Creates an attempt's launcher-owned Vibe home and empty user home. Vibe reads every user-scope channel from its home, and the one
+// The Vibe home and empty user home inside an attempt's isolation directory, which createVibeHomeDirectory allocates.
+const HOME = 'home';
+const USER_HOME = 'user';
+
+// Creates an attempt's launcher-owned Vibe home and empty user home in a short directory under the project root's run directory,
+// since Vibe nests its pinned plugin store deeply under its home. Vibe reads every user-scope channel from its home, and the one
 // it locates from the home directory, ~/.agents/skills, from USERPROFILE and HOME; the empty trust file keeps the copy untrusted.
 // A resumed attempt's home is seeded with the session it resumes: the predecessor attempt's exported session store copied under the
-// session's id, and the predecessor home's plugin store, without which Vibe refuses to resume before any model call.
-function createIsolation(directory, model, level, systemText, seed = null) {
+// session's id, and the predecessor home's plugin store, without which Vibe refuses to resume before any model call. An isolation
+// that cannot be completed is removed where the filesystem allows, and its refusal keeps the original cause either way.
+function createIsolation(root, model, level, systemText, seed = null) {
+  let directory = null;
   try {
-    const home = path.join(directory, 'vibe-home');
-    const userHome = path.join(directory, 'vibe-user-home');
+    directory = createVibeHomeDirectory(root);
+    const home = path.join(directory, HOME);
+    const userHome = path.join(directory, USER_HOME);
     fs.mkdirSync(path.join(home, 'agents'), { recursive: true });
     fs.mkdirSync(path.join(home, 'prompts'));
     fs.mkdirSync(userHome);
@@ -142,10 +150,29 @@ function createIsolation(directory, model, level, systemText, seed = null) {
       fs.cpSync(seed.plugins, path.join(home, ...PLUGIN_STORE), { recursive: true, errorOnExist: true, force: false });
     }
 
-    return { home, userHome };
+    return { directory, home, userHome };
   } catch (error) {
+    if (directory !== null) {
+      try {
+        fs.rmSync(directory, { recursive: true, force: true });
+      } catch {
+        // A partial isolation the filesystem will not remove stays behind; the refusal below must still name the original cause.
+      }
+    }
     throw new RunError('vibe-isolation-unavailable', `The Vibe launcher could not create its isolation: ${error.message}`);
   }
+}
+
+// The Vibe home a receipt recorded, as an absolute path, when it names a home inside an isolation directory under the run
+// directory, spelled exactly as the launcher records it (project-relative, in posix form, without '.', '..', empty or backslashed
+// segments), or null. Only the shape is checked: like the recorded private copy, the record is trusted to name its own attempt's home.
+function recordedHome(root, relative) {
+  if (typeof relative !== 'string' || relative === '' || path.posix.basename(relative) !== HOME) return null;
+  const canonical = fs.realpathSync.native(root);
+  const home = path.join(canonical, ...relative.split('/'));
+  const spelled = path.relative(canonical, home).split(path.sep).join('/');
+
+  return spelled === relative && isVibeHomeDirectory(root, path.dirname(home)) ? home : null;
 }
 
 // The reviewer's environment, built from an allowlist rather than inherited, so no VIBE_* variable but the launcher's own and none of
@@ -175,13 +202,16 @@ function candidateEligibility(candidate, root, dependencies = {}) {
   }
   const version = (dependencies.readVibeVersion ?? readVersion)(file);
   if (!versionSupported(version)) return { code: 'vibe-version-unsupported', reason: version === null ? 'The installed Vibe version could not be read' : `Vibe ${version} is below the supported floor ${VERSION_FLOOR.join('.')}` };
-  const scratch = path.join(root, '.nightshift', 'runs', 'reviews', `.vibe-eligibility-${crypto.randomUUID()}`);
+  let isolation;
   try {
-    createIsolation(scratch, candidate.model, effortLevel(candidate.model, candidate.effort), 'Eligibility check');
+    isolation = createIsolation(root, candidate.model, effortLevel(candidate.model, candidate.effort), 'Eligibility check');
   } catch (error) {
     return { code: 'vibe-isolation-unavailable', reason: error.message };
-  } finally {
-    fs.rmSync(scratch, { recursive: true, force: true });
+  }
+  try {
+    fs.rmSync(isolation.directory, { recursive: true, force: true });
+  } catch {
+    // The isolation could be created, so the candidate is eligible; a throwaway the filesystem keeps stays like a retained isolation.
   }
 
   return { version };
@@ -353,5 +383,5 @@ function expectedConfiguration(model) {
 module.exports = {
   AGENT, ALIAS, MODELS, OUTPUT_LIMIT, PLUGIN_STORE, SESSION_STORE, TOOLS, VERSION_FLOOR,
   agentFile, configurationDifferences, createIsolation, effortLevel, eligibleCandidates, environment, executable, expectedConfiguration,
-  finalAssistantText, journalCalls, journalFiles, journalModel, newestGlm, readJsonIfPresent, readVersion, reportFromEntries, reportText, resolveAlias, versionSupported,
+  finalAssistantText, journalCalls, journalFiles, journalModel, newestGlm, readJsonIfPresent, readVersion, recordedHome, reportFromEntries, reportText, resolveAlias, versionSupported,
 };

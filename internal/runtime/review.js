@@ -495,10 +495,11 @@ function coverageText(report) {
   return report.coverage.map(item => `${item.dimension}: ${item.evidence}`).join('\n');
 }
 
-// The Vibe version an attempt ran, the configuration keys a later version added that have no known default to compare with, and the
-// model calls its journal records, by which a resumed attempt's cost is judged against a replacement's.
+// The Vibe version an attempt ran, the project-relative Vibe home it ran under, which a resume seeds its own home from, the
+// configuration keys a later version added that have no known default to compare with, and the model calls its journal records, by
+// which a resumed attempt's cost is judged against a replacement's.
 function vibeAttemptFields(record) {
-  return { vibeVersion: record.version, vibeUncomparedKeys: record.uncomparedKeys, vibeCalls: record.calls ?? null };
+  return { vibeVersion: record.version, vibeHome: record.home ?? null, vibeUncomparedKeys: record.uncomparedKeys, vibeCalls: record.calls ?? null };
 }
 
 // The private copy a dispatch runs in: a new one, or for a resumed Vibe session the lineage's copy refreshed at the path the session

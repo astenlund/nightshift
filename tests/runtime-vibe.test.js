@@ -49,7 +49,7 @@ function cleanConfig(model = 'glm-5-3', level = 'high') {
 const REPORT = { requestId: 'r', status: 'complete', coverage: [], findings: [], probes: [], summary: 'Fixture', toolFailure: '', closures: [], positions: [] };
 
 // Runs the real launcher against the fake Vibe executable, with an inherited environment carrying variables the reviewer must not see.
-async function launch(t, { control = {}, effort = 'high', model = 'glm-5-3', installed = '3.0.0', preflight, session, resume } = {}) {
+async function launch(t, { control = {}, effort = 'high', model = 'glm-5-3', installed = '3.0.0', preflight, session, resume, rootless = false } = {}) {
   const root = scratch(t, 'launch');
   const cwd = path.join(root, 'copy');
   const artifacts = path.join(root, 'attempt');
@@ -59,7 +59,7 @@ async function launch(t, { control = {}, effort = 'high', model = 'glm-5-3', ins
   fs.writeFileSync(systemFile, 'You are an independent read-only engineering assessor.');
   fs.writeFileSync(path.join(artifacts, 'control.json'), JSON.stringify({ model, config: Object.hasOwn(vibe.MODELS, model) ? cleanConfig(model, vibe.effortLevel(model, effort)) : {}, report: REPORT, ...control }));
   const env = { ...process.env, VIBE_ACTIVE_MODEL: 'mistral-medium-3.5', VIBE_HOME: path.join(root, 'user-vibe'), ENABLE: 'true', SAVE_DIR: path.join(root, 'elsewhere'), MISTRAL_API_KEY: 'fixture-key' };
-  const options = { host: 'vibe', model, effort, cwd, protectedRoot: root, artifacts, systemFile, prompt: 'Fixture assessment', schema: { type: 'object' }, timeoutMs: 30000, executable: process.execPath, commandPrefix: [FAKE_VIBE], directProcess: true, readVibeVersion: () => installed, vibePreflight: preflight, env, session, vibeResume: resume };
+  const options = { host: 'vibe', model, effort, cwd, protectedRoot: rootless ? undefined : root, artifacts, systemFile, prompt: 'Fixture assessment', schema: { type: 'object' }, timeoutMs: 30000, executable: process.execPath, commandPrefix: [FAKE_VIBE], directProcess: true, readVibeVersion: () => installed, vibePreflight: preflight, env, session, vibeResume: resume };
   let result = null;
   let error = null;
   try { result = await runVibe(options); } catch (caught) { error = caught; }
@@ -69,13 +69,16 @@ async function launch(t, { control = {}, effort = 'high', model = 'glm-5-3', ins
 
 test('the Vibe launcher runs headless and untrusted under its own home, agent and allowlisted environment', async t => {
   // Arrange and Act
-  const { cwd, artifacts, result, invocation } = await launch(t);
+  const { root, cwd, artifacts, result, invocation } = await launch(t);
 
   // Assert
   assert.equal(result.status, 'complete');
   assert.deepEqual([result.host, result.model, result.effort, result.session, result.tokens, result.attributionVerified], ['vibe', 'glm-5-3', 'high', 'vibe-session', 4321, true]);
   assert.deepEqual(JSON.parse(result.output), REPORT);
-  assert.deepEqual(result.vibe, { version: '3.0.0', uncomparedKeys: [], attributionFiles: [path.join(artifacts, 'vibe', 'export.json'), path.join(artifacts, 'vibe', 'session', 'generations', '0000000000000000', 'runtime-state.json')], calls: null });
+  assert.match(result.vibe.home, /^\.nightshift\/runs\/v\/[0-9a-f]{8}\/home$/);
+  assert.deepEqual(result.vibe, { version: '3.0.0', home: result.vibe.home, uncomparedKeys: [], attributionFiles: [path.join(artifacts, 'vibe', 'export.json'), path.join(artifacts, 'vibe', 'session', 'generations', '0000000000000000', 'runtime-state.json')], calls: null });
+  const home = path.join(fs.realpathSync.native(root), ...result.vibe.home.split('/'));
+  const userHome = path.join(path.dirname(home), 'user');
   const flag = name => invocation.args[invocation.args.indexOf(name) + 1];
   assert.deepEqual([flag('--workdir'), flag('--agent'), flag('--output'), flag('--output-dir')], [cwd, 'nightshift-reviewer', 'json', path.join(artifacts, 'vibe')]);
   assert.deepEqual(invocation.args.filter((arg, index) => invocation.args[index - 1] === '--enabled-tools'), ['read_file']);
@@ -87,12 +90,75 @@ test('the Vibe launcher runs headless and untrusted under its own home, agent an
   const spawnRequired = ['HOMEDRIVE', 'HOMEPATH', 'LOGONSERVER', 'SYSTEMDRIVE', 'USERDOMAIN', 'USERNAME'];
   assert.deepEqual(keys.filter(key => ![...spawnRequired, 'PATH', 'SYSTEMROOT', 'WINDIR', 'COMSPEC', 'TEMP', 'TMP', 'LOCALAPPDATA', 'APPDATA', 'MISTRAL_API_KEY', 'VIBE_HOME', 'USERPROFILE', 'HOME'].includes(key)), []);
   assert.equal(invocation.env.MISTRAL_API_KEY, 'fixture-key');
-  assert.deepEqual([invocation.env.VIBE_HOME, invocation.env.USERPROFILE, invocation.env.HOME], [path.join(artifacts, 'vibe-home'), path.join(artifacts, 'vibe-user-home'), path.join(artifacts, 'vibe-user-home')]);
+  assert.deepEqual([invocation.env.VIBE_HOME, invocation.env.USERPROFILE, invocation.env.HOME], [home, userHome, userHome]);
+  assert.deepEqual(fs.readdirSync(path.dirname(home)).sort(), ['home', 'user']);
+  assert.equal(fs.existsSync(path.join(artifacts, 'vibe-home')), false);
   assert.deepEqual(invocation.home, ['agents', 'agents/nightshift-reviewer.toml', 'prompts', 'prompts/nightshift-reviewer.md', 'trusted_folders.toml']);
   assert.deepEqual([invocation.userHome, invocation.trust], [[], '']);
   for (const line of ['active_model = "glm-5-3"', 'system_prompt_id = "nightshift-reviewer"', 'enabled_tools = ["read_file"]', 'enable_telemetry = false', 'include_project_context = false', '[experiments]', 'enable = false', '[models."glm-5-3"]', 'name = "zai-glm-5-3"', 'thinking = "high"', 'thinking_levels = ["low", "high", "max"]']) assert.ok(invocation.agent.split('\n').includes(line), line);
   assert.equal(invocation.systemPrompt, 'You are an independent read-only engineering assessor.');
   assert.match(invocation.prompt, /^Fixture assessment\nReply with only one JSON object that conforms to this JSON schema/);
+});
+
+test('the Vibe launcher refuses to launch without the project root its isolation is placed under', async t => {
+  // Arrange and Act
+  const { artifacts, error, invocation } = await launch(t, { rootless: true });
+
+  // Assert
+  assert.equal(error.code, 'vibe-isolation-unavailable');
+  assert.equal(invocation, null);
+  assert.deepEqual(fs.readdirSync(artifacts), ['control.json']);
+});
+
+test('an isolation directory that cannot be allocated makes a Vibe candidate ineligible and leaves nothing behind', t => {
+  // Arrange
+  const root = scratch(t, 'allocation');
+  const parent = path.join(fs.realpathSync.native(root), '.nightshift', 'runs', 'v');
+  const mkdirSync = fs.mkdirSync;
+  let collisions = 0;
+  t.mock.method(fs, 'mkdirSync', function collideUnderParent(target, ...rest) {
+    if (path.dirname(String(target)) === parent) {
+      collisions++;
+      throw Object.assign(new Error(`EEXIST: file already exists, mkdir '${target}'`), { code: 'EEXIST' });
+    }
+    return mkdirSync.call(fs, target, ...rest);
+  });
+  const stubs = { vibeExecutable: () => 'vibe.exe', readVibeVersion: () => '3.0.0' };
+
+  // Act
+  const { eligible, dropped } = vibe.eligibleCandidates([GLM, SOL], root, stubs);
+  const sole = (() => { try { vibe.eligibleCandidates([GLM], root, stubs); return null; } catch (error) { return error; } })();
+
+  // Assert
+  assert.deepEqual(eligible, [SOL]);
+  assert.equal(sole.code, 'vibe-isolation-unavailable');
+  assert.deepEqual(dropped.map(item => item.code), ['vibe-isolation-unavailable']);
+  assert.match(dropped[0].reason, /Could not allocate a directory under \.nightshift\/runs\/v/);
+  assert.equal(collisions, 32);
+  assert.deepEqual(fs.readdirSync(parent), []);
+});
+
+test('a recorded Vibe home is accepted only as the home folder of an isolation directory under the run directory', t => {
+  // Arrange
+  const root = scratch(t, 'recorded-home');
+  const canonical = fs.realpathSync.native(root);
+  const valid = '.nightshift/runs/v/0123abcd/home';
+  const rejected = [
+    null, 42, '', '.nightshift/runs/v/0123abcd', '.nightshift/runs/v/home', '.nightshift/runs/v/0123abcd/user', '.nightshift/runs/v/0123abcd/Home',
+    '.nightshift/runs/v/0123ABCD/home', '.nightshift/runs/v/0123abc/home', '.nightshift/runs/v/0123abcd/nested/home', '.nightshift/runs/reviews/review/attempt-1/home',
+    '.nightshift\\runs\\v\\0123abcd\\home', '../outside/.nightshift/runs/v/0123abcd/home', path.join(canonical, ...valid.split('/')).split(path.sep).join('/'),
+    // Spellings that resolve to the valid home but are not the record the launcher writes.
+    `/${valid}`, `./${valid}`, '.nightshift/runs/v/other/../0123abcd/home', '.nightshift//runs/v/0123abcd/home', `${valid}/`,
+    ['.nightshift', 'runs', 'v', '0123abcd'].join(path.win32.sep) + '/home',
+  ];
+
+  // Act
+  const accepted = vibe.recordedHome(root, valid);
+  const outcomes = rejected.map(value => [value, vibe.recordedHome(root, value)]);
+
+  // Assert
+  assert.equal(accepted, path.join(canonical, ...valid.split('/')));
+  for (const [value, outcome] of outcomes) assert.equal(outcome, null, String(value));
 });
 
 // The retained stores a resumed attempt's home is seeded from: a session store, a pinned plugin store and the predecessor's prompt.
@@ -138,7 +204,7 @@ test('the Vibe launcher resumes a session from its retained stores under the ear
   assert.ok(!fresh.invocation.args.includes('--resume'));
 });
 
-test('the report of a resumed Vibe run is taken after the last user message, and the seeding refuses a missing store', t => {
+test('the report of a resumed Vibe run is taken after the last user message, and the seeding refuses a missing store and leaves no partial home', t => {
   // Arrange
   const root = scratch(t, 'resume-parse');
   const message = (role, text) => ({ type: 'message', role, content: [{ type: 'text', text }] });
@@ -148,7 +214,8 @@ test('the report of a resumed Vibe run is taken after the last user message, and
   assert.equal(vibe.finalAssistantText(conversation), '{"requestId": "now"}');
   assert.equal(vibe.finalAssistantText(conversation.slice(0, 3)), null);
   assert.equal(vibe.finalAssistantText(conversation.slice(0, 2)), '{"requestId": "earlier"}');
-  assert.throws(() => vibe.createIsolation(path.join(root, 'attempt'), 'glm-5-3', 'high', 'System text', { sessionId: 'vibe-session', session: path.join(root, 'absent'), plugins: path.join(root, 'absent') }), { code: 'vibe-isolation-unavailable' });
+  assert.throws(() => vibe.createIsolation(root, 'glm-5-3', 'high', 'System text', { sessionId: 'vibe-session', session: path.join(root, 'absent'), plugins: path.join(root, 'absent') }), { code: 'vibe-isolation-unavailable' });
+  assert.deepEqual(fs.readdirSync(path.join(root, '.nightshift', 'runs', 'v')), []);
   assert.equal(vibe.journalCalls(path.join(root, 'absent')), null);
 });
 
@@ -418,7 +485,9 @@ function agent(options, { findings = [], closures, positions, dimensions, calls 
     fs.writeFileSync(state, JSON.stringify({ session_metadata: { active_model: options.model } }));
     const entries = [{ type: 'message', role: 'assistant', content: [{ type: 'text', text: `Report:\n\`\`\`json\n${JSON.stringify(report)}\n\`\`\`` }] }];
     fs.writeFileSync(path.join(options.artifacts, 'events.jsonl'), entries.map(entry => JSON.stringify(entry)).join('\n') + '\n');
-    return { host: 'vibe', model: options.model, effort: vibe.effortLevel(options.model, options.effort), session, attributionVerified: true, status: 'complete', output: vibe.reportFromEntries(entries), tokens: 100, threadTokens: 100, vibe: { version: '3.0.0', uncomparedKeys: [], attributionFiles: [path.join(exportDirectory, 'export.json'), state] } };
+    // The recorded home is a well-shaped placeholder that is never created, so these receipts cannot resume; resume tests launch the
+    // fake Vibe through the real launcher, which creates the home it records.
+    return { host: 'vibe', model: options.model, effort: vibe.effortLevel(options.model, options.effort), session, attributionVerified: true, status: 'complete', output: vibe.reportFromEntries(entries), tokens: 100, threadTokens: 100, vibe: { version: '3.0.0', home: '.nightshift/runs/v/00000000/home', uncomparedKeys: [], attributionFiles: [path.join(exportDirectory, 'export.json'), state] } };
   }
   const events = options.host === 'codex'
     ? [{ id: 2, result: { thread: { id: session }, model: options.model } }, { method: 'item/completed', params: { threadId: session, item: { type: 'agentMessage', text: JSON.stringify(report) } } }, { method: 'turn/completed', params: { threadId: session, turn: { status: 'completed' } } }]
@@ -615,6 +684,27 @@ test('time is reserved only for the eligible candidates, as the dispatch reserve
   // Act and Assert
   reserve([{ host: 'vibe', model: 'glm-5-4' }, SOL])();
   assert.throws(reserve([GLM, SOL]), { code: 'operation-time-limit' });
+  // The eligibility check creates a real isolation and removes it.
+  assert.deepEqual(fs.readdirSync(path.join(root, '.nightshift', 'runs', 'v')), []);
+});
+
+test('a Vibe candidate whose throwaway isolation the filesystem keeps is still eligible', t => {
+  // Arrange
+  const root = scratch(t, 'kept');
+  const parent = path.join(fs.realpathSync.native(root), '.nightshift', 'runs', 'v');
+  const rmSync = fs.rmSync;
+  t.mock.method(fs, 'rmSync', function refuseUnderParent(target, ...rest) {
+    if (path.dirname(String(target)) === parent) throw Object.assign(new Error(`EBUSY: resource busy or locked, rmdir '${target}'`), { code: 'EBUSY' });
+    return rmSync.call(fs, target, ...rest);
+  });
+  const stubs = { vibeExecutable: () => 'vibe.exe', readVibeVersion: () => '3.0.0' };
+
+  // Act
+  const { eligible, dropped, versions } = vibe.eligibleCandidates([GLM], root, stubs);
+
+  // Assert
+  assert.deepEqual([eligible, dropped, versions], [[GLM], [], ['3.0.0']]);
+  assert.equal(fs.readdirSync(parent).length, 1);
 });
 
 // Rewrites a collected Vibe receipt so that only the guard under test can refuse it.
@@ -740,11 +830,45 @@ test('a Vibe lineage resumes in its refreshed copy from the retained stores, clo
   assert.equal(f.task().findings[0].pendingClosure, undefined);
   assert.equal(f.task().findings[0].closures.at(-1).closed, true);
   assert.deepEqual(dialogue.receipt.positions.map(item => item.position), ['maintain']);
-  assert.ok(fs.existsSync(path.join(turn.attempt, 'vibe-home', 'logs', 'session', 'unified', lead.receipt.session, 'CURRENT')));
+  assert.ok(fs.existsSync(path.join(f.root, ...dialogue.receipt.vibeHome.split('/'), 'logs', 'session', 'unified', lead.receipt.session, 'CURRENT')));
+  const homes = [lead, resumed, dialogue].map(result => result.receipt.vibeHome);
+  for (const home of homes) assert.match(home, /^\.nightshift\/runs\/v\/[0-9a-f]{8}\/home$/);
+  assert.equal(new Set(homes).size, 3);
+  assert.deepEqual(resumed.receipt.attempts.map(attempt => attempt.vibeHome), [resumed.receipt.vibeHome]);
+  const launchedHome = result => path.join(fs.realpathSync.native(f.root), ...result.receipt.vibeHome.split('/'));
+  assert.deepEqual([after.invocation.env.VIBE_HOME, turn.invocation.env.VIBE_HOME], [launchedHome(resumed), launchedHome(dialogue)]);
+  assert.equal(fs.existsSync(path.join(turn.attempt, 'vibe-home')), false);
   assert.equal(lost.code, 'resume-failed');
   assert.equal(routeAfterLoss, 'replace');
   assert.deepEqual(replacement.receipt.continues, { kind: 'replacement', requestId: dialogue.receipt.requestId });
   assert.notEqual(dispatched(f, replacement).request.workspace, before.request.workspace);
+});
+
+test('a Vibe receipt from an earlier release, which records no home, resumes from its attempt\'s own vibe-home folder into a short home', async t => {
+  // Arrange
+  const f = fixture(t);
+  const { lead } = await repairedLead(f);
+  const before = dispatched(f, lead);
+  const shortHome = path.join(f.root, ...lead.receipt.vibeHome.split('/'));
+  fs.cpSync(shortHome, path.join(before.attempt, 'vibe-home'), { recursive: true });
+  fs.rmSync(path.dirname(shortHome), { recursive: true });
+  rewrite(f, lead, saved => {
+    delete saved.vibeHome;
+    for (const attempt of saved.attempts) delete attempt.vibeHome;
+  });
+  const route = closureRoute(f.root, f.store.read(), lead.receipt.requestId);
+
+  // Act
+  const resumed = await f.act({ action: 'dispatch', review: { ...f.base, kind: 'code', resume: lead.receipt.requestId } }, { runAgent: options => launchedVibe(options, '3.0.0') });
+
+  // Assert
+  const after = dispatched(f, resumed);
+  assert.equal(route, 'resume');
+  assert.equal(resumed.receipt.session, lead.receipt.session);
+  for (const entry of [`logs/session/unified/${lead.receipt.session}/CURRENT`, 'logs/session/plugins/manifests/fixture']) assert.ok(after.invocation.home.includes(entry), entry);
+  assert.equal(after.invocation.systemPrompt, before.invocation.systemPrompt);
+  assert.match(resumed.receipt.vibeHome, /^\.nightshift\/runs\/v\/[0-9a-f]{8}\/home$/);
+  assert.equal(after.invocation.env.VIBE_HOME, path.join(fs.realpathSync.native(f.root), ...resumed.receipt.vibeHome.split('/')));
 });
 
 test('a Vibe resume is refused before any worker when its retained source cannot be reused, and closure then routes to replacement', async t => {
@@ -760,13 +884,18 @@ test('a Vibe resume is refused before any worker when its retained source cannot
   fs.mkdirSync(path.join(dispatched(f, held).workspace, 'project'));
   const changed = await lead();
   fs.appendFileSync(path.join(f.root, changed.receipt.attributionEvidence[0].path), ' ');
+  const homeOf = result => path.join(f.root, ...result.receipt.vibeHome.split('/'));
   const unpinned = await lead();
-  fs.rmSync(path.join(dispatched(f, unpinned).attempt, 'vibe-home', 'logs', 'session', 'plugins'), { recursive: true });
+  fs.rmSync(path.join(homeOf(unpinned), 'logs', 'session', 'plugins'), { recursive: true });
   const promptless = await lead();
-  fs.rmSync(path.join(dispatched(f, promptless).attempt, 'vibe-home', 'prompts', 'nightshift-reviewer.md'));
+  fs.rmSync(path.join(homeOf(promptless), 'prompts', 'nightshift-reviewer.md'));
+  const misplaced = await lead();
+  const attemptHome = `${path.posix.dirname(misplaced.receipt.eventFile)}/home`;
+  fs.cpSync(homeOf(misplaced), path.join(f.root, ...attemptHome.split('/')), { recursive: true });
+  rewrite(f, misplaced, saved => { saved.vibeHome = attemptHome; });
 
   // Act
-  const outcomes = { held: await refusal(held.receipt.requestId), changed: await refusal(changed.receipt.requestId), unpinned: await refusal(unpinned.receipt.requestId), promptless: await refusal(promptless.receipt.requestId) };
+  const outcomes = { held: await refusal(held.receipt.requestId), changed: await refusal(changed.receipt.requestId), unpinned: await refusal(unpinned.receipt.requestId), promptless: await refusal(promptless.receipt.requestId), misplaced: await refusal(misplaced.receipt.requestId) };
   fs.rmdirSync(path.join(dispatched(f, held).workspace, 'project'));
   const released = closureRoute(f.root, f.store.read(), held.receipt.requestId);
 
@@ -780,6 +909,7 @@ test('a Vibe resume is refused before any worker when its retained source cannot
   assert.match(outcomes.changed.message, /attribution evidence changed after collection/);
   assert.match(outcomes.unpinned.message, /retained plugins is missing/);
   assert.match(outcomes.promptless.message, /retained prompt is missing/);
+  assert.match(outcomes.misplaced.message, /recorded Vibe home is not an isolation home/);
   assert.equal(released, 'resume');
 });
 

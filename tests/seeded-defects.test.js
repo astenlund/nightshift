@@ -61,7 +61,8 @@ function vibeAttribution(options) {
   const state = path.join(exportDirectory, 'session', 'generations', '0000000000000000', 'runtime-state.json');
   writeTree(exportDirectory, { 'export.json': JSON.stringify({ session_id: 's1', outcome: 'finished', vibe_version: '3.0.0' }), 'session/generations/0000000000000000/runtime-state.json': JSON.stringify({ session_metadata: { active_model: options.model } }) });
 
-  return { version: '3.0.0', uncomparedKeys: [], attributionFiles: [path.join(exportDirectory, 'export.json'), state] };
+  // The recorded home is a well-shaped placeholder that is never created, so a receipt carrying it cannot resume.
+  return { version: '3.0.0', home: '.nightshift/runs/v/00000000/home', uncomparedKeys: [], attributionFiles: [path.join(exportDirectory, 'export.json'), state] };
 }
 
 function mockAgent(scenario, calls) {

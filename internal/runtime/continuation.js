@@ -7,7 +7,7 @@ const { hash, projectFile } = require('./evidence');
 const { isPrivateCopyDirectory } = require('./copies');
 const { workerIsActive } = require('./workers');
 const { requirePermittedEffort } = require('./models');
-const { AGENT, PLUGIN_STORE } = require('./vibe');
+const { AGENT, PLUGIN_STORE, recordedHome } = require('./vibe');
 
 // A reviewer's lineage: the request id of the fresh dispatch it began with. Resumed and replacement dispatches carry the lineage of
 // the dispatch they continue, so a reviewer and its replacements own the same findings. A receipt or imported review names its dispatch
@@ -79,7 +79,7 @@ function dispatchFailure(root, worker) {
 // the resume refreshes at the same path, and the attempt's retained session journal, plugin store and reviewer prompt, which seed the
 // resumed attempt's home. Each is project-relative. Returns the source, or the reason the session cannot be resumed: the copy is not
 // recorded as a private copy, it still holds a project folder (an unproven or foreign holder), the receipt's attribution evidence no
-// longer has its recorded hashes, or a retained store is missing.
+// longer has its recorded hashes, its recorded Vibe home does not name an isolation home, or a retained store is missing.
 function vibeResumeSource(root, worker, receipt) {
   const refusal = reason => ({ reason });
   let assignment;
@@ -105,7 +105,11 @@ function vibeResumeSource(root, worker, receipt) {
     if (current !== item.sha256) return refusal(`its attribution evidence changed after collection: ${item.path}`);
   }
   const attempt = path.posix.dirname(receipt.eventFile);
-  const source = { workspace, session: `${attempt}/vibe/session`, plugins: `${attempt}/vibe-home/${PLUGIN_STORE.join('/')}`, prompt: `${attempt}/vibe-home/prompts/${AGENT}.md` };
+  // Receipts from releases before the short isolation directories record no home, which was the attempt's own vibe-home folder.
+  const legacyHome = !Object.hasOwn(receipt, 'vibeHome');
+  if (!legacyHome && recordedHome(root, receipt.vibeHome) === null) return refusal('its recorded Vibe home is not an isolation home');
+  const home = legacyHome ? `${attempt}/vibe-home` : receipt.vibeHome;
+  const source = { workspace, session: `${attempt}/vibe/session`, plugins: `${home}/${PLUGIN_STORE.join('/')}`, prompt: `${home}/prompts/${AGENT}.md` };
   for (const [name, relative] of Object.entries(source)) {
     if (name !== 'workspace' && !fs.existsSync(path.join(root, ...relative.split('/')))) return refusal(`its retained ${name} is missing at ${relative}`);
   }

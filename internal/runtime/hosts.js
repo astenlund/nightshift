@@ -367,7 +367,7 @@ function vibeHostFailure(summary, stderr) {
 
 // Runs one lead assessment on Mistral Vibe, headless in the dispatch's private copy, under the isolation in vibe.js. Vibe has no
 // structured-output option, so the report schema is stated in the prompt. A resumed session keeps the directory it started in, so a
-// resume runs in the lineage's refreshed copy from a home seeded with the retained session and plugin stores (vibeResume), under the
+// resume runs in the lineage's refreshed copy from a new home seeded with the retained session and plugin stores (vibeResume), under the
 // predecessor's reviewer prompt byte for byte, since Vibe replaces a session's stored system instructions with changed ones. Its JSON
 // output exposes no partial output, so like Claude attempts its attempts are not checked for output loops.
 async function runVibe(options) {
@@ -384,7 +384,9 @@ async function runVibe(options) {
   const resume = options.session ? options.vibeResume : null;
   requireCondition(!options.session || resume !== null && typeof resume === 'object' && ['session', 'plugins', 'promptFile'].every(key => typeof resume[key] === 'string'), 'resume-unsupported', 'A Vibe session is resumed only from its retained session store, plugin store and reviewer prompt; replace the reviewer with review.replaces');
   const level = vibe.effortLevel(options.model, options.effort);
-  const isolation = vibe.createIsolation(options.artifacts, options.model, level, fs.readFileSync(resume ? resume.promptFile : options.systemFile, 'utf8'), resume ? { sessionId: options.session, session: resume.session, plugins: resume.plugins } : null);
+  requireCondition(typeof options.protectedRoot === 'string' && options.protectedRoot !== '', 'vibe-isolation-unavailable', 'The Vibe launcher needs the project root to place its isolation');
+  const isolation = vibe.createIsolation(options.protectedRoot, options.model, level, fs.readFileSync(resume ? resume.promptFile : options.systemFile, 'utf8'), resume ? { sessionId: options.session, session: resume.session, plugins: resume.plugins } : null);
+  const home = path.relative(fs.realpathSync.native(options.protectedRoot), isolation.home).split(path.sep).join('/');
   const promptFile = path.join(options.artifacts, 'prompt.md');
   fs.writeFileSync(promptFile, `${options.prompt}\nReply with only one JSON object that conforms to this JSON schema, with no other text:\n${JSON.stringify(options.schema)}\n`, { flag: 'wx' });
   const exportDirectory = path.join(options.artifacts, 'vibe');
@@ -412,7 +414,7 @@ async function runVibe(options) {
   const exit = await execution.finish();
   let tokens = null;
   let hostFailure = null;
-  const record = { version, uncomparedKeys: [], attributionFiles: [], calls: null };
+  const record = { version, home, uncomparedKeys: [], attributionFiles: [], calls: null };
   try {
     let entries = null;
     try {
