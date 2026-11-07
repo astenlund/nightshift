@@ -6,6 +6,14 @@ V2 entries are preserved in [the historical index](migration/v2/BUGS.md) and [MI
 
 ## Current
 
+### Vibe reviewer homes exceed the Windows path limit
+
+Observed on 2026-11-07 in this repository while removing two leftover Claude Code worktrees, `.claude/worktrees/artifact-bound` and `.claude/worktrees/evidence-hydration-bound`, whose branches had already landed on main; the user had to delete the worktree folders by hand afterwards. Before removal, `git status --ignored` in the second worktree warned `Filename too long` for ten directories, two in each of five review contexts under `.nightshift/runs/reviews/<review>/attempt-1/vibe-home/logs/session/plugins/packages/7b/<64 hex digits>/skills/`, one of which measured 262 characters from the drive root, 201 of them below the project root. `createIsolation` in `internal/runtime/vibe.js` places each attempt's Vibe home inside its attempt directory, Vibe writes its pinned plugin store under that home's `logs/session/plugins`, and a resumed attempt copies the store into its own home, so the depth is fixed by the runtime's layout plus Vibe's. In the main checkout, whose root is 18 characters, the deepest plugin-store file today is 227 characters, so a project root longer than about 50 characters, such as the two worktrees here, puts those files past 260 characters, where Git without long-path support could not read them. Not established: which tool failed when the folders were left behind, and whether Vibe itself or a resumed attempt's copy fails at that depth.
+
+Keep a Vibe reviewer home's retained files within the Windows path limit at supported project depths, as [the shortened private copies](QUICK_WINS_HISTORY.md#private-review-copies-fail-at-windows-path-depth) did for review and probe copies, while preserving what a resume needs. [Offer a run-owned worktree at handover](features/run-worktree-delivery.md) would put run worktrees under `.nightshift/runs/w/<run>` with the run store in the main checkout, which does not cover standalone revise contexts whose store lives in a worktree. Runtime code, so it ships with a version increase. Tracking does not authorize implementation.
+
+**Requires:** none.
+
 ### CI omits several deterministic suites
 
 Found by the documentation review of delivery `ede318dd` on 2026-11-02 and tracked as a bug by the user's triage decision. `.github/workflows/ci.yml` lists test files by name and omits `tests/runtime-close.test.js`, `tests/release-close-migration.test.js` and `tests/release-closed-records.test.js`, added for 3.3.26, as well as the earlier `tests/history-compaction.test.js`, `tests/run-overview.test.js`, `tests/history-store.test.js` and `tests/runtime-vibe.test.js`, although AGENTS.md says CI defines the full deterministic suite; a change that breaks one of them can pass CI.
