@@ -6,6 +6,14 @@ V2 entries are preserved in [the historical index](migration/v2/BUGS.md) and [MI
 
 ## Current
 
+### Vibe resume accepts non-canonical spellings of a recorded private copy
+
+Found on 2026-11-07, and tracked by the user's decision, while closing the review loop of the 3.3.31 fix that moved Vibe reviewer homes into short isolation directories, where a fresh code review found that the new `vibeHome` guard accepted spellings of a valid home other than the one the launcher records and the guard was changed to accept only that exact spelling. `vibeResumeSource` in `internal/runtime/continuation.js` checks the `workspace` a dispatch's saved `request.json` records by joining it onto the canonical project root and passing the result to `isPrivateCopyDirectory` in `internal/runtime/copies.js`, which compares only the resolved location, so a probe on 2026-11-07 found `/.nightshift/runs/c/<id>`, `./.nightshift/runs/c/<id>` and `.nightshift/runs/c/x/../<id>` all accepted beside the canonical `.nightshift/runs/c/<id>`. The runtime writes that record itself, so only a hand-edited `request.json` reaches the gap; no resume was observed to go wrong because of it.
+
+Accept the recorded workspace only in the exact project-relative posix spelling the dispatch writes, as `recordedHome` in `internal/runtime/vibe.js` now does for `vibeHome`, and extend the resume refusal tests with the rejected spellings. Runtime code, so it ships with a version increase.
+
+**Requires:** none.
+
 ### CI omits several deterministic suites
 
 Found by the documentation review of delivery `ede318dd` on 2026-11-02 and tracked as a bug by the user's triage decision. `.github/workflows/ci.yml` lists test files by name and omits `tests/runtime-close.test.js`, `tests/release-close-migration.test.js` and `tests/release-closed-records.test.js`, added for 3.3.26, as well as the earlier `tests/history-compaction.test.js`, `tests/run-overview.test.js`, `tests/history-store.test.js` and `tests/runtime-vibe.test.js`, although AGENTS.md says CI defines the full deterministic suite; a change that breaks one of them can pass CI.
