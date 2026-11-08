@@ -330,6 +330,12 @@ After a quick broad-strokes check of the approach and the user's confirmation of
 
 **Requires:** none.
 
+### Let a quick win name the code shape that makes it worth doing
+
+Moved from the Ring-O-Meter-Private backlog through the maintainer inbox report `2026-11-08-quick-win-trigger-label-idea.md` and graduated by the user at inbox triage on 2026-11-08, who settled that the condition is optional and that a quick win without one is ready now. Quick wins often gate themselves in prose on a code shape, such as "when a third canvas is added", which Ready cannot show, so each of those entries lists as ready. The note's preferred shape is an optional `**Trigger:**` label line stating the code shape that makes the work worth doing, never a backlog item. Unlike `Requires:`, it is judged by a person and never resolved mechanically: Ready lists a quick win with a trigger separately, with its condition, and does not evaluate it, and follow-up triage checks what a delivered feature changed against the triggers and offers matching quick wins for bundling. The note predates the plugin and the commands it names no longer exist, so where the definition, the triage step and the template text live is to be settled at readback. A grammar change in shared backlog parsing reaches Ready, setup, unwrap and the migration runtime's entry hashes, and it ships with a version increase. Tracking does not authorize implementation.
+
+**Requires:** none.
+
 ## Exploring
 
 ### [Reactivate retired delivery records](features/retired-delivery-reactivation.md)
