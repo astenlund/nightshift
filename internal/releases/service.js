@@ -26,7 +26,6 @@ const ENTRIES = Object.freeze({ ready: 'skills/ready/ready.js', unwrap: 'skills/
 const MAINTENANCE = new Set(['worker-finished', 'review', 'validate', 'dialogue', 'stop']);
 const ENTRY_CHOICE = 'Choose ready, unwrap, setup, runtime or migration';
 const MISSING_ACTIVATION = 'This native session has not observed the current Nightshift hook generation; open or reopen it before protected work';
-const MIGRATION_NEW_SESSION = 'Retired deliveries need the current release for a new handover; open a new native session';
 
 function defaultStore() { return path.join(process.env.LOCALAPPDATA ?? path.join(os.homedir(), 'AppData', 'Local'), 'Nightshift'); }
 
@@ -42,7 +41,6 @@ function readRun(root, id, waitMs = RUN_STORE_WAIT_MS) {
   } finally { database.close(); }
 }
 
-// Retirement references only select the current runtime for creation. The runtime validates certificates before any write.
 function retirementReferences(root, id) {
   const database = runDatabase(root);
   if (!database) return { any: false, requested: false };
@@ -57,11 +55,12 @@ function deliveryCreation(request) {
   return request?.action === 'handover' && Object.hasOwn(request, 'tasks') || request?.action === 'create';
 }
 
-function creationRetirement(root, requestedRun, request) {
+// A retirement only stops creation from pinning to the requested record's release. The session keeps its own release, whose runtime validates certificates before any write.
+function retirementForcesNewRun(root, requestedRun, request) {
   const references = retirementReferences(root, requestedRun?.id ?? null);
   const exactReplay = request.action === 'handover' && typeof request.handoverId === 'string' && request.handoverId.length > 0 && request.handoverId === requestedRun?.acceptance?.handoverId;
 
-  return { ...references, requiresCurrent: references.requested || references.any && !exactReplay };
+  return references.requested || references.any && !exactReplay;
 }
 
 // Every saved run of a project, or null when the project has no run database.
@@ -433,13 +432,9 @@ class ReleaseService {
     const requestedRun = request.entry === 'ready' ? null : runId ? this.dependencies.readRun(project, runId) : this.dependencies.readRun(project);
     const creating = request.entry === 'runtime' && (isCreationRequest(request.request) || request.request?.action === 'create');
     const creatingDelivery = request.entry === 'runtime' && deliveryCreation(request.request);
-    const retirement = creatingDelivery ? creationRetirement(project, requestedRun, request.request) : { any: false, requested: false, requiresCurrent: false };
+    const forcedByRetirement = creatingDelivery && retirementForcesNewRun(project, requestedRun, request.request);
     const replaceable = isFinished(requestedRun) || requestedRun?.status === 'stopped' && requestedRun.tasks?.every(task => task.status === 'complete');
-    const newRun = creating && (!requestedRun || !runId && replaceable && !activeWorkers(requestedRun) || retirement.requiresCurrent);
-    if (newRun && retirement.any && binding) {
-      const current = this.registry(registry => bundles.verifiedRecord(registry, registration.baseBundle));
-      requireValue(binding.identity === current.identity, 'migration-new-session-required', MIGRATION_NEW_SESSION);
-    }
+    const newRun = creating && (!requestedRun || !runId && replaceable && !activeWorkers(requestedRun) || forcedByRetirement);
     const relevantRun = !newRun && (runId || request.entry === 'runtime' || requestedRun?.controller?.session === session) ? requestedRun : null;
     const runResources = relevantRun ? executionResources(relevantRun) : null;
     if (relevantRun && !runResources && !isFinished(relevantRun)) requireValue(false, 'legacy-release-reconciliation', 'This run has no retained release identity; reconcile it explicitly instead of adopting the newest runtime');
@@ -625,14 +620,6 @@ class ReleaseService {
       const run = request.entry === 'runtime' ? this.dependencies.readRun(resolved.project, requestedReferenceId(request.request)) : null;
       this.reconcileOperations(registry, runs, canonical ? undefined : { project: resolved.project, run });
       requireValue(readOnly || !projectOperationActive(registry, resolved.project, !canonical), 'resource-operation-busy', 'A project operation is active or its termination is uncertain');
-      if (request.entry === 'runtime' && deliveryCreation(request.request)) {
-        const current = bundles.verifiedRecord(registry, resolved.registration.baseBundle);
-        if (resolved.bundle.identity !== current.identity) {
-          const requested = this.dependencies.readRun(resolved.project, requestedReferenceId(request.request) ?? request.runId);
-          const retirement = creationRetirement(resolved.project, requested, request.request);
-          requireValue(!retirement.requiresCurrent, 'migration-new-session-required', MIGRATION_NEW_SESSION);
-        }
-      }
       if (canonical) this.requireProjectOwnershipInventory(registry, resolved.project, runs);
       const binding = registry.get('session', sessionKey(key, request.session));
       if (canonical) this.reconcileRunReferences(registry, binding, null, { runs });

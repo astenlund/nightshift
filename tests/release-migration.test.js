@@ -64,7 +64,7 @@ test('an older bound session can use the current administrative migration entry 
   finally { db.close(); }
 });
 
-test('a retired selected stopped delivery routes a new session to the current runtime', async t => {
+test('a retired selected stopped delivery leaves new work on the bound release', async t => {
   const value = fixture(t);
   const oldSource = packageCopy(value.root, '3.3.10');
   fs.unlinkSync(path.join(oldSource, 'internal/runtime/migration-cli.js'));
@@ -83,49 +83,46 @@ test('a retired selected stopped delivery routes a new session to the current ru
   assert.equal(preview.code, 0, preview.stderr);
   const retired = await service.run(registration, { session: 'owner', project: value.project, entry: 'migration', request: { action: 'retire', ids: [id], choices: [choice], manifestHash: JSON.parse(preview.stdout).hash, authority: 'Approve this stopped fixture work' } });
   assert.equal(retired.code, 0, retired.stderr);
-  await assert.rejects(service.resolve(registration, { session: 'owner', project: value.project, entry: 'runtime', request: { action: 'handover', tasks: [] } }), { code: 'migration-new-session-required' });
-  await assert.rejects(service.resolve(registration, { session: 'owner', project: value.project, entry: 'runtime', request: { action: 'handover', runId: id, tasks: [] } }), { code: 'migration-new-session-required' });
-  await assert.rejects(service.resolve(registration, { session: 'owner', project: value.project, entry: 'runtime', runId: id, request: { action: 'handover', tasks: [] } }), { code: 'migration-new-session-required' });
+  for (const selection of [{ request: { action: 'handover', tasks: [] } }, { request: { action: 'handover', runId: id, tasks: [] } }, { runId: id, request: { action: 'handover', tasks: [] } }]) {
+    const resolved = await service.resolve(registration, { session: 'owner', project: value.project, entry: 'runtime', ...selection });
+    assert.equal(resolved.bundle.identity, old.bundle.identity);
+  }
   const next = await service.run(registration, { session: 'successor', project: value.project, entry: 'runtime', request: { action: 'handover', handoverId: randomUUID(), authority: 'Approve new fixture work', objective: 'New delivery', mechanism: { verified: true, kind: 'goal', evidence: 'Fixture continuation' }, tasks: [{ id: 'new-work', title: 'New work', agreement: { source: 'Fixture', outcome: 'New delivery' } }] } });
   assert.equal(next.code, 0, next.stderr);
   assert.notEqual(JSON.parse(next.stdout).id, id);
 });
 
-test('retirement between resolution and operation registration cannot launch an old handover', async t => {
+test('a session on an older release keeps handing over after a newer release installs in a project with a retirement', async t => {
+  // Arrange
   const value = fixture(t);
-  const oldSource = packageCopy(value.root, '3.3.10');
-  fs.unlinkSync(path.join(oldSource, 'internal/runtime/migration-cli.js'));
-  refreshPackage(oldSource);
-  const { service, state } = simulatedService(value, oldSource, '3.3.10');
+  const { service, state } = simulatedService(value, packageCopy(value.root, '3.3.30'), '3.3.30');
   const { registration } = await service.setup({ host: 'codex', profile: value.profile });
   const old = await service.resolve(registration, { session: 'owner', project: value.project, entry: 'runtime' });
   const resources = { schema: 1, store: service.store, registration, session: 'owner', identity: old.bundle.identity };
   const id = legacyDelivery(value.project, resources);
-  state.source = packageCopy(value.root, '3.3.11');
-  state.version = '3.3.11';
+  state.source = packageCopy(value.root, '3.3.31');
+  state.version = '3.3.31';
   await service.prepare({ host: 'codex', profile: value.profile, session: 'owner', project: value.project, entry: 'migration' });
   await activate(service, registration, value.project, 'owner');
   const choice = { runId: id, disposition: 'retired-complete', report: { kind: 'none' }, followups: [] };
   const preview = await service.run(registration, { session: 'owner', project: value.project, entry: 'migration', request: { action: 'manifest', ids: [id], choices: [choice] } });
   assert.equal(preview.code, 0, preview.stderr);
-  const manifestHash = JSON.parse(preview.stdout).hash;
-  const originalResolve = service.resolve.bind(service);
-  let raced = false;
-  service.resolve = async (...args) => {
-    const resolved = await originalResolve(...args);
-    if (!raced && args[1]?.entry === 'runtime' && args[1].request?.action === 'handover') {
-      raced = true;
-      const retired = await service.run(registration, { session: 'owner', project: value.project, entry: 'migration', request: { action: 'retire', ids: [id], choices: [choice], manifestHash, authority: 'Approve the interleaved fixture record' } });
-      assert.equal(retired.code, 0, retired.stderr);
-    }
+  const retired = await service.run(registration, { session: 'owner', project: value.project, entry: 'migration', request: { action: 'retire', ids: [id], choices: [choice], manifestHash: JSON.parse(preview.stdout).hash, authority: 'Approve the fixture record' } });
+  assert.equal(retired.code, 0, retired.stderr);
 
-    return resolved;
-  };
-  await assert.rejects(service.run(registration, { session: 'owner', project: value.project, entry: 'runtime', request: { action: 'handover', runId: id, handoverId: randomUUID(), tasks: [] } }), { code: 'migration-new-session-required' });
-  assert.equal(raced, true);
+  // Act
+  const created = await service.run(registration, { session: 'owner', project: value.project, entry: 'runtime', request: { action: 'handover', handoverId: randomUUID(), authority: 'Approve new fixture work', objective: 'New delivery', mechanism: { verified: true, kind: 'goal', evidence: 'Fixture continuation' }, tasks: [{ id: 'new-work', title: 'New work', agreement: { source: 'Fixture', outcome: 'New delivery' } }] } });
+
+  // Assert
+  assert.equal(created.code, 0, created.stderr);
+  const createdId = JSON.parse(created.stdout).id;
+  assert.notEqual(createdId, id);
+  const db = new DatabaseSync(path.join(value.project, '.nightshift/runs/state.sqlite'), { readOnly: true });
+  try { assert.equal(JSON.parse(db.prepare('SELECT state FROM runs WHERE id=?').get(createdId).state).executionResources.identity, old.bundle.identity); }
+  finally { db.close(); }
 });
 
-test('an older binding cannot hand over while a nonselected delivery is retired', async t => {
+test('an older binding keeps its own release while a nonselected delivery is retired', async t => {
   // Arrange
   const value = fixture(t);
   const oldSource = packageCopy(value.root, '3.3.10');
@@ -135,8 +132,6 @@ test('an older binding cannot hand over while a nonselected delivery is retired'
   const resolutionLine = '    request = normalizeRuntimeTarget(request);';
   assert.ok(oldService.includes(resolutionLine));
   fs.writeFileSync(oldServiceFile, oldService.replace(resolutionLine, resolutionLine + String.fromCharCode(10) + "    if (request.entry === 'runtime' && ['handover', 'create'].includes(request.request?.action)) throw new Error('old-service-handover-chosen');"));
-  const oldActionsFile = path.join(oldSource, 'internal/runtime/actions.js');
-  fs.appendFileSync(oldActionsFile, String.fromCharCode(10) + "const oldIsRuntimeAction = module.exports.isRuntimeAction; module.exports.isRuntimeAction = action => action === 'create' || oldIsRuntimeAction(action);" + String.fromCharCode(10));
   refreshPackage(oldSource);
   const { service, state } = simulatedService(value, oldSource, '3.3.10');
   const { registration } = await service.setup({ host: 'codex', profile: value.profile });
@@ -171,9 +166,9 @@ test('an older binding cannot hand over while a nonselected delivery is retired'
   const handover = () => service.resolve(registration, { session: 'owner', project: value.project, entry: 'runtime', request: { action: 'handover', tasks: [] } });
 
   // Assert
-  await assert.rejects(handover, { code: 'migration-new-session-required' });
-  await assert.rejects(service.resolve(registration, { session: 'owner', project: value.project, entry: 'runtime', request: { action: 'handover', runId: selected, handoverId: randomUUID(), tasks: [] } }), { code: 'migration-new-session-required' });
-  await assert.rejects(service.resolve(registration, { session: 'owner', project: value.project, entry: 'runtime', runId: randomUUID(), request: { action: 'handover', handoverId: randomUUID(), tasks: [] } }), { code: 'migration-new-session-required' });
+  assert.equal((await handover()).bundle.identity, old.bundle.identity);
+  assert.equal((await service.resolve(registration, { session: 'owner', project: value.project, entry: 'runtime', request: { action: 'handover', runId: selected, handoverId: randomUUID(), tasks: [] } })).bundle.identity, old.bundle.identity);
+  assert.equal((await service.resolve(registration, { session: 'owner', project: value.project, entry: 'runtime', runId: randomUUID(), request: { action: 'handover', handoverId: randomUUID(), tasks: [] } })).bundle.identity, old.bundle.identity);
   const replayId = randomUUID();
   const replayDb = new DatabaseSync(path.join(value.project, '.nightshift/runs/state.sqlite'));
   try {
@@ -188,14 +183,8 @@ test('an older binding cannot hand over while a nonselected delivery is retired'
   const requestFile = path.join(value.root, 'older-handover-request.json');
   fs.writeFileSync(requestFile, JSON.stringify({ action: 'run', session: 'owner', project: value.project, entry: 'runtime', request: { action: 'handover', tasks: [] } }));
   const launch = spawnSync(process.execPath, [service.registration(registration).bootstrap, registration, requestFile], { encoding: 'utf8', timeout: 30000 });
-  assert.notEqual(launch.status, 0);
-  assert.match(launch.stderr, /migration-new-session-required/);
+  assert.doesNotMatch(launch.stdout + launch.stderr, /migration-new-session-required/);
   assert.doesNotMatch(launch.stderr, /old-service-handover-chosen/);
-  fs.writeFileSync(requestFile, JSON.stringify({ action: 'run', session: 'owner', project: value.project, entry: 'runtime', request: { action: 'create', tasks: [] } }));
-  const legacyCreate = spawnSync(process.execPath, [service.registration(registration).bootstrap, registration, requestFile], { encoding: 'utf8', timeout: 30000 });
-  assert.notEqual(legacyCreate.status, 0);
-  assert.match(legacyCreate.stderr, /migration-new-session-required/);
-  assert.doesNotMatch(legacyCreate.stderr, /old-service-handover-chosen/);
   const storeFile = path.join(value.project, '.nightshift/runs/state.sqlite');
   fs.renameSync(storeFile, storeFile + '.saved');
   fs.mkdirSync(storeFile);
