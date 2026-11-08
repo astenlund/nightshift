@@ -6,6 +6,14 @@ V2 entries are preserved in [the historical index](migration/v2/BUGS.md) and [MI
 
 ## Current
 
+### Unwrap inserts a space after a line-end hyphen or slash
+
+Reported from Ring-O-Meter-Private on installed 3.3.31 and tracked by the user's inbox triage decision on 2026-11-08, from the maintainer inbox report `2026-11-08-unwrap-space-after-line-end-break.md`. Running `init-backlog` setup `apply` with `options.unwrap` joined every hard-wrapped line with a space, including lines where the wrap had split a compound word or a path: `chord-` and `aware` became `chord- aware`, and `.claude/skills/` and `sketch-on-tablet/` became `.claude/skills/ sketch-on-tablet/`, which breaks the path. The report counts 165 damaged hyphen joins and 9 slash joins across the 79 migrated files, found by a documentation review and repaired in that project against the pre-migration files. Ready reports nothing, since links are unaffected, and a search for the compound or path then misses those occurrences. `joinContinuations` in `internal/backlog-catalog.js` always inserts one space, whatever the line ended with.
+
+The correct rule is open. A line-end hyphen is ambiguous, because a suspended hyphen such as `single-` before `and multi-` does need the space, and that backlog holds five of them; a line-end slash has not been analyzed separately. `comparisonText` in `internal/template-text/document.js` copies the join, so a fix that alters a block's comparison text needs `COMPARISON_RULES` increased and the retired list regenerated. Shared catalog code, so keep Ready and setup coherent, cover the rule with unwrap fixtures and ship with a version increase. Tracking does not authorize implementation.
+
+**Requires:** none.
+
 ### Vibe resume accepts non-canonical spellings of a recorded private copy
 
 Found on 2026-11-07, and tracked by the user's decision, while closing the review loop of the 3.3.31 fix that moved Vibe reviewer homes into short isolation directories, where a fresh code review found that the new `vibeHome` guard accepted spellings of a valid home other than the one the launcher records and the guard was changed to accept only that exact spelling. `vibeResumeSource` in `internal/runtime/continuation.js` checks the `workspace` a dispatch's saved `request.json` records by joining it onto the canonical project root and passing the result to `isPrivateCopyDirectory` in `internal/runtime/copies.js`, which compares only the resolved location, so a probe on 2026-11-07 found `/.nightshift/runs/c/<id>`, `./.nightshift/runs/c/<id>` and `.nightshift/runs/c/x/../<id>` all accepted beside the canonical `.nightshift/runs/c/<id>`. The runtime writes that record itself, so only a hand-edited `request.json` reaches the gap; no resume was observed to go wrong because of it.
