@@ -4,7 +4,7 @@ Evidence for the 3.3.33 change governed by [its spec](../specs/finding-scoped-ev
 
 ## Run
 
-Whole seeded-defect suite, 23 fixtures twice, on Opus 5.5 through the commit `ed7b8d05` state of the harness and runtime, Claude Code 2.1.319, on Windows. It spent 2,942,243 tokens against a budget of 5,500,000 inside the delivery's 8,000,000 cap. Six probe requests across five fixture runs were inspected and approved; each ran in a private copy. Raw artifacts are in `.tmp/session-5b312f10/suite-opus`.
+Whole seeded-defect suite, 23 fixtures twice, on Opus 5.5 through the commit `ed7b8d05` state of the harness and runtime, Claude Code 2.1.319, on Windows. It spent 2,942,243 tokens against a budget of 5,500,000 inside the delivery's 8,000,000 cap. Six probe requests across five fixture runs were inspected and approved. Five ran in a private copy; the sixth, on `port-validation`, was refused as `invalid-probe` before running because its source was not ASCII. Raw artifacts are in `.tmp/session-5b312f10/suite-opus`.
 
 The comparison run is the 2026-10-29 rerun, regraded with the current grader in a copy. Its figures reproduced the original report, which is the evidence that grading did not change. The harness requires decoy surfaces only when a new run starts, so a frozen run from before them is graded unchanged. Both runs here were graded with the final grader identity `fe8909b06bc8`; the earlier run's copy is otherwise as it was saved.
 
