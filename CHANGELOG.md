@@ -4,6 +4,10 @@ Release notes for the Nightshift plugin, newest first. The plugin manifests carr
 
 The entries through 3.3.3 were moved here from the README on 2026-10-05 and split by version. A version without an entry had no notes recorded there.
 
+## 3.3.33
+
+- Bind a skeptic's validation, a finding dialogue and a probe result to the files they are about, so an edit elsewhere no longer refuses or withholds them. A lead finding now names its `surfaces` and `basis`, a skeptic answers per surface, and each finding records a scope; a finding without one keeps the whole-project comparison. Probes declare `paths`, an empty list meaning the host or tools alone, `repair` no longer discards their stored results, and a stored result keeps one name across dispatches. Execution integrity stays independent of what a probe declares. Gate refusals at `complete`, `advance` and standalone completion now name their tasks and causes, a check-only failure at a delivery's `complete` refuses with `verification-required`, and `freshTargets` entries carry `staleChanges`. Deterministic evidence: `tests/runtime-finding-scope.test.js` and the affected runtime suites; real-model evidence is recorded in the release's report.
+
 ## 3.3.32
 
 - Let a session keep handing over on its bound release after a newer release installs. Any project with a retired legacy record refused every new handover from a session not bound to the newest installed release, with `migration-new-session-required`, even when the request involved no retired record. That refusal is gone: new-run work runs on a bound session's own release, whose runtime validates retirement certificates before any write, and the fix reaches already-running sessions because retained launchers route handover admission through the newest installed service. Releases before 3.3.11, whose runtimes do not validate those certificates, are no longer supported, though release admission does not refuse them. Focused deterministic release-migration tests verify a real handover from an older binding in a project with a retirement; no native host run was made.

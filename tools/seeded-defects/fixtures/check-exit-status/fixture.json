@@ -23,7 +23,15 @@
       "consequence": "Comment lines are reported as problems, so a commented file fails the check.",
       "evidence": "src/config.js:5 comments are counted as problems",
       "required": false,
-      "reason": "parseConfig returns early for lines starting with #, so comments are never reported."
+      "reason": "parseConfig returns early for lines starting with #, so comments are never reported.",
+      "surfaces": [
+        {
+          "path": "src/config.js",
+          "location": "line 5",
+          "evidence": "src/config.js:5 comments are counted as problems"
+        }
+      ],
+      "basis": []
     }
   ]
 }

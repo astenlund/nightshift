@@ -24,7 +24,15 @@
       "consequence": "requeue still passes the attempt first, so jobs are retried with the attempt count as their delay.",
       "evidence": "src/queue.js:4 requeue passes scheduleRetry's arguments in the old order",
       "required": true,
-      "reason": "requeue passes job.delayMs first and job.attempt second, the new order."
+      "reason": "requeue passes job.delayMs first and job.attempt second, the new order.",
+      "surfaces": [
+        {
+          "path": "src/queue.js",
+          "location": "line 4",
+          "evidence": "src/queue.js:4 requeue passes scheduleRetry's arguments in the old order"
+        }
+      ],
+      "basis": []
     }
   ]
 }

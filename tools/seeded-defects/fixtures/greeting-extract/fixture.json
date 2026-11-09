@@ -10,7 +10,15 @@
       "consequence": "greeting drops the exclamation mark, changing greet's output.",
       "evidence": "src/greet.js:2 the greeting lost its exclamation mark",
       "required": false,
-      "reason": "greeting keeps the original concatenation, exclamation mark included."
+      "reason": "greeting keeps the original concatenation, exclamation mark included.",
+      "surfaces": [
+        {
+          "path": "src/greet.js",
+          "location": "line 2",
+          "evidence": "src/greet.js:2 the greeting lost its exclamation mark"
+        }
+      ],
+      "basis": []
     }
   ]
 }

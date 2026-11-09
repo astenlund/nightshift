@@ -93,7 +93,7 @@ function withEnvironment(name, value, work) {
 }
 
 function finding(id, consequence = 'The documentation misstates the change') {
-  return { id, severity: 'important', required: true, consequence, evidence: 'Concrete passage compared with the change' };
+  return { id, severity: 'important', required: true, consequence, evidence: 'Concrete passage compared with the change', surfaces: [], basis: [] };
 }
 
 // Starts, verifies and code-reviews a code task up to its documentation stage.
@@ -356,7 +356,7 @@ test('a reopened completed task completes again only through its docs gate, and 
   // A completed task can still lose its gate through recorded state; the run-completion refusal then names it.
   exempt.store.update(actor, exempt.store.read().revision, 'fixture-drop-docs-review', state => { state.tasks[0].reviews = state.tasks[0].reviews.filter(review => review.kind !== 'docs'); });
   close(exempt);
-  assert.throws(() => exempt.act({ action: 'complete' }), { code: 'docs-review-required', message: /Missing for: docs$/ });
+  assert.throws(() => exempt.act({ action: 'complete' }), { code: 'docs-review-required', message: /Missing for: docs: unmet assurance$/ });
 });
 
 test('repair and a changed agreement clear a mechanical exemption', t => {

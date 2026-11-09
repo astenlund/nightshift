@@ -37,7 +37,15 @@
       "consequence": "lookupSession stops after the first registry even when it does not hold the session.",
       "evidence": "src/registry.js:13 lookupSession returns after the first registry",
       "required": false,
-      "reason": "The loop returns only when a registry finds the session and otherwise continues to the next path."
+      "reason": "The loop returns only when a registry finds the session and otherwise continues to the next path.",
+      "surfaces": [
+        {
+          "path": "src/registry.js",
+          "location": "line 13",
+          "evidence": "src/registry.js:13 lookupSession returns after the first registry"
+        }
+      ],
+      "basis": []
     }
   ]
 }

@@ -24,7 +24,15 @@
       "consequence": "A non-Markdown file under docs/ is treated as code, so an edit to a diagram makes the code assessment stale.",
       "evidence": "src/assessment.js:7 isDocumentation accepts only Markdown files",
       "required": true,
-      "reason": "isDocumentation also accepts every path starting with docs/, whatever its extension."
+      "reason": "isDocumentation also accepts every path starting with docs/, whatever its extension.",
+      "surfaces": [
+        {
+          "path": "src/assessment.js",
+          "location": "line 7",
+          "evidence": "src/assessment.js:7 isDocumentation accepts only Markdown files"
+        }
+      ],
+      "basis": []
     }
   ]
 }

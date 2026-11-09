@@ -240,8 +240,9 @@ function loadFixture(directory) {
       if (typeof decoy?.[field] !== 'string' || !decoy[field].trim()) fail('fixture-invalid', `${name}: a decoy is missing ${field}`);
     }
     if (!SEVERITIES.includes(decoy.severity) || typeof decoy.required !== 'boolean') fail('fixture-invalid', `${name}: a decoy needs a known severity and a boolean required`);
+    if (!Array.isArray(decoy.surfaces) || decoy.surfaces.length === 0 || !Array.isArray(decoy.basis)) fail('fixture-invalid', `${name}: a decoy needs surfaces and a basis, so its shape matches a lead finding's`);
   }
-  const texts = [fixture.requirements, ...fixture.decoys.flatMap(decoy => [decoy.severity, decoy.consequence, decoy.evidence, decoy.reason])];
+  const texts = [fixture.requirements, ...fixture.decoys.flatMap(decoy => [decoy.severity, decoy.consequence, decoy.evidence, decoy.reason, ...decoy.surfaces.flatMap(surface => [surface.path, surface.location, surface.evidence]), ...decoy.basis])];
   for (const text of texts) {
     const token = containsToken(text);
     if (token) fail('fixture-contaminated', `${name}: supplied text contains ${token}`);
@@ -560,7 +561,7 @@ function shuffledClaims(leadFindings, decoys, seed) {
     [items[index], items[other]] = [items[other], items[index]];
   }
 
-  return items.map((item, index) => ({ id: `F${index + 1}`, source: item.source, sourceId: item.sourceId, claim: { id: `F${index + 1}`, severity: item.finding.severity, required: item.finding.required, consequence: item.finding.consequence, evidence: item.finding.evidence } }));
+  return items.map((item, index) => ({ id: `F${index + 1}`, source: item.source, sourceId: item.sourceId, claim: { id: `F${index + 1}`, severity: item.finding.severity, required: item.finding.required, consequence: item.finding.consequence, evidence: item.finding.evidence, surfaces: item.finding.surfaces ?? [], basis: item.finding.basis ?? [] } }));
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------
@@ -629,15 +630,6 @@ function stageOptions(stage, item, manifestRules, repository, model, requestId, 
   return probeEvidence ? { ...common, probeEvidence } : common;
 }
 
-// The probe evidence files the runtime wrote into a dispatch's workspace, in the order it named them, since the saved request does not
-// record them.
-function suppliedProbeFiles(workspace) {
-  const folder = path.join(workspace, 'context', 'probes');
-  if (!fs.existsSync(folder)) return [];
-
-  return fs.readdirSync(folder).map(file => Number(path.basename(file, '.json'))).sort((a, b) => a - b).map(index => `context/probes/${index}.json`);
-}
-
 // For an evaluated host, the dispatch's agent runner is that host's launcher, or an injected runner, given the evaluated model and the
 // prompt the runtime builds for that host, rebuilt from the dispatch's saved request. The rebuild for the gate candidate must first
 // reproduce the runtime's own prompt, so a request the rebuild cannot see in full fails the attempt before any host starts.
@@ -652,12 +644,11 @@ function dispatchDependencies(dependencies, model, stage) {
     ...base,
     runAgent: async options => {
       const request = readJson(path.join(options.artifacts, '..', 'request.json'));
-      const probeFiles = suppliedProbeFiles(options.cwd);
-      if (buildPrompt(request, { workspace: options.cwd, host: options.host, probeFiles }) !== options.prompt) {
+      if (buildPrompt(request, { workspace: options.cwd, host: options.host }) !== options.prompt) {
         throw new SuiteError('evaluation-prompt-drift', `The saved request does not rebuild the ${options.host} prompt the runtime built, so the ${model.host} prompt cannot be built from it`);
       }
 
-      return runAgent({ ...options, host: model.host, model: model.id, prompt: buildPrompt(request, { workspace: options.cwd, host: model.host, probeFiles }) });
+      return runAgent({ ...options, host: model.host, model: model.id, prompt: buildPrompt(request, { workspace: options.cwd, host: model.host }) });
     },
   };
 }

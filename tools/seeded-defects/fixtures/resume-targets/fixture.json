@@ -24,7 +24,15 @@
       "consequence": "nextTask returns undefined when no task is pending, which callers compare against null.",
       "evidence": "src/tasks.js:6 nextTask returns undefined",
       "required": false,
-      "reason": "nextTask returns null through ?? when no task is pending."
+      "reason": "nextTask returns null through ?? when no task is pending.",
+      "surfaces": [
+        {
+          "path": "src/tasks.js",
+          "location": "line 6",
+          "evidence": "src/tasks.js:6 nextTask returns undefined"
+        }
+      ],
+      "basis": []
     }
   ]
 }

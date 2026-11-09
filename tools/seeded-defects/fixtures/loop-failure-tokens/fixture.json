@@ -24,7 +24,15 @@
       "consequence": "checkForLoop flags two identical outputs as a loop.",
       "evidence": "src/loop.js:7 two equal outputs count as a loop",
       "required": false,
-      "reason": "The check needs LOOP_LIMIT, three, outputs before comparing."
+      "reason": "The check needs LOOP_LIMIT, three, outputs before comparing.",
+      "surfaces": [
+        {
+          "path": "src/loop.js",
+          "location": "line 7",
+          "evidence": "src/loop.js:7 two equal outputs count as a loop"
+        }
+      ],
+      "basis": []
     }
   ]
 }

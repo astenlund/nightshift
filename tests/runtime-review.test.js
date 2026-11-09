@@ -59,7 +59,8 @@ function requestOf(options) {
 
 function assessment(options, dimensions = DIMENSIONS.code, findings = [], closures) {
   const request = requestOf(options);
-  const report = { requestId: request.id, status: 'complete', coverage: dimensions.map(dimension => ({ dimension, evidence: 'Assessed both concrete paths' })), findings, probes: [], summary: 'Fixture assessment completed', toolFailure: '' };
+  const stated = request.kind === 'skeptic' ? findings.map(item => ({ surfaces: [], ...item })) : findings;
+  const report = { requestId: request.id, status: 'complete', coverage: dimensions.map(dimension => ({ dimension, evidence: 'Assessed both concrete paths' })), findings: stated, probes: [], summary: 'Fixture assessment completed', toolFailure: '' };
   if (request.kind !== 'skeptic') {
     report.closures = request.continues && !request.dialogue ? closures ?? request.pendingClosures.map(finding => ({ id: finding.id, closed: true, evidence: 'The repair resolves the fixture finding' })) : [];
     report.positions = [];
@@ -87,7 +88,7 @@ test('one report schema serves every dispatch of a kind, and the consumer checks
   const f = fixture(t);
   const directory = path.join(f.root, '.tmp/schema');
   const ids = ['first-request:claim', 'second-request:claim'];
-  const verdict = (id, evidence = 'Deciding fixture evidence') => ({ id, verdict: 'confirmed', evidence, value: 'Required behavior assessed independently', repairProposal: 'Correct the fixture boundary at its single caller' });
+  const verdict = (id, evidence = 'Deciding fixture evidence') => ({ id, verdict: 'confirmed', evidence, value: 'Required behavior assessed independently', repairProposal: 'Correct the fixture boundary at its single caller', surfaces: [] });
   const report = (findings, requestId = 'schema-request') => ({ requestId, status: 'complete', coverage: [], findings, probes: [], summary: 'Assigned claims evaluated', toolFailure: '' });
   const skeptic = schemaFor('skeptic');
   const lead = schemaFor('code');
@@ -100,7 +101,7 @@ test('one report schema serves every dispatch of a kind, and the consumer checks
   assert.deepEqual(Object.keys(skeptic.properties).sort(), leadFields.filter(field => !['applicability', 'closures', 'positions'].includes(field)));
   const duplicate = report([verdict(ids[0]), verdict(ids[0], 'Different evidence for the repeated id')]);
   const blank = report([verdict(ids[0], '')]);
-  const probe = { ...report([{ ...verdict(ids[0]), verdict: 'unverified' }]), status: 'incomplete', probes: [{ id: 'deciding-probe', purpose: 'Resolve missing evidence', executable: process.execPath, args: ['--version'], timeoutMs: 10000, files: [] }] };
+  const probe = { ...report([{ ...verdict(ids[0]), verdict: 'unverified' }]), status: 'incomplete', probes: [{ id: 'deciding-probe', purpose: 'Resolve missing evidence', executable: process.execPath, args: ['--version'], paths: [], timeoutMs: 10000, files: [] }] };
   const secondsTimeout = { ...probe, probes: [{ ...probe.probes[0], timeoutMs: 240 }] };
   const leadReport = { ...report([]), closures: [], positions: [], applicability: [] };
   const cases = [
@@ -144,7 +145,7 @@ test('one report schema serves every dispatch of a kind, and the consumer checks
   assert.throws(() => validateReport(leadDocument({ positions: [position('earlier:F1')] }), continued), { code: 'invalid-result', message: /Positions/ });
   assert.throws(() => validateReport(leadDocument({ closures: [closure('earlier:F2')] }), continued), { code: 'missing-closure' });
   assert.equal(validateReport(leadDocument({ closures: [closure('earlier:F1')] }), continued).closures.length, 1);
-  assert.throws(() => validateReport(leadDocument({ positions: [position('earlier:F1')], findings: [{ id: 'new', severity: 'minor', consequence: 'Raised', evidence: 'Seen', required: false }] }), dialogue), { code: 'invalid-dialogue-reply' });
+  assert.throws(() => validateReport(leadDocument({ positions: [position('earlier:F1')], findings: [{ id: 'new', severity: 'minor', consequence: 'Raised', evidence: 'Seen', required: false, surfaces: [], basis: [] }] }), dialogue), { code: 'invalid-dialogue-reply' });
   assert.throws(() => validateReport(leadDocument({ positions: [position('earlier:F2')] }), dialogue), { code: 'missing-position' });
   assert.throws(() => validateReport(leadDocument({}), dialogue), { code: 'missing-position' });
   assert.throws(() => validateReport(leadDocument({ positions: [position('earlier:F1', 'ignore')] }), dialogue), { code: 'invalid-position' });
@@ -294,7 +295,7 @@ test('receipt maintenance can import produced evidence without acquiring a new e
   const invoke = (request, overrides) => executeWithFixtureController(f.root, { actor, revision: store.read().revision, taskId: f.taskId, ...request }, overrides);
   const unavailable = { nativeOwner: () => { throw new Error('Maintenance must not require native controller inspection'); } };
   try {
-    const finding = { id: 'fixture-finding', severity: 'minor', required: false, consequence: 'Alleged fixture issue', evidence: 'Concrete fixture claim' };
+    const finding = { id: 'fixture-finding', severity: 'minor', required: false, consequence: 'Alleged fixture issue', evidence: 'Concrete fixture claim', surfaces: [], basis: [] };
     const lead = await invoke({ action: 'dispatch', review: { ...f, kind: 'code' } }, { runAgent: options => mockAgent(options, DIMENSIONS.code, { findings: [finding], session: 'lead' }) });
     const claim = store.read().controllerClaim;
     await invoke({ action: 'review', receipt: relative(lead) }, unavailable);
@@ -318,7 +319,7 @@ for (const hasFinding of [false, true]) {
     const receiptPath = result => path.relative(f.root, result.receiptFile).split(path.sep).join('/');
     const dispatch = (kind, assigned, output) => executeWithFixtureController(f.root, { action: 'dispatch', actor, revision: store.read().revision, taskId: f.taskId, review: { ...f, kind, findings: assigned } }, { runAgent: options => mockAgent(options, DIMENSIONS.code, { findings: output, session: kind === 'skeptic' ? 'skeptic' : 'lead' }) });
     try {
-      const claims = hasFinding ? [{ id: 'boundary', severity: 'minor', required: false, consequence: 'Alleged boundary issue', evidence: 'Concrete claim for validation' }] : [];
+      const claims = hasFinding ? [{ id: 'boundary', severity: 'minor', required: false, consequence: 'Alleged boundary issue', evidence: 'Concrete claim for validation', surfaces: [], basis: [] }] : [];
       const lead = await dispatch('code', [], claims);
       const review = { action: 'review', receipt: receiptPath(lead) };
       await act(review);
@@ -1106,7 +1107,7 @@ for (const interleaved of [true, false]) {
     const receiptPath = result => path.relative(f.root, result.receiptFile).split(path.sep).join('/');
     const dispatch = (kind, assigned, output, { review = {}, session } = {}) => executeWithFixtureController(f.root, { action: 'dispatch', actor, revision: store.read().revision, taskId: f.taskId, review: { ...f, kind, findings: assigned, ...review } }, { runAgent: options => mockAgent(options, DIMENSIONS[kind === 'docs' ? 'docs' : 'code'], { findings: output, session: session ?? { skeptic: 'skeptic-session', docs: 'docs-session' }[kind] ?? 'lead-session' }) });
     try {
-      const claims = ['first', 'second'].map(id => ({ id, severity: 'important', required: true, consequence: 'Fixture boundary needs correction', evidence: 'Concrete fixture branch' }));
+      const claims = ['first', 'second'].map(id => ({ id, severity: 'important', required: true, consequence: 'Fixture boundary needs correction', evidence: 'Concrete fixture branch', surfaces: [], basis: [] }));
       const lead = await dispatch('code', [], claims);
       await act({ action: 'review', receipt: receiptPath(lead) });
       const findings = store.read().tasks[0].findings;

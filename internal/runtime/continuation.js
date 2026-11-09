@@ -141,8 +141,11 @@ function closureRoute(root, state, requestId) {
 
 // What a finding looks like to a reviewer or skeptic continuing an exchange about it.
 function findingSummary(finding) {
+  const judged = verdict => (Array.isArray(finding.validation?.surfaces) ? finding.validation.surfaces.filter(surface => surface?.verdict === verdict).map(surface => ({ path: surface.path, location: surface.location })) : []);
+
   return {
     id: finding.id, localId: finding.localId, severity: finding.severity, consequence: finding.consequence, evidence: finding.evidence,
+    ...(finding.surfaces ? { surfaces: finding.surfaces, basis: finding.basis ?? [], confirmedSurfaces: judged('confirmed'), refutedSurfaces: judged('refuted') } : {}),
     verdict: finding.validation?.verdict ?? null, skepticEvidence: finding.validation?.evidence ?? null, repairProposal: finding.validation?.repairProposal ?? null,
     disposition: finding.disposition, reason: finding.reason ?? null, repaired: Boolean(finding.repaired), pendingClosure: Boolean(finding.pendingClosure), dialogue: finding.dialogue ?? [],
   };

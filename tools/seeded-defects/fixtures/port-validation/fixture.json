@@ -10,7 +10,15 @@
       "consequence": "parsePort accepts negative numbers.",
       "evidence": "src/port.js:12 negative ports pass",
       "required": false,
-      "reason": "The pattern admits digits only, so a minus sign is refused before the range check."
+      "reason": "The pattern admits digits only, so a minus sign is refused before the range check.",
+      "surfaces": [
+        {
+          "path": "src/port.js",
+          "location": "line 12",
+          "evidence": "src/port.js:12 negative ports pass"
+        }
+      ],
+      "basis": []
     }
   ]
 }

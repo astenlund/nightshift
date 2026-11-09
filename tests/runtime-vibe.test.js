@@ -524,7 +524,7 @@ function fixture(t, { tasks = [{ id: 'task', title: 'Work', agreement: { source:
   return { root, store, base, act, receipt, dispatch, task, brief, check };
 }
 
-const finding = id => ({ id, severity: 'important', required: true, consequence: 'The fixture boundary fails', evidence: 'Concrete branch through the boundary' });
+const finding = id => ({ id, severity: 'important', required: true, consequence: 'The fixture boundary fails', evidence: 'Concrete branch through the boundary', surfaces: [], basis: [] });
 const verdict = id => ({ id, verdict: 'confirmed', evidence: 'Reproduced against the change', value: 'Worth fixing', repairProposal: 'Correct the boundary where both branches meet' });
 
 for (const kind of ['code', undefined]) {

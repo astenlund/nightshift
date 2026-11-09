@@ -23,7 +23,15 @@
       "consequence": "The target argument is taken from the first option instead of the first non-option argument.",
       "evidence": "bin/sync.js:5 target reads an option",
       "required": false,
-      "reason": "target is the first argument that does not start with --."
+      "reason": "target is the first argument that does not start with --.",
+      "surfaces": [
+        {
+          "path": "bin/sync.js",
+          "location": "line 5",
+          "evidence": "bin/sync.js:5 target reads an option"
+        }
+      ],
+      "basis": []
     }
   ]
 }

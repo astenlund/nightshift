@@ -23,7 +23,15 @@
       "consequence": "The release test makes no assertion, so it cannot fail.",
       "evidence": "test/lock.test.js:16 the release test has no assertion",
       "required": false,
-      "reason": "The release test asserts that the acquire after release succeeds."
+      "reason": "The release test asserts that the acquire after release succeeds.",
+      "surfaces": [
+        {
+          "path": "test/lock.test.js",
+          "location": "line 16",
+          "evidence": "test/lock.test.js:16 the release test has no assertion"
+        }
+      ],
+      "basis": []
     }
   ]
 }

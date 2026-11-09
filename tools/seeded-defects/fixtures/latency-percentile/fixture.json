@@ -23,14 +23,30 @@
       "consequence": "clean keeps NaN samples, because every comparison with NaN is false, so NaN reaches the percentiles.",
       "evidence": "src/latency.js:4 NaN passes the filter in clean",
       "required": true,
-      "reason": "value !== value is true only for NaN, so clean skips it."
+      "reason": "value !== value is true only for NaN, so clean skips it.",
+      "surfaces": [
+        {
+          "path": "src/latency.js",
+          "location": "line 4",
+          "evidence": "src/latency.js:4 NaN passes the filter in clean"
+        }
+      ],
+      "basis": []
     },
     {
       "severity": "important",
       "consequence": "rank returns the element after the requested rank, an off-by-one that overstates both figures.",
       "evidence": "src/latency.js:11 rank indexes one past the nearest rank",
       "required": true,
-      "reason": "The nearest rank is ceil(fraction * n), a 1-based position, and rank subtracts one to index the array."
+      "reason": "The nearest rank is ceil(fraction * n), a 1-based position, and rank subtracts one to index the array.",
+      "surfaces": [
+        {
+          "path": "src/latency.js",
+          "location": "line 11",
+          "evidence": "src/latency.js:11 rank indexes one past the nearest rank"
+        }
+      ],
+      "basis": []
     }
   ]
 }

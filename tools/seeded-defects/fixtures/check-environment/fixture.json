@@ -23,7 +23,15 @@
       "consequence": "runCheck has no timeout, so a hung check blocks the runner forever.",
       "evidence": "src/checks.js:4 spawnSync is called without a timeout",
       "required": false,
-      "reason": "spawnSync is given a 600000 ms timeout."
+      "reason": "spawnSync is given a 600000 ms timeout.",
+      "surfaces": [
+        {
+          "path": "src/checks.js",
+          "location": "line 4",
+          "evidence": "src/checks.js:4 spawnSync is called without a timeout"
+        }
+      ],
+      "basis": []
     }
   ]
 }

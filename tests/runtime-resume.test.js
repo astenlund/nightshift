@@ -28,8 +28,10 @@ function git(root, args) {
   return result.stdout.trim();
 }
 
+const withoutChanges = targets => (Array.isArray(targets) ? targets.map(({ staleChanges: _staleChanges, ...target }) => target) : targets);
+
 function finding(id, severity = 'important') {
-  return { id, severity, required: severity !== 'minor', consequence: 'The fixture boundary fails', evidence: 'Concrete branch through the boundary' };
+  return { id, severity, required: severity !== 'minor', consequence: 'The fixture boundary fails', evidence: 'Concrete branch through the boundary', surfaces: [], basis: [] };
 }
 
 function verdict(id, outcome = 'confirmed', repairProposal = outcome === 'confirmed' ? 'Correct the boundary where both branches meet' : '') {
@@ -589,9 +591,12 @@ test('after a repair batch the resume set names only the raising reviewer, and t
   // Assert
   assert.equal(progress.next, 'resume');
   assert.deepEqual(progress.resumeTargets.map(item => [item.requestId, item.reason]), [[second.receipt.requestId, 'pending-closure']]);
-  assert.deepEqual(progress.freshTargets, [{ kind: 'docs', taskId: 'task', covers: ['task'], staleAssessments: [docs.receipt.requestId], reopens: false }]);
+  assert.deepEqual(withoutChanges(progress.freshTargets), [{ kind: 'docs', taskId: 'task', covers: ['task'], staleAssessments: [docs.receipt.requestId], reopens: false }]);
+  assert.equal(progress.freshTargets[0].staleChanges[0].requestId, docs.receipt.requestId);
+  assert.equal(progress.freshTargets[0].staleChanges[0].cause, 'changed-inputs');
+  assert.ok(progress.freshTargets[0].staleChanges[0].changedPaths.length > 0);
   // A lightweight brief evaluates no freshness, so it lists the closures owed and marks the fresh targets unevaluated.
-  assert.deepEqual({ targets: light.resumeTargets.map(item => item.requestId), fresh: light.freshTargets }, { targets: [second.receipt.requestId], fresh: 'reconcile at acceptance' });
+  assert.deepEqual({ targets: light.resumeTargets.map(item => item.requestId), fresh: withoutChanges(light.freshTargets) }, { targets: [second.receipt.requestId], fresh: 'reconcile at acceptance' });
   assert.deepEqual(lightBeforeRepair.freshTargets, []);
 });
 
@@ -608,7 +613,7 @@ test('a completed task\'s stale review of another kind is due a fresh assessment
   await f.act({ action: 'advance', taskId: 'done', evidence: 'Documented' });
   const targets = () => {
     const review = f.brief().review;
-    return { resume: review.resumeTargets.map(item => [item.requestId, item.taskId, item.reason]), fresh: review.freshTargets };
+    return { resume: review.resumeTargets.map(item => [item.requestId, item.taskId, item.reason]), fresh: withoutChanges(review.freshTargets) };
   };
 
   // Act
@@ -649,7 +654,7 @@ test('a docs repair makes a fresh code assessment due where it made the code ass
 
   // Assert
   assert.deepEqual(f.brief().review.resumeTargets.map(item => [item.requestId, item.reason]), [[docs.receipt.requestId, 'pending-closure']]);
-  assert.deepEqual(f.brief().review.freshTargets, [{ kind: 'code', taskId: 'task', covers: ['task'], staleAssessments: [lead.receipt.requestId], reopens: false }]);
+  assert.deepEqual(withoutChanges(f.brief().review.freshTargets), [{ kind: 'code', taskId: 'task', covers: ['task'], staleAssessments: [lead.receipt.requestId], reopens: false }]);
 });
 
 test('the resume set leaves out a later lead of the repaired kind, which the raising reviewer\'s reassessment covers', async t => {
@@ -718,7 +723,7 @@ test('a covering assessment that several tasks\' gates read is due one fresh ass
   // Assert
   assert.deepEqual(f.store.read().tasks.find(item => item.id === 'task').reviews.find(review => review.requestId === covering.receipt.requestId).coveredTaskIds, ['done', 'task']);
   assert.deepEqual(f.brief().review.resumeTargets.map(item => [item.requestId, item.taskId, item.reason]), [[docs.receipt.requestId, 'task', 'pending-closure']]);
-  assert.deepEqual(f.brief().review.freshTargets, [{ kind: 'code', taskId: 'task', covers: ['task', 'done'], staleAssessments: [covering.receipt.requestId], reopens: false }]);
+  assert.deepEqual(withoutChanges(f.brief().review.freshTargets), [{ kind: 'code', taskId: 'task', covers: ['task', 'done'], staleAssessments: [covering.receipt.requestId], reopens: false }]);
 });
 
 test('another kind\'s stale review stays due a fresh assessment after the raising finding is re-validated, refuted and closed, until one is imported', async t => {
@@ -781,7 +786,7 @@ test('a later code repair makes a fresh docs assessment due where it changed a c
 
   // Assert
   assert.deepEqual(progress.resumeTargets.map(item => [item.requestId, item.reason]), [[leadResumed.receipt.requestId, 'pending-closure']]);
-  assert.deepEqual(progress.freshTargets, [{ kind: 'docs', taskId: 'task', covers: ['task'], staleAssessments: [docsResumed.receipt.requestId], reopens: false }]);
+  assert.deepEqual(withoutChanges(progress.freshTargets), [{ kind: 'docs', taskId: 'task', covers: ['task'], staleAssessments: [docsResumed.receipt.requestId], reopens: false }]);
   assert.deepEqual(progress.freshDue, ['code', 'docs']);
 });
 
@@ -806,7 +811,7 @@ test('a docs repair makes a fresh code assessment due where it changed a continu
 
   // Assert
   assert.deepEqual(f.brief().review.resumeTargets.map(item => [item.requestId, item.reason]), [[docs.receipt.requestId, 'pending-closure']]);
-  assert.deepEqual(f.brief().review.freshTargets, [{ kind: 'code', taskId: 'task', covers: ['task'], staleAssessments: [leadResumed.receipt.requestId], reopens: false }]);
+  assert.deepEqual(withoutChanges(f.brief().review.freshTargets), [{ kind: 'code', taskId: 'task', covers: ['task'], staleAssessments: [leadResumed.receipt.requestId], reopens: false }]);
 });
 
 test('a code repair makes a fresh docs assessment due where it outdated an incomplete docs report', async t => {
@@ -826,7 +831,7 @@ test('a code repair makes a fresh docs assessment due where it outdated an incom
   // Assert
   assert.equal(f.task().reviews.find(review => review.requestId === docs.receipt.requestId).status, 'incomplete');
   assert.deepEqual(f.brief().review.resumeTargets.map(item => [item.requestId, item.reason]), [[lead.receipt.requestId, 'pending-closure']]);
-  assert.deepEqual(f.brief().review.freshTargets, [{ kind: 'docs', taskId: 'task', covers: ['task'], staleAssessments: [docs.receipt.requestId], reopens: false }]);
+  assert.deepEqual(withoutChanges(f.brief().review.freshTargets), [{ kind: 'docs', taskId: 'task', covers: ['task'], staleAssessments: [docs.receipt.requestId], reopens: false }]);
 });
 
 test('a docs repair makes a fresh code assessment due where it outdated an incomplete code report', async t => {
@@ -849,7 +854,7 @@ test('a docs repair makes a fresh code assessment due where it outdated an incom
 
   // Assert
   assert.deepEqual(f.brief().review.resumeTargets.map(item => [item.requestId, item.reason]), [[docs.receipt.requestId, 'pending-closure']]);
-  assert.deepEqual(f.brief().review.freshTargets, [{ kind: 'code', taskId: 'task', covers: ['task'], staleAssessments: [lead.receipt.requestId], reopens: false }]);
+  assert.deepEqual(withoutChanges(f.brief().review.freshTargets), [{ kind: 'code', taskId: 'task', covers: ['task'], staleAssessments: [lead.receipt.requestId], reopens: false }]);
 });
 
 test('a resumed dispatch keeps its reserved session when its host fails with unproven termination', async t => {
@@ -1000,7 +1005,7 @@ test('a skeptic is assigned each finding\'s claim, not the saved record with its
 
   // Assert
   assert.ok(saved.validation.snapshot.digest);
-  assert.deepEqual(Object.keys(request.findings[0]).sort(), ['consequence', 'evidence', 'id', 'localId', 'relatedTo', 'required', 'severity']);
+  assert.deepEqual(Object.keys(request.findings[0]).sort(), ['basis', 'consequence', 'evidence', 'id', 'localId', 'relatedTo', 'required', 'severity', 'surfaces']);
   assert.equal(calls[0].prompt.includes(saved.validation.snapshot.digest), false);
 });
 
@@ -1339,7 +1344,7 @@ test('a completed task\'s stale review that no open task can cover is due a fres
   // A lore task shares no cumulative assessment, so only a docs review dispatched on the finished task itself can cover its stale gate.
   assert.equal(f.task('done').status, 'complete');
   assert.deepEqual(progress.resumeTargets.map(item => [item.taskId, item.reason]), [['lore', 'pending-closure']]);
-  assert.deepEqual(progress.freshTargets, [{ kind: 'docs', taskId: 'done', covers: ['done'], staleAssessments: [doneDocs.requestId], reopens: true }]);
+  assert.deepEqual(withoutChanges(progress.freshTargets), [{ kind: 'docs', taskId: 'done', covers: ['done'], staleAssessments: [doneDocs.requestId], reopens: true }]);
 });
 
 test('the closing record and the triage baseline accept only fresh assessments, and closing findings pending closure survive record replacement', t => {

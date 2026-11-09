@@ -111,11 +111,12 @@ for (const withSelectedArtifact of [false, true]) {
     const probe = { id: 'mutation', purpose: 'Observe behavior before and after a private fixture mutation', executable: process.execPath, args: ['probe.cjs'], timeoutMs: PROBE_TIMEOUT_CAP_MS, files: [{ path: 'probe.cjs', content: "const fs = require('node:fs');\n" + selectedCheck + "const before = require('./answer.cjs');\nfs.writeFileSync('answer.cjs', 'module.exports = 42;\\n');\nconsole.log(JSON.stringify({ before, after: 42 }));\n" }] };
     const agent = (complete, hasEvidence = complete) => options => {
       if (hasEvidence) {
-        const evidence = JSON.parse(fs.readFileSync(path.join(options.cwd, 'context/probes/1.json'), 'utf8'));
+        const [stored] = fs.readdirSync(path.join(options.cwd, 'context/probes'));
+        const evidence = JSON.parse(fs.readFileSync(path.join(options.cwd, 'context/probes', stored), 'utf8'));
         assert.equal(evidence.canonicalUnchanged, true);
         assert.equal(evidence.exitCode, 0);
         assert.deepEqual(JSON.parse(evidence.output), { before: 41, after: 42 });
-        assert.ok(options.prompt.includes('Returned probe evidence for this assessment: context/probes/1.json'));
+        assert.ok(options.prompt.includes(`Returned probe evidence for this assessment: context/probes/${stored}`));
       } else {
         assert.equal(fs.existsSync(path.join(options.cwd, 'context/probes')), false);
         assert.ok(options.prompt.includes('No probe evidence has been returned for this assessment yet.'));

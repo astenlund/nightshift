@@ -24,7 +24,15 @@
       "consequence": "appendEntry does not wait for the write, so a failed write is never reported to the caller.",
       "evidence": "src/journal.js:27 writeJournal is called without await",
       "required": true,
-      "reason": "appendEntry awaits writeJournal, so a write failure rejects its promise."
+      "reason": "appendEntry awaits writeJournal, so a write failure rejects its promise.",
+      "surfaces": [
+        {
+          "path": "src/journal.js",
+          "location": "line 27",
+          "evidence": "src/journal.js:27 writeJournal is called without await"
+        }
+      ],
+      "basis": []
     }
   ]
 }

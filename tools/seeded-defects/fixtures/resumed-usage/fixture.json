@@ -24,7 +24,15 @@
       "consequence": "attemptTokens throws when the events hold no usage event.",
       "evidence": "src/usage.js:5 attemptTokens reads sessionTotal of a missing event",
       "required": false,
-      "reason": "lastEvent returns null for no usage event and attemptTokens then returns null."
+      "reason": "lastEvent returns null for no usage event and attemptTokens then returns null.",
+      "surfaces": [
+        {
+          "path": "src/usage.js",
+          "location": "line 5",
+          "evidence": "src/usage.js:5 attemptTokens reads sessionTotal of a missing event"
+        }
+      ],
+      "basis": []
     }
   ]
 }

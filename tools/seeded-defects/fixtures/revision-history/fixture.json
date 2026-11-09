@@ -23,7 +23,15 @@
       "consequence": "A change carrying its own revision field overwrites the revision counter.",
       "evidence": "src/store.js:10 change can overwrite revision",
       "required": false,
-      "reason": "revision is set after the change is spread, so a change cannot overwrite it."
+      "reason": "revision is set after the change is spread, so a change cannot overwrite it.",
+      "surfaces": [
+        {
+          "path": "src/store.js",
+          "location": "line 10",
+          "evidence": "src/store.js:10 change can overwrite revision"
+        }
+      ],
+      "basis": []
     }
   ]
 }

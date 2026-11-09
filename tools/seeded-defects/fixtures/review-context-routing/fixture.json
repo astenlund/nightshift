@@ -23,7 +23,15 @@
       "consequence": "accept never reaches createDelivery, so no delivery can be created.",
       "evidence": "src/intake.js:4 the delivery branch is unreachable",
       "required": false,
-      "reason": "The final return calls createDelivery for every request with tasks and no review context."
+      "reason": "The final return calls createDelivery for every request with tasks and no review context.",
+      "surfaces": [
+        {
+          "path": "src/intake.js",
+          "location": "line 4",
+          "evidence": "src/intake.js:4 the delivery branch is unreachable"
+        }
+      ],
+      "basis": []
     }
   ]
 }

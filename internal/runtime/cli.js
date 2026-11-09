@@ -14,6 +14,7 @@ const { DEFAULT_REVIEW_TIMEOUT_MS, dispatchReview, readReceipt, selectionMetadat
 const { exhaustedLimit, remainingTime, requireDispatchFits } = require('./limits');
 const { eligibleCandidates } = require('./vibe');
 const { prepareProbe, runProbe } = require('./probes');
+const { scopeOf } = require('./finding-scope');
 const { scratchStatus } = require('./scratch');
 const { awaitWorker } = require('./wait');
 const { admitEntry, executionResources, savedResources } = require('../releases/entry');
@@ -189,8 +190,11 @@ async function execute(root, request, dependencies = {}) {
         const governing = (closing ? state.tasks : coveredTasks).map(candidate => candidate.agreement?.spec).filter(file => typeof file === 'string');
         if (governing.length) artifactPaths = [...new Set([...(artifactPaths ?? []), ...governing])];
       }
-      const skepticFindings = continued?.findings.length ? continued.findings : request.review.findings;
-      const assigned = request.review.kind === 'skeptic' ? (skepticFindings ?? []).map(finding => task.findings.find(saved => saved.id === finding?.id)) : [];
+      const suppliedFindings = continued?.findings.length ? continued.findings : request.review.findings;
+      const assigned = request.review.kind === 'skeptic' ? (suppliedFindings ?? []).map(finding => task.findings.find(saved => saved.id === finding?.id)) : [];
+      // A recorded finding's surfaces are the ones a skeptic answers, whatever the request supplied.
+      const skepticFindings = request.review.kind === 'skeptic' ? (suppliedFindings ?? []).map((finding, index) => (assigned[index] ? { ...finding, surfaces: assigned[index].surfaces ?? [], basis: assigned[index].basis ?? [] } : finding)) : suppliedFindings;
+      const currencyScopes = request.review.dialogue && request.review.kind !== 'skeptic' ? request.review.dialogue.findingIds.map(id => scopeOf(task.findings.find(saved => saved.id === id))) : assigned.map(finding => (finding ? scopeOf(finding) : null));
       const lens = assigned.length > 0 && assigned.every(finding => finding && findingKind(finding, task) === 'docs') ? 'docs' : undefined;
       const continuation = continued?.continuation;
       const registered = store.update(request.actor, state.revision, 'dispatch-started', current => {
@@ -213,7 +217,7 @@ async function execute(root, request, dependencies = {}) {
         updateWorker({ phase: 'preparing' });
         const result = await dispatchReview(store.root, {
           ...request.review, id, runId: registered.id, recordKind: store.kind, taskId: task.id, lens, candidates, ineligibleCandidates, vibeVersions, vibePreflightRequired: true,
-          continuation, continuationContext: continued?.continuationContext, findings: skepticFindings,
+          continuation, continuationContext: continued?.continuationContext, findings: skepticFindings, currencyScopes,
           resources: currentResources,
           controller: state.controller,
           forbiddenSessions: [...forbiddenReviewSessions(state)],
@@ -250,7 +254,7 @@ async function execute(root, request, dependencies = {}) {
       }
     }
     if (request.action === 'probe') {
-      const receipt = readReceipt(store.root, request.receipt, state, request.taskId);
+      const receipt = readReceipt(store.root, request.receipt, state, request.taskId, { scopesFor: null });
       const probe = receipt.probes.find(candidate => candidate.id === request.probeId);
       requireCondition(probe, 'unknown-probe', 'The independent assessor did not request this probe');
       const command = prepareProbe(store.root, probe);
@@ -294,7 +298,8 @@ async function execute(root, request, dependencies = {}) {
       prepared = { ...request, review };
     }
     if (request.action === 'validate') {
-      const receipt = readReceipt(store.root, request.receipt, state, request.taskId);
+      const validated = targetById(state, request.taskId).findings.find(finding => finding.id === request.findingId);
+      const receipt = readReceipt(store.root, request.receipt, state, request.taskId, { scopesFor: () => [validated ? scopeOf(validated) : null] });
       requireCondition(receipt.kind === 'skeptic', 'skeptic-required', 'Validation needs a skeptic assignment');
       const verdict = receipt.findings.find(finding => finding.id === request.findingId);
       requireCondition(verdict, 'missing-validation', 'Skeptic report did not validate this finding');
@@ -302,9 +307,10 @@ async function execute(root, request, dependencies = {}) {
       prepared = { ...request, validation: { ...verdict, repairProposal: verdict.repairProposal?.trim() ? verdict.repairProposal : null, session: receipt.session, requestId: receipt.requestId, lineage: lineageOf(receipt), dialogue: receipt.dialogue?.message ?? null, attributionVerified: true, snapshot: receipt.snapshot, commitmentBinding: commitmentBindingFor(receipt.commitments) } };
     }
     if (request.action === 'dialogue') {
-      const receipt = readReceipt(store.root, request.receipt, state, request.taskId);
+      const discussed = targetById(state, request.taskId).findings;
+      const receipt = readReceipt(store.root, request.receipt, state, request.taskId, { scopesFor: read => (read.dialogue?.findingIds ?? []).map(id => scopeOf(discussed.find(finding => finding.id === id))) });
       requireCondition(receipt.dialogue && receipt.kind !== 'skeptic', 'dialogue-receipt-required', 'The dialogue operation imports a reviewer\'s dialogue reply; a skeptic\'s reply is imported with validate');
-      prepared = { ...request, reply: { requestId: receipt.requestId, lineage: lineageOf(receipt), session: receipt.session, message: receipt.dialogue.message, positions: receipt.positions, snapshot: receipt.snapshot, commitmentBinding: commitmentBindingFor(receipt.commitments) } };
+      prepared = { ...request, reply: { requestId: receipt.requestId, lineage: lineageOf(receipt), session: receipt.session, message: receipt.dialogue.message, positions: receipt.positions, kind: receipt.kind, snapshot: receipt.snapshot, contextSnapshot: receipt.contextSnapshot, commitmentBinding: commitmentBindingFor(receipt.commitments) } };
     }
     const result = store.update(request.actor, request.revision, request.action, (state, integration) => transition(state, prepared, integration));
     const brief = obligationBrief(result);

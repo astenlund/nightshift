@@ -17,6 +17,7 @@ const { isClosed } = require('./statuses');
 const { latestDecision, relevanceCoversTask, applicability, inputChanges, latestEntry: latestReview } = require('./applicability');
 const { validReportDelivery } = require('./report-delivery');
 const { invalidateContinuation, continuationForRequest } = require('./continuation-health');
+const { currencyRefusal, receiptCurrency, recordedSurfaces, scopeOf, validateSurfaceAnswers } = require('./finding-scope');
 
 const DIMENSIONS = Object.freeze({
   spec: ['intent-scope-acceptance', 'soundness-integration', 'failure-safety-recovery', 'clarity-consistency-proportionality'],
@@ -201,6 +202,26 @@ function latestChecks(target) {
 function verificationGate(root, task, snapshotCurrent = fresh) {
   const latest = latestChecks(task);
   return (task.kind !== 'code' || latest.length > 0) && latest.every(check => check.passed && !check.pending && snapshotCurrent(root, check.snapshot));
+}
+
+// What fails a target's verification gate, one entry per check: a code task with no recorded check is missing one.
+function checkFailures(root, target) {
+  const latest = latestChecks(target);
+  if (target.kind === 'code' && latest.length === 0) return [{ name: null, reason: 'missing' }];
+  const passing = latest.filter(check => check.passed && !check.pending);
+  const current = new Map(freshAll(root, passing.map(check => check.snapshot)).map((isFresh, index) => [passing[index], isFresh]));
+
+  return latest.map(check => ({ name: check.name, reason: check.pending ? 'pending' : !check.passed ? 'failed' : current.get(check) ? null : 'inputs-changed' })).filter(entry => entry.reason !== null);
+}
+
+function namedChecks(failures) {
+  return failures.map(failure => (failure.name === null ? 'no check recorded' : `check "${failure.name}" ${failure.reason}`)).join(', ');
+}
+
+function verificationRefusal(root, targets, message) {
+  const failing = targets.map(target => ({ target, failures: checkFailures(root, target) })).filter(entry => entry.failures.length > 0);
+
+  return `${message}. Failing: ${failing.map(({ target, failures }) => `${target.id}: ${namedChecks(failures)}`).join('; ')}`;
 }
 
 function historicalDischarge(state, snapshotValid) {
@@ -392,7 +413,7 @@ function leadEntry(task, state) {
 
 // Returns null when the gate holds, 'stale' when the latest otherwise acceptable assessment no longer matches current inputs, and 'unmet' otherwise.
 // Each gate counts only the findings and repairs of its own kind; a docs repair reaches this gate only through the files it changed.
-function reviewGateFailure(root, task, state) {
+function reviewGateFailure(root, task, state, { ignoreChecks = false } = {}) {
   const lead = leadKind(task);
   const entry = leadEntry(task, state);
   const review = entry?.review;
@@ -400,7 +421,7 @@ function reviewGateFailure(root, task, state) {
   const condition = applicability(root, review, task, entry.owner, state);
   if (!condition.current && !(condition.status === 'pending' && acceptableAssessment(review, task) && documentationRelief(root, task, state, review))) return 'stale';
   if (!DIMENSIONS[lead].every(dimension => review.dimensions.includes(dimension))) return 'unmet';
-  if (!verificationGate(root, task)) return 'unmet';
+  if (!ignoreChecks && !verificationGate(root, task)) return 'unmet';
   const findings = task.findings.filter(finding => findingKind(finding, task) === lead);
   if (!findings.every(settled) || findings.some(finding => finding.pendingClosure)) return 'unmet';
   if (state && state.tasks.flatMap(owner => owner.findings).some(finding => {
@@ -412,6 +433,40 @@ function reviewGateFailure(root, task, state) {
 
 function reviewGate(root, task, state) {
   return reviewGateFailure(root, task, state) === null;
+}
+
+// Why an assessment no longer applies, from its applicability condition. The path list is null unless changed paths are the cause.
+function staleCause(condition) {
+  if (condition.changedPaths === null || condition.status === 'structural-failure' || condition.status === 'conflicting-decisions') return { kind: 'unestablished', changedPaths: null };
+  if (condition.changedPaths.length > 0) return { kind: 'changed-inputs', changedPaths: condition.changedPaths, ...(condition.commitmentsChanged ? { commitmentsChanged: true } : {}) };
+  if (condition.commitmentsChanged) return { kind: 'changed-commitments', changedPaths: null };
+
+  return { kind: 'unmet', changedPaths: null };
+}
+
+function reviewGateCause(root, task, state) {
+  const failure = reviewGateFailure(root, task, state);
+  if (failure === null) return null;
+  if (failure === 'stale') {
+    const entry = leadEntry(task, state);
+
+    return staleCause(applicability(root, entry.review, task, entry.owner, state));
+  }
+  if (reviewGateFailure(root, task, state, { ignoreChecks: true }) === null) return { kind: 'check', checks: checkFailures(root, task) };
+
+  return { kind: 'unmet', changedPaths: null };
+}
+
+function causeText(target, cause) {
+  const reasons = {
+    'changed-inputs': () => `changed inputs: ${cause.changedPaths?.join(', ')}${cause.commitmentsChanged ? ', and changed commitments' : ''}`,
+    'changed-commitments': () => 'changed commitments',
+    unestablished: () => 'a comparison that could not be established',
+    check: () => namedChecks(cause.checks),
+    unmet: () => 'unmet assurance',
+  };
+
+  return `${target.id}: ${reasons[cause.kind]()}`;
 }
 
 // A code assessment stale only because documentation paths changed counts as current once a current docs review covers the task.
@@ -469,14 +524,14 @@ function docsGateFailure(root, task, state) {
 
 // A closing record passes when its latest review, if any, is a complete docs assessment, every finding it holds is settled,
 // no repair postdates its latest review, and its checks pass on current inputs.
-function closingRecordFailure(root, state) {
+function closingRecordFailure(root, state, { ignoreChecks = false } = {}) {
   const record = state.closing?.docs;
   if (!record) return null;
   const latest = latestReview(record.reviews.filter(review => !review.relevance).map(review => ({ review })), state)?.review;
   if (latest && (!completeAssessment(latest) || !DIMENSIONS.docs.every(dimension => latest.dimensions.includes(dimension)))) return 'unmet';
   if (!record.findings.every(settled) || record.findings.some(finding => finding.pendingClosure)) return 'unmet';
   if (record.findings.some(finding => finding.repaired && finding.repairRevision >= (latest?.revision ?? Infinity))) return 'unmet';
-  return verificationGate(root, record) ? null : 'unmet';
+  return ignoreChecks || verificationGate(root, record) ? null : 'unmet';
 }
 
 const CLOSING_COVERAGE = Object.freeze({
@@ -614,10 +669,13 @@ function reviewProgress(root, state, target, options = {}) {
         const dispatchOn = freshAssessmentTask(state, task, kind, target);
         // One assessment on a task covers every stale gate it reaches, such as a covering assessment several tasks' gates read.
         const entry = freshTargets.find(item => item.kind === kind && item.taskId === dispatchOn.id);
-        if (!entry) freshTargets.push({ kind, taskId: dispatchOn.id, covers: [task.id], staleAssessments: review.requestId ? [review.requestId] : [], reopens: dispatchOn.status === 'complete' });
+        const staleCondition = staleCause(applicability(root, review, task, owner, state));
+        const staleChange = { requestId: review.requestId ?? null, cause: staleCondition.kind, changedPaths: staleCondition.changedPaths };
+        if (!entry) freshTargets.push({ kind, taskId: dispatchOn.id, covers: [task.id], staleAssessments: review.requestId ? [review.requestId] : [], staleChanges: [staleChange], reopens: dispatchOn.status === 'complete' });
         else {
           if (!entry.covers.includes(task.id)) entry.covers.push(task.id);
           if (review.requestId && !entry.staleAssessments.includes(review.requestId)) entry.staleAssessments.push(review.requestId);
+          if (!entry.staleChanges.some(known => known.requestId === staleChange.requestId && isDeepStrictEqual(known, staleChange))) entry.staleChanges.push(staleChange);
         }
       }
     }
@@ -630,13 +688,27 @@ function reviewProgress(root, state, target, options = {}) {
 }
 
 function requireReviewGate(root, task, state, message) {
-  const failure = reviewGateFailure(root, task, state);
-  requireCondition(failure === null, 'review-required', failure === 'stale' ? STALE_REVIEW : message);
+  const cause = reviewGateCause(root, task, state);
+  if (cause === null) return;
+  const stale = ['changed-inputs', 'changed-commitments', 'unestablished'].includes(cause.kind) || reviewGateFailure(root, task, state) === 'stale';
+  requireCondition(false, 'review-required', `${stale ? STALE_REVIEW : message}. Cause: ${causeText(task, cause)}`);
+}
+
+// Why the docs review covering a task fails its gate, from the review that gate selected.
+function docsCause(root, task, state, failure, options) {
+  if (failure !== 'stale') return { kind: 'unmet', changedPaths: null };
+  const entry = latestReview(docsCandidates(task, state, options?.closingOnly ?? false), state);
+
+  return staleCause(applicability(root, entry.review, task, entry.owner, state));
+}
+
+function docsRefusal(root, task, state, failure, message, options) {
+  return `${failure === 'stale' ? STALE_DOCS_REVIEW : message}. Cause: ${causeText(task, docsCause(root, task, state, failure, options))}`;
 }
 
 function requireDocsGate(root, task, state, message) {
   const failure = docsGateFailure(root, task, state);
-  requireCondition(failure === null, 'docs-review-required', failure === 'stale' ? STALE_DOCS_REVIEW : message);
+  requireCondition(failure === null, 'docs-review-required', failure === null ? '' : docsRefusal(root, task, state, failure, message));
 }
 
 function requireStandaloneAssessment(state, task) {
@@ -645,10 +717,10 @@ function requireStandaloneAssessment(state, task) {
   const exempt = task.docsExemption && fresh(state.root, task.docsExemption.snapshot);
   if (!exempt && (task.kind === 'docs' || task.reviews.some(review => reviewKind(review, task) === 'docs'))) {
     const failure = docsReviewFailure(state.root, task, state);
-    requireCondition(failure === null, 'docs-review-required', failure === 'stale' ? STALE_DOCS_REVIEW : 'Standalone documentation assurance must be current and resolved');
+    requireCondition(failure === null, 'docs-review-required', failure === null ? '' : docsRefusal(state.root, task, state, failure, 'Standalone documentation assurance must be current and resolved'));
   }
   requireCondition(unresolvedFindings(task).length === 0, 'review-required', 'Every standalone finding needs validation, disposition and any required repair closure');
-  requireCondition(verificationGate(state.root, task), 'verification-required', 'Standalone verification must pass on current inputs');
+  if (!verificationGate(state.root, task)) requireCondition(false, 'verification-required', verificationRefusal(state.root, [task], 'Standalone verification must pass on current inputs'));
 }
 
 // A closed record has nothing actionable left, so its brief reports its identity and closure without next tasks, freshness or acceptance.
@@ -692,7 +764,7 @@ function buildObligationBrief(state, root, options) {
         : options.verifyFreshness !== false && !specReady(state, task) ? 'governing-spec-review' : task.stage,
       agreement: { source: task.agreement.source, outcome: task.agreement.outcome, decisions: task.agreement.decisions, spec: task.agreement.spec, specReviewTaskId: task.agreement.specReviewTaskId },
       ...(typeof task.agreement.spec === 'string' ? { specAcceptance: specAcceptanceStatus(root, task, options) } : {}),
-      unresolvedFindings: unresolvedFindings(task).map(finding => ({ id: finding.id, consequence: finding.consequence, verdict: finding.validation?.verdict ?? null, validationCommitmentsCurrent: finding.validation ? evidenceCommitmentsCurrent(state, task, finding.validation) : null, disposition: finding.disposition, pendingClosure: Boolean(finding.pendingClosure), evidence: finding.evidence.slice(0, 600) })),
+      unresolvedFindings: unresolvedFindings(task).map(finding => ({ id: finding.id, consequence: finding.consequence, verdict: finding.validation?.verdict ?? null, validationCommitmentsCurrent: finding.validation ? evidenceCommitmentsCurrent(state, task, finding.validation) : null, disposition: finding.disposition, pendingClosure: Boolean(finding.pendingClosure), evidence: finding.evidence.slice(0, 600), ...(Array.isArray(finding.validation?.surfaces) && finding.validation.surfaces.length > 0 ? { surfaceVerdicts: finding.validation.surfaces.map(surface => ({ path: surface.path, location: surface.location, verdict: surface.verdict })) } : {}) })),
       review: reviewProgress(root, state, task, options),
       reviewCurrent: options.verifyFreshness === false ? 'reconcile at acceptance' : reviewGate(root, task, state),
       ...(state.docsGate && sharesCumulativeAssessment(task) ? { docsReviewCurrent: options.verifyFreshness === false ? 'reconcile at acceptance' : docsGateFailure(root, task, state) === null } : {}),
@@ -854,7 +926,7 @@ function transition(state, request, integration = null) {
         text(finding.evidence, 'finding.evidence');
         const id = review.requestId ? `${review.requestId}:${finding.id}` : `${revision}:${finding.id}`;
         const relatedTo = task.findings.filter(existing => existing.localId === finding.id).map(existing => existing.id);
-        task.findings.push({ ...finding, ...(closing ? { progressBinding: structuredClone(task.progressBinding) } : {}), id, localId: finding.id, relatedTo, reviewRevision: revision, reviewKind: reviewKind(review, task), reviewer: review.session, raisedBy: { requestId: review.requestId ?? null, lineage }, validation: null, disposition: null, repaired: false });
+        task.findings.push({ ...finding, ...recordedSurfaces(finding, review, reviewKind(review, task) === 'spec'), ...(closing ? { progressBinding: structuredClone(task.progressBinding) } : {}), id, localId: finding.id, relatedTo, reviewRevision: revision, reviewKind: reviewKind(review, task), reviewer: review.session, raisedBy: { requestId: review.requestId ?? null, lineage }, validation: null, disposition: null, repaired: false });
       }
       if (!review.relevance && !historical) recordClosures(task, review, lineage, revision);
       if (closing || (review.relevance || historical || superseded) && review.findings.length === 0) break;
@@ -872,7 +944,9 @@ function transition(state, request, integration = null) {
       requireCondition(validation?.session && ![state.controller.session, finding.reviewer].includes(validation.session) && validation.attributionVerified === true, 'skeptic-required', 'A fresh attributed skeptic must validate this finding');
       requireCondition(['confirmed', 'refuted', 'unverified'].includes(validation.verdict), 'invalid-verdict', 'Unknown skeptic verdict');
       text(validation.evidence, 'validation.evidence');
-      requireCondition(fresh(state.root, validation.snapshot), 'stale-validation', 'Skeptic evidence must match current inputs');
+      const validationCurrency = receiptCurrency(state.root, { kind: 'skeptic', snapshot: validation.snapshot, contextSnapshot: validation.snapshot }, [scopeOf(finding)]);
+      requireCondition(validationCurrency.current, 'stale-validation', currencyRefusal('Skeptic evidence inputs', validationCurrency));
+      validateSurfaceAnswers(finding.surfaces ?? [], validation);
       const commitmentBinding = validation.commitmentBinding === undefined ? commitmentBindingFor(commitmentsFor(state.tasks)) : validation.commitmentBinding;
       requireCondition(evidenceCommitmentsCurrent(state, task, { ...validation, commitmentBinding }), 'stale-validation', 'Skeptic evidence must match current accepted commitments');
       requireCondition(validation.verdict !== 'confirmed' || typeof validation.repairProposal === 'string' && validation.repairProposal.trim(), 'missing-repair-proposal', 'A confirmed verdict carries the approach a repair would take');
@@ -888,7 +962,9 @@ function transition(state, request, integration = null) {
     }
     case 'dialogue': {
       const reply = request.reply;
-      requireCondition(reply && fresh(state.root, reply.snapshot), 'stale-dialogue', 'Dialogue evidence must match current inputs');
+      requireCondition(reply, 'stale-dialogue', 'Dialogue evidence must match current inputs');
+      const dialogueCurrency = receiptCurrency(state.root, reply, (reply.positions ?? []).map(position => scopeOf(task.findings.find(candidate => candidate.id === position.id))));
+      requireCondition(dialogueCurrency.current, 'stale-dialogue', currencyRefusal('Dialogue evidence inputs', dialogueCurrency));
       const commitmentBinding = reply.commitmentBinding === undefined ? commitmentBindingFor(commitmentsFor(state.tasks)) : reply.commitmentBinding;
       requireCondition(evidenceCommitmentsCurrent(state, task, { ...reply, commitmentBinding }), 'stale-dialogue', 'Dialogue evidence must match current accepted commitments');
       requireCondition(Array.isArray(reply.positions) && reply.positions.length > 0, 'invalid-dialogue-reply', 'A dialogue reply answers the findings it names');
@@ -902,7 +978,9 @@ function transition(state, request, integration = null) {
     case 'dispose': {
       const finding = task.findings.find(candidate => candidate.id === request.findingId);
       requireCondition(finding?.validation && finding.validation.verdict !== 'unverified', 'unvalidated-finding', 'Missing evidence is unresolved');
-      requireCondition(fresh(state.root, finding.validation.snapshot) && evidenceCommitmentsCurrent(state, task, finding.validation), 'stale-validation', 'Skeptic inputs or accepted commitments changed before disposition');
+      const dispositionCurrency = receiptCurrency(state.root, { kind: 'skeptic', snapshot: finding.validation.snapshot, contextSnapshot: finding.validation.snapshot }, [scopeOf(finding)]);
+      requireCondition(dispositionCurrency.current, 'stale-validation', currencyRefusal('Skeptic evidence inputs', dispositionCurrency));
+      requireCondition(evidenceCommitmentsCurrent(state, task, finding.validation), 'stale-validation', 'Skeptic inputs or accepted commitments changed before disposition');
       requireCondition(['implement', 'defer', 'skip', 'refuted'].includes(request.disposition), 'invalid-disposition', 'Unknown finding disposition');
       text(request.reason, 'disposition.reason');
       requireCondition(request.disposition !== 'refuted' || finding.validation.verdict === 'refuted', 'invalid-disposition', 'Refutation needs concrete skeptic evidence');
@@ -931,7 +1009,6 @@ function transition(state, request, integration = null) {
         Object.assign(finding, { repaired: true, repairRevision: state.revision + 1, pendingClosure: { lineage: finding.raisedBy?.lineage ?? null, requestId: finding.raisedBy?.requestId ?? null, revision: state.revision + 1, ...(task.kind === 'closing' ? { progressBinding: structuredClone(finding.progressBinding) } : {}) } });
       }
       task.lastRepair = { revision: state.revision + 1, kinds: [...new Set(request.findingIds.map(id => findingKind(task.findings.find(candidate => candidate.id === id), task)))] };
-      task.probeEvidence = [];
       // Closing repairs are tracking edits after triage; they need a further closing review, not reopened tasks or new closing evidence.
       if (task.kind === 'closing') break;
       task.stage = 'review';
@@ -957,14 +1034,14 @@ function transition(state, request, integration = null) {
       const current = stages.indexOf(task.stage);
       requireCondition(current >= 0 && current < stages.length - 1, 'invalid-stage', 'Task cannot advance');
       if (task.stage === 'implementation' && task.kind === 'code') {
-        requireCondition(verificationGate(state.root, task), 'verification-required', 'Implementation requires current passing verification for each named check');
+        if (!verificationGate(state.root, task)) requireCondition(false, 'verification-required', verificationRefusal(state.root, [task], 'Implementation requires current passing verification for each named check'));
       }
       if (task.stage === 'review') {
         if (requiresReview(task)) requireReviewGate(state.root, task, state, 'A complete strong broad assessment and resolved findings are required');
         // A docs review loop leaves the review stage only once its own latest docs review is current and resolved.
         if (task.reviews.some(review => reviewKind(review, task) === 'docs')) {
           const failure = docsReviewFailure(state.root, task, state);
-          requireCondition(failure === null, 'docs-review-required', failure === 'stale' ? STALE_DOCS_REVIEW : 'A complete strong docs review and resolved docs findings are required');
+          requireCondition(failure === null, 'docs-review-required', failure === null ? '' : docsRefusal(state.root, task, state, failure, 'A complete strong docs review and resolved docs findings are required'));
         }
         requireCondition(unresolvedFindings(task).length === 0, 'review-required', 'Every finding needs a skeptic verdict, a disposition, any implemented repair and that repair\'s closure by the reviewer that raised it before leaving review');
         // A completed task returns from review straight to completion, skipping the documentation stage that holds its docs gate.
@@ -972,7 +1049,7 @@ function transition(state, request, integration = null) {
       }
       if (['documentation', 'retrospective'].includes(task.stage)) {
         if (requiresReview(task)) requireReviewGate(state.root, task, state, 'Reviewed work needs current cumulative assessment and applicable verification before task completion');
-        requireCondition(verificationGate(state.root, task), 'verification-required', 'Every registered check must pass on current inputs before task completion');
+        if (!verificationGate(state.root, task)) requireCondition(false, 'verification-required', verificationRefusal(state.root, [task], 'Every registered check must pass on current inputs before task completion'));
         text(request.evidence, `${task.stage}.evidence`);
         if (request.docsExemption !== undefined) {
           requireCondition(state.docsGate && sharesCumulativeAssessment(task), 'invalid-exemption', 'Only a code or docs task of a run with the docs gate can record a mechanical exemption');
@@ -1182,16 +1259,22 @@ function transition(state, request, integration = null) {
       }
       requireCondition(state.tasks.every(candidate => specReady(state, candidate)), 'spec-review-required', 'Every governing spec still requires current independent assessment');
       // Checked first, because an unresolved closing review also withholds the documentation relief the gates below depend on.
-      requireCondition(closingRecordFailure(state.root, state) === null, 'closing-review-unresolved', 'The closing docs review is unresolved: its latest review is not a complete strong docs assessment covering all five dimensions, a finding is unsettled, a repair postdates its latest review or a check fails');
+      if (closingRecordFailure(state.root, state) !== null) {
+        const record = state.closing.docs;
+        const checks = checkFailures(state.root, record);
+        const otherCauses = closingRecordFailure(state.root, state, { ignoreChecks: true }) !== null;
+        requireCondition(false, 'closing-review-unresolved', `The closing docs review is unresolved:${checks.length > 0 ? ` ${record.id}: ${namedChecks(checks)}.` : ''}${otherCauses ? ' Its latest review is not a complete strong docs assessment covering all five dimensions, a finding is unsettled or a repair postdates its latest review' : ''}`);
+      }
       const coverage = closingCoverageFailure(state.root, state);
       requireCondition(coverage === null, 'closing-review-required', CLOSING_COVERAGE[coverage]);
       // Closing findings already fail the closing record above; this also names task findings and any carried across a reset record.
       const pending = pendingClosures(state).map(finding => finding.id);
       requireCondition(pending.length === 0, 'closure-pending', `Each repaired finding needs closure by the reviewer that raised it or its replacement. Pending: ${pending.join(', ')}`);
-      requireCondition(state.tasks.every(candidate => !requiresReview(candidate) || reviewGate(state.root, candidate, state)), 'stale-review', 'Final reviewed inputs changed');
-      const undocumented = state.tasks.filter(candidate => docsGateFailure(state.root, candidate, state) !== null).map(candidate => candidate.id);
-      requireCondition(undocumented.length === 0, 'docs-review-required', `Every code and docs task needs a current independent docs review or a fresh mechanical exemption; tracking edits after triage need a current closing docs review. Missing for: ${undocumented.join(', ')}`);
-      requireCondition(state.tasks.every(candidate => verificationGate(state.root, candidate)), 'verification-required', 'Every registered check must pass on current inputs before final acceptance');
+      const gateFailures = state.tasks.filter(requiresReview).map(candidate => ({ candidate, cause: reviewGateCause(state.root, candidate, state) })).filter(entry => entry.cause !== null);
+      if (gateFailures.length > 0) requireCondition(false, gateFailures.every(entry => entry.cause.kind === 'check') ? 'verification-required' : 'stale-review', `Final reviewed inputs changed or their gates are unmet. ${gateFailures.map(entry => causeText(entry.candidate, entry.cause)).join('; ')}`);
+      const undocumented = state.tasks.map(candidate => ({ candidate, failure: docsGateFailure(state.root, candidate, state) })).filter(entry => entry.failure !== null);
+      requireCondition(undocumented.length === 0, 'docs-review-required', `Every code and docs task needs a current independent docs review or a fresh mechanical exemption; tracking edits after triage need a current closing docs review. Missing for: ${undocumented.map(entry => causeText(entry.candidate, docsCause(state.root, entry.candidate, state, entry.failure))).join('; ')}`);
+      if (!state.tasks.every(candidate => verificationGate(state.root, candidate))) requireCondition(false, 'verification-required', verificationRefusal(state.root, state.tasks, 'Every registered check must pass on current inputs before final acceptance'));
       const scratch = scratchFailure(state.root, state.baseSha ?? null);
       requireCondition(scratch === null, 'committed-scratch', scratch);
       requireCondition(state.closing?.retrospectiveEvidence && state.closing?.triageEvidence, 'closing-required', 'Complete session retrospective and follow-up triage before final acceptance');
@@ -1206,4 +1289,4 @@ function transition(state, request, integration = null) {
   require('./discharge').admittedAction(state, request, dischargeBefore);
 }
 
-module.exports = { DIMENSIONS, assertAction, closingStage, commitmentBindingFor, commitmentsFor, completeAssessment, findingKind, historicalDischarge, isDocumentationPath, latestChecks, obligationBrief, reportNotice, reportStatus, reviewGate, reviewProgress, sameClosingRecord, settled, sharesCumulativeAssessment, targetById, taskById, transition, unresolvedFindings };
+module.exports = { causeText, reviewGateCause, staleCause, DIMENSIONS, assertAction, closingStage, commitmentBindingFor, commitmentsFor, completeAssessment, findingKind, historicalDischarge, isDocumentationPath, latestChecks, obligationBrief, reportNotice, reportStatus, reviewGate, reviewProgress, sameClosingRecord, settled, sharesCumulativeAssessment, targetById, taskById, transition, unresolvedFindings };

@@ -37,7 +37,15 @@
       "consequence": "A dependency on an entry listed later in entries is reported as unknown.",
       "evidence": "src/deps.js:16 the unknown check runs before later entries are seen",
       "required": true,
-      "reason": "titles is built from every entry before the loop starts, so a later entry's title is already known."
+      "reason": "titles is built from every entry before the loop starts, so a later entry's title is already known.",
+      "surfaces": [
+        {
+          "path": "src/deps.js",
+          "location": "line 16",
+          "evidence": "src/deps.js:16 the unknown check runs before later entries are seen"
+        }
+      ],
+      "basis": []
     }
   ]
 }

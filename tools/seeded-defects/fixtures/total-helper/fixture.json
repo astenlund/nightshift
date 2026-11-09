@@ -23,7 +23,15 @@
       "consequence": "total returns undefined for an empty list.",
       "evidence": "src/stats.js:6 total has no initial value",
       "required": false,
-      "reason": "reduce is given an initial value of 0, so an empty list totals 0."
+      "reason": "reduce is given an initial value of 0, so an empty list totals 0.",
+      "surfaces": [
+        {
+          "path": "src/stats.js",
+          "location": "line 6",
+          "evidence": "src/stats.js:6 total has no initial value"
+        }
+      ],
+      "basis": []
     }
   ]
 }

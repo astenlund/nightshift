@@ -11,6 +11,7 @@ const { privateInputsCurrent, fileIdentity, fresh, freshAll, hash, inventorySnap
 const { boundedHostText, codexModelContradiction, runAgent } = require('./hosts');
 const { writeJson, writeText } = require('./artifacts');
 const { PROBE_TIMEOUT_CAP_MS, PROBE_TIMEOUT_FLOOR_MS, loadProbeEvidence } = require('./probes');
+const { claimSurfaces, currencyRefusal, receiptCurrency, validateLeadSurfaces, validateSurfaceAnswers } = require('./finding-scope');
 const { createPrivateCopyDirectory, isPrivateCopyDirectory } = require('./copies');
 const { continuesRecord, lineageOf } = require('./continuation');
 const { workerEnvironment } = require('../releases/entry');
@@ -166,7 +167,7 @@ function validateRequest(options) {
 const CLAIM_FIELDS = Object.freeze(['id', 'localId', 'severity', 'required', 'consequence', 'evidence', 'relatedTo']);
 
 function assignedClaim(finding) {
-  return Object.fromEntries(CLAIM_FIELDS.filter(field => finding[field] !== undefined).map(field => [field, finding[field]]));
+  return { ...Object.fromEntries(CLAIM_FIELDS.filter(field => finding[field] !== undefined).map(field => [field, finding[field]])), ...claimSurfaces(finding) };
 }
 
 function listOf(properties, required) {
@@ -180,9 +181,10 @@ function listOf(properties, required) {
 function schemaFor(kind) {
   const scalar = { type: 'string' };
   const skeptic = kind === 'skeptic';
+  const verdict = { type: 'string', enum: ['confirmed', 'refuted', 'unverified'] };
   const finding = skeptic
-    ? { type: 'object', additionalProperties: false, properties: { id: scalar, verdict: { type: 'string', enum: ['confirmed', 'refuted', 'unverified'] }, evidence: scalar, value: scalar, repairProposal: scalar }, required: ['id', 'verdict', 'evidence', 'value', 'repairProposal'] }
-    : { type: 'object', additionalProperties: false, properties: { id: scalar, severity: { type: 'string', enum: ['critical', 'important', 'minor'] }, consequence: scalar, evidence: scalar, required: { type: 'boolean' } }, required: ['id', 'severity', 'consequence', 'evidence', 'required'] };
+    ? { type: 'object', additionalProperties: false, properties: { id: scalar, verdict, evidence: scalar, value: scalar, repairProposal: scalar, surfaces: { type: 'array', items: { type: 'object', additionalProperties: false, properties: { path: scalar, location: scalar, verdict, evidence: scalar }, required: ['path', 'location', 'verdict', 'evidence'] } } }, required: ['id', 'verdict', 'evidence', 'value', 'repairProposal', 'surfaces'] }
+    : { type: 'object', additionalProperties: false, properties: { id: scalar, severity: { type: 'string', enum: ['critical', 'important', 'minor'] }, consequence: scalar, evidence: scalar, required: { type: 'boolean' }, surfaces: { type: 'array', items: { type: 'object', additionalProperties: false, properties: { path: scalar, location: scalar, evidence: scalar }, required: ['path', 'location', 'evidence'] } }, basis: { type: 'array', items: scalar } }, required: ['id', 'severity', 'consequence', 'evidence', 'required', 'surfaces', 'basis'] };
   const extra = skeptic ? {} : {
     closures: listOf({ closed: { type: 'boolean' }, evidence: scalar }, ['closed', 'evidence']),
     positions: listOf({ position: { type: 'string', enum: DIALOGUE_POSITIONS }, evidence: scalar }, ['position', 'evidence']),
@@ -195,9 +197,9 @@ function schemaFor(kind) {
       coverage: { type: 'array', items: { type: 'object', additionalProperties: false, properties: { dimension: scalar, evidence: scalar }, required: ['dimension', 'evidence'] } },
       findings: { type: 'array', items: finding }, summary: scalar, toolFailure: { type: 'string', description: TOOL_FAILURE_RULE },
       probes: { type: 'array', items: { type: 'object', additionalProperties: false, properties: {
-        id: scalar, purpose: scalar, executable: scalar, args: { type: 'array', items: scalar }, timeoutMs: { type: 'integer', minimum: PROBE_TIMEOUT_FLOOR_MS, maximum: PROBE_TIMEOUT_CAP_MS, description: PROBE_TIMEOUT_RULE },
+        id: scalar, purpose: scalar, executable: scalar, args: { type: 'array', items: scalar }, paths: { type: 'array', items: scalar }, timeoutMs: { type: 'integer', minimum: PROBE_TIMEOUT_FLOOR_MS, maximum: PROBE_TIMEOUT_CAP_MS, description: PROBE_TIMEOUT_RULE },
         files: { type: 'array', items: { type: 'object', additionalProperties: false, properties: { path: scalar, content: scalar }, required: ['path', 'content'] } },
-      }, required: ['id', 'purpose', 'executable', 'args', 'timeoutMs', 'files'] } },
+      }, required: ['id', 'purpose', 'executable', 'args', 'paths', 'timeoutMs', 'files'] } },
       ...extra,
     },
     required: ['requestId', 'status', 'coverage', 'findings', 'summary', 'toolFailure', 'probes', ...Object.keys(extra)],
@@ -246,9 +248,12 @@ function validateReport(report, request) {
       text(finding.value, 'finding.value');
       // Every confirmed verdict carries the approach a repair would take, whatever the skeptic recommends about implementing it.
       if (finding.verdict === 'confirmed') text(finding.repairProposal, 'finding.repairProposal');
+      const assigned = request.findings.find(item => item.id === finding.id);
+      if (assigned) validateSurfaceAnswers(assigned.surfaces ?? [], finding);
     } else {
       text(finding.consequence, 'finding.consequence');
       requireCondition(['critical', 'important', 'minor'].includes(finding.severity) && typeof finding.required === 'boolean', 'invalid-finding', 'Finding needs severity and obligation assessment');
+      validateLeadSurfaces(finding);
     }
   }
   if (request.kind === 'skeptic') requireCondition(request.findings.length === ids.size && request.findings.every(finding => ids.has(finding.id)), 'missing-validation', 'Skeptic must evaluate every assigned finding exactly once');
@@ -310,7 +315,7 @@ function listing(title, items) {
 // its last report, and for a replacement the whole record of the reviewer it stands in for.
 function continuationBrief(request) {
   const context = request.continuationContext ?? {};
-  const closure = 'For each finding listed as pending closure, return exactly one closures entry {id, closed, evidence}, with id the full id of the finding verbatim: closed true when the repair resolves it or it no longer applies, with the deciding evidence; closed false when it does not, and then report the remaining problem again as a finding whose id is that finding\'s localId. Besides closures, assess the complete supplied artifact and cumulative change across every dimension, as any lead does.\n';
+  const closure = 'For each finding listed as pending closure, return exactly one closures entry {id, closed, evidence}, with id the full id of the finding verbatim: closed true when the repair resolves it or it no longer applies, with the deciding evidence; closed false when it does not, and then report the remaining problem again as a finding whose id is that finding\'s localId. Where a finding lists confirmedSurfaces, close it only when each of them is repaired; a surface listed under refutedSurfaces owes no repair. Besides closures, assess the complete supplied artifact and cumulative change across every dimension, as any lead does.\n';
   return listing('Findings pending closure: repaired since they were raised, and not yet verified by their reviewer.', context.pendingClosures ?? [])
     + listing('Dispositions recorded since your last imported report.', context.dispositionsSince ?? [])
     + listing('The record of the reviewer you stand in for: its findings with their verdicts, dispositions and repair state.', context.replacedFindings ?? [])
@@ -320,7 +325,7 @@ function continuationBrief(request) {
 function dialogueBrief(request) {
   const findings = request.continuationContext?.dialogueFindings ?? [];
   const reply = request.kind === 'skeptic'
-    ? 'Return a verdict for each assigned finding as before, with its evidence, value and repairProposal; you may keep or change your earlier verdict.'
+    ? 'Return a verdict for each assigned finding as before, with its evidence, value, repairProposal and surfaces; you may keep or change your earlier verdict.'
     : 'For each named finding return one positions entry, with id the full id of the finding verbatim: maintain it, revise it (say how in evidence) or withdraw it, with the deciding evidence. Return empty findings, coverage and closures arrays.';
   return `This is a dialogue turn, not a new assessment. The controller relays the exchange between the reviewer that raised these findings and the skeptic that validated them, and decides every disposition itself. Message from the controller:\n${request.dialogue.message}\n\n` + listing('The findings in question, with their current verdicts and the dialogue so far.', findings) + reply + '\n';
 }
@@ -441,35 +446,31 @@ function vibeRules(workspace) {
 // resumed reviewer's copy was refreshed at the path it already knows; host is the attempt's host, whose own tools may need a rule of
 // their own; probeFiles names each returned probe result in the copy, since a reviewer that can only read named files cannot list a
 // folder.
-function buildPrompt(request, { workspace, host, probeFiles = [], sameCopy = false, rules = null } = {}) {
+function buildPrompt(request, { workspace, host, probeFiles = request.probeFiles ?? [], sameCopy = false, rules = null } = {}) {
   const relevance = Boolean(request.relevance);
   const skeptic = request.kind === 'skeptic';
   const dialogue = Boolean(request.dialogue);
   const scope = relevance ? 'Compare the complete original assessment scope and deciding context with the supplied current inputs and commitments.' : skeptic ? 'Use the complete supplied artifact and cumulative change as context for validating the assigned claims and their affected siblings.' : 'Assess the complete supplied artifact and cumulative change, surrounding code and sibling paths.';
   const purpose = relevance ? 'an independent applicability decision' : skeptic ? 'deciding each assigned claim' : dialogue ? 'answering the dialogue' : 'a credible broad assessment';
   const common = `${opening(request, skeptic ? 'skeptic' : 'strong lead reviewer', workspace, sameCopy)} ${scope} Reviewed files are immutable. Do not edit them, commit, or publish. Mutating probes require a separate isolated fixture; if tools cannot support a deciding check, report the missing evidence. Do not delegate unless the assignment explicitly includes peer dispatch. Report only concrete consequences with evidence; do not manufacture findings or prescribe unnecessary implementation detail.\n\nRequest: ${request.id}\nRequirements:\n${request.requirements}\n\nAll applicable review dimensions:\n${request.dimensions.join('\n')}\n\nRead context/diff.patch, context/manifest.json and the files in project/ as needed for ${purpose}. The full source snapshot is available. Prior fixes are included in the cumulative change and need surrounding/sibling coverage.\n`;
-  const lead = `Evaluate all dimensions without quotas or equal-depth narration. The author has not selected relevant dimensions. If the assignment is too large for credible coverage, return incomplete and describe the needed peer coverage. One underlying problem is one finding. ${SEVERITY_RUBRIC}\n`;
+  const specBasis = request.kind === 'spec' ? ' In this spec assessment, basis names only declared deciding inputs; a file read only as orientation need not be named.' : '';
+  const surfacing = `Give every finding its surfaces and basis. surfaces lists each place the alleged problem exists: path is the project-relative file path as it appears under project/, location the function, section or line within it or an empty string for the whole file, and evidence what that surface shows; when one problem appears in several places, keep it one finding and list each place. basis lists the project-relative paths of every other file the claim depends on without alleging a problem in it. Keep the finding's evidence complete on its own.${specBasis}`;
+  const lead = `Evaluate all dimensions without quotas or equal-depth narration. The author has not selected relevant dimensions. If the assignment is too large for credible coverage, return incomplete and describe the needed peer coverage. One underlying problem is one finding. ${surfacing} ${SEVERITY_RUBRIC}\n`;
   const documentation = 'This is a documentation review. The code in the cumulative change is context: judge what the documentation, including the backlog, says about it, not whether the code is correct. Report as a finding any changed file you judge to be operating instructions that agents load or are directed to follow during a run, such as skills, instruction files or runtime reference guidance, so the controller routes it to code assessment.\n';
   const proposal = 'For every confirmed verdict give repairProposal: the approach a repair would take, the smallest change that fixes the property the finding\'s obligation keys on rather than only the reported case, preferring removal or generalization over added mechanism, with enough reasoning to judge it and without a complete patch, whatever you recommend about implementing it. For a refuted or unverified verdict give an empty repairProposal unless a repair is still worth describing.\n';
-  const skepticRole = `The assigned finding set is closed: return exactly one verdict for each supplied full id and retain that id verbatim. Validate each claim against concrete evidence, attempting refutation. Separate factual validity and practical value. Missing evidence is unverified. Evaluate whether it is worthwhile to implement, defer or skip, preserving agreed obligations. Unassigned observations belong in summary for separate controller routing and independent assessment before disposition; they are not assigned verdicts. ${proposal}Findings:\n${JSON.stringify(request.findings, null, 2)}\n`;
+  const skepticRole = `The assigned finding set is closed: return exactly one verdict for each supplied full id and retain that id verbatim. Validate each claim against concrete evidence, attempting refutation. Separate factual validity and practical value. Missing evidence is unverified. Evaluate whether it is worthwhile to implement, defer or skip, preserving agreed obligations. For each surface assigned to a finding, return one surfaces entry repeating its path and location verbatim, with a verdict and its evidence; a surface verdict judges whether the alleged problem exists at that surface, not whether the observations in its evidence are true, and files under basis receive no verdict. The finding's verdict follows its surfaces: unverified when any surface is unverified, confirmed when at least one is confirmed and none is unverified, and refuted when every surface is refuted. A claim assigned no surfaces returns an empty list. Unassigned observations belong in summary for separate controller routing and independent assessment before disposition; they are not assigned verdicts. ${proposal}Findings:\n${JSON.stringify(request.findings, null, 2)}\n`;
   const leadRole = (request.kind === 'docs' ? documentation : '') + lead + (request.continues ? continuationBrief(request) : '');
-  const relevanceFindings = `${request.kind === 'docs' ? documentation : ''}New findings follow the ordinary finding discipline. One underlying problem is one finding. ${SEVERITY_RUBRIC}`;
+  const relevanceFindings = `${request.kind === 'docs' ? documentation : ''}New findings follow the ordinary finding discipline. One underlying problem is one finding. ${surfacing} ${SEVERITY_RUBRIC}`;
   const role = relevance ? relevancePrompt(request, { workspace }) + ' ' + relevanceFindings : (skeptic ? skepticRole : '') + (dialogue ? dialogueBrief(request) : skeptic ? '' : leadRole);
   const specScope = request.kind === 'spec' ? `Declared deciding inputs: ${JSON.stringify(request.snapshot?.files?.map(file => file.path) ?? [])}. Other project files are orientation and probe context. If a deciding conclusion needs an additional input outside this set, return incomplete and name the required paths in summary so the controller can supplement artifactPaths; do not silently rely on undeclared deciding inputs.` : '';
   const definitions = request.dimensions.map(dimension => `${dimension}: ${DIMENSION_BRIEFS[dimension]}`).join('\n');
-  const execution = `If a deciding claim needs execution unavailable in your read-only tools, request a bounded probe in probes, with its purpose, exact executable/args, timeout and ASCII fixture files. ${PROBE_TIMEOUT_RULE} The controller executes it in a separate private copy and returns raw command/output evidence for your independent assessment. That copy's root, the probe's working directory, holds the project files at their project-relative paths, not under project/, with no context/ folder, and is a new Git repository; each fixture file is written at its path relative to that root, replacing a project file of the same path, so name every path in args and files relative to it. Remain incomplete/unverified until that evidence is sufficient. A probe never authorizes canonical project repairs. ${probeFiles.length ? `Returned probe evidence for this assessment: ${probeFiles.join(', ')}; read each before deciding the claims it bears on.` : 'No probe evidence has been returned for this assessment yet.'}\n`;
+  const execution = `If a deciding claim needs execution unavailable in your read-only tools, request a bounded probe in probes, with its purpose, exact executable/args, the paths of every project file whose content its result depends on, timeout and ASCII fixture files. An empty paths list declares a probe about the host or tools alone, whose result stays available after any edit, so declare a file whenever the result depends on its content. ${PROBE_TIMEOUT_RULE} The controller executes it in a separate private copy and returns raw command/output evidence for your independent assessment. That copy's root, the probe's working directory, holds the project files at their project-relative paths, not under project/, with no context/ folder, and is a new Git repository; each fixture file is written at its path relative to that root, replacing a project file of the same path, so name every path in args and files relative to it. Remain incomplete/unverified until that evidence is sufficient. A probe never authorizes canonical project repairs. ${probeFiles.length ? `Returned probe evidence for this assessment: ${probeFiles.join(', ')}; each may come from an earlier assessment, and gives its purpose, command and declared paths, so judge whether it still bears on the claim before relying on it.` : 'No probe evidence has been returned for this assessment yet.'}${(request.probeLeftOut ?? []).length ? ` Eligible stored results left out of this assessment, which a finding may still cite: ${JSON.stringify(request.probeLeftOut)}; a null supersededBy means the attachment limit left it out.` : ''}\n`;
   // The report schema is the same for every dispatch of a kind, so the request id and the fields this dispatch fills are named here.
   const fields = ['requestId', 'status', 'coverage', 'findings', 'probes', 'summary', 'toolFailure', ...(skeptic ? [] : ['closures', 'positions', 'applicability'])];
   const empties = skeptic ? '' : ' Leave closures empty unless findings are listed as pending closure, positions empty unless this is a dialogue turn, and applicability empty unless this is a relevance turn.';
   // A resumed Vibe session runs under its predecessor's system prompt, so the dispatch's own rules reach it through the turn prompt.
   const carried = sameCopy && rules ? `Applicable rules for this turn, which govern this assessment as the system prompt of a fresh dispatch would:\n${rules}\n` : '';
   return common + (specScope ? specScope + '\n\n' : '') + definitions + '\n\n' + role + acknowledgementBrief(request) + carried + checkBrief(request) + execution + (host === 'vibe' ? vibeRules(workspace) : '') + TOOL_FAILURE_RULE + '\n' + `\nReturn the requested structured report for request ${request.id} with requestId set to that id verbatim, ${fields.slice(1, -1).join(', ')} and ${fields.at(-1)}. Use an empty probes array when no execution evidence is missing.${empties}\n`;
-}
-
-// Validation and finding dialogue retain their existing current-input boundary. Ordinary lead evidence survives canonical drift;
-// its applicability is judged independently against its original scope, commitments and supplied context.
-function inputsUnchanged(root, kind, snapshot, contextSnapshot) {
-  return fresh(root, snapshot) && (kind === 'spec' || isDeepStrictEqual(snapshot, contextSnapshot) || fresh(root, contextSnapshot));
 }
 
 // Selection observations are independent of an attempt outcome and do not count as model attempts.
@@ -519,6 +520,7 @@ function prepareWorkspace(canonical, continuation) {
 async function dispatchReview(root, options, dependencies = {}) {
   const canonical = fs.realpathSync.native(root);
   validateRequest(options);
+  (options.findings ?? []).forEach(claimSurfaces);
   validateBase(canonical, options.baseSha);
   const candidates = options.candidates;
   const ineligible = options.ineligibleCandidates ?? [];
@@ -574,17 +576,17 @@ async function dispatchReview(root, options, dependencies = {}) {
     const keepOriginal = options.kind !== 'skeptic' && !continuation && !options.dialogue && !options.relevance;
     const retention = keepOriginal ? require('./review-inputs').retain(canonical, project, contextSnapshot) : { retainedInputs: false, retainedInputsReason: 'Only fresh lead originals are cached' };
     if (options.relevance) require('./relevance').prepareOriginal(canonical, options.relevance, workspace);
-    const probeEvidence = loadProbeEvidence(canonical, options.probeEvidence, captured, contextSnapshot);
-    const probeFiles = probeEvidence.map((_evidence, index) => `context/probes/${index + 1}.json`);
-    if (probeEvidence.length > 0) {
+    const probeHandoff = loadProbeEvidence(canonical, options.probeEvidence, captured, contextSnapshot);
+    const probeFiles = probeHandoff.attached.map(entry => entry.name);
+    if (probeFiles.length > 0) {
       fs.mkdirSync(path.join(context, 'probes'));
-      probeEvidence.forEach((evidence, index) => writeJson(path.join(workspace, probeFiles[index]), evidence));
+      probeHandoff.attached.forEach(entry => writeJson(path.join(workspace, entry.name), entry.result));
     }
     // A repository boundary prevents host discovery from walking into the controller's checkout.
     git(workspace, ['init', '--quiet']);
     const request = {
       ...selection,
-      id, workspace: path.relative(canonical, workspace).split(path.sep).join('/'), runId: options.runId, recordKind: options.recordKind ?? 'delivery', taskId: options.taskId, coveredTaskIds: options.coveredTaskIds ?? [options.taskId], commitments: options.commitments ?? {}, resources: options.resources ?? null, controller: options.controller ?? null, kind: options.kind ?? 'code', requirements: text(options.requirements, 'review requirements'), dimensions: DIMENSIONS[lensFor(options)], findings: (options.findings ?? []).map(assignedClaim), checks, snapshot: captured, contextSnapshot, baseSha: options.baseSha,
+      id, workspace: path.relative(canonical, workspace).split(path.sep).join('/'), runId: options.runId, recordKind: options.recordKind ?? 'delivery', taskId: options.taskId, coveredTaskIds: options.coveredTaskIds ?? [options.taskId], commitments: options.commitments ?? {}, resources: options.resources ?? null, controller: options.controller ?? null, kind: options.kind ?? 'code', requirements: text(options.requirements, 'review requirements'), dimensions: DIMENSIONS[lensFor(options)], findings: (options.findings ?? []).map(assignedClaim), probeFiles, probeLeftOut: probeHandoff.leftOut, checks, snapshot: captured, contextSnapshot, baseSha: options.baseSha,
       // A continued dispatch belongs to the lineage of the reviewer it continues; a fresh one starts its own.
       continues: continuesRecord(continuation),
       lineage: continuation?.lineage ?? id,
@@ -648,7 +650,10 @@ async function dispatchReview(root, options, dependencies = {}) {
         sessionHealthy = true;
         requireCondition(privateInputsCurrent(project, contextSnapshot), 'review-input-drift', 'The private project copy changed during assessment');
         if (request.relevance?.originalInputsAvailable) requireCondition(privateInputsCurrent(path.join(workspace, 'original'), request.relevance.original.contextSnapshot), 'review-input-drift', 'The original private inputs changed during relevance assessment');
-        if (request.kind === 'skeptic' || request.dialogue) requireCondition(inputsUnchanged(canonical, request.kind, captured, contextSnapshot), 'review-input-drift', 'Validation or dialogue inputs changed during assessment');
+        if (request.kind === 'skeptic' || request.dialogue) {
+          const currency = receiptCurrency(canonical, { kind: request.kind, snapshot: captured, contextSnapshot }, options.currencyScopes ?? []);
+          requireCondition(currency.current, 'review-input-drift', currencyRefusal('Validation or dialogue inputs', currency));
+        }
         attempt.status = 'complete';
         const receipt = {
           requestId: id, runId: request.runId, recordKind: request.recordKind, taskId: request.taskId,
@@ -658,7 +663,7 @@ async function dispatchReview(root, options, dependencies = {}) {
           broad: report.status === 'complete', status: report.status,
           dimensions: report.coverage.map(item => item.dimension),
           coverageEvidence: coverageText(report),
-          findings: report.findings, probes: report.probes ?? [], summary: report.summary,
+          findings: report.findings, probes: report.probes ?? [], withheldProbes: probeHandoff.withheld, summary: report.summary,
           snapshot: captured, contextSnapshot, attempts, substitution: index > 0 || ineligible.length > 0 ? options.substitutionReason ?? null : null,
           ...selection,
           ...(result.host === 'vibe' ? { ...vibeAttemptFields(result.vibe), attributionEvidence: result.vibe.attributionFiles.map(file => ({ path: path.relative(canonical, file).split(path.sep).join('/'), sha256: hash(fs.readFileSync(file)) })) } : {}),
@@ -732,7 +737,9 @@ function vibeReceiptOutput(root, receipt, events) {
   return vibe.reportFromEntries(events);
 }
 
-function readReceipt(root, relative, state, taskId) {
+// scopesFor gives the scopes of the findings this read concerns; null skips the input comparison, as a probe's own currency follows
+// its declared files. The receipt's provenance and commitment checks apply either way.
+function readReceipt(root, relative, state, taskId, { scopesFor = () => [] } = {}) {
   requireCondition(relative.startsWith('.nightshift/runs/reviews/'), 'invalid-receipt', 'Review receipt must belong to this project run');
   const receipt = JSON.parse(fs.readFileSync(projectFile(root, relative), 'utf8'));
   const assignmentFile = path.posix.join(path.posix.dirname(relative), 'request.json');
@@ -762,7 +769,10 @@ function readReceipt(root, relative, state, taskId) {
   requireCondition(hash(fs.readFileSync(projectFile(root, receipt.eventFile))) === receipt.eventHash, 'changed-result', 'Native host result changed after collection');
   requireCondition(isAdmittedModel(receipt.host, receipt.model, roleFor(receipt.kind)), 'invalid-receipt', `The receipt's model is not a strong reviewer admitted for the ${roleFor(receipt.kind)} role`);
   requireCondition(receipt.attributionVerified === true, 'invalid-receipt', 'Review attribution is invalid');
-  if (receipt.kind === 'skeptic' || receipt.dialogue) requireCondition(inputsUnchanged(root, receipt.kind, receipt.snapshot, receipt.contextSnapshot), 'invalid-receipt', 'Validation or dialogue inputs are no longer current');
+  if ((receipt.kind === 'skeptic' || receipt.dialogue) && scopesFor !== null) {
+    const currency = receiptCurrency(root, receipt, scopesFor(receipt));
+    requireCondition(currency.current, 'invalid-receipt', currencyRefusal('Validation or dialogue inputs', currency));
+  }
   requireCondition(isDeepStrictEqual(relevanceBinding(assignment.relevance), receipt.relevance ?? null) && isDeepStrictEqual(assignment.retainedInputs ?? false, receipt.retainedInputs ?? false) && (assignment.retainedInputsReason ?? null) === (receipt.retainedInputsReason ?? null), 'changed-assignment', 'Receipt relevance or retained-input binding changed');
   if (receipt.retainedInputs === true) requireCondition(privateInputsCurrent(projectFile(root, path.posix.join(path.posix.dirname(relative), 'inputs')), receipt.contextSnapshot), 'changed-assignment', 'Retained original inputs no longer match their assignment');
   requireCondition(receipt.host === 'vibe' || receipt.attributionEvidence === undefined, 'unattributed-review', 'Only a Vibe receipt carries attributionEvidence');

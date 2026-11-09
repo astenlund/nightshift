@@ -37,7 +37,15 @@
       "consequence": "fresh reports a deleted file as fresh.",
       "evidence": "src/fresh.js:15 fresh does not check that the file exists",
       "required": false,
-      "reason": "Digesting a deleted file throws, and fresh catches that and returns false."
+      "reason": "Digesting a deleted file throws, and fresh catches that and returns false.",
+      "surfaces": [
+        {
+          "path": "src/fresh.js",
+          "location": "line 15",
+          "evidence": "src/fresh.js:15 fresh does not check that the file exists"
+        }
+      ],
+      "basis": []
     }
   ]
 }

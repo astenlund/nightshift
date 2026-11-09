@@ -23,7 +23,15 @@
       "consequence": "adopt silently creates a run for an unknown id, so a typo creates an orphan run.",
       "evidence": "src/runs.js:10 adopt creates a new run when the id is unknown",
       "required": false,
-      "reason": "adopt reads the existing run and throws on an unknown id; it never creates one."
+      "reason": "adopt reads the existing run and throws on an unknown id; it never creates one.",
+      "surfaces": [
+        {
+          "path": "src/runs.js",
+          "location": "line 10",
+          "evidence": "src/runs.js:10 adopt creates a new run when the id is unknown"
+        }
+      ],
+      "basis": []
     }
   ]
 }

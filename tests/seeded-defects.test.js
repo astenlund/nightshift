@@ -33,11 +33,11 @@ const BASE_CALC = 'function addTotal(a, b) {\n  return a + b;\n}\n\nmodule.expor
 const CHANGED_CALC = 'function addTotal(a, b) {\n  // Totals now include a fee.\n  return a - b + 1;\n}\n\nmodule.exports = { addTotal };\n';
 
 function defect(overrides = {}) {
-  return { id: 'D1', dimension: 'correctness-integration', file: 'src/calc.js', lines: [3, 3], symbol: 'addTotal', severity: 'important', consequence: 'Totals subtract instead of adding.', origin: 'synthetic', ...overrides };
+  return { id: 'D1', dimension: 'correctness-integration', file: 'src/calc.js', lines: [3, 3], symbol: 'addTotal', severity: 'important', consequence: 'Totals subtract instead of adding.', origin: 'synthetic', ...overrides, surfaces: [], basis: [] };
 }
 
 function decoy(overrides = {}) {
-  return { severity: 'minor', consequence: 'The export list is incomplete.', evidence: 'src/calc.js:6 exports only one function', required: false, reason: 'The module defines only one function.', ...overrides };
+  return { severity: 'minor', consequence: 'The export list is incomplete.', evidence: 'src/calc.js:6 exports only one function', required: false, reason: 'The module defines only one function.', surfaces: [{ path: 'src/calc.js', location: 'line 6', evidence: 'exports only one function' }], basis: [], ...overrides };
 }
 
 function writeFixture(fixturesRoot, name, { base = { 'src/calc.js': BASE_CALC }, change = { 'src/calc.js': CHANGED_CALC }, fixture = {} } = {}) {
@@ -80,7 +80,7 @@ function mockAgent(scenario, calls) {
     let report;
     if (request.kind === 'skeptic') {
       const status = scenario.skepticStatus?.(request) ?? 'complete';
-      report = { requestId: request.id, status, coverage: [], findings: request.findings.map(claim => ({ id: claim.id, verdict: scenario.verdict(claim), evidence: 'Checked the cited line', value: 'Worth fixing', repairProposal: 'Restore the addition' })), probes: status === 'incomplete' ? [{ id: 'p1', purpose: 'run the test', executable: 'node', args: ['-v'], timeoutMs: 1000, files: [] }] : [], summary: 'Claims checked', toolFailure: '' };
+      report = { requestId: request.id, status, coverage: [], findings: request.findings.map(claim => ({ id: claim.id, verdict: scenario.verdict(claim), evidence: 'Checked the cited line', value: 'Worth fixing', repairProposal: 'Restore the addition', surfaces: (claim.surfaces ?? []).map(item => ({ path: item.path, location: item.location, verdict: scenario.verdict(claim), evidence: 'Checked it' })) })), probes: status === 'incomplete' ? [{ id: 'p1', purpose: 'run the test', executable: 'node', args: ['-v'], timeoutMs: 1000, files: [] }] : [], summary: 'Claims checked', toolFailure: '' };
     } else {
       const findings = scenario.lead(request);
       const status = scenario.leadStatus?.(request, evidence) ?? 'complete';
@@ -94,7 +94,7 @@ function mockAgent(scenario, calls) {
   };
 }
 
-const LEAD_FINDS_DEFECT = { lead: () => [{ id: 'L1', severity: 'important', consequence: 'Totals are wrong.', evidence: 'src/calc.js:3 addTotal subtracts b', required: true }], verdict: claim => claim.evidence.includes('addTotal') ? 'confirmed' : 'refuted' };
+const LEAD_FINDS_DEFECT = { lead: () => [{ id: 'L1', severity: 'important', consequence: 'Totals are wrong.', evidence: 'src/calc.js:3 addTotal subtracts b', required: true, surfaces: [], basis: [] }], verdict: claim => claim.evidence.includes('addTotal') ? 'confirmed' : 'refuted' };
 
 function dependencies(scenario, calls) {
   return { dispatchReview, materialize: suite.materialize, hostVersion: () => 'test-host 1.0', machineryHash: () => 'machinery', commit: () => 'commit', dispatchDependencies: { runAgent: mockAgent(scenario, calls) } };
@@ -379,7 +379,7 @@ test('a lead requesting probes awaits a decision, and approved probes run contai
   assert.notEqual(calls[1].request.id, calls[0].request.id);
   assert.deepEqual(calls[1].evidence.map(item => [item.probeId, item.exitCode, item.canonicalUnchanged]), [['p1', 0, true]]);
   assert.match(calls[1].evidence[0].output, /^v\d+\./);
-  assert.match(calls[1].options.prompt, /Returned probe evidence for this assessment: context\/probes\/1\.json/);
+  assert.match(calls[1].options.prompt, /Returned probe evidence for this assessment: context\/probes\/[0-9a-f-]+\.json/);
   assert.deepEqual(calls[2].request.findings.map(claim => claim.evidence).sort(), [decoy().evidence, 'src/calc.js:3 addTotal subtracts b'].sort());
   assert.deepEqual([result.exitCode, probed.probes, read(paths.decision).decision], [0, [{ id: 'p1', result: '1.result.json' }], 'approved']);
   assert.match(result.copy, /^\.nightshift\/runs\/c\/[0-9a-f]{8}$/);
@@ -496,7 +496,7 @@ test('an evaluated probed lead receives the Vibe prompt naming its probe evidenc
   // Assert
   assert.equal(result.stopped, null);
   assert.deepEqual(calls.map(call => [call.kind, call.options.host]), [['code', 'vibe'], ['code', 'vibe'], ['skeptic', 'vibe']]);
-  assert.equal(probed.options.prompt, buildPrompt(probed.request, { workspace: probed.options.cwd, host: 'vibe', probeFiles: ['context/probes/1.json'] }));
+  assert.equal(probed.options.prompt, buildPrompt(probed.request, { workspace: probed.options.cwd, host: 'vibe' }));
   assert.match(probed.options.prompt, /Your run_typescript sandbox/);
 });
 
@@ -647,9 +647,9 @@ test('grading handles clean fixtures, out-of-scope flags, unverified verdicts, a
   const calls = [];
   const scenario = {
     lead: () => [
-      { id: 'L1', severity: 'minor', consequence: 'Vague name.', evidence: 'src/calc.js:1 addTotal is vague', required: false },
-      { id: 'L2', severity: 'important', consequence: 'Missing input checks.', evidence: 'src/calc.js:9 no validation', required: true },
-      { id: 'L3', severity: 'minor', consequence: 'Comment noise.', evidence: 'src/calc.js:12 comment', required: true },
+      { id: 'L1', severity: 'minor', consequence: 'Vague name.', evidence: 'src/calc.js:1 addTotal is vague', required: false, surfaces: [], basis: [] },
+      { id: 'L2', severity: 'important', consequence: 'Missing input checks.', evidence: 'src/calc.js:9 no validation', required: true, surfaces: [], basis: [] },
+      { id: 'L3', severity: 'minor', consequence: 'Comment noise.', evidence: 'src/calc.js:12 comment', required: true, surfaces: [], basis: [] },
     ],
     verdict: claim => claim.evidence.includes('validation') ? 'confirmed' : claim.evidence.includes('comment') ? 'unverified' : claim.evidence.includes('vague') ? 'confirmed' : 'refuted',
   };
@@ -682,7 +682,7 @@ test('a run whose skeptic failed keeps its lead figures, leaves both false-posit
   writeFixture(root, 'alpha');
   const calls = [];
   const scenario = {
-    lead: () => [...LEAD_FINDS_DEFECT.lead(), { id: 'L2', severity: 'minor', consequence: 'Missing input checks.', evidence: 'src/calc.js:12 no validation', required: false }],
+    lead: () => [...LEAD_FINDS_DEFECT.lead(), { id: 'L2', severity: 'minor', consequence: 'Missing input checks.', evidence: 'src/calc.js:12 no validation', required: false, surfaces: [], basis: [] }],
     verdict: () => 'confirmed',
     throwFor: request => request.kind === 'skeptic',
   };
@@ -705,7 +705,7 @@ test('an attribution to an unmatched entry counts as its match, and one to a mat
   const root = scratch(t);
   writeFixture(root, 'alpha');
   const calls = [];
-  const scenario = { lead: () => [{ id: 'L1', severity: 'important', consequence: 'Totals are wrong for callers.', evidence: 'The checkout total in the cart is off by the fee', required: true }], verdict: () => 'refuted' };
+  const scenario = { lead: () => [{ id: 'L1', severity: 'important', consequence: 'Totals are wrong for callers.', evidence: 'The checkout total in the cart is off by the fee', required: true, surfaces: [], basis: [] }], verdict: () => 'refuted' };
   await suite.run(options(root, root), dependencies(scenario, calls));
   const runFolder = path.join(root, 'run');
   const key = 'alpha__claude-claude-opus-5-5__r1';
@@ -900,7 +900,7 @@ test('a fixture run never dispatched counts in no cost average, and every unmatc
   const root = scratch(t);
   writeFixture(root, 'alpha');
   const calls = [];
-  const scenario = { lead: () => [...LEAD_FINDS_DEFECT.lead(), { id: 'L2', severity: 'minor', consequence: 'Comment noise.', evidence: 'src/calc.js:12 comment', required: false }], verdict: claim => claim.evidence.includes('addTotal') ? 'confirmed' : 'refuted' };
+  const scenario = { lead: () => [...LEAD_FINDS_DEFECT.lead(), { id: 'L2', severity: 'minor', consequence: 'Comment noise.', evidence: 'src/calc.js:12 comment', required: false, surfaces: [], basis: [] }], verdict: claim => claim.evidence.includes('addTotal') ? 'confirmed' : 'refuted' };
   await suite.run(options(root, root), dependencies(scenario, calls));
   const runFolder = path.join(root, 'run');
   const manifestFile = path.join(runFolder, 'manifest.json');
@@ -922,7 +922,7 @@ test('an adjudication with an unknown outcome or no reason is refused', async t 
   const root = scratch(t);
   writeFixture(root, 'alpha');
   const calls = [];
-  const scenario = { lead: () => [...LEAD_FINDS_DEFECT.lead(), { id: 'L2', severity: 'minor', consequence: 'Comment noise.', evidence: 'src/calc.js:12 comment', required: false }], verdict: () => 'confirmed' };
+  const scenario = { lead: () => [...LEAD_FINDS_DEFECT.lead(), { id: 'L2', severity: 'minor', consequence: 'Comment noise.', evidence: 'src/calc.js:12 comment', required: false, surfaces: [], basis: [] }], verdict: () => 'confirmed' };
   await suite.run(options(root, root), dependencies(scenario, calls));
   const runFolder = path.join(root, 'run');
   const key = 'alpha__claude-claude-opus-5-5__r1';
@@ -1349,8 +1349,8 @@ test('out-of-scope findings with required true, incidental truth and an attribut
   const scenario = {
     // Alpha's lead runs first and beta's second, since fixtures run in name order.
     lead: () => calls.filter(call => call.kind === 'code').length === 2
-      ? [...LEAD_FINDS_DEFECT.lead(), { id: 'L2', severity: 'important', consequence: 'Callers see wrong totals.', evidence: 'The cart total is off', required: true }]
-      : [{ id: 'L1', severity: 'minor', consequence: 'Vague name.', evidence: 'src/calc.js:1 addTotal is vague', required: true }, { id: 'L3', severity: 'minor', consequence: 'Stale exports.', evidence: 'src/notes.js:2 exports', required: false }],
+      ? [...LEAD_FINDS_DEFECT.lead(), { id: 'L2', severity: 'important', consequence: 'Callers see wrong totals.', evidence: 'The cart total is off', required: true, surfaces: [], basis: [] }]
+      : [{ id: 'L1', severity: 'minor', consequence: 'Vague name.', evidence: 'src/calc.js:1 addTotal is vague', required: true, surfaces: [], basis: [] }, { id: 'L3', severity: 'minor', consequence: 'Stale exports.', evidence: 'src/notes.js:2 exports', required: false, surfaces: [], basis: [] }],
     verdict: () => 'confirmed',
   };
   await suite.run(options(root, root, { selected: ['alpha', 'beta'] }), dependencies(scenario, calls));
@@ -1405,7 +1405,7 @@ test('a planted defect in a sibling the change leaves untouched is located in th
   const sibling = 'function format(total) {\n  return String(total);\n}\n\nmodule.exports = { format };\n';
   writeFixture(root, 'alpha', { base: { 'src/calc.js': BASE_CALC, 'src/format.js': sibling }, fixture: { defects: [defect({ file: 'src/format.js', lines: [2, 2], symbol: 'format', consequence: 'Totals lose their currency.' })] } });
   const calls = [];
-  const scenario = { lead: () => [{ id: 'L1', severity: 'important', consequence: 'No currency.', evidence: 'src/format.js:2 format drops the currency', required: true }], verdict: () => 'confirmed' };
+  const scenario = { lead: () => [{ id: 'L1', severity: 'important', consequence: 'No currency.', evidence: 'src/format.js:2 format drops the currency', required: true, surfaces: [], basis: [] }], verdict: () => 'confirmed' };
 
   // Act
   const fixture = suite.loadFixture(path.join(root, 'alpha'));

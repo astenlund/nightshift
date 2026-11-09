@@ -23,7 +23,15 @@
       "consequence": "reconcile unbinds sessions while iterating the registry's bindings, so it skips the binding after each one it releases.",
       "evidence": "src/registry.js:51 reconcile unbinds while iterating registry.bindings",
       "required": true,
-      "reason": "reconcile iterates the array bindingsFor returns, a copy taken before the loop, so unbinding does not disturb the iteration."
+      "reason": "reconcile iterates the array bindingsFor returns, a copy taken before the loop, so unbinding does not disturb the iteration.",
+      "surfaces": [
+        {
+          "path": "src/registry.js",
+          "location": "line 51",
+          "evidence": "src/registry.js:51 reconcile unbinds while iterating registry.bindings"
+        }
+      ],
+      "basis": []
     }
   ]
 }
