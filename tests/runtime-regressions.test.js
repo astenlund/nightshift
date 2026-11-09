@@ -196,7 +196,7 @@ for (const [kind, assessed] of [['docs', false], ['lore', false], ['docs', true]
     if (kind !== 'lore') f.act({ action: 'retrospective', evidence: 'Considered applicable checks and maintenance outcome' });
     f.act({ action: 'triage', evidence: 'No implied instruction approval' });
     fail();
-    assert.throws(() => f.act({ action: 'complete' }), { code: 'verification-required' });
+    assert.throws(() => f.act({ action: 'complete' }), { code: 'verification-required', message: /Fixture evidence/ });
     f.check('a');
     f.act({ action: 'complete' });
     assert.equal(f.store.read().status, 'complete');

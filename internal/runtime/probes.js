@@ -144,12 +144,13 @@ function loadProbeEvidence(root, references, expectedSnapshot, contextSnapshot =
       continue;
     }
     const key = repeatKey(entry.result);
-    if (newest.has(key)) leftOut.push({ name: entry.name, supersededBy: newest.get(key) });
-    else if (attached.length === PROBE_ATTACHMENT_LIMIT) leftOut.push({ name: entry.name, supersededBy: null });
-    else {
-      newest.set(key, entry.name);
-      attached.push(entry);
+    if (newest.has(key)) {
+      leftOut.push({ name: entry.name, supersededBy: newest.get(key) });
+      continue;
     }
+    newest.set(key, entry.name);
+    if (attached.length === PROBE_ATTACHMENT_LIMIT) leftOut.push({ name: entry.name, supersededBy: null });
+    else attached.push(entry);
   }
 
   return { attached, leftOut, withheld };

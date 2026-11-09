@@ -17,7 +17,7 @@ const { isClosed } = require('./statuses');
 const { latestDecision, relevanceCoversTask, applicability, inputChanges, latestEntry: latestReview } = require('./applicability');
 const { validReportDelivery } = require('./report-delivery');
 const { invalidateContinuation, continuationForRequest } = require('./continuation-health');
-const { currencyRefusal, receiptCurrency, recordedSurfaces, scopeOf, validateSurfaceAnswers } = require('./finding-scope');
+const { currencyRefusal, receiptCurrency, recordedSurfaces, savedSurfaces, scopeOf, surfaceVerdicts, validateSurfaceAnswers } = require('./finding-scope');
 
 const DIMENSIONS = Object.freeze({
   spec: ['intent-scope-acceptance', 'soundness-integration', 'failure-safety-recovery', 'clarity-consistency-proportionality'],
@@ -447,14 +447,15 @@ function staleCause(condition) {
 function reviewGateCause(root, task, state) {
   const failure = reviewGateFailure(root, task, state);
   if (failure === null) return null;
+  const checks = checkFailures(root, task);
   if (failure === 'stale') {
     const entry = leadEntry(task, state);
 
-    return staleCause(applicability(root, entry.review, task, entry.owner, state));
+    return { ...staleCause(applicability(root, entry.review, task, entry.owner, state)), checks };
   }
-  if (reviewGateFailure(root, task, state, { ignoreChecks: true }) === null) return { kind: 'check', checks: checkFailures(root, task) };
+  if (reviewGateFailure(root, task, state, { ignoreChecks: true }) === null) return { kind: 'check', checks };
 
-  return { kind: 'unmet', changedPaths: null };
+  return { kind: 'unmet', changedPaths: null, checks };
 }
 
 function causeText(target, cause) {
@@ -466,7 +467,9 @@ function causeText(target, cause) {
     unmet: () => 'unmet assurance',
   };
 
-  return `${target.id}: ${reasons[cause.kind]()}`;
+  const checks = cause.kind !== 'check' && cause.checks?.length ? `, and ${namedChecks(cause.checks)}` : '';
+
+  return `${target.id}: ${reasons[cause.kind]()}${checks}`;
 }
 
 // A code assessment stale only because documentation paths changed counts as current once a current docs review covers the task.
@@ -764,7 +767,7 @@ function buildObligationBrief(state, root, options) {
         : options.verifyFreshness !== false && !specReady(state, task) ? 'governing-spec-review' : task.stage,
       agreement: { source: task.agreement.source, outcome: task.agreement.outcome, decisions: task.agreement.decisions, spec: task.agreement.spec, specReviewTaskId: task.agreement.specReviewTaskId },
       ...(typeof task.agreement.spec === 'string' ? { specAcceptance: specAcceptanceStatus(root, task, options) } : {}),
-      unresolvedFindings: unresolvedFindings(task).map(finding => ({ id: finding.id, consequence: finding.consequence, verdict: finding.validation?.verdict ?? null, validationCommitmentsCurrent: finding.validation ? evidenceCommitmentsCurrent(state, task, finding.validation) : null, disposition: finding.disposition, pendingClosure: Boolean(finding.pendingClosure), evidence: finding.evidence.slice(0, 600), ...(Array.isArray(finding.validation?.surfaces) && finding.validation.surfaces.length > 0 ? { surfaceVerdicts: finding.validation.surfaces.map(surface => ({ path: surface.path, location: surface.location, verdict: surface.verdict })) } : {}) })),
+      unresolvedFindings: unresolvedFindings(task).map(finding => ({ id: finding.id, consequence: finding.consequence, verdict: finding.validation?.verdict ?? null, validationCommitmentsCurrent: finding.validation ? evidenceCommitmentsCurrent(state, task, finding.validation) : null, disposition: finding.disposition, pendingClosure: Boolean(finding.pendingClosure), evidence: finding.evidence.slice(0, 600), ...(surfaceVerdicts(finding) ? { surfaceVerdicts: surfaceVerdicts(finding) } : {}) })),
       review: reviewProgress(root, state, task, options),
       reviewCurrent: options.verifyFreshness === false ? 'reconcile at acceptance' : reviewGate(root, task, state),
       ...(state.docsGate && sharesCumulativeAssessment(task) ? { docsReviewCurrent: options.verifyFreshness === false ? 'reconcile at acceptance' : docsGateFailure(root, task, state) === null } : {}),
@@ -777,7 +780,7 @@ function buildObligationBrief(state, root, options) {
     }),
     staleChecks: options.verifyFreshness === false ? 'reconcile at acceptance' : staleChecks(root, state),
     finalReconciliationPending: !isReviewContext(state) && state.status === 'running' && active.length === 0,
-    ...(!isReviewContext(state) ? { closing: { ready: closingReady(state), stage: closingStage(state), ...(state.closing?.docs ? { docsReview: closingDocsBrief(state, root, options) } : {}), ...(state.closing?.carriedFindings?.length ? { carriedFindings: state.closing.carriedFindings.map(finding => finding.id) } : {}) } } : {}),
+    ...(!isReviewContext(state) ? { closing: { ready: closingReady(state), stage: closingStage(state), ...(state.closing?.docs ? { docsReview: closingDocsBrief(state, root, options) } : {}), ...(state.closing?.carriedFindings?.length ? { carriedFindings: state.closing.carriedFindings.map(finding => finding.id), carriedSurfaceVerdicts: findingSurfaceVerdicts(state.closing.carriedFindings) } : {}) } } : {}),
     blockers: active.filter(task => task.blocker).map(task => ({ id: task.id, blocker: task.blocker })),
     workers: state.workers.filter(workerIsActive),
     followups: state.followups.filter(item => item.status !== 'resolved'),
@@ -796,12 +799,17 @@ function closingAssessmentCurrent(root, state, review) {
   });
 }
 
+function findingSurfaceVerdicts(findings) {
+  return findings.filter(surfaceVerdicts).map(finding => ({ id: finding.id, surfaces: surfaceVerdicts(finding) }));
+}
+
 function closingDocsBrief(state, root, options) {
   const record = state.closing.docs;
   const latest = latestReview(record.reviews.filter(review => !review.relevance).map(review => ({ review })), state)?.review;
   return {
     target: CLOSING_TARGET, baseline: Boolean(record.baseline), reviews: record.reviews.length,
     unresolvedFindings: record.findings.filter(finding => !settled(finding) || finding.pendingClosure).map(finding => finding.id),
+    surfaceVerdicts: findingSurfaceVerdicts(record.findings.filter(finding => !settled(finding) || finding.pendingClosure)),
     review: reviewProgress(root, state, record, options),
     current: options.verifyFreshness === false ? 'reconcile at acceptance' : Boolean(latest) && closingAssessmentCurrent(root, state, latest) && closingRecordFailure(root, state) === null,
     satisfied: options.verifyFreshness === false ? 'reconcile at acceptance' : closingCoverageFailure(root, state) === null,
@@ -946,7 +954,7 @@ function transition(state, request, integration = null) {
       text(validation.evidence, 'validation.evidence');
       const validationCurrency = receiptCurrency(state.root, { kind: 'skeptic', snapshot: validation.snapshot, contextSnapshot: validation.snapshot }, [scopeOf(finding)]);
       requireCondition(validationCurrency.current, 'stale-validation', currencyRefusal('Skeptic evidence inputs', validationCurrency));
-      validateSurfaceAnswers(finding.surfaces ?? [], validation);
+      validateSurfaceAnswers(savedSurfaces(finding), validation);
       const commitmentBinding = validation.commitmentBinding === undefined ? commitmentBindingFor(commitmentsFor(state.tasks)) : validation.commitmentBinding;
       requireCondition(evidenceCommitmentsCurrent(state, task, { ...validation, commitmentBinding }), 'stale-validation', 'Skeptic evidence must match current accepted commitments');
       requireCondition(validation.verdict !== 'confirmed' || typeof validation.repairProposal === 'string' && validation.repairProposal.trim(), 'missing-repair-proposal', 'A confirmed verdict carries the approach a repair would take');

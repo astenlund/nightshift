@@ -212,7 +212,8 @@ function parseReport(output) {
   return JSON.parse(output.replace(/^```(?:json)?\s*/, '').replace(/\s*```$/, ''));
 }
 
-function validateReport(report, request) {
+// issued marks a report already admitted by an earlier release, whose findings may predate surfaces; a new report must carry them.
+function validateReport(report, request, { issued = false } = {}) {
   requireCondition(report?.requestId === request.id && ['complete', 'incomplete'].includes(report.status), 'wrong-result', 'Report is missing its request identity or completion status');
   requireCondition(typeof report.toolFailure === 'string', 'invalid-result', 'Report lacks its toolFailure statement');
   // A reviewer whose own tools failed has not assessed, whatever its status says, so this comes before every content check: the
@@ -253,7 +254,7 @@ function validateReport(report, request) {
     } else {
       text(finding.consequence, 'finding.consequence');
       requireCondition(['critical', 'important', 'minor'].includes(finding.severity) && typeof finding.required === 'boolean', 'invalid-finding', 'Finding needs severity and obligation assessment');
-      validateLeadSurfaces(finding);
+      if (!issued || finding.surfaces !== undefined || finding.basis !== undefined) validateLeadSurfaces(finding);
     }
   }
   if (request.kind === 'skeptic') requireCondition(request.findings.length === ids.size && request.findings.every(finding => ids.has(finding.id)), 'missing-validation', 'Skeptic must evaluate every assigned finding exactly once');
@@ -789,7 +790,7 @@ function readReceipt(root, relative, state, taskId, { scopesFor = () => [] } = {
     output = events.findLast(event => event.method === 'item/completed' && event.params.threadId === receipt.session && event.params.item.type === 'agentMessage')?.params.item.text;
   }
   const report = parseReport(output);
-  if (receipt.relevance) validateReport(report, assignment);
+  if (receipt.relevance) validateReport(report, assignment, { issued: true });
   requireCondition(isDeepStrictEqual(report.applicability ?? [], receipt.applicability ?? []), 'changed-result', 'Collected applicability differs from the native result');
   // Reports from earlier releases carry no toolFailure; one that names a tool failure never produced a receipt.
   requireCondition(typeof report.toolFailure !== 'string' || !report.toolFailure.trim(), 'changed-result', 'The native report names a tool failure, so it is not a usable assessment');

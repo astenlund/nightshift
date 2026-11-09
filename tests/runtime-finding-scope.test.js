@@ -249,9 +249,10 @@ function delivery(t, tasks) {
   store.create({ mechanism: fixtureContinuation(), objective: 'Scoped evidence', authority: 'User', controller: actor, controllerClaim: fixtureControllerClaim(actor), tasks: tasks ?? [{ id: 'work', title: 'Work', agreement: { source: 'User', outcome: 'Scoped evidence holds' } }] });
   const act = request => executeWithFixtureController(root, { actor, revision: store.read().revision, taskId: 'work', ...request });
   const request = options => JSON.parse(fs.readFileSync(path.join(options.artifacts, '..', 'request.json'), 'utf8'));
-  const agent = (findings, session) => options => {
+  const agent = (findings, session, probes = []) => options => {
     const assigned = request(options);
-    const report = { requestId: assigned.id, status: 'complete', coverage: (assigned.kind === 'skeptic' ? [] : DIMENSIONS.code).map(dimension => ({ dimension, evidence: 'Assessed' })), findings: typeof findings === 'function' ? findings(assigned) : findings, probes: [], summary: 'Done', toolFailure: '', ...(assigned.kind === 'skeptic' ? {} : { closures: [], positions: [], applicability: [] }) };
+    const positions = assigned.dialogue && assigned.kind !== 'skeptic' ? assigned.dialogue.findingIds.map(id => ({ id, position: 'maintain', evidence: 'Still holds' })) : [];
+    const report = { requestId: assigned.id, status: probes.length ? 'incomplete' : 'complete', coverage: (assigned.kind === 'skeptic' ? [] : DIMENSIONS[assigned.kind === 'spec' ? 'spec' : 'code']).map(dimension => ({ dimension, evidence: 'Assessed' })), findings: typeof findings === 'function' ? findings(assigned) : findings, probes, summary: 'Done', toolFailure: '', ...(assigned.kind === 'skeptic' ? {} : { closures: [], positions, applicability: [] }) };
     const events = [{ type: 'assistant', session_id: session, message: { model: options.model, content: [] } }, { type: 'result', session_id: session, subtype: 'success', is_error: false, structured_output: report }];
     fs.mkdirSync(options.artifacts, { recursive: true });
     fs.writeFileSync(path.join(options.artifacts, 'events.jsonl'), events.map(event => JSON.stringify(event)).join('\n') + '\n');
@@ -259,11 +260,11 @@ function delivery(t, tasks) {
     return { host: options.host, model: options.model, effort: options.effort, session, attributionVerified: true, status: 'complete', output: report, tokens: 0 };
   };
   const review = { baseSha, requirements: 'Fixture', rules: 'Fixture', candidates: [{ host: 'claude', model: 'claude-fable-5-1', effort: 'high' }] };
-  const dispatch = (kind, findings, session, extra = {}) => executeWithFixtureController(root, { action: 'dispatch', actor, revision: store.read().revision, taskId: 'work', review: { ...review, kind, ...extra } }, { runAgent: agent(findings, session) });
+  const dispatch = (kind, findings, session, extra = {}, probes = []) => executeWithFixtureController(root, { action: 'dispatch', actor, revision: store.read().revision, taskId: 'work', review: { ...review, kind, ...extra } }, { runAgent: agent(findings, session, probes) });
   const receiptPath = result => path.relative(root, result.receiptFile).split(path.sep).join('/');
   const verdicts = assigned => assigned.findings.map(claim => ({ id: claim.id, verdict: 'confirmed', evidence: 'Checked', value: 'Worth it', repairProposal: 'Fix it', surfaces: (claim.surfaces ?? []).map(item => answer(item.path, 'confirmed', item.location)) }));
 
-  return { root, store, act, dispatch, receiptPath, verdicts };
+  return { root, baseSha, store, actor, act, dispatch, receiptPath, verdicts };
 }
 
 const dispose = (act, id) => act({ action: 'dispose', findingId: id, disposition: 'implement', reason: 'Worth it', obligation: { classification: 'required', basis: 'Agreed' } });
@@ -326,7 +327,43 @@ test('an edit to the governing spec refuses validate and dispose, and an unrelat
   await f.act({ action: 'validate', receipt: f.receiptPath(skeptic), findingId: one.id });
   await f.act({ action: 'validate', receipt: f.receiptPath(skeptic), findingId: two.id });
   await dispose(f.act, one.id);
-  assert.ok(f.store.read().tasks[0].findings[0].scope.includes('spec.md'));
+  fs.writeFileSync(path.join(f.root, 'spec.md'), 'requirements amended\n');
+  // A later whole-spec reassessment is what lets the delivery act again on a code task after its spec changes.
+  f.store.update(f.actor, f.store.read().revision, 'fixture-reassessed', state => { state.tasks[0].agreement.specSnapshot = snapshot(f.root, ['spec.md']); });
+  await assert.rejects(dispose(f.act, two.id), { code: 'stale-validation', message: /spec\.md/ });
+});
+
+test('in a review context an edit to the governing spec named in neither list refuses validate, and an unrelated edit does not', async t => {
+  const { root, baseSha, closing } = project(t);
+  fs.writeFileSync(path.join(root, 'a.txt'), 'alpha changed\n');
+  const actor = { host: 'claude', session: 'controller' };
+  const context = await executeWithFixtureController(root, { action: 'open-review', reviewContextId: randomUUID(), controller: actor, authority: 'Fixture', objective: 'Assess', kind: 'code', agreement: { source: 'User', outcome: 'Governed', spec: 'spec.md' } });
+  const { ReviewStore } = require('../internal/runtime/review-store');
+  const store = new ReviewStore(root, { contextId: context.id });
+  closing.push(() => store.close());
+  const request = options => JSON.parse(fs.readFileSync(path.join(options.artifacts, '..', 'request.json'), 'utf8'));
+  const agent = (findings, session) => options => {
+    const assigned = request(options);
+    const report = { requestId: assigned.id, status: 'complete', coverage: (assigned.kind === 'skeptic' ? [] : DIMENSIONS.code).map(dimension => ({ dimension, evidence: 'Assessed' })), findings: findings(assigned), probes: [], summary: 'Done', toolFailure: '', ...(assigned.kind === 'skeptic' ? {} : { closures: [], positions: [], applicability: [] }) };
+    fs.mkdirSync(options.artifacts, { recursive: true });
+    fs.writeFileSync(path.join(options.artifacts, 'events.jsonl'), [{ type: 'assistant', session_id: session, message: { model: options.model, content: [] } }, { type: 'result', session_id: session, subtype: 'success', is_error: false, structured_output: report }].map(event => JSON.stringify(event)).join('\n') + '\n');
+
+    return { host: options.host, model: options.model, effort: options.effort, session, attributionVerified: true, status: 'complete', output: report, tokens: 0 };
+  };
+  const act = (body, dependencies) => executeWithFixtureController(root, { actor, reviewContextId: context.id, taskId: '#review', revision: store.read().revision, ...body }, dependencies);
+  const review = { baseSha, requirements: 'Fixture', rules: 'Fixture', candidates: [{ host: 'claude', model: 'claude-fable-5-1', effort: 'high' }] };
+  const receipt = result => path.relative(root, result.receiptFile).split(path.sep).join('/');
+  const lead1 = await act({ action: 'dispatch', review: { ...review, kind: 'code' } }, { runAgent: agent(() => [lead()], 'lead') });
+  await act({ action: 'review', receipt: receipt(lead1) });
+  const [finding] = store.read().tasks[0].findings;
+  assert.deepEqual(finding.scope, ['a.txt', 'spec.md']);
+  const verdicts = assigned => assigned.findings.map(claim => ({ id: claim.id, verdict: 'confirmed', evidence: 'Checked', value: 'Worth it', repairProposal: 'Fix it', surfaces: claim.surfaces.map(item => answer(item.path, 'confirmed', item.location)) }));
+  const skeptic = await act({ action: 'dispatch', review: { ...review, kind: 'skeptic', findings: [finding] } }, { runAgent: agent(verdicts, 'skeptic') });
+  fs.writeFileSync(path.join(root, 'unrelated.txt'), 'elsewhere\n');
+  fs.writeFileSync(path.join(root, 'spec.md'), 'requirements amended\n');
+  await assert.rejects(act({ action: 'validate', receipt: receipt(skeptic), findingId: finding.id }), { code: 'invalid-receipt', message: /spec\.md/ });
+  fs.writeFileSync(path.join(root, 'spec.md'), 'requirements\n');
+  await act({ action: 'validate', receipt: receipt(skeptic), findingId: finding.id });
 });
 
 test('a repair keeps stored probe evidence, and closure context names confirmed and refuted surfaces', async t => {
@@ -354,7 +391,7 @@ test('staleCause separates changed paths, changed commitments and an unestablish
   assert.deepEqual(staleCause({ changedPaths: null, commitmentsChanged: false, status: 'structural-failure' }), { kind: 'unestablished', changedPaths: null });
 });
 
-test('a review-gate cause names the failing check, and a gate refusal states it', async t => {
+test('a review-gate cause names changed paths, and a gate refusal states them', async t => {
   const f = delivery(t);
   const task = () => f.store.read().tasks[0];
   await f.act({ action: 'start-task' });
@@ -382,4 +419,147 @@ test('the suite gives decoys and lead findings the same claim shape', () => {
   const shape = claim => Object.keys(claim.claim).sort();
   assert.deepEqual(shape(claims[0]), shape(claims[1]));
   assert.ok(claims.every(claim => claim.claim.surfaces.length === 1 && Array.isArray(claim.claim.basis)));
+});
+
+test('a stale review and a failing check are both named, and a check-only failure names the check', async t => {
+  const f = delivery(t);
+  const task = () => f.store.read().tasks[0];
+  await f.act({ action: 'start-task' });
+  await f.act({ action: 'check', check: { name: 'Named fixture check', executable: process.execPath, args: ['--version'], paths: ['a.txt'] } });
+  await f.act({ action: 'advance' });
+  const reviewed = await f.dispatch('code', [], 'lead');
+  await f.act({ action: 'review', receipt: f.receiptPath(reviewed) });
+  const state = () => ({ ...f.store.read(), root: f.root });
+  // The only input the check declares changes, so the review is stale too; restoring nothing else, both causes must appear.
+  fs.writeFileSync(path.join(f.root, 'a.txt'), 'alpha changed again\n');
+  const mixed = reviewGateCause(f.root, task(), state());
+  assert.equal(mixed.kind, 'changed-inputs');
+  assert.match(causeText(task(), mixed), /a\.txt.*Named fixture check" inputs-changed/);
+  await assert.rejects(f.act({ action: 'advance' }), { code: 'review-required', message: /Named fixture check" inputs-changed/ });
+  const fresh = await f.dispatch('code', [], 'lead-two');
+  await f.act({ action: 'review', receipt: f.receiptPath(fresh) });
+  const checkOnly = reviewGateCause(f.root, task(), state());
+  assert.equal(checkOnly.kind, 'check');
+  assert.match(causeText(task(), checkOnly), /Named fixture check" inputs-changed/);
+});
+
+test('a scoped dialogue import survives an unrelated edit and is refused for an edit to its finding\'s file', async t => {
+  const f = delivery(t);
+  const reviewed = await f.dispatch('code', [lead()], 'lead');
+  await f.act({ action: 'review', receipt: f.receiptPath(reviewed) });
+  const [finding] = f.store.read().tasks[0].findings;
+  const turn = resume => f.dispatch('code', [], 'lead', { resume, candidates: undefined, dialogue: { findingIds: [finding.id], message: 'Does it stand?' } });
+  const first = await turn(reviewed.receipt.requestId);
+  fs.writeFileSync(path.join(f.root, 'unrelated.txt'), 'elsewhere\n');
+  await f.act({ action: 'dialogue', receipt: f.receiptPath(first) });
+  const second = await turn(first.receipt.requestId);
+  fs.writeFileSync(path.join(f.root, 'a.txt'), 'moved\n');
+  await assert.rejects(f.act({ action: 'dialogue', receipt: f.receiptPath(second) }), { code: 'invalid-receipt', message: /a\.txt/ });
+});
+
+test('the probe action follows declared files after an edit, for a lead and for a skeptic with an unscoped finding', async t => {
+  const f = delivery(t);
+  const probes = [{ ...nodeProbe(['a.txt'], { id: 'content' }) }, { ...nodeProbe([], { id: 'host' }) }];
+  const leadReceipt = await f.dispatch('code', [], 'lead', {}, probes);
+  fs.writeFileSync(path.join(f.root, 'unrelated.txt'), 'elsewhere\n');
+  await f.act({ action: 'probe', receipt: f.receiptPath(leadReceipt), probeId: 'content' });
+  const complete = await f.dispatch('code', [lead({ surfaces: [] })], 'lead-final');
+  await f.act({ action: 'review', receipt: f.receiptPath(complete) });
+  const [unscoped] = f.store.read().tasks[0].findings;
+  assert.equal(unscoped.scope, undefined);
+  const skeptic = await f.dispatch('skeptic', assigned => [{ id: assigned.findings[0].id, verdict: 'unverified', evidence: 'Needs execution', value: 'Unknown', repairProposal: '', surfaces: [] }], 'skeptic', { findings: [unscoped] }, [nodeProbe([], { id: 'skeptic-host' }), nodeProbe(['a.txt'], { id: 'skeptic-content' })]);
+  fs.writeFileSync(path.join(f.root, 'b.txt'), 'beta edited elsewhere\n');
+  await f.act({ action: 'probe', receipt: f.receiptPath(skeptic), probeId: 'skeptic-host' });
+  await f.act({ action: 'probe', receipt: f.receiptPath(skeptic), probeId: 'skeptic-content' });
+  fs.writeFileSync(path.join(f.root, 'a.txt'), 'moved\n');
+  await assert.rejects(f.act({ action: 'probe', receipt: f.receiptPath(skeptic), probeId: 'skeptic-content' }), { code: 'stale-probe', message: /a\.txt/ });
+  await f.act({ action: 'probe', receipt: f.receiptPath(skeptic), probeId: 'skeptic-host' });
+});
+
+test('a dispatch reports withheld stored results and tells the reviewer what it left out', async t => {
+  const f = delivery(t);
+  const references = [reference(f.root, declaredResult(f.root, ['a.txt']), 'older'), reference(f.root, declaredResult(f.root, ['a.txt']), 'newer'), reference(f.root, declaredResult(f.root, ['b.txt'], { args: ['other'] }), 'stale')];
+  f.store.update(f.actor, f.store.read().revision, 'fixture-probes', state => { state.tasks[0].probeEvidence = references; });
+  fs.writeFileSync(path.join(f.root, 'b.txt'), 'beta moved\n');
+  let prompt;
+  const result = await f.dispatch('code', assigned => { prompt = assigned; return []; }, 'lead');
+  assert.deepEqual(result.receipt.withheldProbes, [{ name: 'context/probes/stale.json', comparison: 'declared', paths: ['b.txt'] }]);
+  assert.deepEqual(prompt.probeFiles, ['context/probes/newer.json']);
+  assert.deepEqual(prompt.probeLeftOut, [{ name: 'context/probes/older.json', supersededBy: 'context/probes/newer.json' }]);
+});
+
+test('a damaged recorded snapshot is refused at receipt read and at dispose, naming no paths', async t => {
+  const f = delivery(t);
+  const reviewed = await f.dispatch('code', [lead()], 'lead');
+  await f.act({ action: 'review', receipt: f.receiptPath(reviewed) });
+  const [finding] = f.store.read().tasks[0].findings;
+  const skeptic = await f.dispatch('skeptic', f.verdicts, 'skeptic', { findings: [finding] });
+  await f.act({ action: 'validate', receipt: f.receiptPath(skeptic), findingId: finding.id });
+  f.store.update(f.actor, f.store.read().revision, 'fixture-damage', state => { state.tasks[0].findings[0].validation.snapshot.digest = 'damaged'; });
+  await assert.rejects(dispose(f.act, finding.id), { code: 'stale-validation', message: /integrity check.*null/ });
+  const second = await f.dispatch('skeptic', f.verdicts, 'skeptic-two', { findings: [finding] });
+  const damage = name => {
+    const target = path.join(path.dirname(second.receiptFile), name);
+    const saved = JSON.parse(fs.readFileSync(target, 'utf8'));
+    saved.contextSnapshot.digest = 'damaged';
+    fs.writeFileSync(target, JSON.stringify(saved));
+  };
+  damage('receipt.json');
+  damage('request.json');
+  await assert.rejects(f.act({ action: 'validate', receipt: f.receiptPath(second), findingId: finding.id }), { code: 'invalid-receipt', message: /integrity check/ });
+});
+
+test('a spec review finding is bound to its deciding inputs, and an edit elsewhere leaves it usable', async t => {
+  const f = delivery(t, [{ id: 'work', title: 'Spec', kind: 'spec', agreement: { source: 'User', outcome: 'Specified', spec: 'spec.md' } }]);
+  const reviewed = await f.dispatch('spec', [lead({ surfaces: [surface('a.txt')], basis: [] })], 'lead', { artifactPaths: ['spec.md'] });
+  await f.act({ action: 'review', receipt: f.receiptPath(reviewed) });
+  const [finding] = f.store.read().tasks[0].findings;
+  assert.deepEqual(finding.scope, ['spec.md']);
+  const skeptic = await f.dispatch('skeptic', f.verdicts, 'skeptic', { findings: [finding] });
+  fs.writeFileSync(path.join(f.root, 'a.txt'), 'implementation edit\n');
+  await f.act({ action: 'validate', receipt: f.receiptPath(skeptic), findingId: finding.id });
+  fs.writeFileSync(path.join(f.root, 'spec.md'), 'requirements amended\n');
+  await assert.rejects(dispose(f.act, finding.id), { code: 'stale-validation', message: /spec\.md/ });
+});
+
+test('carried and closing findings show their surface verdicts in status', async t => {
+  const f = delivery(t);
+  const carried = { id: 'carried', localId: 'c', severity: 'minor', consequence: 'c', evidence: 'e', validation: { verdict: 'confirmed', surfaces: [answer('a.txt', 'confirmed'), answer('b.txt', 'refuted')] }, disposition: null };
+  f.store.update(f.actor, f.store.read().revision, 'fixture-carried', state => { state.closing = { ...(state.closing ?? {}), carriedFindings: [carried] }; });
+  const brief = await f.act({ action: 'status' });
+  assert.deepEqual(brief.closing.carriedSurfaceVerdicts, [{ id: 'carried', surfaces: [{ path: 'a.txt', location: '', verdict: 'confirmed' }, { path: 'b.txt', location: '', verdict: 'refuted' }] }]);
+});
+
+test('a damaged saved finding is validated as naming nothing, and its skeptic is assigned no surfaces', async t => {
+  const f = delivery(t);
+  const reviewed = await f.dispatch('code', [lead()], 'lead');
+  await f.act({ action: 'review', receipt: f.receiptPath(reviewed) });
+  f.store.update(f.actor, f.store.read().revision, 'fixture-damage', state => { state.tasks[0].findings[0].surfaces = 'not a list'; });
+  const [finding] = f.store.read().tasks[0].findings;
+  assert.equal(scopeOf(finding), null);
+  const skeptic = await f.dispatch('skeptic', assigned => { assert.deepEqual(assigned.findings[0].surfaces, []); return f.verdicts(assigned); }, 'skeptic', { findings: [finding] });
+  await f.act({ action: 'validate', receipt: f.receiptPath(skeptic), findingId: finding.id });
+});
+
+test('an older repeat names its newer result even when the limit left that result out', t => {
+  const { root } = project(t);
+  const older = reference(root, declaredResult(root, []), 'repeat-older');
+  const newer = reference(root, declaredResult(root, []), 'repeat-newer');
+  const distinct = Array.from({ length: PROBE_ATTACHMENT_LIMIT }, (_, index) => reference(root, declaredResult(root, [], { args: [String(index)] }), `distinct-${index}`));
+  const handoff = loadProbeEvidence(root, [older, newer, ...distinct], inventorySnapshot(root));
+  assert.deepEqual(handoff.leftOut, [{ name: 'context/probes/repeat-newer.json', supersededBy: null }, { name: 'context/probes/repeat-older.json', supersededBy: 'context/probes/repeat-newer.json' }]);
+});
+
+test('a report issued before surfaces stays readable, and a new report must carry them', () => {
+  const report = { requestId: 'r', status: 'complete', coverage: [], findings: [{ id: 'old', severity: 'minor', required: false, consequence: 'c', evidence: 'e' }], summary: 's', toolFailure: '', applicability: [] };
+  const request = { id: 'r', kind: 'code', dimensions: [] };
+  assert.throws(() => validateReport(report, request), { code: 'invalid-finding' });
+  assert.doesNotThrow(() => validateReport(report, request, { issued: true }));
+});
+
+test('a true basis observation leaves a refuted finding refuted and a confirmed defect elsewhere confirmed', () => {
+  const assigned = [surface('a.txt')];
+  assert.doesNotThrow(() => validateSurfaceAnswers(assigned, { verdict: 'refuted', surfaces: [answer('a.txt', 'refuted')] }));
+  assert.doesNotThrow(() => validateSurfaceAnswers(assigned, { verdict: 'confirmed', surfaces: [answer('a.txt', 'confirmed')] }));
+  assert.throws(() => validateSurfaceAnswers(assigned, { verdict: 'confirmed', surfaces: [answer('a.txt', 'refuted'), answer('b.txt', 'confirmed')] }), { code: 'missing-validation' });
 });

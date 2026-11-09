@@ -14,7 +14,7 @@ const { DEFAULT_REVIEW_TIMEOUT_MS, dispatchReview, readReceipt, selectionMetadat
 const { exhaustedLimit, remainingTime, requireDispatchFits } = require('./limits');
 const { eligibleCandidates } = require('./vibe');
 const { prepareProbe, runProbe } = require('./probes');
-const { scopeOf } = require('./finding-scope');
+const { savedBasis, savedSurfaces, scopeOf } = require('./finding-scope');
 const { scratchStatus } = require('./scratch');
 const { awaitWorker } = require('./wait');
 const { admitEntry, executionResources, savedResources } = require('../releases/entry');
@@ -193,7 +193,7 @@ async function execute(root, request, dependencies = {}) {
       const suppliedFindings = continued?.findings.length ? continued.findings : request.review.findings;
       const assigned = request.review.kind === 'skeptic' ? (suppliedFindings ?? []).map(finding => task.findings.find(saved => saved.id === finding?.id)) : [];
       // A recorded finding's surfaces are the ones a skeptic answers, whatever the request supplied.
-      const skepticFindings = request.review.kind === 'skeptic' ? (suppliedFindings ?? []).map((finding, index) => (assigned[index] ? { ...finding, surfaces: assigned[index].surfaces ?? [], basis: assigned[index].basis ?? [] } : finding)) : suppliedFindings;
+      const skepticFindings = request.review.kind === 'skeptic' ? (suppliedFindings ?? []).map((finding, index) => (assigned[index] ? { ...finding, surfaces: savedSurfaces(assigned[index]), basis: savedBasis(assigned[index]) } : finding)) : suppliedFindings;
       const currencyScopes = request.review.dialogue && request.review.kind !== 'skeptic' ? request.review.dialogue.findingIds.map(id => scopeOf(task.findings.find(saved => saved.id === id))) : assigned.map(finding => (finding ? scopeOf(finding) : null));
       const lens = assigned.length > 0 && assigned.every(finding => finding && findingKind(finding, task) === 'docs') ? 'docs' : undefined;
       const continuation = continued?.continuation;

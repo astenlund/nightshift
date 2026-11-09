@@ -42,6 +42,19 @@ function claimSurfaces(claim) {
   };
 }
 
+// What a saved finding's fields can be trusted to hold. Admission of new claims stays strict; a damaged record counts as naming nothing.
+function wellFormedSurface(entry) {
+  return entry !== null && typeof entry === 'object' && nonempty(entry.path) && typeof entry.location === 'string' && nonempty(entry.evidence);
+}
+
+function savedSurfaces(finding) {
+  return Array.isArray(finding?.surfaces) && finding.surfaces.every(wellFormedSurface) ? finding.surfaces : [];
+}
+
+function savedBasis(finding) {
+  return Array.isArray(finding?.basis) && finding.basis.every(nonempty) ? finding.basis : [];
+}
+
 function validateLeadSurfaces(finding) {
   consolidatedSurfaces(finding.surfaces);
   consolidatedBasis(finding.basis);
@@ -93,7 +106,7 @@ function scopeOf(finding) {
   const scope = finding?.scope;
   if (!Array.isArray(scope) || scope.length === 0 || !scope.every(nonempty)) return null;
   if (finding.reviewKind === 'spec') return scope;
-  if (!Array.isArray(finding.surfaces) || !Array.isArray(finding.basis) || finding.surfaces.length === 0 || !finding.surfaces.every(surface => nonempty(surface?.path)) || !finding.basis.every(nonempty)) return null;
+  if (!Array.isArray(finding.surfaces) || !Array.isArray(finding.basis) || finding.surfaces.length === 0 || !finding.surfaces.every(wellFormedSurface) || !finding.basis.every(nonempty)) return null;
 
   return namedPaths(finding).every(file => scope.includes(file)) ? scope : null;
 }
@@ -139,4 +152,11 @@ function currencyRefusal(subject, result) {
   return `${subject} no longer match their files; changed: ${named}. Restore those files' reviewed content, or obtain new evidence on current inputs`;
 }
 
-module.exports = { claimSurfaces, consolidatedSurfaces, currencyRefusal, intactSnapshot, receiptCurrency, recordedSurfaces, changedFiles, scopeOf, singleFile, validateLeadSurfaces, validateSurfaceAnswers };
+// The surface verdicts status names for a finding, or nothing before any were recorded.
+function surfaceVerdicts(finding) {
+  const answers = finding.validation?.surfaces;
+
+  return Array.isArray(answers) && answers.length > 0 ? answers.map(surface => ({ path: surface?.path, location: surface?.location, verdict: surface?.verdict })) : null;
+}
+
+module.exports = { claimSurfaces, consolidatedSurfaces, currencyRefusal, intactSnapshot, receiptCurrency, recordedSurfaces, changedFiles, savedBasis, savedSurfaces, scopeOf, singleFile, surfaceVerdicts, validateLeadSurfaces, validateSurfaceAnswers };

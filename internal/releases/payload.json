@@ -170,8 +170,8 @@
     },
     {
       "path": "internal/runtime/REFERENCE.md",
-      "bytes": 157160,
-      "sha256": "fce2d4710a4b2dc41e611b7c276bf8547aad014ef0d8516684ae0b842dba1845"
+      "bytes": 157255,
+      "sha256": "ee76d942069397b5fb921ae39105eb8e9b6b77547296fee631235aa496689a86"
     },
     {
       "path": "internal/runtime/acceptance-checkpoint.js",
@@ -205,8 +205,8 @@
     },
     {
       "path": "internal/runtime/cli.js",
-      "bytes": 28058,
-      "sha256": "61ca7ef4ca57db28fb43f475feb8df3fdf5524e8c3387c85af107077c64e80d0"
+      "bytes": 28085,
+      "sha256": "b5cb605cc9f9a35c6db766eb897a539d03fa52715e7db6a73ad83ecf23d8b03f"
     },
     {
       "path": "internal/runtime/close.js",
@@ -255,8 +255,8 @@
     },
     {
       "path": "internal/runtime/finding-scope.js",
-      "bytes": 8062,
-      "sha256": "347d490c7614de104b70f1a4cffa06117d64e598562cad3585acd0d3acda1e8f"
+      "bytes": 9034,
+      "sha256": "e31f77b16a68e8824127a5703f42a508e89c17c36ed15712207d3e68f629ebd3"
     },
     {
       "path": "internal/runtime/history-compaction.js",
@@ -315,8 +315,8 @@
     },
     {
       "path": "internal/runtime/lifecycle.js",
-      "bytes": 100453,
-      "sha256": "8d465cd9b5b1c52ead55b6dde1fbbe9dc25f3dca5816cc246a550266e6985566"
+      "bytes": 100852,
+      "sha256": "b5d56b13facf2e9a05447d1cfd0770d55299122b05e2986292a9e9a01a9d4800"
     },
     {
       "path": "internal/runtime/limits.js",
@@ -365,8 +365,8 @@
     },
     {
       "path": "internal/runtime/probes.js",
-      "bytes": 10252,
-      "sha256": "66bdbc3ccc5346db81194b8a98f709f73eb0a3a0c5d87e6ba6c07063103f3b65"
+      "bytes": 10261,
+      "sha256": "ac9e322e1c8157b002a51acd12dfed9adbdd9cc723c234e69a1ea51a83dadbb7"
     },
     {
       "path": "internal/runtime/progress-store.js",
@@ -430,8 +430,8 @@
     },
     {
       "path": "internal/runtime/review.js",
-      "bytes": 78492,
-      "sha256": "a2166518686a21bd0a89354165ff778ab7b9843fb11f3e29903e5128bad0c6ec"
+      "bytes": 78745,
+      "sha256": "fa30132e29366476b340d1bed4a9d35bb9fa73e6b385d21646f60e8aaca6a67c"
     },
     {
       "path": "internal/runtime/run-overview.js",
