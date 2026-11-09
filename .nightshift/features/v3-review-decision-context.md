@@ -27,7 +27,7 @@ The [independent shipped-capability audit](../reports/pre-v3-shipped-capability-
 
 Settle relevance, invalidation and bounded delivery, with fuller-evidence fallback when summarization is unsafe. Verify a settled decision across an unrelated edit, changed evidence reopening it, and unresolved obligations surviving compaction. Coordinate with the existing probe-evidence bug rather than duplicating its repair.
 
-The existing [host-probe evidence bug](../BUGS.md#probe-evidence-about-the-host-is-discarded-on-any-edit) owns its concrete invalidation repair. Share supporting evidence without recreating a separate experiment ledger; since the user's 2026-10-03 reversal noted above, experiment records belong in the separate ledger that [Controller-run experiments](controller-run-experiments.md) tracks, which later reviews can draw on.
+The existing [host-probe evidence bug](../BUGS_HISTORY.md#probe-evidence-about-the-host-is-discarded-on-any-edit) owns its concrete invalidation repair. Share supporting evidence without recreating a separate experiment ledger; since the user's 2026-10-03 reversal noted above, experiment records belong in the separate ledger that [Controller-run experiments](controller-run-experiments.md) tracks, which later reviews can draw on.
 
 ## Recording gaps found by the migration accounting audit
 
@@ -46,7 +46,7 @@ The user agreed these answers on 2026-10-05, when the entry graduated from Explo
 - Bounded delivery, with fuller evidence where summarizing is unsafe. Settled: the projected set has a size bound; beyond it the reviewer receives compact entries and the full records in its review copy, and an acknowledgement whose summary would blur the settled choice with the mechanics around it is delivered in full.
 - Experiment conclusions. Settled: once the separate ledger that [Controller-run experiments](controller-run-experiments.md) tracks exists, its conclusions relevant to a review reach it the same way, with their evidence and limits. That entry graduated the same day, and its MVP slice supplies the ledger, so this is a later extension rather than a dependency.
 - The two recording gaps. Settled: a runtime operation records a note of kind investigation, with its conclusion, deciding evidence and limits, or kind discovery, for an implementation discovery, when it is established, and the operating brief directs recording both. Notes survive compaction and handoff with the run state, and a finding deferred to implementation stays visible in the focused status until the implementation addresses it.
-- Relations. Settled: the entry requires nothing, and [Probe evidence about the host is discarded on any edit](../BUGS.md#probe-evidence-about-the-host-is-discarded-on-any-edit) keeps its own invalidation repair.
+- Relations. Settled: the entry requires nothing, and [Probe evidence about the host is discarded on any edit](../BUGS_HISTORY.md#probe-evidence-about-the-host-is-discarded-on-any-edit) keeps its own invalidation repair.
 
 ## Before implementation
 

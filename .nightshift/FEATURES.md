@@ -64,12 +64,6 @@ After delivery a handed-over run is to stay open rather than closed, with the St
 
 **Requires:** none.
 
-### [Keep every affected surface when merging findings](features/finding-affected-surfaces.md)
-
-When one finding covers a problem that appears in several places, keep every affected surface and its evidence, as the v3 migration agreed for consolidating findings: the reviewer's finding schema gains a structured list of affected surfaces, each with its location and evidence, and the skeptic addresses every listed surface, splitting off or marking unverified any it cannot confirm. The same rule covers a lead merging its peers' findings once peer dispatch exists, without depending on it. Found on 2026-09-29 by the migration accounting audit; the commitments were agreed with the user on 2026-09-30 and are recorded in the linked record. It changes the runtime's finding schema and the reviewer and skeptic prompts, so it needs a concise governing spec, a version increase and a decision on installed-host evidence before implementation.
-
-**Requires:** none.
-
 ### [Repairs start from current contents and respect helper ownership](features/repair-current-contents.md)
 
 Direct every repair, by the controller or a helper, to start from the current contents and keep earlier repairs' constraints, and state that the controller routes a fix to a helper-owned artifact through that helper. The controller gives each repair assignment the earlier resolved findings and repairs on the same artifact from the run's recorded state, and the operating brief states the rules; the runtime stays unchanged, with no file lease or per-fix record format. Found on 2026-09-29 by the migration accounting audit; the commitments were agreed with the user on 2026-09-30 and are recorded in the linked record. It changes model-owned behavior, so it needs a version increase and a decision on installed-host evidence before implementation.
