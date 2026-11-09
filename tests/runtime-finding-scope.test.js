@@ -10,7 +10,7 @@ const { fixtureContinuation } = require('./fixtures/continuation');
 const { fixtureControllerClaim, executeWithFixtureController } = require('./fixtures/controller-claim');
 const { claimSurfaces, consolidatedSurfaces, receiptCurrency, recordedSurfaces, scopeOf, validateLeadSurfaces, validateSurfaceAnswers } = require('../internal/runtime/finding-scope');
 const { PROBE_ATTACHMENT_LIMIT, loadProbeEvidence, runProbe } = require('../internal/runtime/probes');
-const { DIMENSIONS, causeText, reviewGateCause, staleCause } = require('../internal/runtime/lifecycle');
+const { DIMENSIONS, causeText, docsCause, reviewGateCause, specRefusal, staleCause } = require('../internal/runtime/lifecycle');
 const { inventorySnapshot, snapshot, hash } = require('../internal/runtime/evidence');
 const { RunStore } = require('../internal/runtime/store');
 const { dispatchReview, validateReport } = require('../internal/runtime/review');
@@ -611,4 +611,21 @@ test('a fresh skeptic receives stored results that still apply', async t => {
   let assigned;
   await f.dispatch('skeptic', request => { assigned = request; return f.verdicts(request); }, 'skeptic', { findings: [finding] });
   assert.deepEqual(assigned.probeFiles, ['context/probes/kept-for-skeptic.json']);
+});
+
+test('a spec-raised saved finding with malformed surfaces or basis has no scope', () => {
+  const saved = { reviewKind: 'spec', scope: ['spec.md'], surfaces: [], basis: [] };
+  assert.deepEqual(scopeOf(saved), ['spec.md']);
+  for (const damage of [{ surfaces: 'not a list' }, { surfaces: [{ path: '' }] }, { basis: 'spec.md' }, { basis: [''] }, { surfaces: undefined }, { basis: undefined }]) assert.equal(scopeOf({ ...saved, ...damage }), null, JSON.stringify(damage));
+});
+
+test('the docs gate names a closing record\'s check, and a spec hold names its linked task\'s check', t => {
+  const { root } = project(t);
+  const review = { kind: 'docs', status: 'complete', strength: 'strong', independent: true, broad: true, coverageEvidence: 'Assessed', coveredTaskIds: ['work'], revision: 1, requestId: 'closing-review', snapshot: inventorySnapshot(root), contextSnapshot: inventorySnapshot(root), dimensions: DIMENSIONS.docs, commitments: {} };
+  const closing = { id: '#closing', kind: 'closing', reviews: [review], findings: [], checks: [{ name: 'Ready parser', passed: false, exitCode: 1, snapshot: snapshot(root, ['a.txt']) }], probeEvidence: [] };
+  const work = { id: 'work', kind: 'code', agreement: { source: 'User', outcome: 'x', spec: 'spec.md', specReviewTaskId: 'spec-task' }, findings: [], reviews: [], checks: [] };
+  const specTask = { id: 'spec-task', kind: 'spec', status: 'complete', agreement: { source: 'User', outcome: 'y', spec: 'spec.md' }, findings: [], reviews: [], checks: [{ name: 'Spec check', passed: false, exitCode: 1, snapshot: snapshot(root, ['a.txt']) }] };
+  const state = { root, id: 'run', controller: { session: 'c' }, workers: [], tasks: [work, specTask], closing: { docs: closing } };
+  assert.match(causeText(work, docsCause(root, work, state, 'unmet')), /#closing: check "Ready parser" failed/);
+  assert.match(specRefusal(state, [work], 'Held'), /spec-task: check "Spec check" failed/);
 });

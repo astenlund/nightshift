@@ -369,6 +369,18 @@ function specAcceptanceStatus(root, task, options) {
   return { recorded: true, current: options.verifyFreshness === false ? 'reconcile at acceptance' : specAcceptanceCurrent(root, task) };
 }
 
+// Why a governing spec holds this work: a linked spec task's failing checks are named, since a new assessment would not settle them.
+function specRefusal(state, tasks, message) {
+  const failing = tasks.filter(task => !specReady(state, task)).flatMap(task => {
+    const linked = state.tasks.find(candidate => candidate.id === task.agreement?.specReviewTaskId);
+    const checks = linked ? checkFailures(state.root, linked) : [];
+
+    return checks.length > 0 ? [`${linked.id}: ${namedChecks(checks)}`] : [];
+  });
+
+  return failing.length > 0 ? `${message}. Failing: ${[...new Set(failing)].join('; ')}` : message;
+}
+
 function specReady(state, task) {
   if (isReviewContext(state)) return true;
   if (task.kind !== 'code' || !Object.hasOwn(task.agreement, 'spec')) return true;
@@ -463,7 +475,7 @@ function causeText(target, cause) {
     'changed-inputs': () => `changed inputs: ${cause.changedPaths?.join(', ')}${cause.commitmentsChanged ? ', and changed commitments' : ''}`,
     'changed-commitments': () => 'changed commitments',
     unestablished: () => 'a comparison that could not be established',
-    check: () => namedChecks(cause.checks),
+    check: () => `${cause.record ? `${cause.record}: ` : ''}${namedChecks(cause.checks)}`,
     unmet: () => 'unmet assurance',
   };
 
@@ -699,8 +711,12 @@ function requireReviewGate(root, task, state, message) {
 
 // Why the docs review covering a task fails its gate, from the review that gate selected.
 function docsCause(root, task, state, failure, options) {
-  if (failure !== 'stale') return { kind: 'unmet', changedPaths: null };
   const entry = latestReview(docsCandidates(task, state, options?.closingOnly ?? false), state);
+  if (failure !== 'stale') {
+    const checks = entry?.owner.kind === 'closing' ? checkFailures(root, entry.owner) : [];
+
+    return checks.length > 0 ? { kind: 'check', checks, record: entry.owner.id } : { kind: 'unmet', changedPaths: null };
+  }
 
   return staleCause(applicability(root, entry.review, task, entry.owner, state));
 }
@@ -864,7 +880,7 @@ function assertAction(state, request) {
   if (task && !['review', 'block', 'unblock', 'add-spec-review', 'spec-accepted'].includes(request.action)) {
     requireCondition(!task.blocker, 'task-blocked', 'Resolve the recorded blocker before dependent work');
     requireCondition(task.requires.every(id => taskById(state, id).status === 'complete'), 'dependency-blocked', 'An upstream task remains incomplete');
-    requireCondition(specReady(state, task), 'spec-review-required', 'Substantial implementation requires resolved independent spec assessment');
+    if (!specReady(state, task)) requireCondition(false, 'spec-review-required', specRefusal(state, [task], 'Substantial implementation requires resolved independent spec assessment'));
   }
   return task;
 }
@@ -892,7 +908,7 @@ function transition(state, request, integration = null) {
     case 'start-task':
       requireCondition(state.status === 'running' && task.status !== 'complete' && !task.blocker, 'task-blocked', 'Task is not actionable');
       requireCondition(task.requires.every(id => taskById(state, id).status === 'complete'), 'dependency-blocked', 'An upstream task remains incomplete');
-      requireCondition(specReady(state, task), 'spec-review-required', 'Substantial work requires resolved independent spec review');
+      if (!specReady(state, task)) requireCondition(false, 'spec-review-required', specRefusal(state, [task], 'Substantial work requires resolved independent spec review'));
       task.status = 'active';
       resetClosing(state);
       break;
@@ -1265,7 +1281,7 @@ function transition(state, request, integration = null) {
         state.status = 'complete';
         break;
       }
-      requireCondition(state.tasks.every(candidate => specReady(state, candidate)), 'spec-review-required', 'Every governing spec still requires current independent assessment');
+      if (!state.tasks.every(candidate => specReady(state, candidate))) requireCondition(false, 'spec-review-required', specRefusal(state, state.tasks, 'Every governing spec still requires current independent assessment'));
       // Checked first, because an unresolved closing review also withholds the documentation relief the gates below depend on.
       if (closingRecordFailure(state.root, state) !== null) {
         const record = state.closing.docs;
@@ -1297,4 +1313,4 @@ function transition(state, request, integration = null) {
   require('./discharge').admittedAction(state, request, dischargeBefore);
 }
 
-module.exports = { causeText, reviewGateCause, staleCause, DIMENSIONS, assertAction, closingStage, commitmentBindingFor, commitmentsFor, completeAssessment, findingKind, historicalDischarge, isDocumentationPath, latestChecks, obligationBrief, reportNotice, reportStatus, reviewGate, reviewProgress, sameClosingRecord, settled, sharesCumulativeAssessment, targetById, taskById, transition, unresolvedFindings };
+module.exports = { causeText, docsCause, reviewGateCause, specRefusal, staleCause, DIMENSIONS, assertAction, closingStage, commitmentBindingFor, commitmentsFor, completeAssessment, findingKind, historicalDischarge, isDocumentationPath, latestChecks, obligationBrief, reportNotice, reportStatus, reviewGate, reviewProgress, sameClosingRecord, settled, sharesCumulativeAssessment, targetById, taskById, transition, unresolvedFindings };

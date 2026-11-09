@@ -170,8 +170,8 @@
     },
     {
       "path": "internal/runtime/REFERENCE.md",
-      "bytes": 157255,
-      "sha256": "ee76d942069397b5fb921ae39105eb8e9b6b77547296fee631235aa496689a86"
+      "bytes": 157330,
+      "sha256": "bd20f55e5518de9dcd9ece0fdb3ff97fc637cc07677658249fdcb299f7539351"
     },
     {
       "path": "internal/runtime/acceptance-checkpoint.js",
@@ -255,8 +255,8 @@
     },
     {
       "path": "internal/runtime/finding-scope.js",
-      "bytes": 9034,
-      "sha256": "e31f77b16a68e8824127a5703f42a508e89c17c36ed15712207d3e68f629ebd3"
+      "bytes": 9051,
+      "sha256": "3e1aa131f8fe844174d35b829139675dd68555e84ba41f37bb7ed332d5755774"
     },
     {
       "path": "internal/runtime/history-compaction.js",
@@ -315,8 +315,8 @@
     },
     {
       "path": "internal/runtime/lifecycle.js",
-      "bytes": 100852,
-      "sha256": "b5d56b13facf2e9a05447d1cfd0770d55299122b05e2986292a9e9a01a9d4800"
+      "bytes": 101843,
+      "sha256": "894f83d632628ee40e7e70f8dcb6536422de482fa9c8b080d41e951d2c2fd8bf"
     },
     {
       "path": "internal/runtime/limits.js",

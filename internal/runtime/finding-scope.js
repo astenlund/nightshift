@@ -105,8 +105,9 @@ function recordedSurfaces(finding, review, specOrigin) {
 function scopeOf(finding) {
   const scope = finding?.scope;
   if (!Array.isArray(scope) || scope.length === 0 || !scope.every(nonempty)) return null;
+  if (!Array.isArray(finding.surfaces) || !Array.isArray(finding.basis) || !finding.surfaces.every(wellFormedSurface) || !finding.basis.every(nonempty)) return null;
   if (finding.reviewKind === 'spec') return scope;
-  if (!Array.isArray(finding.surfaces) || !Array.isArray(finding.basis) || finding.surfaces.length === 0 || !finding.surfaces.every(wellFormedSurface) || !finding.basis.every(nonempty)) return null;
+  if (finding.surfaces.length === 0) return null;
 
   return namedPaths(finding).every(file => scope.includes(file)) ? scope : null;
 }
