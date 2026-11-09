@@ -240,9 +240,8 @@ function loadFixture(directory) {
       if (typeof decoy?.[field] !== 'string' || !decoy[field].trim()) fail('fixture-invalid', `${name}: a decoy is missing ${field}`);
     }
     if (!SEVERITIES.includes(decoy.severity) || typeof decoy.required !== 'boolean') fail('fixture-invalid', `${name}: a decoy needs a known severity and a boolean required`);
-    if (!Array.isArray(decoy.surfaces) || decoy.surfaces.length === 0 || !Array.isArray(decoy.basis)) fail('fixture-invalid', `${name}: a decoy needs surfaces and a basis, so its shape matches a lead finding's`);
   }
-  const texts = [fixture.requirements, ...fixture.decoys.flatMap(decoy => [decoy.severity, decoy.consequence, decoy.evidence, decoy.reason, ...decoy.surfaces.flatMap(surface => [surface.path, surface.location, surface.evidence]), ...decoy.basis])];
+  const texts = [fixture.requirements, ...fixture.decoys.flatMap(decoy => [decoy.severity, decoy.consequence, decoy.evidence, decoy.reason, ...(decoy.surfaces ?? []).flatMap(surface => [surface.path, surface.location, surface.evidence]), ...(decoy.basis ?? [])])];
   for (const text of texts) {
     const token = containsToken(text);
     if (token) fail('fixture-contaminated', `${name}: supplied text contains ${token}`);
@@ -1010,6 +1009,10 @@ async function run(options, dependencies = defaultDependencies()) {
     // files a source fixture has since dropped, so the run refuses it rather than clearing it.
     if (fs.existsSync(options.out) && fs.readdirSync(options.out).length) fail('run-folder-unfinished', `${options.out} holds files but no manifest; remove it or use a new run folder`);
     suite = loadSuite(options.fixtures, options.selected ?? []);
+    // A new run's decoys match a lead finding's shape; a frozen run from before surfaces is still graded as it was dispatched.
+    for (const item of suite.fixtures) {
+      if (item.fixture.decoys.some(decoy => !Array.isArray(decoy.surfaces) || decoy.surfaces.length === 0 || !Array.isArray(decoy.basis))) fail('fixture-invalid', `${item.name}: a decoy needs surfaces and a basis, so its shape matches a lead finding's`);
+    }
     const token = containsToken(fs.readFileSync(options.rules, 'utf8'));
     if (token) fail('fixture-contaminated', `rules.md contains ${token}`);
   }

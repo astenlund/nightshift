@@ -1914,6 +1914,13 @@ test('a bug origin counts toward the composition rules only when it names a bug 
   assert.equal(known.some(problem => problem.includes('names no')), false);
 });
 
+test('a decoy from before surfaces still loads for grading, and only a new run requires surfaces', async t => {
+  const root = scratch(t);
+  writeFixture(root, 'alpha', { fixture: { decoys: [decoy({ surfaces: undefined, basis: undefined })] } });
+  assert.doesNotThrow(() => suite.loadFixture(path.join(root, 'alpha')));
+  await assert.rejects(suite.run(options(root, root), dependencies(LEAD_FINDS_DEFECT, [])), { code: 'fixture-invalid', message: /surfaces and a basis/ });
+});
+
 test('a section heading of the bug index is no entry title for an origin', t => {
   // Arrange
   const root = scratch(t);
