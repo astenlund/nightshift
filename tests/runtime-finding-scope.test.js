@@ -316,7 +316,7 @@ test('a skeptic dispatched before its finding was imported cannot supply a verdi
   await assert.rejects(f.act({ action: 'validate', receipt: f.receiptPath(early), findingId: id }), { code: 'missing-validation' });
 });
 
-test('an edit to the governing spec refuses validate and dispose, and an unrelated edit leaves them usable', async t => {
+test('in a delivery an edit to the governing spec refuses dispose after a reassessment, and an unrelated edit leaves validate and dispose usable', async t => {
   const f = delivery(t, [{ id: 'work', title: 'Work', agreement: { source: 'User', outcome: 'Governed', spec: 'spec.md', specReviewed: true } }]);
   const reviewed = await f.dispatch('code', [lead({ id: 'one' }), lead({ id: 'two' })], 'lead');
   await f.act({ action: 'review', receipt: f.receiptPath(reviewed) });
@@ -364,6 +364,24 @@ test('in a review context an edit to the governing spec named in neither list re
   await assert.rejects(act({ action: 'validate', receipt: receipt(skeptic), findingId: finding.id }), { code: 'invalid-receipt', message: /spec\.md/ });
   fs.writeFileSync(path.join(root, 'spec.md'), 'requirements\n');
   await act({ action: 'validate', receipt: receipt(skeptic), findingId: finding.id });
+  fs.writeFileSync(path.join(root, 'spec.md'), 'requirements amended\n');
+  await assert.rejects(act({ action: 'dispose', findingId: finding.id, disposition: 'implement', reason: 'Worth it', obligation: { classification: 'required', basis: 'Agreed' } }), { code: 'stale-validation', message: /spec\.md/ });
+  fs.writeFileSync(path.join(root, 'spec.md'), 'requirements\n');
+  fs.writeFileSync(path.join(root, 'more.txt'), 'elsewhere too\n');
+  await act({ action: 'dispose', findingId: finding.id, disposition: 'implement', reason: 'Worth it', obligation: { classification: 'required', basis: 'Agreed' } });
+});
+
+test('a review context refusing on a check names the check', async t => {
+  const { root, closing } = project(t);
+  const actor = { host: 'claude', session: 'controller' };
+  const context = await executeWithFixtureController(root, { action: 'open-review', reviewContextId: randomUUID(), controller: actor, authority: 'Fixture', objective: 'Assess', kind: 'docs', agreement: { source: 'User', outcome: 'Mechanical' } });
+  const { ReviewStore } = require('../internal/runtime/review-store');
+  const store = new ReviewStore(root, { contextId: context.id });
+  closing.push(() => store.close());
+  const act = body => executeWithFixtureController(root, { actor, reviewContextId: context.id, taskId: '#review', revision: store.read().revision, ...body });
+  await act({ action: 'check', check: { name: 'Docs fixture check', executable: process.execPath, args: ['--version'], paths: ['a.txt'] } });
+  fs.writeFileSync(path.join(root, 'a.txt'), 'changed\n');
+  await assert.rejects(act({ action: 'advance', docsExemption: 'A mechanical rename', evidence: 'Done' }), { code: 'verification-required', message: /Docs fixture check" inputs-changed/ });
 });
 
 test('a repair keeps stored probe evidence, and closure context names confirmed and refuted surfaces', async t => {
@@ -522,11 +540,13 @@ test('a spec review finding is bound to its deciding inputs, and an edit elsewhe
   await assert.rejects(dispose(f.act, finding.id), { code: 'stale-validation', message: /spec\.md/ });
 });
 
-test('carried and closing findings show their surface verdicts in status', async t => {
+test('carried and closing-record findings show surface verdicts in status, and a carried finding keeps its scope', async t => {
   const f = delivery(t);
-  const carried = { id: 'carried', localId: 'c', severity: 'minor', consequence: 'c', evidence: 'e', validation: { verdict: 'confirmed', surfaces: [answer('a.txt', 'confirmed'), answer('b.txt', 'refuted')] }, disposition: null };
-  f.store.update(f.actor, f.store.read().revision, 'fixture-carried', state => { state.closing = { ...(state.closing ?? {}), carriedFindings: [carried] }; });
+  const carried = { id: 'carried', localId: 'c', severity: 'minor', consequence: 'c', evidence: 'e', reviewKind: 'docs', surfaces: [surface('a.txt')], basis: [], scope: ['a.txt'], validation: { verdict: 'confirmed', surfaces: [answer('a.txt', 'confirmed'), answer('b.txt', 'refuted')] }, disposition: null };
+  f.store.update(f.actor, f.store.read().revision, 'fixture-carried', state => { state.closing = { ...(state.closing ?? {}), carriedFindings: [carried], docs: { id: '#closing', kind: 'closing', baseline: null, reviews: [], findings: [{ ...carried, id: 'on-record' }], checks: [], probeEvidence: [] } }; });
   const brief = await f.act({ action: 'status' });
+  assert.deepEqual(brief.closing.docsReview.surfaceVerdicts.map(item => item.id), ['on-record']);
+  assert.deepEqual(scopeOf(f.store.read().closing.carriedFindings[0]), ['a.txt']);
   assert.deepEqual(brief.closing.carriedSurfaceVerdicts, [{ id: 'carried', surfaces: [{ path: 'a.txt', location: '', verdict: 'confirmed' }, { path: 'b.txt', location: '', verdict: 'refuted' }] }]);
 });
 
@@ -562,4 +582,33 @@ test('a true basis observation leaves a refuted finding refuted and a confirmed 
   assert.doesNotThrow(() => validateSurfaceAnswers(assigned, { verdict: 'refuted', surfaces: [answer('a.txt', 'refuted')] }));
   assert.doesNotThrow(() => validateSurfaceAnswers(assigned, { verdict: 'confirmed', surfaces: [answer('a.txt', 'confirmed')] }));
   assert.throws(() => validateSurfaceAnswers(assigned, { verdict: 'confirmed', surfaces: [answer('a.txt', 'refuted'), answer('b.txt', 'confirmed')] }), { code: 'missing-validation' });
+});
+
+test('a dialogue with a damaged snapshot is refused at its operation, a spec-kind one included', async t => {
+  for (const specKind of [false, true]) {
+    const f = delivery(t, specKind ? [{ id: 'work', title: 'Spec', kind: 'spec', agreement: { source: 'User', outcome: 'Specified', spec: 'spec.md' } }] : undefined);
+    const reviewed = await f.dispatch(specKind ? 'spec' : 'code', [lead()], 'lead', specKind ? { artifactPaths: ['spec.md'] } : {});
+    await f.act({ action: 'review', receipt: f.receiptPath(reviewed) });
+    const [finding] = f.store.read().tasks[0].findings;
+    const reply = await f.dispatch(specKind ? 'spec' : 'code', [], 'lead', { resume: reviewed.receipt.requestId, candidates: undefined, dialogue: { findingIds: [finding.id], message: 'Does it stand?' }, ...(specKind ? { artifactPaths: ['spec.md'] } : {}) });
+    for (const name of ['receipt.json', 'request.json']) {
+      const target = path.join(path.dirname(reply.receiptFile), name);
+      const saved = JSON.parse(fs.readFileSync(target, 'utf8'));
+      saved.contextSnapshot.digest = 'damaged';
+      fs.writeFileSync(target, JSON.stringify(saved));
+    }
+    await assert.rejects(f.act({ action: 'dialogue', receipt: f.receiptPath(reply) }), { code: 'invalid-receipt', message: /integrity check/ });
+  }
+});
+
+test('a fresh skeptic receives stored results that still apply', async t => {
+  const f = delivery(t);
+  const reviewed = await f.dispatch('code', [lead()], 'lead');
+  await f.act({ action: 'review', receipt: f.receiptPath(reviewed) });
+  const [finding] = f.store.read().tasks[0].findings;
+  const stored = reference(f.root, declaredResult(f.root, ['a.txt']), 'kept-for-skeptic');
+  f.store.update(f.actor, f.store.read().revision, 'fixture-probes', state => { state.tasks[0].probeEvidence = [stored]; });
+  let assigned;
+  await f.dispatch('skeptic', request => { assigned = request; return f.verdicts(request); }, 'skeptic', { findings: [finding] });
+  assert.deepEqual(assigned.probeFiles, ['context/probes/kept-for-skeptic.json']);
 });

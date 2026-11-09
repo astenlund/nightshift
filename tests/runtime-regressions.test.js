@@ -104,6 +104,19 @@ test('another spec assessment cannot refresh changed governing commitments', t =
   assert.throws(() => f.act({ action: 'complete' }), { code: 'stale-review' });
 });
 
+test('complete refuses a mixed run with stale-review and names each task with its own cause', t => {
+  const tasks = ['a', 'b'].map(id => ({ id, title: id, kind: 'spec', agreement: { source: 'User', outcome: id, spec: id + '.txt' } }));
+  const f = fixture(t, { tasks });
+  for (const id of ['a', 'b']) {
+    f.act({ action: 'review', taskId: id, review: { kind: 'spec', session: 'reviewer-' + id, attributionVerified: true, status: 'complete', strength: 'strong', independent: true, broad: true, dimensions: DIMENSIONS.spec, coverageEvidence: 'Complete governing artifact assessed', coveredTaskIds: ['a', 'b'], snapshot: snapshot(f.root, [id + '.txt']), findings: [] } });
+    f.act({ action: 'check', taskId: id, evidence: verifyCommand(f.root, { name: 'Mixed ' + id, executable: process.execPath, args: ['--version'], paths: [id === 'b' ? 'a.txt' : 'b.txt'] }) });
+    f.finish(id);
+  }
+  fs.writeFileSync(path.join(f.root, 'a.txt'), 'Changed commitments\n');
+  assert.equal(reviewGate(f.root, f.store.read().tasks[0], f.store.read()), false);
+  assert.throws(() => f.act({ action: 'complete' }), { code: 'stale-review', message: /a: changed inputs: a\.txt.*b: check "Mixed b" inputs-changed/ });
+});
+
 test('controller authority is distinct from reviewer obligation assessment', t => {
   const f = fixture(t);
   f.review('a', ['a'], [{ id: 'scope', required: true, consequence: 'Real pre-existing behavior', evidence: 'Concrete case' }]);

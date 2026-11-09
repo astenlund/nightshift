@@ -594,6 +594,17 @@ test('after a repair batch the resume set names only the raising reviewer, and t
   assert.deepEqual(withoutChanges(progress.freshTargets), [{ kind: 'docs', taskId: 'task', covers: ['task'], staleAssessments: [docs.receipt.requestId], reopens: false }]);
   assert.equal(progress.freshTargets[0].staleChanges[0].requestId, docs.receipt.requestId);
   assert.equal(progress.freshTargets[0].staleChanges[0].cause, 'changed-inputs');
+  const staleChange = () => f.brief().review.freshTargets[0].staleChanges[0];
+  const docsReview = state => state.tasks[0].reviews.find(review => review.requestId === docs.receipt.requestId);
+  const recorded = structuredClone(docsReview(f.store.read()));
+  f.store.update(f.store.read().controller, f.store.read().revision, 'fixture-unestablished', state => { docsReview(state).contextSnapshot.digest = 'damaged'; });
+  assert.deepEqual(staleChange(), { requestId: docs.receipt.requestId, cause: 'unestablished', changedPaths: null });
+  const current = inventorySnapshot(f.root, recorded.contextSnapshot.excludedPaths, recorded.contextSnapshot.includedPaths);
+  f.store.update(f.store.read().controller, f.store.read().revision, 'fixture-commitments', state => {
+    Object.assign(docsReview(state), { snapshot: current, contextSnapshot: current });
+    docsReview(state).commitments = { task: { agreement: { source: 'Earlier', outcome: 'Earlier outcome' }, revision: 0 } };
+  });
+  assert.deepEqual(staleChange(), { requestId: docs.receipt.requestId, cause: 'changed-commitments', changedPaths: null });
   assert.ok(progress.freshTargets[0].staleChanges[0].changedPaths.length > 0);
   // A lightweight brief evaluates no freshness, so it lists the closures owed and marks the fresh targets unevaluated.
   assert.deepEqual({ targets: light.resumeTargets.map(item => item.requestId), fresh: withoutChanges(light.freshTargets) }, { targets: [second.receipt.requestId], fresh: 'reconcile at acceptance' });

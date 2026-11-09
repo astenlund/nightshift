@@ -737,7 +737,10 @@ test('a closing dispatch covers every code, docs and lore task, and a failing cl
   assert.deepEqual([...dispatched.receipt.coveredTaskIds].sort(), ['code', 'lessons', 'notes']);
   await executeWithFixtureController(f.root, { action: 'review', actor, revision: f.store.read().revision, taskId: CLOSING_TARGET, receipt: path.relative(f.root, dispatched.receiptFile).split(path.sep).join('/') });
   f.act({ action: 'check', taskId: CLOSING_TARGET, evidence: { ...verifyCommand(f.root, { name: 'Ready parser', executable: process.execPath, args: ['--version'], paths: [BACKLOG] }), passed: false, exitCode: 1 } });
-  assert.throws(() => f.act({ action: 'complete' }), { code: 'closing-review-unresolved' });
+  const refused = (() => { try { f.act({ action: 'complete' }); return null; } catch (error) { return error; } })();
+  assert.equal(refused.code, 'closing-review-unresolved');
+  assert.match(refused.message, /#closing: check "Ready parser" failed/);
+  assert.doesNotMatch(refused.message, /not a complete strong docs assessment/, 'a check-only failure names no other cause');
   f.check(CLOSING_TARGET, [BACKLOG], 'Ready parser');
   assert.equal(f.act({ action: 'complete' }).status, 'complete');
 });
