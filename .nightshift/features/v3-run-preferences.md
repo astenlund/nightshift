@@ -25,7 +25,7 @@ The [independent shipped-capability audit](../reports/pre-v3-shipped-capability-
 
 Decide the preference source, scope and refresh rules, and which additional budget metrics can actually be enforced. Verify continuation, allowed substitution, unavailable required models, delayed usage and real exhaustion. Coordinate with existing budget entries instead of declaring their problems solved.
 
-Coordinate with the [budget-controls bug](../BUGS.md#controller-treats-internal-token-ceilings-as-user-owned-budget-decisions) and the handover allowance and evidence-budget decisions that [Verify faked boundaries live](live-boundary-verification.md) carries. Their separate defects are not declared resolved.
+Coordinate with the [budget-controls bug](../BUGS.md#controller-treats-internal-token-ceilings-as-user-owned-budget-decisions) and the handover allowance and evidence-budget decisions that [Verify faked boundaries live](live-boundary-verification.md) carries. Their separate defects are not declared resolved. On 2026-11-09 the user chose to ship the token limit as its own small release under a short spec covering only that commitment, including what an attempt of unknown tokens does and the Stop hook's branch; the rest stays here.
 
 ## Added at the section-level audit's triage
 

@@ -44,4 +44,4 @@ A read-only installed check runs the observer over this repository's 2026-10-17 
 
 ## Out of scope
 
-The thinking-stored acknowledgement ([BUGS.md](../BUGS.md#claude-code-can-store-the-in-turn-handover-acknowledgement-as-thinking)), a history size check at handover acceptance, inferring tool failures from host events, and the maintainer inbox reports of 2026-10-18 are not part of this work.
+The thinking-stored acknowledgement ([BUGS.md](../bugs/handover-acknowledgement-as-thinking.md)), a history size check at handover acceptance, inferring tool failures from host events, and the maintainer inbox reports of 2026-10-18 are not part of this work.
