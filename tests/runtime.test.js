@@ -236,12 +236,14 @@ test('persisted commitments, findings and ownership survive closing and reopenin
   } finally { reopened.close(); }
 });
 
-test('dependencies and unresolved substantial spec review prevent dependent implementation', t => {
+test('dependencies prevent dependent implementation while unresolved spec review holds only completion', t => {
   const f = fixture(t, [
     { id: 'subject', title: 'Subject', agreement: { source: 'user', outcome: 'A', spec: 'spec.md', specReviewed: false } },
     { id: 'dependent', title: 'Dependent', agreement: { source: 'user', outcome: 'B' }, requires: ['subject'] },
   ]);
-  assert.throws(() => apply(f, { action: 'start-task' }), { code: 'spec-review-required' });
+  apply(f, { action: 'start-task' });
+  assert.equal(f.store.read().tasks[0].status, 'active');
+  assert.equal(obligationBrief(f.store.read()).specReadiness[0].ready, false);
   assert.throws(() => apply(f, { action: 'start-task', taskId: 'dependent' }), { code: 'dependency-blocked' });
 });
 

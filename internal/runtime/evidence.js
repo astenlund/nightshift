@@ -323,4 +323,4 @@ function verifyCommand(root, request) {
   return { ...result, snapshot: after, inputsUnchanged, passed: !result.error && result.exitCode === 0 && inputsUnchanged };
 }
 
-module.exports = { withEvidenceComparisons, privateInputsCurrent, changedPaths, executeCommand, fileIdentity, fileSha256, fresh, freshAll, hash, inventorySnapshot, outsideGitWorktree, projectFile, projectInventory, snapshot, verifyCommand };
+module.exports = { withEvidenceComparisons, privateInputsCurrent, changedPaths, executeCommand, fileIdentity, fileSha256, fresh, freshAll, hash, inventorySnapshot, outsideGitWorktree, projectFile, projectInventory, relativeParts, snapshot, verifyCommand };

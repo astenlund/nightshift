@@ -117,7 +117,7 @@ function validReminder(reminder, state) {
 }
 
 function requirementContext(task, resolve = value => value) {
-  return { id: task.id, kind: task.kind ?? 'code', requires: [...new Set(task.requires ?? [])].sort(), outcome: task.agreement?.outcome, decisions: [...new Set(task.agreement?.decisions ?? [])], spec: task.agreement?.spec ?? null, specTask: task.agreement?.specReviewTaskId ?? null, specContent: task.specAcceptance?.snapshot ? snapshotIdentity(resolve(task.specAcceptance.snapshot)) : task.agreement?.specSnapshot ? snapshotIdentity(resolve(task.agreement.specSnapshot)) : null };
+  return { id: task.id, kind: task.kind ?? 'code', requires: [...new Set(task.requires ?? [])].sort(), outcome: task.agreement?.outcome, decisions: [...new Set(task.agreement?.decisions ?? [])], spec: task.agreement?.spec ?? null, specTask: task.specReviewTaskId || (task.agreement?.specReviewTaskId ?? null), specContent: task.specAcceptance?.snapshot ? snapshotIdentity(resolve(task.specAcceptance.snapshot)) : task.agreement?.specSnapshot ? snapshotIdentity(resolve(task.agreement.specSnapshot)) : null };
 }
 
 function findingSubject(finding) {

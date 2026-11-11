@@ -18,6 +18,7 @@ const { latestDecision, relevanceCoversTask, applicability, inputChanges, latest
 const { validReportDelivery } = require('./report-delivery');
 const { invalidateContinuation, continuationForRequest } = require('./continuation-health');
 const { currencyRefusal, receiptCurrency, recordedSurfaces, savedSurfaces, scopeOf, surfaceVerdicts, validateSurfaceAnswers } = require('./finding-scope');
+const { linkValues, requireSpecReadiness, resolveGovernance, specLink, specReadinessStatus, usableSpec } = require('./spec-readiness');
 
 const DIMENSIONS = Object.freeze({
   spec: ['intent-scope-acceptance', 'soundness-integration', 'failure-safety-recovery', 'clarity-consistency-proportionality'],
@@ -242,6 +243,7 @@ function historicalDischarge(state, snapshotValid) {
     const retained = completeAssessment(review) && decision?.status === 'complete' && decision.attributionVerified === true && decision.independent === true && decision.strength === 'strong' && decision.applicability?.some(answer => answer.id === task.id && answer.outcome === 'preserve' && answer.evidence?.trim()) && snapshotValid(decision.snapshot) && snapshotValid(decision.contextSnapshot);
     return (acceptableAssessment(review, task) || retained) && review.attributionVerified === true && DIMENSIONS[kind].every(dimension => review.dimensions?.includes(dimension)) && snapshotValid(review.snapshot);
   };
+  const governance = resolveGovernance(state.root, state.tasks);
   for (const task of state.tasks) {
     if (!verificationGate(state.root, task, current) || !task.findings.every(finding => settled(finding) && finding.validation.attributionVerified === true && ['confirmed', 'refuted'].includes(finding.validation.verdict))) return false;
     if (requiresReview(task)) {
@@ -255,9 +257,13 @@ function historicalDischarge(state, snapshotValid) {
         if (!assessed(entry, task, 'docs') || task.findings.some(finding => finding.repaired && findingKind(finding, task) === 'docs' && finding.repairRevision >= entry.review.revision)) return false;
       }
     }
+    // The readiness routes judged on recorded evidence: the task's own reviewed snapshot while it has no link, otherwise its governing
+    // spec task, linked or queued. Spec paths compare as readiness compares them, so a run discharged by equal strings stays discharged.
     if (task.kind === 'code' && task.agreement.spec) {
-      const spec = state.tasks.find(item => item.id === task.agreement.specReviewTaskId);
-      if (spec ? spec.status !== 'complete' || spec.agreement.spec !== task.agreement.spec || !assessed(leadEntry(spec, state), spec, 'spec') : task.agreement.specReviewed !== true || !snapshotValid(task.agreement.specSnapshot)) return false;
+      if (!usableSpec(task.agreement.spec)) return false;
+      const reviewed = !specLink(task) && task.agreement.specReviewed === true && snapshotValid(task.agreement.specSnapshot);
+      const spec = governance.get(task.id)?.specTask;
+      if (!reviewed && (!spec || spec.status !== 'complete' || !assessed(leadEntry(spec, state), spec, 'spec'))) return false;
     }
   }
   const closing = state.closing.docs;
@@ -369,36 +375,15 @@ function specAcceptanceStatus(root, task, options) {
   return { recorded: true, current: options.verifyFreshness === false ? 'reconcile at acceptance' : specAcceptanceCurrent(root, task) };
 }
 
-// Why a governing spec holds this work: a linked spec task's failing checks are named, since a new assessment would not settle them.
-function specRefusal(state, tasks, message) {
-  const failing = tasks.filter(task => !specReady(state, task)).flatMap(task => {
-    const linked = state.tasks.find(candidate => candidate.id === task.agreement?.specReviewTaskId);
-    const checks = linked ? checkFailures(state.root, linked) : [];
-
-    return checks.length > 0 ? [`${linked.id}: ${namedChecks(checks)}`] : [];
-  });
-
-  return failing.length > 0 ? `${message}. Failing: ${[...new Set(failing)].join('; ')}` : message;
-}
-
-function specReady(state, task) {
-  if (isReviewContext(state)) return true;
-  if (task.kind !== 'code' || !Object.hasOwn(task.agreement, 'spec')) return true;
-  if (typeof task.agreement.spec !== 'string' || !task.agreement.spec.trim()) return false;
-  if (!task.agreement.specReviewTaskId && task.agreement.specReviewed === true) {
-    const evidence = task.agreement.specSnapshot;
-    return evidence?.files?.length === 1 && evidence.files[0].path === task.agreement.spec && typeof evidence.files[0].sha256 === 'string' && fresh(state.root, evidence);
-  }
-  const spec = state.tasks.find(candidate => candidate.id === task.agreement.specReviewTaskId);
-  const assessment = spec?.kind === 'spec' ? leadEntry(spec, state)?.review : null;
-  return spec?.kind === 'spec' && spec.status === 'complete' && spec.agreement.spec === task.agreement.spec
-    && acceptableAssessment(assessment, spec) && fresh(state.root, assessment.snapshot) && reviewGate(state.root, spec, state);
-}
-
 // A completed strong independent assessment with broad evidenced coverage; a failed or partial one never counts. Neither does a
 // continued one: a resumed or replacement reviewer verifies repairs and can raise findings, but only a fresh assessment passes a gate.
 function completeAssessment(review) {
-  return Boolean(review) && !review.relevance && !review.continues && review.status === 'complete' && review.strength === 'strong' && review.independent === true && review.broad === true && Boolean(review.coverageEvidence?.trim());
+  return Boolean(review) && !review.relevance && !review.continues && review.status === 'complete' && review.strength === 'strong' && review.independent === true && review.broad === true && typeof review.coverageEvidence === 'string' && Boolean(review.coverageEvidence.trim());
+}
+
+// Whether an assessment covers every dimension of its kind; a persisted value that is not a list covers none.
+function coversDimensions(review, kind) {
+  return Array.isArray(review.dimensions) && DIMENSIONS[kind].every(dimension => review.dimensions.includes(dimension));
 }
 
 function acceptableAssessment(review, task) {
@@ -432,7 +417,7 @@ function reviewGateFailure(root, task, state, { ignoreChecks = false } = {}) {
   if (!completeAssessment(review)) return 'unmet';
   const condition = applicability(root, review, task, entry.owner, state);
   if (!condition.current && !(condition.status === 'pending' && acceptableAssessment(review, task) && documentationRelief(root, task, state, review))) return 'stale';
-  if (!DIMENSIONS[lead].every(dimension => review.dimensions.includes(dimension))) return 'unmet';
+  if (!coversDimensions(review, lead)) return 'unmet';
   if (!ignoreChecks && !verificationGate(root, task)) return 'unmet';
   const findings = task.findings.filter(finding => findingKind(finding, task) === lead);
   if (!findings.every(settled) || findings.some(finding => finding.pendingClosure)) return 'unmet';
@@ -521,7 +506,7 @@ function docsReviewFailure(root, task, state, { closingOnly = false } = {}) {
   if (!entry || !completeAssessment(entry.review)) return 'unmet';
   const { review, owner } = entry;
   if (!applicability(root, review, task, owner, state).current) return 'stale';
-  if (!DIMENSIONS.docs.every(dimension => review.dimensions.includes(dimension))) return 'unmet';
+  if (!coversDimensions(review, 'docs')) return 'unmet';
   // The task's own docs findings, and those of the owning record: every one the closing record holds, or those this review raised on another task.
   const others = owner === task ? [] : owner.kind === 'closing' ? owner.findings : owner.findings.filter(finding => finding.reviewRevision === review.revision || owner.reviews.some(candidate => candidate.relevance && candidate.relevance.requestId === review.requestId && relevanceCoversTask(candidate, task.id) && candidate.revision === finding.reviewRevision));
   const findings = [...task.findings.filter(finding => findingKind(finding, task) === 'docs'), ...others];
@@ -543,7 +528,7 @@ function closingRecordFailure(root, state, { ignoreChecks = false } = {}) {
   const record = state.closing?.docs;
   if (!record) return null;
   const latest = latestReview(record.reviews.filter(review => !review.relevance).map(review => ({ review })), state)?.review;
-  if (latest && (!completeAssessment(latest) || !DIMENSIONS.docs.every(dimension => latest.dimensions.includes(dimension)))) return 'unmet';
+  if (latest && (!completeAssessment(latest) || !coversDimensions(latest, 'docs'))) return 'unmet';
   if (!record.findings.every(settled) || record.findings.some(finding => finding.pendingClosure)) return 'unmet';
   if (record.findings.some(finding => finding.repaired && finding.repairRevision >= (latest?.revision ?? Infinity))) return 'unmet';
   return ignoreChecks || verificationGate(root, record) ? null : 'unmet';
@@ -779,9 +764,8 @@ function buildObligationBrief(state, root, options) {
     executionResources: require('../releases/entry').executionResources(state), ...(!isReviewContext(state) ? { controllerClaim: state.controllerClaim ?? null } : { ownerObservation: state.ownerObservation ?? null }), adoption: state.adoption ?? null,
     next: ready.map(task => ({
       id: task.id, title: task.title,
-      stage: state.kind === 'delivery' && !require('./continuation-health').continuationOutcomeCurrent(state) ? 'continuation-observation'
-        : options.verifyFreshness !== false && !specReady(state, task) ? 'governing-spec-review' : task.stage,
-      agreement: { source: task.agreement.source, outcome: task.agreement.outcome, decisions: task.agreement.decisions, spec: task.agreement.spec, specReviewTaskId: task.agreement.specReviewTaskId },
+      stage: state.kind === 'delivery' && !require('./continuation-health').continuationOutcomeCurrent(state) ? 'continuation-observation' : task.stage,
+      agreement: { source: task.agreement.source, outcome: task.agreement.outcome, decisions: task.agreement.decisions, spec: task.agreement.spec, specReviewTaskId: specLink(task) },
       ...(typeof task.agreement.spec === 'string' ? { specAcceptance: specAcceptanceStatus(root, task, options) } : {}),
       unresolvedFindings: unresolvedFindings(task).map(finding => ({ id: finding.id, consequence: finding.consequence, verdict: finding.validation?.verdict ?? null, validationCommitmentsCurrent: finding.validation ? evidenceCommitmentsCurrent(state, task, finding.validation) : null, disposition: finding.disposition, pendingClosure: Boolean(finding.pendingClosure), evidence: finding.evidence.slice(0, 600), ...(surfaceVerdicts(finding) ? { surfaceVerdicts: surfaceVerdicts(finding) } : {}) })),
       review: reviewProgress(root, state, task, options),
@@ -795,6 +779,7 @@ function buildObligationBrief(state, root, options) {
       return entries.map(entry => ({ taskId: task.id, completed: task.status === 'complete', ...assessmentCondition(root, task, state, entry) }));
     }),
     staleChecks: options.verifyFreshness === false ? 'reconcile at acceptance' : staleChecks(root, state),
+    ...(!isReviewContext(state) ? { specReadiness: specReadinessStatus(state, options, task => specAcceptanceStatus(root, task, options)) } : {}),
     finalReconciliationPending: !isReviewContext(state) && state.status === 'running' && active.length === 0,
     ...(!isReviewContext(state) ? { closing: { ready: closingReady(state), stage: closingStage(state), ...(state.closing?.docs ? { docsReview: closingDocsBrief(state, root, options) } : {}), ...(state.closing?.carriedFindings?.length ? { carriedFindings: state.closing.carriedFindings.map(finding => finding.id), carriedSurfaceVerdicts: findingSurfaceVerdicts(state.closing.carriedFindings) } : {}) } } : {}),
     blockers: active.filter(task => task.blocker).map(task => ({ id: task.id, blocker: task.blocker })),
@@ -880,7 +865,6 @@ function assertAction(state, request) {
   if (task && !['review', 'block', 'unblock', 'add-spec-review', 'spec-accepted'].includes(request.action)) {
     requireCondition(!task.blocker, 'task-blocked', 'Resolve the recorded blocker before dependent work');
     requireCondition(task.requires.every(id => taskById(state, id).status === 'complete'), 'dependency-blocked', 'An upstream task remains incomplete');
-    if (!specReady(state, task)) requireCondition(false, 'spec-review-required', specRefusal(state, [task], 'Substantial implementation requires resolved independent spec assessment'));
   }
   return task;
 }
@@ -895,20 +879,22 @@ function transition(state, request, integration = null) {
   }
   switch (request.action) {
     case 'add-spec-review': {
-      requireCondition(task.kind === 'code' && task.agreement.spec, 'missing-spec', 'A governing spec is required for this internal assessment');
-      if (task.agreement.specReviewTaskId) break;
+      requireCondition(task.kind === 'code' && usableSpec(task.agreement.spec), 'missing-spec', 'A governing spec is required for this internal assessment');
+      if (specLink(task)) break;
+      const governing = resolveGovernance(state.root, state.tasks).get(task.id).specTask;
+      requireCondition(!governing, 'duplicate-task', governing ? `Queued spec task ${governing.id} already governs this task; complete it, assess it or obtain the applicability call on it instead` : '');
       const id = task.id + '-governing-spec';
       requireCondition(!state.tasks.some(candidate => candidate.id === id), 'duplicate-task', 'The governing-spec task identity is already in use');
       state.tasks.push({ id, title: 'Assess governing spec for ' + task.title, kind: 'spec', requires: [], status: 'pending', stage: 'implementation', agreement: { source: task.agreement.source, outcome: task.agreement.outcome, spec: task.agreement.spec }, checks: [], reviews: [], findings: [], blocker: null });
-      task.agreement.specReviewTaskId = id;
-      task.agreement.specReviewed = false;
+      // Beside the agreement, as spec-accepted records acceptance: every validation and assessment binds the agreement, so a link there
+      // would stale them while work proceeds before readiness. specReviewed stays as it is; the link replaces that route while it exists.
+      task.specReviewTaskId = id;
       resetClosing(state);
       break;
     }
     case 'start-task':
       requireCondition(state.status === 'running' && task.status !== 'complete' && !task.blocker, 'task-blocked', 'Task is not actionable');
       requireCondition(task.requires.every(id => taskById(state, id).status === 'complete'), 'dependency-blocked', 'An upstream task remains incomplete');
-      if (!specReady(state, task)) requireCondition(false, 'spec-review-required', specRefusal(state, [task], 'Substantial work requires resolved independent spec review'));
       task.status = 'active';
       resetClosing(state);
       break;
@@ -1081,12 +1067,15 @@ function transition(state, request, integration = null) {
         }
         requireDocsGate(state.root, task, state, 'Task completion needs a current independent docs review of the complete change, or a recorded mechanical exemption for a purely mechanical change');
       }
-      task[task.stage + 'Evidence'] = request.evidence ?? null;
-      const internalSpec = task.kind === 'spec' && state.tasks.some(owner => owner.kind === 'code' && owner.agreement.specReviewTaskId === task.id);
+      const internalSpec = task.kind === 'spec' && state.tasks.some(owner => owner.kind === 'code' && linkValues(owner).includes(task.id));
       const refreshingCompleted = task.stage === 'review' && task.resumeStage === 'complete';
       // Older lore repairs persisted documentation as their resume target.
       const resumeStage = task.kind === 'lore' && task.resumeStage === 'documentation' ? 'retrospective' : task.resumeStage;
-      task.stage = task.stage === 'review' && internalSpec ? 'complete' : task.stage === 'review' && resumeStage ? resumeStage : stages[current + 1];
+      const nextStage = task.stage === 'review' && internalSpec ? 'complete' : task.stage === 'review' && resumeStage ? resumeStage : stages[current + 1];
+      // Spec readiness holds only completion, on both completing paths; everything before it proceeds.
+      if (nextStage === 'complete') requireSpecReadiness(state, [task], 'Code task completion requires its governing spec to be ready');
+      task[task.stage + 'Evidence'] = request.evidence ?? null;
+      task.stage = nextStage;
       delete task.resumeStage;
       if (task.stage === 'complete') {
         task.status = 'complete';
@@ -1115,15 +1104,19 @@ function transition(state, request, integration = null) {
         task.agreement.decisions = [...(task.agreement.decisions ?? []), request.evidence];
         if (request.updatedOutcome !== undefined) task.agreement.outcome = text(request.updatedOutcome, 'updatedOutcome');
         task.requirementsRevision = state.revision + 1;
-        require('./acknowledgement').renewAcknowledgement(state, state.revision + 1, new Date().toISOString());
         delete task.docsExemption;
-        const spec = state.tasks.find(candidate => candidate.id === task.agreement.specReviewTaskId);
+        // A code task's amendment reopens the spec task that governs it, linked or queued, and never a structural link's target; a task
+        // of another kind keeps the earlier effect on the task its agreement links.
+        const spec = task.kind === 'code' ? resolveGovernance(state.root, state.tasks).get(task.id)?.specTask : state.tasks.find(candidate => candidate.id === task.agreement.specReviewTaskId);
         if (spec) {
           spec.agreement.decisions = [...(spec.agreement.decisions ?? []), request.evidence];
           spec.requirementsRevision = state.revision + 1;
           spec.status = 'pending';
           spec.stage = 'implementation';
-        } else if (task.agreement.spec) task.agreement.specReviewed = false;
+        }
+        if (task.agreement.spec && (task.kind === 'code' || !spec)) task.agreement.specReviewed = false;
+        // Renewed after every spec-task change, since the scope hash covers a queued spec task.
+        require('./acknowledgement').renewAcknowledgement(state, state.revision + 1, new Date().toISOString());
       }
       task.blocker = null;
       break;
@@ -1281,7 +1274,7 @@ function transition(state, request, integration = null) {
         state.status = 'complete';
         break;
       }
-      if (!state.tasks.every(candidate => specReady(state, candidate))) requireCondition(false, 'spec-review-required', specRefusal(state, state.tasks, 'Every governing spec still requires current independent assessment'));
+      requireSpecReadiness(state, state.tasks, 'Run completion requires every governing spec to be ready');
       // Checked first, because an unresolved closing review also withholds the documentation relief the gates below depend on.
       if (closingRecordFailure(state.root, state) !== null) {
         const record = state.closing.docs;
@@ -1313,4 +1306,4 @@ function transition(state, request, integration = null) {
   require('./discharge').admittedAction(state, request, dischargeBefore);
 }
 
-module.exports = { causeText, docsCause, reviewGateCause, specRefusal, staleCause, DIMENSIONS, assertAction, closingStage, commitmentBindingFor, commitmentsFor, completeAssessment, findingKind, historicalDischarge, isDocumentationPath, latestChecks, obligationBrief, reportNotice, reportStatus, reviewGate, reviewProgress, sameClosingRecord, settled, sharesCumulativeAssessment, targetById, taskById, transition, unresolvedFindings };
+module.exports = { causeText, docsCause, reviewGateCause, staleCause, DIMENSIONS, acceptableAssessment, assertAction, closingStage, commitmentBindingFor, commitmentsFor, completeAssessment, findingKind, historicalDischarge, isDocumentationPath, latestChecks, leadEntry, obligationBrief, reportNotice, reportStatus, reviewGate, reviewGateFailure, reviewProgress, sameClosingRecord, settled, sharesCumulativeAssessment, targetById, taskById, transition, unresolvedFindings };

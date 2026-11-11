@@ -10,8 +10,9 @@ const HASH = /^[a-f0-9]{64}$/;
 const time = value => typeof value === 'string' && Number.isFinite(Date.parse(value));
 const digest = value => createHash('sha256').update(JSON.stringify(value)).digest('hex');
 
+// The user's agreed queue: a task some task links, in either place, is internal to the run and left out.
 function scopeHash(state) {
-  const internal = new Set(state.tasks.map(task => task.agreement?.specReviewTaskId).filter(Boolean));
+  const internal = require('./spec-readiness').linkedTaskIds(state.tasks);
   const tasks = state.tasks.filter(task => !internal.has(task.id));
   const identities = new Set(tasks.map(task => task.id));
   return digest({ tasks: tasks.map(task => ({ id: task.id, kind: task.kind, requires: task.requires.filter(id => identities.has(id)), outcome: task.agreement.outcome, decisions: task.agreement.decisions ?? [], requirementsRevision: task.requirementsRevision ?? 0 })), limits: state.limits });

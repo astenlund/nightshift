@@ -39,7 +39,8 @@ test('imported prior spec assessment requires existing artifact bytes and preser
     await execute(root, { action: 'start-task', taskId: 'code', actor, revision: state.revision });
     assert.equal(store.read().tasks[0].status, 'active');
     fs.unlinkSync(path.join(root, 'a.txt'));
-    await assert.rejects(execute(root, { action: 'start-task', taskId: 'code', actor, revision: store.read().revision }), { code: 'spec-review-required' });
+    await execute(root, { action: 'start-task', taskId: 'code', actor, revision: store.read().revision });
+    assert.match(obligationBrief(store.read()).specReadiness[0].cause, /the governing spec file a\.txt is missing/);
   } finally { store.close(); }
 });
 
@@ -49,11 +50,14 @@ test('persisted absent spec approvals cannot pass while deleted-code snapshots r
   f.store.update(actor, f.store.read().revision, 'legacy-approval-fixture', state => {
     Object.assign(state.tasks[0].agreement, { spec: 'missing.md', specReviewed: true, specSnapshot: missing });
   });
-  await assert.rejects(execute(f.root, { action: 'start-task', taskId: 'a', actor, revision: f.store.read().revision }), { code: 'spec-review-required' });
+  await execute(f.root, { action: 'start-task', taskId: 'a', actor, revision: f.store.read().revision });
+  const reading = () => obligationBrief(f.store.read()).specReadiness[0];
+  assert.deepEqual([reading().ready, reading().cause], [false, 'the governing spec file missing.md is missing']);
   assert.equal(fresh(f.root, missing), true);
   for (const spec of ['', null]) {
     f.store.update(actor, f.store.read().revision, 'legacy-empty-spec-fixture', state => { state.tasks[0].agreement.spec = spec; });
-    await assert.rejects(execute(f.root, { action: 'start-task', taskId: 'a', actor, revision: f.store.read().revision }), { code: 'spec-review-required' });
+    assert.equal(reading().ready, false);
+    assert.match(reading().cause, /spec value .* is unusable/);
   }
 });
 
@@ -491,10 +495,10 @@ test('blocked sessions can record closing work without claiming unfinished engin
 test('substantial work can complete its governing spec review before implementation without code changes invalidating that spec', t => {
   const f = fixture(t, { tasks: [{ id: 'code', title: 'Substantial work', agreement: { source: 'User confirmed commitments', outcome: 'Agreed behavior', spec: 'spec.md', specReviewed: false } }] });
   fs.writeFileSync(path.join(f.root, 'spec.md'), '# Agreed behavior\n');
-  assert.throws(() => f.act({ action: 'start-task', taskId: 'code' }), { code: 'spec-review-required' });
-  assert.equal(obligationBrief(f.store.read()).next[0].stage, 'governing-spec-review');
+  assert.equal(obligationBrief(f.store.read()).next[0].stage, 'implementation');
+  assert.match(obligationBrief(f.store.read()).specReadiness[0].next, /add-spec-review on code/);
   f.act({ action: 'add-spec-review', taskId: 'code' });
-  const specId = f.store.read().tasks[0].agreement.specReviewTaskId;
+  const specId = f.store.read().tasks[0].specReviewTaskId;
   f.act({ action: 'start-task', taskId: specId });
   f.act({ action: 'advance', taskId: specId });
   f.act({ action: 'review', taskId: specId, review: { requestId: 'spec-assessment', kind: 'spec', session: 'spec-reviewer', attributionVerified: true, status: 'complete', strength: 'strong', independent: true, broad: true, dimensions: [...DIMENSIONS.spec], coverageEvidence: 'Whole governing spec and project context examined', snapshot: snapshot(f.root, ['spec.md']), contextSnapshot: snapshot(f.root, ['spec.md', 'a.txt', 'b.txt']), findings: [] } });
@@ -502,6 +506,8 @@ test('substantial work can complete its governing spec review before implementat
   f.act({ action: 'start-task', taskId: 'code' });
   fs.writeFileSync(path.join(f.root, 'a.txt'), 'implementation changes\n');
   assert.doesNotThrow(() => f.act({ action: 'check', taskId: 'code', evidence: verifyCommand(f.root, { name: 'Implementation check', executable: process.execPath, args: ['--version'], paths: ['a.txt'] }) }));
+  assert.equal(obligationBrief(f.store.read()).specReadiness[0].ready, true);
   fs.writeFileSync(path.join(f.root, 'spec.md'), '# Changed governing spec\n');
-  assert.throws(() => f.act({ action: 'start-task', taskId: 'code' }), { code: 'spec-review-required' });
+  assert.match(obligationBrief(f.store.read()).specReadiness[0].cause, /awaits the reviewer's applicability call after changes to spec\.md/);
+  assert.doesNotThrow(() => f.act({ action: 'start-task', taskId: 'code' }));
 });

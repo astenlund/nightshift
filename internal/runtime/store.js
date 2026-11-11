@@ -316,6 +316,8 @@ class RunStore {
         text(task.agreement?.outcome, 'task.agreement.outcome');
         const requires = task.requires ?? [];
         requireCondition(Array.isArray(requires) && requires.every(id => ids.includes(id) && id !== task.id), 'invalid-queue', 'Dependency is absent or self-referential');
+        // Handover accepts a governing spec link only inside the agreement; one beside it would otherwise be dropped silently.
+        requireCondition(this.kind !== 'delivery' || !Object.hasOwn(task, 'specReviewTaskId'), 'invalid-queue', `Task ${task.id} places specReviewTaskId outside its agreement; a governing spec link belongs in agreement.specReviewTaskId`);
         const kind = task.kind ?? 'code';
         requireCondition(['code', 'spec', 'docs', 'lore'].includes(kind), 'invalid-queue', 'Unknown task kind');
         const agreement = structuredClone(task.agreement);
@@ -337,6 +339,7 @@ class RunStore {
         }
       }
       requireCondition(available.length === tasks.length, 'invalid-queue', 'Queue contains a dependency cycle');
+      if (this.kind === 'delivery') require('./spec-readiness').assertHandoverGovernance(this.root, tasks);
       if (context) requireReplaceableDelivery(context);
       else requireCondition(!previous || previous.status === 'complete' && previous.workers.every(worker => !workerIsActive(worker)), 'overlapping-run', 'An unfinished review context cannot be replaced');
       const now = new Date().toISOString();

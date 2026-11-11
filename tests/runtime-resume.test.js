@@ -1821,7 +1821,7 @@ test('material amendment invalidates old repair authority and legacy validation 
   assert.equal(obligationBrief(f.store.read()).next[0].review.next, 'validate-and-dispose');
 });
 
-test('spec relevance does not clear the legacy fresh-assessment prerequisite for dependent engineering', async t => {
+test('a preserving spec relevance decision settles a compatible spec edit for the governed code task', async t => {
   const f = fixture(t, [
     { id: 'spec', title: 'Governing artifact', kind: 'spec', agreement: { source: 'User', outcome: 'Assess governing inputs', spec: 'spec.md' } },
     { id: 'task', title: 'Implementation', agreement: { source: 'User', outcome: 'Implement the accepted behavior', spec: 'spec.md', specReviewTaskId: 'spec' } },
@@ -1831,15 +1831,13 @@ test('spec relevance does not clear the legacy fresh-assessment prerequisite for
   await f.act({ action: 'review', taskId: 'spec', receipt: f.receipt(original) });
   await f.act({ action: 'advance', taskId: 'spec' });
   fs.writeFileSync(path.join(f.root, 'spec.md'), '# Compatible corrected governing input');
+  await f.act({ action: 'start-task' });
+  assert.equal(f.task().status, 'active');
+  assert.match(obligationBrief(f.store.read()).specReadiness[0].cause, /awaits the reviewer's applicability call after changes to spec\.md/);
   const relevance = await f.dispatch({ kind: 'spec', resume: original.receipt.requestId, relevance: { requestId: original.receipt.requestId, taskIds: ['spec'] } }, {}, 'spec');
   await f.act({ action: 'review', taskId: 'spec', receipt: f.receipt(relevance) });
   assert.equal(reviewGate(f.root, f.task('spec'), f.store.read()), true);
-  await assert.rejects(f.act({ action: 'start-task' }), { code: 'spec-review-required' });
-  const current = await f.dispatch({ kind: 'spec', candidates: [LEAD], artifactPaths: ['spec.md'] }, { dimensions: DIMENSIONS.spec }, 'spec');
-  await f.act({ action: 'review', taskId: 'spec', receipt: f.receipt(current) });
-  await f.act({ action: 'advance', taskId: 'spec' });
-  await f.act({ action: 'start-task' });
-  assert.equal(f.task().status, 'active');
+  assert.equal(obligationBrief(f.store.read()).specReadiness[0].ready, true);
 });
 
 test('legacy validation without a binding or worker refuses authority after a material amendment', async t => {
