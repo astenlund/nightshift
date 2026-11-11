@@ -1,8 +1,9 @@
 ---
 name: model-policy-file
-description: Move the supported strong-model list into a user-configurable file that can also hold general allow and deny lists of models
+description: Move model admission into a user-configurable file with per-role allowlists and general allow and deny lists, after replacing the universal strong-model category with approval for each role
 metadata:
   type: feature
+status: exploring
 ---
 
 # User-configurable model policy file
@@ -26,7 +27,7 @@ Checked again on 2026-10-03: `STRONG_MODELS` in `internal/runtime/review.js` the
 
 ## Settled questions
 
-The user agreed these answers on 2026-10-03, when the entry graduated from Exploring to current work. Each question is kept with its answer.
+The user agreed these answers on 2026-10-03, when the entry graduated from Exploring to current work. Each question is kept with its answer. On 2026-11-11 the entry returned to Exploring when it absorbed the per-role approval draft recorded under Per-role approval below; these answers stay settled, to be reconciled with each role's allowlist format.
 
 - Where the file lives and at what scope (user-global, per project, or both with a precedence rule), and whether a project's file, which arrives with a clone, may widen the strong list or only narrow it, since widening it lowers the review gate for anyone who works in that project. Settled: the user's policy lives in one user-wide file in the Nightshift store, by default `%LOCALAPPDATA%/Nightshift`, which both hosts already use, so one policy covers Claude Code and Codex. A project may carry its own file, which can only narrow the user's policy, never widen it.
 - Its format and validation, and what happens when it is missing, empty or malformed: whether the plugin still ships defaults, and how a release that supports a new model reaches users who already have a file. Settled: the file is JSON and records additions to and removals from the defaults the plugin ships, not a full replacement, so a release that supports a new model still reaches users who have a file. A missing file means the shipped defaults. A malformed file refuses new dispatches with an error that names the file, never a silent fallback to defaults.
@@ -41,6 +42,18 @@ The user added one commitment the same day, while graduating [Initial reviewer s
 [Model knowledge base](model-knowledge-base.md), raised the same day, is to record observations about models that inform the choice among the models this file permits, without changing what it permits.
 
 [User-configurable workflow composition](workflow-composition.md), raised on 2026-10-12, would let the user change the workflow's steps, gates and model choices through configuration files. The user chose to keep this file separate for now and may refactor the two once more is built around them.
+
+## Per-role approval
+
+Merged here on 2026-11-11 from the Exploring draft "Complete the per-role model approval migration", by the user's decision at the first pruning pass. Raised by the user on 2026-10-26 during the Vibe reviewer host delivery and routed to the backlog on 2026-10-27; the original capture is follow-up `role-specific-model-approval-direction` in run `dcd9e840-e8b6-4f28-9c6e-b5aaaaac9847`. The user said:
+
+> we've discovered that a model can be a good reviewer and yet not suited as a skeptic. in fact, i think it might be best to retire the "strong model" concept altogether. instead, we'll continue evaluating the models for each individual role and update the allow lists whenever a new model family has been approved.
+
+- Keep evaluating model families per role, and admit a family to a role only after that role's approval, recording the supporting evidence, scope and limits; approval for one role does not transfer to another.
+- Retire the remaining universal strong-model terminology in runtime errors, guidance and records in favor of role-specific admission language.
+- Extend role-specific approval beyond reviewer leads and skeptics to the other roles, such as implementers and peers, where a single strength category still governs.
+
+The 3.3.16 runtime already admits reviewer families per role, and [VISION.md](../../VISION.md) records the per-role approval direction with role-specific allowlists. Settle how each role's allowlist is recorded, evaluated and surfaced, what replaces the retired terminology at each site, the migration's compatibility with existing runs and receipts, and how this file's settled answers above apply to it, before implementation. Tracking preserves the direction; it does not authorize implementation and does not infer approval for any new family or role.
 
 ## Before implementation
 

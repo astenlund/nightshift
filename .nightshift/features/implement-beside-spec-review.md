@@ -36,3 +36,7 @@ Decided by the user on 2026-11-04, after the settlement and prototype decisions 
 
 - The brief and skill text for the pass, the ordering and the sorting rule ride the brief rewrite of the worklist's step 6; the runtime changes ride the assessment-currency work. A concise governing spec in `.nightshift/specs` settles the pass's budget and output shape, how the spec task and the code task share the run's status and closing stages, and the sweep of every statement that implementation waits for spec review (the workflow, the operating brief, the handover and revise-spec skills, the runtime reference).
 - Shipped runtime, skill and brief changes need a plugin version increase; the start of the work decides between a budgeted installed-host campaign and deterministic evidence only, with model-owned behavior marked unverified.
+
+## Carried fixes
+
+- Amending a governing spec inside its code task blocks the task until a whole-spec reassessment: in delivery `ede318dd` on 2026-11-02 a spec edit for deferred minor findings made `specReady` in `internal/runtime/lifecycle.js` refuse every code-task action through `assertAction` with `spec-review-required`, recording checks included, until a fresh whole-spec assessment of about 12 to 17 million Claude Opus tokens completed; the replacement holds only the work that depends on spec readiness, as this record's decisions of 2026-11-04 say. The worklist's step 3 part 5 is the work that removes those lines, so this closes when that part ships. Evidence: [the moved quick win](../bugs/spec-amendment-blocks-code-task.md).
