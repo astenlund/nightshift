@@ -1,6 +1,6 @@
 # Amending a governing spec inside its code task blocks the task until a whole-spec reassessment
 
-Moved from QUICK_WINS.md on 2026-11-11, when the user chose at the first pruning pass to fold it into [Implement beside the spec review after a broad-strokes pass](../features/implement-beside-spec-review.md), whose work removes the lines it concerns. The text below is the entry as it stood.
+Moved from QUICK_WINS.md on 2026-11-11, when the user chose at the first pruning pass to fold it into [Implement beside the spec review after a broad-strokes pass](../features/implement-beside-spec-review.md), whose work removes the lines it concerns. The text below is the entry as it stood. Fixed in 3.3.34 under [Spec readiness as a condition](../specs/spec-readiness-conditions.md), with both further reaches below; [the bug history](../BUGS_HISTORY.md) records the fix.
 
 Observed in delivery `ede318dd` on 2026-11-02 and tracked by the user's triage decision. The code task's agreement required amending the spec for deferred minor findings; any spec edit makes the linked governing-spec task's assessment stale, and `specReady` gates every code-task action through `assertAction`, so even recording checks refused `spec-review-required` until another fresh whole-spec assessment, about 12 to 17 million Claude Opus tokens, completed. Deferring spec findings to the implementation therefore costs a full spec reassessment whenever the fix touches the spec text.
 
