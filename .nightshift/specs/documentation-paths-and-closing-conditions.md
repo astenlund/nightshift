@@ -30,9 +30,9 @@ This covers the rest of part one and all of part four of step 3 in [the assessme
 
 **What still reviews documentation.** Each code and docs task still needs a current docs review or a fresh mechanical exemption before it completes. No docs gate covers a lore task, so its documentation-path edits are independently reviewed only when they come after triage, by the closing docs review.
 
-**What stays unchanged.** These keep comparing every path, and keep today's documentation relief and its `applicable-by-docs-review` status value where they apply today:
-- spec assessments and docs assessments;
-- checks;
+**What stays unchanged.** These keep today's comparison, and today's documentation relief and its `applicable-by-docs-review` status value where they apply today:
+- spec assessments, which compare their declared deciding inputs, and docs assessments, which compare every path;
+- checks, which compare their declared inputs;
 - review contexts and runs without the docs gate;
 - the triage baseline's own comparison, and `nextTriageBaseline`'s test of whether a task assessment is fresh against the whole inventory, which judges whether every change since the baseline, documentation included, was reviewed.
 
@@ -57,14 +57,15 @@ The decision points this changes:
   - `resume` is the latest dispatch that produced a receipt in that assessment's lineage on its owner, the dispatch `resumeTargets` would name;
   - `continue` is `resume` or `replace` for that dispatch, by the rule `resumeTargets` uses.
 
-  `applicabilityCall` is null whenever no preserving answer could make the element's gate pass:
+  `applicabilityCall` is null in exactly these cases:
   - its cause is `unestablished`, where reconciliation is the way forward as the applicability entry's `next` says;
   - the latest applicability decision on the current inputs and commitments already answered `reassess` or `unresolved`;
-  - the stale assessment is one its gate does not accept, such as a continued, incomplete or narrow one;
+  - the stale assessment is continued, incomplete or narrow, so not a complete fresh assessment covering its kind's dimensions; a change of commitments alone does not make the call unavailable, since a preserving decision bound to the current commitments can settle it;
+  - the run's outside-documentation condition (commitment 4) is unsettled and the element's changed paths include a path in its set: a preserving answer would pass the task gate but cannot settle the hold, which a settling assessment or reverting the paths settles and a relevance call does not;
   - its original inputs are not retained, so a preserving answer would be refused;
   - it has no request id, or its lineage has no dispatch with a receipt.
 
-  In every case but the first, the entry's fresh assessment is its way forward. Docs-kind elements carry a call by the same rule. Otherwise the entry's fresh assessment is the fallback.
+  In the hold case, the hold's `next` is the element's way forward, for code-kind and docs-kind elements alike. In every other case but the first, the entry's fresh assessment is its way forward. Docs-kind elements carry a call by the same rule. Otherwise the entry's fresh assessment is the fallback.
 - **The refusals.** Both `review-required` at `advance`, whose text is `STALE_REVIEW`, and `stale-review` at `complete` follow the predicate for each stale assessment they name.
 
 An earlier non-preserving decision whose inputs have since changed does not make the call unavailable, so it still leads to a new call. The implementation finds any other surface that names this way forward and orders it by the same predicate. This is guidance only: the runtime records nothing about the choice and refuses nothing over it.
@@ -95,14 +96,14 @@ Every consumer reads that one predicate, never the raw set: `complete`, `satisfi
 **The docs side.** Docs assessments keep comparing every path (commitment 1), so a non-documentation edit after triage also leaves stale every task docs review, every docs exemption and any closing review imported before it. Completion therefore also needs, as today's gates already require, a complete closing docs review that covers every task and is current on the final inputs. That one review satisfies each task's docs gate as a covering docs review, and closing coverage. The hold's `next` and refusal message name both steps in order: the settling assessment (or the revert), then that closing docs review.
 
 **Status.** `closing.docsReview` gains `outsideDocumentation`, present only while the condition is unsettled. It holds:
-- `changedPaths`: the set as sorted project-relative paths;
+- `changedPaths`: the set as sorted project-relative paths, or null when the set cannot be computed;
 - `next`: one sentence.
 
-Every task except a spec task can carry a code assessment. When the run has such a task, `next` names a fresh code assessment on any of them, listing their ids, since any one settles the condition, followed by the closing docs review the docs side requires. It lists first the tasks whose fresh code assessment would also cover the run's other code gates the same edit staled, by the `coveredTaskIds` rule of the cumulative assessment. When the run has none but every path in the set is a spec task's governing spec or a governing artifact named in its recorded commitments, `next` names a fresh whole-spec assessment on that spec task, followed by the closing docs review. Otherwise it names the user's decision, which until part six ships means `hold`, `stop` or the administrative `close`. `satisfied` reads false while the condition is unsettled. A task code gate the same edit staled that the chosen assessment does not cover is reported separately, by `stale-review` with the way forward commitment 2 sets.
+When `changedPaths` is null, `next` names the `no-baseline` recovery the failure branches state. Otherwise `next` also says that reverting the paths settles the condition, and: every task except a spec task can carry a code assessment, and when the run has such a task, `next` names a fresh code assessment on any of them, listing their ids, since any one settles the condition, followed by the closing docs review the docs side requires. It lists first the tasks whose fresh code assessment would also cover the run's other code gates the same edit staled, by the `coveredTaskIds` rule of the cumulative assessment. When the run has none but every path in the set is a spec task's governing spec or a governing artifact named in its recorded commitments, `next` names a fresh whole-spec assessment on that spec task, followed by the closing docs review. Otherwise it names the user's decision, which until part six ships means `hold`, `stop` or the administrative `close`. `satisfied` reads false while the condition is unsettled. A task code gate the same edit staled that the chosen assessment does not cover is reported separately, by `stale-review` with the way forward commitment 2 sets.
 
 With freshness verification skipped, `outsideDocumentation` and `satisfied` both read `'reconcile at acceptance'`, as `current` already does.
 
-**Baseline cases.** The outside-Git baseline case and the missing-baseline case keep their current causes. A re-recorded triage keeps the earlier baseline while the condition is unsettled, whichever of `nextTriageBaseline`'s branches would otherwise re-baseline: the closing-review branch and the task-assessment branch each re-baseline only when the condition is settled. The earlier baseline also stands, as today, while documentation paths changed since it lack a current closing review and no task assessment is fresh against the whole inventory, every path compared. Recording triage again therefore never absorbs unsettled non-documentation changes, through a docs review or any other assessment that does not settle the condition, nor documentation changes no review has covered.
+**Baseline cases.** The outside-Git baseline case and the missing-baseline case keep their current causes. On a run whose closing baseline is the outside-Git documentation baseline, which holds documentation files only, the outside-documentation condition is not evaluated: `outsideDocumentation` is absent, and completion and `nextTriageBaseline` read as today. That is the only case in which the condition is not evaluated; a missing baseline takes the failure branch's status shape, as Lifecycle and consumers states. A re-recorded triage keeps the earlier baseline while the condition is unsettled, whichever of `nextTriageBaseline`'s branches would otherwise re-baseline: the closing-review branch and the task-assessment branch each re-baseline only when the condition is settled. The earlier baseline also stands, as today, while documentation paths changed since it lack a current closing review and no task assessment is fresh against the whole inventory, every path compared. Recording triage again therefore never absorbs unsettled non-documentation changes, through a docs review or any other assessment that does not settle the condition, nor documentation changes no review has covered.
 
 ### 5. A clean assessment after triage leaves closing intact
 
@@ -138,7 +139,7 @@ A kept exemption still counts toward the docs gate only while it is fresh, as to
 - the `STALE_REVIEW` text;
 - the runtime reference's `freshTargets` sentence that a dispatch on a completed task reopens it, and the matching comment on `freshAssessmentTask` in `internal/runtime/lifecycle.js`.
 
-**The ordering guidance becomes this.** Documentation-path edits the agreed outcome commits to land with the implementation, before the first cumulative assessment. Edits to governing specs, operating instructions and Markdown below the project root are code inputs, and the reviewer's applicability call settles a compatible one.
+**The ordering guidance becomes this.** Documentation-path edits the agreed outcome commits to land with the implementation, before the first cumulative assessment. Edits to governing specs, operating instructions and Markdown below the project root are code inputs; before triage the reviewer's applicability call settles a compatible one, and after triage such an edit falls under the outside-documentation hold, which a settling assessment or reverting the paths settles and a relevance call does not.
 
 **Backlog effects.** This closes the quick win [Documentation and backlog edits land before the first cumulative assessment](../QUICK_WINS.md#documentation-and-backlog-edits-land-before-the-first-cumulative-assessment), which moves to its history file when this ships. The worklist records the rest of part one and all of part four as shipped.
 
@@ -166,7 +167,7 @@ No state is added or persisted. The outside-documentation set and the documentat
 **Failure branches.**
 - A comparison that fails is a structural failure, never a clean result.
 - A governing spec whose identity cannot be established counts as a changed input.
-- An outside-documentation set that cannot be computed holds completion with the existing `no-baseline` cause.
+- An outside-documentation set that cannot be computed, because the closing baseline is missing or a Git-inventory baseline's comparison fails, counts as unsettled for every consumer: completion holds with the existing `no-baseline` cause; `outsideDocumentation` is present with `changedPaths` null and a `next` naming that cause's recovery, recording triage again once Git can inspect the project; and both of `nextTriageBaseline`'s re-baselining branches keep the earlier baseline, while a missing earlier baseline still gives way to the inventory at that triage, as today.
 
 ## Verification and release
 
@@ -209,7 +210,11 @@ Deterministic tests cover:
   - on a complete run, a closing review import over a non-documentation change still refused `closing-scope`, and a non-documentation edit after completion leaving `outsideDocumentation` absent with closing coverage reading as today;
   - on a docs-gated run with only lore and spec tasks, a documentation-only edit after triage followed by triage recorded again still holding `complete` with `closing-review-required`;
   - `next` listing first a task whose assessment would cover the other stale code gates, and a lore task's code gate staled by the same edit reported by `stale-review`;
-  - with freshness verification skipped, `outsideDocumentation` and `satisfied` reading `'reconcile at acceptance'`.
+  - with freshness verification skipped, `outsideDocumentation` and `satisfied` reading `'reconcile at acceptance'`;
+  - an outside-documentation set that cannot be computed reporting `changedPaths` null with the `no-baseline` recovery: with a failed comparison, a triage recorded again meanwhile keeping the earlier baseline; with a missing baseline, a triage recorded again taking the inventory as today;
+  - a project outside Git with nothing changed since triage still completing as today, with `outsideDocumentation` absent;
+  - while the hold is unsettled, a stale code assessment whose changed paths lie in its set carrying a null `applicabilityCall`, its surfaces naming the fresh assessment first;
+  - a stale code assessment whose commitments changed but whose inputs are otherwise current carrying an `applicabilityCall`.
 - **The closing reset:**
   - after triage, a clean current assessment imported on a completed task leaving it complete, with its docs exemption and its retrospective, report, delivery and triage evidence intact;
   - one with findings reopening and resetting as today;
@@ -222,7 +227,7 @@ Deterministic tests cover:
 
 Every existing test that expected the old behavior is updated to the new boundary, not deleted. These include the relief, the `applicable-by-docs-review` value and the `closing-scope` refusal for non-documentation changes.
 
-The relevance-first ordering and the guidance on when documentation edits land are model-owned behavior: whether a controller follows them has no installed-host evidence until it is observed, so it stays unverified on each host (live-claim: provisional on Claude Code; live-claim: provisional on Codex), and any installed-host check is decided when the work starts. The change ships as its own 3.3.x release. Until worklist step 6 ships, its CHANGELOG entry states the instruction word change: the before and after totals by the method of the fortnightly table's instruction-word row, with a one-sentence reason for any growth.
+The relevance-first ordering, the guidance on when documentation edits land, and the controller's responses to the outside-documentation hold (dispatching the settling assessment and then the closing docs review, reverting the paths, or taking the user-decision halt) are model-owned behavior: whether a controller follows them has no installed-host evidence until it is observed, so it stays unverified on each host (live-claim: provisional on Claude Code; live-claim: provisional on Codex), and any installed-host check is decided when the work starts. The change ships as its own 3.3.x release. Until worklist step 6 ships, its CHANGELOG entry states the instruction word change: the before and after totals by the method of the fortnightly table's instruction-word row, with a one-sentence reason for any growth.
 
 ## Out of scope
 
