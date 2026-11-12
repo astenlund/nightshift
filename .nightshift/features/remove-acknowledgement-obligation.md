@@ -13,7 +13,7 @@ Created on 2026-11-10 from a step of [the assessment worklist](../reports/assess
 
 The runtime observes the handover acknowledgement in the owning session's native history before it admits engineering. Remove that obligation under a 3.3.x version increase, ahead of [the store cut](store-v4-cut.md). No store table changes, but this is the removal of an obligation, not of two modules: it is written into run state at creation, renewed on unblock and adoption, gated on every engineering action in `cli.js`, and exposed in status and the progress markers, and three instruction files, its two suites and fixtures in other suites, plus the shared claim fixture several more suites load, depend on it. The continuation outcome stays gated independently.
 
-`ci.yml` must first run every deterministic suite, which is this feature's declared dependency.
+The precondition that `ci.yml` run every deterministic suite was met on 2026-11-12, when [CI omits several deterministic suites](../BUGS_HISTORY.md#ci-omits-several-deterministic-suites) was fixed.
 
 ## Decisions
 

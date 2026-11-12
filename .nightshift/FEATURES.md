@@ -322,7 +322,7 @@ Moved from the Ring-O-Meter-Private backlog through the maintainer inbox report 
 
 Remove the obligation that the runtime observe the handover acknowledgement in native session history before admitting engineering, under a 3.3.x version increase and ahead of the store cut, as the assessment worklist's Remove 3 proposes. The user decided on 2026-11-09 to keep the native-history reader for the independently verified reply VISION.md requires and to drop only the obligation. WORKFLOW.md and the operating brief change with it. Runtime and guidance changes ship with a version increase. Tracking does not authorize implementation.
 
-**Requires:** [CI omits several deterministic suites](BUGS.md#ci-omits-several-deterministic-suites).
+**Requires:** none.
 
 ### [Cut store v4 and reduce the release system](features/store-v4-cut.md)
 
