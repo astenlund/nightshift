@@ -172,3 +172,18 @@ test('a stale change covering two tasks names in its applicability call only the
   assert.deepEqual([...target.covers].sort(), ['done', 'open']);
   assert.deepEqual(change.applicabilityCall?.taskIds, ['open']);
 });
+
+test('triage recorded again over a missing baseline keeps it missing after only a fresh whole-inventory task docs review', async t => {
+  // Arrange
+  const f = await triagedWithLostBaseline(t);
+  f.edit('edited while the baseline was missing\n');
+  await f.imported('code', { kind: 'docs', candidates: [COUNTERPART] }, { dimensions: DIMENSIONS.docs });
+  assert.equal(f.task('code').status, 'complete');
+
+  // Act
+  await f.act({ action: 'triage', evidence: 'Triage recorded again' });
+
+  // Assert
+  assert.equal(f.store.read().closing.docs.baseline, null);
+  assert.equal(f.brief().closing.docsReview.outsideDocumentation?.changedPaths, null);
+});
