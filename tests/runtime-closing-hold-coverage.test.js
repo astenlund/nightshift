@@ -111,7 +111,10 @@ test('a code assessment whose scope never held a changed ignored governing spec 
   const lore = brief.assessmentApplicability.find(item => item.taskId === 'lessons' && item.kind === 'code');
   assert.equal(lore.status, 'applicable');
   assert.deepEqual(brief.closing.docsReview.outsideDocumentation?.changedPaths, [SPEC]);
-  const code = brief.assessmentApplicability.find(item => item.taskId === 'code' && item.kind === 'code');
+  // A plain dispatch on a listed task need not select an ignored changed path, so the way forward passes the changed paths explicitly.
+  assert.match(brief.closing.docsReview.outsideDocumentation.next, /artifactPaths/);
+  assert.doesNotMatch(brief.closing.docsReview.outsideDocumentation.next, /any one settles/);
+  const code =brief.assessmentApplicability.find(item => item.taskId === 'code' && item.kind === 'code');
   assert.deepEqual(code.changedPaths, [SPEC]);
   assert.match(code.next, /cannot settle the outside-documentation hold/);
   assert.deepEqual(after.closing.outsideDocumentation?.changedPaths, [SPEC]);
