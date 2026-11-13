@@ -526,6 +526,27 @@ Recorded at the user's inbox triage on 2026-11-12 from the maintainer inbox repo
 
 Have the retrospective ask, for each recurring or costly lesson, whether code, a hook, tooling or runtime behavior could enforce or remove it instead of a rule the agent must remember, and surface each such candidate as a follow-up for triage rather than building it ad hoc. Skill changes ship with a version increase. Tracking does not authorize implementation.
 
+### Move the closing hold into its own runtime module
+
+Deferred in delivery `d7639372-2cf2-413d-94ca-9c2dac1f540c` on 2026-11-13 and tracked by the user's triage decision. A fresh code review there (finding `3556bb2e:hold-logic-bolted-into-lifecycle`, confirmed) found that the outside-documentation hold of [Documentation paths and the closing condition](specs/documentation-paths-and-closing-conditions.md), with its baseline, set, settlement, candidates, status, refusal and `next` text, and the applicability-call guidance (`heldBy`, `applicabilityCall`, `staleWayForward`) were added inside `internal/runtime/lifecycle.js`, already the runtime's broadest module, while spec readiness lives in its own module. Move them into their own runtime module with no behavior change, as the first step of the next part of worklist step 3 that touches these conditions. Runtime code, so it ships with a version increase; tracking does not authorize implementation.
+
+### Recover an uncomparable closing baseline like a missing one
+
+Deferred in delivery `d7639372-2cf2-413d-94ca-9c2dac1f540c` on 2026-11-13 and tracked by the user's triage decision. Since 3.3.35, a closing baseline whose stored evidence cannot be compared (a digest that no longer matches its files, or a missing inventory flag) keeps every re-recorded triage on it, so completion refuses until the administrative close, while a missing baseline is replaced at a re-recorded triage once a fresh code assessment of one of the run's tasks is fresh against the whole inventory. The shared no-baseline recovery text already names that code assessment, which does not work for an uncomparable baseline. Give an uncomparable baseline the same recovery as a missing one, with a test, and update [the governing spec](specs/documentation-paths-and-closing-conditions.md) and the runtime reference to match. Runtime code, so it ships with a version increase; tracking does not authorize implementation.
+
+### Make the closing hold guidance match every run shape
+
+Deferred in delivery `d7639372-2cf2-413d-94ca-9c2dac1f540c` on 2026-11-13 and tracked by the user's triage decision, from findings `b002bbf5:f2`, `41edc42d:reference-spec-kind-null-set`, `e58aaafa:held-null-set-spec-kind`, `05277604:carried-hold-next-names-unavailable-closing-review`, `8ba1ea78:f1`, `1cc302a6:no-baseline-next-spec-only-run`, `d0033d2a:reference-next-omits-whole-spec-branch` and `683322ae:brief-hold-route-incomplete`, and the spec finding `f2360df1:null-set-spec-kind-hold`, each confirmed minor. Status gives the right step in each case; the guidance text does not:
+- in a run with no task that can carry a code assessment, the `complete` refusal and the no-baseline `next` text name a code assessment or contradict themselves, where they should name the whole-spec route or the user's decision (`hold`, `stop` or the administrative `close`);
+- the runtime reference and the operating brief describe the hold's `next` without the spec-only branch, and the brief names `closing.docsReview.outsideDocumentation`, which is absent after a reset, when the field sits under `closing`;
+- after a post-triage reset, `next` names a closing docs review, which is refused until the retrospective and triage are recorded again.
+
+The user also decided at that triage that when the outside-documentation set cannot be computed, a spec-kind stale assessment keeps its applicability call, as it does when the set is computed: `heldBy` evaluates the spec-kind exemption before the null-set rule, and [the governing spec](specs/documentation-paths-and-closing-conditions.md) and the runtime reference state it. Add tests for the refusal and `next` texts and for the null-set case. Runtime code, so it ships with a version increase; tracking does not authorize implementation.
+
+### Include every governing spec in post-triage task dispatches
+
+Deferred in delivery `d7639372-2cf2-413d-94ca-9c2dac1f540c` on 2026-11-13 and tracked by the user's triage decision. A task dispatch selects only its covered tasks' governing specs (`internal/runtime/cli.js`), while the closing dispatch selects every task's, so after triage a plain fresh code assessment on one task cannot see an edited, git-ignored governing spec of another, and cannot settle the outside-documentation hold. 3.3.35's `next` text tells the controller to pass the changed paths as `artifactPaths`. Make a task dispatch after triage select every task's governing spec, as the closing dispatch does, with a deterministic test for the git-ignored governing spec case. Runtime code, so it ships with a version increase; tracking does not authorize implementation.
+
 ## History
 
 Prior delivered work remains in [QUICK_WINS_HISTORY.md](QUICK_WINS_HISTORY.md).
