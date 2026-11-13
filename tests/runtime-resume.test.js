@@ -2186,7 +2186,7 @@ test('while the outside-documentation hold is unsettled, a stale code assessment
   const closing = obligationBrief(f.store.read()).closing;
   assert.equal(closing.docsReview, undefined);
   assert.deepEqual(closing.outsideDocumentation.changedPaths, ['subject.txt']);
-  assert.match(closing.outsideDocumentation.next, /fresh code assessment on any one of the tasks task/);
+  assert.match(closing.outsideDocumentation.next, /fresh code assessment on one of the tasks task/);
   const [target] = f.brief().review.freshTargets;
   assert.deepEqual(target.staleChanges, [{ requestId: lead.receipt.requestId, cause: 'changed-inputs', changedPaths: ['subject.txt'], applicabilityCall: null }]);
   assert.equal(advance.code, 'review-required');

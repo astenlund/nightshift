@@ -637,7 +637,8 @@ function outsideDocumentationNext(root, state, hold) {
   const closingReview = `then a complete closing docs review (task ${CLOSING_TARGET}) covering every task and current on the final inputs`;
   const revert = 'Reverting these paths also settles the hold.';
   const settlement = holdSettlement(root, state, hold);
-  if (settlement.kind === 'code') return `Obtain a fresh code assessment on any one of the tasks ${settlingCandidates(root, state).join(', ')}, since any one settles the hold, ${closingReview}. ${revert}`;
+  // A dispatch need not select an ignored changed path on its own, and only an assessment whose scope held every path settles the hold.
+  if (settlement.kind === 'code') return `Obtain a fresh code assessment on one of the tasks ${settlingCandidates(root, state).join(', ')}, passing the changed paths as artifactPaths, ${closingReview}. ${revert}`;
   if (settlement.kind === 'spec') return `Obtain a fresh whole-spec assessment on spec task ${settlement.task.id}, which settles the hold, ${closingReview}. ${revert}`;
   return `No task assessment can settle the hold, so it needs the user's decision: hold, stop or the administrative close. ${revert}`;
 }

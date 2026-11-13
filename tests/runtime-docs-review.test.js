@@ -1224,7 +1224,7 @@ test('a code edit after triage takes a closing review and holds completion until
   f.review(CLOSING_TARGET, 'docs', ['code']);
   const held = closingStatus(f);
   assert.deepEqual(held.outsideDocumentation.changedPaths, ['src.js']);
-  assert.match(held.outsideDocumentation.next, /fresh code assessment on any one of the tasks code/);
+  assert.match(held.outsideDocumentation.next, /fresh code assessment on one of the tasks code/);
   assert.match(held.outsideDocumentation.next, /Reverting these paths also settles the hold/);
   assert.equal(held.satisfied, false);
   assert.throws(() => f.act({ action: 'complete' }), { code: 'closing-review-required', message: /src\.js.*Reverting these paths/s });
@@ -1280,7 +1280,7 @@ test('in a run of only lore tasks, a lore task\'s fresh code assessment settles 
   completeLoreTask(f);
   f.act({ action: 'triage', evidence: 'Follow-ups triaged' });
   f.write('src.js', 'module.exports = 2;\n');
-  assert.match(closingStatus(f).outsideDocumentation.next, /any one of the tasks lessons/);
+  assert.match(closingStatus(f).outsideDocumentation.next, /one of the tasks lessons/);
 
   // Act
   f.review('lessons', 'code');
@@ -1379,7 +1379,7 @@ test('in a run with a code task, a spec assessment whose deciding inputs include
   // Assert
   assert.equal(condition(f, 'plan', 'spec').status, 'applicable');
   assert.deepEqual(closingStatus(f).outsideDocumentation.changedPaths, ['src.js']);
-  assert.match(closingStatus(f).outsideDocumentation.next, /any one of the tasks code/);
+  assert.match(closingStatus(f).outsideDocumentation.next, /one of the tasks code/);
 });
 
 test('on a complete run a code edit leaves the hold unevaluated, closing coverage reads as before and a closing review over it is refused', t => {
@@ -1433,7 +1433,7 @@ test('the hold lists first the tasks whose assessment covers the other stale cod
   f.review(CLOSING_TARGET, 'docs', ['first', 'second', 'lessons']);
 
   // Assert
-  assert.match(next, /any one of the tasks first, second, lessons/);
+  assert.match(next, /one of the tasks first, second, lessons/);
   assert.equal(closingStatus(f).outsideDocumentation, undefined);
   const refused = refusal(() => f.act({ action: 'complete' }));
   assert.equal(refused.code, 'stale-review');
