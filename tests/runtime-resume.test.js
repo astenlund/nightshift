@@ -2211,3 +2211,40 @@ test('status names the applicability call from a read-only probe that leaves the
   assert.deepEqual({ bytes: fs.readFileSync(file), modified: fs.statSync(file).mtimeMs }, before);
   for (const suffix of ['-journal', '-wal', '-shm']) assert.equal(fs.existsSync(file + suffix), false, suffix);
 });
+
+test('under the outside-documentation hold, a governing-spec edit after triage still names the spec reviewer\'s applicability call first', async t => {
+  // Arrange
+  const governing = 'specs/plan.md';
+  const f = fixture(t, [
+    { id: 'spec', title: 'Governing artifact', kind: 'spec', agreement: { source: 'User', outcome: 'Assess governing inputs', spec: governing } },
+    { id: 'task', title: 'Implementation', agreement: { source: 'User', outcome: 'Implement the accepted behavior', spec: governing, specReviewTaskId: 'spec' } },
+  ]);
+  fs.mkdirSync(path.join(f.root, 'specs'), { recursive: true });
+  fs.writeFileSync(path.join(f.root, governing), '# Original governing input\r\n');
+  const original = await f.dispatch({ kind: 'spec', candidates: [LEAD], artifactPaths: [governing] }, { dimensions: DIMENSIONS.spec }, 'spec');
+  await f.act({ action: 'review', taskId: 'spec', receipt: f.receipt(original) });
+  await f.act({ action: 'advance', taskId: 'spec' });
+  await completeWithDocs(f);
+  await f.act({ action: 'retrospective', evidence: 'Retrospective recorded' });
+  await f.act({ action: 'triage', evidence: 'Follow-ups triaged' });
+
+  // Act
+  fs.writeFileSync(path.join(f.root, governing), '# Compatibly corrected governing input\r\n');
+  const brief = obligationBrief(f.store.read());
+  const refused = await refusalOf(f.act({ action: 'complete' }));
+  const claim = await confirmDocsFinding(f);
+  await f.act({ action: 'repair', findingIds: [claim.id] });
+  const targets = f.brief().review.freshTargets;
+
+  // Assert
+  assert.deepEqual(brief.closing.docsReview.outsideDocumentation.changedPaths, [governing]);
+  const readiness = brief.specReadiness.find(item => item.taskId === 'task');
+  assert.match(readiness.cause, /awaits the reviewer's applicability call/);
+  assert.match(readiness.next, new RegExp(`^Resume ${original.receipt.requestId}`));
+  assert.equal(refused.code, 'spec-review-required');
+  assert.match(refused.message, new RegExp(`Resume ${original.receipt.requestId}`));
+  const specTarget = targets.find(target => target.kind === 'spec');
+  assert.deepEqual(specTarget.staleChanges.map(change => change.applicabilityCall), [{ taskId: 'spec', requestId: original.receipt.requestId, taskIds: ['spec'], resume: original.receipt.requestId, continue: 'resume' }]);
+  // The code assessment's change falls under the hold, which only a fresh code assessment or a revert settles.
+  assert.deepEqual(targets.find(target => target.kind === 'code').staleChanges.map(change => change.applicabilityCall), [null]);
+});
