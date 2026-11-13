@@ -170,8 +170,8 @@
     },
     {
       "path": "internal/runtime/REFERENCE.md",
-      "bytes": 170146,
-      "sha256": "76f761e078cc2eb08fc47083f98ff86c1b50ee5e5010bacfe96f535736e5a9ff"
+      "bytes": 170444,
+      "sha256": "368239f4c6ce6adf1212b6471b5d50013c55a31b827de0af60dde3d7dc72a341"
     },
     {
       "path": "internal/runtime/acceptance-checkpoint.js",
@@ -450,8 +450,8 @@
     },
     {
       "path": "internal/runtime/spec-readiness.js",
-      "bytes": 19190,
-      "sha256": "44f688eb568c28b76e3d5cc17b833fa5311e16ec15912e584f1ae8018426d0cd"
+      "bytes": 19158,
+      "sha256": "1826ab5adc89ac126ee50ec5d5d2dc6b81601003a4ce36500a08338c34dc1fe1"
     },
     {
       "path": "internal/runtime/statuses.js",

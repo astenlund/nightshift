@@ -247,7 +247,7 @@ function specTaskReadiness(state, spec, task, resolved) {
 
     const staleNext = ['pending', 'reassess', 'unresolved'].includes(condition.status) && !condition.missingPaths ? lifecycle.staleWayForward(root, state, spec, entry) : null;
 
-    return unready(spec.id, cause, staleNext ? staleNext.charAt(0).toUpperCase() + staleNext.slice(1) : condition.next ?? freshAssessment);
+    return unready(spec.id, cause, staleNext ? capitalized(staleNext) : condition.next ?? freshAssessment);
   }
   const own = spec.findings.filter(finding => lifecycle.findingKind(finding, spec) === 'spec');
   const raised = state.tasks.flatMap(owner => owner.findings).filter(finding => finding.reviewRevision === review.revision);
