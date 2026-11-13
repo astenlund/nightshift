@@ -10,7 +10,8 @@ const { spawnSync } = require('node:child_process');
 const test = require('node:test');
 const { RunStore } = require('../internal/runtime/store');
 const { CLOSING_TARGET } = require('../internal/runtime/actions');
-const { DIMENSIONS, commitmentsFor, isDocumentationPath, obligationBrief, transition } = require('../internal/runtime/lifecycle');
+const { DIMENSIONS, commitmentsFor, historicalDischarge, isDocumentationPath, obligationBrief, reviewProgress, transition } = require('../internal/runtime/lifecycle');
+const { identity } = require('../internal/runtime/applicability');
 const { inventorySnapshot, outsideGitWorktree, snapshot, verifyCommand } = require('../internal/runtime/evidence');
 const { awaitWorker } = require('../internal/runtime/wait');
 const { fixtureControllerClaim, executeWithFixtureController } = require('./fixtures/controller-claim');
@@ -231,7 +232,8 @@ test('a code task needs a current docs review to complete, and a backlog-only do
   f.confirm('code', f.findingId('stale-entry'));
   f.write(BACKLOG, '# Bugs\n\nCorrected entry.\n');
   f.act({ action: 'repair', taskId: 'code', findingIds: [f.findingId('stale-entry')] });
-  assert.throws(() => f.act({ action: 'advance', taskId: 'code' }), { code: 'review-required' });
+  // The backlog edit leaves the code assessment current, so only the stale docs review holds the task.
+  assert.throws(() => f.act({ action: 'advance', taskId: 'code' }), { code: 'docs-review-required' });
   f.closeRepairs('code');
   f.review('code', 'docs');
   f.act({ action: 'advance', taskId: 'code' });
@@ -383,12 +385,12 @@ test('repair and a changed agreement clear a mechanical exemption', t => {
   assert.ok(f.task('docs').requirementsRevision > before);
 });
 
-test('a docs task that imported a code assessment gains backlog relief from its docs review', t => {
+test('a docs task that imported a code assessment keeps it current through a backlog edit its docs review covers', t => {
   const f = fixture(t, [{ id: 'docs', title: 'Guide and skill', kind: 'docs', agreement: { source: 'User', outcome: 'Reconcile the guide and the skill' } }]);
   f.review('docs', 'code');
   f.act({ action: 'advance', taskId: 'docs' });
   f.write(BACKLOG, '# Bugs\n\nArchived entry.\n');
-  assert.throws(() => f.act({ action: 'advance', taskId: 'docs', evidence: 'Reconciled' }), { code: 'review-required', message: /latest assessment is stale/ });
+  assert.throws(() => f.act({ action: 'advance', taskId: 'docs', evidence: 'Reconciled' }), { code: 'docs-review-required' });
   f.review('docs', 'docs');
   f.act({ action: 'advance', taskId: 'docs' });
   f.act({ action: 'advance', taskId: 'docs', evidence: 'Reconciled' });
@@ -459,13 +461,14 @@ test('an incomplete closing review neither completes the run nor reads as curren
   assert.equal(f.act({ action: 'complete' }).status, 'complete');
 });
 
-test('a closing review is refused when anything outside the documentation it covers changed since triage, unless the user excluded it', t => {
+test('a closing review imports a change outside the documentation paths, which then holds completion unless the user excluded it', t => {
   const f = fixture(t);
   completeTask(f);
   close(f);
   f.write(BACKLOG, '# Bugs\n\nTracked follow-up.\n');
   f.write(NESTED_DOC, '# Guide\n\nUser work in progress.\n');
-  assert.throws(() => f.act({ action: 'review', taskId: CLOSING_TARGET, review: f.assessment('docs', ['code']) }), { code: 'closing-scope', message: /docs\/guide\.md/ });
+  f.act({ action: 'review', taskId: CLOSING_TARGET, review: f.assessment('docs', ['code']) });
+  assert.throws(() => f.act({ action: 'complete' }), { code: 'closing-review-required', message: /docs\/guide\.md/ });
   const excluded = inventorySnapshot(f.root, [NESTED_DOC]);
   f.act({ action: 'review', taskId: CLOSING_TARGET, review: f.assessment('docs', ['code'], [], { snapshot: excluded, contextSnapshot: excluded }) });
   // The record covers the tracking edits; the task's own gate still sees the change outside the documentation it covers.
@@ -529,19 +532,21 @@ test('recording triage again keeps a baseline whose changes lack review, even af
   reset.act({ action: 'review', taskId: CLOSING_TARGET, review: reset.assessment('docs', ['lessons']) });
   assert.equal(reset.act({ action: 'complete' }).status, 'complete');
 
-  // A change outside the backlog cannot take a closing review; a fresh cumulative task assessment has seen it instead.
+  // A change outside the documentation paths takes a closing review but holds the baseline until a fresh task assessment settles it.
   const { f: assessed, baseline: assessedBaseline } = run();
   assessed.write('src.js', 'module.exports = 2;\n');
-  assert.throws(() => assessed.act({ action: 'review', taskId: CLOSING_TARGET, review: assessed.assessment('docs', ['lessons']) }), { code: 'closing-scope' });
+  assessed.act({ action: 'review', taskId: CLOSING_TARGET, review: assessed.assessment('docs', ['lessons']) });
+  assessed.act({ action: 'triage', evidence: 'Follow-ups triaged before the assessment' });
+  assert.equal(assessed.store.read().closing.docs.baseline.digest, assessedBaseline);
   assessed.review('lessons', 'code');
-  assessed.act({ action: 'advance', taskId: 'lessons' });
-  assessed.act({ action: 'retrospective', evidence: 'Retrospective after the assessment' });
+  assert.equal(assessed.task('lessons').status, 'complete');
+  assessed.act({ action: 'review', taskId: CLOSING_TARGET, review: assessed.assessment('docs', ['lessons']) });
   assessed.act({ action: 'triage', evidence: 'Follow-ups triaged after the assessment' });
   assert.notEqual(assessed.store.read().closing.docs.baseline.digest, assessedBaseline);
   assert.equal(assessed.act({ action: 'complete' }).status, 'complete');
 });
 
-test('lore assessments gain backlog relief only from the closing review, and spec assessments never do', t => {
+test('lore code assessments ignore backlog edits after triage, while spec assessments compare their deciding inputs', t => {
   const f = fixture(t, [CODE_TASK, { id: 'lessons', title: 'Lore', kind: 'lore', agreement: { source: 'User', outcome: 'Assessed instruction proposal' } }]);
   completeTask(f);
   f.review('lessons', 'code');
@@ -550,8 +555,7 @@ test('lore assessments gain backlog relief only from the closing review, and spe
   f.act({ action: 'triage', evidence: 'Follow-ups triaged' });
   f.write(BACKLOG, '# Bugs\n\nTracked follow-up.\n');
   f.act({ action: 'review', taskId: CLOSING_TARGET, review: f.assessment('docs', ['code']) });
-  assert.throws(() => f.act({ action: 'complete' }), { code: 'stale-review' });
-  f.act({ action: 'review', taskId: CLOSING_TARGET, review: f.assessment('docs', ['code', 'lessons']) });
+  assert.equal(obligationBrief(f.store.read()).assessmentApplicability.find(item => item.taskId === 'lessons' && item.kind === 'code').status, 'applicable');
   assert.equal(f.act({ action: 'complete' }).status, 'complete');
 
   const specPath = '.nightshift/features/idea.md';
@@ -844,16 +848,40 @@ test('documentation relief never overrides an independent requirement to reasses
   assert.equal(obligationBrief(f.store.read()).assessmentApplicability.find(item => item.kind === 'code').status, 'reassess');
 });
 
-test('status identifies satisfied documentation relief without requesting unnecessary code reassessment', t => {
+test('status reports a documentation-only change as applicable, listing it apart, without requesting code reassessment', t => {
+  // Arrange
   const f = fixture(t);
   completeTask(f);
+
+  // Act
   f.write(BACKLOG, '# Changed ordinary documentation');
-  f.review('code', 'docs');
+
+  // Assert
   const condition = obligationBrief(f.store.read()).assessmentApplicability.find(item => item.kind === 'code');
   assert.equal(condition.current, true);
-  assert.equal(condition.status, 'applicable-by-docs-review');
+  assert.equal(condition.status, 'applicable');
   assert.equal(condition.next, null);
-  assert.deepEqual(condition.changedPaths, [BACKLOG]);
+  assert.deepEqual(condition.changedPaths, []);
+  assert.deepEqual(condition.documentationPaths, [BACKLOG]);
+  assert.equal(obligationBrief(f.store.read()).assessmentApplicability.find(item => item.kind === 'docs').documentationPaths, undefined);
+});
+
+test('a run without the docs gate keeps the documentation relief and its applicable-by-docs-review status', t => {
+  // Arrange
+  const f = fixture(t, [CODE_TASK], { docsGate: false });
+  toDocumentation(f);
+  f.write(BACKLOG, '# Changed ordinary documentation');
+  const condition = () => obligationBrief(f.store.read()).assessmentApplicability.find(item => item.kind === 'code');
+  assert.equal(condition().status, 'pending');
+  assert.equal(condition().documentationPaths, undefined);
+
+  // Act
+  f.review('code', 'docs');
+
+  // Assert
+  assert.equal(condition().status, 'applicable-by-docs-review');
+  assert.equal(condition().current, true);
+  assert.deepEqual(condition().changedPaths, [BACKLOG]);
 });
 
 
@@ -934,5 +962,651 @@ test('closing selected-only provenance cannot hide ordinary edits or malformed s
   }
   f.write('src.js', 'module.exports = 2;');
   const changed = inventorySnapshot(f.root, [], ['.tmp/support.md']);
-  assert.throws(() => f.review(CLOSING_TARGET, 'docs', ['code'], [], { snapshot: changed, contextSnapshot: changed }), { code: 'closing-scope' });
+  f.review(CLOSING_TARGET, 'docs', ['code'], [], { snapshot: changed, contextSnapshot: changed });
+  assert.deepEqual(obligationBrief(f.store.read()).closing.docsReview.outsideDocumentation.changedPaths, ['src.js']);
+  assert.throws(() => f.act({ action: 'complete' }), { code: 'closing-review-required', message: /src\.js/ });
+});
+
+// Documentation paths and the closing condition.
+
+const DOCUMENTATION_EDITS = [[BACKLOG, '# Bugs\n\nEdited entry.\n'], ['.nightshift/reports/acceptance.md', '# Acceptance\n'], ['README.md', '# Project\n\nEdited.\n']];
+const LORE_TASK = { id: 'lessons', title: 'Lore', kind: 'lore', agreement: { source: 'User', outcome: 'Assessed instruction proposal' } };
+const SPEC_PATH = '.nightshift/specs/plan.md';
+const SPEC_TASK = { id: 'plan', title: 'Plan', kind: 'spec', agreement: { source: 'User', outcome: 'Assessed plan', spec: SPEC_PATH } };
+
+function condition(f, taskId, kind = 'code') {
+  return obligationBrief(f.store.read()).assessmentApplicability.find(item => item.taskId === taskId && item.kind === kind);
+}
+
+function closingStatus(f) {
+  return obligationBrief(f.store.read()).closing.docsReview;
+}
+
+function refusal(work) {
+  try {
+    work();
+  } catch (error) {
+    return error;
+  }
+  return assert.fail('Expected a refusal');
+}
+
+// A preserving, reassessing or unresolved applicability decision on a task's code assessment, as a resumed originating reviewer records it.
+function decision(f, original, outcome = 'preserve', taskId = 'code') {
+  return f.assessment('code', [taskId], [], {
+    dimensions: [], broad: false, session: original.session, lineage: original.requestId,
+    continues: { kind: 'resumed', requestId: original.requestId, session: original.session },
+    relevance: { requestId: original.requestId, originalHash: identity(original), taskIds: [taskId], originalInputsAvailable: true },
+    applicability: [{ id: taskId, outcome, evidence: 'Independently examined the change and its interactions' }],
+  });
+}
+
+// Writes the spec task's governing spec, assesses it and completes the task.
+function completeSpecTask(f, id = 'plan') {
+  f.write(SPEC_PATH, '# Plan\n');
+  f.review(id, 'spec', [id], [], { snapshot: snapshot(f.root, [SPEC_PATH]) });
+  f.act({ action: 'advance', taskId: id });
+  f.act({ action: 'advance', taskId: id, evidence: 'Spec documented' });
+  assert.equal(f.task(id).status, 'complete');
+}
+
+// Assesses a lore task's instruction proposal and completes it, which records the retrospective once the run is ready to close.
+function completeLoreTask(f, id = 'lessons') {
+  f.review(id, 'code');
+  f.act({ action: 'advance', taskId: id });
+  f.act({ action: 'advance', taskId: id, evidence: 'Proposal assessed; no instruction applied' });
+  assert.equal(f.task(id).status, 'complete');
+}
+
+for (const [file, content] of DOCUMENTATION_EDITS) {
+  test(`a ${file} edit leaves the code assessment applicable with the path listed apart, in review, documentation, completion and lore`, t => {
+    // Arrange
+    const inReview = fixture(t);
+    inReview.act({ action: 'start-task', taskId: 'code' });
+    inReview.check('code');
+    inReview.review('code', 'code');
+    const inDocumentation = fixture(t);
+    toDocumentation(inDocumentation);
+    const completed = fixture(t);
+    completeTask(completed);
+    const lore = fixture(t, [LORE_TASK]);
+    lore.review('lessons', 'code');
+
+    // Act
+    for (const f of [inReview, inDocumentation, completed, lore]) f.write(file, content);
+
+    // Assert
+    for (const [f, id] of [[inReview, 'code'], [inDocumentation, 'code'], [completed, 'code'], [lore, 'lessons']]) {
+      const reading = condition(f, id);
+      assert.deepEqual([reading.status, reading.current, reading.changedPaths, reading.documentationPaths, reading.next], ['applicable', true, [], [file], null]);
+    }
+    inReview.act({ action: 'advance', taskId: 'code' });
+    assert.equal(inReview.task().stage, 'documentation');
+    assert.equal(inReview.task().reviews.some(review => review.kind === 'docs'), false);
+    assert.equal(refusal(() => inDocumentation.act({ action: 'advance', taskId: 'code', evidence: 'Documented' })).code, 'docs-review-required');
+    inDocumentation.review('code', 'docs');
+    inDocumentation.act({ action: 'advance', taskId: 'code' });
+    inDocumentation.act({ action: 'advance', taskId: 'code', evidence: 'Documented' });
+    assert.equal(inDocumentation.task().status, 'complete');
+    close(completed);
+    completed.review(CLOSING_TARGET, 'docs', ['code']);
+    assert.equal(completed.act({ action: 'complete' }).status, 'complete');
+    lore.act({ action: 'advance', taskId: 'lessons' });
+    assert.equal(lore.task('lessons').stage, 'retrospective');
+  });
+}
+
+test('a repair made only to documentation paths names no fresh code target for a completed task, only the docs review it staled', t => {
+  // Arrange
+  const f = fixture(t, [{ ...CODE_TASK, id: 'first' }, { ...CODE_TASK, id: 'second' }]);
+  completeTask(f, 'first');
+  toDocumentation(f, 'second');
+  f.review('second', 'code', ['second'], [finding('logic', 'The change describes the boundary wrongly')]);
+  f.confirm('second', f.findingId('logic', 'second'));
+
+  // Act
+  f.write(BACKLOG, '# Bugs\n\nCorrected entry.\n');
+  f.act({ action: 'repair', taskId: 'second', findingIds: [f.findingId('logic', 'second')] });
+
+  // Assert
+  const targets = obligationBrief(f.store.read()).next.find(item => item.id === 'second').review.freshTargets;
+  assert.deepEqual(targets.map(target => [target.kind, target.taskId, target.covers]), [['docs', 'second', ['first']]]);
+  assert.equal(condition(f, 'first').status, 'applicable');
+});
+
+test('a feature record that is the task\'s governing spec stays a code-assessment input, unlike another feature record', t => {
+  // Arrange
+  const spec = '.nightshift/features/idea.md';
+  const f = fixture(t, [{ ...CODE_TASK, agreement: { ...CODE_TASK.agreement, spec, specReviewed: true } }]);
+  toDocumentation(f);
+
+  // Act
+  f.write('.nightshift/features/other.md', '# Another record\n');
+  const otherRecord = condition(f, 'code');
+  f.write(spec, '# Idea\n\nChanged governing requirements.\n');
+
+  // Assert
+  assert.deepEqual([otherRecord.status, otherRecord.documentationPaths], ['applicable', ['.nightshift/features/other.md']]);
+  assert.deepEqual([condition(f, 'code').status, condition(f, 'code').changedPaths], ['pending', [spec]]);
+  assert.throws(() => f.act({ action: 'advance', taskId: 'code', evidence: 'Documented' }), { code: 'review-required', message: /idea\.md/ });
+});
+
+test('a review context keeps the documentation relief and its applicable-by-docs-review status', t => {
+  // Arrange
+  const f = fixture(t);
+  toDocumentation(f);
+  f.write(BACKLOG, '# Bugs\n\nEdited entry.\n');
+
+  // Act
+  f.review('code', 'docs');
+  const reading = obligationBrief({ ...f.store.read(), kind: 'review' }).assessmentApplicability.find(item => item.kind === 'code');
+
+  // Assert
+  assert.deepEqual([reading.status, reading.current, reading.changedPaths, reading.documentationPaths], ['applicable-by-docs-review', true, [BACKLOG], undefined]);
+});
+
+test('a relevance decision stays applicable by decision through a later documentation edit', t => {
+  // Arrange
+  const f = fixture(t);
+  completeTask(f);
+  const original = f.task().reviews.find(review => review.kind === 'code');
+  f.write('src.js', 'module.exports = 2;\n');
+  f.act({ action: 'review', taskId: 'code', review: decision(f, original) });
+  assert.equal(condition(f, 'code').status, 'applicable-by-decision');
+
+  // Act
+  f.write(BACKLOG, '# Bugs\n\nEdited after the decision.\n');
+
+  // Assert
+  const reading = condition(f, 'code');
+  assert.deepEqual([reading.status, reading.current, reading.changedPaths, reading.documentationPaths], ['applicable-by-decision', true, ['src.js'], [BACKLOG]]);
+});
+
+test('a run completed with a documentation edit after its code assessment stays historically discharged', t => {
+  // Arrange
+  const f = fixture(t);
+  toDocumentation(f);
+  f.write('README.md', '# Project\n\nDocumented change.\n');
+  f.review('code', 'docs');
+  f.act({ action: 'advance', taskId: 'code' });
+  f.act({ action: 'advance', taskId: 'code', evidence: 'Documentation reconciled' });
+  close(f);
+  f.act({ action: 'complete' });
+  const valid = evidence => Boolean(evidence?.digest);
+
+  // Act
+  const discharged = historicalDischarge(f.store.read(), valid);
+  f.write(BACKLOG, '# Bugs\n\nTracked after completion.\n');
+
+  // Assert
+  assert.equal(discharged, true);
+  assert.equal(historicalDischarge(f.store.read(), valid), true);
+});
+
+test('a continued reviewer\'s import records its closures through a documentation edit made during its turn, but not through a code edit', t => {
+  // Arrange
+  const run = edit => {
+    const f = fixture(t);
+    f.act({ action: 'start-task', taskId: 'code' });
+    f.check('code');
+    f.review('code', 'code', ['code'], [finding('logic', 'The code mishandles the boundary')]);
+    const id = f.findingId('logic');
+    f.confirm('code', id);
+    f.write('src.js', 'module.exports = 2;\n');
+    f.act({ action: 'repair', taskId: 'code', findingIds: [id] });
+    f.check('code');
+    const lineage = f.task().findings.find(item => item.id === id).pendingClosure.lineage;
+    const raised = f.task().reviews.find(item => item.requestId === lineage);
+    const continued = f.assessment('code', ['code'], [], { continues: { kind: 'resumed', requestId: lineage, session: raised.session }, lineage, session: raised.session, closures: [{ id, closed: true, evidence: 'The repair resolves the finding' }] });
+    edit(f);
+    f.act({ action: 'review', taskId: 'code', review: continued });
+    return f.task().findings.find(item => item.id === id);
+  };
+
+  // Act
+  const documented = run(f => f.write(BACKLOG, '# Bugs\n\nEdited during the reviewer\'s turn.\n'));
+  const coded = run(f => f.write(NESTED_DOC, '# Guide\n\nEdited during the reviewer\'s turn.\n'));
+
+  // Assert
+  assert.equal(documented.pendingClosure, undefined);
+  assert.equal(documented.closures.length, 1);
+  assert.ok(coded.pendingClosure);
+});
+
+test('a stale assessment without a request id names the fresh assessment first and carries no applicability call', t => {
+  // Arrange
+  const single = fixture(t);
+  single.act({ action: 'start-task', taskId: 'code' });
+  single.check('code');
+  single.review('code', 'code', ['code'], [], { requestId: undefined });
+  single.act({ action: 'advance', taskId: 'code' });
+  single.review('code', 'docs');
+  single.act({ action: 'advance', taskId: 'code' });
+  single.act({ action: 'advance', taskId: 'code', evidence: 'Documented' });
+  const pair = fixture(t, [{ ...CODE_TASK, id: 'first' }, { ...CODE_TASK, id: 'second' }]);
+  pair.act({ action: 'start-task', taskId: 'first' });
+  pair.check('first');
+  pair.review('first', 'code', ['first'], [], { requestId: undefined });
+  pair.act({ action: 'advance', taskId: 'first' });
+  pair.review('first', 'docs', ['first']);
+  pair.act({ action: 'advance', taskId: 'first' });
+  pair.act({ action: 'advance', taskId: 'first', evidence: 'Documented' });
+  toDocumentation(pair, 'second');
+  pair.review('second', 'docs', ['second'], [finding('guide')]);
+  pair.confirm('second', pair.findingId('guide', 'second'));
+
+  // Act
+  single.write('src.js', 'module.exports = 2;\n');
+  pair.write('src.js', 'module.exports = 2;\n');
+  pair.act({ action: 'repair', taskId: 'second', findingIds: [pair.findingId('guide', 'second')] });
+
+  // Assert
+  assert.match(condition(single, 'code').next, /^Obtain a fresh cumulative assessment/);
+  assert.match(refusal(() => single.act({ action: 'complete' })).message, /code: changed inputs: src\.js.*\(way forward: obtain a fresh cumulative assessment/);
+  const [target] = obligationBrief(pair.store.read()).next.find(item => item.id === 'second').review.freshTargets;
+  assert.deepEqual([target.kind, target.taskId], ['code', 'second']);
+  assert.deepEqual(target.staleChanges.find(change => change.requestId === null), { requestId: null, cause: 'changed-inputs', changedPaths: ['src.js'], applicabilityCall: null });
+  // An assessment imported without its dispatch has no receipted dispatch to resume either.
+  assert.ok(target.staleChanges.every(change => change.applicabilityCall === null));
+});
+
+test('a code edit after triage takes a closing review and holds completion until a fresh code assessment or a revert settles it', t => {
+  // Arrange
+  const f = fixture(t);
+  completeTask(f);
+  close(f);
+  const original = f.task().reviews.find(review => review.kind === 'code');
+  f.write('src.js', 'module.exports = 2;\n');
+  f.check('code');
+
+  // Act and Assert
+  f.review(CLOSING_TARGET, 'docs', ['code']);
+  const held = closingStatus(f);
+  assert.deepEqual(held.outsideDocumentation.changedPaths, ['src.js']);
+  assert.match(held.outsideDocumentation.next, /fresh code assessment on any one of the tasks code/);
+  assert.match(held.outsideDocumentation.next, /Reverting these paths also settles the hold/);
+  assert.equal(held.satisfied, false);
+  assert.throws(() => f.act({ action: 'complete' }), { code: 'closing-review-required', message: /src\.js.*Reverting these paths/s });
+  f.act({ action: 'review', taskId: 'code', review: decision(f, original) });
+  assert.equal(condition(f, 'code').status, 'applicable-by-decision');
+  assert.deepEqual(closingStatus(f).outsideDocumentation.changedPaths, ['src.js']);
+  assert.throws(() => f.act({ action: 'complete' }), { code: 'closing-review-required', message: /src\.js/ });
+  f.review('code', 'code');
+  assert.equal(f.task().status, 'complete');
+  assert.equal(closingStatus(f).outsideDocumentation, undefined);
+  assert.equal(closingStatus(f).satisfied, true);
+  assert.equal(f.act({ action: 'complete' }).status, 'complete');
+
+  const reverted = fixture(t);
+  completeTask(reverted);
+  close(reverted);
+  reverted.write('src.js', 'module.exports = 2;\n');
+  assert.throws(() => reverted.act({ action: 'complete' }), { code: 'closing-review-required', message: /src\.js/ });
+  reverted.write('src.js', 'module.exports = 1;\n');
+  assert.equal(closingStatus(reverted).outsideDocumentation, undefined);
+  assert.equal(reverted.act({ action: 'complete' }).status, 'complete');
+});
+
+test('after a code edit following triage, completion needs the settling code assessment and then a closing docs review covering every task', t => {
+  // Arrange
+  const f = fixture(t);
+  completeTask(f);
+  close(f);
+  const closing = f.store.read().closing;
+  f.write('src.js', 'module.exports = 2;\n');
+  f.check('code');
+  const next = closingStatus(f).outsideDocumentation.next;
+
+  // Act
+  f.review('code', 'code');
+
+  // Assert
+  assert.ok(next.indexOf('fresh code assessment') < next.indexOf('closing docs review'), next);
+  assert.equal(f.task().status, 'complete');
+  assert.deepEqual(f.store.read().closing.triageEvidence, closing.triageEvidence);
+  assert.equal(closingStatus(f).outsideDocumentation, undefined);
+  assert.throws(() => f.act({ action: 'complete' }), { code: 'closing-review-required', message: /closing docs review/ });
+  // A closing review covering no task leaves the task's own docs gate stale.
+  f.review(CLOSING_TARGET, 'docs', []);
+  assert.throws(() => f.act({ action: 'complete' }), { code: 'docs-review-required', message: /Missing for: code: changed inputs: src\.js/ });
+  f.review(CLOSING_TARGET, 'docs', ['code']);
+  assert.equal(f.act({ action: 'complete' }).status, 'complete');
+});
+
+test('in a run of only lore tasks, a lore task\'s fresh code assessment settles the hold', t => {
+  // Arrange
+  const f = fixture(t, [LORE_TASK]);
+  completeLoreTask(f);
+  f.act({ action: 'triage', evidence: 'Follow-ups triaged' });
+  f.write('src.js', 'module.exports = 2;\n');
+  assert.match(closingStatus(f).outsideDocumentation.next, /any one of the tasks lessons/);
+
+  // Act
+  f.review('lessons', 'code');
+
+  // Assert
+  assert.equal(f.task('lessons').status, 'complete');
+  assert.equal(closingStatus(f).outsideDocumentation, undefined);
+  f.review(CLOSING_TARGET, 'docs', ['lessons']);
+  assert.equal(f.act({ action: 'complete' }).status, 'complete');
+});
+
+test('triage recorded again keeps the earlier baseline while the hold is unsettled, whatever review was imported meanwhile', t => {
+  for (const imported of ['closing', 'task']) {
+    // Arrange
+    const f = fixture(t);
+    completeTask(f);
+    close(f);
+    const baseline = f.store.read().closing.docs.baseline.digest;
+    f.write('src.js', 'module.exports = 2;\n');
+
+    // Act
+    if (imported === 'closing') f.review(CLOSING_TARGET, 'docs', ['code']);
+    else f.review('code', 'docs');
+    f.act({ action: 'triage', evidence: 'Triage recorded again' });
+
+    // Assert
+    assert.equal(f.task().status, 'complete', imported);
+    assert.equal(f.store.read().closing.docs.baseline.digest, baseline, imported);
+    assert.deepEqual(closingStatus(f).outsideDocumentation.changedPaths, ['src.js'], imported);
+  }
+});
+
+test('a held run reports the hold, and triage recorded while stopped keeps the earlier baseline through resumption', t => {
+  for (const imported of ['closing', 'task']) {
+    // Arrange
+    const f = fixture(t);
+    completeTask(f);
+    close(f);
+    const baseline = f.store.read().closing.docs.baseline.digest;
+    f.write('src.js', 'module.exports = 2;\n');
+    if (imported === 'closing') f.review(CLOSING_TARGET, 'docs', ['code']);
+    else f.review('code', 'docs');
+
+    // Act
+    f.act({ action: 'hold', authority: 'User paused the run', reason: 'Decide the code edit later' });
+    const stopped = closingStatus(f);
+    f.act({ action: 'triage', evidence: 'Triage recorded while stopped' });
+    f.act({ action: 'resume', authority: 'User resumed the run' });
+
+    // Assert
+    assert.deepEqual(stopped.outsideDocumentation.changedPaths, ['src.js'], imported);
+    assert.equal(f.store.read().status, 'running', imported);
+    assert.equal(f.store.read().closing.docs.baseline.digest, baseline, imported);
+    assert.deepEqual(closingStatus(f).outsideDocumentation.changedPaths, ['src.js'], imported);
+  }
+});
+
+test('in a run of only spec tasks, a fresh whole-spec assessment settles a governing-spec edit, while another edit needs the user\'s decision', t => {
+  // Arrange
+  const settled = fixture(t, [SPEC_TASK]);
+  completeSpecTask(settled);
+  close(settled);
+  const undecided = fixture(t, [SPEC_TASK]);
+  completeSpecTask(undecided);
+  close(undecided);
+
+  // Act
+  settled.write(SPEC_PATH, '# Plan\n\nChanged after triage.\n');
+  undecided.write('src.js', 'module.exports = 2;\n');
+
+  // Assert
+  assert.deepEqual(closingStatus(settled).outsideDocumentation.changedPaths, [SPEC_PATH]);
+  assert.match(closingStatus(settled).outsideDocumentation.next, /fresh whole-spec assessment on spec task plan/);
+  assert.throws(() => settled.act({ action: 'complete' }), { code: 'closing-review-required', message: /plan\.md/ });
+  settled.review('plan', 'spec', ['plan'], [], { snapshot: snapshot(settled.root, [SPEC_PATH]) });
+  assert.equal(settled.task('plan').status, 'complete');
+  assert.equal(closingStatus(settled).outsideDocumentation, undefined);
+  settled.review(CLOSING_TARGET, 'docs', []);
+  assert.equal(settled.act({ action: 'complete' }).status, 'complete');
+  assert.match(closingStatus(undecided).outsideDocumentation.next, /needs the user's decision: hold, stop or the administrative close/);
+  undecided.review('plan', 'spec', ['plan'], [], { snapshot: snapshot(undecided.root, [SPEC_PATH, 'src.js']) });
+  assert.deepEqual(closingStatus(undecided).outsideDocumentation.changedPaths, ['src.js']);
+});
+
+test('in a run with a code task, a spec assessment whose deciding inputs include the edited code file does not settle the hold', t => {
+  // Arrange
+  const f = fixture(t, [SPEC_TASK, CODE_TASK]);
+  completeSpecTask(f);
+  completeTask(f);
+  close(f);
+  f.write('src.js', 'module.exports = 2;\n');
+
+  // Act
+  f.review('plan', 'spec', ['plan'], [], { snapshot: snapshot(f.root, [SPEC_PATH, 'src.js']) });
+
+  // Assert
+  assert.equal(condition(f, 'plan', 'spec').status, 'applicable');
+  assert.deepEqual(closingStatus(f).outsideDocumentation.changedPaths, ['src.js']);
+  assert.match(closingStatus(f).outsideDocumentation.next, /any one of the tasks code/);
+});
+
+test('on a complete run a code edit leaves the hold unevaluated, closing coverage reads as before and a closing review over it is refused', t => {
+  // Arrange
+  const f = fixture(t);
+  completeTask(f);
+  close(f);
+  f.act({ action: 'complete' });
+
+  // Act
+  f.write('src.js', 'module.exports = 2;\n');
+
+  // Assert
+  assert.equal(closingStatus(f).outsideDocumentation, undefined);
+  assert.equal(closingStatus(f).satisfied, false);
+  assert.throws(() => f.review(CLOSING_TARGET, 'docs', ['code']), { code: 'closing-scope', message: /src\.js/ });
+});
+
+test('on a docs-gated run of lore and spec tasks, a documentation edit after triage still needs a closing review after triage is recorded again', t => {
+  // Arrange
+  const f = fixture(t, [SPEC_TASK, { ...LORE_TASK, requires: ['plan'] }]);
+  completeSpecTask(f);
+  completeLoreTask(f);
+  f.act({ action: 'triage', evidence: 'Follow-ups triaged' });
+  const baseline = f.store.read().closing.docs.baseline.digest;
+
+  // Act
+  f.write(BACKLOG, '# Bugs\n\nTracked follow-up.\n');
+  f.act({ action: 'triage', evidence: 'Triage recorded again' });
+
+  // Assert
+  assert.equal(f.store.read().closing.docs.baseline.digest, baseline);
+  assert.equal(closingStatus(f).outsideDocumentation, undefined);
+  assert.throws(() => f.act({ action: 'complete' }), { code: 'closing-review-required' });
+});
+
+test('the hold lists first the tasks whose assessment covers the other stale code gates, and a lore gate it leaves stale is reported by stale-review', t => {
+  // Arrange
+  const f = fixture(t, [{ ...LORE_TASK, requires: ['first', 'second'] }, { ...CODE_TASK, id: 'first' }, { ...CODE_TASK, id: 'second' }]);
+  completeTask(f, 'first');
+  completeTask(f, 'second');
+  completeLoreTask(f);
+  f.act({ action: 'triage', evidence: 'Follow-ups triaged' });
+  f.write('src.js', 'module.exports = 2;\n');
+
+  // Act
+  const next = closingStatus(f).outsideDocumentation.next;
+  f.review('first', 'code', ['first', 'second']);
+  f.check('first');
+  f.check('second');
+  f.review(CLOSING_TARGET, 'docs', ['first', 'second', 'lessons']);
+
+  // Assert
+  assert.match(next, /any one of the tasks first, second, lessons/);
+  assert.equal(closingStatus(f).outsideDocumentation, undefined);
+  const refused = refusal(() => f.act({ action: 'complete' }));
+  assert.equal(refused.code, 'stale-review');
+  assert.match(refused.message, /lessons: changed inputs: src\.js/);
+  assert.doesNotMatch(refused.message, /(first|second): changed inputs/);
+});
+
+test('with freshness verification skipped, the outside-documentation hold and closing satisfaction await reconciliation', t => {
+  // Arrange
+  const f = fixture(t);
+  completeTask(f);
+  close(f);
+
+  // Act
+  const light = obligationBrief(f.store.read(), f.root, { verifyFreshness: false }).closing.docsReview;
+
+  // Assert
+  assert.deepEqual([light.outsideDocumentation, light.satisfied], ['reconcile at acceptance', 'reconcile at acceptance']);
+});
+
+test('an outside-documentation set that cannot be computed reports the no-baseline recovery, and triage recorded again keeps or replaces the baseline as before', t => {
+  // Arrange
+  const failed = fixture(t);
+  completeTask(failed);
+  close(failed);
+  failed.store.update(actor, failed.store.read().revision, 'fixture-corrupt-baseline', state => { state.closing.docs.baseline.digest = 'corrupt'; });
+  const missing = fixture(t);
+  completeTask(missing);
+  close(missing);
+  missing.store.update(actor, missing.store.read().revision, 'fixture-lost-baseline', state => { state.closing.docs.baseline = null; });
+
+  // Act
+  const failedStatus = closingStatus(failed).outsideDocumentation;
+  const missingStatus = closingStatus(missing).outsideDocumentation;
+  failed.act({ action: 'triage', evidence: 'Triage recorded again' });
+  missing.act({ action: 'triage', evidence: 'Triage recorded again' });
+
+  // Assert
+  for (const status of [failedStatus, missingStatus]) {
+    assert.equal(status.changedPaths, null);
+    assert.match(status.next, /record triage again once Git can inspect the project/);
+  }
+  assert.equal(failed.store.read().closing.docs.baseline.digest, 'corrupt');
+  assert.throws(() => failed.act({ action: 'complete' }), { code: 'closing-review-required', message: /cannot be established/ });
+  assert.ok(missing.store.read().closing.docs.baseline);
+  assert.equal(closingStatus(missing).outsideDocumentation, undefined);
+  assert.equal(missing.act({ action: 'complete' }).status, 'complete');
+});
+
+test('a closing review is still refused for a missing baseline, an unestablished difference or malformed selected-only provenance', t => {
+  // Arrange
+  const missing = fixture(t);
+  completeTask(missing);
+  close(missing);
+  missing.store.update(actor, missing.store.read().revision, 'fixture-lost-baseline', state => { state.closing.docs.baseline = null; });
+  const corrupt = fixture(t);
+  completeTask(corrupt);
+  close(corrupt);
+  corrupt.store.update(actor, corrupt.store.read().revision, 'fixture-corrupt-baseline', state => { state.closing.docs.baseline.digest = 'corrupt'; });
+  const malformed = fixture(t);
+  completeTask(malformed);
+  close(malformed);
+  const provenance = { ...inventorySnapshot(malformed.root), includedOnlyPaths: ['src.js'] };
+
+  // Act and Assert
+  assert.throws(() => missing.review(CLOSING_TARGET, 'docs', ['code']), { code: 'closing-scope', message: /no triage baseline/ });
+  assert.throws(() => corrupt.review(CLOSING_TARGET, 'docs', ['code']), { code: 'closing-scope', message: /cannot be established/ });
+  assert.throws(() => malformed.review(CLOSING_TARGET, 'docs', ['code'], [], { snapshot: provenance, contextSnapshot: provenance }), { code: 'closing-scope', message: /malformed selected-only/ });
+});
+
+test('after triage, a clean current assessment or preserving decision on a completed task leaves it complete with its exemption and the closing evidence intact', t => {
+  // Arrange
+  const exempt = fixture(t, [{ id: 'docs', title: 'Version bump', kind: 'docs', agreement: { source: 'User', outcome: 'Bump the version' } }]);
+  exempt.act({ action: 'advance', taskId: 'docs', evidence: 'Bumped', docsExemption: 'Only the version string changed' });
+  close(exempt);
+  const closing = exempt.store.read().closing;
+  const decided = fixture(t);
+  completeTask(decided);
+  close(decided);
+  const decidedClosing = decided.store.read().closing;
+  const original = decided.task().reviews.find(review => review.kind === 'code');
+  decided.write('src.js', 'module.exports = 2;\n');
+
+  // Act
+  exempt.review('docs', 'code');
+  decided.act({ action: 'review', taskId: 'code', review: decision(decided, original) });
+
+  // Assert
+  assert.deepEqual([exempt.task('docs').status, exempt.task('docs').stage], ['complete', 'complete']);
+  assert.ok(exempt.task('docs').docsExemption);
+  assert.deepEqual(exempt.store.read().closing, closing);
+  assert.equal(decided.task().status, 'complete');
+  assert.deepEqual(decided.store.read().closing, decidedClosing);
+});
+
+test('after triage, an import with findings, or an incomplete or continued clean one, reopens a completed task as before', t => {
+  const imports = [
+    ['findings', {}, [finding('logic', 'The code mishandles the boundary')]],
+    ['incomplete', { status: 'incomplete', broad: false, coverageEvidence: '' }, []],
+    ['continued', { continues: { kind: 'resumed', requestId: 'earlier', session: 'earlier-session' }, lineage: 'earlier', closures: [] }, []],
+  ];
+  for (const [label, overrides, findings] of imports) {
+    // Arrange
+    const f = fixture(t, [{ id: 'docs', title: 'Version bump', kind: 'docs', agreement: { source: 'User', outcome: 'Bump the version' } }]);
+    f.act({ action: 'advance', taskId: 'docs', evidence: 'Bumped', docsExemption: 'Only the version string changed' });
+    close(f);
+
+    // Act
+    f.review('docs', 'code', ['docs'], findings, overrides);
+
+    // Assert
+    assert.deepEqual([f.task('docs').status, f.task('docs').stage, f.task('docs').docsExemption], ['active', 'review', undefined], label);
+    assert.equal(f.store.read().closing.triageEvidence, null, label);
+  }
+});
+
+test('the settling code assessment on a completed task after a post-triage code edit keeps it complete while its docs gate is stale', t => {
+  // Arrange
+  const f = fixture(t);
+  completeTask(f);
+  close(f);
+  const closing = f.store.read().closing;
+  f.write('src.js', 'module.exports = 2;\n');
+  f.check('code');
+
+  // Act
+  f.review('code', 'code');
+
+  // Assert
+  assert.equal(f.task().status, 'complete');
+  assert.deepEqual(f.store.read().closing, closing);
+  assert.equal(condition(f, 'code', 'docs').current, false);
+});
+
+test('before triage, the same clean import on a completed task resets closing and reopens it as before', t => {
+  // Arrange
+  const f = fixture(t);
+  completeTask(f);
+  f.act({ action: 'retrospective', evidence: 'Retrospective recorded' });
+  f.write('src.js', 'module.exports = 2;\n');
+  f.check('code');
+
+  // Act
+  f.review('code', 'code');
+
+  // Assert
+  assert.equal(f.store.read().closing.retrospectiveEvidence, null);
+  assert.deepEqual([f.task().status, f.task().stage, f.task().resumeStage], ['active', 'review', 'complete']);
+});
+
+test('a fresh target on a completed task reopens it before triage, and after triage only if its import raises findings', t => {
+  // Arrange
+  const f = fixture(t);
+  f.act({ action: 'start-task', taskId: 'code' });
+  f.check('code');
+  f.review('code', 'code');
+  f.act({ action: 'advance', taskId: 'code' });
+  f.review('code', 'docs', ['code'], [finding('entry')]);
+  f.confirm('code', f.findingId('entry'));
+  f.write(BACKLOG, '# Bugs\n\nCorrected entry.\n');
+  f.act({ action: 'repair', taskId: 'code', findingIds: [f.findingId('entry')] });
+  f.closeRepairs('code');
+  f.review('code', 'docs');
+  f.act({ action: 'advance', taskId: 'code' });
+  f.act({ action: 'advance', taskId: 'code', evidence: 'Documented' });
+  f.write('src.js', 'module.exports = 2;\n');
+  const reopens = () => reviewProgress(f.root, f.store.read(), f.task()).freshTargets.map(target => [target.kind, target.taskId, target.reopens]);
+
+  // Act
+  const beforeTriage = reopens();
+  close(f);
+  const afterTriage = reopens();
+
+  // Assert
+  assert.deepEqual(beforeTriage, [['code', 'code', true]]);
+  assert.deepEqual(afterTriage, [['code', 'code', 'if-findings']]);
 });

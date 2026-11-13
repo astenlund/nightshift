@@ -365,10 +365,11 @@ test('refreshing assurance preserves completed documentation, retrospective and 
   f.act({ action: 'triage', evidence: 'No pending decisions' });
   const closing = f.store.read().closing;
   const previous = f.store.read().tasks[0];
+  // After triage, a clean current assessment its gate accepts leaves the completed task complete instead of reopening it.
   f.review('a');
-  assert.equal(f.store.read().tasks[0].resumeStage, 'complete');
-  f.act({ action: 'advance', taskId: 'a' });
   const updated = f.store.read().tasks[0];
+  assert.equal(updated.stage, 'complete');
+  assert.equal(updated.resumeStage, undefined);
   assert.equal(updated.status, 'complete');
   assert.equal(updated.documentationEvidence, previous.documentationEvidence);
   assert.deepEqual(f.store.read().closing, closing);

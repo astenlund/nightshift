@@ -3,6 +3,7 @@
 const { isDeepStrictEqual } = require('node:util');
 const { requireCondition } = require('./errors');
 const { changedPaths, fileIdentity, fresh, hash, projectFile, snapshot } = require('./evidence');
+const { governingArtifacts, ignoresDocumentationPaths, partitionDocumentationChanges } = require('./documentation-paths');
 
 // Decisions live beside assessments in reviews, but never become assessments themselves. They bind one immutable assessment
 // and the exact later input scope and commitments examined. Missing, conflicting or unreadable evidence never grants coverage.
@@ -87,6 +88,15 @@ function inputChanges(root, review, kind = review.kind) {
   return changes.some(paths => paths === null) ? null : [...new Set(changes.flat())].sort();
 }
 
+// The input changes a comparison of an assessment counts. On a run that ignores documentation paths, a code assessment's comparison
+// sets changed documentation paths other than the governing artifacts aside as documentationPaths, at import and afterwards.
+function assessedChanges(root, review, kind, state, governing, assessedKind = kind) {
+  const changes = inputChanges(root, review, kind);
+  if (changes === null || assessedKind !== 'code' || !ignoresDocumentationPaths(state)) return { changedPaths: changes, documentationPaths: [] };
+  const { counted, ignored } = partitionDocumentationChanges(root, changes, governing);
+  return { changedPaths: counted, documentationPaths: ignored };
+}
+
 function missingSpecInputs(root, review) {
   return review.snapshot.files.map(file => file.path).filter(file => !fileIdentity(root, file).exists).sort();
 }
@@ -104,9 +114,12 @@ function applicability(root, review, task, owner, state = null) {
 }
 
 function evaluateApplicability(root, review, task, owner, state = null) {
-  const changedPaths = inputChanges(root, review, review.kind ?? (owner.kind === 'spec' ? 'spec' : 'code'));
+  const kind = review.kind ?? (owner.kind === 'spec' ? 'spec' : 'code');
+  // A closing record's reviews are docs assessments, whatever an earlier record left unrecorded.
+  const comparedKind = owner.kind === 'closing' ? 'docs' : kind;
+  const { changedPaths, documentationPaths } = assessedChanges(root, review, comparedKind, state, governingArtifacts([task], [review]));
   const commitmentsChanged = !isDeepStrictEqual(review.commitments?.[task.id], commitment(task));
-  const base = { requestId: review.requestId ?? null, kind: review.kind ?? (owner.kind === 'spec' ? 'spec' : 'code'), changedPaths, commitmentsChanged };
+  const base = { requestId: review.requestId ?? null, kind, changedPaths, ...(documentationPaths.length > 0 ? { documentationPaths } : {}), commitmentsChanged };
   if (changedPaths === null) return { ...base, status: 'structural-failure', current: false, next: 'Reconcile missing, corrupt, unreadable or unsafe assessment evidence' };
   if (base.kind === 'spec' && (review.snapshot.files.some(file => file.sha256 === null) || !hasGoverningInput(root, review.snapshot.files.map(file => file.path), task.agreement?.spec))) return { ...base, status: 'structural-failure', current: false, next: 'Obtain a spec assessment of existing declared inputs that include the configured governing artifact' };
   const context = review.contextSnapshot ?? review.snapshot;
@@ -124,7 +137,8 @@ function evaluateApplicability(root, review, task, owner, state = null) {
       || typeof answer.evidence !== 'string' || !answer.evidence.trim() || answer.outcome === 'preserve' && candidate.status !== 'complete'))) {
     return { ...base, status: 'structural-failure', current: false, next: 'Reconcile malformed applicability decisions' };
   }
-  const comparisons = scoped.map(candidate => ({ candidate, changes: inputChanges(root, candidate) }));
+  // A decision about an assessment is compared as that assessment is.
+  const comparisons = scoped.map(candidate => ({ candidate, changes: assessedChanges(root, candidate, candidate.kind, state, governingArtifacts([task], [review, candidate]), comparedKind).changedPaths }));
   const failed = comparisons.find(entry => entry.changes === null);
   if (failed) return { ...base, changedPaths: null, status: 'structural-failure', current: false, decision: failed.candidate.requestId ?? null, next: 'Reconcile missing, corrupt, unreadable or unsafe applicability-decision evidence' };
   const decisions = comparisons.filter(entry => isDeepStrictEqual(entry.candidate.commitments?.[task.id], commitment(task)) && entry.changes.length === 0).map(entry => entry.candidate);
@@ -165,4 +179,4 @@ function preservedSnapshots(review, owner, tasks, resolve, state = null) {
   })).map(candidate => candidate.snapshot);
 }
 
-module.exports = { latestDecision, missingSpecInputs, validRelevanceTaskIds, relevanceCoversTask, applicability, commitment, differences, hasGoverningInput, identity, inputChanges, latestEntry, preservedSnapshots, snapshotChanges };
+module.exports = { latestDecision, missingSpecInputs, validRelevanceTaskIds, relevanceCoversTask, applicability, assessedChanges, commitment, differences, hasGoverningInput, identity, inputChanges, latestEntry, preservedSnapshots, snapshotChanges };

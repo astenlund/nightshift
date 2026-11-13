@@ -1502,9 +1502,9 @@ for (const kind of ['docs', 'lore']) {
       await act({ action: 'followup', item: { id: 'approval', context: 'The reviewed instruction proposal is awaiting the user', recommendation: 'Consider the unchanged reviewed proposal', decisionTerms: ['approve', 'adjust', 'revert'] } });
       await act({ action: 'triage', evidence: 'Original approval terms retained as pending' });
       const closing = store.read().closing;
+      // After triage, a clean current assessment its gate accepts leaves the completed task complete rather than reopening it.
       await assess();
-      assert.equal(store.read().tasks[0].resumeStage, 'complete');
-      await act({ action: 'advance' });
+      assert.equal(store.read().tasks[0].resumeStage, undefined);
       assert.equal(store.read().tasks[0].status, 'complete');
       assert.deepEqual(store.read().closing, closing);
       assert.equal(store.read().followups[0].status, 'pending');

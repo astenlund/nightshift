@@ -14,7 +14,9 @@ const { closureRoute, latestDispatchOf, lineageOf } = require('./continuation');
 const { scratchFailure, scratchStatus } = require('./scratch');
 const { isReviewContext, requireDelivery, recordKind } = require('./records');
 const { isClosed } = require('./statuses');
-const { latestDecision, relevanceCoversTask, applicability, inputChanges, latestEntry: latestReview } = require('./applicability');
+const { latestDecision, relevanceCoversTask, applicability, assessedChanges, inputChanges, latestEntry: latestReview } = require('./applicability');
+const { BACKLOG_FILES, DOCUMENTATION_DIRECTORIES, governingArtifacts, ignoresDocumentationPaths, isDocumentationPath, isRootDocumentation, onlyGoverningArtifacts } = require('./documentation-paths');
+const { originalInputsRetained } = require('./relevance');
 const { validReportDelivery } = require('./report-delivery');
 const { invalidateContinuation, continuationForRequest } = require('./continuation-health');
 const { currencyRefusal, receiptCurrency, recordedSurfaces, savedSurfaces, scopeOf, surfaceVerdicts, validateSurfaceAnswers } = require('./finding-scope');
@@ -27,24 +29,6 @@ const DIMENSIONS = Object.freeze({
 });
 
 const REPORT_DIRECTORY = '.nightshift/runs/reports/';
-
-// Documentation a docs review alone covers: the Nightshift backlog (the four indexes, their history files and the record
-// directories), Nightshift's durable reports, and Markdown files at the project root other than host instruction files. Only
-// these paths can be relieved from code reassessment by a docs review, and a closing review covers edits to them alone.
-// Governing specs, operating instructions, Markdown below the root and every other file stay under code assessment.
-const BACKLOG_FILES = Object.freeze(['.nightshift/FEATURES.md', '.nightshift/BUGS.md', '.nightshift/QUICK_WINS.md', '.nightshift/PATTERNS.md', '.nightshift/FEATURES_HISTORY.md', '.nightshift/BUGS_HISTORY.md', '.nightshift/QUICK_WINS_HISTORY.md']);
-const DOCUMENTATION_DIRECTORIES = Object.freeze(['.nightshift/features/', '.nightshift/bugs/', '.nightshift/patterns/', '.nightshift/reports/']);
-// The hosts load these as operating instructions; matched case-insensitively, as Windows resolves them.
-const HOST_INSTRUCTION_FILES = new Set(['agents.md', 'agents.override.md', 'claude.md', 'claude.local.md']);
-
-function isRootDocumentation(file) {
-  const name = file.toLowerCase();
-  return !name.includes('/') && name.endsWith('.md') && !HOST_INSTRUCTION_FILES.has(name);
-}
-
-function isDocumentationPath(file) {
-  return BACKLOG_FILES.includes(file) || DOCUMENTATION_DIRECTORIES.some(directory => file.startsWith(directory)) || isRootDocumentation(file);
-}
 
 // Operations that act on the closing record; everything else about a task, such as its stages and blockers, does not apply to it.
 const CLOSING_ACTIONS = Object.freeze(['dispatch', 'probe', 'check', 'review', 'validate', 'dialogue', 'dispose', 'repair']);
@@ -75,7 +59,8 @@ function sameClosingRecord(record, pinned, origin) {
   return record.occurrence ? pinned.closingOccurrence === record.occurrence : Boolean(pinned.progressOrigin) && pinned.progressOrigin === origin;
 }
 
-// The project inventory at triage, against which a closing review must show documentation-only changes. An empty inventory is an
+// The project inventory at triage, against which the changes since triage are judged: documentation changes need a closing review, and
+// changes outside the documentation paths hold completion until a fresh task assessment covers them. An empty inventory is an
 // empty baseline. When Git cannot inventory the project, only a project positively outside Git gets a baseline, read from its
 // documentation files on disk, so completion can still tell whether tracking edits followed; otherwise null, which fails closed.
 function triageBaseline(root, state) {
@@ -269,7 +254,7 @@ function historicalDischarge(state, snapshotValid) {
   const closing = state.closing.docs;
   if (closing) {
     if (!closing.findings.every(settled) || !verificationGate(state.root, closing, current) || !snapshotValid(closing.baseline, true)) return false;
-    const review = latestReview(closing.reviews.filter(item => !item.relevance).map(item => ({ review: item })), state)?.review;
+    const review = latestClosingReview(closing, state);
     if (review && (!completeAssessment(review) || review.attributionVerified !== true || !DIMENSIONS.docs.every(dimension => review.dimensions?.includes(dimension)) || !snapshotValid(review.snapshot))) return false;
     if (closing.findings.some(finding => finding.repaired && finding.repairRevision >= (review?.revision ?? Infinity))) return false;
   }
@@ -469,14 +454,14 @@ function causeText(target, cause) {
   return `${target.id}: ${reasons[cause.kind]()}${checks}`;
 }
 
-// A code assessment stale only because documentation paths changed counts as current once a current docs review covers the task.
-// Lore tasks gain this only from the closing docs review, since task-level docs reviews never cover them; a governing spec never gains it.
+// On a review context or a run without the docs gate, a code assessment stale only because documentation paths changed counts as
+// current once a current docs review covers the task. Lore tasks gain this only from the closing docs review, since task-level docs
+// reviews never cover them; a governing spec never gains it. A docs-gated run never needs it: its code assessments ignore those paths.
 function documentationRelief(root, task, state, review) {
-  if (!state || task.kind === 'spec' || review.snapshot?.inventory !== true) return false;
+  if (!state || ignoresDocumentationPaths(state) || task.kind === 'spec' || review.snapshot?.inventory !== true) return false;
   const changed = changedPaths(root, review.snapshot);
   if (!changed || !changed.every(isDocumentationPath)) return false;
-  const agreements = [task.agreement, ...Object.values(review.commitments ?? {}).map(value => value.agreement)];
-  const governing = [...new Set(agreements.map(agreement => agreement?.spec).filter(file => typeof file === 'string'))];
+  const governing = governingArtifacts([task], [review]);
   try {
     const changedKeys = new Set(changed.map(file => fileIdentity(root, file).key));
     if (governing.some(file => {
@@ -527,7 +512,7 @@ function docsGateFailure(root, task, state) {
 function closingRecordFailure(root, state, { ignoreChecks = false } = {}) {
   const record = state.closing?.docs;
   if (!record) return null;
-  const latest = latestReview(record.reviews.filter(review => !review.relevance).map(review => ({ review })), state)?.review;
+  const latest = latestClosingReview(record, state);
   if (latest && (!completeAssessment(latest) || !coversDimensions(latest, 'docs'))) return 'unmet';
   if (!record.findings.every(settled) || record.findings.some(finding => finding.pendingClosure)) return 'unmet';
   if (record.findings.some(finding => finding.repaired && finding.repairRevision >= (latest?.revision ?? Infinity))) return 'unmet';
@@ -540,9 +525,15 @@ const CLOSING_COVERAGE = Object.freeze({
   'no-baseline': 'The changes since triage cannot be established; record triage again once Git can inspect the project',
 });
 
+function latestClosingReview(record, state) {
+  return latestReview(record.reviews.filter(review => !review.relevance).map(review => ({ review })), state)?.review;
+}
+
 // Why completion lacks closing coverage, as a CLOSING_COVERAGE key, or null when it holds. Anything changed since triage needs a
-// current resolved closing review, whether or not a task gate depends on it. A baseline read from disk belongs to a project outside
-// Git, where no review can be dispatched, so any documentation change there fails closed; a missing or unreadable baseline fails closed too.
+// current resolved closing review, whether or not a task gate depends on it; on a complete run, where no task assessment can be
+// dispatched, a change outside the documentation paths is never covered, while an unfinished run holds such a change with the
+// outside-documentation hold instead. A baseline read from disk belongs to a project outside Git, where no review can be dispatched,
+// so any documentation change there fails closed; a missing or unreadable baseline fails closed too.
 function closingCoverageFailure(root, state) {
   const record = state.closing?.docs;
   if (!record) return null;
@@ -554,19 +545,105 @@ function closingCoverageFailure(root, state) {
   const changed = changedPaths(root, record.baseline);
   if (changed === null) return 'no-baseline';
   if (changed.length === 0) return null;
-  const latest = latestReview(record.reviews.filter(review => !review.relevance).map(review => ({ review })), state)?.review;
+  const latest = latestClosingReview(record, state);
   const excluded = new Set(latest?.contextSnapshot?.excludedPaths ?? []);
-  if (changed.some(file => !excluded.has(file) && !isDocumentationPath(file))) return 'unreviewed';
+  if (state.status === 'complete' && changed.some(file => !excluded.has(file) && !isDocumentationPath(file))) return 'unreviewed';
   return latest && closingAssessmentCurrent(root, state, latest) && closingRecordFailure(root, state) === null ? null : 'unreviewed';
 }
 
+// The closing baseline the outside-documentation condition reads, or undefined when the run has none to evaluate: before triage, on
+// a complete or closed run, and for a project outside Git, whose baseline holds documentation files only. A missing baseline is null.
+function outsideDocumentationBaseline(state) {
+  if (isReviewContext(state) || isClosed(state) || state.status === 'complete' || !state.closing) return undefined;
+  const record = state.closing.docs;
+  if (!record && !state.closing.carriedBaseline) return undefined;
+  const baseline = record ? record.baseline : state.closing.carriedBaseline;
+  return baseline?.backlogOnly ? undefined : baseline ?? null;
+}
+
+// The run's outside-documentation set: the paths changed since the closing baseline that are not documentation paths, apart from the
+// paths the latest closing review excluded and its selected-only context paths absent from the baseline. Recomputed at every reading;
+// null when it cannot be computed.
+function outsideDocumentationPaths(root, state, baseline) {
+  if (!baseline) return null;
+  const changed = changedPaths(root, baseline);
+  if (changed === null) return null;
+  const latest = state.closing.docs ? latestClosingReview(state.closing.docs, state) : null;
+  const excluded = new Set(latest?.contextSnapshot?.excludedPaths ?? []);
+  const baselinePaths = new Set(baseline.files.map(file => file.path));
+  const selectedOnly = Array.isArray(latest?.contextSnapshot?.includedOnlyPaths) ? latest.contextSnapshot.includedOnlyPaths : [];
+  const contextOnly = new Set(selectedOnly.filter(file => !baselinePaths.has(file)));
+  return changed.filter(file => !excluded.has(file) && !contextOnly.has(file) && !isDocumentationPath(file));
+}
+
+// Every task but a spec task can carry a code assessment.
+function codeCarriers(state) {
+  return state.tasks.filter(task => task.kind !== 'spec');
+}
+
+// Whether a settling assessment exists for the outside-documentation set: a complete, fresh code assessment of any task that can carry
+// one, covering its dimensions and every path of the set, whose applicability on current inputs reads applicable. In a run without such
+// a task, a spec task's complete, fresh whole-spec assessment reading applicable settles it when every path of the set is that task's
+// governing spec or a governing artifact named in the assessment's recorded commitments. A relevance decision never settles it, and
+// neither does a docs review.
+function settlesOutsideDocumentation(root, state, paths) {
+  const applicable = (task, review, kind) => !review.relevance && reviewKind(review, task) === kind && completeAssessment(review) && coversDimensions(review, kind) && applicability(root, review, task, task, state).status === 'applicable';
+  const carriers = codeCarriers(state);
+  if (carriers.length > 0) {
+    const sawEvery = review => review.snapshot?.inventory === true && !paths.some(file => [review.snapshot, review.contextSnapshot].some(evidence => (evidence?.excludedPaths ?? []).includes(file)));
+    return carriers.some(task => task.reviews.some(review => sawEvery(review) && applicable(task, review, 'code')));
+  }
+  return state.tasks.some(task => task.reviews.some(review => applicable(task, review, 'spec') && onlyGoverningArtifacts(root, paths, governingArtifacts([task], [review]))));
+}
+
+// The outside-documentation hold: null while the condition is settled or not evaluated, otherwise its set as changedPaths, null when the
+// set cannot be computed. Every consumer reads this one predicate, never the raw set.
+function outsideDocumentationHold(root, state) {
+  const baseline = outsideDocumentationBaseline(state);
+  if (baseline === undefined) return null;
+  const paths = outsideDocumentationPaths(root, state, baseline);
+  if (paths !== null && (paths.length === 0 || settlesOutsideDocumentation(root, state, paths))) return null;
+  return { changedPaths: paths };
+}
+
+// The tasks on which a fresh code assessment settles the hold, those whose assessment would also cover more of the run's code gates the
+// same edit staled listed first: a code or docs task's cumulative assessment covers its completed cumulative siblings.
+function settlingCandidates(root, state) {
+  const stale = new Set(codeCarriers(state).filter(task => requiresReview(task) && reviewGateFailure(root, task, state) === 'stale').map(task => task.id));
+  const reach = candidate => [candidate, ...(sharesCumulativeAssessment(candidate) ? state.tasks.filter(task => task !== candidate && sharesCumulativeAssessment(task) && task.status === 'complete') : [])].filter(task => stale.has(task.id)).length;
+  return codeCarriers(state).map((task, index) => ({ task, index, reach: reach(task) })).sort((left, right) => right.reach - left.reach || left.index - right.index).map(entry => entry.task.id);
+}
+
+// The way forward from the hold, naming the settling step first and then the closing docs review the docs side requires.
+function outsideDocumentationNext(root, state, hold) {
+  if (hold.changedPaths === null) return CLOSING_COVERAGE['no-baseline'];
+  const closingReview = `then a complete closing docs review (task ${CLOSING_TARGET}) covering every task and current on the final inputs`;
+  const revert = 'Reverting these paths also settles the hold.';
+  if (codeCarriers(state).length > 0) return `Obtain a fresh code assessment on any one of the tasks ${settlingCandidates(root, state).join(', ')}, since any one settles the hold, ${closingReview}. ${revert}`;
+  const spec = state.tasks.find(task => onlyGoverningArtifacts(root, hold.changedPaths, governingArtifacts([task], [leadEntry(task, state)?.review].filter(Boolean))));
+  if (spec) return `Obtain a fresh whole-spec assessment on spec task ${spec.id}, which settles the hold, ${closingReview}. ${revert}`;
+  return `No task assessment can settle the hold, so it needs the user's decision: hold, stop or the administrative close. ${revert}`;
+}
+
+function outsideDocumentationStatus(root, state, hold) {
+  return { changedPaths: hold.changedPaths, next: outsideDocumentationNext(root, state, hold) };
+}
+
+function outsideDocumentationRefusal(root, state, hold) {
+  if (hold.changedPaths === null) return CLOSING_COVERAGE['no-baseline'];
+  return `Paths outside the documentation paths changed since triage and hold completion until a fresh task assessment covers them or they are reverted: ${hold.changedPaths.slice(0, 20).join(', ')}. ${outsideDocumentationNext(root, state, hold)}`;
+}
+
 // The baseline a triage records. An earlier baseline of the run stands while the changes since it lack independent review, so
-// recording triage again, even after something cleared the closing record, never absorbs unreviewed tracking edits. Those changes
-// are reviewed once a current resolved closing review covers them, or once a complete cumulative task assessment is fresh against
-// the whole inventory; a missing earlier baseline, which already fails closed, gives way to the inventory at this triage.
+// recording triage again, even after something cleared the closing record, never absorbs unreviewed tracking edits. It also stands
+// while the outside-documentation hold is unsettled, so no review that cannot settle it absorbs changes outside the documentation paths.
+// Otherwise those changes are reviewed once a current resolved closing review covers them, or once a complete cumulative task assessment
+// is fresh against the whole inventory, every path compared; a missing earlier baseline, which already fails closed, gives way to the
+// inventory at this triage.
 function nextTriageBaseline(root, state) {
   const earlier = state.closing.docs ? state.closing.docs.baseline : state.closing.carriedBaseline;
   if (!earlier) return triageBaseline(root, state);
+  if (outsideDocumentationHold(root, state)) return earlier;
   const closingReviewed = Boolean(state.closing.docs) && closingCoverageFailure(root, state) === null;
   const taskReviewed = () => {
     try {
@@ -581,8 +658,9 @@ function nextTriageBaseline(root, state) {
 
 // The repair step of the operating brief, carried by both kinds of status rules.
 const REPAIR_RULE = 'Repair the property a finding keys on with the smallest change; before repairing a finding that reports misbehavior, run a failing check that reproduces it and rerun the same command under the same name on the same task after the repair, and again before a review once its inputs change, since only a current passing check carries its reproduction to reviewers, or, when no practical automated reproduction exists, record a reason and stand-in evidence; when a repair changes which record, status or case a decision or obligation reads, trace that state\'s readers and writers; and after a second missed case of the same kind after a repair, a repair undoing an earlier one or a repeated invariant violation, counting misses across repair attempts rather than findings one review reports together, fix the shared cause.';
-const STALE_REVIEW = 'The latest assessment is stale on current inputs: obtain independent relevance or cumulative reassessment covering the changes';
-const STALE_DOCS_REVIEW = 'The latest docs review is stale on current inputs: obtain independent relevance or cumulative docs reassessment';
+// Each stale refusal names its way forward after these, by the applicability-call predicate.
+const STALE_REVIEW = 'The latest assessment is stale on current inputs';
+const STALE_DOCS_REVIEW = 'The latest docs review is stale on current inputs';
 
 // Closures in a complete report of a continued lead end the pending closure of each finding of its lineage it records closed; an
 // incomplete report's closures are not recorded. Every recorded closure stays on its finding as evidence.
@@ -628,7 +706,8 @@ function staleGateEntries(root, task, state) {
 
 // The task on which a fresh assessment of a kind covers a stale gate of the given task: the task itself while it is open, otherwise
 // a ready open task sharing the cumulative assessment with it, the repaired target first, since a task review covers its completed
-// cumulative siblings. A stale gate that no open task can cover needs an assessment on its own completed task, which reopens it.
+// cumulative siblings. A stale gate that no open task can cover needs an assessment on its own completed task, which reopens it before
+// triage evidence exists; after triage it reopens it only when the import raises findings or is not an assessment its gate accepts.
 function freshAssessmentTask(state, task, kind, target) {
   if (task.status !== 'complete') return task;
   if (!['code', 'docs'].includes(kind) || !sharesCumulativeAssessment(task)) return task;
@@ -641,8 +720,9 @@ function freshAssessmentTask(state, task, kind, target) {
 // the dispatch to resume, the task it belongs to and whether to resume or replace it, for each lineage owing closures. After a task's
 // repair, freshTargets names the fresh assessments due because the repair left a latest assessment of another review kind, of this or
 // any other task, predating it and no longer matching current inputs: one its gate accepts and finds stale, or any other whose reviewed
-// inputs changed. Such a reviewer has nothing to close, so it is not resumed. Each entry gives the kind, the task to dispatch it on, the
-// tasks whose stale gates it covers, the stale assessments and whether the dispatch reopens a completed task. The raising reviewers
+// inputs changed. Such a reviewer has nothing to close, so it is not resumed for closure. Each entry gives the kind, the task to dispatch
+// it on, the tasks whose stale gates it covers, the stale assessments, each stale change with the applicability call that can settle it
+// first, when one is available, and whether the dispatch reopens a completed task. The raising reviewers
 // reassess their own kinds, and a closing repair reopens no task, so neither adds fresh targets. Fresh targets depend on freshness: a
 // lightweight brief marks them unevaluated.
 function reviewProgress(root, state, target, options = {}) {
@@ -660,6 +740,10 @@ function reviewProgress(root, state, target, options = {}) {
   let freshTargets = [];
   if (evaluateStale && options.verifyFreshness === false) freshTargets = 'reconcile at acceptance';
   else if (evaluateStale) {
+    // Each stale change, with the assessment and owner it describes and the tasks whose stale gates it covers, for its applicability call.
+    const judged = new Map();
+    // After triage, an import on a completed task reopens it only when it raises findings or is not an assessment its gate accepts.
+    const reopens = dispatchOn => dispatchOn.status === 'complete' && (state.closing?.triageEvidence ? 'if-findings' : true);
     for (const task of [target, ...state.tasks.filter(task => task.id !== target.id)]) {
       for (const { review, owner } of staleGateEntries(root, task, state)) {
         const kind = reviewKind(review, owner);
@@ -668,17 +752,26 @@ function reviewProgress(root, state, target, options = {}) {
         if (owing.includes(lineageOf(review)) || repair.kinds.includes(kind) || Number.isSafeInteger(registered) && registered >= repair.revision) continue;
         const dispatchOn = freshAssessmentTask(state, task, kind, target);
         // One assessment on a task covers every stale gate it reaches, such as a covering assessment several tasks' gates read.
-        const entry = freshTargets.find(item => item.kind === kind && item.taskId === dispatchOn.id);
+        let entry = freshTargets.find(item => item.kind === kind && item.taskId === dispatchOn.id);
         const staleCondition = staleCause(applicability(root, review, task, owner, state));
-        const staleChange = { requestId: review.requestId ?? null, cause: staleCondition.kind, changedPaths: staleCondition.changedPaths };
-        if (!entry) freshTargets.push({ kind, taskId: dispatchOn.id, covers: [task.id], staleAssessments: review.requestId ? [review.requestId] : [], staleChanges: [staleChange], reopens: dispatchOn.status === 'complete' });
-        else {
-          if (!entry.covers.includes(task.id)) entry.covers.push(task.id);
-          if (review.requestId && !entry.staleAssessments.includes(review.requestId)) entry.staleAssessments.push(review.requestId);
-          if (!entry.staleChanges.some(known => known.requestId === staleChange.requestId && isDeepStrictEqual(known, staleChange))) entry.staleChanges.push(staleChange);
+        const change = { requestId: review.requestId ?? null, cause: staleCondition.kind, changedPaths: staleCondition.changedPaths };
+        if (!entry) {
+          entry = { kind, taskId: dispatchOn.id, covers: [], staleAssessments: [], staleChanges: [], reopens: reopens(dispatchOn) };
+          freshTargets.push(entry);
         }
+        if (!entry.covers.includes(task.id)) entry.covers.push(task.id);
+        if (review.requestId && !entry.staleAssessments.includes(review.requestId)) entry.staleAssessments.push(review.requestId);
+        let staleChange = entry.staleChanges.find(known => isDeepStrictEqual(known, change));
+        if (!staleChange) {
+          staleChange = change;
+          entry.staleChanges.push(staleChange);
+          judged.set(staleChange, { review, owner, taskIds: [] });
+        }
+        judged.get(staleChange).taskIds.push(task.id);
       }
     }
+    const hold = judged.size > 0 ? outsideDocumentationHold(root, state) : null;
+    for (const [staleChange, { review, owner, taskIds }] of judged) staleChange.applicabilityCall = applicabilityCall(root, state, owner, review, taskIds, hold);
   }
   const next = findings.some(finding => !finding.validation || finding.validation.verdict === 'unverified' || !finding.disposition || finding.disposition === 'implement' && !finding.repaired && !evidenceCommitmentsCurrent(state, target, finding.validation)) ? 'validate-and-dispose'
     : findings.some(finding => finding.disposition === 'implement' && !finding.repaired) ? 'repair'
@@ -687,11 +780,59 @@ function reviewProgress(root, state, target, options = {}) {
   return { next, resumeTargets, freshDue, freshTargets };
 }
 
+// Whether a stale assessment's changed paths fall under the unsettled outside-documentation hold, which a relevance call cannot settle.
+// A set that cannot be computed may hold any change.
+function heldBy(hold, changed) {
+  if (!hold || !Array.isArray(changed) || changed.length === 0) return false;
+  return hold.changedPaths === null || changed.some(file => hold.changedPaths.includes(file));
+}
+
+// The applicability call that can settle a stale assessment for the given tasks: the owner holding it, on which the call is dispatched,
+// the assessment it judges, the tasks within that assessment's coverage it judges, the latest dispatch of its lineage that produced a
+// receipt, and whether to resume or replace that dispatch. Null when no call is available: an unestablished comparison, a reassess or
+// unresolved answer already given on the current inputs and commitments, an assessment that is continued, incomplete or narrow, changed
+// paths the unsettled outside-documentation hold holds, original inputs that are not retained, or no request id or receipted dispatch.
+// A changed commitment alone leaves the call available, since a preserving decision bound to the current commitments can settle it.
+function applicabilityCall(root, state, owner, review, taskIds, hold) {
+  if (!review.requestId || !completeAssessment(review) || !coversDimensions(review, reviewKind(review, owner))) return null;
+  const judged = new Set();
+  for (const id of taskIds) {
+    const task = state.tasks.find(candidate => candidate.id === id);
+    if (!task || !review.coveredTaskIds?.includes(id)) continue;
+    const condition = applicability(root, review, task, owner, state);
+    const cause = staleCause(condition);
+    if (cause.kind === 'unestablished' || heldBy(hold, cause.changedPaths)) return null;
+    if (['reassess', 'unresolved'].includes(condition.status) && condition.decisionCurrent !== false) continue;
+    judged.add(id);
+  }
+  if (judged.size === 0 || !originalInputsRetained(root, state, review)) return null;
+  const resume = latestDispatchOf(root, state, owner, lineageOf(review));
+
+  return resume ? { taskId: owner.id, requestId: review.requestId, taskIds: [...judged].sort(), resume, continue: closureRoute(root, state, resume) } : null;
+}
+
+// The way forward for a stale assessment of a task, naming the applicability call first exactly when one is available, otherwise the
+// fresh cumulative assessment, or reconciliation for a comparison that could not be established.
+function staleWayForward(root, state, task, entry, hold = outsideDocumentationHold(root, state)) {
+  const cause = staleCause(applicability(root, entry.review, task, entry.owner, state));
+  if (cause.kind === 'unestablished') return 'reconcile the comparison that could not be established, then obtain a fresh cumulative assessment';
+  if (heldBy(hold, cause.changedPaths)) return `obtain a fresh cumulative assessment, since an applicability call cannot settle the outside-documentation hold these changes fall under: ${outsideDocumentationNext(root, state, hold)}`;
+  const call = applicabilityCall(root, state, entry.owner, entry.review, [task.id], hold);
+  if (!call) return 'obtain a fresh cumulative assessment covering the changes, since no applicability call is available';
+  const dispatch = call.continue === 'replace' ? `dispatch the independent replacement of ${call.resume}` : `resume ${call.resume}, or dispatch its independent replacement if it cannot be resumed,`;
+
+  return `${dispatch} on ${call.taskId} for an applicability call on ${call.requestId} for ${call.taskIds.join(', ')}, with a fresh cumulative assessment as the fallback`;
+}
+
+function sentence(phrase) {
+  return phrase.charAt(0).toUpperCase() + phrase.slice(1);
+}
+
 function requireReviewGate(root, task, state, message) {
   const cause = reviewGateCause(root, task, state);
   if (cause === null) return;
   const stale = ['changed-inputs', 'changed-commitments', 'unestablished'].includes(cause.kind) || reviewGateFailure(root, task, state) === 'stale';
-  requireCondition(false, 'review-required', `${stale ? STALE_REVIEW : message}. Cause: ${causeText(task, cause)}`);
+  requireCondition(false, 'review-required', `${stale ? `${STALE_REVIEW}: ${staleWayForward(root, state, task, leadEntry(task, state))}` : message}. Cause: ${causeText(task, cause)}`);
 }
 
 // Why the docs review covering a task fails its gate, from the review that gate selected.
@@ -707,7 +848,9 @@ function docsCause(root, task, state, failure, options) {
 }
 
 function docsRefusal(root, task, state, failure, message, options) {
-  return `${failure === 'stale' ? STALE_DOCS_REVIEW : message}. Cause: ${causeText(task, docsCause(root, task, state, failure, options))}`;
+  const way = () => staleWayForward(root, state, task, latestReview(docsCandidates(task, state, options?.closingOnly ?? false), state));
+
+  return `${failure === 'stale' ? `${STALE_DOCS_REVIEW}: ${way()}` : message}. Cause: ${causeText(task, docsCause(root, task, state, failure, options))}`;
 }
 
 function requireDocsGate(root, task, state, message) {
@@ -738,13 +881,25 @@ function closedBrief(state) {
   };
 }
 
-function assessmentCondition(root, task, state, entry) {
+// An assessment's applicability as status reports it: documentation relief where it still arises, and for a stale assessment the way
+// forward the applicability-call predicate names. Reconciliation and missing spec inputs keep their own next step.
+function assessmentCondition(root, task, state, entry, hold) {
   const { review, owner } = entry;
   const condition = applicability(root, review, task, owner, state);
   if (reviewKind(review, owner) === 'code' && condition.status === 'pending' && acceptableAssessment(review, task) && documentationRelief(root, task, state, review)) {
     return { ...condition, status: 'applicable-by-docs-review', current: true, reason: 'A current independent docs review covers documentation-only input changes', next: null };
   }
-  return condition;
+  if (condition.current || condition.missingPaths || staleCause(condition).kind === 'unestablished') return condition;
+  return { ...condition, next: sentence(staleWayForward(root, state, task, entry, hold())) };
+}
+
+function assessmentApplicability(root, state) {
+  let hold;
+  const holdOnce = () => (hold === undefined ? (hold = outsideDocumentationHold(root, state)) : hold);
+  return state.tasks.flatMap(task => {
+    const entries = [leadEntry(task, state), latestReview(docsCandidates(task, state, false), state)].filter(Boolean);
+    return entries.map(entry => ({ taskId: task.id, completed: task.status === 'complete', ...assessmentCondition(root, task, state, entry, holdOnce) }));
+  });
 }
 
 function obligationBrief(state, root = state.root, options = {}) {
@@ -774,10 +929,7 @@ function buildObligationBrief(state, root, options) {
     })),
     // An exemption is recorded as its task completes, so it is listed for every task rather than only for work still ahead.
     ...(state.docsGate || isReviewContext(state) ? { docsExemptions: state.tasks.filter(task => task.docsExemption).map(task => ({ taskId: task.id, reason: task.docsExemption.reason, revision: task.docsExemption.revision, current: options.verifyFreshness === false ? 'reconcile at acceptance' : fresh(root, task.docsExemption.snapshot) })) } : {}),
-    assessmentApplicability: options.verifyFreshness === false ? 'unevaluated' : state.tasks.flatMap(task => {
-      const entries = [leadEntry(task, state), latestReview(docsCandidates(task, state, false), state)].filter(Boolean);
-      return entries.map(entry => ({ taskId: task.id, completed: task.status === 'complete', ...assessmentCondition(root, task, state, entry) }));
-    }),
+    assessmentApplicability: options.verifyFreshness === false ? 'unevaluated' : assessmentApplicability(root, state),
     staleChecks: options.verifyFreshness === false ? 'reconcile at acceptance' : staleChecks(root, state),
     ...(!isReviewContext(state) ? { specReadiness: specReadinessStatus(state, options, task => specAcceptanceStatus(root, task, options)) } : {}),
     finalReconciliationPending: !isReviewContext(state) && state.status === 'running' && active.length === 0,
@@ -787,7 +939,7 @@ function buildObligationBrief(state, root, options) {
     followups: state.followups.filter(item => item.status !== 'resolved'),
     rules: isReviewContext(state)
       ? `This is standalone revision, not a delivery run. Preserve attributed independent assessment, skeptical validation, dispositions, repair closure, freshness, owner identity and resources. ${REPAIR_RULE} No delivery closing, continuation, retrospective or triage is required. Report pending follow-ups and actual limits. Publication requires separate authority.`
-      : `Continue authorized independent work and recovery. Every repair needs cumulative strong broad review: resume the reviewer that raised each repaired finding to record its closure, and pass a gate only on a fresh assessment. ${REPAIR_RULE} Validate every finding with a fresh skeptic before disposition. Preserve writer ownership. Update documentation and obtain its independent docs review, then retrospective, then follow-up triage; a handed-over run records its morning report before triage. Tracking edits after triage stay within the backlog and the other documentation a docs review alone covers, and need a closing docs review (task ${CLOSING_TARGET}) before completion. Missing or stale evidence is incomplete. Publication requires authority. Reconcile this record with actual files after compaction.`,
+      : `Continue authorized independent work and recovery. Every repair needs cumulative strong broad review: resume the reviewer that raised each repaired finding to record its closure, and pass a gate only on a fresh assessment. ${REPAIR_RULE} Validate every finding with a fresh skeptic before disposition. Preserve writer ownership. Update documentation and obtain its independent docs review, then retrospective, then follow-up triage; a handed-over run records its morning report before triage. Tracking edits after triage need a closing docs review (task ${CLOSING_TARGET}) before completion; edits outside the documentation paths after triage also hold completion until a fresh task assessment covers them or they are reverted. Missing or stale evidence is incomplete. Publication requires authority. Reconcile this record with actual files after compaction.`,
   };
 }
 
@@ -804,16 +956,26 @@ function findingSurfaceVerdicts(findings) {
   return findings.filter(surfaceVerdicts).map(finding => ({ id: finding.id, surfaces: surfaceVerdicts(finding) }));
 }
 
+// The outside-documentation part of the closing status: present only while the hold is unsettled, or, with freshness verification
+// skipped, wherever the condition is evaluated.
+function outsideDocumentationBrief(state, root, options) {
+  if (outsideDocumentationBaseline(state) === undefined) return {};
+  if (options.verifyFreshness === false) return { outsideDocumentation: 'reconcile at acceptance' };
+  const hold = outsideDocumentationHold(root, state);
+  return hold ? { outsideDocumentation: outsideDocumentationStatus(root, state, hold) } : {};
+}
+
 function closingDocsBrief(state, root, options) {
   const record = state.closing.docs;
-  const latest = latestReview(record.reviews.filter(review => !review.relevance).map(review => ({ review })), state)?.review;
+  const latest = latestClosingReview(record, state);
   return {
     target: CLOSING_TARGET, baseline: Boolean(record.baseline), reviews: record.reviews.length,
     unresolvedFindings: record.findings.filter(finding => !settled(finding) || finding.pendingClosure).map(finding => finding.id),
     surfaceVerdicts: findingSurfaceVerdicts(record.findings.filter(finding => !settled(finding) || finding.pendingClosure)),
     review: reviewProgress(root, state, record, options),
     current: options.verifyFreshness === false ? 'reconcile at acceptance' : Boolean(latest) && closingAssessmentCurrent(root, state, latest) && closingRecordFailure(root, state) === null,
-    satisfied: options.verifyFreshness === false ? 'reconcile at acceptance' : closingCoverageFailure(root, state) === null,
+    satisfied: options.verifyFreshness === false ? 'reconcile at acceptance' : closingCoverageFailure(root, state) === null && outsideDocumentationHold(root, state) === null,
+    ...outsideDocumentationBrief(state, root, options),
   };
 }
 
@@ -832,8 +994,11 @@ function assertClosingAction(state, request) {
   return record;
 }
 
-// Each changed path since the triage baseline, apart from user-owned files the review excluded, must be documentation a docs review covers.
-function closingScopeFailure(record, review) {
+// Why a closing review cannot be imported, or null. Its difference from the triage baseline must be established with well-formed
+// selected-only provenance. On a complete run, where no task assessment can be dispatched, each changed path since the baseline, apart
+// from user-owned files the review excluded, must also be a documentation path; an unfinished run admits any change, which the
+// outside-documentation hold then holds until a fresh task assessment covers it or it is reverted.
+function closingScopeFailure(record, review, confineToDocumentation) {
   if (!record.baseline) return 'This closing record has no triage baseline, so a closing review cannot establish that only documentation paths changed';
   const excluded = new Set(review.contextSnapshot?.excludedPaths ?? []);
   const changed = require('./applicability').snapshotChanges(record.baseline, review.contextSnapshot ?? review.snapshot);
@@ -844,9 +1009,10 @@ function closingScopeFailure(record, review) {
     || selectedOnly.some(file => typeof file !== 'string' || !review.contextSnapshot.includedPaths?.includes(file) || !review.contextSnapshot.files.some(entry => entry.path === file)))) {
     return 'The closing context has malformed selected-only input provenance';
   }
+  if (!confineToDocumentation) return null;
   const contextOnly = new Set(selectedOnly ?? []);
   const outside = changed.filter(file => !excluded.has(file) && !(contextOnly.has(file) && !baselinePaths.has(file)) && !isDocumentationPath(file));
-  return outside.length === 0 ? null : `A closing review covers edits to the backlog, .nightshift/reports and root Markdown other than host instruction files only; these paths changed outside them since triage: ${outside.slice(0, 20).join(', ')}`;
+  return outside.length === 0 ? null : `On a complete run, where no task assessment can be dispatched, a closing review covers edits to the backlog, .nightshift/reports and root Markdown other than host instruction files only; these paths changed outside them since triage: ${outside.slice(0, 20).join(', ')}`;
 }
 
 function assertAction(state, request) {
@@ -917,17 +1083,22 @@ function transition(state, request, integration = null) {
       const closing = task.kind === 'closing';
       if (closing) review.progressBinding = structuredClone(task.progressBinding);
       if (closing) {
-        const outside = closingScopeFailure(task, review);
+        const outside = closingScopeFailure(task, review, state.status === 'complete');
         requireCondition(!outside, 'closing-scope', outside);
       }
       const revision = state.revision + 1;
       const previous = task.reviews.at(-1);
       const candidate = { ...review, revision };
-      const siblings = reviewKind(review, task) === 'docs' ? docsCandidates(task, state, false) : leadEntries(task, state);
+      const kind = reviewKind(review, task);
+      const siblings = kind === 'docs' ? docsCandidates(task, state, false) : leadEntries(task, state);
       const superseded = !review.relevance && latestReview([...siblings, { review: candidate, owner: task }], state).review !== candidate;
-      // The closing record reviews edits made after triage, so recording it must never clear the closing evidence it follows.
-      const historical = inputChanges(state.root, review, reviewKind(review, task))?.length !== 0 || (!closing && !isDeepStrictEqual(review.commitments?.[task.id], commitmentsFor([task])[task.id]));
-      if (!closing && !review.relevance && !historical && !superseded && (task.status !== 'complete' || previous?.snapshot?.digest !== review.snapshot.digest || !isDeepStrictEqual(previous?.commitments, review.commitments))) resetClosing(state);
+      // The closing record reviews edits made after triage, so recording it must never clear the closing evidence it follows. An
+      // import is historical when its inputs no longer match, compared as its gate compares them.
+      const historical = assessedChanges(state.root, review, kind, state, governingArtifacts([task], [review])).changedPaths?.length !== 0 || (!closing && !isDeepStrictEqual(review.commitments?.[task.id], commitmentsFor([task])[task.id]));
+      // After triage, a clean current import its gate accepts leaves a completed task complete with its exemption and the closing evidence.
+      const keepsClosing = !closing && Boolean(state.closing?.triageEvidence) && task.status === 'complete' && !review.relevance && !historical && !superseded && review.findings.length === 0
+        && acceptableAssessment(candidate, task) && coversDimensions(candidate, kind);
+      if (!closing && !review.relevance && !historical && !superseded && !keepsClosing && (task.status !== 'complete' || previous?.snapshot?.digest !== review.snapshot.digest || !isDeepStrictEqual(previous?.commitments, review.commitments))) resetClosing(state);
       task.reviews.push({ ...review, revision });
       const lineage = lineageOf(review) ?? null;
       for (const finding of review.findings) {
@@ -936,10 +1107,10 @@ function transition(state, request, integration = null) {
         text(finding.evidence, 'finding.evidence');
         const id = review.requestId ? `${review.requestId}:${finding.id}` : `${revision}:${finding.id}`;
         const relatedTo = task.findings.filter(existing => existing.localId === finding.id).map(existing => existing.id);
-        task.findings.push({ ...finding, ...recordedSurfaces(finding, review, reviewKind(review, task) === 'spec'), ...(closing ? { progressBinding: structuredClone(task.progressBinding) } : {}), id, localId: finding.id, relatedTo, reviewRevision: revision, reviewKind: reviewKind(review, task), reviewer: review.session, raisedBy: { requestId: review.requestId ?? null, lineage }, validation: null, disposition: null, repaired: false });
+        task.findings.push({ ...finding, ...recordedSurfaces(finding, review, kind === 'spec'), ...(closing ? { progressBinding: structuredClone(task.progressBinding) } : {}), id, localId: finding.id, relatedTo, reviewRevision: revision, reviewKind: kind, reviewer: review.session, raisedBy: { requestId: review.requestId ?? null, lineage }, validation: null, disposition: null, repaired: false });
       }
       if (!review.relevance && !historical) recordClosures(task, review, lineage, revision);
-      if (closing || (review.relevance || historical || superseded) && review.findings.length === 0) break;
+      if (closing || keepsClosing || (review.relevance || historical || superseded) && review.findings.length === 0) break;
       if (historical || review.relevance || superseded) resetClosing(state);
       delete task.docsExemption;
       if (!['implementation', 'review'].includes(task.stage)) task.resumeStage = task.stage;
@@ -1275,22 +1446,29 @@ function transition(state, request, integration = null) {
         break;
       }
       requireSpecReadiness(state, state.tasks, 'Run completion requires every governing spec to be ready');
-      // Checked first, because an unresolved closing review also withholds the documentation relief the gates below depend on.
+      // Checked first, because the closing record's own findings and checks hold completion whatever else is current.
       if (closingRecordFailure(state.root, state) !== null) {
         const record = state.closing.docs;
         const checks = checkFailures(state.root, record);
         const otherCauses = closingRecordFailure(state.root, state, { ignoreChecks: true }) !== null;
         requireCondition(false, 'closing-review-unresolved', `The closing docs review is unresolved:${checks.length > 0 ? ` ${record.id}: ${namedChecks(checks)}.` : ''}${otherCauses ? ' Its latest review is not a complete strong docs assessment covering all five dimensions, a finding is unsettled or a repair postdates its latest review' : ''}`);
       }
+      // Without a closing record, the missing triage evidence refuses completion below.
+      const hold = state.closing?.docs ? outsideDocumentationHold(state.root, state) : null;
+      requireCondition(hold === null, 'closing-review-required', hold === null ? '' : outsideDocumentationRefusal(state.root, state, hold));
       const coverage = closingCoverageFailure(state.root, state);
       requireCondition(coverage === null, 'closing-review-required', CLOSING_COVERAGE[coverage]);
       // Closing findings already fail the closing record above; this also names task findings and any carried across a reset record.
       const pending = pendingClosures(state).map(finding => finding.id);
       requireCondition(pending.length === 0, 'closure-pending', `Each repaired finding needs closure by the reviewer that raised it or its replacement. Pending: ${pending.join(', ')}`);
       const gateFailures = state.tasks.filter(requiresReview).map(candidate => ({ candidate, cause: reviewGateCause(state.root, candidate, state) })).filter(entry => entry.cause !== null);
-      if (gateFailures.length > 0) requireCondition(false, gateFailures.every(entry => entry.cause.kind === 'check') ? 'verification-required' : 'stale-review', `Final reviewed inputs changed or their gates are unmet. ${gateFailures.map(entry => causeText(entry.candidate, entry.cause)).join('; ')}`);
+      if (gateFailures.length > 0) {
+        const stale = cause => ['changed-inputs', 'changed-commitments', 'unestablished'].includes(cause.kind);
+        const failed = ({ candidate, cause }) => causeText(candidate, cause) + (stale(cause) ? ` (way forward: ${staleWayForward(state.root, state, candidate, leadEntry(candidate, state))})` : '');
+        requireCondition(false, gateFailures.every(entry => entry.cause.kind === 'check') ? 'verification-required' : 'stale-review', `Final reviewed inputs changed or their gates are unmet. ${gateFailures.map(failed).join('; ')}`);
+      }
       const undocumented = state.tasks.map(candidate => ({ candidate, failure: docsGateFailure(state.root, candidate, state) })).filter(entry => entry.failure !== null);
-      requireCondition(undocumented.length === 0, 'docs-review-required', `Every code and docs task needs a current independent docs review or a fresh mechanical exemption; tracking edits after triage need a current closing docs review. Missing for: ${undocumented.map(entry => causeText(entry.candidate, docsCause(state.root, entry.candidate, state, entry.failure))).join('; ')}`);
+      requireCondition(undocumented.length === 0, 'docs-review-required', `Every code and docs task needs a current independent docs review or a fresh mechanical exemption; tracking edits after triage need a current closing docs review. Missing for: ${undocumented.map(entry => causeText(entry.candidate, docsCause(state.root, entry.candidate, state, entry.failure)) + (entry.failure === 'stale' ? ` (way forward: ${staleWayForward(state.root, state, entry.candidate, latestReview(docsCandidates(entry.candidate, state, false), state))})` : '')).join('; ')}`);
       if (!state.tasks.every(candidate => verificationGate(state.root, candidate))) requireCondition(false, 'verification-required', verificationRefusal(state.root, state.tasks, 'Every registered check must pass on current inputs before final acceptance'));
       const scratch = scratchFailure(state.root, state.baseSha ?? null);
       requireCondition(scratch === null, 'committed-scratch', scratch);
@@ -1306,4 +1484,4 @@ function transition(state, request, integration = null) {
   require('./discharge').admittedAction(state, request, dischargeBefore);
 }
 
-module.exports = { causeText, docsCause, reviewGateCause, staleCause, DIMENSIONS, acceptableAssessment, assertAction, closingStage, commitmentBindingFor, commitmentsFor, completeAssessment, findingKind, historicalDischarge, isDocumentationPath, latestChecks, leadEntry, obligationBrief, reportNotice, reportStatus, reviewGate, reviewGateFailure, reviewProgress, sameClosingRecord, settled, sharesCumulativeAssessment, targetById, taskById, transition, unresolvedFindings };
+module.exports = { causeText, docsCause, reviewGateCause, staleCause, DIMENSIONS, acceptableAssessment, assertAction, closingStage, commitmentBindingFor, commitmentsFor, completeAssessment, findingKind, historicalDischarge, isDocumentationPath, latestChecks, leadEntry, obligationBrief, reportNotice, reportStatus, reviewGate, reviewGateFailure, reviewProgress, sameClosingRecord, settled, sharesCumulativeAssessment, staleWayForward, targetById, taskById, transition, unresolvedFindings };

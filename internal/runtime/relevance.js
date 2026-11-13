@@ -4,7 +4,8 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { requireCondition, text } = require('./errors');
 const { privateInputsCurrent, projectFile } = require('./evidence');
-const { identity, inputChanges, missingSpecInputs, validRelevanceTaskIds } = require('./applicability');
+const { assessedChanges, identity, missingSpecInputs, validRelevanceTaskIds } = require('./applicability');
+const { governingArtifacts } = require('./documentation-paths');
 const inputs = require('./review-inputs');
 
 function relevanceBinding(relevance) {
@@ -40,13 +41,20 @@ function retainedSource(root, original, worker) {
   }
 }
 
+// Whether an assessment's original inputs are retained, so a relevance decision on it could preserve its applicability.
+function originalInputsRetained(root, state, original) {
+  return retainedSource(root, original, (state.workers ?? []).find(candidate => candidate.id === original.requestId)).available === true;
+}
+
 // All fields besides the original identity and selected tasks are controller-owned and rederived before dispatch.
 function resolveRelevance(root, state, owner, requested) {
   validateRelevanceBinding(requested);
   const original = owner.reviews.find(review => review.requestId === requested.requestId && !review.relevance);
   requireCondition(original, 'unknown-assessment', 'Relevance names an imported assessment on this target');
   requireCondition(requested.taskIds.every(id => original.coveredTaskIds?.includes(id) && state.tasks.some(task => task.id === id)), 'foreign-assessment', 'Relevance names tasks covered by the original assessment');
-  const changes = inputChanges(root, original, original.kind ?? (owner.kind === 'spec' ? 'spec' : 'code'));
+  const kind = owner.kind === 'closing' ? 'docs' : original.kind ?? (owner.kind === 'spec' ? 'spec' : 'code');
+  const tasks = state.tasks.filter(task => requested.taskIds.includes(task.id));
+  const changes = assessedChanges(root, original, kind, state, governingArtifacts(tasks, [original])).changedPaths;
   requireCondition(changes !== null, 'uncomparable-assessment', 'Reconcile the original assessment evidence before relevance');
   if ((original.kind ?? owner.kind) === 'spec') {
     const missing = missingSpecInputs(root, original);
@@ -93,4 +101,4 @@ function relevancePrompt(request, { workspace }) {
   return `Decide applicability of the original assessment to each named task on the supplied later inputs and commitments. This is a relevance decision, not a fresh assessment or finding closure. Read context/original-assessment.json and original/ when available under ${workspace}, alongside the current project and context. A replacement independently examines the basis. Missing evidence leaves the answer unresolved. Preserve only with a concrete reason explaining why affected coverage and interactions still apply; otherwise require reassessment or leave unresolved. New concrete findings use the ordinary finding shape. Leave coverage, closures and positions empty. Each applicability entry has id (the task id), outcome (preserve, reassess or unresolved) and evidence. Original assessment: ${request.relevance.requestId}. Named tasks: ${JSON.stringify(request.relevance.taskIds)}. Changed paths: ${JSON.stringify(request.relevance.changes)}. Original source available: ${request.relevance.originalInputsAvailable}. Source availability detail: ${request.relevance.originalInputsReason ?? (request.relevance.originalInputsAvailable ? 'available' : 'not available')}. Current commitments: ${JSON.stringify(request.commitments)}.`;
 }
 
-module.exports = { relevanceBinding, prepareOriginal, relevancePrompt, resolveRelevance, validateRelevanceReport, validateRelevanceRequest };
+module.exports = { originalInputsRetained, relevanceBinding, prepareOriginal, relevancePrompt, resolveRelevance, validateRelevanceReport, validateRelevanceRequest };

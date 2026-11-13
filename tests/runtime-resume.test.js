@@ -28,6 +28,14 @@ function git(root, args) {
   return result.stdout.trim();
 }
 
+// Markdown below the project root stays a code-assessment input, unlike the root README, which a code assessment ignores.
+const NESTED_DOC = 'guide/README.md';
+
+function writeNestedDoc(f, content) {
+  fs.mkdirSync(path.join(f.root, path.dirname(NESTED_DOC)), { recursive: true });
+  fs.writeFileSync(path.join(f.root, NESTED_DOC), content);
+}
+
 const withoutChanges = targets => (Array.isArray(targets) ? targets.map(({ staleChanges: _staleChanges, ...target }) => target) : targets);
 
 function finding(id, severity = 'important') {
@@ -598,13 +606,15 @@ test('after a repair batch the resume set names only the raising reviewer, and t
   const docsReview = state => state.tasks[0].reviews.find(review => review.requestId === docs.receipt.requestId);
   const recorded = structuredClone(docsReview(f.store.read()));
   f.store.update(f.store.read().controller, f.store.read().revision, 'fixture-unestablished', state => { docsReview(state).contextSnapshot.digest = 'damaged'; });
-  assert.deepEqual(staleChange(), { requestId: docs.receipt.requestId, cause: 'unestablished', changedPaths: null });
+  // A comparison that cannot be established is reconciled, never settled by an applicability call.
+  assert.deepEqual(staleChange(), { requestId: docs.receipt.requestId, cause: 'unestablished', changedPaths: null, applicabilityCall: null });
   const current = inventorySnapshot(f.root, recorded.contextSnapshot.excludedPaths, recorded.contextSnapshot.includedPaths);
   f.store.update(f.store.read().controller, f.store.read().revision, 'fixture-commitments', state => {
     Object.assign(docsReview(state), { snapshot: current, contextSnapshot: current });
     docsReview(state).commitments = { task: { agreement: { source: 'Earlier', outcome: 'Earlier outcome' }, revision: 0 } };
   });
-  assert.deepEqual(staleChange(), { requestId: docs.receipt.requestId, cause: 'changed-commitments', changedPaths: null });
+  // The replaced snapshots no longer match the retained original inputs, so no preserving answer could be recorded.
+  assert.deepEqual(staleChange(), { requestId: docs.receipt.requestId, cause: 'changed-commitments', changedPaths: null, applicabilityCall: null });
   assert.ok(progress.freshTargets[0].staleChanges[0].changedPaths.length > 0);
   // A lightweight brief evaluates no freshness, so it lists the closures owed and marks the fresh targets unevaluated.
   assert.deepEqual({ targets: light.resumeTargets.map(item => item.requestId), fresh: withoutChanges(light.freshTargets) }, { targets: [second.receipt.requestId], fresh: 'reconcile at acceptance' });
@@ -660,7 +670,7 @@ test('a docs repair makes a fresh code assessment due where it made the code ass
   await f.act({ action: 'dispose', findingId: claim.id, disposition: 'implement', reason: 'Required', obligation: { classification: 'required', basis: 'Claim accuracy' } });
 
   // Act
-  fs.writeFileSync(path.join(f.root, 'README.md'), '# Project\r\n\r\nCorrected claim.\r\n');
+  writeNestedDoc(f, '# Guide\r\n\r\nCorrected claim.\r\n');
   await f.act({ action: 'repair', findingIds: [claim.id] });
 
   // Assert
@@ -728,7 +738,7 @@ test('a covering assessment that several tasks\' gates read is due one fresh ass
   await f.act({ action: 'dispose', findingId: claim.id, disposition: 'implement', reason: 'Required', obligation: { classification: 'required', basis: 'Claim accuracy' } });
 
   // Act
-  fs.writeFileSync(path.join(f.root, 'README.md'), '# Project\r\n\r\nCorrected claim.\r\n');
+  writeNestedDoc(f, '# Guide\r\n\r\nCorrected claim.\r\n');
   await f.act({ action: 'repair', findingIds: [claim.id] });
 
   // Assert
@@ -817,12 +827,14 @@ test('a docs repair makes a fresh code assessment due where it changed a continu
   await f.act({ action: 'dispose', findingId: claim.id, disposition: 'implement', reason: 'Required', obligation: { classification: 'required', basis: 'Claim accuracy' } });
 
   // Act
-  fs.writeFileSync(path.join(f.root, 'README.md'), '# Project\r\n\r\nCorrected claim.\r\n');
+  writeNestedDoc(f, '# Guide\r\n\r\nCorrected claim.\r\n');
   await f.act({ action: 'repair', findingIds: [claim.id] });
 
   // Assert
   assert.deepEqual(f.brief().review.resumeTargets.map(item => [item.requestId, item.reason]), [[docs.receipt.requestId, 'pending-closure']]);
   assert.deepEqual(withoutChanges(f.brief().review.freshTargets), [{ kind: 'code', taskId: 'task', covers: ['task'], staleAssessments: [leadResumed.receipt.requestId], reopens: false }]);
+  // A continued assessment is no complete fresh one, so no applicability call can settle it.
+  assert.deepEqual(f.brief().review.freshTargets[0].staleChanges.map(change => change.applicabilityCall), [null]);
 });
 
 test('a code repair makes a fresh docs assessment due where it outdated an incomplete docs report', async t => {
@@ -860,12 +872,14 @@ test('a docs repair makes a fresh code assessment due where it outdated an incom
   await f.act({ action: 'dispose', findingId: claim.id, disposition: 'implement', reason: 'Required', obligation: { classification: 'required', basis: 'Claim accuracy' } });
 
   // Act
-  fs.writeFileSync(path.join(f.root, 'README.md'), '# Project\r\n\r\nCorrected claim.\r\n');
+  writeNestedDoc(f, '# Guide\r\n\r\nCorrected claim.\r\n');
   await f.act({ action: 'repair', findingIds: [claim.id] });
 
   // Assert
   assert.deepEqual(f.brief().review.resumeTargets.map(item => [item.requestId, item.reason]), [[docs.receipt.requestId, 'pending-closure']]);
   assert.deepEqual(withoutChanges(f.brief().review.freshTargets), [{ kind: 'code', taskId: 'task', covers: ['task'], staleAssessments: [lead.receipt.requestId], reopens: false }]);
+  // An incomplete assessment is no complete fresh one, so no applicability call can settle it.
+  assert.deepEqual(f.brief().review.freshTargets[0].staleChanges.map(change => change.applicabilityCall), [null]);
 });
 
 test('a resumed dispatch keeps its reserved session when its host fails with unproven termination', async t => {
@@ -1292,20 +1306,20 @@ test('a docs review does not count while a repaired docs finding awaits its revi
 
   // Act
   f.review('code', f.assessment('docs', ['code']));
-  const relievedBeforeClosure = reviewGate(f.root, f.task('code'), f.store.read());
+  const codeCurrentBeforeClosure = reviewGate(f.root, f.task('code'), f.store.read());
   const beforeClosure = attempt();
   f.review('code', f.continued('docs', ['code'], { lineage: docsFinding.raisedBy.lineage, closures: [{ id: docsFinding.id, closed: true, evidence: 'The claim is restated' }] }));
   f.review('code', f.assessment('docs', ['code']));
   const afterClosure = attempt();
 
   // Assert
-  // The backlog repair staled the code assessment, which is relieved only by a current docs review; the pending closure withholds it.
-  assert.equal(relievedBeforeClosure, false);
-  assert.equal(beforeClosure, 'review-required');
+  // The backlog repair leaves the code assessment current; the pending closure withholds the fresh, clean docs review.
+  assert.equal(codeCurrentBeforeClosure, true);
+  assert.equal(beforeClosure, 'docs-review-required');
   assert.equal(afterClosure, 'advanced');
 });
 
-test('a code assessment that a current docs review relieves after a backlog-only docs repair is not a resume target', t => {
+test('a code assessment that stays current through a backlog-only docs repair is not a resume target', t => {
   // Arrange
   const f = lifecycleFixture(t, [{ id: 'code', title: 'Code', agreement: { source: 'User', outcome: 'Accepted behavior' } }]);
   f.check('code');
@@ -1325,7 +1339,7 @@ test('a code assessment that a current docs review relieves after a backlog-only
   const progress = reviewProgress(f.root, f.store.read(), f.task('code'));
 
   // Assert
-  // The repair left the code assessment's inputs changed, but only on a backlog path a current docs review covers.
+  // The repair left the code assessment's inputs changed, but only on a backlog path, which a code assessment ignores.
   assert.equal(fresh(f.root, lead.snapshot), false);
   assert.equal(reviewGate(f.root, f.task('code'), f.store.read()), true);
   assert.deepEqual(progress.resumeTargets, []);
@@ -1609,16 +1623,17 @@ test('independent relevance preserves exact candidate coverage without becoming 
   await f.check();
   const lead = await f.dispatch({ kind: 'code', candidates: [LEAD] });
   await f.act({ action: 'review', receipt: f.receipt(lead) });
-  fs.writeFileSync(path.join(f.root, 'README.md'), 'Clarified description');
+  writeNestedDoc(f, 'Clarified description');
   assert.equal(reviewGate(f.root, f.task(), f.store.read()), false);
   const relevance = await f.dispatch({ kind: 'code', resume: lead.receipt.requestId, relevance: { requestId: lead.receipt.requestId, taskIds: ['task'] } });
   await f.act({ action: 'review', receipt: f.receipt(relevance) });
   assert.equal(completeAssessment(f.task().reviews.at(-1)), false);
   assert.equal(reviewGate(f.root, f.task(), f.store.read()), true);
   assert.equal(obligationBrief(f.store.read()).assessmentApplicability[0].status, 'applicable-by-decision');
-  fs.writeFileSync(path.join(f.root, 'README.md'), 'Another candidate on the same path');
+  writeNestedDoc(f, 'Another candidate on the same path');
   assert.equal(reviewGate(f.root, f.task(), f.store.read()), false);
-  fs.writeFileSync(path.join(f.root, 'README.md'), '# Project' + String.fromCharCode(13, 10));
+  // Removing the added page restores the original inputs.
+  fs.rmSync(path.join(f.root, NESTED_DOC));
   assert.equal(reviewGate(f.root, f.task(), f.store.read()), true);
   fs.writeFileSync(path.join(f.root, 'subject.txt'), 'Changed checked behavior');
   const next = await f.dispatch({ kind: 'code', resume: relevance.receipt.requestId, relevance: { requestId: lead.receipt.requestId, taskIds: ['task'] } });
@@ -1631,7 +1646,7 @@ test('relevance outcomes and missing original inputs fail closed, including repl
   await f.check();
   const lead = await f.dispatch({ kind: 'code', candidates: [LEAD] });
   await f.act({ action: 'review', receipt: f.receipt(lead) });
-  fs.writeFileSync(path.join(f.root, 'README.md'), 'New description');
+  writeNestedDoc(f, 'New description');
   const result = await f.dispatch({ kind: 'code', replaces: lead.receipt.requestId, candidates: [COUNTERPART], relevance: { requestId: lead.receipt.requestId, taskIds: ['task'] } }, { applicability: [{ id: 'task', outcome: 'reassess', evidence: 'The interaction needs a new assessment' }] });
   await f.act({ action: 'review', receipt: f.receipt(result) });
   await f.act({ action: 'review', receipt: f.receipt(result) });
@@ -1650,7 +1665,7 @@ for (const scenario of [{ drift: false, finding: false }, { drift: true, finding
     const f = fixture(t);
     await f.check();
     const older = await f.dispatch({ kind: 'code', candidates: [LEAD] }, { findings: scenario.finding ? [finding('late-finding')] : [] });
-    if (scenario.drift) fs.writeFileSync(path.join(f.root, 'README.md'), 'Clarified current candidate');
+    if (scenario.drift) writeNestedDoc(f, 'Clarified current candidate');
     const newer = await f.dispatch({ kind: 'code', candidates: [LEAD] });
     await f.act({ action: 'review', receipt: f.receipt(newer) });
     f.store.update(actor, f.store.read().revision, 'fixture-completed', state => { state.tasks[0].status = 'complete'; state.tasks[0].stage = 'complete'; });
@@ -1681,7 +1696,7 @@ test('only fresh lead originals use shared bounded input retention and relevance
   const skeptic = await f.dispatch({ kind: 'skeptic', candidates: [COUNTERPART], findings: [] });
   assert.equal(resumed.receipt.retainedInputs, false);
   assert.equal(skeptic.receipt.retainedInputs, false);
-  fs.writeFileSync(path.join(f.root, 'README.md'), 'Later description');
+  writeNestedDoc(f, 'Later description');
   const relevance = await f.dispatch({ kind: 'code', resume: resumed.receipt.requestId, relevance: { requestId: lead.receipt.requestId, taskIds: ['task'] } });
   await f.act({ action: 'review', receipt: f.receipt(relevance) });
   assert.equal(relevance.receipt.retainedInputs, false);
@@ -1699,7 +1714,7 @@ test('evicted original input bytes do not erase a receipt or grant preserving re
   db.prepare('DELETE FROM inputs WHERE digest=?').run(lead.receipt.retainedInputs.digest);
   db.close();
   assert.doesNotThrow(() => readReceipt(f.root, f.receipt(lead), f.store.read(), 'task'));
-  fs.writeFileSync(path.join(f.root, 'README.md'), 'Changed candidate');
+  writeNestedDoc(f, 'Changed candidate');
   await assert.rejects(f.dispatch({ kind: 'code', resume: lead.receipt.requestId, relevance: { requestId: lead.receipt.requestId, taskIds: ['task'] } }), { code: 'resume-failed', message: /original inputs/ });
 });
 
@@ -1891,7 +1906,7 @@ test('a surviving lineage can obtain relevance after the original worker registr
   f.store.update(actor, f.store.read().revision, 'fixture-original-worker-unavailable', state => {
     state.workers = state.workers.filter(worker => worker.id !== lead.receipt.requestId);
   });
-  fs.writeFileSync(path.join(f.root, 'README.md'), 'Later description');
+  writeNestedDoc(f, 'Later description');
 
   // Act
   const relevance = await f.dispatch({ kind: 'code', resume: continued.receipt.requestId, relevance: { requestId: lead.receipt.requestId, taskIds: ['task'] } });
@@ -1915,7 +1930,7 @@ test('bare relevance imports reject malformed task bindings with a coded refusal
   const f = fixture(t);
   const original = await f.dispatch({ kind: 'code', candidates: [LEAD] });
   await f.act({ action: 'review', receipt: f.receipt(original) });
-  fs.writeFileSync(path.join(f.root, 'README.md'), 'Changed description');
+  writeNestedDoc(f, 'Changed description');
   const relevance = await f.dispatch({ kind: 'code', resume: original.receipt.requestId, relevance: { requestId: original.receipt.requestId, taskIds: ['task'] } });
   const state = f.store.read();
 
@@ -1966,4 +1981,209 @@ test('fresh spec capture names a missing additional deciding input without blami
   // Act and Assert
   await assert.rejects(f.dispatch({ kind: 'spec', candidates: [LEAD], artifactPaths: ['spec.md', 'deciding.md'] }, { dimensions: DIMENSIONS.spec }, 'spec'), error => error.code === 'missing-spec' && error.message.includes('deciding.md') && error.message.includes('every declared deciding input'));
   assert.equal(fs.readFileSync(path.join(f.root, 'spec.md'), 'utf8'), '# Existing governing artifact');
+});
+
+// The applicability call named first, exactly while one is available.
+
+async function completeWithDocs(f, taskId = 'task') {
+  await f.act({ action: 'start-task', taskId });
+  await f.check(taskId);
+  const lead = await f.dispatch({ kind: 'code', candidates: [LEAD] }, {}, taskId);
+  await f.act({ action: 'review', taskId, receipt: f.receipt(lead) });
+  await f.act({ action: 'advance', taskId });
+  const docs = await f.dispatch({ kind: 'docs', candidates: [COUNTERPART] }, { dimensions: DIMENSIONS.docs }, taskId);
+  await f.act({ action: 'review', taskId, receipt: f.receipt(docs) });
+  await f.act({ action: 'advance', taskId });
+  await f.act({ action: 'advance', taskId, evidence: 'Documented' });
+  assert.equal(f.task(taskId).status, 'complete');
+
+  return { lead, docs };
+}
+
+// Raises a docs finding on an open task in its documentation stage and has a skeptic confirm it, ready for an implemented repair.
+async function confirmDocsFinding(f, taskId = 'task') {
+  const docs = await f.dispatch({ kind: 'docs', candidates: [COUNTERPART] }, { dimensions: DIMENSIONS.docs, findings: [finding('guide')] }, taskId);
+  await f.act({ action: 'review', taskId, receipt: f.receipt(docs) });
+  const claim = f.task(taskId).findings.at(-1);
+  const skeptic = await f.dispatch({ kind: 'skeptic', candidates: [LEAD], findings: [claim] }, { findings: [verdict(claim.id)] }, taskId);
+  await f.act({ action: 'validate', taskId, receipt: f.receipt(skeptic), findingId: claim.id });
+  await f.act({ action: 'dispose', taskId, findingId: claim.id, disposition: 'implement', reason: 'Required', obligation: { classification: 'required', basis: 'Claim accuracy' } });
+
+  return claim;
+}
+
+const codeEntry = f => obligationBrief(f.store.read()).assessmentApplicability.find(item => item.taskId === 'task' && item.kind === 'code');
+const refusalOf = promise => promise.then(() => assert.fail('Expected a refusal'), error => error);
+
+function evictOriginalInputs(f, result) {
+  const cache = new (require('node:sqlite').DatabaseSync)(path.join(f.root, require('../internal/runtime/review-inputs').CACHE_PATH));
+  cache.prepare('DELETE FROM inputs WHERE digest=?').run(result.receipt.retainedInputs.digest);
+  cache.close();
+}
+
+test('status and both stale refusals name the applicability call first while one is available, and the fresh assessment once the original inputs are evicted', async t => {
+  // Arrange
+  const open = fixture(t);
+  await open.act({ action: 'start-task' });
+  await open.check();
+  const openLead = await open.dispatch({ kind: 'code', candidates: [LEAD] });
+  await open.act({ action: 'review', receipt: open.receipt(openLead) });
+  const done = fixture(t);
+  const { lead } = await completeWithDocs(done);
+
+  // Act
+  fs.writeFileSync(path.join(open.root, 'subject.txt'), 'changed during review\r\n');
+  fs.writeFileSync(path.join(done.root, 'subject.txt'), 'changed after completion\r\n');
+  const advance = await refusalOf(open.act({ action: 'advance' }));
+  const callFirst = codeEntry(done).next;
+  const complete = await refusalOf(done.act({ action: 'complete' }));
+  evictOriginalInputs(done, lead);
+  const freshFirst = codeEntry(done).next;
+  const evicted = await refusalOf(done.act({ action: 'complete' }));
+
+  // Assert
+  assert.equal(advance.code, 'review-required');
+  assert.match(advance.message, new RegExp(`stale on current inputs: resume ${openLead.receipt.requestId}, or dispatch its independent replacement if it cannot be resumed, on task for an applicability call`));
+  assert.match(callFirst, new RegExp(`^Resume ${lead.receipt.requestId}, .*with a fresh cumulative assessment as the fallback$`));
+  assert.equal(complete.code, 'stale-review');
+  assert.match(complete.message, new RegExp(`way forward: resume ${lead.receipt.requestId}`));
+  assert.match(freshFirst, /^Obtain a fresh cumulative assessment covering the changes, since no applicability call is available$/);
+  assert.match(evicted.message, /way forward: obtain a fresh cumulative assessment/);
+});
+
+test('a docs repair outside the documentation paths names the code assessment\'s applicability call on its stale change', async t => {
+  // Arrange
+  const f = fixture(t);
+  await f.act({ action: 'start-task' });
+  await f.check();
+  const lead = await f.dispatch({ kind: 'code', candidates: [LEAD] });
+  await f.act({ action: 'review', receipt: f.receipt(lead) });
+  await f.act({ action: 'advance' });
+  const claim = await confirmDocsFinding(f);
+
+  // Act
+  writeNestedDoc(f, '# Guide\r\n\r\nCorrected claim.\r\n');
+  await f.act({ action: 'repair', findingIds: [claim.id] });
+
+  // Assert
+  const [target] = f.brief().review.freshTargets;
+  assert.deepEqual(target.staleChanges, [{ requestId: lead.receipt.requestId, cause: 'changed-inputs', changedPaths: [NESTED_DOC], applicabilityCall: { taskId: 'task', requestId: lead.receipt.requestId, taskIds: ['task'], resume: lead.receipt.requestId, continue: 'resume' } }]);
+});
+
+test('a docs repair to the root README leaves the code assessment current and names no fresh code target', async t => {
+  // Arrange
+  const f = fixture(t);
+  await f.act({ action: 'start-task' });
+  await f.check();
+  const lead = await f.dispatch({ kind: 'code', candidates: [LEAD] });
+  await f.act({ action: 'review', receipt: f.receipt(lead) });
+  await f.act({ action: 'advance' });
+  const claim = await confirmDocsFinding(f);
+
+  // Act
+  fs.writeFileSync(path.join(f.root, 'README.md'), '# Project\r\n\r\nCorrected claim.\r\n');
+  await f.act({ action: 'repair', findingIds: [claim.id] });
+
+  // Assert
+  assert.deepEqual(f.brief().review.freshTargets, []);
+  assert.deepEqual([codeEntry(f).status, codeEntry(f).documentationPaths], ['applicable', ['README.md']]);
+});
+
+test('a fresh target covering stale assessments of two lineages names each one\'s applicability call on its owner and latest dispatch', async t => {
+  // Arrange
+  const f = fixture(t, ['done', 'task'].map(id => ({ id, title: id, agreement: { source: 'User', outcome: 'Change both paths correctly' } })));
+  for (const id of ['done', 'task']) {
+    await f.act({ action: 'start-task', taskId: id });
+    await f.check(id);
+  }
+  const doneLead = await f.dispatch({ kind: 'code', candidates: [LEAD] }, {}, 'done');
+  await f.act({ action: 'review', taskId: 'done', receipt: f.receipt(doneLead) });
+  const taskLead = await f.dispatch({ kind: 'code', candidates: [LEAD] });
+  await f.act({ action: 'review', receipt: f.receipt(taskLead) });
+  await f.act({ action: 'advance', taskId: 'done' });
+  const doneDocs = await f.dispatch({ kind: 'docs', candidates: [COUNTERPART] }, { dimensions: DIMENSIONS.docs }, 'done');
+  await f.act({ action: 'review', taskId: 'done', receipt: f.receipt(doneDocs) });
+  await f.act({ action: 'advance', taskId: 'done' });
+  await f.act({ action: 'advance', taskId: 'done', evidence: 'Documented' });
+  await f.act({ action: 'advance' });
+  const claim = await confirmDocsFinding(f);
+
+  // Act
+  writeNestedDoc(f, '# Guide\r\n\r\nCorrected claim.\r\n');
+  await f.act({ action: 'repair', findingIds: [claim.id] });
+
+  // Assert
+  const targets = f.brief().review.freshTargets;
+  assert.deepEqual(withoutChanges(targets), [{ kind: 'code', taskId: 'task', covers: ['task', 'done'], staleAssessments: [taskLead.receipt.requestId, doneLead.receipt.requestId], reopens: false }]);
+  assert.deepEqual(targets[0].staleChanges.map(change => change.applicabilityCall), [
+    { taskId: 'task', requestId: taskLead.receipt.requestId, taskIds: ['task'], resume: taskLead.receipt.requestId, continue: 'resume' },
+    { taskId: 'done', requestId: doneLead.receipt.requestId, taskIds: ['done'], resume: doneLead.receipt.requestId, continue: 'resume' },
+  ]);
+});
+
+test('a stale code assessment whose commitments changed but whose inputs are otherwise current carries an applicability call', async t => {
+  // Arrange
+  const f = fixture(t);
+  await f.act({ action: 'start-task' });
+  await f.check();
+  const lead = await f.dispatch({ kind: 'code', candidates: [LEAD] });
+  await f.act({ action: 'review', receipt: f.receipt(lead) });
+  await f.act({ action: 'advance' });
+  const claim = await confirmDocsFinding(f);
+  await f.act({ action: 'repair', findingIds: [claim.id] });
+
+  // Act
+  f.store.update(actor, f.store.read().revision, 'fixture-earlier-commitments', state => {
+    state.tasks[0].reviews.find(review => review.requestId === lead.receipt.requestId).commitments = { task: { agreement: { source: 'Earlier', outcome: 'Earlier outcome' }, revision: 0 } };
+  });
+
+  // Assert
+  const [target] = f.brief().review.freshTargets;
+  assert.deepEqual(target.staleChanges, [{ requestId: lead.receipt.requestId, cause: 'changed-commitments', changedPaths: null, applicabilityCall: { taskId: 'task', requestId: lead.receipt.requestId, taskIds: ['task'], resume: lead.receipt.requestId, continue: 'resume' } }]);
+});
+
+for (const outcome of ['reassess', 'unresolved']) {
+  test(`a current ${outcome} answer leaves no applicability call, and one whose inputs since changed leads to a new call`, async t => {
+    // Arrange
+    const f = fixture(t);
+    const { lead } = await completeWithDocs(f);
+    fs.writeFileSync(path.join(f.root, 'subject.txt'), 'changed after completion\r\n');
+    const answered = await f.dispatch({ kind: 'code', resume: lead.receipt.requestId, relevance: { requestId: lead.receipt.requestId, taskIds: ['task'] } }, { applicability: [{ id: 'task', outcome, evidence: 'The interaction needs a new assessment' }] });
+    await f.act({ action: 'review', receipt: f.receipt(answered) });
+
+    // Act
+    const current = codeEntry(f);
+    const refused = await refusalOf(f.act({ action: 'complete' }));
+    fs.writeFileSync(path.join(f.root, 'subject.txt'), 'changed again after the answer\r\n');
+    const drifted = codeEntry(f);
+
+    // Assert
+    assert.equal(current.status, outcome);
+    assert.match(current.next, /^Obtain a fresh cumulative assessment/);
+    assert.match(refused.message, /way forward: obtain a fresh cumulative assessment/);
+    assert.deepEqual([drifted.status, drifted.decisionCurrent], [outcome, false]);
+    assert.match(drifted.next, new RegExp(`^Resume ${answered.receipt.requestId}`));
+  });
+}
+
+test('while the outside-documentation hold is unsettled, a stale code assessment whose changed paths lie in its set carries no applicability call', async t => {
+  // Arrange
+  const f = fixture(t);
+  const { lead } = await completeWithDocs(f);
+  await f.act({ action: 'retrospective', evidence: 'Retrospective recorded' });
+  await f.act({ action: 'triage', evidence: 'Follow-ups triaged' });
+  fs.writeFileSync(path.join(f.root, 'subject.txt'), 'changed after triage\r\n');
+  const held = codeEntry(f);
+  const claim = await confirmDocsFinding(f);
+
+  // Act
+  await f.act({ action: 'repair', findingIds: [claim.id] });
+  const advance = await refusalOf(f.act({ action: 'advance' }));
+
+  // Assert
+  assert.match(held.next, /^Obtain a fresh cumulative assessment, since an applicability call cannot settle the outside-documentation hold/);
+  const [target] = f.brief().review.freshTargets;
+  assert.deepEqual(target.staleChanges, [{ requestId: lead.receipt.requestId, cause: 'changed-inputs', changedPaths: ['subject.txt'], applicabilityCall: null }]);
+  assert.equal(advance.code, 'review-required');
+  assert.match(advance.message, /stale on current inputs: obtain a fresh cumulative assessment, since an applicability call cannot settle the outside-documentation hold/);
 });
