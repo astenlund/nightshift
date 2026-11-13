@@ -170,8 +170,8 @@
     },
     {
       "path": "internal/runtime/REFERENCE.md",
-      "bytes": 171121,
-      "sha256": "f9ab76f8626162a54934f52c99e923347c3f06c624328193936f3ea1aafcbbaf"
+      "bytes": 171197,
+      "sha256": "37e2c4f8dc8bf75b17c501ff2c8868a092b30df3057b5a70d434a256d7cac978"
     },
     {
       "path": "internal/runtime/acceptance-checkpoint.js",
@@ -555,8 +555,8 @@
     },
     {
       "path": "internal/workflow.md",
-      "bytes": 42175,
-      "sha256": "17f94849f755c1666345ce008604861d1722ffa55b08515a71a0e611597ea74e"
+      "bytes": 42300,
+      "sha256": "78cf3270fe440417bf95e1b6bd7619f28e642448e6b6e6b699a66d8478ca724d"
     },
     {
       "path": "skills/exploring/SKILL.md",
