@@ -287,9 +287,11 @@ function closingReady(state) {
 // reviewed, and keeps the closing findings that still owe something, which the next closing record takes over.
 function resetClosing(state) {
   if (isReviewContext(state)) return;
-  const baseline = state.closing?.docs ? state.closing.docs.baseline : state.closing?.carriedBaseline;
+  // A missing baseline is carried as null, so the next triage and the outside-documentation condition still treat it as missing.
+  const carries = Boolean(state.closing?.docs) || state.closing?.carriedBaseline !== undefined;
+  const baseline = state.closing?.docs ? state.closing.docs.baseline ?? null : state.closing?.carriedBaseline ?? null;
   const carried = carriedFindings(state);
-  state.closing = { retrospectiveEvidence: null, reportEvidence: null, reportDelivery: null, triageEvidence: null, progressBindings: { retrospective: null, report: null, delivery: null, triage: null }, ...(baseline ? { carriedBaseline: baseline } : {}), ...(carried.length ? { carriedFindings: carried } : {}) };
+  state.closing = { retrospectiveEvidence: null, reportEvidence: null, reportDelivery: null, triageEvidence: null, progressBindings: { retrospective: null, report: null, delivery: null, triage: null }, ...(carries ? { carriedBaseline: baseline } : {}), ...(carried.length ? { carriedFindings: carried } : {}) };
 }
 
 // The closing findings a replaced closing record must hand on: every one not yet settled or still pending closure. The closing gate
@@ -512,7 +514,7 @@ function closingRecordFailure(root, state, { ignoreChecks = false } = {}) {
 const CLOSING_COVERAGE = Object.freeze({
   unreviewed: 'Changes since triage need a current, complete and resolved closing docs review',
   'outside-git': 'Documentation changed after triage in a project outside Git, where no independent review can be dispatched; revert those tracking edits, or make them in a Git worktree where a closing docs review can cover them',
-  'no-baseline': 'The changes since triage cannot be established; record triage again once Git can inspect the project',
+  'no-baseline': 'The changes since triage cannot be established; obtain a fresh cumulative task assessment of the whole inventory, then record triage again once Git can inspect the project',
 });
 
 function latestClosingReview(record, state) {
@@ -546,7 +548,7 @@ function closingCoverageFailure(root, state) {
 function outsideDocumentationBaseline(state) {
   if (isReviewContext(state) || isClosed(state) || state.status === 'complete' || !state.closing) return undefined;
   const record = state.closing.docs;
-  if (!record && !state.closing.carriedBaseline) return undefined;
+  if (!record && state.closing.carriedBaseline === undefined) return undefined;
   const baseline = record ? record.baseline : state.closing.carriedBaseline;
   return baseline?.backlogOnly ? undefined : baseline ?? null;
 }
@@ -656,13 +658,12 @@ function outsideDocumentationRefusal(root, state, hold) {
 // recording triage again, even after something cleared the closing record, never absorbs unreviewed tracking edits. It also stands
 // while the outside-documentation hold is unsettled, so no review that cannot settle it absorbs changes outside the documentation paths.
 // Otherwise those changes are reviewed once a current resolved closing review covers them, or once a complete cumulative task assessment
-// is fresh against the whole inventory, every path compared; a missing earlier baseline, which already fails closed, gives way to the
-// inventory at this triage.
+// is fresh against the whole inventory, every path compared. The first triage, with no earlier closing record or carried baseline, takes
+// the inventory. A missing earlier baseline, which fails closed, stays missing unless such a fresh task assessment shows the changes it
+// could not establish reviewed, so recording triage again never absorbs them.
 function nextTriageBaseline(root, state) {
-  const earlier = state.closing.docs ? state.closing.docs.baseline : state.closing.carriedBaseline;
-  if (!earlier) return triageBaseline(root, state);
-  if (outsideDocumentationHold(root, state)) return earlier;
-  const closingReviewed = Boolean(state.closing.docs) && closingCoverageFailure(root, state) === null;
+  if (!state.closing.docs && state.closing.carriedBaseline === undefined) return triageBaseline(root, state);
+  const earlier = state.closing.docs ? state.closing.docs.baseline ?? null : state.closing.carriedBaseline;
   const taskReviewed = () => {
     try {
       return state.tasks.some(task => task.reviews.some(review => reviewKind(review, task) !== 'spec' && review.snapshot?.inventory === true && completeAssessment(review) && fresh(root, review.snapshot)));
@@ -671,6 +672,9 @@ function nextTriageBaseline(root, state) {
       return false;
     }
   };
+  if (!earlier) return taskReviewed() ? triageBaseline(root, state) : null;
+  if (outsideDocumentationHold(root, state)) return earlier;
+  const closingReviewed = Boolean(state.closing.docs) && closingCoverageFailure(root, state) === null;
   return closingReviewed || taskReviewed() ? triageBaseline(root, state) : earlier;
 }
 

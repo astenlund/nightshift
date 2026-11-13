@@ -591,11 +591,18 @@ test('tracking edits need a current closing review even when no task gate depend
   tracked.act({ action: 'review', taskId: CLOSING_TARGET, review: tracked.assessment('docs', ['lessons']) });
   assert.equal(tracked.act({ action: 'complete' }).status, 'complete');
 
-  // A baseline that could not be captured inside a Git worktree fails closed until triage is recorded again.
+  // A baseline that could not be captured inside a Git worktree fails closed: triage recorded again keeps it missing until a fresh
+  // task assessment of the whole inventory covers the changes, which a lore task can import for its change.
   const lost = run();
   lost.store.update(actor, lost.store.read().revision, 'fixture-lost-baseline', state => { state.closing.docs.baseline = null; });
   assert.throws(() => lost.act({ action: 'complete' }), { code: 'closing-review-required' });
   lost.act({ action: 'triage', evidence: 'Triage recorded again' });
+  assert.equal(lost.store.read().closing.docs.baseline, null);
+  assert.throws(() => lost.act({ action: 'complete' }), { code: 'closing-review-required', message: /fresh cumulative task assessment/ });
+  lost.review('lessons', 'code');
+  assert.equal(lost.task('lessons').status, 'complete');
+  lost.act({ action: 'triage', evidence: 'Triage recorded after the assessment' });
+  assert.ok(lost.store.read().closing.docs.baseline);
   assert.equal(lost.act({ action: 'complete' }).status, 'complete');
 });
 
