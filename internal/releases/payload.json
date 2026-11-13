@@ -170,8 +170,8 @@
     },
     {
       "path": "internal/runtime/REFERENCE.md",
-      "bytes": 169962,
-      "sha256": "8278bfe17fc2c5ab845c307701817c8ca638e5d61e5d150c0b1f8bbd04ac5cc9"
+      "bytes": 170146,
+      "sha256": "76f761e078cc2eb08fc47083f98ff86c1b50ee5e5010bacfe96f535736e5a9ff"
     },
     {
       "path": "internal/runtime/acceptance-checkpoint.js",
@@ -320,8 +320,8 @@
     },
     {
       "path": "internal/runtime/lifecycle.js",
-      "bytes": 116143,
-      "sha256": "b3be394bf5a5fb7652508881a22c792d5849a976cecefd496594ed23aa997aaf"
+      "bytes": 117357,
+      "sha256": "7d7330cfdd5aac0597f17f651b318ac6d2d40a04c5513645e964edcb3aa36c4a"
     },
     {
       "path": "internal/runtime/limits.js",

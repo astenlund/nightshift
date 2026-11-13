@@ -2248,3 +2248,35 @@ test('under the outside-documentation hold, a governing-spec edit after triage s
   // The code assessment's change falls under the hold, which only a fresh code assessment or a revert settles.
   assert.deepEqual(targets.find(target => target.kind === 'code').staleChanges.map(change => change.applicabilityCall), [null]);
 });
+
+test('in a run of only spec tasks, a governing-spec edit after triage names the fresh whole-spec assessment the hold needs, not an applicability call', async t => {
+  // Arrange
+  const governing = 'specs/plan.md';
+  const f = fixture(t, [{ id: 'spec', title: 'Governing artifact', kind: 'spec', agreement: { source: 'User', outcome: 'Assess governing inputs', spec: governing } }]);
+  fs.mkdirSync(path.join(f.root, 'specs'), { recursive: true });
+  fs.writeFileSync(path.join(f.root, governing), '# Original governing input\r\n');
+  const original = await f.dispatch({ kind: 'spec', candidates: [LEAD], artifactPaths: [governing] }, { dimensions: DIMENSIONS.spec }, 'spec');
+  await f.act({ action: 'review', taskId: 'spec', receipt: f.receipt(original) });
+  await f.act({ action: 'advance', taskId: 'spec' });
+  await f.act({ action: 'advance', taskId: 'spec', evidence: 'Spec documented' });
+  await f.act({ action: 'retrospective', evidence: 'Retrospective recorded' });
+  await f.act({ action: 'triage', evidence: 'Follow-ups triaged' });
+
+  // Act
+  fs.writeFileSync(path.join(f.root, governing), '# Compatibly corrected governing input\r\n');
+  const brief = obligationBrief(f.store.read());
+  const refused = await refusalOf(f.act({ action: 'complete' }));
+  // A repair of another kind on the spec task is recorded directly, so its fresh targets judge the stale spec assessment.
+  f.store.update(actor, f.store.read().revision, 'fixture-docs-repair', state => { state.tasks[0].lastRepair = { revision: state.revision, kinds: ['docs'] }; });
+  const [target] = reviewProgress(f.root, f.store.read(), f.task('spec')).freshTargets;
+
+  // Assert
+  const hold = brief.closing.docsReview.outsideDocumentation;
+  assert.deepEqual(hold.changedPaths, [governing]);
+  assert.match(hold.next, /fresh whole-spec assessment on spec task spec/);
+  const entry = brief.assessmentApplicability.find(item => item.taskId === 'spec' && item.kind === 'spec');
+  assert.match(entry.next, /^Obtain a fresh cumulative assessment, since an applicability call cannot settle the outside-documentation hold.*fresh whole-spec assessment on spec task spec/);
+  assert.equal(refused.code, 'closing-review-required');
+  assert.match(refused.message, /fresh whole-spec assessment on spec task spec/);
+  assert.deepEqual([target.kind, target.staleChanges.map(change => [change.requestId, change.applicabilityCall])], ['spec', [[original.receipt.requestId, null]]]);
+});

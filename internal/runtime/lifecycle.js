@@ -604,14 +604,23 @@ function settlingCandidates(root, state) {
   return codeCarriers(state).map((task, index) => ({ task, index, reach: reach(task) })).sort((left, right) => right.reach - left.reach || left.index - right.index).map(entry => entry.task.id);
 }
 
+// The kind of fresh assessment that settles the hold: code when the run has a task that can carry one, otherwise spec, on the first spec
+// task whose governing artifacts include every path of the set, otherwise none, which leaves the user's decision. A set that cannot be
+// computed names no spec task.
+function holdSettlement(root, state, hold) {
+  if (codeCarriers(state).length > 0) return { kind: 'code' };
+  const spec = hold.changedPaths === null ? undefined : state.tasks.find(task => onlyGoverningArtifacts(root, hold.changedPaths, governingArtifacts([task], [leadEntry(task, state)?.review].filter(Boolean))));
+  return spec ? { kind: 'spec', task: spec } : { kind: 'none' };
+}
+
 // The way forward from the hold, naming the settling step first and then the closing docs review the docs side requires.
 function outsideDocumentationNext(root, state, hold) {
   if (hold.changedPaths === null) return CLOSING_COVERAGE['no-baseline'];
   const closingReview = `then a complete closing docs review (task ${CLOSING_TARGET}) covering every task and current on the final inputs`;
   const revert = 'Reverting these paths also settles the hold.';
-  if (codeCarriers(state).length > 0) return `Obtain a fresh code assessment on any one of the tasks ${settlingCandidates(root, state).join(', ')}, since any one settles the hold, ${closingReview}. ${revert}`;
-  const spec = state.tasks.find(task => onlyGoverningArtifacts(root, hold.changedPaths, governingArtifacts([task], [leadEntry(task, state)?.review].filter(Boolean))));
-  if (spec) return `Obtain a fresh whole-spec assessment on spec task ${spec.id}, which settles the hold, ${closingReview}. ${revert}`;
+  const settlement = holdSettlement(root, state, hold);
+  if (settlement.kind === 'code') return `Obtain a fresh code assessment on any one of the tasks ${settlingCandidates(root, state).join(', ')}, since any one settles the hold, ${closingReview}. ${revert}`;
+  if (settlement.kind === 'spec') return `Obtain a fresh whole-spec assessment on spec task ${settlement.task.id}, which settles the hold, ${closingReview}. ${revert}`;
   return `No task assessment can settle the hold, so it needs the user's decision: hold, stop or the administrative close. ${revert}`;
 }
 
@@ -770,19 +779,26 @@ function reviewProgress(root, state, target, options = {}) {
   return { next, resumeTargets, freshDue, freshTargets };
 }
 
-// Whether a stale code or docs assessment's changed paths fall under the unsettled outside-documentation hold, which a relevance call
-// cannot settle. A set that cannot be computed may hold any change. A spec assessment is never held: no applicability call or fresh
-// spec assessment settles the hold in a run with a code task, so its own call stays its way forward to readiness.
-function heldBy(hold, changed, kind) {
-  if (kind === 'spec' || !hold || !Array.isArray(changed) || changed.length === 0) return false;
-  return hold.changedPaths === null || changed.some(file => hold.changedPaths.includes(file));
+// Whether a stale assessment's changed paths fall under the unsettled outside-documentation hold, so that the hold's way forward is its
+// way forward and no applicability call is offered: a preserving call would pass its gate but cannot settle the hold. A set that cannot
+// be computed may hold any change. Otherwise a changed path must lie in the set, and the element is held when a fresh assessment of its
+// own kind settles the hold. A docs assessment never settles it, yet under the hold it still defers to the hold's way forward, as a code
+// assessment does. A spec assessment is held only in a run whose hold a whole-spec assessment settles; in a run with a code task its own
+// applicability call stays its way forward to readiness.
+function heldBy(root, state, hold, changed, kind) {
+  if (!hold || !Array.isArray(changed) || changed.length === 0) return false;
+  if (hold.changedPaths === null) return true;
+  if (!changed.some(file => hold.changedPaths.includes(file))) return false;
+  return kind !== 'spec' || holdSettlement(root, state, hold).kind === 'spec';
 }
 
 // The applicability call that can settle a stale assessment for the given tasks: the owner holding it, on which the call is dispatched,
 // the assessment it judges, the tasks within that assessment's coverage it judges, the latest dispatch of its lineage that produced a
 // receipt, and whether to resume or replace that dispatch. Null when no call is available: an unestablished comparison, a reassess or
-// unresolved answer already given on the current inputs and commitments, an assessment that is continued, incomplete or narrow, a code
-// or docs assessment whose changed paths the unsettled outside-documentation hold holds, original inputs that are not retained, or no request id or receipted dispatch.
+// unresolved answer already given on the current inputs and commitments, an assessment that is continued, incomplete or narrow, changed
+// paths the unsettled outside-documentation hold holds (always for a code or docs assessment, and for a spec assessment only in a run
+// whose hold a whole-spec assessment settles, as heldBy decides), original inputs that are not retained, or no request id or receipted
+// dispatch.
 // A changed commitment alone leaves the call available, since a preserving decision bound to the current commitments can settle it.
 function applicabilityCall(root, state, owner, review, taskIds, hold) {
   if (!review.requestId || !completeAssessment(review) || !coversDimensions(review, reviewKind(review, owner))) return null;
@@ -792,7 +808,7 @@ function applicabilityCall(root, state, owner, review, taskIds, hold) {
     if (!task || !review.coveredTaskIds?.includes(id)) continue;
     const condition = applicability(root, review, task, owner, state);
     const cause = staleCause(condition);
-    if (cause.kind === 'unestablished' || heldBy(hold, cause.changedPaths, reviewKind(review, owner))) return null;
+    if (cause.kind === 'unestablished' || heldBy(root, state, hold, cause.changedPaths, reviewKind(review, owner))) return null;
     if (['reassess', 'unresolved'].includes(condition.status) && condition.decisionCurrent !== false) continue;
     judged.add(id);
   }
@@ -807,7 +823,7 @@ function applicabilityCall(root, state, owner, review, taskIds, hold) {
 function staleWayForward(root, state, task, entry, hold = outsideDocumentationHold(root, state)) {
   const cause = staleCause(applicability(root, entry.review, task, entry.owner, state));
   if (cause.kind === 'unestablished') return 'reconcile the comparison that could not be established, then obtain a fresh cumulative assessment';
-  if (heldBy(hold, cause.changedPaths, reviewKind(entry.review, entry.owner))) return `obtain a fresh cumulative assessment, since an applicability call cannot settle the outside-documentation hold these changes fall under: ${outsideDocumentationNext(root, state, hold)}`;
+  if (heldBy(root, state, hold, cause.changedPaths, reviewKind(entry.review, entry.owner))) return `obtain a fresh cumulative assessment, since an applicability call cannot settle the outside-documentation hold these changes fall under: ${outsideDocumentationNext(root, state, hold)}`;
   const call = applicabilityCall(root, state, entry.owner, entry.review, [task.id], hold);
   if (!call) return 'obtain a fresh cumulative assessment covering the changes, since no applicability call is available';
   const dispatch = call.continue === 'replace' ? `dispatch the independent replacement of ${call.resume}` : `resume ${call.resume}, or dispatch its independent replacement if it cannot be resumed,`;
