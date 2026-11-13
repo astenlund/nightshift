@@ -7,7 +7,7 @@ const { workerIsActive } = require('./workers');
 const { isDeepStrictEqual } = require('node:util');
 
 const { requireCondition, text } = require('./store');
-const { withEvidenceComparisons, changedPaths, fileSha256, fresh, freshAll, hash, inventorySnapshot, outsideGitWorktree, projectFile, projectInventory, snapshot } = require('./evidence');
+const { withEvidenceComparisons, changedPaths, compareOnce, fileIdentity, fileSha256, fresh, freshAll, hash, inventorySnapshot, inventoryVisible, outsideGitWorktree, projectFile, projectInventory, snapshot } = require('./evidence');
 const { exhaustedLimit } = require('./limits');
 const { CLOSING_TARGET, unknownActionMessage } = require('./actions');
 const { closureRoute, latestDispatchOf, lineageOf } = require('./continuation');
@@ -571,16 +571,34 @@ function codeCarriers(state) {
   return state.tasks.filter(task => task.kind !== 'spec');
 }
 
+// Whether an inventory assessment's compared scope positively held a path, so that its current applicability speaks for the path's
+// current state: no exclusion names it, and either a recorded snapshot lists it, or it is absent now and lay in the scope the assessment
+// inventoried, because the assessment selected it or Git neither ignores it nor leaves it to a runtime-owned folder, so the assessment saw
+// its absence. A present path the snapshots do not list was never seen, applicable or not. Anything that cannot be read is unseen.
+function assessmentSawPath(root, review, file) {
+  const evidence = [review.snapshot, review.contextSnapshot].filter(Boolean);
+  if (evidence.some(item => (item.excludedPaths ?? []).includes(file))) return false;
+  if (evidence.some(item => Array.isArray(item.files) && item.files.some(entry => entry.path === file))) return true;
+  try {
+    if (fileIdentity(root, file).exists) return false;
+  } catch {
+    // An entry whose identity cannot be established was not positively seen.
+    return false;
+  }
+  if (evidence.some(item => (item.includedPaths ?? []).includes(file))) return true;
+  return compareOnce(JSON.stringify(['inventory-visible', root, file]), () => inventoryVisible(root, file)) === true;
+}
+
 // Whether a settling assessment exists for the outside-documentation set: a complete, fresh code assessment of any task that can carry
-// one, covering its dimensions and every path of the set, whose applicability on current inputs reads applicable. In a run without such
-// a task, a spec task's complete, fresh whole-spec assessment reading applicable settles it when every path of the set is that task's
-// governing spec or a governing artifact named in the assessment's recorded commitments. A relevance decision never settles it, and
-// neither does a docs review.
+// one, covering its dimensions, whose inventory scope positively held every path of the set, and whose applicability on current inputs
+// reads applicable. In a run without such a task, a spec task's complete, fresh whole-spec assessment reading applicable settles it when
+// every path of the set is that task's governing spec or a governing artifact named in the assessment's recorded commitments. A relevance
+// decision never settles it, and neither does a docs review.
 function settlesOutsideDocumentation(root, state, paths) {
   const applicable = (task, review, kind) => !review.relevance && reviewKind(review, task) === kind && completeAssessment(review) && coversDimensions(review, kind) && applicability(root, review, task, task, state).status === 'applicable';
   const carriers = codeCarriers(state);
   if (carriers.length > 0) {
-    const sawEvery = review => review.snapshot?.inventory === true && !paths.some(file => [review.snapshot, review.contextSnapshot].some(evidence => (evidence?.excludedPaths ?? []).includes(file)));
+    const sawEvery = review => review.snapshot?.inventory === true && paths.every(file => assessmentSawPath(root, review, file));
     return carriers.some(task => task.reviews.some(review => sawEvery(review) && applicable(task, review, 'code')));
   }
   return state.tasks.some(task => task.reviews.some(review => applicable(task, review, 'spec') && onlyGoverningArtifacts(root, paths, governingArtifacts([task], [review]))));

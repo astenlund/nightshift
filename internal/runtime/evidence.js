@@ -278,6 +278,18 @@ function privateInputsCurrent(root, evidence) {
   }
 }
 
+// Runtime-owned folders that no review inventory lists, whatever Git reports.
+const UNINVENTORIED_DIRECTORIES = Object.freeze(['.nightshift/runs/', '.nightshift/inbox/', '.tmp/']);
+
+// Whether a path lies in the ordinary project inventory, before exclusions and explicit selections: Git tracks it or does not ignore
+// it, outside the runtime-owned folders. Null when Git cannot answer.
+function inventoryVisible(root, file) {
+  if (UNINVENTORIED_DIRECTORIES.some(directory => file.startsWith(directory))) return false;
+  const result = spawnSync('git', ['check-ignore', '-q', '--', file], { cwd: root, windowsHide: true, encoding: 'utf8', timeout: 30000 });
+  if (result.error) return null;
+  return result.status === 1 ? true : result.status === 0 ? false : null;
+}
+
 function projectInventory(root, excluded = [], included = []) {
   const result = spawnSync('git', ['ls-files', '-z', '--cached', '--others', '--exclude-standard'], { cwd: root, windowsHide: true, encoding: 'utf8', maxBuffer: 32 * 1024 * 1024, timeout: 30000 });
   requireCondition(!result.error && result.status === 0, 'inventory-failed', result.error?.message ?? result.stderr);
@@ -292,7 +304,7 @@ function projectInventory(root, excluded = [], included = []) {
     return entry.key;
   }));
   const selected = new Map();
-  const visible = result.stdout.split('\0').filter(file => file && !file.startsWith('.nightshift/runs/') && !file.startsWith('.nightshift/inbox/') && !file.startsWith('.tmp/'));
+  const visible = result.stdout.split('\0').filter(file => file && !UNINVENTORIED_DIRECTORIES.some(directory => file.startsWith(directory)));
   for (const file of visible) {
     const key = identity(file).key;
     if (!exclusions.has(key) && !selected.has(key)) selected.set(key, file);
@@ -327,4 +339,4 @@ function verifyCommand(root, request) {
   return { ...result, snapshot: after, inputsUnchanged, passed: !result.error && result.exitCode === 0 && inputsUnchanged };
 }
 
-module.exports = { withEvidenceComparisons, compareOnce, privateInputsCurrent, changedPaths, executeCommand, fileIdentity, fileSha256, fresh, freshAll, hash, inventorySnapshot, outsideGitWorktree, projectFile, projectInventory, relativeParts, snapshot, verifyCommand };
+module.exports = { withEvidenceComparisons, compareOnce, privateInputsCurrent, changedPaths, executeCommand, fileIdentity, fileSha256, fresh, freshAll, hash, inventorySnapshot, inventoryVisible, outsideGitWorktree, projectFile, projectInventory, relativeParts, snapshot, verifyCommand };
