@@ -7,7 +7,7 @@ const test = require('node:test');
 const { DatabaseSync } = require('node:sqlite');
 const { spawn } = require('node:child_process');
 const { snapshot, hash } = require('../internal/runtime/evidence');
-const { CACHE_PATH, LIMITS, load, restore, retain } = require('../internal/runtime/review-inputs');
+const { CACHE_PATH, LIMITS, cached, load, restore, retain } = require('../internal/runtime/review-inputs');
 
 function fixture(t) {
   const parent = path.resolve(__dirname, '../.tmp/review-inputs-tests');
@@ -226,4 +226,35 @@ test('source cleanup preserves a replaced destination with a different directory
   assert.ok(result.reason.includes('identity changed'));
   assert.equal(fs.readFileSync(path.join(destination, 'keep.txt'), 'utf8'), 'Replacement belongs to someone else');
   assert.equal(fs.existsSync(moved), true);
+});
+
+test('the status probe reads the cache without writing it, and an absent, evicted, unbound or locked entry reads as not cached', t => {
+  // Arrange
+  const f = fixture(t);
+  const captured = f.capture();
+  const file = path.join(f.root, CACHE_PATH);
+  const absent = cached(f.root, { kind: 'cache-v1', digest: captured.digest }, captured);
+  const absentAfterProbe = fs.existsSync(file);
+  const { retainedInputs } = retain(f.root, f.source, captured);
+  const before = { bytes: fs.readFileSync(file), modified: fs.statSync(file).mtimeMs };
+  f.write('a later candidate');
+  const later = f.capture();
+
+  // Act
+  const present = cached(f.root, retainedInputs, captured);
+  const after = { bytes: fs.readFileSync(file), modified: fs.statSync(file).mtimeMs };
+  const evicted = cached(f.root, { kind: 'cache-v1', digest: later.digest }, later);
+  const unbound = cached(f.root, retainedInputs, later);
+  const lock = new DatabaseSync(file);
+  lock.exec('BEGIN EXCLUSIVE');
+  const locked = cached(f.root, retainedInputs, captured);
+  lock.exec('ROLLBACK');
+  lock.close();
+
+  // Assert
+  assert.deepEqual([absent, absentAfterProbe], [false, false]);
+  assert.equal(present, true);
+  assert.deepEqual(after, before);
+  assert.deepEqual([evicted, unbound, locked], [false, false, false]);
+  assert.equal(cached(f.root, retainedInputs, captured), true);
 });

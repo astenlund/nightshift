@@ -213,6 +213,14 @@ function withEvidenceComparisons(callback) {
   return comparisonScope.run(new Map(), callback);
 }
 
+// One evaluation's result for a key, computed once within the comparison scope and every time outside it.
+function compareOnce(key, compute) {
+  const cache = comparisonScope.getStore();
+  if (!cache) return compute();
+  if (!cache.has(key)) cache.set(key, compute());
+  return cache.get(key);
+}
+
 // A snapshot of the whole reviewable project inventory, in the form a review's context snapshot takes.
 function inventorySnapshot(root, excluded = [], included = []) {
   const paths = projectInventory(root, excluded, included);
@@ -223,11 +231,7 @@ function inventorySnapshot(root, excluded = [], included = []) {
 
 // The paths that appeared, disappeared or changed content since an inventory snapshot, sorted; null when that cannot be established.
 function changedPaths(root, evidence) {
-  const cache = comparisonScope.getStore();
-  if (!cache) return computeChangedPaths(root, evidence);
-  const key = JSON.stringify([root, evidence]);
-  if (!cache.has(key)) cache.set(key, computeChangedPaths(root, evidence));
-  const result = cache.get(key);
+  const result = compareOnce(JSON.stringify([root, evidence]), () => computeChangedPaths(root, evidence));
   return result === null ? null : [...result];
 }
 
@@ -323,4 +327,4 @@ function verifyCommand(root, request) {
   return { ...result, snapshot: after, inputsUnchanged, passed: !result.error && result.exitCode === 0 && inputsUnchanged };
 }
 
-module.exports = { withEvidenceComparisons, privateInputsCurrent, changedPaths, executeCommand, fileIdentity, fileSha256, fresh, freshAll, hash, inventorySnapshot, outsideGitWorktree, projectFile, projectInventory, relativeParts, snapshot, verifyCommand };
+module.exports = { withEvidenceComparisons, compareOnce, privateInputsCurrent, changedPaths, executeCommand, fileIdentity, fileSha256, fresh, freshAll, hash, inventorySnapshot, outsideGitWorktree, projectFile, projectInventory, relativeParts, snapshot, verifyCommand };

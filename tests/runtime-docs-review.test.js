@@ -658,6 +658,7 @@ test('a Git failure never waives closing coverage, and outside Git any documenta
     const unchanged = outside('unchanged');
     assert.equal(unchanged.store.read().closing.docs.baseline.backlogOnly, true);
     assert.equal(obligationBrief(unchanged.store.read()).closing.docsReview.satisfied, true);
+    assert.equal(obligationBrief(unchanged.store.read()).closing.docsReview.outsideDocumentation, undefined);
     assert.equal(unchanged.act({ action: 'complete' }).status, 'complete');
 
     const tracked = outside('tracked');
@@ -1609,4 +1610,23 @@ test('a fresh target on a completed task reopens it before triage, and after tri
   // Assert
   assert.deepEqual(beforeTriage, [['code', 'code', true]]);
   assert.deepEqual(afterTriage, [['code', 'code', 'if-findings']]);
+});
+
+test('status probing a cache-retained assessment leaves an absent review-input cache absent', t => {
+  // Arrange
+  const f = fixture(t);
+  completeTask(f);
+  f.store.update(actor, f.store.read().revision, 'fixture-cache-retained', state => {
+    const review = state.tasks[0].reviews.find(item => item.kind === 'code');
+    review.retainedInputs = { kind: 'cache-v1', digest: review.contextSnapshot.digest };
+  });
+  f.write('src.js', 'module.exports = 2;\n');
+  const file = path.join(f.root, '.nightshift/runs/review-inputs.sqlite');
+
+  // Act
+  const reading = condition(f, 'code');
+
+  // Assert
+  assert.match(reading.next, /^Obtain a fresh cumulative assessment/);
+  assert.equal(fs.existsSync(file), false);
 });

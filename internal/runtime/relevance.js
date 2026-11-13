@@ -3,7 +3,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { requireCondition, text } = require('./errors');
-const { privateInputsCurrent, projectFile } = require('./evidence');
+const { compareOnce, privateInputsCurrent, projectFile } = require('./evidence');
 const { assessedChanges, identity, missingSpecInputs, validRelevanceTaskIds } = require('./applicability');
 const { governingArtifacts } = require('./documentation-paths');
 const inputs = require('./review-inputs');
@@ -41,9 +41,23 @@ function retainedSource(root, original, worker) {
   }
 }
 
-// Whether an assessment's original inputs are retained, so a relevance decision on it could preserve its applicability.
+// Whether an assessment's original inputs appear retained, so a relevance decision on it could preserve its applicability. Status
+// asks this, so it never writes, decodes or hashes retained source: a cached entry is probed read-only, and a legacy copy must hold
+// every recorded file. Each answer is computed once per evaluation; resolveRelevance verifies the bytes before a dispatch relies on them.
 function originalInputsRetained(root, state, original) {
-  return retainedSource(root, original, (state.workers ?? []).find(candidate => candidate.id === original.requestId)).available === true;
+  const worker = (state.workers ?? []).find(candidate => candidate.id === original.requestId);
+  const key = JSON.stringify(['retained-inputs', root, original.requestId ?? null, original.retainedInputs ?? null, original.contextSnapshot?.digest ?? null, worker?.artifactDirectory ?? null]);
+  return compareOnce(key, () => {
+    if (original.retainedInputs?.kind === 'cache-v1') return inputs.cached(root, original.retainedInputs, original.contextSnapshot);
+    if (original.retainedInputs !== true || typeof worker?.artifactDirectory !== 'string' || !worker.artifactDirectory.trim()) return false;
+    try {
+      const source = projectFile(root, path.posix.join(worker.artifactDirectory, 'inputs'));
+      return original.contextSnapshot.files.filter(file => file.sha256 !== null).every(file => fs.statSync(projectFile(source, file.path), { throwIfNoEntry: false })?.isFile() === true);
+    } catch {
+      // A copy that cannot be read is no positive evidence of retained inputs.
+      return false;
+    }
+  });
 }
 
 // All fields besides the original identity and selected tasks are controller-owned and rederived before dispatch.

@@ -7,7 +7,7 @@ const { workerIsActive } = require('./workers');
 const { isDeepStrictEqual } = require('node:util');
 
 const { requireCondition, text } = require('./store');
-const { withEvidenceComparisons, changedPaths, fileIdentity, fileSha256, fresh, freshAll, hash, inventorySnapshot, outsideGitWorktree, projectFile, projectInventory, snapshot } = require('./evidence');
+const { withEvidenceComparisons, changedPaths, fileSha256, fresh, freshAll, hash, inventorySnapshot, outsideGitWorktree, projectFile, projectInventory, snapshot } = require('./evidence');
 const { exhaustedLimit } = require('./limits');
 const { CLOSING_TARGET, unknownActionMessage } = require('./actions');
 const { closureRoute, latestDispatchOf, lineageOf } = require('./continuation');
@@ -15,7 +15,7 @@ const { scratchFailure, scratchStatus } = require('./scratch');
 const { isReviewContext, requireDelivery, recordKind } = require('./records');
 const { isClosed } = require('./statuses');
 const { latestDecision, relevanceCoversTask, applicability, assessedChanges, inputChanges, latestEntry: latestReview } = require('./applicability');
-const { BACKLOG_FILES, DOCUMENTATION_DIRECTORIES, governingArtifacts, ignoresDocumentationPaths, isDocumentationPath, isRootDocumentation, onlyGoverningArtifacts } = require('./documentation-paths');
+const { BACKLOG_FILES, DOCUMENTATION_DIRECTORIES, governingArtifacts, ignoresDocumentationPaths, isDocumentationPath, isRootDocumentation, onlyGoverningArtifacts, partitionDocumentationChanges } = require('./documentation-paths');
 const { originalInputsRetained } = require('./relevance');
 const { validReportDelivery } = require('./report-delivery');
 const { invalidateContinuation, continuationForRequest } = require('./continuation-health');
@@ -460,18 +460,8 @@ function causeText(target, cause) {
 function documentationRelief(root, task, state, review) {
   if (!state || ignoresDocumentationPaths(state) || task.kind === 'spec' || review.snapshot?.inventory !== true) return false;
   const changed = changedPaths(root, review.snapshot);
-  if (!changed || !changed.every(isDocumentationPath)) return false;
-  const governing = governingArtifacts([task], [review]);
-  try {
-    const changedKeys = new Set(changed.map(file => fileIdentity(root, file).key));
-    if (governing.some(file => {
-      projectFile(root, file);
-      const identity = fileIdentity(root, file);
-      return !identity.exists || changedKeys.has(identity.key);
-    })) return false;
-  } catch {
-    return false;
-  }
+  // A changed governing artifact, or one whose identity cannot be established, stays counted and withholds the relief.
+  if (!changed || !changed.every(isDocumentationPath) || partitionDocumentationChanges(root, changed, governingArtifacts([task], [review])).counted.length > 0) return false;
   return docsReviewFailure(root, task, state, { closingOnly: task.kind === 'lore' }) === null;
 }
 
@@ -933,7 +923,7 @@ function buildObligationBrief(state, root, options) {
     staleChecks: options.verifyFreshness === false ? 'reconcile at acceptance' : staleChecks(root, state),
     ...(!isReviewContext(state) ? { specReadiness: specReadinessStatus(state, options, task => specAcceptanceStatus(root, task, options)) } : {}),
     finalReconciliationPending: !isReviewContext(state) && state.status === 'running' && active.length === 0,
-    ...(!isReviewContext(state) ? { closing: { ready: closingReady(state), stage: closingStage(state), ...(state.closing?.docs ? { docsReview: closingDocsBrief(state, root, options) } : {}), ...(state.closing?.carriedFindings?.length ? { carriedFindings: state.closing.carriedFindings.map(finding => finding.id), carriedSurfaceVerdicts: findingSurfaceVerdicts(state.closing.carriedFindings) } : {}) } } : {}),
+    ...(!isReviewContext(state) ? { closing: { ready: closingReady(state), stage: closingStage(state), ...(state.closing?.docs ? { docsReview: closingDocsBrief(state, root, options) } : outsideDocumentationBrief(state, root, options)), ...(state.closing?.carriedFindings?.length ? { carriedFindings: state.closing.carriedFindings.map(finding => finding.id), carriedSurfaceVerdicts: findingSurfaceVerdicts(state.closing.carriedFindings) } : {}) } } : {}),
     blockers: active.filter(task => task.blocker).map(task => ({ id: task.id, blocker: task.blocker })),
     workers: state.workers.filter(workerIsActive),
     followups: state.followups.filter(item => item.status !== 'resolved'),
@@ -957,7 +947,8 @@ function findingSurfaceVerdicts(findings) {
 }
 
 // The outside-documentation part of the closing status: present only while the hold is unsettled, or, with freshness verification
-// skipped, wherever the condition is evaluated.
+// skipped, wherever the condition is evaluated. It sits in closing.docsReview while a closing record exists, and directly in closing
+// when a reset left only the carried baseline the hold is still judged against.
 function outsideDocumentationBrief(state, root, options) {
   if (outsideDocumentationBaseline(state) === undefined) return {};
   if (options.verifyFreshness === false) return { outsideDocumentation: 'reconcile at acceptance' };

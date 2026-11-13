@@ -170,8 +170,8 @@
     },
     {
       "path": "internal/runtime/REFERENCE.md",
-      "bytes": 169512,
-      "sha256": "3706ab374840012ea3618edaabb2c0428fe53e40c7158ef150ccbcf589168f51"
+      "bytes": 169962,
+      "sha256": "8278bfe17fc2c5ab845c307701817c8ca638e5d61e5d150c0b1f8bbd04ac5cc9"
     },
     {
       "path": "internal/runtime/acceptance-checkpoint.js",
@@ -255,8 +255,8 @@
     },
     {
       "path": "internal/runtime/evidence.js",
-      "bytes": 19324,
-      "sha256": "06545c075f5ca2117cba29372a5423666c78afdb802e44108402024b1e3ba31a"
+      "bytes": 19483,
+      "sha256": "405d6980a8ab0c5539e521f64e02f22bc655cbed903eb96457ffcfcefd0ba7ab"
     },
     {
       "path": "internal/runtime/finding-scope.js",
@@ -320,8 +320,8 @@
     },
     {
       "path": "internal/runtime/lifecycle.js",
-      "bytes": 115758,
-      "sha256": "52286dbca35492a7c9d3e1e2c33d3f033d532086e4d537d9e573d5fe0e554487"
+      "bytes": 115828,
+      "sha256": "2be1eda79e9716175299069bd2d86d14698126619b37d83d9c6d45d97e684e03"
     },
     {
       "path": "internal/runtime/limits.js",
@@ -405,8 +405,8 @@
     },
     {
       "path": "internal/runtime/relevance.js",
-      "bytes": 8226,
-      "sha256": "dc8994ae1008e92812a9fe0e28719f6b049202520b3d3617ea6702e3e8a21920"
+      "bytes": 9397,
+      "sha256": "8c2e75efb231565c1312c08ec6acfb1dc09b39efb882cdc949b20f8b98d6f8dc"
     },
     {
       "path": "internal/runtime/report-delivery.js",
@@ -420,8 +420,8 @@
     },
     {
       "path": "internal/runtime/review-inputs.js",
-      "bytes": 10924,
-      "sha256": "32af8d489a611cafac5788f84bd45b7438163b1b1458d0141a2a6f95f933ea5a"
+      "bytes": 12660,
+      "sha256": "50d2074ef6f71a6566c2a3d99e5fdca51b084fdb095f14b028f0cf3b1702e842"
     },
     {
       "path": "internal/runtime/review-inventory.js",

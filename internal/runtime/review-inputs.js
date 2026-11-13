@@ -14,7 +14,8 @@ const APPLICATION_ID = 0x4e534943;
 // Optional, content-addressed source evidence for fresh lead originals. SQLite serializes capture/eviction and makes each cache
 // mutation atomic. Entries share an exact manifest digest, have fixed byte/count bounds and evict least recently used entries.
 // Missing, evicted, corrupt or unavailable cache state never erases an assessment or grants relevance: original source is then
-// unavailable and preserving applicability is refused. Status does not read or update this cache. Legacy input folders are read
+// unavailable and preserving applicability is refused. Status only probes this cache read-only, through cached, and never writes it,
+// decodes an entry or waits for a lock. Legacy input folders are read
 // separately and never deleted here. An interrupted cache write rolls back; an orphan after a failed dispatch remains bounded.
 function openCache(root) {
   safeDirectory(root, '.nightshift/runs', true);
@@ -110,6 +111,30 @@ function retain(root, source, snapshot) {
   }
 }
 
+// Whether the cache positively holds a well-sized entry for these original inputs, judged for status without writing, waiting or
+// decoding: the database is opened read-only, and a missing, foreign, busy, locked or unreadable cache reads as not cached. Dispatch
+// still verifies the entry's bytes through load before any relevance relies on it.
+function cached(root, descriptor, snapshot) {
+  let db;
+  try {
+    if (descriptor?.kind !== 'cache-v1' || descriptor.digest !== snapshot?.digest || !Array.isArray(snapshot.files) || snapshot.files.length > LIMITS.files || hash(JSON.stringify(snapshot.files)) !== snapshot.digest) return false;
+    const target = projectFile(root, CACHE_PATH);
+    const existing = fs.statSync(target, { throwIfNoEntry: false });
+    if (!existing?.isFile() || existing.size > MAX_DATABASE_BYTES) return false;
+    // A surviving journal means an unfinished write, which only a writer may roll back.
+    if (fs.existsSync(projectFile(root, CACHE_PATH + '-journal'))) return false;
+    db = new DatabaseSync(target, { readOnly: true });
+    if (db.prepare('PRAGMA application_id').get().application_id !== APPLICATION_ID || db.prepare('PRAGMA user_version').get().user_version !== 1) return false;
+    const row = db.prepare('SELECT length(CAST(body AS BLOB)) AS bytes, checksum FROM inputs WHERE digest=?').get(descriptor.digest);
+    return Boolean(row) && row.bytes > 0 && row.bytes <= LIMITS.entryBytes && /^[a-f0-9]{64}$/.test(row.checksum);
+  } catch {
+    // A cache that cannot be read without writing or waiting is no positive evidence of retained inputs.
+    return false;
+  } finally {
+    db?.close();
+  }
+}
+
 function load(root, descriptor, snapshot, { touch = false } = {}) {
   let db;
   try {
@@ -190,4 +215,4 @@ function restore(root, descriptor, snapshot, destination) {
   });
 }
 
-module.exports = { restoreLegacy, CACHE_PATH, LIMITS, load, restore, retain };
+module.exports = { restoreLegacy, CACHE_PATH, LIMITS, cached, load, restore, retain };

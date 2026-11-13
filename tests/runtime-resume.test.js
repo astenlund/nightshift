@@ -2182,8 +2182,32 @@ test('while the outside-documentation hold is unsettled, a stale code assessment
 
   // Assert
   assert.match(held.next, /^Obtain a fresh cumulative assessment, since an applicability call cannot settle the outside-documentation hold/);
+  // The import that raised the finding reset closing, so status reports the hold judged against the carried baseline directly.
+  const closing = obligationBrief(f.store.read()).closing;
+  assert.equal(closing.docsReview, undefined);
+  assert.deepEqual(closing.outsideDocumentation.changedPaths, ['subject.txt']);
+  assert.match(closing.outsideDocumentation.next, /fresh code assessment on any one of the tasks task/);
   const [target] = f.brief().review.freshTargets;
   assert.deepEqual(target.staleChanges, [{ requestId: lead.receipt.requestId, cause: 'changed-inputs', changedPaths: ['subject.txt'], applicabilityCall: null }]);
   assert.equal(advance.code, 'review-required');
   assert.match(advance.message, /stale on current inputs: obtain a fresh cumulative assessment, since an applicability call cannot settle the outside-documentation hold/);
+});
+
+test('status names the applicability call from a read-only probe that leaves the review-input cache unchanged', async t => {
+  // Arrange
+  const f = fixture(t);
+  const { lead } = await completeWithDocs(f);
+  fs.writeFileSync(path.join(f.root, 'subject.txt'), 'changed after completion\r\n');
+  const file = path.join(f.root, require('../internal/runtime/review-inputs').CACHE_PATH);
+  const before = { bytes: fs.readFileSync(file), modified: fs.statSync(file).mtimeMs };
+
+  // Act
+  const brief = obligationBrief(f.store.read());
+  const refused = await refusalOf(f.act({ action: 'complete' }));
+
+  // Assert
+  assert.match(brief.assessmentApplicability.find(item => item.kind === 'code').next, new RegExp(`^Resume ${lead.receipt.requestId}`));
+  assert.match(refused.message, new RegExp(`way forward: resume ${lead.receipt.requestId}`));
+  assert.deepEqual({ bytes: fs.readFileSync(file), modified: fs.statSync(file).mtimeMs }, before);
+  for (const suffix of ['-journal', '-wal', '-shm']) assert.equal(fs.existsSync(file + suffix), false, suffix);
 });
