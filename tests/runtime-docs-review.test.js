@@ -598,7 +598,7 @@ test('tracking edits need a current closing review even when no task gate depend
   assert.throws(() => lost.act({ action: 'complete' }), { code: 'closing-review-required' });
   lost.act({ action: 'triage', evidence: 'Triage recorded again' });
   assert.equal(lost.store.read().closing.docs.baseline, null);
-  assert.throws(() => lost.act({ action: 'complete' }), { code: 'closing-review-required', message: /fresh cumulative task assessment/ });
+  assert.throws(() => lost.act({ action: 'complete' }), { code: 'closing-review-required', message: /fresh code assessment of the whole inventory/ });
   lost.review('lessons', 'code');
   assert.equal(lost.task('lessons').status, 'complete');
   lost.act({ action: 'triage', evidence: 'Triage recorded after the assessment' });
