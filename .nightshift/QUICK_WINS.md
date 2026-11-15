@@ -603,6 +603,18 @@ Recorded at the user's inbox triage on 2026-11-15 from the maintainer inbox repo
 
 Treat this as low priority. Decide whether a `claim-controller` that could not identify the controller exits nonzero or keeps exit 0, and say in the runtime reference how a failed claim is signalled. Runtime and reference changes ship with a version increase. Tracking does not authorize implementation.
 
+### Tell a relevance reviewer which changed paths its gate ignores
+
+Recorded on 2026-11-15 at the user's decision, from [the evaluation decision in the assessment-applicability report](reports/assessment-applicability-20261104.md#evaluation-decision-2026-11-15) and the maintainer inbox report `2026-11-15-assessment-applicability-claude-exercised-4c9ec3e7.md`. In disco-elysium-companion delivery `4c9ec3e7-cbd5-4d5e-a544-7be74dd8cb2e` on installed 3.3.35, a run with the docs gate, a relevance turn on a code assessment answered `reassess` not for the declared changed paths but because the bug record behind the original assessment's only finding had changed since. That record is a documentation path, which [Documentation paths and the closing condition](specs/documentation-paths-and-closing-conditions.md) leaves out of a code assessment's inputs on such a run, so the answer rested on a change the gate itself ignores; it cost a fresh code assessment, which raised one new minor finding. In the 3.3.36 source, `relevancePrompt` in `internal/runtime/relevance.js` gives the reviewer the changed paths and the current commitments and says nothing about paths the comparison ignores, while directing it to read the current project.
+
+Decide whether a relevance reviewer on a run with the docs gate is told that documentation paths are not inputs of a code assessment, so that a change there is no ground for reassessment, or whether such an answer is wanted because it can surface a real finding, as it did here. Runtime prompt changes ship with a version increase. Tracking does not authorize implementation.
+
+### Name a stale docs review as a fresh target after a docs repair elsewhere or say why not
+
+Recorded on 2026-11-15 at the user's decision, from [the evaluation decision in the assessment-applicability report](reports/assessment-applicability-20261104.md#evaluation-decision-2026-11-15) and the maintainer inbox report `2026-11-15-assessment-applicability-claude-exercised-4c9ec3e7.md`. In disco-elysium-companion delivery `4c9ec3e7-cbd5-4d5e-a544-7be74dd8cb2e` on installed 3.3.35, a docs repair in one task's `.nightshift/BUGS_HISTORY.md` entry made the other task's completed docs review `16b80762` non-current: `docsReviewCurrent` read false while `review.freshTargets` stayed empty, so status named no target for it. The controller inferred the route, issued a relevance call on the docs lineage and got a preserve whose import restored currency. [The runtime reference](../internal/runtime/REFERENCE.md) describes `freshTargets` as naming assessments of a kind the repair batch did not repair, which would leave out a docs review staled by a docs repair, while [Documentation paths and the closing condition](specs/documentation-paths-and-closing-conditions.md) says docs-kind elements carry an applicability call by the same rule; neither the report nor the triage that recorded it traced the code for this case.
+
+Establish from the code whether leaving that docs review out is intended. If it is, say in the reference how a controller finds a docs review that a docs repair on another task staled; if it is not, list it with its applicability call. Runtime and reference changes ship with a version increase. Tracking does not authorize implementation.
+
 ## History
 
 Prior delivered work remains in [QUICK_WINS_HISTORY.md](QUICK_WINS_HISTORY.md).
