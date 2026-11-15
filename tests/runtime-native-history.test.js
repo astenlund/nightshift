@@ -5,7 +5,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { randomUUID } = require('node:crypto');
 const test = require('node:test');
-const { assistantMessages, sourceFiles, sourceRows } = require('../internal/runtime/native-history');
+const { readAssistantMessages } = require('../internal/runtime/native-history');
 
 const scratch = path.resolve(__dirname, '../.tmp/native-history-tests');
 fs.mkdirSync(scratch, { recursive: true });
@@ -46,10 +46,8 @@ function nativeFile(value, overrides = {}) {
   return file;
 }
 
-function readMessages(value, bounds = {}) {
-  const files = sourceFiles(value.profile, value.state);
-  return files.flatMap(file => assistantMessages(sourceRows(file, value.profile, { ...bounds, codex: value.state.controller.host === 'codex' }), value.state));
-}
+const readMessages = (value, bounds) => readAssistantMessages(value.state, value.profile, bounds);
+const UNAVAILABLE = { code: 'native-history-unavailable' };
 
 for (const host of ['claude', 'codex']) {
   test(`${host} native visible assistant output is read with its attribution`, t => {
@@ -92,18 +90,47 @@ for (const variant of ['bom', 'malformed', 'wrong-session']) {
     if (variant === 'wrong-session') fs.writeFileSync(file, JSON.stringify({ type: 'session_meta', payload: { id: randomUUID(), cwd: value.state.root } }) + '\n');
 
     // Act and assert
-    assert.throws(() => readMessages(value), variant === 'malformed' ? SyntaxError : { code: 'native-history-unavailable' });
+    assert.throws(() => readMessages(value), UNAVAILABLE);
   });
 }
 
-test('a missing Claude history yields no candidate file to read', t => {
-  // Arrange
-  const value = fixture(t, 'claude');
+for (const host of ['claude', 'codex']) {
+  test(`${host} missing history is unavailable`, t => {
+    // Arrange
+    const value = fixture(t, host);
 
-  // Act and assert
-  assert.deepEqual(sourceFiles(value.profile, value.state), [path.join(value.profile, 'projects', value.state.root.replace(/[^a-zA-Z0-9]/g, '-'), value.state.controller.session + '.jsonl')]);
-  assert.throws(() => sourceRows(sourceFiles(value.profile, value.state)[0], value.profile), { code: 'ENOENT' });
-});
+    // Act and assert
+    assert.throws(() => readMessages(value), UNAVAILABLE);
+  });
+
+  test(`${host} invalid UTF-8 inside a complete line is unavailable history, in a whole read and in a window read`, t => {
+    // Arrange
+    const whole = fixture(t, host);
+    const wholeFile = nativeFile(whole);
+    fs.appendFileSync(wholeFile, Buffer.concat([Buffer.from('{"type":"filler","pad":"'), Buffer.from([255]), Buffer.from('"}\n')]));
+    const windowed = fixture(t, host);
+    const windowedFile = sizedNativeFile(windowed, { before: 3 * SMALL.windowBytes, after: 512 });
+    fs.appendFileSync(windowedFile, Buffer.concat([Buffer.from('{"type":"filler","pad":"'), Buffer.from([255]), Buffer.from('"}\n')]));
+
+    // Act and assert
+    assert.throws(() => readMessages(whole), UNAVAILABLE);
+    assert.throws(() => readMessages(windowed, SMALL), UNAVAILABLE);
+  });
+
+  test(`${host} reads a message followed by an unfinished final line holding an invalid byte and half-written JSON`, t => {
+    // Arrange
+    const value = fixture(t, host);
+    const file = nativeFile(value);
+    fs.appendFileSync(file, Buffer.concat([Buffer.from('{"type":"assistant","pad":"'), Buffer.from([255])]));
+
+    // Act
+    const messages = readMessages(value);
+
+    // Assert
+    assert.equal(messages.length, 1);
+    assert.equal(messages[0].text, TEXT);
+  });
+}
 
 // Fixture bounds that make a small history stand in for one past the real 64 MiB window.
 const SMALL = { windowBytes: 4096, firstLineBytes: 1024 };

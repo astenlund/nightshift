@@ -195,8 +195,8 @@
     },
     {
       "path": "internal/runtime/cli.js",
-      "bytes": 26650,
-      "sha256": "345deb5231c26a41926e6eb5380b2be7ac89e9afc6bfe74352b4b7d688abf10c"
+      "bytes": 26652,
+      "sha256": "bdeb6a390bf12018fab289a71320b5fd4cf5a7a363ce76604cf3158fb1bb1da0"
     },
     {
       "path": "internal/runtime/close.js",
@@ -335,8 +335,8 @@
     },
     {
       "path": "internal/runtime/native-history.js",
-      "bytes": 8148,
-      "sha256": "f4b3f40aee5e6b6b3e669763762e2ad525d6ffb80e1776538133163e0d6c77b0"
+      "bytes": 9019,
+      "sha256": "ac2dbd68daafeceff8ee6fb7a66f8b4419273715cd1c0b6e44d9f1c8a939e9cb"
     },
     {
       "path": "internal/runtime/native-worker-evidence.js",

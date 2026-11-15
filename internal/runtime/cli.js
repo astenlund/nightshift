@@ -114,7 +114,7 @@ async function execute(root, request, dependencies = {}) {
     if (request.action === 'inspect') return store.read(request.runId);
     // Awaited so the store stays open until the observation finishes; the finally below closes it.
     if (request.action === 'wait') return await awaitWorker(store, request, dependencies);
-    let state = store.read();
+    const state = store.read();
     requireCondition(state, 'missing-state', 'No saved Nightshift run; create or recover the authorized run first');
     requireCondition(request.runId === undefined || request.runId === state.id, 'wrong-run', 'Mutations must name the current active run');
     // A closed record is read-only, so its refusal comes before release routing or ownership could name another cause.

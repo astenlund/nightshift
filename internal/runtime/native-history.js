@@ -144,4 +144,18 @@ function assistantMessages(rows, state) {
   });
 }
 
-module.exports = { assistantMessages, nativeProfile, sourceFiles, sourceRows };
+// The visible assistant messages of the owning session's history in a profile. Every failure to find, read, decode or parse it is
+// unavailable history, never an empty result. bounds overrides the read window and first-line bound, so fixtures can stand in for
+// oversized histories.
+function readAssistantMessages(state, profile, bounds = {}) {
+  try {
+    const files = sourceFiles(profile, state);
+    requireCondition(files.length > 0, 'native-history-unavailable', 'The owning native session history is unavailable');
+    return files.flatMap(file => assistantMessages(sourceRows(file, profile, { ...bounds, codex: state.controller.host === 'codex' }), state));
+  } catch (error) {
+    if (error.code === 'native-history-unavailable') throw error;
+    requireCondition(false, 'native-history-unavailable', 'Cannot read native history: ' + String(error.message).slice(0, 1200));
+  }
+}
+
+module.exports = { nativeProfile, readAssistantMessages };
