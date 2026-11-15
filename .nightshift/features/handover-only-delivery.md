@@ -26,6 +26,8 @@ Create the accepted delivery with its queue, authority, owner, resources, limits
 
 ## The handover acknowledgement
 
+3.3.36 removed the native-history observation of this acknowledgement, its obligation and the acceptance checkpoint, under [Remove the handover acknowledgement obligation](remove-acknowledgement-obligation.md), so the subsections below on observation and the checkpoint are historical; the paragraph itself remains as unchecked guidance.
+
 After durable acceptance and a recorded continuation outcome, immediately show a separate user-facing acknowledgement before further engineering. It states the accepted scope and applicable limits, confirms that handover is accepted and says the user can leave. Publication is mentioned only when already authorized. The message must appear in the host's assistant output, not only in reasoning, a tool receipt or a saved file.
 
 With working continuation, say that the morning report will be waiting in the current owning conversation. With failed continuation, still confirm acceptance and say the user can leave, while disclosing that automatic continuation is unavailable, the failure is recorded for follow-up, and resumption will be necessary if the session stops before delivery. Continue useful work in the current turn. Do not promise automatic recovery from host exit or Windows restart. If ownership, durable acceptance or required authority is unresolved, describe handover as pending and identify the actual blocker.

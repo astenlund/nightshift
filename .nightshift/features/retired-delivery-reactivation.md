@@ -18,4 +18,4 @@ The [legacy delivery migration](legacy-delivery-record-migration.md) keeps retir
 
 ## Open design
 
-Settle whether reactivation is needed, what exact user decision authorizes it, how old certificates remain auditable, whether the same run ID can ever become writable again, and how controller ownership, acknowledgement, independent accounting, unfinished checks, reports and follow-ups would be reconciled. Define interruption recovery and interaction with the creation gate before graduation. No reactivation is part of the legacy retirement feature.
+Settle whether reactivation is needed, what exact user decision authorizes it, how old certificates remain auditable, whether the same run ID can ever become writable again, and how controller ownership, independent accounting, unfinished checks, reports and follow-ups would be reconciled. Define interruption recovery and interaction with the creation gate before graduation. No reactivation is part of the legacy retirement feature.
