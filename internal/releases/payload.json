@@ -335,8 +335,8 @@
     },
     {
       "path": "internal/runtime/native-history.js",
-      "bytes": 9019,
-      "sha256": "ac2dbd68daafeceff8ee6fb7a66f8b4419273715cd1c0b6e44d9f1c8a939e9cb"
+      "bytes": 9510,
+      "sha256": "24ee1c203afe4621263faa37d3983746961818aa487d0dd4070357dab4c5b397"
     },
     {
       "path": "internal/runtime/native-worker-evidence.js",

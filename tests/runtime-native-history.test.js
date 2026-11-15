@@ -5,7 +5,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { randomUUID } = require('node:crypto');
 const test = require('node:test');
-const { readAssistantMessages } = require('../internal/runtime/native-history');
+const { nativeProfile, readAssistantMessages } = require('../internal/runtime/native-history');
 
 const scratch = path.resolve(__dirname, '../.tmp/native-history-tests');
 fs.mkdirSync(scratch, { recursive: true });
@@ -64,6 +64,17 @@ for (const host of ['claude', 'codex']) {
     assert.match(messages[0].hash, /^[a-f0-9]{64}$/);
   });
 }
+
+test('a profile that cannot be resolved is unavailable history', t => {
+  // Arrange
+  const value = fixture(t, 'claude');
+  const saved = process.env.CLAUDE_CONFIG_DIR;
+  process.env.CLAUDE_CONFIG_DIR = path.join(value.profile, 'missing-profile');
+  t.after(() => { if (saved === undefined) delete process.env.CLAUDE_CONFIG_DIR; else process.env.CLAUDE_CONFIG_DIR = saved; });
+
+  // Act and assert
+  assert.throws(() => nativeProfile(value.state), UNAVAILABLE);
+});
 
 test('a Claude thinking block is never read as visible text, alone or beside a text block', t => {
   // Arrange

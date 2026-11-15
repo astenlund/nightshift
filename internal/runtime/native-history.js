@@ -18,7 +18,16 @@ const MAX_ENTRIES = 50000;
 const MAX_FILES = 8;
 const visible = new Set(['commentary', 'final']);
 
-function nativeProfile(state, context) {
+// Runs a read of native history, turning every failure into unavailable history so a caller never sees a raw filesystem, registry,
+// decoding or parsing error.
+function unavailableOnFailure(read) {
+  try { return read(); } catch (error) {
+    if (error.code === 'native-history-unavailable') throw error;
+    requireCondition(false, 'native-history-unavailable', 'Cannot read native history: ' + String(error.message).slice(0, 1200));
+  }
+}
+
+function resolveProfile(state, context) {
   if (!context) return fs.realpathSync.native(process.env[state.controller.host === 'codex' ? 'CODEX_HOME' : 'CLAUDE_CONFIG_DIR'] ?? path.join(os.homedir(), '.' + state.controller.host));
   const { Registry } = require('../releases/registry');
   const registry = new Registry(context.store);
@@ -29,8 +38,11 @@ function nativeProfile(state, context) {
   } finally { registry.close(); }
 }
 
+// The owning session's host profile: the admitted registration's with a resource context, otherwise the host's own environment.
+const nativeProfile = (state, context) => unavailableOnFailure(() => resolveProfile(state, context));
+
 function sourceFiles(profile, state) {
-  requireCondition(UUID.test(state.controller.session), 'native-history-unavailable', 'The native history observer requires a supported native UUID session');
+  requireCondition(UUID.test(state.controller.session), 'native-history-unavailable', 'The native history reader requires a supported native UUID session');
   if (state.controller.host === 'claude') {
     const slug = state.root.replace(/[^a-zA-Z0-9]/g, '-');
     return [path.join(profile, 'projects', slug, state.controller.session + '.jsonl')];
@@ -148,14 +160,11 @@ function assistantMessages(rows, state) {
 // unavailable history, never an empty result. bounds overrides the read window and first-line bound, so fixtures can stand in for
 // oversized histories.
 function readAssistantMessages(state, profile, bounds = {}) {
-  try {
+  return unavailableOnFailure(() => {
     const files = sourceFiles(profile, state);
     requireCondition(files.length > 0, 'native-history-unavailable', 'The owning native session history is unavailable');
     return files.flatMap(file => assistantMessages(sourceRows(file, profile, { ...bounds, codex: state.controller.host === 'codex' }), state));
-  } catch (error) {
-    if (error.code === 'native-history-unavailable') throw error;
-    requireCondition(false, 'native-history-unavailable', 'Cannot read native history: ' + String(error.message).slice(0, 1200));
-  }
+  });
 }
 
 module.exports = { nativeProfile, readAssistantMessages };
