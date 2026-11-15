@@ -3,10 +3,11 @@ name: retired-delivery-reactivation
 description: Explore an explicit recovery path for retired legacy delivery work while retaining its retirement history and obligations
 metadata:
   type: feature
-status: exploring
 ---
 
 # Reactivate retired delivery records
+
+Retired on 2026-11-15 without shipping, as [its history entry](../FEATURES_HISTORY.md) records: the user's decision of 2026-11-09 in [Cut store v4 and reduce the release system](store-v4-cut.md#decisions), that a run settled in a store older than v4 does not reopen across the cut, settles the question the other way. The text below is the draft as it stood, kept as a historical design record.
 
 ## Origin
 
