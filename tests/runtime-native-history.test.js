@@ -65,6 +65,23 @@ for (const host of ['claude', 'codex']) {
   });
 }
 
+test('a Claude thinking block is never read as visible text, alone or beside a text block', t => {
+  // Arrange
+  const thinking = 'Fixture text held only in a thinking block.';
+  const alone = fixture(t, 'claude');
+  nativeFile(alone, { message: { role: 'assistant', model: 'fixture-model', content: [{ type: 'thinking', thinking }] } });
+  const mixed = fixture(t, 'claude');
+  nativeFile(mixed, { message: { role: 'assistant', model: 'fixture-model', content: [{ type: 'thinking', thinking }, { type: 'text', text: TEXT }] } });
+
+  // Act
+  const aloneTexts = readMessages(alone).map(message => message.text);
+  const mixedTexts = readMessages(mixed).map(message => message.text);
+
+  // Assert
+  assert.equal(aloneTexts.some(text => text.includes(thinking)), false);
+  assert.deepEqual(mixedTexts, [TEXT]);
+});
+
 for (const variant of ['user', 'analysis', 'synthetic', 'sidechain']) {
   test(`native ${variant} output is not read as visible assistant output`, t => {
     // Arrange

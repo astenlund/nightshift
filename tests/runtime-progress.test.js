@@ -366,11 +366,24 @@ test('applicable broad assurance and findings deduplicate generated identities a
   assert.equal(f.read().progress.token, closed);
 });
 
-test('an acknowledgement saved by an earlier release earns no progress credit', t => {
+// An acknowledged credit earned under 3.3.35 is a credit the current facts no longer derive; a credit whose proof was later
+// removed stands in for it.
+test('a credit the current facts no longer derive stays in the frontier through later updates', t => {
+  // Arrange
   const f = fixture(t);
-  const token = f.read().progress.token;
-  f.update(state => { state.acknowledgement = { schema: 1, status: 'observed', runId: state.id, controller: { ...state.controller }, renewalRevision: 0, renewedAt: state.createdAt }; });
-  assert.equal(f.read().progress.token, token);
+  f.update(state => { state.tasks[0].checks.push(pass()); });
+  const derived = state => new Set(achievements(state));
+  const earned = new ProgressStore(f.store).read(f.read()).frontier.credits;
+
+  // Act
+  f.update(state => { state.tasks[0].checks = []; });
+  f.update(() => {});
+
+  // Assert
+  const lost = earned.filter(credit => !derived(f.store.read()).has(credit));
+  const kept = new ProgressStore(f.store).read(f.read()).frontier.credits;
+  assert.ok(lost.length > 0, 'removing the check must leave at least one earned credit underivable');
+  assert.deepEqual(earned.filter(credit => !kept.includes(credit)), []);
 });
 
 test('explicit resume and actual owner transfer progress preserve credited proofs', t => {
