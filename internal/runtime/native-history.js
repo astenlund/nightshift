@@ -6,7 +6,9 @@ const os = require('node:os');
 const { createHash } = require('node:crypto');
 const { requireCondition } = require('./errors');
 const { UUID } = require('./record-ids');
-const { acknowledgementText } = require('./acknowledgement');
+
+// Reads a controller session's native history within fixed bounds. It has no caller in this release: it is kept for verifying the
+// user's reply to an exception briefing, which manual gate bypass owns.
 
 // A history is read whole up to this size and by its final window beyond it, since a long session's history only grows.
 const WINDOW_BYTES = 64 * 1024 * 1024;
@@ -22,13 +24,13 @@ function nativeProfile(state, context) {
   const registry = new Registry(context.store);
   try {
     const registration = registry.get('registration', context.registration);
-    requireCondition(registration?.host === state.controller.host && context.session === state.controller.session, 'acknowledgement-source-unavailable', 'Native history profile does not match the admitted owner');
+    requireCondition(registration?.host === state.controller.host && context.session === state.controller.session, 'native-history-unavailable', 'Native history profile does not match the admitted owner');
     return fs.realpathSync.native(registration.profile);
   } finally { registry.close(); }
 }
 
 function sourceFiles(profile, state) {
-  requireCondition(UUID.test(state.controller.session), 'acknowledgement-source-unavailable', 'The native history observer requires a supported native UUID session');
+  requireCondition(UUID.test(state.controller.session), 'native-history-unavailable', 'The native history observer requires a supported native UUID session');
   if (state.controller.host === 'claude') {
     const slug = state.root.replace(/[^a-zA-Z0-9]/g, '-');
     return [path.join(profile, 'projects', slug, state.controller.session + '.jsonl')];
@@ -39,13 +41,13 @@ function sourceFiles(profile, state) {
   const walk = (folder, depth) => {
     const children = fs.readdirSync(folder, { withFileTypes: true });
     entries += children.length;
-    requireCondition(entries <= MAX_ENTRIES, 'acknowledgement-source-unavailable', 'Native history discovery exceeded its entry bound');
+    requireCondition(entries <= MAX_ENTRIES, 'native-history-unavailable', 'Native history discovery exceeded its entry bound');
     for (const child of children) {
       if (child.isSymbolicLink()) continue;
       const file = path.join(folder, child.name);
       if (child.isDirectory() && depth < 3 && /^\d+$/.test(child.name)) walk(file, depth + 1);
       if (child.isFile() && child.name.startsWith('rollout-') && child.name.endsWith('-' + state.controller.session + '.jsonl')) files.push(file);
-      requireCondition(files.length <= MAX_FILES, 'acknowledgement-source-unavailable', 'Native history has too many candidate files');
+      requireCondition(files.length <= MAX_FILES, 'native-history-unavailable', 'Native history has too many candidate files');
     }
   };
   walk(directory, 0);
@@ -86,13 +88,13 @@ function sourceRows(file, profile, { codex = false, windowBytes = WINDOW_BYTES, 
   const canonical = fs.realpathSync.native(file);
   const relative = path.relative(profile, canonical);
   const stat = fs.lstatSync(file);
-  requireCondition(canonical === file && relative !== '..' && !relative.startsWith('..' + path.sep) && !path.isAbsolute(relative) && stat.isFile() && !stat.isSymbolicLink() && stat.nlink === 1, 'acknowledgement-source-unavailable', 'Native history must be an ordinary file in the selected profile');
+  requireCondition(canonical === file && relative !== '..' && !relative.startsWith('..' + path.sep) && !path.isAbsolute(relative) && stat.isFile() && !stat.isSymbolicLink() && stat.nlink === 1, 'native-history-unavailable', 'Native history must be an ordinary file in the selected profile');
   const descriptor = fs.openSync(file, 'r');
   let lines;
   try {
     const size = fs.fstatSync(descriptor).size;
     const opening = readAt(descriptor, 0, Math.min(3, size));
-    requireCondition(!(opening[0] === 239 && opening[1] === 187 && opening[2] === 191), 'acknowledgement-source-unavailable', 'Native history has an unsupported BOM');
+    requireCondition(!(opening[0] === 239 && opening[1] === 187 && opening[2] === 191), 'native-history-unavailable', 'Native history has an unsupported BOM');
     if (size <= windowBytes) lines = completeLines(readAt(descriptor, 0, size), 0);
     else {
       const start = size - windowBytes;
@@ -102,7 +104,7 @@ function sourceRows(file, profile, { codex = false, windowBytes = WINDOW_BYTES, 
       if (codex) {
         const head = readAt(descriptor, 0, Math.min(firstLineBytes, size));
         const end = head.indexOf(10);
-        requireCondition(end !== -1, 'acknowledgement-source-unavailable', `Native history's first line exceeds its ${firstLineBytes}-byte bound`);
+        requireCondition(end !== -1, 'native-history-unavailable', `Native history's first line exceeds its ${firstLineBytes}-byte bound`);
         // The window always starts after the first line's start, so the first line is never read twice.
         lines.unshift(...completeLines(head.subarray(0, end + 1), 0));
       }
@@ -121,7 +123,7 @@ function assistantMessages(rows, state) {
   const actor = state.controller;
   if (actor.host === 'codex') {
     const metadata = rows.find(item => item.row.type === 'session_meta')?.row.payload;
-    requireCondition(metadata?.id === actor.session && sameProject(metadata.cwd, state.root), 'acknowledgement-source-unavailable', 'Codex history has no matching native session and project attribution');
+    requireCondition(metadata?.id === actor.session && sameProject(metadata.cwd, state.root), 'native-history-unavailable', 'Codex history has no matching native session and project attribution');
   }
   return rows.flatMap(item => {
     const row = item.row;
@@ -142,28 +144,4 @@ function assistantMessages(rows, state) {
   });
 }
 
-// bounds overrides the read window and first-line bound, so fixtures can stand in for oversized histories.
-function readAcknowledgementFromProfile(state, profile, bounds = {}) {
-  try {
-    const files = sourceFiles(profile, state);
-    requireCondition(files.length > 0, 'acknowledgement-source-unavailable', 'The owning native session history is unavailable');
-    const boundary = Math.max(Date.parse(state.acknowledgement.renewedAt), Date.parse(state.acknowledgement.requiredAfter));
-    const failed = state.continuation.verified !== true;
-    for (const file of files) {
-      const rows = sourceRows(file, profile, { ...bounds, codex: state.controller.host === 'codex' });
-      const message = assistantMessages(rows, state).find(message => Date.parse(message.emittedAt) > boundary && acknowledgementText(message.text, failed));
-      if (!message) continue;
-      return { runId: state.id, controller: { ...state.controller }, scopeHash: state.acknowledgement.scopeHash, renewalRevision: state.acknowledgement.renewalRevision, outcomeIdentity: state.acknowledgement.outcomeIdentity, emittedAt: message.emittedAt, observedAt: new Date().toISOString(), text: message.text, failedContinuation: failed, source: { host: state.controller.host, session: state.controller.session, path: file, messageId: message.id, eventSha256: message.hash } };
-    }
-    return null;
-  } catch (error) {
-    requireCondition(false, 'acknowledgement-source-unavailable', 'Cannot establish native acknowledgement output: ' + String(error.message).slice(0, 1200));
-  }
-}
-
-function observeAcknowledgement(state, context) {
-  try { return readAcknowledgementFromProfile(state, nativeProfile(state, context)); }
-  catch (error) { requireCondition(false, 'acknowledgement-source-unavailable', 'Cannot establish native acknowledgement output: ' + String(error.message).slice(0, 1200)); }
-}
-
-module.exports = { assistantMessages, observeAcknowledgement, readAcknowledgementFromProfile, sourceFiles, sourceRows };
+module.exports = { assistantMessages, nativeProfile, sourceFiles, sourceRows };

@@ -17,7 +17,7 @@ function specLink(task) {
 }
 
 // Every task some task links in either place. A linked task is internal to the run; an unlinked spec task is one the user agreed in
-// the queue, which the acknowledgement scope covers and which can govern the code tasks over its spec.
+// the queue, which can govern the code tasks over its spec.
 function linkedTaskIds(tasks) {
   return new Set(tasks.flatMap(linkValues));
 }
@@ -309,4 +309,4 @@ function specReadinessStatus(state, options, acceptance) {
   return state.tasks.filter(task => task.kind === 'code' && Object.hasOwn(task.agreement ?? {}, 'spec')).map(task => ({ taskId: task.id, ...specReadiness(state, task, resolved), specAcceptance: acceptance(task) }));
 }
 
-module.exports = { assertHandoverGovernance, linkValues, linkedTaskIds, requireSpecReadiness, resolveGovernance, samePath, specLink, specReadiness, specReadinessStatus, usableSpec };
+module.exports = { assertHandoverGovernance, linkValues, requireSpecReadiness, resolveGovernance, samePath, specLink, specReadiness, specReadinessStatus, usableSpec };

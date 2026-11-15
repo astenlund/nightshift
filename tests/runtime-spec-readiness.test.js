@@ -8,8 +8,8 @@ const { fixtureContinuation } = require('./fixtures/continuation');
 const { fixtureControllerClaim } = require('./fixtures/controller-claim');
 const { fixtureReport } = require('./fixtures/report');
 const { RunStore } = require('../internal/runtime/store');
-const { DIMENSIONS, assertAction, commitmentsFor, historicalDischarge, obligationBrief, transition } = require('../internal/runtime/lifecycle');const { identity } = require('../internal/runtime/applicability');
-const { acknowledged, scopeHash } = require('../internal/runtime/acknowledgement');
+const { DIMENSIONS, assertAction, commitmentsFor, historicalDischarge, obligationBrief, transition } = require('../internal/runtime/lifecycle');
+const { identity } = require('../internal/runtime/applicability');
 const { executeWithFixtureController: execute } = require('./fixtures/controller-claim');
 const { requirementContext } = require('../internal/runtime/progress');
 const { samePath } = require('../internal/runtime/spec-readiness');
@@ -186,13 +186,13 @@ test('add-spec-review records its link beside the agreement, leaving validations
   f.codeReview('code', { findings: [finding('first'), finding('second')] });
   const [first, second] = f.task('code').findings;
   for (const item of [first, second]) f.act({ action: 'validate', taskId: 'code', findingId: item.id, validation: validation(f, item.id) });
-  const scopeBefore = scopeHash(f.store.read());
+  const agreementBefore = structuredClone(f.task('code').agreement);
   f.act({ action: 'add-spec-review', taskId: 'code' });
   const linked = f.task('code');
   assert.equal(linked.specReviewTaskId, 'code-governing-spec');
   assert.equal(Object.hasOwn(linked.agreement, 'specReviewTaskId'), false);
   assert.equal(Object.hasOwn(linked.agreement, 'specReviewed'), false);
-  assert.equal(scopeHash(f.store.read()), scopeBefore);
+  assert.deepEqual(linked.agreement, agreementBefore);
   assert.equal(requirementContext(linked).specTask, 'code-governing-spec');
   assert.equal(obligationBrief(f.store.read()).next.find(item => item.id === 'code').agreement.specReviewTaskId, 'code-governing-spec');
   f.act({ action: 'dispose', taskId: 'code', findingId: first.id, ...DISPOSE });
@@ -502,18 +502,16 @@ test('an amendment reopens a linked spec task while the code task keeps working,
   assert.throws(() => f.act({ action: 'start-task', taskId: 'after' }), { code: 'dependency-blocked' });
 });
 
-test('an amendment on a code task governed by an inferred spec task reopens it and renews the acknowledgement after the change', t => {
+test('an amendment on a code task governed by an inferred spec task reopens it', t => {
   for (const agreement of [{}, { specReviewed: true }]) {
     const f = fixture(t, [specTask('spec'), code('code', agreement)]);
     f.completeSpec('spec');
     f.act({ action: 'start-task', taskId: 'code' });
     f.act({ action: 'block', taskId: 'code', blocker: { kind: 'user-decision', reason: 'Scope changes', recoveryAttempted: 'Asked the user' } });
     f.act({ action: 'unblock', taskId: 'code', evidence: 'User amended the outcome' });
-    const state = f.store.read();
     assert.equal(f.task('spec').status, 'pending');
     assert.equal(f.task('code').agreement.specReviewed, false);
     assert.equal(f.readiness('code').ready, false);
-    assert.equal(state.acknowledgement.scopeHash, scopeHash(state));
   }
 });
 
@@ -699,19 +697,18 @@ function executed(t, tasks) {
   return { root, store, run, handover: (queue = tasks) => execute(root, handoverRequest(queue), SIMULATED) };
 }
 
-test('on the full execute path a link beside the agreement keeps the acknowledgement current and a later check passes', async t => {
+test('on the full execute path a link beside the agreement lets a later check pass', async t => {
   const f = executed(t, [code('code')]);
   await f.handover();
   await f.run({ action: 'start-task', taskId: 'code' });
   await f.run({ action: 'add-spec-review', taskId: 'code' });
   const state = f.store.read();
   assert.equal(state.tasks[0].specReviewTaskId, 'code-governing-spec');
-  assert.equal(acknowledged(state), true);
   await f.run({ action: 'check', taskId: 'code', check: CHECK });
   assert.equal(f.store.read().tasks[0].checks.at(-1).passed, true);
 });
 
-test('on the full execute path an amendment reopening an inferred spec task renews the acknowledgement, and a later check passes once it is observed', async t => {
+test('on the full execute path an amendment reopening an inferred spec task lets a later check pass', async t => {
   const f = executed(t, [specTask('spec'), code('code')]);
   await f.handover();
   await f.run({ action: 'start-task', taskId: 'code' });
@@ -719,11 +716,8 @@ test('on the full execute path an amendment reopening an inferred spec task rene
   await f.run({ action: 'unblock', taskId: 'code', evidence: 'User amended the outcome', updatedOutcome: 'An amended outcome' });
   let state = f.store.read();
   assert.equal(state.tasks[0].requirementsRevision, state.tasks[1].requirementsRevision);
-  assert.equal(state.acknowledgement.status, 'pending');
-  assert.equal(state.acknowledgement.scopeHash, scopeHash(state));
   await f.run({ action: 'check', taskId: 'code', check: CHECK });
   state = f.store.read();
-  assert.equal(acknowledged(state), true);
   assert.equal(state.tasks[1].checks.at(-1).passed, true);
 });
 

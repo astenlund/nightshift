@@ -383,7 +383,7 @@ test('migration repairs reference definitions, moved relative links and explicit
   assert.equal(fs.readFileSync(path.join(root, '.nightshift/features/a.md'), 'utf8'), '# A\n\n[Settings](../../.claude/settings.json) [Sibling](b.md)\n');
 });
 
-test('a migrated stopped run keeps current paths and original history but refuses engineering without a current acknowledgement', async t => {
+test('a migrated stopped run keeps current paths and original history and admits engineering after resumption', async t => {
   const root = fixture(t);
   write(root, '.claude/specs/design.md', '# Accepted behavior\n');
   const actor = { host: 'codex', session: 'owner' };
@@ -408,10 +408,10 @@ test('a migrated stopped run keeps current paths and original history but refuse
     assert.deepEqual(store.history(store.read().id)[1].state.workers[0].writes, ['.claude/specs']);
     await act({ action: 'resume', authority: 'User-authorized migration resumption' });
     await act({ action: 'continuation', mechanism: fixtureContinuation(actor.host) });
-    // Engineering needs a current acknowledgement obligation, which neither a record from an earlier release nor this
-    // migration's requirements rebind leaves; resumption needs separate recovery outside this setup test.
-    await assert.rejects(act({ action: 'add-spec-review', taskId: 'code' }), { code: 'acknowledgement-obligation-unavailable' });
+    // A record from an earlier release carries no acknowledgement obligation, and engineering needs none after resumption.
+    await act({ action: 'add-spec-review', taskId: 'code' });
     assert.equal(store.read().status, 'running');
+    assert.equal(store.read().tasks[0].specReviewTaskId, 'code-governing-spec');
   } finally { store.close(); }
 });
 

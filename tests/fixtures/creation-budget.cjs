@@ -11,7 +11,6 @@ const { creationAssessment } = require('../../internal/runtime/creation-consiste
 const { execute: migrationExecute } = require('../../internal/runtime/legacy-migration');
 const progress = require('../../internal/runtime/progress');
 const { completeReflection } = require('../fixtures/completion');
-const { fixtureAcknowledgement } = require('../fixtures/acknowledgement');
 const parent = path.resolve(__dirname, '../../.tmp/creation-budget-fixtures');
 fs.mkdirSync(parent, { recursive: true });
 // Report files seeded into the fixture project before any run, so that each completed run's closing baseline, the completion
@@ -20,7 +19,7 @@ const REPORT_FILES = 600;
 let root;
 const actor = { host: 'codex', session: 'f5-controller' };
 const owner = { pid: 12345, created: 'fixture-process', name: 'codex.exe' };
-const dependencies = { nativeOwner: () => owner, ownerAlive: () => true, acknowledgementObserver: fixtureAcknowledgement };
+const dependencies = { nativeOwner: () => owner, ownerAlive: () => true };
 let store;
 function put(value) {
   const body = JSON.stringify(value);

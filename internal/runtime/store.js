@@ -293,7 +293,6 @@ class RunStore {
             health.invalidateContinuation(previous, 'The controller process changed during acceptance recovery; observe native continuation');
           }
           health.observeIntegration(previous, input.integration);
-          require('./acknowledgement').refreshAcknowledgementOutcome(previous);
           previous.revision = revision;
           previous.updatedAt = new Date().toISOString();
           this.save(previous, 'acceptance-reconciled');
@@ -358,7 +357,6 @@ class RunStore {
       const health = require('./continuation-health');
       health.observeIntegration(state, input.integration);
       if (this.kind === 'delivery' && input.mechanism !== undefined) state.continuation = health.continuationForRequest(state, input.mechanism, input.integration);
-      if (this.kind === 'delivery') require('./acknowledgement').renewAcknowledgement(state, state.revision, state.createdAt);
       this.save(state, 'created');
       this.db.prepare('INSERT INTO active VALUES (1, ?) ON CONFLICT(singleton) DO UPDATE SET id=excluded.id').run(state.id);
       return state;
@@ -398,17 +396,12 @@ class RunStore {
       if (!this.integrationRecorded) {
         health.observeIntegration(state, this.integration);
       }
-      const acknowledgement = require('./acknowledgement');
-      acknowledgement.refreshAcknowledgementOutcome(state);
-      if (this.acknowledgementObservation) acknowledgement.recordAcknowledgement(state, this.acknowledgementObservation);
       change(state, this.integration);
-      require('./acknowledgement').refreshAcknowledgementOutcome(state);
       state.revision = next;
       state.updatedAt = new Date().toISOString();
       this.save(state, kind);
       return state;
     });
-    this.acknowledgementObservation = null;
     this.integrationRecorded = true;
 
     return updated;

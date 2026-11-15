@@ -11,7 +11,6 @@ const { RunStore } = require('../internal/runtime/store');
 const { ReviewStore } = require('../internal/runtime/review-store');
 const { DIMENSIONS, assertAction, commitmentsFor, transition } = require('../internal/runtime/lifecycle');
 const { snapshot } = require('../internal/runtime/evidence');
-const { fixtureAcknowledgement } = require('./fixtures/acknowledgement');
 const { completeReflection } = require('./fixtures/completion');
 const { historyText, setHistoryText } = require('./fixtures/history');
 
@@ -19,7 +18,7 @@ const scratch = path.resolve(__dirname, '../.tmp/delivery-tests');
 fs.mkdirSync(scratch, { recursive: true });
 const actor = { host: 'codex', session: 'delivery-controller' };
 const owner = { pid: 12345, created: 'fixture-process', name: 'codex.exe' };
-const dependencies = { nativeOwner: () => owner, ownerAlive: () => true, acknowledgementObserver: fixtureAcknowledgement };
+const dependencies = { nativeOwner: () => owner, ownerAlive: () => true };
 
 function project(t) {
   const root = fs.mkdtempSync(path.join(scratch, 'case-'));
@@ -500,22 +499,43 @@ test('a continuation failure records one follow-up and leaves accepted delivery 
   assert.equal(failed.status, 'running');
   assert.equal(failed.handover.authority, state.authority);
   assert.equal(failed.followups.length, 1);
-  assert.equal(failed.acceptanceCheckpoint.observedContinuation, 'failed');
-  assert.match(failed.acceptanceCheckpoint.requiredNextAssistantOutput, /You can leave/);
-  assert.match(failed.acceptanceCheckpoint.requiredNextAssistantOutput, /before another engineering tool call/i);
+  assert.equal(Object.hasOwn(failed, 'acceptanceCheckpoint'), false);
   const stored = new RunStore(root);
-  try { assert.equal(Object.hasOwn(stored.read(), 'acceptanceCheckpoint'), false); } finally { stored.close(); }
+  try { assert.equal(Object.hasOwn(stored.read(), 'acknowledgement'), false); } finally { stored.close(); }
   const repeated = await execute(root, { action: 'continuation', actor, revision: failed.revision, mechanism }, dependencies);
   assert.equal(repeated.followups.length, 1);
   assert.equal(repeated.followups[0].continuationFailure.occurrences, 2);
+  // Engineering is admitted once the outcome is recorded, with no native history to read and no acknowledgement observed.
   const started = await execute(root, { action: 'start-task', taskId: 'subject', actor, revision: repeated.revision }, dependencies);
   assert.equal(started.next[0].stage, 'implementation');
   assert.equal(Object.hasOwn(started, 'mode'), false);
   const restored = await execute(root, { action: 'continuation', actor, revision: started.revision, mechanism: { verified: true, kind: 'goal', evidence: 'The fixture goal is observed active' } }, dependencies);
   assert.equal(restored.continuation.verified, true);
   assert.equal(restored.followups.length, 1);
-  assert.equal(restored.acceptanceCheckpoint, null);
-  assert.equal(restored.acknowledgement.current, true);
+  assert.equal(Object.hasOwn(restored, 'acceptanceCheckpoint'), false);
+  assert.equal(Object.hasOwn(restored, 'acknowledgement'), false);
+  const status = await execute(root, { action: 'status', actor }, dependencies);
+  assert.equal(Object.hasOwn(status, 'acceptanceCheckpoint'), false);
+  assert.equal(Object.hasOwn(status, 'acknowledgement'), false);
+});
+
+test('a run saved with a pending acknowledgement by an earlier release admits engineering', async t => {
+  const root = project(t);
+  const state = await execute(root, deliveryRequest('handover'), dependencies);
+  const recorded = await execute(root, { action: 'continuation', actor, revision: state.revision, mechanism: { verified: true, kind: 'goal', evidence: 'The fixture goal is observed active' } }, dependencies);
+  const store = new RunStore(root);
+  try {
+    store.transaction(() => {
+      const saved = store.read();
+      saved.acknowledgement = { schema: 1, status: 'pending', runId: saved.id, controller: { ...saved.controller }, scopeHash: '0'.repeat(64), renewalRevision: 0, renewedAt: saved.createdAt, requiredAfter: null };
+      saved.revision++;
+      store.save(saved, 'fixture-earlier-release-acknowledgement');
+    });
+  } finally { store.close(); }
+  const started = await execute(root, { action: 'start-task', taskId: 'subject', actor, revision: recorded.revision + 1 }, dependencies);
+  assert.equal(started.next[0].stage, 'implementation');
+  // The saved field is left in place and ignored.
+  assert.equal((await execute(root, { action: 'inspect' }, dependencies)).acknowledgement.status, 'pending');
 });
 
 test('standalone revision preserves the existing delivery database and its version', async t => {

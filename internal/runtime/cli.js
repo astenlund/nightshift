@@ -21,7 +21,6 @@ const { admitEntry, executionResources, savedResources } = require('../releases/
 const { isReadOnlyAction, isRuntimeAction, unknownActionMessage } = require('./actions');
 const { ADOPTION_PROTOCOL, assertControllerClaim, controllerClaim, forbiddenReviewSessions, observeController } = require('./ownership');
 const { reservedCheck, reservedOperation } = require('./operations');
-const { acceptanceCheckpoint } = require('./acceptance-checkpoint');
 const { continuesRecord, lineageOf, resolveContinuation } = require('./continuation');
 const { information, inspectionFailureDetail } = require('../releases/processes');
 const { LegacyInventory } = require('./legacy-inventory');
@@ -102,14 +101,14 @@ async function execute(root, request, dependencies = {}) {
       const created = store.create({ ...request, resources, resourceMode: resources ? 'bound' : 'development', controllerClaim: controllerClaim(request.controller, observation, 0), docsGate: true, integration: dependencies.resourceContext?.integration });
 
       // The scratch status carries the warning that .tmp is not ignored before any agent writes scratch there.
-      return { ...created, controllerReady: created.status === 'running', scratch: scratchStatus(store.root), acceptanceCheckpoint: acceptanceCheckpoint(created, request.controller, dependencies.resourceContext, dependencies.acknowledgementObserver) };
+      return { ...created, controllerReady: created.status === 'running', scratch: scratchStatus(store.root) };
     }
     if (store.kind === 'review') request = { ...request, runId: store.contextId, taskId: request.taskId ?? REVIEW_TARGET };
     if (request.action === 'status') {
       const state = store.read(request.runId);
       requireCondition(state, 'missing-state', 'No saved Nightshift run');
       const legacyFollowups = legacyFollowupBrief(store);
-      return { ...obligationBrief(state), ...(legacyFollowups ? { legacyFollowups } : {}), acceptanceCheckpoint: acceptanceCheckpoint(state, request.actor, dependencies.resourceContext, dependencies.acknowledgementObserver) };
+      return { ...obligationBrief(state), ...(legacyFollowups ? { legacyFollowups } : {}) };
     }
     if (request.action === 'history') return history(store, request);
     if (request.action === 'inspect') return store.read(request.runId);
@@ -129,17 +128,6 @@ async function execute(root, request, dependencies = {}) {
     else requireCondition(!resources, 'legacy-release-reconciliation', 'A bound runtime cannot silently adopt a legacy or development run');
     requireCondition(state?.controller.session === request.actor?.session && state.controller.host === request.actor?.host && state.revision === request.revision, 'stale-owner', 'Read current state and reconcile the controller identity before changing or dispatching work');
     store.integration = dependencies.resourceContext?.integration;
-    const acknowledgement = require('./acknowledgement');
-    if (acknowledgement.needsAcknowledgement(state, request) && !acknowledgement.acknowledged(state) && store.integration?.usable === false) {
-      const before = acknowledgement.outcomeIdentity(state);
-      const observed = structuredClone(state);
-      require('./continuation-health').observeIntegration(observed, store.integration);
-      if (before !== acknowledgement.outcomeIdentity(observed)) {
-        store.update(request.actor, state.revision, 'continuation', () => {});
-        state = store.read();
-        request = { ...request, revision: state.revision };
-      }
-    }
     require('./continuation-health').observeIntegration(state, store.integration);
     if (store.kind === 'review' && (request.action === 'repair' || request.action === 'dispose' && request.disposition === 'implement')) assertRepairScope(store.root, request.actor, state);
     assertAction(state, request);
@@ -160,7 +148,6 @@ async function execute(root, request, dependencies = {}) {
     }
     const ownerObservation = assertControllerClaim(state, request, dependencies);
     if (store.kind === 'review') store.ownerObservation = ownerObservation;
-    if (acknowledgement.needsAcknowledgement(state, request)) store.acknowledgementObservation = acknowledgement.establishAcknowledgement(state, dependencies.resourceContext, dependencies.acknowledgementObserver);
     if (request.action === 'dispatch') {
       // The runtime resolves a continuation from the run record; a request cannot supply it, which would skip the resume refusals.
       requireCondition(request.review?.continuation === undefined && request.review?.continuationContext === undefined, 'invalid-continuation', 'continuation and continuationContext are resolved by the runtime, not supplied with a request');
@@ -313,8 +300,7 @@ async function execute(root, request, dependencies = {}) {
       prepared = { ...request, reply: { requestId: receipt.requestId, lineage: lineageOf(receipt), session: receipt.session, message: receipt.dialogue.message, positions: receipt.positions, kind: receipt.kind, snapshot: receipt.snapshot, contextSnapshot: receipt.contextSnapshot, commitmentBinding: commitmentBindingFor(receipt.commitments) } };
     }
     const result = store.update(request.actor, request.revision, request.action, (state, integration) => transition(state, prepared, integration));
-    const brief = obligationBrief(result);
-    return ['handover', 'continuation'].includes(request.action) ? { ...brief, acceptanceCheckpoint: acceptanceCheckpoint(result, request.actor, dependencies.resourceContext, dependencies.acknowledgementObserver) } : brief;
+    return obligationBrief(result);
   } finally { store.close(); }
 }
 

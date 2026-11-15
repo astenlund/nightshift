@@ -946,7 +946,7 @@ function buildObligationBrief(state, root, options) {
   return {
     id: state.id, kind: recordKind(state), ...(isReviewContext(state) ? { reviewContextId: state.id } : {}), revision: state.revision, status: state.status, controller: state.controller,
     objective: state.objective, authority: state.authority, limits: state.limits, publication: state.publication, hold: state.hold ?? null,
-    ...(!isReviewContext(state) ? { handover: state.handover ?? null, report: reportStatus(state, root), continuation: state.continuation ?? null, hookIntegration: state.hookIntegration ?? null, ...(state.kind === 'delivery' ? { acknowledgement: { status: state.acknowledgement?.status ?? 'pending', current: require('./acknowledgement').acknowledged(state), renewalRevision: state.acknowledgement?.renewalRevision ?? null, requiredAfter: state.acknowledgement?.requiredAfter ?? null } } : {}) } : {}),
+    ...(!isReviewContext(state) ? { handover: state.handover ?? null, report: reportStatus(state, root), continuation: state.continuation ?? null, hookIntegration: state.hookIntegration ?? null } : {}),
     scratch: options.verifyFreshness === false ? 'reconcile at acceptance' : scratchStatus(root, state.baseSha ?? null),
     resourceMode: state.resourceMode ?? 'legacy', resources: state.resources ?? null,
     executionResources: require('../releases/entry').executionResources(state), ...(!isReviewContext(state) ? { controllerClaim: state.controllerClaim ?? null } : { ownerObservation: state.ownerObservation ?? null }), adoption: state.adoption ?? null,
@@ -1320,8 +1320,6 @@ function transition(state, request, integration = null) {
           spec.stage = 'implementation';
         }
         if (task.agreement.spec && (task.kind === 'code' || !spec)) task.agreement.specReviewed = false;
-        // Renewed after every spec-task change, since the scope hash covers a queued spec task.
-        require('./acknowledgement').renewAcknowledgement(state, state.revision + 1, new Date().toISOString());
       }
       task.blocker = null;
       break;

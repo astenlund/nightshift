@@ -141,7 +141,6 @@ function semanticFacts(state, resolve = value => value) {
     if (!inClosing && (BASIS_KINDS.has(kind) || kind === 'task-stage' && proof === 'complete')) basis.add(credit);
   };
   const proof = value => snapshotIdentity(resolve(value));
-  const subjects = state.tasks.map(task => requirementContext(task, resolve));
   const targets = state.closing?.docs ? [...state.tasks, state.closing.docs] : state.tasks;
   for (const task of targets) {
     inClosing = task.kind === 'closing';
@@ -182,10 +181,6 @@ function semanticFacts(state, resolve = value => value) {
     }
   }
   inClosing = false;
-  const acknowledgement = state.acknowledgement;
-  if (acknowledgement?.status === 'observed' && require('./acknowledgement').acknowledged(state)) {
-    add('acknowledged', { runId: state.id, controller: acknowledgement.controller, scope: subjects, limits: state.limits });
-  }
   const closing = state.closing;
   if (closing?.carriedBaseline) proof(closing.carriedBaseline);
   if (closing?.retrospectiveEvidence) add('retrospective', boundContext(closing.progressBindings?.retrospective, state));

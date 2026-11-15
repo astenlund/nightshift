@@ -15,7 +15,6 @@ const { DIMENSIONS, commitmentsFor, reportNotice, transition } = require('../int
 const { inventorySnapshot, snapshot, verifyCommand } = require('../internal/runtime/evidence');
 const { closingDischargedSince, creationAssessment } = require('../internal/runtime/creation-consistency');
 const { execute: migrationExecute } = require('../internal/runtime/legacy-migration');
-const { fixtureAcknowledgement } = require('./fixtures/acknowledgement');
 const { completeReflection } = require('./fixtures/completion');
 const { dropFacilityProvenance } = require('./fixtures/legacy-provenance');
 const { historyText, rewriteHistory } = require('./fixtures/history');
@@ -29,7 +28,7 @@ test('an unconfirmed morning report holds replacement until any admitted session
   t.after(() => { assert.equal(path.dirname(root), parent); fs.rmSync(root, { recursive: true, force: true }); });
   const owner = { host: 'codex', session: 'report-owner' };
   const successor = { host: 'claude', session: 'report-successor' };
-  const dependencies = { nativeOwner: () => ({ pid: 12345, created: 'isolated-fixture', name: 'codex.exe' }), ownerAlive: () => true, acknowledgementObserver: fixtureAcknowledgement };
+  const dependencies = { nativeOwner: () => ({ pid: 12345, created: 'isolated-fixture', name: 'codex.exe' }), ownerAlive: () => true };
   const handover = controller => ({ action: 'handover', handoverId: randomUUID(), controller, authority: 'Explicit fixture handover', objective: 'Reflect without proposals', mechanism: { verified: true, kind: 'goal', evidence: 'Simulated fixture continuation' }, tasks: [{ id: 'reflection', title: 'Reflection', kind: 'lore', agreement: { source: 'Fixture user', outcome: 'Reflect without instruction proposals' } }] });
   const tables = () => {
     const store = new RunStore(root);
@@ -80,7 +79,7 @@ test('an active worker preserves exact handover replay and blocks a new handover
   // Arrange
   const root = isolatedProject(t, 'active-worker-replay');
   const actor = { host: 'codex', session: 'worker-owner' };
-  const dependencies = { nativeOwner: () => ({ pid: 12345, created: 'isolated-fixture', name: 'codex.exe' }), ownerAlive: () => true, acknowledgementObserver: fixtureAcknowledgement };
+  const dependencies = { nativeOwner: () => ({ pid: 12345, created: 'isolated-fixture', name: 'codex.exe' }), ownerAlive: () => true };
   const request = { action: 'handover', handoverId: randomUUID(), controller: actor, authority: 'Explicit fixture handover', objective: 'Keep this work', mechanism: { verified: true, kind: 'goal', evidence: 'Simulated continuation' }, tasks: [{ id: 'work', title: 'Work', agreement: { source: 'Fixture user', outcome: 'Keep this work' } }] };
   const accepted = await execute(root, request, dependencies);
   const store = new RunStore(root);
@@ -98,7 +97,7 @@ test('an active worker preserves exact handover replay and blocks a new handover
 test('a missing required discharge index row damages modern accounting', async t => {
   const root = isolatedProject(t, 'missing-discharge-index');
   const actor = { host: 'codex', session: 'discharge-owner' };
-  const dependencies = { nativeOwner: () => ({ pid: 12345, created: 'isolated-fixture', name: 'codex.exe' }), ownerAlive: () => true, acknowledgementObserver: fixtureAcknowledgement };
+  const dependencies = { nativeOwner: () => ({ pid: 12345, created: 'isolated-fixture', name: 'codex.exe' }), ownerAlive: () => true };
   await execute(root, { action: 'handover', handoverId: randomUUID(), controller: actor, authority: 'Explicit fixture handover', objective: 'Reflect without proposals', mechanism: { verified: true, kind: 'goal', evidence: 'Simulated continuation' }, tasks: [{ id: 'reflection', title: 'Reflection', kind: 'lore', agreement: { source: 'Fixture user', outcome: 'Reflect without proposals' } }] }, dependencies);
   const completed = await completeReflection(root, actor, execute, dependencies);
   const store = new RunStore(root);
@@ -112,7 +111,7 @@ test('a missing required discharge index row damages modern accounting', async t
 });
 
 const legacyOwner = { host: 'codex', session: 'legacy-owner' };
-const legacyDependencies = { nativeOwner: () => ({ pid: 12345, created: 'isolated-fixture', name: 'codex.exe' }), ownerAlive: () => true, information: pid => ({ found: true, pid, created: 'fixture-helper', name: 'node.exe' }), acknowledgementObserver: fixtureAcknowledgement, runContained: async (_executable, _args, options) => { options.onFinished({ code: 0, descendantsReclaimed: true }); return { code: 0, stdout: 'Simulated passing command', stderr: '', descendantsReclaimed: true }; } };
+const legacyDependencies = { nativeOwner: () => ({ pid: 12345, created: 'isolated-fixture', name: 'codex.exe' }), ownerAlive: () => true, information: pid => ({ found: true, pid, created: 'fixture-helper', name: 'node.exe' }), runContained: async (_executable, _args, options) => { options.onFinished({ code: 0, descendantsReclaimed: true }); return { code: 0, stdout: 'Simulated passing command', stderr: '', descendantsReclaimed: true }; } };
 const reflection = () => ({ action: 'handover', handoverId: randomUUID(), controller: legacyOwner, authority: 'Explicit fixture handover', objective: 'Reflect without proposals', mechanism: { verified: true, kind: 'goal', evidence: 'Simulated fixture continuation' }, tasks: [{ id: 'reflection', title: 'Reflection', kind: 'lore', agreement: { source: 'Fixture user', outcome: 'Reflect without instruction proposals' } }] });
 
 function withStore(root, work) {

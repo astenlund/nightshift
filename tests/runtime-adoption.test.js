@@ -10,7 +10,6 @@ const { execute } = require('../internal/runtime/cli');
 const { RunStore } = require('../internal/runtime/store');
 const { workerTermination } = require('../internal/runtime/ownership');
 const { reservedOperation } = require('../internal/runtime/operations');
-const { fixtureAcknowledgement } = require('./fixtures/acknowledgement');
 
 const scratch = path.resolve(__dirname, '../.tmp/adoption-tests');
 const source = { host: 'codex', session: 'original-owner' };
@@ -24,7 +23,7 @@ async function fixture(t, overrides = {}) {
   let store;
   t.after(() => { store?.close(); assert.equal(path.dirname(root), scratch); fs.rmSync(root, { recursive: true, force: true }); });
   const live = new Set([originalProcess.pid, targetProcess.pid]);
-  const dependencies = { nativeOwner: host => host === 'codex' ? originalProcess : targetProcess, ownerAlive: process => live.has(process.pid), acknowledgementObserver: fixtureAcknowledgement };
+  const dependencies = { nativeOwner: host => host === 'codex' ? originalProcess : targetProcess, ownerAlive: process => live.has(process.pid) };
   const input = { action: 'handover', mechanism: fixtureContinuation(), objective: 'Preserve authorized work through adoption', authority: 'User agreed fixture delivery', controller: source, limits: { maxDispatches: 5 }, tasks: [{ id: 'change', title: 'Change', agreement: { source: 'fixture user', outcome: 'Preserve work' } }], ...overrides };
   const created = await execute(root, input, dependencies);
   store = new RunStore(root);

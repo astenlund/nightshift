@@ -9,7 +9,6 @@ const { DatabaseSync } = require('node:sqlite');
 const test = require('node:test');
 const { execute } = require('../internal/runtime/cli');
 const { overview } = require('../internal/runtime/run-overview');
-const { fixtureAcknowledgement } = require('./fixtures/acknowledgement');
 
 const scratch = path.resolve(__dirname, '../.tmp/run-overview-tests');
 const owner = { host: 'codex', session: 'original-owner' };
@@ -28,7 +27,7 @@ function project(t) {
 async function delivery(t) {
   const root = project(t);
   const live = new Set([ownerProcess.pid]);
-  const dependencies = { nativeOwner: () => ownerProcess, ownerAlive: process => live.has(process.pid), acknowledgementObserver: fixtureAcknowledgement };
+  const dependencies = { nativeOwner: () => ownerProcess, ownerAlive: process => live.has(process.pid) };
   const created = await execute(root, { action: 'handover', mechanism: fixtureContinuation(), objective: 'Report open work in Ready', authority: 'User agreed fixture delivery', controller: owner, limits: { maxDispatches: 5 }, tasks: [{ id: 'change', title: 'Change', agreement: { source: 'fixture user', outcome: 'Report open work' } }] }, dependencies);
   const call = request => execute(root, { actor: owner, revision: readState(root, created.id).revision, ...request }, dependencies);
 

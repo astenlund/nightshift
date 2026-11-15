@@ -11,11 +11,9 @@ const { handleHook } = require('../internal/runtime/hook');
 const { transition } = require('../internal/runtime/lifecycle');
 const { achievements, fingerprint, snapshotIdentity, validateFrontier, captureClosingBinding, reminderHash, MAX_CREDITS } = require('../internal/runtime/progress');
 const { fixtureContinuation } = require('./fixtures/continuation');
-const { fixtureAcknowledgement } = require('./fixtures/acknowledgement');
 const { dropFacilityProvenance } = require('./fixtures/legacy-provenance');
 const { putHistory, rewriteHistory, setHistoryText } = require('./fixtures/history');
 const { DIMENSIONS } = require('../internal/runtime/lifecycle');
-const { renewAcknowledgement } = require('../internal/runtime/acknowledgement');
 
 function fixture(t, options = {}) {
   const parent = path.resolve(__dirname, '../.tmp/progress-tests');
@@ -368,20 +366,11 @@ test('applicable broad assurance and findings deduplicate generated identities a
   assert.equal(f.read().progress.token, closed);
 });
 
-test('acknowledgement capture credits material scope once across outcome renewal', t => {
+test('an acknowledgement saved by an earlier release earns no progress credit', t => {
   const f = fixture(t);
-  f.store.acknowledgementObservation = fixtureAcknowledgement(f.store.read());
-  f.update(() => {});
   const token = f.read().progress.token;
-  f.update(state => renewAcknowledgement(state, state.revision + 1, new Date().toISOString()));
-  f.store.acknowledgementObservation = fixtureAcknowledgement(f.store.read());
-  f.update(() => {});
+  f.update(state => { state.acknowledgement = { schema: 1, status: 'observed', runId: state.id, controller: { ...state.controller }, renewalRevision: 0, renewedAt: state.createdAt }; });
   assert.equal(f.read().progress.token, token);
-  f.update(state => { state.tasks[0].agreement.decisions = ['Authorized material change']; renewAcknowledgement(state, state.revision + 1, new Date().toISOString()); });
-  const changed = f.read().progress.token;
-  f.store.acknowledgementObservation = fixtureAcknowledgement(f.store.read());
-  f.update(() => {});
-  assert.notEqual(f.read().progress.token, changed);
 });
 
 test('explicit resume and actual owner transfer progress preserve credited proofs', t => {

@@ -17,7 +17,6 @@ const { assertAction } = require('../internal/runtime/lifecycle');
 const { handleHook } = require('../internal/runtime/hook');
 const { awaitWorker } = require('../internal/runtime/wait');
 const { assertQuiescent } = require('../internal/setup');
-const { fixtureAcknowledgement } = require('./fixtures/acknowledgement');
 const { fixtureContinuation } = require('./fixtures/continuation');
 
 const scratch = path.resolve(__dirname, '../.tmp/runtime-close');
@@ -30,7 +29,7 @@ function fixture(t) {
   const root = fs.realpathSync.native(fs.mkdtempSync(path.join(scratch, 'case-')));
   t.after(() => { assert.equal(path.dirname(root), scratch); fs.rmSync(root, { recursive: true, force: true }); });
   const live = new Set([ownerProcess.pid]);
-  const dependencies = { nativeOwner: () => ownerProcess, ownerAlive: process => live.has(process?.pid), acknowledgementObserver: fixtureAcknowledgement };
+  const dependencies = { nativeOwner: () => ownerProcess, ownerAlive: process => live.has(process?.pid) };
   const registryRoot = path.join(root, 'registry');
   new Registry(registryRoot, { create: true }).close();
   const context = { store: registryRoot, host: closer.host, session: closer.session };
@@ -350,12 +349,7 @@ test('a closed record refuses every lifecycle action and store write, reports a 
   assert.equal(status.status, 'closed');
   assert.deepEqual(status.next, []);
   assert.equal(status.closure.reason, 'The work is settled');
-  assert.equal(status.acceptanceCheckpoint, null);
-  // From the owner's view, with the acknowledgement still pending, a closed delivery asks for none, while its stopped form would.
-  const { acceptanceCheckpoint } = require('../internal/runtime/acceptance-checkpoint');
-  const pending = { ...state, acknowledgement: undefined };
-  assert.notEqual(acceptanceCheckpoint({ ...pending, status: 'stopped' }, owner, undefined, () => null), null);
-  assert.equal(acceptanceCheckpoint(pending, owner, undefined, () => null), null);
+  assert.equal(Object.hasOwn(status, 'acceptanceCheckpoint'), false);
   assert.throws(() => require('../internal/runtime/ownership').adoptState(state, { actor: closer, previousController: owner, authority: 'Adopt it', runId: state.id, revision: state.revision }, null), { code: 'run-closed' });
 });
 

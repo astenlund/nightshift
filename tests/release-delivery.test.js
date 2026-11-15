@@ -374,10 +374,9 @@ for (const host of ['claude', 'codex']) {
       const state = await call({ action: 'inspect' });
       assert.equal(state.hookIntegration.verified, false);
       assert.equal(state.continuation.verified, host === 'codex');
-      assert.equal(refreshed.acceptanceCheckpoint.observedContinuation, host === 'codex' ? 'available' : 'failed');
+      assert.equal(Object.hasOwn(refreshed, 'acceptanceCheckpoint'), false);
       assert.equal(state.followups.length, 1);
       assert.equal(state.followups[0].continuationFailure.occurrences, 1);
-      assert.equal(state.acknowledgement.requiredAfter, host === 'claude' ? state.continuation.observedAt : accepted.continuation.observedAt);
     });
   }
 }

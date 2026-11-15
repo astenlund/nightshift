@@ -18,7 +18,6 @@ const { creationAssessment } = require('../internal/runtime/creation-consistency
 const { RunStore } = require('../internal/runtime/store');
 const { ProgressStore } = require('../internal/runtime/progress-store');
 const { ProvenanceStore } = require('../internal/runtime/provenance-store');
-const { fixtureAcknowledgement } = require('./fixtures/acknowledgement');
 const { completeReflection } = require('./fixtures/completion');
 const { putHistory } = require('./fixtures/history');
 
@@ -856,7 +855,7 @@ test('an eligible legacy record retires beside damaged modern discharge evidence
   const root = fs.mkdtempSync(path.join(parent, 'mixed-modern-'));
   t.after(() => { assert.equal(path.dirname(root), parent); fs.rmSync(root, { recursive: true, force: true }); });
   const actor = { host: 'codex', session: 'fixture-owner' };
-  const dependencies = { nativeOwner: () => ({ pid: 12345, created: 'isolated-fixture', name: 'codex.exe' }), ownerAlive: () => true, acknowledgementObserver: fixtureAcknowledgement };
+  const dependencies = { nativeOwner: () => ({ pid: 12345, created: 'isolated-fixture', name: 'codex.exe' }), ownerAlive: () => true };
   await runtimeExecute(root, { action: 'handover', handoverId: randomUUID(), controller: actor, authority: 'Explicit fixture handover', objective: 'Reflect without proposals', mechanism: { verified: true, kind: 'goal', evidence: 'Simulated continuation' }, tasks: [{ id: 'reflection', title: 'Reflection', kind: 'lore', agreement: { source: 'Fixture', outcome: 'Reflect without proposals' } }] }, dependencies);
   const modern = await completeReflection(root, actor, runtimeExecute, dependencies);
   const legacyId = randomUUID();

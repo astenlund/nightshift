@@ -3,10 +3,13 @@
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
+const { randomUUID } = require('node:crypto');
 const test = require('node:test');
 const { RunStore } = require('../internal/runtime/store');
 const { handleHook } = require('../internal/runtime/hook');
 const { transition } = require('../internal/runtime/lifecycle');
+const { continuationForRequest } = require('../internal/runtime/continuation-health');
+const { executeWithFixtureController, fixtureControllerClaim } = require('./fixtures/controller-claim');
 
 const actor = { host: 'codex', session: 'continuation-owner' };
 const mechanism = { verified: true, kind: 'goal', evidence: 'Observed active native goal in isolated fixture' };
@@ -160,3 +163,85 @@ test('invalidation of a stopped run preserves the stop and cannot resume it', t 
   assert.deepEqual(f.store.read().stop, stop);
   assert.deepEqual(f.hook(), {});
 });
+
+// A delivery created through handover in its own project, for cases that need acceptance identity or the full execute path.
+function accepted(t) {
+  const parent = path.resolve(__dirname, '../.tmp/continuation-tests');
+  fs.mkdirSync(parent, { recursive: true });
+  const root = fs.mkdtempSync(path.join(parent, 'accepted-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const owner = { host: 'claude', session: randomUUID() };
+  const request = { action: 'handover', controller: owner, authority: 'Explicit fixture handover', objective: 'Continue accepted work', mechanism: { verified: true, kind: 'stop-hook', evidence: 'Simulated native continuation observed' }, tasks: [{ id: 'work', title: 'Work', agreement: { source: 'fixture user', outcome: 'Honor the acceptance boundary' } }] };
+
+  return { root, owner, request };
+}
+
+for (const previous of ['absent', 'failed']) {
+  test(`acceptance replay after ${previous} continuation records the observed failure and admits engineering`, async t => {
+    const value = accepted(t);
+    const input = { ...value.request, handoverId: randomUUID(), controllerClaim: fixtureControllerClaim(value.owner) };
+    delete input.mechanism;
+    const store = new RunStore(value.root, { create: true });
+    try {
+      const original = store.create(input);
+      if (previous === 'failed') store.update(value.owner, original.revision, 'continuation', current => transition(current, { action: 'continuation', mechanism: { verified: false, kind: 'stop-hook', reason: 'Earlier fixture failure' } }));
+      const replayed = store.create({ ...input, integration: { usable: false, cause: 'Changed fixture hook failure during recovery' } });
+      assert.equal(replayed.id, original.id);
+      assert.equal(replayed.continuation.verified, false);
+      await executeWithFixtureController(value.root, { action: 'start-task', actor: value.owner, revision: replayed.revision, taskId: 'work' });
+      assert.equal(store.read().tasks[0].status, 'active');
+    } finally { store.close(); }
+  });
+}
+
+for (const bookkeeping of ['observation-cycle', 'claim', 'acceptance-replay']) {
+  test(`${bookkeeping} preserves the no-progress count across four yields`, t => {
+    const value = accepted(t);
+    const input = { ...value.request, handoverId: randomUUID() };
+    const store = new RunStore(value.root, { create: true });
+    try {
+      store.create(input);
+      const act = request => store.update(value.owner, store.read().revision, request.action, current => transition(current, request));
+      const failure = { action: 'continuation', mechanism: { verified: false, kind: 'stop-hook', operation: 'inspect', reason: 'Unchanged fixture inspection failure' } };
+      act(failure);
+      const responses = [];
+      for (let index = 0; index < 4; index++) {
+        if (bookkeeping === 'observation-cycle') { act({ action: 'invalidate-continuation', reason: 'Refresh before yield' }); act(failure); }
+        else if (bookkeeping === 'claim') store.update(value.owner, store.read().revision, 'claim-controller', current => { current.controllerClaim = { controller: value.owner, process: null, reason: 'Fixture observation', revision: current.revision + 1 }; });
+        else store.create({ ...input, integration: { usable: false, cause: 'Repeated fixture admission failure' } });
+        responses.push(handleHook({ cwd: value.root, session_id: value.owner.session, hook_event_name: 'Stop' }));
+        if (index < 3) assert.equal(store.read().stopRecovery.reminders, index + 1);
+      }
+      assert.equal(responses[3].continue, false);
+      assert.match(responses[3].stopReason, /three reminders/);
+      store.update(value.owner, store.read().revision, 'fixture-substantive-progress', current => { current.tasks[0].status = 'active'; });
+      assert.equal(handleHook({ cwd: value.root, session_id: value.owner.session, hook_event_name: 'Stop' }).decision, 'block');
+      assert.equal(store.read().stopRecovery.reminders, 1);
+    } finally { store.close(); }
+  });
+}
+
+test('an identical admitted and supplied failure is recorded only once at creation', t => {
+  const value = accepted(t);
+  const reason = 'Fixture hook admission is unavailable';
+  const store = new RunStore(value.root, { create: true });
+  try {
+    const state = store.create({ ...value.request, integration: { usable: false, cause: reason }, mechanism: { verified: false, kind: 'stop-hook', operation: 'hook-admission', reason } });
+    assert.equal(state.followups.length, 1);
+    assert.equal(state.followups[0].continuationFailure.occurrences, 1);
+    assert.equal(state.continuation.operation, 'hook-admission');
+  } finally { store.close(); }
+});
+
+for (const status of ['paused', 'stopped', 'limited', 'usageLimited', 'budgetLimited']) {
+  test(`fresh unusable integration cannot reinterpret a ${status} native mechanism`, t => {
+    const value = accepted(t);
+    const store = new RunStore(value.root, { create: true });
+    try {
+      const state = store.create(value.request);
+      const before = structuredClone(state);
+      assert.throws(() => continuationForRequest(state, { verified: false, kind: 'stop-hook', status, reason: 'An authoritative native hold' }, { usable: false, cause: 'Fixture hook admission failure' }), { code: 'continuation-held' });
+      assert.deepEqual(state, before);
+    } finally { store.close(); }
+  });
+}

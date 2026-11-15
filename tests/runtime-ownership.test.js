@@ -9,11 +9,10 @@ const { fork } = require('node:child_process');
 const { execute } = require('../internal/runtime/cli');
 const { RunStore } = require('../internal/runtime/store');
 const { ReviewStore } = require('../internal/runtime/review-store');
-const { fixtureAcknowledgement } = require('./fixtures/acknowledgement');
 const { shortLeaf } = require('./fixtures/short-name');
 
 const parent = path.resolve(__dirname, '../.tmp/ownership-tests');
-const dependencies = { nativeOwner: () => ({ pid: 12345, created: 'fixture-process', name: 'codex.exe' }), ownerAlive: () => true, acknowledgementObserver: fixtureAcknowledgement };
+const dependencies = { nativeOwner: () => ({ pid: 12345, created: 'fixture-process', name: 'codex.exe' }), ownerAlive: () => true };
 fs.mkdirSync(parent, { recursive: true });
 function fixture(t) {
   const root = fs.mkdtempSync(path.join(parent, 'case-'));

@@ -176,7 +176,6 @@ function adoptState(state, request, resources, dependencies = {}) {
   else {
     state.controllerClaim = null;
     state.continuation = null;
-    require('./acknowledgement').renewAcknowledgement(state, state.revision + 1, adoption.observedAt);
   }
   state.stop ??= { kind: 'adopted', reason: 'Ownership adopted; reconcile saved termination evidence and explicitly resume before engineering' };
 }

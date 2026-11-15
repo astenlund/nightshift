@@ -4,7 +4,6 @@ const { isDeepStrictEqual } = require('node:util');
 const { execute } = require('../../internal/runtime/cli');
 const { RunStore } = require('../../internal/runtime/store');
 const { fixtureReport } = require('./report');
-const { fixtureAcknowledgement } = require('./acknowledgement');
 
 function nativeController(host) {
   return { pid: 44001, created: 'fixture-native-controller-incarnation', name: `${host}.exe` };
@@ -31,7 +30,6 @@ function executeWithFixtureController(root, request, overrides = {}) {
     nativeOwner: nativeController,
     ownerAlive: observed => ['claude', 'codex'].some(host => isDeepStrictEqual(observed, nativeController(host))) ? true : null,
     information: pid => ({ found: true, pid, created: `fixture-helper-${pid}`, name: 'node.exe' }),
-    acknowledgementObserver: fixtureAcknowledgement,
     ...overrides,
   });
 }
