@@ -19,10 +19,11 @@ The precondition that `ci.yml` run every deterministic suite was met on 2026-11-
 
 - 2026-11-09, the user: keep the native-history reader and drop only the acknowledgement obligation. VISION.md requires the runtime to verify the user's reply to an exception briefing independently and bind it to the exact briefing, and reading the session history is how that can work without a confirmation code. The code that locates a session's file and reads it within its size bounds stays. What reads the acknowledgement paragraph and gates on it goes. The reader today extracts assistant messages only, so reply verification is new work, owned by [Manual gate bypass on the user's responsibility](manual-gate-bypass.md).
 - WORKFLOW.md's acknowledgement paragraph and the operating brief's counterpart lose the observation and change with this feature.
+- 2026-11-14, the user: the acknowledgement paragraph stays as unchecked model-owned guidance in the handover skill and the operating brief, with no gate, no acceptance checkpoint and no status call required after it. The work is delivered through a Nightshift handover run and ships as 3.3.36.
 
-## Open
+## Shipped
 
-- Whether the acknowledgement paragraph remains as model-owned guidance in the `handover` result or goes with the check.
+3.3.36 removes the obligation, through Nightshift delivery run `13c71d66-35b9-42e8-8eda-4811cd30632f`. Delivery engineering no longer reads native history or waits on the paragraph; the only remaining pre-engineering condition from acceptance is the recorded continuation outcome (`continuation-observation-required`). `acknowledgement.js` and `acceptance-checkpoint.js` are gone, and status and the creation, handover and continuation results no longer carry `acknowledgement` or `acceptanceCheckpoint`. `native-acknowledgement.js` became `native-history.js`, keeping profile resolution, session-file discovery, the bounded strictly decoded reads and assistant-message extraction, with `native-history-unavailable` as its refusal code and no caller in this release. A run saved by an earlier release keeps its `acknowledgement` field, which nothing reads, and progress credits it already earned stay in its frontier. The carried fix below is resolved by the removal, since nothing that survives gates on the paragraph.
 
 ## Carried fixes
 
