@@ -4,7 +4,7 @@ This index owns temporary reporting instructions shipped for new or changed Nigh
 
 ## Reporting
 
-For an active evaluation encountered during authorized work, report an actual observation or an applicable attempt that was blocked, skipped or left unexercised. Do not manufacture an exercise, dispatch models, rerun checks or spend additional budget for reporting. An irrelevant entry needs no report. At revise-lore, check only evaluations relevant to the session and fill evidence gaps without duplicating reports already filed.
+For an active evaluation encountered during authorized work, report an actual observation or an applicable attempt that was blocked, skipped or left unexercised. Where an evaluation's entry narrows what it asks for, the entry governs and nothing outside it needs a report. Do not manufacture an exercise, dispatch models, rerun checks or spend additional budget for reporting. An irrelevant entry needs no report. At revise-lore, check only evaluations relevant to the session and fill evidence gaps without duplicating reports already filed.
 
 Resolve Nightshift's source clone from the maintainer's instructions. Write reports to that clone's `.nightshift/inbox/`, creating the directory if needed, never to an installed cache or another source project's inbox. In Nightshift's self-hosting source clone, the source project and maintainer destination coincide; use that same maintainer inbox. If the clone cannot be located or written, retain the observation in the session's existing evidence and tell the user where it is; do not invent another destination or block independent authorized work.
 
