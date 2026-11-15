@@ -45,8 +45,8 @@
     },
     {
       "path": "internal/field-evaluations.md",
-      "bytes": 6077,
-      "sha256": "ce78f1ec2b311035c9e1edfc13348e32872ecd1f31b8c54ca9216c9849c86563"
+      "bytes": 6442,
+      "sha256": "471fe0c55e65e090bece6067c1592966901650056c115d449f05a26701805fd0"
     },
     {
       "path": "internal/filesystem-primitives.js",
@@ -170,8 +170,8 @@
     },
     {
       "path": "internal/runtime/REFERENCE.md",
-      "bytes": 169547,
-      "sha256": "7b8056449b088804622d9152e3395fd967c22b6205b944edbda05227062ac976"
+      "bytes": 169552,
+      "sha256": "1ebe0928405b1fe71d54fecbbc17575cc4579e2928bd04f8c6144affe61dd675"
     },
     {
       "path": "internal/runtime/actions.js",
@@ -635,8 +635,8 @@
     },
     {
       "path": "skills/revise-lore/SKILL.md",
-      "bytes": 2925,
-      "sha256": "bb057bf2fa1336d09df35a6b0a5b7f6f3603d9a42d78a3ba52d66ee097ee05cf"
+      "bytes": 2955,
+      "sha256": "c84f84b75d6ef5a10aa3705eac13e10b743108c6f21facc2276ac1e84f1d9751"
     },
     {
       "path": "skills/revise-spec/SKILL.md",
