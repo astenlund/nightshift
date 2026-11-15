@@ -585,6 +585,12 @@ Recorded at the user's inbox triage of 2026-11-13 to 14 from the maintainer inbo
 
 Have the runtime record a host's reported usage limit and its reset time, at project or machine scope, skip that candidate until the reset with the skip and the reset named in the dispatch result, and admit it again once the reset has passed. Runtime changes ship with a version increase. Tracking does not authorize implementation.
 
+### Make the turn-ending acknowledgement the default under verified continuation
+
+Recorded at the follow-up triage of delivery `13c71d66-35b9-42e8-8eda-4811cd30632f` on 2026-11-15, at the user's choice, from follow-up `ack-turn-ending-default`, which the docs finding `1c879dbf:instruction-files-routing` (skeptic `ad272f06`) raised. Since 3.3.36 the handover acknowledgement is unchecked guidance: [the handover skill](../skills/handover/SKILL.md) and [the operating brief](../internal/workflow.md) say to write it as ordinary visible text before engineering and permit ending the turn on it only when verified continuation can continue the work. [The closed thinking-block bug record](bugs/handover-acknowledgement-as-thinking.md) shows that on Claude Code a paragraph written just before a tool call was repeatedly stored with no visible text block, so the user did not see it, while ending the turn on it was delivered each time, and the delivering run hit the in-turn failure again at its own acceptance.
+
+In the skill and the brief, make ending the turn on the acknowledgement the default whenever continuation is verified, and write it as its own visible text before the next tool call and keep working only when it is not, giving the thinking-storage reason once. Instruction changes ship with a version increase. Tracking does not authorize implementation.
+
 ## History
 
 Prior delivered work remains in [QUICK_WINS_HISTORY.md](QUICK_WINS_HISTORY.md).

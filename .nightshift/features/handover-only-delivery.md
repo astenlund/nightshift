@@ -26,7 +26,7 @@ Create the accepted delivery with its queue, authority, owner, resources, limits
 
 ## The handover acknowledgement
 
-3.3.36 removed the native-history observation of this acknowledgement, its obligation and the acceptance checkpoint, under [Remove the handover acknowledgement obligation](remove-acknowledgement-obligation.md), so the subsections below on observation and the checkpoint are historical; the paragraph itself remains as unchecked guidance.
+Since 3.3.36, under [Remove the handover acknowledgement obligation](remove-acknowledgement-obligation.md), every statement in this record of the acknowledgement's native observation, its obligation and renewal, the acceptance checkpoint, the acknowledgement progress credit and the checkpoint's reminder exemption is historical, wherever in the record it appears; the paragraph itself remains as unchecked guidance.
 
 After durable acceptance and a recorded continuation outcome, immediately show a separate user-facing acknowledgement before further engineering. It states the accepted scope and applicable limits, confirms that handover is accepted and says the user can leave. Publication is mentioned only when already authorized. The message must appear in the host's assistant output, not only in reasoning, a tool receipt or a saved file.
 
