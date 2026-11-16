@@ -204,6 +204,11 @@
       "sha256": "8abea222f9c34cf7a297c59f6fbc81217cf56cf6818d491cb3e3b9e9a333f337"
     },
     {
+      "path": "internal/runtime/closing-hold.js",
+      "bytes": 16025,
+      "sha256": "22d2b98889f8799ec243ed52461672fd2b2921f5dbced0da4938b4cb52f38747"
+    },
+    {
       "path": "internal/runtime/continuation-health.js",
       "bytes": 7683,
       "sha256": "531936889aaeadeca9801d62c84552958d434e0e05ce390bea66a6adb06e5ff5"
@@ -310,8 +315,8 @@
     },
     {
       "path": "internal/runtime/lifecycle.js",
-      "bytes": 119336,
-      "sha256": "56c927200ce8439ae8315aec9610ea20ceea282b494030e9ffbb749b0ca20d7b"
+      "bytes": 105629,
+      "sha256": "657a35900984221b3af80b9d3ea86ec90464f2b368a3aa9401a86d2092b53fde"
     },
     {
       "path": "internal/runtime/limits.js",
@@ -441,7 +446,7 @@
     {
       "path": "internal/runtime/spec-readiness.js",
       "bytes": 19100,
-      "sha256": "81b7b109ff84334c9c64e57269b47a99c4de8e391cb6b5bb51cd3cd72e704a35"
+      "sha256": "5183bf14906a80cfd70e99aa3d00cc8508f9520de62ff4640f1d1ef80cb380c0"
     },
     {
       "path": "internal/runtime/statuses.js",

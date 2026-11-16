@@ -245,9 +245,9 @@ function specTaskReadiness(state, spec, task, resolved) {
       : ['reassess', 'unresolved'].includes(condition.status) ? `the applicability call on ${spec.id} answered ${condition.status}${changed}`
         : `the assessment comparison of ${spec.id} failed structurally (${condition.status})`;
 
-    const staleNext = ['pending', 'reassess', 'unresolved'].includes(condition.status) && !condition.missingPaths ? lifecycle.staleWayForward(root, state, spec, entry) : null;
+    const staleNext = ['pending', 'reassess', 'unresolved'].includes(condition.status) && !condition.missingPaths ? require('./closing-hold').staleWayForwardSentence(root, state, spec, entry) : null;
 
-    return unready(spec.id, cause, staleNext ? capitalized(staleNext) : condition.next ?? freshAssessment);
+    return unready(spec.id, cause, staleNext ?? condition.next ?? freshAssessment);
   }
   const own = spec.findings.filter(finding => lifecycle.findingKind(finding, spec) === 'spec');
   const raised = state.tasks.flatMap(owner => owner.findings).filter(finding => finding.reviewRevision === review.revision);
