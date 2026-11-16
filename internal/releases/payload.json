@@ -1,17 +1,17 @@
 {
   "schema": 1,
   "name": "nightshift",
-  "version": "3.3.39",
+  "version": "3.3.40",
   "files": [
     {
       "path": ".claude-plugin/plugin.json",
       "bytes": 641,
-      "sha256": "73ca990e987b5e06d4905b71f3c10527dcace5a2a86fe69c4c5b66c38faade3e"
+      "sha256": "c237c56629145c473a8be3610be6daddccc19630a170f007b5be2ee3069d017a"
     },
     {
       "path": ".codex-plugin/plugin.json",
       "bytes": 1161,
-      "sha256": "9499eb362035c8b3dcb81d1520f9ac9c2d852e9a20182e0997edc6f1d5745c9d"
+      "sha256": "6785f08dc446c03a5ef4087736b03ac38d44b823820b4f0d6b518b9ee9c47973"
     },
     {
       "path": "LICENSE",
@@ -550,8 +550,8 @@
     },
     {
       "path": "internal/workflow.md",
-      "bytes": 42297,
-      "sha256": "0ad2f7c1d11f901b27789fb408b4a2e3d8e342d7fb6343d6452b2a19b241b65a"
+      "bytes": 43201,
+      "sha256": "2923d172c7483965310c16d8b8e8c34010ed10848ad2538f9d14a0036cce742f"
     },
     {
       "path": "skills/exploring/SKILL.md",
@@ -560,8 +560,8 @@
     },
     {
       "path": "skills/handover/SKILL.md",
-      "bytes": 9368,
-      "sha256": "70953b27c8a8e3a8877b1a53616f6914c477d82f1e0cde605d04cff22441f7a4"
+      "bytes": 9693,
+      "sha256": "baf9d28899271991a12aefdf7db6e98deff4ed97260f07540f3430f49e960797"
     },
     {
       "path": "skills/init-backlog/SKILL.md",
