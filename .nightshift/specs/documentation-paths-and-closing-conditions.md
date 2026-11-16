@@ -8,7 +8,7 @@ This covers the rest of part one and all of part four of step 3 in [the assessme
 - **Part one (rest):** retire the documentation relief and settle applicability at the final gate.
 - **Part four:** the closing record imports a closing review whatever changed since triage, and `complete` holds on the non-documentation changes.
 
-[Assessment change conditions](assessment-change-conditions.md) is the design context, and [Spec readiness as a condition](spec-readiness-conditions.md) is the sibling part this follows. Until [the recorded-decision operation](../features/manual-gate-bypass.md) ships as part six, no hold here is settled by the user's decision alone. Where commitment 4 names the user's decision as the way forward, the runtime offers only the existing `hold`, `stop` and administrative `close`.
+[Assessment change conditions](assessment-change-conditions.md) is the design context, and [Spec readiness as a condition](spec-readiness-conditions.md) is the sibling part this follows. Until [the recorded-decision operation](recorded-decisions.md) ships as part six, no hold here is settled by the user's decision alone. Where commitment 4 names the user's decision as the way forward, the runtime offers only the existing `hold`, `stop` and administrative `close`.
 
 ## Commitments
 
