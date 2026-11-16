@@ -172,11 +172,11 @@ function assertHandoverGovernance(root, tasks) {
 const READY = specTaskId => ({ ready: true, specTaskId, cause: null, next: null });
 const unready = (specTaskId, cause, next) => ({ ready: false, specTaskId, cause, next });
 
-// The way forward for a cause no runtime operation repairs, until the recorded-decision operation ships.
+// The way forward for a cause no runtime operation repairs; a recorded decision settles only the closing hold, never such a cause.
 function userDecision(task) {
   const block = task.status === 'complete' ? '' : `block ${task.id} with kind user-decision, so the run pauses on that decision through the existing blocker, whose later unblock is a material amendment; `;
 
-  return `ask the user to decide on the run: ${block}until the recorded-decision operation ships, the controller can also hold, stop, or close the run administratively once stopped`;
+  return `ask the user to decide on the run: ${block}record-decision does not settle this cause, so the controller can also hold, stop, or close the run administratively once stopped`;
 }
 
 function capitalized(sentence) {

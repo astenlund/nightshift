@@ -20,7 +20,7 @@ const { validReportDelivery } = require('./report-delivery');
 const { invalidateContinuation, continuationForRequest } = require('./continuation-health');
 const { currencyRefusal, receiptCurrency, recordedSurfaces, savedSurfaces, scopeOf, surfaceVerdicts, validateSurfaceAnswers } = require('./finding-scope');
 const { linkValues, requireSpecReadiness, resolveGovernance, specLink, specReadinessStatus, usableSpec } = require('./spec-readiness');
-const { applicabilityCall, outsideDocumentationBrief, outsideDocumentationHold, outsideDocumentationRefusal, staleWayForward, staleWayForwardSentence } = require('./closing-hold');
+const { DECISION_KIND, applicabilityCall, codeCarriers, decidedCoveragePaths, decidedSnapshotPaths, decisionHoldsBaseline, decisionList, decisionStatus, holdRoute, listedPaths, outsideDocumentationBrief, outsideDocumentationHold, outsideDocumentationNext, outsideDocumentationRefusal, staleWayForward, staleWayForwardSentence } = require('./closing-hold');
 
 const DIMENSIONS = Object.freeze({
   spec: ['intent-scope-acceptance', 'soundness-integration', 'failure-safety-recovery', 'clarity-consistency-proportionality'],
@@ -60,7 +60,8 @@ function sameClosingRecord(record, pinned, origin) {
 }
 
 // The project inventory at triage, against which the changes since triage are judged: documentation changes need a closing review, and
-// changes outside the documentation paths hold completion until a fresh task assessment covers them. An empty inventory is an
+// changes outside the documentation paths hold completion until a fresh task assessment covers them or, where none can, the user's
+// recorded decision settles them. An empty inventory is an
 // empty baseline. When Git cannot inventory the project, only a project positively outside Git gets a baseline, read from its
 // documentation files on disk, so completion can still tell whether tracking edits followed; otherwise null, which fails closed.
 function triageBaseline(root, state) {
@@ -517,14 +518,29 @@ const CLOSING_COVERAGE = Object.freeze({
   'no-baseline': 'The changes since triage cannot be established; obtain a fresh code assessment of the whole inventory, then record triage again once Git can inspect the project',
 });
 
+// Whether a stored baseline passes its own checks, its inventory flag and digest, in a project inside Git, so that only the comparison
+// against it failed. A baseline outside Git holds documentation files only and is never such a baseline.
+function comparableGitBaseline(baseline) {
+  return Boolean(baseline) && !baseline.backlogOnly && baseline.inventory === true && Array.isArray(baseline.files) && hash(JSON.stringify(baseline.files)) === baseline.digest;
+}
+
+// The text of a closing-coverage cause for this run, given the baseline the cause was computed against. On a run of only spec tasks no
+// task can carry the code assessment the no-baseline recovery names, so there that cause names the user's decision instead, which no
+// recorded decision settles; a valid stored baseline whose comparison failed also stands until the comparison can be made.
+function closingCoverageText(state, key, baseline) {
+  if (key !== 'no-baseline' || codeCarriers(state).length > 0) return CLOSING_COVERAGE[key];
+  const stands = comparableGitBaseline(baseline) ? ' The recorded baseline stands until the comparison can be made.' : '';
+  return `The changes since triage cannot be established, and no task of this run, all of them spec tasks, can carry the code assessment that would re-establish them, so this needs the user's decision: hold, stop or the administrative close.${stands}`;
+}
+
 function latestClosingReview(record, state) {
   return latestReview(record.reviews.filter(review => !review.relevance).map(review => ({ review })), state)?.review;
 }
 
 // Why completion lacks closing coverage, as a CLOSING_COVERAGE key, or null when it holds. Anything changed since triage needs a
 // current resolved closing review, whether or not a task gate depends on it; on a complete run, where no task assessment can be
-// dispatched, a change outside the documentation paths is never covered, while an unfinished run holds such a change with the
-// outside-documentation hold instead. A baseline read from disk belongs to a project outside Git, where no review can be dispatched,
+// dispatched, a change outside the documentation paths is covered only where a decision recorded before completion settles it, while
+// an unfinished run holds such a change with the outside-documentation hold instead. A baseline read from disk belongs to a project outside Git, where no review can be dispatched,
 // so any documentation change there fails closed; a missing or unreadable baseline fails closed too.
 function closingCoverageFailure(root, state) {
   const record = state.closing?.docs;
@@ -539,13 +555,16 @@ function closingCoverageFailure(root, state) {
   if (changed.length === 0) return null;
   const latest = latestClosingReview(record, state);
   const excluded = new Set(latest?.contextSnapshot?.excludedPaths ?? []);
-  if (state.status === 'complete' && changed.some(file => !excluded.has(file) && !isDocumentationPath(file))) return 'unreviewed';
+  // A decision recorded before completion keeps settling its paths after it.
+  const decided = state.status === 'complete' ? decidedCoveragePaths(root, state) : new Set();
+  if (state.status === 'complete' && changed.some(file => !excluded.has(file) && !decided.has(file) && !isDocumentationPath(file))) return 'unreviewed';
   return latest && closingAssessmentCurrent(root, state, latest) && closingRecordFailure(root, state) === null ? null : 'unreviewed';
 }
 
 // The baseline a triage records. An earlier baseline of the run stands while the changes since it lack independent review, so
 // recording triage again, even after something cleared the closing record, never absorbs unreviewed tracking edits. It also stands
-// while the outside-documentation hold is unsettled, so no review that cannot settle it absorbs changes outside the documentation paths.
+// while the outside-documentation hold is unsettled, so no review that cannot settle it absorbs changes outside the documentation paths,
+// and while a recorded decision settles a path of that set, so no baseline absorbs paths only the user settled.
 // Otherwise those changes are reviewed once a current resolved closing review covers them, or once a complete cumulative task assessment
 // is fresh against the whole inventory, every path compared. The first triage, with no earlier closing record or carried baseline, takes
 // the inventory. A missing earlier baseline, which fails closed, stays missing unless a complete, fresh code assessment of a task, covering
@@ -566,6 +585,8 @@ function nextTriageBaseline(root, state) {
   const codeReviewed = () => reviewedBy((task, review) => task.kind !== 'spec' && reviewKind(review, task) === 'code' && coversDimensions(review, 'code'));
   if (!earlier) return codeReviewed() ? triageBaseline(root, state) : null;
   if (outsideDocumentationHold(root, state)) return earlier;
+  // Paths only the user's recorded decision settles stay against the earlier baseline, so the decision keeps applying and showing.
+  if (decisionHoldsBaseline(root, state)) return earlier;
   const closingReviewed = Boolean(state.closing.docs) && closingCoverageFailure(root, state) === null;
   return closingReviewed || taskReviewed() ? triageBaseline(root, state) : earlier;
 }
@@ -742,6 +763,8 @@ function closedBrief(state) {
     id: state.id, kind: recordKind(state), ...(isReviewContext(state) ? { reviewContextId: state.id } : {}), revision: state.revision, status: state.status, controller: state.controller,
     objective: state.objective, authority: state.authority, stop: state.stop ?? null, hold: state.hold ?? null, closure: state.closure ?? null,
     resourceMode: state.resourceMode ?? 'legacy', resources: state.resources ?? null, executionResources: require('../releases/entry').executionResources(state),
+    // The closed record still shows what the user settled, each decision reading closed.
+    ...(!isReviewContext(state) ? { userDecisions: decisionStatus(state.root, state) } : {}),
     next: [], blockers: [], workers: [], followups: [],
     rules: 'This record is closed: the user dropped its remaining obligations through the administrative close action. It is read-only; nothing further is due.',
   };
@@ -799,13 +822,14 @@ function buildObligationBrief(state, root, options) {
     staleChecks: options.verifyFreshness === false ? 'reconcile at acceptance' : staleChecks(root, state),
     ...(!isReviewContext(state) ? { specReadiness: specReadinessStatus(state, options, task => specAcceptanceStatus(root, task, options)) } : {}),
     finalReconciliationPending: !isReviewContext(state) && state.status === 'running' && active.length === 0,
+    ...(!isReviewContext(state) ? { userDecisions: decisionStatus(root, state, options) } : {}),
     ...(!isReviewContext(state) ? { closing: { ready: closingReady(state), stage: closingStage(state), ...(state.closing?.docs ? { docsReview: closingDocsBrief(state, root, options) } : outsideDocumentationBrief(state, root, options)), ...(state.closing?.carriedFindings?.length ? { carriedFindings: state.closing.carriedFindings.map(finding => finding.id), carriedSurfaceVerdicts: findingSurfaceVerdicts(state.closing.carriedFindings) } : {}) } } : {}),
     blockers: active.filter(task => task.blocker).map(task => ({ id: task.id, blocker: task.blocker })),
     workers: state.workers.filter(workerIsActive),
     followups: state.followups.filter(item => item.status !== 'resolved'),
     rules: isReviewContext(state)
       ? `This is standalone revision, not a delivery run. Preserve attributed independent assessment, skeptical validation, dispositions, repair closure, freshness, owner identity and resources. ${REPAIR_RULE} No delivery closing, continuation, retrospective or triage is required. Report pending follow-ups and actual limits. Publication requires separate authority.`
-      : `Continue authorized independent work and recovery. Every repair needs cumulative strong broad review: resume the reviewer that raised each repaired finding to record its closure, and pass a gate only on a fresh assessment. ${REPAIR_RULE} Validate every finding with a fresh skeptic before disposition. Preserve writer ownership. Update documentation and obtain its independent docs review, then retrospective, then follow-up triage; a handed-over run records its morning report before triage. Tracking edits after triage need a closing docs review (task ${CLOSING_TARGET}) before completion; edits outside the documentation paths after triage also hold completion until a fresh task assessment covers them or they are reverted. Missing or stale evidence is incomplete. Publication requires authority. Reconcile this record with actual files after compaction.`,
+      : `Continue authorized independent work and recovery. Every repair needs cumulative strong broad review: resume the reviewer that raised each repaired finding to record its closure, and pass a gate only on a fresh assessment. ${REPAIR_RULE} Validate every finding with a fresh skeptic before disposition. Preserve writer ownership. Update documentation and obtain its independent docs review, then retrospective, then follow-up triage; a handed-over run records its morning report before triage. Tracking edits after triage need a closing docs review (task ${CLOSING_TARGET}) before completion; edits outside the documentation paths after triage also hold completion until a fresh task assessment covers them, they are reverted or, where no task assessment can settle them, the user decides and record-decision records that decision. Missing or stale evidence is incomplete. Publication requires authority. Reconcile this record with actual files after compaction.`,
   };
 }
 
@@ -853,9 +877,10 @@ function assertClosingAction(state, request) {
 
 // Why a closing review cannot be imported, or null. Its difference from the triage baseline must be established with well-formed
 // selected-only provenance. On a complete run, where no task assessment can be dispatched, each changed path since the baseline, apart
-// from user-owned files the review excluded, must also be a documentation path; an unfinished run admits any change, which the
-// outside-documentation hold then holds until a fresh task assessment covers it or it is reverted.
-function closingScopeFailure(record, review, confineToDocumentation) {
+// from user-owned files the review excluded and paths a decision recorded before completion settles in the review's own snapshot, must
+// also be a documentation path; an unfinished run admits any change, which the outside-documentation hold then holds until a fresh task
+// assessment covers it, the user's recorded decision settles it where no task assessment can, or it is reverted.
+function closingScopeFailure(record, review, confineToDocumentation, state) {
   if (!record.baseline) return 'This closing record has no triage baseline, so a closing review cannot establish that only documentation paths changed';
   const excluded = new Set(review.contextSnapshot?.excludedPaths ?? []);
   const changed = require('./applicability').snapshotChanges(record.baseline, review.contextSnapshot ?? review.snapshot);
@@ -868,18 +893,20 @@ function closingScopeFailure(record, review, confineToDocumentation) {
   }
   if (!confineToDocumentation) return null;
   const contextOnly = new Set(selectedOnly ?? []);
-  const outside = changed.filter(file => !excluded.has(file) && !(contextOnly.has(file) && !baselinePaths.has(file)) && !isDocumentationPath(file));
-  return outside.length === 0 ? null : `On a complete run, where no task assessment can be dispatched, a closing review covers edits to the backlog, .nightshift/reports and root Markdown other than host instruction files only; these paths changed outside them since triage: ${outside.slice(0, 20).join(', ')}`;
+  // A path a decision recorded before completion settles, judged by the content the review saw, is not refused.
+  const decided = decidedSnapshotPaths(state, review.contextSnapshot ?? review.snapshot);
+  const outside = changed.filter(file => !excluded.has(file) && !(contextOnly.has(file) && !baselinePaths.has(file)) && !decided.has(file) && !isDocumentationPath(file));
+  return outside.length === 0 ? null : `On a complete run, where no task assessment can be dispatched, a closing review covers edits to the backlog, .nightshift/reports and root Markdown other than host instruction files only; these paths changed outside them since triage: ${listedPaths(outside)}`;
 }
 
 function assertAction(state, request) {
   // First, ahead of the closing-target route and the bookkeeping exemption, so no action reaches a closed record by any path.
   requireCondition(!isClosed(state), 'run-closed', 'This record is closed and read-only; nothing further can change it');
-  if (['handover', 'continuation', 'invalidate-continuation', 'claim-controller', 'add-spec-review', 'retrospective', 'report', 'report-delivered', 'triage'].includes(request.action) || request.taskId === CLOSING_TARGET) requireDelivery(state, request.action);
+  if (['handover', 'continuation', 'invalidate-continuation', 'claim-controller', 'add-spec-review', 'retrospective', 'report', 'report-delivered', 'triage', 'record-decision'].includes(request.action) || request.taskId === CLOSING_TARGET) requireDelivery(state, request.action);
   const taskActions = ['start-task', 'add-spec-review', 'check', 'dispatch', 'probe', 'review', 'validate', 'dialogue', 'dispose', 'repair', 'advance', 'block', 'unblock', 'spec-accepted'];
   if (taskActions.includes(request.action) && request.taskId === CLOSING_TARGET) return assertClosingAction(state, request);
   const task = taskActions.includes(request.action) ? taskById(state, request.taskId) : null;
-  const bookkeeping = ['worker-finished', 'followup', 'resolve-followup', 'resume', 'hold', 'stop', 'block', 'retrospective', 'report', 'report-delivered', 'spec-accepted', 'triage', 'invalidate-continuation'];
+  const bookkeeping = ['worker-finished', 'followup', 'resolve-followup', 'resume', 'hold', 'stop', 'block', 'retrospective', 'report', 'report-delivered', 'spec-accepted', 'triage', 'invalidate-continuation', 'record-decision'];
   requireCondition(state.status === 'running' || bookkeeping.includes(request.action), 'run-stopped', 'The run is stopped; explicit resumption is required before more work');
   if (!bookkeeping.includes(request.action)) {
     requireCondition(!exhaustedLimit(state, { dispatch: request.action === 'dispatch' }), 'resource-limit', exhaustedLimit(state, { dispatch: request.action === 'dispatch' }));
@@ -940,7 +967,7 @@ function transition(state, request, integration = null) {
       const closing = task.kind === 'closing';
       if (closing) review.progressBinding = structuredClone(task.progressBinding);
       if (closing) {
-        const outside = closingScopeFailure(task, review, state.status === 'complete');
+        const outside = closingScopeFailure(task, review, state.status === 'complete', state);
         requireCondition(!outside, 'closing-scope', outside);
       }
       const revision = state.revision + 1;
@@ -1280,6 +1307,30 @@ function transition(state, request, integration = null) {
       worker.evidence = request.evidence;
       break;
     }
+    case 'record-decision': {
+      // Refusals in order: the request's shape, a completed delivery, nothing unsettled, a hold the user's decision cannot settle,
+      // then inputs that changed since the user was briefed. Closed records and review contexts were refused before this.
+      const condition = request.condition;
+      requireCondition(condition && typeof condition === 'object' && condition.kind === DECISION_KIND, 'invalid-request', `record-decision.condition.kind must be ${DECISION_KIND}, the one condition a recorded decision settles`);
+      requireCondition(typeof condition.identity === 'string' && condition.identity.trim().length > 0, 'invalid-request', 'record-decision.condition.identity must be the condition identity status reported for the hold');
+      text(request.authority, 'record-decision.authority');
+      text(request.reason, 'record-decision.reason');
+      requireCondition(state.status !== 'complete', 'no-condition', 'A completed delivery has no settleable condition: the closing hold gates nothing there');
+      const hold = outsideDocumentationHold(state.root, state);
+      requireCondition(hold !== null, 'no-condition', 'No path of the closing hold is unsettled, so there is no condition to decide');
+      // The route and its way forward are computed once; every not-settleable refusal below names that way forward.
+      const route = holdRoute(state.root, state, hold);
+      const next = route.kind === 'decision' ? null : outsideDocumentationNext(state.root, state, hold, route);
+      requireCondition(route.kind !== 'uncomputable', 'not-settleable', `The changes since triage cannot be established, and a recorded decision does not settle that: ${next}`);
+      requireCondition(route.kind !== 'assessment', 'not-settleable', `A task assessment can settle the closing hold, so it needs that evidence rather than a decision: ${next}`);
+      requireCondition(route.kind !== 'unreadable', 'not-settleable', `The hold's paths cannot be read as regular files, so no decision can bind them: ${route.kind === 'unreadable' ? listedPaths(hold.changedPaths) : ''}. ${next}`);
+      const inputs = snapshot(state.root, hold.changedPaths);
+      requireCondition(inputs.digest === condition.identity, 'condition-changed', `The closing hold changed since status reported it; brief the user on its current paths and identity before recording a decision: ${listedPaths(hold.changedPaths)}`);
+      // A stored value that is not a list is never replaced: the write only appends to an absent field or a list.
+      requireCondition(decisionList(state).readable, 'decisions-unreadable', 'The run\'s recorded userDecisions is not a list, so no decision can be added without discarding what it holds; reconcile the record before recording a decision');
+      state.userDecisions = [...decisionList(state).decisions, { id: randomUUID(), condition: { kind: DECISION_KIND, identity: condition.identity }, inputs, authority: request.authority, reason: request.reason, revision: state.revision + 1 }];
+      break;
+    }
     case 'hold':
       text(request.authority, 'hold.authority');
       text(request.reason, 'hold.reason');
@@ -1312,7 +1363,7 @@ function transition(state, request, integration = null) {
       const hold = state.closing?.docs ? outsideDocumentationHold(state.root, state) : null;
       requireCondition(hold === null, 'closing-review-required', hold === null ? '' : outsideDocumentationRefusal(state.root, state, hold));
       const coverage = closingCoverageFailure(state.root, state);
-      requireCondition(coverage === null, 'closing-review-required', CLOSING_COVERAGE[coverage]);
+      requireCondition(coverage === null, 'closing-review-required', coverage === null ? '' : closingCoverageText(state, coverage, state.closing.docs?.baseline));
       // Closing findings already fail the closing record above; this also names task findings and any carried across a reset record.
       const pending = pendingClosures(state).map(finding => finding.id);
       requireCondition(pending.length === 0, 'closure-pending', `Each repaired finding needs closure by the reviewer that raised it or its replacement. Pending: ${pending.join(', ')}`);
@@ -1339,4 +1390,4 @@ function transition(state, request, integration = null) {
   require('./discharge').admittedAction(state, request, dischargeBefore);
 }
 
-module.exports = { causeText, docsCause, reviewGateCause, staleCause, CLOSING_COVERAGE, DIMENSIONS, acceptableAssessment, assertAction, closingStage, commitmentBindingFor, commitmentsFor, completeAssessment, coversDimensions, findingKind, historicalDischarge, isDocumentationPath, latestChecks, latestClosingReview, leadEntry, obligationBrief, reportNotice, reportStatus, requiresReview, reviewGate, reviewGateFailure, reviewKind, reviewProgress, sameClosingRecord, settled, sharesCumulativeAssessment, targetById, taskById, transition, unresolvedFindings };
+module.exports = { causeText, docsCause, reviewGateCause, staleCause, CLOSING_COVERAGE, DIMENSIONS, acceptableAssessment, closingCoverageText, assertAction, closingStage, commitmentBindingFor, commitmentsFor, completeAssessment, coversDimensions, findingKind, historicalDischarge, isDocumentationPath, latestChecks, latestClosingReview, leadEntry, obligationBrief, reportNotice, reportStatus, requiresReview, reviewGate, reviewGateFailure, reviewKind, reviewProgress, sameClosingRecord, settled, sharesCumulativeAssessment, targetById, taskById, transition, unresolvedFindings };

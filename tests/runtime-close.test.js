@@ -166,6 +166,7 @@ test('a stopped delivery closes with one close revision, an approval artifact an
   const created = await delivery(f);
   await f.call({ action: 'followup', item: { id: 'later', context: 'Pending decision', recommendation: 'Ask later' } });
   await f.call({ action: 'stop', kind: 'user-stop', reason: 'User paused' });
+  update(f, state => { state.userDecisions = [{ id: 'decision', condition: { kind: 'closing-hold' }, inputs: { files: [{ path: 'src.js', sha256: null }], digest: 'recorded' }, authority: 'User accepted it', reason: 'Fixture', revision: state.revision + 1 }]; });
   const before = readState(f.root, 'delivery', created.id);
   const { manifest, request } = approve(f, [{ store: 'delivery', id: created.id }]);
   assert.equal(manifest.ineligible.length, 0);
@@ -183,6 +184,8 @@ test('a stopped delivery closes with one close revision, an approval artifact an
   assert.deepEqual(after.closure.actor, closer);
   const removed = ['status', 'closure', 'revision', 'updatedAt', 'progress', 'stopRecovery'];
   assert.deepEqual(without(after, removed), without(before, removed));
+  assert.deepEqual(after.userDecisions, before.userDecisions);
+  assert.equal(after.userDecisions.length, 1);
   const entries = historyOf(f.root, 'delivery', created.id);
   assert.equal(entries.filter(entry => entry.kind === 'close').length, 1);
   const db = new DatabaseSync(path.join(f.root, '.nightshift/runs/state.sqlite'), { readOnly: true });

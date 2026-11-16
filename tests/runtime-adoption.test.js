@@ -38,6 +38,7 @@ test('stopped open-chat adoption preserves work and fences the former owner', as
   await f.call({ action: 'followup', item: { id: 'keep', context: 'Preserve pending decision', recommendation: 'Ask later' } });
   await f.call({ action: 'handover', authority: 'User hands over fixture' });
   await f.call({ action: 'stop', kind: 'resource-limit', reason: 'Preserve original stop reason' });
+  f.store.update(source, f.store.read().revision, 'fixture-decision', state => { state.userDecisions = [{ id: 'decision', condition: { kind: 'closing-hold' }, inputs: { files: [{ path: 'src.js', sha256: null }], digest: 'recorded' }, authority: 'User accepted it', reason: 'Fixture', revision: state.revision + 1 }]; });
   const before = f.store.read();
   const adopted = await f.adopt();
   const after = f.store.read();
@@ -47,7 +48,8 @@ test('stopped open-chat adoption preserves work and fences the former owner', as
   assert.equal(after.status, 'stopped');
   assert.equal(after.controllerClaim, null);
   assert.equal(after.continuation, null);
-  for (const field of ['tasks', 'followups', 'limits', 'handover', 'stop', 'authority', 'resources', 'publication']) assert.deepEqual(after[field], before[field]);
+  for (const field of ['tasks', 'followups', 'limits', 'handover', 'stop', 'authority', 'resources', 'publication', 'userDecisions']) assert.deepEqual(after[field], before[field]);
+  assert.equal(after.userDecisions.length, 1);
   await assert.rejects(f.call({ action: 'resume', authority: 'Old owner tries to resume' }, source), { code: 'stale-owner' });
   assert.equal((await f.call({ action: 'resume', authority: 'User resumes adopted run' })).controllerReady, true);
   assert.deepEqual(f.store.read().controllerClaim.controller, target);

@@ -4,7 +4,7 @@ const READ_ONLY_ACTIONS = new Set(['status', 'inspect', 'history', 'wait']);
 const RUNTIME_ACTIONS = new Set([
   ...READ_ONLY_ACTIONS, 'open-review', 'adopt', 'claim-controller', 'resume', 'dispatch', 'probe', 'check', 'review', 'validate', 'dialogue',
   'add-spec-review', 'start-task', 'dispose', 'repair', 'advance', 'block', 'unblock', 'spec-accepted', 'retrospective', 'report', 'report-delivered',
-  'triage', 'followup', 'resolve-followup', 'invalidate-continuation', 'continuation', 'handover', 'worker', 'worker-finished', 'hold', 'stop', 'complete',
+  'triage', 'followup', 'resolve-followup', 'invalidate-continuation', 'continuation', 'handover', 'worker', 'worker-finished', 'hold', 'stop', 'record-decision', 'complete',
 ]);
 
 // Tracking edits applied after triage are reviewed by a run-level record, which task operations address by this reserved identity.

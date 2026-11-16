@@ -12,7 +12,7 @@ const { nativeEvidenceRequests, nativeWorkerTermination } = require('./native-wo
 
 const ADOPTION_PROTOCOL = 1;
 // Closing duties survive process replacement and never grant canonical engineering.
-const CLAIM_EXEMPT = new Set(['claim-controller', 'invalidate-continuation', 'resume', 'hold', 'stop', 'block', 'unblock', 'followup', 'resolve-followup', 'worker-finished', 'continuation', 'handover', 'report', 'report-delivered', 'spec-accepted', 'retrospective', 'triage', 'review', 'validate', 'dialogue']);
+const CLAIM_EXEMPT = new Set(['claim-controller', 'invalidate-continuation', 'resume', 'hold', 'stop', 'block', 'unblock', 'followup', 'resolve-followup', 'worker-finished', 'continuation', 'handover', 'report', 'report-delivered', 'spec-accepted', 'retrospective', 'triage', 'review', 'validate', 'dialogue', 'record-decision']);
 
 function identity(value) {
   return value && ['claude', 'codex'].includes(value.host) && typeof value.session === 'string' && value.session.trim().length > 0;

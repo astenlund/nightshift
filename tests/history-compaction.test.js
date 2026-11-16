@@ -33,7 +33,9 @@ function fixture(t, { runs = 2, revisions = KEYFRAME_INTERVAL + 9, status = 'com
     db.prepare("INSERT INTO runs VALUES (?, 0, '{}')").run(id);
     let state;
     for (let revision = 0; revision < revisions; revision++) {
-      state = { schema: 1, kind: 'delivery', id, root, revision, status: revision === revisions - 1 ? status : 'running', controller: { host: 'codex', session: 'fixture-owner' }, resourceMode: 'development', tasks: [{ id: 'task', checks: Array.from({ length: revision % 6 }, (_, index) => ({ name: `check ${index}`, output: 'x'.repeat(200) })) }], workers: Array.from({ length: 1 + revision % 4 }, (_, index) => ({ id: `w${index}`, status: 'complete', phase: revision % 2 ? 'running' : 'finalizing' })), followups: [], createdAt: '2026-11-01T00:00:00.000Z', updatedAt: `2026-11-01T00:${String(revision % 60).padStart(2, '0')}:00.000Z` };
+      // The last revisions carry recorded user decisions, which compaction keeps as run state.
+      const decided = revision >= revisions - 3 ? { userDecisions: [{ id: 'decision', condition: { kind: 'closing-hold' }, inputs: { files: [{ path: 'src.js', sha256: null }], digest: 'recorded' }, authority: 'User accepted it', reason: 'Fixture', revision: revisions - 3 }] } : {};
+      state = { schema: 1, kind: 'delivery', id, root, revision, status: revision === revisions - 1 ? status : 'running', ...decided, controller: { host: 'codex', session: 'fixture-owner' }, resourceMode: 'development', tasks: [{ id: 'task', checks: Array.from({ length: revision % 6 }, (_, index) => ({ name: `check ${index}`, output: 'x'.repeat(200) })) }], workers: Array.from({ length: 1 + revision % 4 }, (_, index) => ({ id: `w${index}`, status: 'complete', phase: revision % 2 ? 'running' : 'finalizing' })), followups: [], createdAt: '2026-11-01T00:00:00.000Z', updatedAt: `2026-11-01T00:${String(revision % 60).padStart(2, '0')}:00.000Z` };
       db.prepare('INSERT INTO history VALUES (?, ?, ?, ?, ?)').run(id, revision, revision === 0 ? 'created' : 'operation-progress', state.updatedAt, JSON.stringify(state));
     }
     db.prepare('UPDATE runs SET revision=?, state=? WHERE id=?').run(state.revision, JSON.stringify(state), id);
@@ -61,6 +63,7 @@ test('compaction rewrites a store byte-exactly into compact history, keeps a bac
   assert.ok(result.history.delta > 0 && result.history.full > 0);
   assert.ok(result.bytes < result.bytesBefore);
   assert.deepEqual(snapshot(file), before);
+  assert.ok(snapshot(file).runs.every(row => JSON.parse(row.state).userDecisions.length === 1));
   const db = new DatabaseSync(file, { readOnly: true });
   try {
     assert.equal(db.prepare('PRAGMA user_version').get().user_version, 3);

@@ -3,7 +3,7 @@
 // The closing outside-documentation hold, which holds completion after triage on changes outside the documentation paths, and the
 // applicability-call guidance that names each stale assessment's way forward around it. Lifecycle owns the gates that read them.
 
-const { changedPaths, compareOnce, fileIdentity, inventoryVisible } = require('./evidence');
+const { changedPaths, compareOnce, fileIdentity, fileSha256, freshAll, hash, inventoryVisible, snapshot } = require('./evidence');
 const { CLOSING_TARGET } = require('./actions');
 const { closureRoute, latestDispatchOf, lineageOf } = require('./continuation');
 const { isReviewContext } = require('./records');
@@ -14,7 +14,7 @@ const { originalInputsRetained } = require('./relevance');
 
 // Lifecycle requires this module, so its own helpers are reached lazily.
 const lifecycle = () => require('./lifecycle');
-const closingCoverage = key => lifecycle().CLOSING_COVERAGE[key];
+const closingCoverage = (state, key) => lifecycle().closingCoverageText(state, key, outsideDocumentationBaseline(state));
 const latestClosingReview = (...args) => lifecycle().latestClosingReview(...args);
 const reviewKind = (...args) => lifecycle().reviewKind(...args);
 const completeAssessment = (...args) => lifecycle().completeAssessment(...args);
@@ -88,14 +88,142 @@ function settlesOutsideDocumentation(root, state, paths) {
   return state.tasks.some(task => task.reviews.some(review => applicable(task, review, 'spec') && onlyGoverningArtifacts(root, paths, governingArtifacts([task], [review]))));
 }
 
+// The kind of condition a recorded decision settles; the closing hold no task assessment can settle is the only one.
+const DECISION_KIND = 'closing-hold';
+
+// The stored list is untrusted: an absent field holds no decisions, and a present value that is not a list is unreadable, which
+// settles nothing and is reported as a structural failure rather than read as an empty list.
+function decisionList(state) {
+  if (state.userDecisions === undefined) return { readable: true, decisions: [] };
+  return Array.isArray(state.userDecisions) ? { readable: true, decisions: state.userDecisions } : { readable: false, decisions: [] };
+}
+
+function recordedDecisions(state) {
+  return decisionList(state).decisions;
+}
+
+// A path list for a text: at most twenty paths, with a count of the rest.
+function listedPaths(paths) {
+  return paths.slice(0, 20).join(', ') + (paths.length > 20 ? ` and ${paths.length - 20} more` : '');
+}
+
+// A decision is usable only with its identity, its kind and inputs whose digest still matches their files; anything else settles nothing.
+function wellFormedDecision(decision) {
+  const files = decision?.inputs?.files;
+  return typeof decision?.id === 'string' && decision.condition?.kind === DECISION_KIND && Array.isArray(files) && files.length > 0
+    && files.every(file => typeof file?.path === 'string' && (file.sha256 === null || typeof file.sha256 === 'string'))
+    && typeof decision.inputs.digest === 'string' && hash(JSON.stringify(files)) === decision.inputs.digest;
+}
+
+// Whether every recorded path can be compared at all: each is absent or a regular project file. A path replaced by a directory, a link
+// or another entry the runtime refuses to read cannot be compared, which differs from content that changed.
+function comparableInputs(root, files) {
+  try {
+    for (const file of files) fileSha256(root, file.path);
+    return true;
+  } catch {
+    // The refusal is the answer: the inputs cannot be compared.
+    return false;
+  }
+}
+
+// For each recorded decision, the recorded paths whose content on disk still matches the content the user decided on, compared as
+// review freshness compares it; null when the decision is malformed or its inputs cannot be compared, so it settles nothing.
+function decisionSettlements(root, state) {
+  return recordedDecisions(state).map(decision => {
+    if (!wellFormedDecision(decision) || !comparableInputs(root, decision.inputs.files)) return { decision, settled: null };
+    const current = freshAll(root, decision.inputs.files.map(file => ({ digest: hash(JSON.stringify([file])), files: [file] })));
+    return { decision, settled: decision.inputs.files.filter((_, index) => current[index] === true).map(file => file.path) };
+  });
+}
+
+// Every path some applying decision settles. Decisions combine: each settles only its own paths.
+function decidedPaths(root, state) {
+  return new Set(decisionSettlements(root, state).flatMap(entry => entry.settled ?? []));
+}
+
 // The outside-documentation hold: null while the condition is settled or not evaluated, otherwise its set as changedPaths, null when the
-// set cannot be computed. Every consumer reads this one predicate, never the raw set.
+// set cannot be computed. Paths a recorded decision settles leave the set first, so every reader, the test of whether a task assessment
+// settles the hold included, judges only the paths no decision settles. Every consumer reads this one predicate, never the raw set.
 function outsideDocumentationHold(root, state) {
   const baseline = outsideDocumentationBaseline(state);
   if (baseline === undefined) return null;
-  const paths = outsideDocumentationPaths(root, state, baseline);
+  const changed = outsideDocumentationPaths(root, state, baseline);
+  const decided = changed === null || recordedDecisions(state).length === 0 ? new Set() : decidedPaths(root, state);
+  const paths = changed === null ? null : changed.filter(file => !decided.has(file));
   if (paths !== null && (paths.length === 0 || settlesOutsideDocumentation(root, state, paths))) return null;
   return { changedPaths: paths };
+}
+
+// Whether a recorded decision settles a path of the outside-documentation set, so that a re-recorded triage keeps the earlier
+// baseline rather than absorbing paths only the user settled.
+function decisionHoldsBaseline(root, state) {
+  if (recordedDecisions(state).length === 0) return false;
+  const baseline = outsideDocumentationBaseline(state);
+  if (!baseline) return false;
+  const changed = outsideDocumentationPaths(root, state, baseline);
+  if (changed === null) return false;
+  const decided = decidedPaths(root, state);
+  return changed.some(file => decided.has(file));
+}
+
+// The condition identity of an unsettled hold that only the user's decision can settle: the digest of its paths with their current
+// content, which record-decision recomputes so that a decision never binds paths the user was not briefed on.
+function holdIdentity(root, hold) {
+  try {
+    return snapshot(root, hold.changedPaths).digest;
+  } catch {
+    // Paths that cannot be read as regular files have no identity a decision could bind; status reports none rather than failing.
+    return null;
+  }
+}
+
+// The settled paths of the closing coverage on a complete run, where the hold itself is not evaluated: paths a decision recorded
+// before completion settles by their content on disk.
+function decidedCoveragePaths(root, state) {
+  return recordedDecisions(state).length === 0 ? new Set() : decidedPaths(root, state);
+}
+
+// The paths of an imported closing review's snapshot that a decision settles: the review's view of the path carries the content the
+// decision recorded. A complete run's closing-scope check compares the review with its baseline, so the review's view is its comparand:
+// its entry's content when it lists the path, and absence when an inventory snapshot does not, as for a file deleted from the index.
+function decidedSnapshotPaths(state, evidence) {
+  const entries = new Map((Array.isArray(evidence?.files) ? evidence.files : []).map(file => [file.path, file]));
+  const settled = new Set();
+  for (const decision of recordedDecisions(state)) {
+    if (!wellFormedDecision(decision)) continue;
+    for (const file of decision.inputs.files) {
+      const entry = entries.get(file.path);
+      const viewed = entry ? entry.sha256 : evidence?.inventory === true ? null : undefined;
+      if (viewed !== undefined && viewed === file.sha256 || typeof entry?.blob === 'string' && entry.blob === file.blob) settled.add(file.path);
+    }
+  }
+  return settled;
+}
+
+// Each recorded decision as status and the completion result report it: its state is applies while it settles a path of the current
+// set, lapsed once it settles none, and structural-failure when it is malformed or the set or its inputs cannot be compared; a closed
+// record reads closed and skipped freshness verification reads reconcile at acceptance, neither comparing anything. Status names at most
+// twenty settled paths beside their count.
+function decisionStatus(root, state, options = {}) {
+  const { readable, decisions } = decisionList(state);
+  const reading = isClosed(state) ? 'closed' : options.verifyFreshness === false ? 'reconcile at acceptance' : null;
+  const empty = { id: null, condition: null, authority: null, reason: null, revision: null };
+  // An unreadable list is reported as one structural failure, so status shows that it holds something no reader can use.
+  if (!readable) return [reading ? { ...empty, state: reading } : { ...empty, state: 'structural-failure', settledPaths: [], settledCount: 0 }];
+  if (decisions.length === 0) return [];
+  const settlements = reading ? null : decisionSettlements(root, state);
+  const baseline = outsideDocumentationBaseline(state) ?? (state.status === 'complete' ? state.closing?.docs?.baseline ?? state.closing?.carriedBaseline : undefined);
+  const changed = settlements && baseline && !baseline.backlogOnly ? outsideDocumentationPaths(root, state, baseline) : null;
+  return decisions.map((decision, index) => {
+    // Any entry, an object or not, is reported with what it holds; a non-object one is malformed and reads structural-failure below.
+    const base = { id: decision?.id ?? null, condition: decision?.condition ?? null, authority: decision?.authority ?? null, reason: decision?.reason ?? null, revision: decision?.revision ?? null };
+    if (reading) return { ...base, state: reading };
+    const settled = settlements[index].settled;
+    if (settled === null || changed === null) return { ...base, state: 'structural-failure', settledPaths: [], settledCount: 0 };
+    const current = settled.filter(file => changed.includes(file));
+    return { ...base, state: current.length > 0 ? 'applies' : 'lapsed', settledPaths: current.slice(0, 20), settledCount: current.length };
+  });
 }
 
 // The tasks on which a fresh code assessment settles the hold, those whose assessment would also cover more of the run's code gates the
@@ -116,24 +244,37 @@ function holdSettlement(root, state, hold) {
 }
 
 // The way forward from the hold, naming the settling step first and then the closing docs review the docs side requires.
-function outsideDocumentationNext(root, state, hold) {
-  if (hold.changedPaths === null) return closingCoverage('no-baseline');
+function outsideDocumentationNext(root, state, hold, route = holdRoute(root, state, hold)) {
+  if (route.kind === 'uncomputable') return closingCoverage(state, 'no-baseline');
   const closingReview = `then a complete closing docs review (task ${CLOSING_TARGET}) covering every task and current on the final inputs`;
   const revert = 'Reverting these paths also settles the hold.';
-  const settlement = holdSettlement(root, state, hold);
   // A dispatch need not select an ignored changed path on its own, and only an assessment whose scope held every path settles the hold.
-  if (settlement.kind === 'code') return `Obtain a fresh code assessment on one of the tasks ${settlingCandidates(root, state).join(', ')}, passing the changed paths as artifactPaths, ${closingReview}. ${revert}`;
-  if (settlement.kind === 'spec') return `Obtain a fresh whole-spec assessment on spec task ${settlement.task.id}, which settles the hold, ${closingReview}. ${revert}`;
-  return `No task assessment can settle the hold, so it needs the user's decision: hold, stop or the administrative close. ${revert}`;
+  if (route.kind === 'assessment' && route.settlement.kind === 'code') return `Obtain a fresh code assessment on one of the tasks ${settlingCandidates(root, state).join(', ')}, passing the changed paths as artifactPaths, ${closingReview}. ${revert}`;
+  if (route.kind === 'assessment') return `Obtain a fresh whole-spec assessment on spec task ${route.settlement.task.id}, which settles the hold, ${closingReview}. ${revert}`;
+  if (route.kind === 'unreadable') return `No task assessment can settle the hold, and its paths cannot be read as regular files, so no recorded decision can bind them: replace them with regular files, after which the user's decision can be recorded, or the user may choose hold, stop or the administrative close. ${revert}`;
+  return `No task assessment can settle the hold, so it needs the user's decision. Once the user decides, record it with record-decision on condition kind ${DECISION_KIND} and the identity status reports for the hold, ${closingReview}; the user may instead choose hold, stop or the administrative close. ${revert}`;
+}
+
+// How the hold can be settled: uncomputable when its set cannot be computed; by a task assessment, carrying its settlement; by the
+// user's recorded decision when no task assessment can and its paths can be read, so that the decision has an identity to bind; or by
+// neither while those paths cannot be read. Identity, every text and the operation read this one answer.
+function holdRoute(root, state, hold) {
+  if (hold.changedPaths === null) return { kind: 'uncomputable' };
+  const settlement = holdSettlement(root, state, hold);
+  if (settlement.kind !== 'none') return { kind: 'assessment', settlement };
+  const identity = holdIdentity(root, hold);
+  return identity === null ? { kind: 'unreadable' } : { kind: 'decision', identity };
 }
 
 function outsideDocumentationStatus(root, state, hold) {
-  return { changedPaths: hold.changedPaths, next: outsideDocumentationNext(root, state, hold) };
+  const route = holdRoute(root, state, hold);
+  return { changedPaths: hold.changedPaths, next: outsideDocumentationNext(root, state, hold, route), ...(route.kind === 'decision' ? { identity: route.identity } : {}) };
 }
 
-function outsideDocumentationRefusal(root, state, hold) {
-  if (hold.changedPaths === null) return closingCoverage('no-baseline');
-  return `Paths outside the documentation paths changed since triage and hold completion until a fresh task assessment covers them or they are reverted: ${hold.changedPaths.slice(0, 20).join(', ')}. ${outsideDocumentationNext(root, state, hold)}`;
+function outsideDocumentationRefusal(root, state, hold, route = holdRoute(root, state, hold)) {
+  if (route.kind === 'uncomputable') return closingCoverage(state, 'no-baseline');
+  const settler = route.kind === 'decision' ? 'the user\'s recorded decision settles them' : route.kind === 'unreadable' ? 'they are replaced by regular files the user\'s decision can bind' : 'a fresh task assessment covers them';
+  return `Paths outside the documentation paths changed since triage and hold completion until ${settler} or they are reverted: ${listedPaths(hold.changedPaths)}. ${outsideDocumentationNext(root, state, hold, route)}`;
 }
 
 // The outside-documentation part of the closing status: present only while the hold is unsettled, or, with freshness verification
@@ -205,4 +346,4 @@ function staleWayForwardSentence(root, state, task, entry, hold) {
   return phrase.charAt(0).toUpperCase() + phrase.slice(1);
 }
 
-module.exports = { applicabilityCall, codeCarriers, heldBy, holdSettlement, outsideDocumentationBaseline, outsideDocumentationBrief, outsideDocumentationHold, outsideDocumentationNext, outsideDocumentationRefusal, outsideDocumentationStatus, settlesOutsideDocumentation, staleWayForward, staleWayForwardSentence };
+module.exports = { DECISION_KIND, applicabilityCall, codeCarriers, decidedCoveragePaths, decidedSnapshotPaths, decisionHoldsBaseline, decisionList, decisionStatus, heldBy, holdIdentity, holdRoute, holdSettlement, outsideDocumentationBaseline, outsideDocumentationBrief, outsideDocumentationHold, outsideDocumentationNext, outsideDocumentationRefusal, outsideDocumentationStatus, listedPaths, recordedDecisions, settlesOutsideDocumentation, staleWayForward, staleWayForwardSentence };

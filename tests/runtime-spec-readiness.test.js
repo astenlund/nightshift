@@ -551,7 +551,8 @@ test('a structural cause on a completed code task names the user decision withou
   });
   const reading = f.readiness('code');
   assert.match(reading.cause, /unresolvable link/);
-  assert.match(reading.next, /^Ask the user to decide on the run: until the recorded-decision operation ships/);
+  assert.match(reading.next, /^Ask the user to decide on the run: record-decision does not settle this cause, so the controller can also hold, stop, or close the run administratively once stopped$/);
+  assert.doesNotMatch(reading.next, /ships/);
 });
 
 test('handover refuses links that cannot govern and links outside the agreement, and accepts falsy and unchecked links', t => {

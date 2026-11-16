@@ -1367,7 +1367,7 @@ test('in a run of only spec tasks, a fresh whole-spec assessment settles a gover
   assert.equal(closingStatus(settled).outsideDocumentation, undefined);
   settled.review(CLOSING_TARGET, 'docs', []);
   assert.equal(settled.act({ action: 'complete' }).status, 'complete');
-  assert.match(closingStatus(undecided).outsideDocumentation.next, /needs the user's decision: hold, stop or the administrative close/);
+  assert.match(closingStatus(undecided).outsideDocumentation.next, /needs the user's decision\. Once the user decides, record it with record-decision/);
   undecided.review('plan', 'spec', ['plan'], [], { snapshot: snapshot(undecided.root, [SPEC_PATH, 'src.js']) });
   assert.deepEqual(closingStatus(undecided).outsideDocumentation.changedPaths, ['src.js']);
 });
