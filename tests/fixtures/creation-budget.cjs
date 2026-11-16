@@ -177,8 +177,67 @@ async function main() {
     assert.equal(four.error, 'delivery-consistency-unavailable');
   } finally {
     if (store) store.close();
+    store = undefined;
     assert.equal(path.dirname(root), parent);
     fs.rmSync(root, { recursive: true, force: true });
   }
 }
-module.exports = { main };
+// Each completed record's completion row is bounded on its own, so completed records do not accumulate against the input
+// allowance the whole pass shares. The shared allowance is narrowed to the mandatory current and latest rows plus the largest
+// completion row, and the completion-row bound to the largest row: every record's row fits on its own, while the rows together
+// would pass either allowance were they summed across records, whether into the shared input or into a total of their own.
+async function completionRows() {
+  const { BOUNDS } = require('../../internal/runtime/creation-consistency');
+  const { HistoryReader, latestRevisionOfKind, latestRowStats } = require('../../internal/runtime/history-store');
+  const defaults = { ...BOUNDS };
+  root = fs.mkdtempSync(path.join(parent, 'case-'));
+  try {
+    const initialized = spawnSync('git', ['init', '--quiet'], { cwd: root, windowsHide: true, encoding: 'utf8' });
+    assert.equal(initialized.status, 0, initialized.stderr);
+    const ids = [];
+    for (let i = 0; i < 4; i++) {
+      const accepted = await execute(root, { action: 'handover', handoverId: randomUUID(), controller: actor, authority: 'Explicit isolated fixture handover', objective: 'Reflect without proposals', mechanism: { verified: true, kind: 'goal', evidence: 'Simulated fixture continuation' }, tasks: [{ id: 'reflection', title: 'Reflection', kind: 'lore', agreement: { source: 'Fixture user', outcome: 'Reflect without instruction proposals' } }] }, dependencies);
+      await completeReflection(root, actor, execute, dependencies);
+      ids.push(accepted.id);
+    }
+    store = new RunStore(root);
+    const current = store.db.prepare('SELECT coalesce(sum(length(CAST(state AS BLOB))), 0) AS bytes FROM runs').get().bytes;
+    const mandatory = current + latestRowStats(store.db).bytes;
+    const rows = ids.map(id => {
+      const revision = latestRevisionOfKind(store.db, id, 'complete');
+      assert.notEqual(revision, undefined, 'Fixture precondition: every record has a completion row');
+      return { id, bytes: new HistoryReader(store.db, id).meta(revision).bytes };
+    });
+    const largest = Math.max(...rows.map(row => row.bytes));
+    const allowance = mandatory + largest;
+    const rowTotal = rows.reduce((total, row) => total + row.bytes, 0);
+    assert.ok(mandatory + rowTotal > allowance, 'Fixture precondition: the completion rows together must pass the narrowed shared allowance');
+    assert.ok(rowTotal > largest, 'Fixture precondition: the completion rows together must pass the narrowed per-record bound');
+    const before = snapshot();
+    const run = () => {
+      try { return { result: store.transaction(() => creationAssessment(store)), error: null }; }
+      catch (error) { return { result: null, error }; }
+    };
+    BOUNDS.input = allowance;
+    BOUNDS.completionRow = largest;
+    const admitted = run();
+    assert.equal(admitted.error?.message ?? null, null, 'Completion rows are bounded per record, not charged to the shared input allowance');
+    assert.equal(admitted.result.replaceable, true);
+    assert.equal(admitted.result.inputBytes, mandatory, 'The shared allowance carries the mandatory rows and no completion row');
+    Object.assign(BOUNDS, defaults);
+    // One record whose own completion row passes its bound is still refused, naming that record.
+    BOUNDS.completionRow = largest - 1;
+    const refused = run();
+    assert.equal(refused.error?.code, 'delivery-consistency-unavailable');
+    const over = rows.find(row => row.bytes === largest);
+    assert.match(refused.error.message, new RegExp(`Delivery ${over.id} completion history exceeds its own read bound`));
+    assert.equal(snapshot(), before, 'Assessment must not change durable rows');
+  } finally {
+    Object.assign(BOUNDS, defaults);
+    if (store) store.close();
+    store = undefined;
+    assert.equal(path.dirname(root), parent);
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+}
+module.exports = { completionRows, main };

@@ -15,7 +15,9 @@ const { HistoryReader, latestRevision, latestRevisionOfKind, latestRowStats } = 
 const { validateCertificate, MAX_CERTIFICATE_CHAIN_BYTES, MAX_HISTORICAL_BYTES, MAX_MANIFEST_CHAIN_BYTES } = require('./legacy-certificates');
 const { MAX_DELIVERY_RECORDS: MAX_RECORDS, MAX_RUN_ID_BYTES, isRetirementCertificate, retirementRows, runBoundArtifacts, schemaState, verifyTriggers } = require('./legacy-store');
 
-const MAX_INPUT_BYTES = 64 * 1024 * 1024;
+// Read at call time so fixtures can narrow them for one assessment. `input` is the allowance shared across the whole pass;
+// `completionRow` bounds each completed record's completion row on its own.
+const BOUNDS = { input: 64 * 1024 * 1024, completionRow: 64 * 1024 * 1024 };
 const TABLES = ['runs', 'active', 'history', 'artifacts', 'accounting_commits', 'discharge_index'];
 const CODE = 'delivery-consistency-unavailable';
 
@@ -98,12 +100,12 @@ function assessment(store, options = {}) {
     const size = Buffer.byteLength(body);
     const next = inputBytes + size;
     const reserved = mandatoryTotal - mandatoryCharged - (mandatory ? size : 0);
-    requireBound(next + reserved <= MAX_INPUT_BYTES, CODE, 'Delivery consistency input exceeds its byte bound');
+    requireBound(next + reserved <= BOUNDS.input, CODE, 'Delivery consistency input exceeds its byte bound');
     inputBytes = next;
     if (mandatory) mandatoryCharged += size;
   };
   // Each budget charges distinct artifact bodies against its own 8 MiB allowance while sharing the one 64 MiB input allowance.
-  const evidenceBudget = () => ({ bytes: 0, artifacts: new Set(), artifactLimit: progress.MAX_FRONTIER_BYTES, chargeInput, remainingInput: () => MAX_INPUT_BYTES - inputBytes - (mandatoryTotal - mandatoryCharged) });
+  const evidenceBudget = () => ({ bytes: 0, artifacts: new Set(), artifactLimit: progress.MAX_FRONTIER_BYTES, chargeInput, remainingInput: () => BOUNDS.input - inputBytes - (mandatoryTotal - mandatoryCharged) });
   const budget = evidenceBudget();
   const parse = (body, mandatory = false) => {
     chargeInput(body, mandatory);
@@ -113,7 +115,7 @@ function assessment(store, options = {}) {
   requireCondition(runStats.count <= MAX_RECORDS && runStats.idBytes <= MAX_RUN_ID_BYTES, CODE, 'Delivery identity inventory exceeds its bound');
   const latestStats = latestRowStats(store.db);
   mandatoryTotal = runStats.bytes + latestStats.bytes;
-  if (mandatoryTotal > MAX_INPUT_BYTES) {
+  if (mandatoryTotal > BOUNDS.input) {
     const ids = store.db.prepare('SELECT id FROM runs ORDER BY id LIMIT 10').all().map(row => row.id);
     requireCondition(false, CODE, `Delivery current and latest-history input for ${runStats.count} records exceeds its bound: ${ids.join(', ')}${runStats.count > ids.length ? ` and ${runStats.count - ids.length} more` : ''}. Inspect bounded raw states or restore store capacity; migration inventory cannot fit this store`);
   }
@@ -155,8 +157,8 @@ function assessment(store, options = {}) {
     requireCondition(latest === state.revision && (journal.revision === null || journal.revision === state.revision), CODE, 'Current delivery was rolled back behind surviving revision evidence');
     const historicalSize = history.meta(state.revision)?.bytes;
     requireCondition(historicalSize !== undefined, CODE, 'Current delivery lacks matching history');
-    requireBound(historicalSize <= MAX_INPUT_BYTES - inputBytes, CODE, 'Current delivery history exceeds its read bound');
-    const historical = history.text(state.revision, MAX_INPUT_BYTES - inputBytes);
+    requireBound(historicalSize <= BOUNDS.input - inputBytes, CODE, 'Current delivery history exceeds its read bound');
+    const historical = history.text(state.revision, BOUNDS.input - inputBytes);
     const latestState = historical ? parse(historical.state, true) : null;
     requireCondition(latestState && progress.encodedHash(latestState) === progress.encodedHash(state) && isDeepStrictEqual(latestState.progress, state.progress) && isDeepStrictEqual(latestState.stopRecovery, state.stopRecovery), CODE, 'Current delivery contradicts its committed state');
     const acceptance = state.acceptance?.handoverId;
@@ -221,17 +223,19 @@ function assessment(store, options = {}) {
         discharged = closeRowDischarges(history, state, budget);
       } else if (account) {
         requireCondition(account.marker.status === 'current', CODE, 'Delivery accounting is unavailable');
+        // The completion row is bounded on its own rather than charged to the input allowance shared across the store: every
+        // completed record has one, so charging them there would refuse every new delivery once enough runs had completed.
         const completionRevision = latestRevisionOfKind(store.db, state.id, 'complete');
         if (completionRevision !== undefined) {
           const completionSize = history.meta(completionRevision)?.bytes;
           requireCondition(completionSize !== undefined, CODE, 'Completion history is missing');
-          requireBound(completionSize <= budget.remainingInput(), CODE, `Delivery ${state.id} completion history exceeds the delivery read bound`);
+          requireBound(completionSize <= BOUNDS.completionRow, CODE, `Delivery ${state.id} completion history exceeds its own read bound`);
         }
-        const completionRow = completionRevision === undefined ? undefined : history.text(completionRevision, budget.remainingInput());
+        const completionRow = completionRevision === undefined ? undefined : history.text(completionRevision, BOUNDS.completionRow);
         const completion = completionRevision === undefined ? null : completionRow?.kind === 'complete' ? completionRow : undefined;
-        requireCondition(completionRevision === undefined || completion, CODE, `Delivery ${state.id} completion history exceeds the delivery read bound`);
+        requireCondition(completionRevision === undefined || completion, CODE, `Delivery ${state.id} completion history exceeds its own read bound`);
         if (completion) {
-          const completed = parse(completion.state);
+          const completed = JSON.parse(completion.state);
           requireCondition(completed.id === state.id && completed.revision === completion.revision && completed.status === 'complete', CODE, 'Recorded completion identity is contradictory');
           provenance.read(completed, budget);
           // The completion discharge check hydrates the assurance snapshots and closing evidence of the completed state. Those
@@ -260,6 +264,7 @@ function assessment(store, options = {}) {
   }
   if (!options.resourceOnly) requireCondition([...retirementArtifacts].every(id => certificateBudgets.chain.visited.has(id)), CODE, 'Retirement certificate artifact is outside every current reference chain');
   if (options.resourceOnly) return { inputBytes };
+  // inputBytes is diagnostic: it reports the shared allowance this pass charged, which callers do not act on.
   requireCondition(legacyUnavailable.length === 0, CODE, legacyRefusal(legacyUnavailable));
   const selected = records.find(record => record.state.id === selections[0].id);
   requireCondition(selected && records.every(record => record === selected || record.discharged), CODE, 'Another surviving delivery still has unresolved or unavailable obligations');
@@ -269,7 +274,7 @@ function assessment(store, options = {}) {
   // replaced under an earlier release has no such route left, so only the selected one can hold replacement back.
   const reportPending = !selected.retired && !isClosed(selected.state) && selected.discharged && reportAwaitsRecipient(selected.state);
 
-  return { current: selected.state, replaceable: selected.discharged && !reportPending && !records.some(record => record.state.workers.some(workerIsActive)), reportPending };
+  return { current: selected.state, replaceable: selected.discharged && !reportPending && !records.some(record => record.state.workers.some(workerIsActive)), reportPending, inputBytes };
 }
 
 function creationAssessment(store, options = {}) {
@@ -280,4 +285,4 @@ function creationAssessment(store, options = {}) {
   }
 }
 
-module.exports = { closingDischargedSince, creationAssessment, reportAwaitsRecipient };
+module.exports = { BOUNDS, closingDischargedSince, creationAssessment, reportAwaitsRecipient };
