@@ -1,17 +1,17 @@
 {
   "schema": 1,
   "name": "nightshift",
-  "version": "3.3.40",
+  "version": "3.3.41",
   "files": [
     {
       "path": ".claude-plugin/plugin.json",
       "bytes": 641,
-      "sha256": "c237c56629145c473a8be3610be6daddccc19630a170f007b5be2ee3069d017a"
+      "sha256": "f5c96e2e7409b97067a563c5df508c6c2cbe78d35a096b4f1b9fae0e7f3d5c1d"
     },
     {
       "path": ".codex-plugin/plugin.json",
       "bytes": 1161,
-      "sha256": "6785f08dc446c03a5ef4087736b03ac38d44b823820b4f0d6b518b9ee9c47973"
+      "sha256": "3b57f17b55f76f0914b81c7dde158860606dd1466eebf2b3066a4280af3bc51b"
     },
     {
       "path": "LICENSE",
@@ -170,8 +170,8 @@
     },
     {
       "path": "internal/runtime/REFERENCE.md",
-      "bytes": 175766,
-      "sha256": "5ff35852c4fc01c3058a939122d20c06cca86ede32fca30c519097b175f8cef9"
+      "bytes": 182119,
+      "sha256": "25e88915c126176a3d03e4d4216aa332f76ab50b7f7a8efa29015e466d094fbc"
     },
     {
       "path": "internal/runtime/actions.js",
@@ -225,8 +225,8 @@
     },
     {
       "path": "internal/runtime/creation-consistency.js",
-      "bytes": 23052,
-      "sha256": "f218cd7158b7f7c2c7ce28f8282004a32ae1a74e56c6f5b11bcd37acd817c16d"
+      "bytes": 27963,
+      "sha256": "53a4a88fd8bb59ef76f6f72c6c610f8ff48a6fad2a0a403683599ed8142b5ccd"
     },
     {
       "path": "internal/runtime/delivery-acceptance.js",
@@ -245,13 +245,13 @@
     },
     {
       "path": "internal/runtime/errors.js",
-      "bytes": 675,
-      "sha256": "0ffa76ea39a3b0a8a0cb3c0f4c2e9659e1cd4716956fc50f30a8e3028f309561"
+      "bytes": 1109,
+      "sha256": "1ba7f2a1a3a59a927c8764794d8ec20ae625fb165108b9b88749cc8a563d925b"
     },
     {
       "path": "internal/runtime/evidence.js",
-      "bytes": 20235,
-      "sha256": "0266d887f49566ce2ff8958bde2816282f54456e7715f7b0c716f7df3811f1a9"
+      "bytes": 20236,
+      "sha256": "0292895d5494cc57b935b8376cd4e668d34e38b717510c35d650dabcb50eba03"
     },
     {
       "path": "internal/runtime/finding-scope.js",
@@ -260,8 +260,8 @@
     },
     {
       "path": "internal/runtime/history-compaction.js",
-      "bytes": 12614,
-      "sha256": "e8ac2d2fc47b5ee255b52a35996d6d2727766e1a4bdb41d114b869a5cd696203"
+      "bytes": 13147,
+      "sha256": "20956716441b10c6302564f33063cd5ecbf98bf3f99a0c1a648841e7e45f17b7"
     },
     {
       "path": "internal/runtime/history-store.js",
@@ -290,13 +290,13 @@
     },
     {
       "path": "internal/runtime/legacy-certificates.js",
-      "bytes": 11209,
-      "sha256": "eb9299bbdd3ea7c963c37d18e98558a56d39c5141000a47d2b6a18eca8a8501f"
+      "bytes": 12203,
+      "sha256": "1e919e2a4a9380dffdc552877e865761ce7cf9ddb8ce4fbf984f544529ad1aff"
     },
     {
       "path": "internal/runtime/legacy-inventory.js",
-      "bytes": 27492,
-      "sha256": "ade8ba434156805a0f42fd1f7c7952cbd82e7ab9f9e0033fbfa0a0d338c5c24d"
+      "bytes": 27773,
+      "sha256": "6af6f4326abc01e38892cd220c242bf56b4993fec9eb0650f4e240371cc9cda2"
     },
     {
       "path": "internal/runtime/legacy-migration.js",
@@ -315,8 +315,8 @@
     },
     {
       "path": "internal/runtime/lifecycle.js",
-      "bytes": 111755,
-      "sha256": "6f3a421b52378b79eb2822b1248835ec8f44007932ca81c518ca6cc5e00e3db7"
+      "bytes": 111756,
+      "sha256": "4ef7e9cb08cb0ebae7754ac56d9fe8a43b3cf2924daa12bed9d7eba7e126bc89"
     },
     {
       "path": "internal/runtime/limits.js",
@@ -370,8 +370,8 @@
     },
     {
       "path": "internal/runtime/progress-store.js",
-      "bytes": 17125,
-      "sha256": "39e584aebfe038e23a1c2d8849fafc6c22bfdb4f320e408bd11944547da2380a"
+      "bytes": 17934,
+      "sha256": "09b1c407cb58e9ada2f45703243a9f539e9dc6e1ddb099a24631f95c9c796e64"
     },
     {
       "path": "internal/runtime/progress.js",
@@ -415,8 +415,8 @@
     },
     {
       "path": "internal/runtime/review-inputs.js",
-      "bytes": 12660,
-      "sha256": "50d2074ef6f71a6566c2a3d99e5fdca51b084fdb095f14b028f0cf3b1702e842"
+      "bytes": 12669,
+      "sha256": "818225200438b716272342b0c2b1698ac94d073eefbf7b97b9299ec0a75da49f"
     },
     {
       "path": "internal/runtime/review-inventory.js",
@@ -439,9 +439,19 @@
       "sha256": "d1c1056a3f89d5dc365b564ab00b9c2d603c8fecc11cf7cf96af394f61a6190e"
     },
     {
+      "path": "internal/runtime/safe-directory.js",
+      "bytes": 1062,
+      "sha256": "62370d30a56f11d11c09320538556b1814388f6fc0fedcacec9cc9be416637dc"
+    },
+    {
       "path": "internal/runtime/scratch.js",
       "bytes": 7706,
       "sha256": "37e7fec953e1eabd379fb5a01ac119ec01c2b76739047615decfd059451073b2"
+    },
+    {
+      "path": "internal/runtime/settled-verdicts.js",
+      "bytes": 12300,
+      "sha256": "6499260d1d9e9c99ff8e3f3003e427d7cbc45395f7a7ed04e7df65c0970bfe1c"
     },
     {
       "path": "internal/runtime/spec-readiness.js",
@@ -455,8 +465,8 @@
     },
     {
       "path": "internal/runtime/store.js",
-      "bytes": 28689,
-      "sha256": "d5b3f823be0588a863eb9e761e78fab3f1d3f670b115fae5933893ea3834b682"
+      "bytes": 28855,
+      "sha256": "607c6a08981d6fb4402238e1f06acb59f9ba20363af295e4f558fb7af0539ef7"
     },
     {
       "path": "internal/runtime/targets.js",
@@ -560,8 +570,8 @@
     },
     {
       "path": "skills/handover/SKILL.md",
-      "bytes": 9693,
-      "sha256": "baf9d28899271991a12aefdf7db6e98deff4ed97260f07540f3430f49e960797"
+      "bytes": 10114,
+      "sha256": "bfdc60aef9ff45a341e69117c4e46a463a56c6a36ac1e23bacac59e9c828d973"
     },
     {
       "path": "skills/init-backlog/SKILL.md",
