@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { DatabaseSync } = require('node:sqlite');
 const { hash, privateInputsCurrent, projectFile } = require('./evidence');
-const { safeDirectory } = require('./store');
+const { safeDirectory } = require('./safe-directory');
 
 const CACHE_PATH = '.nightshift/runs/review-inputs.sqlite';
 const LIMITS = Object.freeze({ sourceBytes: 32 * 1024 * 1024, entryBytes: 48 * 1024 * 1024, cacheBytes: 192 * 1024 * 1024, entries: 32, files: 4096 });

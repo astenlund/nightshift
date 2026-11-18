@@ -55,8 +55,10 @@ function savedFollowupsValid(state) {
   return Array.isArray(items) && items.every(item => item && typeof item.id === 'string' && item.id.trim().length > 0 && ['pending', 'resolved'].includes(item.status)) && new Set(items.map(item => item.id)).size === items.length;
 }
 
+// A vouched record (state null) has had its follow-up shapes checked against its own frozen state by an earlier pass; its tracked
+// destinations live in project files, so they are compared at every pass.
 function followupsValid(root, state, choices, member, format, budget) {
-  if (!format.followupsShape(state, choices, member)) return false;
+  if (state !== null && !format.followupsShape(state, choices, member)) return false;
   for (const choice of choices) {
     if (choice.disposition !== 'tracked') continue;
     const actual = targetEntry(root, choice.destination, budget);
@@ -66,9 +68,14 @@ function followupsValid(root, state, choices, member, format, budget) {
   return true;
 }
 
+// With state and latest null the record is vouched for by a settled-record verdict: the checks that read only its own frozen state and
+// latest history row passed when the verdict was written and cannot change while it matches, so only the rest run.
 function validateMember(db, row, state, latest, certificate, manifests, historical = false) {
+  const vouched = state === null;
   requireCondition(exactKeys(certificate, ['schema', 'runId', 'revision', 'stateHash', 'historyHash', 'manifestHash', 'status', 'disposition', 'report', 'followups', 'authority', 'recordedAt', 'supersedes']), 'migration-certificate-stale', `Retirement certificate for ${row.id} has unsupported fields`);
-  requireCondition(certificate?.schema === 1 && certificate.runId === row.id && certificate.revision === row.revision && progress.HASH.test(certificate.stateHash) && (historical || certificate.stateHash === sha256(row.state)) && certificate.historyHash === sha256(latest.state) && certificate.status === state.status && certificate.disposition === `retired-${state.status}` && ['complete', 'stopped'].includes(state.status) && typeof certificate.authority === 'string' && certificate.authority.trim() && Buffer.byteLength(certificate.authority) <= MAX_AUTHORITY_BYTES && typeof certificate.recordedAt === 'string' && !Number.isNaN(Date.parse(certificate.recordedAt)) && Array.isArray(certificate.followups) && (certificate.supersedes === null || typeof certificate.supersedes === 'string') && typeof certificate.manifestHash === 'string', 'migration-certificate-stale', `Retirement certificate for ${row.id} is stale or malformed`);
+  requireCondition(vouched || certificate.stateHash === sha256(row.state) || historical, 'migration-certificate-stale', `Retirement certificate for ${row.id} is stale or malformed`);
+  requireCondition(vouched || certificate.historyHash === sha256(latest.state) && certificate.status === state.status && certificate.disposition === `retired-${state.status}` && ['complete', 'stopped'].includes(state.status), 'migration-certificate-stale', `Retirement certificate for ${row.id} is stale or malformed`);
+  requireCondition(certificate?.schema === 1 && certificate.runId === row.id && certificate.revision === row.revision && progress.HASH.test(certificate.stateHash) && progress.HASH.test(certificate.historyHash) && ['complete', 'stopped'].includes(certificate.status) && certificate.disposition === `retired-${certificate.status}` && typeof certificate.authority === 'string' && certificate.authority.trim() && Buffer.byteLength(certificate.authority) <= MAX_AUTHORITY_BYTES && typeof certificate.recordedAt === 'string' && !Number.isNaN(Date.parse(certificate.recordedAt)) && Array.isArray(certificate.followups) && (certificate.supersedes === null || typeof certificate.supersedes === 'string') && typeof certificate.manifestHash === 'string', 'migration-certificate-stale', `Retirement certificate for ${row.id} is stale or malformed`);
   const manifest = chargedArtifact(db, certificate.manifestHash, MAX_MANIFEST_BYTES, manifests);
   requireCondition(exactKeys(manifest, ['schema', 'records', 'choices', 'storeInventoryHash']) && progress.HASH.test(manifest.storeInventoryHash) && Array.isArray(manifest.records) && manifest.records.length > 0 && manifest.records.length <= MAX_APPROVAL_RECORDS && Array.isArray(manifest.choices) && manifest.choices.length === manifest.records.length, 'migration-evidence-unavailable', `Approved manifest for ${row.id} is malformed`);
   const format = approvalFormat(manifest.schema);
@@ -83,8 +90,8 @@ function validateMember(db, row, state, latest, certificate, manifests, historic
   requireCondition(members.length === 1 && choices.length === 1, 'migration-evidence-unavailable', `Approved manifest for ${row.id} has ambiguous membership`);
   const member = members[0];
   const choice = choices[0];
-  requireCondition(member.revision === row.revision && member.stateHash === certificate.stateHash && member.historyHash === certificate.historyHash && member.status === state.status && choice.disposition === certificate.disposition && isDeepStrictEqual(choice.report, certificate.report) && isDeepStrictEqual(choice.followups, certificate.followups), 'migration-certificate-stale', `Approved manifest for ${row.id} contradicts its certificate`);
-  requireCondition(format.matches(state, member) && format.reportValid(state, certificate.report, member) && format.followupsShape(state, certificate.followups, member), 'migration-certificate-stale', `Retirement disposition for ${row.id} is unsupported`);
+  requireCondition(member.revision === row.revision && member.stateHash === certificate.stateHash && member.historyHash === certificate.historyHash && member.status === certificate.status && choice.disposition === certificate.disposition && isDeepStrictEqual(choice.report, certificate.report) && isDeepStrictEqual(choice.followups, certificate.followups), 'migration-certificate-stale', `Approved manifest for ${row.id} contradicts its certificate`);
+  requireCondition(vouched || format.matches(state, member) && format.reportValid(state, certificate.report, member) && format.followupsShape(state, certificate.followups, member), 'migration-certificate-stale', `Retirement disposition for ${row.id} is unsupported`);
 
   return { member, format };
 }
@@ -99,10 +106,12 @@ function validateCertificate(db, root, row, state, latest, artifact, budgets = {
   if (!targetBudgets.has(certificate.manifestHash)) targetBudgets.set(certificate.manifestHash, { bytes: 0, maximum: MAX_TARGET_READ_BYTES, cache: new Map() });
   const targets = targetBudgets.get(certificate.manifestHash);
   const { member, format } = validateMember(db, row, state, latest, certificate, manifests);
-  let historical;
-  try { historical = JSON.parse(latest.state); }
-  catch { requireCondition(false, 'migration-certificate-stale', `Retired delivery ${row.id} has unreadable latest history`); }
-  requireCondition(state.progress === undefined && historical.progress === undefined && isDeepStrictEqual(state.stopRecovery, historical.stopRecovery) && !db.prepare('SELECT 1 FROM accounting_commits WHERE run_id=? LIMIT 1').get(row.id) && !db.prepare('SELECT 1 FROM discharge_index WHERE run_id=? LIMIT 1').get(row.id), 'migration-certificate-stale', `Retired delivery ${row.id} is no longer legacy`);
+  let historical = null;
+  if (state !== null) {
+    try { historical = JSON.parse(latest.state); }
+    catch { requireCondition(false, 'migration-certificate-stale', `Retired delivery ${row.id} has unreadable latest history`); }
+  }
+  requireCondition((state === null || state.progress === undefined && historical.progress === undefined && isDeepStrictEqual(state.stopRecovery, historical.stopRecovery)) && !db.prepare('SELECT 1 FROM accounting_commits WHERE run_id=? LIMIT 1').get(row.id) && !db.prepare('SELECT 1 FROM discharge_index WHERE run_id=? LIMIT 1').get(row.id), 'migration-certificate-stale', `Retired delivery ${row.id} is no longer legacy`);
   requireCondition(followupsValid(root, state, certificate.followups, member, format, targets), 'migration-certificate-stale', `Pending follow-ups of ${row.id} changed or lost their tracking destination`);
   const seen = new Set([artifact]);
   let previous = certificate.supersedes;

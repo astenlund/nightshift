@@ -98,7 +98,13 @@ class LegacyInventory {
     const savedIds = new Set(rows.map(row => row.id));
     requireCondition(this.retirements.size === retirements.length && retirements.every(row => savedIds.has(row.runId)), 'migration-store-unavailable', 'Retirement reference has an unknown or duplicated owner');
     let bytes = 0;
-    const evidenceBudget = { bytes: 0, artifacts: new Set(), artifactLimit: progress.MAX_FRONTIER_BYTES, chargeInput: body => { bytes += Buffer.byteLength(body); requireCondition(bytes <= MAX_INPUT_BYTES, 'migration-store-unavailable', 'Delivery inventory exceeds its byte bound'); }, remainingInput: () => MAX_INPUT_BYTES - bytes };
+    // Each record's accounting and provenance artifacts are bounded on their own, as at delivery creation, and counted against the
+    // inventory's input bound, which stays the one bound across the store.
+    const chargeInput = body => {
+      bytes += Buffer.byteLength(body);
+      requireCondition(bytes <= MAX_INPUT_BYTES, 'migration-store-unavailable', 'Delivery inventory exceeds its byte bound');
+    };
+    const evidenceBudget = () => ({ bytes: 0, artifacts: new Set(), artifactLimit: progress.MAX_FRONTIER_BYTES, chargeArtifacts: true, chargeInput, remainingInput: () => MAX_INPUT_BYTES - bytes });
     this.records = new Map();
     const generation = [];
     for (const row of rows) {
@@ -116,7 +122,7 @@ class LegacyInventory {
       requireCondition(state.workers.every(worker => WORKER_STATUSES.has(worker.status)), 'migration-store-unavailable', `Delivery ${row.id} has an unknown worker state`);
       const accounting = this.schema.tables.has('accounting_commits') ? this.db.prepare('SELECT count(*) AS count FROM accounting_commits WHERE run_id=?').get(row.id).count : 0;
       const discharge = this.schema.tables.has('discharge_index') ? this.db.prepare('SELECT count(*) AS count FROM discharge_index WHERE run_id=?').get(row.id).count : 0;
-      const classification = accountingClass(this.db, this.root, state, accounting, discharge, evidenceBudget);
+      const classification = accountingClass(this.db, this.root, state, accounting, discharge, evidenceBudget());
       const current = { id: row.id, revision: row.revision, rawState: row.state, rawHistory: latest.state, state, classification, accounting, discharge, selected: row.id === this.selection, retirement: this.retirements.get(row.id) ?? null };
       this.records.set(row.id, current);
       generation.push({ id: row.id, revision: row.revision, stateHash: sha256(row.state), historyRevision: latest.revision, historyHash: sha256(latest.state) });

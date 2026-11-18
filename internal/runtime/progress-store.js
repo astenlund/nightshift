@@ -1,7 +1,7 @@
 'use strict';
 
 const { createHash } = require('node:crypto');
-const { requireCondition } = require('./errors');
+const { requireCondition, requireSharedBound } = require('./errors');
 const { recordKind } = require('./records');
 const progress = require('./progress');
 const { HistoryReader, metadata } = require('./history-store');
@@ -24,6 +24,8 @@ class ProgressStore {
       if (!budget.artifacts.has(id)) {
         budget.bytes += Buffer.byteLength(row.body);
         budget.artifacts.add(id);
+        // A caller bounding artifacts per record also counts their bytes against its input allowance shared across the pass.
+        if (budget.chargeArtifacts) budget.chargeInput(row.body);
       }
       // Every access rechecks the allowance, so an exhausted budget cannot be reused by revisiting an artifact already charged.
       requireCondition(budget.bytes <= (budget.artifactLimit ?? progress.MAX_RECOVERY_BYTES), 'progress-history-limit', 'Accounting recovery exceeded its byte bound');
@@ -48,7 +50,10 @@ class ProgressStore {
 
   committed(state, budget) {
     const remaining = budget?.remainingInput?.();
-    const row = new HistoryReader(this.store.db, state.id).text(state.revision, remaining);
+    const history = new HistoryReader(this.store.db, state.id);
+    const size = budget?.sharedInput ? history.meta(state.revision)?.bytes : undefined;
+    requireSharedBound(size === undefined || size <= remaining, 'progress-history-limit', 'Accounting predecessor history exceeds the input byte bound');
+    const row = history.text(state.revision, remaining);
     requireCondition(row, 'progress-history-unavailable', 'Accounting predecessor history is missing');
     budget?.chargeInput?.(row.state);
     const recorded = JSON.parse(row.state);
@@ -66,7 +71,8 @@ class ProgressStore {
     const history = new HistoryReader(this.store.db, state.id);
     const issuance = history.meta(reminder.atRevision);
     requireCondition(issuance?.kind === 'continuation-reminder', 'progress-reminder-unavailable', 'Accounting reminder has no committed issuance');
-    if (remaining !== undefined) requireCondition(issuance.bytes <= remaining, 'progress-history-limit', 'Accounting reminder exceeds its byte bound');
+    if (budget?.sharedInput) requireSharedBound(issuance.bytes <= remaining, 'progress-history-limit', 'Accounting reminder exceeds the input byte bound');
+    else if (remaining !== undefined) requireCondition(issuance.bytes <= remaining, 'progress-history-limit', 'Accounting reminder exceeds its byte bound');
     const row = history.text(reminder.atRevision, remaining === undefined ? undefined : Math.max(0, remaining));
     requireCondition(row?.kind === 'continuation-reminder', 'progress-reminder-unavailable', 'Accounting reminder has no committed issuance');
     if (budget) {
@@ -127,7 +133,9 @@ class ProgressStore {
       if (budget.chargeInput) replayed += entry.bytes;
       else budget.bytes += entry.bytes;
       requireCondition((budget.chargeInput ? replayed : budget.bytes) <= progress.MAX_RECOVERY_BYTES, 'progress-history-limit', 'Accounting recovery exceeded its byte bound');
-      requireCondition(!budget.remainingInput || entry.bytes <= budget.remainingInput(), 'progress-history-limit', 'Accounting recovery exceeded its input byte bound');
+      const fits = !budget.remainingInput || entry.bytes <= budget.remainingInput();
+      if (budget.sharedInput) requireSharedBound(fits, 'progress-history-limit', 'Accounting recovery exceeded its input byte bound');
+      else requireCondition(fits, 'progress-history-limit', 'Accounting recovery exceeded its input byte bound');
       const saved = history.text(entry.revision, budget.remainingInput ? budget.remainingInput() : undefined);
       requireCondition(saved, 'progress-history-unavailable', 'Accounting recovery history changed or exceeded its byte bound');
       const row = { ...entry, state: saved.state };

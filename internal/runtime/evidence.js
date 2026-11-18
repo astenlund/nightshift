@@ -5,7 +5,7 @@ const { AsyncLocalStorage } = require('node:async_hooks');
 const path = require('node:path');
 const { createHash } = require('node:crypto');
 const { spawnSync } = require('node:child_process');
-const { requireCondition, text } = require('./store');
+const { requireCondition, text } = require('./errors');
 
 const hash = bytes => createHash('sha256').update(bytes).digest('hex');
 

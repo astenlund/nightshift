@@ -3,11 +3,12 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { DatabaseSync } = require('node:sqlite');
+const { isDeepStrictEqual } = require('node:util');
 const { acquireLock } = require('../unwrap-lock');
 const { requireCondition } = require('./errors');
 const { CREATE_TABLES, schemaState, verifyTriggers } = require('./legacy-store');
 const { COMPACT_VERSION, HISTORY_SQL, HistoryReader, encodeRow } = require('./history-store');
-const { safeDirectory } = require('./store');
+const { safeDirectory } = require('./safe-directory');
 
 // The administrative compact-history migration (specs/compact-run-history.md): rewrites one run store into store version 3 in a
 // new file beside it, verifies every row against the original, then swaps the two by renaming and keeps the original as a backup
@@ -16,7 +17,9 @@ const STORES = Object.freeze({ delivery: 'state.sqlite', review: 'review-state.s
 const BUILDING = '.compacting';
 const BACKUP = '.pre-compaction';
 const SIDECARS = Object.freeze(['-journal', '-wal', '-shm']);
-const COPIED_TABLES = Object.freeze(['runs', 'active', 'artifacts', 'accounting_commits', 'discharge_index', 'legacy_retirements']);
+// Settled-record verdicts are copied exactly, and their freeze guards with every other trigger, since a verdict's bound values are
+// the same in the compacted store.
+const COPIED_TABLES = Object.freeze(['runs', 'active', 'artifacts', 'accounting_commits', 'discharge_index', 'legacy_retirements', 'settled_verdicts']);
 
 const exists = file => Boolean(fs.lstatSync(file, { throwIfNoEntry: false }));
 
@@ -53,8 +56,13 @@ function tableSql(db) {
   return new Map(db.prepare("SELECT name, sql FROM sqlite_master WHERE type='table'").all().map(row => [row.name, row.sql]));
 }
 
+// Integers are read as BigInt, so every stored value, one past what a JavaScript number represents included, is copied and compared
+// exactly.
 function rowsOf(db, table) {
-  return db.prepare(`SELECT * FROM ${table} ORDER BY rowid`).iterate();
+  const statement = db.prepare(`SELECT * FROM ${table} ORDER BY rowid`);
+  statement.setReadBigInts(true);
+
+  return statement.iterate();
 }
 
 // Every table but history, compared row by row in insertion order, and every history row's exact text, kind and time. The only
@@ -78,7 +86,8 @@ function differences(source, target) {
         if (!a.done || !b.done) return `table ${table} has a different row count`;
         break;
       }
-      if (JSON.stringify(a.value) !== JSON.stringify(b.value)) return `table ${table} differs at a row`;
+      // A type-faithful comparison: an integer never equals text with the same digits.
+      if (!isDeepStrictEqual(a.value, b.value)) return `table ${table} differs at a row`;
     }
   }
   const counts = db => db.prepare('SELECT count(*) AS n FROM history').get().n;

@@ -3,6 +3,7 @@
 const { workerIsActive } = require('./workers');
 const { CLOSING_TARGET } = require('./actions');
 const { RunError, requireCondition, text } = require('./errors');
+const { safeDirectory } = require('./safe-directory');
 const { recordKind } = require('./records');
 const { isClosed, isFinished } = require('./statuses');
 const { acceptanceInput, replayAcceptance } = require('./delivery-acceptance');
@@ -42,19 +43,6 @@ function reminderContent(state) {
 function nextRevision(state) {
   requireCondition(Number.isSafeInteger(state.revision) && state.revision >= 0 && state.revision < Number.MAX_SAFE_INTEGER, 'revision-overflow', 'Run revision cannot be safely advanced');
   return state.revision + 1;
-}
-
-function safeDirectory(root, relative, create = false) {
-  const canonical = fs.realpathSync.native(root);
-  let current = canonical;
-  for (const segment of relative.split('/')) {
-    requireCondition(segment !== '' && segment !== '.' && segment !== '..' && !segment.includes('\\'), 'unsafe-path', 'Invalid runtime directory');
-    current = path.join(current, segment);
-    if (create && !fs.existsSync(current)) fs.mkdirSync(current);
-    const stat = fs.lstatSync(current);
-    requireCondition(stat.isDirectory() && !stat.isSymbolicLink() && fs.realpathSync.native(current) === current, 'unsafe-path', `Runtime directory is linked or not a directory: ${current}`);
-  }
-  return current;
 }
 
 class RunStore {
@@ -115,6 +103,7 @@ class RunStore {
     const version = this.db.prepare('PRAGMA user_version').get().user_version;
     const statements = schemaStatements(this.kind, version);
     if (statements.length) this.db.exec(statements.join('; ') + ';');
+    if (this.kind === 'delivery') require('./settled-verdicts').restoreTable(this.db);
   }
 
   read(id, options = {}) {
@@ -198,6 +187,19 @@ class RunStore {
         this.db.exec('ROLLBACK');
         this.writing = false;
         this.writeCapability = null;
+        // A refusal may carry writes of its own that outlive the refused operation, as the creation gate's verdicts do when its
+        // shared allowance refuses a pass; they commit together in a fresh transaction under the same ownership lock.
+        if (typeof error.persistAfterRollback === 'function') {
+          this.db.exec('BEGIN IMMEDIATE');
+          try {
+            error.persistAfterRollback(this.db);
+            lock.validate();
+            this.db.exec('COMMIT');
+          } catch (persisting) {
+            this.db.exec('ROLLBACK');
+            error.message = `${error.unkeptMessage ?? error.message}; its settled-record verdicts could not be kept: ${persisting.message}`;
+          }
+        }
         throw error;
       }
     } finally {

@@ -32,7 +32,13 @@ function seedReports() {
   fs.mkdirSync(directory, { recursive: true });
   for (let i = 0; i < REPORT_FILES; i++) fs.writeFileSync(path.join(directory, `seed-${i}.md`), `# Seed ${i}\n\nFixture report ${i} seeded for the completion evidence budget.\n`);
 }
+// Each assessment here measures a full judgment, so the settled-record verdicts an earlier pass wrote are dropped first; a record
+// a verdict covers is frozen, so they are dropped before a fixture edits accounting in place as well.
+function clearVerdicts() {
+  if (store.db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='settled_verdicts'").get()) store.db.exec('DELETE FROM settled_verdicts');
+}
 function enlarge(id) {
+  clearVerdicts();
   const row = store.db.prepare('SELECT revision FROM runs WHERE id=?').get(id);
   const commit = store.db.prepare('SELECT artifact FROM accounting_commits WHERE run_id=? AND revision=?').get(id, row.revision);
   const record = JSON.parse(store.db.prepare('SELECT body FROM artifacts WHERE id=?').get(commit.artifact).body);
@@ -64,10 +70,11 @@ function storedCompletionEvidence(id) {
 function snapshot() {
   return JSON.stringify(['runs', 'active', 'history', 'artifacts', 'accounting_commits', 'discharge_index'].map(table => [table, store.db.prepare('SELECT * FROM ' + table + ' ORDER BY rowid').all()]));
 }
-// Runs the gate once, observing every artifact charge and the budget it was charged to. The first budget seen is the shared one,
-// since the accounting checkpoint of the first record precedes any completion hydration; each later budget is one record's
+// Runs the gate once over records judged in full, observing every artifact charge and the budget it was charged to. A budget that
+// counts its artifacts against the input allowance is one record's accounting and provenance budget; any other is one record's
 // completion evidence budget. An optional limit stands in for the 8 MiB allowance for this call only.
 function assess(label, limit) {
+  clearVerdicts();
   const before = snapshot();
   const original = ProgressStore.prototype.artifact;
   const previousLimit = progress.MAX_FRONTIER_BYTES;
@@ -108,12 +115,14 @@ function assess(label, limit) {
     assert.equal(budget.bytes, sum(charged.get(budget)), 'Each budget must equal the distinct artifact bytes charged to it');
     assert.equal(budget.artifacts.size, charged.get(budget).size);
   }
-  const [shared, ...completion] = order;
+  const accounting = order.filter(budget => budget.chargeArtifacts);
+  const completion = order.filter(budget => !budget.chargeArtifacts);
   const distinct = new Set(order.flatMap(budget => [...charged.get(budget).keys()]));
   assert.ok(calls > distinct.size, 'Exercise repeated checkpoint and ancestry reads');
-  // What one budget shared across records would have charged for completion evidence: each distinct body once.
+  // What one budget shared across records would have charged: each distinct body once.
   const completionDistinct = new Map(completion.flatMap(budget => [...charged.get(budget)]));
-  const evidence = { label, sharedBytes: shared?.bytes ?? 0, completionBytes: completion.map(budget => budget.bytes), completionDistinctBytes: sum(completionDistinct), distinctArtifacts: distinct.size, calls, repeatedLarge, replaceable: result?.replaceable ?? null, error: error?.code ?? null, message: error?.message ?? null };
+  const accountingDistinct = new Map(accounting.flatMap(budget => [...charged.get(budget)]));
+  const evidence = { label, accountingBytes: accounting.map(budget => budget.bytes), accountingDistinctBytes: sum(accountingDistinct), completionBytes: completion.map(budget => budget.bytes), completionDistinctBytes: sum(completionDistinct), distinctArtifacts: distinct.size, calls, repeatedLarge, inputBytes: result?.inputBytes ?? null, replaceable: result?.replaceable ?? null, error: error?.code ?? null, message: error?.message ?? null };
   console.log(JSON.stringify(evidence));
   return evidence;
 }
@@ -147,34 +156,42 @@ async function main() {
     assert.equal(admitted.replaceable, true);
     assert.equal(baseline.completionBytes.length, 4, 'Each completed record hydrates its completion evidence under a budget of its own');
     assert.ok(baseline.completionBytes.every(bytes => bytes > 0), 'Completion evidence is charged to the per-record budget');
-    assert.ok(baseline.sharedBytes < allowance, 'The shared accounting charge stays within the allowance');
+    assert.equal(baseline.accountingBytes.length, 4, 'Each record judged in full charges its accounting and provenance artifacts to a budget of its own');
+    assert.ok(Math.max(...baseline.accountingBytes) < allowance, 'Each record\'s accounting charge stays within the allowance');
     const perRecord = Math.max(...baseline.completionBytes);
-    // One record whose own completion evidence passes the allowance is still refused, with the shared charge within it.
-    assert.ok(baseline.sharedBytes < perRecord - 1, 'Fixture precondition: the shared charge must fit the chosen allowance');
+    // One record whose own completion evidence passes the allowance is still refused, with every accounting charge within it.
+    assert.ok(Math.max(...baseline.accountingBytes) < perRecord - 1, 'Fixture precondition: every accounting charge must fit the chosen allowance');
     const refused = assess('completion-evidence-over-allowance', perRecord - 1);
     assert.equal(refused.error, 'delivery-consistency-unavailable', 'A record whose own completion evidence passes the allowance is refused');
     assert.match(refused.message, /Accounting recovery exceeded its byte bound/);
     assert.equal(refused.replaceable, null);
-    // The shared allowance for accounting and provenance artifacts is unchanged: frontiers accumulate across records.
+    // The accounting and provenance allowance bounds each record judged in full, and its bytes count against the shared input
+    // allowance: frontiers that together pass 8 MiB, which the 3.3.40 gate refused, are admitted while each record's fits.
     enlarge(ids[0]);
     const one = assess('one-large-frontier');
-    assert.ok(one.sharedBytes < 8 * 1024 * 1024);
+    assert.ok(Math.max(...one.accountingBytes) < 8 * 1024 * 1024);
     assert.ok(one.repeatedLarge > 0);
     assert.equal(one.replaceable, true);
     assert.doesNotThrow(() => store.transaction(() => creationAssessment(store, { resourceOnly: true })), 'Retirement preflight must accept modern accounting within its read bound');
     enlarge(ids[1]);
     const two = assess('two-large-frontiers');
-    assert.ok(two.sharedBytes > 8 * 1024 * 1024);
-    assert.ok(two.sharedBytes < 16 * 1024 * 1024);
-    assert.equal(two.error, 'delivery-consistency-unavailable', 'Creation must reject aggregate accounting artifacts above 8 MiB');
-    assert.equal(two.replaceable, null);
-    assert.throws(() => store.transaction(() => creationAssessment(store, { resourceOnly: true })), { code: 'delivery-consistency-unavailable' }, 'Retirement preflight must preserve the modern accounting read bound');
-    assert.throws(() => migrationExecute(root, { action: 'inventory' }), { code: 'migration-store-unavailable' }, 'Migration inventory must diagnose the shared accounting read bound as unavailable');
+    assert.ok(two.accountingDistinctBytes > 8 * 1024 * 1024, 'Fixture precondition: the records\' accounting artifacts together pass 8 MiB');
+    assert.ok(two.accountingBytes.every(bytes => bytes < 8 * 1024 * 1024), 'Fixture precondition: each record\'s accounting artifacts fit 8 MiB');
+    assert.equal(two.error, null, 'Creation bounds accounting artifacts per record, not summed across records');
+    assert.equal(two.replaceable, true);
+    assert.ok(two.inputBytes > two.accountingDistinctBytes, 'Accounting artifact bytes count against the shared input allowance');
+    clearVerdicts();
+    assert.doesNotThrow(() => store.transaction(() => creationAssessment(store, { resourceOnly: true })), 'Retirement preflight follows the gate\'s per-record accounting allowance');
+    assert.doesNotThrow(() => migrationExecute(root, { action: 'inventory' }), 'Migration inventory follows the gate\'s per-record accounting allowance');
     enlarge(ids[2]);
     enlarge(ids[3]);
     const four = assess('four-large-frontiers');
-    assert.ok(four.sharedBytes > 8 * 1024 * 1024);
-    assert.equal(four.error, 'delivery-consistency-unavailable');
+    assert.ok(four.accountingDistinctBytes > 16 * 1024 * 1024);
+    assert.equal(four.error, null);
+    // One record whose own accounting artifacts pass the allowance is still refused.
+    const narrowed = assess('one-record-over-accounting-allowance', Math.max(...four.accountingBytes) - 1);
+    assert.equal(narrowed.error, 'delivery-consistency-unavailable');
+    assert.match(narrowed.message, /exceeds a verification bound/);
   } finally {
     if (store) store.close();
     store = undefined;
@@ -183,12 +200,12 @@ async function main() {
   }
 }
 // Each completed record's completion row is bounded on its own, so completed records do not accumulate against the input
-// allowance the whole pass shares. The shared allowance is narrowed to the mandatory current and latest rows plus the largest
-// completion row, and the completion-row bound to the largest row: every record's row fits on its own, while the rows together
+// allowance the whole pass shares. The shared allowance is narrowed to what a full judgment charges it plus the largest completion
+// row, and the completion-row bound to the largest row: every record's row fits on its own, while the rows together
 // would pass either allowance were they summed across records, whether into the shared input or into a total of their own.
 async function completionRows() {
   const { BOUNDS } = require('../../internal/runtime/creation-consistency');
-  const { HistoryReader, latestRevisionOfKind, latestRowStats } = require('../../internal/runtime/history-store');
+  const { HistoryReader, latestRevisionOfKind } = require('../../internal/runtime/history-store');
   const defaults = { ...BOUNDS };
   root = fs.mkdtempSync(path.join(parent, 'case-'));
   try {
@@ -201,8 +218,13 @@ async function completionRows() {
       ids.push(accepted.id);
     }
     store = new RunStore(root);
-    const current = store.db.prepare('SELECT coalesce(sum(length(CAST(state AS BLOB))), 0) AS bytes FROM runs').get().bytes;
-    const mandatory = current + latestRowStats(store.db).bytes;
+    const run = () => {
+      clearVerdicts();
+      try { return { result: store.transaction(() => creationAssessment(store)), error: null }; }
+      catch (error) { return { result: null, error }; }
+    };
+    // What a full judgment charges the shared allowance under default bounds: states, latest rows and accounting artifacts.
+    const mandatory = run().result.inputBytes;
     const rows = ids.map(id => {
       const revision = latestRevisionOfKind(store.db, id, 'complete');
       assert.notEqual(revision, undefined, 'Fixture precondition: every record has a completion row');
@@ -214,10 +236,6 @@ async function completionRows() {
     assert.ok(mandatory + rowTotal > allowance, 'Fixture precondition: the completion rows together must pass the narrowed shared allowance');
     assert.ok(rowTotal > largest, 'Fixture precondition: the completion rows together must pass the narrowed per-record bound');
     const before = snapshot();
-    const run = () => {
-      try { return { result: store.transaction(() => creationAssessment(store)), error: null }; }
-      catch (error) { return { result: null, error }; }
-    };
     BOUNDS.input = allowance;
     BOUNDS.completionRow = largest;
     const admitted = run();
@@ -229,8 +247,9 @@ async function completionRows() {
     BOUNDS.completionRow = largest - 1;
     const refused = run();
     assert.equal(refused.error?.code, 'delivery-consistency-unavailable');
-    const over = rows.find(row => row.bytes === largest);
-    assert.match(refused.error.message, new RegExp(`Delivery ${over.id} completion history exceeds its own read bound`));
+    // The gate judges records in id order, so the refusal names the first of the records whose row is the largest.
+    const over = rows.filter(row => row.bytes === largest).map(row => row.id).sort()[0];
+    assert.match(refused.error.message, new RegExp(`Delivery ${over} completion history exceeds its own read bound`));
     assert.equal(snapshot(), before, 'Assessment must not change durable rows');
   } finally {
     Object.assign(BOUNDS, defaults);
@@ -240,4 +259,67 @@ async function completionRows() {
     fs.rmSync(root, { recursive: true, force: true });
   }
 }
-module.exports = { completionRows, main };
+// The status brief's legacy follow-up report loads the same inventory as the migration inventory action, so with a retirement in the
+// store, which is what makes the brief report at all, the two reach the same outcome under the gate's per-record artifact allowance:
+// both admit accounting artifacts that together pass the allowance while each record's fits, and both refuse once one record's do not.
+async function legacyFollowupOutcome() {
+  const { putHistory } = require('./history');
+  // Retirement admits only fixtures under its own development folder.
+  const fixtures = path.resolve(__dirname, '../../.tmp/runtime-legacy-migration');
+  fs.mkdirSync(fixtures, { recursive: true });
+  root = fs.realpathSync.native(fs.mkdtempSync(path.join(fixtures, 'followup-brief-')));
+  const previousLimit = progress.MAX_FRONTIER_BYTES;
+  try {
+    const initialized = spawnSync('git', ['init', '--quiet'], { cwd: root, windowsHide: true, encoding: 'utf8' });
+    assert.equal(initialized.status, 0, initialized.stderr);
+    const ids = [];
+    for (let i = 0; i < 3; i++) {
+      const accepted = await execute(root, { action: 'handover', handoverId: randomUUID(), controller: actor, authority: 'Explicit isolated fixture handover', objective: 'Reflect without proposals', mechanism: { verified: true, kind: 'goal', evidence: 'Simulated fixture continuation' }, tasks: [{ id: 'reflection', title: 'Reflection', kind: 'lore', agreement: { source: 'Fixture user', outcome: 'Reflect without instruction proposals' } }] }, dependencies);
+      await completeReflection(root, actor, execute, dependencies);
+      ids.push(accepted.id);
+    }
+    // A record an earlier release saved, without independent accounting, retired as the migration route retires one.
+    store = new RunStore(root);
+    const legacy = randomUUID();
+    const now = new Date().toISOString();
+    const legacyState = JSON.stringify({ schema: 1, kind: 'delivery', id: legacy, root: store.root, revision: 0, status: 'complete', controller: { host: 'codex', session: 'legacy-owner' }, resourceMode: 'development', tasks: [], workers: [], followups: [], createdAt: now, updatedAt: now });
+    store.transaction(() => {
+      store.db.prepare('INSERT INTO runs VALUES (?, ?, ?)').run(legacy, 0, legacyState);
+      putHistory(store.db, legacy, 0, 'complete', now, legacyState);
+    });
+    store.close();
+    store = undefined;
+    const choices = [{ runId: legacy, disposition: 'retired-complete', report: { kind: 'none' }, followups: [] }];
+    const preview = migrationExecute(root, { action: 'manifest', ids: [legacy], choices }, null, { fixtureRetirement: true });
+    migrationExecute(root, { action: 'retire', ids: [legacy], choices, manifestHash: preview.hash, authority: 'Approve the exact fixture manifest', actor: { host: 'codex', session: 'legacy-owner' } }, null, { fixtureRetirement: true });
+    store = new RunStore(root);
+    enlarge(ids[0]);
+    enlarge(ids[1]);
+    const two = assess('retired-beside-two-large-frontiers');
+    assert.ok(two.accountingDistinctBytes > 8 * 1024 * 1024, 'Fixture precondition: the records\' accounting artifacts together pass 8 MiB');
+    assert.equal(two.error, null);
+    store.close();
+    store = undefined;
+    const outcomes = async () => {
+      let inventory;
+      try { migrationExecute(root, { action: 'inventory' }); inventory = 'available'; }
+      catch (error) { inventory = error.code; }
+      const status = await execute(root, { action: 'status' });
+      return { inventory, brief: status.legacyFollowups?.status, reason: status.legacyFollowups?.reason ?? null };
+    };
+    const admitted = await outcomes();
+    assert.deepEqual([admitted.inventory, admitted.brief], ['available', 'available'], 'Both admit artifacts past 8 MiB in total while each record\'s fit');
+    progress.MAX_FRONTIER_BYTES = Math.max(...two.accountingBytes) - 1;
+    const refused = await outcomes();
+    assert.equal(refused.inventory, 'migration-store-unavailable', 'The inventory refuses a record whose own artifacts pass the allowance');
+    assert.equal(refused.brief, 'unavailable', 'The status brief reaches the same outcome');
+    assert.match(refused.reason, /Accounting recovery exceeded its byte bound/, 'The brief is unavailable for the per-record allowance');
+  } finally {
+    progress.MAX_FRONTIER_BYTES = previousLimit;
+    if (store) store.close();
+    store = undefined;
+    assert.equal(path.dirname(root), fixtures);
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+}
+module.exports = { completionRows, legacyFollowupOutcome, main };

@@ -6,7 +6,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { createHash, randomUUID } = require('node:crypto');
 const { spawnSync } = require('node:child_process');
-const { completionRows, main } = require('./fixtures/creation-budget.cjs');
+const { completionRows, legacyFollowupOutcome, main } = require('./fixtures/creation-budget.cjs');
 const { RunStore } = require('../internal/runtime/store');
 const { ProgressStore } = require('../internal/runtime/progress-store');
 const progress = require('../internal/runtime/progress');
@@ -19,9 +19,11 @@ const { completeReflection } = require('./fixtures/completion');
 const { dropFacilityProvenance } = require('./fixtures/legacy-provenance');
 const { historyText, rewriteHistory } = require('./fixtures/history');
 
-test('creation shares an eight MiB distinct-artifact allowance for accounting and provenance and bounds completion evidence per record', main);
+test('creation bounds accounting and provenance artifacts and completion evidence per record, counting accounting artifacts against the shared input', main);
 
 test('creation bounds each completed record\'s completion row on its own rather than against the shared input allowance', completionRows);
+
+test('the inventory action and the status brief\'s legacy follow-up report reach the same outcome under the per-record artifact allowance', legacyFollowupOutcome);
 
 test('an unconfirmed morning report holds replacement until any admitted session records its recipient\'s reply', async t => {
   const parent = path.resolve(__dirname, '../.tmp/creation-report-delivery');
@@ -329,7 +331,7 @@ test('a closing check restoring content a superseded assessment saw holds replac
   assert.equal(await scenario('restored', 'restored'), 'overlapping-run');
 });
 
-// The aggregate bound across completed records is exercised through intact provenance by the eight MiB fixture above.
+// The per-record accounting bound and its count against the shared input are exercised through intact provenance by the fixture above.
 test('an exhausted artifact allowance stays exhausted when an artifact already charged is read again', async t => {
   const root = isolatedProject(t, 'exhausted-budget');
   await execute(root, reflection(), legacyDependencies);

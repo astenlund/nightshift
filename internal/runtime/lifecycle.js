@@ -6,7 +6,7 @@ const { randomUUID } = require('node:crypto');
 const { workerIsActive } = require('./workers');
 const { isDeepStrictEqual } = require('node:util');
 
-const { requireCondition, text } = require('./store');
+const { requireCondition, text } = require('./errors');
 const { withEvidenceComparisons, changedPaths, fileSha256, fresh, freshAll, hash, inventorySnapshot, outsideGitWorktree, projectFile, projectInventory, snapshot } = require('./evidence');
 const { exhaustedLimit } = require('./limits');
 const { CLOSING_TARGET, unknownActionMessage } = require('./actions');

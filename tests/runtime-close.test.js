@@ -195,6 +195,27 @@ test('a stopped delivery closes with one close revision, an approval artifact an
   assert.equal(readState(f.root, 'delivery', created.id).revision, after.revision);
 });
 
+test('a closed record holding a settled-record verdict has its close row frozen', async t => {
+  // Arrange: a delivery closed by the user, then replaced, so the next creation gate judges it settled and not selected. The
+  // replacing handover's gate still selects the closed record, so a later pass writes its verdict.
+  const f = fixture(t);
+  const closed = await delivery(f);
+  await f.call({ action: 'stop', kind: 'user-stop', reason: 'User paused' });
+  const { request } = approve(f, [{ store: 'delivery', id: closed.id }]);
+  close(f.root, request, f.context, f.dependencies);
+  await delivery(f);
+  assess(f);
+  const db = new DatabaseSync(path.join(f.root, '.nightshift/runs/state.sqlite'));
+  try {
+    assert.ok(db.prepare('SELECT 1 FROM settled_verdicts WHERE run_id=?').get(closed.id), 'Fixture precondition: the closed record holds a verdict');
+    const closeRow = db.prepare("SELECT revision FROM history WHERE run_id=? AND kind='close'").get(closed.id).revision;
+
+    // Act and assert
+    assert.throws(() => db.prepare('UPDATE history SET kind=kind WHERE run_id=? AND revision=?').run(closed.id, closeRow), /verdicted-run/, 'rewrite');
+    assert.throws(() => db.prepare('DELETE FROM history WHERE run_id=? AND revision=?').run(closed.id, closeRow), /verdicted-run/, 'deletion');
+  } finally { db.close(); }
+});
+
 test('a running review context with an ended owner closes and no longer blocks compaction of its store', async t => {
   const f = fixture(t);
   const opened = await review(f);
