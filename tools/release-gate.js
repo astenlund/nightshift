@@ -130,6 +130,8 @@ function evaluateRelease(root, baseline, head) {
     catch (error) { problems.push(`Retained release manifest is invalid: ${error.message}`); }
   }
   problems.push(...retiredGuidanceProblems(root, baseline, head));
+  const pin = require('./verdict-rule-pin');
+  problems.push(...pin.pinProblems(pin.gitTree(root), baseline, head));
   return { baseline, head, changed, shipped, manifestFieldsChanged, baselineVersion: baselineManifests[0].version, headVersion: headManifests[0].version, problems };
 }
 
