@@ -539,6 +539,14 @@ In the current source, `snapshot` in `internal/runtime/evidence.js` identifies e
 
 **Requires:** none.
 
+### A skeptic over several findings exhausts structured-output retries
+
+Recorded at the user's inbox triage of 2026-11-19 to 20 from item 4 of the maintainer inbox report `2026-11-19-required-defer-unverified-and-resume-candidates.md`. In Hermes delivery `3feba8e4` on 3.3.40, a skeptic dispatched over four findings failed with `structured_output_retry_exhausted`, and one skeptic per finding then succeeded; the reporter saw the same in Hermes delivery `2b1f0df2`. The report does not say which field or artifact carried the error, which host and model the failed attempts ran on, or how large their output was, and the cause is not established. The same value is a Claude terminal reason, which `claudeHostFailure` in `internal/runtime/hosts.js` puts into a failure as `terminal_reason`, and [Retry a review attempt that ended in an output loop](QUICK_WINS.md#retry-a-review-attempt-that-ended-in-an-output-loop) already records it from Claude Opus in Hermes runs `24f16bb7` and `cfce3bb1`, where an identical retry succeeded each time; what is new here is that a split into one skeptic per finding succeeded after a multi-finding skeptic failed.
+
+Establish the cause from the failed attempts' evidence, then decide whether a skeptic assignment is bounded, split or retried with fewer findings, or whether the structured output contract needs a change; the design is open. Runtime changes ship with a version increase. Tracking does not authorize implementation.
+
+**Requires:** none.
+
 ## History
 
 Prior delivered work remains in [BUGS_HISTORY.md](BUGS_HISTORY.md).
