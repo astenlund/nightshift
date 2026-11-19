@@ -636,6 +636,10 @@ Recorded at the user's inbox triage on 2026-11-16 from the maintainer inbox repo
 
 Add per-index and total counts of the ready set to the parser output, and have the ready skill say that any count the report states comes from them. Parser and skill changes ship with a version increase. Tracking does not authorize implementation.
 
+### Keep plugin-owned details out of AGENTS.md
+
+Raised by the user at the triage of delivery `54249ad1` on 2026-11-19, while a follow-up asked whether the release-gate line in [AGENTS.md](../AGENTS.md) should spell out the settled-record verdict tripwire's re-pin steps: "resolve as done now and add a quick win to remove plugin-owned details from AGENTS.md". Repository guidance there restates procedures whose rules live in plugin files such as [the runtime reference](../internal/runtime/REFERENCE.md), so each restatement has to be kept in step with its owner. Search AGENTS.md for such restatements, replace each with a pointer to the file that owns the rule, and keep what only repository guidance can say. Repository guidance only, so no version increase. Tracking does not authorize implementation.
+
 ## History
 
 Prior delivered work remains in [QUICK_WINS_HISTORY.md](QUICK_WINS_HISTORY.md).
