@@ -644,6 +644,12 @@ Raised by the user at the triage of delivery `54249ad1` on 2026-11-19, while a f
 
 Raised by a docs skeptic in delivery `54249ad1` and tracked at its triage on 2026-11-19 at the user's choice. Nine exclusions in [the verdict rule pin](../tools/verdict-rule-pin.js) rest on call-graph reasons nobody has verified: each excluded module exports code that pinned modules call, used today only from operation, brief or status paths, so a later change there could alter what the vouched checks accept without tripping the pin. The four backlog-reader exclusions were verified and reworded in that run. Trace each remaining exclusion, then either reword its reason to name the binding and the function that is not vouched, or move the call site out of the pinned module or pin the module. Rewording touches repository tooling only; moving code under `internal` ships with a version increase. Tracking does not authorize implementation.
 
+### Refuse a findings payload on a dispatch that is not a skeptic's
+
+Recorded at the user's inbox triage of 2026-11-19 to 20 from the maintainer inbox report `2026-11-17-controller-dispatch-kind-and-check-spec-slips.md`. In FeatherPod delivery `4aec2424-e827-4022-a346-33eeced81799` on installed 3.3.38, the controller meant to dispatch a skeptic over four docs findings, built the request from earlier skeptic parameters but with `kind: docs` instead of `kind: skeptic`, and attached the findings. The runtime accepted it without comment and ran a fresh docs lead assessment (`aff90b37-b890-4dfa-96df-2bf61c994430`, Codex), shown in status with role `reviewer`, so the findings went unvalidated until the controller noticed the role and dispatched the real skeptic. In the current source, `internal/runtime/review.js` checks that a findings assignment is an array with unique ids only for `kind: skeptic`, while `dispatchReview` checks each supplied finding's surfaces and puts the findings into the dispatch request whatever the kind, and the dispatch branch of `internal/runtime/cli.js` passes `review.findings` on for other kinds; whether a lead's prompt uses them was not traced at triage.
+
+Refuse a dispatch whose request supplies `review.findings` for a kind other than `skeptic`, naming the kind, once it is confirmed that no lead path reads them, so the slip fails at dispatch instead of spending an assessment. Runtime changes ship with a version increase. Tracking does not authorize implementation.
+
 ## History
 
 Prior delivered work remains in [QUICK_WINS_HISTORY.md](QUICK_WINS_HISTORY.md).
