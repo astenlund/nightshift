@@ -662,6 +662,12 @@ Recorded at the user's inbox triage of 2026-11-19 to 20 from the maintainer inbo
 
 Refuse a dispatch whose request supplies `review.findings` for a kind other than `skeptic`, naming the kind, once it is confirmed that no lead path reads them, so the slip fails at dispatch instead of spending an assessment. Runtime changes ship with a version increase. Tracking does not authorize implementation.
 
+### Surface retired index preambles a project still carries
+
+Recorded at the user's inbox triage of 2026-11-19 to 20 from the maintainer inbox report `2026-11-19-stale-index-preambles.md`. FeatherPod's four index files still open with the pre-v3 preamble calling each "one of four repo-local indexes" that Claude reads on every session start, while [the current templates](../skills/init-backlog/templates/patterns.md) say agents consult them on demand when relevant; the user found the host-specific name confusing when another agent or host runs the session. Neither the ready parser nor its link notices report retired template guidance, so ready stays silent, and what an init-backlog rerun would present for it was not checked: its template adjudication (`internal/template-text`) classifies a block as retired when its hash is listed in `skills/init-backlog/retired-guidance.json` and the current template no longer contains it, separately offers existing text as a replacement candidate where current template text is missing, and withholds a difference the project has remembered as kept.
+
+Establish, for each of the four indexes against its own retired list, whether its copy of this preamble is listed, listing it where it is not, and what a rerun in a project carrying it actually presents, and decide whether ready gives a notice when an active index still carries retired template guidance. Guidance list and parser changes ship with a version increase. Tracking does not authorize implementation.
+
 ## History
 
 Prior delivered work remains in [QUICK_WINS_HISTORY.md](QUICK_WINS_HISTORY.md).
