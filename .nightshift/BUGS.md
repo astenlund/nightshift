@@ -517,6 +517,8 @@ Recorded at the user's inbox triage on 2026-11-16 from the maintainer inbox repo
 
 Establish the cause from the failed attempt's evidence and make prompt delivery independent of that wait, for example by queuing the input before the host starts or passing the prompt in a way the wait does not affect; the design is open. Runtime changes ship with a version increase. Tracking does not authorize implementation.
 
+A possibly related case was recorded at the user's inbox triage of 2026-11-19 to 20, from item 5 of the maintainer inbox report `2026-11-19-closing-review-probe-and-revision-races.md`, which gives the matching diagnostic but neither the host nor the three-second stdin warning: in Hermes delivery `2b1f0df2` on 3.3.40 a skeptic launch failed with "Input must be provided either through stdin" and left an `unverified` worker that held `complete` with `active-workers` until the controller inspected the processes and recorded `worker-finished`.
+
 **Requires:** none.
 
 ### An assessment left incomplete only for a probe needs another fresh assessment
