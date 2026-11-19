@@ -640,6 +640,10 @@ Add per-index and total counts of the ready set to the parser output, and have t
 
 Raised by the user at the triage of delivery `54249ad1` on 2026-11-19, while a follow-up asked whether the release-gate line in [AGENTS.md](../AGENTS.md) should spell out the settled-record verdict tripwire's re-pin steps: "resolve as done now and add a quick win to remove plugin-owned details from AGENTS.md". Repository guidance there restates procedures whose rules live in plugin files such as [the runtime reference](../internal/runtime/REFERENCE.md), so each restatement has to be kept in step with its owner. Search AGENTS.md for such restatements, replace each with a pointer to the file that owns the rule, and keep what only repository guidance can say. Repository guidance only, so no version increase. Tracking does not authorize implementation.
 
+### Verify the verdict tripwire's call-graph exclusions
+
+Raised by a docs skeptic in delivery `54249ad1` and tracked at its triage on 2026-11-19 at the user's choice. Nine exclusions in [the verdict rule pin](../tools/verdict-rule-pin.js) rest on call-graph reasons nobody has verified: each excluded module exports code that pinned modules call, used today only from operation, brief or status paths, so a later change there could alter what the vouched checks accept without tripping the pin. The four backlog-reader exclusions were verified and reworded in that run. Trace each remaining exclusion, then either reword its reason to name the binding and the function that is not vouched, or move the call site out of the pinned module or pin the module. Rewording touches repository tooling only; moving code under `internal` ships with a version increase. Tracking does not authorize implementation.
+
 ## History
 
 Prior delivered work remains in [QUICK_WINS_HISTORY.md](QUICK_WINS_HISTORY.md).
