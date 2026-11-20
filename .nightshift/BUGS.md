@@ -553,6 +553,14 @@ Make the hold visible and dischargeable: have Ready's run state and the delivery
 
 **Requires:** none.
 
+### A modern record with unreadable evidence has no administrative route
+
+Found on 2026-11-20 in the spec review of [the post-completion closing hold](specs/post-completion-closing-hold.md) and tracked by the user's decision that day. A complete delivery with current schema-2 accounting whose saved state references an evidence body, such as a closing snapshot or baseline artifact, that can no longer be read is refused by every route: the creation gate refuses `delivery-consistency-unavailable`, the owner cannot restore evidence it no longer has, and `accountingClass` in `internal/runtime/legacy-inventory.js` classifies such a record as `modern`, so retirement, the legacy route, does not take it. The spec admits it to the administrative close only while every referenced evidence body can be read, because `writeStore` in `internal/runtime/close.js` saves through the ordinary path, whose accounting derivation re-reads those bodies, so close would refuse it with `close-accounting-unavailable` after its manifest had admitted it. No production writer is known to delete artifact rows, so the state needs store damage such as a lost row or a partial restore; the only way out is manual store repair. The review's alternative, a close that carries the prior accounting checkpoint forward instead of re-deriving it, was set aside for this spec because it changes the save path every close shares.
+
+Decide whether such a record gets an administrative route, such as a close that does not re-derive accounting from the evidence it drops, or a documented recovery procedure. Runtime changes ship with a version increase. Tracking does not authorize implementation.
+
+**Requires:** none.
+
 ## History
 
 Prior delivered work remains in [BUGS_HISTORY.md](BUGS_HISTORY.md).
