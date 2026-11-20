@@ -672,6 +672,12 @@ Recorded at the user's inbox triage of 2026-11-19 to 20 from the maintainer inbo
 
 Establish, for each of the four indexes against its own retired list, whether its copy of this preamble is listed, listing it where it is not, and what a rerun in a project carrying it actually presents, and decide whether ready gives a notice when an active index still carries retired template guidance. Guidance list and parser changes ship with a version increase. Tracking does not authorize implementation.
 
+### Decide whether hold and stop are admitted on a complete record
+
+Found on 2026-11-20 while drafting [the post-completion closing hold spec](specs/post-completion-closing-hold.md) and tracked by the user's decision that day. `assertAction` in `internal/runtime/lifecycle.js` lists `hold` and `stop` as bookkeeping, and their transitions set `status: 'stopped'` without checking the current status, so an owner's `hold` or `stop` on a `complete` delivery appears to turn it into a stopped one; the Stop hook does not, since `internal/runtime/hook.js` returns early for a complete record. This was read from the code, not reproduced. The spec says neither is a route for the closing hold and leaves this question out of its scope.
+
+Confirm whether the transition is reachable through the runtime CLI, find any caller that relies on it, and decide whether a complete record refuses `hold` and `stop` or the behavior is intended and documented. Runtime changes ship with a version increase. Tracking does not authorize implementation.
+
 ## History
 
 Prior delivered work remains in [QUICK_WINS_HISTORY.md](QUICK_WINS_HISTORY.md).
