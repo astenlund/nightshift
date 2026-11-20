@@ -24,6 +24,7 @@ const SOURCES = Object.freeze([
   'internal/runtime/artifact-hydration.js',
   'internal/runtime/closing-hold.js',
   'internal/runtime/creation-consistency.js',
+  'internal/runtime/delivery-outcome.js',
   'internal/runtime/discharge.js',
   'internal/runtime/documentation-paths.js',
   'internal/runtime/errors.js',

@@ -169,8 +169,12 @@ test('a completed current delivery is reported only while its report awaits its 
   const [unrecorded] = only(overview(f.root, { dependencies: f.dependencies }), 'delivery');
   assert.equal(unrecorded.report, null);
   assert.deepEqual(unrecorded.pickup, { offer: 'none', reason: 'report-unrecorded', message: 'The delivery owes its morning report, but no saved report is recorded' });
+  // This hand-edited completion was never recorded, so its closing outcome is not discharged: without a handover it owes no report
+  // and is listed for its outcome alone, with no pickup.
   replaceState(f.root, f.id, state => { delete state.handover; });
-  assert.deepEqual(only(overview(f.root, { dependencies: f.dependencies }), 'delivery'), []);
+  const [owesNoReport] = only(overview(f.root, { dependencies: f.dependencies }), 'delivery');
+  assert.equal(owesNoReport.pickup, null);
+  assert.notEqual(owesNoReport.outcome.outcome, 'discharged');
 });
 
 test('objectives and stop reasons are shortened as excerpts are, every stop kind is reported, and an absent task list counts as empty', async t => {
@@ -213,7 +217,7 @@ test('a store with a surviving sidecar is unavailable as busy, even when the sto
     const root = project(t);
     reviewStore(root, { states: [reviewState(root)] });
     fs.writeFileSync(path.join(root, '.nightshift/runs/review-state.sqlite' + suffix), '');
-    assert.deepEqual(overview(root), { records: [], compaction: [], unavailable: [{ store: 'review', code: 'run-overview-busy', message: 'A SQLite journal, WAL or shared-memory file survives beside the store' }] });
+    assert.deepEqual(overview(root), { records: [], compaction: [], unavailable: [{ store: 'review', code: 'run-overview-busy', message: 'A SQLite journal, WAL or shared-memory file survives beside the store' }], notices: [] });
     fs.rmSync(path.join(root, '.nightshift/runs/review-state.sqlite'));
     assert.deepEqual(overview(root).unavailable.map(item => item.code), ['run-overview-busy']);
   }
@@ -221,7 +225,7 @@ test('a store with a surviving sidecar is unavailable as busy, even when the sto
 
 test('a missing store is left out, and unreadable stores are unavailable with their cause, never empty', async t => {
   const empty = project(t);
-  assert.deepEqual(overview(empty), { records: [], compaction: [], unavailable: [] });
+  assert.deepEqual(overview(empty), { records: [], compaction: [], unavailable: [], notices: [] });
   const future = project(t);
   reviewStore(future, { version: 99, states: [reviewState(future)] });
   assert.deepEqual(overview(future).unavailable.map(item => [item.code, item.message]), [['review-resource-state-unavailable', 'Unsupported review database version 99']]);

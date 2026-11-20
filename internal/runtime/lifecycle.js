@@ -212,54 +212,115 @@ function verificationRefusal(root, targets, message) {
 }
 
 function historicalDischarge(state, snapshotValid) {
+  return dischargeCauses(state, snapshotValid).length === 0;
+}
+
+// What a finding still needs before it settles: a validation, which a skeptic dispatch supplies, a repair and the closure that follows
+// it, or only a disposition.
+function findingNeeds(finding) {
+  if (!finding.validation || finding.validation.verdict === 'unverified') return ['closing', 'dispatch'];
+  if (finding.disposition === 'implement' && !finding.repaired) return ['closing', 'dispatch'];
+
+  return ['closing'];
+}
+
+// Every reason a recorded completion is not discharged, as {kind, concern, subject, message, needs}. `kind` is `work` for outstanding
+// closing work recorded since completion and `evidence` for a failure of evidence (.nightshift/specs/post-completion-closing-hold.md
+// commitment 1): a task reopened since completion is work, with every completion condition the reopening leaves unmet, while every
+// other unmet condition of a task, or an invalid snapshot or closing baseline, is evidence, since its completion admitted none.
+// `needs` names the owner actions a work cause waits on: `closing` closing-record actions, `dispatch` a model dispatch, `bookkeeping`
+// worker reconciliation, and `unroutable` none the runtime admits. `options.closingCovered(check)` says whether the latest closing
+// assessment already saw a failed or pending closing check's inputs, so rerunning it needs no fresh closing review; without it a rerun
+// is taken to need one. historicalDischarge holds exactly when this list is empty.
+function dischargeCauses(state, snapshotValid, options = {}) {
+  const causes = [];
+  const add = (kind, concern, subject, message, needs = []) => causes.push({ kind, concern, subject, message, needs: kind === 'work' ? needs : [] });
   const current = (_root, value) => snapshotValid(value);
   const supportedWorker = worker => worker && typeof worker === 'object' && ['starting', 'running', 'unverified', 'complete', 'failed', 'stopped'].includes(worker.status) && ['implementer', 'reviewer', 'skeptic', 'peer', 'supervisor', 'operation'].includes(worker.role);
   const supportedTask = task => task && typeof task === 'object' && typeof task.id === 'string' && ['code', 'spec', 'docs', 'lore'].includes(task.kind) && Array.isArray(task.checks) && Array.isArray(task.reviews) && Array.isArray(task.findings);
-  if (!state.tasks.every(supportedTask) || !state.workers.every(supportedWorker)) return false;
-  if (!['complete', 'stopped'].includes(state.status) || !state.tasks.every(task => task.status === 'complete' && !task.blocker) || state.workers.some(workerIsActive)) return false;
-  if (!state.closing?.retrospectiveEvidence || !state.closing.triageEvidence || state.handover && !state.closing.reportEvidence) return false;
-  if (pendingClosures(state).length || carriedFindings(state).some(finding => !settled(finding))) return false;
-  const assessed = (entry, task, kind) => {
+  if (!state.tasks.every(supportedTask) || !state.workers.every(supportedWorker)) {
+    add('evidence', 'evidence', null, 'A task or worker has an unsupported shape');
+    return causes;
+  }
+  if (!['complete', 'stopped'].includes(state.status)) {
+    add('evidence', 'evidence', null, `The record's status ${state.status} records no completion`);
+    return causes;
+  }
+  const reopened = new Set(state.tasks.filter(task => task.status !== 'complete' || task.blocker).map(task => task.id));
+  for (const id of reopened) add('work', 'task', id, `Task ${id} was reopened after completion, and unblock is refused on a complete record`, ['unroutable']);
+  for (const worker of state.workers.filter(workerIsActive)) add('work', 'worker', worker.id ?? null, `Worker ${worker.id} is active or its termination is unknown`, ['bookkeeping']);
+  if (!state.closing?.retrospectiveEvidence || !state.closing.triageEvidence || state.handover && !state.closing.reportEvidence) add('evidence', 'evidence', null, 'The completed closing record lacks its retrospective, triage or report evidence');
+  const taskFindings = new Map(state.tasks.flatMap(task => task.findings.map(finding => [finding, task])));
+  for (const finding of pendingClosures(state)) {
+    const owner = taskFindings.get(finding);
+    if (owner && !reopened.has(owner.id)) add('evidence', 'closure', finding.id, `Finding ${finding.id} of completed task ${owner.id} is pending closure`);
+    else add('work', 'closure', finding.id, `Finding ${finding.id} is pending its reviewer's closure`, owner ? ['unroutable'] : ['closing', 'dispatch']);
+  }
+  for (const finding of carriedFindings(state).filter(item => !settled(item))) add('work', 'finding', finding.id, `Carried closing finding ${finding.id} is unsettled`, findingNeeds(finding));
+  // Acceptance of an assessment, with its snapshots judged by `valid`.
+  const accepted = (entry, task, kind, valid) => {
     const review = entry?.review;
     const related = review ? entry.owner.reviews.filter(candidate => candidate.relevance && candidate.relevance.requestId === review.requestId && candidate.relevance.originalHash === require('./applicability').identity(review) && relevanceCoversTask(candidate, task.id)) : [];
     if (related.length && !latestDecision(related, state)) return false;
     const matching = related.filter(candidate => isDeepStrictEqual(candidate.commitments?.[task.id], commitmentsFor([task])[task.id]));
     const decision = latestDecision(matching, state);
     if (matching.length && !decision) return false;
-    const retained = completeAssessment(review) && decision?.status === 'complete' && decision.attributionVerified === true && decision.independent === true && decision.strength === 'strong' && decision.applicability?.some(answer => answer.id === task.id && answer.outcome === 'preserve' && answer.evidence?.trim()) && snapshotValid(decision.snapshot) && snapshotValid(decision.contextSnapshot);
-    return (acceptableAssessment(review, task) || retained) && review.attributionVerified === true && DIMENSIONS[kind].every(dimension => review.dimensions?.includes(dimension)) && snapshotValid(review.snapshot);
+    const retained = completeAssessment(review) && decision?.status === 'complete' && decision.attributionVerified === true && decision.independent === true && decision.strength === 'strong' && decision.applicability?.some(answer => answer.id === task.id && answer.outcome === 'preserve' && answer.evidence?.trim()) && valid(decision.snapshot) && valid(decision.contextSnapshot);
+    return (acceptableAssessment(review, task) || retained) && review.attributionVerified === true && DIMENSIONS[kind].every(dimension => review.dimensions?.includes(dimension)) && valid(review.snapshot);
+  };
+  // null when the assessment is accepted, `evidence` when only its snapshots fail, and `missing` when no qualifying assessment exists.
+  const assessed = (entry, task, kind) => (accepted(entry, task, kind, snapshotValid) ? null : accepted(entry, task, kind, () => true) ? 'evidence' : 'missing');
+  // A target's latest checks: one pending, failed or missing is unmet work; a passing one whose snapshot is invalid is evidence.
+  const checkCauses = (target, kind, needs, label) => {
+    const latest = latestChecks(target);
+    if (target.kind === 'code' && latest.length === 0) add(kind, 'check', target.id, `${label} has no recorded check`, needs(null));
+    for (const check of latest) {
+      if (check.pending || !check.passed) add(kind, 'check', check.name, `${label}'s latest check "${check.name}" ${check.pending ? 'is pending' : 'failed'}`, needs(check));
+      else if (!current(state.root, check.snapshot)) add('evidence', 'evidence', check.name, `${label}'s check "${check.name}" has an invalid snapshot`);
+    }
   };
   const governance = resolveGovernance(state.root, state.tasks);
   for (const task of state.tasks) {
-    if (!verificationGate(state.root, task, current) || !task.findings.every(finding => settled(finding) && finding.validation.attributionVerified === true && ['confirmed', 'refuted'].includes(finding.validation.verdict))) return false;
-    if (requiresReview(task)) {
-      const entry = leadEntry(task, state);
-      if (!assessed(entry, task, leadKind(task)) || task.findings.some(finding => finding.repaired && findingKind(finding, task) === leadKind(task) && finding.repairRevision >= entry.review.revision)) return false;
-    }
+    const spec = task.kind === 'code' && task.agreement.spec ? governance.get(task.id)?.specTask : null;
+    const kind = reopened.has(task.id) || spec && reopened.has(spec.id) ? 'work' : 'evidence';
+    const label = `Task ${task.id}`;
+    checkCauses(task, kind, () => ['unroutable'], label);
+    for (const finding of task.findings.filter(item => !(settled(item) && item.validation.attributionVerified === true && ['confirmed', 'refuted'].includes(item.validation.verdict)))) add(kind, 'finding', finding.id, `${label}'s finding ${finding.id} is unsettled`, ['unroutable']);
+    const reviewCause = (entry, reviewKind, name) => {
+      const failure = assessed(entry, task, reviewKind);
+      if (failure) add(failure === 'evidence' ? 'evidence' : kind, failure === 'evidence' ? 'evidence' : 'review', task.id, failure === 'evidence' ? `${label}'s ${name} assessment has an invalid snapshot` : `${label} lacks a qualifying ${name} assessment`, ['unroutable']);
+      else for (const finding of task.findings.filter(item => item.repaired && findingKind(item, task) === reviewKind && item.repairRevision >= entry.review.revision)) add(kind, 'finding', finding.id, `${label}'s finding ${finding.id} was repaired after its ${name} assessment`, ['unroutable']);
+    };
+    if (requiresReview(task)) reviewCause(leadEntry(task, state), leadKind(task), 'lead');
     if (state.docsGate && sharesCumulativeAssessment(task)) {
       const exemption = task.docsExemption;
-      if (!(exemption?.reason?.trim() && snapshotValid(exemption.snapshot))) {
-        const entry = latestReview(docsCandidates(task, state, false), state);
-        if (!assessed(entry, task, 'docs') || task.findings.some(finding => finding.repaired && findingKind(finding, task) === 'docs' && finding.repairRevision >= entry.review.revision)) return false;
-      }
+      if (!(exemption?.reason?.trim() && snapshotValid(exemption.snapshot))) reviewCause(latestReview(docsCandidates(task, state, false), state), 'docs', 'docs');
     }
     // The readiness routes judged on recorded evidence: the task's own reviewed snapshot while it has no link, otherwise its governing
     // spec task, linked or queued. Spec paths compare as readiness compares them, so a run discharged by equal strings stays discharged.
     if (task.kind === 'code' && task.agreement.spec) {
-      if (!usableSpec(task.agreement.spec)) return false;
+      if (!usableSpec(task.agreement.spec)) {
+        add('evidence', 'evidence', task.id, `${label} names an unusable governing spec`);
+        continue;
+      }
       const reviewed = !specLink(task) && task.agreement.specReviewed === true && snapshotValid(task.agreement.specSnapshot);
-      const spec = governance.get(task.id)?.specTask;
-      if (!reviewed && (!spec || spec.status !== 'complete' || !assessed(leadEntry(spec, state), spec, 'spec'))) return false;
+      if (reviewed) continue;
+      const failure = spec && spec.status === 'complete' ? assessed(leadEntry(spec, state), spec, 'spec') : 'missing';
+      if (failure) add(failure === 'evidence' ? 'evidence' : kind, failure === 'evidence' ? 'evidence' : 'task', task.id, failure === 'evidence' ? `${label}'s governing spec assessment has an invalid snapshot` : `${label}'s governing spec is not settled`, ['unroutable']);
     }
   }
   const closing = state.closing.docs;
   if (closing) {
-    if (!closing.findings.every(settled) || !verificationGate(state.root, closing, current) || !snapshotValid(closing.baseline, true)) return false;
+    for (const finding of closing.findings.filter(item => !settled(item))) add('work', 'finding', finding.id, `Closing finding ${finding.id} is unsettled`, findingNeeds(finding));
+    checkCauses(closing, 'work', check => (check && options.closingCovered?.(check) ? ['closing'] : ['closing', 'dispatch']), 'The closing record');
+    if (!snapshotValid(closing.baseline, true)) add('evidence', 'evidence', null, 'The closing record has an invalid triage baseline');
     const review = latestClosingReview(closing, state);
-    if (review && (!completeAssessment(review) || review.attributionVerified !== true || !DIMENSIONS.docs.every(dimension => review.dimensions?.includes(dimension)) || !snapshotValid(review.snapshot))) return false;
-    if (closing.findings.some(finding => finding.repaired && finding.repairRevision >= (review?.revision ?? Infinity))) return false;
+    if (review && (!completeAssessment(review) || review.attributionVerified !== true || !DIMENSIONS.docs.every(dimension => review.dimensions?.includes(dimension)))) add('work', 'review', review.requestId ?? null, 'The latest closing review is incomplete, unattributed or missing a docs dimension', ['closing', 'dispatch']);
+    else if (review && !snapshotValid(review.snapshot)) add('evidence', 'evidence', review.requestId ?? null, 'The latest closing review has an invalid snapshot');
+    for (const finding of closing.findings.filter(item => item.repaired && item.repairRevision >= (review?.revision ?? Infinity))) add('work', 'finding', finding.id, `Closing finding ${finding.id} was repaired after the latest closing review`, ['closing', 'dispatch']);
   }
-  return true;
+
+  return causes;
 }
 
 // Every latest named check that no longer passes on current inputs, of every task, completed ones included, and of the closing
@@ -824,6 +885,8 @@ function buildObligationBrief(state, root, options) {
     finalReconciliationPending: !isReviewContext(state) && state.status === 'running' && active.length === 0,
     ...(!isReviewContext(state) ? { userDecisions: decisionStatus(root, state, options) } : {}),
     ...(!isReviewContext(state) ? { closing: { ready: closingReady(state), stage: closingStage(state), ...(state.closing?.docs ? { docsReview: closingDocsBrief(state, root, options) } : outsideDocumentationBrief(state, root, options)), ...(state.closing?.carriedFindings?.length ? { carriedFindings: state.closing.carriedFindings.map(finding => finding.id), carriedSurfaceVerdicts: findingSurfaceVerdicts(state.closing.carriedFindings) } : {}) } } : {}),
+    // What the complete delivery holds back from the next handover, judged by the caller that can read the store's history.
+    ...(!isReviewContext(state) && state.status === 'complete' && (options.handoverOutcome !== undefined || options.verifyFreshness === false) ? { handoverOutcome: options.verifyFreshness === false ? 'reconcile at acceptance' : options.handoverOutcome } : {}),
     blockers: active.filter(task => task.blocker).map(task => ({ id: task.id, blocker: task.blocker })),
     workers: state.workers.filter(workerIsActive),
     followups: state.followups.filter(item => item.status !== 'resolved'),
@@ -1390,4 +1453,4 @@ function transition(state, request, integration = null) {
   require('./discharge').admittedAction(state, request, dischargeBefore);
 }
 
-module.exports = { causeText, docsCause, reviewGateCause, staleCause, CLOSING_COVERAGE, DIMENSIONS, acceptableAssessment, closingCoverageText, assertAction, closingStage, commitmentBindingFor, commitmentsFor, completeAssessment, coversDimensions, findingKind, historicalDischarge, isDocumentationPath, latestChecks, latestClosingReview, leadEntry, obligationBrief, reportNotice, reportStatus, requiresReview, reviewGate, reviewGateFailure, reviewKind, reviewProgress, sameClosingRecord, settled, sharesCumulativeAssessment, targetById, taskById, transition, unresolvedFindings };
+module.exports = { causeText, docsCause, reviewGateCause, staleCause, CLOSING_COVERAGE, DIMENSIONS, acceptableAssessment, closingCoverageText, assertAction, closingStage, commitmentBindingFor, commitmentsFor, completeAssessment, coversDimensions, dischargeCauses, findingKind, historicalDischarge, isDocumentationPath, latestChecks, latestClosingReview, leadEntry, obligationBrief, reportNotice, reportStatus, requiresReview, reviewGate, reviewGateFailure, reviewKind, reviewProgress, sameClosingRecord, settled, sharesCumulativeAssessment, targetById, taskById, transition, unresolvedFindings };

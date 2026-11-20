@@ -191,7 +191,8 @@ async function main() {
     // One record whose own accounting artifacts pass the allowance is still refused.
     const narrowed = assess('one-record-over-accounting-allowance', Math.max(...four.accountingBytes) - 1);
     assert.equal(narrowed.error, 'delivery-consistency-unavailable');
-    assert.match(narrowed.message, /exceeds a verification bound/);
+    // A complete delivery past its own accounting allowance reads unavailable and is named with its cause.
+    assert.match(narrowed.message, /is unavailable: Accounting recovery exceeded its byte bound/);
   } finally {
     if (store) store.close();
     store = undefined;

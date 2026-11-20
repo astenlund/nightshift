@@ -617,8 +617,12 @@ test('close refuses complete and retired members and a mismatched actor', async 
   const { request } = approve(f, members);
   assert.throws(() => close(f.root, { ...request, actor: { host: 'codex', session: closer.session } }, f.context, f.dependencies), { code: 'migration-authority-required' });
   assert.throws(() => close(f.root, { ...request, actor: owner }, f.context, f.dependencies), { code: 'migration-authority-required' });
+  // A complete record with no recorded completion row cannot be authenticated, so close admits it and names that in what it drops.
   update(f, current => { current.status = 'complete'; });
-  assert.equal(closeManifest(f.root, { members }, f.context, f.dependencies).ineligible[0].code, 'close-not-needed');
+  const unauthenticated = closeManifest(f.root, { members }, f.context, f.dependencies);
+  assert.deepEqual(unauthenticated.ineligible, []);
+  assert.equal(unauthenticated.records[0].drops.outcome, 'unauthenticated');
+  assert.match(unauthenticated.records[0].drops.causes.join(' '), /no recorded completion row/);
   const g = fixture(t);
   const second = await delivery(g);
   await g.call({ action: 'stop', kind: 'user-stop', reason: 'User paused' });

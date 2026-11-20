@@ -66,6 +66,30 @@ function legacyFollowupBrief(store) {
 
 // A completed delivery cannot be adopted and its owning session may be gone, so another admitted session of the same project,
 // in the run's resource mode and store, may record the recipient's reply to its morning report. Nothing else is opened to it.
+// A complete delivery's closing outcome for its status brief (.nightshift/specs/post-completion-closing-hold.md commitment 3), or
+// undefined for any other record. Status has already read the record in full, so its routes are authoritative: a close the saved
+// workers' adoption-eligibility verdict refuses names that refusal in place of the close route. A failed judgment is reported, never
+// read as discharged.
+function handoverOutcome(store, state, dependencies) {
+  if (store.kind !== 'delivery' || state.status !== 'complete') return undefined;
+  if (store.isRetired(state.id)) return { retired: true };
+  const outcomes = require('./delivery-outcome');
+  let entry;
+  try { entry = outcomes.outcomeOf(store.root, state.id); }
+  catch (error) { entry = { judgment: outcomes.judgment([outcomes.causeOf(error, 'accounting')]) }; }
+  if (!entry) return undefined;
+  if (entry.retired) return { retired: true };
+  const value = entry.judgment;
+  let closeRefusal = null;
+  if ([outcomes.HELD, outcomes.UNAUTHENTICATED].includes(value.outcome)) {
+    const verdict = require('./close').closeVerdict(state, dependencies, value);
+    if (!verdict.eligible) closeRefusal = { code: verdict.code, message: verdict.message };
+  }
+  const current = store.read(undefined, { hydrate: false })?.id === state.id;
+
+  return outcomes.brief(state.id, value, outcomes.routes(state, value, { current, closeRefusal }));
+}
+
 function confirmCompletedReport(store, state, request, resources) {
   const { host, session } = request.actor ?? {};
   requireCondition(['claude', 'codex'].includes(host) && typeof session === 'string' && session.trim(), 'invalid-request', 'report-delivered.actor must name the confirming host session');
@@ -108,7 +132,7 @@ async function execute(root, request, dependencies = {}) {
       const state = store.read(request.runId);
       requireCondition(state, 'missing-state', 'No saved Nightshift run');
       const legacyFollowups = legacyFollowupBrief(store);
-      return { ...obligationBrief(state), ...(legacyFollowups ? { legacyFollowups } : {}) };
+      return { ...obligationBrief(state, state.root, { handoverOutcome: handoverOutcome(store, state, dependencies) }), ...(legacyFollowups ? { legacyFollowups } : {}) };
     }
     if (request.action === 'history') return history(store, request);
     if (request.action === 'inspect') return store.read(request.runId);
