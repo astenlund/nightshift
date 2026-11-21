@@ -314,6 +314,8 @@ test('an incomplete closing review recorded after completion holds the delivery 
   assert.ok(judged.causes.some(entry => entry.needs.includes('review')));
   const { routed } = outcomes.routesFor(state, judged, { current: true, inspect: false });
   assert.deepEqual(routed.list.map(entry => entry.route), ['owner', 'close']);
+  // The creation gate refuses a new delivery as overlap, naming the run and its closing-review cause.
+  assert.throws(() => f.store.create({ mechanism: fixtureContinuation(), objective: 'Next work', authority: 'User agreed the next scope', controller: actor, controllerClaim: fixtureControllerClaim(actor), tasks: [CODE_TASK] }), error => error.code === 'overlapping-run' && error.message.includes(state.id) && error.message.includes('recorded on the closing record, does not qualify'));
 });
 
 test('a failed closing check whose inputs the latest closing review saw keeps the owner route at a spent dispatch allowance', async t => {
