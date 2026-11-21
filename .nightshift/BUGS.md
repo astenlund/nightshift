@@ -6,6 +6,12 @@ V2 entries are preserved in [the historical index](migration/v2/BUGS.md) and [MI
 
 ## Current
 
+### An interrupted compaction swap lets handover start an empty store
+
+Found on 2026-11-22 by the independent spec assessment of the post-completion closing hold amendment in delivery run `e3ad3279-9d50-4a4f-97c0-8d82790d76ba`, confirmed by a fresh skeptic against the code and tracked by the user's decision that day. History compaction admits a store holding a complete held delivery, since it refuses only running records, and swaps the verified build in by first renaming the original store to its `.pre-compaction` backup. If the second rename fails, the backup and the build survive but no canonical database exists. `RunStore` creation checks only the database and its SQLite sidecars, so it initializes a fresh empty store that passes the creation gate's empty-store check, and the held delivery in the backup is never seen; Ready's absence rule also checks only the database and its sidecars, so it can omit the store without reporting the interruption. Close already treats the same leftovers as an unavailable store. The fix is one classification of store presence, shared by store creation, Ready and close, under which a missing database counts as absent only when neither a sidecar nor a compaction backup or build file survives beside it. Evidence: the skeptic validation in that run, against `internal/runtime/history-compaction.js` and `internal/runtime/store.js`.
+
+**Requires:** none.
+
 ### Unwrap inserts a space after a line-end hyphen or slash
 
 Reported from Ring-O-Meter-Private on installed 3.3.31 and tracked by the user's inbox triage decision on 2026-11-08, from the maintainer inbox report `2026-11-08-unwrap-space-after-line-end-break.md`. Running `init-backlog` setup `apply` with `options.unwrap` joined every hard-wrapped line with a space, including lines where the wrap had split a compound word or a path: `chord-` and `aware` became `chord- aware`, and `.claude/skills/` and `sketch-on-tablet/` became `.claude/skills/ sketch-on-tablet/`, which breaks the path. The report counts 165 damaged hyphen joins and 9 slash joins across the 79 migrated files, found by a documentation review and repaired in that project against the pre-migration files. Ready reports nothing, since links are unaffected, and a search for the compound or path then misses those occurrences. `joinContinuations` in `internal/backlog-catalog.js` always inserts one space, whatever the line ended with.
