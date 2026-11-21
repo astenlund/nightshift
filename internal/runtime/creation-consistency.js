@@ -369,6 +369,8 @@ function assessment(store, options = {}) {
       return { ...record, deferred: true };
     }
     if (!['artifacts', 'accounting_commits', 'discharge_index'].every(table => tables.has(table))) {
+      // A complete delivery whose saved accounting lost its tables is unavailable, named beside every other blocker; others refuse.
+      if (state.progress !== undefined && outcomeOnFailure) return { ...record, outcome: outcomes.judgment([outcomes.cause('accounting', null, outcomes.MISSING_TABLES)]) };
       requireCondition(state.progress === undefined, CODE, `Delivery ${state.id} has unsupported accounting without its required tables`);
       legacyUnavailable.push({ id: state.id, status: state.status, reason: 'no-independent-accounting' });
       return record;
@@ -406,7 +408,6 @@ function assessment(store, options = {}) {
     } catch (error) {
       if (error.sharedAllowance) throw error;
       if (judged && error instanceof RunError) return { ...record, outcome: outcomes.judgment([outcomes.causeOf(error, 'accounting')]) };
-      if (error.sharedAllowance) throw error;
       if (!options.resourceOnly && state.progress?.schema === 2 && resourceLimit(error)) requireCondition(false, CODE, `Delivery ${state.id} exceeds a verification bound: ${error.message}`);
       if (!options.resourceOnly || resourceLimit(error) || !(error instanceof RunError)) throw error;
       return record;

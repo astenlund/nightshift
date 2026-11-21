@@ -15,6 +15,7 @@ const UNAUTHENTICATED = 'unauthenticated';
 const UNAVAILABLE = 'unavailable';
 
 const CLOSE_ROUTE = 'Any session can drop it through the administrative close on the user\'s authority: run the migration entry\'s close-manifest for it, present that manifest and run close with the user\'s reply and reason';
+const MISSING_TABLES = 'The delivery store lacks the accounting tables, so this record has no independent accounting';
 const BUG = 'A modern record with unreadable evidence has no administrative route';
 
 function resourceLimit(error) {
@@ -227,7 +228,7 @@ function establish(env, state, budget) {
 }
 
 function judgeStored(env, row, tracker, selected) {
-  if (!['artifacts', 'accounting_commits', 'discharge_index'].every(table => env.tables.has(table))) return judgment([cause('accounting', null, 'The delivery store lacks the accounting tables, so this record has no independent accounting')]);
+  if (!['artifacts', 'accounting_commits', 'discharge_index'].every(table => env.tables.has(table))) return judgment([cause('accounting', null, MISSING_TABLES)]);
   const current = readCurrent(env, row, tracker, selected);
   if (current.problem) return judgment([current.problem]);
   const budget = accountingBudget(tracker);
@@ -306,4 +307,4 @@ function outcomeOf(root, id) {
   finally { db.close(); }
 }
 
-module.exports = { BUG, DISCHARGED, HELD, UNAUTHENTICATED, UNAVAILABLE, brief, cause, causeOf, describe, judgment, openStore, outcomeOf, readOutcomes, routes, routesFor, unreadableRefusal };
+module.exports = { BUG, DISCHARGED, HELD, MISSING_TABLES, UNAUTHENTICATED, UNAVAILABLE, brief, cause, causeOf, describe, judgment, openStore, outcomeOf, readOutcomes, routes, routesFor, unreadableRefusal };

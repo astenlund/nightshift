@@ -937,6 +937,15 @@ test('outside Git, status and Ready name only the administrative close for a hol
   assert.match(record.outcome.ownerUnavailable, /outside Git/);
 });
 
+test('a complete delivery whose store lost an accounting table is named unavailable with its recovery route by the refused handover', async t => {
+  const f = project(t);
+  await completed(f.root);
+  const id = read(f.root).id;
+  // An external loss: the discharge index table is gone while the run rows remain.
+  withStore(f.root, store => store.db.exec('DROP TABLE discharge_index'));
+  await assert.rejects(execute(f.root, reflection(), base), error => error.code === 'delivery-consistency-unavailable' && error.message.includes(id) && /unavailable/.test(error.message) && error.message.includes(outcomes.MISSING_TABLES) && /close-accounting-unavailable/.test(error.message));
+});
+
 test('Ready names only the administrative close for a held delivery past its deadline', async t => {
   const f = project(t);
   await completed(f.root);
