@@ -59,6 +59,7 @@ const EXCLUDED = Object.freeze({
   'internal/releases/io.js': 'reached only through legacy-backlog targetEntry, which followupsValid runs at every pass, vouched records included',
   'internal/releases/entry.js': 'resolves the executing release binding for operations, not a judgment of a saved record',
   'internal/releases/service.js': 'admits release operations for running work, not a judgment of a saved record',
+  'internal/runtime/close.js': 'supplies the close verdict a refusal message names beside the routes of a blocking record, not a judgment of whether a record is discharged',
   'internal/runtime/actions.js': 'admits runtime operations, not a judgment of a saved record',
   'internal/runtime/continuation.js': 'observes host continuation for running work',
   'internal/runtime/continuation-health.js': 'observes host continuation for running work',
