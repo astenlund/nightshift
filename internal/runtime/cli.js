@@ -80,7 +80,12 @@ function statusRead(store, runId) {
     try { entry = outcomes.readOutcomes(store.db, store.root, { ids: [state.id], inTransaction: true }).byId.get(state.id) ?? null; }
     catch (error) { entry = { judgment: outcomes.judgment([outcomes.causeOf(error, 'accounting')]) }; }
     // The selection is named by the active table alone, so a damaged selection row cannot fail another record's status.
-    const selected = store.db.prepare('SELECT id FROM active WHERE singleton=1').get()?.id ?? null;
+    let selected = null;
+    try { selected = store.db.prepare('SELECT id FROM active WHERE singleton=1').get()?.id ?? null; }
+    catch {
+      // A store whose selection table cannot be read names no selection: the record is read as not current, which only withdraws an
+      // owner route, and the judgment above already records why the store is unavailable.
+    }
     return { state, judged: entry && { ...entry, current: selected === state.id } };
   } finally { store.db.exec('ROLLBACK'); }
 }

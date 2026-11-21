@@ -1002,6 +1002,17 @@ test('close keeps a member\'s accounting refusal when the store has lost its art
   assert.equal(manifest.ineligible[0].code, 'close-accounting-unavailable');
 });
 
+test('status by run id returns an unavailable outcome when the store has lost its selection table', async t => {
+  const f = project(t);
+  await completed(f.root);
+  const id = read(f.root).id;
+  // An external loss of the active table, with the record and its evidence intact.
+  withStore(f.root, store => store.db.exec('DROP TABLE active'));
+  const outcome = (await status(f.root, id)).handoverOutcome;
+  assert.equal(outcome.outcome, 'unavailable');
+  assert.ok(outcome.routes.some(entry => entry.route === 'recovery'));
+});
+
 test('Ready names only the administrative close for a held delivery past its deadline', async t => {
   const f = project(t);
   await completed(f.root);
