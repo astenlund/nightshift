@@ -410,7 +410,10 @@ test('the creation gate does not count a closed status discharged without its ma
     current.closure = { authority: 'Hand-written', reason: 'No close row', manifestHash: 'e'.repeat(64), approval: 'f'.repeat(64), reconciledWorkers: [], previousStatus: 'stopped', previousRevision: current.revision - 1, recordedAt: current.updatedAt, actor: closer };
     current.status = 'closed';
   });
-  assert.equal(assess(f).replaceable, false);
+  const held = assess(f);
+  assert.equal(held.replaceable, false);
+  // The closed selection is named, with its inspection remedy, rather than left to a generic refusal.
+  assert.ok(held.blocking.includes('(selected) is closed, but its close row does not count it discharged'), held.blocking);
 
   // A close row whose closure differs from the current one.
   const g = fixture(t);

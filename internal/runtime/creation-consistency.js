@@ -369,11 +369,13 @@ function assessment(store, options = {}) {
       return { ...record, deferred: true };
     }
     if (!['artifacts', 'accounting_commits', 'discharge_index'].every(table => tables.has(table))) {
-      // A complete delivery whose saved accounting lost its tables is unavailable, named beside every other blocker; others refuse.
-      if (state.progress !== undefined && outcomeOnFailure) return { ...record, outcome: outcomes.judgment([outcomes.cause('accounting', null, outcomes.MISSING_TABLES)]) };
+      // A complete delivery without the accounting tables is unavailable, named beside every other blocker; an older-format record also
+      // joins the legacy group, and any other record with saved accounting refuses.
+      const missing = outcomeOnFailure ? { outcome: outcomes.judgment([outcomes.cause('accounting', null, outcomes.MISSING_TABLES)]) } : {};
+      if (state.progress !== undefined && outcomeOnFailure) return { ...record, ...missing };
       requireCondition(state.progress === undefined, CODE, `Delivery ${state.id} has unsupported accounting without its required tables`);
       legacyUnavailable.push({ id: state.id, status: state.status, reason: 'no-independent-accounting' });
-      return record;
+      return { ...record, ...missing };
     }
     if (options.resourceOnly && state.progress === undefined) {
       verifyArtifacts(store.db, state, retirementEvidence);
@@ -442,6 +444,8 @@ function assessment(store, options = {}) {
       if (!selected.retired && !isClosed(selected.state) && selected.discharged && reportAwaitsRecipient(selected.state)) own.push({ record: selected, code: 'report-delivery-pending', text: `Delivery ${selected.id} (selected) owes its morning report to its recipient: present the saved report and record report-delivered with the user's reply.` });
       // A stopped selection the pass deferred behind a legacy blocker was never judged, so it is not named; a running one never discharges.
       if (!selected.discharged && (selected.state.status === 'running' || (selected.state.status === 'stopped' && !selected.deferred))) own.push({ record: selected, code: 'overlapping-run', text: `Delivery ${selected.id} (selected) is ${selected.state.status}: reconcile, resume or explicitly finish it.` });
+      // A closed selection whose close row no longer counts it discharged cannot be resumed; it needs inspection.
+      if (!selected.discharged && !selected.retired && !selected.deferred && isClosed(selected.state)) own.push({ record: selected, code: 'overlapping-run', text: `Delivery ${selected.id} (selected) is closed, but its close row does not count it discharged: inspect it with raw-inspect.` });
     }
     const named = new Set(list.map(entry => entry.record));
     for (const record of records.filter(entry => entry.state?.workers.some(workerIsActive) && !named.has(entry))) own.push({ record, code: 'overlapping-run', text: `Delivery ${record.id} has an active or uncertain worker to reconcile.` });

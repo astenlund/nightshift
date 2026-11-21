@@ -652,6 +652,14 @@ test('tracked destinations are bounded separately for each approved retirement m
   finally { store.close(); }
 });
 
+test('an older-format complete record without accounting tables is grouped as legacy and named unavailable with its recovery route', t => {
+  const { root, id } = fixture(t);
+  const store = new RunStore(root);
+  try {
+    assert.throws(() => store.transaction(() => creationAssessment(store)), error => error.code === 'delivery-consistency-unavailable' && error.message.includes('complete:no-independent-accounting') && error.message.includes(id) && error.message.includes(require('../internal/runtime/delivery-outcome').MISSING_TABLES) && error.message.includes('close-accounting-unavailable'));
+  } finally { store.close(); }
+});
+
 test('a schema-two record with missing independent accounting cannot be retired as legacy', t => {
   const { root, id } = fixture(t);
   const db = new DatabaseSync(path.join(root, '.nightshift/runs/state.sqlite'));
