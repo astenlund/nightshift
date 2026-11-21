@@ -262,7 +262,8 @@ function dischargeCauses(state, snapshotValid, options = {}) {
     if (owner && !reopened.has(owner.id)) add('evidence', 'closure', finding.id, `Finding ${finding.id} of completed task ${owner.id} is pending closure`);
     else add('work', 'closure', finding.id, `Finding ${finding.id} is pending its reviewer's closure`, owner ? ['unroutable'] : ['closing', 'dispatch']);
   }
-  for (const finding of carriedFindings(state).filter(item => !settled(item))) add('work', 'finding', finding.id, `Carried closing finding ${finding.id} is unsettled`, findingNeeds(finding));
+  // Only findings carried from a replaced record; the current record's own are named with it below.
+  for (const finding of (state.closing?.carriedFindings ?? []).filter(item => !settled(item))) add('work', 'finding', finding.id, `Carried closing finding ${finding.id} is unsettled`, findingNeeds(finding));
   // Acceptance of an assessment, with its snapshots judged by `valid`.
   const accepted = (entry, task, kind, valid) => {
     const review = entry?.review;

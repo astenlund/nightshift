@@ -340,7 +340,13 @@ test('a validated closing finding stays disposable at a spent allowance when an 
 
   // Assert
   assert.equal(read.handoverOutcome.outcome, 'held');
+  // The current record's own unsettled finding is named once, never also as carried.
+  assert.deepEqual(read.handoverOutcome.causes.filter(entry => entry.subject === findingId).map(entry => entry.message), [`Closing finding ${findingId} is unsettled`]);
   assert.deepEqual(read.handoverOutcome.routes.map(entry => [entry.route, entry.conditional ?? false]), [['owner', false], ['close', false]]);
+  // An edit inside the finding's scope stales its validation, which a new skeptic dispatch must replace: the allowance refuses it.
+  f.write('README.md', '# Project, edited\n');
+  const stale = await require('../internal/runtime/cli').execute(f.root, { action: 'status' });
+  assert.deepEqual(stale.handoverOutcome.routes.map(entry => entry.route), ['close']);
 });
 
 test('a covering docs review from a later task keeps an earlier completed task current', t => {

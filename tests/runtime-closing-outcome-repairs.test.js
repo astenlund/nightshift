@@ -750,10 +750,24 @@ test('a held selection that owes its report refuses as overlap, replays unchange
   await closingCheck(f.root, 'post-completion tracking check', failing);
   const held = read(f.root);
   await assert.rejects(execute(f.root, reflection(), base), { code: 'overlapping-run' });
+  const rows = withStore(f.root, store => store.db.prepare('SELECT count(*) AS n FROM history').get().n);
   assert.equal((await execute(f.root, original, base)).revision, held.revision);
+  assert.equal(withStore(f.root, store => store.db.prepare('SELECT count(*) AS n FROM history').get().n), rows);
   const [record] = overview(f.root, { dependencies: base }).records;
   assert.deepEqual(record.pickup, { offer: 'present-report' });
   assert.deepEqual(record.close, { offer: 'close' });
+  // A close the saved worker refuses leaves the report presentable.
+  withStore(f.root, store => store.update(owner, store.read().revision, 'fixture-interrupted-check', interruptedWorker));
+  const [refused] = overview(f.root, { dependencies: base }).records;
+  assert.deepEqual(refused.pickup, { offer: 'present-report' });
+  assert.equal(refused.close.reason, 'worker-activity-unknown');
+  // So does an unavailable outcome on the same selection.
+  const state = read(f.root);
+  withStore(f.root, store => store.db.prepare('DELETE FROM accounting_commits WHERE run_id=? AND revision=?').run(state.id, state.revision));
+  const [unavailable] = overview(f.root, { dependencies: base }).records;
+  assert.deepEqual(unavailable.pickup, { offer: 'present-report' });
+  assert.equal(unavailable.outcome.outcome, 'unavailable');
+  assert.equal(unavailable.close.reason, 'close-accounting-unavailable');
 });
 
 test('Ready names only the administrative close for a held delivery past its deadline', async t => {
