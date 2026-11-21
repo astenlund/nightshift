@@ -462,7 +462,9 @@ function assessment(store, options = {}) {
     const retirement = retiredById.get(row.id) ?? null;
     const metadata = verdict || writable ? verdicts.metadataOf(store.db, tables, row.id) : null;
     if (accepting && row.id !== selectedId && verdict?.wellFormed && verdict.current && verdicts.matches(verdict, metadata, retirement)) {
-      accept(verdict.acceptance);
+      // An ambiguous acceptance identity refuses the whole pass, naming the blockers it already established.
+      try { accept(verdict.acceptance); }
+      catch (error) { throw namedRefusal(error, row.id); }
       // The verdict vouches for the certificate checks that read only this record's frozen rows; the chain walk, the manifest and
       // the tracked destinations in project files are checked again.
       if (retirement !== null) {
