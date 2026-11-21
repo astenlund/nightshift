@@ -162,8 +162,11 @@ function judgeCompletion({ db, accounting, provenance, history, state, budget, e
       if (convert) return outcomes.judgment([outcomes.cause('bound', null, `Delivery ${state.id} completion history exceeds its own read bound`)]);
       requireCondition(false, CODE, `Delivery ${state.id} completion history exceeds its own read bound`);
     }
-    const completed = JSON.parse(completion.state);
-    requireCondition(completed.id === state.id && completed.revision === completion.revision && completed.status === 'complete', CODE, 'Recorded completion identity is contradictory');
+    // An unreadable completion body is a failure of the evidence the judgment reads, never an unexpected error.
+    let completed;
+    try { completed = JSON.parse(completion.state); }
+    catch { requireCondition(false, CODE, `Delivery ${state.id} recorded completion row is unreadable`); }
+    requireCondition(completed && typeof completed === 'object' && completed.id === state.id && completed.revision === completion.revision && completed.status === 'complete', CODE, 'Recorded completion identity is contradictory');
     provenance.read(completed, budget);
     // Each failed read is kept as a cause and judged invalid, so the closing work found beside it is still named.
     const resolve = value => {

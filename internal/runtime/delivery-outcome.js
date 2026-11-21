@@ -38,6 +38,16 @@ function judgment(causes) {
   return { outcome, causes };
 }
 
+// Whether a closing review or skeptic result of the current closing record was collected but not yet imported: importing it needs no
+// new dispatch, so a spent allowance leaves that route open.
+function collectedClosingResult(state) {
+  const record = state.closing?.docs;
+  if (!record) return false;
+  const imported = new Set([...(record.reviews ?? []).map(review => review.requestId), ...(record.findings ?? []).map(finding => finding.validation?.requestId)].filter(Boolean));
+
+  return state.workers.some(worker => worker.taskId === '#closing' && worker.status === 'complete' && ['reviewer', 'skeptic'].includes(worker.role) && (worker.closingOccurrence ?? null) === (record.occurrence ?? null) && !imported.has(worker.id));
+}
+
 // Why the owner cannot discharge a held delivery itself, or null while it can: runtime mutations reach only the current selection, a
 // reopened task cannot be unblocked on a complete record, a passed deadline refuses every closing-record action and a spent dispatch
 // allowance refuses only a new dispatch. Worker reconciliation is bookkeeping, which neither limit refuses.
@@ -47,7 +57,7 @@ function ownerBlocked(state, { causes }, { current, now }) {
   const deadline = state.limits?.deadlineUtc;
   if (deadline && now >= Date.parse(deadline) && causes.some(entry => entry.needs.includes('closing'))) return 'the run deadline has passed, which refuses every closing-record action';
   const max = state.limits?.maxDispatches;
-  if (max !== undefined && (state.dispatches ?? 0) >= max && causes.some(entry => entry.needs.includes('dispatch'))) return 'the dispatch allowance is spent and the hold needs a new dispatch';
+  if (max !== undefined && (state.dispatches ?? 0) >= max && causes.some(entry => entry.needs.includes('dispatch')) && !collectedClosingResult(state)) return 'the dispatch allowance is spent and the hold needs a new dispatch';
 
   return null;
 }
@@ -288,6 +298,12 @@ function closedRefusal(db, root, id) {
   const tracker = allowance(reservation(env, selected));
   const refusal = value => ({ code: value.kind === 'bound' ? 'close-bound-unavailable' : 'close-accounting-unavailable', message: `The closed record ${id} would not be counted discharged by the creation gate (${value.message}); nothing was closed in this store` });
   try {
+    // Every pass judges the selection in full and never vouches for it, so whichever record sorts first, a pass that reaches the end
+    // has charged the selection's state, latest row and accounting beside the closed record: charge them first.
+    if (selected && selected !== id) {
+      const selection = readCurrent(env, db.prepare('SELECT id, state FROM runs WHERE id=?').get(selected), tracker, true);
+      if (!selection.problem) establish(env, selection.state, accountingBudget(tracker));
+    }
     const current = readCurrent(env, row, tracker, id === selected);
     if (current.problem) return refusal(current.problem);
     const budget = accountingBudget(tracker);

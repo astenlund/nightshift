@@ -293,6 +293,87 @@ test('a shortfall keeps the stopped record and the owed report Ready reports, an
   assert.equal((await status(f.root, owing)).handoverOutcome.outcome, 'discharged');
 });
 
+test('whenever close commits a nonselected closed record, the next handover under the same bound can count it', async t => {
+  const f = project(t);
+  await completed(f.root);
+  const first = read(f.root).id;
+  await completed(f.root);
+  const second = read(f.root).id;
+  select(f.root, first);
+  await closingCheck(f.root, 'post-completion tracking check', failing);
+  select(f.root, second);
+  const { request } = approve(f, [{ store: 'delivery', id: first }]);
+  const saved = BOUNDS.input;
+  t.after(() => { BOUNDS.input = saved; });
+  // The smallest bound at which close's judgment of the closed record passes; the probe aborts before the commit.
+  const probe = { ...base, beforeCommit: () => { throw new RunError('fixture-probe', 'Judgment passed'); } };
+  const passes = bound => {
+    BOUNDS.input = bound;
+    try {
+      close(f.root, request, f.context, probe);
+      return true;
+    } catch (error) {
+      if (error.code === 'fixture-probe') return true;
+      if (['close-bound-unavailable', 'close-judgment-unavailable', 'close-accounting-unavailable'].includes(error.code)) return false;
+      throw error;
+    } finally { BOUNDS.input = saved; }
+  };
+  let low = 1;
+  let high = 4 * 1024 * 1024;
+  assert.equal(passes(high), true);
+  while (high - low > 1) {
+    const middle = Math.floor((low + high) / 2);
+    if (passes(middle)) high = middle;
+    else low = middle;
+  }
+  BOUNDS.input = high;
+  close(f.root, request, f.context, base);
+  const { creationAssessment } = require('../internal/runtime/creation-consistency');
+  assert.doesNotThrow(() => withStore(f.root, store => store.transaction(() => creationAssessment(store))));
+  BOUNDS.input = saved;
+});
+
+test('an unreadable completion row read after accounting is established is a failure of evidence', async t => {
+  const f = project(t);
+  await completed(f.root);
+  await closingCheck(f.root, 'post-completion tracking check', failing);
+  const id = read(f.root).id;
+  // A completion body whose recorded length and digest still match, but which is not JSON.
+  withStore(f.root, store => {
+    const revision = store.db.prepare("SELECT max(revision) AS revision FROM history WHERE run_id=? AND kind='complete'").get(id).revision;
+    const body = '{"not json';
+    store.db.prepare("UPDATE history SET body=?, bytes=?, digest=?, encoding='full' WHERE run_id=? AND revision=?").run(body, Buffer.byteLength(body), require('node:crypto').createHash('sha256').update(body).digest('hex'), id, revision);
+  });
+  const outcome = (await status(f.root)).handoverOutcome;
+  assert.equal(outcome.outcome, 'unauthenticated');
+  assert.deepEqual(closeManifest(f.root, { members: [{ store: 'delivery', id }] }, f.context, base).ineligible, []);
+  await assert.rejects(execute(f.root, reflection(), base), error => error.code === 'delivery-consistency-unavailable' && error.message.includes(id) && /unauthenticated/.test(error.message));
+});
+
+test('a closing review already collected keeps the owner route when the dispatch allowance is spent', async t => {
+  const f = project(t);
+  await completed(f.root);
+  await closingCheck(f.root, 'uncovered check', base);
+  withStore(f.root, store => store.update(owner, store.read().revision, 'fixture-collected-review', state => {
+    state.limits = { maxDispatches: 0 };
+    state.workers.push({ id: 'collected-closing-review', role: 'reviewer', taskId: '#closing', status: 'complete', closingOccurrence: state.closing.docs.occurrence, session: 'collected-reviewer', assignment: 'Closing docs review', writes: [] });
+  }));
+  assert.deepEqual((await status(f.root)).handoverOutcome.routes.map(entry => entry.route), ['owner', 'close']);
+});
+
+test('Ready derives the limit routes from runtime state as status does', async t => {
+  const spent = project(t);
+  await completed(spent.root);
+  await closingCheck(spent.root, 'uncovered check', base);
+  withStore(spent.root, store => store.update(owner, store.read().revision, 'fixture-allowance', state => { state.limits = { maxDispatches: 0 }; }));
+  assert.deepEqual(overview(spent.root, { dependencies: base }).records[0].outcome.routes.map(entry => entry.route), ['close']);
+  const worker = project(t);
+  await completed(worker.root);
+  const past = new Date(Date.now() - 60000).toISOString();
+  withStore(worker.root, store => store.update(owner, store.read().revision, 'fixture-worker', state => { interruptedWorker(state); state.limits = { deadlineUtc: past }; }));
+  assert.deepEqual(overview(worker.root, { dependencies: base }).records[0].outcome.routes.map(entry => entry.route), ['owner', 'none']);
+});
+
 test('Ready names only the administrative close for a held delivery past its deadline', async t => {
   const f = project(t);
   await completed(f.root);

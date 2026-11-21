@@ -74,7 +74,7 @@ function releaseIdentity(state) {
 
 // A store whose file is absent with no sidecars and no compaction leftovers holds no records; any other state that cannot be read is
 // unreadable, never empty.
-function readStore(root, store) {
+function readStore(root, store, memberIds = []) {
   const file = path.join(root, '.nightshift/runs', STORES[store]);
   const exists = candidate => Boolean(fs.lstatSync(candidate, { throwIfNoEntry: false }));
   if (SIDECARS.some(suffix => exists(file + suffix))) return { store, unreadable: 'A SQLite journal, WAL or shared-memory file survives beside the store' };
@@ -102,7 +102,7 @@ function readStore(root, store) {
       if (!(state?.schema === 1 && state.id === row.id && state.revision === row.revision && state.root === root && kindMatches && isRecordStatus(state.status) && Array.isArray(state.workers))) return { store, unreadable: `Record ${row.id} fails its state check` };
       states.push(state);
     }
-    const { outcomes, evidence } = store === 'delivery' ? completeJudgments(root, database, states, retired) : { outcomes: new Map(), evidence: new Map() };
+    const { outcomes, evidence } = store === 'delivery' ? completeJudgments(root, database, states.filter(state => memberIds.includes(state.id)), retired) : { outcomes: new Map(), evidence: new Map() };
 
     return { store, absent: false, states, retired, tables, file, outcomes, evidence };
   } catch (error) {
@@ -113,7 +113,7 @@ function readStore(root, store) {
   }
 }
 
-// The closing outcome of every complete, unretired delivery in the store, judged alone through the creation gate's own checks, and
+// The closing outcome of every complete, unretired delivery among the requested members, judged alone through the creation gate's own checks, and
 // whether every evidence body its saved state references can be read (null, or the refusal the ordinary read would give), both read
 // in the caller's transaction. A judgment that fails is the record's Unavailable outcome.
 function completeJudgments(root, database, states, retired) {
@@ -373,7 +373,7 @@ function normalizeChoice(root, member, state, choice, targetBudget) {
 function computeManifest(root, request, context, ownerAlive, { requireChoices = false } = {}) {
   const members = validateMembers(request.members);
   const acknowledgedRecords = validateAcknowledged(request.acknowledgedRecords);
-  const reads = new Map(STORE_ORDER.map(store => [store, readStore(root, store)]));
+  const reads = new Map(STORE_ORDER.map(store => [store, readStore(root, store, members.filter(member => member.store === store).map(member => member.id))]));
   const memberKeys = new Set(members.map(entryKey));
   const records = [];
   const ineligible = [];
@@ -533,6 +533,8 @@ function writeStore(root, store, request, context, liveness, dependencies) {
           requireCondition(!refused, refused?.code, refused?.message);
         }
       }
+      // Fixtures probe a write that passed every check without committing it.
+      dependencies.beforeCommit?.(store);
 
       return closed;
     });
