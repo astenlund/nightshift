@@ -170,8 +170,8 @@
     },
     {
       "path": "internal/runtime/REFERENCE.md",
-      "bytes": 191598,
-      "sha256": "b41435cf3151ea56d09019dde5454f62140166d03e27ce4cb0f886ec778b389a"
+      "bytes": 191993,
+      "sha256": "6fd455e14f93a34f9a11db7130e77c3fd44a7d5916678dcea73f21ef24a02fc2"
     },
     {
       "path": "internal/runtime/actions.js",
@@ -195,8 +195,8 @@
     },
     {
       "path": "internal/runtime/cli.js",
-      "bytes": 28638,
-      "sha256": "bd14050c3e06bd65b314b86a63bfa3a32263a8fe5e10598f9268a48c28e725ad"
+      "bytes": 28822,
+      "sha256": "37dde5181b673df410cb17aacdff120fb1532c04f51eafb5fdea194f380f9191"
     },
     {
       "path": "internal/runtime/close.js",
@@ -225,8 +225,8 @@
     },
     {
       "path": "internal/runtime/creation-consistency.js",
-      "bytes": 42182,
-      "sha256": "1952360b2bb1ee6d18ace96b0bceb39d9cc6c037b2f9f9bd32e77e3157a372ce"
+      "bytes": 42407,
+      "sha256": "21f2560d8cf879c8eac55e3ad26b50d5325a7f34d68b8cddd66931a59245ae1f"
     },
     {
       "path": "internal/runtime/delivery-acceptance.js",
@@ -235,8 +235,8 @@
     },
     {
       "path": "internal/runtime/delivery-outcome.js",
-      "bytes": 19514,
-      "sha256": "347b9430d699ac57c0f5b7efaa7e0a9483b3b4765101873b1e230249c3099b36"
+      "bytes": 21554,
+      "sha256": "a02e0f2d28741450e62acaf300d7a9c92e534b7b47534b9fdd8e0efc74afad5d"
     },
     {
       "path": "internal/runtime/discharge.js",
