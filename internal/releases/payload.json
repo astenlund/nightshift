@@ -575,8 +575,8 @@
     },
     {
       "path": "skills/handover/SKILL.md",
-      "bytes": 11114,
-      "sha256": "9706c76cefd824c1200b76cb3a5da860f8a3ae4807877a1adf46d409d31d075c"
+      "bytes": 11265,
+      "sha256": "0e730f7080bad6eb005c076c14236a8a37ab8c822070ee595672f2797697264f"
     },
     {
       "path": "skills/init-backlog/SKILL.md",
@@ -635,8 +635,8 @@
     },
     {
       "path": "skills/ready/SKILL.md",
-      "bytes": 9966,
-      "sha256": "f15c0314b0be5749c6716f5dc3412b7939ee53274490acfccb5933ac39f25c1e"
+      "bytes": 10140,
+      "sha256": "3f458ffcdda6fb567bd6d0e9a709287b397e2dd130ebf89488db9d1bfed491d5"
     },
     {
       "path": "skills/ready/ready.js",
