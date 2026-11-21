@@ -222,6 +222,29 @@ test('a held delivery closed beside a review context reproduces its approved cau
   assert.equal(approval.records.find(entry => entry.id === id).drops.outcome, 'held');
 });
 
+test('an identical close retry refuses when the closed record names a predecessor other than the approved revision', async t => {
+  const f = project(t);
+  await completed(f.root);
+  await closingCheck(f.root, 'post-completion tracking check', failing);
+  const id = read(f.root).id;
+  const opened = await execute(f.root, { action: 'open-review', reviewContextId: randomUUID(), controller: owner, kind: 'code', authority: 'Explicit standalone revision', objective: 'Fixture review to close', agreement: { source: 'fixture user', outcome: 'Fixture outcome' } }, base);
+  const ended = { ...base, ownerAlive: () => false };
+  const members = [{ store: 'delivery', id }, { store: 'review', id: opened.id }];
+  const { request } = approve(f, members, ended);
+  let fail = true;
+  const failingReview = { ...ended, afterRecompute: store => { if (store === 'review' && fail) { fail = false; throw new RunError('fixture-failure', 'Simulated review transaction failure'); } } };
+  assert.throws(() => close(f.root, request, f.context, failingReview), { code: 'fixture-failure' });
+  // No production writer creates this state: the saved closure points at an earlier revision than the one approved.
+  withStore(f.root, store => {
+    const saved = JSON.parse(store.db.prepare('SELECT state FROM runs WHERE id=?').get(id).state);
+    saved.closure.previousRevision -= 1;
+    store.db.prepare('UPDATE runs SET state=? WHERE id=?').run(JSON.stringify(saved), id);
+  });
+  assert.throws(() => close(f.root, request, f.context, ended), error => error.code === 'migration-manifest-stale' && error.message.includes(id));
+  const review = new RunStore(f.root, { review: true });
+  try { assert.notEqual(review.read(opened.id).status, 'closed'); } finally { review.close(); }
+});
+
 test('close refuses a nonselected record that fits alone but not beside the selection the creation gate reserves', async t => {
   const f = project(t);
   await completed(f.root);

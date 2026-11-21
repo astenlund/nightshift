@@ -395,9 +395,12 @@ function computeManifest(root, request, context, ownerAlive, { requireChoices = 
       // Already closed by this approval: projected from what the approval recorded for it, so a later store transaction of the same
       // close and an identical retry reproduce the approved manifest without judging a record that no longer has an outcome. Its
       // choices are still normalized from the revision it was approved at.
+      const approved = approvedRecord(read, state, member);
+      // The predecessor the choices are normalized from must be the revision the user approved.
+      requireCondition(approved.revision === state.closure.previousRevision, 'migration-manifest-stale', `The closure of ${state.id} names revision ${state.closure.previousRevision} as its predecessor, but its approval records revision ${approved.revision}`);
       const original = historyState(root, member.store, state.id, state.closure.previousRevision);
       states.set(entryKey(member), { state: original, closed: state });
-      records.push(approvedRecord(read, state, member));
+      records.push(approved);
       continue;
     }
     const verdict = eligibility(root, read, state, ownerAlive);
