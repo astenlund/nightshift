@@ -74,7 +74,7 @@ function closingSince(current, completed, resolve) {
   const earlierChecks = new Set(then.checks.map(identity));
   // As the lifecycle's check gates do, a later invocation of a named check supersedes an earlier one.
   const later = [...new Map(now.checks.map(check => [check.name, check])).values()].filter(check => !earlierChecks.has(identity(check)));
-  const causes = later.filter(check => !covered(check)).map(check => ({ kind: 'work', concern: 'check', subject: check.name, message: `Closing check "${check.name}" was recorded after completion and the latest closing assessment has not seen its files`, needs: ['closing', 'dispatch'] }));
+  const causes = later.filter(check => !covered(check)).map(check => ({ kind: 'work', concern: 'check', subject: check.name, message: `Closing check "${check.name}" was recorded after completion and the latest closing assessment has not seen its files`, needs: ['closing', 'dispatch', 'review'] }));
 
   return { causes, covered };
 }

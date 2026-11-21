@@ -318,14 +318,16 @@ test('routes follow the limits: a passed deadline leaves worker reconciliation, 
   assert.deepEqual(names({ limits: { deadlineUtc: past } }, [work(['closing'])]), ['close']);
   assert.deepEqual(names({ limits: { deadlineUtc: past } }, [work(['bookkeeping'], 'worker')]), ['owner', 'close']);
   // A spent allowance with a dispatch need leaves only a provisional owner route, naming what the owner would need.
-  const spent = outcomes.routes({ root: path.resolve(__dirname, '..'), limits: { maxDispatches: 1 }, dispatches: 1 }, outcomes.judgment([work(['closing', 'dispatch'])]), { current: true }).list;
+  const spent = outcomes.routes({ root: path.resolve(__dirname, '..'), limits: { maxDispatches: 1 }, dispatches: 1 }, outcomes.judgment([work(['closing', 'dispatch', 'review'])]), { current: true }).list;
   assert.deepEqual(spent.map(entry => [entry.route, entry.provisional ?? false]), [['owner', true], ['close', false]]);
   assert.match(spent[0].message, /obtain a fresh complete closing docs review. The dispatch allowance is spent/);
   assert.deepEqual(names({ limits: { maxDispatches: 1 }, dispatches: 1 }, [work(['closing'])]), ['owner', 'close']);
   // The owner is told to rerun only a failed or pending check; a passing check the review has not seen needs only the review.
   const ownerMessage = causes => outcomes.routes({ root: path.resolve(__dirname, '..'), limits: {} }, outcomes.judgment(causes), { current: true }).list.find(entry => entry.route === 'owner').message;
-  assert.equal(ownerMessage([work(['closing', 'dispatch'])]), 'The owning session finishes the closing work: obtain a fresh complete closing docs review');
-  assert.match(ownerMessage([work(['closing', 'rerun', 'dispatch'])]), /rerun each failed or pending closing check until it passes and obtain a fresh complete closing docs review$/);
+  assert.equal(ownerMessage([work(['closing', 'dispatch', 'review'])]), 'The owning session finishes the closing work: obtain a fresh complete closing docs review');
+  assert.match(ownerMessage([work(['closing', 'rerun', 'dispatch', 'review'])]), /rerun each failed or pending closing check until it passes and obtain a fresh complete closing docs review$/);
+  // An unvalidated finding's dispatch is its skeptic validation, which a fresh docs review does not supply.
+  assert.equal(ownerMessage([work(['closing', 'dispatch'], 'finding')]), 'The owning session finishes the closing work: settle the closing findings and closures');
   // Outside Git no closing assessment can be dispatched, so a dispatch need leaves no owner route.
   const outside = fs.mkdtempSync(path.join(require('node:os').tmpdir(), 'closing-outcome-outside-git-'));
   try {

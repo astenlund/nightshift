@@ -66,7 +66,7 @@ function ownerWork(causes) {
     ...(causes.some(entry => entry.needs.includes('rerun')) ? ['rerun each failed or pending closing check until it passes'] : []),
     ...(concerns.has('finding') || concerns.has('closure') ? ['settle the closing findings and closures'] : []),
     ...(concerns.has('worker') ? ['reconcile its workers'] : []),
-    ...(causes.some(entry => entry.needs.includes('dispatch')) || concerns.has('review') ? ['obtain a fresh complete closing docs review'] : []),
+    ...(causes.some(entry => entry.needs.includes('review')) || concerns.has('review') ? ['obtain a fresh complete closing docs review'] : []),
   ];
   const work = steps.length > 0 ? steps : ['settle what the causes name'];
 

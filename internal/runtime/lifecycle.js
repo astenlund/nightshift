@@ -225,7 +225,7 @@ function historicalDischarge(state, snapshotValid) {
 // it, or only a disposition.
 function findingNeeds(finding) {
   if (!finding.validation || finding.validation.verdict === 'unverified') return ['closing', 'dispatch'];
-  if (finding.disposition === 'implement' && !finding.repaired) return ['closing', 'dispatch'];
+  if (finding.disposition === 'implement' && !finding.repaired) return ['closing', 'dispatch', 'review'];
 
   return ['closing'];
 }
@@ -235,7 +235,8 @@ function findingNeeds(finding) {
 // commitment 1): a task reopened since completion is work, with every completion condition the reopening leaves unmet, while every
 // other unmet condition of a task, or an invalid snapshot or closing baseline, is evidence, since its completion admitted none.
 // `needs` names the owner actions a work cause waits on: `closing` closing-record actions, `rerun` rerunning a failed or pending closing
-// check, `dispatch` a model dispatch, `bookkeeping` worker reconciliation, and `unroutable` none the runtime admits. `options.closingCovered(check)` says whether the latest closing
+// check, `dispatch` a model dispatch, `review` the fresh closing docs review (or its closure) that dispatch supplies, which a skeptic
+// validation does not, `bookkeeping` worker reconciliation, and `unroutable` none the runtime admits. `options.closingCovered(check)` says whether the latest closing
 // assessment already saw a failed or pending closing check's inputs, so rerunning it needs no fresh closing review; without it a rerun
 // is taken to need one. historicalDischarge holds exactly when this list is empty.
 function dischargeCauses(state, snapshotValid, options = {}) {
@@ -260,7 +261,7 @@ function dischargeCauses(state, snapshotValid, options = {}) {
   for (const finding of pendingClosures(state)) {
     const owner = taskFindings.get(finding);
     if (owner && !reopened.has(owner.id)) add('evidence', 'closure', finding.id, `Finding ${finding.id} of completed task ${owner.id} is pending closure`);
-    else add('work', 'closure', finding.id, `Finding ${finding.id} is pending its reviewer's closure`, owner ? ['unroutable'] : ['closing', 'dispatch']);
+    else add('work', 'closure', finding.id, `Finding ${finding.id} is pending its reviewer's closure`, owner ? ['unroutable'] : ['closing', 'dispatch', 'review']);
   }
   // Only findings carried from a replaced record; the current record's own are named with it below.
   for (const finding of (state.closing?.carriedFindings ?? []).filter(item => !settled(item))) add('work', 'finding', finding.id, `Carried closing finding ${finding.id} is unsettled`, findingNeeds(finding));
@@ -319,12 +320,12 @@ function dischargeCauses(state, snapshotValid, options = {}) {
   const closing = state.closing.docs;
   if (closing) {
     for (const finding of closing.findings.filter(item => !settled(item))) add('work', 'finding', finding.id, `Closing finding ${finding.id} is unsettled`, findingNeeds(finding));
-    checkCauses(closing, 'work', check => (check && options.closingCovered?.(check) ? ['closing', 'rerun'] : ['closing', 'rerun', 'dispatch']), 'The closing record');
+    checkCauses(closing, 'work', check => (check && options.closingCovered?.(check) ? ['closing', 'rerun'] : ['closing', 'rerun', 'dispatch', 'review']), 'The closing record');
     if (!snapshotValid(closing.baseline, true)) add('evidence', 'evidence', null, 'The closing record has an invalid triage baseline');
     const review = latestClosingReview(closing, state);
-    if (review && (!completeAssessment(review) || review.attributionVerified !== true || !DIMENSIONS.docs.every(dimension => review.dimensions?.includes(dimension)))) add('work', 'review', review.requestId ?? null, 'The latest closing review is incomplete, unattributed or missing a docs dimension', ['closing', 'dispatch']);
+    if (review && (!completeAssessment(review) || review.attributionVerified !== true || !DIMENSIONS.docs.every(dimension => review.dimensions?.includes(dimension)))) add('work', 'review', review.requestId ?? null, 'The latest closing review is incomplete, unattributed or missing a docs dimension', ['closing', 'dispatch', 'review']);
     else if (review && !snapshotValid(review.snapshot)) add('evidence', 'evidence', review.requestId ?? null, 'The latest closing review has an invalid snapshot');
-    for (const finding of closing.findings.filter(item => item.repaired && item.repairRevision >= (review?.revision ?? Infinity))) add('work', 'finding', finding.id, `Closing finding ${finding.id} was repaired after the latest closing review`, ['closing', 'dispatch']);
+    for (const finding of closing.findings.filter(item => item.repaired && item.repairRevision >= (review?.revision ?? Infinity))) add('work', 'finding', finding.id, `Closing finding ${finding.id} was repaired after the latest closing review`, ['closing', 'dispatch', 'review']);
   }
 
   return causes;
