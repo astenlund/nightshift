@@ -540,7 +540,7 @@ function writeStore(root, store, request, context, liveness, dependencies) {
           // retries that keep settled verdicts can make room, after which close is retried.
           const judged = judgments.get(id);
           const refused = judged.shortfall
-            ? { code: 'close-bound-unavailable', message: `The creation gate would run out of its input allowance before counting the closed record ${id}; nothing was closed in this store. Where a refused handover says settled records keep their verdicts, retry it until it no longer does, then retry this close` }
+            ? { code: 'close-bound-unavailable', message: `The creation gate's pass would run out of its shared input allowance, so close cannot show that the next handover counts the closed record ${id}; nothing was closed in this store. Where a refused handover says settled records keep their verdicts, retry it until it no longer does, then retry this close` }
             : judged.discharged ? null : { code: judged.failure?.limitExceeded ? 'close-bound-unavailable' : 'close-accounting-unavailable', message: `The creation gate would not count the closed record ${id} discharged${judged.failure ? ` (${judged.failure.message})` : ''}; nothing was closed in this store` };
           requireCondition(!refused, refused?.code, refused?.message);
         }
