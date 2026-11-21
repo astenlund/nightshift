@@ -1,5 +1,5 @@
 {
   "rule": "settled-record-verdict-1",
-  "digest": "c3130ae98366852e44ceec5c32439cb216e1e013f9bf65d283b75daf13444575",
+  "digest": "b8e33c9fcd7fb121141a2feea1c154b60a24687cfbdedd3a75ac12e48fb2d08c",
   "statement": "The discharge judgment now reports why a completion is not discharged, but the records it counts discharged are unchanged: historicalDischarge and closingDischargedSince accept exactly what they did, a complete record whose evidence fails is read as not discharged where it used to refuse the pass, and a closed record whose close row is its latest row is judged from the latest-row read already charged."
 }
