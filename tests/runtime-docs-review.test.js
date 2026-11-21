@@ -342,7 +342,7 @@ test('a validated closing finding awaiting disposition keeps the owner route at 
   assert.equal(read.handoverOutcome.outcome, 'held');
   // The current record's own unsettled finding is named once, never also as carried.
   assert.deepEqual(read.handoverOutcome.causes.filter(entry => entry.subject === findingId).map(entry => entry.message), [`Closing finding ${findingId} is unsettled`]);
-  assert.deepEqual(read.handoverOutcome.routes.map(entry => [entry.route, entry.provisional ?? false]), [['owner', false], ['close', false]]);
+  assert.deepEqual(read.handoverOutcome.routes.map(entry => [entry.route, entry.provisional ?? false]), [['owner', true], ['close', false]]);
   // Whether an edit inside the finding's scope stales its validation is not inferred for the route: dispose itself decides it.
   f.write('README.md', '# Project, edited\n');
   const stale = await require('../internal/runtime/cli').execute(f.root, { action: 'status' });

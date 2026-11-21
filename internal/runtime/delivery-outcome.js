@@ -51,8 +51,9 @@ function ownerBlocked(state, { causes }, { current, now }) {
   if (deadline && now >= Date.parse(deadline) && causes.some(entry => entry.needs.includes('closing'))) return { reason: 'the run deadline has passed, which refuses every closing-record action' };
   const dispatching = causes.some(entry => entry.needs.includes('dispatch'));
   if (dispatching && require('./evidence').outsideGitWorktree(state.root)) return { reason: 'the project is outside Git, where no closing assessment can be dispatched' };
+  // At a spent allowance, any closing-record action may turn out to need a dispatch (a stale validation, a repair's closure).
   const max = state.limits?.maxDispatches;
-  if (dispatching && max !== undefined && (state.dispatches ?? 0) >= max) return { provisional: true };
+  if (max !== undefined && (state.dispatches ?? 0) >= max && causes.some(entry => entry.needs.includes('closing'))) return { provisional: true };
 
   return null;
 }
@@ -70,7 +71,7 @@ function routes(state, value, { current = false, now = Date.now(), closeRefusal 
   const blocked = value.outcome === HELD ? ownerBlocked(state, value, { current, now }) : { reason: 'its evidence could not be authenticated' };
   const list = [];
   if (!blocked) list.push({ route: 'owner', message: 'The owning session finishes the closing work: rerun each closing check until it passes, settle the closing findings and closures, reconcile its workers and obtain a fresh complete closing docs review' });
-  else if (blocked.provisional) list.push({ route: 'owner', provisional: true, message: 'The dispatch allowance is spent, which refuses a new dispatch: the owning session can finish only with assessments already collected for this closing record, whose import decides whether they settle the hold' });
+  else if (blocked.provisional) list.push({ route: 'owner', provisional: true, message: 'The dispatch allowance is spent, which refuses a new dispatch: the owning session can finish only where no new assessment is needed, using assessments already collected for this closing record and validations still current, which its own actions decide' });
   if (closeRefusal) list.push({ route: 'none', code: closeRefusal.code, message: closeRefusal.message, ...(closeRefusal.bug ? { bug: closeRefusal.bug } : {}) });
   else list.push({ route: 'close', message: CLOSE_ROUTE });
 

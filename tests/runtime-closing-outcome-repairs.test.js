@@ -798,7 +798,46 @@ test('close refuses a complete standalone review context as not needing a close'
     const state = store.read(opened.id);
     store.update(state.controller, state.revision, 'fixture-complete', current => { current.status = 'complete'; }, opened.id);
   } finally { store.close(); }
-  assert.equal(closeManifest(f.root, { members: [{ store: 'review', id: opened.id }] }, f.context, base).ineligible[0].code, 'close-not-needed');
+  const members = [{ store: 'review', id: opened.id }];
+  assert.equal(closeManifest(f.root, { members }, f.context, base).ineligible[0].code, 'close-not-needed');
+  // The close entry itself refuses with the same reason, whatever hash it is given.
+  assert.throws(() => close(f.root, { members, choices: [{ store: 'review', id: opened.id, report: { kind: 'none' }, followups: [] }], manifestHash: 'a'.repeat(64), authority: 'Yes, close it', reason: 'Settled', actor: closer }, f.context, base), { code: 'close-not-needed' });
+});
+
+test('a stopped selection deferred behind an earlier legacy record is not named as a blocker of its own', async t => {
+  let f;
+  let earlier;
+  for (let attempt = 0; attempt < 16 && !f; attempt++) {
+    const trial = project(t);
+    const ids = [];
+    for (let index = 0; index < 3; index++) {
+      await completed(trial.root);
+      ids.push(read(trial.root).id);
+    }
+    if (ids[0] < ids[1]) [f, earlier] = [trial, ids[0]];
+  }
+  assert.ok(f, 'No fixture ordered its records as the case needs');
+  const selection = read(f.root).id;
+  await closingCheck(f.root, 'post-completion tracking check', failing);
+  await execute(f.root, { action: 'stop', actor: owner, revision: read(f.root).revision, kind: 'user-stop', reason: 'Fixture stop after a failed closing check' }, base);
+  withStore(f.root, store => {
+    const { rewriteHistory } = require('./fixtures/history');
+    const strip = text => {
+      const state = JSON.parse(text);
+      delete state.progress;
+      delete state.stopRecovery;
+      state.closing = { ...state.closing, triageEvidence: null };
+      return JSON.stringify(state);
+    };
+    store.transaction(() => {
+      store.db.prepare('DELETE FROM settled_verdicts WHERE run_id=?').run(earlier);
+      store.db.prepare('UPDATE runs SET state=? WHERE id=?').run(strip(store.db.prepare('SELECT state FROM runs WHERE id=?').get(earlier).state), earlier);
+      rewriteHistory(store.db, strip, { runId: earlier });
+      store.db.prepare('DELETE FROM accounting_commits WHERE run_id=?').run(earlier);
+      store.db.prepare('DELETE FROM discharge_index WHERE run_id=?').run(earlier);
+    });
+  });
+  await assert.rejects(execute(f.root, reflection(), base), error => error.code === 'delivery-consistency-unavailable' && error.message.includes(earlier) && /Legacy delivery consistency/.test(error.message) && !error.message.includes(`Delivery ${selection} (selected) is stopped`));
 });
 
 test('Ready names only the administrative close for a held delivery past its deadline', async t => {

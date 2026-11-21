@@ -439,7 +439,8 @@ function assessment(store, options = {}) {
     const own = [];
     if (selected?.state) {
       if (!selected.retired && !isClosed(selected.state) && selected.discharged && reportAwaitsRecipient(selected.state)) own.push({ record: selected, code: 'report-delivery-pending', text: `Delivery ${selected.id} (selected) owes its morning report to its recipient: present the saved report and record report-delivered with the user's reply.` });
-      if (!selected.discharged && ['running', 'stopped'].includes(selected.state.status)) own.push({ record: selected, code: 'overlapping-run', text: `Delivery ${selected.id} (selected) is ${selected.state.status}: reconcile, resume or explicitly finish it.` });
+      // A stopped selection the pass deferred behind a legacy blocker was never judged, so it is not named; a running one never discharges.
+      if (!selected.discharged && (selected.state.status === 'running' || (selected.state.status === 'stopped' && !selected.deferred))) own.push({ record: selected, code: 'overlapping-run', text: `Delivery ${selected.id} (selected) is ${selected.state.status}: reconcile, resume or explicitly finish it.` });
     }
     const named = new Set(list.map(entry => entry.record));
     for (const record of records.filter(entry => entry.state?.workers.some(workerIsActive) && !named.has(entry))) own.push({ record, code: 'overlapping-run', text: `Delivery ${record.id} has an active or uncertain worker to reconcile.` });
