@@ -364,6 +364,25 @@ test('a covering docs review from a later task keeps an earlier completed task c
   assert.equal(f.act({ action: 'complete' }).status, 'complete');
 });
 
+test('reopening a completed docs task after completion holds the delivery, naming the cleared exemption as unmet work', async t => {
+  // Arrange: a run completed through a docs exemption, then the task reopened by block.
+  const f = fixture(t, [{ id: 'docs', title: 'Version bump', kind: 'docs', agreement: { source: 'User', outcome: 'Bump the version' } }]);
+  f.act({ action: 'advance', taskId: 'docs', evidence: 'Bumped', docsExemption: 'Only the version string changed' });
+  close(f);
+  assert.equal(f.act({ action: 'complete' }).status, 'complete');
+  f.act({ action: 'block', taskId: 'docs', blocker: { kind: 'capability', reason: 'Reopened after completion', recoveryAttempted: 'None needed' } });
+
+  // Act
+  const read = await require('../internal/runtime/cli').execute(f.root, { action: 'status' });
+
+  // Assert: held, never an evidence failure; the reopened task and its docs review, which the cleared exemption no longer covers, are work.
+  assert.equal(read.handoverOutcome.outcome, 'held');
+  assert.ok(read.handoverOutcome.causes.every(entry => entry.kind === 'work'));
+  assert.ok(read.handoverOutcome.causes.some(entry => entry.concern === 'task' && entry.subject === 'docs'));
+  assert.ok(read.handoverOutcome.causes.some(entry => entry.concern === 'review' && /docs assessment/.test(entry.message)));
+  assert.deepEqual(read.handoverOutcome.routes.map(entry => entry.route), ['close']);
+});
+
 test('a mechanical exemption stands in only while its content is unchanged, and reopening clears it', t => {
   const f = fixture(t, [{ id: 'docs', title: 'Version bump', kind: 'docs', agreement: { source: 'User', outcome: 'Bump the version' } }]);
   assert.throws(() => f.act({ action: 'advance', taskId: 'docs', evidence: 'Bumped' }), { code: 'docs-review-required' });
