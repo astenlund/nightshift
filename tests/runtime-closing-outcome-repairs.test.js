@@ -810,9 +810,17 @@ test('a nonselected delivery a current verdict vouches for reads discharged on s
   const db = outcomes.openStore(f.root);
   try { assert.equal(outcomes.readOutcomes(db, f.root, { ids: [first] }).byId.get(first).verdicted, true); }
   finally { db.close(); }
+  // A completion-row bound below the record's row makes a fresh judgment read it unavailable, so each reader below is shown to keep
+  // the verdict rather than judge afresh; the ordinary read status uses applies no such bound.
+  const saved = BOUNDS.completionRow;
+  t.after(() => { BOUNDS.completionRow = saved; });
+  BOUNDS.completionRow = 1;
   assert.equal((await status(f.root, first)).handoverOutcome.outcome, 'discharged');
   assert.equal(overview(f.root, { dependencies: base }).records.some(record => record.id === first), false);
   assert.equal(closeManifest(f.root, { members: [{ store: 'delivery', id: first }] }, f.context, base).ineligible[0].code, 'close-not-needed');
+  // Control: without its verdict the same record, judged afresh under the same bound, is unavailable.
+  withStore(f.root, store => store.db.prepare('DELETE FROM settled_verdicts WHERE run_id=?').run(first));
+  assert.equal(overview(f.root, { dependencies: base }).records.find(record => record.id === first)?.outcome.outcome, 'unavailable');
 });
 
 test('a standalone review context completed through its lifecycle stays outside the closing-hold flow on every surface', async t => {
