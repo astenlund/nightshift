@@ -434,7 +434,8 @@ function assessment(store, options = {}) {
     const named = new Set(list.map(entry => entry.record));
     for (const record of records.filter(entry => entry.state?.workers.some(workerIsActive) && !named.has(entry))) own.push({ record, code: 'overlapping-run', text: `Delivery ${record.id} has an active or uncertain worker to reconcile.` });
 
-    return { list, own, text: [...list, ...own].length ? `. Blocking: ${[...list, ...own].map(entry => entry.text).join(' ')}` : '' };
+    // The legacy group is carried as a clause of its own, which the grouped exits lead with and every other exit appends.
+    return { list, own, legacy: legacyUnavailable.length > 0 ? legacyRefusal(legacyUnavailable) : '', text: [...list, ...own].length ? `. Blocking: ${[...list, ...own].map(entry => entry.text).join(' ')}` : '' };
   };
   const refuseForAllowance = error => {
     const { text } = establishedBlockers();
@@ -452,7 +453,8 @@ function assessment(store, options = {}) {
   const namedRefusal = (error, rowId = null) => {
     if (options.resourceOnly || options.judgeOnly || error.creationBlocker || !(error instanceof RunError || error instanceof SyntaxError)) return error;
     const own = [CODE, 'missing-predecessor'].includes(error.code);
-    const refusal = new RunError(own ? error.code : CODE, `${own ? '' : 'Delivery consistency cannot be established: '}${rowId ? `Delivery ${rowId}: ` : ''}${error.message}${establishedBlockers().text}`);
+    const established = establishedBlockers();
+    const refusal = new RunError(own ? error.code : CODE, `${own ? '' : 'Delivery consistency cannot be established: '}${rowId ? `Delivery ${rowId}: ` : ''}${error.message}${established.legacy ? `. ${established.legacy}` : ''}${established.text}`);
     refusal.creationBlocker = true;
 
     return refusal;
