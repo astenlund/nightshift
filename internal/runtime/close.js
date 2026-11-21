@@ -102,7 +102,7 @@ function readStore(root, store, memberIds = []) {
       if (!(state?.schema === 1 && state.id === row.id && state.revision === row.revision && state.root === root && kindMatches && isRecordStatus(state.status) && Array.isArray(state.workers))) return { store, unreadable: `Record ${row.id} fails its state check` };
       states.push(state);
     }
-    const { outcomes, evidence } = store === 'delivery' ? completeJudgments(root, database, states.filter(state => memberIds.includes(state.id)), retired) : { outcomes: new Map(), evidence: new Map() };
+    const { outcomes, evidence } = store === 'delivery' ? completeJudgments(root, database, states.filter(state => memberIds.includes(state.id)), retired, tables) : { outcomes: new Map(), evidence: new Map() };
 
     return { store, absent: false, states, retired, tables, file, outcomes, evidence };
   } catch (error) {
@@ -116,7 +116,7 @@ function readStore(root, store, memberIds = []) {
 // The closing outcome of every complete, unretired delivery among the requested members, judged alone through the creation gate's own checks, and
 // whether every evidence body its saved state references can be read (null, or the refusal the ordinary read would give), both read
 // in the caller's transaction. A judgment that fails is the record's Unavailable outcome.
-function completeJudgments(root, database, states, retired) {
+function completeJudgments(root, database, states, retired, tables) {
   const outcomesModule = require('./delivery-outcome');
   const { verificationPass, verifyArtifacts } = require('./artifact-hydration');
   const complete = states.filter(state => state.status === 'complete' && !retired.has(state.id));
@@ -130,7 +130,8 @@ function completeJudgments(root, database, states, retired) {
     const entry = judged.get(state.id);
     if (entry?.judgment) outcomes.set(state.id, entry.judgment);
     try {
-      verifyArtifacts(database, state, verificationPass(true));
+      // A store without its artifacts table refuses each referenced body as missing evidence, as the creation gate reads it.
+      verifyArtifacts(database, state, verificationPass(tables.has('artifacts')));
       evidence.set(state.id, null);
     } catch (error) {
       if (!(error instanceof RunError)) throw error;

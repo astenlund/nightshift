@@ -990,6 +990,18 @@ test('an interrupted closing check holds the delivery with its pending attempt a
   assert.equal((await execute(f.root, reflection(), base)).status, 'running');
 });
 
+test('close keeps a member\'s accounting refusal when the store has lost its artifacts table', async t => {
+  const f = project(t);
+  await completed(f.root);
+  await closingCheck(f.root, 'post-completion tracking check', base);
+  const id = read(f.root).id;
+  // An external loss of the artifacts table, with the run rows intact.
+  withStore(f.root, store => store.db.exec('DROP TABLE artifacts'));
+  const manifest = closeManifest(f.root, { members: [{ store: 'delivery', id }] }, f.context, base);
+  assert.equal(manifest.unreadable ?? null, null);
+  assert.equal(manifest.ineligible[0].code, 'close-accounting-unavailable');
+});
+
 test('Ready names only the administrative close for a held delivery past its deadline', async t => {
   const f = project(t);
   await completed(f.root);
