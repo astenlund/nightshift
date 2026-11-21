@@ -232,6 +232,8 @@ test('reopening the linked governing spec task after completion holds the delive
   const judged = require('../internal/runtime/delivery-outcome').outcomeOf(f.root, f.store.read().id).judgment;
   assert.equal(judged.outcome, 'held');
   assert.ok(judged.causes.some(entry => entry.concern === 'task' && entry.subject === 'code-governing-spec'));
+  // The completed code task's governing spec is named as unsettled work too, not as an evidence failure.
+  assert.ok(judged.causes.some(entry => entry.kind === 'work' && entry.subject === 'code' && /governing spec is not settled/.test(entry.message)));
   assert.ok(judged.causes.every(entry => entry.kind === 'work'));
   assert.throws(() => f.store.create({ mechanism: fixtureContinuation(), objective: 'Next work', authority: 'User handover', controller: actor, controllerClaim: fixtureControllerClaim(actor), docsGate: false, tasks: [code('next')] }), { code: 'overlapping-run' });
 });

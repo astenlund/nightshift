@@ -178,9 +178,31 @@ test('a complete delivery whose accounting is not current is unavailable and ref
   assert.equal(record.close.reason, 'close-accounting-unavailable');
 });
 
+test('a discharged delivery whose stored check output cannot be read still hands over', async t => {
+  const f = project(t);
+  await execute(f.root, reflection(), base);
+  // A passing closing check, with output long enough to be stored on its own, recorded after triage and before completion.
+  const noisy = { ...base, runContained: async (_executable, _args, options) => {
+    options.onFinished({ code: 0, descendantsReclaimed: true });
+    return { code: 0, stdout: 'o'.repeat(8192), stderr: '', descendantsReclaimed: true };
+  } };
+  const beforeComplete = async (root, input, dependencies) => {
+    if (input.action === 'complete') await closingCheck(root, 'pre-completion tracking check', noisy);
+    return execute(root, { ...input, revision: read(root).revision }, dependencies);
+  };
+  await completeReflection(f.root, owner, beforeComplete, base);
+  const state = withStore(f.root, store => store.read(undefined, { hydrate: false }));
+  assert.equal(state.status, 'complete');
+  const output = state.closing.docs.checks.at(-1).output?.$artifact;
+  assert.ok(output, 'The long check output is stored as an artifact');
+  withStore(f.root, store => store.db.prepare('DELETE FROM artifacts WHERE id=?').run(output));
+  await execute(f.root, reflection(), base);
+  assert.equal(read(f.root).status, 'running');
+});
+
 test('a held delivery whose referenced evidence cannot be read is refused by close naming the tracked bug, while Ready still offers close', async t => {
   const f = project(t);
-  await completed(f.root);
+  const original = await completed(f.root);
   // Output past 4 KiB is stored as an evidence body of its own, which the closing predicate does not read.
   const noisy = { ...base, runContained: async (_executable, _args, options) => {
     options.onFinished({ code: 1, descendantsReclaimed: true });
@@ -193,6 +215,8 @@ test('a held delivery whose referenced evidence cannot be read is refused by clo
   withStore(f.root, store => store.db.prepare('DELETE FROM artifacts WHERE id=?').run(output));
   await assert.rejects(status(f.root), { code: 'missing-evidence' });
   await assert.rejects(execute(f.root, reflection(), base), error => error.code === 'overlapping-run' && /provisional/.test(error.message));
+  // An exact replay reads and returns the saved record, so it meets the missing body.
+  await assert.rejects(execute(f.root, original, base), { code: 'missing-evidence' });
   const members = [{ store: 'delivery', id: state.id }];
   const manifest = closeManifest(f.root, { members }, f.context, base);
   assert.equal(manifest.ineligible[0].code, 'missing-evidence');
