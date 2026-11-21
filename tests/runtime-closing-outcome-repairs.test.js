@@ -796,7 +796,7 @@ test('an undischarged nonselected stopped delivery is named with its causes and 
   await closingCheck(f.root, 'post-completion tracking check', failing);
   await execute(f.root, { action: 'stop', actor: owner, revision: read(f.root).revision, kind: 'user-stop', reason: 'Fixture stop after a failed closing check' }, base);
   select(f.root, selection);
-  await assert.rejects(execute(f.root, reflection(), base), error => error.code === 'delivery-consistency-unavailable' && error.message.includes(stopped) && /post-completion tracking check/.test(error.message) && /close-manifest/.test(error.message));
+  await assert.rejects(execute(f.root, reflection(), base), error => error.code === 'delivery-consistency-unavailable' && error.message.includes(stopped) && /post-completion tracking check/.test(error.message) && /close-manifest/.test(error.message) && !/resume/.test(error.message));
 });
 
 test('Ready names only the administrative close for a held delivery past its deadline', async t => {

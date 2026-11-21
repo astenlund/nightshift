@@ -430,7 +430,8 @@ function assessment(store, options = {}) {
       } else if (record !== selected && !record.discharged && !legacy.has(record.id)) {
         const status = record.state?.status ?? 'unknown';
         const causes = (record.causes ?? []).filter(entry => !(status !== 'complete' && /no recorded completion row/.test(entry.message))).map(entry => entry.message);
-        const routes = status === 'stopped' ? " Routes (provisional until the record is read in full): its owner resumes it under the user's authority, or any session closes it as settled through the administrative close (close-manifest, then close) while its accounting is current." : '';
+        // Runtime mutations reach only the current selection, so this record's owner cannot resume it; the administrative close remains.
+        const routes = status === 'stopped' ? ' Routes (provisional until the record is read in full): any session closes it as settled through the administrative close (close-manifest, then close) while its accounting is current.' : '';
         list.push({ record, code: CODE, text: `Delivery ${record.id} (${status}) still has unresolved or unavailable obligations${causes.length ? `: ${causes.join('; ')}` : status === 'stopped' ? ': it stopped before its completion was discharged' : ''}.${routes}` });
       }
     }
