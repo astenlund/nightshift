@@ -117,7 +117,7 @@ class RunStore {
     requireCondition(state.schema === 1 && state.root === this.root && recordKind(state) === this.kind, 'wrong-project', 'Runtime state belongs to a different schema, project or record kind');
     requireCondition(Number.isSafeInteger(row.revision) && row.revision >= 0 && state.revision === row.revision, 'invalid-revision', 'Runtime state has an invalid or contradictory revision');
     // Every reader of a worker reads its fields, so an entry that is not an object refuses here rather than failing each of them.
-    requireCondition(!Array.isArray(state.workers) || state.workers.every(worker => worker && typeof worker === 'object'), 'invalid-state', 'Saved workers include a malformed entry');
+    requireCondition(Array.isArray(state.workers) && state.workers.every(worker => worker && typeof worker === 'object'), 'invalid-state', 'Saved workers are not a list of worker records');
     return options.hydrate === false ? state : this.hydrate(state);
   }
 

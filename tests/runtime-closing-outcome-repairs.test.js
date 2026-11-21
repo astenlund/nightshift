@@ -719,6 +719,43 @@ test('a held delivery closed beside an earlier legacy record is judged on its ow
   assert.equal(withStore(f.root, store => store.read(candidate, { hydrate: false })).status, 'closed');
 });
 
+test('a workers value that is not a list is refused by the ordinary read', async t => {
+  const f = project(t);
+  await completed(f.root);
+  const id = read(f.root).id;
+  withStore(f.root, store => {
+    const state = JSON.parse(store.db.prepare('SELECT state FROM runs WHERE id=?').get(id).state);
+    state.workers = { broken: true };
+    store.db.prepare('UPDATE runs SET state=? WHERE id=?').run(JSON.stringify(state), id);
+  });
+  await assert.rejects(status(f.root), { code: 'invalid-state' });
+});
+
+test('status gives an accounting-unavailable delivery the remedy close gives, retirement for a legacy record included', async t => {
+  const f = project(t);
+  await completed(f.root);
+  const state = read(f.root);
+  withStore(f.root, store => store.db.prepare('DELETE FROM accounting_commits WHERE run_id=? AND revision=?').run(state.id, state.revision));
+  const [recovery] = (await status(f.root)).handoverOutcome.routes;
+  assert.equal(recovery.route, 'recovery');
+  assert.match(recovery.message, /retire it when listed as legacy/);
+});
+
+test('a held selection that owes its report refuses as overlap, replays unchanged and offers the report beside close', async t => {
+  const f = project(t);
+  const withholdReply = (root, input, dependencies) => (input.action === 'report-delivered' ? execute(root, { action: 'inspect' }, dependencies) : execute(root, input, dependencies));
+  const original = reflection();
+  await execute(f.root, original, base);
+  await completeReflection(f.root, owner, withholdReply, base);
+  await closingCheck(f.root, 'post-completion tracking check', failing);
+  const held = read(f.root);
+  await assert.rejects(execute(f.root, reflection(), base), { code: 'overlapping-run' });
+  assert.equal((await execute(f.root, original, base)).revision, held.revision);
+  const [record] = overview(f.root, { dependencies: base }).records;
+  assert.deepEqual(record.pickup, { offer: 'present-report' });
+  assert.deepEqual(record.close, { offer: 'close' });
+});
+
 test('Ready names only the administrative close for a held delivery past its deadline', async t => {
   const f = project(t);
   await completed(f.root);

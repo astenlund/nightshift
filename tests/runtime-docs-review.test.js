@@ -322,6 +322,27 @@ test('a failed closing check whose inputs the latest closing review saw keeps th
   assert.deepEqual(read.handoverOutcome.routes.map(entry => entry.route), ['owner', 'close']);
 });
 
+test('a validated closing finding stays disposable at a spent allowance when an edit lies outside its scope', async t => {
+  // Arrange: a completed run whose closing review raised a finding scoped to README.md, validated, then an unrelated file edited.
+  const f = fixture(t);
+  completeTask(f);
+  close(f);
+  assert.equal(f.act({ action: 'complete' }).status, 'complete');
+  const scoped = { ...finding('F1'), surfaces: [{ path: 'README.md', location: 'Heading', evidence: 'The heading misstates the change' }] };
+  f.review(CLOSING_TARGET, 'docs', ['code'], [scoped]);
+  const findingId = f.findingId('F1', CLOSING_TARGET);
+  f.act({ action: 'validate', taskId: CLOSING_TARGET, findingId, validation: { session: 'skeptic-F1', attributionVerified: true, verdict: 'confirmed', evidence: 'Checked against the change', repairProposal: 'Correct the heading', snapshot: snapshot(f.root, ['README.md', 'src.js']), surfaces: [{ path: 'README.md', location: 'Heading', verdict: 'confirmed', evidence: 'The heading is wrong' }] } });
+  f.write('src.js', 'module.exports = 2;\n');
+  f.store.update(actor, f.store.read().revision, 'fixture-allowance', state => { state.limits = { maxDispatches: 0 }; state.dispatches = 0; });
+
+  // Act
+  const read = await require('../internal/runtime/cli').execute(f.root, { action: 'status' });
+
+  // Assert
+  assert.equal(read.handoverOutcome.outcome, 'held');
+  assert.deepEqual(read.handoverOutcome.routes.map(entry => [entry.route, entry.conditional ?? false]), [['owner', false], ['close', false]]);
+});
+
 test('a covering docs review from a later task keeps an earlier completed task current', t => {
   const f = fixture(t, [{ ...CODE_TASK, id: 'first' }, { ...CODE_TASK, id: 'second', requires: ['first'] }]);
   completeTask(f, 'first', ['README.md']);

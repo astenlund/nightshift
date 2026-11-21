@@ -95,7 +95,7 @@ function routes(state, value, { current = false, now = Date.now(), closeRefusal 
   if (value.outcome === UNAVAILABLE) {
     const accounting = value.causes.some(entry => entry.kind === 'accounting');
 
-    return { list: [{ route: 'recovery', message: accounting ? 'Consult migration inventory, which classifies it, and restore its accounting evidence; close refuses it with close-accounting-unavailable until then' : 'Inspect it with raw-inspect or restore store capacity; close refuses it until it fits its bounds' }], ownerUnavailable: 'its judgment is unavailable' };
+    return { list: [{ route: 'recovery', message: accounting ? `${require('./close').accountingRemedy('complete', { saved: false }).replace(/^consult/, 'Consult')}; close refuses it with close-accounting-unavailable until then` : 'Inspect it with raw-inspect or restore store capacity; close refuses it until it fits its bounds' }], ownerUnavailable: 'its judgment is unavailable' };
   }
   if (![HELD, UNAUTHENTICATED].includes(value.outcome)) return { list: [], ownerUnavailable: null };
   const blocked = value.outcome === HELD ? ownerBlocked(state, value, { current, now }) : { reason: 'its evidence could not be authenticated' };
