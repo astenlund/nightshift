@@ -295,6 +295,27 @@ test('specs, host instruction files, operating instructions and nested prose sta
   }
 });
 
+test('an incomplete closing review recorded after completion holds the delivery as closing work rather than reading as lost task evidence', async t => {
+  // Arrange: a completed run whose task docs review qualified, then an incomplete closing review covering that task.
+  const f = fixture(t);
+  completeTask(f);
+  close(f);
+  assert.equal(f.act({ action: 'complete' }).status, 'complete');
+  f.review(CLOSING_TARGET, 'docs', ['code'], [], { status: 'incomplete' });
+  const outcomes = require('../internal/runtime/delivery-outcome');
+  const state = f.store.read();
+
+  // Act
+  const judged = outcomes.outcomeOf(f.root, state.id).judgment;
+
+  // Assert
+  assert.equal(judged.outcome, 'held');
+  assert.ok(judged.causes.every(entry => entry.kind === 'work'), JSON.stringify(judged.causes));
+  assert.ok(judged.causes.some(entry => entry.needs.includes('review')));
+  const { routed } = outcomes.routesFor(state, judged, { current: true, inspect: false });
+  assert.deepEqual(routed.list.map(entry => entry.route), ['owner', 'close']);
+});
+
 test('a failed closing check whose inputs the latest closing review saw keeps the owner route at a spent dispatch allowance', async t => {
   // Arrange: a completed run whose post-completion closing check passed and was assessed, then failed on the same inputs.
   const f = fixture(t);

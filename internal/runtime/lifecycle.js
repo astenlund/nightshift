@@ -302,7 +302,13 @@ function dischargeCauses(state, snapshotValid, options = {}) {
     if (requiresReview(task)) reviewCause(leadEntry(task, state), leadKind(task), 'lead');
     if (state.docsGate && sharesCumulativeAssessment(task)) {
       const exemption = task.docsExemption;
-      if (!(exemption?.reason?.trim() && snapshotValid(exemption.snapshot))) reviewCause(latestReview(docsCandidates(task, state, false), state), 'docs', 'docs');
+      if (!(exemption?.reason?.trim() && snapshotValid(exemption.snapshot))) {
+        const entry = latestReview(docsCandidates(task, state, false), state);
+        // A closing review recorded after completion that does not qualify is held closing work, which a fresh closing review settles,
+        // rather than a failure of the task's own evidence.
+        if (entry?.owner?.kind === 'closing' && assessed(entry, task, 'docs') === 'missing') add('work', 'review', task.id, `${label}'s latest docs assessment, recorded on the closing record, does not qualify`, ['closing', 'dispatch', 'review']);
+        else reviewCause(entry, 'docs', 'docs');
+      }
     }
     // The readiness routes judged on recorded evidence: the task's own reviewed snapshot while it has no link, otherwise its governing
     // spec task, linked or queued. Spec paths compare as readiness compares them, so a run discharged by equal strings stays discharged.
