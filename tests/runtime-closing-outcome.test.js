@@ -320,6 +320,7 @@ test('routes follow the limits: a passed deadline leaves worker reconciliation, 
   // A spent allowance with a dispatch need leaves only a provisional owner route, naming what the owner would need.
   const spent = outcomes.routes({ root: path.resolve(__dirname, '..'), limits: { maxDispatches: 1 }, dispatches: 1 }, outcomes.judgment([work(['closing', 'dispatch'])]), { current: true }).list;
   assert.deepEqual(spent.map(entry => [entry.route, entry.provisional ?? false]), [['owner', true], ['close', false]]);
+  assert.match(spent[0].message, /obtain a fresh complete closing docs review. The dispatch allowance is spent/);
   assert.deepEqual(names({ limits: { maxDispatches: 1 }, dispatches: 1 }, [work(['closing'])]), ['owner', 'close']);
   // The owner is told to rerun only a failed or pending check; a passing check the review has not seen needs only the review.
   const ownerMessage = causes => outcomes.routes({ root: path.resolve(__dirname, '..'), limits: {} }, outcomes.judgment(causes), { current: true }).list.find(entry => entry.route === 'owner').message;

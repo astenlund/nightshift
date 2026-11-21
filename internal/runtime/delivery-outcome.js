@@ -86,7 +86,7 @@ function routes(state, value, { current = false, now = Date.now(), closeRefusal 
   const blocked = value.outcome === HELD ? ownerBlocked(state, value, { current, now }) : { reason: 'its evidence could not be authenticated' };
   const list = [];
   if (!blocked) list.push({ route: 'owner', message: `The owning session finishes the closing work: ${ownerWork(value.causes)}` });
-  else if (blocked.provisional) list.push({ route: 'owner', provisional: true, message: 'The dispatch allowance is spent, which refuses a new dispatch: the owning session can finish only where no new assessment is needed, using assessments already collected for this closing record and validations still current, which its own actions decide' });
+  else if (blocked.provisional) list.push({ route: 'owner', provisional: true, message: `The owning session finishes the closing work: ${ownerWork(value.causes)}. The dispatch allowance is spent, which refuses a new dispatch, so where that work needs a new assessment it can finish only with assessments already collected for this closing record and validations still current, which its own actions decide` });
   if (closeRefusal) list.push({ route: 'none', code: closeRefusal.code, message: closeRefusal.message, ...(closeRefusal.bug ? { bug: closeRefusal.bug } : {}) });
   else list.push({ route: 'close', message: CLOSE_ROUTE });
 

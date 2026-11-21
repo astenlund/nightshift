@@ -316,6 +316,8 @@ test('a failed closing check whose inputs the latest closing review saw keeps th
   assert.equal(judged.outcome, 'held');
   assert.deepEqual(judged.causes.map(entry => [entry.concern, entry.needs]), [['check', ['closing', 'rerun']]]);
   assert.deepEqual(routed.list.map(entry => entry.route), ['owner', 'close']);
+  // The provisional owner route at the spent allowance still names the work that clears the hold: the rerun.
+  assert.match(routed.list[0].message, /rerun each failed or pending closing check until it passes/);
   const [record] = require('../internal/runtime/run-overview').overview(f.root).records;
   assert.deepEqual(record.outcome.routes.map(entry => entry.route), ['owner', 'close']);
   const read = await require('../internal/runtime/cli').execute(f.root, { action: 'status' });
