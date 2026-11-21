@@ -665,7 +665,8 @@ test('a schema-two record with missing independent accounting cannot be retired 
   assert.equal(execute(root, { action: 'inventory' }).counts.damagedModern, 1);
   assert.throws(() => execute(root, { action: 'manifest', ids: [id], choices: [choiceFor(id)] }), { code: 'migration-decision-unavailable' });
   const store = new RunStore(root);
-  try { assert.throws(() => store.transaction(() => creationAssessment(store)), error => error.code === 'delivery-consistency-unavailable' && error.message.includes('unsupported accounting')); }
+  // A complete record whose saved accounting lost its tables is named unavailable beside the other blockers.
+  try { assert.throws(() => store.transaction(() => creationAssessment(store)), error => error.code === 'delivery-consistency-unavailable' && error.message.includes(id) && error.message.includes(require('../internal/runtime/delivery-outcome').MISSING_TABLES)); }
   finally { store.close(); }
 });
 
