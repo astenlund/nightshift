@@ -235,8 +235,8 @@
     },
     {
       "path": "internal/runtime/delivery-outcome.js",
-      "bytes": 20378,
-      "sha256": "5b43eff2940a36def9f04737003097cf4c13df7b6aeda49c751f77a1c064d4ce"
+      "bytes": 22044,
+      "sha256": "b261897f1f7e3b985c3745dec54d3ed2c3b8e3c59a2f6ae31e762dd2d140143b"
     },
     {
       "path": "internal/runtime/discharge.js",
@@ -320,8 +320,8 @@
     },
     {
       "path": "internal/runtime/lifecycle.js",
-      "bytes": 117939,
-      "sha256": "ab8f4ec1242daa2c8723ae95dca80c0ddd193fec9287a5f455df9e0498834f90"
+      "bytes": 118008,
+      "sha256": "72ee70f13f1b2645b2085c45c64a5fc883c864e5ee03532b29a1155881a05069"
     },
     {
       "path": "internal/runtime/limits.js",
