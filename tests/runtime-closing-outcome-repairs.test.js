@@ -14,6 +14,7 @@ const { overview } = require('../internal/runtime/run-overview');
 const { BOUNDS, closingDischargedSince } = require('../internal/runtime/creation-consistency');
 const { DIMENSIONS } = require('../internal/runtime/lifecycle');
 const { RunError } = require('../internal/runtime/errors');
+const outcomes = require('../internal/runtime/delivery-outcome');
 const { Registry } = require('../internal/releases/registry');
 const { completeReflection } = require('./fixtures/completion');
 
@@ -602,6 +603,15 @@ test('status identifies a retired complete delivery as retired, with no outcome'
     store.db.prepare('INSERT INTO legacy_retirements(run_id, artifact) VALUES (?, ?)').run(retired, 'fixture-certificate');
   });
   assert.deepEqual((await status(f.root, retired)).handoverOutcome, { retired: true });
+});
+
+test('a collected result already recorded through dialogue opens no conditional owner route', () => {
+  const work = { kind: 'work', concern: 'closure', subject: 'F1', message: 'Fixture closure owed', needs: ['closing', 'dispatch'] };
+  const worker = { id: 'reviewer-dialogue', role: 'reviewer', taskId: '#closing', status: 'complete', closingOccurrence: 'occurrence', receipt: '.nightshift/runs/reviews/reviewer-dialogue/receipt.json' };
+  const state = finding => ({ limits: { maxDispatches: 0 }, dispatches: 0, workers: [worker], closing: { docs: { occurrence: 'occurrence', reviews: [], findings: [finding] } } });
+  const names = value => outcomes.routes(value, outcomes.judgment([work]), { current: true }).list.map(entry => entry.route);
+  assert.deepEqual(names(state({ id: 'F1', pendingClosure: { lineage: 'x' } })), ['owner', 'close']);
+  assert.deepEqual(names(state({ id: 'F1', pendingClosure: { lineage: 'x' }, dialogue: [{ requestId: 'reviewer-dialogue' }] })), ['close']);
 });
 
 test('Ready names only the administrative close for a held delivery past its deadline', async t => {

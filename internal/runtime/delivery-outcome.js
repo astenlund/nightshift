@@ -44,7 +44,8 @@ function judgment(causes) {
 function collectedClosingResults(state, role) {
   const record = state.closing?.docs;
   if (!record) return [];
-  const imported = new Set([...(record.reviews ?? []).map(review => review.requestId), ...(record.findings ?? []).map(finding => finding.validation?.requestId)].filter(Boolean));
+  // A result recorded through a review, a validation or a dialogue turn has been imported already.
+  const imported = new Set([...(record.reviews ?? []).map(review => review.requestId), ...(record.findings ?? []).flatMap(finding => [finding.validation?.requestId, ...(finding.dialogue ?? []).map(turn => turn?.requestId)])].filter(Boolean));
 
   return state.workers.filter(worker => worker.taskId === '#closing' && worker.status === 'complete' && worker.role === role && typeof worker.receipt === 'string' && worker.receipt.length > 0 && (worker.closingOccurrence ?? null) === (record.occurrence ?? null) && !imported.has(worker.id)).map(worker => worker.id);
 }

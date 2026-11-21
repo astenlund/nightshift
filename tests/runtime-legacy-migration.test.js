@@ -116,6 +116,8 @@ test('retirement of a version-one completed delivery is atomic, repeatable and p
   const next = await runtimeExecute(root, { action: 'handover', handoverId: randomUUID(), controller: { host: 'codex', session: 'new-owner' }, authority: 'Fixture approval for new work', objective: 'New delivery', tasks: [{ id: 'new-work', title: 'New work', agreement: { source: 'Fixture', outcome: 'New delivery' } }] }, { nativeOwner: () => ({ pid: 12345, created: 'fixture', name: 'codex.exe' }), ownerAlive: () => true });
   assert.notEqual(next.id, id);
   assert.equal(next.status, 'running');
+  // Status identifies the retired completed record as retired, with no closing outcome.
+  assert.deepEqual((await runtimeExecute(root, { action: 'status', runId: id })).handoverOutcome, { retired: true });
 });
 
 test('history compaction keeps retired deliveries, their certificates and inventory unchanged', async t => {

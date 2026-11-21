@@ -447,6 +447,16 @@ function assessment(store, options = {}) {
     if (writable) refusal.persistAfterRollback = db => verdicts.applyWrites(db, tables, writes);
     throw refusal;
   };
+  // The one exit for a refusal raised in or after the row loop: it ends the pass and names the record, when one raised it, and every
+  // blocker the pass established before it. Judge-only and retirement-preflight passes, and errors that are not refusals, pass through.
+  const namedRefusal = (error, rowId = null) => {
+    if (options.resourceOnly || options.judgeOnly || error.creationBlocker || !(error instanceof RunError || error instanceof SyntaxError)) return error;
+    const own = [CODE, 'missing-predecessor'].includes(error.code);
+    const refusal = new RunError(own ? error.code : CODE, `${own ? '' : 'Delivery consistency cannot be established: '}${rowId ? `Delivery ${rowId}: ` : ''}${error.message}${establishedBlockers().text}`);
+    refusal.creationBlocker = true;
+
+    return refusal;
+  };
   for (const row of rows) {
     const verdict = saved?.byRun.get(row.id);
     const retirement = retiredById.get(row.id) ?? null;
@@ -455,7 +465,14 @@ function assessment(store, options = {}) {
       accept(verdict.acceptance);
       // The verdict vouches for the certificate checks that read only this record's frozen rows; the chain walk, the manifest and
       // the tracked destinations in project files are checked again.
-      if (retirement !== null) validateCertificate(store.db, store.root, { id: row.id, revision: row.revision, state: null }, null, null, retirement, certificateBudgets);
+      if (retirement !== null) {
+        try { validateCertificate(store.db, store.root, { id: row.id, revision: row.revision, state: null }, null, null, retirement, certificateBudgets); }
+        catch (error) {
+          if (!(options.judgeOnly && !options.judgeOnly.ids.has(row.id) && error instanceof RunError)) throw namedRefusal(error, row.id);
+          records.push({ id: row.id, state: null, discharged: false, failed: true });
+          continue;
+        }
+      }
       records.push({ id: row.id, state: null, discharged: true, retired: retirement !== null, verdicted: true });
       continue;
     }
@@ -466,21 +483,14 @@ function assessment(store, options = {}) {
       // own failure, which concerns that record rather than whether the pass can count the one it was asked about.
       if (options.judgeOnly) {
         if (error.sharedAllowance) return { records, shortfall: true };
-        if (row.id !== options.judgeOnly.id && error instanceof RunError) {
+        if (!options.judgeOnly.ids.has(row.id) && error instanceof RunError) {
           records.push({ id: row.id, state: null, discharged: false, failed: true });
           continue;
         }
         throw error;
       }
       if (!options.resourceOnly && error.sharedAllowance) refuseForAllowance(error);
-      // A record's own refusal ends the pass; it still names the record and every blocker the pass established before it.
-      if (!options.resourceOnly && (error instanceof RunError || error instanceof SyntaxError)) {
-        const own = [CODE, 'missing-predecessor'].includes(error.code);
-        const refusal = new RunError(own ? error.code : CODE, `${own ? '' : 'Delivery consistency cannot be established: '}Delivery ${row.id}: ${error.message}${establishedBlockers().text}`);
-        refusal.creationBlocker = true;
-        throw refusal;
-      }
-      throw error;
+      throw namedRefusal(error, row.id);
     }
     records.push(record);
     if (!writable || options.judgeOnly) continue;
@@ -491,7 +501,7 @@ function assessment(store, options = {}) {
     else if (verdict) writes.deletes.add(verdict.rowid);
   }
   if (options.judgeOnly) return { records, shortfall: false };
-  if (!options.resourceOnly) requireCondition([...retirementArtifacts].every(id => certificateBudgets.chain.visited.has(id)), CODE, 'Retirement certificate artifact is outside every current reference chain');
+  if (!options.resourceOnly && ![...retirementArtifacts].every(id => certificateBudgets.chain.visited.has(id))) throw namedRefusal(new RunError(CODE, 'Retirement certificate artifact is outside every current reference chain'));
   if (options.resourceOnly) return { inputBytes };
   // inputBytes is diagnostic: it reports the shared allowance this pass charged, which callers do not act on.
   const established = establishedBlockers();
@@ -522,22 +532,23 @@ function assessment(store, options = {}) {
 // The refusal for a selection whose morning report awaits its recipient, shared with the store's replaceability check.
 const REPORT_PENDING = 'The latest delivery\'s morning report awaits its recipient: present the saved report, record report-delivered with the user\'s reply, then accept the new delivery';
 
-// Runs a creation pass over `store`'s current transaction that writes nothing and refuses nothing, to learn whether it would count the
-// record `id` discharged: {discharged, shortfall, failure}, where `shortfall` says the shared allowance ran out first and `failure` is
-// a refusal of the whole pass.
-function judgeRecord(store, id) {
+
+// Runs one creation pass over `store`'s current transaction that writes nothing and refuses nothing, to learn whether it would count
+// each record in `ids` discharged: a Map from id to {discharged, shortfall, failure}, where `shortfall` says the shared allowance ran
+// out first and `failure` is a refusal of the whole pass.
+function judgeRecords(store, ids) {
   let result;
-  try { result = assessment(store, { judgeOnly: { id } }); }
+  try { result = assessment(store, { judgeOnly: { ids: new Set(ids) } }); }
   catch (error) {
     // A refusal of the whole pass, such as the selection exceeding its reserved bound, means the gate counts nothing.
     if (!(error instanceof RunError)) throw error;
 
-    return { discharged: false, shortfall: false, failure: error };
+    return new Map(ids.map(id => [id, { discharged: false, shortfall: false, failure: error }]));
   }
-  const record = result.records.find(entry => entry.id === id);
 
-  return { discharged: Boolean(record?.discharged), shortfall: result.shortfall, failure: null };
+  return new Map(ids.map(id => [id, { discharged: Boolean(result.records.find(entry => entry.id === id)?.discharged), shortfall: result.shortfall, failure: null }]));
 }
+
 
 function creationAssessment(store, options = {}) {
   try { return assessment(store, options); }
@@ -547,4 +558,4 @@ function creationAssessment(store, options = {}) {
   }
 }
 
-module.exports = { BOUNDS, REPORT_PENDING, agreementProblem, closeRowDischarges, closingDischargedSince, creationAssessment, establishAccounting, judgeCompletion, judgeRecord, reportAwaitsRecipient, rollbackProblem };
+module.exports = { BOUNDS, REPORT_PENDING, agreementProblem, closeRowDischarges, closingDischargedSince, creationAssessment, establishAccounting, judgeCompletion, judgeRecords, reportAwaitsRecipient, rollbackProblem };
