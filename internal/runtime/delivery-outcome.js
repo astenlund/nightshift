@@ -46,7 +46,20 @@ function collectedClosingResult(state, role) {
   if (!record) return false;
   const imported = new Set([...(record.reviews ?? []).map(review => review.requestId), ...(record.findings ?? []).map(finding => finding.validation?.requestId)].filter(Boolean));
 
-  return state.workers.some(worker => worker.taskId === '#closing' && worker.status === 'complete' && worker.role === role && typeof worker.receipt === 'string' && worker.receipt.length > 0 && (worker.closingOccurrence ?? null) === (record.occurrence ?? null) && !imported.has(worker.id));
+  return state.workers.some(worker => worker.taskId === '#closing' && worker.status === 'complete' && worker.role === role && (worker.closingOccurrence ?? null) === (record.occurrence ?? null) && !imported.has(worker.id) && importableReceipt(state.root, worker.receipt, role === 'skeptic' ? 'skeptic' : 'docs'));
+}
+
+// Whether a saved receipt is a complete assessment of `kind` that is not a dialogue turn, which review and validate import; a receipt
+// that cannot be read is not one.
+function importableReceipt(root, receipt, kind) {
+  if (typeof receipt !== 'string' || receipt.length === 0) return false;
+  try {
+    const value = JSON.parse(fs.readFileSync(path.resolve(root, receipt), 'utf8'));
+    return value?.kind === kind && value.status === 'complete' && !value.dialogue;
+  } catch {
+    // An unreadable receipt cannot be imported.
+    return false;
+  }
 }
 
 // Whether a cause still needs a new dispatch, once collected but unimported results of its own role are counted.
@@ -179,6 +192,7 @@ function readCurrent(env, row, tracker, selected) {
   const consistency = require('./creation-consistency');
   const { HistoryReader } = require('./history-store');
   const state = JSON.parse(row.state);
+  if (state.revision !== row.revision) return { problem: cause('accounting', null, 'Its stored revision contradicts its saved state') };
   const rolledBack = consistency.rollbackProblem(env.db, env.tables, state);
   if (rolledBack) return { problem: cause('accounting', null, rolledBack) };
   const history = new HistoryReader(env.db, state.id);
@@ -251,7 +265,7 @@ function readOutcomes(db, root, { ids = null, shared = false, inTransaction = fa
     const selected = env.tables.has('active') ? db.prepare('SELECT id FROM active LIMIT 1').get()?.id ?? null : null;
     const saved = verdicts.protectionState(db) === 'own' ? verdicts.readVerdicts(db, MAX_DELIVERY_RECORDS) : null;
     let tracker = allowance(shared ? reservation(env, selected) : 0);
-    const rows = ids ? ids.map(id => db.prepare('SELECT id, state FROM runs WHERE id=?').get(id)).filter(Boolean) : db.prepare('SELECT id, state FROM runs ORDER BY id').all();
+    const rows = ids ? ids.map(id => db.prepare('SELECT id, revision, state FROM runs WHERE id=?').get(id)).filter(Boolean) : db.prepare('SELECT id, revision, state FROM runs ORDER BY id').all();
     for (const row of rows) {
       const state = JSON.parse(row.state);
       if (state.status !== 'complete' || isClosed(state) || (state.kind ?? 'delivery') !== 'delivery') continue;
@@ -320,13 +334,13 @@ function chargeSelection(env, row, tracker) {
 function closedRefusal(db, root, id) {
   const env = context(db, root);
   const selected = env.tables.has('active') ? db.prepare('SELECT id FROM active LIMIT 1').get()?.id ?? null : null;
-  const row = db.prepare('SELECT id, state FROM runs WHERE id=?').get(id);
+  const row = db.prepare('SELECT id, revision, state FROM runs WHERE id=?').get(id);
   const tracker = allowance(reservation(env, selected));
   const refusal = value => ({ code: value.kind === 'bound' ? 'close-bound-unavailable' : 'close-accounting-unavailable', message: `The closed record ${id} would not be counted discharged by the creation gate (${value.message}); nothing was closed in this store` });
   try {
     // Every pass judges the selection in full and never vouches for it, so whichever record sorts first, a pass that reaches the end
     // has charged the selection's state, latest row and accounting beside the closed record: charge them first.
-    if (selected && selected !== id) chargeSelection(env, db.prepare('SELECT id, state FROM runs WHERE id=?').get(selected), tracker);
+    if (selected && selected !== id) chargeSelection(env, db.prepare('SELECT id, revision, state FROM runs WHERE id=?').get(selected), tracker);
     const current = readCurrent(env, row, tracker, id === selected);
     if (current.problem) return refusal(current.problem);
     const budget = accountingBudget(tracker);

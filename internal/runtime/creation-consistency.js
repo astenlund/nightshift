@@ -150,17 +150,27 @@ function agreementProblem(state, latestState) {
 // unavailable and any other failure unauthenticated; without it, as for a stopped record, the failure throws as it always has.
 function judgeCompletion({ db, accounting, provenance, history, state, budget, evidence, convert }) {
   const failures = [];
+  const causes = [];
   const convertible = error => convert && error instanceof RunError && !error.sharedAllowance;
-  try {
-    const completionRevision = latestRevisionOfKind(db, state.id, 'complete');
-    if (completionRevision === undefined) return outcomes.judgment([outcomes.cause('evidence', null, 'The record is complete but has no recorded completion row')]);
+  // The completion row and its provenance, or null when they cannot be read, the failure then being kept as a cause so that the
+  // closing work found beside it is still named.
+  const completionRevision = latestRevisionOfKind(db, state.id, 'complete');
+  const noCompletion = outcomes.cause('evidence', null, 'The record is complete but has no recorded completion row');
+  // A record that never completed, such as a stopped one, has nothing further to judge.
+  if (completionRevision === undefined && !convert) return outcomes.judgment([noCompletion]);
+  const readCompletion = () => {
+    if (completionRevision === undefined) {
+      causes.push(noCompletion);
+      return null;
+    }
     const completionSize = history.meta(completionRevision)?.bytes;
     requireCondition(completionSize !== undefined, CODE, 'Completion history is missing');
     requireBound(completionSize <= BOUNDS.completionRow, CODE, `Delivery ${state.id} completion history exceeds its own read bound`);
     const completion = history.text(completionRevision, BOUNDS.completionRow);
     if (completion?.kind !== 'complete') {
-      if (convert) return outcomes.judgment([outcomes.cause('bound', null, `Delivery ${state.id} completion history exceeds its own read bound`)]);
-      requireCondition(false, CODE, `Delivery ${state.id} completion history exceeds its own read bound`);
+      if (!convert) requireCondition(false, CODE, `Delivery ${state.id} completion history exceeds its own read bound`);
+      causes.push(outcomes.cause('bound', null, `Delivery ${state.id} completion history exceeds its own read bound`));
+      return null;
     }
     // An unreadable completion body is a failure of the evidence the judgment reads, never an unexpected error.
     let completed;
@@ -168,6 +178,16 @@ function judgeCompletion({ db, accounting, provenance, history, state, budget, e
     catch { requireCondition(false, CODE, `Delivery ${state.id} recorded completion row is unreadable`); }
     requireCondition(completed && typeof completed === 'object' && completed.id === state.id && completed.revision === completion.revision && completed.status === 'complete', CODE, 'Recorded completion identity is contradictory');
     provenance.read(completed, budget);
+
+    return completed;
+  };
+  try {
+    let completed = null;
+    try { completed = readCompletion(); }
+    catch (error) {
+      if (!convertible(error)) throw error;
+      causes.push(outcomes.causeOf(error, 'evidence'));
+    }
     // Each failed read is kept as a cause and judged invalid, so the closing work found beside it is still named.
     const resolve = value => {
       try { return accounting.resolve(value, evidence); }
@@ -191,20 +211,22 @@ function judgeCompletion({ db, accounting, provenance, history, state, budget, e
     };
     const target = value => ({ ...value, checks: value.checks.map(check => ({ ...check, snapshot: resolve(check.snapshot) })), reviews: value.reviews.map(review => ({ ...review, snapshot: resolve(review.snapshot), ...(review.contextSnapshot ? { contextSnapshot: resolve(review.contextSnapshot) } : {}) })), ...(value.docsExemption ? { docsExemption: { ...value.docsExemption, snapshot: resolve(value.docsExemption.snapshot) } } : {}) });
     const historicalState = { ...state, tasks: state.tasks.map(target), closing: { ...state.closing, ...(state.closing?.docs ? { docs: { ...target(state.closing.docs), baseline: resolve(state.closing.docs.baseline) } } : {}) } };
-    const since = closingSince(state, completed, resolve);
+    // Without a readable completion, nothing tells which closing checks came after it, so only the record's own state is judged.
+    const since = completed ? closingSince(state, completed, resolve) : { causes: [], covered: () => false };
     const discharge = require('./lifecycle').dischargeCauses(historicalState, snapshotValid, { closingCovered: since.covered });
     // A failed or pending later check is named once, by dischargeCauses, whose needs already ask whether its rerun wants a fresh review.
     const failing = new Set(historicalState.closing?.docs ? require('./lifecycle').latestChecks(historicalState.closing.docs).filter(check => check.pending || !check.passed).map(check => check.name) : []);
-    const causes = [...since.causes.filter(entry => !failing.has(entry.subject)), ...discharge];
+    causes.push(...since.causes.filter(entry => !failing.has(entry.subject)), ...discharge);
     for (const message of new Set(failures)) causes.push(outcomes.cause('evidence', null, `Referenced evidence could not be read: ${message}`));
 
     return outcomes.judgment(causes);
   } catch (error) {
     if (!convertible(error)) throw error;
 
-    return outcomes.judgment([...[...new Set(failures)].map(message => outcomes.cause('evidence', null, `Referenced evidence could not be read: ${message}`)), outcomes.causeOf(error, 'evidence')]);
+    return outcomes.judgment([...causes, ...[...new Set(failures)].map(message => outcomes.cause('evidence', null, `Referenced evidence could not be read: ${message}`)), outcomes.causeOf(error, 'evidence')]);
   }
 }
+
 
 function legacyRefusal(records) {
   const grouped = new Map();
@@ -264,7 +286,7 @@ function assessment(store, options = {}) {
   // reserved up front; every other record is charged as it is read, until the allowance is reached.
   const selectedMetadata = verdicts.metadataOf(store.db, tables, selectedId);
   mandatoryTotal = selectedMetadata.stateBytes + (selectedMetadata.latestBytes ?? 0);
-  requireCondition(mandatoryTotal <= BOUNDS.input, CODE, `Selected delivery ${selectedId} current and latest-history input exceeds its bound. Inspect bounded raw states or restore store capacity`);
+  requireBound(mandatoryTotal <= BOUNDS.input, CODE, `Selected delivery ${selectedId} current and latest-history input exceeds its bound. Inspect bounded raw states or restore store capacity`);
   const ids = new Set(rows.map(row => row.id));
   requireCondition(retirements.every(row => ids.has(row.runId)), CODE, 'Retirement reference has no saved delivery');
   for (const table of ['history', 'accounting_commits', 'discharge_index'].filter(table => tables.has(table))) requireCondition(!store.db.prepare(`SELECT 1 FROM ${table} evidence LEFT JOIN runs saved ON saved.id=evidence.run_id WHERE saved.id IS NULL LIMIT 1`).get(), 'missing-predecessor', 'Surviving delivery evidence has no stored owner');
@@ -440,17 +462,28 @@ function assessment(store, options = {}) {
     let record;
     try { record = judge(row); }
     catch (error) {
+      // A judge-only pass reports running out of the shared allowance without keeping any write, and judges past another record's
+      // own failure, which concerns that record rather than whether the pass can count the one it was asked about.
+      if (options.judgeOnly) {
+        if (error.sharedAllowance) return { records, writable, shortfall: true };
+        if (row.id !== options.judgeOnly.id && error instanceof RunError) {
+          records.push({ id: row.id, state: null, discharged: false, failed: true });
+          continue;
+        }
+        throw error;
+      }
       if (!options.resourceOnly && error.sharedAllowance) refuseForAllowance(error);
       throw error;
     }
     records.push(record);
-    if (!writable) continue;
+    if (!writable || options.judgeOnly) continue;
     const qualifies = row.id !== selectedId && record.discharged && !record.state.workers.some(workerIsActive) && (record.retired === true || record.currentAccounting);
     // A verdict under a rule this runtime does not know is a later release's, and stays as it is whatever its other values.
     if (verdict?.later) continue;
     if (qualifies) writes.upserts.set(row.id, verdicts.verdictFor(record.state, record.stateText, metadata, retirement));
     else if (verdict) writes.deletes.add(verdict.rowid);
   }
+  if (options.judgeOnly) return { records, writable, shortfall: false };
   if (!options.resourceOnly) requireCondition([...retirementArtifacts].every(id => certificateBudgets.chain.visited.has(id)), CODE, 'Retirement certificate artifact is outside every current reference chain');
   if (options.resourceOnly) return { inputBytes };
   // inputBytes is diagnostic: it reports the shared allowance this pass charged, which callers do not act on.
@@ -482,6 +515,23 @@ function assessment(store, options = {}) {
 // The refusal for a selection whose morning report awaits its recipient, shared with the store's replaceability check.
 const REPORT_PENDING = 'The latest delivery\'s morning report awaits its recipient: present the saved report, record report-delivered with the user\'s reply, then accept the new delivery';
 
+// Runs a creation pass over `store`'s current transaction that writes nothing and refuses nothing, to learn whether it would count the
+// record `id` discharged: {discharged, shortfall, writable}, where `shortfall` says the shared allowance ran out first and `writable`
+// whether a real pass would keep verdicts, so that retried handovers judge less each time.
+function judgeRecord(store, id) {
+  let result;
+  try { result = assessment(store, { judgeOnly: { id } }); }
+  catch (error) {
+    // A refusal of the whole pass, such as the selection exceeding its reserved bound, means the gate counts nothing.
+    if (!(error instanceof RunError)) throw error;
+
+    return { discharged: false, shortfall: false, writable: false, failure: error };
+  }
+  const record = result.records.find(entry => entry.id === id);
+
+  return { discharged: Boolean(record?.discharged), shortfall: result.shortfall, writable: result.writable, failure: null };
+}
+
 function creationAssessment(store, options = {}) {
   try { return assessment(store, options); }
   catch (error) {
@@ -490,4 +540,4 @@ function creationAssessment(store, options = {}) {
   }
 }
 
-module.exports = { BOUNDS, REPORT_PENDING, agreementProblem, closeRowDischarges, closingDischargedSince, creationAssessment, establishAccounting, judgeCompletion, reportAwaitsRecipient, rollbackProblem };
+module.exports = { BOUNDS, REPORT_PENDING, agreementProblem, closeRowDischarges, closingDischargedSince, creationAssessment, establishAccounting, judgeCompletion, judgeRecord, reportAwaitsRecipient, rollbackProblem };

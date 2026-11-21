@@ -353,7 +353,7 @@ test('an unreadable completion row read after accounting is established is a fai
   await assert.rejects(execute(f.root, reflection(), base), error => error.code === 'delivery-consistency-unavailable' && error.message.includes(id) && /unauthenticated/.test(error.message));
 });
 
-test('a closing review already collected keeps the owner route when the dispatch allowance is spent', async t => {
+test('a collected result the hold cannot use leaves only the administrative close at a spent dispatch allowance', async t => {
   const f = project(t);
   await completed(f.root);
   await closingCheck(f.root, 'uncovered check', base);
@@ -361,11 +361,12 @@ test('a closing review already collected keeps the owner route when the dispatch
     state.limits = { maxDispatches: 0 };
     state.workers.push({ id: `collected-closing-${role}`, role, taskId: '#closing', status: 'complete', closingOccurrence: state.closing.docs.occurrence, receipt: `.nightshift/runs/reviews/collected-closing-${role}/receipt.json`, session: `collected-${role}`, assignment: 'Closing assessment', writes: [] });
   }));
-  // A skeptic result cannot serve as the closing docs review the uncovered check needs.
+  // A skeptic result cannot serve as the closing docs review the uncovered check needs, and a reviewer whose receipt is missing
+  // cannot be imported; the next case keeps the route for a readable docs receipt.
   collect('skeptic');
   assert.deepEqual((await status(f.root)).handoverOutcome.routes.map(entry => entry.route), ['close']);
   collect('reviewer');
-  assert.deepEqual((await status(f.root)).handoverOutcome.routes.map(entry => entry.route), ['owner', 'close']);
+  assert.deepEqual((await status(f.root)).handoverOutcome.routes.map(entry => entry.route), ['close']);
 });
 
 test('Ready derives the limit routes from runtime state as status does', async t => {
@@ -383,18 +384,25 @@ test('Ready derives the limit routes from runtime state as status does', async t
 
 test('a shortfall keeps the held outcome judged before it, while the gate keeps its allowance refusal and each record is judged alone', async t => {
   // Record ids are random, and the scan judges in id order: build projects until the held record sorts before the selection.
+  // The store also holds a stopped record and a selection whose morning report awaits its recipient.
+  const withholdReply = (root, input, dependencies) => (input.action === 'report-delivered' ? execute(root, { action: 'inspect' }, dependencies) : execute(root, input, dependencies));
   let f;
   let held;
   let selection;
+  let stopped;
   for (let attempt = 0; attempt < 12 && !f; attempt++) {
     const candidate = project(t);
     await completed(candidate.root);
     const first = read(candidate.root).id;
     await completed(candidate.root);
     const second = read(candidate.root).id;
-    if (first < second) [f, held, selection] = [candidate, first, second];
+    await completed(candidate.root, withholdReply);
+    const third = read(candidate.root).id;
+    if (second < third) [f, stopped, held, selection] = [candidate, first, second, third];
   }
   assert.ok(f, 'No fixture ordered its records as the case needs');
+  select(f.root, stopped);
+  await execute(f.root, { action: 'stop', actor: owner, revision: read(f.root).revision, kind: 'user-stop', reason: 'Fixture stop' }, base);
   select(f.root, held);
   await closingCheck(f.root, 'post-completion tracking check', failing);
   select(f.root, selection);
@@ -415,11 +423,114 @@ test('a shortfall keeps the held outcome judged before it, while the gate keeps 
   const result = shown(high);
   assert.equal(result.records.find(record => record.id === held).outcome.outcome, 'held');
   assert.deepEqual(result.notices.map(entry => entry.code), ['closing-outcome-shortfall']);
+  assert.deepEqual(result.unavailable, []);
+  assert.equal(result.records.find(record => record.id === stopped).status, 'stopped');
+  assert.deepEqual(result.records.find(record => record.id === selection).pickup, { offer: 'present-report' });
   BOUNDS.input = high;
   await assert.rejects(execute(f.root, reflection(), base), error => error.code === 'delivery-consistency-unavailable' && /byte bound/.test(error.message));
   assert.equal((await status(f.root, held)).handoverOutcome.outcome, 'held');
   assert.deepEqual(closeManifest(f.root, { members: [{ store: 'delivery', id: held }] }, f.context, base).ineligible, []);
   BOUNDS.input = saved;
+});
+
+// The smallest bound at which `passes` holds, by bisection between 1 and 4 MiB, which must pass.
+function smallestBound(passes) {
+  let low = 1;
+  let high = 4 * 1024 * 1024;
+  assert.equal(passes(high), true);
+  while (high - low > 1) {
+    const middle = Math.floor((low + high) / 2);
+    if (passes(middle)) high = middle;
+    else low = middle;
+  }
+
+  return high;
+}
+
+test('under a later release\'s verdict protection, close commits only what a full creation pass then counts', async t => {
+  // Record ids are random: build projects until a discharged record sorts before both the selection and the closed candidate.
+  let f;
+  let candidate;
+  for (let attempt = 0; attempt < 16 && !f; attempt++) {
+    const trial = project(t);
+    await completed(trial.root);
+    const first = read(trial.root).id;
+    await completed(trial.root);
+    const second = read(trial.root).id;
+    await completed(trial.root);
+    const third = read(trial.root).id;
+    if (first < second && first < third) [f, candidate] = [trial, second];
+  }
+  assert.ok(f, 'No fixture ordered its records as the case needs');
+  const selection = read(f.root).id;
+  select(f.root, candidate);
+  await closingCheck(f.root, 'post-completion tracking check', failing);
+  select(f.root, selection);
+  // A guard this runtime does not recognize marks the protection as a later release's: verdicts are neither accepted nor written.
+  withStore(f.root, store => store.db.exec("CREATE TRIGGER verdict_guard_later_release BEFORE DELETE ON runs BEGIN SELECT 1; END"));
+  const { request } = approve(f, [{ store: 'delivery', id: candidate }]);
+  const saved = BOUNDS.input;
+  t.after(() => { BOUNDS.input = saved; });
+  const probe = { ...base, beforeCommit: () => { throw new RunError('fixture-probe', 'Judgment passed'); } };
+  const bound = smallestBound(value => {
+    BOUNDS.input = value;
+    try {
+      close(f.root, request, f.context, probe);
+      return true;
+    } catch (error) {
+      if (error.code === 'fixture-probe') return true;
+      if (['close-bound-unavailable', 'close-judgment-unavailable', 'close-accounting-unavailable'].includes(error.code)) return false;
+      throw error;
+    } finally { BOUNDS.input = saved; }
+  });
+  BOUNDS.input = bound;
+  close(f.root, request, f.context, base);
+  const { creationAssessment } = require('../internal/runtime/creation-consistency');
+  assert.doesNotThrow(() => withStore(f.root, store => store.transaction(() => creationAssessment(store))));
+  BOUNDS.input = saved;
+});
+
+test('only a collected docs review that is not a dialogue keeps the owner route at a spent allowance', async t => {
+  const f = project(t);
+  await completed(f.root);
+  await closingCheck(f.root, 'uncovered check', base);
+  const collect = (id, receipt) => {
+    const file = `.nightshift/runs/reviews/${id}/receipt.json`;
+    fs.mkdirSync(path.join(f.root, path.dirname(file)), { recursive: true });
+    fs.writeFileSync(path.join(f.root, file), JSON.stringify(receipt));
+    withStore(f.root, store => store.update(owner, store.read().revision, `fixture-${id}`, state => {
+      state.limits = { maxDispatches: 0 };
+      state.workers.push({ id, role: 'reviewer', taskId: '#closing', status: 'complete', closingOccurrence: state.closing.docs.occurrence, receipt: file, session: id, assignment: 'Closing assessment', writes: [] });
+    }));
+  };
+  collect('collected-dialogue', { requestId: 'collected-dialogue', kind: 'docs', status: 'complete', dialogue: { findingIds: ['x'], message: 'Fixture turn' }, findings: [] });
+  assert.deepEqual((await status(f.root)).handoverOutcome.routes.map(entry => entry.route), ['close']);
+  collect('collected-docs-review', { requestId: 'collected-docs-review', kind: 'docs', status: 'complete', dialogue: null, findings: [] });
+  assert.deepEqual((await status(f.root)).handoverOutcome.routes.map(entry => entry.route), ['owner', 'close']);
+});
+
+test('an unreadable completion row still names the closing work found beside it', async t => {
+  const f = project(t);
+  await completed(f.root);
+  await closingCheck(f.root, 'post-completion tracking check', failing);
+  const id = read(f.root).id;
+  withStore(f.root, store => {
+    const revision = store.db.prepare("SELECT max(revision) AS revision FROM history WHERE run_id=? AND kind='complete'").get(id).revision;
+    const body = '{"not json';
+    store.db.prepare("UPDATE history SET body=?, bytes=?, digest=?, encoding='full' WHERE run_id=? AND revision=?").run(body, Buffer.byteLength(body), require('node:crypto').createHash('sha256').update(body).digest('hex'), id, revision);
+  });
+  const outcome = (await status(f.root)).handoverOutcome;
+  assert.equal(outcome.outcome, 'unauthenticated');
+  assert.ok(outcome.causes.some(entry => entry.kind === 'work' && entry.subject === 'post-completion tracking check'));
+});
+
+test('a stored row revision that contradicts its state reads unavailable on Ready', async t => {
+  const f = project(t);
+  await completed(f.root);
+  const id = read(f.root).id;
+  withStore(f.root, store => store.db.prepare('UPDATE runs SET revision=revision+1 WHERE id=?').run(id));
+  const record = overview(f.root, { dependencies: base }).records.find(entry => entry.id === id);
+  assert.equal(record?.outcome?.outcome, 'unavailable');
 });
 
 test('Ready names only the administrative close for a held delivery past its deadline', async t => {
