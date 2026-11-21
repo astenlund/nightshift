@@ -376,6 +376,32 @@ test('a stale earlier retirement does not block an unrelated approved retirement
   finally { store.close(); }
 });
 
+test('a certificate refusal that ends a creation pass still names the legacy record grouped before it', t => {
+  // Arrange: two stopped legacy records, which get no closing outcome; the one sorting later is retired with a tracked destination
+  // that then changes, while the earlier one stays unretired and enters the legacy group first.
+  const { root, id } = fixture(t, { status: 'stopped', followups: [{ id: 'question', status: 'pending' }] });
+  const second = addCompletedRun(root, id);
+  const [earlier, later] = [id, second].sort();
+  const backlog = path.join(root, '.nightshift/BUGS.md');
+  fs.writeFileSync(backlog, ['# Bugs', '', '### Question', '', 'Original tracking text.', ''].join(String.fromCharCode(13, 10)));
+  const choice = { ...choiceFor(later), disposition: 'retired-stopped', followups: [{ id: 'question', disposition: 'tracked', destination: { path: '.nightshift/BUGS.md', anchor: 'question' } }] };
+  const manifest = execute(root, { action: 'manifest', ids: [later], choices: [choice] });
+  execute(root, { action: 'retire', ids: [later], choices: [choice], manifestHash: manifest.hash, authority: 'Approve the later record and its tracking', actor: { host: 'codex', session: 'fixture-owner' } });
+  fs.writeFileSync(backlog, ['# Bugs', '', '### Question', '', 'Changed tracking text.', ''].join(String.fromCharCode(13, 10)));
+
+  // Act
+  let thrown;
+  const store = new RunStore(root);
+  try { store.transaction(() => creationAssessment(store)); }
+  catch (error) { thrown = error; }
+  finally { store.close(); }
+
+  // Assert
+  assert.equal(thrown?.code, 'delivery-consistency-unavailable');
+  assert.ok(thrown.message.includes(later), thrown.message);
+  assert.ok(thrown.message.includes(earlier), thrown.message);
+});
+
 test('a malformed unrelated certificate does not block an eligible retirement', t => {
   // Arrange
   const { root, id } = fixture(t);
