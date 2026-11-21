@@ -98,29 +98,31 @@ function describe(store, state, current, context, dependencies, outcome = null) 
     close: null,
   };
   if (state.status === 'complete') record.report = state.closing?.reportEvidence?.path ?? null;
-  if (outcome && outcome.outcome !== require('./delivery-outcome').DISCHARGED) {
-    const outcomes = require('./delivery-outcome');
-    const routed = outcomes.routes(state, outcome, { current });
-    record.outcome = { ...outcomes.brief(state.id, outcome, routed), provisional: true };
-  }
   record.pickup = pickup(record, state, context, dependencies);
-  record.close = closeOffer(record, state, dependencies, outcome);
+  const outcomes = require('./delivery-outcome');
+  if (state.status === 'complete') {
+    // A complete delivery the hold scan judged not discharged is offered close from its outcome and the shared worker verdict alone,
+    // the same verdict its routes name, since the outcome already established its accounting; one it did not judge, or judged
+    // discharged, keeps today's value. Readability and the older-release guard are left to close-manifest.
+    if (outcome && outcome.outcome !== outcomes.DISCHARGED) {
+      const { routed, verdict } = outcomes.routesFor(state, outcome, { current, dependencies });
+      record.outcome = { ...outcomes.brief(state.id, outcome, routed), provisional: true };
+      // An unavailable outcome has no worker verdict; close's own refusal for its cause stands in.
+      const refusal = verdict ?? require('./close').closeVerdict(state, dependencies, outcome);
+      record.close = refusal.eligible ? { offer: 'close' } : { offer: 'none', reason: refusal.code, message: refusal.message };
+    }
+    return record;
+  }
+  record.close = closeOffer(record, state, dependencies);
 
   return record;
 }
 
-// Close eligibility as Ready can judge it from the saved record, independently of the pickup's adoption-only routing: the status, the
-// adoption-eligibility evidence and, for a running or stopped delivery, the saved accounting marker. A complete delivery the hold scan
-// judged is offered close from its outcome and the shared worker verdict alone, since the outcome already established its accounting;
-// one it did not judge, or judged discharged, keeps today's value. Readability and the older-release guard are left to close-manifest.
-function closeOffer(record, state, dependencies, outcome = null) {
+// Close eligibility as Ready can judge it from a running or stopped record, independently of the pickup's adoption-only routing: the
+// status, the adoption-eligibility evidence and, for a delivery, the saved accounting marker. The older-release guard is left to
+// close-manifest.
+function closeOffer(record, state, dependencies) {
   const { accountingRemedy, closeVerdict } = require('./close');
-  if (state.status === 'complete') {
-    if (!outcome || outcome.outcome === require('./delivery-outcome').DISCHARGED) return null;
-    const verdict = closeVerdict(state, dependencies, outcome);
-
-    return verdict.eligible ? { offer: 'close' } : { offer: 'none', reason: verdict.code, message: verdict.message };
-  }
   if (!['running', 'stopped'].includes(state.status)) return null;
   const verdict = closeVerdict(state, dependencies);
   if (!verdict.eligible) return { offer: 'none', reason: verdict.code, message: verdict.message };
@@ -144,7 +146,7 @@ function isOpen(state, current, outcome = null) {
 // shared input allowance; a shortfall leaves the rest unjudged and becomes a store-level notice, as a failed scan does.
 function scanOutcomes(database, root, result) {
   try {
-    const { byId, shortfall } = require('./delivery-outcome').readOutcomes(database, root, { shared: true });
+    const { byId, shortfall } = require('./delivery-outcome').readOutcomes(database, root, { shared: true, inTransaction: true });
     if (shortfall) result.notices.push({ store: 'delivery', code: 'closing-outcome-shortfall', message: 'Some complete deliveries could not be judged within the shared input allowance, so whether they hold back the next handover is unknown' });
 
     return byId;
@@ -185,6 +187,8 @@ function readStore(root, definition, context, dependencies, result) {
   }
   if (!database) return;
   try {
+    // One read transaction holds every row a record is built from, the closing-outcome scan's included, so they share one snapshot.
+    database.exec('BEGIN');
     const version = database.prepare('PRAGMA user_version').get().user_version;
     const total = database.prepare('SELECT coalesce(sum(length(CAST(state AS BLOB))), 0) AS bytes FROM runs').get().bytes;
     if (total > MAX_STATE_BYTES) {
@@ -210,6 +214,7 @@ function readStore(root, definition, context, dependencies, result) {
     // Once the opener has admitted the store, a failure is a read error, even when a state check throws an opener's code.
     result.unavailable.push({ store: definition.store, code: 'run-overview-unavailable', message: error?.message ?? String(error) });
   } finally {
+    if (database.isTransaction) database.exec('ROLLBACK');
     database.close();
   }
 }

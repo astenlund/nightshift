@@ -58,14 +58,17 @@ function closingSince(current, completed, resolve) {
   const qualifies = latest?.kind === 'docs' && completeAssessment(latest) && latest.attributionVerified === true && DIMENSIONS.docs.every(dimension => latest.dimensions?.includes(dimension));
   let seen = null;
   const absent = sha256 => sha256 === null || sha256 === undefined;
+  // An unresolvable snapshot is no coverage: the resolver has already recorded its failure as a cause of its own.
+  const filesOf = value => (Array.isArray(value?.files) ? value.files : null);
   const covered = check => {
     if (!qualifies) return false;
     if (seen === null) {
       const tasks = (current.tasks ?? []).filter(task => latest.coveredTaskIds?.includes(task.id));
       const candidates = [resolve(latest.snapshot), ...require('./applicability').preservedSnapshots(latest, now, tasks, resolve, current)];
-      seen = candidates.map(candidate => new Map(candidate.files.map(file => [file.path, file.sha256 ?? null])));
+      seen = candidates.map(filesOf).filter(Boolean).map(files => new Map(files.map(file => [file.path, file.sha256 ?? null])));
     }
-    return seen.some(candidate => resolve(check.snapshot).files.every(file => (absent(file.sha256) ? absent(candidate.get(file.path)) : candidate.get(file.path) === file.sha256)));
+    const checked = filesOf(resolve(check.snapshot));
+    return checked !== null && seen.some(candidate => checked.every(file => (absent(file.sha256) ? absent(candidate.get(file.path)) : candidate.get(file.path) === file.sha256)));
   };
   const identity = check => check.attemptId ?? JSON.stringify(check);
   const earlierChecks = new Set(then.checks.map(identity));
@@ -100,7 +103,7 @@ function closeRowDischarges(history, state, budget, latest = null) {
 // Establishes a record's accounting as the gate requires before it reads a completion or close row: current independent provenance
 // with its checkpoint, bindings and discharge-index entries verified, or for a delivery saved by an earlier release without schema-2
 // accounting, a bounded replay from its creation. A schema-2 record without independent provenance has lost it. `legacy` names why a
-// replay could not be established; any other failure throws.
+// replay could not be established, `unavailable` why present independent provenance is not current; any other failure throws.
 function establishAccounting(accounting, provenance, state, budget) {
   const independent = provenance.read(state, budget);
   requireCondition(independent !== null || state.progress?.schema !== 2, CODE, `Delivery ${state.id} has schema-2 accounting without independent provenance`);
@@ -120,8 +123,23 @@ function establishAccounting(accounting, provenance, state, budget) {
     }
   }
   if (account) requireCondition(account.marker.status === 'current', CODE, 'Delivery accounting is unavailable');
+  const unavailable = independent && independent.status !== 'current' ? `Its independent accounting is ${independent.status ?? 'not current'}` : null;
 
-  return { independent, account, legacy: null };
+  return { independent, account, legacy: null, unavailable };
+}
+
+// Why a record's current row cannot be judged as its present state, or null: it was rolled back behind surviving history or accounting
+// revisions. The gate and the read-only judgment share these two checks.
+function rollbackProblem(db, tables, state) {
+  const latest = latestRevision(db, state.id);
+  const journal = tables.has('accounting_commits') ? db.prepare('SELECT max(revision) AS revision FROM accounting_commits WHERE run_id=?').get(state.id) : { revision: null };
+
+  return latest === state.revision && (journal.revision === null || journal.revision === state.revision) ? null : 'Current delivery was rolled back behind surviving revision evidence';
+}
+
+// Why a record's current row contradicts its latest history row, or null.
+function agreementProblem(state, latestState) {
+  return latestState && progress.encodedHash(latestState) === progress.encodedHash(state) && isDeepStrictEqual(latestState.progress, state.progress) && isDeepStrictEqual(latestState.stopRecovery, state.stopRecovery) ? null : 'Current delivery contradicts its committed state';
 }
 
 // Judges a recorded completion, once its accounting is established, into the outcome of .nightshift/specs/post-completion-closing-hold.md
@@ -287,15 +305,15 @@ function assessment(store, options = {}) {
     requireCondition(state?.schema === 1 && typeof state.id === 'string' && state.id.length > 0 && state.id === row.id && state.root === store.root && recordKind(state) === 'delivery' && state.revision === row.revision && Number.isSafeInteger(row.revision) && row.revision >= 0 && isRecordStatus(state.status) && ['claude', 'codex'].includes(state.controller?.host) && typeof state.controller.session === 'string' && state.controller.session.length > 0 && Array.isArray(state.tasks) && Array.isArray(state.workers), CODE, 'Delivery identity, shape or revision is unsupported');
     const record = { id: state.id, state, stateText, discharged: false, currentAccounting: false };
     const history = new HistoryReader(store.db, state.id);
-    const latest = latestRevision(store.db, state.id);
-    const journal = tables.has('accounting_commits') ? store.db.prepare('SELECT max(revision) AS revision FROM accounting_commits WHERE run_id=?').get(state.id) : { revision: null };
-    requireCondition(latest === state.revision && (journal.revision === null || journal.revision === state.revision), CODE, 'Current delivery was rolled back behind surviving revision evidence');
+    const rolledBack = rollbackProblem(store.db, tables, state);
+    requireCondition(rolledBack === null, CODE, rolledBack);
     const historicalSize = history.meta(state.revision)?.bytes;
     requireCondition(historicalSize !== undefined, CODE, 'Current delivery lacks matching history');
     requireSharedBound(historicalSize <= BOUNDS.input - inputBytes, CODE, 'Current delivery history exceeds its read bound');
     const historical = history.text(state.revision, BOUNDS.input - inputBytes);
     const latestState = historical ? parse(historical.state, mandatory) : null;
-    requireCondition(latestState && progress.encodedHash(latestState) === progress.encodedHash(state) && isDeepStrictEqual(latestState.progress, state.progress) && isDeepStrictEqual(latestState.stopRecovery, state.stopRecovery), CODE, 'Current delivery contradicts its committed state');
+    const contradicted = agreementProblem(state, latestState);
+    requireCondition(contradicted === null, CODE, contradicted);
     accept(state.acceptance?.handoverId);
     const retired = retiredById.get(state.id);
     if (retiredById.has(state.id)) {
@@ -332,6 +350,8 @@ function assessment(store, options = {}) {
         legacyUnavailable.push({ id: state.id, status: state.status, reason: established.legacy });
         return { ...record, ...(judged ? { outcome: outcomes.judgment([outcomes.cause('accounting', null, `Its accounting replay is unavailable (${established.legacy})`)]) } : {}) };
       }
+      // Present independent provenance that is not current leaves a complete delivery unavailable, whether or not it is selected.
+      if (judged && established.unavailable) return { ...record, outcome: outcomes.judgment([outcomes.cause('accounting', null, established.unavailable)]) };
       let discharged = false;
       let outcome;
       if (account && isClosed(state)) {
@@ -393,8 +413,16 @@ function assessment(store, options = {}) {
   if (!options.resourceOnly) requireCondition([...retirementArtifacts].every(id => certificateBudgets.chain.visited.has(id)), CODE, 'Retirement certificate artifact is outside every current reference chain');
   if (options.resourceOnly) return { inputBytes };
   // inputBytes is diagnostic: it reports the shared allowance this pass charged, which callers do not act on.
-  requireCondition(legacyUnavailable.length === 0, CODE, legacyRefusal(legacyUnavailable));
+  const now = Date.now();
   const selected = records.find(record => record.id === selectedId);
+  // A complete delivery the pass judged, named with its outcome, causes and routes, which the saved workers' close verdict qualifies.
+  const judgedBlocker = record => {
+    const { routed } = outcomes.routesFor(record.state, record.outcome, { current: record === selected, now });
+    return { record, code: record.outcome.outcome === outcomes.HELD ? 'overlapping-run' : CODE, text: outcomes.describe(record.id, record.outcome, routed, { provisional: true }) };
+  };
+  const held = records.filter(record => record.outcome && record.outcome.outcome !== outcomes.DISCHARGED);
+  // The grouped refusal keeps its precedence and still names every complete delivery judged before the first legacy blocker.
+  if (legacyUnavailable.length > 0) requireCondition(false, CODE, `${legacyRefusal(legacyUnavailable)}${held.length ? `. Also blocking: ${held.map(record => judgedBlocker(record).text).join(' ')}` : ''}`);
   requireCondition(selected, CODE, 'Delivery selection was not judged');
   // Replacement would detach the selected delivery's unconfirmed report from its notice and confirmation route. A delivery
   // replaced under an earlier release has no such route left, so only the selected one can hold replacement back.
@@ -402,17 +430,16 @@ function assessment(store, options = {}) {
   // Every blocking record, with the code its kind carries: a complete delivery by its outcome, and any other record that is not
   // discharged, other than the selection itself, as today. Closing work held on the selection is unfinished work to reconcile, as an
   // unfinished selection is, so it alone neither refuses an exact replay nor turns the refusal into a consistency failure.
-  const now = Date.now();
-  const blockers = [];
-  for (const record of records) {
-    if (record.outcome) {
-      if (record.outcome.outcome === outcomes.DISCHARGED) continue;
-      const routes = outcomes.routes(record.state, record.outcome, { current: record === selected, now });
-      blockers.push({ record, code: record.outcome.outcome === outcomes.HELD ? 'overlapping-run' : CODE, text: outcomes.describe(record.id, record.outcome, routes, { provisional: true }) });
-    } else if (record !== selected && !record.discharged) blockers.push({ record, code: CODE, text: `Delivery ${record.id} (${record.state?.status ?? 'unknown'}) still has unresolved or unavailable obligations` });
-  }
+  const blockers = held.map(judgedBlocker);
+  for (const record of records) if (!record.outcome && record !== selected && !record.discharged) blockers.push({ record, code: CODE, text: `Delivery ${record.id} (${record.state?.status ?? 'unknown'}) still has unresolved or unavailable obligations.` });
+  // The selection's own blockers and active workers are named beside them, whichever code the refusal carries.
+  const own = [];
+  if (reportPending) own.push(`Delivery ${selected.id} (selected) owes its morning report to its recipient: present the saved report and record report-delivered with the user's reply.`);
+  if (['running', 'stopped'].includes(selected.state.status)) own.push(`Delivery ${selected.id} (selected) is ${selected.state.status}: reconcile, resume or explicitly finish it.`);
+  for (const record of records.filter(entry => entry.state?.workers.some(workerIsActive) && !held.includes(entry))) own.push(`Delivery ${record.id} has an active or uncertain worker to reconcile.`);
   const consistency = blockers.some(blocker => blocker.code === CODE);
-  const named = blockers.length ? `. Blocking: ${blockers.map(blocker => blocker.text).join(' ')}` : '';
+  const texts = [...blockers.map(blocker => blocker.text), ...own];
+  const named = texts.length ? `. Blocking: ${texts.join(' ')}` : '';
   // Precedence follows today's order: a consistency failure, then the selection's pending report, then held work.
   if (blockers.some(blocker => blocker.record !== selected || blocker.code === CODE)) {
     const code = consistency ? CODE : reportPending ? 'report-delivery-pending' : 'overlapping-run';
@@ -436,4 +463,4 @@ function creationAssessment(store, options = {}) {
   }
 }
 
-module.exports = { BOUNDS, REPORT_PENDING, closingDischargedSince, creationAssessment, establishAccounting, judgeCompletion, reportAwaitsRecipient };
+module.exports = { BOUNDS, REPORT_PENDING, agreementProblem, closeRowDischarges, closingDischargedSince, creationAssessment, establishAccounting, judgeCompletion, reportAwaitsRecipient, rollbackProblem };

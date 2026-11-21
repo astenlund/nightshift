@@ -193,9 +193,18 @@ function accountingCurrent(root, state) {
   const database = new DatabaseSync(file, { readOnly: true });
   try {
     database.exec('BEGIN');
-    const accounting = new (require('./progress-store').ProgressStore)({ db: database, root, kind: 'delivery' });
-    try { return accounting.read(state).marker.status === 'current'; }
-    catch {
+    // The creation gate's own accounting step, provenance, bindings and discharge-index verification included, so the manifest admits
+    // only what the close write's judgment of the closed record will accept.
+    const { ProgressStore } = require('./progress-store');
+    const { ProvenanceStore } = require('./provenance-store');
+    const accounting = new ProgressStore({ db: database, root, kind: 'delivery' });
+    try {
+      if (accounting.read(state).marker.status !== 'current') return false;
+      const provenance = new ProvenanceStore(accounting);
+      const budget = { bytes: 0, artifacts: new Set(), artifactLimit: require('./progress').MAX_FRONTIER_BYTES };
+      if (provenance.read(state, budget)?.status === 'current') provenance.verify(state, budget);
+      return true;
+    } catch {
       // Unreadable or unresolved accounting is not current; close refuses rather than committing an undischargeable record.
       return false;
     } finally { database.exec('ROLLBACK'); }
@@ -499,11 +508,10 @@ function writeStore(root, store, request, context, liveness, dependencies) {
         handle.save(next, 'close');
         if (store === 'delivery') {
           requireCondition(next.progress?.status === 'current', 'close-accounting-unavailable', `Accounting for ${member.id} is not current at the close revision; nothing was closed in this store`);
-          // The creation gate reads a closed record's current state and its close row, its latest row, within the input allowance (for
-          // the selection, reserved up front), so a closure that enlarges them past it would leave a record the gate cannot count.
-          const metadata = require('./settled-verdicts').metadataOf(handle.db, new Set(['accounting_commits']), member.id);
-          const { BOUNDS } = require('./creation-consistency');
-          requireCondition(metadata.stateBytes + (metadata.latestBytes ?? 0) <= BOUNDS.input, 'close-bound-unavailable', `The closed record ${member.id} would exceed the input bound the creation gate reads it within; nothing was closed in this store`);
+          // Close never commits a closed record the creation gate could not count discharged: the gate's own judgment of it, read bounds,
+          // provenance verification and close row included, runs inside this transaction, which a refusal rolls back.
+          const refused = require('./delivery-outcome').closedRefusal(handle.db, root, member.id);
+          requireCondition(!refused, refused?.code, refused?.message);
         }
         closed.push({ store, id: member.id, closure, written: true });
       }

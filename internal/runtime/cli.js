@@ -79,15 +79,9 @@ function handoverOutcome(store, state, dependencies) {
   catch (error) { entry = { judgment: outcomes.judgment([outcomes.causeOf(error, 'accounting')]) }; }
   if (!entry) return undefined;
   if (entry.retired) return { retired: true };
-  const value = entry.judgment;
-  let closeRefusal = null;
-  if ([outcomes.HELD, outcomes.UNAUTHENTICATED].includes(value.outcome)) {
-    const verdict = require('./close').closeVerdict(state, dependencies, value);
-    if (!verdict.eligible) closeRefusal = { code: verdict.code, message: verdict.message };
-  }
   const current = store.read(undefined, { hydrate: false })?.id === state.id;
 
-  return outcomes.brief(state.id, value, outcomes.routes(state, value, { current, closeRefusal }));
+  return outcomes.brief(state.id, entry.judgment, outcomes.routesFor(state, entry.judgment, { current, dependencies }).routed);
 }
 
 function confirmCompletedReport(store, state, request, resources) {

@@ -97,6 +97,18 @@ function unreadableRefusal(error) {
   return { code: error.code, message: `${error.message}; close saves through the ordinary read, which needs every referenced evidence body, so this record has no administrative route in this release (tracked as the bug "${BUG}")`, bug: BUG };
 }
 
+
+// The routes that apply to a delivery together with the saved workers' close verdict that qualifies them, so every surface that names
+// routes and every close offer read one verdict: a held or unauthenticated delivery whose workers the shared adoption-eligibility check
+// refuses names that refusal in place of the close route. `verdict` is null for any other outcome.
+function routesFor(state, value, { current = false, now = Date.now(), dependencies = {} } = {}) {
+  let verdict = null;
+  if ([HELD, UNAUTHENTICATED].includes(value.outcome)) verdict = require('./close').closeVerdict(state, dependencies, value);
+  const closeRefusal = verdict && !verdict.eligible ? { code: verdict.code, message: verdict.message } : null;
+
+  return { routed: routes(state, value, { current, now, closeRefusal }), verdict };
+}
+
 // Opens the delivery store read-only, or returns null when it is absent.
 function openStore(root) {
   const file = path.join(root, '.nightshift/runs/state.sqlite');
@@ -107,43 +119,115 @@ function openStore(root) {
   return db;
 }
 
-// Judges complete, unretired deliveries read-only, writing nothing, through the creation gate's own accounting and completion checks.
-// `ids` limits the judgment to those records; `shared` charges every record to one input allowance, as a creation pass does, and
-// stops at its end with `shortfall` set, leaving the rest unjudged; otherwise each record gets an allowance of its own. A nonselected
-// record carrying a current settled-record verdict reads discharged without being judged. Returns {byId, shortfall}, where each entry
-// is {retired: true}, or {judgment, verdicted?}.
-function readOutcomes(db, root, { ids = null, shared = false } = {}) {
-  const consistency = require('./creation-consistency');
-  const verdicts = require('./settled-verdicts');
-  const { schemaState, retirementRows, MAX_DELIVERY_RECORDS } = require('./legacy-store');
-  const { HistoryReader } = require('./history-store');
+// The creation gate's runtime pieces over one connection, loaded lazily since the gate requires this module.
+function context(db, root) {
+  const { schemaState } = require('./legacy-store');
   const { ProgressStore } = require('./progress-store');
   const { ProvenanceStore } = require('./provenance-store');
+  const accounting = new ProgressStore({ db, root, kind: 'delivery' });
+
+  return { db, tables: schemaState(db).tables, accounting, provenance: new ProvenanceStore(accounting) };
+}
+
+// An input allowance like the creation pass's: `reserved` bytes stay set aside, as the pass reserves the selection's current state and
+// latest row, until `release` charges them.
+function allowance(reserved = 0) {
+  const { BOUNDS } = require('./creation-consistency');
+  const tracker = { bytes: 0, reserved };
+  tracker.chargeInput = body => {
+    const next = tracker.bytes + Buffer.byteLength(body);
+    requireSharedBound(next + tracker.reserved <= BOUNDS.input, 'delivery-consistency-unavailable', 'Delivery consistency input exceeds its byte bound');
+    tracker.bytes = next;
+  };
+  tracker.release = bytes => { tracker.reserved = Math.max(0, tracker.reserved - bytes); };
+  tracker.remainingInput = () => BOUNDS.input - tracker.bytes - tracker.reserved;
+
+  return tracker;
+}
+
+// Reads a record's current state and latest history row as the creation pass does, charging both to `tracker`: the shared rollback
+// and agreement checks, and for the selection, its own reserved bound. Returns {state, history, historical} or {problem}, a cause.
+function readCurrent(env, row, tracker, selected) {
+  const consistency = require('./creation-consistency');
+  const { HistoryReader } = require('./history-store');
+  const state = JSON.parse(row.state);
+  const rolledBack = consistency.rollbackProblem(env.db, env.tables, state);
+  if (rolledBack) return { problem: cause('accounting', null, rolledBack) };
+  const history = new HistoryReader(env.db, state.id);
+  const latest = history.meta(state.revision)?.bytes;
+  if (latest === undefined) return { problem: cause('accounting', null, 'Its current state lacks matching history') };
+  const stateBytes = Buffer.byteLength(row.state);
+  if (selected && stateBytes + latest > consistency.BOUNDS.input) return { problem: cause('bound', null, `Selected delivery ${state.id} current and latest-history input exceeds its bound`) };
+  if (selected) tracker.release(stateBytes + latest);
+  tracker.chargeInput(row.state);
+  requireSharedBound(latest <= tracker.remainingInput(), 'delivery-consistency-unavailable', 'Current delivery history exceeds its read bound');
+  const historical = history.text(state.revision, tracker.remainingInput());
+  if (!historical) return { problem: cause('accounting', null, 'Its latest history row cannot be read') };
+  tracker.chargeInput(historical.state);
+  const contradicted = consistency.agreementProblem(state, JSON.parse(historical.state));
+  if (contradicted) return { problem: cause('accounting', null, contradicted) };
+
+  return { state, history, historical };
+}
+
+function accountingBudget(tracker) {
   const progress = require('./progress');
+
+  return { bytes: 0, artifacts: new Set(), artifactLimit: progress.MAX_FRONTIER_BYTES, chargeArtifacts: true, sharedInput: true, chargeInput: tracker.chargeInput, remainingInput: tracker.remainingInput };
+}
+
+// Establishes a record's accounting as the gate requires, or returns the cause that leaves it unavailable.
+function establish(env, state, budget) {
+  try {
+    const established = require('./creation-consistency').establishAccounting(env.accounting, env.provenance, state, budget);
+    if (established.legacy) return { problem: cause('accounting', null, `Its accounting replay is unavailable (${established.legacy})`) };
+    if (established.unavailable) return { problem: cause('accounting', null, established.unavailable) };
+    if (!established.account) return { problem: cause('accounting', null, 'Its accounting cannot be established') };
+
+    return { established };
+  } catch (error) {
+    if (error.sharedAllowance || !(error instanceof RunError)) throw error;
+
+    return { problem: causeOf(error, 'accounting') };
+  }
+}
+
+function judgeStored(env, row, tracker, selected) {
+  if (!['artifacts', 'accounting_commits', 'discharge_index'].every(table => env.tables.has(table))) return judgment([cause('accounting', null, 'The delivery store lacks the accounting tables, so this record has no independent accounting')]);
+  const current = readCurrent(env, row, tracker, selected);
+  if (current.problem) return judgment([current.problem]);
+  const budget = accountingBudget(tracker);
+  const accounted = establish(env, current.state, budget);
+  if (accounted.problem) return judgment([accounted.problem]);
+  const progress = require('./progress');
+  const evidence = { bytes: 0, artifacts: new Set(), artifactLimit: progress.MAX_FRONTIER_BYTES, chargeInput: tracker.chargeInput, remainingInput: tracker.remainingInput };
+
+  return require('./creation-consistency').judgeCompletion({ db: env.db, accounting: env.accounting, provenance: env.provenance, history: current.history, state: current.state, budget, evidence, convert: true });
+}
+
+// Judges complete, unretired deliveries read-only, writing nothing, through the creation gate's own record, accounting and completion
+// checks. `ids` limits the judgment to those records, reading only their rows; `shared` charges every record to one input allowance
+// with the selection's current state and latest row reserved, as a creation pass does, and stops at its end with `shortfall` set,
+// leaving the rest unjudged; otherwise each record gets an allowance of its own. A nonselected record carrying a current settled-record
+// verdict reads discharged without being judged. `inTransaction` says the caller already holds the read transaction, so every row it
+// read belongs to the same snapshot. Returns {byId, shortfall}, where each entry is {retired: true} or {judgment, verdicted?}.
+function readOutcomes(db, root, { ids = null, shared = false, inTransaction = false } = {}) {
+  const verdicts = require('./settled-verdicts');
+  const { retirementRows, MAX_DELIVERY_RECORDS } = require('./legacy-store');
   const byId = new Map();
   let shortfall = false;
-  db.exec('BEGIN');
+  if (!inTransaction) db.exec('BEGIN');
   try {
-    const tables = schemaState(db).tables;
-    const retired = new Set(retirementRows(db, tables).map(row => row.runId));
-    const selected = tables.has('active') ? db.prepare('SELECT id FROM active LIMIT 1').get()?.id ?? null : null;
+    const env = context(db, root);
+    const retired = new Set(retirementRows(db, env.tables).map(row => row.runId));
+    const selected = env.tables.has('active') ? db.prepare('SELECT id FROM active LIMIT 1').get()?.id ?? null : null;
     const saved = verdicts.protectionState(db) === 'own' ? verdicts.readVerdicts(db, MAX_DELIVERY_RECORDS) : null;
-    const store = { db, root, kind: 'delivery' };
-    const accounting = new ProgressStore(store);
-    const provenance = new ProvenanceStore(accounting);
-    const fresh = () => {
-      const tracker = { bytes: 0, reserved: 0 };
-      const chargeInput = body => {
-        const next = tracker.bytes + Buffer.byteLength(body);
-        requireSharedBound(next + tracker.reserved <= consistency.BOUNDS.input, 'delivery-consistency-unavailable', 'Delivery consistency input exceeds its byte bound');
-        tracker.bytes = next;
-      };
-      tracker.chargeInput = chargeInput;
-      tracker.remainingInput = () => consistency.BOUNDS.input - tracker.bytes - tracker.reserved;
-      return tracker;
+    const reservation = () => {
+      const metadata = selected ? verdicts.metadataOf(db, env.tables, selected) : null;
+      return metadata ? metadata.stateBytes + (metadata.latestBytes ?? 0) : 0;
     };
-    let tracker = fresh();
-    const rows = db.prepare('SELECT id, state FROM runs ORDER BY id').all().filter(row => !ids || ids.includes(row.id));
+    let tracker = allowance(shared ? reservation() : 0);
+    const rows = ids ? ids.map(id => db.prepare('SELECT id, state FROM runs WHERE id=?').get(id)).filter(Boolean) : db.prepare('SELECT id, state FROM runs ORDER BY id').all();
     for (const row of rows) {
       const state = JSON.parse(row.state);
       if (state.status !== 'complete' || isClosed(state) || (state.kind ?? 'delivery') !== 'delivery') continue;
@@ -152,57 +236,27 @@ function readOutcomes(db, root, { ids = null, shared = false } = {}) {
         continue;
       }
       const verdict = saved?.byRun.get(state.id);
-      if (state.id !== selected && verdict?.wellFormed && verdict.current && verdicts.matches(verdict, verdicts.metadataOf(db, tables, state.id), null)) {
+      if (state.id !== selected && verdict?.wellFormed && verdict.current && verdicts.matches(verdict, verdicts.metadataOf(db, env.tables, state.id), null)) {
         byId.set(state.id, { judgment: judgment([]), verdicted: true });
         continue;
       }
-      if (!shared) tracker = fresh();
+      if (!shared) tracker = allowance();
       try {
-        byId.set(state.id, { judgment: judgeStored({ db, tables, accounting, provenance, state, row, tracker, selected: state.id === selected, consistency, progress, HistoryReader }) });
+        byId.set(state.id, { judgment: judgeStored(env, row, tracker, state.id === selected) });
       } catch (error) {
-        if (error.sharedAllowance && shared) {
+        if (!error.sharedAllowance) throw error;
+        if (shared) {
           shortfall = true;
           break;
         }
-        if (error.sharedAllowance) {
-          byId.set(state.id, { judgment: judgment([cause('bound', null, error.message, error.code)]) });
-          continue;
-        }
-        throw error;
+        byId.set(state.id, { judgment: judgment([cause('bound', null, error.message, error.code)]) });
       }
     }
-  } finally { db.exec('ROLLBACK'); }
+  } finally {
+    if (!inTransaction) db.exec('ROLLBACK');
+  }
 
   return { byId, shortfall };
-}
-
-function judgeStored({ db, tables, accounting, provenance, state, row, tracker, selected, consistency, progress, HistoryReader }) {
-  if (!['artifacts', 'accounting_commits', 'discharge_index'].every(table => tables.has(table))) return judgment([cause('accounting', null, 'The delivery store lacks the accounting tables, so this record has no independent accounting')]);
-  const history = new HistoryReader(db, state.id);
-  const latest = history.meta(state.revision)?.bytes;
-  if (latest === undefined) return judgment([cause('accounting', null, 'Its current state lacks matching history')]);
-  const stateBytes = Buffer.byteLength(row.state);
-  if (selected && stateBytes + latest > consistency.BOUNDS.input) return judgment([cause('bound', null, `Selected delivery ${state.id} current and latest-history input exceeds its bound`)]);
-  tracker.chargeInput(row.state);
-  requireSharedBound(latest <= tracker.remainingInput(), 'delivery-consistency-unavailable', 'Current delivery history exceeds its read bound');
-  const historical = history.text(state.revision, tracker.remainingInput());
-  if (!historical) return judgment([cause('accounting', null, 'Its latest history row cannot be read')]);
-  tracker.chargeInput(historical.state);
-  const latestState = JSON.parse(historical.state);
-  if (progress.encodedHash(latestState) !== progress.encodedHash(state)) return judgment([cause('accounting', null, 'Its current state contradicts its committed state')]);
-  const budget = { bytes: 0, artifacts: new Set(), artifactLimit: progress.MAX_FRONTIER_BYTES, chargeArtifacts: true, sharedInput: true, chargeInput: tracker.chargeInput, remainingInput: tracker.remainingInput };
-  let established;
-  try { established = consistency.establishAccounting(accounting, provenance, state, budget); }
-  catch (error) {
-    if (error.sharedAllowance || !(error instanceof RunError)) throw error;
-
-    return judgment([causeOf(error, 'accounting')]);
-  }
-  if (established.legacy) return judgment([cause('accounting', null, `Its accounting replay is unavailable (${established.legacy})`)]);
-  if (!established.account) return judgment([cause('accounting', null, 'Its accounting cannot be established')]);
-  const evidence = { bytes: 0, artifacts: new Set(), artifactLimit: progress.MAX_FRONTIER_BYTES, chargeInput: tracker.chargeInput, remainingInput: tracker.remainingInput };
-
-  return consistency.judgeCompletion({ db, accounting, provenance, history, state, budget, evidence, convert: true });
 }
 
 // One complete delivery's outcome, judged alone, or null for a record that gets none (not a complete delivery) and {retired: true}
@@ -214,4 +268,29 @@ function outcomeOf(root, id) {
   finally { db.close(); }
 }
 
-module.exports = { BUG, DISCHARGED, HELD, UNAUTHENTICATED, UNAVAILABLE, brief, cause, causeOf, describe, judgment, openStore, outcomeOf, readOutcomes, routes, unreadableRefusal };
+// Whether the creation gate would count the closed record `id` discharged, judged over `db` (the close's own write transaction) as a
+// pass judges a record in full: its current state and close row within the input allowance, reserved for the selection, its accounting
+// and provenance verified, and its close row. Returns null when it would, otherwise {code, message}.
+function closedRefusal(db, root, id) {
+  const env = context(db, root);
+  const selected = env.tables.has('active') ? db.prepare('SELECT id FROM active LIMIT 1').get()?.id ?? null : null;
+  const row = db.prepare('SELECT id, state FROM runs WHERE id=?').get(id);
+  const tracker = allowance();
+  const refusal = value => ({ code: value.kind === 'bound' ? 'close-bound-unavailable' : 'close-accounting-unavailable', message: `The closed record ${id} would not be counted discharged by the creation gate (${value.message}); nothing was closed in this store` });
+  try {
+    const current = readCurrent(env, row, tracker, id === selected);
+    if (current.problem) return refusal(current.problem);
+    const budget = accountingBudget(tracker);
+    const accounted = establish(env, current.state, budget);
+    if (accounted.problem) return refusal(accounted.problem);
+    if (!require('./creation-consistency').closeRowDischarges(current.history, current.state, budget, current.historical)) return refusal(cause('accounting', null, 'its close row does not discharge it'));
+
+    return null;
+  } catch (error) {
+    if (!(error instanceof RunError)) throw error;
+
+    return refusal(causeOf(error, 'accounting'));
+  }
+}
+
+module.exports = { BUG, DISCHARGED, HELD, UNAUTHENTICATED, UNAVAILABLE, brief, cause, causeOf, closedRefusal, describe, judgment, openStore, outcomeOf, readOutcomes, routes, routesFor, unreadableRefusal };
