@@ -79,7 +79,9 @@ function statusRead(store, runId) {
     let entry;
     try { entry = outcomes.readOutcomes(store.db, store.root, { ids: [state.id], inTransaction: true }).byId.get(state.id) ?? null; }
     catch (error) { entry = { judgment: outcomes.judgment([outcomes.causeOf(error, 'accounting')]) }; }
-    return { state, judged: entry && { ...entry, current: store.read(undefined, { hydrate: false })?.id === state.id } };
+    // The selection is named by the active table alone, so a damaged selection row cannot fail another record's status.
+    const selected = store.db.prepare('SELECT id FROM active WHERE singleton=1').get()?.id ?? null;
+    return { state, judged: entry && { ...entry, current: selected === state.id } };
   } finally { store.db.exec('ROLLBACK'); }
 }
 

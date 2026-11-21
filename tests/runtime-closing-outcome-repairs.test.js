@@ -385,28 +385,31 @@ test('Ready derives the limit routes from runtime state as status does', async t
 });
 
 test('a shortfall keeps the held outcome judged before it, while the gate keeps its allowance refusal and each record is judged alone', async t => {
-  // Record ids are random, and the scan judges in id order: build projects until the held record sorts before the selection.
-  // The store also holds a stopped record and a selection whose morning report awaits its recipient.
+  // The scan judges the selection first and the rest in id order: build projects until one held record sorts before another, so the
+  // allowance can run out between them. The store also holds a stopped record and a selection whose report awaits its recipient.
   const withholdReply = (root, input, dependencies) => (input.action === 'report-delivered' ? execute(root, { action: 'inspect' }, dependencies) : execute(root, input, dependencies));
   let f;
   let held;
+  let later;
   let selection;
   let stopped;
   for (let attempt = 0; attempt < 12 && !f; attempt++) {
     const candidate = project(t);
-    await completed(candidate.root);
-    const first = read(candidate.root).id;
-    await completed(candidate.root);
-    const second = read(candidate.root).id;
+    const ids = [];
+    for (let index = 0; index < 3; index++) {
+      await completed(candidate.root);
+      ids.push(read(candidate.root).id);
+    }
     await completed(candidate.root, withholdReply);
-    const third = read(candidate.root).id;
-    if (second < third) [f, stopped, held, selection] = [candidate, first, second, third];
+    if (ids[1] < ids[2]) [f, stopped, held, later, selection] = [candidate, ids[0], ids[1], ids[2], read(candidate.root).id];
   }
   assert.ok(f, 'No fixture ordered its records as the case needs');
   select(f.root, stopped);
   await execute(f.root, { action: 'stop', actor: owner, revision: read(f.root).revision, kind: 'user-stop', reason: 'Fixture stop' }, base);
-  select(f.root, held);
-  await closingCheck(f.root, 'post-completion tracking check', failing);
+  for (const id of [held, later]) {
+    select(f.root, id);
+    await closingCheck(f.root, 'post-completion tracking check', failing);
+  }
   select(f.root, selection);
   const saved = BOUNDS.input;
   t.after(() => { BOUNDS.input = saved; });
@@ -414,16 +417,11 @@ test('a shortfall keeps the held outcome judged before it, while the gate keeps 
     BOUNDS.input = bound;
     try { return overview(f.root, { dependencies: base }); } finally { BOUNDS.input = saved; }
   };
-  // The smallest bound at which the held record is judged: the selection's accounting no longer fits after it.
-  let low = 1;
-  let high = 4 * 1024 * 1024;
-  while (high - low > 1) {
-    const middle = Math.floor((low + high) / 2);
-    if (shown(middle).records.some(record => record.id === held)) high = middle;
-    else low = middle;
-  }
+  // The smallest bound at which the first held record is judged: the later one no longer fits after it.
+  const high = smallestBound(bound => shown(bound).records.some(record => record.id === held));
   const result = shown(high);
   assert.equal(result.records.find(record => record.id === held).outcome.outcome, 'held');
+  assert.equal(result.records.some(record => record.id === later), false);
   assert.deepEqual(result.notices.map(entry => entry.code), ['closing-outcome-shortfall']);
   assert.deepEqual(result.unavailable, []);
   const stoppedRecord = result.records.find(record => record.id === stopped);
@@ -431,12 +429,12 @@ test('a shortfall keeps the held outcome judged before it, while the gate keeps 
   assert.equal(stoppedRecord.pickup.reason, 'not-current');
   const owing = result.records.find(record => record.id === selection);
   assert.deepEqual(owing.pickup, { offer: 'present-report' });
-  // The shortfall left the selection unjudged: it shows no outcome rather than an unavailable one.
+  // The selection was judged discharged, so it carries no outcome.
   assert.equal(owing.outcome, undefined);
   BOUNDS.input = high;
   await assert.rejects(execute(f.root, reflection(), base), error => error.code === 'delivery-consistency-unavailable' && /byte bound/.test(error.message));
-  assert.equal((await status(f.root, held)).handoverOutcome.outcome, 'held');
-  assert.deepEqual(closeManifest(f.root, { members: [{ store: 'delivery', id: held }] }, f.context, base).ineligible, []);
+  assert.equal((await status(f.root, later)).handoverOutcome.outcome, 'held');
+  assert.deepEqual(closeManifest(f.root, { members: [{ store: 'delivery', id: later }] }, f.context, base).ineligible, []);
   BOUNDS.input = saved;
 });
 
@@ -612,6 +610,55 @@ test('a collected result already recorded through dialogue opens no conditional 
   const names = value => outcomes.routes(value, outcomes.judgment([work]), { current: true }).list.map(entry => entry.route);
   assert.deepEqual(names(state({ id: 'F1', pendingClosure: { lineage: 'x' } })), ['owner', 'close']);
   assert.deepEqual(names(state({ id: 'F1', pendingClosure: { lineage: 'x' }, dialogue: [{ requestId: 'reviewer-dialogue' }] })), ['close']);
+});
+
+test('a selection past its own bound reads unavailable on Ready, not as a store-level shortfall', async t => {
+  let f;
+  let sibling;
+  for (let attempt = 0; attempt < 12 && !f; attempt++) {
+    const trial = project(t);
+    await completed(trial.root);
+    const first = read(trial.root).id;
+    await completed(trial.root);
+    if (first < read(trial.root).id) [f, sibling] = [trial, first];
+  }
+  assert.ok(f, 'No fixture ordered its records as the case needs');
+  const selection = read(f.root).id;
+  // The sibling is held, so no verdict vouches for it and the scan reaches it.
+  select(f.root, sibling);
+  await closingCheck(f.root, 'post-completion tracking check', failing);
+  select(f.root, selection);
+  const saved = BOUNDS.input;
+  t.after(() => { BOUNDS.input = saved; });
+  const metadata = withStore(f.root, store => require('../internal/runtime/settled-verdicts').metadataOf(store.db, new Set(['accounting_commits']), selection));
+  BOUNDS.input = metadata.stateBytes + metadata.latestBytes - 1;
+  const result = overview(f.root, { dependencies: base });
+  BOUNDS.input = saved;
+  assert.equal(result.records.find(record => record.id === selection)?.outcome?.outcome, 'unavailable');
+});
+
+test('status of a readable nonselected delivery does not depend on a damaged selection', async t => {
+  const f = project(t);
+  await completed(f.root);
+  const first = read(f.root).id;
+  await completed(f.root);
+  const selection = read(f.root).id;
+  // The selection is never vouched for by a verdict, so its row can be damaged directly.
+  withStore(f.root, store => store.db.prepare('UPDATE runs SET revision=revision+1 WHERE id=?').run(selection));
+  assert.equal((await status(f.root, first)).handoverOutcome.outcome, 'discharged');
+});
+
+test('a refusal led by another record does not name a discharged stopped selection as blocking', async t => {
+  const f = project(t);
+  await completed(f.root);
+  const first = read(f.root).id;
+  await completed(f.root);
+  const second = read(f.root).id;
+  await execute(f.root, { action: 'stop', actor: owner, revision: read(f.root).revision, kind: 'user-stop', reason: 'Fixture stop after completion' }, base);
+  select(f.root, first);
+  withStore(f.root, store => store.update(owner, store.read().revision, 'fixture-closing-replacement', state => { state.closing.docs = { ...state.closing.docs, occurrence: randomUUID() }; }));
+  select(f.root, second);
+  await assert.rejects(execute(f.root, reflection(), base), error => error.code === 'delivery-consistency-unavailable' && error.message.includes(first) && !/\(selected\) is stopped/.test(error.message));
 });
 
 test('Ready names only the administrative close for a held delivery past its deadline', async t => {

@@ -149,10 +149,16 @@ test('a closing record replaced after completion is unauthenticated: consistency
   // An exact replay of an unauthenticated selection still refuses.
   await assert.rejects(execute(f.root, original, base), { code: 'delivery-consistency-unavailable' });
   const id = read(f.root).id;
-  const { manifest } = approve(f, [{ store: 'delivery', id }]);
+  const { manifest, request } = approve(f, [{ store: 'delivery', id }]);
   assert.deepEqual(manifest.ineligible, []);
   assert.equal(manifest.records[0].drops.outcome, 'unauthenticated');
   assert.match(manifest.records[0].drops.note, /could not be authenticated/);
+  // The close write itself admits it, recording the completion it drops.
+  const result = close(f.root, request, f.context, base);
+  assert.equal(result.members[0].closure.previousStatus, 'complete');
+  assert.equal(read(f.root).status, 'closed');
+  await execute(f.root, reflection(), base);
+  assert.equal(read(f.root).status, 'running');
 });
 
 test('a complete delivery whose accounting is not current is unavailable and refused by close with its cause', async t => {
@@ -187,9 +193,14 @@ test('a held delivery whose referenced evidence cannot be read is refused by clo
   withStore(f.root, store => store.db.prepare('DELETE FROM artifacts WHERE id=?').run(output));
   await assert.rejects(status(f.root), { code: 'missing-evidence' });
   await assert.rejects(execute(f.root, reflection(), base), error => error.code === 'overlapping-run' && /provisional/.test(error.message));
-  const manifest = closeManifest(f.root, { members: [{ store: 'delivery', id: state.id }] }, f.context, base);
+  const members = [{ store: 'delivery', id: state.id }];
+  const manifest = closeManifest(f.root, { members }, f.context, base);
   assert.equal(manifest.ineligible[0].code, 'missing-evidence');
   assert.equal(manifest.ineligible[0].bug, outcomes.BUG);
+  // The close entry refuses at the same evidence check, writing nothing.
+  const choices = choicesFor(closeManifest(f.root, { members }, f.context, base));
+  assert.throws(() => close(f.root, { members, choices, manifestHash: 'a'.repeat(64), authority: 'Yes, close it', reason: 'Settled', actor: closer }, f.context, base), error => error.code === 'missing-evidence' && error.message.includes(outcomes.BUG));
+  assert.equal(withStore(f.root, store => store.read(undefined, { hydrate: false })).status, 'complete');
   const [record] = overview(f.root, { dependencies: base }).records;
   assert.deepEqual(record.close, { offer: 'close' });
   assert.equal(record.outcome.provisional, true);

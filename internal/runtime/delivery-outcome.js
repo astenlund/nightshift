@@ -60,12 +60,31 @@ function ownerBlocked(state, { causes }, { current, now }) {
   const deadline = state.limits?.deadlineUtc;
   if (deadline && now >= Date.parse(deadline) && causes.some(entry => entry.needs.includes('closing'))) return { reason: 'the run deadline has passed, which refuses every closing-record action' };
   const max = state.limits?.maxDispatches;
-  const dispatching = causes.filter(entry => entry.needs.includes('dispatch'));
-  if (max === undefined || (state.dispatches ?? 0) < max || dispatching.length === 0) return null;
-  const collected = dispatching.map(entry => collectedClosingResults(state, entry.needs.includes('skeptic') ? 'skeptic' : 'reviewer'));
-  if (collected.some(ids => ids.length === 0)) return { reason: 'the dispatch allowance is spent and the hold needs a new dispatch' };
+  if (max === undefined || (state.dispatches ?? 0) < max) return null;
+  // A validated finding awaiting its disposition is disposed only while its validation is current; a stale one needs a fresh skeptic.
+  const validations = causes.filter(entry => entry.concern === 'finding' && !entry.needs.includes('dispatch')).map(entry => validationCurrent(state, entry.subject));
+  const stale = validations.filter(current => current === false).length;
+  const unknown = validations.some(current => current === null);
+  const dispatching = [...causes.filter(entry => entry.needs.includes('dispatch')).map(entry => (entry.needs.includes('skeptic') ? 'skeptic' : 'reviewer')), ...Array(stale).fill('skeptic')];
+  if (dispatching.length === 0) return unknown ? { collected: [], unknownValidation: true } : null;
+  const collected = dispatching.map(role => collectedClosingResults(state, role));
+  if (collected.some(found => found.length === 0)) return { reason: 'the dispatch allowance is spent and the hold needs a new dispatch' };
 
-  return { collected: [...new Set(collected.flat())] };
+  return { collected: [...new Set(collected.flat())], unknownValidation: unknown };
+}
+
+// Whether a closing finding's recorded validation is current on the project files: true or false when its snapshot was read in full,
+// as status reads it, and null when the saved state holds it only by reference, as Ready and the creation gate read it.
+function validationCurrent(state, findingId) {
+  const finding = [...(state.closing?.docs?.findings ?? []), ...(state.closing?.carriedFindings ?? [])].find(entry => entry.id === findingId);
+  const snapshot = finding?.validation?.snapshot;
+  if (!snapshot) return true;
+  if (!Array.isArray(snapshot.files)) return null;
+  try { return require('./evidence').fresh(state.root, snapshot); }
+  catch {
+    // A snapshot that cannot be compared is not known to be current.
+    return null;
+  }
 }
 
 
@@ -82,7 +101,10 @@ function routes(state, value, { current = false, now = Date.now(), closeRefusal 
   const blocked = value.outcome === HELD ? ownerBlocked(state, value, { current, now }) : { reason: 'its evidence could not be authenticated' };
   const list = [];
   if (!blocked) list.push({ route: 'owner', message: 'The owning session finishes the closing work: rerun each closing check until it passes, settle the closing findings and closures, reconcile its workers and obtain a fresh complete closing docs review' });
-  else if (blocked.collected) list.push({ route: 'owner', conditional: true, collected: blocked.collected, message: `The dispatch allowance is spent, so the owning session can finish only by importing the collected closing result(s) ${blocked.collected.join(', ')}, and only if their import covers the hold; it otherwise needs a new dispatch, which the allowance refuses` });
+  else if (blocked.collected) {
+    const conditions = [...(blocked.collected.length ? [`importing the collected closing result(s) ${blocked.collected.join(', ')}, if their import covers the hold`] : []), ...(blocked.unknownValidation ? ['disposing each validated closing finding, if its validation is still current'] : [])];
+    list.push({ route: 'owner', conditional: true, collected: blocked.collected, message: `The dispatch allowance is spent, so the owning session can finish only by ${conditions.join(' and ')}; it otherwise needs a new dispatch, which the allowance refuses` });
+  }
   if (closeRefusal) list.push({ route: 'none', code: closeRefusal.code, message: closeRefusal.message, ...(closeRefusal.bug ? { bug: closeRefusal.bug } : {}) });
   else list.push({ route: 'close', message: CLOSE_ROUTE });
 
@@ -253,8 +275,15 @@ function readOutcomes(db, root, { ids = null, shared = false, inTransaction = fa
     const retired = new Set(retirementRows(db, env.tables).map(row => row.runId));
     const selected = env.tables.has('active') ? db.prepare('SELECT id FROM active LIMIT 1').get()?.id ?? null : null;
     const saved = verdicts.protectionState(db) === 'own' ? verdicts.readVerdicts(db, MAX_DELIVERY_RECORDS) : null;
-    let tracker = allowance(shared ? reservation(env, selected) : 0);
-    const rows = ids ? ids.map(id => db.prepare('SELECT id, revision, state FROM runs WHERE id=?').get(id)).filter(Boolean) : db.prepare('SELECT id, revision, state FROM runs ORDER BY id').all();
+    // A selection past the bound on its own is its Unavailable outcome, so it reserves nothing; the shared scan judges it first, so
+    // its own bound is never mistaken for a pass-level shortfall.
+    const reserved = shared ? reservation(env, selected) : 0;
+    let tracker = allowance(reserved <= require('./creation-consistency').BOUNDS.input ? reserved : 0);
+    const everyRow = () => {
+      const ordered = db.prepare('SELECT id, revision, state FROM runs ORDER BY id').all();
+      return [...ordered.filter(row => row.id === selected), ...ordered.filter(row => row.id !== selected)];
+    };
+    const rows = ids ? ids.map(id => db.prepare('SELECT id, revision, state FROM runs WHERE id=?').get(id)).filter(Boolean) : everyRow();
     for (const row of rows) {
       const state = JSON.parse(row.state);
       if (state.status !== 'complete' || isClosed(state) || (state.kind ?? 'delivery') !== 'delivery') continue;
