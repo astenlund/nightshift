@@ -221,6 +221,21 @@ test('a completed code task reaches readiness through the spec task add-spec-rev
   assert.equal(historicalDischarge(f.store.read(), structural), true);
 });
 
+test('reopening the linked governing spec task after completion holds the delivery and refuses a new handover as overlap', t => {
+  const f = fixture(t, [code('code')]);
+  f.toDocumentation('code');
+  f.act({ action: 'add-spec-review', taskId: 'code' });
+  f.completeSpec('code-governing-spec');
+  f.advance('code');
+  assert.equal(f.finishRun().status, 'complete');
+  f.act({ action: 'block', taskId: 'code-governing-spec', blocker: { kind: 'capability', reason: 'Reopened after completion', recoveryAttempted: 'None needed' } });
+  const judged = require('../internal/runtime/delivery-outcome').outcomeOf(f.root, f.store.read().id).judgment;
+  assert.equal(judged.outcome, 'held');
+  assert.ok(judged.causes.some(entry => entry.concern === 'task' && entry.subject === 'code-governing-spec'));
+  assert.ok(judged.causes.every(entry => entry.kind === 'work'));
+  assert.throws(() => f.store.create({ mechanism: fixtureContinuation(), objective: 'Next work', authority: 'User handover', controller: actor, controllerClaim: fixtureControllerClaim(actor), docsGate: false, tasks: [code('next')] }), { code: 'overlapping-run' });
+});
+
 test('add-spec-review refuses while a unique queued spec task governs, and does nothing for a task linked in either place', t => {
   const f = fixture(t, [specTask('spec'), code('code')]);
   assert.throws(() => f.act({ action: 'add-spec-review', taskId: 'code' }), { code: 'duplicate-task', message: /Queued spec task spec already governs this task/ });

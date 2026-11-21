@@ -381,6 +381,7 @@ test('reopening a completed docs task after completion holds the delivery, namin
   assert.ok(read.handoverOutcome.causes.some(entry => entry.concern === 'task' && entry.subject === 'docs'));
   assert.ok(read.handoverOutcome.causes.some(entry => entry.concern === 'review' && /docs assessment/.test(entry.message)));
   assert.deepEqual(read.handoverOutcome.routes.map(entry => entry.route), ['close']);
+  assert.throws(() => f.store.create({ mechanism: fixtureContinuation(), objective: 'Next work', authority: 'User agreed the next scope', controller: actor, controllerClaim: fixtureControllerClaim(actor), tasks: [CODE_TASK] }), { code: 'overlapping-run' });
 });
 
 test('a mechanical exemption stands in only while its content is unchanged, and reopening clears it', t => {
