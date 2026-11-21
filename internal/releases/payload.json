@@ -225,8 +225,8 @@
     },
     {
       "path": "internal/runtime/creation-consistency.js",
-      "bytes": 44443,
-      "sha256": "53e909b4afcd7ebc78a84c0e648d4a3aad812c541384d528f8601b1640ee8a9b"
+      "bytes": 45607,
+      "sha256": "a86dd6ae5726ee7ccb9175827b34cd9c5d1eff3cb6e350714369741eb78390ba"
     },
     {
       "path": "internal/runtime/delivery-acceptance.js",
@@ -470,8 +470,8 @@
     },
     {
       "path": "internal/runtime/store.js",
-      "bytes": 29237,
-      "sha256": "9a60d5183db0654d96c74d33acc5b3dd9d51684f71afae24aa15612bb75aaec0"
+      "bytes": 29494,
+      "sha256": "258c256a01839511c04077f34534bfe722c065c893bdc9a850743ee6be8bf37e"
     },
     {
       "path": "internal/runtime/targets.js",
