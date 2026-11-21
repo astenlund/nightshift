@@ -322,7 +322,7 @@ test('a failed closing check whose inputs the latest closing review saw keeps th
   assert.deepEqual(read.handoverOutcome.routes.map(entry => entry.route), ['owner', 'close']);
 });
 
-test('a validated closing finding stays disposable at a spent allowance when an edit lies outside its scope', async t => {
+test('a validated closing finding awaiting disposition keeps the owner route at a spent allowance, leaving its currency to dispose', async t => {
   // Arrange: a completed run whose closing review raised a finding scoped to README.md, validated, then an unrelated file edited.
   const f = fixture(t);
   completeTask(f);
@@ -342,11 +342,11 @@ test('a validated closing finding stays disposable at a spent allowance when an 
   assert.equal(read.handoverOutcome.outcome, 'held');
   // The current record's own unsettled finding is named once, never also as carried.
   assert.deepEqual(read.handoverOutcome.causes.filter(entry => entry.subject === findingId).map(entry => entry.message), [`Closing finding ${findingId} is unsettled`]);
-  assert.deepEqual(read.handoverOutcome.routes.map(entry => [entry.route, entry.conditional ?? false]), [['owner', false], ['close', false]]);
-  // An edit inside the finding's scope stales its validation, which a new skeptic dispatch must replace: the allowance refuses it.
+  assert.deepEqual(read.handoverOutcome.routes.map(entry => [entry.route, entry.provisional ?? false]), [['owner', false], ['close', false]]);
+  // Whether an edit inside the finding's scope stales its validation is not inferred for the route: dispose itself decides it.
   f.write('README.md', '# Project, edited\n');
   const stale = await require('../internal/runtime/cli').execute(f.root, { action: 'status' });
-  assert.deepEqual(stale.handoverOutcome.routes.map(entry => entry.route), ['close']);
+  assert.deepEqual(stale.handoverOutcome.routes.map(entry => entry.route), ['owner', 'close']);
 });
 
 test('a covering docs review from a later task keeps an earlier completed task current', t => {

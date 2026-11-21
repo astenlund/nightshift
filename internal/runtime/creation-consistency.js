@@ -365,7 +365,8 @@ function assessment(store, options = {}) {
     // blocker is resolved.
     if (!options.resourceOnly && legacyUnavailable.length > 0 && !options.judgeOnly?.ids.has(state.id)) {
       if (state.progress === undefined) legacyUnavailable.push({ id: state.id, status: state.status, reason: 'replay-deferred-after-blocker' });
-      return record;
+      // Deferred behind the legacy blocker: never judged, so never named as a blocker of its own.
+      return { ...record, deferred: true };
     }
     if (!['artifacts', 'accounting_commits', 'discharge_index'].every(table => tables.has(table))) {
       requireCondition(state.progress === undefined, CODE, `Delivery ${state.id} has unsupported accounting without its required tables`);
@@ -427,7 +428,7 @@ function assessment(store, options = {}) {
         if (record.outcome.outcome === outcomes.DISCHARGED) continue;
         const { routed } = outcomes.routesFor(record.state, record.outcome, { current: record === selected, now, inspect: false });
         list.push({ record, code: record.outcome.outcome === outcomes.HELD ? 'overlapping-run' : CODE, text: outcomes.describe(record.id, record.outcome, routed, { provisional: true }) });
-      } else if (record !== selected && !record.discharged && !legacy.has(record.id)) {
+      } else if (record !== selected && !record.discharged && !record.deferred && !legacy.has(record.id)) {
         const status = record.state?.status ?? 'unknown';
         const causes = (record.causes ?? []).filter(entry => !(status !== 'complete' && /no recorded completion row/.test(entry.message))).map(entry => entry.message);
         // Runtime mutations reach only the current selection, so this record's owner cannot resume it; the administrative close remains.

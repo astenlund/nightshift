@@ -38,55 +38,24 @@ function judgment(causes) {
   return { outcome, causes };
 }
 
-// The ids of results of the role a dispatch need asks for, a skeptic's for a finding validation and a reviewer's otherwise, collected
-// for the current closing record with a receipt but not yet imported. Importing one needs no new dispatch, but only its import shows
-// whether it covers the hold, so the route it opens is conditional; the receipt itself is not read here.
-function collectedClosingResults(state, role) {
-  const record = state.closing?.docs;
-  if (!record) return [];
-  // A result recorded through a review, a validation or a dialogue turn has been imported already.
-  const imported = new Set([...(record.reviews ?? []).map(review => review.requestId), ...(record.findings ?? []).flatMap(finding => [finding.validation?.requestId, ...(finding.dialogue ?? []).map(turn => turn?.requestId)])].filter(Boolean));
-
-  return state.workers.filter(worker => worker.taskId === '#closing' && worker.status === 'complete' && worker.role === role && typeof worker.receipt === 'string' && worker.receipt.length > 0 && (worker.closingOccurrence ?? null) === (record.occurrence ?? null) && !imported.has(worker.id)).map(worker => worker.id);
-}
-
-// Why the owner cannot discharge a held delivery itself, or null while it can, as {reason} or, when only collected results that may
-// cover the hold could spare it a new dispatch, {collected}: runtime mutations reach only the current selection, a reopened task cannot
-// be unblocked on a complete record, a passed deadline refuses every closing-record action and a spent dispatch allowance refuses only
-// a new dispatch. Worker reconciliation is bookkeeping, which neither limit refuses.
+// Why the owner cannot discharge a held delivery itself, as {reason}, or {provisional: true} when it can only by importing assessments
+// already collected, or null while it can: runtime mutations reach only the current selection, a reopened task cannot be unblocked on
+// a complete record, a passed deadline refuses every closing-record action, no assessment can be dispatched outside Git, and a spent
+// dispatch allowance refuses only a new dispatch. Worker reconciliation is bookkeeping, which neither limit refuses. Whether a collected
+// result or a recorded validation would satisfy a cause is not inferred here: the route names what the owner would need, as the user
+// decided on 2026-11-21, and the owner's own actions are authoritative.
 function ownerBlocked(state, { causes }, { current, now }) {
   if (!current) return { reason: 'only the current selection can be changed by its owner' };
   if (causes.some(entry => entry.needs.includes('unroutable'))) return { reason: 'a task reopened after completion cannot be unblocked on a complete record' };
   const deadline = state.limits?.deadlineUtc;
   if (deadline && now >= Date.parse(deadline) && causes.some(entry => entry.needs.includes('closing'))) return { reason: 'the run deadline has passed, which refuses every closing-record action' };
+  const dispatching = causes.some(entry => entry.needs.includes('dispatch'));
+  if (dispatching && require('./evidence').outsideGitWorktree(state.root)) return { reason: 'the project is outside Git, where no closing assessment can be dispatched' };
   const max = state.limits?.maxDispatches;
-  if (max === undefined || (state.dispatches ?? 0) < max) return null;
-  // A validated finding awaiting its disposition is disposed only while its validation is current; a stale one needs a fresh skeptic.
-  const validations = causes.filter(entry => entry.concern === 'finding' && !entry.needs.includes('dispatch')).map(entry => validationCurrent(state, entry.subject));
-  const stale = validations.filter(current => current === false).length;
-  const unknown = validations.some(current => current === null);
-  const dispatching = [...causes.filter(entry => entry.needs.includes('dispatch')).map(entry => (entry.needs.includes('skeptic') ? 'skeptic' : 'reviewer')), ...Array(stale).fill('skeptic')];
-  if (dispatching.length === 0) return unknown ? { collected: [], unknownValidation: true } : null;
-  const collected = dispatching.map(role => collectedClosingResults(state, role));
-  if (collected.some(found => found.length === 0)) return { reason: 'the dispatch allowance is spent and the hold needs a new dispatch' };
+  if (dispatching && max !== undefined && (state.dispatches ?? 0) >= max) return { provisional: true };
 
-  return { collected: [...new Set(collected.flat())], unknownValidation: unknown };
+  return null;
 }
-
-// Whether a closing finding's recorded validation is current on the project files: true or false when its snapshot was read in full,
-// as status reads it, and null when the saved state holds it only by reference, as Ready and the creation gate read it.
-function validationCurrent(state, findingId) {
-  const finding = [...(state.closing?.docs?.findings ?? []), ...(state.closing?.carriedFindings ?? [])].find(entry => entry.id === findingId);
-  const snapshot = finding?.validation?.snapshot;
-  if (!snapshot) return true;
-  if (!Array.isArray(snapshot.files)) return null;
-  try { return require('./lifecycle').dispositionCurrencyOf(state.root, finding).current === true; }
-  catch {
-    // A snapshot that cannot be compared is not known to be current.
-    return null;
-  }
-}
-
 
 // The routes that apply to a delivery now, from its outcome and saved state: `owner`, `close`, `recovery`, or `none` naming the close
 // eligibility refusal (`closeRefusal`, {code, message}) that leaves no route until it is resolved. `ownerUnavailable` says why a held
@@ -101,10 +70,7 @@ function routes(state, value, { current = false, now = Date.now(), closeRefusal 
   const blocked = value.outcome === HELD ? ownerBlocked(state, value, { current, now }) : { reason: 'its evidence could not be authenticated' };
   const list = [];
   if (!blocked) list.push({ route: 'owner', message: 'The owning session finishes the closing work: rerun each closing check until it passes, settle the closing findings and closures, reconcile its workers and obtain a fresh complete closing docs review' });
-  else if (blocked.collected) {
-    const conditions = [...(blocked.collected.length ? [`importing the collected closing result(s) ${blocked.collected.join(', ')}, if their import covers the hold`] : []), ...(blocked.unknownValidation ? ['disposing each validated closing finding, if its validation is still current'] : [])];
-    list.push({ route: 'owner', conditional: true, collected: blocked.collected, message: `The dispatch allowance is spent, so the owning session can finish only by ${conditions.join(' and ')}; it otherwise needs a new dispatch, which the allowance refuses` });
-  }
+  else if (blocked.provisional) list.push({ route: 'owner', provisional: true, message: 'The dispatch allowance is spent, which refuses a new dispatch: the owning session can finish only with assessments already collected for this closing record, whose import decides whether they settle the hold' });
   if (closeRefusal) list.push({ route: 'none', code: closeRefusal.code, message: closeRefusal.message, ...(closeRefusal.bug ? { bug: closeRefusal.bug } : {}) });
   else list.push({ route: 'close', message: CLOSE_ROUTE });
 

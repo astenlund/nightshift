@@ -317,8 +317,17 @@ test('routes follow the limits: a passed deadline leaves worker reconciliation, 
   const names = (state, causes) => outcomes.routes(state, outcomes.judgment(causes), { current: true }).list.map(entry => entry.route);
   assert.deepEqual(names({ limits: { deadlineUtc: past } }, [work(['closing'])]), ['close']);
   assert.deepEqual(names({ limits: { deadlineUtc: past } }, [work(['bookkeeping'], 'worker')]), ['owner', 'close']);
-  assert.deepEqual(names({ limits: { maxDispatches: 1 }, dispatches: 1 }, [work(['closing', 'dispatch'])]), ['close']);
+  // A spent allowance with a dispatch need leaves only a provisional owner route, naming what the owner would need.
+  const spent = outcomes.routes({ root: path.resolve(__dirname, '..'), limits: { maxDispatches: 1 }, dispatches: 1 }, outcomes.judgment([work(['closing', 'dispatch'])]), { current: true }).list;
+  assert.deepEqual(spent.map(entry => [entry.route, entry.provisional ?? false]), [['owner', true], ['close', false]]);
   assert.deepEqual(names({ limits: { maxDispatches: 1 }, dispatches: 1 }, [work(['closing'])]), ['owner', 'close']);
+  // Outside Git no closing assessment can be dispatched, so a dispatch need leaves no owner route.
+  const outside = fs.mkdtempSync(path.join(require('node:os').tmpdir(), 'closing-outcome-outside-git-'));
+  try {
+    const routed = outcomes.routes({ root: outside, limits: {} }, outcomes.judgment([work(['closing', 'dispatch'])]), { current: true });
+    assert.deepEqual(routed.list.map(entry => entry.route), ['close']);
+    assert.match(routed.ownerUnavailable, /outside Git/);
+  } finally { fs.rmSync(outside, { recursive: true, force: true }); }
   assert.deepEqual(names({ limits: {} }, [work(['unroutable'], 'task')]), ['close']);
   assert.deepEqual(outcomes.routes({}, outcomes.judgment([work(['closing'])]), { current: false }).list.map(entry => entry.route), ['close']);
   const refused = outcomes.routes({}, outcomes.judgment([work(['bookkeeping'], 'worker')]), { current: false, closeRefusal: { code: 'worker-activity-unknown', message: 'Fixture refusal' } });

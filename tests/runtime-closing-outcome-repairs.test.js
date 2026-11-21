@@ -171,7 +171,7 @@ test('limits decide the routes status names for held deliveries built through th
   await completed(spent.root);
   await closingCheck(spent.root, 'uncovered check', base);
   withStore(spent.root, store => store.update(owner, store.read().revision, 'fixture-allowance', state => { state.limits = { maxDispatches: 0 }; }));
-  assert.deepEqual(await routes(spent.root), ['close']);
+  assert.deepEqual(await routes(spent.root), ['owner', 'close']);
   // A hold whose only cause is a worker keeps the owner's reconciliation route after the deadline; its unproven termination refuses close.
   const worker = project(t);
   await completed(worker.root);
@@ -354,29 +354,12 @@ test('an unreadable completion row read after accounting is established is a fai
   await assert.rejects(execute(f.root, reflection(), base), error => error.code === 'delivery-consistency-unavailable' && error.message.includes(id) && /unauthenticated/.test(error.message));
 });
 
-test('a collected result the hold cannot use leaves only the administrative close at a spent dispatch allowance', async t => {
-  const f = project(t);
-  await completed(f.root);
-  await closingCheck(f.root, 'uncovered check', base);
-  const collect = role => withStore(f.root, store => store.update(owner, store.read().revision, `fixture-collected-${role}`, state => {
-    state.limits = { maxDispatches: 0 };
-    state.workers.push({ id: `collected-closing-${role}`, role, taskId: '#closing', status: 'complete', closingOccurrence: state.closing.docs.occurrence, receipt: `.nightshift/runs/reviews/collected-closing-${role}/receipt.json`, session: `collected-${role}`, assignment: 'Closing assessment', writes: [] });
-  }));
-  // A skeptic result cannot serve as the closing docs review the uncovered check needs; a collected reviewer result opens only a
-  // conditional owner route, since only its import shows whether it covers the hold.
-  collect('skeptic');
-  assert.deepEqual((await status(f.root)).handoverOutcome.routes.map(entry => entry.route), ['close']);
-  collect('reviewer');
-  const [ownerRoute] = (await status(f.root)).handoverOutcome.routes;
-  assert.deepEqual([ownerRoute.route, ownerRoute.conditional, ownerRoute.collected], ['owner', true, ['collected-closing-reviewer']]);
-});
-
 test('Ready derives the limit routes from runtime state as status does', async t => {
   const spent = project(t);
   await completed(spent.root);
   await closingCheck(spent.root, 'uncovered check', base);
   withStore(spent.root, store => store.update(owner, store.read().revision, 'fixture-allowance', state => { state.limits = { maxDispatches: 0 }; }));
-  assert.deepEqual(overview(spent.root, { dependencies: base }).records[0].outcome.routes.map(entry => entry.route), ['close']);
+  assert.deepEqual(overview(spent.root, { dependencies: base }).records[0].outcome.routes.map(entry => entry.route), ['owner', 'close']);
   const worker = project(t);
   await completed(worker.root);
   const past = new Date(Date.now() - 60000).toISOString();
@@ -603,15 +586,6 @@ test('status identifies a retired complete delivery as retired, with no outcome'
   assert.deepEqual((await status(f.root, retired)).handoverOutcome, { retired: true });
 });
 
-test('a collected result already recorded through dialogue opens no conditional owner route', () => {
-  const work = { kind: 'work', concern: 'closure', subject: 'F1', message: 'Fixture closure owed', needs: ['closing', 'dispatch'] };
-  const worker = { id: 'reviewer-dialogue', role: 'reviewer', taskId: '#closing', status: 'complete', closingOccurrence: 'occurrence', receipt: '.nightshift/runs/reviews/reviewer-dialogue/receipt.json' };
-  const state = finding => ({ limits: { maxDispatches: 0 }, dispatches: 0, workers: [worker], closing: { docs: { occurrence: 'occurrence', reviews: [], findings: [finding] } } });
-  const names = value => outcomes.routes(value, outcomes.judgment([work]), { current: true }).list.map(entry => entry.route);
-  assert.deepEqual(names(state({ id: 'F1', pendingClosure: { lineage: 'x' } })), ['owner', 'close']);
-  assert.deepEqual(names(state({ id: 'F1', pendingClosure: { lineage: 'x' }, dialogue: [{ requestId: 'reviewer-dialogue' }] })), ['close']);
-});
-
 test('a selection past its own bound reads unavailable on Ready, not as a store-level shortfall', async t => {
   let f;
   let sibling;
@@ -713,7 +687,8 @@ test('a held delivery closed beside an earlier legacy record is judged on its ow
       store.db.prepare('DELETE FROM discharge_index WHERE run_id=?').run(earlier);
     });
   });
-  await assert.rejects(execute(f.root, reflection(), base), error => error.code === 'delivery-consistency-unavailable' && error.message.includes(earlier) && /Legacy delivery consistency/.test(error.message));
+  // The held record the pass deferred behind the legacy blocker is never judged, so it is not named as a blocker of its own.
+  await assert.rejects(execute(f.root, reflection(), base), error => error.code === 'delivery-consistency-unavailable' && error.message.includes(earlier) && /Legacy delivery consistency/.test(error.message) && !error.message.includes(`Delivery ${candidate} (complete) still has unresolved`));
   const { request } = approve(f, [{ store: 'delivery', id: candidate }]);
   close(f.root, request, f.context, base);
   assert.equal(withStore(f.root, store => store.read(candidate, { hydrate: false })).status, 'closed');
@@ -797,6 +772,33 @@ test('an undischarged nonselected stopped delivery is named with its causes and 
   await execute(f.root, { action: 'stop', actor: owner, revision: read(f.root).revision, kind: 'user-stop', reason: 'Fixture stop after a failed closing check' }, base);
   select(f.root, selection);
   await assert.rejects(execute(f.root, reflection(), base), error => error.code === 'delivery-consistency-unavailable' && error.message.includes(stopped) && /post-completion tracking check/.test(error.message) && /close-manifest/.test(error.message) && !/resume/.test(error.message));
+});
+
+test('a nonselected delivery a current verdict vouches for reads discharged on status, Ready and close-manifest alike', async t => {
+  const f = project(t);
+  await completed(f.root);
+  const first = read(f.root).id;
+  await completed(f.root);
+  // A creation pass over the store writes the verdict for the settled nonselected record.
+  const { creationAssessment } = require('../internal/runtime/creation-consistency');
+  withStore(f.root, store => store.transaction(() => creationAssessment(store)));
+  const db = outcomes.openStore(f.root);
+  try { assert.equal(outcomes.readOutcomes(db, f.root, { ids: [first] }).byId.get(first).verdicted, true); }
+  finally { db.close(); }
+  assert.equal((await status(f.root, first)).handoverOutcome.outcome, 'discharged');
+  assert.equal(overview(f.root, { dependencies: base }).records.some(record => record.id === first), false);
+  assert.equal(closeManifest(f.root, { members: [{ store: 'delivery', id: first }] }, f.context, base).ineligible[0].code, 'close-not-needed');
+});
+
+test('close refuses a complete standalone review context as not needing a close', async t => {
+  const f = project(t);
+  const opened = await execute(f.root, { action: 'open-review', reviewContextId: randomUUID(), controller: owner, kind: 'code', authority: 'Explicit standalone revision', objective: 'Fixture review', agreement: { source: 'fixture user', outcome: 'Fixture outcome' } }, base);
+  const store = new RunStore(f.root, { review: true });
+  try {
+    const state = store.read(opened.id);
+    store.update(state.controller, state.revision, 'fixture-complete', current => { current.status = 'complete'; }, opened.id);
+  } finally { store.close(); }
+  assert.equal(closeManifest(f.root, { members: [{ store: 'review', id: opened.id }] }, f.context, base).ineligible[0].code, 'close-not-needed');
 });
 
 test('Ready names only the administrative close for a held delivery past its deadline', async t => {
