@@ -31,7 +31,7 @@ function schemaStatements(kind, version) {
 }
 
 function requireReplaceableDelivery(context) {
-  requireCondition(!context.reportPending, 'report-delivery-pending', require('./creation-consistency').REPORT_PENDING);
+  requireCondition(!context.reportPending, 'report-delivery-pending', `${require('./creation-consistency').REPORT_PENDING}${context.blocking ?? ''}`);
   requireCondition(context.replaceable, 'overlapping-run', `A surviving delivery still has unresolved obligations; reconcile, resume or explicitly finish it${context.blocking ?? ''}`);
 }
 

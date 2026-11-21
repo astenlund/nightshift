@@ -47,7 +47,8 @@ test('an unconfirmed morning report holds replacement until any admitted session
   assert.equal(completed.closing.reportDelivery, null);
 
   const before = tables();
-  await assert.rejects(execute(root, handover(successor), dependencies), { code: 'report-delivery-pending' });
+  // The refusal names the delivery whose report awaits its recipient.
+  await assert.rejects(execute(root, handover(successor), dependencies), error => error.code === 'report-delivery-pending' && error.message.includes(completed.id));
   assert.deepEqual(tables(), before);
   assert.equal((await execute(root, original, dependencies)).revision, completed.revision);
   assert.equal(reportNotice(completed).delivered, false);
@@ -61,7 +62,7 @@ test('an unconfirmed morning report holds replacement until any admitted session
 
   // Recording the report again owes a fresh confirmation before replacement.
   await execute(root, { action: 'report', path: completed.closing.reportEvidence.path, actor: owner, revision: confirmed.revision }, dependencies);
-  await assert.rejects(execute(root, handover(successor), dependencies), { code: 'report-delivery-pending' });
+  await assert.rejects(execute(root, handover(successor), dependencies), error => error.code === 'report-delivery-pending' && error.message.includes(completed.id));
   const rerecorded = new RunStore(root);
   let revision;
   try { revision = rerecorded.read().revision; } finally { rerecorded.close(); }
