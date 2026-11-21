@@ -200,8 +200,8 @@
     },
     {
       "path": "internal/runtime/close.js",
-      "bytes": 39264,
-      "sha256": "c2e54753146f6f8a3e662621bb2e877c0a43de37c0e47796500eda40e8b17372"
+      "bytes": 39654,
+      "sha256": "1122379049b45c4307fe4c5ea0d2095879a8c5e56aad5f8cc1d2c6ccf90c97ff"
     },
     {
       "path": "internal/runtime/closing-hold.js",
@@ -235,8 +235,8 @@
     },
     {
       "path": "internal/runtime/delivery-outcome.js",
-      "bytes": 19819,
-      "sha256": "39dbde9daadf6fa65413f6289ee018e0208dc65bbec4976d6fb8fdef9ddd7222"
+      "bytes": 19867,
+      "sha256": "f6b7e626b378334f088824a9c62b0ee1526d00481e3f05ef2f6d40d14d81c01a"
     },
     {
       "path": "internal/runtime/discharge.js",
@@ -320,8 +320,8 @@
     },
     {
       "path": "internal/runtime/lifecycle.js",
-      "bytes": 118428,
-      "sha256": "2a2e19edfdb858e890b61ca8fabf46f9b4dfaf6f6792d3df5d2da6a3a26e77de"
+      "bytes": 118499,
+      "sha256": "8c6b5193a9f99ee82cd0210691da543874803cec5192aa33c8654b2245113e84"
     },
     {
       "path": "internal/runtime/limits.js",
@@ -575,8 +575,8 @@
     },
     {
       "path": "skills/handover/SKILL.md",
-      "bytes": 11307,
-      "sha256": "e54db8494097c31a482af3346e2f274bd98c2be0eac11a681300f367369ce8c2"
+      "bytes": 11454,
+      "sha256": "58c5ee027e8ad0cb61469868af8fe39c72c5c7623e8ffe211f0d72db4dd1cf6e"
     },
     {
       "path": "skills/init-backlog/SKILL.md",
