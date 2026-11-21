@@ -361,12 +361,13 @@ test('a collected result the hold cannot use leaves only the administrative clos
     state.limits = { maxDispatches: 0 };
     state.workers.push({ id: `collected-closing-${role}`, role, taskId: '#closing', status: 'complete', closingOccurrence: state.closing.docs.occurrence, receipt: `.nightshift/runs/reviews/collected-closing-${role}/receipt.json`, session: `collected-${role}`, assignment: 'Closing assessment', writes: [] });
   }));
-  // A skeptic result cannot serve as the closing docs review the uncovered check needs, and a reviewer whose receipt is missing
-  // cannot be imported; the next case keeps the route for a readable docs receipt.
+  // A skeptic result cannot serve as the closing docs review the uncovered check needs; a collected reviewer result opens only a
+  // conditional owner route, since only its import shows whether it covers the hold.
   collect('skeptic');
   assert.deepEqual((await status(f.root)).handoverOutcome.routes.map(entry => entry.route), ['close']);
   collect('reviewer');
-  assert.deepEqual((await status(f.root)).handoverOutcome.routes.map(entry => entry.route), ['close']);
+  const [ownerRoute] = (await status(f.root)).handoverOutcome.routes;
+  assert.deepEqual([ownerRoute.route, ownerRoute.conditional, ownerRoute.collected], ['owner', true, ['collected-closing-reviewer']]);
 });
 
 test('Ready derives the limit routes from runtime state as status does', async t => {
@@ -424,8 +425,13 @@ test('a shortfall keeps the held outcome judged before it, while the gate keeps 
   assert.equal(result.records.find(record => record.id === held).outcome.outcome, 'held');
   assert.deepEqual(result.notices.map(entry => entry.code), ['closing-outcome-shortfall']);
   assert.deepEqual(result.unavailable, []);
-  assert.equal(result.records.find(record => record.id === stopped).status, 'stopped');
-  assert.deepEqual(result.records.find(record => record.id === selection).pickup, { offer: 'present-report' });
+  const stoppedRecord = result.records.find(record => record.id === stopped);
+  assert.equal(stoppedRecord.status, 'stopped');
+  assert.equal(stoppedRecord.pickup.reason, 'not-current');
+  const owing = result.records.find(record => record.id === selection);
+  assert.deepEqual(owing.pickup, { offer: 'present-report' });
+  // The shortfall left the selection unjudged: it shows no outcome rather than an unavailable one.
+  assert.equal(owing.outcome, undefined);
   BOUNDS.input = high;
   await assert.rejects(execute(f.root, reflection(), base), error => error.code === 'delivery-consistency-unavailable' && /byte bound/.test(error.message));
   assert.equal((await status(f.root, held)).handoverOutcome.outcome, 'held');
@@ -490,25 +496,6 @@ test('under a later release\'s verdict protection, close commits only what a ful
   BOUNDS.input = saved;
 });
 
-test('only a collected docs review that is not a dialogue keeps the owner route at a spent allowance', async t => {
-  const f = project(t);
-  await completed(f.root);
-  await closingCheck(f.root, 'uncovered check', base);
-  const collect = (id, receipt) => {
-    const file = `.nightshift/runs/reviews/${id}/receipt.json`;
-    fs.mkdirSync(path.join(f.root, path.dirname(file)), { recursive: true });
-    fs.writeFileSync(path.join(f.root, file), JSON.stringify(receipt));
-    withStore(f.root, store => store.update(owner, store.read().revision, `fixture-${id}`, state => {
-      state.limits = { maxDispatches: 0 };
-      state.workers.push({ id, role: 'reviewer', taskId: '#closing', status: 'complete', closingOccurrence: state.closing.docs.occurrence, receipt: file, session: id, assignment: 'Closing assessment', writes: [] });
-    }));
-  };
-  collect('collected-dialogue', { requestId: 'collected-dialogue', kind: 'docs', status: 'complete', dialogue: { findingIds: ['x'], message: 'Fixture turn' }, findings: [] });
-  assert.deepEqual((await status(f.root)).handoverOutcome.routes.map(entry => entry.route), ['close']);
-  collect('collected-docs-review', { requestId: 'collected-docs-review', kind: 'docs', status: 'complete', dialogue: null, findings: [] });
-  assert.deepEqual((await status(f.root)).handoverOutcome.routes.map(entry => entry.route), ['owner', 'close']);
-});
-
 test('an unreadable completion row still names the closing work found beside it', async t => {
   const f = project(t);
   await completed(f.root);
@@ -531,6 +518,90 @@ test('a stored row revision that contradicts its state reads unavailable on Read
   withStore(f.root, store => store.db.prepare('UPDATE runs SET revision=revision+1 WHERE id=?').run(id));
   const record = overview(f.root, { dependencies: base }).records.find(entry => entry.id === id);
   assert.equal(record?.outcome?.outcome, 'unavailable');
+});
+
+test('close refuses while an earlier record a pass can never vouch for keeps the creation pass short of the closed record', async t => {
+  let f;
+  let candidate;
+  let earlier;
+  for (let attempt = 0; attempt < 16 && !f; attempt++) {
+    const trial = project(t);
+    await completed(trial.root);
+    const first = read(trial.root).id;
+    await completed(trial.root);
+    const second = read(trial.root).id;
+    await completed(trial.root);
+    const third = read(trial.root).id;
+    if (first < second && first < third) [f, earlier, candidate] = [trial, first, second];
+  }
+  assert.ok(f, 'No fixture ordered its records as the case needs');
+  const selection = read(f.root).id;
+  select(f.root, candidate);
+  await closingCheck(f.root, 'post-completion tracking check', failing);
+  select(f.root, selection);
+  // A verdict under a rule this runtime does not know is a later release's: every pass leaves it and judges its record in full.
+  withStore(f.root, store => {
+    const metadata = require('../internal/runtime/settled-verdicts').metadataOf(store.db, new Set(['accounting_commits']), earlier);
+    store.db.prepare('DELETE FROM settled_verdicts WHERE run_id=?').run(earlier);
+    store.db.prepare('INSERT INTO settled_verdicts (run_id, revision, state_bytes, state_digest, latest_revision, latest_bytes, journal_revision, acceptance, retirement, rule) VALUES (?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?)').run(earlier, metadata.revision, metadata.stateBytes, 'a'.repeat(64), metadata.latestRevision, metadata.latestBytes, metadata.journalRevision, 'settled-record-verdict-later');
+  });
+  const { request } = approve(f, [{ store: 'delivery', id: candidate }]);
+  const saved = BOUNDS.input;
+  t.after(() => { BOUNDS.input = saved; });
+  const probe = { ...base, beforeCommit: () => { throw new RunError('fixture-probe', 'Judgment passed'); } };
+  const bound = smallestBound(value => {
+    BOUNDS.input = value;
+    try {
+      close(f.root, request, f.context, probe);
+      return true;
+    } catch (error) {
+      if (error.code === 'fixture-probe') return true;
+      if (['close-bound-unavailable', 'close-judgment-unavailable', 'close-accounting-unavailable'].includes(error.code)) return false;
+      throw error;
+    } finally { BOUNDS.input = saved; }
+  });
+  BOUNDS.input = bound;
+  close(f.root, request, f.context, base);
+  const { creationAssessment } = require('../internal/runtime/creation-consistency');
+  assert.doesNotThrow(() => withStore(f.root, store => store.transaction(() => creationAssessment(store))));
+  BOUNDS.input = saved;
+});
+
+test('a record refusal that ends the pass still names the held delivery judged before it', async t => {
+  let f;
+  let held;
+  let broken;
+  for (let attempt = 0; attempt < 12 && !f; attempt++) {
+    const trial = project(t);
+    await completed(trial.root);
+    const first = read(trial.root).id;
+    await completed(trial.root);
+    const second = read(trial.root).id;
+    await completed(trial.root);
+    if (first < second) [f, held, broken] = [trial, first, second];
+  }
+  assert.ok(f, 'No fixture ordered its records as the case needs');
+  const selection = read(f.root).id;
+  select(f.root, held);
+  await closingCheck(f.root, 'post-completion tracking check', failing);
+  select(f.root, selection);
+  withStore(f.root, store => {
+    store.db.prepare('DELETE FROM settled_verdicts WHERE run_id=?').run(broken);
+    store.db.prepare('UPDATE runs SET revision=revision+1 WHERE id=?').run(broken);
+  });
+  await assert.rejects(execute(f.root, reflection(), base), error => error.code === 'delivery-consistency-unavailable' && error.message.includes(held) && error.message.includes(broken));
+});
+
+test('status identifies a retired complete delivery as retired, with no outcome', async t => {
+  const f = project(t);
+  await completed(f.root);
+  const retired = read(f.root).id;
+  await completed(f.root);
+  withStore(f.root, store => {
+    store.db.exec('CREATE TABLE IF NOT EXISTS legacy_retirements (run_id TEXT PRIMARY KEY REFERENCES runs(id), artifact TEXT NOT NULL)');
+    store.db.prepare('INSERT INTO legacy_retirements(run_id, artifact) VALUES (?, ?)').run(retired, 'fixture-certificate');
+  });
+  assert.deepEqual((await status(f.root, retired)).handoverOutcome, { retired: true });
 });
 
 test('Ready names only the administrative close for a held delivery past its deadline', async t => {

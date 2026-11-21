@@ -465,7 +465,7 @@ function assessment(store, options = {}) {
       // A judge-only pass reports running out of the shared allowance without keeping any write, and judges past another record's
       // own failure, which concerns that record rather than whether the pass can count the one it was asked about.
       if (options.judgeOnly) {
-        if (error.sharedAllowance) return { records, writable, shortfall: true };
+        if (error.sharedAllowance) return { records, shortfall: true };
         if (row.id !== options.judgeOnly.id && error instanceof RunError) {
           records.push({ id: row.id, state: null, discharged: false, failed: true });
           continue;
@@ -473,6 +473,13 @@ function assessment(store, options = {}) {
         throw error;
       }
       if (!options.resourceOnly && error.sharedAllowance) refuseForAllowance(error);
+      // A record's own refusal ends the pass; it still names the record and every blocker the pass established before it.
+      if (!options.resourceOnly && (error instanceof RunError || error instanceof SyntaxError)) {
+        const own = [CODE, 'missing-predecessor'].includes(error.code);
+        const refusal = new RunError(own ? error.code : CODE, `${own ? '' : 'Delivery consistency cannot be established: '}Delivery ${row.id}: ${error.message}${establishedBlockers().text}`);
+        refusal.creationBlocker = true;
+        throw refusal;
+      }
       throw error;
     }
     records.push(record);
@@ -483,7 +490,7 @@ function assessment(store, options = {}) {
     if (qualifies) writes.upserts.set(row.id, verdicts.verdictFor(record.state, record.stateText, metadata, retirement));
     else if (verdict) writes.deletes.add(verdict.rowid);
   }
-  if (options.judgeOnly) return { records, writable, shortfall: false };
+  if (options.judgeOnly) return { records, shortfall: false };
   if (!options.resourceOnly) requireCondition([...retirementArtifacts].every(id => certificateBudgets.chain.visited.has(id)), CODE, 'Retirement certificate artifact is outside every current reference chain');
   if (options.resourceOnly) return { inputBytes };
   // inputBytes is diagnostic: it reports the shared allowance this pass charged, which callers do not act on.
@@ -516,8 +523,8 @@ function assessment(store, options = {}) {
 const REPORT_PENDING = 'The latest delivery\'s morning report awaits its recipient: present the saved report, record report-delivered with the user\'s reply, then accept the new delivery';
 
 // Runs a creation pass over `store`'s current transaction that writes nothing and refuses nothing, to learn whether it would count the
-// record `id` discharged: {discharged, shortfall, writable}, where `shortfall` says the shared allowance ran out first and `writable`
-// whether a real pass would keep verdicts, so that retried handovers judge less each time.
+// record `id` discharged: {discharged, shortfall, failure}, where `shortfall` says the shared allowance ran out first and `failure` is
+// a refusal of the whole pass.
 function judgeRecord(store, id) {
   let result;
   try { result = assessment(store, { judgeOnly: { id } }); }
@@ -525,11 +532,11 @@ function judgeRecord(store, id) {
     // A refusal of the whole pass, such as the selection exceeding its reserved bound, means the gate counts nothing.
     if (!(error instanceof RunError)) throw error;
 
-    return { discharged: false, shortfall: false, writable: false, failure: error };
+    return { discharged: false, shortfall: false, failure: error };
   }
   const record = result.records.find(entry => entry.id === id);
 
-  return { discharged: Boolean(record?.discharged), shortfall: result.shortfall, writable: result.writable, failure: null };
+  return { discharged: Boolean(record?.discharged), shortfall: result.shortfall, failure: null };
 }
 
 function creationAssessment(store, options = {}) {

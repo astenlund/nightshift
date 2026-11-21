@@ -529,11 +529,12 @@ function writeStore(root, store, request, context, liveness, dependencies) {
       // refusal rolls back.
       if (store === 'delivery') {
         for (const member of closed.filter(entry => entry.written)) {
-          // The creation gate's own pass, judging and writing nothing else. When it runs out of its shared allowance where a real pass
-          // keeps verdicts, retried handovers judge less each time, so what must fit is the selection and this record alone.
+          // The creation gate's own pass, judging and writing nothing else, must count this record discharged as the store stands. A
+          // pass that runs out of its shared allowance first proves nothing about what later passes reach, so close refuses; handover
+          // retries that keep settled verdicts can make room, after which close is retried.
           const judged = require('./creation-consistency').judgeRecord(handle, member.id);
           const refused = judged.shortfall
-            ? (judged.writable ? require('./delivery-outcome').closedRefusal(handle.db, root, member.id) : { code: 'close-bound-unavailable', message: `The creation gate, which keeps no verdicts in this store, would run out of its input allowance before counting the closed record ${member.id}; nothing was closed in this store` })
+            ? { code: 'close-bound-unavailable', message: `The creation gate would run out of its input allowance before counting the closed record ${member.id}; nothing was closed in this store. Where a refused handover says settled records keep their verdicts, retry it until it no longer does, then retry this close` }
             : judged.discharged ? null : { code: judged.failure?.limitExceeded ? 'close-bound-unavailable' : 'close-accounting-unavailable', message: `The creation gate would not count the closed record ${member.id} discharged${judged.failure ? ` (${judged.failure.message})` : ''}; nothing was closed in this store` };
           requireCondition(!refused, refused?.code, refused?.message);
         }
