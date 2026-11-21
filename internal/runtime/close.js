@@ -89,6 +89,8 @@ function readStore(root, store) {
     if (!stat.isFile() || stat.isSymbolicLink() || stat.nlink !== 1) return { store, unreadable: 'The store is not an ordinary singly linked file' };
     database = new DatabaseSync(file, { readOnly: true });
     database.exec('PRAGMA busy_timeout=5000');
+    // One read transaction holds the records, their closing outcomes and their evidence, so every member is judged at one revision.
+    database.exec('BEGIN');
     const version = database.prepare('PRAGMA user_version').get().user_version;
     if (![1, 2, 3].includes(version)) return { store, unreadable: `Unsupported store version ${version}` };
     const tables = new Set(database.prepare("SELECT name FROM sqlite_master WHERE type='table'").all().map(row => row.name));
@@ -100,13 +102,43 @@ function readStore(root, store) {
       if (!(state?.schema === 1 && state.id === row.id && state.revision === row.revision && state.root === root && kindMatches && isRecordStatus(state.status) && Array.isArray(state.workers))) return { store, unreadable: `Record ${row.id} fails its state check` };
       states.push(state);
     }
+    const { outcomes, evidence } = store === 'delivery' ? completeJudgments(root, database, states, retired) : { outcomes: new Map(), evidence: new Map() };
 
-    return { store, absent: false, states, retired, tables, file };
+    return { store, absent: false, states, retired, tables, file, outcomes, evidence };
   } catch (error) {
     return { store, unreadable: error?.message ?? String(error) };
   } finally {
+    if (database?.isTransaction) database.exec('ROLLBACK');
     database?.close();
   }
+}
+
+// The closing outcome of every complete, unretired delivery in the store, judged alone through the creation gate's own checks, and
+// whether every evidence body its saved state references can be read (null, or the refusal the ordinary read would give), both read
+// in the caller's transaction. A judgment that fails is the record's Unavailable outcome.
+function completeJudgments(root, database, states, retired) {
+  const outcomesModule = require('./delivery-outcome');
+  const { verificationPass, verifyArtifacts } = require('./artifact-hydration');
+  const complete = states.filter(state => state.status === 'complete' && !retired.has(state.id));
+  const outcomes = new Map();
+  const evidence = new Map();
+  if (!complete.length) return { outcomes, evidence };
+  let judged;
+  try { judged = outcomesModule.readOutcomes(database, root, { ids: complete.map(state => state.id), inTransaction: true }).byId; }
+  catch (error) { judged = new Map(complete.map(state => [state.id, { judgment: outcomesModule.judgment([outcomesModule.causeOf(error, 'accounting')]) }])); }
+  for (const state of complete) {
+    const entry = judged.get(state.id);
+    if (entry?.judgment) outcomes.set(state.id, entry.judgment);
+    try {
+      verifyArtifacts(database, state, verificationPass(true));
+      evidence.set(state.id, null);
+    } catch (error) {
+      if (!(error instanceof RunError)) throw error;
+      evidence.set(state.id, error);
+    }
+  }
+
+  return { outcomes, evidence };
 }
 
 function historyState(root, store, id, revision) {
@@ -252,35 +284,17 @@ function accountingRemedy(status, { saved }) {
 }
 
 // Refuses, as the ordinary read would, unless every evidence body the saved state references can be read.
-function requireReadableEvidence(file, state) {
-  const { verificationPass, verifyArtifacts } = require('./artifact-hydration');
-  const database = new DatabaseSync(file, { readOnly: true });
-  try { verifyArtifacts(database, state, verificationPass(true)); }
-  finally { database.close(); }
-}
-
-// A complete delivery's closing outcome, judged alone through the creation gate's own checks; null for a retired one, which has none.
-function completeOutcome(root, read, state) {
-  if (read.store !== 'delivery' || state.status !== 'complete' || read.retired.has(state.id)) return null;
-  const outcomes = require('./delivery-outcome');
-  try { return outcomes.outcomeOf(root, state.id)?.judgment ?? null; }
-  catch (error) { return outcomes.judgment([outcomes.causeOf(error, 'accounting')]); }
-}
-
 function eligibility(root, read, state, ownerAlive) {
   if (read.retired.has(state.id) && !isClosed(state) && state.status !== 'complete') return { code: 'retired-run', message: `Delivery ${state.id} is retired` };
-  const outcome = completeOutcome(root, read, state);
+  // A complete delivery's closing outcome and evidence readability, both read with the record in its store's one read transaction.
+  const outcome = state.status === 'complete' ? read.outcomes?.get(state.id) ?? null : null;
   const verdict = closeVerdict(state, { ownerAlive }, outcome);
   if (!verdict.eligible) return { ...verdict, outcome };
   if (outcome) {
     // The outcome already established the accounting the gate requires; the close write saves through the ordinary read, which needs
     // every referenced evidence body.
-    try { requireReadableEvidence(read.file, state); }
-    catch (error) {
-      if (!(error instanceof RunError)) throw error;
-
-      return { ...require('./delivery-outcome').unreadableRefusal(error), outcome };
-    }
+    const unreadable = read.evidence?.get(state.id);
+    if (unreadable) return { ...require('./delivery-outcome').unreadableRefusal(unreadable), outcome };
   } else if (read.store === 'delivery') {
     if (!read.tables.has('accounting_commits') || !read.tables.has('discharge_index')) return { code: 'close-accounting-unavailable', message: `Delivery store lacks the accounting tables; ${state.status === 'running' ? 'a running legacy delivery has no close or retire route in this release: stop it through its own release first, or acknowledge it' : 'retire this stopped legacy record instead'}` };
     if (!accountingCurrent(root, state)) return { code: 'close-accounting-unavailable', message: `Its accounting is not current: ${accountingRemedy(state.status, { saved: false })}` };
@@ -506,14 +520,18 @@ function writeStore(root, store, request, context, liveness, dependencies) {
         requireCondition(bytes <= MAX_CERTIFICATE_BYTES, 'migration-certificate-bound', fixed + 2 > MAX_CERTIFICATE_BYTES ? `The closure for ${member.id} exceeds 8 KiB even with the shortest reply and reason, so this record cannot be closed in this release; it stays unchanged until a separately authorized limit change` : `The closure for ${member.id} exceeds 8 KiB; give a shorter reply or reason`);
         const next = closeState(state, closure, held.verdict.reconciles);
         handle.save(next, 'close');
-        if (store === 'delivery') {
-          requireCondition(next.progress?.status === 'current', 'close-accounting-unavailable', `Accounting for ${member.id} is not current at the close revision; nothing was closed in this store`);
-          // Close never commits a closed record the creation gate could not count discharged: the gate's own judgment of it, read bounds,
-          // provenance verification and close row included, runs inside this transaction, which a refusal rolls back.
+        if (store === 'delivery') requireCondition(next.progress?.status === 'current', 'close-accounting-unavailable', `Accounting for ${member.id} is not current at the close revision; nothing was closed in this store`);
+        closed.push({ store, id: member.id, closure, written: true });
+      }
+      // Close never commits a closed record the creation gate could not count discharged: once every member of this store is saved, so
+      // that a selection closed by the same request is judged as the gate will see it, the gate's own judgment of each written member,
+      // the selection's reservation, read bounds, provenance verification and close row included, runs inside this transaction, which a
+      // refusal rolls back.
+      if (store === 'delivery') {
+        for (const member of closed.filter(entry => entry.written)) {
           const refused = require('./delivery-outcome').closedRefusal(handle.db, root, member.id);
           requireCondition(!refused, refused?.code, refused?.message);
         }
-        closed.push({ store, id: member.id, closure, written: true });
       }
 
       return closed;

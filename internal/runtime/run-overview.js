@@ -187,7 +187,8 @@ function readStore(root, definition, context, dependencies, result) {
   }
   if (!database) return;
   try {
-    // One read transaction holds every row a record is built from, the closing-outcome scan's included, so they share one snapshot.
+    // One read transaction holds every row a record is built from, the closing-outcome scan's included, so they share one snapshot;
+    // it ends before any record is described.
     database.exec('BEGIN');
     const version = database.prepare('PRAGMA user_version').get().user_version;
     const total = database.prepare('SELECT coalesce(sum(length(CAST(state AS BLOB))), 0) AS bytes FROM runs').get().bytes;
@@ -202,6 +203,8 @@ function readStore(root, definition, context, dependencies, result) {
     const retired = new Set(retirements ? database.prepare('SELECT run_id FROM legacy_retirements').all().map(row => row.run_id) : []);
     const records = [];
     const judged = definition.store === 'delivery' && states.some(state => state.status === 'complete' && !retired.has(state.id)) ? scanOutcomes(database, root, result) : new Map();
+    // Every row is read; the eligibility checks below inspect processes, which must not hold the store's read transaction open.
+    database.exec('ROLLBACK');
     for (const state of states) {
       if (retired.has(state.id)) continue;
       const current = definition.store === 'delivery' && state.id === active;

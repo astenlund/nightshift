@@ -66,22 +66,33 @@ function legacyFollowupBrief(store) {
 
 // A completed delivery cannot be adopted and its owning session may be gone, so another admitted session of the same project,
 // in the run's resource mode and store, may record the recipient's reply to its morning report. Nothing else is opened to it.
-// A complete delivery's closing outcome for its status brief (.nightshift/specs/post-completion-closing-hold.md commitment 3), or
-// undefined for any other record. Status has already read the record in full, so its routes are authoritative: a close the saved
-// workers' adoption-eligibility verdict refuses names that refusal in place of the close route. A failed judgment is reported, never
-// read as discharged.
-function handoverOutcome(store, state, dependencies) {
-  if (store.kind !== 'delivery' || state.status !== 'complete') return undefined;
-  if (store.isRetired(state.id)) return { retired: true };
-  const outcomes = require('./delivery-outcome');
-  let entry;
-  try { entry = outcomes.outcomeOf(store.root, state.id); }
-  catch (error) { entry = { judgment: outcomes.judgment([outcomes.causeOf(error, 'accounting')]) }; }
-  if (!entry) return undefined;
-  if (entry.retired) return { retired: true };
-  const current = store.read(undefined, { hydrate: false })?.id === state.id;
+// Reads a status record in full and, for a complete delivery, its closing outcome, its retirement and whether it is the selection, all
+// in one read transaction so they describe one revision. A failed judgment is the record's Unavailable outcome, never discharged.
+function statusRead(store, runId) {
+  if (store.kind !== 'delivery') return { state: store.read(runId), judged: null };
+  store.db.exec('BEGIN');
+  try {
+    const state = store.read(runId);
+    if (!state || state.status !== 'complete') return { state, judged: null };
+    if (store.isRetired(state.id)) return { state, judged: { retired: true } };
+    const outcomes = require('./delivery-outcome');
+    let entry;
+    try { entry = outcomes.readOutcomes(store.db, store.root, { ids: [state.id], inTransaction: true }).byId.get(state.id) ?? null; }
+    catch (error) { entry = { judgment: outcomes.judgment([outcomes.causeOf(error, 'accounting')]) }; }
+    return { state, judged: entry && { ...entry, current: store.read(undefined, { hydrate: false })?.id === state.id } };
+  } finally { store.db.exec('ROLLBACK'); }
+}
 
-  return outcomes.brief(state.id, entry.judgment, outcomes.routesFor(state, entry.judgment, { current, dependencies }).routed);
+// A complete delivery's closing outcome for its status brief (.nightshift/specs/post-completion-closing-hold.md commitment 3), or
+// undefined for any other record. Status has read the record in full, so its routes are authoritative: a close the saved workers'
+// adoption-eligibility verdict refuses names that refusal in place of the close route. Routing inspects processes, so it runs after the
+// read transaction ends, on the state that transaction read.
+function handoverOutcome(state, judged, dependencies) {
+  if (!judged) return undefined;
+  if (judged.retired) return { retired: true };
+  const outcomes = require('./delivery-outcome');
+
+  return outcomes.brief(state.id, judged.judgment, outcomes.routesFor(state, judged.judgment, { current: judged.current, dependencies }).routed);
 }
 
 function confirmCompletedReport(store, state, request, resources) {
@@ -123,10 +134,10 @@ async function execute(root, request, dependencies = {}) {
     }
     if (store.kind === 'review') request = { ...request, runId: store.contextId, taskId: request.taskId ?? REVIEW_TARGET };
     if (request.action === 'status') {
-      const state = store.read(request.runId);
+      const { state, judged } = statusRead(store, request.runId);
       requireCondition(state, 'missing-state', 'No saved Nightshift run');
       const legacyFollowups = legacyFollowupBrief(store);
-      return { ...obligationBrief(state, state.root, { handoverOutcome: handoverOutcome(store, state, dependencies) }), ...(legacyFollowups ? { legacyFollowups } : {}) };
+      return { ...obligationBrief(state, state.root, { handoverOutcome: handoverOutcome(state, judged, dependencies) }), ...(legacyFollowups ? { legacyFollowups } : {}) };
     }
     if (request.action === 'history') return history(store, request);
     if (request.action === 'inspect') return store.read(request.runId);

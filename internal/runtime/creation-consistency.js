@@ -305,16 +305,27 @@ function assessment(store, options = {}) {
     requireCondition(state?.schema === 1 && typeof state.id === 'string' && state.id.length > 0 && state.id === row.id && state.root === store.root && recordKind(state) === 'delivery' && state.revision === row.revision && Number.isSafeInteger(row.revision) && row.revision >= 0 && isRecordStatus(state.status) && ['claude', 'codex'].includes(state.controller?.host) && typeof state.controller.session === 'string' && state.controller.session.length > 0 && Array.isArray(state.tasks) && Array.isArray(state.workers), CODE, 'Delivery identity, shape or revision is unsupported');
     const record = { id: state.id, state, stateText, discharged: false, currentAccounting: false };
     const history = new HistoryReader(store.db, state.id);
-    const rolledBack = rollbackProblem(store.db, tables, state);
-    requireCondition(rolledBack === null, CODE, rolledBack);
-    const historicalSize = history.meta(state.revision)?.bytes;
-    requireCondition(historicalSize !== undefined, CODE, 'Current delivery lacks matching history');
-    requireSharedBound(historicalSize <= BOUNDS.input - inputBytes, CODE, 'Current delivery history exceeds its read bound');
-    const historical = history.text(state.revision, BOUNDS.input - inputBytes);
-    const latestState = historical ? parse(historical.state, mandatory) : null;
-    const contradicted = agreementProblem(state, latestState);
-    requireCondition(contradicted === null, CODE, contradicted);
     accept(state.acceptance?.handoverId);
+    // For a complete delivery that is not retired, a failure of these record-local reads is its Unavailable outcome, named beside the
+    // other blockers; every other record keeps its refusal.
+    const outcomeOnFailure = state.status === 'complete' && !options.resourceOnly && !retiredById.has(state.id);
+    let historical;
+    let latestState;
+    try {
+      const rolledBack = rollbackProblem(store.db, tables, state);
+      requireCondition(rolledBack === null, CODE, rolledBack);
+      const historicalSize = history.meta(state.revision)?.bytes;
+      requireCondition(historicalSize !== undefined, CODE, 'Current delivery lacks matching history');
+      requireSharedBound(historicalSize <= BOUNDS.input - inputBytes, CODE, 'Current delivery history exceeds its read bound');
+      historical = history.text(state.revision, BOUNDS.input - inputBytes);
+      latestState = historical ? parse(historical.state, mandatory) : null;
+      const contradicted = agreementProblem(state, latestState);
+      requireCondition(contradicted === null, CODE, contradicted);
+    } catch (error) {
+      if (!outcomeOnFailure || error.sharedAllowance || !(error instanceof RunError || error instanceof SyntaxError)) throw error;
+
+      return { ...record, outcome: outcomes.judgment([outcomes.causeOf(error, 'accounting')]) };
+    }
     const retired = retiredById.get(state.id);
     if (retiredById.has(state.id)) {
       verifyArtifacts(store.db, state, retirementEvidence);
@@ -374,11 +385,38 @@ function assessment(store, options = {}) {
   };
   // A pass the shared allowance refuses keeps the verdict and protection writes it established, every check it completed having
   // passed, so successive handovers re-judge the store a part at a time; any other refusal writes nothing.
+  // Every blocker the records judged so far establish, as {record, code, text}, in the order they were judged: a complete delivery by its
+  // outcome, any other record that is not discharged other than the selection (a record the legacy group names is left to that group),
+  // then the selection's own blockers and every active worker. Each refusal exit names the same list, so code precedence never hides a
+  // blocker the pass established. Routes come from saved state alone: no process is inspected while the transaction is held.
+  const establishedBlockers = () => {
+    const now = Date.now();
+    const selected = records.find(record => record.id === selectedId) ?? null;
+    const legacy = new Set(legacyUnavailable.map(entry => entry.id));
+    const list = [];
+    for (const record of records) {
+      if (record.outcome) {
+        if (record.outcome.outcome === outcomes.DISCHARGED) continue;
+        const { routed } = outcomes.routesFor(record.state, record.outcome, { current: record === selected, now, inspect: false });
+        list.push({ record, code: record.outcome.outcome === outcomes.HELD ? 'overlapping-run' : CODE, text: outcomes.describe(record.id, record.outcome, routed, { provisional: true }) });
+      } else if (record !== selected && !record.discharged && !legacy.has(record.id)) list.push({ record, code: CODE, text: `Delivery ${record.id} (${record.state?.status ?? 'unknown'}) still has unresolved or unavailable obligations.` });
+    }
+    const own = [];
+    if (selected?.state) {
+      if (!selected.retired && !isClosed(selected.state) && selected.discharged && reportAwaitsRecipient(selected.state)) own.push({ record: selected, code: 'report-delivery-pending', text: `Delivery ${selected.id} (selected) owes its morning report to its recipient: present the saved report and record report-delivered with the user's reply.` });
+      if (['running', 'stopped'].includes(selected.state.status)) own.push({ record: selected, code: 'overlapping-run', text: `Delivery ${selected.id} (selected) is ${selected.state.status}: reconcile, resume or explicitly finish it.` });
+    }
+    const named = new Set(list.map(entry => entry.record));
+    for (const record of records.filter(entry => entry.state?.workers.some(workerIsActive) && !named.has(entry))) own.push({ record, code: 'overlapping-run', text: `Delivery ${record.id} has an active or uncertain worker to reconcile.` });
+
+    return { list, own, text: [...list, ...own].length ? `. Blocking: ${[...list, ...own].map(entry => entry.text).join(' ')}` : '' };
+  };
   const refuseForAllowance = error => {
-    if (legacyUnavailable.length > 0) requireCondition(false, CODE, legacyRefusal(legacyUnavailable));
+    const { text } = establishedBlockers();
+    if (legacyUnavailable.length > 0) requireCondition(false, CODE, `${legacyRefusal(legacyUnavailable)}${text}`);
     // The kept-verdicts clause tells a refusal a retried handover progresses past from one it does not; a failed persist replaces it.
-    const refusal = new RunError(CODE, writes.upserts.size > 0 ? `${error.message}; the ${writes.upserts.size} settled record(s) this pass judged keep their verdicts, so a later handover judges less` : error.message);
-    refusal.unkeptMessage = error.message;
+    const refusal = new RunError(CODE, `${writes.upserts.size > 0 ? `${error.message}; the ${writes.upserts.size} settled record(s) this pass judged keep their verdicts, so a later handover judges less` : error.message}${text}`);
+    refusal.unkeptMessage = `${error.message}${text}`;
     refusal.limitExceeded = true;
     refusal.sharedAllowance = true;
     if (writable) refusal.persistAfterRollback = db => verdicts.applyWrites(db, tables, writes);
@@ -413,33 +451,19 @@ function assessment(store, options = {}) {
   if (!options.resourceOnly) requireCondition([...retirementArtifacts].every(id => certificateBudgets.chain.visited.has(id)), CODE, 'Retirement certificate artifact is outside every current reference chain');
   if (options.resourceOnly) return { inputBytes };
   // inputBytes is diagnostic: it reports the shared allowance this pass charged, which callers do not act on.
-  const now = Date.now();
+  const established = establishedBlockers();
+  // The grouped refusal keeps its precedence and names every other blocker the pass established before its first legacy record.
+  if (legacyUnavailable.length > 0) requireCondition(false, CODE, `${legacyRefusal(legacyUnavailable)}${established.text}`);
   const selected = records.find(record => record.id === selectedId);
-  // A complete delivery the pass judged, named with its outcome, causes and routes, which the saved workers' close verdict qualifies.
-  const judgedBlocker = record => {
-    const { routed } = outcomes.routesFor(record.state, record.outcome, { current: record === selected, now });
-    return { record, code: record.outcome.outcome === outcomes.HELD ? 'overlapping-run' : CODE, text: outcomes.describe(record.id, record.outcome, routed, { provisional: true }) };
-  };
-  const held = records.filter(record => record.outcome && record.outcome.outcome !== outcomes.DISCHARGED);
-  // The grouped refusal keeps its precedence and still names every complete delivery judged before the first legacy blocker.
-  if (legacyUnavailable.length > 0) requireCondition(false, CODE, `${legacyRefusal(legacyUnavailable)}${held.length ? `. Also blocking: ${held.map(record => judgedBlocker(record).text).join(' ')}` : ''}`);
   requireCondition(selected, CODE, 'Delivery selection was not judged');
   // Replacement would detach the selected delivery's unconfirmed report from its notice and confirmation route. A delivery
   // replaced under an earlier release has no such route left, so only the selected one can hold replacement back.
-  const reportPending = !selected.retired && !isClosed(selected.state) && selected.discharged && reportAwaitsRecipient(selected.state);
-  // Every blocking record, with the code its kind carries: a complete delivery by its outcome, and any other record that is not
-  // discharged, other than the selection itself, as today. Closing work held on the selection is unfinished work to reconcile, as an
-  // unfinished selection is, so it alone neither refuses an exact replay nor turns the refusal into a consistency failure.
-  const blockers = held.map(judgedBlocker);
-  for (const record of records) if (!record.outcome && record !== selected && !record.discharged) blockers.push({ record, code: CODE, text: `Delivery ${record.id} (${record.state?.status ?? 'unknown'}) still has unresolved or unavailable obligations.` });
-  // The selection's own blockers and active workers are named beside them, whichever code the refusal carries.
-  const own = [];
-  if (reportPending) own.push(`Delivery ${selected.id} (selected) owes its morning report to its recipient: present the saved report and record report-delivered with the user's reply.`);
-  if (['running', 'stopped'].includes(selected.state.status)) own.push(`Delivery ${selected.id} (selected) is ${selected.state.status}: reconcile, resume or explicitly finish it.`);
-  for (const record of records.filter(entry => entry.state?.workers.some(workerIsActive) && !held.includes(entry))) own.push(`Delivery ${record.id} has an active or uncertain worker to reconcile.`);
+  const reportPending = established.own.some(entry => entry.code === 'report-delivery-pending');
+  // Closing work held on the selection is unfinished work to reconcile, as an unfinished selection is, so it alone neither refuses an
+  // exact replay nor turns the refusal into a consistency failure.
+  const blockers = established.list;
   const consistency = blockers.some(blocker => blocker.code === CODE);
-  const texts = [...blockers.map(blocker => blocker.text), ...own];
-  const named = texts.length ? `. Blocking: ${texts.join(' ')}` : '';
+  const named = established.text;
   // Precedence follows today's order: a consistency failure, then the selection's pending report, then held work.
   if (blockers.some(blocker => blocker.record !== selected || blocker.code === CODE)) {
     const code = consistency ? CODE : reportPending ? 'report-delivery-pending' : 'overlapping-run';

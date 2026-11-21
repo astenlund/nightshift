@@ -100,10 +100,15 @@ function unreadableRefusal(error) {
 
 // The routes that apply to a delivery together with the saved workers' close verdict that qualifies them, so every surface that names
 // routes and every close offer read one verdict: a held or unauthenticated delivery whose workers the shared adoption-eligibility check
-// refuses names that refusal in place of the close route. `verdict` is null for any other outcome.
-function routesFor(state, value, { current = false, now = Date.now(), dependencies = {} } = {}) {
+// refuses names that refusal in place of the close route. `verdict` is null for any other outcome. With `inspect: false`, as the
+// creation gate routes while it holds its transaction and the project mutex, no process is inspected: a saved worker that is active
+// or of uncertain termination stands in for the verdict's refusal, since close admits such a record only once that termination is proven.
+function routesFor(state, value, { current = false, now = Date.now(), dependencies = {}, inspect = true } = {}) {
   let verdict = null;
-  if ([HELD, UNAUTHENTICATED].includes(value.outcome)) verdict = require('./close').closeVerdict(state, dependencies, value);
+  if ([HELD, UNAUTHENTICATED].includes(value.outcome)) {
+    const active = inspect ? null : state.workers.find(require('./workers').workerIsActive);
+    verdict = inspect ? require('./close').closeVerdict(state, dependencies, value) : active ? { eligible: false, code: 'worker-activity-unknown', message: `Worker ${active.id} is active or its termination is unproven; close admits the record once that termination is proven` } : { eligible: true };
+  }
   const closeRefusal = verdict && !verdict.eligible ? { code: verdict.code, message: verdict.message } : null;
 
   return { routed: routes(state, value, { current, now, closeRefusal }), verdict };
@@ -127,6 +132,13 @@ function context(db, root) {
   const accounting = new ProgressStore({ db, root, kind: 'delivery' });
 
   return { db, tables: schemaState(db).tables, accounting, provenance: new ProvenanceStore(accounting) };
+}
+
+// The input a creation pass reserves up front for the selection: its current state and latest history row.
+function reservation(env, selected) {
+  const metadata = selected ? require('./settled-verdicts').metadataOf(env.db, env.tables, selected) : null;
+
+  return metadata ? metadata.stateBytes + (metadata.latestBytes ?? 0) : 0;
 }
 
 // An input allowance like the creation pass's: `reserved` bytes stay set aside, as the pass reserves the selection's current state and
@@ -222,11 +234,7 @@ function readOutcomes(db, root, { ids = null, shared = false, inTransaction = fa
     const retired = new Set(retirementRows(db, env.tables).map(row => row.runId));
     const selected = env.tables.has('active') ? db.prepare('SELECT id FROM active LIMIT 1').get()?.id ?? null : null;
     const saved = verdicts.protectionState(db) === 'own' ? verdicts.readVerdicts(db, MAX_DELIVERY_RECORDS) : null;
-    const reservation = () => {
-      const metadata = selected ? verdicts.metadataOf(db, env.tables, selected) : null;
-      return metadata ? metadata.stateBytes + (metadata.latestBytes ?? 0) : 0;
-    };
-    let tracker = allowance(shared ? reservation() : 0);
+    let tracker = allowance(shared ? reservation(env, selected) : 0);
     const rows = ids ? ids.map(id => db.prepare('SELECT id, state FROM runs WHERE id=?').get(id)).filter(Boolean) : db.prepare('SELECT id, state FROM runs ORDER BY id').all();
     for (const row of rows) {
       const state = JSON.parse(row.state);
@@ -241,15 +249,16 @@ function readOutcomes(db, root, { ids = null, shared = false, inTransaction = fa
         continue;
       }
       if (!shared) tracker = allowance();
+      // The judgment of one record is total: any failure of its own reads is its Unavailable outcome, and only running out of the
+      // allowance shared across a pass is a pass-level shortfall.
       try {
         byId.set(state.id, { judgment: judgeStored(env, row, tracker, state.id === selected) });
       } catch (error) {
-        if (!error.sharedAllowance) throw error;
-        if (shared) {
+        if (error.sharedAllowance && shared) {
           shortfall = true;
           break;
         }
-        byId.set(state.id, { judgment: judgment([cause('bound', null, error.message, error.code)]) });
+        byId.set(state.id, { judgment: judgment([causeOf(error, error.sharedAllowance ? 'bound' : 'accounting')]) });
       }
     }
   } finally {
@@ -268,14 +277,15 @@ function outcomeOf(root, id) {
   finally { db.close(); }
 }
 
-// Whether the creation gate would count the closed record `id` discharged, judged over `db` (the close's own write transaction) as a
-// pass judges a record in full: its current state and close row within the input allowance, reserved for the selection, its accounting
-// and provenance verified, and its close row. Returns null when it would, otherwise {code, message}.
+// Whether the creation gate would count the closed record `id` discharged, judged over `db` (the close's own write transaction, after
+// every member of its store is saved) as a pass judges a record in full: the selection's current state and latest row reserved, so a
+// nonselected record must fit beside them, its own current state and close row within the input allowance, its accounting and
+// provenance verified, and its close row. Returns null when it would, otherwise {code, message}.
 function closedRefusal(db, root, id) {
   const env = context(db, root);
   const selected = env.tables.has('active') ? db.prepare('SELECT id FROM active LIMIT 1').get()?.id ?? null : null;
   const row = db.prepare('SELECT id, state FROM runs WHERE id=?').get(id);
-  const tracker = allowance();
+  const tracker = allowance(reservation(env, selected));
   const refusal = value => ({ code: value.kind === 'bound' ? 'close-bound-unavailable' : 'close-accounting-unavailable', message: `The closed record ${id} would not be counted discharged by the creation gate (${value.message}); nothing was closed in this store` });
   try {
     const current = readCurrent(env, row, tracker, id === selected);

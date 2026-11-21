@@ -218,3 +218,88 @@ test('a held delivery closed beside a review context reproduces its approved cau
   const approval = withStore(f.root, store => JSON.parse(store.db.prepare('SELECT body FROM artifacts WHERE id=?').get(read(f.root).closure.approval).body));
   assert.equal(approval.records.find(entry => entry.id === id).drops.outcome, 'held');
 });
+
+test('close refuses a nonselected record that fits alone but not beside the selection the creation gate reserves', async t => {
+  const f = project(t);
+  await completed(f.root);
+  const first = read(f.root).id;
+  await completed(f.root);
+  const second = read(f.root).id;
+  select(f.root, first);
+  await closingCheck(f.root, 'post-completion tracking check', failing);
+  select(f.root, second);
+  const members = [{ store: 'delivery', id: first }];
+  const { request } = approve(f, members);
+  const saved = BOUNDS.input;
+  t.after(() => { BOUNDS.input = saved; });
+  // The smallest bound under which close-manifest, judging the record alone, still admits it.
+  const admitted = bound => {
+    BOUNDS.input = bound;
+    try { return closeManifest(f.root, { members }, f.context, base).ineligible.length === 0; } finally { BOUNDS.input = saved; }
+  };
+  let low = 1;
+  let high = 4 * 1024 * 1024;
+  while (high - low > 1) {
+    const middle = Math.floor((low + high) / 2);
+    if (admitted(middle)) high = middle;
+    else low = middle;
+  }
+  BOUNDS.input = high;
+  assert.throws(() => close(f.root, request, f.context, base), { code: 'close-bound-unavailable' });
+  BOUNDS.input = saved;
+  select(f.root, first);
+  assert.equal(read(f.root).status, 'complete');
+});
+
+test('a complete delivery whose latest history cannot be read is unavailable alone, leaving the other records judged', async t => {
+  const f = project(t);
+  await completed(f.root);
+  const first = read(f.root).id;
+  await completed(f.root);
+  const second = read(f.root).id;
+  select(f.root, first);
+  await closingCheck(f.root, 'post-completion tracking check', failing);
+  select(f.root, second);
+  const latest = read(f.root).revision;
+  withStore(f.root, store => store.db.prepare('UPDATE history SET digest=? WHERE run_id=? AND revision=?').run('0'.repeat(64), second, latest));
+  const result = overview(f.root, { dependencies: base });
+  assert.deepEqual(result.notices, []);
+  assert.equal(result.records.find(record => record.id === second).outcome.outcome, 'unavailable');
+  assert.equal(result.records.find(record => record.id === first).outcome.outcome, 'held');
+  await assert.rejects(execute(f.root, reflection(), base), error => error.code === 'delivery-consistency-unavailable' && error.message.includes(first) && error.message.includes(second));
+});
+
+test('a shortfall keeps the stopped record and the owed report Ready reports, and status still judges each delivery', async t => {
+  const f = project(t);
+  await completed(f.root);
+  const discharged = read(f.root).id;
+  const withholdReply = (root, input, dependencies) => (input.action === 'report-delivered' ? execute(root, { action: 'inspect' }, dependencies) : execute(root, input, dependencies));
+  await completed(f.root, withholdReply);
+  const owing = read(f.root).id;
+  // A stopped record beside them, as a delivery stopped after completion is.
+  select(f.root, discharged);
+  await execute(f.root, { action: 'stop', actor: owner, revision: read(f.root).revision, kind: 'user-stop', reason: 'Fixture stop' }, base);
+  select(f.root, owing);
+  const saved = BOUNDS.input;
+  t.after(() => { BOUNDS.input = saved; });
+  const selection = withStore(f.root, store => require('../internal/runtime/settled-verdicts').metadataOf(store.db, new Set(['accounting_commits']), owing));
+  BOUNDS.input = selection.stateBytes + selection.latestBytes + 1;
+  const result = overview(f.root, { dependencies: base });
+  BOUNDS.input = saved;
+  assert.deepEqual(result.notices.map(entry => entry.code), ['closing-outcome-shortfall']);
+  assert.deepEqual(result.unavailable, []);
+  assert.equal(result.records.find(record => record.id === discharged).status, 'stopped');
+  assert.deepEqual(result.records.find(record => record.id === owing).pickup, { offer: 'present-report' });
+  assert.equal((await status(f.root, owing)).handoverOutcome.outcome, 'discharged');
+});
+
+test('Ready names only the administrative close for a held delivery past its deadline', async t => {
+  const f = project(t);
+  await completed(f.root);
+  await closingCheck(f.root, 'post-completion tracking check', failing);
+  const past = new Date(Date.now() - 60000).toISOString();
+  withStore(f.root, store => store.update(owner, store.read().revision, 'fixture-deadline', state => { state.limits = { deadlineUtc: past }; }));
+  const [record] = overview(f.root, { dependencies: base }).records;
+  assert.deepEqual(record.outcome.routes.map(entry => entry.route), ['close']);
+  assert.match(record.outcome.ownerUnavailable, /deadline/);
+});
