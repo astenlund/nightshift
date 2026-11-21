@@ -170,8 +170,8 @@
     },
     {
       "path": "internal/runtime/REFERENCE.md",
-      "bytes": 189977,
-      "sha256": "ba5fecfa7cfc313724bb7cc1fe5eb4a81f4b20aa32cc166de6b18f86a1adeaf6"
+      "bytes": 190647,
+      "sha256": "c86114faf6dd53f1996a6da80b7c7dd92bbaff19824a31dc7ee68abd6e6a2737"
     },
     {
       "path": "internal/runtime/actions.js",
@@ -195,13 +195,13 @@
     },
     {
       "path": "internal/runtime/cli.js",
-      "bytes": 27858,
-      "sha256": "1b2d2255ef9d4c0278044f47380ae604fb0d5ab3619cb020689a3dfeb44499d1"
+      "bytes": 28638,
+      "sha256": "bd14050c3e06bd65b314b86a63bfa3a32263a8fe5e10598f9268a48c28e725ad"
     },
     {
       "path": "internal/runtime/close.js",
-      "bytes": 36317,
-      "sha256": "2c2c49bae29e37768f053c73bfc828882c850ec311d4ff22c246aea8e8b4c734"
+      "bytes": 37790,
+      "sha256": "a6ed78c3a9f52469384b2ef6a175e11cdcc90293f721eacf2194d458b8e774a3"
     },
     {
       "path": "internal/runtime/closing-hold.js",
@@ -225,8 +225,8 @@
     },
     {
       "path": "internal/runtime/creation-consistency.js",
-      "bytes": 36464,
-      "sha256": "990c15c178895f346cc6175acc7f466bf6d50050359a8492fd64bd858988f596"
+      "bytes": 37800,
+      "sha256": "0218bef9e895a0f6e929da6fe36ac2e75220d3f75bb99d8c20c28a67b3e59af0"
     },
     {
       "path": "internal/runtime/delivery-acceptance.js",
@@ -235,8 +235,8 @@
     },
     {
       "path": "internal/runtime/delivery-outcome.js",
-      "bytes": 17979,
-      "sha256": "0bb25d1d8b8b7b5df55edf496cffcf7ea546bd8cfbbed8ea8b31305d4c231f2c"
+      "bytes": 19103,
+      "sha256": "a6b18e048117657d77b6a3a5edaf747dc98164e5cfb2f7738b34f82b18185cb7"
     },
     {
       "path": "internal/runtime/discharge.js",
@@ -440,8 +440,8 @@
     },
     {
       "path": "internal/runtime/run-overview.js",
-      "bytes": 13222,
-      "sha256": "9cfcc6488d72805a44522dfba33bdbc92e8e8b6bb0b3ea3ad8a1d8991576d1df"
+      "bytes": 13429,
+      "sha256": "e53e8b62d19f778e2296eb672f70772a752a0e02de230546d02467f09239879d"
     },
     {
       "path": "internal/runtime/safe-directory.js",
