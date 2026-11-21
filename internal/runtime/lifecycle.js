@@ -212,7 +212,7 @@ function verificationRefusal(root, targets, message) {
 }
 
 // Whether a finding's recorded skeptic validation still admits a disposition: the receipt currency of its snapshot over the finding's
-// own scope, the rule dispose applies, which the closing outcome's owner route reads too.
+// own scope, the rule dispose applies.
 function dispositionCurrencyOf(root, finding) {
   return receiptCurrency(root, { kind: 'skeptic', snapshot: finding.validation.snapshot, contextSnapshot: finding.validation.snapshot }, [scopeOf(finding)]);
 }

@@ -39,8 +39,8 @@ function judgment(causes) {
   return { outcome, causes };
 }
 
-// Why the owner cannot discharge a held delivery itself, as {reason}, or {provisional: true} when it can only by importing assessments
-// already collected, or null while it can: runtime mutations reach only the current selection, a reopened task cannot be unblocked on
+// Why the owner cannot discharge a held delivery itself, as {reason}, or {provisional: true} at a spent dispatch allowance while a cause
+// needs a closing-record action, which may or may not need a new assessment, or null while it can: runtime mutations reach only the current selection, a reopened task cannot be unblocked on
 // a complete record, a passed deadline refuses every closing-record action, no assessment can be dispatched outside Git, and a spent
 // dispatch allowance refuses only a new dispatch. Worker reconciliation is bookkeeping, which neither limit refuses. Whether a collected
 // result or a recorded validation would satisfy a cause is not inferred here: the route names what the owner would need, as the user
