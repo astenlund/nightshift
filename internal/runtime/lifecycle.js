@@ -211,6 +211,12 @@ function verificationRefusal(root, targets, message) {
   return `${message}. Failing: ${failing.map(({ target, failures }) => `${target.id}: ${namedChecks(failures)}`).join('; ')}`;
 }
 
+// Whether a finding's recorded skeptic validation still admits a disposition: the receipt currency of its snapshot over the finding's
+// own scope, the rule dispose applies, which the closing outcome's owner route reads too.
+function dispositionCurrencyOf(root, finding) {
+  return receiptCurrency(root, { kind: 'skeptic', snapshot: finding.validation.snapshot, contextSnapshot: finding.validation.snapshot }, [scopeOf(finding)]);
+}
+
 function historicalDischarge(state, snapshotValid) {
   return dischargeCauses(state, snapshotValid).length === 0;
 }
@@ -248,7 +254,7 @@ function dischargeCauses(state, snapshotValid, options = {}) {
   }
   const reopened = new Set(state.tasks.filter(task => task.status !== 'complete' || task.blocker).map(task => task.id));
   for (const id of reopened) add('work', 'task', id, `Task ${id} was reopened after completion, and unblock is refused on a complete record`, ['unroutable']);
-  for (const worker of state.workers.filter(workerIsActive)) add('work', 'worker', worker.id ?? null, `Worker ${worker.id} is active or its termination is unknown`, ['bookkeeping']);
+  for (const worker of state.workers.filter(workerIsActive)) add('work', 'worker', worker?.id ?? null, `Worker ${worker?.id ?? '(malformed entry)'} is active or its termination is unknown`, ['bookkeeping']);
   if (!state.closing?.retrospectiveEvidence || !state.closing.triageEvidence || state.handover && !state.closing.reportEvidence) add('evidence', 'evidence', null, 'The completed closing record lacks its retrospective, triage or report evidence');
   const taskFindings = new Map(state.tasks.flatMap(task => task.findings.map(finding => [finding, task])));
   for (const finding of pendingClosures(state)) {
@@ -1106,7 +1112,7 @@ function transition(state, request, integration = null) {
     case 'dispose': {
       const finding = task.findings.find(candidate => candidate.id === request.findingId);
       requireCondition(finding?.validation && finding.validation.verdict !== 'unverified', 'unvalidated-finding', 'Missing evidence is unresolved');
-      const dispositionCurrency = receiptCurrency(state.root, { kind: 'skeptic', snapshot: finding.validation.snapshot, contextSnapshot: finding.validation.snapshot }, [scopeOf(finding)]);
+      const dispositionCurrency = dispositionCurrencyOf(state.root, finding);
       requireCondition(dispositionCurrency.current, 'stale-validation', currencyRefusal('Skeptic evidence inputs', dispositionCurrency));
       requireCondition(evidenceCommitmentsCurrent(state, task, finding.validation), 'stale-validation', 'Skeptic inputs or accepted commitments changed before disposition');
       requireCondition(['implement', 'defer', 'skip', 'refuted'].includes(request.disposition), 'invalid-disposition', 'Unknown finding disposition');
@@ -1453,4 +1459,4 @@ function transition(state, request, integration = null) {
   require('./discharge').admittedAction(state, request, dischargeBefore);
 }
 
-module.exports = { causeText, docsCause, reviewGateCause, staleCause, CLOSING_COVERAGE, DIMENSIONS, acceptableAssessment, closingCoverageText, assertAction, closingStage, commitmentBindingFor, commitmentsFor, completeAssessment, coversDimensions, dischargeCauses, findingKind, historicalDischarge, isDocumentationPath, latestChecks, latestClosingReview, leadEntry, obligationBrief, reportNotice, reportStatus, requiresReview, reviewGate, reviewGateFailure, reviewKind, reviewProgress, sameClosingRecord, settled, sharesCumulativeAssessment, targetById, taskById, transition, unresolvedFindings };
+module.exports = { causeText, docsCause, reviewGateCause, staleCause, CLOSING_COVERAGE, DIMENSIONS, acceptableAssessment, closingCoverageText, assertAction, closingStage, commitmentBindingFor, commitmentsFor, completeAssessment, coversDimensions, dischargeCauses, dispositionCurrencyOf, findingKind, historicalDischarge, isDocumentationPath, latestChecks, latestClosingReview, leadEntry, obligationBrief, reportNotice, reportStatus, requiresReview, reviewGate, reviewGateFailure, reviewKind, reviewProgress, sameClosingRecord, settled, sharesCumulativeAssessment, targetById, taskById, transition, unresolvedFindings };

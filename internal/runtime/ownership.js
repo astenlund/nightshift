@@ -138,6 +138,8 @@ function adoptionEligibility(state, request, dependencies = {}) {
   const nativeEvidence = nativeEvidenceRequests(state, request);
   const workers = [];
   for (const worker of state.workers) {
+    // An entry that is not an object proves no termination.
+    if (!worker || typeof worker !== 'object') return { eligible: false, code: 'worker-activity-unknown', message: 'A malformed worker entry has active or uncertain work; reconcile attributable termination before adoption' };
     const evidence = workerTermination(state.root, worker, state, dependencies, nativeEvidence.get(worker.id));
     if (!evidence) return { eligible: false, code: 'worker-activity-unknown', message: 'Worker ' + worker.id + ' has active or uncertain work; reconcile attributable termination before adoption' };
     workers.push(evidence);

@@ -80,7 +80,7 @@ function validationCurrent(state, findingId) {
   const snapshot = finding?.validation?.snapshot;
   if (!snapshot) return true;
   if (!Array.isArray(snapshot.files)) return null;
-  try { return require('./evidence').fresh(state.root, snapshot); }
+  try { return require('./lifecycle').dispositionCurrencyOf(state.root, finding).current === true; }
   catch {
     // A snapshot that cannot be compared is not known to be current.
     return null;
@@ -147,7 +147,7 @@ function routesFor(state, value, { current = false, now = Date.now(), dependenci
   let verdict = null;
   if ([HELD, UNAUTHENTICATED].includes(value.outcome)) {
     const active = inspect ? null : state.workers.find(require('./workers').workerIsActive);
-    verdict = inspect ? require('./close').closeVerdict(state, dependencies, value) : active ? { eligible: false, code: 'worker-activity-unknown', message: `Worker ${active.id} is active or its termination is unproven; close admits the record once that termination is proven` } : { eligible: true };
+    verdict = inspect ? require('./close').closeVerdict(state, dependencies, value) : active ? { eligible: false, code: 'worker-activity-unknown', message: `Worker ${active?.id ?? '(malformed entry)'} is active or its termination is unproven; close admits the record once that termination is proven` } : { eligible: true };
   }
   const closeRefusal = verdict && !verdict.eligible ? { code: verdict.code, message: verdict.message } : null;
 

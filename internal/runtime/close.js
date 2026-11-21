@@ -197,7 +197,7 @@ function projectMember(store, state, reconciles, outcome = null) {
   const member = {
     store, id: state.id, revision: state.revision, status: state.status, objective: state.objective ?? null, stop: state.stop ?? null, hold: state.hold ?? null,
     identity: releaseIdentity(state),
-    workers: state.workers.map(worker => ({ id: worker.id ?? null, status: worker.status, active: workerIsActive(worker), reconciles: reconciles.get(worker.id) ?? null })),
+    workers: state.workers.map(worker => ({ id: worker?.id ?? null, status: worker?.status ?? null, active: workerIsActive(worker), reconciles: reconciles.get(worker?.id) ?? null })),
     incompleteTasks: state.tasks.filter(task => task.status !== 'complete').map(task => ({ id: task.id, title: task.title ?? null, stage: task.stage ?? null })),
     findings: findingCounts(state),
     followups: (state.followups ?? []).filter(item => item.status !== 'resolved'),

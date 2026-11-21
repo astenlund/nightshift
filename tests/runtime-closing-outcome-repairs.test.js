@@ -661,6 +661,64 @@ test('a refusal led by another record does not name a discharged stopped selecti
   await assert.rejects(execute(f.root, reflection(), base), error => error.code === 'delivery-consistency-unavailable' && error.message.includes(first) && !/\(selected\) is stopped/.test(error.message));
 });
 
+test('a malformed worker entry gives structured refusals on status, close-manifest and the handover', async t => {
+  const f = project(t);
+  await completed(f.root);
+  const id = read(f.root).id;
+  // Only the current row is damaged, so the committed history disagrees with it.
+  withStore(f.root, store => {
+    const state = JSON.parse(store.db.prepare('SELECT state FROM runs WHERE id=?').get(id).state);
+    state.workers.push(null);
+    store.db.prepare('UPDATE runs SET state=? WHERE id=?').run(JSON.stringify(state), id);
+  });
+  // The ordinary read refuses the record, so status fails with that structured cause, as for any unreadable record.
+  await assert.rejects(status(f.root), { code: 'invalid-state' });
+  assert.equal(closeManifest(f.root, { members: [{ store: 'delivery', id }] }, f.context, base).ineligible[0].code, 'close-accounting-unavailable');
+  await assert.rejects(execute(f.root, reflection(), base), error => error.code === 'delivery-consistency-unavailable' && error.message.includes(id));
+});
+
+test('a held delivery closed beside an earlier legacy record is judged on its own close row', async t => {
+  let f;
+  let earlier;
+  let candidate;
+  for (let attempt = 0; attempt < 16 && !f; attempt++) {
+    const trial = project(t);
+    const ids = [];
+    for (let index = 0; index < 3; index++) {
+      await completed(trial.root);
+      ids.push(read(trial.root).id);
+    }
+    if (ids[0] < ids[1]) [f, earlier, candidate] = [trial, ids[0], ids[1]];
+  }
+  assert.ok(f, 'No fixture ordered its records as the case needs');
+  const selection = read(f.root).id;
+  select(f.root, candidate);
+  await closingCheck(f.root, 'post-completion tracking check', failing);
+  select(f.root, selection);
+  // The earlier record as a release before schema-2 accounting saved it, whose replay the gate groups as legacy.
+  withStore(f.root, store => {
+    const { rewriteHistory } = require('./fixtures/history');
+    const strip = text => {
+      const state = JSON.parse(text);
+      delete state.progress;
+      delete state.stopRecovery;
+      state.closing = { ...state.closing, triageEvidence: null };
+      return JSON.stringify(state);
+    };
+    store.transaction(() => {
+      store.db.prepare('DELETE FROM settled_verdicts WHERE run_id=?').run(earlier);
+      store.db.prepare('UPDATE runs SET state=? WHERE id=?').run(strip(store.db.prepare('SELECT state FROM runs WHERE id=?').get(earlier).state), earlier);
+      rewriteHistory(store.db, strip, { runId: earlier });
+      store.db.prepare('DELETE FROM accounting_commits WHERE run_id=?').run(earlier);
+      store.db.prepare('DELETE FROM discharge_index WHERE run_id=?').run(earlier);
+    });
+  });
+  await assert.rejects(execute(f.root, reflection(), base), error => error.code === 'delivery-consistency-unavailable' && error.message.includes(earlier) && /Legacy delivery consistency/.test(error.message));
+  const { request } = approve(f, [{ store: 'delivery', id: candidate }]);
+  close(f.root, request, f.context, base);
+  assert.equal(withStore(f.root, store => store.read(candidate, { hydrate: false })).status, 'closed');
+});
+
 test('Ready names only the administrative close for a held delivery past its deadline', async t => {
   const f = project(t);
   await completed(f.root);
