@@ -234,8 +234,8 @@ function findingNeeds(finding) {
 // closing work recorded since completion and `evidence` for a failure of evidence (.nightshift/specs/post-completion-closing-hold.md
 // commitment 1): a task reopened since completion is work, with every completion condition the reopening leaves unmet, while every
 // other unmet condition of a task, or an invalid snapshot or closing baseline, is evidence, since its completion admitted none.
-// `needs` names the owner actions a work cause waits on: `closing` closing-record actions, `dispatch` a model dispatch, `bookkeeping`
-// worker reconciliation, and `unroutable` none the runtime admits. `options.closingCovered(check)` says whether the latest closing
+// `needs` names the owner actions a work cause waits on: `closing` closing-record actions, `rerun` rerunning a failed or pending closing
+// check, `dispatch` a model dispatch, `bookkeeping` worker reconciliation, and `unroutable` none the runtime admits. `options.closingCovered(check)` says whether the latest closing
 // assessment already saw a failed or pending closing check's inputs, so rerunning it needs no fresh closing review; without it a rerun
 // is taken to need one. historicalDischarge holds exactly when this list is empty.
 function dischargeCauses(state, snapshotValid, options = {}) {
@@ -319,7 +319,7 @@ function dischargeCauses(state, snapshotValid, options = {}) {
   const closing = state.closing.docs;
   if (closing) {
     for (const finding of closing.findings.filter(item => !settled(item))) add('work', 'finding', finding.id, `Closing finding ${finding.id} is unsettled`, findingNeeds(finding));
-    checkCauses(closing, 'work', check => (check && options.closingCovered?.(check) ? ['closing'] : ['closing', 'dispatch']), 'The closing record');
+    checkCauses(closing, 'work', check => (check && options.closingCovered?.(check) ? ['closing', 'rerun'] : ['closing', 'rerun', 'dispatch']), 'The closing record');
     if (!snapshotValid(closing.baseline, true)) add('evidence', 'evidence', null, 'The closing record has an invalid triage baseline');
     const review = latestClosingReview(closing, state);
     if (review && (!completeAssessment(review) || review.attributionVerified !== true || !DIMENSIONS.docs.every(dimension => review.dimensions?.includes(dimension)))) add('work', 'review', review.requestId ?? null, 'The latest closing review is incomplete, unattributed or missing a docs dimension', ['closing', 'dispatch']);

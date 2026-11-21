@@ -62,7 +62,7 @@ function ownerBlocked(state, { causes }, { current, now }) {
 function ownerWork(causes) {
   const concerns = new Set(causes.map(entry => entry.concern));
   const steps = [
-    ...(concerns.has('check') ? ['rerun each closing check until it passes'] : []),
+    ...(causes.some(entry => entry.needs.includes('rerun')) ? ['rerun each failed or pending closing check until it passes'] : []),
     ...(concerns.has('finding') || concerns.has('closure') ? ['settle the closing findings and closures'] : []),
     ...(concerns.has('worker') ? ['reconcile its workers'] : []),
     ...(causes.some(entry => entry.needs.includes('dispatch')) || concerns.has('review') ? ['obtain a fresh complete closing docs review'] : []),

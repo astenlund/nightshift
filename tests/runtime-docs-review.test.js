@@ -314,7 +314,7 @@ test('a failed closing check whose inputs the latest closing review saw keeps th
 
   // Assert
   assert.equal(judged.outcome, 'held');
-  assert.deepEqual(judged.causes.map(entry => [entry.concern, entry.needs]), [['check', ['closing']]]);
+  assert.deepEqual(judged.causes.map(entry => [entry.concern, entry.needs]), [['check', ['closing', 'rerun']]]);
   assert.deepEqual(routed.list.map(entry => entry.route), ['owner', 'close']);
   const [record] = require('../internal/runtime/run-overview').overview(f.root).records;
   assert.deepEqual(record.outcome.routes.map(entry => entry.route), ['owner', 'close']);
