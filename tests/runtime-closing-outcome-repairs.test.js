@@ -946,6 +946,41 @@ test('a complete delivery whose store lost an accounting table is named unavaila
   await assert.rejects(execute(f.root, reflection(), base), error => error.code === 'delivery-consistency-unavailable' && error.message.includes(id) && /unavailable/.test(error.message) && error.message.includes(outcomes.MISSING_TABLES) && /close-accounting-unavailable/.test(error.message));
 });
 
+test('an interrupted closing check holds the delivery with its pending attempt and worker, refuses close until termination is proven, then closes', async t => {
+  const f = project(t);
+  await completed(f.root);
+  const id = read(f.root).id;
+  // The production check writer loses its command's termination evidence, leaving a pending attempt and an unverified worker.
+  const lost = { ...base, information: () => ({ found: true, pid: 7101, created: 'helper', name: 'node.exe' }), runContained: async () => { throw new Error('Lost command termination evidence'); } };
+  await assert.rejects(closingCheck(f.root, 'interrupted closing check', lost), /Lost command termination evidence/);
+  const state = read(f.root);
+  const worker = state.workers.at(-1);
+  assert.equal(worker.status, 'unverified');
+  assert.ok(worker.terminationPath && worker.helperProcess, 'The production writer saves the termination path and helper identity');
+  const held = (await status(f.root)).handoverOutcome;
+  assert.equal(held.outcome, 'held');
+  assert.deepEqual([...new Set(held.causes.map(entry => entry.concern))].sort(), ['check', 'worker']);
+  await assert.rejects(execute(f.root, reflection(), base), error => error.code === 'overlapping-run' && error.message.includes(id));
+  const [record] = overview(f.root, { dependencies: base }).records;
+  assert.deepEqual([record.close.offer, record.close.reason], ['none', 'worker-activity-unknown']);
+  const members = [{ store: 'delivery', id }];
+  assert.equal(closeManifest(f.root, { members }, f.context, base).ineligible[0].code, 'worker-activity-unknown');
+  // Reopened by block as well, the delivery has no owner route, and status names the worker refusal with its remedy and no bug.
+  const taskId = read(f.root).tasks[0].id;
+  await execute(f.root, { action: 'block', taskId, actor: owner, revision: read(f.root).revision, blocker: { kind: 'user-decision', reason: 'Fixture reopening after completion', recoveryAttempted: 'None' } }, base);
+  const reopened = (await status(f.root)).handoverOutcome;
+  const none = reopened.routes.find(entry => entry.route === 'none');
+  assert.deepEqual([reopened.routes.some(entry => entry.route === 'owner'), none?.code, none?.bug], [false, 'worker-activity-unknown', undefined]);
+  // Termination proven: the contained helper's termination file and an ended helper and owner.
+  fs.mkdirSync(path.dirname(path.join(f.root, worker.terminationPath)), { recursive: true });
+  fs.writeFileSync(path.join(f.root, worker.terminationPath), JSON.stringify({ runId: id, workerId: worker.id, helperProcess: worker.helperProcess, descendantsReclaimed: true, exitCode: 1, observedAt: new Date().toISOString() }));
+  const ended = { ...base, ownerAlive: () => false, information: pid => ({ found: false, pid }) };
+  const { manifest, request } = approve(f, members, ended);
+  assert.deepEqual(manifest.ineligible, []);
+  close(f.root, request, f.context, ended);
+  assert.equal(read(f.root).status, 'closed');
+});
+
 test('Ready names only the administrative close for a held delivery past its deadline', async t => {
   const f = project(t);
   await completed(f.root);
