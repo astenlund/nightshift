@@ -971,14 +971,23 @@ test('an interrupted closing check holds the delivery with its pending attempt a
   const reopened = (await status(f.root)).handoverOutcome;
   const none = reopened.routes.find(entry => entry.route === 'none');
   assert.deepEqual([reopened.routes.some(entry => entry.route === 'owner'), none?.code, none?.bug], [false, 'worker-activity-unknown', undefined]);
+  // With the helper and owner ended but no termination evidence, close itself refuses and writes nothing.
+  const ended = { ...base, ownerAlive: () => false, information: pid => ({ found: false, pid }) };
+  const unproven = read(f.root).revision;
+  assert.throws(() => close(f.root, { members, choices: choicesFor(closeManifest(f.root, { members }, f.context, ended)), manifestHash: 'a'.repeat(64), authority: 'Yes, close it', reason: 'Settled', actor: closer }, f.context, ended), { code: 'worker-activity-unknown' });
+  assert.deepEqual([read(f.root).status, read(f.root).revision], ['complete', unproven]);
   // Termination proven: the contained helper's termination file and an ended helper and owner.
   fs.mkdirSync(path.dirname(path.join(f.root, worker.terminationPath)), { recursive: true });
   fs.writeFileSync(path.join(f.root, worker.terminationPath), JSON.stringify({ runId: id, workerId: worker.id, helperProcess: worker.helperProcess, descendantsReclaimed: true, exitCode: 1, observedAt: new Date().toISOString() }));
-  const ended = { ...base, ownerAlive: () => false, information: pid => ({ found: false, pid }) };
   const { manifest, request } = approve(f, members, ended);
   assert.deepEqual(manifest.ineligible, []);
   close(f.root, request, f.context, ended);
-  assert.equal(read(f.root).status, 'closed');
+  const closed = read(f.root);
+  assert.equal(closed.status, 'closed');
+  // Close reconciled the interrupted worker from its termination evidence, so it no longer blocks the next handover.
+  assert.deepEqual(closed.closure.reconciledWorkers, [{ id: worker.id, previousStatus: 'unverified', evidence: { kind: 'contained-termination' } }]);
+  assert.equal(closed.workers.find(entry => entry.id === worker.id).status, 'stopped');
+  assert.equal((await execute(f.root, reflection(), base)).status, 'running');
 });
 
 test('Ready names only the administrative close for a held delivery past its deadline', async t => {
