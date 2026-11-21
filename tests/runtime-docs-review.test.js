@@ -295,6 +295,29 @@ test('specs, host instruction files, operating instructions and nested prose sta
   }
 });
 
+test('a failed closing check whose inputs the latest closing review saw keeps the owner route at a spent dispatch allowance', t => {
+  // Arrange: a completed run whose post-completion closing check passed and was assessed, then failed on the same inputs.
+  const f = fixture(t);
+  completeTask(f);
+  close(f);
+  assert.equal(f.act({ action: 'complete' }).status, 'complete');
+  f.check(CLOSING_TARGET, [BACKLOG], 'Tracking check');
+  f.review(CLOSING_TARGET, 'docs', ['code']);
+  f.act({ action: 'check', taskId: CLOSING_TARGET, evidence: verifyCommand(f.root, { name: 'Tracking check', executable: process.execPath, args: ['--eval', 'process.exit(1)'], paths: [BACKLOG] }) });
+  f.store.update(actor, f.store.read().revision, 'fixture-allowance', state => { state.limits = { maxDispatches: 0 }; state.dispatches = 0; });
+  const outcomes = require('../internal/runtime/delivery-outcome');
+  const state = f.store.read();
+
+  // Act
+  const judged = outcomes.outcomeOf(f.root, state.id).judgment;
+  const { routed } = outcomes.routesFor(state, judged, { current: true, inspect: false });
+
+  // Assert
+  assert.equal(judged.outcome, 'held');
+  assert.deepEqual(judged.causes.map(entry => [entry.concern, entry.needs]), [['check', ['closing']]]);
+  assert.deepEqual(routed.list.map(entry => entry.route), ['owner', 'close']);
+});
+
 test('a covering docs review from a later task keeps an earlier completed task current', t => {
   const f = fixture(t, [{ ...CODE_TASK, id: 'first' }, { ...CODE_TASK, id: 'second', requires: ['first'] }]);
   completeTask(f, 'first', ['README.md']);

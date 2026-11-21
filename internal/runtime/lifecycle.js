@@ -218,7 +218,7 @@ function historicalDischarge(state, snapshotValid) {
 // What a finding still needs before it settles: a validation, which a skeptic dispatch supplies, a repair and the closure that follows
 // it, or only a disposition.
 function findingNeeds(finding) {
-  if (!finding.validation || finding.validation.verdict === 'unverified') return ['closing', 'dispatch'];
+  if (!finding.validation || finding.validation.verdict === 'unverified') return ['closing', 'dispatch', 'skeptic'];
   if (finding.disposition === 'implement' && !finding.repaired) return ['closing', 'dispatch'];
 
   return ['closing'];
@@ -228,8 +228,8 @@ function findingNeeds(finding) {
 // closing work recorded since completion and `evidence` for a failure of evidence (.nightshift/specs/post-completion-closing-hold.md
 // commitment 1): a task reopened since completion is work, with every completion condition the reopening leaves unmet, while every
 // other unmet condition of a task, or an invalid snapshot or closing baseline, is evidence, since its completion admitted none.
-// `needs` names the owner actions a work cause waits on: `closing` closing-record actions, `dispatch` a model dispatch, `bookkeeping`
-// worker reconciliation, and `unroutable` none the runtime admits. `options.closingCovered(check)` says whether the latest closing
+// `needs` names the owner actions a work cause waits on: `closing` closing-record actions, `dispatch` a model dispatch (a reviewer's
+// unless `skeptic` says a skeptic validation), `bookkeeping` worker reconciliation, and `unroutable` none the runtime admits. `options.closingCovered(check)` says whether the latest closing
 // assessment already saw a failed or pending closing check's inputs, so rerunning it needs no fresh closing review; without it a rerun
 // is taken to need one. historicalDischarge holds exactly when this list is empty.
 function dischargeCauses(state, snapshotValid, options = {}) {

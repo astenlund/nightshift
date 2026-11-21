@@ -297,8 +297,11 @@ test('whenever close commits a nonselected closed record, the next handover unde
   const f = project(t);
   await completed(f.root);
   const first = read(f.root).id;
-  await completed(f.root);
+  // A selection whose report is confirmed after completion, so its current revision follows its completion row.
+  const withholdReply = (root, input, dependencies) => (input.action === 'report-delivered' ? execute(root, { action: 'inspect' }, dependencies) : execute(root, input, dependencies));
+  await completed(f.root, withholdReply);
   const second = read(f.root).id;
+  await execute(f.root, { action: 'report-delivered', actor: owner, revision: read(f.root).revision, authority: 'The fixture recipient replied after the report' }, base);
   select(f.root, first);
   await closingCheck(f.root, 'post-completion tracking check', failing);
   select(f.root, second);
@@ -354,10 +357,14 @@ test('a closing review already collected keeps the owner route when the dispatch
   const f = project(t);
   await completed(f.root);
   await closingCheck(f.root, 'uncovered check', base);
-  withStore(f.root, store => store.update(owner, store.read().revision, 'fixture-collected-review', state => {
+  const collect = role => withStore(f.root, store => store.update(owner, store.read().revision, `fixture-collected-${role}`, state => {
     state.limits = { maxDispatches: 0 };
-    state.workers.push({ id: 'collected-closing-review', role: 'reviewer', taskId: '#closing', status: 'complete', closingOccurrence: state.closing.docs.occurrence, session: 'collected-reviewer', assignment: 'Closing docs review', writes: [] });
+    state.workers.push({ id: `collected-closing-${role}`, role, taskId: '#closing', status: 'complete', closingOccurrence: state.closing.docs.occurrence, receipt: `.nightshift/runs/reviews/collected-closing-${role}/receipt.json`, session: `collected-${role}`, assignment: 'Closing assessment', writes: [] });
   }));
+  // A skeptic result cannot serve as the closing docs review the uncovered check needs.
+  collect('skeptic');
+  assert.deepEqual((await status(f.root)).handoverOutcome.routes.map(entry => entry.route), ['close']);
+  collect('reviewer');
   assert.deepEqual((await status(f.root)).handoverOutcome.routes.map(entry => entry.route), ['owner', 'close']);
 });
 
@@ -372,6 +379,47 @@ test('Ready derives the limit routes from runtime state as status does', async t
   const past = new Date(Date.now() - 60000).toISOString();
   withStore(worker.root, store => store.update(owner, store.read().revision, 'fixture-worker', state => { interruptedWorker(state); state.limits = { deadlineUtc: past }; }));
   assert.deepEqual(overview(worker.root, { dependencies: base }).records[0].outcome.routes.map(entry => entry.route), ['owner', 'none']);
+});
+
+test('a shortfall keeps the held outcome judged before it, while the gate keeps its allowance refusal and each record is judged alone', async t => {
+  // Record ids are random, and the scan judges in id order: build projects until the held record sorts before the selection.
+  let f;
+  let held;
+  let selection;
+  for (let attempt = 0; attempt < 12 && !f; attempt++) {
+    const candidate = project(t);
+    await completed(candidate.root);
+    const first = read(candidate.root).id;
+    await completed(candidate.root);
+    const second = read(candidate.root).id;
+    if (first < second) [f, held, selection] = [candidate, first, second];
+  }
+  assert.ok(f, 'No fixture ordered its records as the case needs');
+  select(f.root, held);
+  await closingCheck(f.root, 'post-completion tracking check', failing);
+  select(f.root, selection);
+  const saved = BOUNDS.input;
+  t.after(() => { BOUNDS.input = saved; });
+  const shown = bound => {
+    BOUNDS.input = bound;
+    try { return overview(f.root, { dependencies: base }); } finally { BOUNDS.input = saved; }
+  };
+  // The smallest bound at which the held record is judged: the selection's accounting no longer fits after it.
+  let low = 1;
+  let high = 4 * 1024 * 1024;
+  while (high - low > 1) {
+    const middle = Math.floor((low + high) / 2);
+    if (shown(middle).records.some(record => record.id === held)) high = middle;
+    else low = middle;
+  }
+  const result = shown(high);
+  assert.equal(result.records.find(record => record.id === held).outcome.outcome, 'held');
+  assert.deepEqual(result.notices.map(entry => entry.code), ['closing-outcome-shortfall']);
+  BOUNDS.input = high;
+  await assert.rejects(execute(f.root, reflection(), base), error => error.code === 'delivery-consistency-unavailable' && /byte bound/.test(error.message));
+  assert.equal((await status(f.root, held)).handoverOutcome.outcome, 'held');
+  assert.deepEqual(closeManifest(f.root, { members: [{ store: 'delivery', id: held }] }, f.context, base).ineligible, []);
+  BOUNDS.input = saved;
 });
 
 test('Ready names only the administrative close for a held delivery past its deadline', async t => {

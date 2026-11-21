@@ -38,14 +38,20 @@ function judgment(causes) {
   return { outcome, causes };
 }
 
-// Whether a closing review or skeptic result of the current closing record was collected but not yet imported: importing it needs no
-// new dispatch, so a spent allowance leaves that route open.
-function collectedClosingResult(state) {
+// Whether a result of the role a dispatch need asks for, a skeptic's for a finding validation and a reviewer's otherwise, was collected
+// for the current closing record, with its receipt, but not yet imported: importing it needs no new dispatch, so a spent allowance
+// leaves that route open.
+function collectedClosingResult(state, role) {
   const record = state.closing?.docs;
   if (!record) return false;
   const imported = new Set([...(record.reviews ?? []).map(review => review.requestId), ...(record.findings ?? []).map(finding => finding.validation?.requestId)].filter(Boolean));
 
-  return state.workers.some(worker => worker.taskId === '#closing' && worker.status === 'complete' && ['reviewer', 'skeptic'].includes(worker.role) && (worker.closingOccurrence ?? null) === (record.occurrence ?? null) && !imported.has(worker.id));
+  return state.workers.some(worker => worker.taskId === '#closing' && worker.status === 'complete' && worker.role === role && typeof worker.receipt === 'string' && worker.receipt.length > 0 && (worker.closingOccurrence ?? null) === (record.occurrence ?? null) && !imported.has(worker.id));
+}
+
+// Whether a cause still needs a new dispatch, once collected but unimported results of its own role are counted.
+function needsNewDispatch(state, entry) {
+  return entry.needs.includes('dispatch') && !collectedClosingResult(state, entry.needs.includes('skeptic') ? 'skeptic' : 'reviewer');
 }
 
 // Why the owner cannot discharge a held delivery itself, or null while it can: runtime mutations reach only the current selection, a
@@ -57,7 +63,7 @@ function ownerBlocked(state, { causes }, { current, now }) {
   const deadline = state.limits?.deadlineUtc;
   if (deadline && now >= Date.parse(deadline) && causes.some(entry => entry.needs.includes('closing'))) return 'the run deadline has passed, which refuses every closing-record action';
   const max = state.limits?.maxDispatches;
-  if (max !== undefined && (state.dispatches ?? 0) >= max && causes.some(entry => entry.needs.includes('dispatch')) && !collectedClosingResult(state)) return 'the dispatch allowance is spent and the hold needs a new dispatch';
+  if (max !== undefined && (state.dispatches ?? 0) >= max && causes.some(entry => needsNewDispatch(state, entry))) return 'the dispatch allowance is spent and the hold needs a new dispatch';
 
   return null;
 }
@@ -287,6 +293,26 @@ function outcomeOf(root, id) {
   finally { db.close(); }
 }
 
+// Charges to `tracker` what a creation pass charges when it judges the selection in full, as its judge does: the current state and
+// latest row, the accounting, then the close row of a closed selection or the completion judgment of any other, whose completion
+// provenance counts against the shared input while its completion evidence keeps a budget of its own. A selection that cannot be
+// judged leaves the pass refused anyway, so its failure is not the closed record's.
+function chargeSelection(env, row, tracker) {
+  const current = readCurrent(env, row, tracker, true);
+  if (current.problem) return;
+  const budget = accountingBudget(tracker);
+  const accounted = establish(env, current.state, budget);
+  if (accounted.problem || !accounted.established.account) return;
+  const consistency = require('./creation-consistency');
+  if (isClosed(current.state)) {
+    consistency.closeRowDischarges(current.history, current.state, budget, current.historical);
+    return;
+  }
+  const progress = require('./progress');
+  const evidence = { bytes: 0, artifacts: new Set(), artifactLimit: progress.MAX_FRONTIER_BYTES, chargeInput: tracker.chargeInput, remainingInput: tracker.remainingInput };
+  consistency.judgeCompletion({ db: env.db, accounting: env.accounting, provenance: env.provenance, history: current.history, state: current.state, budget, evidence, convert: true });
+}
+
 // Whether the creation gate would count the closed record `id` discharged, judged over `db` (the close's own write transaction, after
 // every member of its store is saved) as a pass judges a record in full: the selection's current state and latest row reserved, so a
 // nonselected record must fit beside them, its own current state and close row within the input allowance, its accounting and
@@ -300,10 +326,7 @@ function closedRefusal(db, root, id) {
   try {
     // Every pass judges the selection in full and never vouches for it, so whichever record sorts first, a pass that reaches the end
     // has charged the selection's state, latest row and accounting beside the closed record: charge them first.
-    if (selected && selected !== id) {
-      const selection = readCurrent(env, db.prepare('SELECT id, state FROM runs WHERE id=?').get(selected), tracker, true);
-      if (!selection.problem) establish(env, selection.state, accountingBudget(tracker));
-    }
+    if (selected && selected !== id) chargeSelection(env, db.prepare('SELECT id, state FROM runs WHERE id=?').get(selected), tracker);
     const current = readCurrent(env, row, tracker, id === selected);
     if (current.problem) return refusal(current.problem);
     const budget = accountingBudget(tracker);
