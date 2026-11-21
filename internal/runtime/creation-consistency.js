@@ -286,7 +286,15 @@ function assessment(store, options = {}) {
   // reserved up front; every other record is charged as it is read, until the allowance is reached.
   const selectedMetadata = verdicts.metadataOf(store.db, tables, selectedId);
   mandatoryTotal = selectedMetadata.stateBytes + (selectedMetadata.latestBytes ?? 0);
-  requireBound(mandatoryTotal <= BOUNDS.input, CODE, `Selected delivery ${selectedId} current and latest-history input exceeds its bound. Inspect bounded raw states or restore store capacity`);
+  const overBound = `Selected delivery ${selectedId} current and latest-history input exceeds its bound. Inspect bounded raw states or restore store capacity`;
+  // A complete, unretired selection over its reserved bound is its own Unavailable outcome, named beside every other blocker; its body is
+  // never read, so it reserves nothing. Any other selection keeps the pass refusal.
+  const selectionOverBound = mandatoryTotal > BOUNDS.input;
+  if (selectionOverBound) {
+    const status = store.db.prepare("SELECT json_extract(state, '$.status') AS status FROM runs WHERE id=?").get(selectedId)?.status;
+    requireBound(status === 'complete' && !retiredById.has(selectedId), CODE, overBound);
+    mandatoryTotal = 0;
+  }
   const ids = new Set(rows.map(row => row.id));
   requireCondition(retirements.every(row => ids.has(row.runId)), CODE, 'Retirement reference has no saved delivery');
   for (const table of ['history', 'accounting_commits', 'discharge_index'].filter(table => tables.has(table))) requireCondition(!store.db.prepare(`SELECT 1 FROM ${table} evidence LEFT JOIN runs saved ON saved.id=evidence.run_id WHERE saved.id IS NULL LIMIT 1`).get(), 'missing-predecessor', 'Surviving delivery evidence has no stored owner');
@@ -324,8 +332,9 @@ function assessment(store, options = {}) {
   // Judges one record in full and returns what the pass needs of it; currentAccounting marks a modern record whose independent
   // accounting is current, which with a validated retirement is what a verdict may vouch for.
   const judge = row => {
-    const stateText = store.db.prepare('SELECT state FROM runs WHERE id=?').get(row.id).state;
     const mandatory = row.id === selectedId;
+    if (mandatory && selectionOverBound) return { id: row.id, state: { id: row.id, status: 'complete', workers: [] }, discharged: false, currentAccounting: false, outcome: outcomes.judgment([outcomes.cause('bound', null, overBound)]) };
+    const stateText = store.db.prepare('SELECT state FROM runs WHERE id=?').get(row.id).state;
     const state = parse(stateText, mandatory);
     requireCondition(state?.schema === 1 && typeof state.id === 'string' && state.id.length > 0 && state.id === row.id && state.root === store.root && recordKind(state) === 'delivery' && state.revision === row.revision && Number.isSafeInteger(row.revision) && row.revision >= 0 && isRecordStatus(state.status) && ['claude', 'codex'].includes(state.controller?.host) && typeof state.controller.session === 'string' && state.controller.session.length > 0 && Array.isArray(state.tasks) && Array.isArray(state.workers), CODE, 'Delivery identity, shape or revision is unsupported');
     const record = { id: state.id, state, stateText, discharged: false, currentAccounting: false };

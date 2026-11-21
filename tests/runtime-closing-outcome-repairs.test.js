@@ -1013,6 +1013,16 @@ test('status by run id returns an unavailable outcome when the store has lost it
   assert.ok(outcome.routes.some(entry => entry.route === 'recovery'));
 });
 
+test('a complete selection over its reserved input bound is named unavailable by the refused handover', async t => {
+  const f = project(t);
+  await completed(f.root);
+  const id = read(f.root).id;
+  const saved = BOUNDS.input;
+  t.after(() => { BOUNDS.input = saved; });
+  BOUNDS.input = 1;
+  await assert.rejects(execute(f.root, reflection(), base), error => error.code === 'delivery-consistency-unavailable' && error.message.includes(id) && /unavailable/.test(error.message) && /current and latest-history input exceeds its bound/.test(error.message));
+});
+
 test('Ready names only the administrative close for a held delivery past its deadline', async t => {
   const f = project(t);
   await completed(f.root);
