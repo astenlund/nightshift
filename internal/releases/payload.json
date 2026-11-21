@@ -470,8 +470,8 @@
     },
     {
       "path": "internal/runtime/store.js",
-      "bytes": 29115,
-      "sha256": "8f5afce410d4f294a6048f107f17b02fd3c9424e9210182f11572477972af6ff"
+      "bytes": 29237,
+      "sha256": "9a60d5183db0654d96c74d33acc5b3dd9d51684f71afae24aa15612bb75aaec0"
     },
     {
       "path": "internal/runtime/targets.js",
