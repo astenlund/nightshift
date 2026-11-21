@@ -170,8 +170,8 @@
     },
     {
       "path": "internal/runtime/REFERENCE.md",
-      "bytes": 191993,
-      "sha256": "6fd455e14f93a34f9a11db7130e77c3fd44a7d5916678dcea73f21ef24a02fc2"
+      "bytes": 192173,
+      "sha256": "72dd6bdeef3157db82b74c8ef441988fdef3bc6edbe8586e01a51d2571b72f72"
     },
     {
       "path": "internal/runtime/actions.js",
@@ -200,8 +200,8 @@
     },
     {
       "path": "internal/runtime/close.js",
-      "bytes": 39253,
-      "sha256": "06926692ccf6b6c6eafb4489b951163f16a249d37f761fde2fb948c9ce7d30e6"
+      "bytes": 39264,
+      "sha256": "c2e54753146f6f8a3e662621bb2e877c0a43de37c0e47796500eda40e8b17372"
     },
     {
       "path": "internal/runtime/closing-hold.js",
@@ -235,8 +235,8 @@
     },
     {
       "path": "internal/runtime/delivery-outcome.js",
-      "bytes": 21554,
-      "sha256": "a02e0f2d28741450e62acaf300d7a9c92e534b7b47534b9fdd8e0efc74afad5d"
+      "bytes": 21611,
+      "sha256": "0ae0e111866326195c98aa7af0b4053222bfac54f6a51c3d77ed365be4518542"
     },
     {
       "path": "internal/runtime/discharge.js",
@@ -320,8 +320,8 @@
     },
     {
       "path": "internal/runtime/lifecycle.js",
-      "bytes": 118008,
-      "sha256": "72ee70f13f1b2645b2085c45c64a5fc883c864e5ee03532b29a1155881a05069"
+      "bytes": 118380,
+      "sha256": "84da45e17d74966dabd50db73cfaba269a0fce31174a8520cda0e78bc47f4c8c"
     },
     {
       "path": "internal/runtime/limits.js",
@@ -365,8 +365,8 @@
     },
     {
       "path": "internal/runtime/ownership.js",
-      "bytes": 12630,
-      "sha256": "95396953aca1946a716d8605fffe46909d08763ffcca5742035b12d6dcdeefc4"
+      "bytes": 12917,
+      "sha256": "daddaa0c40e06f172643feedb2c63681f93335e1f4219e20da57209fc4681f71"
     },
     {
       "path": "internal/runtime/probes.js",
@@ -470,8 +470,8 @@
     },
     {
       "path": "internal/runtime/store.js",
-      "bytes": 28764,
-      "sha256": "44ee2cba8ff61ff90bfdacc2aef5fbe6806b0fd83d97dac239b8bbe1f9d8947c"
+      "bytes": 29079,
+      "sha256": "1e3a7c12c6b000e651167bce4a3f405b78487a85477c56d5851f1e668e03c598"
     },
     {
       "path": "internal/runtime/targets.js",
@@ -505,8 +505,8 @@
     },
     {
       "path": "internal/runtime/workers.js",
-      "bytes": 236,
-      "sha256": "c8913aa49e79a3d2a6aad812cec142585eddfbcf242b6c9a19ac31c60f7d3521"
+      "bytes": 372,
+      "sha256": "5b08d410010c37f04bde88cf67dadbe1206b18459cc06607f1779fc75ec598c5"
     },
     {
       "path": "internal/setup.js",
