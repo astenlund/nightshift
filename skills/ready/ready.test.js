@@ -45,7 +45,7 @@ const SQLITE_WARNING = /\(node:\d+\) ExperimentalWarning: SQLite is an experimen
 // development mode; the catalog adapter has neither field to compare.
 function withoutCliFields(report) {
   const { runState, release, ...rest } = report;
-  assert.deepStrictEqual(runState, { records: [], compaction: [], unavailable: [] });
+  assert.deepStrictEqual(runState, { records: [], compaction: [], unavailable: [], notices: [] });
   assert.deepStrictEqual(release, { mode: 'development' });
 
   return rest;
