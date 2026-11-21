@@ -134,7 +134,8 @@ test('a task reopened by block holds the delivery with no owner route, leaving t
   assert.ok(held.handoverOutcome.causes.some(entry => entry.concern === 'task' && entry.subject === 'reflection'));
   assert.deepEqual(held.handoverOutcome.routes.map(entry => entry.route), ['close']);
   assert.match(held.handoverOutcome.ownerUnavailable, /cannot be unblocked/);
-  await assert.rejects(execute(f.root, reflection(), base), { code: 'overlapping-run' });
+  // The refusal carries the record's own route, without the generic advice to resume it.
+  await assert.rejects(execute(f.root, reflection(), base), error => error.code === 'overlapping-run' && !/resume/.test(error.message));
 });
 
 test('a closing record replaced after completion is unauthenticated: consistency refusal, close admitted with the failure named', async t => {

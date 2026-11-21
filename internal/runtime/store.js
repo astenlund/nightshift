@@ -32,7 +32,8 @@ function schemaStatements(kind, version) {
 
 function requireReplaceableDelivery(context) {
   requireCondition(!context.reportPending, 'report-delivery-pending', `${require('./creation-consistency').REPORT_PENDING}${context.blocking ?? ''}`);
-  requireCondition(context.replaceable, 'overlapping-run', `A surviving delivery still has unresolved obligations; reconcile, resume or explicitly finish it${context.blocking ?? ''}`);
+  // Named blockers carry their own routes, so the generic advice stands only when the pass named none.
+  requireCondition(context.replaceable, 'overlapping-run', `A surviving delivery still has unresolved obligations${context.blocking ? context.blocking : '; reconcile, resume or explicitly finish it'}`);
 }
 
 function reminderContent(state) {
