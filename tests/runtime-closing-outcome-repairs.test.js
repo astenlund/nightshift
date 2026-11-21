@@ -786,6 +786,19 @@ test('a held and an unauthenticated delivery in one pass refuse as a consistency
   await assert.rejects(execute(f.root, reflection(), base), error => error.code === 'delivery-consistency-unavailable' && error.message.includes(held) && error.message.includes(unauthenticated) && /is held/.test(error.message) && /is unauthenticated/.test(error.message));
 });
 
+test('an undischarged nonselected stopped delivery is named with its causes and provisional routes', async t => {
+  const f = project(t);
+  await completed(f.root);
+  const stopped = read(f.root).id;
+  await completed(f.root);
+  const selection = read(f.root).id;
+  select(f.root, stopped);
+  await closingCheck(f.root, 'post-completion tracking check', failing);
+  await execute(f.root, { action: 'stop', actor: owner, revision: read(f.root).revision, kind: 'user-stop', reason: 'Fixture stop after a failed closing check' }, base);
+  select(f.root, selection);
+  await assert.rejects(execute(f.root, reflection(), base), error => error.code === 'delivery-consistency-unavailable' && error.message.includes(stopped) && /post-completion tracking check/.test(error.message) && /close-manifest/.test(error.message));
+});
+
 test('Ready names only the administrative close for a held delivery past its deadline', async t => {
   const f = project(t);
   await completed(f.root);

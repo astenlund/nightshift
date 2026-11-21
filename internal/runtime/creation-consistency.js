@@ -400,7 +400,8 @@ function assessment(store, options = {}) {
         discharged = outcome.outcome === outcomes.DISCHARGED;
       }
       if (independent === null && !discharged) legacyUnavailable.push({ id: state.id, status: state.status, reason: 'discharge-unresolved' });
-      return { ...record, discharged, ...(judged ? { outcome } : {}), currentAccounting: independent?.status === 'current' };
+      // A record that is not complete keeps its judged causes, which its blocker text names.
+      return { ...record, discharged, ...(judged ? { outcome } : outcome ? { causes: outcome.causes } : {}), currentAccounting: independent?.status === 'current' };
     } catch (error) {
       if (error.sharedAllowance) throw error;
       if (judged && error instanceof RunError) return { ...record, outcome: outcomes.judgment([outcomes.causeOf(error, 'accounting')]) };
@@ -426,7 +427,12 @@ function assessment(store, options = {}) {
         if (record.outcome.outcome === outcomes.DISCHARGED) continue;
         const { routed } = outcomes.routesFor(record.state, record.outcome, { current: record === selected, now, inspect: false });
         list.push({ record, code: record.outcome.outcome === outcomes.HELD ? 'overlapping-run' : CODE, text: outcomes.describe(record.id, record.outcome, routed, { provisional: true }) });
-      } else if (record !== selected && !record.discharged && !legacy.has(record.id)) list.push({ record, code: CODE, text: `Delivery ${record.id} (${record.state?.status ?? 'unknown'}) still has unresolved or unavailable obligations.` });
+      } else if (record !== selected && !record.discharged && !legacy.has(record.id)) {
+        const status = record.state?.status ?? 'unknown';
+        const causes = (record.causes ?? []).filter(entry => !(status !== 'complete' && /no recorded completion row/.test(entry.message))).map(entry => entry.message);
+        const routes = status === 'stopped' ? " Routes (provisional until the record is read in full): its owner resumes it under the user's authority, or any session closes it as settled through the administrative close (close-manifest, then close) while its accounting is current." : '';
+        list.push({ record, code: CODE, text: `Delivery ${record.id} (${status}) still has unresolved or unavailable obligations${causes.length ? `: ${causes.join('; ')}` : status === 'stopped' ? ': it stopped before its completion was discharged' : ''}.${routes}` });
+      }
     }
     const own = [];
     if (selected?.state) {
