@@ -814,10 +814,12 @@ test('a stopped selection deferred behind an earlier legacy record is not named 
       await completed(trial.root);
       ids.push(read(trial.root).id);
     }
-    if (ids[0] < ids[1]) [f, earlier] = [trial, ids[0]];
+    // The gate judges in id order, so the legacy record must sort before the record that stays selected.
+    if (ids[0] < ids[2]) [f, earlier] = [trial, ids[0]];
   }
   assert.ok(f, 'No fixture ordered its records as the case needs');
   const selection = read(f.root).id;
+  assert.ok(earlier < selection, 'The legacy record sorts before the selection');
   await closingCheck(f.root, 'post-completion tracking check', failing);
   await execute(f.root, { action: 'stop', actor: owner, revision: read(f.root).revision, kind: 'user-stop', reason: 'Fixture stop after a failed closing check' }, base);
   withStore(f.root, store => {
