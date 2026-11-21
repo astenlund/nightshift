@@ -910,6 +910,25 @@ test('an unreadable closing baseline or snapshot body makes the delivery unauthe
   assert.equal(withStore(f.root, store => store.read(undefined, { hydrate: false })).status, 'complete');
 });
 
+test('outside Git, status and Ready name only the administrative close for a hold that needs a closing review', async t => {
+  // Git discovery stops at the scratch folder, so the fixture project is positively outside Git.
+  const previous = process.env.GIT_CEILING_DIRECTORIES;
+  process.env.GIT_CEILING_DIRECTORIES = scratch;
+  t.after(() => { if (previous === undefined) { delete process.env.GIT_CEILING_DIRECTORIES; } else { process.env.GIT_CEILING_DIRECTORIES = previous; } });
+  const f = project(t);
+  assert.equal(require('../internal/runtime/evidence').outsideGitWorktree(f.root), true);
+  await completed(f.root);
+  // A passing closing check that no closing review has seen needs a review dispatch, which no project outside Git admits.
+  await closingCheck(f.root, 'uncovered check', base);
+  const held = (await status(f.root)).handoverOutcome;
+  assert.equal(held.outcome, 'held');
+  assert.deepEqual(held.routes.map(entry => entry.route), ['close']);
+  assert.match(held.ownerUnavailable, /outside Git/);
+  const [record] = overview(f.root, { dependencies: base }).records;
+  assert.deepEqual(record.outcome.routes.map(entry => entry.route), ['close']);
+  assert.match(record.outcome.ownerUnavailable, /outside Git/);
+});
+
 test('Ready names only the administrative close for a held delivery past its deadline', async t => {
   const f = project(t);
   await completed(f.root);
