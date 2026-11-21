@@ -162,21 +162,31 @@ test('a closing record replaced after completion is unauthenticated: consistency
   assert.equal(read(f.root).status, 'running');
 });
 
-test('a complete delivery whose accounting is not current is unavailable and refused by close with its cause', async t => {
-  const f = project(t);
-  await completed(f.root);
-  await closingCheck(f.root, 'post-completion tracking check', failing);
-  const state = read(f.root);
-  withStore(f.root, store => store.db.prepare('DELETE FROM accounting_commits WHERE run_id=? AND revision=?').run(state.id, state.revision));
-  const unavailable = await status(f.root);
-  assert.equal(unavailable.handoverOutcome.outcome, 'unavailable');
-  assert.deepEqual(unavailable.handoverOutcome.routes.map(entry => entry.route), ['recovery']);
-  const manifest = closeManifest(f.root, { members: [{ store: 'delivery', id: state.id }] }, f.context, base);
-  assert.equal(manifest.ineligible[0].code, 'close-accounting-unavailable');
-  const [record] = overview(f.root, { dependencies: base }).records;
-  assert.equal(record.outcome.outcome, 'unavailable');
-  assert.equal(record.close.offer, 'none');
-  assert.equal(record.close.reason, 'close-accounting-unavailable');
+test('a complete delivery whose accounting is damaged is unavailable on every surface and refused by close with its cause', async t => {
+  // Each form of record-local accounting damage: the current accounting row lost, its discharge-index row lost, or its checkpoint body lost.
+  const damage = {
+    'accounting row': (store, state) => store.db.prepare('DELETE FROM accounting_commits WHERE run_id=? AND revision=?').run(state.id, state.revision),
+    'discharge-index row': (store, state) => store.db.prepare('DELETE FROM discharge_index WHERE run_id=?').run(state.id),
+    'accounting checkpoint body': (store, state) => store.db.prepare('DELETE FROM artifacts WHERE id=(SELECT artifact FROM accounting_commits WHERE run_id=? AND revision=?)').run(state.id, state.revision),
+  };
+  for (const [form, apply] of Object.entries(damage)) {
+    const f = project(t);
+    await completed(f.root);
+    await closingCheck(f.root, 'post-completion tracking check', failing);
+    const state = read(f.root);
+    withStore(f.root, store => apply(store, state));
+    const unavailable = await status(f.root);
+    assert.equal(unavailable.handoverOutcome.outcome, 'unavailable', form);
+    assert.ok(unavailable.handoverOutcome.causes.some(entry => entry.kind === 'accounting'), form);
+    assert.deepEqual(unavailable.handoverOutcome.routes.map(entry => entry.route), ['recovery'], form);
+    const members = [{ store: 'delivery', id: state.id }];
+    const manifest = closeManifest(f.root, { members }, f.context, base);
+    assert.equal(manifest.ineligible[0].code, 'close-accounting-unavailable', form);
+    const [record] = overview(f.root, { dependencies: base }).records;
+    assert.deepEqual([record.outcome.outcome, record.close.offer, record.close.reason], ['unavailable', 'none', 'close-accounting-unavailable'], form);
+    assert.throws(() => close(f.root, { members, choices: choicesFor(manifest), manifestHash: 'a'.repeat(64), authority: 'Yes, close it', reason: 'Settled', actor: closer }, f.context, base), { code: 'close-accounting-unavailable' }, form);
+    assert.deepEqual([read(f.root).status, read(f.root).revision], ['complete', state.revision], form);
+  }
 });
 
 test('a discharged delivery whose stored check output cannot be read still hands over', async t => {
