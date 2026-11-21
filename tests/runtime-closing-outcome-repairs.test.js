@@ -178,6 +178,8 @@ test('limits decide the routes status names for held deliveries built through th
   withStore(worker.root, store => store.update(owner, store.read().revision, 'fixture-worker', state => { interruptedWorker(state); state.limits = { deadlineUtc: past }; }));
   const held = await status(worker.root);
   assert.deepEqual(held.handoverOutcome.causes.map(entry => entry.concern), ['worker']);
+  // The owner is told only what its causes need: reconciling the worker, which the deadline does not refuse.
+  assert.equal(held.handoverOutcome.routes.find(entry => entry.route === 'owner').message, 'The owning session finishes the closing work: reconcile its workers');
   assert.deepEqual(held.handoverOutcome.routes.map(entry => entry.route), ['owner', 'none']);
 });
 

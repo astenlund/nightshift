@@ -58,6 +58,20 @@ function ownerBlocked(state, { causes }, { current, now }) {
   return null;
 }
 
+// The owner's closing work named from the hold's causes, so the route never prescribes an action no cause needs.
+function ownerWork(causes) {
+  const concerns = new Set(causes.map(entry => entry.concern));
+  const steps = [
+    ...(concerns.has('check') ? ['rerun each closing check until it passes'] : []),
+    ...(concerns.has('finding') || concerns.has('closure') ? ['settle the closing findings and closures'] : []),
+    ...(concerns.has('worker') ? ['reconcile its workers'] : []),
+    ...(causes.some(entry => entry.needs.includes('dispatch')) || concerns.has('review') ? ['obtain a fresh complete closing docs review'] : []),
+  ];
+  const work = steps.length > 0 ? steps : ['settle what the causes name'];
+
+  return work.length === 1 ? work[0] : `${work.slice(0, -1).join(', ')} and ${work.at(-1)}`;
+}
+
 // The routes that apply to a delivery now, from its outcome and saved state: `owner`, `close`, `recovery`, or `none` naming the close
 // eligibility refusal (`closeRefusal`, {code, message}) that leaves no route until it is resolved. `ownerUnavailable` says why a held
 // delivery has no owner route.
@@ -70,7 +84,7 @@ function routes(state, value, { current = false, now = Date.now(), closeRefusal 
   if (![HELD, UNAUTHENTICATED].includes(value.outcome)) return { list: [], ownerUnavailable: null };
   const blocked = value.outcome === HELD ? ownerBlocked(state, value, { current, now }) : { reason: 'its evidence could not be authenticated' };
   const list = [];
-  if (!blocked) list.push({ route: 'owner', message: 'The owning session finishes the closing work: rerun each closing check until it passes, settle the closing findings and closures, reconcile its workers and obtain a fresh complete closing docs review' });
+  if (!blocked) list.push({ route: 'owner', message: `The owning session finishes the closing work: ${ownerWork(value.causes)}` });
   else if (blocked.provisional) list.push({ route: 'owner', provisional: true, message: 'The dispatch allowance is spent, which refuses a new dispatch: the owning session can finish only where no new assessment is needed, using assessments already collected for this closing record and validations still current, which its own actions decide' });
   if (closeRefusal) list.push({ route: 'none', code: closeRefusal.code, message: closeRefusal.message, ...(closeRefusal.bug ? { bug: closeRefusal.bug } : {}) });
   else list.push({ route: 'close', message: CLOSE_ROUTE });
