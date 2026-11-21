@@ -792,18 +792,30 @@ test('a nonselected delivery a current verdict vouches for reads discharged on s
   assert.equal(closeManifest(f.root, { members: [{ store: 'delivery', id: first }] }, f.context, base).ineligible[0].code, 'close-not-needed');
 });
 
-test('close refuses a complete standalone review context as not needing a close', async t => {
+test('a standalone review context completed through its lifecycle stays outside the closing-hold flow on every surface', async t => {
   const f = project(t);
-  const opened = await execute(f.root, { action: 'open-review', reviewContextId: randomUUID(), controller: owner, kind: 'code', authority: 'Explicit standalone revision', objective: 'Fixture review', agreement: { source: 'fixture user', outcome: 'Fixture outcome' } }, base);
-  const store = new RunStore(f.root, { review: true });
-  try {
-    const state = store.read(opened.id);
-    store.update(state.controller, state.revision, 'fixture-complete', current => { current.status = 'complete'; }, opened.id);
-  } finally { store.close(); }
+  // A committed baseline, as a standalone docs revision is assessed against Git.
+  const git = args => assert.equal(require('node:child_process').spawnSync('git', args, { cwd: f.root, windowsHide: true, encoding: 'utf8' }).status, 0);
+  fs.writeFileSync(path.join(f.root, 'README.md'), '# Fixture\n\n1.0.0\n');
+  git(['init', '--quiet']);
+  git(['add', 'README.md', 'subject.txt']);
+  git(['-c', 'user.name=Nightshift fixture', '-c', 'user.email=a.stenlund@gmail.com', 'commit', '--quiet', '-m', 'test(fixture): establish standalone baseline']);
+  fs.writeFileSync(path.join(f.root, 'README.md'), '# Fixture\n\n1.0.1\n');
+  const opened = await execute(f.root, { action: 'open-review', reviewContextId: randomUUID(), controller: owner, kind: 'docs', authority: 'Explicit standalone revision', objective: 'Bump the documented version', agreement: { source: 'fixture user', outcome: 'Record the version-only change' } }, base);
+  const advanced = await execute(f.root, { action: 'advance', reviewContextId: opened.id, actor: owner, revision: opened.revision, evidence: 'Only the version string changed', docsExemption: 'Purely mechanical version-string update' }, base);
+  const done = await execute(f.root, { action: 'complete', reviewContextId: opened.id, actor: owner, revision: advanced.revision }, base);
+  assert.equal(done.status, 'complete');
+  // Status of the context carries no closing outcome, and Ready neither lists it nor adds a notice.
+  const read = await execute(f.root, { action: 'status', reviewContextId: opened.id }, base);
+  assert.equal(read.handoverOutcome, undefined);
+  const ready = overview(f.root, { dependencies: base });
+  assert.equal(ready.records.some(record => record.id === opened.id), false);
+  assert.deepEqual(ready.notices, []);
   const members = [{ store: 'review', id: opened.id }];
   assert.equal(closeManifest(f.root, { members }, f.context, base).ineligible[0].code, 'close-not-needed');
-  // The close entry itself refuses with the same reason, whatever hash it is given.
   assert.throws(() => close(f.root, { members, choices: [{ store: 'review', id: opened.id, report: { kind: 'none' }, followups: [] }], manifestHash: 'a'.repeat(64), authority: 'Yes, close it', reason: 'Settled', actor: closer }, f.context, base), { code: 'close-not-needed' });
+  // A delivery handed over beside it is accepted.
+  assert.equal((await execute(f.root, reflection(), base)).status, 'running');
 });
 
 test('a stopped selection deferred behind an earlier legacy record is not named as a blocker of its own', async t => {
@@ -842,6 +854,37 @@ test('a stopped selection deferred behind an earlier legacy record is not named 
     });
   });
   await assert.rejects(execute(f.root, reflection(), base), error => error.code === 'delivery-consistency-unavailable' && error.message.includes(earlier) && /Legacy delivery consistency/.test(error.message) && !error.message.includes(`Delivery ${selection} (selected) is stopped`));
+});
+
+test('an unreadable closing baseline or snapshot body makes the delivery unauthenticated and both close surfaces refuse it naming the bug', async t => {
+  const f = project(t);
+  await completed(f.root);
+  await closingCheck(f.root, 'post-completion tracking check', base);
+  const state = withStore(f.root, store => store.read(undefined, { hydrate: false }));
+  // The bodies the outcome predicate reads: the closing baseline, or a closing check's or review's snapshot.
+  const references = [];
+  const walk = (value, at) => {
+    if (!value || typeof value !== 'object') return;
+    if (typeof value.$artifact === 'string') { references.push({ at, id: value.$artifact }); return; }
+    for (const [key, item] of Object.entries(value)) walk(item, `${at}.${key}`);
+  };
+  walk(state.closing.docs.baseline, 'baseline');
+  for (const [index, check] of state.closing.docs.checks.entries()) walk(check.snapshot, `checks.${index}.snapshot`);
+  assert.ok(references.length > 0, 'The closing record stores a baseline or snapshot body');
+  withStore(f.root, store => store.db.prepare('DELETE FROM artifacts WHERE id=?').run(references[0].id));
+  assert.equal(outcomes.outcomeOf(f.root, state.id).judgment.outcome, 'unauthenticated');
+  // Status meets the loss through its ordinary read; Ready still lists the delivery with its outcome.
+  await assert.rejects(status(f.root), { code: 'missing-evidence' });
+  assert.equal(overview(f.root, { dependencies: base }).records.find(record => record.id === state.id).outcome.outcome, 'unauthenticated');
+  const members = [{ store: 'delivery', id: state.id }];
+  const manifest = closeManifest(f.root, { members }, f.context, base);
+  assert.equal(manifest.ineligible[0].code, 'missing-evidence');
+  assert.equal(manifest.ineligible[0].bug, outcomes.BUG);
+  let refusal;
+  try { close(f.root, { members, choices: choicesFor(manifest), manifestHash: 'a'.repeat(64), authority: 'Yes, close it', reason: 'Settled', actor: closer }, f.context, base); }
+  catch (error) { refusal = error; }
+  assert.deepEqual([refusal?.code, refusal?.message.includes(outcomes.BUG)], ['missing-evidence', true]);
+  assert.equal(withStore(f.root, store => store.read(undefined, { hydrate: false })).status, 'complete');
 });
 
 test('Ready names only the administrative close for a held delivery past its deadline', async t => {
