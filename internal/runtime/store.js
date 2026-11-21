@@ -277,7 +277,13 @@ class RunStore {
     return this.transaction(() => {
       requireCondition(this.kind === 'delivery' || input.tasks?.length === 1 && input.tasks[0].id === '#review' && input.handoverId === undefined && input.mechanism === undefined, 'invalid-runtime-target', 'Delivery acceptance cannot create a standalone review record');
       requireCondition(!Object.hasOwn(input, 'mode'), 'invalid-mode', 'Delivery has no attended or unattended mode');
-      const context = this.kind === 'delivery' ? require('./creation-consistency').creationAssessment(this) : null;
+      let context = null;
+      try { context = this.kind === 'delivery' ? require('./creation-consistency').creationAssessment(this) : null; }
+      catch (error) {
+        const replay = error.replayRefusal;
+        if (replay && replayAcceptance(replay.selected, input)) Object.assign(error, { code: replay.code, message: replay.message });
+        throw error;
+      }
       let previous = context ? context.current : this.read();
       if (this.kind === 'delivery' && input.handoverId !== undefined) {
         const identities = this.db.prepare("SELECT id FROM runs WHERE json_extract(state, '$.acceptance.handoverId')=? LIMIT 2").all(input.handoverId);

@@ -1023,6 +1023,22 @@ test('a complete selection over its reserved input bound is named unavailable by
   await assert.rejects(execute(f.root, reflection(), base), error => error.code === 'delivery-consistency-unavailable' && error.message.includes(id) && /unavailable/.test(error.message) && /current and latest-history input exceeds its bound/.test(error.message));
 });
 
+test('an exact replay beside a held delivery refuses as overlap even while the selection owes its report', async t => {
+  const f = project(t);
+  await completed(f.root);
+  const held = read(f.root).id;
+  // The selection completes without its recipient's reply, so it owes its morning report.
+  const withholdReply = (root, input, deps) => (input.action === 'report-delivered' ? execute(root, { action: 'inspect' }, deps) : execute(root, input, deps));
+  const original = await completed(f.root, withholdReply);
+  const selection = read(f.root).id;
+  select(f.root, held);
+  await closingCheck(f.root, 'post-completion tracking check', failing);
+  select(f.root, selection);
+  // A new handover is refused for the report first; an exact replay, which presenting the report cannot clear, is refused as overlap.
+  await assert.rejects(execute(f.root, reflection(), base), error => error.code === 'report-delivery-pending' && error.message.includes(held));
+  await assert.rejects(execute(f.root, original, base), error => error.code === 'overlapping-run' && error.message.includes(held));
+});
+
 test('Ready names only the administrative close for a held delivery past its deadline', async t => {
   const f = project(t);
   await completed(f.root);

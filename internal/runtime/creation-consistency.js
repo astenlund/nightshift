@@ -551,6 +551,9 @@ function assessment(store, options = {}) {
     const code = consistency ? CODE : reportPending ? 'report-delivery-pending' : 'overlapping-run';
     const refusal = new RunError(code, `${code === CODE ? 'Another surviving delivery still has unresolved or unavailable obligations' : code === 'report-delivery-pending' ? REPORT_PENDING : 'A surviving delivery still holds closing work'}${named}`);
     refusal.creationBlocker = true;
+    // Presenting the report cannot clear an exact replay of the selection's acceptance, so the create path, which alone knows the
+    // request, refuses that replay with the code ranked without the report.
+    if (code === 'report-delivery-pending') refusal.replayRefusal = { selected: selected.state, code: 'overlapping-run', message: `A surviving delivery still holds closing work${named}` };
     throw refusal;
   }
   if (writable) verdicts.applyWrites(store.db, tables, writes);
