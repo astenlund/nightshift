@@ -526,6 +526,10 @@ test('a stored row revision that contradicts its state reads unavailable on Read
   withStore(f.root, store => store.db.prepare('UPDATE runs SET revision=revision+1 WHERE id=?').run(id));
   const record = overview(f.root, { dependencies: base }).records.find(entry => entry.id === id);
   assert.equal(record?.outcome?.outcome, 'unavailable');
+  // The other surfaces meet the damage in their own reads, as the runtime reference states.
+  await assert.rejects(execute(f.root, reflection(), base), error => error.code === 'delivery-consistency-unavailable' && error.message.includes(id));
+  await assert.rejects(status(f.root, id), { code: 'invalid-revision' });
+  assert.equal(closeManifest(f.root, { members: [{ store: 'delivery', id }] }, f.context, base).ineligible[0].code, 'migration-store-unavailable');
 });
 
 test('close refuses while an earlier record a pass can never vouch for keeps the creation pass short of the closed record', async t => {
@@ -920,12 +924,14 @@ test('an unreadable closing baseline or snapshot body makes the delivery unauthe
 });
 
 test('a store missing a table its records need is refused at store level by every surface, with no record outcome', async t => {
-  for (const table of ['discharge_index', 'accounting_commits', 'artifacts', 'active']) {
+  // The last form keeps only a surviving accounting row as evidence: no record carries saved accounting any more.
+  const stripProgress = store => { for (const row of store.db.prepare('SELECT id, state FROM runs').all()) { const state = JSON.parse(row.state); delete state.progress; store.db.prepare('UPDATE runs SET state=? WHERE id=?').run(JSON.stringify(state), row.id); } };
+  for (const [table, extra] of [['discharge_index'], ['accounting_commits'], ['artifacts'], ['active'], ['discharge_index', stripProgress]]) {
     const f = project(t);
     await completed(f.root);
     const id = read(f.root).id;
     // An external loss no production writer leaves: the table is gone while the run rows and their saved accounting remain.
-    withStore(f.root, store => store.db.exec(`DROP TABLE ${table}`));
+    withStore(f.root, store => { store.db.exec(`DROP TABLE ${table}`); extra?.(store); });
     await assert.rejects(execute(f.root, reflection(), base), error => error.code === 'delivery-consistency-unavailable' && !error.message.includes(`Delivery ${id} is`), table);
     // Status meets the damage in its ordinary read of the store, whichever failure that read gives.
     await assert.rejects(status(f.root, id), Error, table);
