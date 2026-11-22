@@ -519,6 +519,22 @@ test('an unreadable completion row still names the closing work found beside it'
   assert.ok(outcome.causes.some(entry => entry.kind === 'work' && entry.subject === 'post-completion tracking check'));
 });
 
+test('a damaged store holding only a stopped delivery is refused at store level, and close with choices keeps that refusal', async t => {
+  const f = project(t);
+  await execute(f.root, reflection(), base);
+  const id = read(f.root).id;
+  await execute(f.root, { action: 'stop', actor: owner, revision: read(f.root).revision, kind: 'user-stop', reason: 'Fixture stop' }, base);
+  // No complete delivery is judged, so the damage check must run on its own in every reader.
+  withStore(f.root, store => store.db.exec('DROP TABLE discharge_index'));
+  await assert.rejects(status(f.root, id), /damaged as a whole/);
+  const ready = overview(f.root, { dependencies: base });
+  assert.deepEqual([ready.records.length, ready.unavailable.map(entry => entry.store)], [0, ['delivery']]);
+  const members = [{ store: 'delivery', id }];
+  const manifest = closeManifest(f.root, { members, choices: [{ store: 'delivery', id, report: { kind: 'none' }, followups: [] }] }, f.context, base);
+  assert.deepEqual([manifest.ineligible[0].code, manifest.hash], ['migration-store-unavailable', null]);
+  assert.throws(() => close(f.root, { members, choices: [{ store: 'delivery', id, report: { kind: 'none' }, followups: [] }], manifestHash: 'a'.repeat(64), authority: 'Yes, close it', reason: 'Settled', actor: closer }, f.context, base), { code: 'migration-store-unavailable' });
+});
+
 test('a stored row revision that contradicts its state reads unavailable on Ready', async t => {
   const f = project(t);
   await completed(f.root);

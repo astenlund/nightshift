@@ -591,9 +591,10 @@ test('delivery accounting: close refuses records whose accounting is not current
   assert.match(stale.ineligible[0].message, /^Its accounting is not current: consult migration inventory/);
   const db = new DatabaseSync(path.join(f.root, '.nightshift/runs/state.sqlite'));
   try { db.exec('DROP TABLE discharge_index'); } finally { db.close(); }
-  const legacy = closeManifest(f.root, { members }, f.context, f.dependencies);
-  assert.equal(legacy.ineligible[0].code, 'close-accounting-unavailable');
-  assert.match(legacy.ineligible[0].message, /retire this stopped legacy record instead/);
+  // The record carries saved accounting, so the lost table makes the store damaged as a whole rather than a legacy layout.
+  const damaged = closeManifest(f.root, { members }, f.context, f.dependencies);
+  assert.equal(damaged.ineligible[0].code, 'migration-store-unavailable');
+  assert.match(damaged.ineligible[0].message, /damaged as a whole/);
 });
 
 test('Ready names the accounting remedy for its status when a delivery marker is absent or not current', async t => {

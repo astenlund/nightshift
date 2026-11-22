@@ -94,6 +94,16 @@ function requireAccountingTables(db, tables) {
   requireCondition(!accounted, 'migration-store-unavailable', `Delivery store lacks ${missing.join(' and ')} although it holds independent accounting, so it is damaged as a whole; restore it from a backup or seek external recovery`);
 }
 
+// Whether a delivery store is whole, as every surface checks before reading any record of it: the tables its format requires, and the
+// accounting pair while it holds accounting evidence. A damaged store is refused as a whole, never judged record by record.
+function requireIntactStore(db) {
+  const version = db.prepare('PRAGMA user_version').get().user_version;
+  const tables = tableNames(db);
+  for (const name of ['runs', 'active', 'history']) requireCondition(tables.has(name), 'migration-store-unavailable', `Delivery store lacks ${name}`);
+  requireCondition(version < 2 || tables.has('artifacts'), 'migration-store-unavailable', `Version-${version} delivery store lacks artifacts`);
+  requireAccountingTables(db, tables);
+}
+
 function verifyTriggers(db, tables = tableNames(db)) {
   if (!tables.has('legacy_retirements')) return;
   const installed = new Map(db.prepare("SELECT name, sql FROM sqlite_master WHERE type='trigger'").all().map(row => [row.name, row.sql]));
@@ -171,4 +181,4 @@ function writeArtifact(db, value, maximumBytes = progress.MAX_FRONTIER_BYTES) {
   return id;
 }
 
-module.exports = { ACTIVE_TABLE_SQL, CREATE_TABLES, MAX_ARTIFACT_ID_BYTES, MAX_DELIVERY_RECORDS, MAX_RUN_BOUND_ARTIFACT_BYTES, MAX_RUN_ID_BYTES, TRIGGERS, createSupport, isRetirementCertificate, requireAccountingTables, readArtifact, readArtifactBody, retirementRows, runBoundArtifacts, schemaState, sha256, tableNames, verifyTriggers, writeArtifact };
+module.exports = { ACTIVE_TABLE_SQL, CREATE_TABLES, MAX_ARTIFACT_ID_BYTES, MAX_DELIVERY_RECORDS, MAX_RUN_BOUND_ARTIFACT_BYTES, MAX_RUN_ID_BYTES, TRIGGERS, createSupport, isRetirementCertificate, requireAccountingTables, requireIntactStore, readArtifact, readArtifactBody, retirementRows, runBoundArtifacts, schemaState, sha256, tableNames, verifyTriggers, writeArtifact };

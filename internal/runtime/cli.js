@@ -67,11 +67,13 @@ function legacyFollowupBrief(store) {
 // A completed delivery cannot be adopted and its owning session may be gone, so another admitted session of the same project,
 // in the run's resource mode and store, may record the recipient's reply to its morning report. Nothing else is opened to it.
 // Reads a status record in full and, for a complete delivery, its closing outcome, its retirement and whether it is the selection, all
-// in one read transaction so they describe one revision. A failed judgment is the record's Unavailable outcome, never discharged.
+// in one read transaction so they describe one revision. A record-local failure is the record's Unavailable outcome, never discharged; a damaged store is refused.
 function statusRead(store, runId) {
   if (store.kind !== 'delivery') return { state: store.read(runId), judged: null };
   store.db.exec('BEGIN');
   try {
+    // A damaged store is refused as a whole before any of its records is read.
+    require('./legacy-store').requireIntactStore(store.db);
     const state = store.read(runId);
     if (!state || state.status !== 'complete') return { state, judged: null };
     if (store.isRetired(state.id)) return { state, judged: { retired: true } };

@@ -94,6 +94,8 @@ function readStore(root, store, memberIds = []) {
     const version = database.prepare('PRAGMA user_version').get().user_version;
     if (![1, 2, 3].includes(version)) return { store, unreadable: `Unsupported store version ${version}` };
     const tables = new Set(database.prepare("SELECT name FROM sqlite_master WHERE type='table'").all().map(row => row.name));
+    // A damaged delivery store is refused as a whole, before any of its records is judged or its choices normalized.
+    if (store === 'delivery') require('./legacy-store').requireIntactStore(database);
     const retired = new Set(tables.has('legacy_retirements') ? database.prepare('SELECT run_id FROM legacy_retirements').all().map(row => row.run_id) : []);
     const states = [];
     for (const row of database.prepare('SELECT id, revision, state FROM runs').all()) {
@@ -435,7 +437,9 @@ function computeManifest(root, request, context, ownerAlive, { requireChoices = 
     const targetBudget = { bytes: 0, maximum: MAX_TARGET_READ_BYTES, cache: new Map() };
     choices = members.map(member => {
       const held = states.get(entryKey(member));
-      requireCondition(held, 'migration-decision-unavailable', `Member ${member.id} has no record to choose for`);
+      // A member the manifest holds no record for is already ineligible with its own refusal, such as a damaged store's, and no hash
+      // can bind it while it is, so its choice is carried unjudged rather than refused as a decision error.
+      if (!held) return { store: member.store, id: member.id, report: null };
 
       return normalizeChoice(root, member, held.state, supplied.find(choice => entryKey(choice) === entryKey(member)), targetBudget);
     });

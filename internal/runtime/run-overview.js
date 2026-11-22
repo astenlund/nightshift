@@ -185,6 +185,8 @@ function readStore(root, definition, context, dependencies, result) {
     // One read transaction holds every row a record is built from, the closing-outcome scan's included, so they share one snapshot;
     // it ends before any record is described.
     database.exec('BEGIN');
+    // A damaged delivery store is refused as a whole, listed unavailable, before any of its records is read.
+    if (definition.store === 'delivery') require('./legacy-store').requireIntactStore(database);
     const version = database.prepare('PRAGMA user_version').get().user_version;
     const total = database.prepare('SELECT coalesce(sum(length(CAST(state AS BLOB))), 0) AS bytes FROM runs').get().bytes;
     if (total > MAX_STATE_BYTES) {
