@@ -943,21 +943,29 @@ test('an unreadable closing baseline or snapshot body makes the delivery unauthe
 });
 
 test('a store missing a table its records need is refused at store level by every surface, with no record outcome', async t => {
-  // The last form keeps only a surviving accounting row as evidence: no record carries saved accounting any more.
+  // External losses no production writer leaves. The last two keep only a surviving accounting row as evidence: no record carries
+  // saved accounting, and in the last the row's own record is gone as well.
   const stripProgress = store => { for (const row of store.db.prepare('SELECT id, state FROM runs').all()) { const state = JSON.parse(row.state); delete state.progress; store.db.prepare('UPDATE runs SET state=? WHERE id=?').run(JSON.stringify(state), row.id); } };
-  for (const [table, extra] of [['discharge_index'], ['accounting_commits'], ['artifacts'], ['active'], ['discharge_index', stripProgress]]) {
+  const orphan = (store, id) => {
+    store.db.exec('PRAGMA foreign_keys=OFF');
+    for (const table of ['active', 'history', 'runs']) store.db.prepare(`DELETE FROM ${table} WHERE ${table === 'history' ? 'run_id' : 'id'}=?`).run(id);
+  };
+  const forms = [['discharge_index'], ['accounting_commits'], ['artifacts'], ['active'], ['discharge_index', stripProgress], ['discharge_index', orphan]];
+  for (const [table, extra] of forms) {
+    const label = `${table}${extra ? ` with ${extra === orphan ? 'an orphaned accounting row' : 'no saved accounting'}` : ''}`;
     const f = project(t);
     await completed(f.root);
     const id = read(f.root).id;
-    // An external loss no production writer leaves: the table is gone while the run rows and their saved accounting remain.
-    withStore(f.root, store => { store.db.exec(`DROP TABLE ${table}`); extra?.(store); });
-    await assert.rejects(execute(f.root, reflection(), base), error => error.code === 'delivery-consistency-unavailable' && !error.message.includes(`Delivery ${id} is`), table);
-    // Status meets the damage in its ordinary read of the store, whichever failure that read gives.
-    await assert.rejects(status(f.root, id), Error, table);
+    withStore(f.root, store => { store.db.exec(`DROP TABLE ${table}`); extra?.(store, id); });
+    if (extra === orphan) withStore(f.root, store => assert.ok(store.db.prepare('SELECT 1 FROM accounting_commits WHERE run_id=?').get(id), 'The accounting row outlives its record'));
+    await assert.rejects(execute(f.root, reflection(), base), error => error.code === 'delivery-consistency-unavailable' && /lacks/.test(error.message) && !error.message.includes(`Delivery ${id} is`), label);
+    await assert.rejects(status(f.root, id), { code: 'migration-store-unavailable' }, label);
     const ready = overview(f.root, { dependencies: base });
-    assert.deepEqual([ready.records.length, ready.unavailable.map(entry => entry.store)], [0, ['delivery']], table);
-    const manifest = closeManifest(f.root, { members: [{ store: 'delivery', id }] }, f.context, base);
-    assert.equal(manifest.ineligible[0].code, 'migration-store-unavailable', table);
+    assert.deepEqual([ready.records.length, ready.unavailable.map(entry => entry.store)], [0, ['delivery']], label);
+    const members = [{ store: 'delivery', id }];
+    const choices = [{ store: 'delivery', id, report: { kind: 'waived' }, followups: [] }];
+    assert.equal(closeManifest(f.root, { members, choices }, f.context, base).ineligible[0].code, 'migration-store-unavailable', label);
+    assert.throws(() => close(f.root, { members, choices, manifestHash: 'a'.repeat(64), authority: 'Yes, close it', reason: 'Settled', actor: closer }, f.context, base), { code: 'migration-store-unavailable' }, label);
   }
 });
 
